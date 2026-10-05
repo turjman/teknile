@@ -18,7 +18,7 @@ with evre.connect_tcp('127.0.0.1', 1210, 'maps/example_device.json', token='exam
     print(dev.read_all())                  # every register a poll reads, in block reads
 ```
 
-| | |
+| Call | What it does |
 |---|---|
 | `connect_tcp(host, port, map, token=, slave=, timeout=)`, `connect_serial(port, baud, map, ...)` | a `Device`; the map is a path or a `DeviceMap`; the token is written to the map's login register first |
 | `dev[name]`, `dev.read(*names)`, `dev.read_all()` | shown values (one, a dict, all) |
@@ -48,10 +48,10 @@ with evre.connect_bus_tcp('127.0.0.1', 1231, 'maps/example_bus.json', token='exa
     print(bus.broadcast('FAN_SPEED', 0))              # {'D1_FAN_SPEED': 0, 'D2_FAN_SPEED': 0}: sent once, read back
 ```
 
-| | |
+| Call | What it does |
 |---|---|
 | `connect_bus_tcp(host, port, bus_file, token=, timeout=, tokens=)`, `connect_bus_serial(port, bus_file, baud, ...)` | a `Bus`; `token` for every device with a login register, `tokens={'D2': '...'}` for one whose token is another |
-| `bus[device]`, `bus.devices` | a device's `Device` |
+| `bus[device]`,&nbsp;`bus.devices` | a device's `Device` |
 | `bus['D1_NAME']`, `bus.read(*names)`, `bus.write(name, value, force=False)` | registers by their names on the bus |
 | `bus.broadcast(name, value, force=False)`, `bus.broadcast_refusal(addr, count)` | one frame to every device (slave 0), then each read back; the rule: the reserved bank's writable registers always, elsewhere only when every device has the same map; never CONFIG with AUTO_SEND (bit 3) on, which would make every device send by itself at once |
 

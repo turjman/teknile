@@ -7,9 +7,9 @@ A small single-master register protocol for embedded devices. One request
 returns a whole block of mixed-type telemetry, over any byte link: UART,
 USART, I²C, SPI, RS-485, USB CDC or TCP/IP.
 
-| | |
+| Property | Value |
 |---|---|
-| Protocol revision | **1** (reported in `STATUS[7:0]`) |
+| Protocol&nbsp;revision | **1** (reported in `STATUS[7:0]`) |
 | Implementation | C++, two files, no dependencies beyond `stdint` / `stdlib` |
 | Footprint | ~3 kB of code; heap optional |
 | Status | in production across 100+ devices since 2023 |
@@ -108,9 +108,9 @@ Python client in ~40 lines.
 
 ## Frame
 
-| Start | Slave ID | Fn. Code | Reg. Offset | No. Registers | Data | CRC | End |
+| Start | Slave&nbsp;ID | Fn.&nbsp;Code | Reg.&nbsp;Offset | No.&nbsp;Registers | Data | CRC | End |
 |---|---|---|---|---|---|---|---|
-| 1 byte | 1 byte | 1 byte | 2 bytes | 2 bytes | *n* bytes | 2 bytes | 1 byte |
+| 1&nbsp;byte | 1&nbsp;byte | 1&nbsp;byte | 2&nbsp;bytes | 2&nbsp;bytes | *n*&nbsp;bytes | 2&nbsp;bytes | 1 byte |
 
 | Offset | Field |
 |---|---|
@@ -136,12 +136,12 @@ glance in a terminal or a logic-analyser dump.
 
 | Code | Name | Direction | Data | Answered with |
 |---|---|---|---|---|
-| `0xAA` | `READ` | → slave | none | `READ_RESP` |
-| `0xAB` | `READ_RESP` | → master | *n* bytes | — |
-| `0xEA` | `WRITE` | → slave | *n* bytes | *nothing* |
-| `0xEB` | `WRITE_ACK` | → slave | *n* bytes | `WRITE_ACK_RESP` |
-| `0xEC` | `WRITE_ACK_RESP` | → master | none | — |
-| `0xEE` | `ERROR_RESP` | → master | 1 byte | — |
+| `0xAA` | `READ` | →&nbsp;slave | none | `READ_RESP` |
+| `0xAB` | `READ_RESP` | →&nbsp;master | *n*&nbsp;bytes | — |
+| `0xEA` | `WRITE` | →&nbsp;slave | *n*&nbsp;bytes | *nothing* |
+| `0xEB` | `WRITE_ACK` | →&nbsp;slave | *n*&nbsp;bytes | `WRITE_ACK_RESP` |
+| `0xEC` | `WRITE_ACK_RESP` | →&nbsp;master | none | — |
+| `0xEE` | `ERROR_RESP` | →&nbsp;master | 1&nbsp;byte | — |
 
 ```
 READ        →  ├── READ  ──────────►│
@@ -215,8 +215,8 @@ Two banks, selected by the **top nibble** of the address:
 
 | Bank | Range | Contents |
 |---|---|---|
-| `0xA000` | `0xA000` – `0xA105` | Reserved — identical on every EVRe device |
-| `0xD000` | `0xD000` – device max | Device registers |
+| `0xA000` | `0xA000`&nbsp;–&nbsp;`0xA105` | Reserved — identical on every EVRe device |
+| `0xD000` | `0xD000`&nbsp;–&nbsp;device&nbsp;max | Device registers |
 
 Any other address is rejected. A request may **not cross a bank boundary**.
 
@@ -270,7 +270,7 @@ feature.**
 
 | 15–8 | 7–5 | 4 | 3 | 2 | 1 | 0 |
 |---|---|---|---|---|---|---|
-| AUTO_SEND prescaler | — | `DFU` | `AUTO_SEND` | `MSG_ENABLE` | `SYS_RESET` | `HEARTBEAT` |
+| AUTO_SEND&nbsp;prescaler | — | `DFU` | `AUTO_SEND` | `MSG_ENABLE` | `SYS_RESET` | `HEARTBEAT` |
 
 - **`HEARTBEAT`** is set by the *device* on every accepted packet. Read it to
   confirm the link is alive.
@@ -287,7 +287,7 @@ timer: **a host never writes 0**. The valid range is 1-255; the specified
 rates are 4000 Hz (prescaler 1) down to 40 Hz (`0xC7`). A device that receives
 0 replaces it (by 1, or by its default) and never stops the stream for it.
 
-| Prescaler | CONFIG (AUTO_SEND on) | Rate |
+| Prescaler | CONFIG&nbsp;(AUTO_SEND&nbsp;on) | Rate |
 |---|---|---|
 | `0x01` | `0x0108` | 4000 Hz (the fastest) |
 | `0x09` | `0x0908` | 800 Hz |
@@ -325,18 +325,18 @@ means index order matters:
 
 | Intent | How | |
 |---|---|---|
-| Ack everything | one write to `MSG_CNT` | ✔ |
-| Ack a contiguous run | **one** write covering the range | ✔ — the device marks all, then compacts once |
-| Ack selectively | separate writes, **highest index first** | ✔ |
-| Ack selectively | separate writes, lowest index first | ✘ — indices shift under you |
+| Ack&nbsp;everything | one&nbsp;write&nbsp;to&nbsp;`MSG_CNT` | ✔ |
+| Ack&nbsp;a&nbsp;contiguous&nbsp;run | **one**&nbsp;write&nbsp;covering&nbsp;the&nbsp;range | ✔ — the device marks all, then compacts once |
+| Ack&nbsp;selectively | separate writes, **highest index first** | ✔ |
+| Ack&nbsp;selectively | separate writes, lowest index first | ✘ — indices shift under you |
 
 The failing case, starting from `[0x02, 0x04, 0x0A]`:
 
 | Write | Effect |
 |---|---|
-| index 0 | acks `0x02`, compacts → `[0x04, 0x0A]` |
-| index 1 | index 1 is now `0x0A` — **wrong message acked** |
-| index 2 | beyond `MSG_CNT` — refused |
+| index&nbsp;0 | acks `0x02`, compacts → `[0x04, 0x0A]` |
+| index&nbsp;1 | index 1 is now `0x0A` — **wrong message acked** |
+| index&nbsp;2 | beyond `MSG_CNT` — refused |
 
 `0x04` is never acked and the host believes it was. Going high-to-low is
 always correct.
@@ -372,8 +372,8 @@ and count of the request plus one error byte:
 
 | Case | Why |
 |---|---|
-| CRC mismatch | If the CRC is bad, the slave-ID field cannot be trusted either. Answering could put several slaves on the bus at once. |
-| Slave ID mismatch | It was never ours to answer. |
+| CRC&nbsp;mismatch | If the CRC is bad, the slave-ID field cannot be trusted either. Answering could put several slaves on the bus at once. |
+| Slave&nbsp;ID&nbsp;mismatch | It was never ours to answer. |
 | The request was itself a response | Two devices trading `ERROR_RESP` would never stop. |
 
 So a host that times out is looking at a CRC error, a wrong address, or a dead
@@ -422,19 +422,19 @@ validate a new implementation before touching hardware.
 
 | # | Meaning | Bytes |
 |---|---|---|
-| 1 | `READ` DEVICE_ID, `0xA000` ×2 | `7B 01 AA 00 A0 02 00 9E 75 7D` |
-| 2 | `READ_RESP` → `0x2001` | `7B 01 AB 00 A0 02 00 01 20 2F 0F 7D` |
-| 3 | `READ` STATUS, `0xA002` ×2 | `7B 01 AA 02 A0 02 00 E8 4C 7D` |
-| 4 | `READ_RESP` → `0x3F01` | `7B 01 AB 02 A0 02 00 01 3F 0F EF 7D` |
-| 5 | `READ` `0xD000` ×4 | `7B 01 AA 00 D0 04 00 96 A1 7D` |
-| 6 | `READ_RESP` → float `12.5` | `7B 01 AB 00 D0 04 00 00 00 48 41 56 9A 7D` |
-| 7 | `WRITE` `0xD010` ×2 = `1000` | `7B 01 EA 10 D0 02 00 E8 03 A7 2D 7D` |
-| 8 | `WRITE_ACK`, same | `7B 01 EB 10 D0 02 00 E8 03 72 B2 7D` |
+| 1 | `READ`&nbsp;DEVICE_ID,&nbsp;`0xA000`&nbsp;×2 | `7B 01 AA 00 A0 02 00 9E 75 7D` |
+| 2 | `READ_RESP`&nbsp;→&nbsp;`0x2001` | `7B 01 AB 00 A0 02 00 01 20 2F 0F 7D` |
+| 3 | `READ`&nbsp;STATUS,&nbsp;`0xA002`&nbsp;×2 | `7B 01 AA 02 A0 02 00 E8 4C 7D` |
+| 4 | `READ_RESP`&nbsp;→&nbsp;`0x3F01` | `7B 01 AB 02 A0 02 00 01 3F 0F EF 7D` |
+| 5 | `READ`&nbsp;`0xD000`&nbsp;×4 | `7B 01 AA 00 D0 04 00 96 A1 7D` |
+| 6 | `READ_RESP`&nbsp;→&nbsp;float&nbsp;`12.5` | `7B 01 AB 00 D0 04 00 00 00 48 41 56 9A 7D` |
+| 7 | `WRITE`&nbsp;`0xD010`&nbsp;×2&nbsp;=&nbsp;`1000` | `7B 01 EA 10 D0 02 00 E8 03 A7 2D 7D` |
+| 8 | `WRITE_ACK`,&nbsp;same | `7B 01 EB 10 D0 02 00 E8 03 72 B2 7D` |
 | 9 | `WRITE_ACK_RESP` | `7B 01 EC 10 D0 02 00 5D CC 7D` |
 | 10 | `ERROR_RESP`, `PERMISSION_DENIED` at `0xD000` | `7B 01 EE 00 D0 01 00 03 3D 18 7D` |
 | 11 | `WRITE_ACK` CONFIG = `0x4F08` (AUTO_SEND 100 Hz) | `7B 01 EB 04 A0 02 00 08 4F 6C 94 7D` |
 | 12 | **Broadcast** `WRITE` `0xD010` ×2 = 0 (slave 0) | `7B 00 EA 10 D0 02 00 00 00 DA B9 7D` |
-| 13 | `READ` MSG_CNT, `0xA006` ×1 | `7B 01 AA 06 A0 01 00 6C 14 7D` |
+| 13 | `READ`&nbsp;MSG_CNT,&nbsp;`0xA006`&nbsp;×1 | `7B 01 AA 06 A0 01 00 6C 14 7D` |
 | 14 | `WRITE_ACK` ack messages 0–2 in one write | `7B 01 EB 07 A0 03 00 00 00 00 C0 F9 7D` |
 
 Note #6: `00 00 48 41` is IEEE-754 `12.5` little endian. Note #14: one write
@@ -672,7 +672,7 @@ matching read-only register tells you what was actually applied.
 | Acking messages lowest-index first | silently acks the wrong ones |
 | Assuming the low byte of an address is the register index | wrong once the map passes `0xnn FF` |
 | Casting a pointer into the response buffer | misaligned unless the map is ordered widest-first |
-| Assuming a write took effect | it may have been clamped — read it back |
+| Assuming&nbsp;a&nbsp;write&nbsp;took&nbsp;effect | it may have been clamped — read it back |
 | Using an optional feature without checking `STATUS` | works on one device, fails on the next |
 
 ---

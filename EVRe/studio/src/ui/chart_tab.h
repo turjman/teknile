@@ -15,8 +15,10 @@
  *    each line's total since Clear; a right-click on the header shows or
  *    hides columns.
  *
- *  - Lanes (Display): a plot per unit, stacked; each lane's Y range by a
- *    right-click on its value labels (Auto, Manual, Log).
+ *  - Lanes (Display): a plot per unit, stacked, scrolling when they do not
+ *    fit; each lane's Y range by a right-click on its value labels (Auto,
+ *    Manual, Log, Fold lane / Open lane), a ▾ on each lane to fold it,
+ *    Fold all / Open all lanes in Display; the folds kept by unit.
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
@@ -140,7 +142,8 @@ public:
 	 * right-click */
 	void showChartMenu(const QPoint &globalPos, double time);
 	QMenu *chartMenu() const { return chartMenu_; }
-	/* a lane's Y range menu (a right-click on its value labels): Auto, Manual…, Log; tests: the menu */
+	/* a lane's menu (a right-click on its value labels or its folded strip): Auto, Manual…, Log, Fold lane / Open
+	 * lane; tests: the menu */
 	void showLaneMenu(int lane, const QPoint &globalPos);
 	QMenu *laneMenu() const { return laneMenu_; }
 	void editLaneRange(int lane); /* Manual…: its min and max asked */
@@ -223,6 +226,7 @@ private:
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
+	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
 
@@ -253,6 +257,7 @@ private:
 	QPushButton *triggerArm_ = nullptr;
 	QLabel *triggerState_ = nullptr;
 	QVector<int> triggerKeys_;    /* the lines in the list, by key */
+	void showLaneActions(); /* Fold all / Open all: shown with Lanes on, each enabled when it has something to do */
 	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */
 	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
 	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */

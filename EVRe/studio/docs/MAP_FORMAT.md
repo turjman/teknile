@@ -36,7 +36,7 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `device` | string | `""` | the device's name |
 | `desc` | string | `""` | one line on the map |
 | `notes` | string | `""` | longer text on the map (Markdown) |
-| `device_id` | 16-bit number | none | the value of DEVICE_ID (`0xA000`) the map is for |
+| `device_id` | 16-bit&nbsp;number | none | the value of DEVICE_ID (`0xA000`) the map is for |
 | `slave` | integer 1 – 255 (0 is the broadcast address) | `1` | the slave address |
 | `usb` | `{ "vid", "pid" }` | none | the device's USB vendor and product ID (16-bit numbers) |
 | `login` | `{ "addr", "size" }` | none | after connecting, a token is written to `addr` (not 0) as UTF-8, cut or zero-padded to `size` bytes (1 – 65535, default 16) |
@@ -49,13 +49,13 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `addr` | 16-bit number | **required** | the first byte's address |
-| `name` | string | the address | unique in the map; tools find registers by it |
+| `addr` | 16-bit&nbsp;number | **required** | the first byte's address |
+| `name` | string | the&nbsp;address | unique in the map; tools find registers by it |
 | `type` | string | `"u16"` | section 5 |
-| `size` | integer 1 – 65535 | by the type | bytes; given for `bytes` only |
+| `size` | integer&nbsp;1&nbsp;–&nbsp;65535 | by&nbsp;the&nbsp;type | bytes; given for `bytes` only |
 | `unit` | string | `""` | the shown value's unit |
-| `access` | `"ro"`, `"rw"`, `"wo"` | `"ro"` | read-only, read-write, or write-only (never read: a host does not poll it) |
-| `write` | `"normal"`, `"action"`, `"w1c"` | `"normal"` | `action`: a write does something, then the register reads back idle; `w1c`: a 1 written to a bit clears it, a 0 leaves it |
+| `access` | `"ro"`,&nbsp;`"rw"`,&nbsp;`"wo"` | `"ro"` | read-only, read-write, or write-only (never read: a host does not poll it) |
+| `write` | `"normal"`,&nbsp;`"action"`,&nbsp;`"w1c"` | `"normal"` | `action`: a write does something, then the register reads back idle; `w1c`: a 1 written to a bit clears it, a 0 leaves it |
 | `persist` | boolean | `false` | kept across a reset (non-volatile) |
 | `group` | string | `"Registers"` | registers that belong together |
 | `desc` | string | `""` | one line |
@@ -63,10 +63,10 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `danger` | boolean | `false` | a write moves, powers, switches or resets something: a host confirms it |
 | `plot` | boolean | `true` | `false`: a value that does not change with time (an ID, a version, a setting); a host does not offer it as a line on a chart. Numbers only; a `bytes` register is never plotted |
 | `format` | `"hex"` | none | show the value in hex |
-| `scale`, `offset` | numbers | `1`, `0` | shown = raw × scale + offset |
-| `decimals` | integer −1 – 15 | automatic | the shown value's decimals |
-| `min`, `max` | numbers | none | the shown value's limits for a write (section 6) |
-| `default` | number or string | none | the value after a reset (with `persist`: the factory value); a number in shown units, or one of the register's `enum` or `special` names |
+| `scale`,&nbsp;`offset` | numbers | `1`,&nbsp;`0` | shown = raw × scale + offset |
+| `decimals` | integer&nbsp;−1&nbsp;–&nbsp;15 | automatic | the shown value's decimals |
+| `min`,&nbsp;`max` | numbers | none | the shown value's limits for a write (section 6) |
+| `default` | number&nbsp;or&nbsp;string | none | the value after a reset (with `persist`: the factory value); a number in shown units, or one of the register's `enum` or `special` names |
 | `special` | object | none | names for single values of a number, keyed by shown value: `{ "-1": "not measured" }` |
 | `enum` | object | none | names of raw values: `{ "0": "off", "0x10": "boost" }` (keys decimal or `0x` hex) |
 | `fields` | array | none | bit fields (section 5.2) |
@@ -79,9 +79,9 @@ Registers must not share bytes. Two registers at the same address are allowed by
 
 | Type | Size | Value |
 |---|---|---|
-| `u8`, `i8` | 1 | unsigned, two's complement |
-| `u16`, `i16` | 2 | |
-| `u32`, `i32` | 4 | |
+| `u8`,&nbsp;`i8` | 1 | unsigned, two's complement |
+| `u16`,&nbsp;`i16` | 2 | |
+| `u32`,&nbsp;`i32` | 4 | |
 | `f32` | 4 | IEEE 754 single |
 | `bytes` | `size` | raw bytes, no number |
 

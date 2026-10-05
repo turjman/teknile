@@ -533,6 +533,9 @@ public:
 		chartExport();
 		chartNotes();
 		chartLanes();
+		chartLanesFit();
+		chartLanesFoldButton();
+		chartLanesSeparators();
 		analysisMath();
 		analysisWindows();
 		chartTrigger();
@@ -3193,7 +3196,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "lanes scrolled and folded", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3303,6 +3306,35 @@ private:
 			 * out of place) */
 			check(once->lanes() && once->plotOnCard() && lanesAlike >= 0.90, "chart on a GPU: lanes (two units) drawn by the "
 					"card as the CPU draws them, block by block");
+			/* lanes that do not fit: eight more units, scrolled half a lane (the first two cut by the plot's top), the
+			 * third folded: its strip a picture over the layer, cut lanes cut on the card as on the CPU. One slow wave
+			 * for all, each at its own phase: a wave of a few samples per cycle is a dense zig-zag, which the card and
+			 * the CPU draw differently with or without lanes, and it is the lanes' places this compares */
+			for (int u = 1; u <= 8; u++) {
+				once->addSeries(LINES + u, QStringLiteral("u%1").arg(u), QStringLiteral("u%1").arg(u),
+						Theme::colors().series[u % Theme::colors().series.size()]);
+				for (int i = 0; i < 60 * HZ; i += 10) once->append(LINES + u, 3540.0 + double(i) / HZ, u + std::sin(i * 0.01 + u));
+			}
+			once->setLaneScroll(ChartView::LANE_MIN_H / 2);
+			once->setLaneFolded(2, true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atFit;
+			const QImage gpuFit = once->gpuPicture(&atFit).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuFit = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atFit);
+			const double fitAlike = blocksAlike(gpuFit, cpuFit, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuFit.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_fit_card.png"));
+				cpuFit.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_fit_cpu.png"));
+			}
+			std::printf("     (lanes scrolled and folded: %.2f%% of the blocks like the CPU's)\n", fitAlike * 100);
+			check(once->plotOnCard() && once->laneScroll() > 0 && once->laneFolded(2) && !once->laneScrollBarRect().isEmpty()
+					&& fitAlike >= 0.90, "chart on a GPU: lanes scrolled half a lane, one folded, drawn by the card as the "
+					"CPU draws them, block by block (the strip too)");
+			once->setLaneFolded(2, false);
+			for (int u = 1; u <= 8; u++) once->removeSeries(LINES + u);
 			once->setLanes(false);
 			once->removeSeries(LINES);
 			for (int k = 0; k < 3; k++) {
@@ -4487,12 +4519,13 @@ private:
 		chart.tab.hide();
 	}
 
-	/* Lanes: a plot per unit, stacked, equal heights, 8 at most (the units after share the last); each lane its own Y
-	 * range (Auto, Manual, Log from a right-click on its labels; Ctrl + wheel; a double-click), saved; a line drawn in
-	 * its lane only; the cursors and notes across them; drawn on threads as on one */
+	/* Lanes: a plot per unit, stacked, equal heights; each lane its own Y range (Auto, Manual, Log from a right-click
+	 * on its labels; Ctrl + wheel; a double-click), saved; a line drawn in its lane only; the cursors and notes across
+	 * them; drawn on threads as on one */
 	void chartLanes() {
 		QSettings().remove(QStringLiteral("chart/lanes"));
 		QSettings().remove(QStringLiteral("chart/laneY"));
+		QSettings().remove(QStringLiteral("chart/lanesFolded"));
 		LoneChart chart(QStringLiteral("V1"), QStringLiteral("V"));
 		const QStringList units{ QStringLiteral("V"), QStringLiteral("A"), QStringLiteral("W"), QString() };
 		MathLines::Samples samples;
@@ -4540,25 +4573,6 @@ private:
 		check(stacked && saved && ranges, "chart, Lanes: a plot per unit in the order they came (V, A, W, none), stacked, "
 				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row disabled");
 
-		/* ten units: 8 lanes, the last shared */
-		MathLines::Samples more;
-		for (int k = 8; k < 14; k++) {
-			RegDef def = chart.def;
-			def.addr = uint16_t(0xD000 + 2 * k);
-			def.name = QStringLiteral("L%1").arg(k);
-			def.unit = QStringLiteral("u%1").arg(k);
-			chart.tab.plotRegister(def, true);
-			more[regKey(def)] << QPointF(99.0, k);
-		}
-		chart.tab.frame(more);
-		check(view->laneCount() == 8 && view->laneLabel(7) == QStringLiteral("u11 · u12 · u13") && view->laneLines(7).size() == 3,
-				"chart, Lanes: 8 at most; the units after share the last (\"u11 · u12 · u13\")");
-		for (int k = 8; k < 14; k++) {
-			RegDef def = chart.def;
-			def.addr = uint16_t(0xD000 + 2 * k);
-			chart.tab.plotRegister(def, false);
-		}
-
 		/* the second lane's Y range from its labels: Manual 0 .. 5; the third's Log */
 		(void) chart.view->grab();
 		const QPoint labels(20, int(view->laneRect(1).center().y()));
@@ -4574,7 +4588,8 @@ private:
 				if (action->text() == QStringLiteral("Manual…")) manual = action;
 			}
 		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
-				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log") }
+				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
+						QStringLiteral("Fold lane") }
 				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
 		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
 		const bool typed = manual && fillDialog([](QDialog *d) {
@@ -4603,8 +4618,8 @@ private:
 					&& otherView->laneYLog(2);
 		}
 		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
-				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed), Log; each lane alone; kept "
-				"(chart/laneY) for the next start");
+				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed), Log, Fold lane; each lane "
+				"alone; kept (chart/laneY) for the next start");
 
 		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
 		const QPointF inFirst(view->laneRect(0).center());
@@ -4671,6 +4686,463 @@ private:
 				"chart, Lanes off: one plot again, the Y range row back");
 		QSettings().remove(QStringLiteral("chart/laneY"));
 		chart.tab.hide();
+	}
+
+	/* Lanes that fit: a lane per unit however many (the example map's units and math lines in two more: ten), each at
+	 * least LANE_MIN_H; when they do not fit, they scroll inside the plot (the wheel over the value labels, a bar in
+	 * the right pad); a lane out of view is nowhere for the mouse. A click on a unit name folds its lane into a strip
+	 * that lists its lines and values, a click on the strip opens it (no cursor placed); the folds kept by unit. */
+	/* a Chart tab's settings for ten lanes (group): Lanes on, two math lines over the volts and the amps in W and Ω
+	 * (two more units than the map's) */
+	void prepareLanesSettings(const QString &group) {
+		QSettings().remove(group);
+		QSettings().setValue(group + QStringLiteral("/math"),
+				QStringList{ QStringLiteral("P\tW\t%1 * %2\t1").arg(regs_.volts.name, regs_.amps.name),
+						QStringLiteral("R\tΩ\t%1 / %2\t1").arg(regs_.volts.name, regs_.amps.name) });
+		QSettings().setValue(group + QStringLiteral("/lanes"), true);
+	}
+
+	/* every numeric register of the map on the tab, and (samples) a wave for each */
+	void plotMapLanes(ChartTab &tab, MathLines::Samples *samples) {
+		tab.resize(1200, 700);
+		tab.setRegisters(map_.regs);
+		int k = 0;
+		for (const RegDef &def : map_.regs) {
+			if (!def.isNumeric()) continue;
+			tab.plotRegister(def, true);
+			if (!samples) continue;
+			for (int i = 0; i < 400; i++) /* the amps never 0: R is a number */
+				(*samples)[regKey(def)] << QPointF(90.0 + i * 0.025, 2 + k + std::sin(i * 0.05 + k));
+			k++;
+		}
+	}
+
+	void chartLanesFit() {
+		const QString group = QStringLiteral("lanesFit");
+		prepareLanesSettings(group);
+		const auto open = [this](ChartTab &tab, MathLines::Samples *samples) { plotMapLanes(tab, samples); };
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		MathLines::Samples samples;
+		open(tab, &samples);
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		view->showLastValues();
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		(void) view->grab();
+		QSet<QString> units;
+		bool own = view->lanes(), tall = true;
+		for (int k = 0; k < view->laneCount(); k++) {
+			own = own && !units.contains(view->laneLabel(k)) && !view->laneLabel(k).contains(QStringLiteral(" · "));
+			units << view->laneLabel(k);
+			tall = tall && view->laneRect(k).height() >= ChartView::LANE_MIN_H - 0.01;
+		}
+		const QRectF bar = view->laneScrollBarRect(); /* as tall as the plot */
+		const bool overflows = !bar.isEmpty() && view->laneContentHeight() > bar.height() && view->laneScroll() == 0
+				&& view->laneRect(0).top() == bar.top();
+		if (view->laneCount() < 10 || !own || !tall || !overflows)
+			std::printf("     (%d lanes: %s; the first %g px; the lanes %g px in a plot of %g)\n", view->laneCount(),
+					qPrintable(QStringList(units.begin(), units.end()).join(QStringLiteral(", "))), view->laneRect(0).height(),
+					view->laneContentHeight(), bar.height());
+		check(view->laneCount() >= 10 && own && tall && overflows, "chart, Lanes that fit: a lane per unit (ten: the map's "
+				"and two math lines), none shared, each at least 80 px; taller than the plot, the scroll bar shows");
+
+		/* the wheel over the value labels: a step down; far up and far down, held at the ends; over the plot, time */
+		const auto wheel = [view](QPointF at, int notches) {
+			QWheelEvent e(at, view->mapToGlobal(at), QPoint(), QPoint(0, 120 * notches), Qt::NoButton, Qt::NoModifier,
+					Qt::NoScrollPhase, false);
+			QApplication::sendEvent(view, &e);
+		};
+		const QPointF labels(40, bar.center().y());
+		const double most = view->laneContentHeight() - bar.height();
+		wheel(labels, -1);
+		const double oneStep = view->laneScroll();
+		wheel(labels, 5);
+		const double top = view->laneScroll();
+		wheel(labels, -100);
+		const double bottom = view->laneScroll();
+		(void) view->grab();
+		const int last = view->laneCount() - 1;
+		const bool atEnd = std::fabs(view->laneRect(last).bottom() - bar.bottom()) < 0.01;
+		const double window = view->window();
+		wheel(QPointF(bar.center().x() - 300, bar.center().y()), 1);
+		const bool timeZoom = view->window() < window && view->laneScroll() == bottom;
+		view->setWindow(window);
+		if (!(oneStep > 0 && oneStep < ChartView::LANE_MIN_H && top == 0 && std::fabs(bottom - most) < 0.01 && atEnd && timeZoom))
+			std::printf("     (wheel: a step %g, up %g, down %g of %g; the last lane's bottom %g, the plot's %g)\n", oneStep, top,
+					bottom, most, view->laneRect(last).bottom(), bar.bottom());
+		check(oneStep > 0 && oneStep < ChartView::LANE_MIN_H && top == 0 && std::fabs(bottom - most) < 0.01 && atEnd
+				&& timeZoom, "chart, Lanes that fit: the wheel over the value labels scrolls them by a step, held at the top "
+				"and at the bottom (the last lane's bottom on the plot's); over the plot it still zooms the time");
+
+		/* the first lane out of view: no height of the plot finds it */
+		bool nowhere = view->laneRect(0).bottom() <= bar.top();
+		for (double y = bar.top(); y <= bar.bottom() && nowhere; y += 1) nowhere = view->laneAtY(y) != 0;
+		check(nowhere && view->laneAtY(bar.center().y()) > 0, "chart, Lanes that fit: a lane scrolled out of view has no "
+				"place for the mouse (laneAtY)");
+
+		/* the bar's handle dragged half its free travel: half way down */
+		view->setLaneScroll(0);
+		(void) view->grab();
+		const QRectF handle = view->laneScrollHandleRect();
+		const double travel = bar.height() - handle.height();
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, handle.center().toPoint());
+		const QPointF to(handle.center().x(), handle.center().y() + travel / 2);
+		QMouseEvent move(QEvent::MouseMove, to, view->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &move);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+		const double dragged = view->laneScroll();
+		/* a click under the handle: a plot height further */
+		(void) view->grab();
+		const QPointF below(bar.center().x(), view->laneScrollHandleRect().bottom() + 4);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, below.toPoint());
+		const double paged = view->laneScroll();
+		const bool dragOk = std::fabs(dragged - most / 2) < most * 0.05
+				&& std::fabs(paged - std::min(most, dragged + bar.height())) < 0.5;
+		if (!dragOk) std::printf("     (the handle dragged: %g of %g; a click under it: %g)\n", dragged, most, paged);
+		check(dragOk, "chart, Lanes that fit: the scroll bar's handle dragged half way scrolls half way; a click under it "
+				"moves one plot height");
+
+		/* a click on a unit name folds its lane: a strip of 22 px that lists its lines and their values */
+		view->setLaneScroll(0);
+		(void) view->grab();
+		int volts = -1;
+		for (int k = 0; k < view->laneCount(); k++)
+			if (view->laneLabel(k) == regs_.volts.unit) volts = k;
+		const double contentBefore = view->laneContentHeight();
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(9, int(view->laneRect(volts).center().y())));
+		(void) view->grab();
+		const QString strip = view->foldedText(volts);
+		const QString value = view->legendValue(int(regKey(regs_.volts)));
+		bool othersOpen = true;
+		for (int k = 0; k < view->laneCount(); k++)
+			if (k != volts) othersOpen = othersOpen && view->laneRect(k).height() >= ChartView::LANE_MIN_H - 0.01;
+		const bool folded = volts >= 0 && view->laneFolded(volts)
+				&& std::fabs(view->laneRect(volts).height() - ChartView::LANE_FOLDED_H) < 0.01 && othersOpen
+				&& view->laneContentHeight() < contentBefore - 50 && !value.isEmpty()
+				&& strip.startsWith(regs_.volts.unit) && strip.contains(regs_.volts.name + QLatin1Char(' ') + value);
+		if (!folded) std::printf("     (lane %d folded %d, %g px; its strip \"%s\", the value %s)\n", volts,
+				int(view->laneFolded(volts)), view->laneRect(volts).height(), qPrintable(strip), qPrintable(value));
+		check(folded, "chart, Lanes that fit: a click on a lane's unit name folds it: a 22 px strip with its unit, its "
+				"lines and their values; the other lanes stay open");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* scrolled half a lane, one folded, for a look */
+			view->setLaneScroll(ChartView::LANE_MIN_H / 2);
+			view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_lanes_fit.png"));
+			view->setLaneScroll(0);
+			(void) view->grab();
+		}
+
+		/* a click on the strip opens it again, and places no cursor */
+		view->setCursorMode(true);
+		view->clearCursors();
+		const QRectF stripRect = view->laneRect(volts);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, stripRect.center().toPoint());
+		view->setCursorMode(false);
+		(void) view->grab();
+		const bool opened = !view->laneFolded(volts) && view->laneRect(volts).height() >= ChartView::LANE_MIN_H - 0.01
+				&& !std::isfinite(view->cursorA()) && view->foldedText(volts).isEmpty();
+		check(opened, "chart, Lanes that fit: a click on a folded strip opens the lane again (no cursor placed)");
+
+		/* the fold kept: across Lanes off and on, in the settings, and in a new tab of the same settings */
+		view->setLaneFolded(volts, true);
+		const QStringList saved = QSettings().value(group + QStringLiteral("/lanesFolded")).toStringList();
+		view->setLanes(false);
+		view->setLanes(true);
+		const bool across = view->laneFolded(volts) && view->laneScroll() == 0;
+		bool again = false;
+		{
+			ChartTab other([] { return 100.0; }, nullptr, group);
+			open(other, nullptr);
+			ChartView *otherView = other.findChild<ChartView *>();
+			again = otherView && otherView->lanes() && otherView->laneFolded(volts);
+		}
+		check(saved == QStringList{ regs_.volts.unit } && across && again, "chart, Lanes that fit: a fold is kept by its "
+				"unit: after Lanes off and on, and in a new tab (lanesFolded)");
+
+		/* few lanes: nothing scrolls, no bar; a fold makes the other lanes taller; the lane's menu folds and opens */
+		for (const RegDef &def : map_.regs)
+			if (def.isNumeric() && def.unit != regs_.volts.unit && def.unit != regs_.amps.unit) tab.plotRegister(def, false);
+		for (int k = 0; k < view->laneCount(); k++) view->setLaneFolded(k, false);
+		(void) view->grab();
+		wheel(QPointF(40, view->laneRect(0).center().y()), -1);
+		const double openHeight = view->laneRect(1).height();
+		const bool still = view->laneCount() == 4 && view->laneScrollBarRect().isEmpty() && view->laneScroll() == 0;
+		const auto menuAction = [&](int lane, const QPointF &at) -> QAction * {
+			QContextMenuEvent right(QContextMenuEvent::Mouse, at.toPoint(), view->mapToGlobal(at.toPoint()));
+			QApplication::sendEvent(view, &right);
+			QMenu *menu = tab.laneMenu();
+			QAction *found = nullptr;
+			if (menu)
+				for (QAction *action : menu->actions())
+					if (action->text() == (view->laneFolded(lane) ? QStringLiteral("Open lane") : QStringLiteral("Fold lane")))
+						found = action;
+			return found;
+		};
+		QAction *fold = menuAction(0, QPointF(40, view->laneRect(0).center().y()));
+		if (fold) fold->trigger();
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		(void) view->grab();
+		const bool taller = view->laneFolded(0) && view->laneRect(1).height() > openHeight + 20;
+		QAction *reopen = menuAction(0, view->laneRect(0).center()); /* a right-click on the strip itself */
+		if (reopen) reopen->trigger();
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		(void) view->grab();
+		const bool back = reopen && !view->laneFolded(0) && std::fabs(view->laneRect(1).height() - openHeight) < 0.01;
+		if (!still || !taller || !back)
+			std::printf("     (%d lanes, bar %s, scroll %g; open %g px, with one folded %g; the menu %s %s)\n",
+					view->laneCount(), view->laneScrollBarRect().isEmpty() ? "none" : "shown", view->laneScroll(), openHeight,
+					view->laneRect(1).height(), fold ? "folds" : "-", reopen ? "opens" : "-");
+		check(still && fold && taller && back, "chart, Lanes that fit: with few lanes nothing scrolls and no bar shows; "
+				"Fold lane in the lane's menu makes the others taller, Open lane (a right-click on the strip) back");
+		tab.hide();
+		QSettings().remove(group);
+	}
+
+	/* The fold made visible: a "▾" at the top of every open lane's unit column (a folded strip's "▸"), a click on
+	 * either folds or opens; over them the pointing hand, the button highlighted and a tooltip; the hint in the state
+	 * corner; Fold all / Open all lanes in the Display menu; the value labels' tooltip (the wheel's part only when the
+	 * lanes scroll) */
+	void chartLanesFoldButton() {
+		const QString group = QStringLiteral("lanesButton");
+		prepareLanesSettings(group);
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		MathLines::Samples samples;
+		plotMapLanes(tab, &samples);
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		view->showLastValues();
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		(void) view->grab();
+		const QRectF plot = view->laneScrollBarRect().adjusted(-1000, 0, 1000, 0); /* the plot's rows (not its x) */
+
+		/* a button on every lane in view, at the top of its unit column; none for one out of view */
+		bool buttons = view->laneCount() >= 10;
+		for (int k = 0; k < view->laneCount() && buttons; k++) {
+			const QRectF lane = view->laneRect(k), button = view->laneFoldButtonRect(k);
+			const bool inView = lane.bottom() > plot.top() && lane.top() < plot.bottom();
+			buttons = inView ? button.left() == 0 && button.right() <= 18 && std::fabs(button.top() - lane.top() - 1) < 0.01
+					&& button.height() == 16 : button.isEmpty();
+		}
+		/* a button's shape at rest: not the background behind the unit column */
+		const QImage rest = view->grab().toImage();
+		const QColor surface = Theme::colors().surface, shape = rest.pixelColor(
+				(view->laneFoldButtonRect(1).topLeft() + QPointF(4, 3)) .toPoint() * view->devicePixelRatioF());
+		buttons = buttons && shape != surface;
+		const QPoint button1 = view->laneFoldButtonRect(1).center().toPoint();
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, button1);
+		(void) view->grab();
+		const bool foldedByButton = view->laneFolded(1)
+				&& std::fabs(view->laneFoldButtonRect(1).height() - ChartView::LANE_FOLDED_H) < 0.01;
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, view->laneFoldButtonRect(1).center().toPoint());
+		(void) view->grab();
+		check(buttons && foldedByButton && !view->laneFolded(1), "chart, Lanes: a fold button (▾) at the top of every "
+				"lane's unit column in view; a click on it folds the lane, a click on the strip's ▸ opens it");
+
+		/* the mouse over a button: the pointing hand, the button highlighted, the tooltip */
+		const QRectF button2 = view->laneFoldButtonRect(2);
+		/* the button's area in the picture's own pixels: grab() is in device pixels (2.25 x at 225 %) */
+		const auto buttonPicture = [view, &button2] {
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			const QRectF area = button2.adjusted(-1, -1, 1, 1);
+			return whole.copy(QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect());
+		};
+		const QImage plain = buttonPicture();
+		const auto moveTo = [view](QPointF at) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		};
+		moveTo(button2.center());
+		const QImage lit = buttonPicture();
+		const bool hand = view->cursor().shape() == Qt::PointingHandCursor && view->hoveredLane() == 2 && plain != lit;
+		QHelpEvent help(QEvent::ToolTip, button2.center().toPoint(), view->mapToGlobal(button2.center().toPoint()));
+		QApplication::sendEvent(view, &help);
+		const bool tipShown = QTest::qWaitFor([] { return QToolTip::text() == QStringLiteral("Fold lane"); }, 2000);
+		view->setLaneFolded(3, true);
+		(void) view->grab();
+		const bool stripTip = view->toolTipAt(view->laneRect(3).center()) == QStringLiteral("Open lane")
+				&& view->toolTipAt(view->laneFoldButtonRect(3).center()) == QStringLiteral("Open lane");
+		view->setLaneFolded(3, false);
+		moveTo(view->laneRect(2).center()); /* over the plot */
+		const bool unlit = view->hoveredLane() == -1;
+		QToolTip::hideText();
+		if (!hand || !tipShown || !stripTip || !unlit)
+			std::printf("     (cursor %d, hovered %d, highlighted %d; tooltip \"%s\"; the strip's %d; off %d)\n",
+					int(view->cursor().shape()), view->hoveredLane(), int(plain != lit), qPrintable(QToolTip::text()),
+					int(stripTip), int(unlit));
+		check(hand && tipShown && stripTip && unlit, "chart, Lanes: over a fold button the pointing hand, the button "
+				"highlighted, the tooltip \"Fold lane\" (\"Open lane\" on a strip); away from it, no highlight");
+
+		/* the scroll bar: the pointing hand, its handle brighter, a tooltip; away from it, as before */
+		const QRectF handle = view->laneScrollHandleRect();
+		const auto handlePicture = [view, &handle] { /* in the picture's device pixels, as the button's */
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			return whole.copy(QRectF(handle.topLeft() * dpr, handle.size() * dpr).toAlignedRect());
+		};
+		const QImage handleRest = handlePicture();
+		moveTo(handle.center());
+		const QImage handleLit = handlePicture();
+		const bool barHover = view->laneBarHovered() && view->cursor().shape() == Qt::PointingHandCursor
+				&& handleRest != handleLit && view->toolTipAt(handle.center())
+						== QStringLiteral("Scroll the lanes: drag the handle, or click above or below it for a page");
+		if (!barHover)
+			std::printf("     (the bar %s; hovered %d, cursor %d, the handle's pixels changed %d; tooltip \"%s\")\n",
+					handle.isEmpty() ? "none" : "shown", int(view->laneBarHovered()), int(view->cursor().shape()),
+					int(handleRest != handleLit), qPrintable(view->toolTipAt(handle.center())));
+		moveTo(view->laneRect(2).center()); /* over the plot */
+		check(barHover && !view->laneBarHovered(), "chart, Lanes: over the scroll bar the pointing hand, its handle "
+				"brighter, a tooltip that says how it scrolls");
+
+		/* the hint in the state corner */
+		const bool hint = view->stateText().contains(QStringLiteral("lanes: ▾ folds"));
+		check(hint, "chart, Lanes: the state corner says \"lanes: ▾ folds\"");
+
+		/* Display: Fold all lanes / Open all lanes, with Lanes on, each enabled when it has something to do */
+		auto *lanes = tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+		auto *foldAll = tab.findChild<QAction *>(QStringLiteral("chartFoldAll"));
+		auto *openAll = tab.findChild<QAction *>(QStringLiteral("chartOpenAll"));
+		bool all = lanes && foldAll && openAll && lanes->isChecked() && foldAll->isVisible() && openAll->isVisible()
+				&& foldAll->isEnabled() && !openAll->isEnabled();
+		if (all) {
+			foldAll->trigger();
+			(void) view->grab();
+			all = view->foldedLaneCount() == view->laneCount() && !foldAll->isEnabled() && openAll->isEnabled()
+					&& QSettings().value(group + QStringLiteral("/lanesFolded")).toStringList().size() == view->laneCount()
+					&& view->laneScrollBarRect().isEmpty(); /* ten strips fit */
+			openAll->trigger();
+			(void) view->grab();
+			all = all && view->foldedLaneCount() == 0 && foldAll->isEnabled() && !openAll->isEnabled()
+					&& QSettings().value(group + QStringLiteral("/lanesFolded")).toStringList().isEmpty();
+			lanes->setChecked(false);
+			all = all && !foldAll->isVisible() && !openAll->isVisible();
+			(void) view->grab();
+			all = all && !view->stateText().contains(QStringLiteral("lanes"));
+			lanes->setChecked(true);
+		}
+		if (!all && foldAll && openAll)
+			std::printf("     (Fold all: %s %s; Open all: %s %s; %d of %d folded; the state \"%s\")\n",
+					foldAll->isVisible() ? "shown" : "hidden", foldAll->isEnabled() ? "enabled" : "disabled",
+					openAll->isVisible() ? "shown" : "hidden", openAll->isEnabled() ? "enabled" : "disabled",
+					view->foldedLaneCount(), view->laneCount(), qPrintable(view->stateText()));
+		check(all, "chart, Lanes: Display has Fold all lanes and Open all lanes with Lanes on (each enabled when it has "
+				"something to do, the folds saved), none without");
+
+		/* the value labels' tooltip: the wheel's part only while the lanes scroll */
+		(void) view->grab();
+		const QString scrolling = view->toolTipAt(QPointF(40, view->laneRect(0).center().y()));
+		for (const RegDef &def : map_.regs)
+			if (def.isNumeric() && def.unit != regs_.volts.unit && def.unit != regs_.amps.unit) tab.plotRegister(def, false);
+		(void) view->grab();
+		const QString fitting = view->toolTipAt(QPointF(40, view->laneRect(0).center().y()));
+		const bool labelsTip = scrolling == QStringLiteral("Wheel: scroll the lanes · Ctrl + wheel: zoom this lane · "
+				"Right-click: its Y range and Fold lane")
+				&& fitting == QStringLiteral("Ctrl + wheel: zoom this lane · Right-click: its Y range and Fold lane");
+		if (!labelsTip) std::printf("     (scrolling: \"%s\"; fitting: \"%s\")\n", qPrintable(scrolling), qPrintable(fitting));
+		check(labelsTip, "chart, Lanes: the value labels' tooltip names the wheel (while the lanes scroll), Ctrl + wheel "
+				"and the right-click");
+		tab.hide();
+		QSettings().remove(group);
+	}
+
+	/* A line between two lanes (open or folded), in the middle of the gap, from the value labels across the plot, in
+	 * the colour of a control's edge (3:1 to the chart); only between lanes in view; none without Lanes */
+	void chartLanesSeparators() {
+		const QString group = QStringLiteral("lanesSeparators");
+		prepareLanesSettings(group);
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		MathLines::Samples samples;
+		plotMapLanes(tab, &samples);
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		const QColor border = Theme::colors().control; /* a control's edge: 3:1 to the chart */
+		/* the separators as painted: one per gap whose middle is in the plot, there; the border colour at the labels
+		 * and over the plot */
+		const auto where = [&](QString &why) {
+			const QImage picture = view->grab().toImage();
+			const qreal dpr = view->devicePixelRatioF();
+			const QRectF plot = QRectF(view->laneRect(0).left(), view->laneScrollBarRect().top(), view->laneRect(0).width(),
+					view->laneScrollBarRect().height());
+			QVector<double> want;
+			for (int k = 0; k + 1 < view->laneCount(); k++) {
+				const double y = view->laneRect(k).bottom() + 5;
+				if (y >= plot.top() && y <= plot.bottom()) want << y;
+			}
+			const QVector<double> drawn = view->laneSeparators();
+			if (drawn.size() != want.size() || want.isEmpty()) {
+				why = QStringLiteral("%1 drawn, %2 gaps").arg(drawn.size()).arg(want.size());
+				return false;
+			}
+			for (int i = 0; i < want.size(); i++) {
+				if (std::fabs(drawn[i] - want[i]) > 0.01) {
+					why = QStringLiteral("at %1, the gap's middle %2").arg(drawn[i]).arg(want[i]);
+					return false;
+				}
+				for (const double x : { 30.0, plot.left() + 3, plot.center().x() }) {
+					bool found = false;
+					for (int dy = -1; dy <= 1 && !found; dy++) {
+						const QColor c = picture.pixelColor(int(x * dpr), int(std::floor(drawn[i] * dpr)) + dy);
+						found = std::abs(c.red() - border.red()) + std::abs(c.green() - border.green())
+								+ std::abs(c.blue() - border.blue()) <= 6;
+					}
+					if (!found) {
+						why = QStringLiteral("not the separator's colour at x %1, y %2").arg(x).arg(drawn[i]);
+						return false;
+					}
+				}
+			}
+			return true;
+		};
+		QString why;
+		bool ok = where(why); /* ten lanes, the last ones below the plot */
+		const int atTop = view->laneSeparators().size();
+		view->setLaneFolded(1, true); /* a strip has them too */
+		ok = ok && where(why) && view->laneSeparators().size() >= atTop;
+		view->setLaneScroll(ChartView::LANE_MIN_H / 2 + 3); /* scrolled: the gaps where the lanes are now */
+		ok = ok && where(why);
+		view->setLaneFolded(1, false);
+		view->setLanes(false);
+		(void) view->grab();
+		ok = ok && view->laneSeparators().isEmpty();
+		if (!ok) std::printf("     (separators: %s)\n", qPrintable(why));
+		check(ok, "chart, Lanes: a line in the middle of each gap between two lanes in view (a folded one's too, scrolled "
+				"too), from the value labels across the plot, in a control's edge colour (3:1); none without Lanes");
+
+		/* no text cut or run together: scrolled so the first lane is cut by the plot's top, every value label whole
+		 * inside its lane's part in view (none across a gap into the next lane's); a folded strip cut by the edge
+		 * writes nothing, whole it writes its lines */
+		view->setLanes(true);
+		view->setLaneScroll(ChartView::LANE_MIN_H / 2 + 3);
+		(void) view->grab();
+		const QRectF plotRows = view->laneScrollBarRect();
+		bool whole = !view->valueLabelRects().isEmpty();
+		for (const QRectF &label : view->valueLabelRects()) {
+			bool inside = false;
+			for (int k = 0; k < view->laneCount() && !inside; k++) {
+				const QRectF lane = view->laneRect(k);
+				const double top = std::max(lane.top(), plotRows.top()), bottom = std::min(lane.bottom(), plotRows.bottom());
+				inside = label.top() >= top - 0.01 && label.bottom() <= bottom + 0.01;
+			}
+			whole = whole && inside;
+		}
+		view->setLaneFolded(0, true);
+		view->setLaneScroll(10); /* the strip (22 px) half above the plot */
+		(void) view->grab();
+		const bool cutStrip = view->laneRect(0).top() < plotRows.top() && view->foldedText(0).isEmpty();
+		view->setLaneScroll(0);
+		(void) view->grab();
+		const bool wholeStrip = !view->foldedText(0).isEmpty();
+		view->setLaneFolded(0, false);
+		if (!whole || !cutStrip || !wholeStrip)
+			std::printf("     (labels whole in their lanes %d; a cut strip silent %d, a whole one written %d)\n", int(whole),
+					int(cutStrip), int(wholeStrip));
+		check(whole && cutStrip && wholeStrip, "chart, Lanes: no text cut by the plot's edge or run into the next lane: "
+				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
+		tab.hide();
+		QSettings().remove(group);
 	}
 
 	/* The analysis's own arithmetic: the FFT (an impulse, a sine, back again), the histogram's Freedman-Diaconis bins,

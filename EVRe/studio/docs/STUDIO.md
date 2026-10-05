@@ -290,19 +290,19 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 |---|---|
 | Links | TCP (any EVRe-over-TCP server or gateway) or a serial / USB CDC port. Slave address, answer timeout, pipelining (*In flight*), reconnect by itself. |
 | Login | An optional token, written after connecting to a login register that the map declares. |
-| Device check | Reads DEVICE_ID and STATUS at every connect. Warns when the map was made for another device ID. |
-| Register table | Live values with units. Decoded bit fields and enum names. Stale values turn grey and changed values glow. Search, group filter, tooltips, a detail line for the selected register. |
+| Device&nbsp;check | Reads DEVICE_ID and STATUS at every connect. Warns when the map was made for another device ID. |
+| Register&nbsp;table | Live values with units. Decoded bit fields and enum names. Stale values turn grey and changed values glow. Search, group filter, tooltips, a detail line for the selected register. |
 | Writes | Only when *Allow writes* is on. Registers marked danger ask first. Every write is read back, and a write asks first when the value changed while you were editing. |
-| Quick write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
-| Map editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
+| Quick&nbsp;write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
+| Map&nbsp;editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
 | Export | The map as a Markdown specification, a C header, a Python module, CSV, or the device table for firmware on the EVRe library; CSV back in; a JSON Schema of the format (chapter 32). |
 | Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto or Manual Y, Normalise and Smooth. |
 | Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS, standard deviation, peak to peak and area over A..B or over the view, and the total since Clear. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). Columns shown or hidden by a right-click on the header. |
-| Math lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
+| Math&nbsp;lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
 | Analysis | A line's histogram (Freedman–Diaconis bins) or spectrum (Welch, Hann) over A → B or the view, in a window of its own; a trigger holds the chart on a level crossing, as an oscilloscope (7.13, 8.6). |
-| Several devices on one link | A bus file (`evre-bus/1`) puts devices at their slave addresses on one link (RS-485, a gateway). Their registers are named after them (`D1_SPEED`) in the table, chart, CSV and API; a device that stops answering goes offline without slowing the others (3.9). |
+| Several&nbsp;devices&nbsp;on&nbsp;one&nbsp;link | A bus file (`evre-bus/1`) puts devices at their slave addresses on one link (RS-485, a gateway). Their registers are named after them (`D1_SPEED`) in the table, chart, CSV and API; a device that stops answering goes offline without slowing the others (3.9). |
 | Broadcast | One write to every device at once (slave 0), only where it means the same to each, then each read back (3.10). |
-| Auto send | A device that can sends its read-only block by itself at a set rate: one chart point and one CSV row per frame (13.8). |
+| Auto&nbsp;send | A device that can sends its read-only block by itself at a set rate: one chart point and one CSV row per frame (13.8). |
 | Monitor | Every frame sent and received. Raw reads and writes, to any slave address or as a broadcast. |
 | Log | Every event in a tab and in a daily file. Pop-ups for warnings and errors; the same message pops up at most every 30 s (11.3). |
 | CSV | One row per poll of the registers you choose (per frame with auto send). |
@@ -431,11 +431,11 @@ Everything about the link is in the sidebar's **Connection** card. The card has,
 
 ### 3.1 TCP
 
-| Field | Range / default | Meaning |
+| Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
-| host | text, default `127.0.0.1` | Name or IP address of the EVRe-over-TCP server. Spaces around it are ignored. |
-| port | 1 – 65535, default `1210` | Its TCP port. |
-| token | text, empty by default | See 3.6. Shown as dots and never saved. |
+| host | text,&nbsp;default&nbsp;`127.0.0.1` | Name or IP address of the EVRe-over-TCP server. Spaces around it are ignored. |
+| port | 1&nbsp;–&nbsp;65535,&nbsp;default&nbsp;`1210` | Its TCP port. |
+| token | text,&nbsp;empty&nbsp;by&nbsp;default | See 3.6. Shown as dots and never saved. |
 
 The server can be a device with a network port, a TCP gateway in front of a serial device, or another EVRe Studio's pass-through port 1219 (see 17.4). The Studio turns Nagle's algorithm off on the socket, so every request leaves at once.
 
@@ -443,10 +443,10 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 
 ### 3.2 Serial / USB
 
-| Field | Range / default | Meaning |
+| Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
-| port | the ports found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
-| Baud | editable list, default `115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, or any rate typed. |
+| port | the&nbsp;ports&nbsp;found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
+| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, or any rate typed. |
 
 - **Port settings.** The port is opened at 8 data bits, no parity, one stop bit and no flow control. After opening, the Studio sets **DTR** on (many USB CDC devices send nothing until DTR is set) and clears the port's buffers. RTS is left as the driver sets it.
 - **The port list.** A USB port is listed as `COM7  · <description>  1234:abcd`: the port name, the driver's description, and the USB vendor and product IDs in hex. A port without USB IDs shows its description, if it has one. With no port at all, the list shows *no ports found*.
@@ -457,10 +457,10 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 
 ### 3.3 Slave and timeout
 
-| Option | Range / default | Meaning |
+| Option | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
-| **Slave** | 1 – 255, default 1 | The EVRe slave address put in every request. It is set from the map's `"slave"` when a map loads, and written back to the map when you save it. It is not a setting of its own. 0 is the broadcast address, which no device answers: a map with `"slave": 0` is an error. On a bus each device has its own (3.9) and the box only shows the selected one's. |
-| **Timeout** | 20 – 10000 ms, default 500 | How long the Studio waits for an answer before it fails the request with `timeout (<n> ms)`. Radio links and slow gateways need more. |
+| **Slave** | 1&nbsp;–&nbsp;255,&nbsp;default&nbsp;1 | The EVRe slave address put in every request. It is set from the map's `"slave"` when a map loads, and written back to the map when you save it. It is not a setting of its own. 0 is the broadcast address, which no device answers: a map with `"slave": 0` is an error. On a bus each device has its own (3.9) and the box only shows the selected one's. |
+| **Timeout** | 20&nbsp;–&nbsp;10000&nbsp;ms,&nbsp;default&nbsp;500 | How long the Studio waits for an answer before it fails the request with `timeout (<n> ms)`. Radio links and slow gateways need more. |
 
 The Studio sends Slave, Timeout and In flight to its I/O engine each time it connects. It also sends them each time In flight changes. After changing Slave or Timeout while connected, reconnect for the change to apply. The Timeout also sets how soon a value turns grey (see 4.3), and that part applies at once.
 
@@ -475,7 +475,7 @@ the same, their range in their tooltips.
 | Value | Behaviour |
 |---|---|
 | 1 | Strictly one request at a time. Use it for a device on a UART, which takes one request at a time. |
-| 2 or more | Requests are pipelined. The next ones go out while the answers to the first are still on their way. This is much faster over TCP to a server that accepts several requests at once. |
+| 2&nbsp;or&nbsp;more | Requests are pipelined. The next ones go out while the answers to the first are still on their way. This is much faster over TCP to a server that accepts several requests at once. |
 
 The value is kept separately for TCP and for serial. The defaults are **4 for TCP** and **1 for serial**, and switching between TCP and Serial / USB loads the value saved for that link. The value is saved each time it changes.
 
@@ -485,12 +485,12 @@ Only reads overlap. A write waits until everything sent before it has been answe
 
 The button under the options changes with the link's state:
 
-| Button text | When | Clicking it |
+| Button&nbsp;text | When | Clicking it |
 |---|---|---|
 | **Connect** | disconnected | opens the link |
 | **Cancel** | connecting | gives up |
-| **Disconnect** (red) | connected | closes the link |
-| **Stop reconnecting** | waiting to try again (see below) | stops the retries |
+| **Disconnect**&nbsp;(red) | connected | closes the link |
+| **Stop&nbsp;reconnecting** | waiting&nbsp;to&nbsp;try&nbsp;again&nbsp;(see&nbsp;below) | stops the retries |
 
 **Reconnect by itself** is on by default. After you clicked Connect, the Studio keeps trying until you click Disconnect or Stop reconnecting:
 
@@ -546,9 +546,9 @@ the card never changes height.
 
 | Pill | Colour | Meaning |
 |---|---|---|
-| *Disconnected* | grey, no tint | No link. |
+| *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
-| *Connected · 127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
+| *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason, cut in the middle when it is longer than the pill; the tooltip and the Log have it in full. |
 
 The device line under the pill keeps its last text after a disconnect, until the next device ID answer or login error replaces it.
@@ -582,7 +582,7 @@ does not know are kept when the bus file is saved again. Tokens are never in it.
 
 **The Devices on the link card** (in the sidebar, under Connection):
 
-| One device | A bus |
+| One&nbsp;device | A bus |
 |---|---|
 | A line that says so, **New bus** (a bus of the map's device, at the sidebar's slave address, to add the others to) and **Open bus…**. | The list of the devices: a dot (green: answers, red: offline, grey: not connected), then *D1 · slave 1 · motor.json*. **+ Device**, **− Device**, **Edit…** (or a double-click), and the **Bus file** menu: **Open…**, **Save**, **Save as…** and **Close bus** (back to one device: the selected one's map), and the **Broadcast** menu (3.10). |
 
@@ -641,7 +641,7 @@ A broadcast must mean the same to every device. The Studio sends one only when:
 |---|---|
 | The reserved bank's writable registers, `0xA004` .. `0xA105` (CONFIG, MSG_CNT, MSG_BUFFER) | always: every EVRe device has them, whatever its map. For example a CONFIG write to every device at once. |
 | `0xA000` .. `0xA003` (DEVICE_ID, STATUS) | never: read-only on every device. |
-| Anywhere else | only when every device on the link has the same register map (the same registers and device ID), and every byte written lies in a writable register of it. |
+| Anywhere&nbsp;else | only when every device on the link has the same register map (the same registers and device ID), and every byte written lies in a writable register of it. |
 | CONFIG with AUTO_SEND (bit 3) set | never, wherever it falls: every device would start sending by itself at once, over the others (13.8). A CONFIG broadcast with the bit clear goes as above. |
 
 Three ways to send one, all behind **Allow writes**:
@@ -677,11 +677,11 @@ The Registers tab has four parts, from top to bottom:
 
 | Control | What it does |
 |---|---|
-| Search box | Filters the table as you type (see 4.6). |
-| Groups button | A menu of the map's groups, to show one, several or all (see 4.7). |
-| **Plot shown** / **Unplot shown** | Puts every numeric register the table shows now on the chart, or takes them off (see 4.8). |
-| **Allow writes** | Off at every start. On: values can be edited and written. Shown in amber bold while on (see 6.1); it keeps the bold width when off, so the buttons beside it do not move. |
-| **+ Register** | Adds a register to the map (see 4.11). |
+| Search&nbsp;box | Filters the table as you type (see 4.6). |
+| Groups&nbsp;button | A menu of the map's groups, to show one, several or all (see 4.7). |
+| **Plot&nbsp;shown**&nbsp;/&nbsp;**Unplot&nbsp;shown** | Puts every numeric register the table shows now on the chart, or takes them off (see 4.8). |
+| **Allow&nbsp;writes** | Off at every start. On: values can be edited and written. Shown in amber bold while on (see 6.1); it keeps the bold width when off, so the buttons beside it do not move. |
+| **+&nbsp;Register** | Adds a register to the map (see 4.11). |
 
 ### 4.2 The columns
 
@@ -702,17 +702,17 @@ Each column's header is aligned as its cells: Value's at the right, over its num
 
 The Value column shows:
 
-| Register | Shown as | Example |
+| Register | Shown&nbsp;as | Example |
 |---|---|---|
-| Integer | the number | `12500` |
-| Integer with `"format": "hex"`, with bit fields, or with the unit `bitmask` | hex, two digits per byte | `0x1001`, `0x0005` |
-| An enum register | the number (the name is in Decoded) | `2` |
+| Integer | the&nbsp;number | `12500` |
+| Integer with `"format": "hex"`, with bit fields, or with the unit `bitmask` | hex,&nbsp;two&nbsp;digits&nbsp;per&nbsp;byte | `0x1001`, `0x0005` |
+| An&nbsp;enum&nbsp;register | the number (the name is in Decoded) | `2` |
 | `f32`, or any register with a scale or an offset | a number whose decimals shrink as it grows: 1 from 1000 up, 2 from 100, 3 from 1, 4 below 1 | `1234.5`, `123.45`, `12.345`, `0.4200` |
-| A float that is not a number | the text NaN | `NaN` |
-| Byte array | the first 24 bytes in hex, ` …` when there are more | `48 45 4C 4C 4F …` |
-| Not read yet | a dash | `—` |
-| Read failed and no good value yet | *error* in red | |
-| Refused by the device for good | *not available* in red (see 4.5) | |
+| A&nbsp;float&nbsp;that&nbsp;is&nbsp;not&nbsp;a&nbsp;number | the&nbsp;text&nbsp;NaN | `NaN` |
+| Byte&nbsp;array | the first 24 bytes in hex, ` …` when there are more | `48 45 4C 4C 4F …` |
+| Not&nbsp;read&nbsp;yet | a&nbsp;dash | `—` |
+| Read failed and no good value yet | *error*&nbsp;in&nbsp;red | |
+| Refused&nbsp;by&nbsp;the&nbsp;device&nbsp;for&nbsp;good | *not&nbsp;available*&nbsp;in&nbsp;red&nbsp;(see&nbsp;4.5) | |
 
 The columns fit their content when a map loads and after each edit of the map. The Value column is at least 110 pixels wide, so values have room to grow. Twice a second while the tab is shown, a column widens when its values have grown; when the tab is shown again (after the Chart, say), it widens at once, before the table is drawn, so it does not stretch in front of you. The columns do not shrink by themselves, so they do not jump. Right-click → **Fit columns** shrinks them to fit again. Decoded is as wide as its longest text. If the window is narrower than the columns, a scroll bar appears: nothing is cut off.
 
@@ -864,12 +864,12 @@ The form has these fields:
 | Address | Hex (`0x…`) or decimal, 0x0000 – 0xFFFF. |
 | Name | Required. |
 | Type | `u8` … `f32`, `bytes`. |
-| Size (bytes) | For `bytes` only, 1 – 255. Other types have a fixed size. |
+| Size&nbsp;(bytes) | For `bytes` only, 1 – 255. Other types have a fixed size. |
 | Unit | Free text. |
 | Access | read-only / read-write. |
 | Group | Pick one of the map's groups or type a new one. Empty becomes `Registers`. |
 | Description | Free text. |
-| Scale, Offset | Six decimals, ±1e9. |
+| Scale,&nbsp;Offset | Six decimals, ±1e9. |
 | confirm every write (moves or powers something) | Makes it a danger register. |
 
 **Add** stays disabled while the form has an error: *address: 0x0000 … 0xFFFF* or *a name is needed*. If the address is already in the map, the Studio asks *0xD004 is already in the map. Add another register there anyway?*. The new row is inserted in address order.
@@ -898,14 +898,14 @@ The panel has one row of controls:
 
 | Control | What it does |
 |---|---|
-| *Write NAME* (with ⚠ for a danger register) | The register the panel writes. |
-| Value box | Type a value and press **Enter**, or click **Write**. Placeholder: *value, 0x1F, 0b101, or a name*, or with the map's limits *value (0 … 100 %), or a name*. |
-| Named values list | Shown for a register with value names or special values. The special values come first, in shown units, then the value names: `name  (value)`, for example `blink  (2)`. Picking one writes it at once (a value name as its raw number, a special value as its shown value). The list follows the device's value, except while you are choosing in it. |
+| *Write&nbsp;NAME* | With ⚠ for a danger register: the register the panel writes. |
+| Value&nbsp;box | Type a value and press **Enter**, or click **Write**. Placeholder: *value, 0x1F, 0b101, or a name*, or with the map's limits *value (0 … 100 %), or a name*. |
+| Named&nbsp;values&nbsp;list | Shown for a register with value names or special values. The special values come first, in shown units, then the value names: `name  (value)`, for example `blink  (2)`. Picking one writes it at once (a value name as its raw number, a special value as its shown value). The list follows the device's value, except while you are choosing in it. |
 | **Write** | Writes the value box. |
 | **Default** | Shown when the map gives the register a default: writes it (its tooltip says which). |
-| **To all devices** | On a bus only (3.9): the value typed, to every device on the link in one broadcast frame, after a confirmation; then each device is read back and the Log says whether every one took it. Enabled only where the broadcast rule allows it (3.10); the tooltip says why not. |
+| **To&nbsp;all&nbsp;devices** | On a bus only (3.9): the value typed, to every device on the link in one broadcast frame, after a confirmation; then each device is read back and the Log says whether every one took it. Enabled only where the broadcast rule allows it (3.10); the tooltip says why not. |
 | **Bits** | Shown for an integer register that has no bit fields and no scale or offset. Ticked, it draws the bit view (5.4) for that register too. Saved (`ui/quickBits`). |
-| Hint, at the right | *tick Allow writes to write*, or *not connected*. |
+| Hint,&nbsp;at&nbsp;the&nbsp;right | *tick Allow writes to write*, or *not connected*. |
 
 The controls are enabled only while **Allow writes** is on **and** the link is up. The hint says which of the two is missing.
 
@@ -915,12 +915,12 @@ Every quick write follows exactly the same path as an edit in the table: the dan
 
 | Typed | Meaning | Example on the example map |
 |---|---|---|
-| A plain number | The value **as shown**: scale and offset are undone before writing. Use a dot for decimals, in any locale. | `22.5` on SETPOINT; `1.5` on a register with scale 0.01 writes the raw integer 150 |
+| A&nbsp;plain&nbsp;number | The value **as shown**: scale and offset are undone before writing. Use a dot for decimals, in any locale. | `22.5` on SETPOINT; `1.5` on a register with scale 0.01 writes the raw integer 150 |
 | `0x…` | Hex: the raw integer, with no scale or offset undone | `0x02` on LED_MODE |
 | `0b…` | Binary: the raw integer, with no scale or offset undone | `0b101` |
-| A value name | Its number (names match in any case) | `blink` on LED_MODE |
-| A special value's name | Its shown value | `off` on a register with `"special": { "0": "off" }` |
-| Hex bytes, for a `bytes` register | Exactly `size` bytes. Spaces and other non-hex characters are ignored. | `48 45 4C 4C 4F` on a 5-byte register. The example map's only `bytes` register, MSG_BUFFER, has size 255 and needs all 255 bytes: these 5 are refused with *255 hex bytes needed, got 5*. |
+| A&nbsp;value&nbsp;name | Its number (names match in any case) | `blink` on LED_MODE |
+| A&nbsp;special&nbsp;value's&nbsp;name | Its&nbsp;shown&nbsp;value | `off` on a register with `"special": { "0": "off" }` |
+| Hex&nbsp;bytes,&nbsp;for&nbsp;a&nbsp;`bytes`&nbsp;register | Exactly `size` bytes. Spaces and other non-hex characters are ignored. | `48 45 4C 4C 4F` on a 5-byte register. The example map's only `bytes` register, MSG_BUFFER, has size 255 and needs all 255 bytes: these 5 are refused with *255 hex bytes needed, got 5*. |
 
 Integers are rounded to the nearest whole number and checked against the type's range. The refusal names the range, for example *300 is out of range for u8 (0 … 255)*.
 
@@ -955,10 +955,10 @@ What each part shows and does:
 
 | Part | Shows | Click |
 |---|---|---|
-| Bit cell | `0` / `1`, or `·` while the value is unknown | Flips that bit only. |
-| One-bit field without value names (a flag) | its name | Flips it. |
+| Bit&nbsp;cell | `0` / `1`, or `·` while the value is unknown | Flips that bit only. |
+| One-bit field without value names (a flag) | its&nbsp;name | Flips it. |
 | Wider field, or one with value names | `NAME = value`, using the value's name when it has one | Opens a menu of its named values (the current one checked) and **Value…**, which asks for a number from 0 to the field's maximum. |
-| A bit in no field | a box with `—` | |
+| A&nbsp;bit&nbsp;in&nbsp;no&nbsp;field | a&nbsp;box&nbsp;with&nbsp;`—` | |
 
 The tooltip over a bit or field shows its bits (`bits 1:0`), its value names and what a click does.
 
@@ -1030,9 +1030,9 @@ Section 21.3 follows the same path through the code.
 |---|---|---|
 | Written | Info | `written: LED_MODE = 2 (02 at 0xD085)`, and *LED_MODE written* in the status bar for 3 s |
 | Refused by the device, or timed out | Error | `write refused: LED_MODE = 9 (09 at 0xD085): permission denied` |
-| Not a valid value | Error | `FAN_SPEED: 300 not written: 300 is out of range for u8 (0 … 255)` |
+| Not&nbsp;a&nbsp;valid&nbsp;value | Error | `FAN_SPEED: 300 not written: 300 is out of range for u8 (0 … 255)` |
 | Cancelled | Info | `…: write of … cancelled (the value changed meanwhile)` or `… cancelled at the confirmation` |
-| Monitor raw write | Info / Error | `raw write 00 64 at 0xD086: OK` or `…: refused: <reason>` |
+| Monitor&nbsp;raw&nbsp;write | Info&nbsp;/&nbsp;Error | `raw write 00 64 at 0xD086: OK` or `…: refused: <reason>` |
 
 Errors also pop up (see 11.3).
 
@@ -1047,9 +1047,9 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 | **Window** | The time the view shows. Pick a preset or type a length (see below). Default 30 s. |
 | **Memory** | How much is kept, like an oscilloscope's memory depth. Pick a preset or type a length. Default 60 s. |
 | **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). |
-| Memory note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
-| **Y range** Auto / Manual / Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). |
-| **min**, **max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
+| Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
+| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). |
+| **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
 - **Memory presets:** 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h, 2 h.
@@ -1059,9 +1059,9 @@ The limits:
 
 | Setting | Shortest | Longest |
 |---|---|---|
-| Window, typed | 10 ms | 24 h |
-| Window, with the mouse wheel | 1 ms | the memory |
-| Memory | 1 s | 24 h |
+| Window,&nbsp;typed | 10&nbsp;ms | 24 h |
+| Window,&nbsp;with&nbsp;the&nbsp;mouse&nbsp;wheel | 1&nbsp;ms | the memory |
+| Memory | 1&nbsp;s | 24 h |
 
 A Window longer than the Memory grows the Memory to hold it. A Memory shorter than the Window shrinks the Window.
 
@@ -1071,21 +1071,22 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 
 | Button | What it does |
 |---|---|
-| **❚❚ Hold** / **▶ Live** | Hold stops the view where it is while the memory keeps filling. Live follows *now* again. It is one button of fixed size, and it is filled in the accent colour while held. |
+| **❚❚&nbsp;Hold**&nbsp;/&nbsp;**▶&nbsp;Live** | Hold stops the view where it is while the memory keeps filling. Live follows *now* again. It is one button of fixed size, and it is filled in the accent colour while held. |
 | **Measure** | Shows the measurement table (chapter 8). Off by default, and saved. |
 | **Cursors** | Cursor mode: clicks place cursors A and B (7.7). Turning it on turns Measure on, and turning Measure off turns Cursors off. Turning it off takes A and B off the chart. |
-| **Clear cursors** | Removes A and B. |
-| **ƒ Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
+| **Clear&nbsp;cursors** | Removes A and B. |
+| **ƒ&nbsp;Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
 | **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Smooth on · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
-| - **Normalise** | Each line scaled to its own range (7.6). |
-| - **Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
-| - **Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
-| - **Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
-| - **Hover values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
-| - **Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
-| Info line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
+| -&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
+| -&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
+| -&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
+| -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
+| -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
+| -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
+| -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
+| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
-| **Remove all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
+| **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
 ### 7.3 Window and memory, Hold and Live
 
@@ -1189,24 +1190,28 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 
 | Where | Action | Effect |
 |---|---|---|
-| Chart | Drag, left button | Pan through the memory, and hold. |
+| Chart | Drag,&nbsp;left&nbsp;button | Pan through the memory, and hold. |
 | Chart | Wheel | Zoom the time by 1.25 per notch. Live, the right edge stays at now. Held, the zoom is around the time under the mouse. |
-| Chart | Ctrl + wheel | Zoom Y around the mouse (switches to Manual); with Lanes, the lane under the mouse. |
+| Chart | Ctrl&nbsp;+&nbsp;wheel | Zoom Y around the mouse (switches to Manual); with Lanes, the lane under the mouse. |
+| Lanes'&nbsp;value&nbsp;labels | Wheel | Scroll the lanes up and down when they do not fit (7.12). |
+| Lanes'&nbsp;scroll&nbsp;bar | Drag&nbsp;/&nbsp;click | Drag the handle; a click above or below it moves one plot height (7.12). |
+| Lane's&nbsp;▾&nbsp;or&nbsp;unit&nbsp;name | Click | Fold the lane (7.12). |
+| Folded&nbsp;strip&nbsp;or&nbsp;its&nbsp;▸ | Click | Open the lane again (7.12). |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
-| Lane's value labels | Right-click | The lane's Y range: Auto, Manual…, Log (7.12). |
-| Legend chip | Right-click | The line's Histogram or Spectrum (8.6). |
-| Trigger's level line | Drag | Move the level (7.13). |
+| Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log; Fold lane / Open lane (7.12). |
+| Legend&nbsp;chip | Right-click | The line's Histogram or Spectrum (8.6). |
+| Trigger's&nbsp;level&nbsp;line | Drag | Move the level (7.13). |
 | Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
-| Note's tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
-| Legend (chips overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
-| Legend scroll bar | Click / drag | Bring the thumb under the mouse, then drag it. |
-| Legend arrows | Click | Scroll half a row that way. |
-| Chart, cursor mode | Click / drag | Place or move cursor A, then B (7.7). |
+| Note's&nbsp;tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
+| Legend&nbsp;(chips&nbsp;overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
+| Legend&nbsp;scroll&nbsp;bar | Click&nbsp;/&nbsp;drag | Bring the thumb under the mouse, then drag it. |
+| Legend&nbsp;arrows | Click | Scroll half a row that way. |
+| Chart,&nbsp;cursor&nbsp;mode | Click&nbsp;/&nbsp;drag | Place or move cursor A, then B (7.7). |
 | Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
-| Memory strip | Click / drag | Centre the view there, and hold. |
-| Measurement table's header | Right-click | Show or hide columns (8). |
+| Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. |
+| Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
 | Anywhere | F1 | Help. |
-| Register table | Enter / Esc / F2 | Write the edited value / cancel the edit / start an edit. |
+| Register&nbsp;table | Enter&nbsp;/&nbsp;Esc&nbsp;/&nbsp;F2 | Write the edited value / cancel the edit / start an edit. |
 
 The chart takes one key: **Delete** (or Backspace) removes the note clicked last (7.11).
 
@@ -1229,12 +1234,12 @@ A right-click on the chart opens its menu:
 
 | Item | What it does |
 |---|---|
-| **Copy picture** | The chart as shown, legend, axes and memory strip included, onto the clipboard. |
-| **Save picture…** | The same as a PNG file (the suggested name is `chart_<yyyyMMdd_HHmmss>.png`). Its size is the chart's in the screen's pixels: 2700 px wide for a 1200 px chart at 225 %. |
-| **Export to CSV…** | The samples of every line on the chart, plotted registers and math lines, over the view, or between the cursors (A → B) when both are placed. |
-| **Add note here** | A note at the time under the mouse (7.11). |
-| **Open recording…** | A recording in a window of its own (12.6). |
-| **Recent recordings** | The last 8 recordings opened or exported, newest first. |
+| **Copy&nbsp;picture** | The chart as shown, legend, axes and memory strip included, onto the clipboard. |
+| **Save&nbsp;picture…** | The same as a PNG file (the suggested name is `chart_<yyyyMMdd_HHmmss>.png`). Its size is the chart's in the screen's pixels: 2700 px wide for a 1200 px chart at 225 %. |
+| **Export&nbsp;to&nbsp;CSV…** | The samples of every line on the chart, plotted registers and math lines, over the view, or between the cursors (A → B) when both are placed. |
+| **Add&nbsp;note&nbsp;here** | A note at the time under the mouse (7.11). |
+| **Open&nbsp;recording…** | A recording in a window of its own (12.6). |
+| **Recent&nbsp;recordings** | The last 8 recordings opened or exported, newest first. |
 
 **The pictures are painted by the CPU**, the plot too, also while a graphics card draws the chart on the screen: they
 are what the CPU would show, the same lines, grid and tags.
@@ -1274,17 +1279,42 @@ A note marks a moment on the chart with a few words: *pump on*, *valve shut*.
 **Display → Lanes** gives each unit a plot of its own, stacked under each other: volts in one, amps in the next, a
 power in a third, each read on its own scale instead of a 12 V line flattening a 0.5 A one.
 
-- **One lane per unit**, in the order the lines came, of equal height, 10 px apart. Lines without a unit share a
-  lane of their own (*no unit*). At most **8 lanes**: the units after the eighth share the last, which names them all
-  (*Ω · bar · rpm*). The units stand up the left edge of each lane's labels.
+- **One lane per unit**, however many, in the order the lines came, of equal height, 10 px apart. Lines without a
+  unit share a lane of their own (*no unit*). The unit stands up the left edge of each lane's labels.
+- **Lanes stay readable:** an open lane is at least **80 px** high, room for two value labels. When the lanes do not
+  fit (eight units on a laptop screen), they keep that height and **scroll** up and down inside the plot: the
+  **wheel** over the value labels (Ctrl + wheel there is still the lane's zoom; the wheel over the plot still zooms
+  the time), or the **scroll bar** in the right margin, shown only then: drag its handle, or click above or below it
+  to move one plot height; over the bar the handle brightens and a tooltip says so. A lane cut by the plot's top or
+  bottom edge is drawn cut, but no text is cut: its value labels stay whole inside the part in view (and never run
+  into the next lane's across the gap), and a folded strip cut by the edge writes nothing until it is whole. Turning
+  Lanes on starts at the top.
+- **Fold a lane:** a **click on its ▾ button** at the top of its unit column, or on its unit name (or **Fold lane** in
+  its menu), folds it into a strip 22 px high: its
+  unit, then each of its lines with its colour dot, name and latest value in view (as the legend writes it), cut
+  with … when they do not fit. No grid, lines or value labels; the crosshair's box leaves its lines out. The open
+  lanes share the height that is left. A **click anywhere on the strip** or its ▸ (or **Open lane** in its menu, also
+  by a right-click on the strip) opens it again; a click on a strip places no cursor and adds no note. Over a button,
+  a unit name or a strip the mouse becomes a pointing hand, the button (a small rounded shape, so it looks like one)
+  lights up, and a tooltip says *Fold lane* or
+  *Open lane*; the state corner says *lanes: ▾ folds*. **Display → Fold all lanes** and **Open all lanes** (shown
+  with Lanes on) fold or open them all, a way back when everything is folded. The value labels' tooltip names what
+  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a
+  right-click has its Y range and Fold lane. Folds are kept by
+  unit and saved, so a unit folded stays folded when it comes back, at the next start too; a recording's window
+  keeps its own.
 - **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
   right-click its value labels for **Auto**, **Manual…** (its min and max asked) and **Log** (7.5). **Ctrl + wheel**
   over a lane zooms that lane (Manual); a **double-click** in it sets it to Auto. The Y range row above the chart is
   the plot's without lanes, and is disabled meanwhile.
-- **One time axis** under the last lane; the grid's times run through every lane.
-- **Across all lanes:** cursors A and B, their span and the A-B bar (over the first lane), the notes (their tags at
-  the bottom of the last lane), the crosshair's line with a dot on every line in its own lane, and **one** box of all
-  the values.
+- **A line between two lanes**, in the middle of the gap, from the value labels across the plot, in the colour of a
+  control's edge (3:1 to the chart in both themes; the border colour, 1.3:1, was too faint): the lanes read as plots
+  of their own, and the value labels of one do not run on into the next. Only between lanes in view.
+- **One time axis** under the plot; the grid's times run through every open lane.
+- **Across the whole plot,** however the lanes are scrolled: cursors A and B, their span and the A-B bar (at the
+  plot's top), the notes (their tags at its bottom), the crosshair's line with a dot on every line in its own lane
+  (none for a lane scrolled away), and **one** box of all the values. The trigger's level line and its tag show
+  while the trigger's lane is open and in view.
 - **A line stays in its lane:** a Manual range narrower than its values cuts it at the lane's edge.
 - **Normalise** scales each line into its own lane. Log of a lane and Normalise exclude each other as on the plot.
 - The memory strip is as without lanes. Measurements, export and notes are the same.
@@ -1300,9 +1330,9 @@ A row under the actions sets it:
 | Control | What it does |
 |---|---|
 | Line | The line watched: any register or math line on the chart. |
-| Rising / Falling / Either | Rising: from below the level to it or above it; Falling: from above to it or below; Either: both. |
+| Rising&nbsp;/&nbsp;Falling&nbsp;/&nbsp;Either | Rising: from below the level to it or above it; Falling: from above to it or below; Either: both. |
 | level | The level, in the line's unit. On the chart a dashed line in the line's colour (in its lane with Lanes), which can be **dragged**; kept within the plot when the range does not reach it, so it can always be found. |
-| Normal / Single | **Normal** holds on each crossing, and is armed again once the view after it is full. **Single** holds on the first and stays: **Arm** for the next. |
+| Normal&nbsp;/&nbsp;Single | **Normal** holds on each crossing, and is armed again once the view after it is full. **Single** holds on the first and stays: **Arm** for the next. |
 | Arm | Waits for the next crossing. |
 | State | *armed: waiting for a crossing*, *triggered at 14:03:12.345* (*· Arm for the next* in Single). |
 
@@ -1336,16 +1366,16 @@ Let *t₀ … t₁* be the range. The samples inside it are *(tᵢ, vᵢ)* for *
 
 | Column | Formula |
 |---|---|
-| **at A**, **at B** | The line's value at the cursor's time, **interpolated linearly** between the two samples around it. `—` when the cursor is not placed, or lies before the line's first or after its last sample. |
-| **B − A** | at B − at A, when both exist. |
-| **Min**, **Max** | The smallest and largest sample inside the range. The edges are not interpolated. |
-| **Area ∫ dt** | Trapezoids between neighbouring samples: Σ ½ (vᵢ + vᵢ₋₁)(tᵢ − tᵢ₋₁), in *unit × seconds*. |
-| **Area / 3600** | The same area in *unit × hours*. |
+| **at&nbsp;A**,&nbsp;**at&nbsp;B** | The line's value at the cursor's time, **interpolated linearly** between the two samples around it. `—` when the cursor is not placed, or lies before the line's first or after its last sample. |
+| **B&nbsp;−&nbsp;A** | at B − at A, when both exist. |
+| **Min**,&nbsp;**Max** | The smallest and largest sample inside the range. The edges are not interpolated. |
+| **Area&nbsp;∫&nbsp;dt** | Trapezoids between neighbouring samples: Σ ½ (vᵢ + vᵢ₋₁)(tᵢ − tᵢ₋₁), in *unit × seconds*. |
+| **Area&nbsp;/&nbsp;3600** | The same area in *unit × hours*. |
 | **Mean** | Time-weighted: Area ÷ (t_last − t_first), where t_first and t_last are the first and last **samples** inside the range. |
 | **RMS** | √( Σ ½ (vᵢ² + vᵢ₋₁²)(tᵢ − tᵢ₋₁) ÷ (t_last − t_first) ). |
-| **Std dev** | The standard deviation, time-weighted as the mean: √( mean of (v − K)² − (mean of (v − K))² ), each mean by the same trapezoids, K the range's first sample. The shift by K keeps the ripple: a 12 V line with 1 mV of ripple reads 0.707 mV, where 144 V² less 144 V² would leave only the rounding. |
+| **Std&nbsp;dev** | The standard deviation, time-weighted as the mean: √( mean of (v − K)² − (mean of (v − K))² ), each mean by the same trapezoids, K the range's first sample. The shift by K keeps the ripple: a 12 V line with 1 mV of ripple reads 0.707 mV, where 144 V² less 144 V² would leave only the rounding. |
 | **Peak-peak** | Max − Min. |
-| **Since Clear** | The area under the line since the chart's Clear, in *unit × hours* (8.4). Not over the range: all of it. |
+| **Since&nbsp;Clear** | The area under the line since the chart's Clear, in *unit × hours* (8.4). Not over the range: all of it. |
 
 - **One sample only:** Mean and RMS are that sample, Std dev and Peak-peak 0, and the area is 0.
 - **No samples:** the row shows `—`.
@@ -1358,13 +1388,13 @@ The area and mean cover only the time between the first and the last sample insi
 
 The area's unit follows the line's unit:
 
-| Line unit | Area ∫ dt | Area / 3600, Since Clear |
+| Line&nbsp;unit | Area&nbsp;∫&nbsp;dt | Area / 3600, Since Clear |
 |---|---|---|
 | `W` | J | Wh |
 | `A` | A·s | Ah |
 | `mA` | mA·s | mAh |
 | none | ·s | ·h |
-| any other, e.g. `bar` | bar·s | bar·h |
+| any&nbsp;other,&nbsp;e.g.&nbsp;`bar` | bar·s | bar·h |
 
 Examples:
 
@@ -1470,11 +1500,11 @@ From the tightest binding to the loosest:
 
 | Level | Operators | Notes |
 |---|---|---|
-| 1 | `( … )`, function calls | |
+| 1 | `( … )`,&nbsp;function&nbsp;calls | |
 | 2 | `^` | power, right-associative: `2^3^2` = 2⁹ = 512. The right side may carry a sign: `2^-1` = 0.5. |
-| 3 | unary `-`, `+` | applies to the whole power: `-2^2` = −4 |
-| 4 | `*`, `/` | left to right |
-| 5 | `+`, `-` | left to right |
+| 3 | unary&nbsp;`-`,&nbsp;`+` | applies to the whole power: `-2^2` = −4 |
+| 4 | `*`,&nbsp;`/` | left to right |
+| 5 | `+`,&nbsp;`-` | left to right |
 
 ### 9.4 Functions and constants
 
@@ -1485,21 +1515,21 @@ Function names match in any case.
 | `abs(x)` | 1 | \|x\| |
 | `sqrt(x)` | 1 | √x |
 | `exp(x)` | 1 | eˣ |
-| `log(x)`, `ln(x)` | 1 | natural logarithm |
+| `log(x)`,&nbsp;`ln(x)` | 1 | natural logarithm |
 | `log10(x)` | 1 | base-10 logarithm |
-| `sin`, `cos`, `tan` | 1 | radians |
-| `asin`, `acos`, `atan` | 1 | radians |
+| `sin`,&nbsp;`cos`,&nbsp;`tan` | 1 | radians |
+| `asin`,&nbsp;`acos`,&nbsp;`atan` | 1 | radians |
 | `atan2(y, x)` | 2 | the angle of (x, y), in radians |
-| `min(a, b)`, `max(a, b)` | 2 | |
+| `min(a, b)`,&nbsp;`max(a, b)` | 2 | |
 | `pow(a, b)` | 2 | aᵇ |
-| `floor`, `ceil`, `round` | 1 | `round` rounds halves away from zero |
+| `floor`,&nbsp;`ceil`,&nbsp;`round` | 1 | `round` rounds halves away from zero |
 | `sign(x)` | 1 | −1, 0 or 1 |
 | `clamp(x, lo, hi)` | 3 | x limited to [lo, hi]; the limits may be in either order |
 
 | Constant | Value |
 |---|---|
-| `pi` (any case) | 3.14159… |
-| `e` (lower case only) | 2.71828… |
+| `pi`&nbsp;(any&nbsp;case) | 3.14159… |
+| `e`&nbsp;(lower&nbsp;case&nbsp;only) | 2.71828… |
 
 ### 9.5 Errors
 
@@ -1556,9 +1586,9 @@ The Monitor shows the frames on the link and sends single requests by hand.
 | **Slave** | The device the request goes to: the map's slave, or on a bus the selected device's (on a bus a list of the devices by name, as in 3.9, and *Broadcast · slave 0* last). With one device it is a number that follows the sidebar's Slave, and **0 (broadcast)** is the broadcast address (3.10); leaving slave 0 restores the function chosen before. Slave 0: the function locks to WRITE (no ack), the rule of 3.10 is checked first (*!! no broadcast: ...*), every device takes it and none answers. |
 | Function | **READ**, **WRITE + ack** (`WRITE_ACK`) or **WRITE (no ack)** (`WRITE`). |
 | **Address** | `0xA000` (the default), or a decimal address. 0 – 0xFFFF. Named *Address* beside it. |
-| **Count** / **Bytes** | Named after the function: *Count* for READ, *Bytes* for a WRITE. For READ: the byte count, 1 – 65535, in decimal or `0x…` hex (default `2`). For WRITE: the value as hex bytes, **the low byte first** (the protocol is little endian): `2C 01` writes 300 (0x012C). `2C 01`, `0x2C 0x01`, `2C,01` and `2c01` all work; anything else is refused (*!! not hex bytes*): a decimal `300` is not taken as `03 00`. The box's hint says which it wants, and switching to a WRITE empties READ's count. |
-| **Send** (or Enter in either box) | Sends the request. |
-| **Log frames** | Shows every frame sent and received. Off at every start. |
+| **Count**&nbsp;/&nbsp;**Bytes** | Named after the function: *Count* for READ, *Bytes* for a WRITE. For READ: the byte count, 1 – 65535, in decimal or `0x…` hex (default `2`). For WRITE: the value as hex bytes, **the low byte first** (the protocol is little endian): `2C 01` writes 300 (0x012C). `2C 01`, `0x2C 0x01`, `2C,01` and `2c01` all work; anything else is refused (*!! not hex bytes*): a decimal `300` is not taken as `03 00`. The box's hint says which it wants, and switching to a WRITE empties READ's count. |
+| **Send**&nbsp;(or&nbsp;Enter&nbsp;in&nbsp;either&nbsp;box) | Sends the request. |
+| **Log&nbsp;frames** | Shows every frame sent and received. Off at every start. |
 | **Clear** | Empties the view. |
 
 While the view is empty it says what will show there: *Nothing yet. Send a request above, or tick Log frames to see
@@ -1597,9 +1627,9 @@ With **Log frames** on, each frame is one line:
 | Part | Meaning |
 |---|---|
 | time | Local clock time, in milliseconds, when the I/O thread handled the frame. |
-| `TX` / `RX` | Sent by the Studio / received from the link. |
+| `TX`&nbsp;/&nbsp;`RX` | Sent by the Studio / received from the link. |
 | bytes | The whole frame in hex, from the start byte `7B` to the end byte `7D` (layout in 18.1). |
-| note (RX only) | The function name: `READ_RESP`, `WRITE_ACK_RESP` or `ERROR_RESP`. For an error answer the code is the data byte before the CRC (codes in 18.3). |
+| note&nbsp;(RX&nbsp;only) | The function name: `READ_RESP`, `WRITE_ACK_RESP` or `ERROR_RESP`. For an error answer the code is the data byte before the CRC (codes in 18.3). |
 | `(not a pending request)` | A valid frame that answers nothing the Studio is waiting for (see below). |
 
 The Monitor shows **all** traffic: polls, the keep-alive reads of `0xA000` (18.7), reads and writes from the table, the login, and every request from API clients.
@@ -1809,9 +1839,9 @@ The sidebar shows the result, for example *10.0 polls/s, 15 registers in 3 reads
 
 | Setting | Behaviour |
 |---|---|
-| Interval 0.05 – 60000 ms (default 100) | Polls start on a clock at that interval. The field has two decimals; anything below 0.05 ms is run at 0.05 ms. |
-| **max** (0) | Polls run back to back. The next one starts as soon as a slot is free. |
-| **Poll** unticked | No polling. The keep-alive (18.7) still runs, and values turn grey. |
+| Interval | 0.05 – 60000 ms (default 100): polls start on a clock at that interval. The field has two decimals; anything below 0.05 ms is run at 0.05 ms. |
+| **max**&nbsp;(0) | Polls run back to back. The next one starts as soon as a slot is free. |
+| **Poll**&nbsp;unticked | No polling. The keep-alive (18.7) still runs, and values turn grey. |
 
 You can type the interval, or use the arrows or the mouse wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09). A change applies at once. 0.25 ms is 4000 polls/s.
 
@@ -1915,8 +1945,8 @@ A device whose STATUS has `CAP_AUTO_SEND` (bit 11) can send its read-only block 
 
 | Part | Behaviour |
 |---|---|
-| The box | Offered only with one device on the link (not on a bus: devices sending by themselves would collide on a shared link), once connected and STATUS (read at connect) has `CAP_AUTO_SEND`. Otherwise disabled; its tooltip says why. Never saved: it changes the device, so it is off at every start. |
-| The rate | The 16 rates the device makes exactly, 8000 Hz divided by 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 (prescaler + 1): 4000, 2000, 1600, 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 Hz. The prescaler is the device timer's reload and a reload of 0 stops a timer, so it is never 0 (a device replaces a 0: by 1, or by its default 0x4F); the protocol's rates are 4000 Hz to 40 Hz. Default 100 Hz, saved (`poll/autoSendHz`). A change while on is written to the device at once. |
+| The&nbsp;box | Offered only with one device on the link (not on a bus: devices sending by themselves would collide on a shared link), once connected and STATUS (read at connect) has `CAP_AUTO_SEND`. Otherwise disabled; its tooltip says why. Never saved: it changes the device, so it is off at every start. |
+| The&nbsp;rate | The 16 rates the device makes exactly, 8000 Hz divided by 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 (prescaler + 1): 4000, 2000, 1600, 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 Hz. The prescaler is the device timer's reload and a reload of 0 stops a timer, so it is never 0 (a device replaces a 0: by 1, or by its default 0x4F); the protocol's rates are 4000 Hz to 40 Hz. Default 100 Hz, saved (`poll/autoSendHz`). A change while on is written to the device at once. |
 
 What the Studio does:
 
@@ -1960,7 +1990,7 @@ EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus
 | `--api` | Ticks Serve API. |
 | `--api-writes` | Ticks Allow API writes. Implies `--api`. |
 | `--api-writes-danger` | Also ticks including ⚠ registers. Implies both of the above. |
-| `--help`, `--version` | Prints the help or the version, and ends. |
+| `--help`,&nbsp;`--version` | Prints the help or the version, and ends. |
 
 A bad option ends the program with a message. Options are applied in this order, after the window opens:
 
@@ -1993,47 +2023,48 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 
 | Key | Default | Saved | Meaning |
 |---|---|---|---|
-| `link/tcp` | `true` | on close | TCP (true) or Serial / USB. |
-| `link/host` | `127.0.0.1` | on close | TCP host. |
-| `link/port` | `1210` | on close | TCP port. |
-| `link/serial` | empty | on close | Serial port name. |
-| `link/baud` | `115200` | on close | Baud rate. |
-| `link/timeout` | `500` | on close | Answer timeout, ms. |
-| `link/reconnect` | `true` | on close | Reconnect by itself. |
-| `link/inflightTcp` | `4` | on change | In flight for TCP. |
-| `link/inflightSerial` | `1` | on change | In flight for serial. |
-| `poll/interval` | `100` | on close | Poll interval, ms (0 = max). |
-| `poll/autoSendHz` | `100` | on change | Auto send's rate, Hz (13.8): one of 8000 / (prescaler + 1) for the 16 prescalers offered (4000 Hz to 40 Hz); another number, an 8000 saved by an older version too, takes the nearest. |
-| `api/on` | `false` | on close | Serve API. |
-| `api/network` | `false` | on close | Network (not only this computer). |
-| `api/evrePort` | `1219` | never (read only) | The EVRe pass-through port. Change it by editing the settings. |
-| `api/jsonPort` | `1220` | never (read only) | The JSON port. Change it by editing the settings. |
-| `map/bus` | empty | on close | The bus file to open at start (3.9), in place of `map/file`: the bus last opened or saved. Empty: none (a map opened, made, or the bus closed). |
-| `map/file` | empty | on close | The map to open at start (an absolute path): the map last loaded or saved. A load or a save only notes it; the key is written when the window closes normally, so a program that ends otherwise keeps the old value. |
-| `ui/dark` | `true` | on close | Dark theme. |
-| `ui/language` | `system` | on change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
-| `ui/geometry` | none | on close | The window's size and place. |
-| `ui/decodedColumn` | `false` | on change | Decoded column shown. |
-| `ui/quickBits` | `false` | on change | Quick write: Bits ticked. |
-| `ui/popups` | `true` | on change | Log: Pop-ups. |
-| `ui/valueRate` | `10` | on change | Show values: values per second on screen (2, 5, 10, 30; 0 = every frame). Another number reads as 10. |
-| `chart/window` | `30` | on change | Window, seconds. |
-| `chart/memory` | `60` | on change | Memory, seconds. |
-| `chart/drawing` | `0` | on change | Drawing: 0 Auto, 1 a dedicated card, 2 the processor's graphics, 3 the CPU (`ChartView::Drawing`). |
-| `chart/ramMB` | `2048` | on change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
-| `chart/smooth` | `true` | on change | Smooth. |
-| `chart/hoverValues` | `true` | on change | Hover values: the crosshair's box. |
-| `chart/yAuto` | `true` | on change | Y range Auto. |
-| `chart/yLog` | `false` | on change | Y range Log (7.5); with `chart/yAuto` for its range. |
-| `chart/yMin`, `chart/yMax` | `0`, `1` | on change (Manual) | The Manual Y range. |
-| `chart/measure` | `false` | on change | Measure shown. |
-| `chart/lanes` | `false` | on change | Lanes (7.12). |
-| `chart/triggerLine`, `chart/triggerLevel`, `chart/triggerEdge`, `chart/triggerMode` | none, `0`, `0`, `1` | on change | The trigger's line (by name), level, edge (0 rising, 1 falling, 2 either) and mode (0 Single, 1 Normal) (7.13). The trigger is off at each start. |
-| `chart/laneY` | empty | on change | The lanes' Y ranges by unit: one text each, `unit⇥auto⇥log⇥min⇥max` (1 or 0 for auto and log). |
-| `chart/measureColumns` | empty | on change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
-| `chart/math` | empty | on change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
-| `recording/…` | as `chart/…` | on change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
-| `recording/recent` | empty | at each open or export | The last 8 recordings opened or exported, newest first. |
+| `link/tcp` | `true` | on&nbsp;close | TCP (true) or Serial / USB. |
+| `link/host` | `127.0.0.1` | on&nbsp;close | TCP host. |
+| `link/port` | `1210` | on&nbsp;close | TCP port. |
+| `link/serial` | empty | on&nbsp;close | Serial port name. |
+| `link/baud` | `115200` | on&nbsp;close | Baud rate. |
+| `link/timeout` | `500` | on&nbsp;close | Answer timeout, ms. |
+| `link/reconnect` | `true` | on&nbsp;close | Reconnect by itself. |
+| `link/inflightTcp` | `4` | on&nbsp;change | In flight for TCP. |
+| `link/inflightSerial` | `1` | on&nbsp;change | In flight for serial. |
+| `poll/interval` | `100` | on&nbsp;close | Poll interval, ms (0 = max). |
+| `poll/autoSendHz` | `100` | on&nbsp;change | Auto send's rate, Hz (13.8): one of 8000 / (prescaler + 1) for the 16 prescalers offered (4000 Hz to 40 Hz); another number, an 8000 saved by an older version too, takes the nearest. |
+| `api/on` | `false` | on&nbsp;close | Serve API. |
+| `api/network` | `false` | on&nbsp;close | Network (not only this computer). |
+| `api/evrePort` | `1219` | never&nbsp;(read&nbsp;only) | The EVRe pass-through port. Change it by editing the settings. |
+| `api/jsonPort` | `1220` | never&nbsp;(read&nbsp;only) | The JSON port. Change it by editing the settings. |
+| `map/bus` | empty | on&nbsp;close | The bus file to open at start (3.9), in place of `map/file`: the bus last opened or saved. Empty: none (a map opened, made, or the bus closed). |
+| `map/file` | empty | on&nbsp;close | The map to open at start (an absolute path): the map last loaded or saved. A load or a save only notes it; the key is written when the window closes normally, so a program that ends otherwise keeps the old value. |
+| `ui/dark` | `true` | on&nbsp;close | Dark theme. |
+| `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
+| `ui/geometry` | none | on&nbsp;close | The window's size and place. |
+| `ui/decodedColumn` | `false` | on&nbsp;change | Decoded column shown. |
+| `ui/quickBits` | `false` | on&nbsp;change | Quick write: Bits ticked. |
+| `ui/popups` | `true` | on&nbsp;change | Log: Pop-ups. |
+| `ui/valueRate` | `10` | on&nbsp;change | Show values: values per second on screen (2, 5, 10, 30; 0 = every frame). Another number reads as 10. |
+| `chart/window` | `30` | on&nbsp;change | Window, seconds. |
+| `chart/memory` | `60` | on&nbsp;change | Memory, seconds. |
+| `chart/drawing` | `0` | on&nbsp;change | Drawing: 0 Auto, 1 a dedicated card, 2 the processor's graphics, 3 the CPU (`ChartView::Drawing`). |
+| `chart/ramMB` | `2048` | on&nbsp;change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
+| `chart/smooth` | `true` | on&nbsp;change | Smooth. |
+| `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
+| `chart/yAuto` | `true` | on&nbsp;change | Y range Auto. |
+| `chart/yLog` | `false` | on&nbsp;change | Y range Log (7.5); with `chart/yAuto` for its range. |
+| `chart/yMin`,&nbsp;`chart/yMax` | `0`,&nbsp;`1` | on&nbsp;change&nbsp;(Manual) | The Manual Y range. |
+| `chart/measure` | `false` | on&nbsp;change | Measure shown. |
+| `chart/lanes` | `false` | on&nbsp;change | Lanes (7.12). |
+| `chart/triggerLine`, `chart/triggerLevel`, `chart/triggerEdge`, `chart/triggerMode` | none,&nbsp;`0`,&nbsp;`0`,&nbsp;`1` | on&nbsp;change | The trigger's line (by name), level, edge (0 rising, 1 falling, 2 either) and mode (0 Single, 1 Normal) (7.13). The trigger is off at each start. |
+| `chart/laneY` | empty | on&nbsp;change | The lanes' Y ranges by unit: one text each, `unit⇥auto⇥log⇥min⇥max` (1 or 0 for auto and log). |
+| `chart/lanesFolded` | empty | on&nbsp;change | The folded lanes, by unit: a list of units (7.12). |
+| `chart/measureColumns` | empty | on&nbsp;change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
+| `chart/math` | empty | on&nbsp;change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
+| `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
+| `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first. |
 
 **Never saved, by design:**
 
@@ -2139,7 +2170,7 @@ Look at the info line: fps, and the time per frame.
 
 ### 15.9 A write is refused
 
-| Log or panel says | Meaning |
+| Log&nbsp;or&nbsp;panel&nbsp;says | Meaning |
 |---|---|
 | The value cannot be edited at all | *Allow writes* is off, the register is `ro` in the map, or the link is down (quick write: *not connected*). |
 | `write refused: …: permission denied` | The device refused the write (code 3). The register may be read-only on the device, locked in its current state, or protected until a login. |
@@ -2214,7 +2245,7 @@ Every top-level key has a default. Even `format` and `device` may be left out, a
 |---|---|---|---|
 | `format` | string | `"evre-map/1"` | The format name. It is not checked, and it is written back as read. |
 | `device` | string | `""` | The device's name: shown in the Device map card and the port list, and reported by the API (`info`). *Save as* sets it to the file's name when it is empty. |
-| `device_id` | number or string | `0` (not checked) | The expected DEVICE_ID (`0xA000`). A mismatch at connect logs a warning (3.7). Written as `"0x1001"` or `4097`. |
+| `device_id` | number&nbsp;or&nbsp;string | `0`&nbsp;(not&nbsp;checked) | The expected DEVICE_ID (`0xA000`). A mismatch at connect logs a warning (3.7). Written as `"0x1001"` or `4097`. |
 | `desc` | string | `""` | A line on the map, in the export. |
 | `notes` | string | `""` | Longer text on the map (Markdown), in the export. |
 | `slave` | number | `1` | The slave address, loaded into the Slave box. Saving the map writes the box's value back. |
@@ -2231,15 +2262,15 @@ Unknown keys are kept: a save writes them back as they were (16.9).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `addr` | string or number | required | The address, 0 – 0xFFFF: `"0xD004"` (hex, any case), `"53252"` or `53252`. Only a text address is range-checked; a JSON number is cut to 16 bits without a message (16.10). |
-| `name` | string | the address, e.g. `"0xD004"` | The name used in the table, the chart, math lines, CSV and the API. Keep it unique. The API and math lines find registers by name, in any case, and take the first match. |
+| `addr` | string&nbsp;or&nbsp;number | required | The address, 0 – 0xFFFF: `"0xD004"` (hex, any case), `"53252"` or `53252`. Only a text address is range-checked; a JSON number is cut to 16 bits without a message (16.10). |
+| `name` | string | the&nbsp;address,&nbsp;e.g.&nbsp;`"0xD004"` | The name used in the table, the chart, math lines, CSV and the API. Keep it unique. The API and math lines find registers by name, in any case, and take the first match. |
 | `type` | string | `"u16"` | 16.4. Also accepts the C names `uint8_t`, `int8_t`, `uint16_t`, `int16_t`, `uint32_t`, `int32_t`, `float`, in any case. |
 | `size` | number | `1` | Byte count, for `bytes` only. Other types have a fixed size. |
 | `unit` | string | `""` | Shown beside the value, and used in CSV titles and chart legends. `W`, `A` and `mA` set special area units in the measurements (8.3). The unit `bitmask` shows an integer in hex. |
 | `access` | string | `"ro"` | `"ro"`, `"rw"`, or `"wo"`: write-only, **never read, so never polled** (a key, a command). Any other text containing `w` means read-write. |
 | `write` | string | normal | `"action"`: a write does something, then the register reads back idle; `"w1c"`: a 1 written to a bit clears it, a 0 leaves it. For the reader and the export; the Studio writes such registers as any other. |
 | `persist` | boolean | `false` | Kept across a reset (non-volatile); `default` is then the factory value. |
-| `plot` | boolean | `true` (numbers) | `false`: a fixed value, an ID or a command, not worth a line: no Plot box in the table, left out by *Plot shown* and `--plot`. Math lines may still read it. |
+| `plot` | boolean | `true`&nbsp;(numbers) | `false`: a fixed value, an ID or a command, not worth a line: no Plot box in the table, left out by *Plot shown* and `--plot`. Math lines may still read it. |
 | `notes` | string | `""` | Longer text (Markdown), shown in the Map editor and in the export. |
 | `group` | string | `"Registers"` | For the groups filter and the table's Group column. |
 | `desc` | string | `""` | Description: shown in tooltips, the detail line and the danger dialog. Searched by the search box. |
@@ -2248,8 +2279,8 @@ Unknown keys are kept: a save writes them back as they were (16.9).
 | `format` | string | none | `"hex"`: show an integer in hex. No other value has an effect. |
 | `danger` | boolean | `false` | Every write from the window asks first (6.3), and API clients also need *including ⚠ registers* (17.2). |
 | `decimals` | number | automatic | The shown value with this many decimals (0 – 15). |
-| `min`, `max` | number | none | The shown value's limits for writes, in shown units: the window asks before writing past them, the API refuses (6.4). |
-| `default` | number or string | none | The value after a reset, in shown units, or one of the register's value names. The quick-write panel's **Default** writes it. |
+| `min`,&nbsp;`max` | number | none | The shown value's limits for writes, in shown units: the window asks before writing past them, the API refuses (6.4). |
+| `default` | number&nbsp;or&nbsp;string | none | The value after a reset, in shown units, or one of the register's value names. The quick-write panel's **Default** writes it. |
 | `special` | object | none | Names of single values of a number, in shown units: `{ "-1": "not measured" }`. Decoded shows the name, a write may always set them (31.2). |
 | `enum` | object | none | Names of values (16.6). |
 | `fields` | array | none | Bit fields (16.7). |
@@ -2260,14 +2291,14 @@ All multi-byte values are **little endian** (the low byte first).
 
 | Type | Size | Range | Notes |
 |---|---|---|---|
-| `u8` | 1 | 0 … 255 | |
-| `i8` | 1 | −128 … 127 | |
-| `u16` | 2 | 0 … 65535 | |
-| `i16` | 2 | −32768 … 32767 | |
-| `u32` | 4 | 0 … 4294967295 | |
-| `i32` | 4 | −2147483648 … 2147483647 | |
-| `f32` | 4 | IEEE 754 single | Shown with decimals by size (4.2). NaN shows `NaN`. |
-| `bytes` | `size` | any bytes | Shown as hex (the first 24 bytes). Written as exactly `size` hex bytes. Not plotted. Polled only up to 32 bytes: longer ones are read with *Read now*. |
+| `u8` | 1 | 0&nbsp;…&nbsp;255 | |
+| `i8` | 1 | −128&nbsp;…&nbsp;127 | |
+| `u16` | 2 | 0&nbsp;…&nbsp;65535 | |
+| `i16` | 2 | −32768&nbsp;…&nbsp;32767 | |
+| `u32` | 4 | 0&nbsp;…&nbsp;4294967295 | |
+| `i32` | 4 | −2147483648&nbsp;…&nbsp;2147483647 | |
+| `f32` | 4 | IEEE&nbsp;754&nbsp;single | Shown with decimals by size (4.2). NaN shows `NaN`. |
+| `bytes` | `size` | any&nbsp;bytes | Shown as hex (the first 24 bytes). Written as exactly `size` hex bytes. Not plotted. Polled only up to 32 bytes: longer ones are read with *Read now*. |
 
 ### 16.5 Scale and offset
 
@@ -2365,7 +2396,7 @@ they have (26.7).
 | `"registers" is not a list`, `"registers": an item is not an object` | |
 | `device_id: not a 16-bit number` | |
 | `register NAME: "default" names no value of it: "x"` | `default` is a text that is none of the register's value or special names. |
-| `"extends" …`, `base map <file>: …` | The base cannot be read or is not a map, or maps extend each other more than 8 deep. |
+| `"extends" …`,&nbsp;`base map <file>: …` | The base cannot be read or is not a map, or maps extend each other more than 8 deep. |
 | `register "NAME": bad address` | `addr` is missing, a text that is not a number, or a number outside 0 – 0xFFFF. |
 | `register NAME: unknown type "x"` | `type` is not a known type name. |
 | `login: bad address` | `login` has no valid address (as for `addr`), or its address is 0. |
@@ -2433,12 +2464,12 @@ These do not stop a load:
 | DEVICE_ID | `"format": "hex"`: shown as `0x1001`. It is checked against `device_id` at connect. |
 | STATUS | Fields over one word: the protocol revision in bits 7:0 and capability flags. Decoded lists the flags that are set. |
 | CONFIG | A writable register with flags and a multi-bit field, marked danger because it can reset the device: every write asks. |
-| MSG_CNT, MSG_BUFFER | A counter, and a 255-byte buffer that is too long to poll (read it with *Read now*). |
+| MSG_CNT,&nbsp;MSG_BUFFER | A counter, and a 255-byte buffer that is too long to poll (read it with *Read now*). |
 | UPTIME | A `u32` in ms. |
-| SUPPLY_V, SUPPLY_I, TEMPERATURE | `f32` with units. The fake device moves them as sine waves. The group "Power & supply" has an `&`, which the menus show as it is (4.7). |
+| SUPPLY_V,&nbsp;SUPPLY_I,&nbsp;TEMPERATURE | `f32` with units. The fake device moves them as sine waves. The group "Power & supply" has an `&`, which the menus show as it is (4.7). |
 | STATE | A packed state word: a two-bit field with value names and two flags. |
 | PRESSURE | A scaled integer: `i16` in hundredths of a bar, shown in bar. |
-| SETPOINT, FAN_SPEED | Writable settings. |
+| SETPOINT,&nbsp;FAN_SPEED | Writable settings. |
 | LED_MODE | An enum, written from the named values list. |
 | MOTOR_SPEED | A signed danger setpoint with a description the confirmation shows. |
 
@@ -2464,7 +2495,7 @@ When **Serve API** is on, the Studio shares the device it is connected to with o
 
 | Port | Protocol | For |
 |---|---|---|
-| **1220** | JSON lines, by register name | Scripts: Python, MATLAB, LabVIEW, anything with a TCP socket. |
+| **1220** | JSON&nbsp;lines,&nbsp;by&nbsp;register&nbsp;name | Scripts: Python, MATLAB, LabVIEW, anything with a TCP socket. |
 | **1219** | EVRe pass-through: the same frames as the device | Existing EVRe clients, and another EVRe Studio. |
 
 The ports can be changed only in the settings (`api/evrePort`, `api/jsonPort`, see 14.3).
@@ -2484,8 +2515,8 @@ The server keeps running while the Studio has no link. In that state `info`, `li
 
 | Switch | Effect |
 |---|---|
-| **Allow API writes** | Off: clients can only read and stream. On: `set`, `write` and pass-through writes are allowed, except to danger registers. Shown in amber while on. |
-| **including ⚠ registers** | Enabled only while Allow API writes is on. Also allows writes that touch a register marked `danger`. Shown in red while on. Unticking Allow API writes unticks it. |
+| **Allow&nbsp;API&nbsp;writes** | Off: clients can only read and stream. On: `set`, `write` and pass-through writes are allowed, except to danger registers. Shown in amber while on. |
+| **including&nbsp;⚠&nbsp;registers** | Enabled only while Allow API writes is on. Also allows writes that touch a register marked `danger`. Shown in red while on. Unticking Allow API writes unticks it. |
 
 Both are off at every start, and neither is ever saved. They can be set at start with `--api-writes` and `--api-writes-danger`.
 
@@ -2517,9 +2548,9 @@ The refusal texts:
 | Register | Value in answers |
 |---|---|
 | Integer | a JSON integer |
-| `f32`, or scaled / offset | a JSON number |
+| `f32`,&nbsp;or&nbsp;scaled&nbsp;/&nbsp;offset | a JSON number |
 | `bytes` | a string of hex digits without spaces (`"48454c4c4f"`) |
-| No valid value, or not finite | `null` |
+| No&nbsp;valid&nbsp;value,&nbsp;or&nbsp;not&nbsp;finite | `null` |
 
 **A request that is not a JSON object** gets `{"ok":false,"error":"not a JSON object: <parser message>"}`, without an `id`.
 
@@ -2541,8 +2572,8 @@ The Studio, the device, the link and the write switches.
 | `connected` | The Studio has a link. |
 | `link` | `host:port` or `COM7 @ 115200`, empty without a link. |
 | `registers` | The number of registers in the map. |
-| `writes`, `danger_writes` | The two switches. `danger_writes` is true only when both are on. |
-| `evre_port`, `json_port` | The ports served. |
+| `writes`,&nbsp;`danger_writes` | The two switches. `danger_writes` is true only when both are on. |
+| `evre_port`,&nbsp;`json_port` | The ports served. |
 
 #### `list`
 
@@ -2682,15 +2713,15 @@ Any number of clients can be connected at once. Each has its own connection, its
 
 The pass-through accepts the device's own frames (layout in 18.1) and forwards them through the Studio's queue. An EVRe client that works with the device or with a TCP gateway works here unchanged. It can even be another EVRe Studio connected over TCP to port 1219: its polls, keep-alive and writes pass through this Studio's queue.
 
-| Request from the client | What the Studio does | Answer to the client |
+| Request&nbsp;from&nbsp;the&nbsp;client | What&nbsp;the&nbsp;Studio&nbsp;does | Answer to the client |
 |---|---|---|
 | `READ` | Forwards it as a READ of the same offset and count. | `READ_RESP` with the device's bytes, or `ERROR_RESP` with the device's code. |
-| `WRITE_ACK`, writes allowed | Forwards it as a `WRITE_ACK`. | `WRITE_ACK_RESP`, or `ERROR_RESP` with the device's code. |
-| `WRITE_ACK`, writes refused (17.2) | Nothing is sent to the device. The check comes before the link check, so this holds with no link too. | `ERROR_RESP` code **3** (permission denied), at once. |
-| `WRITE`, writes allowed | Forwards it as a `WRITE_ACK`: the device always acknowledges, so the queue can order it. | none, as for a `WRITE` on the wire |
-| `WRITE`, writes refused | Nothing is sent. | none |
-| A `READ`, or an allowed write, while the Studio has no link | Nothing is sent. | none: the client times out, as with a silent device |
-| A timeout or a lost link | | none |
+| `WRITE_ACK`,&nbsp;writes&nbsp;allowed | Forwards&nbsp;it&nbsp;as&nbsp;a&nbsp;`WRITE_ACK`. | `WRITE_ACK_RESP`, or `ERROR_RESP` with the device's code. |
+| `WRITE_ACK`,&nbsp;writes&nbsp;refused&nbsp;(17.2) | Nothing is sent to the device. The check comes before the link check, so this holds with no link too. | `ERROR_RESP` code **3** (permission denied), at once. |
+| `WRITE`,&nbsp;writes&nbsp;allowed | Forwards it as a `WRITE_ACK`: the device always acknowledges, so the queue can order it. | none, as for a `WRITE` on the wire |
+| `WRITE`,&nbsp;writes&nbsp;refused | Nothing&nbsp;is&nbsp;sent. | none |
+| A `READ`, or an allowed write, while the Studio has no link | Nothing&nbsp;is&nbsp;sent. | none: the client times out, as with a silent device |
+| A&nbsp;timeout&nbsp;or&nbsp;a&nbsp;lost&nbsp;link | | none |
 | Any other function code (an answer sent to the server) | Ignored. | none |
 | A frame with a bad CRC or end byte | Dropped. | none |
 
@@ -2769,8 +2800,8 @@ Every frame, request or answer, has the same layout. All multi-byte numbers are 
 | 3 | 2 | OFF | The register offset (address), low byte first. |
 | 5 | 2 | CNT | The byte count, low byte first. |
 | 7 | n | DATA | The length follows from FN (18.2). |
-| 7 + n | 2 | CRC | CRC-16/X-25 over bytes 0 … 6 + n, low byte first (18.4). |
-| 9 + n | 1 | END | `0x7D` |
+| 7&nbsp;+&nbsp;n | 2 | CRC | CRC-16/X-25 over bytes 0 … 6 + n, low byte first (18.4). |
+| 9&nbsp;+&nbsp;n | 1 | END | `0x7D` |
 
 A frame is 10 + n bytes long. Examples, with slave 1:
 
@@ -2794,11 +2825,11 @@ ERROR_RESP code 4 (offset out of range) to a read of 2 bytes at 0xD200:
 | Code | Name | DATA | Meaning |
 |---|---|---|---|
 | `0xAA` | READ | none | Read CNT bytes at OFF. |
-| `0xAB` | READ_RESP | CNT bytes | The answer to READ. |
-| `0xEA` | WRITE | CNT bytes | Write CNT bytes at OFF, with no answer. |
-| `0xEB` | WRITE_ACK | CNT bytes | Write CNT bytes at OFF, answered. |
+| `0xAB` | READ_RESP | CNT&nbsp;bytes | The answer to READ. |
+| `0xEA` | WRITE | CNT&nbsp;bytes | Write CNT bytes at OFF, with no answer. |
+| `0xEB` | WRITE_ACK | CNT&nbsp;bytes | Write CNT bytes at OFF, answered. |
 | `0xEC` | WRITE_ACK_RESP | none | The answer to WRITE_ACK: written. |
-| `0xEE` | ERROR_RESP | 1 byte, the error code | The answer to any request that failed. |
+| `0xEE` | ERROR_RESP | 1&nbsp;byte,&nbsp;the&nbsp;error&nbsp;code | The answer to any request that failed. |
 
 How the Studio uses them:
 
@@ -2808,15 +2839,15 @@ How the Studio uses them:
 
 ### 18.3 Error codes
 
-| Code | Name, as the Studio shows it | How the Studio reacts |
+| Code | Name,&nbsp;as&nbsp;the&nbsp;Studio&nbsp;shows&nbsp;it | How the Studio reacts |
 |---|---|---|
-| 0 | no error | |
-| 1 | invalid packet | the register shows *error*, and is tried again |
-| 2 | unknown function code | the register shows *error*, and is tried again |
-| 3 | permission denied | **refused for good**: *not available* for a single register |
-| 4 | offset out of range | **refused for good** |
-| 5 | count out of range | **refused for good** |
-| 12 | length mismatch | the register shows *error*, and is tried again |
+| 0 | no&nbsp;error | |
+| 1 | invalid&nbsp;packet | the register shows *error*, and is tried again |
+| 2 | unknown&nbsp;function&nbsp;code | the register shows *error*, and is tried again |
+| 3 | permission&nbsp;denied | **refused for good**: *not available* for a single register |
+| 4 | offset&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
+| 5 | count&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
+| 12 | length&nbsp;mismatch | the register shows *error*, and is tried again |
 | other | `error <n>` | the register shows *error*, and is tried again |
 
 An error answer to a merged block always splits the block first (13.4). Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
@@ -2874,10 +2905,10 @@ An answer that matches nothing is reported as unsolicited (the Monitor's *(not a
 
 | Counter | Meaning |
 |---|---|
-| TX / RX | Frames sent and received. |
+| TX&nbsp;/&nbsp;RX | Frames sent and received. |
 | Timeouts | Requests that got no answer in time. |
 | Errors | Error answers from the device. |
-| Bad frames | Frames with a wrong CRC or end byte (18.5). |
+| Bad&nbsp;frames | Frames with a wrong CRC or end byte (18.5). |
 | Latency | An exponential average over roughly the last 20 successful answers, measured from sending a request to receiving its answer. |
 
 ### 18.7 Timeouts and the keep-alive
@@ -2918,13 +2949,13 @@ The Studio has five modules. `evre` and `model` form the base: each uses only wh
 and `api` depend on each other: the engine creates and owns the `ApiServer`, and the `ApiServer` works on the
 engine's `RegTable` (`io/reg_table.h`) and its master. `ui` uses all of them.
 
-| Module | Directory | Depends on | Holds |
+| Module | Directory | Depends&nbsp;on | Holds |
 |---|---|---|---|
-| `evre` | `src/evre/` | Qt Core, Network, SerialPort | frames and the CRC, the links (TCP, serial), the master (queue, pipelining, timeouts) |
-| `model` | `src/model/` | `evre` (byte order helpers) | the device map and value coding, formulas, math lines, the register table model |
-| `io` | `src/io/` | `evre`, `model`, `api` | the I/O engine: the connection, the poller, CSV, the table the I/O thread writes |
-| `api` | `src/api/` | `evre`, `model`, `io/reg_table.h` | the API server (EVRe pass-through, JSON lines) |
-| `ui` | `src/ui/` | all of the above | the window, the tabs, the chart, the theme, help |
+| `evre` | `src/evre/` | Qt&nbsp;Core,&nbsp;Network,&nbsp;SerialPort | frames and the CRC, the links (TCP, serial), the master (queue, pipelining, timeouts) |
+| `model` | `src/model/` | `evre`&nbsp;(byte&nbsp;order&nbsp;helpers) | the device map and value coding, formulas, math lines, the register table model |
+| `io` | `src/io/` | `evre`,&nbsp;`model`,&nbsp;`api` | the I/O engine: the connection, the poller, CSV, the table the I/O thread writes |
+| `api` | `src/api/` | `evre`,&nbsp;`model`,&nbsp;`io/reg_table.h` | the API server (EVRe pass-through, JSON lines) |
+| `ui` | `src/ui/` | all&nbsp;of&nbsp;the&nbsp;above | the window, the tabs, the chart, the theme, help |
 
 `src/main.cpp` reads the command line, applies the theme and opens the window. The four executables are built from
 the same sources (25.4). `evre_probe` and `evre_fake_fast` link only `evre_protocol`: the `evre` files and
@@ -2968,9 +2999,9 @@ The window does not call the engine's functions directly. It uses three paths:
 
 | Direction | How | Used for |
 |---|---|---|
-| window → engine | `IoEngine::post(std::function<void()>)`, which calls `QMetaObject::invokeMethod(engine, f, Qt::QueuedConnection)` | every request: map, link, polling, plotted set, CSV, writes, reads, API switches |
-| engine → window | signals, queued because the sender lives in the other thread | `opened`, `closed`, `deviceInfo`, `loginRefused`, `loginSkipped`, `readDone`, `writeDone`, `recordStarted`, `recordStopped`, `apiStarted` |
-| window reads engine state | copies under a mutex | `table().snapshot()`, `takeSamples()`, `takeFrames()`, `stats()` |
+| window&nbsp;→&nbsp;engine | `IoEngine::post(std::function<void()>)`, which calls `QMetaObject::invokeMethod(engine, f, Qt::QueuedConnection)` | every request: map, link, polling, plotted set, CSV, writes, reads, API switches |
+| engine&nbsp;→&nbsp;window | signals, queued because the sender lives in the other thread | `opened`, `closed`, `deviceInfo`, `loginRefused`, `loginSkipped`, `readDone`, `writeDone`, `recordStarted`, `recordStopped`, `apiStarted` |
+| window&nbsp;reads&nbsp;engine&nbsp;state | copies&nbsp;under&nbsp;a&nbsp;mutex | `table().snapshot()`, `takeSamples()`, `takeFrames()`, `stats()` |
 
 The posted lambdas capture their arguments by value. They run in the order they were posted, so a `setMap` posted
 before `connectTcp` is applied first.
@@ -2982,22 +3013,22 @@ callback out of the hash and run it in the GUI thread.
 
 ### 19.3 Who owns what
 
-| Object | Owner / parent | Thread | Notes |
+| Object | Owner&nbsp;/&nbsp;parent | Thread | Notes |
 |---|---|---|---|
-| `QThread ioThread_` | `MainWindow` (child) | GUI | object name `evre-io`, started with `QThread::HighPriority` |
+| `QThread ioThread_` | `MainWindow`&nbsp;(child) | GUI | object name `evre-io`, started with `QThread::HighPriority` |
 | `IoEngine` | none; moved with `moveToThread(ioThread_)` | I/O | deleted by `deleteLater` when the thread finishes |
-| `RegTable` | `IoEngine` member (not a `QObject`) | written in I/O | see 19.4 |
-| `evre::Master` | `IoEngine` (child) | I/O | moved along with the engine |
-| `ApiServer` | `IoEngine` (child) | I/O | its two `QTcpServer`s are its children |
-| `QTimer statsTimer_`, `offlineTimer_` (the offline retry, 3.9), `heartbeatTimer_` (auto send, 13.8), `QFile csvFile_` | `IoEngine` (children) | I/O | |
-| `evre::Link` | `IoEngine::link_` (`std::unique_ptr`) | I/O | created with `new` in `IoEngine::connectTcp` / `connectSerial`, which run in the I/O thread; `attach()` takes it over; its socket or port is its child |
-| API client sockets | the `QTcpServer` that accepted them | I/O | created by `nextPendingConnection()` in the I/O thread |
-| API stream timers | `ApiServer` (child) | I/O | created in the I/O thread by `startStream()` |
-| ticker `std::thread` | `IoEngine` | its own | only while polling at an interval > 0 |
-| `RegisterModel` | `MainWindow` (child) | GUI | the window's copy of the values; its text colours come from the window (`setColors`), the model knows no theme |
-| `FrameClock` | `MainWindow` (child) | GUI | on Windows its waiting `std::thread` |
-| chart data (`ChartView::series_`) | `ChartView` | GUI | read by the chart's own threads (`pool_`) during a paint, while the GUI thread waits for them (23.6); written only by the GUI thread |
-| `DeviceMap map_` | `MainWindow` member | GUI | the engine gets copies of the definitions |
+| `RegTable` | `IoEngine`&nbsp;member&nbsp;(not&nbsp;a&nbsp;`QObject`) | written&nbsp;in&nbsp;I/O | see 19.4 |
+| `evre::Master` | `IoEngine`&nbsp;(child) | I/O | moved along with the engine |
+| `ApiServer` | `IoEngine`&nbsp;(child) | I/O | its two `QTcpServer`s are its children |
+| `QTimer statsTimer_`, `offlineTimer_` (the offline retry, 3.9), `heartbeatTimer_` (auto send, 13.8), `QFile csvFile_` | `IoEngine`&nbsp;(children) | I/O | |
+| `evre::Link` | `IoEngine::link_`&nbsp;(`std::unique_ptr`) | I/O | created with `new` in `IoEngine::connectTcp` / `connectSerial`, which run in the I/O thread; `attach()` takes it over; its socket or port is its child |
+| API&nbsp;client&nbsp;sockets | the `QTcpServer` that accepted them | I/O | created by `nextPendingConnection()` in the I/O thread |
+| API&nbsp;stream&nbsp;timers | `ApiServer`&nbsp;(child) | I/O | created in the I/O thread by `startStream()` |
+| ticker&nbsp;`std::thread` | `IoEngine` | its&nbsp;own | only while polling at an interval > 0 |
+| `RegisterModel` | `MainWindow`&nbsp;(child) | GUI | the window's copy of the values; its text colours come from the window (`setColors`), the model knows no theme |
+| `FrameClock` | `MainWindow`&nbsp;(child) | GUI | on Windows its waiting `std::thread` |
+| chart&nbsp;data&nbsp;(`ChartView::series_`) | `ChartView` | GUI | read by the chart's own threads (`pool_`) during a paint, while the GUI thread waits for them (23.6); written only by the GUI thread |
+| `DeviceMap map_` | `MainWindow`&nbsp;member | GUI | the engine gets copies of the definitions |
 
 When the window closes, `~MainWindow` stops the frame clock. It then runs `IoEngine::shutdown()` in the I/O thread
 with `Qt::BlockingQueuedConnection`. This stops the recording and the API server, drops the link and stops the
@@ -3055,7 +3086,7 @@ table becomes a write request (21.3). The table shows the new value only when th
 | GUI | the window, the table, the chart, the log, the frame clock's fallback timer | `main()` |
 | `evre-io` | `IoEngine`, `Master`, the link, CSV, `ApiServer` | `MainWindow::startEngine()` |
 | ticker | waits for each poll deadline and wakes the engine | `IoEngine::startTicker()` (plain `std::thread`) |
-| frame waiter (Windows) | waits for each display refresh (`DwmFlush`) and posts a tick to the window | `FrameClock::start()` (plain `std::thread`) |
+| frame&nbsp;waiter&nbsp;(Windows) | waits for each display refresh (`DwmFlush`) and posts a tick to the window | `FrameClock::start()` (plain `std::thread`) |
 
 The ticker runs only while the link is up and polling is on at an interval above 0. `stopTicker()` ends it and
 joins it. It runs on disconnect, when Poll is unticked, when the interval becomes 0, and at shutdown.
@@ -3074,15 +3105,15 @@ Qt timers still serve jobs that need no fine pacing:
 
 | Timer | Interval | Owner |
 |---|---|---|
-| answer timeout | the time left for the oldest pending request, `Qt::PreciseTimer` | `Master` |
-| keep-alive | 400 ms | `Master` |
-| statistics | 250 ms | `IoEngine` |
-| API stream | the client's `ms`, at least 5, default 100, `Qt::PreciseTimer` | `ApiServer` |
-| table repaint | 50 ms, single shot | `RegisterModel` |
-| status bar and sidebar | 500 ms | `MainWindow` |
+| answer&nbsp;timeout | the time left for the oldest pending request, `Qt::PreciseTimer` | `Master` |
+| keep-alive | 400&nbsp;ms | `Master` |
+| statistics | 250&nbsp;ms | `IoEngine` |
+| API&nbsp;stream | the client's `ms`, at least 5, default 100, `Qt::PreciseTimer` | `ApiServer` |
+| table&nbsp;repaint | 50&nbsp;ms,&nbsp;single&nbsp;shot | `RegisterModel` |
+| status&nbsp;bar&nbsp;and&nbsp;sidebar | 500&nbsp;ms | `MainWindow` |
 | measurements | 250 ms; at most every 100 ms while the cursors move | `ChartTab` |
 | reconnect | 500 ms after a lost link, 2000 ms after a failed connect | `MainWindow` |
-| frame clock fallback | 16 ms, `Qt::PreciseTimer` | `FrameClock` |
+| frame&nbsp;clock&nbsp;fallback | 16&nbsp;ms,&nbsp;`Qt::PreciseTimer` | `FrameClock` |
 
 The API stream timers use `Qt::PreciseTimer` because coarse timers drift by about 20 % on Windows (comment in
 `ApiServer::startStream`).
@@ -3398,59 +3429,59 @@ so the queue waits for it. The client hears of the result only if it asked for a
 |---|---|
 | `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps copied beside them |
 | `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid |
-| `src/evre/frame.h`, `.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
-| `src/evre/link.h`, `.cpp` | `Link` interface, `TcpLink`, `SerialLink` |
-| `src/evre/master.h`, `.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
+| `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
+| `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` |
+| `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
-| `src/io/engine.h`, `.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control |
-| `src/model/device_map.h`, `.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
+| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control |
+| `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
-| `src/model/json_doc.h`, `.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence` |
-| `src/model/map_export.h`, `.cpp` | Markdown, C header, Python, CSV and device table export, CSV import, `identifier` |
-| `src/model/map_document.h`, `.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
-| `src/model/bus_file.h`, `.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
-| `src/model/expr.h`, `.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
-| `src/model/math_lines.h`, `.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
-| `src/model/analysis.h`, `.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
-| `src/model/recording_file.h`, `.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
-| `src/model/register_model.h`, `.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
-| `src/api/api_server.h`, `.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
-| `src/ui/main_window.h`, `.cpp` | `MainWindow`: builds the window, wires the parts to the engine, sync per frame, writes, CSV, API, log |
-| `src/ui/sidebar.h`, `.cpp` | `Sidebar`: the connection, devices, map, polling and recording, and API cards; link settings |
+| `src/model/json_doc.h`,&nbsp;`.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence` |
+| `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV and device table export, CSV import, `identifier` |
+| `src/model/map_document.h`,&nbsp;`.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
+| `src/model/bus_file.h`,&nbsp;`.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
+| `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
+| `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
+| `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
+| `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
+| `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
+| `src/api/api_server.h`,&nbsp;`.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
+| `src/ui/main_window.h`,&nbsp;`.cpp` | `MainWindow`: builds the window, wires the parts to the engine, sync per frame, writes, CSV, API, log |
+| `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection, devices, map, polling and recording, and API cards; link settings |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
-| `src/ui/limit_spin_box.h`, `.cpp` | `LimitSpinBox`: a number box held to the map's limits |
-| `src/ui/elided_label.h`, `.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone) |
-| `src/ui/bus_panel.h`, `.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
-| `src/ui/bus_device_dialog.h`, `.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
-| `src/ui/bus_preset_dialog.h`, `.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
-| `src/ui/registers_tab.h`, `.cpp` | `RegistersTab`: toolbar, table, menus, groups, Plot shown, map editing, detail line |
-| `src/ui/value_delegate.h`, `.cpp` | `ValueDelegate`: the Value column's drawing (the ⓘ mark) and editor (`base`) |
-| `src/ui/quick_write_panel.h`, `.cpp` | `QuickWritePanel`: value box, named values, bit view for the selected RW register |
-| `src/ui/bit_view.h`, `.cpp` | `BitView`: a register drawn bit by bit; click to flip or pick a field value |
-| `src/ui/map_editor_tab.h`, `.cpp` | `MapEditorTab`: toolbar, the register table, checks list, clipboard, export and import; on a bus the banner (whose map, `showDevices`) and the Live values from picker |
-| `src/ui/map_table_model.h`, `.cpp` | `MapTableModel`: the Map editor's table, edited in place, bulk edits |
-| `src/ui/register_editor.h`, `.cpp` | `RegisterEditor`: the form (General, Values, Bit fields, Notes) and the live line |
-| `src/ui/name_table.h`, `.cpp` | `NameTable`: value names or special values, Paste lines, Hex |
-| `src/ui/field_editor.h`, `.cpp` | `FieldEditor`: bit fields on the bit strip, their list and value names |
+| `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
+| `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone) |
+| `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
+| `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
+| `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
+| `src/ui/registers_tab.h`,&nbsp;`.cpp` | `RegistersTab`: toolbar, table, menus, groups, Plot shown, map editing, detail line |
+| `src/ui/value_delegate.h`,&nbsp;`.cpp` | `ValueDelegate`: the Value column's drawing (the ⓘ mark) and editor (`base`) |
+| `src/ui/quick_write_panel.h`,&nbsp;`.cpp` | `QuickWritePanel`: value box, named values, bit view for the selected RW register |
+| `src/ui/bit_view.h`,&nbsp;`.cpp` | `BitView`: a register drawn bit by bit; click to flip or pick a field value |
+| `src/ui/map_editor_tab.h`,&nbsp;`.cpp` | `MapEditorTab`: toolbar, the register table, checks list, clipboard, export and import; on a bus the banner (whose map, `showDevices`) and the Live values from picker |
+| `src/ui/map_table_model.h`,&nbsp;`.cpp` | `MapTableModel`: the Map editor's table, edited in place, bulk edits |
+| `src/ui/register_editor.h`,&nbsp;`.cpp` | `RegisterEditor`: the form (General, Values, Bit fields, Notes) and the live line |
+| `src/ui/name_table.h`,&nbsp;`.cpp` | `NameTable`: value names or special values, Paste lines, Hex |
+| `src/ui/field_editor.h`,&nbsp;`.cpp` | `FieldEditor`: bit fields on the bit strip, their list and value names |
 | `src/ui/map_settings_dialog.h`, `.cpp` | `MapSettingsDialog(doc, onBus, parent)`: device, protocol and notes of the map, one undo step; on a bus its Slave box is disabled |
-| `src/ui/chart_tab.h`, `.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, the right-click menu (pictures, export, notes), chart settings |
-| `src/ui/analysis_window.h`, `.cpp` | `AnalysisWindow`: a line's histogram or spectrum in a window of its own, its plot, readout, picture and CSV |
-| `src/ui/recording_window.h`, `.cpp` | `RecordingWindow`: a recording opened in a window of its own, its reading on a thread, the recent recordings |
-| `src/ui/chart_widget.h`, `.cpp` | `ChartView` (the chart) and `ChartWidget` (its wrapper) |
-| `src/ui/gpu_lines.h`, `.cpp` | `GpuLines`: the chart's plot drawn by a graphics card and shown as a layer of the window (Direct3D 11, a swap chain, DirectComposition) |
-| `src/ui/math_line_dialog.h`, `.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
-| `src/ui/formula_completer.h`, `.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
-| `src/ui/monitor_tab.h`, `.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
-| `src/ui/event_log.h`, `.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
-| `src/ui/frame_clock.h`, `.cpp` | `FrameClock`: one tick per display refresh |
-| `src/ui/language.h`, `.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
+| `src/ui/chart_tab.h`,&nbsp;`.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, the right-click menu (pictures, export, notes), chart settings |
+| `src/ui/analysis_window.h`,&nbsp;`.cpp` | `AnalysisWindow`: a line's histogram or spectrum in a window of its own, its plot, readout, picture and CSV |
+| `src/ui/recording_window.h`,&nbsp;`.cpp` | `RecordingWindow`: a recording opened in a window of its own, its reading on a thread, the recent recordings |
+| `src/ui/chart_widget.h`,&nbsp;`.cpp` | `ChartView` (the chart) and `ChartWidget` (its wrapper) |
+| `src/ui/gpu_lines.h`,&nbsp;`.cpp` | `GpuLines`: the chart's plot drawn by a graphics card and shown as a layer of the window (Direct3D 11, a swap chain, DirectComposition) |
+| `src/ui/math_line_dialog.h`,&nbsp;`.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
+| `src/ui/formula_completer.h`,&nbsp;`.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
+| `src/ui/monitor_tab.h`,&nbsp;`.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
+| `src/ui/event_log.h`,&nbsp;`.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
+| `src/ui/frame_clock.h`,&nbsp;`.cpp` | `FrameClock`: one tick per display refresh |
+| `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
 | `translations/evre_studio_ar.ts` | Arabic: every text and Help page (`qt_add_translations`, built into the program at `:/i18n`) |
-| `src/ui/value_pace.h`, `.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
-| `src/ui/help_dialog.h`, `.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
-| `src/ui/theme.h`, `.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`, `.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker) |
+| `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
+| `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
+| `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, exports) without a window |
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
@@ -3667,7 +3698,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 
 ### 22.6 Module `ui`
 
-| Class | Responsibility | Main functions and signals | Tested by |
+| Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus` | GUI test |
 | `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged` | GUI test (Connect, Disconnect, Poll, Auto send) |
@@ -3678,20 +3709,20 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusPresetDialog` | one broadcast preset; OK only when the value is one the register takes | `result` | GUI test (bus step) |
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
-| `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneLines` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
-| `language` (namespace) | the window's language (14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
+| `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
-| `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`, `wordStart`, `shown` | GUI test |
-| `MonitorTab` | frame log and single requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
-| `EventLog` / `Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
-| `FrameClock` | ticks per display refresh | `start`, `stop`; signal `tick` | runs in every test |
-| `HelpDialog` | the help pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
-| `Theme`, `ui_helpers` | look and shared helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look) | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch) |
+| `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown` | GUI test |
+| `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
+| `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
+| `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
+| `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
+| `Theme`,&nbsp;`ui_helpers` | look&nbsp;and&nbsp;shared&nbsp;helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look) | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch) |
 
 Widgets that tests or the theme find carry fixed object names. Examples: `registers`, `measures`, `quickWrite`,
 `qwValue`, `qwEnum`, `bitView`, `groups`, `plotShown`, `hold`, `measure`, `math`, `cursors`, `eventLog`, `notice`,
@@ -3851,10 +3882,10 @@ newest part of the line would jitter in and out of view. With Smooth on, the edg
 | Constant | Value | Meaning |
 |---|---|---|
 | gap | now − the newest sample of any line | measured each frame; gaps < 0 or > 1 s are ignored (no data is coming) |
-| `PEAK_DECAY` | 0.05 s per s | the peak gap is forgotten this fast |
+| `PEAK_DECAY` | 0.05&nbsp;s&nbsp;per&nbsp;s | the peak gap is forgotten this fast |
 | target | `min(0.5 s, peak gap × 1.1 + 3 ms)` | the delay aimed for |
-| `RISE_TIME` | 0.15 s | time constant when the delay must grow |
-| `FALL_TIME` | 2.0 s | time constant when it may shrink |
+| `RISE_TIME` | 0.15&nbsp;s | time constant when the delay must grow |
+| `FALL_TIME` | 2.0&nbsp;s | time constant when it may shrink |
 
 The delay follows slowly, so the scroll speed does not wobble. It is at most 0.5 s. A slow poll simply shows its gap.
 Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms`).
@@ -3871,13 +3902,35 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
   line flatter than 1e-12 gets a range of one unit around it (`widenFlatRange`), and the crosshair dot uses the same
   scaling.
 - **Lanes** (`setLanes`). `plotLayout()` gives the frame's plots, one `Lane` each: the whole plot with every line,
-  or a lane per unit (`MAX_LANES`, 8; the units after join the last, `label` naming them), stacked `LANE_GAP` (10 px)
-  apart. Each has its own `Axes` (its rect, the frame's times, its range) and its own `YScale` (Auto, Manual, Log,
-  and Auto's state): the plot's `y_`, a lane's `laneScales_[key]` by its first unit, so a lane keeps its range while
-  lines come and go (`laneScales` / `setLaneScales`: the settings' texts). `updateYRange` and `followData` run per
-  plot over its lines; the binning is the same for all (one time axis). The frame keeps its plots
-  (`lanesShown_`) for the mouse: `laneAtY` finds the lane under it for Ctrl + wheel, the double-click and the
-  right-click on its labels (`laneMenuRequested`).
+  or a lane per unit, however many, stacked `LANE_GAP` (10 px) apart. A folded lane (`Lane::folded`, from
+  `lanesFolded_`, the units folded) is `LANE_FOLDED_H` (22 px); the open ones share what is left equally, never less
+  than `LANE_MIN_H` (80 px, two value labels) (`laneHeights`). When the stack is taller than the plot, the lanes go
+  on below it and scroll: `laneScroll_`, px from the top, clamped to `laneContentHeight()` minus the plot's height
+  wherever the layout is made (a resize, a line added or removed, a fold) and stored clamped at each frame, 0 when
+  Lanes is turned on. Every `Lane`'s rect is in the widget's coordinates after the scroll, so it may lie partly or
+  wholly outside the plot; `laneVisible` gives its part in the plot, and every drawing skips a lane without one
+  and cuts the others to it. Each has its own `Axes` (its rect, the frame's times, its range) and its own `YScale`
+  (Auto, Manual, Log, and Auto's state): the plot's `y_`, a lane's `laneScales_[key]` by its unit, so a lane keeps
+  its range while lines come and go (`laneScales` / `setLaneScales`: the settings' texts). `updateYRange` and
+  `followData` run per plot over its lines, folded or out of view too (its range is ready when it shows); the
+  binning is the same for all (one time axis). The frame keeps its plots (`lanesShown_`) for the mouse: `laneAtY`
+  finds the lane in view under it (a lane out of view is nowhere) for Ctrl + wheel, the double-click and the
+  right-click on its labels or its strip (`laneMenuRequested`). `pressLanes` takes the lanes' own clicks before the
+  cursors and the pan: the scroll bar (`laneScrollBarRect`, painted in `RIGHT_PAD` outside the card's layer by
+  `drawLaneBar`, not a `QScrollBar`: nothing goes over the layer; its handle `Drag::LaneBar`), a unit name
+  (`LANE_UNIT_W`, folds) and a folded strip (opens); the wheel over the value labels scrolls by `LANE_WHEEL_STEP`
+  (40 px). Each lane's fold button (`laneFoldButtonRect`: `LANE_BUTTON_H`, 16 px, at the top of an open lane's unit
+  column, or the strip's height for a folded one) is drawn by `drawGrid` as a small triangle, outside the card's layer
+  (as the labels are) on a rounded shape, highlighted while `hoverLane_` (set by the mouse's move, cleared when it
+  leaves) is its lane (`hoverBar_` does the same for the scroll bar's handle); a value label of a lane is kept whole
+  inside the lane's part in view (moved at most 8 px off its line, none where 16 px do not fit);
+  the unit name takes the column under it. `toolTipAt` gives the lanes' tooltips (`QEvent::ToolTip`).
+  `setAllLanesFolded` folds or opens every lane now shown (Fold all / Open all). The separators (`separatorsY`: the
+  middle of each gap whose middle is in the plot) are a 1 px line in `control`: `drawGrid` draws them from the value
+  labels to the plot's right edge, the card adds its part from its layer's left edge as grid segments
+  (`laneSeparators`: as last painted, for the tests). A folded strip is a picture (`foldedPicture`, of its part in the plot, made again when its texts change):
+  its unit, then each line's dot, name and value (`foldedItems`: live, the legend's value; held, the last sample in
+  view), cut with … where the room ends. The crosshair leaves a folded lane's lines out of its box.
 - **Log** (`setYLog`, `y_.log`; not while normalised). `Axes::setRange` keeps log10 of the range's ends, and
   `Axes::y` maps log10 of the value between them; a value <= 0 maps to the bottom edge. Every drawing takes y from
   `Axes`: the CPU's lines, the card's segments (`plotOnGpu`), the crosshair's dots and the memory strip (each line its
@@ -3893,10 +3946,12 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 `paintEvent` (`paintFrame`) draws in this order:
 
 1. card
-2. grid (on a card: its labels only; the card draws the plot, 23.7)
-3. cursor span, then the lines (each in its plot: lanes, its lane's `Axes`, clipped to it), then the notes (not on a
-   card)
-4. cursors (not on a card)
+2. grid (on a card: its labels only; the card draws the plot, 23.7); with lanes also each lane's fold button and unit
+   name, and the separators between lanes
+3. cursor span, then the lines (each in its plot: lanes, its lane's `Axes`, clipped to its part in the plot), then
+   the lines of the notes, the trigger's level and the cursors, the folded strips over them, then their tags and the
+   A-B bar (`Marks::Lines`, then `Marks::Tags`: the card's order, its pictures over all its layers) (not on a card)
+4. the lanes' scroll bar, in the right pad (on a card too: it is outside the layer)
 5. memory strip
 6. legend (the chips clipped to their part of the row, then the scroll bar and arrows when they overflow)
 7. crosshair (not on a card)
@@ -4022,9 +4077,12 @@ layer of the window over the chart (DirectComposition), which a card draws and s
   inside it) and painted by one function (`drawSpanBar`): by the CPU in `drawCursors`, and for the card into a
   picture of the bar and its text, placed on whole pixels as the tags are. So the two drawings show the same bar.
 - **Lanes on the card.** Every lane in one frame: each lane's grid from its own ticks, each line's segments made
-  with its lane's `Axes` and cut to its lane's rows (`clipSegmentY`, the line's width of room): the card has no clip
-  of its own, and a line past a Manual range would draw into the next lane. Without lanes the layer's edge cuts the
-  one plot.
+  with its lane's `Axes` and cut to its lane's rows in the plot (`clipSegmentY` to the lane's rect within the plot's,
+  the line's width of room): the card has no clip of its own, and a line past a Manual range would draw into the next
+  lane, a lane scrolled half out above the plot's top. A lane out of view or folded gets no segments; a folded strip
+  is the CPU's picture (`foldedPicture`), the first of the frame's pictures, so it lies over the marks' dashed lines
+  and under their tags as the CPU paints it. The separators between lanes are grid segments in `control`, from the
+  layer's left edge (the CPU paints them up to there). Without lanes the layer's edge cuts the one plot.
 - **A segment is an instance.** Each line's polyline (23.2, without the bars: a card draws the strokes) becomes
   segments of 20 bytes (`GpuLines::Segment`: two points in the layer's pixels, the colour); the vertex shader makes
   each a quad the line's width (as the CPU's copies: `max(2, round(1.5 × devicePixelRatio))` pixels) and half the
@@ -4210,10 +4268,10 @@ where.
 | Item | Version |
 |---|---|
 | CMake | 3.21 or later |
-| C++ compiler | C++17. Tested with GCC (MinGW on Windows, GCC on Linux). Clang and MSVC are not tested; MSVC in particular defines `M_PI` and `M_E`, which `src/model/expr.cpp` uses, only with `_USE_MATH_DEFINES`, so it may need that define. MSVC keeps its own warning defaults. |
-| Qt 6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations |
+| C++&nbsp;compiler | C++17. Tested with GCC (MinGW on Windows, GCC on Linux). Clang and MSVC are not tested; MSVC in particular defines `M_PI` and `M_E`, which `src/model/expr.cpp` uses, only with `_USE_MATH_DEFINES`, so it may need that define. MSVC keeps its own warning defaults. |
+| Qt&nbsp;6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations |
 | Generator | Ninja (recommended) or any CMake generator |
-| Windows only | the system libraries `winmm` (1 ms timer resolution) and `dwmapi` (`DwmFlush`), linked by the build |
+| Windows&nbsp;only | the system libraries `winmm` (1 ms timer resolution) and `dwmapi` (`DwmFlush`), linked by the build |
 
 GCC and Clang build with `-Wall -Wextra`. The code builds without warnings with the Qt 6.8 MinGW toolchain on
 Windows and with Qt 6.10 and GCC on Linux.
@@ -4270,16 +4328,16 @@ tool.
 
 ### 25.4 CMake targets and options
 
-| Target | Kind | Built from | Notes |
+| Target | Kind | Built&nbsp;from | Notes |
 |---|---|---|---|
-| `evre_protocol` | static library | `src/evre/*` (with `registers.h`), `src/model/device_map.*` and `src/model/bus_file.*` | Qt Core, Network, SerialPort only; the core, the probe and the fast fake device link it |
-| `evre_studio_core` | static library | every other file under `src/` except `main.cpp` | links `evre_protocol`; the program and the GUI test link it; a new source file is one more line here (or in `evre_protocol`) |
-| `evre_maps` | custom target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
-| `EVReStudio` | executable | `src/main.cpp` + core | depends on `evre_maps` |
+| `evre_protocol` | static&nbsp;library | `src/evre/*` (with `registers.h`), `src/model/device_map.*` and `src/model/bus_file.*` | Qt Core, Network, SerialPort only; the core, the probe and the fast fake device link it |
+| `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` | links `evre_protocol`; the program and the GUI test link it; a new source file is one more line here (or in `evre_protocol`) |
+| `evre_maps` | custom&nbsp;target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
+| `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps` |
 | `evre_gui_test` | executable | `tests/gui_test.cpp` + core + Qt Test | depends on `evre_maps`: it opens the maps beside it |
 | `evre_probe` | executable | `tests/evre_probe.cpp` + `evre_protocol` | Qt Core, Network, SerialPort only |
-| `evre` | executable | `cli/evre.cpp` + `evre_protocol` | the command-line tool (chapter 34) |
-| `evre-sim` | executable | `cli/evre_sim.cpp` + `evre_protocol` | the simulator (chapter 35) |
+| `evre` | executable | `cli/evre.cpp`&nbsp;+&nbsp;`evre_protocol` | the command-line tool (chapter 34) |
+| `evre-sim` | executable | `cli/evre_sim.cpp`&nbsp;+&nbsp;`evre_protocol` | the simulator (chapter 35) |
 | `evre_map_test` | executable | `tests/map_test.cpp` + `evre_protocol` + Qt Test | depends on `evre_maps` |
 | `evre_fake_fast` | executable | `tests/fake_device_fast.cpp` + `evre_protocol` | depends on `evre_maps`: without a map argument it opens the example map beside it |
 
@@ -4293,11 +4351,11 @@ The project defines no options of its own. The usual CMake variables apply: `CMA
 
 | Program | Covers | Needs | Writes? |
 |---|---|---|---|
-| `evre_gui_test` | the real window, end to end | `tests/fake_device.py` on 127.0.0.1:1210 | yes, a danger register included |
-| `tests/api_test.py` | the API server, three modes | the Studio connected to the fake device, API on | yes, in the modes `writes` and `danger` |
-| `evre_probe` | the protocol core against a real device | a device or gateway | no register values; only the login, if asked |
-| `tests/fake_device.py` | a fake device for the tests and for trying the Studio | Python 3, standard library | serves writes |
-| `evre_fake_fast` | a fast fake device, to measure the Studio itself | built with the project | serves writes |
+| `evre_gui_test` | the&nbsp;real&nbsp;window,&nbsp;end&nbsp;to&nbsp;end | `tests/fake_device.py` on 127.0.0.1:1210 | yes, a danger register included |
+| `tests/api_test.py` | the&nbsp;API&nbsp;server,&nbsp;three&nbsp;modes | the Studio connected to the fake device, API on | yes, in the modes `writes` and `danger` |
+| `evre_probe` | the protocol core against a real device | a&nbsp;device&nbsp;or&nbsp;gateway | no register values; only the login, if asked |
+| `tests/fake_device.py` | a fake device for the tests and for trying the Studio | Python&nbsp;3,&nbsp;standard&nbsp;library | serves writes |
+| `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
 | `tests/fake_login_test.py` | the login of both fake devices, and the probe's | the build folder (`evre_fake_fast`, `evre_probe`) | only to the fake devices' login register |
 | `evre_map_test` | the map files, the exports (26.7) | nothing; `gcc` and `python` on PATH compile and import the exports | only its own temporary folder |
 | `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices | the build folder; it starts `fake_device.py` on 1212, and `evre_fake_fast` as two devices on 1232, itself | yes, to its own fake devices |
@@ -4333,13 +4391,13 @@ It finds its registers in the map by these rules:
 | Role | Rule | In `example_device.json` |
 |---|---|---|
 | u8 | the first writable u8 at 0xD000 or above, not danger | FAN_SPEED |
-| u8 with names | the same, with `enum` values; one of them other than 0 | LED_MODE |
+| u8&nbsp;with&nbsp;names | the same, with `enum` values; one of them other than 0 | LED_MODE |
 | danger | the first writable 16-bit danger register at 0xD000 or above | MOTOR_SPEED |
-| volts | the first read-only f32 in V | SUPPLY_V |
-| amps | the first read-only f32 in A | SUPPLY_I |
+| volts | the&nbsp;first&nbsp;read-only&nbsp;f32&nbsp;in&nbsp;V | SUPPLY_V |
+| amps | the&nbsp;first&nbsp;read-only&nbsp;f32&nbsp;in&nbsp;A | SUPPLY_I |
 | flag | the protocol's CONFIG (0xA004), bit MSG_ENABLE (bit 2) | CONFIG |
-| group with `&` | the first group with an `&` in its name | Power & supply |
-| login | the map's `"login"` | 0xF000, 16 bytes |
+| group&nbsp;with&nbsp;`&` | the first group with an `&` in its name | Power & supply |
+| login | the&nbsp;map's&nbsp;`"login"` | 0xF000, 16 bytes |
 
 A map without the u8 or the danger register stops the test at once, and so does a window that did not load the
 same map (step 1): the run then ends with exit code 1. A map without the others fails the checks that need them:
@@ -4457,13 +4515,42 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
-and a value placed inside its lane, saved, the Y range row disabled; six more units: 8 lanes, the last *u11 · u12 ·
-u13*; a right-click on the second lane's labels: its title and Auto, Manual…, Log; Manual 0 .. 5 typed, Log on the
+and a value placed inside its lane, saved, the Y range row disabled; a right-click on the second lane's labels: its
+title and Auto, Manual…, Log, Fold lane; Manual 0 .. 5 typed, Log on the
 third (equal decades), each lane alone, kept and found again by a new tab; Ctrl + wheel over the first changes it
 alone, a double-click sets it back to Auto; the first lane Manual 11.9 .. 12.1: no pixel of its lines between the
 lanes; the A-B bar over the first lane and a note's tag at the bottom of the last; the lanes drawn on threads as on
 one (the same pixels within a row's worth); Lanes off: one plot, the Y row back. With `EVRE_TEST_SHOT` set it saves
 `<prefix>_lanes.png`.
+
+**Lanes that fit** (`chartLanesFit`, on a Chart tab of its own settings, `lanesFit`): every numeric register of the
+map plotted, and two math lines over its volts and amps in W and Ω: ten lanes, none shared, each at least 80 px,
+taller than the plot, the scroll bar shown; the wheel over the value labels scrolls by a step, held at the top and at
+the bottom (the last lane's bottom on the plot's), the wheel over the plot still zooms the time; the first lane
+scrolled out of view found at no height of the plot; the bar's handle dragged half its travel scrolls half way, a
+click under it one plot height; a click on the volts lane's unit name folds it (22 px, the others still open, the
+strip's text its unit, then SUPPLY_V and the legend's value), a click on the strip with cursor mode on opens it and
+places no cursor; the fold saved (`lanesFolded`), kept across Lanes off and on and found by a new tab; with four lanes
+nothing scrolls and no bar shows, Fold lane in the lane's menu makes the others taller, Open lane from a right-click
+on the strip brings them back. With `EVRE_TEST_SHOT` set it saves `<prefix>_lanes_fit.png` (scrolled half a lane,
+one folded). On Windows the card's picture is compared with the CPU's as for two lanes, with eight more units
+scrolled half a lane and the third folded.
+
+**The fold made visible** (`chartLanesFoldButton`, settings `lanesButton`, the same ten lanes): a button at the top of
+every lane's unit column in view (16 px, none for a lane out of view); a click on it folds the lane, one on the strip's
+▸ opens it; over a button the pointing hand, the button's pixels changed, the hovered lane, the tooltip *Fold lane*
+shown by a tooltip event, *Open lane* on a strip and its ▸, no highlight once the mouse is over the plot; the state
+corner's *lanes: ▾ folds*; Display's Fold all lanes and Open all lanes: shown with Lanes on, Fold all enabled and
+Open all not, then every lane folded (saved, the ten strips fit) and the other way round, both hidden with Lanes off;
+the value labels' tooltip with the wheel's part while the lanes scroll and without it with four lanes; a button's
+shape at rest (not the background); over the scroll bar the pointing hand, its handle's pixels changed and its
+tooltip, none once the mouse is over the plot.
+
+**Separators** (`chartLanesSeparators`, settings `lanesSeparators`): with ten lanes, one folded, and scrolled half a
+lane, a separator for each gap whose middle is in the plot, at that middle, in the `control` colour at the value
+labels, at the plot's left edge and in its middle; none with Lanes off. No text cut: scrolled so the first lane is cut
+by the plot's top, every value label's box (`valueLabelRects`) whole inside its lane's part in view; a folded strip
+half above the plot writes nothing (`foldedText` empty), whole it writes its lines.
 
 **Analysis and trigger** (`analysisMath`, `analysisWindows`, `chartTrigger`): the FFT of an impulse is flat, a sine of 8
 periods in 256 lands in bin 8 with N/2, and comes back; 0 .. 999 makes 10 bins of 99.9, one value one bin, few levels
@@ -4517,7 +4604,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 341 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 357 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -4680,16 +4767,16 @@ a broken map is refused. It needs the `jsonschema` package and says SKIP without
 
 ## 27. Design decisions and pitfalls
 
-| Decision or pitfall | Reason |
+| Decision&nbsp;or&nbsp;pitfall | Reason |
 |---|---|
-| All device I/O on its own thread | drawing, dialogs and repaints never delay a poll; the CSV and the chart get every poll |
+| All&nbsp;device&nbsp;I/O&nbsp;on&nbsp;its&nbsp;own&nbsp;thread | drawing, dialogs and repaints never delay a poll; the CSV and the chart get every poll |
 | The window talks to the engine only through `post()`, queued signals and locked copies | one thread owns each piece of state; no locks spread across the UI |
-| `RegTable` has one writer | the I/O thread reads it without a lock; the window's copy can never tear |
+| `RegTable`&nbsp;has&nbsp;one&nbsp;writer | the I/O thread reads it without a lock; the window's copy can never tear |
 | Every `QObject` on the I/O thread is a child of a moved object or created there | a member left in the GUI thread cannot be started from the I/O thread; Qt only warns and the feature silently fails (20.7) |
 | Own ticker thread instead of a Qt timer for polling | Qt timers and C++ timed waits round to the 15.6 ms system tick on Windows |
 | Due ticks counted, backlog capped at about 20 ms of polls | a slow moment is made up, a stall is not made up in a burst |
 | `Qt::PreciseTimer` for answer timeouts, streams and the fallback frame timer | coarse timers drift by about 20 % on Windows |
-| Frame clock on `DwmFlush` | a 16 ms timer against a 60 Hz display drops a frame every 0.4 s |
+| Frame&nbsp;clock&nbsp;on&nbsp;`DwmFlush` | a 16 ms timer against a 60 Hz display drops a frame every 0.4 s |
 | Only reads overlap in the pipeline | a read after a write of the same register must see the new value |
 | Answers matched by slave, function code, offset and count | a pipelined answer finds its request; a late one, or another device's, is reported, not mistaken |
 | Keep-alive every 400 ms while idle | some servers drop a client that is silent for about a second |
@@ -4702,7 +4789,7 @@ a broken map is refused. It needs the `jsonschema` package and says SKIP without
 | Write checks in one place (`MainWindow::onWriteRequested`) for the table and the quick-write panel | the danger and changed-meanwhile questions cannot be bypassed |
 | API writes need switches that are never saved | a restart never leaves remote writes on |
 | The token is never saved and never on the command line (`EVRE_TOKEN`) | it would show in the settings, the process list or the shell history |
-| A map is loaded into a temporary | a bad file leaves the current map untouched |
+| A&nbsp;map&nbsp;is&nbsp;loaded&nbsp;into&nbsp;a&nbsp;temporary | a bad file leaves the current map untouched |
 | The table repaints at most every 50 ms | hundreds of polls a second would otherwise flood the view |
 | Samples and monitor lines are capped between frames | a minimised window or a flood of frames cannot eat the memory |
 | Chart: bins on absolute time, kept from frame to frame, chunks of 8 to 4096 samples, cosmetic polylines, many lines on threads in stripes or on a graphics card as a layer of the window, a frame budget by the average frame, arrays kept to the RAM set | no shimmer; cost follows pixels, not samples; Qt's fast path; 64 lines of 1000 Hz at 60 fps on a 4K screen; the window answers at any number of lines; no whole-window GPU composition, no child window (chapter 23); the RAM set is what the samples take |
@@ -4726,45 +4813,45 @@ a broken map is refused. It needs the `jsonschema` package and says SKIP without
 | EVRe | the register protocol of teknile that the Studio speaks: framed requests over TCP or a serial line |
 | frame | one EVRe message: `7B SLAVE FN OFF CNT DATA CRC 7D` |
 | slave | the device address byte in a frame, 0 to 255 |
-| function code (FN) | what a frame is: READ, READ_RESP, WRITE, WRITE_ACK, WRITE_ACK_RESP, ERROR_RESP |
+| function&nbsp;code&nbsp;(FN) | what a frame is: READ, READ_RESP, WRITE, WRITE_ACK, WRITE_ACK_RESP, ERROR_RESP |
 | CRC-16/X-25 | the frame check: polynomial 0x1021 reflected, init and final XOR 0xFFFF |
 | map | the JSON file (`evre-map/1`) that describes a device's registers |
 | register | a named address with a type, size, access and presentation |
-| danger register | a register marked `"danger"`: every write is confirmed; API writes need an extra switch |
-| login register | the map's optional `"login"` address where the token is written after connecting |
+| danger&nbsp;register | a register marked `"danger"`: every write is confirmed; API writes need an extra switch |
+| login&nbsp;register | the map's optional `"login"` address where the token is written after connecting |
 | token | the text typed in the token box or given in `EVRE_TOKEN`; never stored |
 | bank | 256 addresses with the same high byte, e.g. 0xD0xx |
 | block | one read request that covers several registers close together |
 | poll | one read of every block, and one sample and CSV row when all are answered |
-| poll under way | a poll whose blocks are not all answered yet; several may overlap |
-| In flight | the number of requests the master sends before their answers come |
+| poll&nbsp;under&nbsp;way | a poll whose blocks are not all answered yet; several may overlap |
+| In&nbsp;flight | the number of requests the master sends before their answers come |
 | pipelining | sending several requests before the first answer, as In flight > 1 allows |
 | pending | a request sent whose answer has not come yet |
 | keep-alive | the idle read of 0xA000 every 400 ms |
 | ticker | the thread that marks poll deadlines |
-| due tick | a deadline that has passed but whose poll has not started yet |
+| due&nbsp;tick | a deadline that has passed but whose poll has not started yet |
 | backlog | due polls waiting for a free slot, capped at about 20 ms of them |
-| continuous mode | poll interval 0 ("max"): the next poll as soon as one ends |
-| layout generation | the engine's counter of block layouts; answers of an older layout are ignored |
-| map generation | the window's counter of maps sent to the engine; snapshots of another one are ignored |
+| continuous&nbsp;mode | poll interval 0 ("max"): the next poll as soon as one ends |
+| layout&nbsp;generation | the engine's counter of block layouts; answers of an older layout are ignored |
+| map&nbsp;generation | the window's counter of maps sent to the engine; snapshots of another one are ignored |
 | version | a row's change counter in `RegTable`; the window copies only rows that moved |
 | snapshot | the window's copy of `RegTable`, taken under its mutex |
 | stale | a value older than `max(2 × interval, interval + timeout)`, shown grey |
 | unavailable | a register the device refused for good (error 3, 4 or 5); no longer polled |
 | sample | one (time, value) point of a register, one per poll |
-| series / line | one register or math line on the chart |
+| series&nbsp;/&nbsp;line | one register or math line on the chart |
 | key | a line's id on the chart: `regKey(slave, address)` for a register, or `FIRST_CHART_KEY + i` (1 << 24) for math line i |
-| math line | a formula over registers drawn and measured like a register's line |
-| window (chart) | the time span shown |
+| math&nbsp;line | a formula over registers drawn and measured like a register's line |
+| window&nbsp;(chart) | the time span shown |
 | memory | the time span kept; the view moves inside it |
-| live / held | the view follows now / stays where it is |
-| smooth delay | how far behind now the live edge is drawn, measured from how late samples arrive |
+| live&nbsp;/&nbsp;held | the view follows now / stays where it is |
+| smooth&nbsp;delay | how far behind now the live edge is drawn, measured from how late samples arrive |
 | bin | the samples of one pixel column, by absolute time |
 | chunk | min, max, first and last of 8, 64, 512 or 4096 consecutive samples |
-| cosmetic pen | a Qt pen whose width is in device pixels, whatever the transform |
-| frame clock | the source of one tick per display refresh |
+| cosmetic&nbsp;pen | a Qt pen whose width is in device pixels, whatever the transform |
+| frame&nbsp;clock | the source of one tick per display refresh |
 | pass-through | the API port 1219 that speaks EVRe frames |
-| JSON lines | the API port 1220: one JSON object per line each way |
+| JSON&nbsp;lines | the API port 1220: one JSON object per line each way |
 | stream | an API client's periodic samples of named registers |
 | unsolicited | a frame that answers no pending request |
 
@@ -4772,12 +4859,12 @@ a broken map is refused. It needs the `jsonschema` package and says SKIP without
 
 | Item | Notes |
 |---|---|
-| Poll only the plotted registers | an option to read fewer blocks per poll when only a few registers matter |
+| Poll&nbsp;only&nbsp;the&nbsp;plotted&nbsp;registers | an option to read fewer blocks per poll when only a few registers matter |
 | Math lines in the CSV and the API | math lines are computed in the GUI thread for the chart only; CSV rows and API answers carry registers only |
 | A failed read repeats the last good value | `setError()` keeps `valid` and `raw`; the poll's sample and CSV cell then repeat the old value; an empty CSV cell for a failed read may be better |
-| Login on serial links | only TCP connections send the token; a device that wants a login on a serial port cannot get one |
-| API ports only in the settings | `api/evrePort` and `api/jsonPort` have no field in the window and no command-line option |
-| Unit tests | the map files and the exports have their own test (`evre_map_test`); `Expr`, value coding and the frame parser are still tested only through the GUI and API tests |
+| Login&nbsp;on&nbsp;serial&nbsp;links | only TCP connections send the token; a device that wants a login on a serial port cannot get one |
+| API&nbsp;ports&nbsp;only&nbsp;in&nbsp;the&nbsp;settings | `api/evrePort` and `api/jsonPort` have no field in the window and no command-line option |
+| Unit&nbsp;tests | the map files and the exports have their own test (`evre_map_test`); `Expr`, value coding and the frame parser are still tested only through the GUI and API tests |
 | Translations | user text goes through `tr()`, but no translation files are built or shipped |
 | Packaging | no install target, no installer, no Linux bundle |
 | macOS | the code has the macOS path (condition-variable ticker, timer frame clock) but has not been built or run there |
@@ -4818,7 +4905,7 @@ One row per register, in address order. The cells are edited in place: double-cl
 | Name | any text but empty |
 | Type | a list: `u8` … `f32`, `bytes` |
 | Size | for `bytes` only; the other types have their own size |
-| Unit, Description | free text |
+| Unit,&nbsp;Description | free text |
 | Access | a list: `ro`, `rw`, `wo` (write-only: never read, so never polled) |
 | Write | a list: `normal`, `action` (a write does something, then the register reads back idle), `w1c` (a 1 written to a bit clears it) |
 | Group | a list of the map's groups, or a new name typed |
@@ -4838,7 +4925,7 @@ empty and says *(several)*, and what is typed or picked there goes to all of the
 
 | Action | Keys | What it does |
 |---|---|---|
-| **+ Register** | | a new register after the selected one: the next free address, its type and group, a name `REG_XXXX` |
+| **+&nbsp;Register** | | a new register after the selected one: the next free address, its type and group, a name `REG_XXXX` |
 | **Duplicate** | Ctrl+D | copies of the selected registers at the next free addresses; a name gets `_2` (a name that ends in a number counts on: a copy of `CH_1` is `CH_2`) |
 | Copy | Ctrl+C | the selected registers as JSON on the clipboard (a list as in the map file; also plain text) |
 | Paste | Ctrl+V | registers from the clipboard: from this map, another one, or JSON typed in a text editor. Where their addresses are free they keep them; otherwise they move as a block, the gaps between them kept, to the first place after the selection they all fit |
@@ -4899,13 +4986,13 @@ register (a finding on the map itself opens the Map settings). With nothing foun
 
 | Finding | Kind |
 |---|---|
-| a name used twice, or no name | error |
+| a&nbsp;name&nbsp;used&nbsp;twice,&nbsp;or&nbsp;no&nbsp;name | error |
 | a register past 0xFFFF, a size under 1, a scale of 0 | error |
 | bit fields on a float or a byte array; a field past the register's bits | error |
 | special values on a byte array; *write-1-to-clear* on a float | error |
-| min above max | error |
-| slave 0 (the broadcast address) | error |
-| registers that share bytes | warning |
+| min&nbsp;above&nbsp;max | error |
+| slave&nbsp;0&nbsp;(the&nbsp;broadcast&nbsp;address) | error |
+| registers&nbsp;that&nbsp;share&nbsp;bytes | warning |
 | fields that share bits, a field without a name | warning |
 | value names on a float, names on a register never read | warning |
 | a default outside min … max; danger or a write behaviour on a read-only register | warning |
@@ -5009,10 +5096,10 @@ The whole map as a document an engineer (or an AI agent) can implement the devic
 
 | Macro | Value |
 |---|---|
-| `P_NAME_ADDR`, `P_NAME_SIZE` | the address, the size in bytes |
-| `P_NAME_MIN`, `_MAX`, `_DEFAULT` | in shown units: an integer, or a `float` literal (`3.65f`) for an `f32` |
+| `P_NAME_ADDR`,&nbsp;`P_NAME_SIZE` | the address, the size in bytes |
+| `P_NAME_MIN`,&nbsp;`_MAX`,&nbsp;`_DEFAULT` | in shown units: an integer, or a `float` literal (`3.65f`) for an `f32` |
 | `P_NAME_<VALUE>` | each value name's number; special values marked `/* special */` |
-| `P_NAME_<FIELD>_POS`, `_MSK` | each field's position and mask, `P_NAME_<FIELD>_<VALUE>` its values |
+| `P_NAME_<FIELD>_POS`,&nbsp;`_MSK` | each field's position and mask, `P_NAME_<FIELD>_<VALUE>` its values |
 | `P_DEVICE_ID`, `P_LOGIN_ADDR`, `P_LOGIN_SIZE` | the map's device ID and login |
 
 Names are made C identifiers (`Power & supply` → `POWER_SUPPLY`); a name that would be defined twice gets `_2`.
@@ -5033,7 +5120,7 @@ not plotted, empty otherwise; a file without the column: every register plotted)
 
 | Column | Written as |
 |---|---|
-| `enum`, `special` | `0=off;1=on` |
+| `enum`,&nbsp;`special` | `0=off;1=on` |
 | `fields` | `NAME@7:4@rw{0=idle;1=run}#description`, fields separated by `\|`; `@access`, `{values}` and `#description` are optional |
 
 In those columns `\ ; = | { } # @` inside a name are written with a `\` before them. Cells with commas, quotes or
@@ -5059,8 +5146,8 @@ device bank. **Export > Device table for the EVRe library (C++)...** in the Map 
 
 | Part | What |
 |---|---|
-| `P_WRITE_MIN`, `P_READ_MAX` | the library's `DEVICE_REG_WRITE_MIN` and `DEVICE_REG_READ_MAX`; also `P_ID`, `P_SLAVE`, `P_RO_SIZE`, `P_RW_SIZE` |
-| `p_ro_t`, `p_rw_t` | the read-only and the read-write image: packed structs with a member per register in address order (its name in lower case; a C++ keyword gets `_`), a gap as `_gap_d016[106]`, the defaults as start values in raw units |
+| `P_WRITE_MIN`,&nbsp;`P_READ_MAX` | the library's `DEVICE_REG_WRITE_MIN` and `DEVICE_REG_READ_MAX`; also `P_ID`, `P_SLAVE`, `P_RO_SIZE`, `P_RW_SIZE` |
+| `p_ro_t`,&nbsp;`p_rw_t` | the read-only and the read-write image: packed structs with a member per register in address order (its name in lower case; a C++ keyword gets `_`), a gap as `_gap_d016[106]`, the defaults as start values in raw units |
 | `static_assert`s | every member at its address, and the sizes: a hand edit that moves one does not compile |
 | `p_bind(dev, &ro, &rw)` | fills the library's pointer table (a static array, no heap), the slave address, `DEVICE_ID` and the two limits; return it from `protocolConfigure()`, or call it after `protocolInit()` |
 | `p_keep_limits(&rw, &seen)` | a host write past a register's min or max (in raw units) put back to its value in `seen`; a special value passes |
@@ -5105,7 +5192,7 @@ replace the base's, and its registers change the base's by address:
 
 | Item | Effect |
 |---|---|
-| an address the base has | only the keys given change; `null` removes the base's key (here: the unit) |
+| an&nbsp;address&nbsp;the&nbsp;base&nbsp;has | only the keys given change; `null` removes the base's key (here: the unit) |
 | `"remove": true` | the base's register at that address goes |
 | an address the base does not have | a new register |
 
@@ -5139,7 +5226,7 @@ evre broadcast LINK --map MAP|--bus BUS NAME=VALUE [--force]     every device at
 |---|---|
 | `--tcp HOST:PORT` or `--serial PORT[:BAUD]` | the link (baud 115200 when not given) |
 | `--bus BUS` | in place of `--map MAP` for `read`, `dump`, `watch`, `write` and `broadcast`: several devices on one link (a bus file, 3.9). The registers are named after their devices (`D1_SPEED`, `D2_SPEED`), each request goes to its device's slave, and every device with a login register is logged in |
-| `--slave N`, `--timeout MS` | else the map's slave address and `protocol.timeout_ms` (1, 1000 ms) |
+| `--slave N`,&nbsp;`--timeout MS` | else the map's slave address and `protocol.timeout_ms` (1, 1000 ms) |
 | `--json` | one JSON object per line: for scripts |
 | `EVRE_TOKEN` | the login token, sent first when the map has a `login` register. Never an option: a command line can be seen by other users of the computer |
 
@@ -5181,10 +5268,10 @@ A line per register, `PASS`, `WARN` or `FAIL`, then a summary; exit 1 if anythin
 
 | Checked | FAIL / WARN when |
 |---|---|
-| DEVICE_ID, STATUS | FAIL: another device ID than the map's; WARN: a protocol revision other than 1 |
-| every readable register | FAIL: the read is refused or times out, or answers another size than the map's |
-| its value | WARN: past `min` / `max`, or an enum value the map has no name for (a special value is fine) |
-| a write-only register | WARN: the device answers a read the map says it refuses |
+| DEVICE_ID,&nbsp;STATUS | FAIL: another device ID than the map's; WARN: a protocol revision other than 1 |
+| every&nbsp;readable&nbsp;register | FAIL: the read is refused or times out, or answers another size than the map's |
+| its&nbsp;value | WARN: past `min` / `max`, or an enum value the map has no name for (a special value is fine) |
+| a&nbsp;write-only&nbsp;register | WARN: the device answers a read the map says it refuses |
 | with `--writes`, each read-write register (not `action`) | the value it holds is written back and read again: FAIL if the write is refused, WARN if it reads back otherwise. Danger registers only with `--force` |
 
 Without `--writes` it only reads: safe on a running device. Run it on a new firmware against its map, in CI against
@@ -5204,20 +5291,20 @@ gets no answer; a broadcast (slave 0) WRITE is taken as a WRITE to it and not an
 
 The device does what its map says:
 
-| The map says | The simulator |
+| The&nbsp;map&nbsp;says | The simulator |
 |---|---|
 | `device_id` | DEVICE_ID; STATUS reports protocol revision 1. The protocol's bank (`0xA000`…) is never moved or reset, even when the map lists its registers |
 | `default` | the register's value at the start (else 0) |
-| a read-only number | moves: a float as a slow sine wave, an integer as a slow wave, inside `min` … `max` when given; a `u32` in `ms` counts milliseconds. Registers with value names, fields or a default stay put |
+| a&nbsp;read-only&nbsp;number | moves: a float as a slow sine wave, an integer as a slow wave, inside `min` … `max` when given; a `u32` in `ms` counts milliseconds. Registers with value names, fields or a default stay put |
 | `"access": "wo"` | takes writes, refuses reads (ERROR_RESP 3) |
 | `"access": "ro"` | refuses writes (ERROR_RESP 3) |
 | `"write": "action"` | holds the value written 200 ms, then reads back idle (its default, else 0) |
 | `"write": "w1c"`, a field `"access": "w1c"` | a 1 written clears the bit, a 0 leaves it; such bits start set, like a latched fault |
 | a field `"access": "ro"` in a writable register | keeps its bits whatever is written |
-| `min`, `max` with `--strict` | a value past them is refused (ERROR_RESP 3) |
+| `min`,&nbsp;`max`&nbsp;with&nbsp;`--strict` | a value past them is refused (ERROR_RESP 3) |
 | `login` | a write of the whole login register is accepted with the token (`--token`, default `example-token`), else refused; `--require-login`: nothing else is written on a connection before its login |
-| `persist` with `--state FILE` | those registers are kept in FILE (JSON) across restarts |
-| an address in no register | ERROR_RESP 4 (offset out of range) |
+| `persist`&nbsp;with&nbsp;`--state FILE` | those registers are kept in FILE (JSON) across restarts |
+| an&nbsp;address&nbsp;in&nbsp;no&nbsp;register | ERROR_RESP 4 (offset out of range) |
 
 It listens on 127.0.0.1; `--any` opens it to the network. `--verbose` prints every write with its value.
 

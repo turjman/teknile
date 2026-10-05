@@ -1,4 +1,9 @@
-<p align="center"><img src="docs/assets/teknile.png" alt="teknile" width="320"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/teknile-logo-reversed.svg">
+    <img src="docs/assets/teknile-logo.svg" alt="teknile" width="320">
+  </picture>
+</p>
 
 # EVRe
 
@@ -19,12 +24,12 @@ host                                   device
  ◄─────────────────────────────────────┤
 ```
 
-| | |
+| Part | What it is |
 |---|---|
-| Protocol revision | **1** (reported in `STATUS[7:0]`) |
-| Device library | C++, two files, no dependencies beyond `stdint` / `stdlib`, ~3 kB of code |
-| Host tool | **EVRe Studio**: live registers, charts, CSV, writes, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module |
-| Map format | **`evre-map/1`**: one JSON file describes a device's registers for every tool ([contract](studio/docs/MAP_FORMAT.md), [JSON Schema](studio/docs/evre-map-1.schema.json)) |
+| Protocol&nbsp;revision | **1** (reported in `STATUS[7:0]`) |
+| Device&nbsp;library | C++, two files, no dependencies beyond `stdint` / `stdlib`, ~3 kB of code |
+| Host&nbsp;tool | **EVRe Studio**: live registers, charts, CSV, writes, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module |
+| Map&nbsp;format | **`evre-map/1`**: one JSON file describes a device's registers for every tool ([contract](studio/docs/MAP_FORMAT.md), [JSON Schema](studio/docs/evre-map-1.schema.json)) |
 
 ## What is here
 
@@ -36,7 +41,7 @@ host                                   device
 | [`studio/docs/MAP_FORMAT.md`](studio/docs/MAP_FORMAT.md) | The register map format `evre-map/1`: the contract for any tool that reads or writes maps, and its [JSON Schema](studio/docs/evre-map-1.schema.json). |
 | [`studio/cli/`](studio/cli/) | `evre` (validate, export, info, read, dump, watch, write, check a device against its map) and `evre-sim` (a map served as a device), built with the Studio. |
 | [`studio/python/`](studio/python/) | `evre` for Python: a device by register name with its map, standard library only. |
-| [`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md) | how to change EVRe, and what each version holds. |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md),&nbsp;[`CHANGELOG.md`](CHANGELOG.md) | how to change EVRe, and what each version holds. |
 | [`studio/examples/`](studio/examples/) | Using a device from MATLAB, LabVIEW and Python through EVRe Studio. |
 
 ## The protocol in one screen
@@ -128,7 +133,7 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])
 
 ## Tests
 
-| | |
+| File | What it tests |
 |---|---|
 | `studio/tests/fake_device.py` | A fake EVRe device over TCP, from any map, with moving values. |
 | `studio/tests/gui_test.cpp` | EVRe Studio's window driven by QtTest against the fake device: writes, read-back, change-while-editing, ⚠ confirmation, stale values, a bus, auto send, the Map editor, the chart (on a graphics card too). |

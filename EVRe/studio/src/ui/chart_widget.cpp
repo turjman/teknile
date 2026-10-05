@@ -8,12 +8,14 @@
 #include <QKeyEvent>
 #include <QDateTime>
 #include <QGuiApplication>
+#include <QHelpEvent>
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPainter>
 #include <QPainterPath>
 #include <QStackedWidget>
 #include <QThread>
+#include <QToolTip>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -42,6 +44,14 @@ constexpr double LEGEND_ROW_H = 22;
 constexpr double STATE_W = 420;            /* the state text, right-aligned at the top right */
 constexpr double STATE_ROOM = 230;
 constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */         /* the legend stops this far from the right, for the state */
+constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left of its value labels (Lanes) */
+constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
+constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
+constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
+constexpr double LANE_BAR_W = 6;
+constexpr double LANE_BAR_GRIP = 4;        /* the bar takes clicks this far either side of it */
+constexpr double LANE_HANDLE_MIN = 24;
+constexpr double FOLDED_ITEM_GAP = 14;     /* between the items of a folded strip */
 constexpr double CHIP_GAP = 6;             /* between two chips */
 constexpr double CHIP_TEXT_LEFT = 20;      /* a chip's text starts after its dot */
 constexpr double CHIP_PAD_RIGHT = 8;
@@ -955,7 +965,16 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 bool ChartView::event(QEvent *e) {
 	if (e->type() == QEvent::Leave) {
 		mouseX_ = -1;
+		hoverLane_ = -1;
+		hoverBar_ = false;
 		refresh();
+	}
+	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
+		auto *help = static_cast<QHelpEvent *>(e);
+		const QString text = toolTipAt(help->pos());
+		if (text.isEmpty()) QToolTip::hideText();
+		else QToolTip::showText(help->globalPos(), text, this);
+		return true;
 	}
 	return QWidget::event(e);
 }
@@ -963,6 +982,7 @@ bool ChartView::event(QEvent *e) {
 void ChartView::mousePressEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton) return;
 	const QPointF pos = e->position();
+	pressedLanes_ = false;
 	if (pressLegend(pos)) return;
 	/* the trigger's level: dragged */
 	if (trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
@@ -986,6 +1006,10 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		mouseMoveEvent(e);
 		return;
 	}
+	if (pressLanes(pos)) { /* the lanes' scroll bar, a unit name, a folded strip: no cursor, no pan */
+		pressedLanes_ = true;
+		return;
+	}
 	if (!plotRect().contains(pos)) return;
 	if (cursorMode_) {
 		pickCursor(pos.x());
@@ -995,6 +1019,34 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	dragStartX_ = pos.x();
 	dragStartEnd_ = viewEnd();
 	setCursor(Qt::ClosedHandCursor);
+}
+
+/* Lanes: on the scroll bar, the handle is dragged and a click above or below it moves one plot height; a click on an
+ * open lane's unit name folds it, one anywhere on a folded strip opens it */
+bool ChartView::pressLanes(const QPointF &pos) {
+	if (!lanes_) return false;
+	const QRectF plot = plotRect();
+	const QRectF track = laneScrollBarRect();
+	if (!track.isEmpty() && track.adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos)) {
+		const QRectF handle = laneScrollHandleRect();
+		if (pos.y() < handle.top()) scrollLanesTo(laneScroll() - plot.height());
+		else if (pos.y() > handle.bottom()) scrollLanesTo(laneScroll() + plot.height());
+		else {
+			drag_ = Drag::LaneBar;
+			dragStartY_ = pos.y();
+			dragStartScroll_ = laneScroll();
+		}
+		return true;
+	}
+	if (pos.x() > plot.right() || pos.y() < plot.top() || pos.y() > plot.bottom()) return false;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return false;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
+	const bool folded = lanesShown_[lane].folded;
+	if (!folded && pos.x() >= LANE_UNIT_W) return false;
+	setLaneFolded(lane, !folded);
+	return true;
 }
 
 /* cursor mode: a click places A, then B, then moves the nearer of the two */
@@ -1038,6 +1090,11 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
 			notes_[selectedNote_].time = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
 		break;
+	case Drag::LaneBar: { /* the handle follows the mouse: its free travel spans the whole scroll */
+		const double travel = laneScrollBarRect().height() - laneScrollHandleRect().height();
+		if (travel > 0) scrollLanesTo(dragStartScroll_ + (pos.y() - dragStartY_) / travel * maxLaneScroll());
+		break;
+	}
 	case Drag::LegendBar: {
 		/* the thumb follows the mouse: its free travel spans the whole scroll */
 		const LegendLayout legend = legendLayout(plot);
@@ -1052,7 +1109,15 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 				&& (legendTrack(legend).adjusted(0, -LEGEND_BAR_GRIP, 0, LEGEND_BAR_GRIP).contains(pos)
 					|| (offset > 0 && legendArrow(legend, false).contains(pos))
 					|| (offset < legend.maxScroll() && legendArrow(legend, true).contains(pos)));
-		setCursor(overviewRect().contains(pos) || onLegendBar ? Qt::PointingHandCursor
+		/* lanes: the scroll bar, a unit name (folds) and a folded strip (opens) take a click */
+		const int lane = lanes_ && pos.y() >= plot.top() && pos.y() <= plot.bottom() && pos.x() <= plot.right()
+				? laneAtY(pos.y()) : -1;
+		const bool onLanes = lane >= 0 && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()))
+				&& (lanesShown_[lane].folded || pos.x() < LANE_UNIT_W);
+		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
+		hoverLane_ = onLanes ? lane : -1; /* its button drawn highlighted */
+		hoverBar_ = onLaneBar;
+		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar ? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 						&& plot.contains(pos) ? Qt::SizeVerCursor
@@ -1078,6 +1143,15 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 	if (wheelLegend(e)) return;
 	const double notches = e->angleDelta().y() / 120.0;
 	if (notches == 0) return;
+	/* lanes: over their value labels (or the scroll bar), the wheel scrolls them; with Ctrl, it stays the lane's zoom */
+	const QRectF plot = plotRect();
+	const QPointF pos = e->position();
+	if (lanes_ && !(e->modifiers() & Qt::ControlModifier) && pos.y() >= plot.top() && pos.y() <= plot.bottom()
+			&& (pos.x() < plot.left() || pos.x() > plot.right())) {
+		scrollLanesTo(laneScroll() - notches * LANE_WHEEL_STEP);
+		e->accept();
+		return;
+	}
 	const double factor = std::pow(ZOOM_STEP, -notches); /* up: zoom in */
 	if (e->modifiers() & Qt::ControlModifier) {
 		zoomY(factor, e->position().y());
@@ -1110,7 +1184,7 @@ void ChartView::zoomY(double factor, double mouseY) {
 	const QRectF plot = plotRect();
 	/* lanes: the lane under the mouse */
 	const int lane = laneAtY(mouseY);
-	if (lanes_ && lane < 0) return;
+	if (lanes_ && (lane < 0 || lanesShown_[lane].folded)) return;
 	YScale &scale = lane >= 0 ? scaleOf(lanesShown_[lane]) : y_;
 	const QRectF rect = lane >= 0 ? lanesShown_[lane].axes.rect : plot;
 	if (lane >= 0 && scale.autoRange) { /* from what the lane shows now */
@@ -1132,8 +1206,9 @@ void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
 		emit noteEditRequested(note);
 		return;
 	}
-	if (lanes_) { /* the lane under the mouse: Auto */
-		if (laneAtY(e->position().y()) >= 0) setLaneYAuto(laneAtY(e->position().y()));
+	if (lanes_) { /* the lane under the mouse: Auto (not after a click on the bar, a unit name or a strip) */
+		const int lane = laneAtY(e->position().y());
+		if (!pressedLanes_ && lane >= 0 && !laneFolded(lane)) setLaneYAuto(lane);
 		return;
 	}
 	setYAuto();
@@ -1149,14 +1224,12 @@ void ChartView::contextMenuEvent(QContextMenuEvent *e) {
 		e->accept();
 		return;
 	}
-	/* on a lane's value labels: its Y range */
-	if (lanes_ && e->pos().x() < plot.left() && e->pos().y() >= plot.top() && e->pos().y() <= plot.bottom()) {
-		const int lane = laneAtY(e->pos().y());
-		if (lane >= 0) {
-			emit laneMenuRequested(lane, e->globalPos());
-			e->accept();
-			return;
-		}
+	/* on a lane's value labels, or anywhere on a folded strip: the lane's menu */
+	const int under = lanes_ && e->pos().y() >= plot.top() && e->pos().y() <= plot.bottom() ? laneAtY(e->pos().y()) : -1;
+	if (under >= 0 && (e->pos().x() < plot.left() || (lanesShown_[under].folded && e->pos().x() <= plot.right()))) {
+		emit laneMenuRequested(under, e->globalPos());
+		e->accept();
+		return;
 	}
 	emit menuRequested(e->globalPos(), timeAtX(std::clamp(double(e->pos().x()), plot.left(), plot.right())));
 	e->accept();
@@ -1359,6 +1432,10 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		plot.axes.setRange(lo, hi, logOf(scale));
 	}
 	axes.setRange(plots.first().axes.lo, plots.first().axes.hi, plots.first().axes.log);
+	if (lanes_) { /* the scroll as drawn: within what there is to scroll now */
+		const double content = plots.last().axes.rect.bottom() - plots.first().axes.rect.top();
+		laneScroll_ = std::clamp(laneScroll_, 0.0, std::max(0.0, content - axes.rect.height()));
+	}
 	lanesShown_ = plots;
 	lastAxes_ = plots.first().axes;
 
@@ -1381,13 +1458,19 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	if (!onCard) {
 		drawCursorSpan(p, axes);
 		drawLines(p, plots, binned);
-		drawNotes(p, axes);
-		drawTrigger(p, plots, binned);
-		drawCursors(p, axes);
+		/* the marks' lines, the folded strips over them, then the marks' tags (as the card: its pictures over all) */
+		drawNotes(p, axes, Marks::Lines);
+		drawTrigger(p, plots, binned, Marks::Lines);
+		drawCursors(p, axes, Marks::Lines);
+		drawFolded(p, plots);
+		drawNotes(p, axes, Marks::Tags);
+		drawTrigger(p, plots, binned, Marks::Tags);
+		drawCursors(p, axes, Marks::Tags);
 	} else if (!under.isNull()) {
 		under.setDevicePixelRatio(devicePixelRatioF());
 		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
 	}
+	drawLaneBar(p); /* in the right pad, outside the card's layer */
 	drawMemoryStrip(p, axes);
 	drawLegend(p, axes);
 	if (!onCard) drawCrosshair(p, axes, plots, binned);
@@ -1558,7 +1641,8 @@ void ChartView::forgetRanges() {
 }
 
 /* The plots of a frame. Without lanes: the whole plot, every line. With: a lane per unit in the order the lines came,
- * MAX_LANES at most (the units after share the last), stacked LANE_GAP apart, of equal height. */
+ * stacked LANE_GAP apart: a folded one LANE_FOLDED_H high, the open ones sharing the rest equally but never lower than
+ * LANE_MIN_H; when they do not fit, they go on below the plot and scroll (laneScroll_, clamped here too). */
 QVector<ChartView::Lane> ChartView::plotLayout() const {
 	QVector<Lane> plots;
 	const QRectF plot = plotRect();
@@ -1574,30 +1658,82 @@ QVector<ChartView::Lane> ChartView::plotLayout() const {
 	for (const Series &s : series_) {
 		auto it = laneOfUnit.find(s.unit);
 		if (it == laneOfUnit.end()) {
-			if (plots.size() < MAX_LANES) {
-				Lane lane;
-				lane.key = s.unit;
-				lane.label = s.unit;
-				plots << lane;
-			} else {
-				plots.last().label += QStringLiteral(" · ") + s.unit; /* the last lane shares */
-			}
+			Lane lane;
+			lane.key = s.unit;
+			lane.label = s.unit;
+			lane.folded = lanesFolded_.contains(s.unit);
+			plots << lane;
 			it = laneOfUnit.insert(s.unit, int(plots.size() - 1));
 		}
 		plots[*it].lines << i++;
 	}
-	const double height = (plot.height() - LANE_GAP * (plots.size() - 1)) / plots.size();
-	for (int k = 0; k < plots.size(); k++)
-		plots[k].axes.rect = QRectF(plot.left(), plot.top() + k * (height + LANE_GAP), plot.width(), height);
+	double openHeight, content;
+	laneHeights(plots, plot.height(), openHeight, content);
+	double y = plot.top() - std::clamp(laneScroll_, 0.0, std::max(0.0, content - plot.height()));
+	for (Lane &lane : plots) {
+		const double height = lane.folded ? LANE_FOLDED_H : openHeight;
+		lane.axes.rect = QRectF(plot.left(), y, plot.width(), height);
+		y += height + LANE_GAP;
+	}
 	return plots;
+}
+
+void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, double &openHeight, double &content) const {
+	int folded = 0;
+	for (const Lane &lane : lanes) folded += lane.folded ? 1 : 0;
+	const int open = int(lanes.size()) - folded;
+	const double gaps = LANE_GAP * std::max<qsizetype>(0, lanes.size() - 1);
+	openHeight = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
+	content = gaps + folded * LANE_FOLDED_H + open * openHeight;
+}
+
+double ChartView::laneContentHeight() const {
+	if (!lanes_ || series_.isEmpty()) return 0;
+	const QVector<Lane> plots = plotLayout();
+	return plots.last().axes.rect.bottom() - plots.first().axes.rect.top();
+}
+
+double ChartView::maxLaneScroll() const { return std::max(0.0, laneContentHeight() - plotRect().height()); }
+
+double ChartView::laneScroll() const { return std::clamp(laneScroll_, 0.0, maxLaneScroll()); }
+
+void ChartView::setLaneScroll(double pixels) { scrollLanesTo(pixels); }
+
+void ChartView::scrollLanesTo(double pixels) {
+	const double to = std::clamp(pixels, 0.0, maxLaneScroll());
+	if (to == laneScroll_) return;
+	laneScroll_ = to;
+	refresh();
+}
+
+QRectF ChartView::laneVisible(const QRectF &lane, const QRectF &plot) {
+	const double top = std::max(lane.top(), plot.top()), bottom = std::min(lane.bottom(), plot.bottom());
+	return bottom > top ? QRectF(lane.left(), top, lane.width(), bottom - top) : QRectF();
+}
+
+/* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
+QRectF ChartView::laneScrollBarRect() const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || laneContentHeight() <= plot.height()) return QRectF();
+	return QRectF(plot.right() + LANE_BAR_X, plot.top(), LANE_BAR_W, plot.height());
+}
+
+QRectF ChartView::laneScrollHandleRect() const {
+	const QRectF track = laneScrollBarRect();
+	if (track.isEmpty()) return QRectF();
+	const double content = laneContentHeight(), most = content - track.height();
+	const double height = std::max(LANE_HANDLE_MIN, track.height() * track.height() / content);
+	return QRectF(track.left(), track.top() + laneScroll() / most * (track.height() - height), track.width(), height);
 }
 
 int ChartView::laneAtY(double y) const {
 	if (!lanes_ || lanesShown_.isEmpty()) return -1;
-	int nearest = 0;
+	const QRectF plot = plotRect();
+	int nearest = -1;
 	double best = std::numeric_limits<double>::max();
 	for (int k = 0; k < lanesShown_.size(); k++) {
-		const QRectF &r = lanesShown_[k].axes.rect;
+		const QRectF r = laneVisible(lanesShown_[k].axes.rect, plot); /* a lane out of view is nowhere */
+		if (r.isEmpty()) continue;
 		const double d = y < r.top() ? r.top() - y : y > r.bottom() ? y - r.bottom() : 0;
 		if (d < best) {
 			best = d;
@@ -1607,9 +1743,101 @@ int ChartView::laneAtY(double y) const {
 	return nearest;
 }
 
+bool ChartView::laneFolded(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	return lanes_ && lane >= 0 && lane < plots.size() && plots[lane].folded;
+}
+
+void ChartView::setLaneFolded(int lane, bool folded) {
+	const QString key = laneKey(lane);
+	if (!lanes_ || lane < 0 || lane >= laneCount() || lanesFolded_.contains(key) == folded) return;
+	if (folded) lanesFolded_.insert(key);
+	else lanesFolded_.remove(key);
+	lanesShown_ = plotLayout(); /* the mouse finds the lanes where they are now, before the next frame */
+	emit laneFoldsChanged();
+	refresh();
+}
+
+QStringList ChartView::foldedLanes() const {
+	QStringList units(lanesFolded_.begin(), lanesFolded_.end());
+	units.sort();
+	return units;
+}
+
+void ChartView::setFoldedLanes(const QStringList &units) {
+	lanesFolded_ = QSet<QString>(units.begin(), units.end());
+	refresh();
+}
+
+QString ChartView::foldedText(int lane) const { return laneFolded(lane) ? foldedTexts_.value(laneKey(lane)) : QString(); }
+
+QRectF ChartView::laneFoldButtonRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	if (shown.isEmpty()) return QRectF();
+	if (plots[lane].folded) return QRectF(0, shown.top(), LANE_UNIT_W, shown.height());
+	return QRectF(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+}
+
+int ChartView::foldedLaneCount() const {
+	if (!lanes_ || series_.isEmpty()) return 0;
+	int folded = 0;
+	for (const Lane &lane : plotLayout()) folded += lane.folded ? 1 : 0;
+	return folded;
+}
+
+void ChartView::setAllLanesFolded(bool folded) {
+	if (!lanes_ || series_.isEmpty()) return;
+	bool changed = false;
+	for (const Lane &lane : plotLayout()) {
+		if (lane.folded == folded) continue;
+		if (folded) lanesFolded_.insert(lane.key);
+		else lanesFolded_.remove(lane.key);
+		changed = true;
+	}
+	if (!changed) return;
+	lanesShown_ = plotLayout();
+	emit laneFoldsChanged();
+	refresh();
+}
+
+/* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
+ * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
+QString ChartView::toolTipAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
+		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
+	if (!lanes_ || pos.y() < plot.top() || pos.y() > plot.bottom() || pos.x() > plot.right()) return QString();
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return QString();
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return QString(); /* between two lanes */
+	if (lanesShown_[lane].folded) return tr("Open lane");
+	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
+	if (pos.x() >= plot.left()) return QString();
+	QStringList parts;
+	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
+	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
+	return parts.join(QStringLiteral(" · "));
+}
+
+/* a line in the middle of each gap between two lanes, where it lies in the plot: the lanes read as plots of their own */
+QVector<double> ChartView::separatorsY(const QVector<Lane> &plots) const {
+	QVector<double> ys;
+	if (!lanes_) return ys;
+	const QRectF plot = plotRect();
+	for (qsizetype k = 0; k + 1 < plots.size(); k++) {
+		const double y = plots[k].axes.rect.bottom() + LANE_GAP / 2;
+		if (y >= plot.top() && y <= plot.bottom()) ys << y;
+	}
+	return ys;
+}
+
 void ChartView::setLanes(bool on) {
 	if (on == lanes_) return;
 	lanes_ = on;
+	laneScroll_ = 0;
 	lanesShown_.clear();
 	forgetRanges();
 	refresh();
@@ -1836,17 +2064,53 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 	p.setFont(smallFont());
 	p.setRenderHint(QPainter::Antialiasing, false);
 	valueLabels_.clear();
-	for (const Lane &lane : plots) {
+	valueLabelRects_.clear();
+	/* a lane's fold button: "▾" at the top of an open lane's unit column, "▸" on a folded strip; highlighted while the
+	 * mouse is on it, the unit name or the strip */
+	const auto foldButton = [&](int index, const QRectF &button, bool folded) {
+		const double cx = button.center().x(), cy = button.center().y();
+		const QPointF open[3] = { { cx - 4, cy - 2 }, { cx + 4, cy - 2 }, { cx, cy + 3 } };
+		const QPointF shut[3] = { { cx + 3, cy }, { cx - 2, cy - 4 }, { cx - 2, cy + 4 } };
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		/* a button's shape at rest, a stronger one under the mouse */
+		p.setPen(Qt::NoPen);
+		p.setBrush(index == hoverLane_ ? c.border : c.surface2);
+		p.drawRoundedRect(QRectF(cx - 8, cy - 7, 16, 14), 4, 4);
+		p.setBrush(index == hoverLane_ ? c.text : c.muted);
+		p.drawPolygon(folded ? shut : open, 3);
+		p.restore();
+	};
+	for (int index = 0; index < plots.size(); index++) {
+		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
+		/* lanes: only the part in the plot (scrolled), and nothing of a folded one but its button */
+		const QRectF shown = lanes_ ? laneVisible(a.rect, plot) : a.rect;
+		if (shown.isEmpty()) continue;
+		if (lane.folded) {
+			foldButton(index, QRectF(0, shown.top(), LANE_UNIT_W, shown.height()), true);
+			continue;
+		}
 		const GridTicks values = gridTicks(a);
+		p.save();
 		const auto label = [&](double v) {
 			const QString text = a.log ? chartLogLabel(v) : chartAxisLabel(v, values.valueStep, normalized_);
+			/* lanes: a label kept inside its lane's part in view, so it is never cut by the plot's edge nor runs into
+			 * the next lane's labels across the gap; none where there is no room for a whole one */
+			double top = a.y(v) - 8;
+			if (lanes_) {
+				if (shown.height() < 16) return;
+				top = std::clamp(top, shown.top(), shown.bottom() - 16);
+			}
 			valueLabels_ << text;
 			p.setPen(c.muted);
-			const double left = lanes_ ? 18 : 2; /* lanes: their units up the left edge */
-			p.drawText(QRectF(left, a.y(v) - 8, plot.left() - 6 - left, 16), Qt::AlignRight | Qt::AlignVCenter, text);
+			const double left = lanes_ ? LANE_UNIT_W : 2; /* lanes: their units up the left edge */
+			valueLabelRects_ << QRectF(left, top, plot.left() - 6 - left, 16);
+			p.drawText(valueLabelRects_.last(), Qt::AlignRight | Qt::AlignVCenter, text);
 		};
+		const auto inView = [&shown](double y) { return y >= shown.top() - 1 && y <= shown.bottom() + 1; };
 		for (double v : values.minor) {
+			if (!inView(a.y(v))) continue;
 			if (lines) {
 				p.setPen(QPen(faintGrid(), 1));
 				p.drawLine(QPointF(plot.left(), a.y(v)), QPointF(plot.right(), a.y(v)));
@@ -1855,6 +2119,7 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		}
 		for (double v : values.values) {
 			const double y = a.y(v);
+			if (!inView(y)) continue;
 			if (lines) {
 				p.setPen(QPen(c.grid, 1));
 				p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
@@ -1864,19 +2129,28 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		for (double t : ticks.times) {
 			if (!lines) break;
 			p.setPen(QPen(c.grid, 1));
-			p.drawLine(QPointF(axes.x(t), a.rect.top()), QPointF(axes.x(t), a.rect.bottom()));
+			p.drawLine(QPointF(axes.x(t), shown.top()), QPointF(axes.x(t), shown.bottom()));
 		}
-		if (lanes_) { /* the lane's units, up the left edge of its labels */
-			p.save();
+		if (lanes_) { /* its fold button, then its unit up the left edge of its labels, in the part in view (a click on
+		               * either folds it) */
+			const QRectF button(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+			foldButton(index, button, false);
+			const QRectF name(0, button.bottom(), LANE_UNIT_W, shown.bottom() - button.bottom());
 			p.setPen(c.text);
-			p.translate(9, a.rect.center().y());
+			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);
 			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
-			p.drawText(QRectF(-a.rect.height() / 2, -7, a.rect.height(), 14), Qt::AlignCenter,
-					QFontMetricsF(p.font()).elidedText(units, Qt::ElideRight, a.rect.height()));
-			p.restore();
+			p.drawText(QRectF(-name.height() / 2, -7, name.height(), 14), Qt::AlignCenter,
+					QFontMetricsF(p.font()).elidedText(units, Qt::ElideRight, name.height()));
 		}
+		p.restore();
 	}
+	/* between two lanes a line from their value labels across the plot, in the colour of a control's edge (3:1 to the
+	 * chart, where the border's 1.3:1 left the lanes reading as one chart); the card draws its part over the plot with
+	 * the grid */
+	laneSeparators_ = separatorsY(plots);
+	p.setPen(QPen(c.control, 1));
+	for (double y : std::as_const(laneSeparators_)) p.drawLine(QPointF(LANE_UNIT_W, y), QPointF(plot.right(), y));
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
 		p.setPen(c.muted);
@@ -1984,14 +2258,24 @@ void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, con
  * thread into an image of its own (every line's part in it, a little past its
  * edges), then the stripes side by side: the same pixels as drawn on p. */
 void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const {
-	/* each line in its plot (lanes: its unit's), clipped to it with room for its thickness */
+	/* each line in its plot (lanes: its unit's), clipped to it with room for its thickness; lanes: to its part in the
+	 * plot, none for a folded lane or one scrolled out of view */
+	const QRectF plotArea = plotRect();
 	QVector<const Axes *> axesOf(lines.size(), nullptr);
-	for (const Lane &plot : plots)
-		for (int i : plot.lines) axesOf[i] = &plot.axes;
+	QVector<QRectF> clips(lines.size());
 	QRectF all;
-	for (const Lane &plot : plots) all = all.united(plot.axes.rect);
+	for (const Lane &plot : plots) {
+		const QRectF shown = lanes_ ? laneVisible(plot.axes.rect, plotArea) : plot.axes.rect;
+		if (plot.folded || shown.isEmpty()) continue;
+		all = all.united(shown);
+		for (int i : plot.lines) {
+			axesOf[i] = &plot.axes;
+			clips[i] = shown.adjusted(-2, -2, 2, 2);
+		}
+	}
+	if (all.isEmpty()) return;
 	const QRectF clip = all.adjusted(-2, -2, 2, 2);
-	const auto clipOf = [&axesOf](qsizetype i) { return axesOf[i]->rect.adjusted(-2, -2, 2, 2); };
+	const auto clipOf = [&clips](qsizetype i) { return clips[i]; };
 	const qreal dpr = p.device()->devicePixelRatioF();
 	/* a bar as wide as the line: its copies side by side, one device pixel each */
 	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
@@ -2153,13 +2437,19 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	const quint32 faintRgba = gpuColor(faintGrid());
 	for (const Lane &plot : plots) {
 		const Axes &a = plot.axes;
+		/* lanes: the part in the plot, as drawGrid; nothing of a folded lane (its strip is a picture) */
+		const QRectF shown = lanes_ ? laneVisible(a.rect, axes.rect) : a.rect;
+		if (plot.folded || shown.isEmpty()) continue;
 		const GridTicks values = gridTicks(a);
-		const float laneTop = float(map(a.rect.topLeft()).y()), laneBottom = float(map(a.rect.bottomLeft()).y());
+		const float laneTop = float(map(shown.topLeft()).y()), laneBottom = float(map(shown.bottomLeft()).y());
+		const auto inView = [&shown](double y) { return y >= shown.top() - 1 && y <= shown.bottom() + 1; };
 		for (double v : values.minor) {
+			if (!inView(a.y(v))) continue;
 			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
 			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, faintRgba });
 		}
 		for (double v : values.values) {
+			if (!inView(a.y(v))) continue;
 			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
 			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
 		}
@@ -2167,6 +2457,12 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
 			grid.segments.push_back({ x, laneTop, x, laneBottom, gridRgba });
 		}
+	}
+	/* the lanes' separators: crisp as the grid, from the layer's left edge (the CPU draws them up to it) */
+	for (double y : separatorsY(plots)) {
+		const float sy = float(std::floor(map(QPointF(0, y)).y()) + grid.widthPx / 2);
+		grid.segments.push_back({ float(map(QPointF(plot.left() - 2, 0)).x()), sy, float(bottomRight.x()), sy,
+				gpuColor(c.control) });
 	}
 	frame.layers << grid;
 	/* the cursors' span: one bar as tall as the plot */
@@ -2184,10 +2480,18 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			frame.layers << span;
 		}
 	}
-	/* the lines: as thick as the CPU's, its copies one device pixel each; each in its plot (lanes: cut to its lane) */
+	/* the lines: as thick as the CPU's, its copies one device pixel each; each in its plot (lanes: cut to its lane's
+	 * part in the plot; none for a folded lane or one out of view) */
 	QVector<const Axes *> axesOf(lines.size(), nullptr);
-	for (const Lane &plot : plots)
-		for (int i : plot.lines) axesOf[i] = &plot.axes;
+	QVector<QRectF> shownOf(lines.size());
+	for (const Lane &plot : plots) {
+		const QRectF shown = lanes_ ? laneVisible(plot.axes.rect, axes.rect) : plot.axes.rect;
+		if (plot.folded || shown.isEmpty()) continue;
+		for (int i : plot.lines) {
+			axesOf[i] = &plot.axes;
+			shownOf[i] = shown;
+		}
+	}
 	const float lineWidth = float(std::max(2, int(std::lround(LINE_WIDTH * dpr))));
 	QVector<QVector<GpuLines::Segment>> parts(lines.size());
 	inParallel(lines.size(), [&](qsizetype i) {
@@ -2212,7 +2516,7 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			y0 = y1;
 		}
 		if (!lanes_) return; /* the layer's edge cuts the one plot */
-		const float top = float(axes.rect.top() * dpr + dy) - lineWidth, bottom = float(axes.rect.bottom() * dpr + dy) + lineWidth;
+		const float top = float(shownOf[i].top() * dpr + dy) - lineWidth, bottom = float(shownOf[i].bottom() * dpr + dy) + lineWidth;
 		qsizetype kept = 0;
 		for (qsizetype k = 0; k < segments.size(); k++)
 			if (clipSegmentY(segments[k], top, bottom)) segments[kept++] = segments[k];
@@ -2225,6 +2529,12 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	drawn.segments.reserve(total);
 	for (const auto &part : std::as_const(parts)) drawn.segments += part;
 	frame.layers << drawn;
+	/* the folded lanes' strips: the first pictures, over the marks' lines and under their tags, as the CPU draws them */
+	for (const Lane &plot : plots) {
+		const QRectF shown = lanes_ ? laneVisible(plot.axes.rect, axes.rect) : QRectF();
+		if (plot.folded && !shown.isEmpty())
+			frame.sprites.push_back({ foldedPicture(plot, shown, axes.t0, axes.t1, dpr), whole(shown.topLeft()) });
+	}
 	/* the cursors: dashed as the CPU's pen (1.2 px: dashes of 4.8, gaps of 2.4), a tag each */
 	GpuLines::Layer marks;
 	marks.widthPx = float(1.2 * dpr);
@@ -2334,16 +2644,135 @@ void ChartView::gpuOpened(std::unique_ptr<GpuLines> gpu, bool ok, const QString 
 	emit drawingChanged();
 }
 
+/* A folded lane's items: each line's name and value as the legend writes it (live, the legend's value; held, the
+ * latest sample in view), with its colour */
+QVector<ChartView::FoldedItem> ChartView::foldedItems(const Lane &lane, double t0, double t1) const {
+	QVector<const Series *> byIndex;
+	byIndex.reserve(series_.size());
+	for (const Series &s : series_) byIndex << &s;
+	QVector<FoldedItem> items;
+	for (int i : lane.lines) {
+		const Series &s = *byIndex[i];
+		QString value;
+		if (live_) {
+			if (s.hasShown) value = chartNumber(s.shown);
+		} else {
+			const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
+			if (k >= 0 && s.times[k] >= t0) value = chartNumber(s.values[k]);
+		}
+		QString text = s.name;
+		if (!value.isEmpty()) text += QLatin1Char(' ') + value + (s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit);
+		items.push_back({ s.color, text });
+	}
+	return items;
+}
+
+/* The strip's part in the plot (`visible`) as a picture: its background, its unit, then each line's dot and text;
+ * what does not fit is cut with "…". Made again when its texts, place or look change. */
+const QImage &ChartView::foldedPicture(const Lane &lane, const QRectF &visible, double t0, double t1, qreal dpr) const {
+	const QVector<FoldedItem> items = foldedItems(lane, t0, t1);
+	const QString unit = lane.label.isEmpty() ? tr("no unit") : lane.label;
+	QStringList texts{ unit };
+	QString key = QStringLiteral("%1|%2|%3|%4|%5|%6").arg(visible.width()).arg(visible.height())
+			.arg(lane.axes.rect.top() - visible.top()).arg(dpr).arg(Theme::isDark()).arg(unit);
+	for (const FoldedItem &item : items) {
+		texts << item.text;
+		key += QLatin1Char('|') + item.color.name() + QLatin1Char('|') + item.text;
+	}
+	/* its text only when its rows are wholly in view: a strip cut by the plot's edge shows no half letters */
+	const QRectF strip = lane.axes.rect;
+	const bool whole = strip.center().y() - 8 >= visible.top() && strip.center().y() + 8 <= visible.bottom();
+	foldedTexts_[lane.key] = whole ? texts.join(QStringLiteral("  ")) : QString();
+	key += whole ? QStringLiteral("|text") : QString();
+	QImage &image = foldedImages_[lane.key];
+	if (foldedKeys_.value(lane.key) == key && !image.isNull()) return image;
+	foldedKeys_[lane.key] = key;
+	const ThemeColors &c = Theme::colors();
+	image = QImage((visible.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+	image.setDevicePixelRatio(dpr);
+	image.fill(Qt::transparent);
+	QPainter p(&image);
+	p.setRenderHint(QPainter::Antialiasing);
+	p.translate(-visible.left(), -visible.top());
+	p.setPen(Qt::NoPen);
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(strip, 4, 4);
+	if (!whole) {
+		p.end();
+		return image;
+	}
+	p.setFont(labelFont());
+	const QFontMetricsF metrics(p.font());
+	const double right = strip.right() - 6;
+	double x = strip.left() + 8;
+	p.setPen(c.text);
+	p.drawText(QRectF(x, strip.top(), right - x, strip.height()), Qt::AlignVCenter | Qt::AlignLeft,
+			metrics.elidedText(unit, Qt::ElideRight, right - x));
+	x += metrics.horizontalAdvance(unit) + FOLDED_ITEM_GAP;
+	for (const FoldedItem &item : items) {
+		if (x + 8 + metrics.horizontalAdvance(QStringLiteral("…")) > right) { /* no room for even its dot */
+			if (x < right) p.drawText(QRectF(x, strip.top(), right - x, strip.height()), Qt::AlignVCenter | Qt::AlignLeft,
+					QStringLiteral("…"));
+			break;
+		}
+		p.setPen(Qt::NoPen);
+		p.setBrush(item.color);
+		p.drawEllipse(QPointF(x + 4, strip.center().y()), 4, 4);
+		p.setPen(c.text);
+		const double textX = x + 12, width = metrics.horizontalAdvance(item.text);
+		p.drawText(QRectF(textX, strip.top(), right - textX, strip.height()), Qt::AlignVCenter | Qt::AlignLeft,
+				metrics.elidedText(item.text, Qt::ElideRight, right - textX));
+		x = textX + width + FOLDED_ITEM_GAP;
+		if (x > right) break;
+	}
+	p.end();
+	return image;
+}
+
+/* the folded strips in view, on the CPU (the card shows the same pictures) */
+void ChartView::drawFolded(QPainter &p, const QVector<Lane> &plots) const {
+	if (!lanes_) return;
+	const QRectF plot = plotRect();
+	const qreal dpr = p.device()->devicePixelRatioF();
+	for (const Lane &lane : plots) {
+		const QRectF shown = laneVisible(lane.axes.rect, plot);
+		if (!lane.folded || shown.isEmpty()) continue;
+		/* on a whole device pixel, as the card places it */
+		const QPointF device = p.deviceTransform().map(shown.topLeft());
+		const QPointF at = p.deviceTransform().inverted().map(QPointF(std::round(device.x()), std::round(device.y())));
+		p.drawImage(at, foldedPicture(lane, shown, lane.axes.t0, lane.axes.t1, dpr));
+	}
+}
+
+/* the lanes' scroll bar, when they do not fit: a track as tall as the plot in its right pad, and the handle */
+void ChartView::drawLaneBar(QPainter &p) const {
+	const QRectF track = laneScrollBarRect();
+	if (track.isEmpty()) return;
+	const ThemeColors &c = Theme::colors();
+	const double radius = LANE_BAR_W / 2;
+	p.save();
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(Qt::NoPen);
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(track, radius, radius);
+	p.setBrush(hoverBar_ ? c.text : c.muted); /* under the mouse: brighter */
+	p.drawRoundedRect(laneScrollHandleRect(), radius, radius);
+	p.restore();
+}
+
 /* the cursors: a dashed line each, its letter in a tag at the top */
-void ChartView::drawCursors(QPainter &p, const Axes &axes) const {
+void ChartView::drawCursors(QPainter &p, const Axes &axes, Marks part) const {
 	const ThemeColors &c = Theme::colors();
 	const double times[2] = { cursorA_, cursorB_ };
 	for (int k = 0; k < 2; k++) {
 		const double t = times[k];
 		if (!std::isfinite(t) || t < axes.t0 || t > axes.t1) continue;
 		const double x = axes.x(t);
-		p.setPen(QPen(c.accent, 1.2, Qt::DashLine));
-		p.drawLine(QPointF(x, axes.rect.top()), QPointF(x, axes.rect.bottom()));
+		if (part == Marks::Lines) {
+			p.setPen(QPen(c.accent, 1.2, Qt::DashLine));
+			p.drawLine(QPointF(x, axes.rect.top()), QPointF(x, axes.rect.bottom()));
+			continue;
+		}
 		const QRectF tag(x - 9, axes.rect.top() - 2, 18, 16);
 		p.setPen(Qt::NoPen);
 		p.setBrush(c.accentFill); /* white text on it */
@@ -2352,6 +2781,7 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes) const {
 		p.setFont(labelFont());
 		p.drawText(tag, Qt::AlignCenter, k == 0 ? QStringLiteral("A") : QStringLiteral("B"));
 	}
+	if (part == Marks::Lines) return;
 	spanBar_ = spanBar(axes);
 	drawSpanBar(p, spanBar_);
 }
@@ -2367,21 +2797,24 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 	int index = 0;
 	for (auto it = series_.constBegin(); it != series_.constEnd() && it.key() != trigger_.key; ++it) index++;
 	if (index >= lines.size()) return false;
+	const QRectF all = plotRect();
 	for (const Lane &plot : plots) {
 		if (!plot.lines.contains(index)) continue;
 		const Axes &a = plot.axes;
+		/* lanes: only while its lane is open and in view, within the part in view */
+		const QRectF shown = lanes_ ? laneVisible(a.rect, all) : a.rect;
+		if (plot.folded || shown.isEmpty()) return false;
 		double lo = lines[index].lo, hi = lines[index].hi;
 		if (normalized_) widenFlatRange(lo, hi);
-		levelY = std::clamp(normalized_ ? a.y((trigger_.level - lo) / (hi - lo)) : a.y(trigger_.level), a.rect.top(),
-				a.rect.bottom());
-		lane = a.rect;
+		levelY = std::clamp(normalized_ ? a.y((trigger_.level - lo) / (hi - lo)) : a.y(trigger_.level), shown.top(),
+				shown.bottom());
+		lane = shown;
 		triggerLineY_ = levelY;
 		triggerLane_ = lane;
 		triggerAxes_ = a;
 		triggerLo_ = lo;
 		triggerHi_ = hi;
 		if (std::isfinite(trigger_.at) && trigger_.at >= a.t0 && trigger_.at <= a.t1) {
-			const QRectF &all = plots.first().axes.rect;
 			tag = QRectF(a.x(trigger_.at) - 7, all.top() - 2, 14, 16);
 			triggerTag_ = tag;
 		}
@@ -2390,14 +2823,14 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 	return false;
 }
 
-void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const {
+void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const {
 	double levelY;
 	QRectF lane, tag;
 	if (!triggerGeometry(plots, lines, levelY, lane, tag)) return;
 	p.save();
 	p.setPen(QPen(series_.value(trigger_.key).color, 1.2, Qt::DashLine));
-	p.drawLine(QPointF(lane.left(), levelY), QPointF(lane.right(), levelY));
-	if (!tag.isEmpty()) p.drawImage(tag.topLeft(), triggerPicture(p.device()->devicePixelRatioF()));
+	if (part == Marks::Lines) p.drawLine(QPointF(lane.left(), levelY), QPointF(lane.right(), levelY));
+	else if (!tag.isEmpty()) p.drawImage(tag.topLeft(), triggerPicture(p.device()->devicePixelRatioF()));
 	p.restore();
 }
 
@@ -2448,15 +2881,18 @@ void ChartView::drawNoteTag(QPainter &p, const QRectF &tag, int index) const {
 }
 
 /* a dashed line in the warning colour at each note, its tag at the bottom of the plot */
-void ChartView::drawNotes(QPainter &p, const Axes &axes) const {
+void ChartView::drawNotes(QPainter &p, const Axes &axes, Marks part) const {
 	noteTags_.resize(notes_.size());
 	for (int i = 0; i < notes_.size(); i++) {
 		noteTags_[i] = noteTagRect(axes, i);
 		if (noteTags_[i].isEmpty()) continue;
+		if (part == Marks::Tags) {
+			drawNoteTag(p, noteTags_[i], i);
+			continue;
+		}
 		const double x = axes.x(notes_[i].time);
 		p.setPen(QPen(Theme::colors().warn, 1.2, Qt::DashLine));
 		p.drawLine(QPointF(x, axes.rect.top()), QPointF(x, axes.rect.bottom()));
-		drawNoteTag(p, noteTags_[i], i);
 	}
 }
 
@@ -2754,12 +3190,14 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 	const bool moved = readoutMouseX_ != mouseX_ && (!readoutMade_.isValid() || readoutMade_.elapsed() >= READOUT_FOLLOW_MS);
 	const bool remake = readoutTick_ != valuesTick_ || moved || readoutPlotHeight_ != plot.height() || readoutDpr_ != dpr
 			|| readoutDark_ != Theme::isDark();
-	QVector<const Axes *> axesOf(lines.size(), &axes); /* each line's dot in its plot (lanes: its lane) */
+	/* each line's dot in its plot (lanes: its lane; none on a folded one, whose lines are not in the box either) */
+	QVector<const Axes *> axesOf(lines.size(), &axes);
 	for (const Lane &plot : plots)
-		for (int i : plot.lines) axesOf[i] = &plot.axes;
+		for (int i : plot.lines) axesOf[i] = plot.folded ? nullptr : &plot.axes;
 	QVector<ReadoutRow> rows;
 	for (qsizetype i = 0; i < lines.size(); i++) {
 		const BinnedLine &line = lines[i];
+		if (!axesOf[i]) continue;
 		const Axes &lineAxes = *axesOf[i];
 		const Series &s = *line.series;
 		if (s.times.isEmpty()) continue;
@@ -2770,6 +3208,7 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
 		widenFlatRange(lo, hi);
 		const double y = normalized_ ? lineAxes.y((v - lo) / (hi - lo)) : lineAxes.y(v);
+		if (lanes_ && (y < plot.top() - 1 || y > plot.bottom() + 1)) continue; /* scrolled away: in the box, no dot */
 		out.dots.push_back({ QPointF(axes.x(s.times[k]), y), s.color });
 	}
 	if (remake) {
@@ -2952,18 +3391,19 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 		state << (behind >= 0 ? tr("held: -%1 s · Live to follow").arg(chartNumber(behind))
 							: tr("held: filling, %1 s to come · Live to follow").arg(chartNumber(-behind)));
 	}
-	if (lanes_) state << tr("lanes"); /* each its own Y range */
+	if (lanes_) state << tr("lanes: ▾ folds"); /* each its own Y range; the hint where the fold is */
 	else if (logShown()) state << (y_.autoRange ? tr("Y log") : tr("Y log, manual"));
 	else if (!y_.autoRange && !normalized_) state << tr("Y manual");
 	if (cursorMode_) state << tr("cursors: click / drag");
 	if (trigger_.on) state << (trigger_.armed ? tr("trigger: armed") : std::isfinite(trigger_.at) ? tr("triggered")
 			: tr("trigger: Arm"));
+	stateText_ = state.join(QStringLiteral("  ·  "));
 	if (state.isEmpty()) return;
 	const ThemeColors &c = Theme::colors();
 	p.setFont(labelFont());
 	p.setPen(!live_ ? c.warn : c.muted);
 	p.drawText(QRectF(axes.rect.right() - STATE_W, LEGEND_TOP, STATE_W, LEGEND_ROW_H),
-			Qt::AlignRight | Qt::AlignVCenter, state.join(QStringLiteral("  ·  ")));
+			Qt::AlignRight | Qt::AlignVCenter, stateText_);
 }
 
 /* the paint time as a running average; the frames counted over each second */
