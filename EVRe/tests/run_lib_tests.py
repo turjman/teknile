@@ -24,7 +24,15 @@
 4. api_compat.cpp: every public name, used as existing code uses it.
 5. The library compiled with -Wall -Wextra at -O0, -O1, -O2, -Os and -O3, as
    C++11 and C++17: 1.1 may not add a warning.
-6. With --fuzz DIR: fuzz_test.cpp built against the library in DIR and against
+6. EVRe Guard part 2, the register checks (GUARD_PLAN.md section 9): guard_desc_test.cpp, the decisions D-26 on and
+   the wire table's rows, as it is, in the lock build, under the sanitizers (Linux) and against a device without part
+   2; the transcript's frames through the check alone with a neutral table (GUARD_CLASSES); guard_fuzz.cpp, the
+   oracle fuzz, 2 seeds x --guard-cases at -O1 and -O2; guard_mutants.py, every mutant caught; the library fuzz never
+   returns 15; R3 and R4 (no heap, recursion, goto or cast of the data pointer; ASCII, LF); the build matrix (g++,
+   -m32, arm-none-eabi-g++ for a Cortex-M7 and a Cortex-M0, avr-g++; C++11 to C++20; -O0 to -O3 and -Os; -Wall
+   -Wextra -Wpedantic -Werror; --skip names a compiler not to use, a missing one fails the run); the stack and size
+   on the Cortex-M7 at -Os, and the firmware's -Oz -flto.
+7. With --fuzz DIR: fuzz_test.cpp built against the library in DIR and against
    ../lib; the two outputs must be identical, line for line, but for the
    operations of FUZZ_CLASSES, each checked; and in the ../lib run every frame
    decoded in place has the outcome of the same frame with two buffers, every
@@ -36,8 +44,10 @@
 Exit code: 0 all passed, 1 a check failed, 2 no compiler."""
 import argparse
 import hashlib
+import math
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -239,6 +249,120 @@ def compare(base, other, name, mirror, broadcast_d000):
           % (name, ', '.join('%d %s' % (changed[c], c) for c in TRANSCRIPT_CLASSES if changed[c])))
 
 
+# EVRe Guard part 2 changes what a device answers, on purpose, in these classes (D-numbers of REVIEW.md). Each is
+# worked out from a frame's inputs alone, by guard_verdict() below (the transcript) or by guard_fuzz.cpp's oracle
+# (the fuzz), and each changed line is checked for its new answer: the code, answered or silent, the echoed offset
+# and count, the memory as it was (nothing stored, no HEARTBEAT).
+GUARD_CLASSES = (('G-VALUE', 'D-26', 'a value the register does not take: 15, nothing stored'),
+                 ('G-PART', 'D-30', 'only part of a number register: 3, nothing stored'),
+                 ('G-UNCOVERED', 'D-31', 'a byte no entry covers: 3, nothing stored'),
+                 ('G-SETUP', 'D-38', 'no good table: 3 for the device bank, nothing stored'),
+                 ('G-BCAST', 'D-40', 'a broadcast refused: silent, nothing stored'),
+                 ('G-MIRROR', 'D-39', 'a mirror: every write refused, 3, nothing stored'))
+TRANSCRIPT_CLASSES = TRANSCRIPT_CLASSES + tuple(name for name, _, _ in GUARD_CLASSES)
+
+# lib_test.cpp's neutral table (-DGUARD_CHECK), written again here from its description, not from the engine's code:
+# (address, size, type, min, max, listed values); a bytes register has no limits. 0xD0F2..0xD0F3 is a gap.
+FLT_MAX = 3.4028234663852886e38
+GUARD_TABLE = ((0xD0DC, 1, 'u8', 10, 0xF0, (0,)), (0xD0DD, 1, 'i8', -100, 100, ()), (0xD0DE, 2, 'u16', 0, 0x7FFF, ()),
+               (0xD0E0, 2, 'i16', -1000, 10000, ()), (0xD0E2, 4, 'u32', 0, 0xFFFFFFFF, ()),
+               (0xD0E6, 4, 'f32', -FLT_MAX, FLT_MAX, ()), (0xD0EA, 8, 'bytes', None, None, ()),
+               (0xD0F4, 2, 'u16', 0, 0xFFFF, ()), (0xD0F6, 4, 'i32', -2 ** 31, 2 ** 31 - 1, ()),
+               (0xD0FA, 4, 'f32', -1000.0, 1000.0, ()), (0xD0FE, 1, 'u8', 0, 0xFF, ()))
+
+
+def guard_value_ok(kind, size, low, high, listed, raw):
+    """a whole register's bytes, decoded as a host would, compared in plain numbers"""
+    if kind == 'f32':
+        value = struct.unpack('<f', raw)[0]
+        if math.isnan(value) or math.isinf(value):
+            return False
+    elif kind.startswith('i'):
+        value = int.from_bytes(raw, 'little', signed=True)
+    else:
+        value = int.from_bytes(raw, 'little')
+    return value in listed or low <= value <= high
+
+
+def guard_verdict(off, cnt, data, mirror, bad_table):
+    """(code, class) the register checks refuse a write with, None when it passes"""
+    if mirror:
+        return 3, 'G-MIRROR'
+    if cnt == 0 or (off >= 0xA000 and off + cnt <= 0xA106):
+        return None
+    if bad_table:
+        return 3, 'G-SETUP'
+    if off < 0xD000 or off + cnt > 0xE000:
+        return 3, 'G-UNCOVERED'
+    owner = {}
+    for reg in GUARD_TABLE:
+        for at in range(reg[0], reg[0] + reg[1]):
+            owner[at] = reg
+    at = off
+    while at < off + cnt:
+        reg = owner.get(at)
+        if reg is None:
+            return 3, 'G-UNCOVERED'
+        start, size, kind, low, high, listed = reg
+        if kind != 'bytes':
+            if start < off or start + size > off + cnt:
+                return 3, 'G-PART'
+            if not guard_value_ok(kind, size, low, high, listed, bytes(data[start - off:start - off + size])):
+                return 15, 'G-VALUE'
+        at = start + size
+    return None
+
+
+def guard_compare(base, other, name, mirror, bad_table):
+    """The build with the register checks against the same build without a handler: every line the same, but for the
+    frames the checks refuse (guard_verdict on the frame's own bytes), each refused exactly as its class says."""
+    a, b = base.splitlines(), other.splitlines()
+    if len(a) != len(b):
+        check(False, '%s: %d lines, without the checks %d' % (name, len(b), len(a)))
+        return
+    untouched = next(p['mem'] for p in map(parse, a) if p and p['ret'] == 7)
+    data = [(i * 7 + 3) & 0xFF for i in range(0x6100)]
+    counts = dict((c, 0) for c, _, _ in GUARD_CLASSES)
+    bad = []
+    queue_kept = False  # an ack ('M') refused: the queue's line after it shows the queue as it was
+    for x, y in zip(a, b):
+        if x.startswith('MSG') and queue_kept:
+            if y != 'MSG 3 5 6':
+                bad.append((x, y + '  <- the queue changed by a refused ack'))
+            continue
+        fx, fy = parse(x), parse(y)
+        asked = fx is not None and fx['ret'] == 0 and fx['kind'] in ('D', 'M') and fx['slave'] in (0, 1) \
+            and (fx['fn'] in (0xEA, 0xEB) or (mirror and fx['fn'] == 0xAB))
+        verdict = None
+        if asked:
+            frame = [0, 1] if fx['kind'] == 'M' else data[:fx['cnt']]
+            verdict = guard_verdict(fx['off'], fx['cnt'], frame, mirror, bad_table)
+        if verdict is None:
+            if x != y:
+                bad.append((x, y))
+            continue
+        code, finding = verdict
+        # an 'M' line's length is printed from before the call (lib_test.cpp), so it shows no answer either way
+        silent = fx['slave'] == 0 or fx['fn'] == 0xAB or fx['kind'] == 'M'
+        if fx['slave'] == 0:
+            finding = 'G-BCAST'
+        ok = fy['ret'] == code and fy['mem'] == untouched and (
+            fy['len'] == 0 if silent else
+            fy['len'] == 11 and fy['answer'][4:6] == 'EE' and fy['answer'][6:14] == fx['answer'][6:14] if fx['len'] == 11
+            else fy['len'] == 11 and fy['answer'][4:6] == 'EE' and fy['answer'][14:16] == '%02X' % code)
+        if not ok:
+            bad.append((x, y + '  <- not refused as %s says' % finding))
+            continue
+        counts[finding] += 1
+        queue_kept = fx['kind'] == 'M'
+    for x, y in bad[:3]:
+        print('     without: %s\n     with:    %s' % (x[:180], y[:200]))
+    print('     %s: %s' % (name, ', '.join('%s %d frames' % (c, counts[c]) for c, _, _ in GUARD_CLASSES if counts[c])))
+    check(not bad, '%s: as the build without a handler on every frame, except %s, each refused as its class says'
+          % (name, ', '.join('%d %s' % (counts[c], c) for c, _, _ in GUARD_CLASSES if counts[c]) or 'none'))
+    return counts
+
+
 def warnings(cc, lib, folder, flags=('-std=c++17', '-O1')):
     r = subprocess.run([cc] + list(flags) + ['-Wall', '-Wextra', '-c', os.path.join(lib, 'EVRe.cpp'), '-I', lib,
                         '-o', os.path.join(folder, 'w.o')], capture_output=True, text=True)
@@ -424,6 +548,9 @@ def fuzz_compare(base, other):
             case, diverged, differed = here, False, False
         if o[1] == 'layout':
             mirror = o[-1] == '1'
+        if '.' in n[0] and len(n) > 2 and n[2] == '15':
+            bad.append((x, y + '  <- 15 from the library: only a handler may return it (D-27)'))
+            continue
         if n[1] == 'd' and n[9] != 'i-' and n[9][1:] != n[10][1:]:
             bad.append((x, y + '  <- in place, not as with two buffers'))
             continue
@@ -493,6 +620,32 @@ def fuzz(cc, folder, before, cases):
                   'the decided classes, each checked (%d lines outside them)' % (cases, ops, seed, name, len(bad)))
 
 
+def guard_transcripts(cc, folder, transcripts):
+    """The 1.0 transcript's frames through the check alone (the firmware's wiring) with a neutral table, against the
+    same 1.1 build without a handler: as a device, taking broadcasts into its bank, as a mirror, and with a table
+    init refuses. Every line that differs falls in a class of GUARD_CLASSES; every class shows up."""
+    seen = dict((c, 0) for c, _, _ in GUARD_CLASSES)
+    for name, twin, defines, mirror, bad_table in (
+            ('1.1 ranges, register checks', '1.1 ranges', [], False, False),
+            ('1.1 ranges, broadcast into 0xD000, register checks', '1.1 ranges, broadcast into 0xD000', ['BROADCAST_D000'],
+             False, False),
+            ('1.1 ranges, mirror, register checks', '1.1 ranges, mirror', ['MIRROR'], True, False),
+            ('1.1 ranges, register checks, a bad table', '1.1 ranges', ['GUARD_BAD_TABLE'], False, True)):
+        exe = build(cc, folder, name.replace(' ', '_').replace('.', '').replace(',', ''), NEW,
+                    ['TRANSCRIPT', 'USE_RANGES', 'GUARD_CHECK'] + defines, ['-I', GUARD] + GUARD_SOURCES)
+        check(exe is not None, 'built: %s' % name)
+        if not exe or twin not in transcripts:
+            continue
+        code, out = execute(exe)
+        check(code == 0, 'ran: %s' % name)
+        counts = guard_compare(transcripts[twin], out, name, mirror, bad_table)
+        for c in counts or {}:
+            seen[c] += counts[c]
+    missing = [c for c, _, _ in GUARD_CLASSES if not seen[c]]
+    check(not missing, 'the transcript with the register checks shows every class of GUARD_CLASSES%s'
+          % (': not ' + ', '.join(missing) if missing else ''))
+
+
 def register_checks(cc, folder):
     """EVRe Guard part 2 (guard_desc_test.cpp): the decisions D-26 on and the wire table's rows, as it is and in the
     lock build; then the same checks against a device without part 2 (-DNO_CHECK), where the checks of each decision
@@ -535,13 +688,231 @@ def register_checks(cc, folder):
               % (std, r.stderr.strip()[:300]))
 
 
+# ------------------------------------------------------------------ EVRe Guard part 2: the proof (G.2)
+
+def guard_fuzz(cc, folder, cases, sanitize):
+    """guard_fuzz.cpp: builds A, B, C and N in step, B and C against the oracle; 2 seeds at -O1 and -O2 (and, on Linux,
+    a shorter run under the address and undefined-behaviour sanitizers). Every class shows up, and no failure."""
+    runs = [('-O1', [], cases), ('-O2', [], cases)]
+    if sanitize:
+        runs.append(('-O1 sanitizers', ['-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all'], max(cases // 6, 1000)))
+    for label, extra, n in runs:
+        exe = build(cc, folder, 'guard_fuzz' + label.replace(' ', '_').replace('-', ''), NEW, [],
+                    ['-I', GUARD, '-Wall', '-Wextra'] + extra + GUARD_SOURCES, source='guard_fuzz.cpp',
+                    flags=('-std=c++17', label.split()[0]))
+        check(exe is not None, 'guard fuzz: built (%s)' % label)
+        if not exe:
+            continue
+        for seed in ('1', '2'):
+            code, out = execute(exe, [str(n), seed])
+            lines = out.strip().splitlines()
+            for line in lines[:-1][:5]:
+                print('     ' + line)
+            summary = lines[-1] if lines else ''
+            fields = summary.split()
+            counts = dict(zip(fields[0::2], fields[1::2]))
+            missing = [c for c, _, _ in GUARD_CLASSES if counts.get(c, '0') == '0']
+            print('     ' + summary)
+            check(code == 0 and summary.endswith('failed 0') and not missing,
+                  'guard fuzz (%s, seed %s): %s cases; B against A and C against N, every refusal the oracle\'s, in its class, '
+                  'nothing stored; every class seen%s' % (label, seed, counts.get('cases', '?'),
+                                                          ': not ' + ', '.join(missing) if missing else ''))
+
+
+def guard_mutants(cc, cases):
+    """guard_mutants.py: every mutant of part 2 fails a feature check of its decision and the fuzz"""
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'guard_mutants.py'), '--cc', cc, '--cases', str(cases)],
+                       capture_output=True, text=True)
+    for line in r.stdout.splitlines():
+        if line.startswith(('PASS', 'FAIL')):
+            check(line.startswith('PASS'), '[mutant] ' + line.split(' ', 1)[1])
+    check(r.returncode == 0, 'guard mutants: %s' % (r.stdout.strip().splitlines() or ['no output'])[-1])
+
+
+def library_never_15(cc, folder):
+    """the library's own fuzz (fuzz_test.cpp) against ../lib: no operation returns 15, which only a handler may"""
+    exe = build(cc, folder, 'fuzz_lib', NEW, [], source='fuzz_test.cpp', flags=['-std=c++17', '-O1'])
+    check(exe is not None, 'built: the library fuzz against ../lib')
+    if not exe:
+        return
+    code, out = execute(exe, ['20000', '1'])
+    fifteen = [line for line in out.splitlines() if len(line.split()) > 2 and line.split()[2] == '15']
+    check(code == 0 and not fifteen, 'D-27: the library fuzz, 20000 cases: the library never returns 15 (%d lines do)'
+          % len(fifteen))
+
+
+# (name on the skip flag, compiler, flags, standards); the AVR stand-in headers in tests/avr are seen by that row only
+MATRIX = (('g++', 'g++', [], ('c++11', 'c++14', 'c++17', 'c++20')),
+          ('m32', 'g++', ['-m32'], ('c++11', 'c++14', 'c++17', 'c++20')),
+          ('arm-none-eabi-g++', 'arm-none-eabi-g++',
+           ['-mcpu=cortex-m7', '-mthumb', '-mfpu=fpv5-d16', '-mfloat-abi=hard', '-fno-exceptions', '-fno-rtti'],
+           ('c++11', 'c++14', 'c++17', 'c++20')),
+          ('arm-none-eabi-g++', 'arm-none-eabi-g++', ['-mcpu=cortex-m0', '-mthumb', '-mfloat-abi=soft', '-fno-exceptions', '-fno-rtti'],
+           ('c++11', 'c++14', 'c++17', 'c++20')),
+          ('avr-g++', 'avr-g++', ['-mmcu=atmega2560', '-I', os.path.join(HERE, 'avr')], ('c++11', 'c++14', 'c++17')))
+MATRIX_FILES = (os.path.join(NEW, 'EVRe.cpp'), os.path.join(GUARD, 'evre_guard.cpp'), os.path.join(GUARD, 'evre_guard_desc.cpp'),
+                os.path.join(HERE, 'guard_device.cpp'))
+STACK_LIMIT = 96  # bytes, evre_guard_check_write on the Cortex-M7 at -Os (GUARD_PLAN.md section 8)
+
+
+def usable(name, compiler, skip):
+    """a compiler of the matrix: there, or named on --skip; a missing one that is not skipped fails the run"""
+    if name in skip or compiler in skip:
+        print('     skipped (--skip): %s' % name)
+        return False
+    if name == 'm32':
+        r = subprocess.run(['g++', '-m32', '-x', 'c++', '-', '-o', os.devnull], input='int main(){}', capture_output=True, text=True)
+        ok = r.returncode == 0
+    else:
+        ok = shutil.which(compiler) is not None
+    check(ok, 'the build matrix: %s is there (or name it on --skip)' % name)
+    return ok
+
+
+def matrix(folder, skip):
+    """the library, part 1, part 2 and a device with a generated-style table, compiled on every target, standard and
+    optimisation with -Wall -Wextra -Wpedantic -Werror; nothing is run but on the host"""
+    import concurrent.futures
+    jobs = []
+    for name, compiler, flags, stds in MATRIX:
+        if not usable(name, compiler, skip):
+            continue
+        for std in stds:
+            for opt in ('-O0', '-O1', '-O2', '-O3', '-Os'):
+                for source in MATRIX_FILES:
+                    cmd = [compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', NEW,
+                                                                    '-I', GUARD, '-c', source, '-o', os.devnull]
+                    jobs.append(('%s %s %s %s' % (' '.join([compiler] + flags[:1]), std, opt, os.path.basename(source)), cmd))
+
+    def one(job):
+        r = subprocess.run(job[1], capture_output=True, text=True)
+        return job[0], r.returncode, r.stderr
+
+    bad = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
+        for what, code, err in pool.map(one, jobs):
+            if code or 'warning' in err:
+                bad.append((what, err.strip()[:300]))
+    for what, err in bad[:5]:
+        print('     %s: %s' % (what, err))
+    check(jobs and not bad, 'the build matrix: %d builds (targets x C++11..20 x -O0..-O3, -Os x the library, parts 1 and 2 '
+          'and a device), 0 warnings with -Wall -Wextra -Wpedantic -Werror (%d failed)' % (len(jobs), len(bad)))
+
+
+def arm_stack_and_size(folder, skip):
+    """On the Cortex-M7 at -Os: the code size of part 2, every new function's stack static and the check's under
+    STACK_LIMIT; then the firmware's own release flags (-Oz -flto), linked, with the guarded write path's stack."""
+    if 'arm-none-eabi-g++' in skip or not shutil.which('arm-none-eabi-g++'):
+        return
+    m7 = ['arm-none-eabi-g++', '-mcpu=cortex-m7', '-mthumb', '-mfpu=fpv5-d16', '-mfloat-abi=hard', '-fno-exceptions', '-fno-rtti',
+          '-std=c++11', '-I', NEW, '-I', GUARD]
+    obj = os.path.join(folder, 'desc_m7.o')
+    r = subprocess.run(m7 + ['-Os', '-ffunction-sections', '-fstack-usage', '-c', os.path.join(GUARD, 'evre_guard_desc.cpp'), '-o', obj],
+                       capture_output=True, text=True, cwd=folder)
+    check(r.returncode == 0, 'Cortex-M7 -Os: part 2 compiles with -fstack-usage')
+    if r.returncode != 0:
+        return
+    su = os.path.join(folder, 'desc_m7.su')
+    usage = {}
+    if os.path.exists(su):
+        for line in open(su):
+            parts = line.rsplit('\t', 2)
+            if len(parts) == 3:
+                usage[parts[0].split(':')[-1].split('(')[0].split()[-1]] = (int(parts[1]), parts[2].strip())
+    size = subprocess.run(['arm-none-eabi-size', '-A', obj], capture_output=True, text=True).stdout
+    text = sum(int(line.split()[1]) for line in size.splitlines() if line.startswith('.text'))
+    public = dict((k, v) for k, v in usage.items() if k.startswith('evre_guard_'))
+    print('     Cortex-M7 -Os: part 2 %d B of code; stack %s' % (text, ', '.join('%s %d B' % (k, v[0]) for k, v in sorted(public.items()))))
+    check(usage and all(kind == 'static' for _, kind in usage.values()), 'R3: every function of part 2 has a static stack (no alloca, '
+          'no variable-length array)')
+    check(public.get('evre_guard_check_write', (999,))[0] <= STACK_LIMIT, 'the check\'s stack on the Cortex-M7 at -Os: %s B, at most %d B'
+          % (public.get('evre_guard_check_write', ('?',))[0], STACK_LIMIT))
+    lto = os.path.join(folder, 'lto')
+    os.makedirs(lto, exist_ok=True)
+    r = subprocess.run(m7 + ['-Oz', '-flto', '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '--specs=nosys.specs',
+                             '-fstack-usage', '-Wall', '-Wextra', '-Wpedantic', '-Werror'] + list(MATRIX_FILES) +
+                       ['-o', os.path.join(lto, 'device.elf')], capture_output=True, text=True, cwd=lto)
+    frames = {}
+    for name in os.listdir(lto):
+        if name.endswith('.su'):
+            for line in open(os.path.join(lto, name)):
+                parts = line.rsplit('\t', 2)
+                if len(parts) == 3:
+                    frames[parts[0].split(':')[-1].split('.')[0]] = int(parts[1])
+    path = sum(frames.get(f, 0) for f in ('main', 'decodePacketInto', 'onWrite', 'look'))
+    print('     Cortex-M7 -Oz -flto, a device with parts 1 and 2 linked: frames %s; the guarded write path about %d B' % (
+        ', '.join('%s %d' % (k, v) for k, v in sorted(frames.items()) if v), path))
+    check(r.returncode == 0 and frames, 'Cortex-M7 -Oz -flto (the firmware\'s release flags): the device with parts 1 and 2 links, '
+          'its stack measured')
+
+
+def r3_checks(cc, folder):
+    """R3: no heap, no recursion, no goto, no cast of the data pointer in part 2"""
+    source = open(os.path.join(GUARD, 'evre_guard_desc.cpp'), encoding='utf-8').read()
+    code = '\n'.join(line.split('/*')[0] for line in source.splitlines())
+    check('goto' not in code.split(), 'R3: no goto in part 2')
+    import re
+    casts = re.findall(r'\(\s*(?:const\s+)?(?:u?int(?:16|32)_t|float|double)\s*\*\s*\)', code)
+    check(not casts, 'R3: no cast of a byte pointer to a wider type in part 2 (the frame\'s bytes are read one at a time) %s' % casts)
+    obj = os.path.join(folder, 'desc_host.o')
+    ci = os.path.join(folder, 'desc_host.ci')
+    r = subprocess.run([cc, '-std=c++11', '-O2', '-fcallgraph-info', '-I', NEW, '-I', GUARD, '-c',
+                        os.path.join(GUARD, 'evre_guard_desc.cpp'), '-o', obj], capture_output=True, text=True, cwd=folder)
+    if r.returncode != 0:
+        print('     -fcallgraph-info not taken by %s: the recursion check is skipped' % cc)
+    else:
+        nm = subprocess.run(['nm', obj], capture_output=True, text=True).stdout
+        heap = [s for s in ('malloc', 'calloc', 'free', '_Znw', '_Zna', '_Zdl', '_Zda') if s in nm]
+        check(not heap, 'R3: part 2 calls no malloc, calloc, free, new or delete (nm) %s' % heap)
+        edges = {}
+        if os.path.exists(ci):
+            for m in re.finditer(r'edge: \{ sourcename: "([^"]+)" targetname: "([^"]+)"', open(ci).read()):
+                edges.setdefault(m.group(1), set()).add(m.group(2))
+
+        def reaches(start, target, seen):
+            for nxt in edges.get(start, ()):
+                if nxt == target or (nxt not in seen and (seen.add(nxt) or reaches(nxt, target, seen))):
+                    return True
+            return False
+        loops = [f for f in edges if reaches(f, f, set())]
+        check(edges and not loops, 'R3: no function of part 2 reaches itself (-fcallgraph-info, %d callers) %s' % (len(edges), loops))
+
+
+def r4_scan():
+    """R4: the Guard's files and their tests in UTF-8 with LF, ASCII only (comments too), no section sign"""
+    files = [os.path.join(GUARD, f) for f in sorted(os.listdir(GUARD))] + \
+        [os.path.join(HERE, f) for f in ('guard_desc_test.cpp', 'guard_fuzz.cpp', 'guard_device.cpp', 'guard_mutants.py')]
+    bad = []
+    for path in files:
+        data = open(path, 'rb').read()
+        if b'\r' in data or any(b > 0x7F for b in data):
+            bad.append(os.path.basename(path))
+    check(not bad, 'R4: EVRe Guard and its tests: ASCII only, LF line endings (%d files) %s' % (len(files), bad))
+
+
+def sanitized_features(cc, folder):
+    """on Linux: the register checks under the address and undefined-behaviour sanitizers (UBSan's alignment check
+    sees a cast of the data pointer on a PC too; ASan a read past the frame)"""
+    exe = build(cc, folder, 'guard_desc_san', NEW, [], ['-I', GUARD, '-g', '-fsanitize=address,undefined',
+                                                         '-fno-sanitize-recover=all'] + GUARD_SOURCES, source='guard_desc_test.cpp')
+    check(exe is not None, 'built: the register checks under -fsanitize=address,undefined')
+    if exe:
+        code, out = execute(exe)
+        check(code == 0 and out.strip().endswith('0 failed'), 'the register checks under the sanitizers: every check passes, '
+              'no report')
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--old', default=os.path.join(HERE, 'lib_1.0'))
     ap.add_argument('--cc', default='g++')
     ap.add_argument('--fuzz', metavar='DIR', help='the library before a refactor: compare it with ../lib (fuzz_test.cpp)')
     ap.add_argument('--fuzz-cases', type=int, default=300000)
+    ap.add_argument('--guard-cases', type=int, default=300000, help='cases of the guard fuzz, per seed and build')
+    ap.add_argument('--skip', default='', help='compilers of the build matrix not to use, comma-separated: m32, '
+                    'arm-none-eabi-g++, avr-g++ (a missing one not named here fails the run)')
     opts = ap.parse_args()
+    skip = set(s.strip() for s in opts.skip.split(',') if s.strip())
     if not shutil.which(opts.cc):
         print('missing: %s' % opts.cc)
         return 2
@@ -568,6 +939,7 @@ def main():
             print('     1.0: %s, %d lines, sha256 %s' % (frames, len(base.splitlines()), hashlib.sha256(base.encode()).hexdigest()[:16]))
             for name, _, defines in builds[1:]:
                 compare(base, transcripts[name], name, 'MIRROR' in defines, 'BROADCAST_D000' in defines)
+        guard_transcripts(opts.cc, folder, transcripts)
 
         guard = ['-I', os.path.join(NEW, 'guard'), os.path.join(NEW, 'guard', 'evre_guard.cpp'), '-Wall', '-Wextra',
                  '-Wl,--wrap=calloc']
@@ -600,6 +972,18 @@ def main():
                             '-I', NEW, '-o', os.path.join(folder, 'g.o')], capture_output=True, text=True)
         check(g.returncode == 0, 'EVRe Guard compiles with -Wall -Wextra -Werror %s' % g.stderr.strip()[:300])
         register_checks(opts.cc, folder)
+        linux = sys.platform.startswith('linux')
+        guard_fuzz(opts.cc, folder, opts.guard_cases, linux)
+        guard_mutants(opts.cc, max(opts.guard_cases // 15, 2000))
+        library_never_15(opts.cc, folder)
+        if linux:
+            sanitized_features(opts.cc, folder)
+        else:
+            print('     the sanitizer builds run on Linux only: not on %s' % sys.platform)
+        r3_checks(opts.cc, folder)
+        r4_scan()
+        matrix(folder, skip)
+        arm_stack_and_size(folder, skip)
 
         if opts.fuzz:
             fuzz(opts.cc, folder, os.path.abspath(opts.fuzz), opts.fuzz_cases)

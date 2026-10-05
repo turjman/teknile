@@ -35,6 +35,10 @@ jobs:
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfontconfig1 fonts-dejavu-core xvfb xauth
           pip install jsonschema
+      - name: The compilers of the library's build matrix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libstdc++-arm-none-eabi-newlib gcc-avr avr-libc g++-multilib
       - name: The library's suite (1.1 and EVRe Guard)
         run: python3 tests/run_lib_tests.py
       - name: Build
@@ -84,7 +88,8 @@ jobs:
         shell: bash
         run: |
           export PATH="$IQTA_TOOLS/mingw1310_64/bin:$PATH"
-          python tests/run_lib_tests.py
+          # the cross-compilers and the 32-bit libraries of the build matrix are installed on Linux only
+          python tests/run_lib_tests.py --skip m32,arm-none-eabi-g++,avr-g++
       - name: Tests without a window
         shell: bash
         run: |
