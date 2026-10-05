@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
  * api_compat.cpp: every public name of EVRe.h, used the way the firmware and
- * the host program use it. First the 1.0 names, then the ones 1.1 adds.
+ * the host program use it. First the 1.0 names, then the ones 1.1 adds, then
+ * EVRe Guard's: part 1 (the login, evre_guard.h) and part 2 (the register
+ * checks, evre_guard_desc.h). Linked with lib/guard/evre_guard*.cpp too.
  *
  * A header change that renames or removes a name, changes a value or a type,
  * moves a 1.0 member or makes evre_base_t more than a plain struct breaks this
@@ -25,6 +27,8 @@
 #include <type_traits>
 
 #include "EVRe.h"
+#include "evre_guard.h"
+#include "evre_guard_desc.h"
 
 static int failed = 0;
 
@@ -397,9 +401,114 @@ static void newNames() {
 	check(protocolInit(&dev) == NO_ERROR && dev.MSG_ACK_HANDLER[0xFF] == nullptr, "MSG_ACK_HANDLER[0xFF]: a slot, cleared by protocolInit");
 }
 
+/* ============================================================ EVRe Guard */
+
+static_assert(VALUE_REFUSED == 15 && std::is_same<decltype(VALUE_REFUSED), ERR_CODE_ENUM>::value,
+		"VALUE_REFUSED: 15, among the error codes");
+
+/* part 1: every function by its type, the config's members in their order (devices write it positionally) */
+static_assert(EVRE_GUARD_TOKEN_MAX == 32U, "EVRE_GUARD_TOKEN_MAX");
+static_assert(std::is_same<decltype(&evre_guard_init), uint8_t (*)(evre_guard_t *, const evre_guard_config_t *)>::value
+		&& std::is_same<decltype(&evre_guard_restore), void (*)(evre_guard_t *, uint8_t, uint64_t)>::value
+		&& std::is_same<decltype(&evre_guard_read), uint8_t (*)(evre_guard_t *, uint16_t, uint16_t)>::value
+		&& std::is_same<decltype(&evre_guard_write),
+				uint8_t (*)(evre_guard_t *, const evre_base_t *, uint16_t, const uint8_t *, uint16_t)>::value
+		&& std::is_same<decltype(&evre_guard_logout), void (*)(evre_guard_t *)>::value
+		&& std::is_same<decltype(&evre_guard_logged_in), uint8_t (*)(evre_guard_t *)>::value,
+		"EVRe Guard part 1: the six functions");
+static_assert(std::is_same<decltype(evre_guard_span_t::start), uint16_t>::value && std::is_same<decltype(evre_guard_span_t::len), uint16_t>::value
+		&& offsetof(evre_guard_span_t, start) < offsetof(evre_guard_span_t, len), "evre_guard_span_t");
+static_assert(offsetof(evre_guard_config_t, login_addr) < offsetof(evre_guard_config_t, login_size)
+		&& offsetof(evre_guard_config_t, login_size) < offsetof(evre_guard_config_t, token)
+		&& offsetof(evre_guard_config_t, token) < offsetof(evre_guard_config_t, open_reads)
+		&& offsetof(evre_guard_config_t, open_reads) < offsetof(evre_guard_config_t, n_open_reads)
+		&& offsetof(evre_guard_config_t, n_open_reads) < offsetof(evre_guard_config_t, free_attempts)
+		&& offsetof(evre_guard_config_t, free_attempts) < offsetof(evre_guard_config_t, lockout_ms)
+		&& offsetof(evre_guard_config_t, lockout_ms) < offsetof(evre_guard_config_t, lockout_max_ms)
+		&& offsetof(evre_guard_config_t, lockout_max_ms) < offsetof(evre_guard_config_t, idle_logout_ms)
+		&& offsetof(evre_guard_config_t, idle_logout_ms) < offsetof(evre_guard_config_t, now_ms),
+		"evre_guard_config_t: its members in their order");
+static_assert(std::is_same<decltype(evre_guard_t::cfg), const evre_guard_config_t *>::value
+		&& std::is_same<decltype(evre_guard_t::logged_in), uint8_t>::value && std::is_same<decltype(evre_guard_t::failures), uint8_t>::value
+		&& std::is_same<decltype(evre_guard_t::refused), uint32_t>::value, "evre_guard_t: the members a device reads");
+
+/* part 2: the entry is frozen, 24 B with no padding on every target, each member at its offset */
+static_assert(EVRE_GUARD_TABLE_FORMAT == 1U, "EVRE_GUARD_TABLE_FORMAT");
+#if !defined(EVRE_GUARD_TABLE_FORMAT) || EVRE_GUARD_TABLE_FORMAT != 1
+#error "EVRE_GUARD_TABLE_FORMAT must work in #if, as a generated table checks it"
+#endif
+static_assert(sizeof(evre_guard_desc_t) == 24, "evre_guard_desc_t: 24 B");
+static_assert(offsetof(evre_guard_desc_t, addr) == 0 && offsetof(evre_guard_desc_t, size) == 2 && offsetof(evre_guard_desc_t, type) == 4
+		&& offsetof(evre_guard_desc_t, flags) == 5 && offsetof(evre_guard_desc_t, n_values) == 6 && offsetof(evre_guard_desc_t, spare1) == 7
+		&& offsetof(evre_guard_desc_t, first_value) == 8 && offsetof(evre_guard_desc_t, spare2) == 10
+		&& offsetof(evre_guard_desc_t, min) == 12 && offsetof(evre_guard_desc_t, max) == 16 && offsetof(evre_guard_desc_t, zero_bits) == 20,
+		"evre_guard_desc_t: every member at its offset");
+static_assert(std::is_same<decltype(evre_guard_desc_t::type), uint8_t>::value && std::is_same<decltype(evre_guard_desc_t::min), uint32_t>::value,
+		"evre_guard_desc_t: type a uint8_t, limits as uint32_t bits");
+static_assert(offsetof(evre_guard_table_t, regs) == 0 && offsetof(evre_guard_table_t, values) == sizeof(void *)
+		&& offsetof(evre_guard_table_t, n_regs) == 2 * sizeof(void *) && offsetof(evre_guard_table_t, n_values) == 2 * sizeof(void *) + 2,
+		"evre_guard_table_t: its members in their order (offsets by a pointer's size)");
+static_assert(std::is_same<decltype(evre_guard_table_t::n_regs), uint16_t>::value, "n_regs: a uint16_t (a bank of 4096 one-byte registers)");
+static_assert(offsetof(evre_guard_check_t, table) == 0 && std::is_same<decltype(evre_guard_check_t::refused), uint32_t>::value
+		&& std::is_same<decltype(evre_guard_check_t::last_addr), uint16_t>::value
+		&& std::is_same<decltype(evre_guard_check_t::last_why), uint8_t>::value, "evre_guard_check_t: its members");
+static_assert(EVRE_GUARD_U8 == 1 && EVRE_GUARD_I8 == 2 && EVRE_GUARD_U16 == 3 && EVRE_GUARD_I16 == 4 && EVRE_GUARD_U32 == 5
+		&& EVRE_GUARD_I32 == 6 && EVRE_GUARD_F32 == 7 && EVRE_GUARD_BYTES == 8, "the types");
+static_assert(EVRE_GUARD_WHY_NONE == 0 && EVRE_GUARD_WHY_SETUP == 1 && EVRE_GUARD_WHY_NOT_WRITABLE == 2 && EVRE_GUARD_WHY_PART == 3
+		&& EVRE_GUARD_WHY_BITS == 4 && EVRE_GUARD_WHY_NOT_FINITE == 5 && EVRE_GUARD_WHY_NOT_LISTED == 6 && EVRE_GUARD_WHY_LIMIT == 7,
+		"the reasons");
+static_assert(std::is_same<decltype(&evre_guard_check_init),
+				uint8_t (*)(evre_guard_check_t *, const evre_guard_table_t *, const evre_base_t *)>::value
+		&& std::is_same<decltype(&evre_guard_check_write),
+				uint8_t (*)(evre_guard_check_t *, const evre_base_t *, uint16_t, const uint8_t *, uint16_t)>::value
+		&& std::is_same<decltype(&evre_guard_write_checked),
+				uint8_t (*)(evre_guard_t *, evre_guard_check_t *, const evre_base_t *, uint16_t, const uint8_t *, uint16_t)>::value
+		&& std::is_same<decltype(&evre_guard_check_last), uint32_t (*)(evre_guard_check_t *, uint16_t *, uint8_t *)>::value,
+		"EVRe Guard part 2: the four functions");
+
+static uint64_t guardClock() { return 1000; }
+
+/* written the way a device and the generator write them: positionally */
+static void guardNames() {
+	static const uint8_t token[8] = { 't', 'o', 'k', 'e', 'n' };
+	static const evre_guard_span_t open[] = { { 0xD000, 4 } };
+	static const evre_guard_config_t config = { 0xD010, 8, token, open, 1, 3, 1000, 60000, 5000, guardClock };
+	static const uint32_t values[] = { 0x00000000UL };
+	static const evre_guard_desc_t regs[] = {
+		{ 0xD008u, 1u, EVRE_GUARD_U8, 0u, 1u, 0u, 0u, 0u, 0x00000005UL, 0x000000C8UL, 0x00000000UL },
+		{ 0xD00Au, 2u, EVRE_GUARD_I16, 0u, 0u, 0u, 0u, 0u, 0xFFFFFC18UL, 0x000003E8UL, 0x00000000UL },
+	};
+	static const evre_guard_table_t table = { regs, values, 2u, 1u };
+	static uint8_t ro[8], rw[8], login[8];
+	static const evre_range_t ranges[] = { { 0xD000, 8, ro, READ_ONLY }, { 0xD008, 8, rw, READ_WRITE }, { 0xD010, 8, login, READ_WRITE } };
+	evre_base_t dev;
+	dev.SALVE_ID_REG = 1;
+	dev.D_RANGES = ranges;
+	dev.D_RANGE_CNT = 3;
+	evre_guard_t guard;
+	evre_guard_check_t check_;
+	check(protocolInit(&dev) == NO_ERROR && evre_guard_init(&guard, &config) == NO_ERROR
+			&& evre_guard_check_init(&check_, &table, &dev) == NO_ERROR, "EVRe Guard: a positional config and table, init");
+	const uint8_t value[1] = { 201 };
+	dev.RX_SLAVE_ID = 1; /* as the decoder sets it before it asks a handler: not a broadcast */
+	check(evre_guard_write_checked(&guard, &check_, &dev, 0xD008, value, 1) == LOGIN_REQUIRED
+			&& evre_guard_write(&guard, &dev, 0xD010, token, 8) == EVRE_HANDLED && evre_guard_logged_in(&guard) == 1
+			&& evre_guard_check_write(&check_, &dev, 0xD008, value, 1) == VALUE_REFUSED
+			&& evre_guard_write_checked(&guard, &check_, &dev, 0xD008, value, 1) == VALUE_REFUSED,
+			"EVRe Guard: the login first, then the values");
+	uint16_t addr = 0;
+	uint8_t why = 0;
+	check(evre_guard_check_last(&check_, &addr, &why) == 2 && addr == 0xD008 && why == EVRE_GUARD_WHY_LIMIT
+			&& evre_guard_read(&guard, 0xD000, 8) == NO_ERROR, "EVRe Guard: the diagnostics, a read");
+	evre_guard_restore(&guard, 0, 2000);
+	evre_guard_logout(&guard);
+	check(evre_guard_logged_in(&guard) == 0, "EVRe Guard: restore, logout");
+}
+
 int main() {
 	runTime();
 	newNames();
+	guardNames();
 	std::printf("%d failed\n", failed);
 	return failed ? 1 : 0;
 }

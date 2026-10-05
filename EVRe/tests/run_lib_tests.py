@@ -45,6 +45,8 @@ import tempfile
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 NEW = os.path.normpath(os.path.join(HERE, '..', 'lib'))
+GUARD = os.path.join(NEW, 'guard')
+GUARD_SOURCES = [os.path.join(GUARD, 'evre_guard.cpp'), os.path.join(GUARD, 'evre_guard_desc.cpp')]
 LIMIT_S = 600  # a program that runs longer hangs: a loop that cannot end is a failure too
 passed = failed = 0
 
@@ -255,7 +257,7 @@ def api_compat(cc, folder):
     if os.name == 'nt':
         variants.append(('<windows.h> first', ['-std=c++17', '-DWITH_WINDOWS_H']))
     for what, flags in variants:
-        exe = build(cc, folder, 'api_compat', NEW, [], source='api_compat.cpp',
+        exe = build(cc, folder, 'api_compat', NEW, [], ['-I', GUARD] + GUARD_SOURCES, source='api_compat.cpp',
                     flags=flags + ['-O2', '-Wall', '-Wextra', '-Werror'])
         check(exe is not None, 'api_compat: every public name compiles, %s, -Wall -Wextra -Werror' % what)
         if exe:
@@ -265,7 +267,7 @@ def api_compat(cc, folder):
                 print('     ' + line)
             check(code == 0 and not bad and out.strip().endswith('0 failed'), 'api_compat: runs, %s' % what)
     r = subprocess.run([cc, '-std=c++11', '-Wall', '-Wextra', '-Werror', '-Wmissing-declarations', '-DDEFINE_CONFIGURE',
-                        '-I', NEW, '-c', os.path.join(HERE, 'api_compat.cpp'), '-o', os.path.join(folder, 'cfg.o')],
+                        '-I', NEW, '-I', GUARD, '-c', os.path.join(HERE, 'api_compat.cpp'), '-o', os.path.join(folder, 'cfg.o')],
                        capture_output=True, text=True)
     check(r.returncode == 0, "api_compat: a device's protocolConfigure() is the header's function %s" % r.stderr.strip()[:300])
 
@@ -491,6 +493,48 @@ def fuzz(cc, folder, before, cases):
                   'the decided classes, each checked (%d lines outside them)' % (cases, ops, seed, name, len(bad)))
 
 
+def register_checks(cc, folder):
+    """EVRe Guard part 2 (guard_desc_test.cpp): the decisions D-26 on and the wire table's rows, as it is and in the
+    lock build; then the same checks against a device without part 2 (-DNO_CHECK), where the checks of each decision
+    that changes an answer must fail; and part 2 compiled with -Wall -Wextra -Wpedantic -Werror, C++11 and C++17."""
+    guard = ['-I', GUARD, '-Wall', '-Wextra'] + GUARD_SOURCES
+    for exe_name, label, extra in (('guard_desc', '', []),
+                                   ('guard_desc_lock', 'lock hooks', ['-include', os.path.join(HERE, 'lock_hooks.h')])):
+        what = 'register checks' + (', %s' % label if label else '')
+        exe = build(cc, folder, exe_name, NEW, [], guard + extra, source='guard_desc_test.cpp')
+        check(exe is not None, 'built: %s (1.1 + EVRe Guard parts 1 and 2, -Wall -Wextra)' % what)
+        if exe:
+            code, out = execute(exe)
+            for line in out.splitlines():
+                if line.startswith(('PASS', 'FAIL')):
+                    check(line.startswith('PASS'), ('[%s] ' % label if label else '') + line.split(' ', 1)[1])
+            check(code == 0, 'the %s program passed' % what)
+    exe = build(cc, folder, 'guard_desc_none', NEW, ['NO_CHECK'], ['-I', GUARD, os.path.join(GUARD, 'evre_guard.cpp')],
+                source='guard_desc_test.cpp')
+    check(exe is not None, 'built: the register checks against a device without part 2 (-DNO_CHECK)')
+    if exe:
+        _, out = execute(exe)
+        fails = {}
+        for line in out.splitlines():
+            if line.startswith('FAIL'):
+                tag = line.split(' ', 2)[1].rstrip(':')
+                fails[tag] = fails.get(tag, 0) + 1
+        print('     without part 2 these checks fail, as they must: %s' % ', '.join(
+            '%s %d' % (tag, fails[tag]) for tag in sorted(fails, key=lambda t: (t[0] != 'D', t))))
+        # every decision that changes what a device answers or stores fails without part 2; the others (activity,
+        # a clamp register, a broadcast of CONFIG, the entry's size) hold either way and are proven by their mutants
+        must = ('D-26', 'D-27', 'D-28', 'D-30', 'D-31', 'D-32', 'D-33', 'D-38', 'D-39', 'D-41', 'D-43', 'D-49', 'wire')
+        missing = [tag for tag in must if not fails.get(tag)]
+        check(not missing, 'without part 2 the checks of %s fail (each a behaviour part 2 adds)%s'
+              % (', '.join(must), ': not ' + ', '.join(missing) if missing else ''))
+    for std in ('c++11', 'c++17'):
+        r = subprocess.run([cc, '-std=' + std, '-O2', '-Wall', '-Wextra', '-Wpedantic', '-Werror', '-c',
+                            os.path.join(GUARD, 'evre_guard_desc.cpp'), '-I', NEW, '-I', GUARD,
+                            '-o', os.path.join(folder, 'gd.o')], capture_output=True, text=True)
+        check(r.returncode == 0, 'EVRe Guard part 2 compiles with -Wall -Wextra -Wpedantic -Werror (%s) %s'
+              % (std, r.stderr.strip()[:300]))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--old', default=os.path.join(HERE, 'lib_1.0'))
@@ -555,6 +599,7 @@ def main():
         g = subprocess.run([opts.cc, '-std=c++17', '-Wall', '-Wextra', '-Werror', '-c', os.path.join(NEW, 'guard', 'evre_guard.cpp'),
                             '-I', NEW, '-o', os.path.join(folder, 'g.o')], capture_output=True, text=True)
         check(g.returncode == 0, 'EVRe Guard compiles with -Wall -Wextra -Werror %s' % g.stderr.strip()[:300])
+        register_checks(opts.cc, folder)
 
         if opts.fuzz:
             fuzz(opts.cc, folder, os.path.abspath(opts.fuzz), opts.fuzz_cases)
