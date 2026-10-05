@@ -1080,6 +1080,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | - **Normalise** | Each line scaled to its own range (7.6). |
 | - **Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
 | - **Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
+| - **Fold all lanes**, **Open all lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
 | - **Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
 | - **Hover values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | - **Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
@@ -1194,7 +1195,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Chart | Ctrl + wheel | Zoom Y around the mouse (switches to Manual); with Lanes, the lane under the mouse. |
 | Lanes' value labels | Wheel | Scroll the lanes up and down when they do not fit (7.12). |
 | Lanes' scroll bar | Drag / click | Drag the handle; a click above or below it moves one plot height (7.12). |
-| Lane's unit name / folded strip | Click | Fold the lane / open it again (7.12). |
+| Lane's ▾ button or unit name / folded strip or its ▸ | Click | Fold the lane / open it again (7.12). |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
 | Lane's value labels | Right-click | The lane's Y range: Auto, Manual…, Log; Fold lane / Open lane (7.12). |
 | Legend chip | Right-click | The line's Histogram or Spectrum (8.6). |
@@ -1285,17 +1286,26 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   the time), or the **scroll bar** in the right margin, shown only then: drag its handle, or click above or below it
   to move one plot height. A lane cut by the plot's top or bottom edge is drawn cut. Turning Lanes on starts at the
   top.
-- **Fold a lane:** a **click on its unit name** (or **Fold lane** in its menu) folds it into a strip 22 px high: its
+- **Fold a lane:** a **click on its ▾ button** at the top of its unit column, or on its unit name (or **Fold lane** in
+  its menu), folds it into a strip 22 px high: its
   unit, then each of its lines with its colour dot, name and latest value in view (as the legend writes it), cut
   with … when they do not fit. No grid, lines or value labels; the crosshair's box leaves its lines out. The open
-  lanes share the height that is left. A **click anywhere on the strip** (or **Open lane** in its menu, also by a
-  right-click on the strip) opens it again; a click on a strip places no cursor and adds no note. Folds are kept by
+  lanes share the height that is left. A **click anywhere on the strip** or its ▸ (or **Open lane** in its menu, also
+  by a right-click on the strip) opens it again; a click on a strip places no cursor and adds no note. Over a button,
+  a unit name or a strip the mouse becomes a pointing hand, the button lights up, and a tooltip says *Fold lane* or
+  *Open lane*; the state corner says *lanes: ▾ folds*. **Display → Fold all lanes** and **Open all lanes** (shown
+  with Lanes on) fold or open them all, a way back when everything is folded. The value labels' tooltip names what
+  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a
+  right-click has its Y range and Fold lane. Folds are kept by
   unit and saved, so a unit folded stays folded when it comes back, at the next start too; a recording's window
   keeps its own.
 - **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
   right-click its value labels for **Auto**, **Manual…** (its min and max asked) and **Log** (7.5). **Ctrl + wheel**
   over a lane zooms that lane (Manual); a **double-click** in it sets it to Auto. The Y range row above the chart is
   the plot's without lanes, and is disabled meanwhile.
+- **A line between two lanes**, in the middle of the gap, from the value labels across the plot, in the theme's
+  border colour (a step stronger than the grid): the lanes read as plots of their own, and the value labels of one
+  do not run on into the next. Only between lanes in view.
 - **One time axis** under the plot; the grid's times run through every open lane.
 - **Across the whole plot,** however the lanes are scrolled: cursors A and B, their span and the A-B bar (at the
   plot's top), the notes (their tags at its bottom), the crosshair's line with a dot on every line in its own lane
@@ -3696,8 +3706,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView` / `ChartWidget` | the chart (chapter 23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneSeparators` / `stateText` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
@@ -3905,7 +3915,14 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
   cursors and the pan: the scroll bar (`laneScrollBarRect`, painted in `RIGHT_PAD` outside the card's layer by
   `drawLaneBar`, not a `QScrollBar`: nothing goes over the layer; its handle `Drag::LaneBar`), a unit name
   (`LANE_UNIT_W`, folds) and a folded strip (opens); the wheel over the value labels scrolls by `LANE_WHEEL_STEP`
-  (40 px). A folded strip is a picture (`foldedPicture`, of its part in the plot, made again when its texts change):
+  (40 px). Each lane's fold button (`laneFoldButtonRect`: `LANE_BUTTON_H`, 16 px, at the top of an open lane's unit
+  column, or the strip's height for a folded one) is drawn by `drawGrid` as a small triangle, outside the card's layer
+  (as the labels are), highlighted while `hoverLane_` (set by the mouse's move, cleared when it leaves) is its lane;
+  the unit name takes the column under it. `toolTipAt` gives the lanes' tooltips (`QEvent::ToolTip`).
+  `setAllLanesFolded` folds or opens every lane now shown (Fold all / Open all). The separators (`separatorsY`: the
+  middle of each gap whose middle is in the plot) are a 1 px line in `border`: `drawGrid` draws them from the value
+  labels to the plot's right edge, the card adds its part from its layer's left edge as grid segments
+  (`laneSeparators`: as last painted, for the tests). A folded strip is a picture (`foldedPicture`, of its part in the plot, made again when its texts change):
   its unit, then each line's dot, name and value (`foldedItems`: live, the legend's value; held, the last sample in
   view), cut with … where the room ends. The crosshair leaves a folded lane's lines out of its box.
 - **Log** (`setYLog`, `y_.log`; not while normalised). `Axes::setRange` keeps log10 of the range's ends, and
@@ -3923,7 +3940,8 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 `paintEvent` (`paintFrame`) draws in this order:
 
 1. card
-2. grid (on a card: its labels only; the card draws the plot, 23.7)
+2. grid (on a card: its labels only; the card draws the plot, 23.7); with lanes also each lane's fold button and unit
+   name, and the separators between lanes
 3. cursor span, then the lines (each in its plot: lanes, its lane's `Axes`, clipped to its part in the plot), then
    the lines of the notes, the trigger's level and the cursors, the folded strips over them, then their tags and the
    A-B bar (`Marks::Lines`, then `Marks::Tags`: the card's order, its pictures over all its layers) (not on a card)
@@ -4057,7 +4075,8 @@ layer of the window over the chart (DirectComposition), which a card draws and s
   the line's width of room): the card has no clip of its own, and a line past a Manual range would draw into the next
   lane, a lane scrolled half out above the plot's top. A lane out of view or folded gets no segments; a folded strip
   is the CPU's picture (`foldedPicture`), the first of the frame's pictures, so it lies over the marks' dashed lines
-  and under their tags as the CPU paints it. Without lanes the layer's edge cuts the one plot.
+  and under their tags as the CPU paints it. The separators between lanes are grid segments in `border`, from the
+  layer's left edge (the CPU paints them up to there). Without lanes the layer's edge cuts the one plot.
 - **A segment is an instance.** Each line's polyline (23.2, without the bars: a card draws the strokes) becomes
   segments of 20 bytes (`GpuLines::Segment`: two points in the layer's pixels, the colour); the vertex shader makes
   each a quad the line's width (as the CPU's copies: `max(2, round(1.5 × devicePixelRatio))` pixels) and half the
@@ -4511,6 +4530,18 @@ on the strip brings them back. With `EVRE_TEST_SHOT` set it saves `<prefix>_lane
 one folded). On Windows the card's picture is compared with the CPU's as for two lanes, with eight more units
 scrolled half a lane and the third folded.
 
+**The fold made visible** (`chartLanesFoldButton`, settings `lanesButton`, the same ten lanes): a button at the top of
+every lane's unit column in view (16 px, none for a lane out of view); a click on it folds the lane, one on the strip's
+▸ opens it; over a button the pointing hand, the button's pixels changed, the hovered lane, the tooltip *Fold lane*
+shown by a tooltip event, *Open lane* on a strip and its ▸, no highlight once the mouse is over the plot; the state
+corner's *lanes: ▾ folds*; Display's Fold all lanes and Open all lanes: shown with Lanes on, Fold all enabled and
+Open all not, then every lane folded (saved, the ten strips fit) and the other way round, both hidden with Lanes off;
+the value labels' tooltip with the wheel's part while the lanes scroll and without it with four lanes.
+
+**Separators** (`chartLanesSeparators`, settings `lanesSeparators`): with ten lanes, one folded, and scrolled half a
+lane, a separator for each gap whose middle is in the plot, at that middle, in the border colour at the value labels,
+at the plot's left edge and in its middle; none with Lanes off.
+
 **Analysis and trigger** (`analysisMath`, `analysisWindows`, `chartTrigger`): the FFT of an impulse is flat, a sine of 8
 periods in 256 lands in bin 8 with N/2, and comes back; 0 .. 999 makes 10 bins of 99.9, one value one bin, few levels
 √n bins; a sine of 2 V at 62.5 Hz polled 1 ms ± 0.3 ms apart reads 2 V (± 0.05) at 62.5 Hz with 8 segments of 2048,
@@ -4563,7 +4594,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 349 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 355 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

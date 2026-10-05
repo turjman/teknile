@@ -192,6 +192,15 @@ public:
 	double laneContentHeight() const;    /* all the lanes stacked, the gaps between them included */
 	QRectF laneScrollBarRect() const;    /* the bar's track in the right pad; empty: the lanes fit */
 	QRectF laneScrollHandleRect() const; /* its handle; empty: the lanes fit */
+	/* the fold button at the top of an open lane's unit column ("▾"), or a folded strip's "▸": a click folds or opens;
+	 * empty: out of view */
+	QRectF laneFoldButtonRect(int lane) const;
+	int hoveredLane() const { return hoverLane_; } /* tests: the lane whose button is highlighted; -1: none */
+	int foldedLaneCount() const;          /* of the lanes now */
+	void setAllLanesFolded(bool folded);  /* Fold all lanes / Open all lanes */
+	QString toolTipAt(const QPointF &pos) const; /* the lanes' tooltips there (the button, a strip, the value labels) */
+	QVector<double> laneSeparators() const { return laneSeparators_; } /* tests: the lines between lanes, as painted */
+	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -659,6 +668,10 @@ private:
 	bool lanes_ = false;
 	double laneScroll_ = 0;           /* px from the top of the lanes (clamped when painted and when set) */
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
+	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
+	mutable QVector<double> laneSeparators_;
+	mutable QString stateText_;
+	QVector<double> separatorsY(const QVector<Lane> &plots) const; /* the gaps' middles in the plot */
 	bool pressedLanes_ = false;       /* the last press was the lanes' own (pressLanes): its double-click is not a lane's */
 	double dragStartY_ = 0;           /* LaneBar: where the drag began */
 	mutable QHash<QString, QImage> foldedImages_; /* the folded strips' pictures, by unit, at foldedKeys_ */

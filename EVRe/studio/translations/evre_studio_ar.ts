@@ -615,10 +615,6 @@ so the line always reaches the right edge and scrolls without steps.</source>
         <translation>مسارات</translation>
     </message>
     <message>
-        <source>A plot per unit, stacked, each with its own Y range (right-click its values: Auto, Manual, Log); one time axis, the cursors and notes across them. At most 8: the units after share the last.</source>
-        <translation>مخطط لكل وحدة، بعضها فوق بعض، لكلٍّ مدى Y خاص (انقر بالزر الأيمن على قيمه: تلقائي، يدوي، لوغاريتمي)؛ محور زمن واحد، والمؤشران والملاحظات عبرها كلها. 8 على الأكثر: الوحدات بعدها تتشارك الأخير.</translation>
-    </message>
-    <message>
         <source>Trigger</source>
         <translation>القدح</translation>
     </message>
@@ -1072,6 +1068,18 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <source>Fold lane</source>
         <translation>طيّ المسار</translation>
     </message>
+    <message>
+        <source>A plot per unit, stacked, each with its own Y range (right-click its values: Auto, Manual, Log); one time axis, the cursors and notes across them. Each at least 80 px high: they scroll when they do not fit, and ▾ folds a lane.</source>
+        <translation>مخطط لكل وحدة، بعضها فوق بعض، لكلٍّ مدى Y خاص (انقر بالزر الأيمن على قيمه: تلقائي، يدوي، لوغاريتمي)؛ محور زمن واحد، والمؤشران والملاحظات عبرها كلها. ارتفاع كلٍّ منها 80 px على الأقل: تتمرر حين لا تتسع لها المساحة، و▾ يطوي المسار.</translation>
+    </message>
+    <message>
+        <source>Fold all lanes</source>
+        <translation>طيّ كل المسارات</translation>
+    </message>
+    <message>
+        <source>Open all lanes</source>
+        <translation>فتح كل المسارات</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1124,10 +1132,6 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <translation>مثبّت: يمتلئ، يأتي بعد %1 s · «مباشر» للمتابعة</translation>
     </message>
     <message>
-        <source>lanes</source>
-        <translation>مسارات</translation>
-    </message>
-    <message>
         <source>Y log</source>
         <translation>Y لوغاريتمي</translation>
     </message>
@@ -1154,6 +1158,30 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     <message>
         <source>trigger: Arm</source>
         <translation>القدح: «تجهيز»</translation>
+    </message>
+    <message>
+        <source>Open lane</source>
+        <translation>فتح المسار</translation>
+    </message>
+    <message>
+        <source>Fold lane</source>
+        <translation>طيّ المسار</translation>
+    </message>
+    <message>
+        <source>Wheel: scroll the lanes</source>
+        <translation>العجلة: تمرير المسارات</translation>
+    </message>
+    <message>
+        <source>Ctrl + wheel: zoom this lane</source>
+        <translation>Ctrl + العجلة: تكبير هذا المسار</translation>
+    </message>
+    <message>
+        <source>Right-click: its Y range and Fold lane</source>
+        <translation>النقر بالزر الأيمن: مدى Y له وطيّ المسار</translation>
+    </message>
+    <message>
+        <source>lanes: ▾ folds</source>
+        <translation>مسارات: ▾ للطيّ</translation>
     </message>
 </context>
 <context>
@@ -2141,9 +2169,10 @@ removes them, and so does turning &lt;b&gt;Cursors&lt;/b&gt; off.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;ƒ Math&lt;/b&gt;: lines made from a formula (below).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Display&lt;/b&gt;, a menu of how the lines are drawn (its tooltip says what is on): &lt;b&gt;Normalise&lt;/b&gt;, every line
 scaled to its own range, to compare shapes of different units; &lt;b&gt;Lanes&lt;/b&gt;, a plot per unit stacked under each other,
-each at least 80 px high: when they do not fit they scroll (the wheel over their values, or the bar at the right); a
-click on a lane&apos;s unit name folds it into a strip of its lines and their values, a click on the strip opens it again;
-each lane has its own Y range: right-click a lane&apos;s values for Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
+a line between two lanes, each at least 80 px high: when they do not fit they scroll (the wheel over their values, or
+the bar at the right); a click on a lane&apos;s ▾ (above its unit name) or on its unit name folds it into a strip of its
+lines and their values, a click on the strip opens it again, and &lt;b&gt;Fold all lanes&lt;/b&gt; / &lt;b&gt;Open all lanes&lt;/b&gt; under
+Lanes do it for all; each lane has its own Y range: right-click a lane&apos;s values for Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
 &lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -2259,8 +2288,10 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;li&gt;&lt;b&gt;ƒ الرياضيات&lt;/b&gt;: خطوط مصنوعة من صيغة (أدناه).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;العرض&lt;/b&gt;، قائمة بكيفية رسم الخطوط (تلميحها يقول ما هو مفعّل): &lt;b&gt;التطبيع&lt;/b&gt;، كل خط
 محجّم إلى مداه، لمقارنة أشكال وحدات مختلفة؛ &lt;b&gt;المسارات&lt;/b&gt;، مخطط لكل وحدة بعضها تحت بعض،
-ارتفاع كلٍّ منها 80 px على الأقل: حين لا تتسع لها المساحة تتمرر (بالعجلة فوق قيمها، أو بشريط التمرير على اليمين)؛
-والنقر على اسم وحدة مسار يطويه في شريحة بخطوطه وقيمها، والنقر على الشريحة يفتحه من جديد؛ ولكل مسار مدى Y خاص:
+بين كل مسارين خط فاصل، وارتفاع كلٍّ منها 80 px على الأقل: حين لا تتسع لها المساحة تتمرر (بالعجلة فوق قيمها، أو بشريط
+التمرير على اليمين)؛ والنقر على ▾ مسار (فوق اسم وحدته) أو على اسم وحدته يطويه في شريحة بخطوطه وقيمها، والنقر على
+الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ ولكل مسار
+مدى Y خاص:
 انقر بالزر الأيمن على قيم مسار لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ محور زمن واحد، والمؤشران والملاحظات و
 خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
 بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
@@ -2351,7 +2382,7 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s dashed line&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; a lane&apos;s values: its Y range (Auto, Manual…, Log), Fold lane ·
 &lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
-&lt;b&gt;click&lt;/b&gt; its unit name: fold it, the strip: open it&lt;/td&gt;&lt;/tr&gt;
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
 &lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
@@ -2378,7 +2409,7 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيم مسار: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
 &lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على اسم وحدته: طيّه، وعلى الشريحة: فتحه&lt;/td&gt;&lt;/tr&gt;
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
 &lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،

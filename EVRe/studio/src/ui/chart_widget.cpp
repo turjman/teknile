@@ -8,12 +8,14 @@
 #include <QKeyEvent>
 #include <QDateTime>
 #include <QGuiApplication>
+#include <QHelpEvent>
 #include <QMouseEvent>
 #include <QPaintEngine>
 #include <QPainter>
 #include <QPainterPath>
 #include <QStackedWidget>
 #include <QThread>
+#include <QToolTip>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -43,6 +45,7 @@ constexpr double STATE_W = 420;            /* the state text, right-aligned at t
 constexpr double STATE_ROOM = 230;
 constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */         /* the legend stops this far from the right, for the state */
 constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left of its value labels (Lanes) */
+constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -962,7 +965,15 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 bool ChartView::event(QEvent *e) {
 	if (e->type() == QEvent::Leave) {
 		mouseX_ = -1;
+		hoverLane_ = -1;
 		refresh();
+	}
+	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
+		auto *help = static_cast<QHelpEvent *>(e);
+		const QString text = toolTipAt(help->pos());
+		if (text.isEmpty()) QToolTip::hideText();
+		else QToolTip::showText(help->globalPos(), text, this);
+		return true;
 	}
 	return QWidget::event(e);
 }
@@ -1103,6 +1114,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLanes = lane >= 0 && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()))
 				&& (lanesShown_[lane].folded || pos.x() < LANE_UNIT_W);
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
+		hoverLane_ = onLanes ? lane : -1; /* its button drawn highlighted */
 		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar ? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
@@ -1757,6 +1769,67 @@ void ChartView::setFoldedLanes(const QStringList &units) {
 
 QString ChartView::foldedText(int lane) const { return laneFolded(lane) ? foldedTexts_.value(laneKey(lane)) : QString(); }
 
+QRectF ChartView::laneFoldButtonRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	if (shown.isEmpty()) return QRectF();
+	if (plots[lane].folded) return QRectF(0, shown.top(), LANE_UNIT_W, shown.height());
+	return QRectF(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+}
+
+int ChartView::foldedLaneCount() const {
+	if (!lanes_ || series_.isEmpty()) return 0;
+	int folded = 0;
+	for (const Lane &lane : plotLayout()) folded += lane.folded ? 1 : 0;
+	return folded;
+}
+
+void ChartView::setAllLanesFolded(bool folded) {
+	if (!lanes_ || series_.isEmpty()) return;
+	bool changed = false;
+	for (const Lane &lane : plotLayout()) {
+		if (lane.folded == folded) continue;
+		if (folded) lanesFolded_.insert(lane.key);
+		else lanesFolded_.remove(lane.key);
+		changed = true;
+	}
+	if (!changed) return;
+	lanesShown_ = plotLayout();
+	emit laneFoldsChanged();
+	refresh();
+}
+
+/* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
+ * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
+QString ChartView::toolTipAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || pos.y() < plot.top() || pos.y() > plot.bottom() || pos.x() > plot.right()) return QString();
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return QString();
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return QString(); /* between two lanes */
+	if (lanesShown_[lane].folded) return tr("Open lane");
+	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
+	if (pos.x() >= plot.left()) return QString();
+	QStringList parts;
+	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
+	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
+	return parts.join(QStringLiteral(" · "));
+}
+
+/* a line in the middle of each gap between two lanes, where it lies in the plot: the lanes read as plots of their own */
+QVector<double> ChartView::separatorsY(const QVector<Lane> &plots) const {
+	QVector<double> ys;
+	if (!lanes_) return ys;
+	const QRectF plot = plotRect();
+	for (qsizetype k = 0; k + 1 < plots.size(); k++) {
+		const double y = plots[k].axes.rect.bottom() + LANE_GAP / 2;
+		if (y >= plot.top() && y <= plot.bottom()) ys << y;
+	}
+	return ys;
+}
+
 void ChartView::setLanes(bool on) {
 	if (on == lanes_) return;
 	lanes_ = on;
@@ -1987,20 +2060,31 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 	p.setFont(smallFont());
 	p.setRenderHint(QPainter::Antialiasing, false);
 	valueLabels_.clear();
-	for (const Lane &lane : plots) {
+	/* a lane's fold button: "▾" at the top of an open lane's unit column, "▸" on a folded strip; highlighted while the
+	 * mouse is on it, the unit name or the strip */
+	const auto foldButton = [&](int index, const QRectF &button, bool folded) {
+		const double cx = button.center().x(), cy = button.center().y();
+		const QPointF open[3] = { { cx - 4, cy - 2 }, { cx + 4, cy - 2 }, { cx, cy + 3 } };
+		const QPointF shut[3] = { { cx + 3, cy }, { cx - 2, cy - 4 }, { cx - 2, cy + 4 } };
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(Qt::NoPen);
+		if (index == hoverLane_) {
+			p.setBrush(c.surface2);
+			p.drawRoundedRect(QRectF(cx - 8, cy - 8, 16, 16), 4, 4);
+		}
+		p.setBrush(index == hoverLane_ ? c.text : c.muted);
+		p.drawPolygon(folded ? shut : open, 3);
+		p.restore();
+	};
+	for (int index = 0; index < plots.size(); index++) {
+		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
-		/* lanes: only the part in the plot (scrolled), and nothing of a folded one but a mark that it opens */
+		/* lanes: only the part in the plot (scrolled), and nothing of a folded one but its button */
 		const QRectF shown = lanes_ ? laneVisible(a.rect, plot) : a.rect;
 		if (shown.isEmpty()) continue;
 		if (lane.folded) {
-			const double cx = LANE_UNIT_W / 2, cy = shown.center().y();
-			const QPointF tip[3] = { { cx + 3, cy }, { cx - 2, cy - 4 }, { cx - 2, cy + 4 } };
-			p.save();
-			p.setRenderHint(QPainter::Antialiasing, true);
-			p.setPen(Qt::NoPen);
-			p.setBrush(c.muted);
-			p.drawPolygon(tip, 3);
-			p.restore();
+			foldButton(index, QRectF(0, shown.top(), LANE_UNIT_W, shown.height()), true);
 			continue;
 		}
 		const GridTicks values = gridTicks(a);
@@ -2041,16 +2125,25 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			p.setPen(QPen(c.grid, 1));
 			p.drawLine(QPointF(axes.x(t), shown.top()), QPointF(axes.x(t), shown.bottom()));
 		}
-		if (lanes_) { /* the lane's unit, up the left edge of its labels, in the part in view (a click folds it) */
+		if (lanes_) { /* its fold button, then its unit up the left edge of its labels, in the part in view (a click on
+		               * either folds it) */
+			const QRectF button(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+			foldButton(index, button, false);
+			const QRectF name(0, button.bottom(), LANE_UNIT_W, shown.bottom() - button.bottom());
 			p.setPen(c.text);
-			p.translate(LANE_UNIT_W / 2, shown.center().y());
+			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);
 			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
-			p.drawText(QRectF(-shown.height() / 2, -7, shown.height(), 14), Qt::AlignCenter,
-					QFontMetricsF(p.font()).elidedText(units, Qt::ElideRight, shown.height()));
+			p.drawText(QRectF(-name.height() / 2, -7, name.height(), 14), Qt::AlignCenter,
+					QFontMetricsF(p.font()).elidedText(units, Qt::ElideRight, name.height()));
 		}
 		p.restore();
 	}
+	/* between two lanes a line from their value labels across the plot, a step stronger than the grid (the card draws
+	 * its part over the plot with the grid) */
+	laneSeparators_ = separatorsY(plots);
+	p.setPen(QPen(c.border, 1));
+	for (double y : std::as_const(laneSeparators_)) p.drawLine(QPointF(LANE_UNIT_W, y), QPointF(plot.right(), y));
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
 		p.setPen(c.muted);
@@ -2357,6 +2450,12 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
 			grid.segments.push_back({ x, laneTop, x, laneBottom, gridRgba });
 		}
+	}
+	/* the lanes' separators: crisp as the grid, from the layer's left edge (the CPU draws them up to it) */
+	for (double y : separatorsY(plots)) {
+		const float sy = float(std::floor(map(QPointF(0, y)).y()) + grid.widthPx / 2);
+		grid.segments.push_back({ float(map(QPointF(plot.left() - 2, 0)).x()), sy, float(bottomRight.x()), sy,
+				gpuColor(c.border) });
 	}
 	frame.layers << grid;
 	/* the cursors' span: one bar as tall as the plot */
@@ -3278,18 +3377,19 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 		state << (behind >= 0 ? tr("held: -%1 s · Live to follow").arg(chartNumber(behind))
 							: tr("held: filling, %1 s to come · Live to follow").arg(chartNumber(-behind)));
 	}
-	if (lanes_) state << tr("lanes"); /* each its own Y range */
+	if (lanes_) state << tr("lanes: ▾ folds"); /* each its own Y range; the hint where the fold is */
 	else if (logShown()) state << (y_.autoRange ? tr("Y log") : tr("Y log, manual"));
 	else if (!y_.autoRange && !normalized_) state << tr("Y manual");
 	if (cursorMode_) state << tr("cursors: click / drag");
 	if (trigger_.on) state << (trigger_.armed ? tr("trigger: armed") : std::isfinite(trigger_.at) ? tr("triggered")
 			: tr("trigger: Arm"));
+	stateText_ = state.join(QStringLiteral("  ·  "));
 	if (state.isEmpty()) return;
 	const ThemeColors &c = Theme::colors();
 	p.setFont(labelFont());
 	p.setPen(!live_ ? c.warn : c.muted);
 	p.drawText(QRectF(axes.rect.right() - STATE_W, LEGEND_TOP, STATE_W, LEGEND_ROW_H),
-			Qt::AlignRight | Qt::AlignVCenter, state.join(QStringLiteral("  ·  ")));
+			Qt::AlignRight | Qt::AlignVCenter, stateText_);
 }
 
 /* the paint time as a running average; the frames counted over each second */
