@@ -3183,7 +3183,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "Log Y", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3210,6 +3210,7 @@ private:
 			check(setMs < 60 && meanwhile && opened, "chart on a GPU: the card opened on a thread of its own (the "
 					"window's thread not held while it wakes), the CPU drawing meanwhile; then the card takes over and says so");
 			once->setCursors(3570.0, 3571.5); /* the tags and the bar between them drawn by the card too */
+			once->addNote(3585.0, QStringLiteral("a note")); /* its tag at the plot's bottom, a picture on the card */
 			for (int k = 0; k < 3; k++) { /* two frames with the card's picture under its layer, then the layer */
 				once->repaint();
 				QApplication::processEvents();
@@ -3238,6 +3239,19 @@ private:
 					qPrintable(once->spanBarText()));
 			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
 					"between them, drawn by the card as the CPU draws them");
+			/* the note's tag: the layer's bottom 24 px (it sits 4 to 20 px above the plot's bottom, the layer 2 px past it) */
+			const int noteRows = int(std::ceil(24 * once->devicePixelRatioF()));
+			const QImage gpuNote = gpu.copy(0, gpu.height() - noteRows, gpu.width(), noteRows);
+			const QImage cpuNote = cpu.copy(at).copy(0, gpu.height() - noteRows, gpu.width(), noteRows);
+			const double noteAlike = blocksAlike(gpuNote, cpuNote, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuNote.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/note_card.png"));
+				cpuNote.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/note_cpu.png"));
+			}
+			std::printf("     (the note's strip: %.2f%% of the blocks like the CPU's)\n", noteAlike * 100);
+			check(once->notes().size() == 1 && noteAlike >= 0.93, "chart on a GPU: a note's tag drawn by the card as the CPU "
+					"draws it");
+			once->setNotes({});
 			once->clearCursors();
 			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
 			once->setYLog(true);
@@ -4143,7 +4157,8 @@ private:
 			error = done.first().at(2).toString();
 			QFile in(file);
 			if (!in.open(QIODevice::ReadOnly)) return QStringList();
-			return QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+			/* the platform's line ends, as a recording (CRLF on Windows) */
+			return QString::fromUtf8(in.readAll()).split(QRegularExpression(QStringLiteral("\r?\n")), Qt::SkipEmptyParts);
 		};
 		qint64 rows = 0;
 		QString error;
@@ -4211,6 +4226,13 @@ private:
 		big.tab.hide();
 	}
 
+	/* a note's tag starts at its time (or ends there, by the plot's right edge), within 1.5 px, in the chart's geometry
+	 * now: the window may have been laid out again since a point was taken (Windows at 225 %) */
+	static bool tagAtTime(const ChartView &view, const QRectF &tag, double time) {
+		const double perPixel = view.timeAt(1) - view.timeAt(0);
+		return std::fabs(view.timeAt(tag.left()) - time) < 1.5 * perPixel || std::fabs(view.timeAt(tag.right()) - time) < 1.5 * perPixel;
+	}
+
 	/* Notes: Add note here (its text asked), a tag at the bottom of the plot; dragged to move; double-click edits;
 	 * clicked, Delete removes it */
 	void chartNotes() {
@@ -4238,8 +4260,14 @@ private:
 		const QRectF tag = chart.view->noteTag(0);
 		const bool added = asked && chart.view->notes().size() == 1 && std::fabs(chart.view->notes()[0].time - time) < 1e-9
 				&& chart.view->notes()[0].text == QLatin1String("valve open") && !tag.isEmpty()
-				&& std::fabs(tag.left() - at.x()) < 1.5 && tag.bottom() < chart.view->lastPlot().bottom() && changed.size() == 1;
-		check(added, "chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
+				&& !tag.isEmpty() && tagAtTime(*chart.view, tag, time) && tag.bottom() < chart.view->lastPlot().bottom()
+				&& changed.size() == 1;
+		if (!added)
+			std::printf("     (note: menu action %s, asked %d, %lld notes, time %.6f vs %.6f, tag %.1f..%.1f x %.1f, plot bottom %.1f, "
+					"%lld changes)\n", add ? "found" : "missing", asked, (long long) chart.view->notes().size(),
+					chart.view->notes().isEmpty() ? 0.0 : chart.view->notes()[0].time, time, tag.left(), tag.bottom(), double(at.x()),
+					chart.view->lastPlot().bottom(), (long long) changed.size());
+		check(added,"chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
 				"plot");
 
 		/* dragged by its tag */
