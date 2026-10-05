@@ -4914,7 +4914,7 @@ private:
 		tab.show();
 		(void) QTest::qWaitForWindowExposed(&tab);
 		(void) view->grab();
-		const QRectF plot = view->laneScrollBarRect().adjusted(-1000, 0, 1000, 0); /* the plot's rows */
+		const QRectF plot = view->laneScrollBarRect().adjusted(-1000, 0, 1000, 0); /* the plot's rows (not its x) */
 
 		/* a button on every lane in view, at the top of its unit column; none for one out of view */
 		bool buttons = view->laneCount() >= 10;
@@ -4924,6 +4924,11 @@ private:
 			buttons = inView ? button.left() == 0 && button.right() <= 18 && std::fabs(button.top() - lane.top() - 1) < 0.01
 					&& button.height() == 16 : button.isEmpty();
 		}
+		/* a button's shape at rest: not the background behind the unit column */
+		const QImage rest = view->grab().toImage();
+		const QColor surface = Theme::colors().surface, shape = rest.pixelColor(
+				(view->laneFoldButtonRect(1).topLeft() + QPointF(4, 3)) .toPoint() * view->devicePixelRatioF());
+		buttons = buttons && shape != surface;
 		const QPoint button1 = view->laneFoldButtonRect(1).center().toPoint();
 		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, button1);
 		(void) view->grab();
@@ -4953,7 +4958,7 @@ private:
 		const bool stripTip = view->toolTipAt(view->laneRect(3).center()) == QStringLiteral("Open lane")
 				&& view->toolTipAt(view->laneFoldButtonRect(3).center()) == QStringLiteral("Open lane");
 		view->setLaneFolded(3, false);
-		moveTo(QPointF(plot.center().x(), view->laneRect(2).center().y()));
+		moveTo(view->laneRect(2).center()); /* over the plot */
 		const bool unlit = view->hoveredLane() == -1;
 		QToolTip::hideText();
 		if (!hand || !tipShown || !stripTip || !unlit)
@@ -4962,6 +4967,23 @@ private:
 					int(stripTip), int(unlit));
 		check(hand && tipShown && stripTip && unlit, "chart, Lanes: over a fold button the pointing hand, the button "
 				"highlighted, the tooltip \"Fold lane\" (\"Open lane\" on a strip); away from it, no highlight");
+
+		/* the scroll bar: the pointing hand, its handle brighter, a tooltip; away from it, as before */
+		const QRectF handle = view->laneScrollHandleRect();
+		const QRect handleArea = handle.toAlignedRect();
+		const QImage handleRest = view->grab().toImage().copy(handleArea);
+		moveTo(handle.center());
+		const QImage handleLit = view->grab().toImage().copy(handleArea);
+		const bool barHover = view->laneBarHovered() && view->cursor().shape() == Qt::PointingHandCursor
+				&& handleRest != handleLit && view->toolTipAt(handle.center())
+						== QStringLiteral("Scroll the lanes: drag the handle, or click above or below it for a page");
+		if (!barHover)
+			std::printf("     (the bar %s; hovered %d, cursor %d, the handle's pixels changed %d; tooltip \"%s\")\n",
+					handle.isEmpty() ? "none" : "shown", int(view->laneBarHovered()), int(view->cursor().shape()),
+					int(handleRest != handleLit), qPrintable(view->toolTipAt(handle.center())));
+		moveTo(view->laneRect(2).center()); /* over the plot */
+		check(barHover && !view->laneBarHovered(), "chart, Lanes: over the scroll bar the pointing hand, its handle "
+				"brighter, a tooltip that says how it scrolls");
 
 		/* the hint in the state corner */
 		const bool hint = view->stateText().contains(QStringLiteral("lanes: ▾ folds"));
@@ -5015,7 +5037,7 @@ private:
 	}
 
 	/* A line between two lanes (open or folded), in the middle of the gap, from the value labels across the plot, in
-	 * the theme's border colour; only between lanes in view; none without Lanes */
+	 * the colour of a control's edge (3:1 to the chart); only between lanes in view; none without Lanes */
 	void chartLanesSeparators() {
 		const QString group = QStringLiteral("lanesSeparators");
 		prepareLanesSettings(group);
@@ -5026,7 +5048,7 @@ private:
 		ChartView *view = tab.findChild<ChartView *>();
 		tab.show();
 		(void) QTest::qWaitForWindowExposed(&tab);
-		const QColor border = Theme::colors().border;
+		const QColor border = Theme::colors().control; /* a control's edge: 3:1 to the chart */
 		/* the separators as painted: one per gap whose middle is in the plot, there; the border colour at the labels
 		 * and over the plot */
 		const auto where = [&](QString &why) {
@@ -5057,7 +5079,7 @@ private:
 								+ std::abs(c.blue() - border.blue()) <= 6;
 					}
 					if (!found) {
-						why = QStringLiteral("no border colour at x %1, y %2").arg(x).arg(drawn[i]);
+						why = QStringLiteral("not the separator's colour at x %1, y %2").arg(x).arg(drawn[i]);
 						return false;
 					}
 				}
@@ -5077,7 +5099,38 @@ private:
 		ok = ok && view->laneSeparators().isEmpty();
 		if (!ok) std::printf("     (separators: %s)\n", qPrintable(why));
 		check(ok, "chart, Lanes: a line in the middle of each gap between two lanes in view (a folded one's too, scrolled "
-				"too), from the value labels across the plot, in the border colour; none without Lanes");
+				"too), from the value labels across the plot, in a control's edge colour (3:1); none without Lanes");
+
+		/* no text cut or run together: scrolled so the first lane is cut by the plot's top, every value label whole
+		 * inside its lane's part in view (none across a gap into the next lane's); a folded strip cut by the edge
+		 * writes nothing, whole it writes its lines */
+		view->setLanes(true);
+		view->setLaneScroll(ChartView::LANE_MIN_H / 2 + 3);
+		(void) view->grab();
+		const QRectF plotRows = view->laneScrollBarRect();
+		bool whole = !view->valueLabelRects().isEmpty();
+		for (const QRectF &label : view->valueLabelRects()) {
+			bool inside = false;
+			for (int k = 0; k < view->laneCount() && !inside; k++) {
+				const QRectF lane = view->laneRect(k);
+				const double top = std::max(lane.top(), plotRows.top()), bottom = std::min(lane.bottom(), plotRows.bottom());
+				inside = label.top() >= top - 0.01 && label.bottom() <= bottom + 0.01;
+			}
+			whole = whole && inside;
+		}
+		view->setLaneFolded(0, true);
+		view->setLaneScroll(10); /* the strip (22 px) half above the plot */
+		(void) view->grab();
+		const bool cutStrip = view->laneRect(0).top() < plotRows.top() && view->foldedText(0).isEmpty();
+		view->setLaneScroll(0);
+		(void) view->grab();
+		const bool wholeStrip = !view->foldedText(0).isEmpty();
+		view->setLaneFolded(0, false);
+		if (!whole || !cutStrip || !wholeStrip)
+			std::printf("     (labels whole in their lanes %d; a cut strip silent %d, a whole one written %d)\n", int(whole),
+					int(cutStrip), int(wholeStrip));
+		check(whole && cutStrip && wholeStrip, "chart, Lanes: no text cut by the plot's edge or run into the next lane: "
+				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
 		tab.hide();
 		QSettings().remove(group);
 	}

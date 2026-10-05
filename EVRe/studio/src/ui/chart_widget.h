@@ -198,8 +198,11 @@ public:
 	int hoveredLane() const { return hoverLane_; } /* tests: the lane whose button is highlighted; -1: none */
 	int foldedLaneCount() const;          /* of the lanes now */
 	void setAllLanesFolded(bool folded);  /* Fold all lanes / Open all lanes */
-	QString toolTipAt(const QPointF &pos) const; /* the lanes' tooltips there (the button, a strip, the value labels) */
+	/* the lanes' tooltips there (a button, a strip, the value labels, the scroll bar) */
+	QString toolTipAt(const QPointF &pos) const;
+	bool laneBarHovered() const { return hoverBar_; } /* tests: the scroll bar's handle highlighted */
 	QVector<double> laneSeparators() const { return laneSeparators_; } /* tests: the lines between lanes, as painted */
+	QVector<QRectF> valueLabelRects() const { return valueLabelRects_; } /* tests: the value labels' boxes, as painted */
 	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
@@ -669,6 +672,7 @@ private:
 	double laneScroll_ = 0;           /* px from the top of the lanes (clamped when painted and when set) */
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
 	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
+	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
 	QVector<double> separatorsY(const QVector<Lane> &plots) const; /* the gaps' middles in the plot */
@@ -705,6 +709,7 @@ private:
 	void forgetRanges(); /* the lines changed: every Auto range jumps to them at the next frame */
 	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
 	mutable QStringList valueLabels_;
+	mutable QVector<QRectF> valueLabelRects_; /* where they were written */
 	bool stripLog_ = false;          /* the memory strip's image drawn on the Log scale */
 
 	/* the totals since Clear: of the lines taken off the chart, by key, kept for when they come back (with their

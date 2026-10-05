@@ -1183,6 +1183,10 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <source>lanes: ▾ folds</source>
         <translation>مسارات: ▾ للطيّ</translation>
     </message>
+    <message>
+        <source>Scroll the lanes: drag the handle, or click above or below it for a page</source>
+        <translation>تمرير المسارات: اسحب المقبض، أو انقر فوقه أو تحته لصفحة كاملة</translation>
+    </message>
 </context>
 <context>
     <name>EventLog</name>
