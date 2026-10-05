@@ -76,6 +76,10 @@ The graphics-card drawing (`src/ui/gpu_lines.*`, Direct3D) and the display-paced
 (`src/ui/frame_clock.cpp`, DwmFlush) exist only on Windows. Keep them compiling, keep the CPU
 path and the card's pictures in step, and say in the pull request what needs a Windows check.
 
+The owner's Windows run is at 225 % scaling (xvfb is at 100 %): a picture from `grab()` is in
+device pixels, so a check that cuts an area out of it scales the area by the picture's
+`devicePixelRatio()` (a check that passed on Linux failed on Windows for this).
+
 ## The pull request
 
 List what changed for the user, the checks added, the tests run with their results, and anything

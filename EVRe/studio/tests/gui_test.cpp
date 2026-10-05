@@ -4941,14 +4941,20 @@ private:
 
 		/* the mouse over a button: the pointing hand, the button highlighted, the tooltip */
 		const QRectF button2 = view->laneFoldButtonRect(2);
-		const QRect area = button2.adjusted(-1, -1, 1, 1).toAlignedRect();
-		const QImage plain = view->grab().toImage().copy(area);
+		/* the button's area in the picture's own pixels: grab() is in device pixels (2.25 x at 225 %) */
+		const auto buttonPicture = [view, &button2] {
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			const QRectF area = button2.adjusted(-1, -1, 1, 1);
+			return whole.copy(QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect());
+		};
+		const QImage plain = buttonPicture();
 		const auto moveTo = [view](QPointF at) {
 			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
 			QApplication::sendEvent(view, &move);
 		};
 		moveTo(button2.center());
-		const QImage lit = view->grab().toImage().copy(area);
+		const QImage lit = buttonPicture();
 		const bool hand = view->cursor().shape() == Qt::PointingHandCursor && view->hoveredLane() == 2 && plain != lit;
 		QHelpEvent help(QEvent::ToolTip, button2.center().toPoint(), view->mapToGlobal(button2.center().toPoint()));
 		QApplication::sendEvent(view, &help);
