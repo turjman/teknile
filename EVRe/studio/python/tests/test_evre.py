@@ -6,6 +6,7 @@
 """
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -79,9 +80,11 @@ class Maps(unittest.TestCase):
 
     def test_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:
+            # the base beside the overlay, extended by a relative path (no relative path joins two drives)
+            shutil.copy(MAP, tmp)
             overlay = os.path.join(tmp, 'overlay.json')
             with open(overlay, 'w', encoding='utf-8') as f:
-                json.dump({'extends': os.path.relpath(MAP, tmp), 'device': 'Variant', 'registers': [
+                json.dump({'extends': os.path.basename(MAP), 'device': 'Variant', 'registers': [
                     {'addr': '0xD084', 'max': 80, 'unit': None}, {'addr': '0xD012', 'remove': True},
                     {'addr': '0xD200', 'name': 'NEW', 'type': 'u8'}]}, f)
             m = evre.DeviceMap.load(overlay)
