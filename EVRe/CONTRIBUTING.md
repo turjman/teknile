@@ -27,14 +27,14 @@ Every change comes with its tests, and all of them pass on Linux and Windows (`.
 
 | Test | Run |
 |---|---|
-| map files, exports | `build/evre_map_test` |
-| JSON Schema | `python studio/tests/schema_test.py` (needs `jsonschema`) |
-| command line | `python studio/tests/cli_test.py build` |
+| map&nbsp;files,&nbsp;exports | `build/evre_map_test` |
+| JSON&nbsp;Schema | `python studio/tests/schema_test.py` (needs `jsonschema`) |
+| command&nbsp;line | `python studio/tests/cli_test.py build` |
 | simulator | `python studio/tests/sim_test.py build` |
-| device table with the library | `python studio/tests/device_table_test.py build` (needs `g++`; finds `lib/`) |
-| Python package | `EVRE_BUILD=build python -m unittest discover -s studio/python/tests` |
-| the window | `python studio/tests/fake_device.py &` then `build/evre_gui_test` |
-| the API | the Studio with `--api` against the fake device, then `python studio/tests/api_test.py readonly` |
+| device&nbsp;table&nbsp;with&nbsp;the&nbsp;library | `python studio/tests/device_table_test.py build` (needs `g++`; finds `lib/`) |
+| Python&nbsp;package | `EVRE_BUILD=build python -m unittest discover -s studio/python/tests` |
+| the&nbsp;window | `python studio/tests/fake_device.py &` then `build/evre_gui_test` |
+| the&nbsp;API | the Studio with `--api` against the fake device, then `python studio/tests/api_test.py readonly` |
 
 The GUI and API tests write registers, a danger register included: run them only against the fake device or
 `evre-sim`, never a real one.

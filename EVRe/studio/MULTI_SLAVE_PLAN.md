@@ -31,9 +31,9 @@ Four faults were found while planning, all fixed by this work:
 | # | Where | What | Effect before the fix (fixed) |
 |---|---|---|---|
 | F-1 | `Master::findPending` | An answer was matched by function code and offset only, never by its slave. | Harmless with one device. With two, an answer from slave 3 could complete a request sent to slave 2. |
-| F-2 | Sidebar, Map settings | Slave 0 was accepted as a device address; `checkMap` had no rule for it. | Every READ went to broadcast, nobody answered, every request timed out. |
-| F-3 | API pass-through (:1219) | The client's slave was ignored. | A client could not reach another slave, and a broadcast WRITE from a client went to one device as a plain write. |
-| F-4 | The fake devices | They answered any slave, slave 0 too. | Tests could not catch F-1 or F-2. |
+| F-2 | Sidebar,&nbsp;Map&nbsp;settings | Slave 0 was accepted as a device address; `checkMap` had no rule for it. | Every READ went to broadcast, nobody answered, every request timed out. |
+| F-3 | API&nbsp;pass-through&nbsp;(:1219) | The&nbsp;client's&nbsp;slave&nbsp;was&nbsp;ignored. | A client could not reach another slave, and a broadcast WRITE from a client went to one device as a plain write. |
+| F-4 | The&nbsp;fake&nbsp;devices | They answered any slave, slave 0 too. | Tests could not catch F-1 or F-2. |
 
 ## 2. What the protocol gives and demands
 
@@ -127,8 +127,8 @@ device:
 |---|---|
 | The reserved bank's writable registers, 0xA004 .. 0xA105 (CONFIG, MSG_CNT, MSG_BUFFER) | always: every EVRe device has them |
 | 0xA000 .. 0xA003 (DEVICE_ID, STATUS) | never: read-only everywhere |
-| Anywhere else | only when every device on the link has the same register map, and every byte written lies in a writable register of it |
-| CONFIG with AUTO_SEND set | never: every device would start sending at once, over the others |
+| Anywhere&nbsp;else | only when every device on the link has the same register map, and every byte written lies in a writable register of it |
+| CONFIG&nbsp;with&nbsp;AUTO_SEND&nbsp;set | never: every device would start sending at once, over the others |
 
 Because nothing confirms a broadcast (section 2), every broadcast the Studio
 sends by register is followed by a read-back of each device, and the Log says
@@ -140,17 +140,17 @@ package and the API pass-through.
 
 | # | Question | Decided |
 |---|---|---|
-| D-1 | Where the device list lives | A bus file, `evre-bus/1` |
+| D-1 | Where&nbsp;the&nbsp;device&nbsp;list&nbsp;lives | A bus file, `evre-bus/1` |
 | D-2 | How the Registers tab shows several devices | One selected device, or All devices in one table |
 | D-3 | Pass-through slave with one device | Unchanged: any slave goes to the Studio's device; on a bus the client's slave is used |
-| D-4 | A device that stops answering | Offline after 3 timeouts in a row, retried every 2 s, the others keep polling |
-| D-5 | Proof after a broadcast | A read-back of each device |
+| D-4 | A&nbsp;device&nbsp;that&nbsp;stops&nbsp;answering | Offline after 3 timeouts in a row, retried every 2 s, the others keep polling |
+| D-5 | Proof&nbsp;after&nbsp;a&nbsp;broadcast | A read-back of each device |
 | D-6 | An address that means different things on different devices | Refused (section 6) |
-| D-7 | Broadcast permission | Behind Allow writes (Allow API writes for the API), plus the danger confirmation |
-| D-8 | Slave 0 in maps and the sidebar | An error: 0 is the broadcast address |
+| D-7 | Broadcast&nbsp;permission | Behind Allow writes (Allow API writes for the API), plus the danger confirmation |
+| D-8 | Slave&nbsp;0&nbsp;in&nbsp;maps&nbsp;and&nbsp;the&nbsp;sidebar | An error: 0 is the broadcast address |
 | D-9 | Tokens | One per device, typed in its Edit dialog and never saved; the Connection card's token otherwise |
-| D-10 | Polling per device | On or off per device (`"poll"`), one shared interval |
-| D-11 | Kept broadcasts | In the bus file (`"broadcasts"`) |
+| D-10 | Polling&nbsp;per&nbsp;device | On or off per device (`"poll"`), one shared interval |
+| D-11 | Kept&nbsp;broadcasts | In the bus file (`"broadcasts"`) |
 | D-12 | Python | A `Bus` class, built with the rest |
 
 ## 8. What was built differs from the plan
