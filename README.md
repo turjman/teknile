@@ -1,4 +1,9 @@
-<p align="center"><img src="EVRe/docs/assets/teknile.png" alt="teknile" width="320"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/teknile-logo-reversed.svg">
+    <img src="EVRe/docs/assets/teknile-logo.svg" alt="teknile" width="320">
+  </picture>
+</p>
 
 <p align="center">
   <a href="https://github.com/turjman/teknile/actions/workflows/ci.yml"><img src="https://github.com/turjman/teknile/actions/workflows/ci.yml/badge.svg" alt="CI"></a>

@@ -1,4 +1,9 @@
-<p align="center"><img src="docs/assets/teknile.png" alt="teknile" width="320"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/teknile-logo-reversed.svg">
+    <img src="docs/assets/teknile-logo.svg" alt="teknile" width="320">
+  </picture>
+</p>
 
 # EVRe
 

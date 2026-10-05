@@ -331,10 +331,12 @@ The owner's Windows run measures; this phase gives it the tool and fixes the kno
    `EVReStudio-<version>-x86_64.AppImage`, and `evre-tools-<version>-linux-x86_64.tar.gz` with
    `evre` and `evre-sim`. A check in the workflow: the AppImage starts under xvfb with `EVRE_SHOT` and
    writes its picture.
-4. **The icon**: there is none yet. Make a simple one (the Studio's accent colour, "EV" in white, a
-   rounded square) as SVG plus `.ico` (16-256 px) and PNGs, set as the window icon and the
-   executable's icon (a `.rc` on Windows). Say in the PR that it is a placeholder for the owner's
-   branding.
+4. **The icon: the owner's logo V2** (`EVRe/docs/assets/teknile-mark.ico`: the teknile mark on a dark
+   rounded square, 16-64 px; the full logo `teknile-logo.svg`, light, and `teknile-logo-reversed.svg`,
+   dark). Make the mark alone as an SVG from the logo's mark (the part left of the word, on the
+   same dark rounded square as the .ico), and from it a `.ico` of 16-256 px and PNGs (Linux, the
+   AppImage); set it as the window icon (all windows), the executable's icon (a `.rc` on Windows),
+   the installer's and the Start menu's. Nothing else drawn: the owner's artwork only.
 5. **The release's text**: that version's section of `EVRe/CHANGELOG.md`; the files above; a note that
    the installer is not code-signed (Windows SmartScreen asks "Run anyway").
 6. **Docs**: STUDIO.md's installing section (installer, zip, AppImage, building from source), the
