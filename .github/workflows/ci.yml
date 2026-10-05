@@ -2,8 +2,10 @@
 # Every test that writes does it to a fake device or a simulator the job starts itself.
 name: ci
 
+# a push to a branch is tested by its pull request (merged with main); main itself on every push
 on:
   push:
+    branches: [main]
   pull_request:
 
 defaults:

@@ -23,15 +23,6 @@ constexpr std::chrono::milliseconds RETRY_LATER(250);
 
 } // namespace
 
-bool RefreshPacing::waited(double ms) {
-	/* a wait between the two limits ends both runs */
-	slow_ = ms > SLOW_MS ? slow_ + 1 : 0;
-	fast_ = ms <= FAST_MS ? fast_ + 1 : 0;
-	if (!timer_ && slow_ >= SLOW_IN_A_ROW) timer_ = true;
-	else if (timer_ && fast_ >= FAST_IN_A_ROW) timer_ = false;
-	return timer_;
-}
-
 FrameClock::FrameClock(QObject *parent) : QObject(parent) {
 	timer_.setInterval(TIMER_INTERVAL_MS);
 	timer_.setTimerType(Qt::PreciseTimer);
@@ -56,33 +47,27 @@ void FrameClock::stop() {
 }
 
 #ifdef Q_OS_WIN
-/* The timer ticks while there is no compositor, or while its refreshes come too slowly (RefreshPacing: a laptop on
- * battery answered every 76 ms); the thread keeps calling DwmFlush meanwhile, to see them come back. */
 void FrameClock::waitForRefreshes() {
 	int noWaits = 0;
-	RefreshPacing pacing;
-	bool timerOn = false;
-	const auto useTimer = [this, &timerOn](bool on) {
-		if (on == timerOn) return;
-		timerOn = on;
-		QMetaObject::invokeMethod(this, [this, on] {
-			if (!on) timer_.stop();
-			else if (!timer_.isActive()) timer_.start();
-		}, Qt::QueuedConnection);
-	};
 	while (running_) {
 		const auto before = std::chrono::steady_clock::now();
 		const bool ok = SUCCEEDED(DwmFlush());
-		const auto waited = std::chrono::steady_clock::now() - before;
-		if (!ok || waited < NO_WAIT) {
-			noWaits++;
-			std::this_thread::sleep_for(noWaits > MAX_NO_WAITS ? RETRY_LATER : RETRY_SOON);
+		if (!ok || std::chrono::steady_clock::now() - before < NO_WAIT) {
+			if (++noWaits > MAX_NO_WAITS) {
+				QMetaObject::invokeMethod(this, [this] {
+					if (!timer_.isActive()) timer_.start();
+				}, Qt::QueuedConnection);
+				std::this_thread::sleep_for(RETRY_LATER);
+			} else {
+				std::this_thread::sleep_for(RETRY_SOON);
+			}
 		} else {
-			noWaits = 0; /* the compositor is back */
-			pacing.waited(std::chrono::duration<double, std::milli>(waited).count());
+			/* the compositor is back: the refreshes pace the ticks again */
+			if (noWaits > MAX_NO_WAITS)
+				QMetaObject::invokeMethod(this, [this] { timer_.stop(); }, Qt::QueuedConnection);
+			noWaits = 0;
 		}
-		useTimer(noWaits > MAX_NO_WAITS || pacing.timer());
-		if (!timerOn) postTick();
+		if (noWaits <= MAX_NO_WAITS) postTick();
 	}
 }
 

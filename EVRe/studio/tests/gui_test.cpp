@@ -524,7 +524,6 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
-		frameClockPacing();
 		recordingFiles();
 		chartMenuAndPictures();
 		chartExport();
@@ -3190,7 +3189,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3217,6 +3216,7 @@ private:
 			check(setMs < 60 && meanwhile && opened, "chart on a GPU: the card opened on a thread of its own (the "
 					"window's thread not held while it wakes), the CPU drawing meanwhile; then the card takes over and says so");
 			once->setCursors(3570.0, 3571.5); /* the tags and the bar between them drawn by the card too */
+			once->addNote(3585.0, QStringLiteral("a note")); /* its tag at the plot's bottom, a picture on the card */
 			for (int k = 0; k < 3; k++) { /* two frames with the card's picture under its layer, then the layer */
 				once->repaint();
 				QApplication::processEvents();
@@ -3245,8 +3245,64 @@ private:
 					qPrintable(once->spanBarText()));
 			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
 					"between them, drawn by the card as the CPU draws them");
+			/* the note's tag: the layer's bottom 24 px (it sits 4 to 20 px above the plot's bottom, the layer 2 px past it) */
+			const int noteRows = int(std::ceil(24 * once->devicePixelRatioF()));
+			const QImage gpuNote = gpu.copy(0, gpu.height() - noteRows, gpu.width(), noteRows);
+			const QImage cpuNote = cpu.copy(at).copy(0, gpu.height() - noteRows, gpu.width(), noteRows);
+			const double noteAlike = blocksAlike(gpuNote, cpuNote, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuNote.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/note_card.png"));
+				cpuNote.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/note_cpu.png"));
+			}
+			std::printf("     (the note's strip: %.2f%% of the blocks like the CPU's)\n", noteAlike * 100);
+			check(once->notes().size() == 1 && noteAlike >= 0.93, "chart on a GPU: a note's tag drawn by the card as the CPU "
+					"draws it");
+			once->setNotes({});
 			once->clearCursors();
-			const double grabbed = blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
+			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
+			once->setYLog(true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atLog;
+			const QImage gpuLog = once->gpuPicture(&atLog).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuLog = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atLog);
+			const double logAlike = blocksAlike(gpuLog, cpuLog, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_card.png"));
+				cpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_cpu.png"));
+			}
+			std::printf("     (Log Y: %.2f%% of the blocks like the CPU's)\n", logAlike * 100);
+			check(once->yLog() && once->plotOnCard() && logAlike >= 0.93, "chart on a GPU: Log Y drawn by the card as the "
+					"CPU draws it, block by block");
+			once->setYLog(false);
+			/* lanes: a line in volts beside the lines with no unit, two lanes; the card's segments from each lane's Axes */
+			once->addSeries(LINES, QStringLiteral("volts"), QStringLiteral("V"), QColor(0xE0, 0x80, 0x20));
+			for (int i = 0; i < 60 * HZ; i++) once->append(LINES, 3540.0 + double(i) / HZ, 12.0 + std::sin(i * 0.01));
+			once->setLanes(true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atLanes;
+			const QImage gpuLanes = once->gpuPicture(&atLanes).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuLanes = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atLanes);
+			const double lanesAlike = blocksAlike(gpuLanes, cpuLanes, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuLanes.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_card.png"));
+				cpuLanes.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_cpu.png"));
+			}
+			std::printf("     (lanes: %.2f%% of the blocks like the CPU's)\n", lanesAlike * 100);
+			check(once->lanes() && once->plotOnCard() && lanesAlike >= 0.93, "chart on a GPU: lanes (two units) drawn by the "
+					"card as the CPU draws them, block by block");
+			once->setLanes(false);
+			once->removeSeries(LINES);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			const double grabbed =blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
 			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
 			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
 
@@ -3936,6 +3992,14 @@ private:
 			check(false, "chart, the info line found");
 			return;
 		}
+		/* the info line and the measure line in the muted colour, as every mutedLabel (their own names, for tests, keep it) */
+		bool muted = true;
+		for (const char *name : { "chartInfo", "measureInfo" }) {
+			auto *line = chart.tab.findChild<QLabel *>(QLatin1String(name));
+			if (line) line->ensurePolished();
+			muted = muted && line && line->palette().color(line->foregroundRole()) == Theme::colors().muted;
+		}
+		check(muted, "chart: the info line and the measure line in the muted colour");
 		if (auto *smooth = chart.tab.findChild<QAction *>(QStringLiteral("chartSmooth"))) smooth->setChecked(true); /* a delay */
 		const QString full = chart.tab.infoText();
 		QString noPaint = full, noPlotted, noDelay;
@@ -3963,23 +4027,6 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
-	}
-
-	/* The frame clock: refreshes later than 34 ms three times in a row (a laptop on battery, 13 Hz) and the 16 ms timer
-	 * ticks; back within 25 ms ten times in a row and the refreshes pace again; a wait between ends both runs */
-	void frameClockPacing() {
-		RefreshPacing pacing;
-		bool ok = true;
-		for (int i = 0; i < 20; i++) ok = ok && !pacing.waited(16.7);
-		ok = ok && !pacing.waited(76) && !pacing.waited(76) && pacing.waited(76); /* the third: the timer */
-		for (int i = 0; i < 9; i++) ok = ok && pacing.waited(16.7);
-		ok = ok && !pacing.waited(16.7); /* the tenth: the refreshes again */
-		ok = ok && !pacing.waited(40) && !pacing.waited(40) && !pacing.waited(30) && !pacing.waited(40) && !pacing.waited(40)
-				&& pacing.waited(40);
-		for (int i = 0; i < 9; i++) ok = ok && pacing.waited(i == 5 ? 30 : 16.7);
-		ok = ok && pacing.waited(16.7) && pacing.timer(); /* the 30 ms wait broke the run */
-		check(ok, "frame clock: 3 refreshes in a row later than 34 ms and the 16 ms timer ticks (on battery, 13 Hz); 10 "
-				"within 25 ms and the refreshes pace again; a wait between ends either run");
 	}
 
 	/* a QInputDialog's text typed and accepted (fillDialog's fill) */
@@ -4137,7 +4184,8 @@ private:
 			error = done.first().at(2).toString();
 			QFile in(file);
 			if (!in.open(QIODevice::ReadOnly)) return QStringList();
-			return QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+			/* the platform's line ends, as a recording (CRLF on Windows) */
+			return QString::fromUtf8(in.readAll()).split(QRegularExpression(QStringLiteral("\r?\n")), Qt::SkipEmptyParts);
 		};
 		qint64 rows = 0;
 		QString error;
@@ -4205,6 +4253,13 @@ private:
 		big.tab.hide();
 	}
 
+	/* a note's tag starts at its time (or ends there, by the plot's right edge), within 1.5 px, in the chart's geometry
+	 * now: the window may have been laid out again since a point was taken (Windows at 225 %) */
+	static bool tagAtTime(const ChartView &view, const QRectF &tag, double time) {
+		const double perPixel = view.timeAt(1) - view.timeAt(0);
+		return std::fabs(view.timeAt(tag.left()) - time) < 1.5 * perPixel || std::fabs(view.timeAt(tag.right()) - time) < 1.5 * perPixel;
+	}
+
 	/* Notes: Add note here (its text asked), a tag at the bottom of the plot; dragged to move; double-click edits;
 	 * clicked, Delete removes it */
 	void chartNotes() {
@@ -4232,8 +4287,14 @@ private:
 		const QRectF tag = chart.view->noteTag(0);
 		const bool added = asked && chart.view->notes().size() == 1 && std::fabs(chart.view->notes()[0].time - time) < 1e-9
 				&& chart.view->notes()[0].text == QLatin1String("valve open") && !tag.isEmpty()
-				&& std::fabs(tag.left() - at.x()) < 1.5 && tag.bottom() < chart.view->lastPlot().bottom() && changed.size() == 1;
-		check(added, "chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
+				&& !tag.isEmpty() && tagAtTime(*chart.view, tag, time) && tag.bottom() < chart.view->lastPlot().bottom()
+				&& changed.size() == 1;
+		if (!added)
+			std::printf("     (note: menu action %s, asked %d, %lld notes, time %.6f vs %.6f, tag %.1f..%.1f x %.1f, plot bottom %.1f, "
+					"%lld changes)\n", add ? "found" : "missing", asked, (long long) chart.view->notes().size(),
+					chart.view->notes().isEmpty() ? 0.0 : chart.view->notes()[0].time, time, tag.left(), tag.bottom(), double(at.x()),
+					chart.view->lastPlot().bottom(), (long long) changed.size());
+		check(added,"chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
 				"plot");
 
 		/* dragged by its tag */
