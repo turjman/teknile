@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The look: Fusion style, a dark (default) and a light palette, one accent
  * colour, rounded cards. Widgets opt in by object name or property (see theme.cpp):
- *   #sidebar, #sideScroll, #card, #cardTitle, #appTitle, #appSub, #muted,
+ *   #sidebar, #sideScroll, #card, #cardTitle, #appTitle, #appSub, #muted (and the Chart tab's #chartInfo, #measureInfo),
  *   QListWidget #helpTopics (the Help's list: a card), QScrollArea #formScroll (a form that scrolls: no frame),
  *   QLabel #editorEmpty (the Map editor's note when no register is selected),
  *   QLabel [chip="true"] (a small framed tag: the Map editor's address, type, access),

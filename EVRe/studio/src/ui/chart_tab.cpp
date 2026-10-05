@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QStyle>
 #include <QTableWidget>
@@ -63,6 +64,10 @@ QString areaUnit(const QString &unit, bool hours) {
 	if (unit.isEmpty()) return hours ? QStringLiteral("·h") : QStringLiteral("·s");
 	return unit + (hours ? QStringLiteral("·h") : QStringLiteral("·s"));
 }
+
+/* the measurement columns' keys, as saved (chart/measureColumns: the hidden ones), in ChartTab::MeasureColumn order */
+const char *const MEASURE_KEYS[ChartTab::MEASURE_COLUMNS] = { "line", "atA", "atB", "diff", "min", "max", "mean", "rms",
+	"std", "p2p", "area", "areaHours", "total" };
 
 /* this computer's memory, MB; 0: not known */
 qint64 physicalMemoryMB() {
@@ -151,13 +156,19 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 
 	/* Y: Auto or Manual */
 	yMode_ = new QComboBox;
+	yMode_->setObjectName(QStringLiteral("yMode"));
 	yMode_->addItem(tr("Auto"));
 	yMode_->addItem(tr("Manual"));
+	yMode_->addItem(tr("Log"));
 	yMode_->setToolTip(tr("Auto: follows what is shown (grows at once, shrinks gently).\n"
 			"Manual: the min and max typed here. Ctrl + wheel on the chart zooms Y, a double-click goes back to "
-			"Auto."));
+			"Auto.\nLog: a logarithmic scale, a line at each decade: Auto spans the positive values shown (9 decades at "
+			"most), or the min and max typed (both above 0); values of 0 or less sit on the bottom edge. Log and "
+			"Normalise exclude each other."));
 	yMin_ = new QLineEdit;
 	yMax_ = new QLineEdit;
+	yMin_->setObjectName(QStringLiteral("yMin"));
+	yMax_->setObjectName(QStringLiteral("yMax"));
 	for (QLineEdit *field : { yMin_, yMax_ }) {
 		auto *validator = new QDoubleValidator(field);
 		validator->setLocale(QLocale::c());
@@ -173,9 +184,8 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	/* it takes the room the row leaves, elided there (refreshStatus): its text changes twice a second
 	 * and must not change the tab's minimum width */
 	chartInfo_ = mutedLabel(QString());
-	chartInfo_->setToolTip(tr("Plotted: the registers on the chart / as many as it may hold at the rate the samples "
-			"come (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames "
-			"drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU)"));
+	chartInfo_->setObjectName(QStringLiteral("chartInfo"));
+	chartInfo_->setToolTip(infoTip());
 	chartInfo_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 	chartInfo_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
 
@@ -255,6 +265,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"measured like the others"));
 	setButtonMenu(mathButton_, new QMenu(mathButton_));
 	clearButton_ = new QPushButton(tr("Clear"));
+	clearButton_->setObjectName(QStringLiteral("chartClear"));
 	clearButton_->setToolTip(tr("Empty the lines and the memory (they go on from now)"));
 	removeAllButton_ = new QPushButton(tr("Remove all"));
 	removeAllButton_->setToolTip(tr("Take every register off the chart (untick every Plot)"));
@@ -325,15 +336,41 @@ QWidget *ChartTab::buildMeasurements() {
 	layout->setContentsMargins(0, 4, 0, 0);
 	layout->setSpacing(4);
 	measureInfo_ = mutedLabel(QString());
+	measureInfo_->setObjectName(QStringLiteral("measureInfo"));
 	measureInfo_->setWordWrap(true);
 	layout->addWidget(measureInfo_);
-	measures_ = new QTableWidget(0, 10);
+	measures_ = new QTableWidget(0, MEASURE_COLUMNS);
 	measures_->setObjectName(QStringLiteral("measures"));
 	measures_->setHorizontalHeaderLabels({ tr("Line"), tr("at A"), tr("at B"), tr("B − A"), tr("Min"), tr("Max"),
-			tr("Mean"), tr("RMS"), tr("Area ∫ dt"), tr("Area / 3600") });
-	measures_->horizontalHeaderItem(8)->setToolTip(
+			tr("Mean"), tr("RMS"), tr("Std dev"), tr("Peak-peak"), tr("Area ∫ dt"), tr("Area / 3600"), tr("Since Clear") });
+	measures_->horizontalHeaderItem(ColStd)->setToolTip(tr("The standard deviation over the range, time-weighted as the "
+			"mean: √(mean of (value − mean)²). The ripple on a line, whatever its level."));
+	measures_->horizontalHeaderItem(ColP2p)->setToolTip(tr("Peak to peak: Max − Min over the range"));
+	measures_->horizontalHeaderItem(ColArea)->setToolTip(
 			tr("The area under the line over the range: value × seconds (W → J, A → A·s)"));
-	measures_->horizontalHeaderItem(9)->setToolTip(tr("The same in hours: W → Wh, A → Ah"));
+	measures_->horizontalHeaderItem(ColAreaHours)->setToolTip(tr("The same in hours: W → Wh, A → Ah"));
+	measures_->horizontalHeaderItem(ColTotal)->setToolTip(tr("The area under the line since the chart's Clear, in hours "
+			"(W → Wh, A → Ah), from every sample as it came: what the memory let go is still in it. A gap of more "
+			"than 1 s between two samples is not bridged."));
+	/* a right-click on the header: a tick per column, the choice kept */
+	measureColumns_ = new QMenu(measures_);
+	measureColumns_->setObjectName(QStringLiteral("measureColumns"));
+	for (int column = ColAtA; column < MEASURE_COLUMNS; column++) {
+		QAction *shown = measureColumns_->addAction(measures_->horizontalHeaderItem(column)->text());
+		shown->setCheckable(true);
+		shown->setData(column);
+		connect(shown, &QAction::toggled, this, [this, column](bool on) {
+			measures_->setColumnHidden(column, !on);
+			QStringList hidden;
+			for (int c = ColAtA; c < MEASURE_COLUMNS; c++)
+				if (measures_->isColumnHidden(c)) hidden << QLatin1String(MEASURE_KEYS[c]);
+			QSettings().setValue(QStringLiteral("chart/measureColumns"), hidden);
+		});
+	}
+	measures_->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+	connect(measures_->horizontalHeader(), &QWidget::customContextMenuRequested, this, [this](const QPoint &at) {
+		measureColumns_->popup(measures_->horizontalHeader()->mapToGlobal(at));
+	});
 	measures_->verticalHeader()->hide();
 	measures_->verticalHeader()->setDefaultSectionSize(26);
 	measures_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -385,16 +422,26 @@ void ChartTab::connectControls() {
 		QSettings().setValue(QStringLiteral("chart/memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
-		if (mode == 0) chart_->setYAuto();
-		else chart_->setYManual(chart_->yLo(), chart_->yHi()); /* from what is shown now */
+		if (mode == YLog) {
+			normalize_->setChecked(false); /* Log and Normalise exclude each other */
+			chart_->setYLog(true);         /* a Manual range kept when it is above 0, else Auto */
+		} else {
+			chart_->setYLog(false);
+			if (mode == YAuto) chart_->setYAuto();
+			else chart_->setYManual(chart_->yLo(), chart_->yHi()); /* from what is shown now */
+		}
 		showYRange();
 	});
 	for (QLineEdit *field : { yMin_, yMax_ })
 		connect(field, &QLineEdit::editingFinished, this, &ChartTab::applyYFields);
 	connect(chart_, &ChartWidget::yChangedByUser, this, [this] { showYRange(); });
 	connect(normalize_, &QAction::toggled, this, [this](bool on) {
+		if (on && chart_->yLog()) { /* Log and Normalise exclude each other: the scale linear, its range kept */
+			chart_->setYLog(false);
+			showYRange();
+		}
 		chart_->setNormalized(on);
-		yMode_->setEnabled(!on);
+		/* the list stays: picking Log from it turns Normalise off */
 		yMin_->setEnabled(!on);
 		yMax_->setEnabled(!on);
 		showDisplayState();
@@ -470,11 +517,13 @@ void ChartTab::restoreSettings() {
 	chart_->setSmooth(smooth_->isChecked());
 	hoverValues_->setChecked(settings.value(QStringLiteral("chart/hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
+	chart_->setYLog(settings.value(QStringLiteral("chart/yLog"), false).toBool());
 	if (!settings.value(QStringLiteral("chart/yAuto"), true).toBool()) {
 		chart_->setYManual(settings.value(QStringLiteral("chart/yMin"), 0.0).toDouble(),
 				settings.value(QStringLiteral("chart/yMax"), 1.0).toDouble());
 	}
 	showYRange();
+	showMeasureColumns();
 	/* last: measured at once (the button's toggle), over the view restored above */
 	measureButton_->setChecked(settings.value(QStringLiteral("chart/measure"), false).toBool());
 	measurePanel_->setVisible(measureButton_->isChecked());
@@ -537,21 +586,48 @@ void ChartTab::setShown(bool shown) {
 	if (shown_ && measureButton_->isChecked()) updateMeasures();
 }
 
-QString ChartTab::infoText() const {
+QString ChartTab::infoText(int width) const {
 	int registers = 0, math = 0;
 	for (const ChartView::Info &line : chart_->view()->lines())
 		(line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
-	QString text = tr("%1/%2 plotted").arg(registers).arg(registerLimit_);
-	if (math > 0) text += tr(" · %1 math").arg(math);
-	return text + tr(" · %1 fps · %2 ms").arg(chart_->fps(), 0, 'f', 0).arg(chart_->paintMs(), 0, 'f', 1)
-			+ (smooth_->isChecked() ? tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0) : QString())
-			+ (chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU"));
+	/* the parts in their places, and the order they go in when the line is narrow: a part cut in the middle ("32/64
+	 * plotted · 60 fp…") said less than the parts left whole */
+	enum Part { Count, Plotted, Math, Fps, PaintTime, Delay, Drawer, PARTS };
+	QString parts[PARTS];
+	parts[Count] = QStringLiteral("%1/%2").arg(registers).arg(registerLimit_);
+	parts[Plotted] = tr(" plotted");
+	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
+	parts[Fps] = tr(" · %1 fps").arg(chart_->fps(), 0, 'f', 0);
+	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
+	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
+	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
+	const auto joined = [&parts] {
+		QString text;
+		for (const QString &part : parts) text += part;
+		return text;
+	};
+	if (width < 0) return joined();
+	const QFontMetrics metrics = chartInfo_->fontMetrics();
+	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Count }) {
+		if (metrics.horizontalAdvance(joined()) <= width) break;
+		parts[drop].clear();
+	}
+	return joined();
+}
+
+QString ChartTab::infoTip() const {
+	return tr("Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples "
+			"a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to "
+			"draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+			"draw, the word \"plotted\" and the delay go first.");
 }
 
 void ChartTab::refreshStatus() {
-	/* narrow: the end goes first (the frames), the count stays */
-	const QString info = shown_ ? infoText() : QString();
-	chartInfo_->setText(chartInfo_->fontMetrics().elidedText(info, Qt::ElideRight, chartInfo_->contentsRect().width()));
+	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
+	const QString info = shown_ ? infoText(chartInfo_->contentsRect().width()) : QString();
+	chartInfo_->setText(info);
+	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
+	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
 	if (chart_->yAuto()) showYRange(false);
 	bool over = false;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
@@ -669,7 +745,8 @@ void ChartTab::applyMemoryText() {
 
 void ChartTab::showYRange(bool save) {
 	const bool manual = !chart_->yAuto();
-	if (yMode_->currentIndex() != (manual ? 1 : 0)) yMode_->setCurrentIndex(manual ? 1 : 0);
+	const int mode = chart_->yLog() ? YLog : manual ? YManual : YAuto;
+	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
 	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(chart_->yLo(), manual));
 	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
@@ -681,6 +758,7 @@ void ChartTab::showYRange(bool save) {
 	if (!save) return;
 	QSettings settings;
 	settings.setValue(QStringLiteral("chart/yAuto"), !manual);
+	settings.setValue(QStringLiteral("chart/yLog"), chart_->yLog());
 	if (manual) {
 		settings.setValue(QStringLiteral("chart/yMin"), chart_->yLo());
 		settings.setValue(QStringLiteral("chart/yMax"), chart_->yHi());
@@ -700,8 +778,8 @@ void ChartTab::applyYFields() {
 			&& yMax_->text().trimmed() == yFieldText(chart_->yHi(), manual))
 		return; /* no change */
 	if (low > high) std::swap(low, high);
-	if (high - low < 1e-12) high = low + 1;
-	chart_->setYManual(low, high);
+	if (high - low < 1e-12) high = chart_->yLog() ? low * 10 : low + 1;
+	chart_->setYManual(low, high); /* refused on the Log scale at 0 or below: the fields back to the range shown */
 	showYRange();
 }
 
@@ -746,11 +824,14 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 			s.ok ? measureText(s.max) + unit : none,
 			s.ok ? measureText(s.mean) + unit : none,
 			s.ok ? measureText(s.rms) + unit : none,
+			s.ok ? measureText(s.std) + unit : none,
+			s.ok ? measureText(s.p2p) + unit : none,
 			s.ok ? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
 			s.ok ? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
+			std::isfinite(s.total) ? measureText(s.total / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 		};
 		for (int column = 0; column < cells.size(); column++) {
-			if (cursorsOnly && (column < 1 || column > 3)) continue; /* A, B, B - A */
+			if (cursorsOnly && (column < ColAtA || column > ColDiff)) continue; /* A, B, B - A */
 			QTableWidgetItem *item = measures_->item(row, column);
 			if (!item) {
 				item = new QTableWidgetItem;
@@ -770,27 +851,47 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 	QHeaderView *header = measures_->horizontalHeader();
 	const QAbstractItemView *table = measures_; /* QTableView keeps its sizeHintForColumn protected */
 	for (int column = 0; column < measures_->columnCount(); column++) {
+		if (measures_->isColumnHidden(column)) continue;
 		const int fit = std::max(table->sizeHintForColumn(column), header->sectionSizeHint(column));
 		if (fit != header->sectionSize(column) && (!sameLines || fit > header->sectionSize(column)))
 			header->resizeSection(column, fit);
 	}
 }
 
-/* over what the measurements run: the cursors, or the view (with a hint on placing the cursors) */
+/* over what the measurements run: the cursors, or the view (with a hint on placing the cursors); then since when the
+ * totals run, by the clock and how long */
 QString ChartTab::measuredRangeText() const {
 	const ChartView *view = chart_->view();
 	double t0, t1;
 	bool cursors;
 	view->range(t0, t1, cursors);
+	QString text;
 	if (cursors) {
-		return tr("Measured between the cursors: A → B = %1 s")
-				.arg(measureText(std::fabs(view->cursorB() - view->cursorA())));
+		text = tr("Measured between the cursors: A → B = %1 s").arg(measureText(std::fabs(view->cursorB() - view->cursorA())));
+	} else {
+		const QString hint = cursorsButton_->isChecked()
+				? tr(" (place cursor %1 on the chart)")
+						.arg(std::isfinite(view->cursorA()) ? QStringLiteral("B") : QStringLiteral("A"))
+				: tr(" (Cursors: measure between two points)");
+		text = tr("Measured over the view: %1 s%2").arg(measureText(t1 - t0), hint);
 	}
-	const QString hint = cursorsButton_->isChecked()
-			? tr(" (place cursor %1 on the chart)")
-					.arg(std::isfinite(view->cursorA()) ? QStringLiteral("B") : QStringLiteral("A"))
-			: tr(" (Cursors: measure between two points)");
-	return tr("Measured over the view: %1 s%2").arg(measureText(t1 - t0), hint);
+	const double since = view->totalsSince();
+	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
+		const QDateTime at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(since * 1000)));
+		text += tr(" · totals since %1 (%2)").arg(at.toString(QStringLiteral("HH:mm:ss")),
+				durationText(std::max(0.0, view->timeNow() - since)));
+	}
+	return text;
+}
+
+void ChartTab::showMeasureColumns() {
+	const QStringList hidden = QSettings().value(QStringLiteral("chart/measureColumns")).toStringList();
+	for (QAction *action : measureColumns_->actions()) {
+		const int column = action->data().toInt();
+		const QSignalBlocker quiet(action); /* not saved again column by column, the later ones not yet shown */
+		action->setChecked(!hidden.contains(QLatin1String(MEASURE_KEYS[column])));
+		measures_->setColumnHidden(column, !action->isChecked());
+	}
 }
 
 /* ----------------------------------------------------------- the math lines */

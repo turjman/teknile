@@ -270,7 +270,10 @@ is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The Studio itself take
 set.</li>
 <li><b>Y range</b>: <b>Auto</b> follows what is shown (grows at once, shrinks gently: no jumping), or
 <b>Manual</b> with the min and max typed beside it (typing one sets Manual). <b>Ctrl + wheel</b> zooms Y
-around the mouse; a <b>double-click</b> goes back to Auto.</li>
+around the mouse; a <b>double-click</b> goes back to Auto. <b>Log</b>: a logarithmic scale, a line at each decade
+(<i>1 µ, 10 µ … 1, 10, 100 … 100 k</i>), faint ones at 2 to 9: Auto spans the positive values shown (9 decades at
+most), or type a min and max above 0; values of 0 or less sit on the bottom edge. Log and <b>Normalise</b> exclude
+each other: choosing one turns the other off.</li>
 </ul>
 <h3>The second row: what to do</h3>
 <ul>
@@ -293,19 +296,27 @@ a second on a 4K screen. A card takes a moment to start (up to a second while it
 the card fails, the CPU takes over and the Log says why. The processor's own graphics is offered too, but on a large
 screen it draws slower than the CPU.</li>
 <li>The info line, left of <b>Clear</b>: the lines on the chart of how many it may hold, the math lines, frames drawn
-per second and the time one takes, the Smooth delay, and who draws (<i>GPU</i> or <i>CPU</i>). Frames follow the
+per second and the time one takes, the Smooth delay, and who draws (<i>GPU</i> or <i>CPU</i>). When it is narrow,
+whole parts go (the time to draw, the word <i>plotted</i>, the delay first); its tooltip holds all of it. Frames follow the
 display refresh; while frames take long, one is skipped now and then (as many as needed), so the rest of the window
 always answers.</li>
-<li><b>Clear</b> empties the lines and the memory; <b>Remove all</b> takes every register off the chart.</li>
+<li><b>Clear</b> empties the lines and the memory and starts the totals again; <b>Remove all</b> takes every register
+off the chart.</li>
 </ul>
 <p>The time labels are the clock time and move with the lines; the crosshair shows the time and how long ago. Long
 windows and fast lines are drawn from min/max summaries, so they cost no more than short ones.</p>
 <h3>Measurements</h3>
 <p><b>Measure</b> (off by default) shows a table under the chart, for every line: the value at cursor <b>A</b> and
 <b>B</b>, <b>B − A</b>, and over A → B (or over the view without cursors) the <b>min</b>, <b>max</b>, <b>mean</b>,
-<b>RMS</b> and the <b>area under the line</b> (∫ value dt, by trapezoids between the samples): a power in <b>W</b>
-gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. The splitter above the table
-moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
+<b>RMS</b>, the <b>standard deviation</b> (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
+<b>peak to peak</b> and the <b>area under the line</b> (∫ value dt, by trapezoids between the samples): a power in
+<b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. The splitter above the
+table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
+<p><b>Since Clear</b>: each line's total since the chart's <b>Clear</b>, in Wh, Ah or unit·h, summed from every sample
+as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
+nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
+chart and put back keeps its total.</p>
+<p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -497,6 +508,7 @@ cancels · right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
+<tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /
 <b>Ctrl+V</b> copy / paste registers (as JSON, also between maps) · <b>Del</b> delete</td></tr>
 <tr><td><b>Math line</b></td><td>The list of names: <b>Up</b> / <b>Down</b> pick, <b>Enter</b> or <b>Tab</b> takes one,

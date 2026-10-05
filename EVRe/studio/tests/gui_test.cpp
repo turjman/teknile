@@ -92,6 +92,7 @@
 #include "ui/bit_view.h"
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
+#include "ui/frame_clock.h"
 #include "ui/elided_label.h"
 #include "ui/field_editor.h"
 #include "ui/formula_completer.h"
@@ -413,11 +414,12 @@ int lineKey(const ChartView *view, const QString &name) {
 	return -1;
 }
 
-/* the P line's row of the measurements table has its area in J (column 8) and in Wh (column 9) */
+/* the P line's row of the measurements table has its area in J and in Wh */
 bool powerAreaInJoulesAndWattHours(const QTableWidget *table) {
 	bool found = false;
 	for (int r = 0; r < table->rowCount(); r++) {
-		const QTableWidgetItem *name = table->item(r, 0), *area = table->item(r, 8), *areaHours = table->item(r, 9);
+		const QTableWidgetItem *name = table->item(r, 0), *area = table->item(r, ChartTab::ColArea),
+				*areaHours = table->item(r, ChartTab::ColAreaHours);
 		if (name && name->text() == powerLine)
 			found = area && areaHours && area->text().endsWith(QLatin1String(" J"))
 					&& areaHours->text().endsWith(QLatin1String(" Wh"));
@@ -507,6 +509,10 @@ public:
 		measuresManyLines();
 		chartFollowsFrames();
 		cursorSpanBar();
+		chartReadouts();
+		chartTotals();
+		chartLogScale();
+		chartInfoLine();
 		frameBudget();
 		plotShownWithoutQuestion();
 		mapEditor();
@@ -3163,7 +3169,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "Log Y", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3219,7 +3225,29 @@ private:
 			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
 					"between them, drawn by the card as the CPU draws them");
 			once->clearCursors();
-			const double grabbed = blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
+			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
+			once->setYLog(true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atLog;
+			const QImage gpuLog = once->gpuPicture(&atLog).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuLog = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atLog);
+			const double logAlike = blocksAlike(gpuLog, cpuLog, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_card.png"));
+				cpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_cpu.png"));
+			}
+			std::printf("     (Log Y: %.2f%% of the blocks like the CPU's)\n", logAlike * 100);
+			check(once->yLog() && once->plotOnCard() && logAlike >= 0.93, "chart on a GPU: Log Y drawn by the card as the "
+					"CPU draws it, block by block");
+			once->setYLog(false);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			const double grabbed =blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
 			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
 			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
 
@@ -3687,6 +3715,265 @@ private:
 		tab.hide();
 	}
 
+	/* a chart tab of its own, a clock that stands still (moved by the test), one line of `unit` named `name` */
+	struct LoneChart {
+		double now = 100;
+		ChartTab tab{ [this] { return now; } };
+		RegDef def;
+		ChartView *view = nullptr;
+		LoneChart(const QString &name, const QString &unit) {
+			tab.resize(1200, 700);
+			def.addr = 0xD000;
+			def.name = name;
+			def.unit = unit;
+			tab.plotRegister(def, true);
+			view = tab.findChild<ChartView *>();
+		}
+		int key() const { return int(regKey(def)); }
+		QTableWidget *table() const { return tab.findChild<QTableWidget *>(QStringLiteral("measures")); }
+		QString cell(int column) const {
+			const QTableWidgetItem *item = table() ? table()->item(0, column) : nullptr;
+			return item ? item->text() : QString();
+		}
+	};
+
+	/* Std dev and peak to peak: two columns after RMS, from shifted sums (12 V with 1 mV of ripple reads 0.707 mV, not
+	 * the rounding of 144 V^2); a right-click on the header shows or hides columns, kept (chart/measureColumns) */
+	void chartReadouts() {
+		QSettings().remove(QStringLiteral("chart/measureColumns"));
+		LoneChart chart(QStringLiteral("RIPPLE"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 2000; i++) /* 1 kHz, 50 Hz ripple of 1 mV on 12 V */
+			samples[regKey(chart.def)] << QPointF(90.0 + i / 1000.0, 12.0 + 0.001 * std::sin(2 * M_PI * 50 * i / 1000.0));
+		chart.tab.frame(samples);
+		chart.view->setCursors(90.5, 91.5);
+		const ChartView::Stats s = chart.view->stats(chart.key());
+		const double want = 0.001 / std::sqrt(2.0);
+		std::printf("     (12 V with 1 mV of ripple: std %.6g V, peak to peak %.6g V)\n", s.std, s.p2p);
+		check(s.ok && std::fabs(s.std - want) < 0.01 * want && std::fabs(s.p2p - 0.002) < 1e-9,
+				"chart, Measure: std dev of 12 V with 1 mV of ripple is 0.707 mV (shifted sums), peak to peak 2 mV");
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		QTableWidget *table = chart.table();
+		if (!measure || !table) {
+			check(false, "chart, Measure: the button and the table found");
+			return;
+		}
+		measure->setChecked(true);
+		const bool columns = table->horizontalHeaderItem(ChartTab::ColRms)->text() == QLatin1String("RMS")
+				&& table->horizontalHeaderItem(ChartTab::ColStd)->text() == QLatin1String("Std dev")
+				&& table->horizontalHeaderItem(ChartTab::ColP2p)->text() == QLatin1String("Peak-peak")
+				&& chart.cell(ChartTab::ColStd).startsWith(QLatin1String("0.0007071")) && chart.cell(ChartTab::ColStd).endsWith(QLatin1String(" V"))
+				&& chart.cell(ChartTab::ColP2p) == QLatin1String("0.0020 V");
+		if (!columns)
+			std::printf("     (std \"%s\", peak to peak \"%s\")\n", qPrintable(chart.cell(ChartTab::ColStd)),
+					qPrintable(chart.cell(ChartTab::ColP2p)));
+		bool allShown = true;
+		for (int c = 0; c < table->columnCount(); c++) allShown = allShown && !table->isColumnHidden(c);
+		check(columns && allShown, "chart, Measure: Std dev and Peak-peak in the table after RMS; every column shown by "
+				"default");
+
+		/* the header's right-click: a tick per column but the line's */
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		QHeaderView *header = table->horizontalHeader();
+		emit header->customContextMenuRequested(QPoint(20, 5));
+		auto *menu = chart.tab.findChild<QMenu *>(QStringLiteral("measureColumns"));
+		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
+				&& menu->actions().size() == ChartTab::MEASURE_COLUMNS - 1;
+		QAction *stdTick = nullptr;
+		if (menu)
+			for (QAction *action : menu->actions())
+				if (action->text() == QLatin1String("Std dev")) stdTick = action;
+		if (stdTick) stdTick->trigger();
+		if (menu) menu->close();
+		const bool hidden = stdTick && table->isColumnHidden(ChartTab::ColStd) && !table->isColumnHidden(ChartTab::ColP2p)
+				&& QSettings().value(QStringLiteral("chart/measureColumns")).toStringList() == QStringList{ QStringLiteral("std") };
+		bool kept = false;
+		{
+			ChartTab again([] { return 0.0; });
+			auto *other = again.findChild<QTableWidget *>(QStringLiteral("measures"));
+			kept = other && other->isColumnHidden(ChartTab::ColStd) && !other->isColumnHidden(ChartTab::ColRms);
+		}
+		if (stdTick) stdTick->trigger();
+		const bool back = !table->isColumnHidden(ChartTab::ColStd)
+				&& QSettings().value(QStringLiteral("chart/measureColumns")).toStringList().isEmpty();
+		check(popped && hidden && kept && back, "chart, Measure: a right-click on the header lists the columns; Std dev "
+				"unticked hides it, kept for the next start (chart/measureColumns), ticked shows it again");
+		measure->setChecked(false);
+		chart.tab.hide();
+	}
+
+	/* Totals since Clear: from every sample as it is appended, so the memory's trims lose nothing; a gap over 1 s is
+	 * not bridged; a line taken off and put back keeps its total; Clear starts them again */
+	void chartTotals() {
+		LoneChart chart(QStringLiteral("AMPS"), QStringLiteral("A"));
+		chart.view->setMemory(1);
+		const auto feed = [&](double from, int count) {
+			MathLines::Samples samples;
+			for (int i = 0; i < count; i++) samples[regKey(chart.def)] << QPointF(from + i / 1000.0, 2.0);
+			chart.tab.frame(samples);
+		};
+		feed(100.0, 10000); /* 10 s of 2 A at 1 kHz, the memory 1 s */
+		const double first = chart.view->total(chart.key());
+		const bool trimmed = chart.view->pointsKept(chart.key()) < 10000;
+		feed(113.0, 1000); /* after a gap of 3 s */
+		const double gapped = chart.view->total(chart.key());
+		std::printf("     (2 A: %.6f A·s over 9.999 s, %.6f with a second after a gap of 3 s; %lld samples kept)\n", first,
+				gapped, (long long) chart.view->pointsKept(chart.key()));
+		check(trimmed && std::fabs(first - 19.998) < 1e-6 && std::fabs(gapped - (19.998 + 1.998)) < 1e-6
+						&& chart.view->totalsSince() == 100.0,
+				"chart, totals since Clear: every sample summed as it came (the memory trimmed meanwhile), a gap over 1 s "
+				"not bridged");
+		chart.tab.plotRegister(chart.def, false);
+		chart.tab.plotRegister(chart.def, true);
+		const bool keptOff = std::fabs(chart.view->total(chart.key()) - gapped) < 1e-12;
+
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		feed(115.0, 10);
+		chart.now = 100.0 + 3600 + 12 * 60;
+		if (measure) measure->setChecked(true);
+		const QString total = chart.cell(ChartTab::ColTotal);
+		const QString range = info ? info->text() : QString();
+		const QString since = QDateTime::fromMSecsSinceEpoch(chart.view->epochMs() + 100000).toString(QStringLiteral("HH:mm:ss"));
+		const bool shown = chart.table() && chart.table()->horizontalHeaderItem(ChartTab::ColTotal)->text() == QLatin1String("Since Clear")
+				&& total.endsWith(QLatin1String(" Ah")) && total.startsWith(QLatin1String("0.0061"))
+				&& range.endsWith(QStringLiteral(" · totals since %1 (1 h 12 min)").arg(since));
+		if (!shown) std::printf("     (Since Clear \"%s\"; \"%s\")\n", qPrintable(total), qPrintable(range));
+		check(keptOff && shown, "chart, totals: a line taken off and put back keeps its total; the Since Clear column in "
+				"Ah, the measure line \"totals since <clock> (1 h 12 min)\"");
+		if (measure) measure->setChecked(false);
+
+		auto *clear = chart.tab.findChild<QPushButton *>(QStringLiteral("chartClear"));
+		if (clear) clear->click();
+		const bool cleared = std::isnan(chart.view->total(chart.key())) && std::isnan(chart.view->totalsSince());
+		feed(200.0, 2);
+		check(clear && cleared && chart.view->totalsSince() == 200.0 && std::fabs(chart.view->total(chart.key()) - 0.002) < 1e-12,
+				"chart, totals: Clear starts them again, from the next sample");
+	}
+
+	/* Log Y: decades on the axis with SI prefixes and equal heights, values <= 0 on the bottom edge, Auto over the
+	 * positive values at most 9 decades, Manual above 0 only; Log and Normalise exclude each other; kept */
+	void chartLogScale() {
+		const bool labels = chartLogLabel(1e-6) == QStringLiteral("1 µ") && chartLogLabel(1e-5) == QStringLiteral("10 µ")
+				&& chartLogLabel(0.1) == QLatin1String("100 m") && chartLogLabel(1) == QLatin1String("1")
+				&& chartLogLabel(1e4) == QLatin1String("10000") && chartLogLabel(1e5) == QLatin1String("100 k")
+				&& chartLogLabel(2e6) == QLatin1String("2 M") && chartLogLabel(3e-9) == QLatin1String("3 n");
+		check(labels, "chart, Log: decade labels 1 µ, 10 µ, 100 m, 1, 10000, 100 k, 2 M, 3 n");
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		LoneChart chart(QStringLiteral("WIDE"), QStringLiteral("A"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 600; i++) /* 1 m .. 1 k, and a few at 0 and below */
+			samples[regKey(chart.def)] << QPointF(90.0 + i / 100.0, i % 100 == 0 ? -1.0 : std::pow(10.0, -3 + 6.0 * (i % 97) / 96));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *yMin = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *yMax = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		if (!mode || !yMin || !yMax || mode->count() != 3) {
+			check(false, "chart, Log: the Y range list holds Auto, Manual, Log");
+			return;
+		}
+		emit mode->activated(ChartTab::YLog);
+		(void) chart.view->grab();
+		const QStringList shown = chart.view->valueLabels();
+		const QRectF plot = chart.view->lastPlot();
+		const double d1 = chart.view->yOfValue(1e-2) - chart.view->yOfValue(1e-1);
+		const double d2 = chart.view->yOfValue(10) - chart.view->yOfValue(100);
+		const bool decades = shown == QStringList{ QStringLiteral("1 m"), QStringLiteral("10 m"), QStringLiteral("100 m"),
+				QStringLiteral("1"), QStringLiteral("10"), QStringLiteral("100"), QStringLiteral("1000") }
+				&& d1 > 20 && std::fabs(d1 - d2) < 1e-6;
+		const bool bottom = chart.view->yOfValue(0) == plot.bottom() && chart.view->yOfValue(-1) == plot.bottom();
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* a picture of the Log scale, for a look */
+			chart.view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_log.png"));
+		if (!decades) std::printf("     (Log labels: %s; decades %.2f and %.2f px)\n", qPrintable(shown.join(QStringLiteral(", "))), d1, d2);
+		check(chart.view->yLog() && mode->currentIndex() == ChartTab::YLog && decades && bottom
+						&& QSettings().value(QStringLiteral("chart/yLog")).toBool(),
+				"chart, Log: a line at each decade 1 m .. 1000 with its label, every decade as tall, values <= 0 on the "
+				"bottom edge; saved (chart/yLog)");
+
+		/* a line down to 1e-15: Auto keeps 9 decades under the top (with its margins) */
+		MathLines::Samples tiny;
+		tiny[regKey(chart.def)] << QPointF(99.5, 1e-15);
+		chart.tab.frame(tiny);
+		(void) chart.view->grab();
+		const double decadesShown = std::log10(chart.view->yHi() / chart.view->yLo());
+		check(chart.view->yAuto() && decadesShown <= 9 * (1 + 2 * 0.08) + 1e-6 && chart.view->yHi() > 1000,
+				"chart, Log: Auto spans the positive values shown, at most 9 decades (with its margins)");
+
+		/* Manual in Log: above 0 only */
+		yMin->setText(QStringLiteral("-1"));
+		yMax->setText(QStringLiteral("100"));
+		emit yMin->editingFinished();
+		const bool refused = chart.view->yAuto() && chart.view->yLog();
+		yMin->setText(QStringLiteral("0.01"));
+		yMax->setText(QStringLiteral("100"));
+		emit yMin->editingFinished();
+		const bool taken = !chart.view->yAuto() && chart.view->yLog() && chart.view->yLo() == 0.01 && chart.view->yHi() == 100
+				&& mode->currentIndex() == ChartTab::YLog;
+		check(refused && taken, "chart, Log: a typed min of 0 or less is refused, 0.01 .. 100 is taken (Log, manual)");
+
+		/* Normalise turns Log off; Log turns Normalise off */
+		auto *normalise = chart.tab.findChild<QAction *>(QStringLiteral("chartNormalise"));
+		if (normalise) normalise->setChecked(true);
+		const bool logOff = normalise && !chart.view->yLog() && mode->currentIndex() != ChartTab::YLog && mode->isEnabled();
+		emit mode->activated(ChartTab::YLog);
+		const bool normaliseOff = normalise && !normalise->isChecked() && chart.view->yLog();
+		check(logOff && normaliseOff, "chart, Log and Normalise exclude each other: either one chosen turns the other off");
+		emit mode->activated(ChartTab::YAuto);
+		check(!chart.view->yLog() && chart.view->yAuto() && !QSettings().value(QStringLiteral("chart/yLog")).toBool(),
+				"chart, Log: Auto again is linear");
+		chart.tab.hide();
+	}
+
+	/* The info line: when it does not fit, whole parts go (the paint time, then "plotted", then the delay), never
+	 * letters cut; all of it in the tooltip */
+	void chartInfoLine() {
+		LoneChart chart(QStringLiteral("INFO"), QStringLiteral("V"));
+		auto *label = chart.tab.findChild<QLabel *>(QStringLiteral("chartInfo"));
+		if (!label) {
+			check(false, "chart, the info line found");
+			return;
+		}
+		/* the info line and the measure line in the muted colour, as every mutedLabel (their own names, for tests, keep it) */
+		bool muted = true;
+		for (const char *name : { "chartInfo", "measureInfo" }) {
+			auto *line = chart.tab.findChild<QLabel *>(QLatin1String(name));
+			if (line) line->ensurePolished();
+			muted = muted && line && line->palette().color(line->foregroundRole()) == Theme::colors().muted;
+		}
+		check(muted, "chart: the info line and the measure line in the muted colour");
+		if (auto *smooth = chart.tab.findChild<QAction *>(QStringLiteral("chartSmooth"))) smooth->setChecked(true); /* a delay */
+		const QString full = chart.tab.infoText();
+		QString noPaint = full, noPlotted, noDelay;
+		noPaint.remove(QRegularExpression(QStringLiteral(" · [0-9]+\\.[0-9] ms")));
+		noPlotted = noPaint;
+		noPlotted.remove(QStringLiteral(" plotted"));
+		noDelay = noPlotted;
+		noDelay.remove(QRegularExpression(QStringLiteral(" · delay [0-9]+ ms")));
+		const QFontMetrics metrics = label->fontMetrics();
+		const auto at = [&](const QString &text, int less) { return chart.tab.infoText(metrics.horizontalAdvance(text) - less); };
+		const bool steps = full != noPaint && noPaint != noPlotted && noPlotted != noDelay && at(full, 0) == full
+				&& at(full, 1) == noPaint && at(noPaint, 0) == noPaint && at(noPaint, 1) == noPlotted
+				&& at(noPlotted, 1) == noDelay && noDelay.startsWith(QStringLiteral("1/64 · "));
+		bool whole = true;
+		for (int width = 0; width < metrics.horizontalAdvance(full) + 4; width += 3) {
+			const QString text = chart.tab.infoText(width);
+			whole = whole && (text.isEmpty() || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
+		}
+		if (!steps) std::printf("     (\"%s\" -> \"%s\" -> \"%s\" -> \"%s\")\n", qPrintable(full),
+				qPrintable(at(full, 1)), qPrintable(at(noPaint, 1)), qPrintable(at(noPlotted, 1)));
+		chart.tab.setShown(true);
+		chart.tab.refreshStatus();
+		if (!whole || !label->toolTip().startsWith(chart.tab.infoText()))
+			std::printf("     (whole parts: %s; the tooltip: \"%s\")\n", whole ? "yes" : "no", qPrintable(label->toolTip()));
+		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
+				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
+				"all of it in the tooltip");
+	}
+
 	/* Plot shown with more registers than the example map has (70 numeric, on a Registers tab of its own; the first
 	 * one marked not plottable in the map): no question, the first 64 it may plot on the chart, the rest left off and
 	 * said; a 65th Plot ticked: refused. Then the limit by the rate: 64,000 samples a second for all the lines, a lower
@@ -3805,6 +4092,8 @@ private:
 				"math line: at cursor A, P = V × I (within the interpolation between polls)");
 		check(power.integral > 0 && std::fabs(power.integral / power.mean - (cursorB - cursorA)) < 0.25,
 				"the area under P over A..B = its mean × the time (J)");
+		check(std::isfinite(view->total(powerKey)) && view->total(powerKey) > 0 && std::isfinite(view->totalsSince()),
+				"math line: its total since Clear is summed too, as a register's");
 	}
 
 	/* Measure: the table under the chart, off by default; P's area in J and Wh. The cursors go at the end. */

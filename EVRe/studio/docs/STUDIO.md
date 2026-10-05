@@ -73,7 +73,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [7.2 The actions row](#72-the-actions-row)
     - [7.3 Window and memory, Hold and Live](#73-window-and-memory-hold-and-live)
     - [7.4 The memory strip](#74-the-memory-strip)
-    - [7.5 Y range: Auto and Manual](#75-y-range-auto-and-manual)
+    - [7.5 Y range: Auto, Manual and Log](#75-y-range-auto-manual-and-log)
     - [7.6 Normalise and Smooth](#76-normalise-and-smooth)
     - [7.7 Cursors A and B](#77-cursors-a-and-b)
     - [7.8 Mouse and keyboard](#78-mouse-and-keyboard)
@@ -82,7 +82,8 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [8.1 The range](#81-the-range)
     - [8.2 The values](#82-the-values)
     - [8.3 Units of the area](#83-units-of-the-area)
-    - [8.4 Number format](#84-number-format)
+    - [8.4 Totals since Clear](#84-totals-since-clear)
+    - [8.5 Number format](#85-number-format)
   - [9. Math lines](#9-math-lines)
     - [9.1 Making and managing them](#91-making-and-managing-them)
     - [9.2 The grammar](#92-the-grammar)
@@ -287,7 +288,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Map editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
 | Export | The map as a Markdown specification, a C header, a Python module, CSV, or the device table for firmware on the EVRe library; CSV back in; a JSON Schema of the format (chapter 32). |
 | Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto or Manual Y, Normalise and Smooth. |
-| Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS and area over A..B or over the view. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). |
+| Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS, standard deviation, peak to peak and area over A..B or over the view, and the total since Clear. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). Columns shown or hidden by a right-click on the header. |
 | Math lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
 | Several devices on one link | A bus file (`evre-bus/1`) puts devices at their slave addresses on one link (RS-485, a gateway). Their registers are named after them (`D1_SPEED`) in the table, chart, CSV and API; a device that stops answering goes offline without slowing the others (3.9). |
 | Broadcast | One write to every device at once (slave 0), only where it means the same to each, then each read back (3.10). |
@@ -1036,8 +1037,8 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 | **Memory** | How much is kept, like an oscilloscope's memory depth. Pick a preset or type a length. Default 60 s. |
 | **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). |
 | Memory note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
-| **Y range** Auto / Manual | Auto follows the lines. Manual uses the **min** and **max** fields (7.5). |
-| **min**, **max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits. |
+| **Y range** Auto / Manual / Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). |
+| **min**, **max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
 - **Memory presets:** 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h, 2 h.
@@ -1053,7 +1054,7 @@ The limits:
 
 A Window longer than the Memory grows the Memory to hold it. A Memory shorter than the Window shrinks the Window.
 
-Window, Memory, Smooth and the Y mode with its range are saved at each change.
+Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each change.
 
 ### 7.2 The actions row
 
@@ -1069,8 +1070,8 @@ Window, Memory, Smooth and the Y mode with its range are saved at each change.
 | - **Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
 | - **Hover values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | - **Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
-| Info line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, the end is cut first: the count stays. The tooltip says what each number is. |
-| **Clear** | Empties every line and the memory. The lines go on from now. |
+| Info line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
+| **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
 ### 7.3 Window and memory, Hold and Live
@@ -1096,7 +1097,7 @@ Under the time labels, a thin strip shows the **whole memory depth**. Every line
 - The samples kept have a budget for all the lines together: **RAM** on the Chart tab's first row, beside Memory, 2 GB by default (a sample takes about 23 bytes: its time and value, and its share of the min/max summaries). Pick 512 MB to 16 GB, or type any size (*3000*, *3000 MB*, *3 GB*); it is kept within 256 MB and three quarters of the computer's memory, and saved. Many fast lines can need more than the memory asked for: with 2 GB, 98 lines at 500 Hz fill it in about 32 minutes, at 4000 Hz in about 4. The oldest samples then go, an eighth of each line at a time, and the strip says so: *memory full: 4.0 min of 30.0 min kept (98 lines)*; so the time kept goes down by an eighth and fills up again (with 12 min that fit: 12, then 10.5, then 12). A line keeps at most 16 million samples whatever the RAM. RAM is what the samples take: the Studio itself needs about 150 MB more (the window, its pictures, the graphics card's buffers), so with RAM 1 GB Task Manager shows it at about 1.14 GB once the memory is full.
 - Click or drag on the strip: the view centres at that time and holds.
 
-### 7.5 Y range: Auto and Manual
+### 7.5 Y range: Auto, Manual and Log
 
 **Auto** fits the lines that are in view, with an 8 % margin above and below.
 
@@ -1114,9 +1115,27 @@ The value axis labels all have the decimals their step needs: with a step of 2 t
 - A **double-click** on the chart goes back to Auto.
 - The top right shows *Y manual*.
 
+**Log** draws the values on a logarithmic scale: a value ten times larger stands one decade higher, whatever its size,
+so a current of 1 µA and one of 1 A can be read on the same chart.
+
+- **The grid.** A line at every decade, labelled with an SI prefix: *1 µ, 10 µ, 100 µ, 1 m … 100 m*, then *1, 10,
+  100, 1000, 10000* as the chart writes values, then *100 k, 1 M …*. Faint lines mark 2 to 9 of each decade while a
+  decade is at least 24 px tall. Over less than two decades the faint lines are labelled too (or 2 and 5 of them,
+  when there is no room for all).
+- **Auto** spans the positive values in view: from the smallest above 0 to the largest, at most **9 decades** under
+  the largest (a value further down sits on the bottom edge), at least one decade, with 8 % of the decades as margin.
+  It grows and shrinks as the linear Auto does, in decades.
+- **Values of 0 or less** have no logarithm: they sit on the bottom edge of the plot.
+- **Manual.** Typing min and max keeps Log, with that range; both must be above 0 (a min of 0 or less is refused and
+  the fields show the range again). Ctrl + wheel zooms around the value under the mouse in decades; a double-click goes
+  back to the Auto range, still on the Log scale. The top right shows *Y log* or *Y log, manual*.
+- **The memory strip** draws each line on a Log scale too, in its own range of positive values.
+- **Log and Normalise exclude each other.** Picking Log turns Normalise off, and Normalise turns Log off (the range
+  mode, Auto or Manual, stays). Auto or Manual in the list are linear again.
+
 ### 7.6 Normalise and Smooth
 
-**Normalise** scales each line into the chart by its own range in the view, so lines of different units can be compared by their shapes. The value labels become percentages (0 % – 100 %). The Y controls are disabled while Normalise is on. Normalise is not saved.
+**Normalise** scales each line into the chart by its own range in the view, so lines of different units can be compared by their shapes. The value labels become percentages (0 % – 100 %). The min and max fields are disabled while Normalise is on; the Y range list stays, and picking Log from it turns Normalise off (7.5). Normalise turns Log off. Normalise is not saved.
 
 **Smooth** fixes a problem of live charts. Samples arrive in bursts: per poll, per display frame and per TCP packet. Without Smooth, the right end of each line would jump back and forth. Smooth delays the whole picture by a little more than the gap last measured between now and the newest sample, so the lines always reach the right edge and scroll without steps.
 
@@ -1167,6 +1186,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Chart, cursor mode | Click / drag | Place or move cursor A, then B (7.7). |
 | Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
 | Memory strip | Click / drag | Centre the view there, and hold. |
+| Measurement table's header | Right-click | Show or hide columns (8). |
 | Anywhere | F1 | Help. |
 | Register table | Enter / Esc / F2 | Write the edited value / cancel the edit / start an edit. |
 
@@ -1181,18 +1201,19 @@ The chart itself takes no keyboard input.
 - **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up or below 0.001 are written in exponent form (`1.235e+05`). Zero is `0`.
 - **Value labels.** They use 1-2-5 steps, about five of them.
 - **Time labels.** They show the **clock time**, as precise as the grid step needs (`14:03:12`, `14:03:12.5`, `14:03:12.35`, `14:03:12.345`). The grid lines are fixed to clock times, so they move with the data.
-- **Info line.** It starts with the registers on the chart of the limit at the rate now (*32/64 plotted*) and the math lines, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
+- **Info line.** It starts with the registers on the chart of the limit at the rate now (*32/64 plotted*) and the math lines, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
 
 ## 8. Measurements
 
-**Measure** shows a table under the chart with one row per line: every plotted register and every active math line. The table is computed every 250 ms while the Chart tab is shown, and at once when the cursors move; while a cursor is dragged, at most every 100 ms, A, B and B − A alone (the rest at the 250 ms pace), and all of it at the place it is left. With Measure off, nothing is computed.
+**Measure** shows a table under the chart with one row per line: every plotted register and every active math line. **A right-click on the table's header** lists the columns, each with a tick: untick one to hide it (*Line* always stays). The choice is kept (`chart/measureColumns`); every column is shown by default. The table is computed every 250 ms while the Chart tab is shown, and at once when the cursors move; while a cursor is dragged, at most every 100 ms, A, B and B − A alone (the rest at the 250 ms pace), and all of it at the place it is left. With Measure off, nothing is computed.
 
 A line above the table says what is measured:
 
 - *Measured between the cursors: A → B = 2.500 s*, or
-- *Measured over the view: 30.000 s (Cursors: measure between two points)*, which says *(place cursor A on the chart)* or *…B…* while cursor mode is on.
+- *Measured over the view: 30.000 s (Cursors: measure between two points)*, which says *(place cursor A on the chart)* or *…B…* while cursor mode is on;
+- then, while the Since Clear column is shown, since when the totals run, by the clock and how long: *· totals since 14:03:12 (1 h 12 min)* (8.4).
 
 ### 8.1 The range
 
@@ -1212,8 +1233,11 @@ Let *t₀ … t₁* be the range. The samples inside it are *(tᵢ, vᵢ)* for *
 | **Area / 3600** | The same area in *unit × hours*. |
 | **Mean** | Time-weighted: Area ÷ (t_last − t_first), where t_first and t_last are the first and last **samples** inside the range. |
 | **RMS** | √( Σ ½ (vᵢ² + vᵢ₋₁²)(tᵢ − tᵢ₋₁) ÷ (t_last − t_first) ). |
+| **Std dev** | The standard deviation, time-weighted as the mean: √( mean of (v − K)² − (mean of (v − K))² ), each mean by the same trapezoids, K the range's first sample. The shift by K keeps the ripple: a 12 V line with 1 mV of ripple reads 0.707 mV, where 144 V² less 144 V² would leave only the rounding. |
+| **Peak-peak** | Max − Min. |
+| **Since Clear** | The area under the line since the chart's Clear, in *unit × hours* (8.4). Not over the range: all of it. |
 
-- **One sample only:** Mean and RMS are that sample, and the area is 0.
+- **One sample only:** Mean and RMS are that sample, Std dev and Peak-peak 0, and the area is 0.
 - **No samples:** the row shows `—`.
 
 **Time-weighted** means that a sample counts for the time it lasts. If polls come unevenly, a long gap weighs more than a short one. The mean is therefore the true average of the signal as drawn, not the average of the samples.
@@ -1224,7 +1248,7 @@ The area and mean cover only the time between the first and the last sample insi
 
 The area's unit follows the line's unit:
 
-| Line unit | Area ∫ dt | Area / 3600 |
+| Line unit | Area ∫ dt | Area / 3600, Since Clear |
 |---|---|---|
 | `W` | J | Wh |
 | `A` | A·s | Ah |
@@ -1237,7 +1261,22 @@ Examples:
 - **Energy.** Add the math line `P = SUPPLY_V * SUPPLY_I` with unit `W` (chapter 9). Put A and B around a test run. The P row's area shows the energy in J and in Wh.
 - **Charge.** The SUPPLY_I row (unit `A`) gives the charge in A·s and in Ah.
 
-### 8.4 Number format
+### 8.4 Totals since Clear
+
+The **Since Clear** column is each line's area from the chart's **Clear** on (or from the start, or from when the
+line came), in hours: a power in W gives Wh, a current in A gives Ah, any other unit *unit·h*. It is the energy or
+the charge of a whole test run, however long, without placing cursors.
+
+- **From every sample as it comes,** summed by trapezoids when the sample is added to the chart, not from what the
+  memory keeps: the memory may hold one minute, the total covers hours, and the trims (7.4) take nothing from it.
+- **A gap of more than 1 s** between two samples of a line (no polls, the device gone) is not bridged: the time
+  without samples adds nothing.
+- **Reset only by Clear** (and by another map, whose lines are others). A line taken off the chart and put back keeps
+  its total (the time it was off adds nothing). Math lines have their totals too.
+- The line above the table says since when: *totals since 14:03:12 (1 h 12 min)*, the clock time of the first sample
+  after the Clear and how long ago that was.
+
+### 8.5 Number format
 
 Values show five significant digits from 1e6 up and below 1e-3. Between those, they show 1 to 4 decimals depending on size: 1 from 1000, 2 from 100, 3 from 1, 4 below 1. Each value carries the line's unit. The table's cells can be selected and copied.
 
@@ -1805,8 +1844,10 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/smooth` | `true` | on change | Smooth. |
 | `chart/hoverValues` | `true` | on change | Hover values: the crosshair's box. |
 | `chart/yAuto` | `true` | on change | Y range Auto. |
+| `chart/yLog` | `false` | on change | Y range Log (7.5); with `chart/yAuto` for its range. |
 | `chart/yMin`, `chart/yMax` | `0`, `1` | on change (Manual) | The Manual Y range. |
 | `chart/measure` | `false` | on change | Measure shown. |
+| `chart/measureColumns` | empty | on change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
 | `chart/math` | empty | on change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
 
 **Never saved, by design:**
@@ -3405,8 +3446,8 @@ names, kept in the same table as the functions) and constants, for the formula b
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats`, `range`, `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView` / `ChartWidget` | the chart (chapter 23) | `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`, `wordStart`, `shown` | GUI test |
@@ -3593,6 +3634,15 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 - **Normalise.** Each line is scaled into 0..1 by its own range in the view, and the axis shows −8 % … 108 %. A
   line flatter than 1e-12 gets a range of one unit around it (`widenFlatRange`), and the crosshair dot uses the same
   scaling.
+- **Log** (`setYLog`, `yLog_`; not while normalised). `Axes::setRange` keeps log10 of the range's ends, and
+  `Axes::y` maps log10 of the value between them; a value <= 0 maps to the bottom edge. Every drawing takes y from
+  `Axes`: the CPU's lines, the card's segments (`plotOnGpu`), the crosshair's dots and the memory strip (each line its
+  own `Axes` on the Log scale, its positive range), so the card cannot draw otherwise. Auto (`followData`) works in
+  decades: the bins carry the smallest positive value they are known to hold (`BinnedLine::posLo`: a bin's min, else
+  its first, last or max, enough for a range), the top at most `MAX_DECADES` (9) above the bottom, one decade at
+  least, the margins and the shrink in decades. Ctrl + wheel zooms in decades. Manual must be above 0
+  (`setYManual` returns false). `gridTicks` gives the decades and, while a decade is 24 px or more, the faint 2..9
+  (`GridTicks::minor`, drawn by both paths in the grid's colour at 45 %); the labels come from `chartLogLabel`.
 
 ### 23.6 The drawing fast path
 
@@ -3758,9 +3808,18 @@ about 45 fps, the window's own copy of the plot to the screen being the rest. Th
 - min and max;
 - the area ∫ v dt, by trapezoids between samples;
 - mean = area ÷ time;
-- RMS = √(∫ v² dt ÷ time).
+- RMS = √(∫ v² dt ÷ time);
+- the standard deviation from the same trapezoids over v − K, K the first sample of the range (shifted sums: a
+  12 V line with 1 mV of ripple squared whole loses the ripple to the rounding of 144 V²), and the peak to peak,
+  max − min, in the same pass;
+- the total since Clear (`Stats::total`, `total(key)`): not over the range. `append` sums each line's trapezoids as
+  the samples come (`Series::total`, `totalT`, `totalV`), a gap over `TOTAL_GAP` (1 s) not bridged, so the memory's
+  trims take nothing from it. `clearData` resets them, and `clearSeries` (another map); a line removed leaves its
+  total in `keptTotals_`, taken back when a line of the same key, name and unit comes again. `totalsSince()` is the
+  time of the first sample after the reset.
 
-The table shows the area in unit·s and unit·h (8.3). It is updated every 250 ms while the Chart tab is shown and
+The table shows the area in unit·s and unit·h (8.3), and the total in unit·h. Its columns are
+`ChartTab::MeasureColumn`; a hidden one (`chart/measureColumns`, the header's menu `measureColumns_`) is not fitted. It is updated every 250 ms while the Chart tab is shown and
 Measure is on, when the tab is shown, and when the cursors move: at once, then at most every 100 ms while they move
 (`ChartTab::measureSoon`, `MEASURE_FOLLOW_MS`), the last place always measured. While a cursor is dragged, only
 A, B and B − A follow it (`stats(keys, cursorsOnly)`, the columns not fitted again); the rest over A → B comes once it
@@ -4090,6 +4149,23 @@ Three more steps cover several devices on one link (3.9, 3.10) and auto send (13
   Log, the card, in words too) while D1 is still polled. Close bus gives one device again, and the window connects
   back to the Python fake device for the steps after it.
 
+Some chart steps run on a Chart tab of their own, its clock standing still and moved by the test, fed samples
+made up for the check:
+
+- **Std dev and peak to peak** (`chartReadouts`): 12 V with 1 mV of 50 Hz ripple over 1 s reads 0.707 mV (within 1 %)
+  and 2 mV; the two columns follow RMS, every column is shown by default; the header's right-click lists the columns,
+  Std dev unticked hides it, a new tab finds it hidden (`chart/measureColumns`), ticked again shows it.
+- **Totals** (`chartTotals`): 10 s of 2 A at 1 kHz with a Memory of 1 s sum 19.998 A·s while the memory is trimmed; a
+  second more after a gap of 3 s adds 1.998, not the gap; a line taken off and put back keeps its total; the Since
+  Clear column in Ah and the line *totals since <clock> (1 h 12 min)*; Clear starts them again. In the window's chart
+  step, the math line P has its total too.
+- **Log Y** (`chartLogScale`): the labels (*1 µ, 10 µ, 100 m, 1, 10000, 100 k, 2 M, 3 n*); a line from 1 m to 1 k
+  with values at -1: a label at each decade, every decade as tall, values <= 0 on the bottom edge, saved; a value of
+  1e-15 added: at most 9 decades; a typed min of -1 refused, 0.01 .. 100 taken; Log and Normalise turn each other off;
+  Auto again is linear. With `EVRE_TEST_SHOT` set it saves `<prefix>_log.png`.
+- **The info line** (`chartInfoLine`): narrowed pixel by pixel, the paint time goes first, then *plotted*, then the
+  delay; no width gives a part cut in the middle or an ellipsis; the tooltip starts with the whole text.
+
 The last check counts Qt's warnings about objects used across threads. It installs a message handler at start and
 looks for messages that contain one of these phrases:
 
@@ -4103,11 +4179,12 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 281 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 297 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
-`<prefix>_fields.png` (CONFIG with its fields) and `<prefix>_bits.png` (with Bits ticked).
+`<prefix>_fields.png` (CONFIG with its fields) and `<prefix>_bits.png` (with Bits ticked), and one of a chart on the
+Log scale, `<prefix>_log.png`.
 
 ### 26.3 The API test
 
