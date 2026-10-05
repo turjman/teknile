@@ -277,8 +277,10 @@ around the mouse; a <b>double-click</b> goes back to Auto.</li>
 <li><b>Hold</b> stops the view where it is (the memory keeps filling); <b>▶ Live</b> follows now again. Dragging
 holds too.</li>
 <li><b>Measure</b> shows the measurements under the chart (below). <b>Cursors</b> on (turns Measure on): click the
-chart for cursor <b>A</b>, again for <b>B</b>, drag them. <b>Clear cursors</b> removes them, and so does turning
-<b>Cursors</b> off.</li>
+chart for cursor <b>A</b>, again for <b>B</b>, drag them. A bar between their tags at the top of the plot says the
+time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a cursor off the view it ends at the
+plot's edge, and when the cursors are too close for the text, the text stands beside the tags. <b>Clear cursors</b>
+removes them, and so does turning <b>Cursors</b> off.</li>
 <li><b>ƒ Math</b>: lines made from a formula (below).</li>
 <li><b>Display</b>, a menu of how the lines are drawn (its tooltip says what is on): <b>Normalise</b>, every line
 scaled to its own range, to compare shapes of different units; <b>Smooth</b> (on by default): the picture is delayed
