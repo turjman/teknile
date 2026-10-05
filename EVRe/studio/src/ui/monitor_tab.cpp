@@ -50,6 +50,8 @@ MonitorTab::MonitorTab(const RegisterModel *model, QWidget *parent) : QWidget(pa
 	logFrames->setToolTip(tr("Every frame sent and received. Off by default: at fast polling it is a lot of text."));
 	auto *clearButton = new QPushButton(tr("Clear"));
 	frames_ = new QPlainTextEdit;
+	/* frames, hex and addresses read left to right in any language */
+	for (QWidget *w : std::initializer_list<QWidget *>{ frames_, address_, argument_ }) w->setLayoutDirection(Qt::LeftToRight);
 	frames_->setReadOnly(true);
 	frames_->setMaximumBlockCount(5000);
 	frames_->setFont(monospaceFont());

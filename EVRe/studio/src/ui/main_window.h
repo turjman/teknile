@@ -85,6 +85,8 @@ public:
 	/* a recording in a window of its own (recording_window.h): this file, or one chosen (empty); its registers matched
 	 * with the map loaded now */
 	void openRecording(const QString &file);
+	/* Restart now (the language): true when the window closed for it; main() then starts the program again */
+	static bool restartAsked();
 
 protected:
 	void closeEvent(QCloseEvent *event) override;

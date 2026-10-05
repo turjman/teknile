@@ -127,7 +127,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [14.1 Command-line options](#141-command-line-options)
     - [14.2 Environment variables](#142-environment-variables)
     - [14.3 Settings](#143-settings)
-    - [14.4 Help and the theme](#144-help-and-the-theme)
+    - [14.4 Help, the theme and the language](#144-help-the-theme-and-the-language)
   - [15. Troubleshooting and FAQ](#15-troubleshooting-and-faq)
     - [15.1 The pill turns red: *Connection refused*](#151-the-pill-turns-red-connection-refused)
     - [15.2 It connects, then drops after a moment](#152-it-connects-then-drops-after-a-moment)
@@ -220,6 +220,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [24.4 A tab](#244-a-tab)
     - [24.5 A setting](#245-a-setting)
     - [24.6 General rules for a change](#246-general-rules-for-a-change)
+    - [24.7 A text and its translation](#247-a-text-and-its-translation)
   - [25. Building](#25-building)
     - [25.1 Requirements](#251-requirements)
     - [25.2 Windows (Qt + MinGW + CMake + Ninja)](#252-windows-qt--mingw--cmake--ninja)
@@ -339,7 +340,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<your Qt 6 fo
 cmake --build build
 ```
 
-- **Linux:** the distribution's Qt 6 development packages are enough. On Debian and Ubuntu these are `qt6-base-dev` and `qt6-serialport-dev`. You can usually leave out `CMAKE_PREFIX_PATH`.
+- **Linux:** the distribution's Qt 6 development packages are enough. On Debian and Ubuntu these are `qt6-base-dev`, `qt6-serialport-dev`, `qt6-tools-dev` and `qt6-l10n-tools` (the Linguist tools). You can usually leave out `CMAKE_PREFIX_PATH`.
 - **Windows:** use a Qt installation for your compiler, with the Qt Serial Port module. To run the program outside the build environment, copy the Qt libraries next to it with `windeployqt --release build/EVReStudio.exe`.
 
 Chapter 25 has the details: toolchains, short build paths on Windows, deployment and the CMake targets.
@@ -2010,6 +2011,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `map/bus` | empty | on close | The bus file to open at start (3.9), in place of `map/file`: the bus last opened or saved. Empty: none (a map opened, made, or the bus closed). |
 | `map/file` | empty | on close | The map to open at start (an absolute path): the map last loaded or saved. A load or a save only notes it; the key is written when the window closes normally, so a program that ends otherwise keeps the old value. |
 | `ui/dark` | `true` | on close | Dark theme. |
+| `ui/language` | `system` | on change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
 | `ui/geometry` | none | on close | The window's size and place. |
 | `ui/decodedColumn` | `false` | on change | Decoded column shown. |
 | `ui/quickBits` | `false` | on change | Quick write: Bits ticked. |
@@ -2050,12 +2052,28 @@ The slave address is part of the map, not of the settings.
 
 The map opened at start is the one saved in `map/file` if that file still exists. Otherwise it is the first `*.json` (in name order) in the `maps/` folder next to the program. When there is none, the Studio starts a new map: *New device*, with DEVICE_ID, STATUS and CONFIG.
 
-### 14.4 Help and the theme
+### 14.4 Help, the theme and the language
 
-The foot of the sidebar holds two buttons and the version line (*v1.0.0 · teknile*):
+The foot of the sidebar holds two buttons, the language and the version line (*v1.0.0 · teknile*):
 
 - **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
 - The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`).
+- **Language**: **System** (the default: the computer's language when the Studio has it, else English), **English**
+  or **العربية** (Arabic), each in its own words. It is saved at once (`ui/language`) and applied at the next start: a
+  window rebuilt in another language half-way would keep the texts made before. While the choice is not the language
+  running, **Restart now** under it closes the Studio (asking about an unsaved map as a close does) and starts it
+  again with the same command line.
+
+**Arabic** translates every text of the window, its messages and the Help pages, and lays the window out right to
+left: the sidebar on the right, the rows of controls and the tables mirrored, the Help's paragraphs right to left.
+What reads left to right in any language stays so: the chart (time runs to the right; its legend, labels and
+crosshair), the analysis windows' plots, the bit view, the Monitor's frames and its address and bytes fields, and
+within any text the numbers, units, register names, addresses and code. Numbers keep Western digits and a decimal
+point (`12.05 V`, not the Arabic-Indic digits of an Arabic system's locale). Counts take Arabic's plural forms
+(*4 أجهزة*, *11 جهازًا*); a text with two counts names them as labels (*الخطوط: 5 · الصفوف: 600*). Qt's own buttons
+(OK, Cancel in its dialogs) come from Qt's `qtbase_ar.qm` when it is installed beside Qt. The Log file's lines are
+written in the language running. The exports a person reads (the Markdown specification) follow the language; the
+files programs read (CSV, JSON, the C header, the Python module) do not change.
 
 ## 15. Troubleshooting and FAQ
 
@@ -3427,6 +3445,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/monitor_tab.h`, `.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
 | `src/ui/event_log.h`, `.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
 | `src/ui/frame_clock.h`, `.cpp` | `FrameClock`: one tick per display refresh |
+| `src/ui/language.h`, `.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
+| `translations/evre_studio_ar.ts` | Arabic: every text and Help page (`qt_add_translations`, built into the program at `:/i18n`) |
 | `src/ui/value_pace.h`, `.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`, `.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`, `.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
@@ -3664,6 +3684,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
+| `language` (namespace) | the window's language (14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`, `wordStart`, `shown` | GUI test |
 | `MonitorTab` | frame log and single requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
@@ -4167,6 +4188,21 @@ where.
 - Build warning-free with GCC on Windows and Linux.
 - Run the GUI test and the API test in all three modes (chapter 26).
 
+### 24.7 A text and its translation
+
+1. Every text a person reads goes through `tr()` (in a class with `Q_OBJECT`) or
+   `QCoreApplication::translate("context", …)`; a table of texts uses `QT_TRANSLATE_NOOP` and `tr()` where it is shown
+   (the Help's `TOPICS`). Units, symbols, register names and code are not translated. A count in a sentence takes
+   `tr("%n device(s)", nullptr, n)` so that Arabic gets its plural forms.
+2. `cmake --build build --target update_translations` runs `lupdate` over `src/`: the new or changed texts enter
+   `translations/evre_studio_ar.ts` as unfinished.
+3. Translate them in Qt Linguist or in the file: keep every `%1`, `%n`, `%CODE%`, `%NAME%` marker and HTML tag, give a
+   numerus message its six Arabic forms (0, 1, 2, 3–10, 11–99, 100–102), and mark each finished. The GUI test fails on
+   an unfinished or empty message and on one that loses a placeholder, a marker or a tag (26.2).
+4. The build runs `lrelease` and puts the `.qm` into the program (`:/i18n`); nothing is installed beside it.
+
+`translations/README.md` says the same for a translator.
+
 ## 25. Building
 
 ### 25.1 Requirements
@@ -4175,7 +4211,7 @@ where.
 |---|---|
 | CMake | 3.21 or later |
 | C++ compiler | C++17. Tested with GCC (MinGW on Windows, GCC on Linux). Clang and MSVC are not tested; MSVC in particular defines `M_PI` and `M_E`, which `src/model/expr.cpp` uses, only with `_USE_MATH_DEFINES`, so it may need that define. MSVC keeps its own warning defaults. |
-| Qt 6 | 6.5 or later, components Widgets, Network, SerialPort, Test |
+| Qt 6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations |
 | Generator | Ninja (recommended) or any CMake generator |
 | Windows only | the system libraries `winmm` (1 ms timer resolution) and `dwmapi` (`DwmFlush`), linked by the build |
 
@@ -4216,14 +4252,14 @@ with no console. The test programs are console programs.
 Use the distribution's Qt 6 packages. On Debian or Ubuntu:
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev qt6-tools-dev qt6-l10n-tools
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ./build/EVReStudio
 ```
 
-`CMakeLists.txt` asks only for Widgets, Network, SerialPort and Test, which `qt6-base-dev` and `qt6-serialport-dev`
-provide. The GUI test needs a display; on a machine without one, run it under a virtual X server such as `xvfb-run`. Use `xvfb-run` also when the test's window would share a desktop someone works on (WSLg on Windows): a click elsewhere takes the keyboard focus, a cell editor then closes and commits, and a step can stop at a question nobody answers.
+`CMakeLists.txt` asks only for Widgets, Network, SerialPort, Test and LinguistTools, which `qt6-base-dev`,
+`qt6-serialport-dev` and `qt6-tools-dev` provide (`qt6-l10n-tools` holds `lupdate` and `lrelease`). The GUI test needs a display; on a machine without one, run it under a virtual X server such as `xvfb-run`. Use `xvfb-run` also when the test's window would share a desktop someone works on (WSLg on Windows): a click elsewhere takes the keyboard focus, a cell editor then closes and commits, and a step can stop at a question nobody answers.
 
 A serial port needs read and write access for the user. On most distributions that means membership in the group
 that owns `/dev/ttyACM*` and `/dev/ttyUSB*` (often `dialout`).
@@ -4441,6 +4477,16 @@ armed again once the view is full and holds on the next period's; Single falling
 Either: the next crossing; the level's line dragged to 0.8 moves the level, its box and its setting; off: the row
 hidden. With `EVRE_TEST_SHOT` set it saves `<prefix>_histogram.png`, `<prefix>_spectrum.png` and `<prefix>_trigger.png`.
 
+**Languages** (`languages`, after the Help step): every `.ts` in `translations/` has each message translated, finished
+and not empty, Arabic's numerus messages six forms, and each translation (each form) the English's `%1` placeholders,
+`%CODE%` and `%NAME%` markers and HTML tags (`%n` in at least one form); the sidebar's language list (System, English,
+العربية) saves `ui/language`, Restart now shows while the choice is not the language running; a second main window in
+English and in Arabic is at most 1280 px wide at its narrowest; in Arabic the window is right to left with the chart
+and the bit view left to right and the sidebar right to left, a text and the plurals of 4 and 11 devices are Arabic,
+numbers have Western digits, the Help's first page is Arabic and its code blocks are made; English again after. The
+rest of the test runs in English. With `EVRE_TEST_SHOT` set it saves `<prefix>_arabic.png`, `<prefix>_arabic_chart.png`
+and `<prefix>_arabic_help.png`.
+
 Some chart steps run on a Chart tab of their own, its clock standing still and moved by the test, fed samples
 made up for the check:
 
@@ -4471,7 +4517,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 334 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 341 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

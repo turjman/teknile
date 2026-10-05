@@ -28,7 +28,7 @@ Apache-2.0. The Studio's full guide is `EVRe/studio/docs/STUDIO.md`; read its ch
 ```sh
 # The cloud environment's setup script installs the tools and Qt 6.8 in /opt/qt/current
 # (CMAKE_PREFIX_PATH points there). Elsewhere: build-essential cmake ninja-build libgl1-mesa-dev
-# xvfb, Qt 6.5 or newer with SerialPort, and pip install jsonschema.
+# xvfb, Qt 6.5 or newer with SerialPort and LinguistTools, and pip install jsonschema.
 
 R=$PWD; S=$R/EVRe/studio; B=/tmp/studio-build    # run from the repository's root
 cmake -S $S -B $B -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build $B

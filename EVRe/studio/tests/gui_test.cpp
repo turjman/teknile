@@ -33,6 +33,7 @@
 #include <QCheckBox>
 #include <QClipboard>
 #include <QContextMenuEvent>
+#include <QDir>
 #include <QDropEvent>
 #include <QInputDialog>
 #include <QMimeData>
@@ -83,6 +84,7 @@
 #include <QUndoStack>
 #include <QWheelEvent>
 #include <QWidgetAction>
+#include <QXmlStreamReader>
 #include <algorithm>
 #include <atomic>
 #include <cmath>
@@ -104,6 +106,7 @@
 #include "ui/chart_tab.h"
 #include "ui/recording_window.h"
 #include "ui/frame_clock.h"
+#include "ui/language.h"
 #include "ui/elided_label.h"
 #include "ui/field_editor.h"
 #include "ui/formula_completer.h"
@@ -517,6 +520,7 @@ public:
 		readoutSteady();
 		displayMenu();
 		helpPages();
+		languages();
 		measuresManyLines();
 		chartFollowsFrames();
 		cursorSpanBar();
@@ -4027,6 +4031,165 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
+	}
+
+	/* The translations as kept (translations/<name>.ts): every message finished and not empty, Arabic's plural forms all
+	 * six, and each translation with the English's %1 placeholders, %n, %CODE% and %NAME% markers and HTML tags */
+	void translationFiles() {
+		const QDir dir(QStringLiteral(EVRE_TRANSLATIONS_DIR));
+		const QStringList files = dir.entryList({ QStringLiteral("*.ts") }, QDir::Files);
+		int messages = 0, unfinished = 0, emptied = 0, badForms = 0;
+		QStringList mismatched;
+		/* what must come through: placeholders and markers as counted, tags as written */
+		const auto tokens = [](const QString &text) {
+			static const QRegularExpression token(QStringLiteral("%[1-9][0-9]*|%[A-Z_]+%|<[^<>]+>"));
+			QStringList found;
+			for (auto it = token.globalMatch(text); it.hasNext();) found << it.next().captured();
+			found.sort();
+			return found;
+		};
+		for (const QString &name : files) {
+			QFile file(dir.filePath(name));
+			if (!file.open(QIODevice::ReadOnly)) continue;
+			QXmlStreamReader xml(&file);
+			const int forms = name.contains(QLatin1String("_ar")) ? 6 : 2;
+			QString source, translation;
+			QStringList numerus;
+			bool isNumerus = false, finished = true;
+			while (!xml.atEnd()) {
+				xml.readNext();
+				if (xml.isStartElement() && xml.name() == QLatin1String("message")) {
+					isNumerus = xml.attributes().value(QLatin1String("numerus")) == QLatin1String("yes");
+					numerus.clear();
+					translation.clear();
+					finished = true;
+				} else if (xml.isStartElement() && xml.name() == QLatin1String("source")) {
+					source = xml.readElementText();
+				} else if (xml.isStartElement() && xml.name() == QLatin1String("translation")) {
+					finished = xml.attributes().value(QLatin1String("type")).isEmpty();
+					if (!isNumerus) translation = xml.readElementText();
+				} else if (xml.isStartElement() && xml.name() == QLatin1String("numerusform")) {
+					numerus << xml.readElementText();
+				} else if (xml.isEndElement() && xml.name() == QLatin1String("message")) {
+					messages++;
+					if (!finished) unfinished++;
+					const QStringList texts = isNumerus ? numerus : QStringList{ translation };
+					if (isNumerus && numerus.size() != forms) badForms++;
+					QStringList wanted = tokens(source);
+					const bool plural = source.contains(QLatin1String("%n"));
+					bool someN = false;
+					for (const QString &text : texts) {
+						if (text.trimmed().isEmpty()) emptied++;
+						someN = someN || text.contains(QLatin1String("%n"));
+						if (tokens(text) != wanted) mismatched << QStringLiteral("%1: \"%2\"").arg(name, source.left(60));
+					}
+					if (plural && !someN) mismatched << QStringLiteral("%1 (no %n): \"%2\"").arg(name, source.left(60));
+				}
+			}
+		}
+		for (const QString &m : std::as_const(mismatched)) std::printf("     (not as the English: %s)\n", qPrintable(m));
+		std::printf("     (%lld translation files, %d messages)\n", (long long) files.size(), messages);
+		check(!files.isEmpty() && messages > 1000 && unfinished == 0 && emptied == 0 && badForms == 0,
+				"translations: every message of every .ts translated and finished, Arabic's plurals in all six forms");
+		check(!files.isEmpty() && mismatched.isEmpty(), "translations: each keeps the English's %1 placeholders, %n, the "
+				"%CODE% and %NAME% markers and the HTML tags");
+	}
+
+	/* The languages: the sidebar's choice (applied at the next start, Restart now meanwhile); Arabic right to left with
+	 * the chart, the bit view and the Monitor left to right, Western digits, its plurals, the Help in Arabic; the main
+	 * window at most 1280 px wide in each; English again after */
+	void languages() {
+		translationFiles();
+		auto *choice = window_.findChild<QComboBox *>(QStringLiteral("language"));
+		auto *restart = window_.findChild<QPushButton *>(QStringLiteral("restartNow"));
+		QSettings().remove(QStringLiteral("ui/language"));
+		bool sidebar = choice && restart && choice->count() == 3 && choice->itemText(2) == QStringLiteral("العربية")
+				&& choice->itemData(0).toString() == QLatin1String("system") && restart->isHidden();
+		if (choice) {
+			choice->setCurrentIndex(2);
+			emit choice->activated(2);
+			sidebar = sidebar && QSettings().value(QStringLiteral("ui/language")).toString() == QLatin1String("ar")
+					&& !restart->isHidden();
+			choice->setCurrentIndex(1);
+			emit choice->activated(1);
+			sidebar = sidebar && restart->isHidden();
+		}
+		QSettings().remove(QStringLiteral("ui/language"));
+		check(sidebar, "language: System, English, العربية at the bottom of the sidebar (ui/language), applied at the next "
+				"start: Restart now shows while the choice is not the language running");
+
+		/* each language: the main window fits 1280 px */
+		const auto widest = [](const QString &code, QString &notes) {
+			language::apply(*qApp, code);
+			MainWindow other;
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1280, 800);
+			QApplication::processEvents();
+			const int minimum = other.minimumSizeHint().width();
+			if (code == QLatin1String("ar") && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look */
+				const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+				other.grab().save(prefix + QStringLiteral("_arabic.png"));
+				if (auto *tabs = other.findChild<QTabWidget *>()) {
+					tabs->setCurrentIndex(1);
+					QApplication::processEvents();
+					other.grab().save(prefix + QStringLiteral("_arabic_chart.png"));
+					tabs->setCurrentIndex(0);
+				}
+			}
+			if (code == QLatin1String("ar")) {
+				auto *chart = other.findChild<ChartView *>();
+				auto *bits = other.findChild<BitView *>();
+				auto *sidebarCard = other.findChild<Sidebar *>();
+				notes = QStringLiteral("%1%2%3%4%5").arg(qApp->layoutDirection() == Qt::RightToLeft ? 1 : 0)
+						.arg(chart && chart->layoutDirection() == Qt::LeftToRight ? 1 : 0)
+						.arg(bits && bits->layoutDirection() == Qt::LeftToRight ? 1 : 0)
+						.arg(sidebarCard && sidebarCard->isRightToLeft() ? 1 : 0)
+						.arg(other.width() == 1280 ? 1 : 0);
+			}
+			std::printf("     (%s: the main window's minimum width %d px)\n", qPrintable(code), minimum);
+			return minimum;
+		};
+		QString arabicNotes, unused;
+		const int english = widest(QStringLiteral("en"), unused);
+		const int arabic = widest(QStringLiteral("ar"), arabicNotes);
+		/* Arabic's texts, plurals, numbers and Help, while it is applied */
+		const bool translated = QCoreApplication::translate("Sidebar", "Language") == QStringLiteral("اللغة")
+				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 11).arg(QStringLiteral("x"))
+						== QStringLiteral("11 جهازًا · x")
+				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 4).arg(QStringLiteral("x"))
+						== QStringLiteral("4 أجهزة · x");
+		const bool westernDigits = QLocale().toString(1234.5) == QLatin1String("1234.5");
+		QString helpTitle, helpText;
+		{
+			HelpDialog help;
+			auto *topics = help.findChild<QListWidget *>(QStringLiteral("helpTopics"));
+			auto *page = help.findChild<QTextBrowser *>();
+			if (topics && page) {
+				topics->setCurrentRow(0);
+				helpTitle = topics->item(0)->text();
+				helpText = page->toPlainText();
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look */
+					help.resize(980, 700);
+					topics->setCurrentRow(4);
+					help.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_arabic_help.png"));
+				}
+				topics->setCurrentRow(9); /* Command line: a code block */
+				helpText += page->toHtml().contains(QLatin1String("%CODE%")) ? QStringLiteral("%CODE%") : QString();
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		const bool englishBack = qApp->layoutDirection() == Qt::LeftToRight
+				&& QCoreApplication::translate("Sidebar", "Language") == QLatin1String("Language");
+		check(english <= 1280 && arabic <= 1280, "language: the main window is at most 1280 px wide at its narrowest, in "
+				"English and in Arabic");
+		check(arabicNotes == QLatin1String("11111") && translated && westernDigits, "language, Arabic: the window right to "
+				"left, the chart and the bit view left to right; its texts and its plural forms (4 أجهزة, 11 جهازًا); numbers "
+				"with Western digits and a decimal point");
+		check(helpTitle == QStringLiteral("البدء") && helpText.startsWith(QStringLiteral("البدء"))
+						&& !helpText.contains(QLatin1String("%CODE%")),
+				"language, Arabic: the Help's pages through the same file (the first page in Arabic, its code blocks made)");
+		check(englishBack, "language: English applied again, left to right");
 	}
 
 	/* a QInputDialog's text typed and accepted (fillDialog's fill) */

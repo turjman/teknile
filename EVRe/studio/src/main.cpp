@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QCommandLineParser>
 #include <QDialog>
+#include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -24,6 +25,7 @@
 #include <QTimer>
 #include <optional>
 
+#include "ui/language.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
 
@@ -234,14 +236,21 @@ int main(int argc, char **argv) {
 	if (screenshot.testRun) /* settings of its own, before anything reads them */
 		QApplication::setApplicationName(QStringLiteral("EVReStudio-test"));
 
+	language::apply(app, language::resolve(language::saved()));
 	Theme::apply(app, QSettings().value(QStringLiteral("ui/dark"), true).toBool());
-	MainWindow window(startup.map, startup.bus);
-	if (screenshot.windowSize) window.resize(*screenshot.windowSize);
-	window.show();
-	window.applyStartup(startup);
-	if (!screenshot.file.isEmpty()) {
-		QTimer::singleShot(screenshot.delayMs, &window,
-				[&window, screenshot] { takeScreenshotsAndQuit(window, screenshot); });
+	int result = 0;
+	{ /* the window gone (its ports and its link closed) before the program starts again in another language */
+		MainWindow window(startup.map, startup.bus);
+		if (screenshot.windowSize) window.resize(*screenshot.windowSize);
+		window.show();
+		window.applyStartup(startup);
+		if (!screenshot.file.isEmpty()) {
+			QTimer::singleShot(screenshot.delayMs, &window,
+					[&window, screenshot] { takeScreenshotsAndQuit(window, screenshot); });
+		}
+		result = app.exec();
 	}
-	return app.exec();
+	if (MainWindow::restartAsked())
+		QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1));
+	return result;
 }

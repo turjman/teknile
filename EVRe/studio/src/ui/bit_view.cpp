@@ -21,6 +21,7 @@ bool isFlag(const BitField &f) { return f.width == 1 && f.values.isEmpty(); }
 } // namespace
 
 BitView::BitView(QWidget *parent) : QWidget(parent) {
+	setLayoutDirection(Qt::LeftToRight); /* bits as a datasheet draws them, in any language */
 	setMouseTracking(true);
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
