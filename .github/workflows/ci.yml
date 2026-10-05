@@ -68,7 +68,7 @@ jobs:
           version: "6.8.3"
           arch: win64_mingw
           modules: qtserialport
-          tools: "tools_mingw1310,tools_ninja"
+          tools: "tools_mingw1310 tools_ninja"
           cache: true
       - name: Build
         shell: bash
