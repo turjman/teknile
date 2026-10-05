@@ -23,6 +23,28 @@ Apache-2.0. The Studio's full guide is `EVRe/studio/docs/STUDIO.md`; read its ch
   nothing about what the data means; names, units and limits live in the map (a higher layer).
 - Match the code around you: its comment style (sentences about why), naming and idiom.
 
+## For the human eye (the owner's rule for every screen, chart, table and diagram)
+
+Judge each change by what a person sees, not only by what the code does; the owner reviews the
+screenshots.
+
+- **Grouping is visible.** Separate things look separate: stacked plots, panels and groups have a
+  separator, a gap or a frame, so two axes never read as one (the lanes' "15 10 5 15 10 5").
+- **Readable sizes.** A plot, lane or list keeps enough height for its labels (at least two value
+  labels on an axis); when things do not fit, scroll or fold rather than squeeze; text is never
+  cut mid-letter, overlapping or drawn over lines.
+- **Every action is discoverable.** A click target looks clickable (a button shape, an icon such
+  as "▾" / "▸", a pointing-hand cursor and a highlight on hover) and has a tooltip; nothing is
+  reachable only by a right-click, a modifier key or a hidden spot. A right-click menu repeats
+  what is visible, it is not the only way.
+- **Both themes and both languages.** Check contrast in dark and light (faint grey on faint grey
+  fails), and the layout in English and Arabic (right-to-left, longer words).
+- **Tables and diagrams in the docs.** A short cell (a name, a key, a setting, a value) stays on one
+  line (`&nbsp;` between its words; longer text goes in the last column); every table has a header
+  row; an ASCII diagram is aligned in a monospaced block and fits in 100 columns.
+- **Show it.** A PR that changes what is seen says what to look at, and the Windows run adds
+  dark and light screenshots of it.
+
 ## Build and test on Linux
 
 ```sh
