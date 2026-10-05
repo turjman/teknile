@@ -6,22 +6,36 @@ on:
   push:
   pull_request:
 
+defaults:
+  run:
+    working-directory: EVRe
+
 jobs:
   linux:
     runs-on: ubuntu-24.04
     env:
       PYTHONDONTWRITEBYTECODE: "1"
-      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
-      - name: Qt, CMake, Ninja, jsonschema
+      # Ubuntu 24.04's own Qt is 6.4; the Studio needs 6.5 or newer
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtserialport
+          cache: true
+      - name: CMake, Ninja, xvfb, jsonschema
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev libgl1-mesa-dev
+          sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libegl1 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfontconfig1 fonts-dejavu-core xvfb xauth
           pip install jsonschema
       - name: Build
         run: |
-          cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build
       - name: Map files and exports
         run: ./build/evre_map_test
@@ -35,11 +49,11 @@ jobs:
         run: python3 studio/tests/device_table_test.py build
       - name: Python package
         run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
-      - name: GUI test (against the fake device)
+      - name: GUI test (against the fake device, on a virtual screen)
         run: |
-          python3 studio/tests/fake_device.py --port 1210 &
+          python3 studio/tests/fake_device.py --port 1210 --map studio/maps/example_device.json &
           sleep 2
-          (cd build && ./evre_gui_test example_device.json)
+          cd build && QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json
       - name: Login of the fake devices
         run: python3 studio/tests/fake_login_test.py build
 
@@ -55,6 +69,7 @@ jobs:
           arch: win64_mingw
           modules: qtserialport
           tools: "tools_mingw1310,tools_ninja"
+          cache: true
       - name: Build
         shell: bash
         run: |
