@@ -41,9 +41,9 @@ constexpr double BOTTOM_PAD = 8;
 constexpr double CARD_RADIUS = 10;
 constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
 constexpr double LEGEND_ROW_H = 22;
-constexpr double STATE_W = 420;            /* the state text, right-aligned at the top right */
-constexpr double STATE_ROOM = 230;
-constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */         /* the legend stops this far from the right, for the state */
+constexpr double STATE_SHARE = 0.4;        /* the state's text, top right: at most this share of the plot's width */
+constexpr double STATE_GAP = 16;           /* between the legend's end and the state's text */
+constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */
 constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left of its value labels (Lanes) */
 constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
 constexpr double LANE_BUTTON_GAP = 2;      /* between the fold button and the lane's menu button under it */
@@ -1476,8 +1476,13 @@ ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
 		chipsFont_ = font.key();
 		chipMeasures_++;
 	}
+	/* the chips end where the state's text begins, so neither lies under the other */
+	int variant = -1;
+	double stateWidth = 0;
+	fitState(plot.width(), variant, stateWidth);
 	LegendLayout legend;
-	legend.viewport = QRectF(plot.left(), LEGEND_TOP, std::max(0.0, plot.width() - STATE_ROOM), LEGEND_ROW_H);
+	legend.viewport = QRectF(plot.left(), LEGEND_TOP,
+			std::max(0.0, plot.width() - (variant >= 0 ? stateWidth + STATE_GAP : 0)), LEGEND_ROW_H);
 	legend.valueRoom = chipValueRoom_;
 	double x = legend.viewport.left();
 	for (const double w : std::as_const(chipWidths_)) {
@@ -2151,6 +2156,7 @@ void ChartView::setAllLanesFolded(bool folded) {
 /* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
+	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
 	const QRectF plot = plotRect();
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
 		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
@@ -3507,7 +3513,10 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 		lp.setRenderHint(QPainter::Antialiasing);
 		lp.setFont(p.font());
 		lp.translate(-area.topLeft());
-		lp.setClipRect(legend.viewport);
+		/* a chip cut by the scroll's edge is cut before the arrow there, not drawn under it */
+		const bool more = legend.maxScroll() > 0;
+		lp.setClipRect(legend.viewport.adjusted(more && offset > 0 ? LEGEND_ARROW_W : 0, 0,
+				more && offset < legend.maxScroll() ? -LEGEND_ARROW_W : 0, 0));
 		qsizetype i = 0;
 		for (const Series &s : series_) {
 			const QRectF chip = legend.chips[i++].translated(-offset, 0);
@@ -3772,27 +3781,89 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 	return std::max(1, int((plotHeight - 8 - 10) / READOUT_ROW_H) - 1);
 }
 
-/* the state, top right: held, manual Y, cursor mode */
-void ChartView::drawState(QPainter &p, const Axes &axes) const {
-	QStringList state;
+/* The state corner's texts: the whole, then shortened in turn until one fits (fitState): "Live to follow" goes, then
+ * the cursors' "click / drag", then "manual" of a manual Log Y; the time held and the trigger's state stay. With
+ * measuring, the time held is written as the widest number, so the room kept for it does not change with its digits
+ * (the legend's end would follow them). */
+QStringList ChartView::stateVariants(bool measuring) const {
+	QString held[2], y[2], cursors[2], trigger;
 	if (!live_ && !recording_) { /* a trigger holds a view that ends after now: it fills as the samples come */
-		const double behind = clockNow() - axes.t1;
-		state << (behind >= 0 ? tr("held: -%1 s · Live to follow").arg(chartNumber(behind))
-							: tr("held: filling, %1 s to come · Live to follow").arg(chartNumber(-behind)));
+		const double behind = clockNow() - viewEnd();
+		const QString number = measuring ? QStringLiteral("0.000e+00") : chartNumber(std::fabs(behind));
+		held[0] = behind >= 0 ? tr("held: -%1 s · Live to follow").arg(number)
+				: tr("held: filling, %1 s to come · Live to follow").arg(number);
+		held[1] = behind >= 0 ? tr("held: -%1 s").arg(number) : tr("held: filling");
 	}
-	if (lanes_) state << tr("lanes: ▾ folds"); /* each its own Y range; the hint where the fold is */
-	else if (logShown()) state << (y_.autoRange ? tr("Y log") : tr("Y log, manual"));
-	else if (!y_.autoRange && !normalized_) state << tr("Y manual");
-	if (cursorMode_) state << tr("cursors: click / drag");
-	if (trigger_.on) state << (trigger_.armed ? tr("trigger: armed") : std::isfinite(trigger_.at) ? tr("triggered")
-			: tr("trigger: Arm"));
-	stateText_ = state.join(QStringLiteral("  ·  "));
-	if (state.isEmpty()) return;
+	if (lanes_) {
+		/* each lane its own Y range; their buttons show the fold */
+	} else if (logShown()) {
+		y[0] = y_.autoRange ? tr("Y log") : tr("Y log, manual");
+		y[1] = tr("Y log");
+	} else if (!y_.autoRange && !normalized_) {
+		y[0] = y[1] = tr("Y manual");
+	}
+	if (cursorMode_) {
+		cursors[0] = tr("cursors: click / drag");
+		cursors[1] = tr("cursors");
+	}
+	if (trigger_.on) trigger = trigger_.armed ? tr("trigger: armed") : std::isfinite(trigger_.at) ? tr("triggered")
+			: tr("trigger: Arm");
+	QStringList variants;
+	for (int stage = 0; stage < 4; stage++) {
+		QStringList parts{ held[stage >= 1], y[stage >= 3], cursors[stage >= 2], trigger };
+		parts.removeAll(QString());
+		variants << parts.join(QStringLiteral("  ·  "));
+	}
+	return variants;
+}
+
+/* the first of the state's texts that fits its room: at most STATE_SHARE of the plot; the shortest may take more
+ * rather than be cut, but never so much that the legend loses its first chip and its arrows; -1: no state */
+void ChartView::fitState(double plotWidth, int &variant, double &width) const {
+	variant = -1;
+	width = 0;
+	const QStringList variants = stateVariants(true);
+	if (variants.first().isEmpty()) return;
+	const QFontMetricsF metrics(labelFont());
+	const double legendMin = (chipWidths_.isEmpty() ? 0 : chipWidths_.first()) + 2 * LEGEND_ARROW_W + STATE_GAP;
+	const double most = std::max(0.0, plotWidth - legendMin);
+	const double room = std::min(plotWidth * STATE_SHARE, most);
+	for (qsizetype i = 0; i < variants.size(); i++) {
+		width = std::ceil(metrics.horizontalAdvance(variants[i]));
+		variant = int(i);
+		if (width <= room) return;
+	}
+	if (width <= most) return; /* the shortest, whole, past its share */
+	width = most;              /* a chart too narrow even for that: it ends with "…" (drawState) */
+}
+
+/* the state, top right: held, manual Y, cursor mode, the trigger; as much of it as fits, the whole in its tooltip */
+void ChartView::drawState(QPainter &p, const Axes &axes) const {
+	const QStringList texts = stateVariants(false);
+	int variant = -1;
+	double width = 0;
+	fitState(axes.rect.width(), variant, width);
+	stateFull_ = texts.first();
+	stateText_.clear();
+	stateRect_ = QRectF();
+	if (variant < 0) return;
+	const QFontMetricsF metrics(labelFont());
+	stateText_ = texts[variant];
+	if (metrics.horizontalAdvance(stateText_) > width) stateText_ = metrics.elidedText(stateText_, Qt::ElideRight, width);
+	stateRect_ = QRectF(axes.rect.right() - width, LEGEND_TOP, width, LEGEND_ROW_H);
 	const ThemeColors &c = Theme::colors();
+	p.save();
 	p.setFont(labelFont());
 	p.setPen(!live_ ? c.warn : c.muted);
-	p.drawText(QRectF(axes.rect.right() - STATE_W, LEGEND_TOP, STATE_W, LEGEND_ROW_H),
-			Qt::AlignRight | Qt::AlignVCenter, stateText_);
+	/* words, not the chart's time: read in the language's direction (Arabic from the right, its first part rightmost),
+	 * still at the chart's right end; right to left, a mark either side of each dot keeps a part's Latin end ("s") and
+	 * the next part's Latin start ("Y") from running together into one left-to-right run */
+	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
+	p.setLayoutDirection(QGuiApplication::layoutDirection());
+	const QString dot = QStringLiteral("  ·  ");
+	p.drawText(stateRect_, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
+			rightToLeft ? QString(stateText_).replace(dot, QChar(0x200F) + dot + QChar(0x200F)) : stateText_);
+	p.restore();
 }
 
 /* the paint time as a running average; the frames counted over each second */

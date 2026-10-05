@@ -253,7 +253,9 @@ every line at that moment: a box beside the mouse holds every line's value (its 
 values</b> pace, as the legend's, and the box keeps its size).</p>
 <p>Each line keeps its place in the legend; only its digits change, at the <b>Show values</b> pace
 (10 per second by default) while the line itself moves at every frame. When the lines do not all fit, scroll
-the legend with the <b>mouse wheel</b> over it, the <b>bar</b> under it, or the arrows at its ends.</p>
+the legend with the <b>mouse wheel</b> over it, the <b>bar</b> under it, or the arrows at its ends. The top right
+says what holds the view or changes its reading (held, Y log or manual, cursors, the trigger); when the row is short
+it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.</p>
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
 the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart

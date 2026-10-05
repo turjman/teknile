@@ -538,6 +538,7 @@ public:
 		chartLanesFoldButton();
 		chartLanesSeparators();
 		chartLaneBorders();
+		chartStateFits();
 		heldViewReuse();
 		measureTableRepaints();
 		measureInBackground();
@@ -5117,9 +5118,9 @@ private:
 		check(barHover && !view->laneBarHovered(), "chart, Lanes: over the scroll bar the pointing hand, its handle "
 				"brighter, a tooltip that says how it scrolls");
 
-		/* the hint in the state corner */
-		const bool hint = view->stateText().contains(QStringLiteral("lanes: ▾ folds"));
-		check(hint, "chart, Lanes: the state corner says \"lanes: ▾ folds\"");
+		/* the state corner says nothing for Lanes: their ▾ and ⋯ buttons show what they do */
+		const bool hint = !view->stateText().contains(QStringLiteral("lanes"));
+		check(hint, "chart, Lanes: the state corner says nothing for Lanes (their buttons show the fold)");
 
 		/* Display: Fold all lanes / Open all lanes, with Lanes on, each enabled when it has something to do */
 		auto *lanes = tab.findChild<QAction *>(QStringLiteral("chartLanes"));
@@ -5266,6 +5267,118 @@ private:
 		tab.hide();
 		QSettings().remove(group);
 	}
+
+	/* The state corner fits its room: with the view held, Y log manual, cursors and a trigger on, its text is shortened
+	 * by whole parts in their order (Live to follow, click / drag, manual) as the chart narrows, down to the width it has
+	 * at the main window's narrowest; the legend ends where it begins, so neither lies over the other; its tooltip is
+	 * the whole text; with room nothing is dropped. In English and in Arabic (longer). */
+	void chartStateFits() {
+		/* the chart's width in the main window at its narrowest */
+		const QSize before = window_.size();
+		window_.resize(window_.minimumSizeHint().width(), window_.height());
+		QApplication::processEvents();
+		ChartView *mainChart = window_.findChild<ChartView *>();
+		const int narrow = mainChart && mainChart->width() > 300 ? mainChart->width() : 700;
+		window_.resize(before);
+		QApplication::processEvents();
+		const QString sep = QStringLiteral("  ·  ");
+		struct Run {
+			bool apart = true, ordered = true, roomy = false, shortened = false, tip = false;
+			QStringList seen;
+		};
+		const auto run = [&](const QString &code) {
+			language::apply(*qApp, code);
+			const auto inChart = [](const char *text) { return QCoreApplication::translate("ChartView", text); };
+			Run out;
+			LoneChart chart(QStringLiteral("STATE0"), QStringLiteral("V"));
+			MathLines::Samples samples;
+			for (int k = 0; k < 8; k++) {
+				RegDef def = chart.def;
+				def.addr = quint16(0xD000 + 2 * k);
+				def.name = QStringLiteral("STATE%1").arg(k);
+				if (k > 0) chart.tab.plotRegister(def, true);
+				for (int i = 0; i < 100; i++) samples[regKey(def)] << QPointF(90.0 + i * 0.1, 1 + k + std::sin(i * 0.1));
+			}
+			chart.tab.frame(samples);
+			chart.tab.show();
+			(void) QTest::qWaitForWindowExposed(&chart.tab);
+			ChartView *view = chart.view;
+			view->setYLog(true);
+			view->setYManual(0.5, 20);
+			view->setCursorMode(true);
+			view->setTrigger(chart.key(), 1.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Single);
+			(void) view->grab();
+			view->setLive(false);
+			const int margin = chart.tab.width() - view->width();
+			chart.tab.resize(1700 + margin, 700);
+			(void) view->grab();
+			/* the parts as the state writes them, the time held taken from the whole text */
+			const QString full = view->stateFullText();
+			const QString heldWhole = inChart("held: -%1 s · Live to follow");
+			const QString held = full.section(sep, 0, 0), before = heldWhole.section(QLatin1String("%1"), 0, 0),
+					after = heldWhole.section(QLatin1String("%1"), 1);
+			const QString number = held.startsWith(before) && held.endsWith(after)
+					? held.mid(before.size(), held.size() - before.size() - after.size()) : QString();
+			const QString trigger = full.section(sep, -1);
+			const QStringList stages{
+				QStringList{ heldWhole.arg(number), inChart("Y log, manual"), inChart("cursors: click / drag"), trigger }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors: click / drag"), trigger }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors"), trigger }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log"), inChart("cursors"), trigger }.join(sep) };
+			int last = 0;
+			const int narrowest = std::min(narrow, 760); /* narrower still, so every part has to go in turn */
+			for (int width = 1700; width >= narrowest; width -= 10) {
+				chart.tab.resize(width + margin, 700);
+				(void) view->grab();
+				const QString text = view->stateText();
+				const int stage = int(stages.indexOf(text));
+				const QRectF state = view->stateRect(), legend = view->legendViewport();
+				const QString entry = QStringLiteral("%1: %2").arg(stage).arg(text);
+				if (out.seen.isEmpty() || out.seen.last() != entry) out.seen << entry;
+				out.ordered = out.ordered && stage >= last;
+				last = std::max(last, stage);
+				/* at most 40 % of the chart, or the shortest text whole (never cut) while the legend keeps a chip */
+				const bool apart = !state.isEmpty() && !state.intersects(legend) && state.left() >= legend.right()
+						&& (state.width() <= view->width() * 0.4 + 1 || stage == 3) && legend.width() >= 100;
+				if (!apart && out.apart)
+					std::printf("     (%s at %d px: the state %g..%g, the legend %g..%g)\n", qPrintable(code), width,
+							state.left(), state.right(), legend.left(), legend.right());
+				out.apart = out.apart && apart;
+				if (width == 1700) {
+					out.roomy = text == full && full == stages[0];
+					out.tip = view->toolTipAt(state.center()) == full;
+				}
+				if (width - 10 < narrowest) out.shortened = stage == 3 && view->toolTipAt(state.center()) == full;
+			}
+			if (!out.ordered || !out.roomy || !out.shortened)
+				std::printf("     (%s, %d px at the narrowest: the whole \"%s\"; seen: \"%s\")\n", qPrintable(code), narrow,
+						qPrintable(full), qPrintable(out.seen.join(QStringLiteral("\" | \""))));
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* at the main window's narrowest, in both themes */
+				chart.tab.resize(narrow + margin, 700);
+				for (const bool dark : { false, true }) {
+					Theme::apply(*qApp, dark);
+					view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_state_%1_%2.png")
+							.arg(code, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+			}
+			chart.tab.hide();
+			language::apply(*qApp, QStringLiteral("en"));
+			return out;
+		};
+		const Run english = run(QStringLiteral("en"));
+		std::printf("     (the chart %d px wide at the main window's narrowest; English: \"%s\")\n", narrow,
+				qPrintable(english.seen.join(QStringLiteral("\" | \""))));
+		check(english.apart, "chart, state corner: from 1700 px down to the main window's narrowest, with the view held, Y "
+				"log manual, cursors and a trigger, its text never lies over the legend (the arrows included)");
+		check(english.ordered && english.roomy && english.shortened, "chart, state corner: shortened by whole parts in "
+				"turn (Live to follow, click / drag, manual), the time held and the trigger kept; nothing dropped with room");
+		check(english.tip, "chart, state corner: its tooltip is the whole text, also when shortened");
+		const Run arabic = run(QStringLiteral("ar"));
+		std::printf("     (Arabic: \"%s\")\n", qPrintable(arabic.seen.join(QStringLiteral("\" | \""))));
+		check(arabic.apart && arabic.ordered && arabic.roomy && arabic.shortened && arabic.tip, "chart, state corner, "
+				"Arabic: the same, its longer words shortened in the same order, never over the legend");
+	}
+
 
 	/* A lane's border dragged: over a separator the resize cursor, the line lit, a tooltip; a drag gives the lane above
 	 * what the one below gives up, neither under LANE_MIN_H; the heights kept by unit (laneHeights), a new tab finds

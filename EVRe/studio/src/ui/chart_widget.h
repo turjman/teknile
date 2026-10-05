@@ -217,6 +217,8 @@ public:
 	int hoveredSeparator() const { return hoverSeparator_; } /* tests: the separator drawn highlighted; -1: none */
 	QVector<QRectF> valueLabelRects() const { return valueLabelRects_; } /* tests: the value labels' boxes, as painted */
 	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
+	QString stateFullText() const { return stateFull_; } /* tests: its whole text (its tooltip) */
+	QRectF stateRect() const { return stateRect_; }      /* tests: its room as last painted; empty: no state */
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -658,6 +660,8 @@ private:
 	/* a dot in a line's colour (the crosshair's), drawn once per colour and scaling */
 	const QImage &dotPicture(const QColor &color, qreal dpr) const;
 	void drawState(QPainter &p, const Axes &axes) const;
+	QStringList stateVariants(bool measuring) const;
+	void fitState(double plotWidth, int &variant, double &width) const;
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
 	static void strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr);
 	static void prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at);
@@ -724,6 +728,8 @@ private:
 	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
+	mutable QString stateFull_;
+	mutable QRectF stateRect_;
 	/* the gaps' middles in the plot, and (gaps) each one's number: the lane above it */
 	QVector<double> separatorsY(const QVector<Lane> &plots, QVector<int> *gaps = nullptr) const;
 	QHash<QString, double> laneWeights_; /* the lanes' heights by unit (1 when not there) */
