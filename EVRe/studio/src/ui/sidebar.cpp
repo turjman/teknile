@@ -27,6 +27,7 @@
 
 #include "ui/bus_panel.h"
 #include "ui/elided_label.h"
+#include "ui/language.h"
 #include "ui/limit_spin_box.h"
 #include "ui/recording_window.h"
 #include "ui/theme.h"
@@ -396,6 +397,7 @@ QWidget *Sidebar::buildApiCard() {
 
 void Sidebar::addFooter(QVBoxLayout *layout) {
 	auto *helpButton = new QPushButton(tr("Help"));
+	helpButton->setObjectName(QStringLiteral("sidebarHelp"));
 	helpButton->setCursor(Qt::PointingHandCursor);
 	helpButton->setToolTip(tr("Help (F1)"));
 	connect(helpButton, &QPushButton::clicked, this, &Sidebar::helpClicked);
@@ -410,6 +412,30 @@ void Sidebar::addFooter(QVBoxLayout *layout) {
 	buttons->addWidget(helpButton, 1);
 	buttons->addWidget(themeButton_, 1);
 	layout->addLayout(buttons);
+	/* the language: each in its own words; applied at the next start, with a button for it */
+	language_ = new QComboBox;
+	language_->setObjectName(QStringLiteral("language"));
+	language_->addItem(tr("System"), QStringLiteral("system"));
+	language_->addItem(QStringLiteral("English"), QStringLiteral("en"));
+	language_->addItem(QStringLiteral("العربية"), QStringLiteral("ar"));
+	language_->setCurrentIndex(std::max(0, language_->findData(language::saved())));
+	language_->setToolTip(tr("The window's language, applied at the next start. System: the computer's, when the Studio "
+			"has it (else English)."));
+	restart_ = new QPushButton(tr("Restart now"));
+	restart_->setObjectName(QStringLiteral("restartNow"));
+	restart_->setToolTip(tr("Close the Studio and start it again in the language chosen"));
+	restart_->setVisible(language::resolve(language::saved()) != language::current());
+	connect(language_, &QComboBox::activated, this, [this] {
+		const QString code = language_->currentData().toString();
+		language::save(code);
+		restart_->setVisible(language::resolve(code) != language::current());
+	});
+	connect(restart_, &QPushButton::clicked, this, &Sidebar::restartRequested);
+	auto *languageRow = new QHBoxLayout;
+	languageRow->addWidget(mutedLabel(tr("Language")));
+	languageRow->addWidget(language_, 1);
+	layout->addLayout(languageRow);
+	layout->addWidget(restart_);
 	layout->addWidget(version, 0, Qt::AlignHCenter);
 }
 

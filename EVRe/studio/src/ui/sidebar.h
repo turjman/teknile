@@ -146,6 +146,7 @@ signals:
 	void apiWritesChanged();       /* Allow API writes, or including ⚠ registers */
 	void helpClicked();
 	void themeClicked();
+	void restartRequested(); /* Restart now: the language chosen applies at a start */
 
 private:
 	/* building the cards, top to bottom */
@@ -209,4 +210,6 @@ private:
 	QLabel *apiInfo_;
 
 	QPushButton *themeButton_;
+	QComboBox *language_;         /* System, English, العربية: applied at the next start (language.h) */
+	QPushButton *restart_;        /* shown while the language chosen is not the one running */
 };

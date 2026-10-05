@@ -203,6 +203,12 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 	event->accept();
 }
 
+namespace {
+bool restartWanted = false;
+}
+
+bool MainWindow::restartAsked() { return restartWanted; }
+
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls()) {
 		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)) {
@@ -321,6 +327,10 @@ void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::saveMapClicked, this, &MainWindow::saveMap);
 	connect(sidebar_, &Sidebar::recordClicked, this, &MainWindow::toggleRecord);
 	connect(sidebar_, &Sidebar::openRecordingClicked, this, &MainWindow::openRecording);
+	connect(sidebar_, &Sidebar::restartRequested, this, [this] {
+		restartWanted = true;
+		if (!close()) restartWanted = false; /* an unsaved map kept it open */
+	});
 	connect(sidebar_, &Sidebar::apiServeChanged, this, &MainWindow::setApiRunning);
 	connect(sidebar_, &Sidebar::apiWritesChanged, this, &MainWindow::pushApiWrites);
 	connect(sidebar_, &Sidebar::helpClicked, this, &MainWindow::showHelp);

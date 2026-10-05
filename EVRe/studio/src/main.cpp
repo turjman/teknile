@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QCommandLineParser>
 #include <QDialog>
+#include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
@@ -24,6 +25,8 @@
 #include <QTimer>
 #include <optional>
 
+#include "ui/help_dialog.h"
+#include "ui/language.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
 
@@ -143,11 +146,11 @@ void saveLogPicture(QWidget &window, const QString &path) {
 }
 
 void saveHelpPicture(const QWidget &window, const QString &path) {
-	if (QPushButton *help = buttonWithText(window, QStringLiteral("Help"))) help->click();
+	/* by name and class, not by text: the same in every language */
+	if (auto *help = window.findChild<QPushButton *>(QStringLiteral("sidebarHelp"))) help->click();
 	QApplication::processEvents();
 	for (QWidget *topLevel : QApplication::topLevelWidgets())
-		if (topLevel != &window && topLevel->isVisible() && topLevel->windowTitle().contains(QLatin1String("Help")))
-			topLevel->grab().save(path);
+		if (topLevel != &window && topLevel->isVisible() && qobject_cast<HelpDialog *>(topLevel)) topLevel->grab().save(path);
 }
 
 /* the Map editor tab, then the tab that was shown again. withFields: the first register whose "More"
@@ -234,14 +237,21 @@ int main(int argc, char **argv) {
 	if (screenshot.testRun) /* settings of its own, before anything reads them */
 		QApplication::setApplicationName(QStringLiteral("EVReStudio-test"));
 
+	language::apply(app, language::resolve(language::saved()));
 	Theme::apply(app, QSettings().value(QStringLiteral("ui/dark"), true).toBool());
-	MainWindow window(startup.map, startup.bus);
-	if (screenshot.windowSize) window.resize(*screenshot.windowSize);
-	window.show();
-	window.applyStartup(startup);
-	if (!screenshot.file.isEmpty()) {
-		QTimer::singleShot(screenshot.delayMs, &window,
-				[&window, screenshot] { takeScreenshotsAndQuit(window, screenshot); });
+	int result = 0;
+	{ /* the window gone (its ports and its link closed) before the program starts again in another language */
+		MainWindow window(startup.map, startup.bus);
+		if (screenshot.windowSize) window.resize(*screenshot.windowSize);
+		window.show();
+		window.applyStartup(startup);
+		if (!screenshot.file.isEmpty()) {
+			QTimer::singleShot(screenshot.delayMs, &window,
+					[&window, screenshot] { takeScreenshotsAndQuit(window, screenshot); });
+		}
+		result = app.exec();
 	}
-	return app.exec();
+	if (MainWindow::restartAsked())
+		QProcess::startDetached(QCoreApplication::applicationFilePath(), QCoreApplication::arguments().mid(1));
+	return result;
 }

@@ -5,7 +5,9 @@
 
 #include <QHBoxLayout>
 #include <QListWidget>
+#include <QTextBlock>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <iterator>
 
 #include "io/engine.h"
@@ -15,11 +17,13 @@ namespace {
 
 struct Topic {
 	const char *title; /* translated when listed */
-	const char *html;  /* UTF-8; %CODE% opens a code block (a styled <pre>), which the page closes with </pre> */
+	/* UTF-8; %CODE% opens a code block (a styled <pre>), which the page closes with </pre>; translated when shown, as
+	 * the title (translations keep the tags, %CODE% and the other %NAME% markers) */
+	const char *html;
 };
 
 const Topic TOPICS[] = {
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Getting started"), R"HTML(
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Getting started"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Getting started</h2>
 <p>EVRe Studio talks to any device that speaks <b>EVRe</b>, over <b>TCP</b> or a <b>serial / USB</b> port: one
 device, or several on one link. It shows every register of the device's <b>map</b> live, charts them, records them
@@ -49,12 +53,13 @@ a Python module).</li>
 pop up beside the tabs for a few seconds.</li>
 <li>Several devices on one link (RS-485, a gateway): <b>Connecting</b>.</li>
 <li>Slower polls than asked? <b>Polling &amp; speed</b> explains reads, latency and <b>In flight</b>.</li>
-<li>At the bottom of the sidebar: <b>Help</b> (F1) and the switch to the <b>light</b> or <b>dark</b> theme.</li>
+<li>At the bottom of the sidebar: <b>Help</b> (F1), the switch to the <b>light</b> or <b>dark</b> theme, and the
+<b>Language</b> (System, English, العربية), applied at the next start.</li>
 <li><b>Keyboard</b>: Tab and Shift+Tab move between the controls, and a ring shows where you are (a click shows
 none). Every key and mouse action: <b>Keys &amp; mouse</b>.</li>
 </ul>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Connecting"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Connecting"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Connecting</h2>
 <h3>TCP</h3>
 <p>Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
@@ -125,8 +130,8 @@ map has no <code>"login"</code> to send it to (see the Log).</li>
 <li>Registers "not available": the device refused the address (a register the map has and this device
 or this link does not). Not an error.</li>
 </ul>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Polling & speed"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Polling & speed"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Polling &amp; speed</h2>
 <p>A <b>poll</b> reads every register of the map once. The registers are not asked one by one: they are
 merged into a few <b>block reads</b>, and the sidebar says how many: <i>15 registers in 3 reads</i>.</p>
@@ -189,8 +194,8 @@ on again by itself.</li>
 <li>One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
 that switches AUTO_SEND on is refused.</li>
 </ul>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Registers & writes"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Registers & writes"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Registers &amp; writes</h2>
 <p>One row per register: address, name, <b>value</b> (bold), unit, <b>decoded</b> bit fields or enum name,
 type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
@@ -239,8 +244,8 @@ yours overwrites it.</li>
 field as a line of its own), <b>Read now</b>, <b>Copy value</b>, <b>Edit definition…</b>, <b>Remove</b>. Anywhere in
 the table: <b>Plot all shown</b>, <b>Remove shown from the chart</b>, <b>Remove all from the chart</b>, <b>Fit
 columns</b>, <b>Decoded column</b>, <b>Log all</b> / <b>Log none</b>, <b>Add register…</b>.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Chart & recording"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Chart & recording"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Chart &amp; recording</h2>
 <p>Tick <b>Plot</b> on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
 The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
@@ -355,8 +360,8 @@ window): a recording or an export in a window of its own, with its chart, measur
 own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
 registers' value names and fields are matched by name: <b>Lines</b> plots a register's field.</li>
 </ul>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Device maps (JSON)</h2>
 <p>A map lists a device's registers. <b>Open…</b> / <b>Save</b> / <b>Save as…</b> / <b>New</b>; it is made and
 changed on the <b>Map editor</b> tab (its own help page). The file is plain JSON, and a save changes it only where
@@ -395,8 +400,8 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 </ul>
 <p>Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
 A block the device refuses is split; an address it refuses is dropped.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Map editor"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Map editor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Map editor</h2>
 <p>Make a map from nothing, or change one. Every change is an undo step: <b>Undo</b> (Ctrl+Z), <b>Redo</b>
 (Ctrl+Y).</p>
@@ -423,8 +428,8 @@ sheet back.</li>
 </ul>
 <p>On the Registers tab, <b>+ Register</b> and <i>Edit definition…</i> come here. The live values stay while a
 register is edited, as long as it is read the same way.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "API (MATLAB, LabVIEW, Python)"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "API (MATLAB, LabVIEW, Python)"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>API: other programs through the Studio</h2>
 <p>Tick <b>Serve API</b>. The Studio then shares the device it is connected to: every request goes through
 the Studio's one queue, so clients and the Studio never collide on the port.</p>
@@ -469,8 +474,8 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
 <i>TCP Read</i> in <b>CRLF</b> mode → <i>Unflatten From JSON</i> into a cluster
 (e.g. <code>ok</code> boolean, <code>values</code> cluster with a <code>SUPPLY_V</code> double).</p>
 <p>Full examples: <code>examples/</code> next to the program's source.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Monitor</h2>
 <p><b>Log frames</b> shows every frame sent and received (off by default: at fast polling it is a lot of text).
 <b>Clear</b> empties the list.</p>
@@ -482,8 +487,8 @@ to say it arrived; READ it to see.</p>
 <p><b>Slave</b>: the device it goes to (on a bus, the devices by name). <b>0 (broadcast)</b>, or <i>Broadcast · slave
 0</i> on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see <b>Connecting</b>), which every device
 takes and none answers. A device chosen again gets back the function chosen before.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Log & pop-ups"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Log & pop-ups"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Log &amp; pop-ups</h2>
 <p>The <b>Log</b> tab lists what happened, with the time: connecting, connected, lost (and why), the
 device ID, a token refused, every <b>write</b> (register, value, bytes, address) and its result: written,
@@ -502,8 +507,8 @@ block anything. When the window is too narrow for them there, the status bar sho
 <p>No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
 (numbers aside) pops up at most every 30 s; one pop-up is shown at a time, the newest, with <i>+N more</i> for the
 others that came while it was up. All of them are in the Log; hover the pop-up for its full text.</p>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Command line"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Command line"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Command line</h2>
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
            [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
@@ -520,8 +525,8 @@ the box does.</li>
 <li><code>--api-writes</code> is the same as ticking <i>Allow API writes</i>; <code>--api-writes-danger</code> also
 the ⚠ switch.</li>
 </ul>
-)HTML" },
-	{ QT_TRANSLATE_NOOP("HelpDialog", "Keys & mouse"), R"HTML(
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Keys & mouse"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Keys &amp; mouse</h2>
 <table cellpadding="4">
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
@@ -546,7 +551,7 @@ wheel</b> zooms the lane · <b>double-click</b> it: Auto</td></tr>
 <tr><td><b>Math line</b></td><td>The list of names: <b>Up</b> / <b>Down</b> pick, <b>Enter</b> or <b>Tab</b> takes one,
 <b>Esc</b> closes it</td></tr>
 </table>
-)HTML" },
+)HTML") },
 };
 
 /* The opening tag of a code block: %CODE% in a page becomes this. */
@@ -589,10 +594,20 @@ HelpDialog::HelpDialog(QWidget *parent) : QDialog(parent) {
 void HelpDialog::showTopic(int index) {
 	if (index < 0 || index >= int(std::size(TOPICS))) return;
 	const ThemeColors &colors = Theme::colors();
-	QString html = QString::fromUtf8(TOPICS[index].html);
+	QString html = tr(TOPICS[index].html);
 	html.replace(QLatin1String("%CODE%"), codeBlockTag(colors));
 	/* the engine's own numbers, so the page says what it does */
 	html.replace(QLatin1String("%OFFLINE_MISSES%"), QString::number(IoEngine::OFFLINE_AFTER_TIMEOUTS));
 	html.replace(QLatin1String("%OFFLINE_RETRY_S%"), QString::number(IoEngine::OFFLINE_RETRY_MS / 1000.0));
 	page_->setHtml(pageStyle(colors) + html);
+	/* right to left (Arabic): every paragraph so, also one that starts with a Latin word ("RAM: …", which the text
+	 * would lay out left to right by itself); the code blocks stay left to right */
+	if (!isRightToLeft()) return;
+	QTextCursor cursor(page_->document());
+	for (QTextBlock block = page_->document()->begin(); block.isValid(); block = block.next()) {
+		QTextBlockFormat format = block.blockFormat();
+		format.setLayoutDirection(format.nonBreakableLines() ? Qt::LeftToRight : Qt::RightToLeft);
+		cursor.setPosition(block.position());
+		cursor.setBlockFormat(format);
+	}
 }

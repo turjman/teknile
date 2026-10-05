@@ -46,6 +46,7 @@ class AnalysisWindow::Plot : public QWidget {
 public:
 	explicit Plot(AnalysisWindow *owner) : QWidget(owner), w_(owner) {
 		setMouseTracking(true);
+		setLayoutDirection(Qt::LeftToRight); /* frequencies and values grow to the right, in any language */
 		setMinimumSize(420, 260);
 		setAttribute(Qt::WA_OpaquePaintEvent);
 	}

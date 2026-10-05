@@ -240,6 +240,7 @@ void ChartView::Bin::add(double ta, double tb, double firstValue, double lastVal
 ChartView::ChartView(QWidget *parent) : QWidget(parent) {
 	setMouseTracking(true);
 	setFocusPolicy(Qt::ClickFocus); /* Delete removes the note clicked */
+	setLayoutDirection(Qt::LeftToRight); /* time runs left to right, in any language */
 	/* it paints every pixel itself: Qt need not paint what is behind it */
 	setAttribute(Qt::WA_OpaquePaintEvent);
 	frameClock_.start();

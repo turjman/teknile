@@ -42,6 +42,8 @@ EVRe is a protocol of **teknile**.
   bit diagrams), a C header, a Python module, CSV; CSV back in. A JSON Schema of the format for other tools. For
   firmware on the EVRe device library, a **device table**: the register images as packed structs, their addresses
   checked at compile time, and the function that serves them (`evre export map.json --to table`).
+- **English and Arabic** (العربية, right to left; the chart, numbers and register names stay left to right), the Help
+  pages too; chosen at the bottom of the sidebar.
 - **Chart** like an oscilloscope: memory depth apart from the view, Hold / Live, a memory strip, cursors A and B,
   Auto, Manual or Log Y, lanes (a plot per unit, each its own Y range), Normalise, Smooth scrolling that follows the display refresh, the values of every line beside
   the mouse (Hover values). Many fast lines at the display's rate: 64 lines of 1000 Hz at 60 fps on a 4K screen,
@@ -71,12 +73,13 @@ EVRe is a protocol of **teknile**.
 ### Build
 
 You need Qt 6.5 or newer with Widgets, Network, SerialPort and Test (Test is required by every build, not only the
-GUI test), a C++17 compiler and CMake 3.21 or newer.
+GUI test) and the Linguist tools (`lupdate`, `lrelease`: the translations are built into the program), a C++17
+compiler and CMake 3.21 or newer.
 
 **Linux** (Debian / Ubuntu):
 
 ```sh
-sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev
+sudo apt install build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev qt6-tools-dev qt6-l10n-tools
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
@@ -157,7 +160,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (334 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (341 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
 | `evre_map_test` | the map files without a window (21 tests): saved byte for byte, edits, overlays, keys, checks, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema (needs the `jsonschema` package) |
 | `tests/cli_test.py` | the `evre` command line end to end (33 checks), against its own fake device and a bus of two devices on `evre_fake_fast` |

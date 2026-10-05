@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Network SerialPort Test)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Widgets Network SerialPort Test LinguistTools)
 
 # Warnings on for all our code (GCC and Clang; MSVC keeps its defaults).
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -82,10 +82,20 @@ qt_add_library(evre_studio_core STATIC
     src/ui/sidebar.h            src/ui/sidebar.cpp
     src/ui/help_dialog.h        src/ui/help_dialog.cpp
     src/ui/frame_clock.h        src/ui/frame_clock.cpp
+    src/ui/language.h           src/ui/language.cpp
     src/ui/main_window.h        src/ui/main_window.cpp
     src/ui/main_window_bus.cpp
 )
 target_include_directories(evre_studio_core PUBLIC src)
+# The translations: every text of src/ through tr() (English is the source), the .qm built into the core at :/i18n
+# (language.h). `cmake --build . --target update_translations` brings the .ts files up to the sources
+# (translations/README.md).
+file(GLOB_RECURSE STUDIO_TEXT_SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
+qt_add_translations(evre_studio_core
+    TS_FILES translations/evre_studio_ar.ts
+    SOURCES ${STUDIO_TEXT_SOURCES}
+    LUPDATE_OPTIONS -no-obsolete -locations none
+    RESOURCE_PREFIX /i18n)
 target_compile_definitions(evre_studio_core PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
 target_link_libraries(evre_studio_core PUBLIC evre_protocol Qt6::Widgets)
 if(WIN32)
@@ -108,6 +118,8 @@ add_dependencies(EVReStudio evre_maps)
 # fake device only). It opens the maps copied beside it.
 qt_add_executable(evre_gui_test tests/gui_test.cpp)
 target_link_libraries(evre_gui_test PRIVATE evre_studio_core Qt6::Test)
+# the translations' own checks read the .ts files where they are kept
+target_compile_definitions(evre_gui_test PRIVATE EVRE_TRANSLATIONS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/translations")
 add_dependencies(evre_gui_test evre_maps)
 
 # evre: the EVRe tools on the command line (validate, export, info, read, dump,
