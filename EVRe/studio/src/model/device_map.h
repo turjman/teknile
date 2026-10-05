@@ -41,6 +41,15 @@
  * window is written to "addr" as UTF-8, cut or zero-padded to "size" bytes
  * (16 when not given). A map without "login" sends no token.
  *
+ * "streams" (optional, Fast EVRe: docs/MAP_FORMAT.md) lists the device's sample
+ * streams: each a window of the device bank its blocks come from, a rate, the
+ * registers that switch it, and the channels of one record:
+ *
+ *   "streams": [ { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000,
+ *                  "enable": "ADC_STREAM", "rate_reg": "...", "group": "...", "desc": "...",
+ *                  "channels": [ { "name": "I_LOAD", "type": "i16", "unit": "A",
+ *                                  "scale": 0.0005, "offset": 0, "decimals": 4 } ] } ]
+ *
  * "extends" makes the file an overlay on another map (its path relative to this
  * file): the overlay's settings replace the base's; a register with the address
  * of one in the base changes only the keys it gives (null removes a key); a new
@@ -156,6 +165,35 @@ struct RegDef {
 	bool hasDefault() const { return defaultValue == defaultValue; }
 };
 
+/* One channel of a fast stream: a number in every record, shown = raw x scale + offset. */
+struct StreamChannel {
+	QString name;            /* unique in its stream; the line is STREAM.CHANNEL */
+	RegType type = RegType::I16;
+	QString unit;
+	double scale = 1.0;
+	double offset = 0.0;
+	int decimals = -1;
+	QString desc;
+};
+
+/* A fast stream (Fast EVRe): its blocks come as READ_RESP frames nobody asked for, at the first address of
+ * its window, each an 8-byte header and `count` records of all its channels, packed in this order. */
+struct StreamDef {
+	QString name;
+	uint16_t addr = 0;       /* the window's first address, in the device bank */
+	int size = 0;            /* the window's bytes: the largest block, its header included */
+	double rate = 0;         /* records a second, as the device is built */
+	QString rateReg;         /* a register whose shown value is the rate now; empty: none */
+	QString enable;          /* a writable register: 1 starts the stream, 0 stops it; empty: the device's business */
+	QString group;
+	QString desc;
+	QString notes;
+	QVector<StreamChannel> channels;
+
+	int recordSize() const;  /* the bytes of one record: its channels' sizes summed */
+	int recordsPerBlock() const; /* the most records one block holds: (size - 8) / record size */
+};
+
 /* ---------------------------------------------------------------------- types */
 
 int typeSize(RegType type);   /* bytes; 0 for Bytes (its size is the register's own) */
@@ -246,6 +284,7 @@ struct DeviceMap {
 	uint16_t loginAddr = 0;  /* the register the token is written to after connecting; 0 = none */
 	int loginSize = 16;      /* its size in bytes: the token is cut or zero-padded to it */
 	QVector<RegDef> regs;
+	QVector<StreamDef> streams; /* Fast EVRe's sample streams; empty for most devices */
 	QString path;            /* where it was loaded from, empty if new */
 	QString basePath;        /* an overlay: the absolute path of the map it extends; empty = none */
 	std::shared_ptr<const MapSource> source; /* the file as loaded; null for a new map */
@@ -259,6 +298,7 @@ struct DeviceMap {
 	/* the text save() writes */
 	QByteArray toJson(const QString &file, bool flatten = false) const;
 	void sort();             /* the registers by address (the same address: in file order) */
+	const RegDef *registerNamed(const QString &name) const; /* nullptr: none */
 };
 
 /* --------------------------------------------------------------------- checks */

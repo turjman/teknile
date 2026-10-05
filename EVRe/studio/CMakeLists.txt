@@ -9,6 +9,7 @@
 #   evre_probe       the protocol core without the window, for checking a device (reads only;
 #                    the one write is the login token when EVRE_TOKEN is set)
 #   evre_fake_fast   a fake EVRe device fast enough to measure the Studio
+#   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
 cmake_minimum_required(VERSION 3.21)
 project(EVReStudio VERSION 1.0.0 LANGUAGES CXX)
 
@@ -35,6 +36,7 @@ qt_add_library(evre_protocol STATIC
     src/model/json_doc.h        src/model/json_doc.cpp
     src/model/map_export.h      src/model/map_export.cpp
     src/model/bus_file.h        src/model/bus_file.cpp
+    src/io/fast_stream.h        src/io/fast_stream.cpp
 )
 target_include_directories(evre_protocol PUBLIC src)
 target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPort)
@@ -149,6 +151,11 @@ target_link_libraries(evre-sim PRIVATE evre_protocol)
 qt_add_executable(evre_map_test tests/map_test.cpp)
 target_link_libraries(evre_map_test PRIVATE evre_protocol Qt6::Test)
 add_dependencies(evre_map_test evre_maps)
+
+# Fast EVRe without a window or a device: the block's rules, a fuzz, the clock's fit, the fake devices' source,
+# and the frames lib/fast builds (tests/fast_lib_test.py).
+qt_add_executable(evre_fast_test tests/fast_test.cpp)
+target_link_libraries(evre_fast_test PRIVATE evre_protocol Qt6::Test)
 
 # The protocol core without the window, for checking it against a real device (reads only;
 # the one write is the login token when EVRE_TOKEN is set).

@@ -699,6 +699,93 @@ private slots:
 		QVERIFY(!has(0, true, ""));
 	}
 
+	/* Fast EVRe's "streams": read, kept as written, written the Studio's way when changed or new */
+	void streams() {
+		DeviceMap map;
+		QString err;
+		const QString file = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		QVERIFY2(map.load(file, err), qPrintable(err));
+		QCOMPARE(map.streams.size(), 1);
+		const StreamDef &adc = map.streams[0];
+		QCOMPARE(adc.name, QStringLiteral("ADC"));
+		QCOMPARE(adc.addr, uint16_t(0xDC00));
+		QCOMPARE(adc.size, 1024);
+		QCOMPARE(adc.rate, 10000.0);
+		QCOMPARE(adc.enable, QStringLiteral("ADC_STREAM"));
+		QCOMPARE(adc.channels.size(), 2);
+		QCOMPARE(adc.channels[0].name, QStringLiteral("I_LOAD"));
+		QCOMPARE(adc.channels[0].type, RegType::I16);
+		QCOMPARE(adc.channels[1].scale, 0.001);
+		QCOMPARE(adc.recordSize(), 4);
+		QCOMPARE(adc.recordsPerBlock(), 254);
+		QVERIFY(checkMap(map).isEmpty());
+		/* the rate changed: only the streams' text changes */
+		const QByteArray before = readFile(file);
+		DeviceMap edited = map;
+		edited.streams[0].rate = 20000;
+		QStringList removed, added;
+		lineDiff(before, edited.toJson(file), removed, added);
+		QVERIFY2(!removed.isEmpty() && removed.join(QString()).contains(QLatin1String("10000"))
+				&& !removed.join(QString()).contains(QLatin1String("UPTIME")), qPrintable(removed.join(QLatin1Char('\n'))));
+		DeviceMap back;
+		writeFile(path(QStringLiteral("fast_edited.json")), edited.toJson(file));
+		QVERIFY2(back.load(path(QStringLiteral("fast_edited.json")), err), qPrintable(err));
+		QCOMPARE(back.streams[0].rate, 20000.0);
+		QCOMPARE(back.streams[0].channels.size(), 2);
+		/* a new map: the streams after the registers they name */
+		DeviceMap fresh;
+		fresh.device = QStringLiteral("New");
+		fresh.regs = map.regs;
+		fresh.streams = map.streams;
+		const QByteArray text = fresh.toJson(path(QStringLiteral("fresh.json")));
+		QVERIFY(text.indexOf("\"registers\"") < text.indexOf("\"streams\""));
+		writeFile(path(QStringLiteral("fresh.json")), text);
+		QVERIFY2(back.load(path(QStringLiteral("fresh.json")), err), qPrintable(err));
+		QCOMPARE(back.streams.size(), 1);
+		QCOMPARE(back.streams[0].channels[0].scale, 0.0005);
+		/* what makes a stream unreadable stops the load */
+		QVERIFY(!loadText(QStringLiteral("nokey.json"), "{ \"registers\": [], \"streams\": [ { \"name\": \"S\", "
+				"\"addr\": \"0xD100\", \"size\": 64, \"channels\": [] } ] }").streams.size());
+		DeviceMap broken;
+		writeFile(path(QStringLiteral("badtype.json")), "{ \"registers\": [], \"streams\": [ { \"name\": \"S\", "
+				"\"addr\": \"0xD100\", \"size\": 64, \"rate\": 1, \"channels\": [ { \"name\": \"C\", \"type\": \"i12\" } ] } ] }");
+		QVERIFY(!broken.load(path(QStringLiteral("badtype.json")), err) && err.contains(QLatin1String("i12")));
+	}
+
+	/* every refusal of the checker for a stream */
+	void streamChecks() {
+		DeviceMap map;
+		QString err;
+		QVERIFY(map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), err));
+		auto refused = [&](const std::function<void(DeviceMap &)> &change, const char *text) {
+			DeviceMap m = map;
+			change(m);
+			for (const MapIssue &issue : checkMap(m))
+				if (issue.error && issue.text.contains(QLatin1String(text))) return true;
+			qWarning("not refused: %s", text);
+			return false;
+		};
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].addr = 0xCF00; }, "not inside the device bank"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].addr = 0xDF00; m.streams[0].size = 0x101; }, "not inside the device bank"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].addr = 0xD000; }, "shares bytes with the register UPTIME"));
+		QVERIFY(refused([](DeviceMap &m) { StreamDef s = m.streams[0]; s.name = QStringLiteral("B"); s.addr = 0xDE00;
+				m.streams.push_back(s); }, "shares bytes with the stream ADC"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].size = 11; }, "holds no block"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].channels.clear(); }, "no channel"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].channels[1].type = RegType::Bytes; }, "never bytes"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].rate = 0; }, "rate above 0"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].enable = QStringLiteral("NOPE"); }, "enable names no register"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].enable = QStringLiteral("UPTIME"); }, "cannot write"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].rateReg = QStringLiteral("NOPE"); }, "rate_reg names no register"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].name = QStringLiteral("UPTIME"); }, "also a register's"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].channels[1].name = QStringLiteral("I_LOAD"); }, "used twice"));
+		QVERIFY(refused([](DeviceMap &m) { m.streams[0].name.clear(); }, "no name"));
+		/* a stream that names a readable number as its rate is fine */
+		DeviceMap rated = map;
+		rated.streams[0].rateReg = QStringLiteral("UPTIME");
+		QVERIFY(checkMap(rated).isEmpty());
+	}
+
 	/* a bus file: loaded, saved with the maps relative to it and the keys it does not know kept; its checks */
 	void busFile() {
 		writeFile(path(QStringLiteral("bus.json")),
