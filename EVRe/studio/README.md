@@ -160,7 +160,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (376 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (377 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
 | `evre_map_test` | the map files without a window (21 tests): saved byte for byte, edits, overlays, keys, checks, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema (needs the `jsonschema` package) |
 | `tests/cli_test.py` | the `evre` command line end to end (33 checks), against its own fake device and a bus of two devices on `evre_fake_fast` |

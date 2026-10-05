@@ -101,6 +101,7 @@ public:
 protected:
 	void paintEvent(QPaintEvent *) override {
 		QPainter p(this);
+		p.setLayoutDirection(Qt::LayoutDirectionAuto); /* the widget's left to right: as aligned, in any language (the chart's paintFrame) */
 		const ThemeColors &c = Theme::colors();
 		p.fillRect(rect(), c.surface);
 		const QRectF a = area();

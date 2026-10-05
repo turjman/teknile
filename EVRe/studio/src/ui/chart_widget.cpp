@@ -1575,6 +1575,10 @@ void ChartView::hideEvent(QHideEvent *e) {
 }
 
 void ChartView::paintFrame(QPainter &p, bool onScreen) {
+	/* a painter on a widget takes the application's direction, not the widget's: in Arabic every label right-aligned
+	 * to the plot went to the window's left edge. Auto, as a painter on a picture has it: a text is placed as aligned,
+	 * an Arabic one still reads right to left (the state corner sets its own) */
+	p.setLayoutDirection(Qt::LayoutDirectionAuto);
 	QElapsedTimer paintTimer;
 	paintTimer.start();
 	const double frameDt = std::clamp(frameClock_.nsecsElapsed() / 1e9, 0.0, MAX_FRAME_DT);

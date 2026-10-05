@@ -4190,8 +4190,64 @@ private:
 		check(sidebar, "language: System, English, العربية at the bottom of the sidebar (ui/language), applied at the next "
 				"start: Restart now shows while the choice is not the language running");
 
+		/* the columns a text's ink spans in a box of a picture (logical px; -1: none): what differs from the box's corner */
+		const auto ink = [](const QImage &picture, const QRectF &box, double &left, double &right) {
+			const double dpr = picture.devicePixelRatio();
+			const QRect r = QRectF(box.topLeft() * dpr, box.size() * dpr).toRect().intersected(picture.rect());
+			left = right = -1;
+			if (r.isEmpty()) return;
+			const int ground = qGray(picture.pixel(r.topLeft()));
+			for (int x = r.left(); x <= r.right(); x++)
+				for (int y = r.top(); y <= r.bottom(); y++)
+					if (std::abs(qGray(picture.pixel(x, y)) - ground) > 40) {
+						if (left < 0) left = x / dpr;
+						right = x / dpr;
+						break;
+					}
+		};
+		/* Arabic: the chart's and a histogram's value labels where they are aligned, at the right of their boxes by the
+		 * plot (a painter on a widget takes the application's right to left, which put them at the window's left edge) */
+		QString alignNotes;
+		const auto labelsAligned = [&](MainWindow &other) {
+			bool aligned = true;
+			int labels = 0;
+			if (auto *chart = other.findChild<ChartView *>()) {
+				const QImage picture = chart->grab().toImage();
+				for (const QRectF &box : chart->valueLabelRects()) {
+					double left, right;
+					ink(picture, box, left, right);
+					if (left < 0) continue;
+					labels++;
+					if (right < box.right() - 6 || left < box.left() + 6) {
+						aligned = false;
+						alignNotes += QStringLiteral(" chart %1..%2 in %3..%4").arg(left).arg(right).arg(box.left()).arg(box.right());
+					}
+				}
+			}
+			QVector<double> times, values;
+			for (int i = 0; i < 2000; i++) {
+				times << i * 0.001;
+				values << std::sin(i * 0.05);
+			}
+			AnalysisWindow histogram(AnalysisWindow::Kind::Histogram, QStringLiteral("WAVE"), QStringLiteral("V"),
+					Qt::blue, QStringLiteral("the view"), times, values);
+			histogram.resize(700, 450);
+			histogram.show();
+			(void) QTest::qWaitForWindowExposed(&histogram);
+			const QImage picture = histogram.plot()->grab().toImage();
+			const QRectF column(2, 30, 64 - 8, histogram.plot()->height() - 60); /* left of the plot (its LEFT, TOP) */
+			double left, right;
+			ink(picture, column, left, right);
+			if (left < 0 || right < column.right() - 6 || left < column.left() + 6) {
+				aligned = false;
+				alignNotes += QStringLiteral(" histogram %1..%2 in %3..%4").arg(left).arg(right).arg(column.left())
+						.arg(column.right());
+			}
+			return aligned && labels >= 2;
+		};
+		bool arabicAligned = false;
 		/* each language: the main window fits 1280 px */
-		const auto widest = [](const QString &code, QString &notes) {
+		const auto widest = [&](const QString &code, QString &notes) {
 			language::apply(*qApp, code);
 			MainWindow other;
 			other.show();
@@ -4218,6 +4274,7 @@ private:
 						.arg(bits && bits->layoutDirection() == Qt::LeftToRight ? 1 : 0)
 						.arg(sidebarCard && sidebarCard->isRightToLeft() ? 1 : 0)
 						.arg(other.width() == 1280 ? 1 : 0);
+				arabicAligned = labelsAligned(other);
 			}
 			std::printf("     (%s: the main window's minimum width %d px)\n", qPrintable(code), minimum);
 			return minimum;
@@ -4261,6 +4318,9 @@ private:
 		check(helpTitle == QStringLiteral("البدء") && helpText.startsWith(QStringLiteral("البدء"))
 						&& !helpText.contains(QLatin1String("%CODE%")),
 				"language, Arabic: the Help's pages through the same file (the first page in Arabic, its code blocks made)");
+		if (!arabicAligned) std::printf("     (Arabic, value labels' ink:%s)\n", qPrintable(alignNotes));
+		check(arabicAligned, "language, Arabic: the chart's and a histogram's value labels at the right of their boxes, by "
+				"the plot, as in English (not at the window's left edge)");
 		check(englishBack, "language: English applied again, left to right");
 	}
 
