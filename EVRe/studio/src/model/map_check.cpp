@@ -2,6 +2,7 @@
 /* The checks of a map (checkMap in device_map.h): what the map editor lists
  * under the registers, errors first. */
 #include "model/device_map.h"
+#include "model/map_export.h"
 
 #include <QMap>
 #include <QObject>
@@ -65,6 +66,22 @@ QVector<MapIssue> checkMap(const DeviceMap &map) {
 		}
 	}
 
+	/* what EVRe Guard's table would make of the registers a host writes in the device bank (exportGuard): its export
+	 * errors, and where it takes another value than the map's (a limit past the type or between raw steps) */
+	for (int i = 0; i < map.regs.size(); i++) {
+		const RegDef &def = map.regs[i];
+		const bool reserved = def.addr >= 0xA000 && def.addr <= 0xA105;
+		if (def.clamps && reserved)
+			warning(i, QObject::tr("%1: \"past_limits\" in the reserved bank: EVRe Guard's table leaves that bank to the "
+					"library, so it does nothing on the device").arg(def.name));
+		if (!hostWrites(def) || !def.isNumeric() || reserved) continue;
+		if (def.clamps && !def.hasMin() && !def.hasMax())
+			warning(i, QObject::tr("%1: \"past_limits\": \"clamp\" without min or max: there is nothing to clamp to").arg(def.name));
+		const GuardEntry entry = guardEntry(def);
+		for (const QString &text : entry.errors) error(i, text);
+		for (const QString &text : entry.warnings) warning(i, text);
+	}
+
 	/* registers that share bytes: by address, each against the ones after it that start inside it */
 	QVector<int> order(map.regs.size());
 	for (int i = 0; i < order.size(); i++) order[i] = i;
@@ -76,6 +93,17 @@ QVector<MapIssue> checkMap(const DeviceMap &map) {
 			if (int(b.addr) >= int(a.addr) + a.size) break;
 			warning(order[m], QObject::tr("%1 overlaps %2 (%3)").arg(b.name, a.name, addrText(a.addr)));
 		}
+	}
+	/* a gap between two registers a host writes, in the device bank, with no register in it: a device with EVRe
+	 * Guard refuses a block write across it (no entry covers its bytes) */
+	for (int k = 0; k + 1 < order.size(); k++) {
+		const RegDef &a = map.regs[order[k]], &b = map.regs[order[k + 1]];
+		const int gapStart = int(a.addr) + a.size, gapEnd = int(b.addr);
+		const bool login = map.loginAddr && gapStart < map.loginAddr + map.loginSize && map.loginAddr < gapEnd;
+		if (gapStart >= gapEnd || a.addr < 0xD000 || gapEnd > 0xE000 || login || !hostWrites(a) || !hostWrites(b)) continue;
+		warning(order[k + 1], QObject::tr("%1 .. %2, between %3 and %4, is no register: a device with EVRe Guard refuses a "
+				"block write across it. Declare it as a bytes register if such a write must pass")
+				.arg(addrText(uint16_t(gapStart)), addrText(uint16_t(gapEnd - 1)), a.name, b.name));
 	}
 	return issues;
 }

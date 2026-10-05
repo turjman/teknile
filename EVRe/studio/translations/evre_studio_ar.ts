@@ -1736,6 +1736,9 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 &lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
 &lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;past_limits&lt;/b&gt;: &lt;code&gt;&quot;clamp&quot;&lt;/code&gt; = the device takes a value past min or max and clamps it, so it is
+written without asking; &lt;code&gt;&quot;refuse&quot;&lt;/code&gt; (the default) = it is asked first, and a device with EVRe Guard refuses
+it (&lt;i&gt;value refused&lt;/i&gt;, 15). NaN and the infinities are never written.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
 &lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
@@ -1776,6 +1779,9 @@ little endian.&lt;/li&gt;
 &lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
 &lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;past_limits&lt;/b&gt;: &lt;code&gt;&quot;clamp&quot;&lt;/code&gt; = الجهاز يقبل قيمة خارج الأدنى أو الأعلى ويقصّها إلى الحد، فتُكتب
+دون سؤال؛ &lt;code&gt;&quot;refuse&quot;&lt;/code&gt; (الافتراضي) = يُسأل أولًا، والجهاز الذي فيه EVRe Guard يرفضها
+(&lt;i&gt;value refused&lt;/i&gt;، 15). ولا تُكتب NaN واللانهايات أبدًا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
 و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
@@ -1800,7 +1806,7 @@ cell set in one of them is set in all (a bulk edit). The red or amber dot: what 
 &lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
 JSON, also between maps.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
+scale, decimals, min, max, past limits, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
 &lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
 the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
 amber past a limit, grey without one; hover it for a long value in full).
@@ -1812,8 +1818,8 @@ max… Click one to go there.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
 the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones). &lt;b&gt;Import CSV…&lt;/b&gt; reads a
-sheet back.&lt;/li&gt;
+bind function; the library needs every read-only register below the writable ones), and the &lt;i&gt;EVRe Guard
+table&lt;/i&gt; a device checks every host write against (its .h and .cpp). &lt;b&gt;Import CSV…&lt;/b&gt; reads a sheet back.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
 register is edited, as long as it is read the same way.&lt;/p&gt;
@@ -1828,7 +1834,7 @@ register is edited, as long as it is read the same way.&lt;/p&gt;
 &lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
 JSON، وبين الخرائط أيضًا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
-المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
+المعامل، المنازل العشرية، الأدنى، الأعلى، خارج الحدود، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
 &lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
 الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
 كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
@@ -1840,8 +1846,8 @@ bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) علي�
 &lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
 و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
-ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ
-جدولًا عائدًا.&lt;/li&gt;
+ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة)، و&lt;i&gt;جدول EVRe Guard&lt;/i&gt; الذي يفحص به الجهاز
+كل كتابة من المضيف (ملفاه .h و .cpp). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ جدولًا عائدًا.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
 يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
@@ -2767,10 +2773,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <translation>خارج حدود الخريطة</translation>
     </message>
     <message>
-        <source>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; is %3 the map gives it.&lt;br&gt;&lt;br&gt;The map may be stricter than the device, or the device may not take it. Write it anyway?</source>
-        <translation>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; %3 الذي تعطيه الخريطة.&lt;br&gt;&lt;br&gt;قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز. أتكتبها مع ذلك؟</translation>
-    </message>
-    <message>
         <source>Write anyway</source>
         <translation>اكتب مع ذلك</translation>
     </message>
@@ -3060,6 +3062,14 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>%1: not every device took it: %2</source>
         <translation>%1: لم يقبله كل جهاز: %2</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; is %3 the map gives it.&lt;br&gt;&lt;br&gt;The map may be stricter than the device, or the device may not take it (a device with EVRe Guard refuses it). Write it anyway?</source>
+        <translation>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; %3 الذي تعطيه الخريطة.&lt;br&gt;&lt;br&gt;قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز (الجهاز الذي فيه EVRe Guard يرفضها). أتكتبها مع ذلك؟</translation>
+    </message>
+    <message>
+        <source>%1 = %2 is past the map&apos;s limits: the device clamps it (&quot;past_limits&quot;: &quot;clamp&quot;)</source>
+        <translation>%1 = %2 خارج حدود الخريطة: الجهاز يقصّها إلى الحد (&quot;past_limits&quot;: &quot;clamp&quot;)</translation>
     </message>
 </context>
 <context>
@@ -3387,6 +3397,22 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>No room for them after the selection</source>
         <translation>لا مكان لها بعد التحديد</translation>
+    </message>
+    <message>
+        <source>EVRe Guard table (C++: .h and .cpp)…</source>
+        <translation>جدول EVRe Guard (C++: ملف .h و .cpp)…</translation>
+    </message>
+    <message>
+        <source>This map has no EVRe Guard table yet:</source>
+        <translation>ليس لهذه الخريطة جدول EVRe Guard بعد:</translation>
+    </message>
+    <message>
+        <source>C++ header, and its .cpp beside it (*.h)</source>
+        <translation>ترويسة C++، وملف .cpp بجانبها (*.h)</translation>
+    </message>
+    <message>
+        <source>A prefix for the names (MYDEV makes mydev_table and MYDEV_SPEED_RAW_MIN), or empty for the device&apos;s name:</source>
+        <translation>بادئة للأسماء (MYDEV تعطي mydev_table و MYDEV_SPEED_RAW_MIN)، أو فارغة لاسم الجهاز:</translation>
     </message>
 </context>
 <context>
@@ -4556,6 +4582,74 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source> · slave %1</source>
         <translation> · التابع %1</translation>
     </message>
+    <message>
+        <source>not a finite number: &quot;%1&quot;</source>
+        <translation>ليس عددًا منتهيًا: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>%1 is past the largest f32 value</source>
+        <translation>%1 أكبر من أكبر قيمة f32</translation>
+    </message>
+    <message>
+        <source>%1: &quot;past_limits&quot; in the reserved bank: EVRe Guard&apos;s table leaves that bank to the library, so it does nothing on the device</source>
+        <translation>%1: &quot;past_limits&quot; في البنك المحجوز: جدول EVRe Guard يترك هذا البنك للمكتبة، فلا أثر له على الجهاز</translation>
+    </message>
+    <message>
+        <source>%1: &quot;past_limits&quot;: &quot;clamp&quot; without min or max: there is nothing to clamp to</source>
+        <translation>%1: &quot;past_limits&quot;: &quot;clamp&quot; دون أدنى أو أعلى: لا حدّ يُقصّ إليه</translation>
+    </message>
+    <message>
+        <source>%1 .. %2, between %3 and %4, is no register: a device with EVRe Guard refuses a block write across it. Declare it as a bytes register if such a write must pass</source>
+        <translation>%1 .. %2، بين %3 و %4، ليس مسجّلًا: الجهاز الذي فيه EVRe Guard يرفض كتابة كتلة تعبره. صرّح به مسجّلَ bytes إن كان على كتابة كهذه أن تمرّ</translation>
+    </message>
+    <message>
+        <source>Past limits</source>
+        <translation>خارج الحدود</translation>
+    </message>
+    <message>
+        <source>the device takes a value past them and clamps it</source>
+        <translation>الجهاز يقبل قيمة خارجها ويقصّها إلى الحد</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is past the largest f32: taken as the type&apos;s end</source>
+        <translation>%1: قيمة %2 وهي %3 أكبر من أكبر f32: تؤخذ طرفَ النوع</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is not on a raw step: taken as %4</source>
+        <translation>%1: قيمة %2 وهي %3 ليست على خطوة خام: تؤخذ %4</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is outside the type %4: taken as the type&apos;s end</source>
+        <translation>%1: قيمة %2 وهي %3 خارج النوع %4: تؤخذ طرفَ النوع</translation>
+    </message>
+    <message>
+        <source>%1: no raw value is left between min and max</source>
+        <translation>%1: لا تبقى قيمة خام بين الأدنى والأعلى</translation>
+    </message>
+    <message>
+        <source>%1: the special value %2 is past the largest f32</source>
+        <translation>%1: القيمة الخاصة %2 أكبر من أكبر f32</translation>
+    </message>
+    <message>
+        <source>%1: the special value %2 is not a whole raw value of %3</source>
+        <translation>%1: القيمة الخاصة %2 ليست قيمة خام صحيحة من %3</translation>
+    </message>
+    <message>
+        <source>%1: more than 255 listed values: use min and max</source>
+        <translation>%1: أكثر من 255 قيمة مدرجة: استعمل الأدنى والأعلى</translation>
+    </message>
+    <message>
+        <source>no register a host writes in the device bank 0xD000..0xDFFF</source>
+        <translation>لا مسجّل يكتبه المضيف في بنك الجهاز 0xD000..0xDFFF</translation>
+    </message>
+    <message>
+        <source>%1 .. %2 writes only part of %3: a device with EVRe Guard refuses it</source>
+        <translation>%1 .. %2 يكتب جزءًا فقط من %3: الجهاز الذي فيه EVRe Guard يرفضه</translation>
+    </message>
+    <message>
+        <source>%1 is not a finite number: no device takes it</source>
+        <translation>%1 ليس عددًا منتهيًا: لا جهاز يقبله</translation>
+    </message>
 </context>
 <context>
     <name>QuickWritePanel</name>
@@ -4972,6 +5066,22 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>not a number: &quot;%1&quot;</source>
         <translation>ليس عددًا: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>refused: the device refuses a value past them</source>
+        <translation>مرفوضة: الجهاز يرفض قيمة خارجها</translation>
+    </message>
+    <message>
+        <source>clamped: the device takes it and clamps it</source>
+        <translation>مقصوصة: الجهاز يقبلها ويقصّها إلى الحد</translation>
+    </message>
+    <message>
+        <source>What the device does with a value past min or max (&quot;past_limits&quot;). Refused: hosts ask before they send one, and a device with EVRe Guard refuses it (value refused, 15). Clamped: hosts send it as it is, and EVRe Guard checks only that it is a number of the type</source>
+        <translation>ما يفعله الجهاز بقيمة خارج الأدنى أو الأعلى (&quot;past_limits&quot;). مرفوضة: يسأل المضيف قبل أن يرسلها، والجهاز الذي فيه EVRe Guard يرفضها (value refused، 15). مقصوصة: يرسلها المضيف كما هي، ولا يتحقق EVRe Guard إلا من أنها عدد من النوع</translation>
+    </message>
+    <message>
+        <source>Past limits</source>
+        <translation>خارج الحدود</translation>
     </message>
 </context>
 <context>

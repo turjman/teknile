@@ -78,6 +78,22 @@ class Maps(unittest.TestCase):
         with self.assertRaises(ValueError):
             fan.encode(300)
 
+    def test_guard_rules(self):
+        """what a device with EVRe Guard refuses is not sent: NaN and the infinities, an f32 past the largest float;
+        a register that clamps (past_limits) takes a value past its limits; code 15 has its name"""
+        setpoint = self.map['SETPOINT']  # f32, -20 .. 120
+        for bad in (float('nan'), float('inf'), -float('inf'), 1e39):
+            with self.assertRaises(ValueError):
+                setpoint.encode(bad)
+        self.assertEqual(len(setpoint.encode(3.4e38)), 4)
+        self.assertIn('maximum', setpoint.write_limit_problem(150))
+        clamped = evre.Register({'addr': '0xD000', 'name': 'S', 'type': 'i16', 'access': 'rw', 'min': -100,
+                                            'max': 100, 'past_limits': 'clamp'})
+        self.assertTrue(clamped.clamps and not setpoint.clamps)
+        self.assertIsNone(clamped.write_limit_problem(150))
+        self.assertIn('maximum', clamped.limit_problem(150))
+        self.assertEqual(frame.ERRORS[15], 'value refused')
+
     def test_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:
             # the base beside the overlay, extended by a relative path (no relative path joins two drives)
@@ -125,6 +141,13 @@ class BusFiles(unittest.TestCase):
             self.bus([{'name': 'D1', 'slave': 0, 'map': os.path.abspath(MAP)}])
         with self.assertRaises(evre.EvreError):  # no map
             self.bus([{'name': 'D1', 'slave': 1}])
+
+    def test_broadcast_part_of_a_number(self):
+        """a device with EVRe Guard refuses part of a number: a broadcast of one is never sent"""
+        bus = self.bus([{'name': 'D1', 'slave': 1, 'map': os.path.abspath(MAP)}])
+        self.assertIsNone(bus.broadcast_refusal(0xD080, 4))   # SETPOINT, f32, whole
+        self.assertIn('only part of SETPOINT', bus.broadcast_refusal(0xD080, 2))
+        self.assertIn('only part of SETPOINT', bus.broadcast_refusal(0xD082, 3))
 
     def test_empty_bus(self):
         bus = self.bus([])

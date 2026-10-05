@@ -215,11 +215,20 @@ bool encodeValue(const RegDef &def, const QString &text, QByteArray &out, QStrin
 		err = QObject::tr("not a number: \"%1\"").arg(typed);
 		return false;
 	}
+	/* NaN and the infinities are no value a device takes (EVRe Guard refuses them, 15): never sent */
+	if (!std::isfinite(value)) {
+		err = QObject::tr("not a finite number: \"%1\"").arg(typed);
+		return false;
+	}
 	if (!hex && !binary) value = (value - def.offset) / (def.scale == 0 ? 1 : def.scale);
 	out.resize(def.size);
 	auto *bytes = reinterpret_cast<uint8_t *>(out.data());
 	if (def.type == RegType::F32) {
 		const float number = float(value);
+		if (!std::isfinite(number)) {
+			err = QObject::tr("%1 is past the largest f32 value").arg(typed);
+			return false;
+		}
 		std::memcpy(bytes, &number, 4);
 		return true;
 	}
@@ -245,6 +254,17 @@ QString limitProblem(const RegDef &def, double shown) {
 	if (def.hasMax() && shown > def.max && !sameShown(shown, def.max))
 		return QObject::tr("above the maximum %1").arg(limitText(def.max));
 	return {};
+}
+
+QString writeLimitProblem(const RegDef &def, double shown) {
+	return def.clamps ? QString() : limitProblem(def, shown);
+}
+
+bool hostWrites(const RegDef &def) {
+	if (def.rw || !def.readable) return true;
+	for (const BitField &field : def.fields)
+		if (field.access == FieldAccess::ReadWrite || field.access == FieldAccess::WriteOneToClear) return true;
+	return false;
 }
 
 /* ------------------------------------------------------------------ addresses */

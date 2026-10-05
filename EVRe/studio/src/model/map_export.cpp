@@ -9,6 +9,7 @@
 #include <QStringList>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 #include "evre/registers.h"
@@ -161,6 +162,7 @@ void markdownRegister(QString &md, const RegDef &def) {
 	if (def.hasMin() || def.hasMax())
 		row(QObject::tr("Range"), QStringLiteral("%1 … %2%3").arg(def.hasMin() ? number(def.min) : QStringLiteral("−"),
 				def.hasMax() ? number(def.max) : QStringLiteral("+"), def.unit.isEmpty() ? QString() : QStringLiteral(" ") + def.unit));
+	if (def.clamps) row(QObject::tr("Past limits"), QObject::tr("the device takes a value past them and clamps it"));
 	if (def.hasDefault()) row(QObject::tr("Default"), number(def.defaultValue) + (def.unit.isEmpty() ? QString() : QStringLiteral(" ") + def.unit)
 			+ (def.persist ? QObject::tr(" (factory value)") : QString()));
 	if (def.hex) row(QObject::tr("Shown"), QObject::tr("in hex"));
@@ -266,7 +268,10 @@ QString cNumber(const RegDef &def, double value) {
 		text = QString::number(qint64(value));
 	} else {
 		const bool single = def.type == RegType::F32;
-		text = QString::number(single ? double(float(value)) : value, 'g', single ? 9 : 17);
+		/* past the largest f32 (a limit of 1e39): the largest, what the register can hold, not "inf" */
+		const double largest = double(std::numeric_limits<float>::max());
+		const double held = single ? std::clamp(value, -largest, largest) : value;
+		text = QString::number(single ? double(float(held)) : held, 'g', single ? 9 : 17);
 		if (!text.contains(QLatin1Char('.')) && !text.contains(QLatin1Char('e'))) text += QStringLiteral(".0");
 		if (single) text += QLatin1Char('f');
 	}
@@ -319,6 +324,7 @@ QByteArray exportCHeader(const DeviceMap &map, const ExportOptions &options) {
 			if (def.write != WriteKind::Normal) facts << writeWord(def.write);
 			if (def.persist) facts << QStringLiteral("persist");
 			if (def.danger) facts << QStringLiteral("danger");
+			if (def.clamps) facts << QStringLiteral("clamps past its limits");
 			if (def.scale != 1.0 || def.offset != 0.0) facts << QStringLiteral("x%1 %2").arg(number(def.scale), number(def.offset));
 			h += QStringLiteral("\n/* %1: %2 (%3) */\n").arg(cComment(def.name), cComment(def.desc.isEmpty() ? QStringLiteral("-") : def.desc),
 					cComment(facts.join(QStringLiteral(", "))));
@@ -378,6 +384,7 @@ QByteArray exportPython(const DeviceMap &map, const ExportOptions &options) {
 		if (def.offset != 0.0) items << QStringLiteral("\"offset\": %1").arg(number(def.offset));
 		if (def.hasMin()) items << QStringLiteral("\"min\": %1").arg(pyNumber(def.min));
 		if (def.hasMax()) items << QStringLiteral("\"max\": %1").arg(pyNumber(def.max));
+		if (def.clamps) items << QStringLiteral("\"past_limits\": \"clamp\"");
 		if (def.hasDefault()) items << QStringLiteral("\"default\": %1").arg(pyNumber(def.defaultValue));
 		if (!def.enumValues.isEmpty()) {
 			QStringList enumItems;
@@ -413,14 +420,6 @@ namespace {
 constexpr uint16_t RESERVED_FIRST = evre::RESERVED_FIRST, RESERVED_LAST = evre::RESERVED_END - 1; /* the library's own bank */
 constexpr uint16_t BANK_FIRST = evre::READ_ONLY_BLOCK, BANK_LAST = 0xDFFF; /* the device's, D000[addr & 0x0FFF] */
 
-/* written by the host: the library can only have it at or above DEVICE_REG_WRITE_MIN */
-bool hostWrites(const RegDef &def) {
-	if (def.rw || !def.readable) return true;
-	for (const BitField &field : def.fields)
-		if (field.access == FieldAccess::ReadWrite || field.access == FieldAccess::WriteOneToClear) return true;
-	return false;
-}
-
 QString cType(RegType type) {
 	switch (type) {
 	case RegType::U8: return QStringLiteral("uint8_t");
@@ -455,7 +454,8 @@ double rawOf(const RegDef &def, double shown) { return (shown - def.offset) / de
 /* a raw value as a literal of the register's C++ type */
 QString rawLiteral(const RegDef &def, double raw) {
 	if (def.type == RegType::F32) {
-		QString text = QString::number(double(float(raw)), 'g', 9);
+		const double largest = double(std::numeric_limits<float>::max()); /* past it: the largest, not "inf" */
+		QString text = QString::number(double(float(std::clamp(raw, -largest, largest))), 'g', 9);
 		if (!text.contains(QLatin1Char('.')) && !text.contains(QLatin1Char('e')) && !text.contains(QLatin1Char('n')))
 			text += QStringLiteral(".0");
 		return text + QLatin1Char('f');
@@ -742,13 +742,256 @@ bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByte
 	return true;
 }
 
+/* ========================================================= EVRe Guard table */
+
+namespace {
+
+/* the entry's type name in evre_guard_desc.h */
+QString guardType(RegType type) {
+	switch (type) {
+	case RegType::U8: return QStringLiteral("EVRE_GUARD_U8");
+	case RegType::I8: return QStringLiteral("EVRE_GUARD_I8");
+	case RegType::U16: return QStringLiteral("EVRE_GUARD_U16");
+	case RegType::I16: return QStringLiteral("EVRE_GUARD_I16");
+	case RegType::U32: return QStringLiteral("EVRE_GUARD_U32");
+	case RegType::I32: return QStringLiteral("EVRE_GUARD_I32");
+	case RegType::F32: return QStringLiteral("EVRE_GUARD_F32");
+	case RegType::Bytes: return QStringLiteral("EVRE_GUARD_BYTES");
+	}
+	return {};
+}
+
+uint32_t floatBits(float value) {
+	uint32_t bits;
+	std::memcpy(&bits, &value, 4);
+	return bits;
+}
+
+/* a whole raw value as the table stores it: unsigned as it is, signed sign-extended to 32 bits */
+uint32_t storedBits(double raw) {
+	return uint32_t(qint64(raw) & 0xFFFFFFFFLL);
+}
+
+QString bits8(uint32_t value) {
+	return QStringLiteral("0x%1UL").arg(QString::number(value, 16).toUpper().rightJustified(8, QLatin1Char('0')));
+}
+
+/* the shown value of a raw one, for a comment and a message */
+QString shownOf(const RegDef &def, double raw) {
+	return number(raw * def.scale + def.offset);
+}
+
+/* a limit of the map in the table: rounded to a raw value of the type (ceil for a min, floor for a max, the
+ * nearest float for f32), the type's end past it. false: none given */
+bool rawLimit(const RegDef &def, double shown, bool isMin, double &raw, QStringList &warnings) {
+	if (!(shown == shown)) return false;
+	const QString which = isMin ? QStringLiteral("min") : QStringLiteral("max");
+	const double exact = rawOf(def, shown);
+	if (def.type == RegType::F32) {
+		const double top = double(std::numeric_limits<float>::max());
+		if (std::fabs(exact) > top) {
+			warnings << QObject::tr("%1: the %2 %3 is past the largest f32: taken as the type's end").arg(def.name, which, number(shown));
+			raw = exact < 0 ? -top : top;
+		} else {
+			raw = double(float(exact)); /* the nearest float, the one a host makes of the map's number */
+		}
+		return true;
+	}
+	double low, high;
+	rawRange(def.type, low, high);
+	raw = isMin ? std::ceil(exact - 1e-9) : std::floor(exact + 1e-9);
+	if (std::fabs(raw - exact) > 1e-9 * std::max(1.0, std::fabs(exact)))
+		warnings << QObject::tr("%1: the %2 %3 is not on a raw step: taken as %4").arg(def.name, which, number(shown),
+				shownOf(def, raw));
+	if (raw < low || raw > high) {
+		warnings << QObject::tr("%1: the %2 %3 is outside the type %4: taken as the type's end").arg(def.name, which,
+				number(shown), typeName(def.type));
+		raw = std::clamp(raw, low, high);
+	}
+	return true;
+}
+
+} // namespace
+
+GuardEntry guardEntry(const RegDef &def) {
+	GuardEntry entry;
+	if (!def.isNumeric()) return entry; /* bytes: only the span is checked */
+	const bool f32 = def.type == RegType::F32;
+	double low, high;
+	rawRange(def.type, low, high);
+	if (f32) {
+		high = double(std::numeric_limits<float>::max());
+		low = -high;
+	}
+	auto bitsOf = [f32](double raw) { return f32 ? floatBits(float(raw)) : storedBits(raw); };
+	entry.min = bitsOf(low);
+	entry.max = bitsOf(high);
+	if (def.write == WriteKind::WriteOneToClear) return entry; /* w1c: no limits, the bits clear */
+
+	/* a negative scale turns the order round: the map's min is the raw max */
+	const bool flipped = def.scale < 0;
+	entry.hasRawMin = rawLimit(def, flipped ? def.max : def.min, true, entry.rawMin, entry.warnings);
+	entry.hasRawMax = rawLimit(def, flipped ? def.min : def.max, false, entry.rawMax, entry.warnings);
+	if (entry.hasRawMin && entry.hasRawMax && entry.rawMin > entry.rawMax)
+		entry.errors << QObject::tr("%1: no raw value is left between min and max").arg(def.name);
+	if (!def.clamps) {
+		if (entry.hasRawMin) entry.min = bitsOf(entry.rawMin);
+		if (entry.hasRawMax) entry.max = bitsOf(entry.rawMax);
+	}
+
+	/* the specials always pass: each a whole raw value of the type, or for f32 a finite one */
+	QMap<uint32_t, QString> listed;
+	for (const SpecialValue &special : def.special) {
+		const double raw = rawOf(def, special.value);
+		uint32_t bits;
+		if (f32) {
+			const float nearest = float(raw);
+			if (!std::isfinite(nearest)) {
+				entry.errors << QObject::tr("%1: the special value %2 is past the largest f32").arg(def.name, number(special.value));
+				continue;
+			}
+			bits = nearest == 0.0f ? 0u : floatBits(nearest); /* -0 is listed as +0 */
+		} else {
+			const double whole = std::round(raw);
+			if (std::fabs(whole - raw) > 1e-9 * std::max(1.0, std::fabs(raw)) || whole < low || whole > high) {
+				entry.errors << QObject::tr("%1: the special value %2 is not a whole raw value of %3").arg(def.name,
+						number(special.value), typeName(def.type));
+				continue;
+			}
+			bits = storedBits(whole);
+		}
+		listed.insert(bits, QStringLiteral("%1 \"%2\"").arg(number(special.value), special.name));
+	}
+	if (listed.size() > 255)
+		entry.errors << QObject::tr("%1: more than 255 listed values: use min and max").arg(def.name);
+	for (auto it = listed.begin(); it != listed.end(); ++it) entry.values.push_back({ it.key(), it.value() });
+	return entry;
+}
+
+bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QString &headerName, QByteArray &header,
+		QByteArray &source, QStringList &problems) {
+	problems.clear();
+	QVector<const RegDef *> regs;
+	for (const RegDef &def : map.regs) {
+		if (!hostWrites(def)) continue;
+		if (def.addr >= RESERVED_FIRST && def.addr <= RESERVED_LAST) continue; /* the library's, never the table's */
+		if (map.loginAddr && int(def.addr) < map.loginAddr + map.loginSize && map.loginAddr < int(def.addr) + def.size)
+			continue; /* the login register: part 1's, the check never sees a write over it */
+		if (def.addr < BANK_FIRST)
+			problems << QObject::tr("%1 (%2): outside 0xD000..0xDFFF, the only device bank the EVRe library serves")
+					.arg(def.name, addrText(def.addr));
+		else if (int(def.addr) + def.size - 1 > BANK_LAST)
+			problems << QObject::tr("%1 (%2): runs past 0xDFFF, the end of the device bank").arg(def.name, addrText(def.addr));
+		else regs << &def;
+	}
+	std::stable_sort(regs.begin(), regs.end(), [](const RegDef *a, const RegDef *b) { return a->addr < b->addr; });
+	if (regs.isEmpty() && problems.isEmpty()) problems << QObject::tr("no register a host writes in the device bank 0xD000..0xDFFF");
+	QVector<GuardEntry> entries;
+	for (int i = 0; i < regs.size(); i++) {
+		if (i && regs[i]->addr < regs[i - 1]->addr + regs[i - 1]->size)
+			problems << QObject::tr("%1 (%2) overlaps %3 (%4)").arg(regs[i]->name, addrText(regs[i]->addr), regs[i - 1]->name,
+					addrText(regs[i - 1]->addr));
+		entries << guardEntry(*regs[i]);
+		problems << entries.last().errors;
+	}
+	if (!problems.isEmpty()) return false;
+
+	const QString upper = identifier(!options.prefix.isEmpty() ? options.prefix
+			: map.device.isEmpty() ? QStringLiteral("device") : map.device);
+	const QString lower = upper.toLower();
+	const QString table = lower + QStringLiteral("_table");
+	const QString device = cComment(map.device.isEmpty() ? QStringLiteral("Device") : map.device);
+	const QString from = options.source.isEmpty() ? QString() : QStringLiteral(", from %1").arg(cComment(options.source));
+	const QString command = QStringLiteral("evre export %1 --to guard").arg(options.source.isEmpty() ? QStringLiteral("MAP")
+			: cComment(options.source));
+
+	/* the header: the table's name and the typed constants, safe to include anywhere */
+	const QString guard = upper + QStringLiteral("_GUARD_H");
+	QString h = QStringLiteral("/* %1: EVRe Guard's register checks for its map (%2)%3.\n"
+			" * Generated by %4. Change the map, not this file.\n"
+			" * EVRe Guard checks: size, type, limits, listed values.\n"
+			" * Still the device's: state rules, rules across registers, read-only bits\n"
+			" * inside a writable register, the effects of action and w1c, persistence. */\n")
+			.arg(device, map.format, from, command);
+	h += QStringLiteral("#ifndef %1\n#define %1\n\n#include <stdint.h>\n\n#include \"evre_guard_desc.h\"\n\n"
+			"#if !defined(EVRE_GUARD_TABLE_FORMAT) || EVRE_GUARD_TABLE_FORMAT != 1\n"
+			"#error \"this file is for EVRe Guard table format 1\"\n#endif\n\n").arg(guard);
+	h += QStringLiteral("extern const evre_guard_table_t %1;\n").arg(table);
+	Names names;
+	QStringList constants;
+	for (int i = 0; i < regs.size(); i++) {
+		const RegDef &def = *regs[i];
+		const GuardEntry &entry = entries[i];
+		const QString base = upper + QLatin1Char('_') + identifier(def.name);
+		auto constant = [&](const QString &suffix, double raw) {
+			constants << QStringLiteral("constexpr %1 %2 = %3;").arg(cType(def.type), names.take(base + suffix), rawLiteral(def, raw));
+		};
+		if (entry.hasRawMin) constant(QStringLiteral("_RAW_MIN"), entry.rawMin);
+		if (entry.hasRawMax) constant(QStringLiteral("_RAW_MAX"), entry.rawMax);
+	}
+	if (!constants.isEmpty())
+		h += QStringLiteral("\n/* The map's limits, raw and typed, for the device's own clamps and static_asserts. */\n")
+				+ constants.join(QLatin1Char('\n')) + QLatin1Char('\n');
+	h += QStringLiteral("\n#endif /* %1 */\n").arg(guard);
+	header = h.toUtf8();
+
+	/* the source: the value list, the entries, the table */
+	QString c = QStringLiteral("/* %1: EVRe Guard's table (%2)%3.\n * Generated by %4. Change the map, not this file. */\n"
+			"#include \"%5\"\n").arg(device, map.format, from, command, headerName);
+	QStringList valueLines, entryLines;
+	int nValues = 0;
+	for (int i = 0; i < regs.size(); i++) {
+		const RegDef &def = *regs[i];
+		const GuardEntry &entry = entries[i];
+		const int first = nValues;
+		for (const auto &value : entry.values) {
+			valueLines << QStringLiteral("\t%1, /* %2: %3 */").arg(bits8(value.first), cComment(def.name), cComment(value.second));
+			nValues++;
+		}
+		QString what;
+		const QString unit = def.unit.isEmpty() ? QString() : QLatin1Char(' ') + def.unit;
+		if (!def.isNumeric()) {
+			what = QStringLiteral("%1 bytes").arg(def.size);
+		} else if (def.write == WriteKind::WriteOneToClear) {
+			what = QStringLiteral("w1c: no limits");
+		} else {
+			const QString low = entry.hasRawMin ? shownOf(def, entry.rawMin) : QStringLiteral("-");
+			const QString high = entry.hasRawMax ? shownOf(def, entry.rawMax) : QStringLiteral("+");
+			what = (def.scale < 0 ? QStringLiteral("%2 .. %1%3") : QStringLiteral("%1 .. %2%3")).arg(low, high, unit);
+			if (def.scale != 1.0 || def.offset != 0.0)
+				what += QStringLiteral(", raw %1 .. %2").arg(entry.hasRawMin ? number(entry.rawMin) : QStringLiteral("-"),
+						entry.hasRawMax ? number(entry.rawMax) : QStringLiteral("+"));
+			if (def.clamps) what += QStringLiteral(", clamped by the device: the type's full range");
+			else if (!entry.hasRawMin && !entry.hasRawMax) what = QStringLiteral("the type's full range");
+			if (!entry.values.isEmpty()) {
+				QStringList names;
+				for (const auto &value : entry.values) names << value.second;
+				what += QStringLiteral(", or ") + names.join(QStringLiteral(", "));
+			}
+		}
+		entryLines << QStringLiteral("\t{ 0x%1u, %2u, %3, 0u, %4u, 0u, %5u, 0u, %6, %7, 0x00000000UL }, /* %8: %9 */")
+				.arg(QString::number(def.addr, 16).toUpper()).arg(def.size).arg(guardType(def.type)).arg(entry.values.size())
+				.arg(entry.values.isEmpty() ? 0 : first).arg(bits8(def.isNumeric() ? entry.min : 0), bits8(def.isNumeric() ? entry.max : 0),
+						cComment(def.name), cComment(what));
+	}
+	if (!valueLines.isEmpty())
+		c += QStringLiteral("\nstatic const uint32_t %1_values[] = {\n%2\n};\n").arg(lower, valueLines.join(QLatin1Char('\n')));
+	c += QStringLiteral("\nstatic const evre_guard_desc_t %1_regs[] = {\n"
+			"\t/* addr, size, type, flags, n_values, spare1, first_value, spare2, min, max, zero_bits */\n%2\n};\n")
+			.arg(lower, entryLines.join(QLatin1Char('\n')));
+	c += QStringLiteral("\nconst evre_guard_table_t %1 = { %2_regs, %3, %4u, %5u };\n").arg(table, lower,
+			valueLines.isEmpty() ? QStringLiteral("nullptr") : lower + QStringLiteral("_values")).arg(regs.size()).arg(nValues);
+	source = c.toUtf8();
+	return true;
+}
+
 /* ====================================================================== CSV */
 
 namespace {
 
 const QStringList CSV_COLUMNS{ "addr", "name", "type", "size", "unit", "access", "write", "persist", "group", "desc",
 	"notes", "danger", "format", "scale", "offset", "decimals", "min", "max", "default", "special", "enum", "fields",
-	"plot" };
+	"plot", "past_limits" };
 
 /* inside the compact columns, \ ; = | { } # @ are written with a \ before them */
 QString esc(const QString &text) {
@@ -892,7 +1135,7 @@ QByteArray exportCsv(const DeviceMap &map) {
 			def.decimals >= 0 ? QString::number(def.decimals) : QString(), def.hasMin() ? number(def.min) : QString(),
 			def.hasMax() ? number(def.max) : QString(), def.hasDefault() ? number(def.defaultValue) : QString(),
 			namesText(special), namesText(enumNames), fields.join(QLatin1Char('|')),
-			def.plottable ? QString() : QStringLiteral("0") };
+			def.plottable ? QString() : QStringLiteral("0"), def.clamps ? QStringLiteral("clamp") : QString() };
 		QStringList out;
 		for (const QString &text : cells) out << csvCell(text);
 		csv += out.join(QLatin1Char(',')) + QLatin1Char('\n');
@@ -969,6 +1212,7 @@ bool importCsv(const QByteArray &text, QVector<RegDef> &regs, QString &err) {
 		def.decimals = get("decimals").isEmpty() ? -1 : std::clamp(get("decimals").toInt(), -1, 15);
 		def.min = numberOr("min", NO_LIMIT, bad);
 		def.max = numberOr("max", NO_LIMIT, bad);
+		def.clamps = get("past_limits").compare(QLatin1String("clamp"), Qt::CaseInsensitive) == 0;
 		def.defaultValue = numberOr("default", NO_LIMIT, bad);
 		if (bad) {
 			err = QObject::tr("%1 (%2): a number column holds something else").arg(where, def.name);

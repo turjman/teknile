@@ -8,6 +8,7 @@
  *   - the keys min, max, default, special and decimals;
  *   - overlays ("extends"): merge, save only the differences, flatten;
  *   - the checks of checkMap();
+ *   - EVRe Guard's key past_limits, what a host may send, its checks and table (guardKeys);
  *   - the exports: Markdown, a C header (compiled by gcc when it is on PATH),
  *     a Python module (imported by python when it is on PATH), CSV and back.
  *
@@ -20,6 +21,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <cstring>
 
 #include "model/bus_file.h"
 #include "model/device_map.h"
@@ -699,6 +701,155 @@ private slots:
 		QVERIFY(!has(0, true, ""));
 	}
 
+	/* EVRe Guard's keys and table: "past_limits" loaded, saved as written and after a change; what a host may send;
+	 * the checks the table brings (its export errors, where it takes another value than the map's); guardEntry() */
+	void guardKeys() {
+		const QByteArray text = "{ \"format\": \"evre-map/1\", \"device\": \"Guard\", \"registers\": [\n"
+				"  { \"addr\": \"0xD000\", \"name\": \"SPEED\", \"type\": \"i16\", \"access\": \"rw\", \"min\": -100, \"max\": 100, "
+				"\"past_limits\": \"clamp\" },\n"
+				"  { \"addr\": \"0xD002\", \"name\": \"SET\", \"type\": \"f32\", \"access\": \"rw\", \"min\": 0, \"max\": 24 }\n] }\n";
+		DeviceMap map = loadText(QStringLiteral("guard.json"), text);
+		RegDef *speed = byName(map, QStringLiteral("SPEED"));
+		RegDef *set = byName(map, QStringLiteral("SET"));
+		QVERIFY(speed && set && speed->clamps && !set->clamps);
+		QCOMPARE(map.toJson(path(QStringLiteral("guard.json"))), text); /* as written */
+		QVERIFY(writeLimitProblem(*speed, 150).isEmpty() && !limitProblem(*speed, 150).isEmpty());
+		QVERIFY(!writeLimitProblem(*set, 25).isEmpty());
+		set->clamps = true;
+		speed->clamps = false;
+		const QByteArray after = map.toJson(path(QStringLiteral("guard.json")));
+		/* SPEED's line without it, SET's with it after max, in the line's own layout */
+		QVERIFY(after.contains("\"min\": -100, \"max\": 100 },") && after.contains("\"max\": 24,\n    \"past_limits\": \"clamp\" }")
+				&& after.count("past_limits") == 1);
+		/* NaN and the infinities are never sent; nor an f32 past the largest float */
+		QByteArray raw;
+		QString err;
+		QVERIFY(!encodeValue(*set, QStringLiteral("nan"), raw, err) && err.contains(QLatin1String("not a finite number")));
+		QVERIFY(!encodeValue(*set, QStringLiteral("inf"), raw, err));
+		QVERIFY(!encodeValue(*set, QStringLiteral("1e39"), raw, err) && err.contains(QLatin1String("largest f32")));
+		QVERIFY(encodeValue(*set, QStringLiteral("3.4e38"), raw, err));
+		/* a CSV keeps it */
+		QVector<RegDef> back;
+		QVERIFY(importCsv(exportCsv(map), back, err));
+		QVERIFY(back.size() == 2 && back[1].clamps && !back[0].clamps);
+
+		/* guardEntry: the type's ends for a missing limit, ceil and floor, a negative scale, the nearest float */
+		RegDef u8;
+		u8.name = QStringLiteral("U");
+		u8.type = RegType::U8;
+		u8.size = 1;
+		u8.rw = true;
+		u8.min = -10;
+		u8.max = 300;
+		GuardEntry entry = guardEntry(u8);
+		QVERIFY(entry.min == 0 && entry.max == 0xFF && entry.errors.isEmpty() && entry.warnings.size() == 2);
+		RegDef scaled = u8;
+		scaled.type = RegType::I16;
+		scaled.size = 2;
+		scaled.scale = -0.1;
+		scaled.offset = 20;
+		scaled.min = -50;
+		scaled.max = 50.05;
+		entry = guardEntry(scaled); /* raw (shown - 20) / -0.1: 50.05 is -300.5, ceil -300; -50 is 700 */
+		QVERIFY(entry.min == 0xFFFFFED4u && entry.max == 700 && entry.warnings.size() == 1
+				&& entry.warnings[0].contains(QLatin1String("not on a raw step")));
+		RegDef volts = u8;
+		volts.type = RegType::F32;
+		volts.size = 4;
+		volts.min = 0;
+		volts.max = 3.65;
+		volts.special = { { -0.0, QStringLiteral("zero") }, { -1, QStringLiteral("off") } };
+		entry = guardEntry(volts);
+		const float nearest = 3.65f;
+		uint32_t bits;
+		std::memcpy(&bits, &nearest, 4);
+		QVERIFY(entry.max == bits && entry.values.size() == 2 && entry.values[0].first == 0 && entry.values[1].first == 0xBF800000u);
+		volts.clamps = true;
+		entry = guardEntry(volts);
+		QVERIFY(entry.min == 0xFF7FFFFFu && entry.max == 0x7F7FFFFFu && entry.hasRawMax && entry.rawMax == double(nearest));
+
+		/* the checks: every message of the table, on its register */
+		DeviceMap checked;
+		checked.device = QStringLiteral("Checked");
+		RegDef a = u8;
+		a.addr = 0xD000;
+		a.name = QStringLiteral("A");             /* limits past the type */
+		RegDef b = u8;
+		b.addr = 0xD001;
+		b.name = QStringLiteral("B");
+		b.min = 1.2;
+		b.max = 1.8;                              /* no raw value left */
+		RegDef c = u8;
+		c.addr = 0xD002;
+		c.name = QStringLiteral("C");
+		c.min = NO_LIMIT;
+		c.max = NO_LIMIT;
+		c.special = { { 0.5, QStringLiteral("half") } }; /* not a whole raw value */
+		RegDef d = c;
+		d.addr = 0xD004;                          /* a gap at 0xD003 between two written registers */
+		d.name = QStringLiteral("D");
+		d.special.clear();
+		d.clamps = true;                          /* clamp without min or max */
+		RegDef e = d;
+		e.addr = 0xA004;
+		e.name = QStringLiteral("CONFIG");
+		e.type = RegType::U16;
+		e.size = 2;                               /* past_limits in the reserved bank */
+		RegDef f = u8;
+		f.addr = 0xD005;
+		f.name = QStringLiteral("F");
+		f.type = RegType::U16;
+		f.size = 2;
+		f.min = NO_LIMIT;
+		f.max = NO_LIMIT;
+		for (int i = 0; i < 256; i++) f.special.push_back({ double(i), QStringLiteral("s%1").arg(i) }); /* over 255 */
+		checked.regs = { a, b, c, d, e, f };
+		const QVector<MapIssue> issues = checkMap(checked);
+		auto has = [&](int reg, bool error, const char *what) {
+			for (const MapIssue &issue : issues)
+				if (issue.reg == reg && issue.error == error && issue.text.contains(QLatin1String(what))) return true;
+			return false;
+		};
+		QVERIFY(has(0, false, "is outside the type u8: taken as the type's end"));
+		QVERIFY(has(1, true, "no raw value is left between min and max"));
+		QVERIFY(has(1, false, "is not on a raw step"));
+		QVERIFY(has(2, true, "is not a whole raw value of u8"));
+		QVERIFY(has(3, false, "without min or max"));
+		QVERIFY(has(3, false, "0x0003 .. 0x0003") || has(3, false, "0xD003 .. 0xD003"));
+		QVERIFY(has(4, false, "in the reserved bank"));
+		QVERIFY(has(5, true, "more than 255 listed values"));
+		/* none of these on a map without such registers */
+		DeviceMap clean;
+		clean.device = QStringLiteral("Clean");
+		RegDef good = u8;
+		good.addr = 0xD000;
+		good.min = 0;
+		good.max = 200;
+		clean.regs = { good };
+		QVERIFY(checkMap(clean).isEmpty());
+
+		/* the export: the plan's example, entry for entry */
+		DeviceMap example = loadText(QStringLiteral("example.json"),
+				"{ \"format\": \"evre-map/1\", \"device\": \"Example\", \"registers\": [\n"
+				"{ \"addr\": \"0xD040\", \"name\": \"OUTPUT_V\", \"type\": \"f32\", \"unit\": \"V\", \"access\": \"rw\", \"min\": 0, \"max\": 24 },\n"
+				"{ \"addr\": \"0xD044\", \"name\": \"SPEED\", \"type\": \"i16\", \"unit\": \"%\", \"access\": \"rw\", \"scale\": 0.1, \"min\": -100, \"max\": 100 },\n"
+				"{ \"addr\": \"0xD046\", \"name\": \"WATCHDOG_S\", \"type\": \"u8\", \"unit\": \"s\", \"access\": \"rw\", \"min\": 5, \"max\": 255, "
+				"\"special\": { \"0\": \"off\" } } ] }\n");
+		ExportOptions options;
+		options.source = QStringLiteral("example.json");
+		QByteArray header, source;
+		QStringList problems;
+		QVERIFY(exportGuard(example, options, QStringLiteral("example_guard.h"), header, source, problems));
+		QVERIFY(header.contains("extern const evre_guard_table_t example_table;"));
+		QVERIFY(header.contains("constexpr int16_t EXAMPLE_SPEED_RAW_MIN = -1000;"));
+		QVERIFY(header.contains("#if !defined(EVRE_GUARD_TABLE_FORMAT) || EVRE_GUARD_TABLE_FORMAT != 1"));
+		QVERIFY(source.contains("#include \"example_guard.h\""));
+		QVERIFY(source.contains("{ 0xD040u, 4u, EVRE_GUARD_F32, 0u, 0u, 0u, 0u, 0u, 0x00000000UL, 0x41C00000UL, 0x00000000UL }"));
+		QVERIFY(source.contains("{ 0xD044u, 2u, EVRE_GUARD_I16, 0u, 0u, 0u, 0u, 0u, 0xFFFFFC18UL, 0x000003E8UL, 0x00000000UL }"));
+		QVERIFY(source.contains("{ 0xD046u, 1u, EVRE_GUARD_U8, 0u, 1u, 0u, 0u, 0u, 0x00000005UL, 0x000000FFUL, 0x00000000UL }"));
+		QVERIFY(source.contains("const evre_guard_table_t example_table = { example_regs, example_values, 3u, 1u };"));
+	}
+
 	/* a bus file: loaded, saved with the maps relative to it and the keys it does not know kept; its checks */
 	void busFile() {
 		writeFile(path(QStringLiteral("bus.json")),
@@ -804,6 +955,14 @@ private slots:
 		QVERIFY(!broadcastRefusal({ &motor, &supply }, 0xA004, QByteArray::fromHex("0C4F00")).isEmpty()); /* + MSG_CNT */
 		QVERIFY(broadcastRefusal({ &motor, &supply }, 0xA004, QByteArray::fromHex("044F")).isEmpty());
 		QVERIFY(broadcastRefusal({ &motor, &supply }, 0xA006, QByteArray::fromHex("08")).isEmpty()); /* MSG_CNT 8 */
+		/* as a device with EVRe Guard: never part of a number, never NaN or an infinity in an f32 */
+		QVERIFY(broadcastRefusal({ &motor, &twin }, 0xD010, 1).contains(QLatin1String("only part of SPEED")));
+		QVERIFY(broadcastRefusal({ &motor, &twin }, 0xD011, 1).contains(QLatin1String("only part of SPEED")));
+		DeviceMap volts = motor;
+		volts.regs[1].type = RegType::F32;
+		volts.regs[1].size = 4;
+		QVERIFY(broadcastRefusal({ &volts }, 0xD010, QByteArray::fromHex("0000c07f")).contains(QLatin1String("not a finite number")));
+		QVERIFY(broadcastRefusal({ &volts }, 0xD010, QByteArray::fromHex("0000c040")).isEmpty()); /* 6.0 */
 	}
 };
 

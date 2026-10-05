@@ -552,6 +552,7 @@ public:
 		recordingWindows();
 		mapEditor();
 		limitsAndFields();
+		guardKeys();
 		pollingSurvivesEdits();
 		uiAudit();
 		hoverEdges();
@@ -2766,6 +2767,91 @@ private:
 					"Plot a field: a line of its own on the chart (bits of the register)");
 		} else {
 			check(false, "the map's CONFIG register (0xA004) has bit fields");
+		}
+	}
+
+	/* EVRe Guard's key in the Map editor and in the writes: the register editor's "Past limits" choice (refused or
+	 * clamped) with its tooltip, saved as "past_limits" and undone; a register that clamps written past its max
+	 * without the question, the Log saying the device clamps it; NaN never sent; the Guard table exported from the
+	 * Map editor, both files; errorName 15. */
+	void guardKeys() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *editorTab = window_.findChild<MapEditorTab *>();
+		auto *choice = window_.findChild<QComboBox *>(QStringLiteral("pastLimits"));
+		check(evre::errorName(15) == QLatin1String("value refused"), "errorName: 15 is \"value refused\"");
+		check(doc && tabs && editorTab && choice && choice->count() == 2 && choice->toolTip().contains(QLatin1String("EVRe Guard")),
+				"Map editor: the register editor's \"Past limits\" choice (refused, clamped) with a tooltip that says what each does");
+		if (!doc || !tabs || !editorTab || !choice) return;
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		editorTab->selectRegister(u8Uid);
+		QApplication::processEvents();
+		const bool refusing = choice->currentData().toString() == QLatin1String("refuse");
+		const int steps = doc->undoStack()->index(); /* steps undone before may wait above it: index, not count */
+		choice->setCurrentIndex(choice->findData(QStringLiteral("clamp")));
+		emit choice->activated(choice->currentIndex());
+		const bool inDoc = doc->reg(u8Uid)->clamps && doc->undoStack()->index() == steps + 1
+				&& doc->map().toJson(doc->map().path).contains("\"past_limits\": \"clamp\"");
+		const bool inTable = QTest::qWaitFor([&] { return model_->rows()[regRow(regs_.u8.name)].def.clamps; }, 2000);
+		if (!refusing || !inDoc || !inTable)
+			std::printf("  refused before: %d, in the map: %d, in the Registers table: %d\n", refusing, inDoc, inTable);
+		check(refusing && inDoc && inTable, "Past limits: refused by default; clamped sets \"past_limits\": \"clamp\" on the register, one "
+				"undo step, the Registers table follows");
+
+		/* a write past the max of a register that clamps: sent as it is, no question, the Log says why */
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		const RegDef u8 = model_->rows()[regRow(regs_.u8.name)].def;
+		if (u8.hasMax()) {
+			const int past = int(u8.max) + 5;
+			QLineEdit *editor = typeInto(u8Cell_, QString::number(past));
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			check(u8Becomes(past) && logText().contains(QLatin1String("the device clamps it")),
+					"a register that clamps: a value past its max is written without the question, the Log says the "
+					"device clamps it");
+			other_.writeU8(regs_.u8.addr, 0);
+			(void) u8Becomes(0);
+		}
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		doc->undoStack()->undo();
+		check(!doc->reg(u8Uid)->clamps, "undo: refused again");
+		/* the broadcast check of the window's map: part of a number is refused, as a device with EVRe Guard refuses it */
+		const QString part = broadcastRefusal({ &doc->map() }, regs_.danger.addr, 1);
+		check(part.contains(QLatin1String("only part of")) && broadcastRefusal({ &doc->map() }, regs_.danger.addr, 2).isEmpty(),
+				"broadcast check: one byte of the 16-bit danger register refused (\"writes only part of\"), both bytes may go");
+
+		/* the Guard table from the Map editor: the .h chosen, the .cpp beside it */
+		{
+			QTemporaryDir folder;
+			const QString header = folder.filePath(QStringLiteral("map_guard.h"));
+			QString err;
+			const bool ok = editorTab->exportTo(QStringLiteral("guard"), header, QString(), err);
+			QFile cpp(folder.filePath(QStringLiteral("map_guard.cpp")));
+			const bool both = ok && QFileInfo(header).size() > 200 && cpp.open(QIODevice::ReadOnly)
+					&& cpp.readAll().contains("#include \"map_guard.h\"");
+			const QMenu *menu = nullptr;
+			for (QMenu *m : window_.findChildren<QMenu *>())
+				for (QAction *action : m->actions())
+					if (action->text().startsWith(QLatin1String("EVRe Guard table"))) menu = m;
+			check(both && menu, "Export: the EVRe Guard table (C++), its .h and its .cpp beside it; in the Export menu");
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+
+		/* NaN is never sent: an f32 register written "nan" */
+		const int voltsRow = [this] {
+			for (int i = 0; i < model_->rows().size(); i++)
+				if (model_->rows()[i].def.type == RegType::F32 && model_->rows()[i].def.rw) return i;
+			return -1;
+		}();
+		if (voltsRow >= 0) {
+			const RegDef f32 = model_->rows()[voltsRow].def;
+			QLineEdit *editor = typeInto(valueCell(table_, f32.name), QStringLiteral("nan"));
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			check(QTest::qWaitFor([&] { return noticeShown("not a finite number"); }, 2000),
+					"NaN into an f32 register: \"not a finite number\", nothing sent");
+		} else {
+			check(false, "the map has a writable f32 register (the example map: SETPOINT)");
 		}
 	}
 

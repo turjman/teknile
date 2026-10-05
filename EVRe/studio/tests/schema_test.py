@@ -47,6 +47,13 @@ def main():
     caught = len(list(validator.iter_errors(bad))) >= 3
     print('%s a bad map is refused (address, type, access)' % ('PASS' if caught else 'FAIL'))
     failed += 0 if caught else 1
+    # EVRe Guard's key: "past_limits" is "refuse" or "clamp", nothing else
+    def reg(**keys):
+        return {'format': 'evre-map/1', 'registers': [dict({'addr': '0xD000', 'type': 'u8', 'access': 'rw'}, **keys)]}
+    good = all(not list(validator.iter_errors(reg(past_limits=v, min=0, max=9))) for v in ('refuse', 'clamp'))
+    wrong = len(list(validator.iter_errors(reg(past_limits='wrap')))) == 1
+    print('%s "past_limits": "refuse" and "clamp" are valid, "wrap" is not' % ('PASS' if good and wrong else 'FAIL'))
+    failed += 0 if good and wrong else 1
     return 1 if failed else 0
 
 

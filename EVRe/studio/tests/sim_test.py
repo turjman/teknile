@@ -8,13 +8,15 @@ Writes a map with every behaviour into a temporary folder, starts
 <build>/evre-sim on 127.0.0.1:<port> (its own process, stopped at the end),
 and checks: defaults, moving read-only values inside min..max, write-only,
 read-only, action, write-1-to-clear (register and field), a read-only field,
---strict limits, --require-login, --state (persist across a restart), --slave (another slave gets no answer, a
+--strict as a device with EVRe Guard's register checks (15 for a value, 3 for part of a number, a register that
+clamps), --require-login, --state (persist across a restart), --slave (another slave gets no answer, a
 broadcast WRITE is taken, an address outside 1..255 refused).
 Exit code: 0 all passed, 1 a check failed, 2 a program is missing."""
 import argparse
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -36,6 +38,9 @@ MAP = {
          "fields": [{"name": "MODE", "bits": "1:0"}, {"name": "BUSY", "bits": "4", "access": "ro"},
                     {"name": "LATCH", "bits": "7", "access": "w1c"}]},
         {"addr": "0xD00C", "name": "SERIAL", "type": "u32"},
+        {"addr": "0xD010", "name": "SPEED", "type": "i16", "access": "rw", "min": -100, "max": 100,
+         "past_limits": "clamp"},
+        {"addr": "0xD012", "name": "SETP", "type": "f32", "access": "rw", "min": 0, "max": 24},
     ]}
 
 
@@ -132,8 +137,35 @@ def main():
     # strict limits, and a required login
     sim = start('--strict', '--require-login')
     try:
-        rc, _, _ = evre('write', *link, 'LEVEL=150', '--force')
-        check(rc == 1, '--strict: a value past max is refused by the device, even with --force')
+        rc, _, err = evre('write', *link, 'LEVEL=150', '--force')
+        check(rc == 1 and 'value refused' in err,
+              '--strict: a value past max is refused by the device, even with --force: 15, "value refused" (%s)' % err.strip())
+        rc, _, _ = evre('write', *link, 'SPEED=150')
+        check(rc == 0 and value('SPEED') == 100, '--strict: a register that clamps takes 150 (sent without --force) and reads 100')
+        rc, _, _ = evre('write', *link, 'SPEED=-120')
+        check(rc == 0 and value('SPEED') == -100, '--strict: ... and -120 as -100')
+        rc, _, err = evre('write', *link, 'SETP=nan', '--force')
+        check(rc == 1 and 'not a finite number' in err, 'evre: NaN is never sent, even with --force (%s)' % err.strip())
+        # frames evre would not send: one byte of a number, NaN in an f32
+        with socket.create_connection(('127.0.0.1', opts.port), 2) as raw:
+            def frame(addr, data):
+                body = bytes([0x7B, 1, 0xEB]) + struct.pack('<HH', addr, len(data)) + data
+                crc = 0xFFFF
+                for b in body:
+                    crc ^= b
+                    for _ in range(8):
+                        crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
+                raw.sendall(body + struct.pack('<H', crc ^ 0xFFFF) + b'\x7D')
+                answer = b''
+                while len(answer) < 10 or (answer[2] == 0xEE and len(answer) < 11):
+                    answer += raw.recv(64)
+                return answer[7] if answer[2] == 0xEE else 0
+            logged = frame(0xF000, b'example-token'.ljust(16, b'\0'))
+            part = frame(0xD004, b'\x01')
+            nan = frame(0xD012, struct.pack('<I', 0x7FC00000))
+            whole = frame(0xD012, struct.pack('<f', 12.5))
+        check(logged == 0 and part == 3 and nan == 15 and whole == 0 and value('SETP') == 12.5,
+              '--strict, raw frames: one byte of LEVEL 3, NaN in SETP 15, 12.5 taken (%s)' % [logged, part, nan, whole])
         rc, _, _ = evre('write', *link, 'LEVEL=50', token='')
         check(rc == 1, '--require-login: no token, no write')
         rc, _, _ = evre('write', *link, 'LEVEL=50', token='wrong-token')

@@ -77,6 +77,7 @@ failed (PROTOCOL.md, "EVRe Guard"). The library's own checks come first: a reque
 | `scale`,&nbsp;`offset` | numbers | `1`,&nbsp;`0` | shown = raw × scale + offset |
 | `decimals` | integer&nbsp;−1&nbsp;–&nbsp;15 | automatic | the shown value's decimals |
 | `min`,&nbsp;`max` | numbers | none | the shown value's limits for a write (section 6) |
+| `past_limits` | `"refuse"`,&nbsp;`"clamp"` | `"refuse"` | what the device does with a value past `min` or `max`: `refuse` it (a device with EVRe Guard answers 15), or `clamp`: take any value of the type and clamp it (section 6.1) |
 | `default` | number&nbsp;or&nbsp;string | none | the value after a reset (with `persist`: the factory value); a number in shown units, or one of the register's `enum` or `special` names |
 | `special` | object | none | names for single values of a number, keyed by shown value: `{ "-1": "not measured" }` |
 | `enum` | object | none | names of raw values: `{ "0": "off", "0x10": "boost" }` (keys decimal or `0x` hex) |
@@ -133,6 +134,40 @@ Fields are for integer types; they stay inside the register's bits and should no
 - `write: "action"` registers are written to trigger; reading them back shows their idle value, not what was written.
 - `write: "w1c"` (or a `w1c` field): a host writes 1 to the bits to clear and 0 elsewhere, not a read-modify-write
   of the value it read.
+- `past_limits: "clamp"`: the device takes any value of the type and clamps it to `min` .. `max` itself, so a host
+  sends a value past them as it is (EVRe Studio says in its Log that the device clamps it). `"refuse"`, the default:
+  a host asks before it sends a value past them, and a device with EVRe Guard refuses one.
+- NaN and the infinities are never sent: no `f32` register takes them.
+
+### 6.1 What EVRe Guard checks
+
+A device with EVRe Guard's register checks (PROTOCOL.md, "Register checks") holds a table made from its map
+(`evre export MAP --to guard`): an entry for each register a host writes (`access` `rw` or `wo`, or a field with
+`rw` or `w1c`) in `0xD000` .. `0xDFFF`. The reserved bank and the map's `login` register get no entry. It refuses a
+write, and stores nothing, when:
+
+| Case | Code |
+|---|---|
+| a&nbsp;value&nbsp;past&nbsp;`min`&nbsp;or&nbsp;`max`&nbsp;(not&nbsp;a&nbsp;`special`) | 15, `VALUE_REFUSED`; not with `past_limits: "clamp"` |
+| NaN&nbsp;or&nbsp;an&nbsp;infinity&nbsp;in&nbsp;an&nbsp;`f32` | 15, always |
+| only&nbsp;part&nbsp;of&nbsp;a&nbsp;number&nbsp;register | 3: a number is written whole; any part of a `bytes` register may be written |
+| a&nbsp;byte&nbsp;no&nbsp;register&nbsp;covers | 3: a gap between registers, a read-only register inside a writable run, past the last one |
+
+How the table takes the map's numbers, and how a host makes its raw value, so the two agree at the limit:
+
+- raw = (shown − `offset`) / `scale`; with a negative `scale`, `min` and `max` change places.
+- An integer register's limits are rounded inward: `ceil` of the raw `min`, `floor` of the raw `max` (with a slack
+  of 1e-9). A limit past the type is the type's end. A host rounds a value to the nearest raw step.
+- An `f32` register's limits are the nearest float to the raw limit, the same float a host makes of the map's
+  number; past the largest `f32`, the largest. A host sends the nearest float of the value.
+- A limit the map leaves out is the type's end.
+- Each `special` always passes: for an integer it must be a whole raw value of the type, for an `f32` a finite
+  value (`-0` is listed as `0`). More than 255 of them is an error: use `min` and `max`.
+- A `w1c` register has no limits; a `bytes` register only its span.
+
+The map check says where the table differs from the map: a limit past the type or between raw steps, `clamp` with
+no `min` or `max`, `past_limits` in the reserved bank, and a gap between two registers a host writes. A block
+write across such a gap is refused; declare the gap as a `bytes` register if one must pass.
 
 ## 7. Overlays
 

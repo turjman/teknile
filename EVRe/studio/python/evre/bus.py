@@ -108,6 +108,9 @@ class Bus:
         for at in range(addr, end):
             if not any(r.writable and r.addr <= at < r.addr + r.size for r in maps[0]):
                 return '0x%04X .. 0x%04X is not all writable registers of the map' % (addr, end - 1)
+        for r in maps[0]:  # a number is written whole: a device with EVRe Guard refuses part of one (3)
+            if r.is_number and r.addr < end and addr < r.addr + r.size and (r.addr < addr or r.addr + r.size > end):
+                return '0x%04X .. 0x%04X writes only part of %s: a device with EVRe Guard refuses it' % (addr, end - 1, r.name)
         return None
 
     def _broadcast_register(self, name):
@@ -139,7 +142,7 @@ class Bus:
         if refusal:
             raise EvreError('no broadcast: %s' % refusal)
         if reg.is_number and not force:
-            problem = reg.limit_problem(reg.decode(data))
+            problem = reg.write_limit_problem(reg.decode(data))
             if problem:
                 raise EvreError('%s = %s is %s (the map\'s limit; force=True sends it)' % (reg.name, value, problem))
         if reg.danger and not force:

@@ -67,7 +67,7 @@ class Device:
             raise EvreError('%s is read-only' % reg.name)
         data = reg.encode(value)
         if reg.is_number and not force:
-            problem = reg.limit_problem(reg.decode(data))
+            problem = reg.write_limit_problem(reg.decode(data))
             if problem:
                 raise EvreError('%s = %s is %s (the map\'s limit; force=True writes it)' % (reg.name, value, problem))
         if reg.danger and not force:

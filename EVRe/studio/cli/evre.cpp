@@ -3,8 +3,11 @@
  * (link, master, map, exports) without a window.
  *
  *   evre validate MAP...                   the map's checks; exit 1 if one has an error
- *   evre export MAP --to md|h|py|csv|table a specification, a C header, a Python module, a sheet,
- *                   [--prefix P] [-o FILE]  or the device table for the EVRe library (C++)
+ *   evre export MAP --to md|h|py|csv|table|guard   a specification, a C header, a Python module, a sheet,
+ *                   [--prefix P] [-o FILE]  the device table for the EVRe library (C++), or EVRe
+ *                   [--check]               Guard's table (FILE.h and FILE.cpp). --check: export again and
+ *                                           compare with the files there; exit 1 if they differ (a build's
+ *                                           check that its generated files are fresh)
  *   evre info  LINK [--map MAP]            DEVICE_ID, protocol revision, capabilities
  *   evre read  LINK --map MAP NAME...      values of registers (by name or 0x address)
  *   evre read  LINK --addr 0xD000 --count N    raw bytes, no map needed
@@ -67,7 +70,7 @@ void outJson(const QJsonObject &object) { out(QString::fromUtf8(QJsonDocument(ob
 
 const char *USAGE = R"(usage:
   evre validate MAP...
-  evre export MAP --to md|h|py|csv|table [--prefix P] [-o FILE]
+  evre export MAP --to md|h|py|csv|table|guard [--prefix P] [-o FILE] [--check]
   evre info  LINK [--map MAP]
   evre read  LINK --map MAP NAME...          (or --addr 0xD000 --count N)
   evre dump  LINK --map MAP
@@ -87,7 +90,7 @@ struct Args {
 	QString tcp, serial, map, bus, to, prefix, output, addr;
 	int count = -1, slave = -1, timeoutMs = -1;
 	double intervalMs = 500;
-	bool force = false, writes = false;
+	bool force = false, writes = false, check = false;
 };
 
 bool parseArgs(const QStringList &argv, Args &a, QString &why) {
@@ -132,6 +135,7 @@ bool parseArgs(const QStringList &argv, Args &a, QString &why) {
 		else if (arg == QLatin1String("--timeout")) ok = number(a.timeoutMs);
 		else if (arg == QLatin1String("--interval")) ok = number(a.intervalMs);
 		else if (arg == QLatin1String("--force")) a.force = true;
+		else if (arg == QLatin1String("--check")) a.check = true;
 		else if (arg == QLatin1String("--writes")) a.writes = true;
 		else if (arg == QLatin1String("--json")) jsonOutput = true;
 		else if (arg.startsWith(QLatin1String("--"))) {
@@ -426,9 +430,35 @@ int cmdValidate(const Args &a) {
 	return errors ? 1 : 0;
 }
 
+/* the generated files and their texts: written, or with --check compared with what is there (exit 1 if one
+ * differs or is missing) */
+int writeOrCheck(const Args &a, const QVector<QPair<QString, QByteArray>> &files) {
+	if (a.check) {
+		int stale = 0;
+		for (const auto &file : files) {
+			QFile in(file.first);
+			if (!in.open(QIODevice::ReadOnly) || in.readAll() != file.second) {
+				err(QStringLiteral("%1: not as the map exports it now: export it again").arg(file.first));
+				stale++;
+			}
+		}
+		if (!stale) out(QStringLiteral("%1: as the map exports it").arg(QFileInfo(files.first().first).fileName()
+				+ (files.size() > 1 ? QStringLiteral(" and %1").arg(QFileInfo(files.last().first).fileName()) : QString())));
+		return stale ? 1 : 0;
+	}
+	for (const auto &file : files) {
+		QFile output(file.first);
+		if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate) || output.write(file.second) != file.second.size()) {
+			err(QStringLiteral("%1: %2").arg(file.first, output.errorString()));
+			return 2;
+		}
+	}
+	return 0;
+}
+
 int cmdExport(const Args &a) {
 	if (a.positional.size() != 1 || a.to.isEmpty()) {
-		err(QStringLiteral("export MAP --to md|h|py|csv|table"));
+		err(QStringLiteral("export MAP --to md|h|py|csv|table|guard"));
 		return 2;
 	}
 	DeviceMap map;
@@ -437,6 +467,19 @@ int cmdExport(const Args &a) {
 	options.source = QFileInfo(a.positional[0]).fileName();
 	options.prefix = a.prefix;
 	QByteArray text;
+	if (a.to == QLatin1String("guard")) {
+		/* FILE.h and FILE.cpp: -o FILE (an .h or .cpp on it is taken off), else MAP_guard beside where it runs */
+		QString base = a.output.isEmpty() ? QFileInfo(a.positional[0]).completeBaseName() + QStringLiteral("_guard") : a.output;
+		if (base.endsWith(QLatin1String(".h")) || base.endsWith(QLatin1String(".cpp"))) base = base.left(base.lastIndexOf(QLatin1Char('.')));
+		QByteArray header, source;
+		QStringList problems;
+		if (!exportGuard(map, options, QFileInfo(base).fileName() + QStringLiteral(".h"), header, source, problems)) {
+			err(QStringLiteral("%1: no EVRe Guard table:").arg(options.source));
+			for (const QString &problem : problems) err(QStringLiteral("  ") + problem);
+			return 1;
+		}
+		return writeOrCheck(a, { { base + QStringLiteral(".h"), header }, { base + QStringLiteral(".cpp"), source } });
+	}
 	if (a.to == QLatin1String("md")) text = exportMarkdown(map, options);
 	else if (a.to == QLatin1String("h")) text = exportCHeader(map, options);
 	else if (a.to == QLatin1String("py")) text = exportPython(map, options);
@@ -449,19 +492,18 @@ int cmdExport(const Args &a) {
 			return 1;
 		}
 	} else {
-		err(QStringLiteral("--to md, h, py, csv or table"));
+		err(QStringLiteral("--to md, h, py, csv, table or guard"));
 		return 2;
 	}
 	if (a.output.isEmpty()) {
+		if (a.check) {
+			err(QStringLiteral("--check needs -o FILE: the file to compare with"));
+			return 2;
+		}
 		std::fwrite(text.constData(), 1, size_t(text.size()), stdout);
 		return 0;
 	}
-	QFile file(a.output);
-	if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(text) != text.size()) {
-		err(QStringLiteral("%1: %2").arg(a.output, file.errorString()));
-		return 2;
-	}
-	return 0;
+	return writeOrCheck(a, { { a.output, text } });
 }
 
 int cmdInfo(const Args &a) {
@@ -654,7 +696,7 @@ int cmdWrite(const Args &a) {
 			err(QStringLiteral("%1: %2").arg(def->name, why));
 			return 1;
 		}
-		const QString outside = def->isNumeric() ? limitProblem(*def, decodeNumber(*def, w.bytes)) : QString();
+		const QString outside = def->isNumeric() ? writeLimitProblem(*def, decodeNumber(*def, w.bytes)) : QString();
 		if (!outside.isEmpty() && !a.force) {
 			err(QStringLiteral("%1 = %2 is %3 (the map's limit; --force writes it anyway)").arg(def->name, w.text, outside));
 			return 1;
@@ -728,7 +770,7 @@ int cmdBroadcast(const Args &a) {
 		err(QStringLiteral("no broadcast: %1").arg(refusal));
 		return 1;
 	}
-	const QString outside = def->isNumeric() ? limitProblem(*def, decodeNumber(*def, bytes)) : QString();
+	const QString outside = def->isNumeric() ? writeLimitProblem(*def, decodeNumber(*def, bytes)) : QString();
 	if (!outside.isEmpty() && !a.force) {
 		err(QStringLiteral("%1 = %2 is %3 (the map's limit; --force sends it anyway)").arg(def->name, text, outside));
 		return 1;

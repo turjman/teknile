@@ -28,7 +28,8 @@ READ_ONLY_BLOCK = 0xD000  # the device bank starts with its read-only block: wha
 AUTO_SEND_BASE_HZ = 8000  # AUTO_SEND's frames a second: AUTO_SEND_BASE_HZ / (prescaler + 1)
 
 ERRORS = {1: 'invalid packet', 2: 'unknown function code', 3: 'permission denied',
-          4: 'offset out of range', 5: 'count out of range', 12: 'length mismatch', 13: 'login required'}
+          4: 'offset out of range', 5: 'count out of range', 12: 'length mismatch', 13: 'login required',
+          15: 'value refused'}
 
 HEADER, TRAILER = 7, 3
 

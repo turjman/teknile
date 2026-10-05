@@ -20,7 +20,11 @@
  *   - "write": "w1c", and fields with "access": "w1c": a 1 written clears that
  *     bit, a 0 leaves it. Such bits start set, as a latched fault would be.
  *   - a field with "access": "ro" in a writable register keeps the device's bits
- *   - --strict: a value past min or max is refused (3), as a strict device would
+ *   - --strict: the device answers as one with EVRe Guard's register checks
+ *     would: a value past min or max (a special value aside), NaN or an
+ *     infinity is refused with 15 (value refused), a write of part of a number
+ *     with 3; a register with "past_limits": "clamp" takes a value past its
+ *     limits and clamps it, as such a device's main loop does
  *   - the login (a map with "login"): a write of the whole login register is
  *     accepted when it holds the token (--token, default "example-token"), else
  *     refused (3). --require-login: on a connection that has not logged in,
@@ -58,6 +62,7 @@ namespace {
 constexpr int MEMORY_SIZE = 0x10000;
 constexpr char PERMISSION_DENIED = 3;
 constexpr char OFFSET_OUT_OF_RANGE = 4;
+constexpr char VALUE_REFUSED = 15; /* EVRe Guard's register checks: a value the device does not take */
 constexpr int ACTION_HOLD_MS = 200;
 
 /* the protocol's own bank (DEVICE_ID, STATUS, CONFIG, messages): what the protocol says, not moved or reset */
@@ -81,6 +86,8 @@ public:
 		: map_(map), options_(options), slave_(uint8_t(options.slave >= 0 ? options.slave : map.slave)) {
 		for (const RegDef &r : map.regs)
 			for (int i = 0; i < r.size && r.addr + i < MEMORY_SIZE; i++) covered_[size_t(r.addr + i)] = 1;
+		for (const RegDef &r : map.regs) byAddress_ << &r;
+		std::stable_sort(byAddress_.begin(), byAddress_.end(), [](const RegDef *a, const RegDef *b) { return a->addr < b->addr; });
 		if (map.loginAddr) {
 			for (int i = 0; i < map.loginSize && map.loginAddr + i < MEMORY_SIZE; i++) covered_[size_t(map.loginAddr + i)] = 1;
 			token_ = encodeLoginToken(options.token, map.loginSize);
@@ -130,17 +137,20 @@ private:
 		if (request.fn != evre::WRITE && request.fn != evre::WRITE_ACK) return refuse(2);
 		if (touchesLogin(addr, count)) return logIn(request, connection);
 		if (options_.requireLogin && map_.loginAddr && !connection.loggedIn) return refuse(PERMISSION_DENIED);
-		/* every register the write touches must take it, or none is written */
+		/* every register the write touches must take it, or none is written; with --strict in address order, the
+		 * first one refused gives the code, as EVRe Guard's walk does */
 		QByteArray data = request.data.left(count);
-		for (const RegDef &r : map_.regs) {
+		for (const RegDef *rp : byAddress_) {
+			const RegDef &r = *rp;
 			if (!overlaps(r, addr, count)) continue;
 			if (!r.rw) return refuse(PERMISSION_DENIED);
-			if (options_.strict && r.isNumeric() && int(r.addr) >= addr && r.addr + r.size <= addr + count) {
-				const QByteArray bytes = data.mid(r.addr - addr, r.size);
-				if (!limitProblem(r, decodeNumber(r, bytes)).isEmpty()) return refuse(PERMISSION_DENIED);
-			}
+			if (!options_.strict || !r.isNumeric()) continue;
+			if (int(r.addr) < addr || r.addr + r.size > addr + count) return refuse(PERMISSION_DENIED); /* part of a number */
+			const double shown = decodeNumber(r, data.mid(r.addr - addr, r.size));
+			if (!std::isfinite(shown) || (!r.clamps && !limitProblem(r, shown).isEmpty())) return refuse(VALUE_REFUSED);
 		}
 		for (int i = 0; i < data.size(); i++) writeByte(uint16_t(addr + i), uint8_t(data[i]));
+		if (options_.strict) clampWritten(addr, count);
 		for (const RegDef &r : map_.regs) {
 			if (!overlaps(r, addr, count)) continue;
 			if (options_.verbose) {
@@ -180,6 +190,20 @@ private:
 	}
 
 	/* one byte of a write, as the register takes it: w1c bits cleared by a 1, ro field bits kept */
+	/* a register that clamps ("past_limits": "clamp"), written past its limits: set to the limit it passed */
+	void clampWritten(uint16_t addr, uint16_t count) {
+		for (const RegDef &r : map_.regs) {
+			if (!r.clamps || !r.isNumeric() || int(r.addr) < addr || r.addr + r.size > addr + count) continue;
+			const double shown = decodeNumber(r, QByteArray(reinterpret_cast<const char *>(&memory_[r.addr]), r.size));
+			const bool low = r.hasMin() && shown < r.min, high = r.hasMax() && shown > r.max;
+			if (!specialName(r, shown).isEmpty() || (!low && !high)) continue;
+			QByteArray bytes;
+			QString why;
+			if (encodeValue(r, QString::number(low ? r.min : r.max, 'g', 17), bytes, why))
+				for (int i = 0; i < bytes.size(); i++) writeByte(uint16_t(r.addr + i), uint8_t(bytes[i]));
+		}
+	}
+
 	void writeByte(uint16_t addr, uint8_t value) {
 		const RegDef *r = registerAt(addr);
 		uint8_t &cell = memory_[addr];
@@ -294,6 +318,7 @@ private:
 	}
 
 	const DeviceMap &map_;
+	QVector<const RegDef *> byAddress_; /* the map's registers in address order */
 	const Options options_;
 	const uint8_t slave_;
 	QByteArray token_;

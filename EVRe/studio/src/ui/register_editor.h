@@ -100,7 +100,7 @@ private:
 	NameTable *enum_, *special_;
 	FieldEditor *fields_;
 	QLineEdit *address_, *name_, *unit_, *desc_, *scale_, *offset_, *min_, *max_, *default_;
-	QComboBox *type_, *access_, *write_, *group_;
+	QComboBox *type_, *access_, *write_, *group_, *pastLimits_;
 	QSpinBox *size_, *decimals_;
 	QCheckBox *persist_, *danger_, *hex_, *plot_;
 	QPlainTextEdit *notes_;
