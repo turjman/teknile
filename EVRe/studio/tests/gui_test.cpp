@@ -1354,7 +1354,10 @@ private:
 		const bool both2C = QTest::qWaitFor([&] {
 			return one.readU8(regs_.u8.addr) == 0x2C && two.readU8(regs_.u8.addr) == 0x2C;
 		}, 3000);
-		const bool monitorSent = frames->toPlainText().contains(QLatin1String("sent"));
+		/* the Monitor writes its "sent" line when the link reports the frame, which can come after the devices took
+		 * it: waited for, not read at once */
+		const bool monitorSent = QTest::qWaitFor([&] { return frames->toPlainText().contains(QLatin1String("sent")); },
+				3000);
 		/* it failed once in many runs: say which part, so the next failure tells why */
 		if (!(locked && both2C && monitorSent))
 			std::printf("     detail: slave %d, function locked %d, D1 0x%02X, D2 0x%02X, Monitor: %s\n", sentTo, int(locked),
@@ -4386,6 +4389,9 @@ private:
 		}
 		chart.tab.frame(samples);
 		chart.view->setWindow(5); /* the view: 95 .. 100 */
+		/* no display delay: it grows with the time between frames (a slow machine's first frame moved the view to
+		 * 94.993 .. 99.993, one sample early) */
+		chart.view->setSmooth(false);
 		(void) chart.view->grab();
 		QTemporaryDir folder;
 		const auto run = [&](const QString &name, qint64 &rows, QString &error) {
