@@ -89,9 +89,10 @@ and one pull request into `main`; a later PR says "after #N". Finish a phase com
 check per behaviour, STUDIO.md, Help, the check count, every Linux test) before starting the next.
 If the session has to stop, push what is done and say in that phase's PR where it stopped.
 
-Phases 1-4 and 8 are merged into `main`. **Phase 9 is the open one**: its branch
-`phase9-lanes-fit` exists (made from `main`, it holds this plan); work on it, and open its PR into
-`main`.
+Phases 1-4 and 8 are merged into `main`. **Phase 9 is open** (branch `phase9-lanes-fit`, PR #7).
+**Then, in this order: phase 0, phase 7, phase 10**, each on its own branch made from the one
+before (phase 0's from `phase9-lanes-fit`) and its own PR ("after #7", ...). Phases 5 (fast streams)
+and 6 (macOS) are kept for later: do not start them.
 
 Keep token use lean: read the parts of files you need (grep, then read the lines), not whole
 files; STUDIO.md is long, read the chapters a phase touches. Build once per change set, not per
@@ -280,3 +281,73 @@ the lines in it. Lanes must stay readable however many units are plotted.
      plain space and at most 32 visible characters must list none; the Python test that reads the
      README's check count, the Help test and every Linux test still pass. One commit, "Docs: tables'
      short cells on one line", pushed to PR #7, and a line about it in the PR's text.
+
+### Phase 0: speed of the cursor drag and the fill (branch `phase0-speed`)
+
+Measured on the owner's laptop (4K at 225 %, NVIDIA T1000, 64 lines, Normalise on, the view held):
+dragging a cursor runs at 54-56 fps with a 1 min window but 45 fps with a 5 min window. While a
+cursor is dragged only A, B and B - A are measured (round 8); the rest of the cost is not known yet.
+The owner's Windows run measures; this phase gives it the tool and fixes the known waste.
+
+1. **A timing aid**, `EVRE_PERF_LOG=<file>` (a test aid like `EVRE_SHOT`, nothing when unset): every
+   500 ms one line: frames painted per second, the paint's average and longest ms, its stages
+   (binning, the card's segment list, the present, the marks, the legend), the measure table's
+   update ms and count, polls per second. Documented with the other test aids (STUDIO.md 26).
+2. **A held view where only the marks move reuses its lines.** Dragging a cursor, a note or the
+   trigger's level over a held view changes no line: keep the frame's binned lines and the card's
+   line segments (CPU: the lines' picture) and rebuild only the marks and sprites. The key: the
+   view's times, the plot's size and dpr, every Y range (lanes included), Normalise / Log, the
+   lines' generation, the theme, the lanes' scroll and folds. A test hook counts binnings; a check:
+   20 drag steps over a held view bin 0 times, a change of any key bins again, the picture is the
+   same as without the reuse (CPU and, on Windows, the card).
+3. **The measure table during a drag**: one repaint per update (updates off while the cells are
+   written), `measureInfo_` set only when its text changes; a check on the counts.
+4. **The fill**: report, with the timing aid, the longest paint while 64 lines fill at 1000 Hz for
+   3 minutes (a line's array grows by copying). Fix it only if one paint is over 30 ms and the fix
+   is small (no new storage scheme); otherwise say so in the PR.
+5. Docs (STUDIO.md 23 for the reuse, 26 for the aid), Help only if something visible changes. In
+   the PR: what the owner's run should measure (drag at 1 min and 5 min, with and without
+   Normalise, CPU and GPU), and the before numbers above.
+
+### Phase 7: installers and releases (branch `phase7-installers`)
+
+1. **`.github/workflows/release.yml`**: on a tag `v*` it builds and publishes; on a pull request that
+   touches the workflow or `EVRe/studio/packaging/` it builds the same files as workflow artifacts and
+   publishes nothing; `workflow_dispatch` too. It never runs on other pushes, so it cannot turn a
+   push to `main` red. On a tag, it first checks that the tag equals the CMake `project(VERSION)` and
+   that `EVRe/CHANGELOG.md` has that version's section, and stops with a clear message if not.
+2. **Windows** (the same Qt 6.8.3 MinGW as `ci.yml`): Release build, `windeployqt` with the compiler
+   runtime and the translations (`qtbase_ar.qm` too); an **Inno Setup** installer
+   (`packaging/windows/evre_studio.iss`): per-user by default (no admin), Start menu entry, optional
+   desktop icon, uninstaller, version from CMake; it holds the Studio, `evre`, `evre-sim`, the
+   example map, README, LICENSE. Also a portable `.zip` of the same folder.
+   `EVReStudio-<version>-setup.exe` and `EVReStudio-<version>-windows.zip`.
+3. **Linux**: an **AppImage** built on `ubuntu-22.04` (an older glibc, so it runs on more systems)
+   with `linuxdeploy` and its Qt plugin, a `.desktop` file and the icon;
+   `EVReStudio-<version>-x86_64.AppImage`, and `evre-tools-<version>-linux-x86_64.tar.gz` with
+   `evre` and `evre-sim`. A check in the workflow: the AppImage starts under xvfb with `EVRE_SHOT` and
+   writes its picture.
+4. **The icon**: there is none yet. Make a simple one (the Studio's accent colour, "EV" in white, a
+   rounded square) as SVG plus `.ico` (16-256 px) and PNGs, set as the window icon and the
+   executable's icon (a `.rc` on Windows). Say in the PR that it is a placeholder for the owner's
+   branding.
+5. **The release's text**: that version's section of `EVRe/CHANGELOG.md`; the files above; a note that
+   the installer is not code-signed (Windows SmartScreen asks "Run anyway").
+6. **Docs**: STUDIO.md's installing section (installer, zip, AppImage, building from source), the
+   README (a "Download" line pointing to Releases), `EVRe/CONTRIBUTING.md` "Making a release" (bump
+   the CMake version, the CHANGELOG section, tag `vX.Y.Z`, push the tag). Do not tag or publish
+   anything yourself: the owner tags.
+7. In the PR: the artifacts' names and sizes from the PR's own run, for the owner's install test.
+
+### Phase 10: small items (branch `phase10-small`)
+
+1. **No A-B bar sliver**: `ChartView::spanBar` draws the bar when the span between the tags is at
+   least 2 px, even when its text does not fit and is put beside the tags; then only a sliver shows.
+   Draw the bar only when the text fits inside it; otherwise only the text's tag beside. A check.
+2. **Drag a lane's border** (after phase 9's separators): over a separator the cursor becomes the
+   vertical-resize cursor (the human-eye rules: a highlight on hover, a tooltip "Drag: this lane's
+   height · Double-click: equal heights"); dragging it resizes the lane above (the one below gives or
+   takes; neither under `LANE_MIN_H`); the heights kept by unit under the tab's prefix
+   (`settingKey("laneHeights")`), a double-click on a separator sets all back to equal. Both drawing
+   paths; checks (drag, limits, saved, double-click, the card's picture on Windows); docs, Help,
+   Arabic.
