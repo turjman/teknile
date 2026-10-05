@@ -322,6 +322,7 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 		s.fast = fastStores_.value(stream);
 		s.channel = (key - FIRST_FAST_KEY) % 256;
 		if (!s.fast || s.channel >= s.fast->channels()) return;
+		s.totalTo = s.fast->dropped() + s.fast->size(); /* its total from the records that come now */
 	}
 	series_.insert(key, s);
 	seriesGeneration_++;
@@ -360,6 +361,7 @@ void ChartView::clearData() {
 		s.totalT = NAN;
 	}
 	for (const auto &store : std::as_const(fastStores_)) store->clear();
+	for (Series &s : series_) s.totalTo = 0;
 	keptTotals_.clear();
 	totalsSince_ = NAN; /* the first sample from now on */
 	seriesGeneration_++;
@@ -576,6 +578,11 @@ void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QBy
 	for (const Series &s : std::as_const(series_)) lines += s.fast == store;
 	if (lines == 0) return;
 	store->append(first, count, records.constData(), newStart, lost);
+	for (Series &s : series_)
+		if (s.fast == store) {
+			sumFast(s); /* before a trim: every record counts */
+			scanFastTrigger(s);
+		}
 	trimFast(*store, lines);
 	const qsizetype newest = store->size() - 1;
 	for (Series &s : series_) {
@@ -586,7 +593,92 @@ void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QBy
 }
 
 void ChartView::markFast(int stream, quint64 record, double time, double period) {
-	if (const std::shared_ptr<fast::Store> store = fastStores_.value(stream)) store->mark(record, time, period);
+	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
+	if (!store) return;
+	store->mark(record, time, period);
+	for (Series &s : series_)
+		if (s.fast == store) { /* the first block's records have times from the first mark on */
+			sumFast(s);
+			scanFastTrigger(s);
+		}
+}
+
+/* the trigger on a fast line: the first pair of records in one segment (none across a gap) that crosses the level,
+ * after it was armed; its time straight between the two, as a polled line's */
+void ChartView::scanFastTrigger(Series &s) {
+	const fast::Store &store = *s.fast;
+	if (!trigger_.armed || store.size() == 0 || !store.hasTime() || series_.constFind(trigger_.key) == series_.constEnd()
+			|| &*series_.constFind(trigger_.key) != &s) {
+		s.scannedTo = store.dropped() + store.size();
+		return;
+	}
+	const qsizetype end = store.size();
+	qsizetype i = std::max<qsizetype>(store.upperBound(trigger_.armedFrom), qsizetype(s.scannedTo - store.dropped()));
+	i = std::max<qsizetype>(i, 1);
+	const double level = trigger_.level;
+	const TriggerEdge edge = trigger_.edge;
+	while (i < end) {
+		const qsizetype segmentEnd = store.segmentEnd(i);
+		if (store.startsAfterGap(i)) i++; /* its first record: no pair across the gap */
+		for (; i < segmentEnd; i++) {
+			const double pv = store.value(s.channel, i - 1), v = store.value(s.channel, i);
+			const bool up = pv < level && v >= level, down = pv > level && v <= level;
+			if ((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down)) {
+				const double pt = store.timeAt(i - 1), t = store.timeAt(i);
+				s.scannedTo = store.dropped() + i + 1;
+				fireTrigger(v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t);
+				return;
+			}
+		}
+	}
+	s.scannedTo = store.dropped() + end;
+}
+
+namespace {
+/* the trapezoids of a fast line's records i0 .. i1 - 1, each segment apart (nothing across a gap): a segment's
+ * records are evenly spaced, so its trapezoids are dt x (sum - (first + last) / 2), the sums from the summaries.
+ * shifted: the same of (value - shift), for the standard deviation (statsOf's reason) */
+struct Trapezoids {
+	double area = 0, areaOfSquares = 0, shifted = 0, shiftedSquares = 0, span = 0;
+};
+Trapezoids trapezoids(const fast::Store &store, int channel, qsizetype i0, qsizetype i1, double shift) {
+	Trapezoids out;
+	for (qsizetype k = i0; k < i1;) {
+		const qsizetype e = std::min(store.segmentEnd(k), i1);
+		const qsizetype n = e - k;
+		if (n >= 2) {
+			double sum, squares;
+			store.sums(channel, k, e, sum, squares);
+			const double f = store.value(channel, k), l = store.value(channel, e - 1);
+			const double duration = store.timeAt(e - 1) - store.timeAt(k), dt = duration / double(n - 1);
+			const double sumShifted = sum - double(n) * shift;
+			const double squaresShifted = squares - 2 * shift * sum + double(n) * shift * shift;
+			const double fs = f - shift, ls = l - shift;
+			out.area += dt * (sum - 0.5 * (f + l));
+			out.areaOfSquares += dt * (squares - 0.5 * (f * f + l * l));
+			out.shifted += dt * (sumShifted - 0.5 * (fs + ls));
+			out.shiftedSquares += dt * (squaresShifted - 0.5 * (fs * fs + ls * ls));
+			out.span += duration;
+		}
+		k = e;
+	}
+	return out;
+}
+} // namespace
+
+/* A fast line's total since Clear: the trapezoids from its last summed record to its newest with a time (the
+ * memory's trims lose nothing: summed as they come), none across a gap */
+void ChartView::sumFast(Series &s) {
+	const fast::Store &store = *s.fast;
+	if (!store.hasTime() || store.size() == 0) return;
+	const qint64 end = store.dropped() + store.size();
+	if (s.totalTo >= end) return;
+	const qsizetype from = qsizetype(std::max<qint64>(0, s.totalTo - 1 - store.dropped())); /* joined to the last */
+	if (end - store.dropped() - from >= 2) s.total += trapezoids(store, s.channel, from, end - store.dropped(), 0).area;
+	s.totalT = store.timeAt(store.size() - 1);
+	s.totalV = store.value(s.channel, store.size() - 1);
+	if (std::isnan(totalsSince_)) totalsSince_ = store.timeAt(from);
+	s.totalTo = end;
 }
 
 /* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
@@ -780,16 +872,50 @@ void ChartView::fireTrigger(double time) {
 	refresh();
 }
 
-void ChartView::lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values) const {
+bool ChartView::lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values,
+		bool withoutGap) const {
 	times.clear();
 	values.clear();
 	const auto it = series_.constFind(key);
-	if (it == series_.constEnd()) return;
+	if (it == series_.constEnd()) return true;
+	if (it->fast) return fastSamples(*it, t0, t1, MAX_POINTS, withoutGap, times, values);
 	const qsizetype i0 = std::lower_bound(it->times.begin(), it->times.end(), t0) - it->times.begin();
 	const qsizetype i1 = std::upper_bound(it->times.begin(), it->times.end(), t1) - it->times.begin();
-	if (i1 <= i0) return;
+	if (i1 <= i0) return true;
 	times = it->times.mid(i0, i1 - i0);
 	values = it->values.mid(i0, i1 - i0);
+	return true;
+}
+
+bool ChartView::fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
+		QVector<double> &values) {
+	const fast::Store &store = *s.fast;
+	if (store.size() == 0 || !store.hasTime()) return true;
+	qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+	const qsizetype all = i1 - i0;
+	if (withoutGap) { /* the longest segment's part in the range */
+		qsizetype best0 = i0, best1 = i0;
+		for (qsizetype k = i0; k < i1;) {
+			const qsizetype e = std::min(store.segmentEnd(k), i1);
+			if (e - k > best1 - best0) {
+				best0 = k;
+				best1 = e;
+			}
+			k = e;
+		}
+		i0 = best0;
+		i1 = best1;
+	}
+	i1 = std::min(i1, i0 + most);
+	const bool whole = i1 - i0 == all;
+	if (i1 <= i0) return whole;
+	times.resize(i1 - i0);
+	values.resize(i1 - i0);
+	for (qsizetype i = i0; i < i1; i++) {
+		times[i - i0] = store.timeAt(i);
+		values[i - i0] = store.value(s.channel, i);
+	}
+	return whole;
 }
 
 int ChartView::chipAt(const QPointF &pos) const {
@@ -814,11 +940,16 @@ void ChartView::showLastValues() {
 QVector<recording::Line> ChartView::samples(double t0, double t1) const {
 	QVector<recording::Line> out;
 	for (const Series &s : series_) {
-		const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
-		const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		recording::Line line;
 		line.name = s.name;
 		line.unit = s.unit;
+		if (s.fast) { /* its records, each a row (two channels of a stream share their rows) */
+			fastSamples(s, t0, t1, MAX_POINTS, false, line.times, line.values);
+			out << line;
+			continue;
+		}
+		const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+		const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		if (i1 > i0) {
 			line.times = s.times.mid(i0, i1 - i0);
 			line.values = s.values.mid(i0, i1 - i0);
@@ -1019,7 +1150,8 @@ ChartView::Stats ChartView::stats(int key) const {
 	double t0, t1;
 	bool cursors;
 	range(t0, t1, cursors);
-	if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
+	if (it->fast) result = statsOfFast(*it->fast, it->channel, t0, t1, cursorA_, cursorB_);
+	else if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
 	result.total = std::isnan(it->totalT) ? NAN : it->total;
 	return result;
 }
@@ -1064,6 +1196,44 @@ ChartView::Stats ChartView::statsOf(const QVector<double> &times, const QVector<
 	return result;
 }
 
+double ChartView::fastValueAt(const fast::Store &store, int channel, double t) {
+	if (!std::isfinite(t) || store.size() == 0 || !store.hasTime()) return NAN;
+	const qsizetype k = store.lowerBound(t);
+	if (k >= store.size()) return NAN;
+	const double tb = store.timeAt(k);
+	if (tb == t) return store.value(channel, k);
+	if (k == 0 || store.startsAfterGap(k)) return NAN; /* before the first, or in a gap: not measured */
+	const double ta = store.timeAt(k - 1), va = store.value(channel, k - 1), vb = store.value(channel, k);
+	return tb > ta ? va + (vb - va) * (t - ta) / (tb - ta) : vb;
+}
+
+/* the same as statsOf, from the summaries: what it costs follows the segments and the summaries' chunks, not the
+ * records (an hour at a million a second within a frame) */
+ChartView::Stats ChartView::statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b) {
+	Stats result;
+	result.atA = fastValueAt(store, channel, a);
+	result.atB = fastValueAt(store, channel, b);
+	if (store.size() == 0 || !store.hasTime()) return result;
+	const qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+	if (i1 - i0 < 1) return result;
+	store.minMax(channel, i0, i1, result.min, result.max);
+	const double shift = store.value(channel, i0);
+	const Trapezoids sums = trapezoids(store, channel, i0, i1, shift);
+	result.n = int(std::min<qsizetype>(i1 - i0, std::numeric_limits<int>::max()));
+	result.integral = sums.area;
+	result.p2p = result.max - result.min;
+	if (sums.span > 0) {
+		result.mean = sums.area / sums.span;
+		result.rms = std::sqrt(std::max(0.0, sums.areaOfSquares / sums.span));
+		const double shiftedMean = sums.shifted / sums.span;
+		result.std = std::sqrt(std::max(0.0, sums.shiftedSquares / sums.span - shiftedMean * shiftedMean));
+	} else {
+		result.mean = result.rms = shift;
+	}
+	result.ok = true;
+	return result;
+}
+
 /* each line's on a thread of the chart's: 64 lines over minutes of samples took tens of ms on one */
 QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursorsOnly) const {
 	if (!cursorsOnly) const_cast<ChartView *>(this)->fullStatsSync_++; /* the window thread waits for these */
@@ -1074,7 +1244,14 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 			return;
 		}
 		const auto it = series_.find(keys[i]);
-		if (it == series_.end() || it->times.isEmpty()) return;
+		if (it == series_.end()) return;
+		if (it->fast) {
+			all[i].total = std::isnan(it->totalT) ? NAN : it->total;
+			all[i].atA = fastValueAt(*it->fast, it->channel, cursorA_);
+			all[i].atB = fastValueAt(*it->fast, it->channel, cursorB_);
+			return;
+		}
+		if (it->times.isEmpty()) return;
 		all[i].total = std::isnan(it->totalT) ? NAN : it->total;
 		all[i].atA = valueAt(it->times, it->values, cursorA_);
 		all[i].atB = valueAt(it->times, it->values, cursorB_);
@@ -1099,6 +1276,16 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 			continue;
 		}
 		const Series &s = *it;
+		if (s.fast) { /* its records in the range, counted since its store began; with the cursors one either side */
+			const fast::Store &store = *s.fast;
+			qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+			if (cursors) {
+				i0 = std::max<qsizetype>(0, i0 - 1);
+				i1 = std::min<qsizetype>(store.size(), i1 + 1);
+			}
+			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			continue;
+		}
 		qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
 		qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		if (cursors) {
@@ -1148,9 +1335,13 @@ void ChartView::startMeasure(MeasureRequest request) {
 	for (qsizetype i = 0; i < n; i++) {
 		const auto it = series_.constFind(request.keys[i]);
 		if (it == series_.constEnd()) continue;
+		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
+		if (it->fast) { /* from its summaries, here: cheap, and its store is written by this thread between frames */
+			job->out[i] = statsOfFast(*it->fast, it->channel, job->t0, job->t1, job->a, job->b);
+			continue;
+		}
 		job->times[i] = it->times;
 		job->values[i] = it->values;
-		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
 	}
 	job->request = std::move(request);
 	measuring_ = true;

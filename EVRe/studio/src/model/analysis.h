@@ -7,7 +7,8 @@
  *    n^(1/3) (robust against a few outliers); values that do not spread (an
  *    IQR of 0) get the square-root rule; one value alone, one bin.
  *  - Spectrum: the polls are uneven, so the samples are first resampled to even
- *    steps at their mean rate (straight between neighbours); then Welch's
+ *    steps at their mean rate (straight between neighbours; a fast line's
+ *    records are even already and are taken as they are); then Welch's
  *    method: segments of a power of two, 50 % overlap, each with a Hann window,
  *    their power averaged. The amplitude is a sine's peak in the line's unit
  *    (a sine of 2 V reads 2 V at its frequency), from 0 up to half the rate. */
@@ -36,7 +37,8 @@ Histogram histogram(const QVector<double> &values);
 
 struct Spectrum {
 	QVector<double> frequency, amplitude; /* Hz; the line's unit */
-	double rate = 0;     /* the even rate resampled to, Hz */
+	double rate = 0;     /* the even rate resampled to, Hz (or the samples' own, not resampled) */
+	bool resampled = true;
 	int segment = 0;     /* samples per segment (a power of two) */
 	int segments = 0;    /* averaged */
 	double resolution() const { return segment > 0 ? rate / segment : 0; } /* Hz between two frequencies */
@@ -45,6 +47,7 @@ struct Spectrum {
  * segments when there are samples enough */
 constexpr int MIN_SAMPLES = 16;
 constexpr int MAX_SEGMENT = 1 << 16;
-Spectrum spectrum(const QVector<double> &times, const QVector<double> &values);
+/* even: the samples are evenly spaced (a fast line's records without a gap): taken as they are */
+Spectrum spectrum(const QVector<double> &times, const QVector<double> &values, bool even = false);
 
 } // namespace analysis

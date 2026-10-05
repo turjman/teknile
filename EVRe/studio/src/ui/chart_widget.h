@@ -385,10 +385,13 @@ public:
 	int selectedNote() const { return selectedNote_; } /* -1: none; Delete removes it */
 	QRectF noteTag(int index) const;   /* where a note's tag was last drawn; empty: not in view (tests) */
 	double timeAt(double x) const { return timeAtX(x); }
-	/* the samples of the lines over t0..t1 (Export to CSV) */
+	/* the samples of the lines over t0..t1 (Export to CSV); a fast line's records, at most MAX_POINTS (the first) */
 	QVector<recording::Line> samples(double t0, double t1) const;
-	/* one line's samples over t0..t1 (its histogram, its spectrum) */
-	void lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values) const;
+	/* one line's samples over t0..t1 (its histogram, its spectrum); a fast line: at most MAX_POINTS records (the
+	 * first), and with withoutGap only its longest part without a gap (a spectrum needs even steps). Returns false
+	 * when a fast line's records in the range were not all taken */
+	bool lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values,
+			bool withoutGap = false) const;
 	int chipAt(const QPointF &pos) const; /* the key of the legend's chip there; -1: none */
 	/* tests: the bar between the cursors as last painted: its text (empty: none), the bar, and the text's box (inside
 	 * the bar, or beside a tag when the bar is too short for it) */
@@ -496,6 +499,8 @@ private:
 		/* a fast line: its stream's records, and its channel there (times and values stay empty) */
 		std::shared_ptr<fast::Store> fast;
 		int channel = 0;
+		qint64 totalTo = 0; /* a fast line: its total sums its records up to this one (counted since its store began) */
+		qint64 scannedTo = 0; /* a fast line watched by the trigger: its records looked at up to this one */
 	};
 	/* one line's samples in a span, binned per pixel column, with the range of
 	 * what lies inside the span */
@@ -606,6 +611,15 @@ private:
 	 * summaries, so the cost follows the columns, not the records */
 	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out) const;
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
+	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
+	void scanFastTrigger(Series &s);              /* the trigger's crossing in its records since the last look */
+	/* a fast line's records over t0..t1 into arrays, at most `most`; withoutGap: the longest part without a gap */
+	static bool fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
+			QVector<double> &values);
+	/* a fast line over records i0 .. i1 - 1: min, max, and from the summaries the trapezoids of each segment (nothing
+	 * across a gap), as statsOf from a polled line's arrays */
+	static Stats statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b);
+	static double fastValueAt(const fast::Store &store, int channel, double t); /* NaN: outside, or in a gap */
 	QVector<BinnedLine> binView(const Axes &axes) const;
 	/* the Y range of this frame for a plot's lines (which: indices into lines) */
 	void updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,

@@ -47,6 +47,9 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   down to 10 us; a view costs its pixel columns, not its records (summaries of 256 and 4096 records), so a spike of
   one record in millions shows at every zoom; the line broken where records were lost, the gap's tooltip counting
   them; the records kept as they came, a few bytes each, within the chart's RAM; time labels below a millisecond.
+- Fast lines measured as any line: the Measure table from the summaries (an hour at a million records a second within
+  a frame), nothing across a gap; totals since Clear; the histogram; the spectrum of the records as they are (even
+  steps, over the longest part without a gap); the trigger (never across a gap); Export to CSV, a row per record.
 - The chart for many fast lines: min/max summaries of 8 to 4096 samples, binning and drawing on several threads, a
   RAM budget the samples keep to (with a note of what the Memory set needs), at most 64 lines at 1000 samples a
   second (fewer at faster rates), the plot drawn by a dedicated graphics card when there is one, or a card picked by
