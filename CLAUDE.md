@@ -379,3 +379,21 @@ The owner's Windows run measures; this phase gives it the tool and fixes the kno
    (`settingKey("laneHeights")`), a double-click on a separator sets all back to equal. Both drawing
    paths; checks (drag, limits, saved, double-click, the card's picture on Windows); docs, Help,
    Arabic.
+3. **The state corner never runs over the legend (the owner's screenshot).** `ChartView::drawState`
+   draws its text right-aligned in a fixed `STATE_W` box; a longer text ("held: -295 s · Live to
+   follow  ·  lanes: ▾ folds") spills left over the legend: over its ▶ arrow and a chip cut mid-text
+   ("8.7"). The "For the human eye" rules: no text over other text, none cut mid-letter.
+   - "lanes: ▾ folds" goes (the ▾ and ⋯ buttons on the lanes show it now); nothing for Lanes there.
+   - The text is made to fit its room: whole parts are dropped in this order until it fits: "Live to
+     follow" (and ", ... s to come · Live to follow" to "filling"), then "click / drag" (leaving
+     "cursors"), then the Y words ("Y log, manual" -> "Y log"); "held: -295 s" and the trigger's
+     state stay. The full text is the corner's tooltip.
+   - The legend ends where the state's text actually begins (measured, with a gap), not at a fixed
+     `STATE_W`: its ▶ arrow and chips never lie under the state; the state's room is at most about
+     40 % of the plot's width, and the legend keeps at least room for one chip and its arrows.
+   - A chip cut by the legend's scroll edge is cut before the arrow (clipped to the chips' viewport),
+     never drawn under it.
+   - Checks: at a narrow window (the main window's minimum width) with held + cursors + trigger on,
+     the state's rect and the legend's rect (arrow included) do not overlap; the parts dropped in
+     that order; the tooltip holds the full text; with room, nothing is dropped. Docs (7.x where the
+     state corner is described, 23), Arabic (the texts change: Arabic is longer, check it there too).
