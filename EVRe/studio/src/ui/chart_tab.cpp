@@ -11,6 +11,8 @@
 #include <QThread>
 #include <QThreadPool>
 #include <QComboBox>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -179,11 +181,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	yMode_->addItem(tr("Auto"));
 	yMode_->addItem(tr("Manual"));
 	yMode_->addItem(tr("Log"));
-	yMode_->setToolTip(tr("Auto: follows what is shown (grows at once, shrinks gently).\n"
+	yModeTip_ = tr("Auto: follows what is shown (grows at once, shrinks gently).\n"
 			"Manual: the min and max typed here. Ctrl + wheel on the chart zooms Y, a double-click goes back to "
 			"Auto.\nLog: a logarithmic scale, a line at each decade: Auto spans the positive values shown (9 decades at "
 			"most), or the min and max typed (both above 0); values of 0 or less sit on the bottom edge. Log and "
-			"Normalise exclude each other."));
+			"Normalise exclude each other.");
+	yMode_->setToolTip(yModeTip_);
 	yMin_ = new QLineEdit;
 	yMax_ = new QLineEdit;
 	yMin_->setObjectName(QStringLiteral("yMin"));
@@ -306,6 +309,11 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	smooth_->setCheckable(true);
 	smooth_->setToolTip(tr("Delay the picture a few ms, as measured from how late samples arrive,\n"
 			"so the line always reaches the right edge and scrolls without steps."));
+	lanes_ = displayMenu->addAction(tr("Lanes"));
+	lanes_->setObjectName(QStringLiteral("chartLanes"));
+	lanes_->setCheckable(true);
+	lanes_->setToolTip(tr("A plot per unit, stacked, each with its own Y range (right-click its values: Auto, Manual, "
+			"Log); one time axis, the cursors and notes across them. At most 8: the units after share the last."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -461,11 +469,21 @@ void ChartTab::connectControls() {
 			chart_->setYLog(false);
 			showYRange();
 		}
+		if (on) /* the lanes' Log too */
+			for (int lane = 0; lane < chart_->view()->laneCount(); lane++) chart_->view()->setLaneYLog(lane, false);
 		chart_->setNormalized(on);
-		/* the list stays: picking Log from it turns Normalise off */
-		yMin_->setEnabled(!on);
-		yMax_->setEnabled(!on);
+		showYControls();
 		showDisplayState();
+	});
+	connect(lanes_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setLanes(on);
+		QSettings().setValue(settingKey("lanes"), on);
+		showYControls();
+		showDisplayState();
+	});
+	connect(view, &ChartView::laneMenuRequested, this, &ChartTab::showLaneMenu);
+	connect(view, &ChartView::laneYChanged, this, [this] {
+		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
 	});
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
@@ -547,6 +565,8 @@ void ChartTab::restoreSettings() {
 	window_->setEditText(secondsText(chart_->window()));
 	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
 	chart_->setSmooth(smooth_->isChecked());
+	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
+	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
 	chart_->setYLog(settings.value(settingKey("yLog"), false).toBool());
@@ -751,8 +771,9 @@ void ChartTab::applyDrawing(int choice) {
 
 QString ChartTab::displayState() const {
 	const QString onOff[] = { tr("off"), tr("on") };
-	return tr("Normalise %1 · Smooth %2 · Hover values %3 · drawn by the %4").arg(onOff[normalize_->isChecked()],
-			onOff[smooth_->isChecked()], onOff[hoverValues_->isChecked()], chart_->view()->drawingName());
+	return tr("Normalise %1 · Lanes %2 · Smooth %3 · Hover values %4 · drawn by the %5").arg(onOff[normalize_->isChecked()],
+			onOff[lanes_->isChecked()], onOff[smooth_->isChecked()], onOff[hoverValues_->isChecked()],
+			chart_->view()->drawingName());
 }
 
 void ChartTab::showDisplayState() {
@@ -949,6 +970,68 @@ void ChartTab::showSpan(double t0, double t1) {
 	chart_->view()->showSpan(t0, t1);
 	window_->setEditText(secondsText(chart_->window()));
 	memory_->setEditText(secondsText(chart_->memory()));
+}
+
+void ChartTab::showYControls() {
+	/* lanes: each its own range (its menu); normalised: the min and max mean nothing, the list offers Log */
+	const bool lanes = lanes_->isChecked();
+	yMode_->setEnabled(!lanes);
+	yMin_->setEnabled(!lanes && !normalize_->isChecked());
+	yMax_->setEnabled(!lanes && !normalize_->isChecked());
+	const QString why = tr("Lanes: each lane has its own Y range: right-click its values");
+	if (lanes) yMode_->setToolTip(why);
+	else if (yMode_->toolTip() == why) yMode_->setToolTip(yModeTip_);
+}
+
+void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
+	ChartView *view = chart_->view();
+	if (laneMenu_) laneMenu_->deleteLater();
+	laneMenu_ = new QMenu(this);
+	laneMenu_->setObjectName(QStringLiteral("laneMenu"));
+	const QString units = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
+	laneMenu_->addSection(tr("Lane %1: Y range").arg(noMnemonic(units)));
+	QAction *autoRange = laneMenu_->addAction(tr("Auto"), this, [view, lane] { view->setLaneYAuto(lane); });
+	autoRange->setCheckable(true);
+	autoRange->setChecked(view->laneYAuto(lane));
+	QAction *manual = laneMenu_->addAction(tr("Manual…"), this, [this, lane] { editLaneRange(lane); });
+	manual->setCheckable(true);
+	manual->setChecked(!view->laneYAuto(lane));
+	laneMenu_->addSeparator();
+	QAction *log = laneMenu_->addAction(tr("Log"), this, [this, view, lane](bool on) {
+		if (on) normalize_->setChecked(false); /* Log and Normalise exclude each other */
+		view->setLaneYLog(lane, on);
+	});
+	log->setCheckable(true);
+	log->setChecked(view->laneYLog(lane));
+	laneMenu_->popup(globalPos);
+}
+
+void ChartTab::editLaneRange(int lane) {
+	ChartView *view = chart_->view();
+	QDialog dialog(window());
+	dialog.setObjectName(QStringLiteral("laneRange"));
+	const QString units = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
+	dialog.setWindowTitle(tr("Lane %1: Y range").arg(units));
+	auto *form = new QFormLayout(&dialog);
+	auto *low = new QLineEdit(yFieldText(view->laneYLo(lane), true));
+	auto *high = new QLineEdit(yFieldText(view->laneYHi(lane), true));
+	low->setObjectName(QStringLiteral("laneMin"));
+	high->setObjectName(QStringLiteral("laneMax"));
+	form->addRow(tr("min"), low);
+	form->addRow(tr("max"), high);
+	auto *note = mutedLabel(view->laneYLog(lane) ? tr("Log: both above 0") : QString());
+	form->addRow(note);
+	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+	form->addRow(buttons);
+	connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
+		bool lowOk = false, highOk = false;
+		double lo = QLocale::c().toDouble(low->text().trimmed(), &lowOk), hi = QLocale::c().toDouble(high->text().trimmed(), &highOk);
+		if (lo > hi) std::swap(lo, hi);
+		if (lowOk && highOk && view->setLaneYManual(lane, lo, hi)) dialog.accept();
+		else note->setText(view->laneYLog(lane) ? tr("Two numbers, both above 0 (Log)") : tr("Two numbers, min below max"));
+	});
+	dialog.exec();
 }
 
 /* -------------------------------------------------------- the right-click menu */

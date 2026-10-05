@@ -80,6 +80,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [7.9 Legend, labels and the info line](#79-legend-labels-and-the-info-line)
     - [7.10 The right-click menu: pictures and export](#710-the-right-click-menu-pictures-and-export)
     - [7.11 Notes](#711-notes)
+    - [7.12 Lanes](#712-lanes)
   - [8. Measurements](#8-measurements)
     - [8.1 The range](#81-the-range)
     - [8.2 The values](#82-the-values)
@@ -1073,6 +1074,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Smooth on · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
 | - **Normalise** | Each line scaled to its own range (7.6). |
 | - **Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
+| - **Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
 | - **Hover values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | - **Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | Info line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
@@ -1183,8 +1185,9 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 |---|---|---|
 | Chart | Drag, left button | Pan through the memory, and hold. |
 | Chart | Wheel | Zoom the time by 1.25 per notch. Live, the right edge stays at now. Held, the zoom is around the time under the mouse. |
-| Chart | Ctrl + wheel | Zoom Y around the mouse (switches to Manual). |
+| Chart | Ctrl + wheel | Zoom Y around the mouse (switches to Manual); with Lanes, the lane under the mouse. |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
+| Lane's value labels | Right-click | The lane's Y range: Auto, Manual…, Log (7.12). |
 | Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
 | Note's tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
 | Legend (chips overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
@@ -1257,6 +1260,27 @@ A note marks a moment on the chart with a few words: *pump on*, *valve shut*.
 - **Kept beside a recording.** While a CSV recording runs, the live chart's notes from its start on are written
   beside it at every change, `<recording>.notes.json` (12.5); an export writes the notes of its span beside it. A
   recording opened shows its notes, and saves them again at every change. Notes made otherwise are not saved.
+
+### 7.12 Lanes
+
+**Display → Lanes** gives each unit a plot of its own, stacked under each other: volts in one, amps in the next, a
+power in a third, each read on its own scale instead of a 12 V line flattening a 0.5 A one.
+
+- **One lane per unit**, in the order the lines came, of equal height, 10 px apart. Lines without a unit share a
+  lane of their own (*no unit*). At most **8 lanes**: the units after the eighth share the last, which names them all
+  (*Ω · bar · rpm*). The units stand up the left edge of each lane's labels.
+- **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
+  right-click its value labels for **Auto**, **Manual…** (its min and max asked) and **Log** (7.5). **Ctrl + wheel**
+  over a lane zooms that lane (Manual); a **double-click** in it sets it to Auto. The Y range row above the chart is
+  the plot's without lanes, and is disabled meanwhile.
+- **One time axis** under the last lane; the grid's times run through every lane.
+- **Across all lanes:** cursors A and B, their span and the A-B bar (over the first lane), the notes (their tags at
+  the bottom of the last lane), the crosshair's line with a dot on every line in its own lane, and **one** box of all
+  the values.
+- **A line stays in its lane:** a Manual range narrower than its values cuts it at the lane's edge.
+- **Normalise** scales each line into its own lane. Log of a lane and Normalise exclude each other as on the plot.
+- The memory strip is as without lanes. Measurements, export and notes are the same.
+- A graphics card draws all the lanes in one frame, as the CPU does.
 
 ## 8. Measurements
 
@@ -1948,6 +1972,8 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/yLog` | `false` | on change | Y range Log (7.5); with `chart/yAuto` for its range. |
 | `chart/yMin`, `chart/yMax` | `0`, `1` | on change (Manual) | The Manual Y range. |
 | `chart/measure` | `false` | on change | Measure shown. |
+| `chart/lanes` | `false` | on change | Lanes (7.12). |
+| `chart/laneY` | empty | on change | The lanes' Y ranges by unit: one text each, `unit⇥auto⇥log⇥min⇥max` (1 or 0 for auto and log). |
 | `chart/measureColumns` | empty | on change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
 | `chart/math` | empty | on change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
 | `recording/…` | as `chart/…` | on change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
@@ -3567,8 +3593,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView` / `ChartWidget` | the chart (chapter 23) | `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneLines` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
@@ -3756,7 +3782,15 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 - **Normalise.** Each line is scaled into 0..1 by its own range in the view, and the axis shows −8 % … 108 %. A
   line flatter than 1e-12 gets a range of one unit around it (`widenFlatRange`), and the crosshair dot uses the same
   scaling.
-- **Log** (`setYLog`, `yLog_`; not while normalised). `Axes::setRange` keeps log10 of the range's ends, and
+- **Lanes** (`setLanes`). `plotLayout()` gives the frame's plots, one `Lane` each: the whole plot with every line,
+  or a lane per unit (`MAX_LANES`, 8; the units after join the last, `label` naming them), stacked `LANE_GAP` (10 px)
+  apart. Each has its own `Axes` (its rect, the frame's times, its range) and its own `YScale` (Auto, Manual, Log,
+  and Auto's state): the plot's `y_`, a lane's `laneScales_[key]` by its first unit, so a lane keeps its range while
+  lines come and go (`laneScales` / `setLaneScales`: the settings' texts). `updateYRange` and `followData` run per
+  plot over its lines; the binning is the same for all (one time axis). The frame keeps its plots
+  (`lanesShown_`) for the mouse: `laneAtY` finds the lane under it for Ctrl + wheel, the double-click and the
+  right-click on its labels (`laneMenuRequested`).
+- **Log** (`setYLog`, `y_.log`; not while normalised). `Axes::setRange` keeps log10 of the range's ends, and
   `Axes::y` maps log10 of the value between them; a value <= 0 maps to the bottom edge. Every drawing takes y from
   `Axes`: the CPU's lines, the card's segments (`plotOnGpu`), the crosshair's dots and the memory strip (each line its
   own `Axes` on the Log scale, its positive range), so the card cannot draw otherwise. Auto (`followData`) works in
@@ -3772,7 +3806,8 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 
 1. card
 2. grid (on a card: its labels only; the card draws the plot, 23.7)
-3. cursor span, then the lines, then the notes (not on a card)
+3. cursor span, then the lines (each in its plot: lanes, its lane's `Axes`, clipped to it), then the notes (not on a
+   card)
 4. cursors (not on a card)
 5. memory strip
 6. legend (the chips clipped to their part of the row, then the scroll bar and arrows when they overflow)
@@ -3898,6 +3933,10 @@ layer of the window over the chart (DirectComposition), which a card draws and s
 - **The A-B bar** (7.7) is laid out once for both drawings (`spanBar`: the bar, the text's box, whether the text is
   inside it) and painted by one function (`drawSpanBar`): by the CPU in `drawCursors`, and for the card into a
   picture of the bar and its text, placed on whole pixels as the tags are. So the two drawings show the same bar.
+- **Lanes on the card.** Every lane in one frame: each lane's grid from its own ticks, each line's segments made
+  with its lane's `Axes` and cut to its lane's rows (`clipSegmentY`, the line's width of room): the card has no clip
+  of its own, and a line past a Manual range would draw into the next lane. Without lanes the layer's edge cuts the
+  one plot.
 - **A segment is an instance.** Each line's polyline (23.2, without the bars: a card draws the strokes) becomes
   segments of 20 bytes (`GpuLines::Segment`: two points in the layer's pixels, the colour); the vertex shader makes
   each a quad the line's width (as the CPU's copies: `max(2, round(1.5 × devicePixelRatio))` pixels) and half the
@@ -4297,6 +4336,16 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   recording is written beside the recording at once and shown when it is opened. With `EVRE_TEST_SHOT` set it saves
   `<prefix>_recording.png`.
 
+**Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
+0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
+and a value placed inside its lane, saved, the Y range row disabled; six more units: 8 lanes, the last *u11 · u12 ·
+u13*; a right-click on the second lane's labels: its title and Auto, Manual…, Log; Manual 0 .. 5 typed, Log on the
+third (equal decades), each lane alone, kept and found again by a new tab; Ctrl + wheel over the first changes it
+alone, a double-click sets it back to Auto; the first lane Manual 11.9 .. 12.1: no pixel of its lines between the
+lanes; the A-B bar over the first lane and a note's tag at the bottom of the last; the lanes drawn on threads as on
+one (the same pixels within a row's worth); Lanes off: one plot, the Y row back. With `EVRE_TEST_SHOT` set it saves
+`<prefix>_lanes.png`.
+
 Some chart steps run on a Chart tab of their own, its clock standing still and moved by the test, fed samples
 made up for the check:
 
@@ -4327,7 +4376,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 316 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 324 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

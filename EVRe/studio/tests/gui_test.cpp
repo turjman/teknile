@@ -526,6 +526,7 @@ public:
 		chartMenuAndPictures();
 		chartExport();
 		chartNotes();
+		chartLanes();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -3183,7 +3184,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3271,6 +3272,30 @@ private:
 			check(once->yLog() && once->plotOnCard() && logAlike >= 0.93, "chart on a GPU: Log Y drawn by the card as the "
 					"CPU draws it, block by block");
 			once->setYLog(false);
+			/* lanes: a line in volts beside the lines with no unit, two lanes; the card's segments from each lane's Axes */
+			once->addSeries(LINES, QStringLiteral("volts"), QStringLiteral("V"), QColor(0xE0, 0x80, 0x20));
+			for (int i = 0; i < 60 * HZ; i++) once->append(LINES, 3540.0 + double(i) / HZ, 12.0 + std::sin(i * 0.01));
+			once->setLanes(true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atLanes;
+			const QImage gpuLanes = once->gpuPicture(&atLanes).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuLanes = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atLanes);
+			const double lanesAlike = blocksAlike(gpuLanes, cpuLanes, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuLanes.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_card.png"));
+				cpuLanes.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/lanes_cpu.png"));
+			}
+			std::printf("     (lanes: %.2f%% of the blocks like the CPU's)\n", lanesAlike * 100);
+			/* 0.90, not 0.93: the lines squeezed into half the height put line edges in many more blocks, and the edges'
+			 * antialiasing rounds a little differently on the card (91.8 % on a Quadro T1000; no lane, line or label
+			 * out of place) */
+			check(once->lanes() && once->plotOnCard() && lanesAlike >= 0.90, "chart on a GPU: lanes (two units) drawn by the "
+					"card as the CPU draws them, block by block");
+			once->setLanes(false);
+			once->removeSeries(LINES);
 			for (int k = 0; k < 3; k++) {
 				once->repaint();
 				QApplication::processEvents();
@@ -4291,6 +4316,192 @@ private:
 		const bool chosen = chart.view->selectedNote() == 0;
 		QTest::keyClick(chart.view, Qt::Key_Delete);
 		check(chosen && chart.view->notes().isEmpty(), "chart, notes: a tag clicked and Delete removes its note");
+		chart.tab.hide();
+	}
+
+	/* Lanes: a plot per unit, stacked, equal heights, 8 at most (the units after share the last); each lane its own Y
+	 * range (Auto, Manual, Log from a right-click on its labels; Ctrl + wheel; a double-click), saved; a line drawn in
+	 * its lane only; the cursors and notes across them; drawn on threads as on one */
+	void chartLanes() {
+		QSettings().remove(QStringLiteral("chart/lanes"));
+		QSettings().remove(QStringLiteral("chart/laneY"));
+		LoneChart chart(QStringLiteral("V1"), QStringLiteral("V"));
+		const QStringList units{ QStringLiteral("V"), QStringLiteral("A"), QStringLiteral("W"), QString() };
+		MathLines::Samples samples;
+		QVector<RegDef> defs;
+		for (int k = 0; k < 8; k++) { /* two lines a unit */
+			RegDef def = chart.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("L%1").arg(k);
+			def.unit = units[k / 2];
+			if (k > 0) chart.tab.plotRegister(def, true);
+			else chart.tab.plotRegister(chart.def, false), chart.tab.plotRegister(def, true);
+			defs << def;
+			for (int i = 0; i < 4000; i++) /* V around 12, A around 0.5, W around 6, no unit around 100 */
+				samples[regKey(def)] << QPointF(90.0 + i * 0.0025, (k / 2 == 0 ? 12 : k / 2 == 1 ? 0.5 : k / 2 == 2 ? 6 : 100)
+						+ std::sin(i * 0.01 + k) * (k / 2 == 1 ? 0.2 : 1));
+		}
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *lanes = chart.tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		if (!lanes || !mode) {
+			check(false, "chart, Lanes: in the Display menu");
+			return;
+		}
+		lanes->setChecked(true);
+		(void) chart.view->grab();
+		ChartView *view = chart.view;
+		bool stacked = view->laneCount() == 4;
+		for (int k = 0; stacked && k < 4; k++) {
+			stacked = view->laneLabel(k) == units[k] && std::fabs(view->laneRect(k).height() - view->laneRect(0).height()) < 0.01
+					&& view->laneLines(k).size() == 2;
+			if (k > 0) stacked = stacked && view->laneRect(k).top() > view->laneRect(k - 1).bottom();
+		}
+		const bool saved = QSettings().value(QStringLiteral("chart/lanes")).toBool() && !mode->isEnabled();
+		/* each its own Auto range: 12 V in the first, 0.5 A in the second */
+		const bool ranges = view->laneYLo(0) < 11.5 && view->laneYHi(0) > 12.5 && view->laneYHi(0) < 15
+				&& view->laneYLo(1) < 0.4 && view->laneYHi(1) < 1.0 && view->laneYOfValue(0, 12) > view->laneRect(0).top()
+				&& view->laneYOfValue(0, 12) < view->laneRect(0).bottom() && view->laneYOfValue(1, 0.5) > view->laneRect(1).top()
+				&& view->laneYOfValue(1, 0.5) < view->laneRect(1).bottom();
+		if (!stacked || !ranges)
+			std::printf("     (%d lanes; V %.3g .. %.3g, A %.3g .. %.3g)\n", view->laneCount(), view->laneYLo(0),
+					view->laneYHi(0), view->laneYLo(1), view->laneYHi(1));
+		check(stacked && saved && ranges, "chart, Lanes: a plot per unit in the order they came (V, A, W, none), stacked, "
+				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row disabled");
+
+		/* ten units: 8 lanes, the last shared */
+		MathLines::Samples more;
+		for (int k = 8; k < 14; k++) {
+			RegDef def = chart.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("L%1").arg(k);
+			def.unit = QStringLiteral("u%1").arg(k);
+			chart.tab.plotRegister(def, true);
+			more[regKey(def)] << QPointF(99.0, k);
+		}
+		chart.tab.frame(more);
+		check(view->laneCount() == 8 && view->laneLabel(7) == QStringLiteral("u11 · u12 · u13") && view->laneLines(7).size() == 3,
+				"chart, Lanes: 8 at most; the units after share the last (\"u11 · u12 · u13\")");
+		for (int k = 8; k < 14; k++) {
+			RegDef def = chart.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			chart.tab.plotRegister(def, false);
+		}
+
+		/* the second lane's Y range from its labels: Manual 0 .. 5; the third's Log */
+		(void) chart.view->grab();
+		const QPoint labels(20, int(view->laneRect(1).center().y()));
+		QContextMenuEvent right(QContextMenuEvent::Mouse, labels, view->mapToGlobal(labels));
+		QApplication::sendEvent(view, &right);
+		QMenu *menu = chart.tab.laneMenu();
+		QStringList items;
+		QAction *manual = nullptr;
+		if (menu)
+			for (QAction *action : menu->actions()) {
+				if (action->isSeparator()) continue;
+				items << action->text();
+				if (action->text() == QStringLiteral("Manual…")) manual = action;
+			}
+		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
+				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log") }
+				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
+		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
+		const bool typed = manual && fillDialog([](QDialog *d) {
+			auto *low = d->findChild<QLineEdit *>(QStringLiteral("laneMin"));
+			auto *high = d->findChild<QLineEdit *>(QStringLiteral("laneMax"));
+			auto *buttons = d->findChild<QDialogButtonBox *>();
+			if (!low || !high || !buttons) return;
+			low->setText(QStringLiteral("0"));
+			high->setText(QStringLiteral("5"));
+			buttons->button(QDialogButtonBox::Ok)->click();
+		}, [&] { manual->trigger(); });
+		if (menu) menu->close();
+		view->setLaneYLog(2, true);
+		(void) chart.view->grab();
+		const bool manualSet = typed && !view->laneYAuto(1) && view->laneYLo(1) == 0 && view->laneYHi(1) == 5
+				&& view->laneYAuto(0) && view->laneYLog(2) && !view->laneYLog(1)
+				&& std::fabs((view->laneYOfValue(2, 1) - view->laneYOfValue(2, 10)) - (view->laneYOfValue(2, 10) - view->laneYOfValue(2, 100))) < 1e-6;
+		const QStringList kept = QSettings().value(QStringLiteral("chart/laneY")).toStringList();
+
+		bool restored = false;
+		{
+			ChartTab again([] { return 100.0; });
+			auto *otherView = again.findChild<ChartView *>();
+			for (const RegDef &def : std::as_const(defs)) again.plotRegister(def, true);
+			restored = otherView && otherView->lanes() && !otherView->laneYAuto(1) && otherView->laneYHi(1) == 5
+					&& otherView->laneYLog(2);
+		}
+		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
+				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed), Log; each lane alone; kept "
+				"(chart/laneY) for the next start");
+
+		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
+		const QPointF inFirst(view->laneRect(0).center());
+		QWheelEvent zoom(inFirst, view->mapToGlobal(inFirst), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::ControlModifier,
+				Qt::NoScrollPhase, false);
+		QApplication::sendEvent(view, &zoom);
+		const bool zoomed = !view->laneYAuto(0) && !view->laneYAuto(1) && view->laneYHi(1) == 5 && view->laneYAuto(3);
+		if (!zoomed)
+			std::printf("     (after Ctrl + wheel: lanes 0, 1, 3 %s %s %s, the second's top %g)\n", view->laneYAuto(0) ? "auto" : "manual",
+					view->laneYAuto(1) ? "auto" : "manual", view->laneYAuto(3) ? "auto" : "manual", view->laneYHi(1));
+		QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, inFirst.toPoint());
+		check(zoomed && view->laneYAuto(0) && !view->laneYAuto(1), "chart, Lanes: Ctrl + wheel zooms the lane under the "
+				"mouse alone; a double-click there sets it to Auto");
+
+		/* a line in its lane only: the first lane Manual 11.9 .. 12.1, its lines far past it; the gap under it empty */
+		view->setLaneYManual(0, 11.9, 12.1);
+		const QImage picture = view->grab().toImage();
+		const qreal dpr = view->devicePixelRatioF();
+		const QRectF gap(view->laneRect(0).left() + 4, view->laneRect(0).bottom() + 3, view->laneRect(0).width() - 8,
+				view->laneRect(1).top() - view->laneRect(0).bottom() - 6);
+		const QColor lineColor = Theme::colors().series[1]; /* L0's: the second colour (V1 took the first) */
+		int stray = 0;
+		for (int y = int(gap.top() * dpr); y < int(gap.bottom() * dpr); y++)
+			for (int x = int(gap.left() * dpr); x < int(gap.right() * dpr); x += 2) {
+				const QColor c = picture.pixelColor(x, y);
+				if (std::abs(c.red() - lineColor.red()) + std::abs(c.green() - lineColor.green())
+						+ std::abs(c.blue() - lineColor.blue()) < 60)
+					stray++;
+			}
+		check(gap.height() > 2 && stray == 0, "chart, Lanes: a line past its lane's range is cut at the lane's edge, "
+				"nothing of it between the lanes");
+		view->setLaneYAuto(0);
+		view->setLaneYAuto(1);
+		view->setLaneYLog(2, false);
+
+		/* the cursors, the A-B bar and a note across all of them; drawn on threads as on one */
+		view->setLive(false); /* the same view in both pictures */
+		view->setCursors(92.0, 96.0);
+		view->addNote(94.0, QStringLiteral("lanes"));
+		const QImage threads = view->grab().toImage();
+		const QRectF tag = view->noteTag(0);
+		view->setDrawThreads(1);
+		const QImage one = view->grab().toImage();
+		view->setDrawThreads(0);
+		int differing = 0; /* over the lanes (the memory strip follows the clock's delay from one picture to the next) */
+		const QRect lanesArea = QRectF(view->laneRect(0).topLeft(), view->laneRect(3).bottomRight()).adjusted(-2, -2, 2, 2)
+				.toAlignedRect();
+		const QRect device((QPointF(lanesArea.topLeft()) * view->devicePixelRatioF()).toPoint(),
+				(QSizeF(lanesArea.size()) * view->devicePixelRatioF()).toSize());
+		for (int y = device.top(); y <= device.bottom() && one.size() == threads.size(); y++)
+			for (int x = device.left(); x <= device.right(); x++)
+				if (one.pixel(x, y) != threads.pixel(x, y)) differing++;
+		const bool across = !view->spanBarText().isEmpty() && view->spanBarRect().bottom() < view->laneRect(0).top() + 16
+				&& tag.bottom() <= view->laneRect(3).bottom() && tag.top() > view->laneRect(3).top();
+		std::printf("     (lanes on threads and on one: %d pixels apart)\n", differing);
+
+		check(across && one.size() == threads.size() && differing < one.width(), "chart, Lanes: the A-B bar over the first "
+				"lane, a note's tag at the bottom of the last; drawn on threads as on one");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the lanes, for a look */
+			threads.save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_lanes.png"));
+		view->setNotes({});
+		lanes->setChecked(false);
+		check(view->laneCount() == 0 && mode->isEnabled() && !QSettings().value(QStringLiteral("chart/lanes")).toBool(),
+				"chart, Lanes off: one plot again, the Y range row back");
+		QSettings().remove(QStringLiteral("chart/laneY"));
 		chart.tab.hide();
 	}
 

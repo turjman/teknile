@@ -15,6 +15,8 @@
  *    each line's total since Clear; a right-click on the header shows or
  *    hides columns.
  *
+ *  - Lanes (Display): a plot per unit, stacked; each lane's Y range by a
+ *    right-click on its value labels (Auto, Manual, Log).
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
  *    thread, with progress and Cancel), Add note here, Open recording.
@@ -133,6 +135,10 @@ public:
 	 * right-click */
 	void showChartMenu(const QPoint &globalPos, double time);
 	QMenu *chartMenu() const { return chartMenu_; }
+	/* a lane's Y range menu (a right-click on its value labels): Auto, Manual…, Log; tests: the menu */
+	void showLaneMenu(int lane, const QPoint &globalPos);
+	QMenu *laneMenu() const { return laneMenu_; }
+	void editLaneRange(int lane); /* Manual…: its min and max asked */
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
@@ -193,6 +199,7 @@ private:
 
 	/* the axes row */
 	QComboBox *window_, *memory_, *yMode_;
+	QString yModeTip_;
 	QLineEdit *yMin_, *yMax_;
 	int registerLimit_ = RegisterModel::MAX_PLOTTED; /* the registers the chart may hold at the rate now */
 	QString drawingFailure_;      /* a card's failure before the window listened: logged by logDrawing */
@@ -203,7 +210,7 @@ private:
 	QComboBox *ram_;              /* the samples' RAM, all the lines together */
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
-	QAction *normalize_, *smooth_, *hoverValues_;
+	QAction *normalize_, *smooth_, *hoverValues_, *lanes_;
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
 
@@ -220,6 +227,8 @@ private:
 
 	/* the right-click on the chart */
 	QMenu *chartMenu_ = nullptr;
+	QMenu *laneMenu_ = nullptr;
+	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */
 	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
 	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */
 	struct ExportJob {

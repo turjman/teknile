@@ -40,7 +40,8 @@ constexpr double CARD_RADIUS = 10;
 constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
 constexpr double LEGEND_ROW_H = 22;
 constexpr double STATE_W = 420;            /* the state text, right-aligned at the top right */
-constexpr double STATE_ROOM = 230;         /* the legend stops this far from the right, for the state */
+constexpr double STATE_ROOM = 230;
+constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */         /* the legend stops this far from the right, for the state */
 constexpr double CHIP_GAP = 6;             /* between two chips */
 constexpr double CHIP_TEXT_LEFT = 20;      /* a chip's text starts after its dot */
 constexpr double CHIP_PAD_RIGHT = 8;
@@ -298,7 +299,7 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 	series_.insert(key, s);
 	seriesGeneration_++;
 	capped_ = false;
-	yInitialized_ = false;
+	forgetRanges();
 	refresh();
 }
 
@@ -307,7 +308,7 @@ void ChartView::removeSeries(int key) {
 	if (it != series_.constEnd()) keptTotals_.insert(key, { it->name, it->unit, it->total, it->totalT, it->totalV });
 	series_.remove(key);
 	seriesGeneration_++;
-	yInitialized_ = false;
+	forgetRanges();
 	refresh();
 }
 
@@ -317,7 +318,7 @@ void ChartView::clearSeries() {
 	totalsSince_ = NAN;
 	seriesGeneration_++;
 	capped_ = false;
-	yInitialized_ = false;
+	forgetRanges();
 	refresh();
 }
 
@@ -335,7 +336,7 @@ void ChartView::clearData() {
 	totalsSince_ = NAN; /* the first sample from now on */
 	seriesGeneration_++;
 	capped_ = false;
-	yInitialized_ = false;
+	forgetRanges();
 	refresh();
 }
 
@@ -697,25 +698,25 @@ void ChartView::memorySpan(double &m0, double &m1) const {
 }
 
 void ChartView::setYAuto() {
-	yAuto_ = true;
-	yInitialized_ = false;
+	y_.autoRange = true;
+	y_.initialized = false;
 	refresh();
 }
 
 bool ChartView::setYManual(double lo, double hi) {
-	if (!(hi > lo) || (yLog_ && !(lo > 0))) return false;
-	yAuto_ = false;
-	yLo_ = lo;
-	yHi_ = hi;
+	if (!(hi > lo) || (y_.log && !(lo > 0))) return false;
+	y_.autoRange = false;
+	y_.lo = lo;
+	y_.hi = hi;
 	refresh();
 	return true;
 }
 
 void ChartView::setYLog(bool on) {
-	if (on == yLog_) return;
-	yLog_ = on;
-	yInitialized_ = false; /* Auto ranges again on the new scale */
-	if (on && !yAuto_ && !(yLo_ > 0)) yAuto_ = true; /* a range through zero has no logarithm */
+	if (on == y_.log) return;
+	y_.log = on;
+	y_.initialized = false; /* Auto ranges again on the new scale */
+	if (on && !y_.autoRange && !(y_.lo > 0)) y_.autoRange = true; /* a range through zero has no logarithm */
 	refresh();
 }
 
@@ -983,7 +984,8 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 	const double factor = std::pow(ZOOM_STEP, -notches); /* up: zoom in */
 	if (e->modifiers() & Qt::ControlModifier) {
 		zoomY(factor, e->position().y());
-		emit yChangedByUser();
+		if (lanes_) emit laneYChanged();
+		else emit yChangedByUser();
 	} else {
 		zoomTime(factor, e->position().x());
 		emit windowChangedByUser(window_);
@@ -1009,13 +1011,22 @@ void ChartView::zoomTime(double factor, double mouseX) {
 /* around the value under the mouse; the Y range becomes Manual */
 void ChartView::zoomY(double factor, double mouseY) {
 	const QRectF plot = plotRect();
-	const double y = std::clamp(mouseY, plot.top(), plot.bottom());
-	const bool log = logShown() && yLo_ > 0 && yHi_ > yLo_; /* Log: around the value under the mouse in decades */
-	const double lo = toScale(yLo_, log), hi = toScale(yHi_, log);
-	const double at = hi - (y - plot.top()) / plot.height() * (hi - lo);
-	yAuto_ = false;
-	yLo_ = fromScale(at - (at - lo) * factor, log);
-	yHi_ = fromScale(at + (hi - at) * factor, log);
+	/* lanes: the lane under the mouse */
+	const int lane = laneAtY(mouseY);
+	if (lanes_ && lane < 0) return;
+	YScale &scale = lane >= 0 ? scaleOf(lanesShown_[lane]) : y_;
+	const QRectF rect = lane >= 0 ? lanesShown_[lane].axes.rect : plot;
+	if (lane >= 0 && scale.autoRange) { /* from what the lane shows now */
+		scale.lo = lanesShown_[lane].axes.lo;
+		scale.hi = lanesShown_[lane].axes.hi;
+	}
+	const double y = std::clamp(mouseY, rect.top(), rect.bottom());
+	const bool log = logOf(scale) && scale.lo > 0 && scale.hi > scale.lo; /* Log: around the value under the mouse in decades */
+	const double lo = toScale(scale.lo, log), hi = toScale(scale.hi, log);
+	const double at = hi - (y - rect.top()) / rect.height() * (hi - lo);
+	scale.autoRange = false;
+	scale.lo = fromScale(at - (at - lo) * factor, log);
+	scale.hi = fromScale(at + (hi - at) * factor, log);
 }
 
 void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
@@ -1024,12 +1035,25 @@ void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
 		emit noteEditRequested(note);
 		return;
 	}
+	if (lanes_) { /* the lane under the mouse: Auto */
+		if (laneAtY(e->position().y()) >= 0) setLaneYAuto(laneAtY(e->position().y()));
+		return;
+	}
 	setYAuto();
 	emit yChangedByUser();
 }
 
 void ChartView::contextMenuEvent(QContextMenuEvent *e) {
 	const QRectF plot = plotRect();
+	/* on a lane's value labels: its Y range */
+	if (lanes_ && e->pos().x() < plot.left() && e->pos().y() >= plot.top() && e->pos().y() <= plot.bottom()) {
+		const int lane = laneAtY(e->pos().y());
+		if (lane >= 0) {
+			emit laneMenuRequested(lane, e->globalPos());
+			e->accept();
+			return;
+		}
+	}
 	emit menuRequested(e->globalPos(), timeAtX(std::clamp(double(e->pos().x()), plot.left(), plot.right())));
 	e->accept();
 }
@@ -1219,10 +1243,20 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.span = window_;
 	axes.columns = std::max(1.0, axes.rect.width());
 	const QVector<BinnedLine> binned = binView(axes);
-	double lo, hi;
-	updateYRange(binned, frameDt, lo, hi);
-	axes.setRange(lo, hi, logShown());
-	lastAxes_ = axes;
+	/* the plots: all of it, or the lanes, each with its own Y range on the same times */
+	QVector<Lane> plots = plotLayout();
+	for (Lane &plot : plots) {
+		const QRectF rect = plot.axes.rect;
+		plot.axes = axes;
+		plot.axes.rect = rect;
+		YScale &scale = scaleOf(plot);
+		double lo, hi;
+		updateYRange(scale, binned, plot.lines, frameDt, lo, hi);
+		plot.axes.setRange(lo, hi, logOf(scale));
+	}
+	axes.setRange(plots.first().axes.lo, plots.first().axes.hi, plots.first().axes.log);
+	lanesShown_ = plots;
+	lastAxes_ = plots.first().axes;
 
 	/* On a card (on the screen, with lines): the plot (grid, lines, cursors, crosshair) is drawn by it into its layer
 	 * over the window, and the chart paints what is around it. While the layer is not shown yet (the chart shown
@@ -1232,17 +1266,17 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	 * frame show. The other way (no line left), the CPU draws all of it, and the layer goes once that is on the window:
 	 * the whole chart painted again first, the plot's part too (a frame painted around the plot alone, as while the
 	 * layer is there, left the old lines in the window, which showed for a frame where the layer had been). */
-	const bool onCard = onScreen && gpu_ && !series_.isEmpty() && plotOnGpu(axes, binned);
+	const bool onCard = onScreen && gpu_ && !series_.isEmpty() && plotOnGpu(axes, plots, binned);
 	QImage under;
 	if (onCard && !gpu_->shown()) {
 		under = gpu_->lastPicture();
 		framesUnder_++;
 	}
 	drawCard(p);
-	drawGrid(p, axes, !onCard);
+	drawGrid(p, plots, axes, !onCard);
 	if (!onCard) {
 		drawCursorSpan(p, axes);
-		drawLines(p, axes, binned);
+		drawLines(p, plots, binned);
 		drawNotes(p, axes);
 		drawCursors(p, axes);
 	} else if (!under.isNull()) {
@@ -1251,7 +1285,7 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	}
 	drawMemoryStrip(p, axes);
 	drawLegend(p, axes);
-	if (!onCard) drawCrosshair(p, axes, binned);
+	if (!onCard) drawCrosshair(p, axes, plots, binned);
 	drawState(p, axes);
 	if (onScreen && gpu_ && onCard != gpu_->shown() && (!onCard || framesUnder_ >= LAYER_AFTER_FRAMES))
 		QTimer::singleShot(0, this, [this, shown = onCard] { /* after this frame is on the window */
@@ -1399,29 +1433,190 @@ QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes) const {
 	return binned;
 }
 
-/* The Y range of this frame. Normalize: 0..1 with the margins, each line scaled
+/* The Y range of this frame for a plot. Normalize: 0..1 with the margins, each line scaled
  * into it by its own range. Auto: follows the lines. Manual: as set. */
-void ChartView::updateYRange(const QVector<BinnedLine> &lines, double frameDt, double &lo, double &hi) {
+void ChartView::updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,
+		double &lo, double &hi) {
 	if (normalized_) {
 		lo = -Y_MARGIN;
 		hi = 1 + Y_MARGIN;
 		return;
 	}
-	if (yAuto_) followData(lines, frameDt);
-	lo = yLo_;
-	hi = yHi_;
+	if (scale.autoRange) followData(scale, lines, which, frameDt);
+	lo = scale.lo;
+	hi = scale.hi;
+}
+
+void ChartView::forgetRanges() {
+	y_.initialized = false;
+	for (YScale &scale : laneScales_) scale.initialized = false;
+}
+
+/* The plots of a frame. Without lanes: the whole plot, every line. With: a lane per unit in the order the lines came,
+ * MAX_LANES at most (the units after share the last), stacked LANE_GAP apart, of equal height. */
+QVector<ChartView::Lane> ChartView::plotLayout() const {
+	QVector<Lane> plots;
+	const QRectF plot = plotRect();
+	if (!lanes_ || series_.isEmpty()) {
+		Lane all;
+		all.axes.rect = plot;
+		for (int i = 0; i < series_.size(); i++) all.lines << i;
+		plots << all;
+		return plots;
+	}
+	QHash<QString, int> laneOfUnit;
+	int i = 0;
+	for (const Series &s : series_) {
+		auto it = laneOfUnit.find(s.unit);
+		if (it == laneOfUnit.end()) {
+			if (plots.size() < MAX_LANES) {
+				Lane lane;
+				lane.key = s.unit;
+				lane.label = s.unit;
+				plots << lane;
+			} else {
+				plots.last().label += QStringLiteral(" · ") + s.unit; /* the last lane shares */
+			}
+			it = laneOfUnit.insert(s.unit, int(plots.size() - 1));
+		}
+		plots[*it].lines << i++;
+	}
+	const double height = (plot.height() - LANE_GAP * (plots.size() - 1)) / plots.size();
+	for (int k = 0; k < plots.size(); k++)
+		plots[k].axes.rect = QRectF(plot.left(), plot.top() + k * (height + LANE_GAP), plot.width(), height);
+	return plots;
+}
+
+int ChartView::laneAtY(double y) const {
+	if (!lanes_ || lanesShown_.isEmpty()) return -1;
+	int nearest = 0;
+	double best = std::numeric_limits<double>::max();
+	for (int k = 0; k < lanesShown_.size(); k++) {
+		const QRectF &r = lanesShown_[k].axes.rect;
+		const double d = y < r.top() ? r.top() - y : y > r.bottom() ? y - r.bottom() : 0;
+		if (d < best) {
+			best = d;
+			nearest = k;
+		}
+	}
+	return nearest;
+}
+
+void ChartView::setLanes(bool on) {
+	if (on == lanes_) return;
+	lanes_ = on;
+	lanesShown_.clear();
+	forgetRanges();
+	refresh();
+}
+
+int ChartView::laneCount() const { return lanes_ ? int(plotLayout().size()) : 0; }
+
+QString ChartView::laneLabel(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	return lanes_ && lane >= 0 && lane < plots.size() ? plots[lane].label : QString();
+}
+
+QRectF ChartView::laneRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	return lanes_ && lane >= 0 && lane < plots.size() ? plots[lane].axes.rect : QRectF();
+}
+
+QVector<int> ChartView::laneLines(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	QVector<int> keys;
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return keys;
+	const QList<int> all = series_.keys();
+	for (int i : plots[lane].lines) keys << all[i];
+	return keys;
+}
+
+QString ChartView::laneKey(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	return lane >= 0 && lane < plots.size() ? plots[lane].key : QString();
+}
+
+bool ChartView::laneYAuto(int lane) const { return laneScales_.value(laneKey(lane)).autoRange; }
+bool ChartView::laneYLog(int lane) const { return laneScales_.value(laneKey(lane)).log; }
+double ChartView::laneYLo(int lane) const { return laneScales_.value(laneKey(lane)).lo; }
+double ChartView::laneYHi(int lane) const { return laneScales_.value(laneKey(lane)).hi; }
+
+double ChartView::laneYOfValue(int lane, double value) const {
+	return lane >= 0 && lane < lanesShown_.size() ? lanesShown_[lane].axes.y(value) : NAN;
+}
+
+void ChartView::setLaneYAuto(int lane) {
+	const QVector<Lane> plots = plotLayout();
+	if (lane < 0 || lane >= plots.size()) return;
+	YScale &scale = laneScales_[plots[lane].key];
+	scale.autoRange = true;
+	scale.initialized = false;
+	emit laneYChanged();
+	refresh();
+}
+
+bool ChartView::setLaneYManual(int lane, double lo, double hi) {
+	const QVector<Lane> plots = plotLayout();
+	if (lane < 0 || lane >= plots.size()) return false;
+	YScale &scale = laneScales_[plots[lane].key];
+	if (!(hi > lo) || (scale.log && !(lo > 0))) return false;
+	scale.autoRange = false;
+	scale.lo = lo;
+	scale.hi = hi;
+	emit laneYChanged();
+	refresh();
+	return true;
+}
+
+void ChartView::setLaneYLog(int lane, bool on) {
+	const QVector<Lane> plots = plotLayout();
+	if (lane < 0 || lane >= plots.size()) return;
+	YScale &scale = laneScales_[plots[lane].key];
+	if (scale.log == on) return;
+	scale.log = on;
+	scale.initialized = false;
+	if (on && !scale.autoRange && !(scale.lo > 0)) scale.autoRange = true; /* a range through zero has no logarithm */
+	emit laneYChanged();
+	refresh();
+}
+
+QStringList ChartView::laneScales() const {
+	QStringList texts;
+	for (auto it = laneScales_.begin(); it != laneScales_.end(); ++it)
+		texts << QStringList{ it.key(), it->autoRange ? QStringLiteral("1") : QStringLiteral("0"),
+			it->log ? QStringLiteral("1") : QStringLiteral("0"), QString::number(it->lo, 'g', 17),
+			QString::number(it->hi, 'g', 17) }.join(QLatin1Char('\t'));
+	texts.sort();
+	return texts;
+}
+
+void ChartView::setLaneScales(const QStringList &texts) {
+	laneScales_.clear();
+	for (const QString &text : texts) {
+		const QStringList f = text.split(QLatin1Char('\t'));
+		if (f.size() != 5) continue;
+		YScale scale;
+		scale.autoRange = f[1] != QLatin1String("0");
+		scale.log = f[2] == QLatin1String("1");
+		scale.lo = f[3].toDouble();
+		scale.hi = f[4].toDouble();
+		if (!scale.autoRange && (!(scale.hi > scale.lo) || (scale.log && !(scale.lo > 0)))) scale.autoRange = true;
+		laneScales_.insert(f[0], scale);
+	}
+	refresh();
 }
 
 /* Auto: the lines' range with a margin. At first, or held, it jumps there; live,
  * it grows at once (nothing is cut off) and shrinks gently (no jumping). */
-void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
+void ChartView::followData(YScale &scale, const QVector<BinnedLine> &all, const QVector<int> &which, double frameDt) {
 	constexpr double FLAT = 1e-9;       /* the lines are flat: give them a range */
 	constexpr double SHRINK_TIME = 0.4; /* seconds */
 	constexpr double MIN_DECADES = 1;   /* Log: at least one decade, around what is shown */
 	/* Log: the positive values in view, at most MAX_DECADES under the top; the margins and the gentle shrink in decades */
-	const bool log = logShown();
+	const bool log = logOf(scale);
 	double lo = std::numeric_limits<double>::max(), hi = -lo;
-	for (const BinnedLine &line : lines) {
+	for (const int index : which) {
+		const BinnedLine &line = all[index];
 		if (log) {
 			if (!(line.hi > 0)) continue;
 			lo = std::min(lo, line.posLo);
@@ -1431,8 +1626,8 @@ void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
 		hi = std::max(hi, line.hi);
 	}
 	if (lo > hi) { /* nothing in the view: keep what is shown */
-		lo = yInitialized_ ? toScale(yLo_, log) : 0;
-		hi = yInitialized_ ? toScale(yHi_, log) : 1;
+		lo = scale.initialized ? toScale(scale.lo, log) : 0;
+		hi = scale.initialized ? toScale(scale.hi, log) : 1;
 	} else {
 		lo = toScale(lo, log);
 		hi = toScale(hi, log);
@@ -1452,16 +1647,16 @@ void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
 		lo -= margin;
 		hi += margin;
 	}
-	if (!yInitialized_ || !live_) {
-		yLo_ = fromScale(lo, log);
-		yHi_ = fromScale(hi, log);
-		yInitialized_ = true;
+	if (!scale.initialized || !live_) {
+		scale.lo = fromScale(lo, log);
+		scale.hi = fromScale(hi, log);
+		scale.initialized = true;
 		return;
 	}
 	const double rate = 1 - std::exp(-frameDt / SHRINK_TIME);
-	const double shownLo = toScale(yLo_, log), shownHi = toScale(yHi_, log);
-	yLo_ = fromScale(lo < shownLo ? lo : shownLo + (lo - shownLo) * rate, log);
-	yHi_ = fromScale(hi > shownHi ? hi : shownHi + (hi - shownHi) * rate, log);
+	const double shownLo = toScale(scale.lo, log), shownHi = toScale(scale.hi, log);
+	scale.lo = fromScale(lo < shownLo ? lo : shownLo + (lo - shownLo) * rate, log);
+	scale.hi = fromScale(hi > shownHi ? hi : shownHi + (hi - shownHi) * rate, log);
 }
 
 /* The card: a plain fill, then its four rounded corners in the window's colour
@@ -1519,7 +1714,8 @@ ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 		}
 		return ticks;
 	}
-	ticks.valueStep = niceStep(axes.hi - axes.lo, Y_TICKS);
+	/* about one value line per 60 px, at most Y_TICKS: a lane is lower than the plot */
+	ticks.valueStep = niceStep(axes.hi - axes.lo, std::clamp(int(axes.rect.height() / 60), 2, Y_TICKS));
 	for (double v = std::ceil(axes.lo / ticks.valueStep) * ticks.valueStep; v <= axes.hi + ticks.valueStep * 1e-6;
 			v += ticks.valueStep) {
 		const double y = axes.y(v);
@@ -1528,40 +1724,56 @@ ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 	return ticks;
 }
 
-void ChartView::drawGrid(QPainter &p, const Axes &axes, bool lines) const {
+void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &axes, bool lines) const {
 	const ThemeColors &c = Theme::colors();
 	const QRectF &plot = axes.rect;
-	const GridTicks ticks = gridTicks(axes);
+	const GridTicks ticks = gridTicks(axes); /* its times: one time axis under all the plots */
 	p.setFont(smallFont());
 	p.setRenderHint(QPainter::Antialiasing, false);
 	valueLabels_.clear();
-	const auto label = [&](double v) {
-		const QString text = axes.log ? chartLogLabel(v) : chartAxisLabel(v, ticks.valueStep, normalized_);
-		valueLabels_ << text;
-		p.setPen(c.muted);
-		p.drawText(QRectF(2, axes.y(v) - 8, plot.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter, text);
-	};
-	for (double v : ticks.minor) {
-		if (lines) {
-			p.setPen(QPen(faintGrid(), 1));
-			p.drawLine(QPointF(plot.left(), axes.y(v)), QPointF(plot.right(), axes.y(v)));
+	for (const Lane &lane : plots) {
+		const Axes &a = lane.axes;
+		const GridTicks values = gridTicks(a);
+		const auto label = [&](double v) {
+			const QString text = a.log ? chartLogLabel(v) : chartAxisLabel(v, values.valueStep, normalized_);
+			valueLabels_ << text;
+			p.setPen(c.muted);
+			const double left = lanes_ ? 18 : 2; /* lanes: their units up the left edge */
+			p.drawText(QRectF(left, a.y(v) - 8, plot.left() - 6 - left, 16), Qt::AlignRight | Qt::AlignVCenter, text);
+		};
+		for (double v : values.minor) {
+			if (lines) {
+				p.setPen(QPen(faintGrid(), 1));
+				p.drawLine(QPointF(plot.left(), a.y(v)), QPointF(plot.right(), a.y(v)));
+			}
+			if (values.labelMinor) label(v);
 		}
-		if (ticks.labelMinor) label(v);
-	}
-	for (double v : ticks.values) {
-		const double y = axes.y(v);
-		if (lines) {
+		for (double v : values.values) {
+			const double y = a.y(v);
+			if (lines) {
+				p.setPen(QPen(c.grid, 1));
+				p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+			}
+			label(v);
+		}
+		for (double t : ticks.times) {
+			if (!lines) break;
 			p.setPen(QPen(c.grid, 1));
-			p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+			p.drawLine(QPointF(axes.x(t), a.rect.top()), QPointF(axes.x(t), a.rect.bottom()));
 		}
-		label(v);
+		if (lanes_) { /* the lane's units, up the left edge of its labels */
+			p.save();
+			p.setPen(c.text);
+			p.translate(9, a.rect.center().y());
+			p.rotate(-90);
+			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
+			p.drawText(QRectF(-a.rect.height() / 2, -7, a.rect.height(), 14), Qt::AlignCenter,
+					QFontMetricsF(p.font()).elidedText(units, Qt::ElideRight, a.rect.height()));
+			p.restore();
+		}
 	}
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
-		if (lines) {
-			p.setPen(QPen(c.grid, 1));
-			p.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
-		}
 		p.setPen(c.muted);
 		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, timeLabel(epochMs_, t, ticks.timeStep));
 	}
@@ -1666,17 +1878,25 @@ void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, con
  * the plot is cut into vertical stripes on whole device pixels, each drawn on a
  * thread into an image of its own (every line's part in it, a little past its
  * edges), then the stripes side by side: the same pixels as drawn on p. */
-void ChartView::drawLines(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const {
-	const QRectF clip = axes.rect.adjusted(-2, -2, 2, 2);
+void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const {
+	/* each line in its plot (lanes: its unit's), clipped to it with room for its thickness */
+	QVector<const Axes *> axesOf(lines.size(), nullptr);
+	for (const Lane &plot : plots)
+		for (int i : plot.lines) axesOf[i] = &plot.axes;
+	QRectF all;
+	for (const Lane &plot : plots) all = all.united(plot.axes.rect);
+	const QRectF clip = all.adjusted(-2, -2, 2, 2);
+	const auto clipOf = [&axesOf](qsizetype i) { return axesOf[i]->rect.adjusted(-2, -2, 2, 2); };
 	const qreal dpr = p.device()->devicePixelRatioF();
-	const auto x = [&axes](double t) { return axes.x(t); };
 	/* a bar as wide as the line: its copies side by side, one device pixel each */
 	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
 	QVector<QPolygonF> polys(lines.size());
 	QVector<QVector<QRectF>> bands(lines.size());
 	inParallel(lines.size(), [&](qsizetype i) {
 		const BinnedLine &line = lines[i];
-		if (line.bins.isEmpty()) return;
+		if (line.bins.isEmpty() || !axesOf[i]) return;
+		const Axes &axes = *axesOf[i];
+		const auto x = [&axes](double t) { return axes.x(t); };
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
@@ -1694,8 +1914,9 @@ void ChartView::drawLines(QPainter &p, const Axes &axes, const QVector<BinnedLin
 	const int stripes = int(std::clamp<qsizetype>(points / POINTS_PER_STRIPE, 1, threads));
 	if (stripes == 1) {
 		p.save();
-		p.setClipRect(clip);
 		for (qsizetype i = 0; i < lines.size(); i++) {
+			if (!axesOf[i]) continue;
+			p.setClipRect(clipOf(i));
 			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color);
 			if (!polys[i].isEmpty()) strokePolyline(p, polys[i], lines[i].series->color, thin[i], dpr);
 		}
@@ -1722,13 +1943,15 @@ void ChartView::drawLines(QPainter &p, const Axes &axes, const QVector<BinnedLin
 		QPainter ip(&image);
 		ip.setRenderHint(QPainter::Antialiasing);
 		ip.setWorldTransform(world);
-		ip.setClipRect(clip); /* the plot's, as drawn on p; the image's own edges cut the stripe on whole pixels */
+		/* each line clipped to its plot, as drawn on p; the image's own edges cut the stripe on whole pixels */
 		constexpr double REACH = 3; /* a line's thickness past the stripe's edges */
 		const auto beforeX = [](const QPointF &point, double xValue) { return point.x() < xValue; };
 		const auto afterX = [](double xValue, const QPointF &point) { return xValue < point.x(); };
 		const auto bandBefore = [](const QRectF &band, double xValue) { return band.right() < xValue; };
 		const auto bandAfter = [](double xValue, const QRectF &band) { return xValue < band.left(); };
 		for (qsizetype i = 0; i < lines.size(); i++) {
+			if (!axesOf[i]) continue;
+			ip.setClipRect(clipOf(i));
 			const QVector<QRectF> &bars = bands[i]; /* in x order too: the ones that reach the stripe */
 			const qsizetype first = std::lower_bound(bars.begin(), bars.end(), rect.left(), bandBefore) - bars.begin();
 			const qsizetype last = std::upper_bound(bars.begin(), bars.end(), rect.right(), bandAfter) - bars.begin();
@@ -1751,6 +1974,21 @@ namespace {
 quint32 gpuColor(const QColor &c) {
 	return quint32(c.red()) | quint32(c.green()) << 8 | quint32(c.blue()) << 16 | quint32(c.alpha()) << 24;
 }
+/* a segment cut to the rows top..bottom (a lane, in the layer's pixels): the card has no clip of its own; false: none
+ * of it there */
+bool clipSegmentY(GpuLines::Segment &s, float top, float bottom) {
+	if ((s.y0 < top && s.y1 < top) || (s.y0 > bottom && s.y1 > bottom)) return false;
+	const auto cut = [&](float &xa, float &ya, float xb, float yb) {
+		const float edge = ya < top ? top : ya > bottom ? bottom : ya;
+		if (edge == ya) return;
+		xa += (xb - xa) * (edge - ya) / (yb - ya);
+		ya = edge;
+	};
+	cut(s.x0, s.y0, s.x1, s.y1);
+	cut(s.x1, s.y1, s.x0, s.y0);
+	return true;
+}
+
 /* a dashed line from a to b as segments: dash on, gap off (pixels) */
 void dashes(QVector<GpuLines::Segment> &out, QPointF a, QPointF b, double dash, double gap, quint32 rgba) {
 	const double length = QLineF(a, b).length();
@@ -1783,7 +2021,7 @@ QImage ChartView::gpuPicture(QRect *inWindow) const {
 /* The frame's plot as the card draws it, in the layer's pixels: the layer lies on whole pixels of the window, the
  * chart's coordinates times the scaling may not. The grid, the cursors' span, the lines, the cursors and the
  * crosshair's line, then the pictures over them: the cursors' tags, the crosshair's dots and its box. */
-bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
+bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) {
 	QString error;
 	const qreal dpr = devicePixelRatioF();
 	QWidget *top = QWidget::window();
@@ -1806,19 +2044,24 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 	grid.widthPx = float(std::max(1, int(std::lround(dpr))));
 	grid.caps = false;
 	const quint32 gridRgba = gpuColor(c.grid);
-	const GridTicks ticks = gridTicks(axes);
+	const GridTicks ticks = gridTicks(axes); /* the times; each plot its values */
 	const quint32 faintRgba = gpuColor(faintGrid());
-	for (double v : ticks.minor) {
-		const float y = float(std::floor(map(QPointF(0, axes.y(v))).y()) + grid.widthPx / 2);
-		grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, faintRgba });
-	}
-	for (double v : ticks.values) {
-		const float y = float(std::floor(map(QPointF(0, axes.y(v))).y()) + grid.widthPx / 2);
-		grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
-	}
-	for (double t : ticks.times) {
-		const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
-		grid.segments.push_back({ x, float(topLeft.y()), x, float(bottomRight.y()), gridRgba });
+	for (const Lane &plot : plots) {
+		const Axes &a = plot.axes;
+		const GridTicks values = gridTicks(a);
+		const float laneTop = float(map(a.rect.topLeft()).y()), laneBottom = float(map(a.rect.bottomLeft()).y());
+		for (double v : values.minor) {
+			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
+			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, faintRgba });
+		}
+		for (double v : values.values) {
+			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
+			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
+		}
+		for (double t : ticks.times) {
+			const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
+			grid.segments.push_back({ x, laneTop, x, laneBottom, gridRgba });
+		}
 	}
 	frame.layers << grid;
 	/* the cursors' span: one bar as tall as the plot */
@@ -1836,12 +2079,17 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 			frame.layers << span;
 		}
 	}
-	/* the lines: as thick as the CPU's, its copies one device pixel each */
+	/* the lines: as thick as the CPU's, its copies one device pixel each; each in its plot (lanes: cut to its lane) */
+	QVector<const Axes *> axesOf(lines.size(), nullptr);
+	for (const Lane &plot : plots)
+		for (int i : plot.lines) axesOf[i] = &plot.axes;
+	const float lineWidth = float(std::max(2, int(std::lround(LINE_WIDTH * dpr))));
 	QVector<QVector<GpuLines::Segment>> parts(lines.size());
-	const auto x = [&axes](double t) { return axes.x(t); };
 	inParallel(lines.size(), [&](qsizetype i) {
 		const BinnedLine &line = lines[i];
-		if (line.bins.isEmpty()) return;
+		if (line.bins.isEmpty() || !axesOf[i]) return;
+		const Axes &axes = *axesOf[i];
+		const auto x = [&axes](double t) { return axes.x(t); };
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
@@ -1858,9 +2106,15 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 			x0 = x1;
 			y0 = y1;
 		}
+		if (!lanes_) return; /* the layer's edge cuts the one plot */
+		const float top = float(axes.rect.top() * dpr + dy) - lineWidth, bottom = float(axes.rect.bottom() * dpr + dy) + lineWidth;
+		qsizetype kept = 0;
+		for (qsizetype k = 0; k < segments.size(); k++)
+			if (clipSegmentY(segments[k], top, bottom)) segments[kept++] = segments[k];
+		segments.resize(kept);
 	});
 	GpuLines::Layer drawn;
-	drawn.widthPx = float(std::max(2, int(std::lround(LINE_WIDTH * dpr))));
+	drawn.widthPx = lineWidth;
 	qsizetype total = 0;
 	for (const auto &part : std::as_const(parts)) total += part.size();
 	drawn.segments.reserve(total);
@@ -1896,7 +2150,7 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 	}
 	/* the crosshair: its dashed line (1 px: 4 on, 2 off), the dots, the box */
 	Crosshair hair;
-	if (crosshair(axes, lines, dpr, hair)) {
+	if (crosshair(axes, plots, lines, dpr, hair)) {
 		GpuLines::Layer line;
 		line.widthPx = float(dpr);
 		dashes(line.segments, map(QPointF(hair.x, plot.top())), map(QPointF(hair.x, plot.bottom())), 4 * dpr, 2 * dpr,
@@ -2306,7 +2560,8 @@ void ChartView::drawLegendBar(QPainter &p, const LegendLayout &legend, double of
 
 /* the crosshair: a dashed line at the mouse, a dot on every line near it, and
  * their values in a box */
-bool ChartView::crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qreal dpr, Crosshair &out) const {
+bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, qreal dpr,
+		Crosshair &out) const {
 	const QRectF &plot = axes.rect;
 	if (drag_ != Drag::None || mouseX_ < plot.left() || mouseX_ > plot.right() || series_.isEmpty()) return false;
 	const double t = axes.t0 + (mouseX_ - plot.left()) / plot.width() * window_;
@@ -2319,8 +2574,13 @@ bool ChartView::crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qr
 	const bool moved = readoutMouseX_ != mouseX_ && (!readoutMade_.isValid() || readoutMade_.elapsed() >= READOUT_FOLLOW_MS);
 	const bool remake = readoutTick_ != valuesTick_ || moved || readoutPlotHeight_ != plot.height() || readoutDpr_ != dpr
 			|| readoutDark_ != Theme::isDark();
+	QVector<const Axes *> axesOf(lines.size(), &axes); /* each line's dot in its plot (lanes: its lane) */
+	for (const Lane &plot : plots)
+		for (int i : plot.lines) axesOf[i] = &plot.axes;
 	QVector<ReadoutRow> rows;
-	for (const BinnedLine &line : lines) {
+	for (qsizetype i = 0; i < lines.size(); i++) {
+		const BinnedLine &line = lines[i];
+		const Axes &lineAxes = *axesOf[i];
 		const Series &s = *line.series;
 		if (s.times.isEmpty()) continue;
 		const qsizetype k = nearestIndex(s.times, t);
@@ -2329,7 +2589,7 @@ bool ChartView::crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qr
 		if (remake && hoverValues_) rows.push_back({ s.name, chartNumber(v), s.unit, s.color });
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
 		widenFlatRange(lo, hi);
-		const double y = normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v);
+		const double y = normalized_ ? lineAxes.y((v - lo) / (hi - lo)) : lineAxes.y(v);
 		out.dots.push_back({ QPointF(axes.x(s.times[k]), y), s.color });
 	}
 	if (remake) {
@@ -2354,10 +2614,11 @@ bool ChartView::crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qr
 	return true;
 }
 
-void ChartView::drawCrosshair(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const {
+void ChartView::drawCrosshair(QPainter &p, const Axes &axes, const QVector<Lane> &plots,
+		const QVector<BinnedLine> &lines) const {
 	const qreal dpr = p.device()->devicePixelRatioF();
 	Crosshair hair;
-	if (!crosshair(axes, lines, dpr, hair)) return;
+	if (!crosshair(axes, plots, lines, dpr, hair)) return;
 	const QRectF &plot = axes.rect;
 	p.setPen(QPen(Theme::colors().muted, 1, Qt::DashLine));
 	p.drawLine(QPointF(hair.x, plot.top()), QPointF(hair.x, plot.bottom()));
@@ -2507,8 +2768,9 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	QStringList state;
 	if (!live_ && !recording_) state << tr("held: -%1 s · Live to follow").arg(chartNumber(clockNow() - axes.t1));
-	if (logShown()) state << (yAuto_ ? tr("Y log") : tr("Y log, manual"));
-	else if (!yAuto_ && !normalized_) state << tr("Y manual");
+	if (lanes_) state << tr("lanes"); /* each its own Y range */
+	else if (logShown()) state << (y_.autoRange ? tr("Y log") : tr("Y log, manual"));
+	else if (!y_.autoRange && !normalized_) state << tr("Y manual");
 	if (cursorMode_) state << tr("cursors: click / drag");
 	if (state.isEmpty()) return;
 	const ThemeColors &c = Theme::colors();
