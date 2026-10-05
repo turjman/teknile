@@ -535,6 +535,7 @@ Some devices, or the TCP gateway in front of them, answer only after the client 
 - **A token but no login register.** The Log shows the warning *the map declares no login register: the token was not sent*.
 - **A refused login.** When the write fails (an error answer, or a timeout), the Log shows the error *token refused: <reason>*, and it pops up. For example: *token refused: permission denied*. The line under the pill shows it too, until the answer to the device ID read replaces that line.
 - **No token.** Nothing is written, whatever the map says.
+- **A device that requires the login.** A device with EVRe Guard's login (library 1.1) refuses every other request with code 13 until a token is accepted, and after an idle time without requests. The registers then show *error*, the Log says once *login required: the device takes no request without a session. Give its token in the sidebar and connect again*, and the Studio does not log in again by itself (18.3).
 
 Only a TCP link sends the token. A serial link never does.
 
@@ -2885,9 +2886,12 @@ How the Studio uses them:
 | 4 | offset&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
 | 5 | count&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
 | 12 | length&nbsp;mismatch | the register shows *error*, and is tried again |
+| 13 | login&nbsp;required | the registers show *error*, and are tried again at every poll; a merged block is not split; the Log says it once for the device |
 | other | `error <n>` | the register shows *error*, and is tried again |
 
-An error answer to a merged block always splits the block first (13.4). Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
+An error answer to a merged block splits the block first (13.4), except code 13: a device with EVRe Guard's login refuses every request without a session, so the code says nothing about the addresses. Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
+
+A device that answers 13 wants a login (3.6). The Studio sends the token once, when it connects, and does not log in again by itself: a refused token, or a session the device closed after an idle time, stays so until you give the token and connect again. The Log says *login required: the device takes no request without a session* once for each device and connection. The registers are still asked at every poll, so a session another client opens (through a gateway, say) brings the values at the next poll.
 
 ### 18.4 CRC
 
@@ -4456,7 +4460,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
 | `tests/fake_login_test.py` | the login of both fake devices, and the probe's | the build folder (`evre_fake_fast`, `evre_probe`) | only to the fake devices' login register |
 | `evre_map_test` | the map files, the exports (26.7) | nothing; `gcc` and `python` on PATH compile and import the exports | only its own temporary folder |
-| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices | the build folder; it starts `fake_device.py` on 1212, and `evre_fake_fast` as two devices on 1232, itself | yes, to its own fake devices |
+| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; the name of code 13 | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232 and with `--login-required` on 1238, itself | yes, to its own fake devices |
 | `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict, login, persist | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
 | `tests/schema_test.py` | the maps against the JSON Schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
@@ -4545,8 +4549,13 @@ The steps run in order. Each leaves the window and the device as the next step e
     refused it, and the Log shows *token refused: permission denied*. The Monitor logs the frames meanwhile (its
     frames cleared once the old link is silent): the first frame sent on the new link is the login, a `WRITE_ACK`
     of the whole login register (3.6)
-19. the map file: `"login"` saved and loaded again unchanged, and left out by a map that has none
-20. the login skipped: the other client writes a marker to the login register (refused, but kept by the fake
+19. the login required (`loginRequired`): `errorName` names 13 *login required*; `evre_fake_fast --login-required`
+    started on port 1240 and the window connected with a wrong token: the token is refused once, then every register
+    shows *error* (13), none is marked *not available*, the Log says *login required* once for the device, and no
+    second token goes out; another client logs in, and the next polls bring the values (still asked). The window then
+    connects back to the Python fake device
+20. the map file: `"login"` saved and loaded again unchanged, and left out by a map that has none
+21. the login skipped: the other client writes a marker to the login register (refused, but kept by the fake
     device), then the window is started again with the same map without its `"login"` (a temporary copy) and the
     token still set; the Log shows *the map declares no login register: the token was not sent*, and the device's
     login register still holds the marker (nothing was written)
@@ -4746,7 +4755,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 377 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 383 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -4809,7 +4818,7 @@ What it writes it sets back to 0. The exit code is 1 on a failure.
   device answers every client, logged in or not. A read of the login register returns the last token written to
   it, accepted or refused, so a test can see what arrived.
 
-`evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]...` (default 1210,
+`evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]... [--login-required]` (default 1210,
 `maps/example_device.json` beside the executable and `example-token`) does the same in C++, for measuring the Studio
 at thousands of polls a second, and plays several devices on one link: each `--node` adds a device with its own
 slave address, map and memory on the same port. It differs from the Python device in these points:
@@ -4829,11 +4838,16 @@ slave address, map and memory on the same port. It differs from the Python devic
   frames a second come out right above 1000 Hz too. Its STATUS has `CAP_AUTO_SEND` (bit 11), as the Python device's.
 
 - With a map that has no `device_id`, it reports DEVICE_ID 0, where the Python device reports `0x0001`.
+- `--login-required` makes it a device whose login is required, as one with EVRe Guard's login: until the token is
+  written (by any client, the session is the device's), every request but a write over the login register is
+  refused with ERROR_RESP 13 (*login required*), a WRITE silently; a refused token closes the session again. The GUI
+  test's login required step, `cli_test.py` and the Python package's tests use it on ports of their own.
 
 Both answer only their own slave address (`--slave`, else the map's `"slave"`): a frame for another slave gets no
 answer, as on a bus. A broadcast (slave 0) WRITE is taken and not answered; any other broadcast is dropped.
 
-The API test runs against the Python device only, the GUI test too except its bus and auto send steps, which start
+The API test runs against the Python device only, the GUI test too except its bus, auto send and login required
+steps, which start
 `evre_fake_fast` on ports of their own. `tests/fake_login_test.py` checks the login of
 both devices the same way, so they cannot drift apart unnoticed:
 

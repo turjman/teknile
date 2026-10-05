@@ -596,6 +596,7 @@ void MainWindow::onOpened(const QString &link) {
 	logEvent(LogLevel::Info, tr("connected: %1").arg(link));
 	connected_ = true;
 	offlineDevices_.clear();
+	loginRequiredLogged_.clear();
 	deviceInfo_.clear();
 	showDeviceInfo(); /* "not read yet" until the engine reads it */
 	registersTab_->setConnected(true);
@@ -1002,6 +1003,17 @@ void MainWindow::logReadStateChange(int row, const RegValue &value) {
 	const qint64 now = QDateTime::currentMSecsSinceEpoch();
 	/* a bus: a device that does not answer is told of once (offline), not for each of its registers */
 	const bool deviceSilent = isBus() && value.error.startsWith(QLatin1String("timeout"));
+	/* a device that wants a login refuses every register with 13: told of once a connection, per device, with the way
+	 * out; the Studio does not log in again by itself */
+	if (value.error == evre::errorName(LOGIN_REQUIRED_CODE)) {
+		if (!loginRequiredLogged_.contains(was.def.slave)) {
+			loginRequiredLogged_.insert(was.def.slave);
+			logEvent(LogLevel::Error, deviceLabel(was.def.slave)
+					+ tr("login required: the device takes no request without a session. Give its token in the sidebar "
+						 "and connect again"));
+		}
+		return;
+	}
 	if (!value.error.isEmpty() && !deviceSilent && now - readErrorLoggedMs_.value(row, 0) > READ_ERROR_LOG_MS) {
 		readErrorLoggedMs_[row] = now;
 		const QString name = was.def.name, addr = addrText(was.def.addr);

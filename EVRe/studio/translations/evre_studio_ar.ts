@@ -1374,6 +1374,8 @@ map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log
 &lt;li&gt;&lt;i&gt;Access denied&lt;/i&gt; (serial): another program holds the port.&lt;/li&gt;
 &lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
 or this link does not). Not an error.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;login required&lt;/i&gt; in the Log, every register &lt;i&gt;error&lt;/i&gt;: the device wants a login and has no session. Give
+its token and connect again: the Studio sends the token once, when it connects, and never again by itself.&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -1446,6 +1448,8 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
 &lt;li&gt;&lt;i&gt;Access denied&lt;/i&gt; (تسلسلي): برنامج آخر يمسك المنفذ.&lt;/li&gt;
 &lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
 أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;login required&lt;/i&gt; في السجل، وكل مسجّل &lt;i&gt;خطأ&lt;/i&gt;: الجهاز يريد تسجيل دخول وليست له جلسة. أعطِ
+رمز دخوله واتصل من جديد: يرسل الاستوديو رمز الدخول مرة واحدة عند الاتصال، ولا يعيده من تلقاء نفسه أبدًا.&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -1464,7 +1468,8 @@ merged into a few &lt;b&gt;block reads&lt;/b&gt;, and the sidebar says how many:
 gaps of &lt;b&gt;8 bytes or less&lt;/b&gt; between them become &lt;b&gt;one read&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.&lt;/li&gt;
 &lt;li&gt;If the device still refuses a block, it is split into single registers; an address it does not have is
-dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again.&lt;/li&gt;
+dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again. A block refused with &lt;i&gt;login required&lt;/i&gt; is not split: it is
+asked again at the next poll.&lt;/li&gt;
 &lt;li&gt;Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → &lt;b&gt;Read now&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;The number of reads comes from the map&apos;s layout, not from a setting. Registers in the same 256-byte page
@@ -1528,7 +1533,8 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 &lt;b&gt;8 بايت أو أقل&lt;/b&gt; بينها تصير &lt;b&gt;قراءة واحدة&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;القراءة لا تعبر صفحة أبدًا: كثيرًا ما تحفظ الأجهزة بنوكًا منفصلة هناك، وبعضها يرفض قراءة عبرها.&lt;/li&gt;
 &lt;li&gt;إن ظل الجهاز يرفض كتلة، تُقسم إلى مسجّلات مفردة؛ والعنوان الذي لا يملكه
-يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد.&lt;/li&gt;
+يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد. والكتلة المرفوضة بـ &lt;i&gt;login required&lt;/i&gt; لا تُقسم:
+تُسأل من جديد في الاستطلاع التالي.&lt;/li&gt;
 &lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;قراءة الآن&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;عدد القراءات يأتي من ترتيب الخريطة، لا من إعداد. المسجّلات في الصفحة نفسها من 256 بايت
@@ -2511,6 +2517,10 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>token refused: %1</source>
         <translation>رُفض رمز الدخول: %1</translation>
+    </message>
+    <message>
+        <source>login required: the device takes no request without a session. Give its token in the sidebar and connect again</source>
+        <translation>تسجيل الدخول مطلوب: لا يقبل الجهاز أي طلب دون جلسة. أعطِ رمز دخوله في الشريط الجانبي واتصل من جديد</translation>
     </message>
     <message>
         <source>the map declares no login register: the token was not sent</source>

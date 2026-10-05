@@ -135,6 +135,7 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])
 
 | File | What it tests |
 |---|---|
+| `tests/run_lib_tests.py` | The library and EVRe Guard on a PC: the 1.0 transcript of 12 000+ frames through the 1.1 builds, the features and decisions, every public name, the warnings (`python tests/run_lib_tests.py`, run in `EVRe`). |
 | `studio/tests/fake_device.py` | A fake EVRe device over TCP, from any map, with moving values. |
 | `studio/tests/gui_test.cpp` | EVRe Studio's window driven by QtTest against the fake device: writes, read-back, change-while-editing, ⚠ confirmation, stale values, a bus, auto send, the Map editor, the chart (on a graphics card too). |
 | `studio/tests/api_test.py` | The API server end to end, in its three write modes, JSON and pass-through. |

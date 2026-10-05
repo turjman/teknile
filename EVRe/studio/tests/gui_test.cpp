@@ -129,6 +129,7 @@ namespace {
 constexpr quint16 FAKE_DEVICE_PORT = 1210;
 constexpr quint16 FAKE_BUS_PORT = 1226; /* evre_fake_fast as several devices on one link, started by the bus step */
 constexpr quint16 FAKE_AUTO_SEND_PORT = 1236; /* evre_fake_fast as one device that can AUTO_SEND, the auto send step */
+constexpr quint16 FAKE_LOGIN_PORT = 1240; /* evre_fake_fast --login-required, the login required step */
 constexpr uint16_t PROTOCOL_CONFIG = 0xA004;  /* the EVRe protocol's CONFIG register */
 constexpr int MSG_ENABLE_MASK = 0x4;           /* its MSG_ENABLE flag, bit 2 */
 constexpr int DIALOG_WAIT_MS = 10000;         /* how long a step waits for the dialog it brings */
@@ -560,6 +561,7 @@ public:
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
+		loginRequired(); /* it ends connected to the fake device as before */
 		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
 		return true;
 	}
@@ -6590,6 +6592,60 @@ private:
 			monitor.logFrames->setChecked(false);
 			monitor.clear->click();
 		}
+	}
+
+	/* A device that requires a login (evre_fake_fast --login-required) and the wrong token in the box: the token is
+	 * refused (3), then every register is refused with 13. The Log names the code ("login required") once for the
+	 * device, the registers show an error and are not marked "not available": they are asked again at every poll, and
+	 * the Studio does not log in again by itself. Once another client opens the device's session, the next polls bring
+	 * the values. evre::errorName knows 13. */
+	void loginRequired() {
+		const QLatin1String requiredText("login required: the device takes no request without a session");
+		check(evre::errorName(13) == QLatin1String("login required")
+						&& evre::errorName(14) == QLatin1String("error 14"),
+				"errorName: 13 is \"login required\"; a code it does not know is still \"error <n>\"");
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_LOGIN_PORT), map_.path, QString::fromLatin1(fakeDeviceToken),
+						QStringLiteral("--login-required") });
+		OtherClient device;
+		const bool started = fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device.open(FAKE_LOGIN_PORT, map_.slave); }, 5000);
+		check(started && map_.loginAddr != 0 && device.read(0xA000, 2).isEmpty(),
+				"login required: the fake device (evre_fake_fast --login-required) started, and refuses a read");
+		if (!started || map_.loginAddr == 0) return;
+		const int refusedBefore = int(logText().count(tokenRefusedText));
+		qputenv("EVRE_TOKEN", wrongToken); /* the startup fills the token box from it */
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_LOGIN_PORT);
+		startup.connect = true;
+		window_.applyStartup(startup);
+		const int row = regRow(regs_.u8.name);
+		auto rowError = [&] { return row >= 0 ? model_->rows()[row].error : QString(); };
+		const bool refused = QTest::qWaitFor([&] {
+			return rowError() == QLatin1String("login required") && logText().contains(requiredText);
+		}, 5000);
+		QTest::qWait(1500); /* many polls, each refused with 13 */
+		const bool notGone = row >= 0 && !model_->rows()[row].unavailable
+				&& std::none_of(model_->rows().begin(), model_->rows().end(),
+						[](const RegisterModel::Row &r) { return r.unavailable; });
+		check(refused && notGone && logText().count(requiredText) == 1,
+				"login required (13): the registers show the error, none is marked \"not available\"; the Log says "
+				"\"login required\" once for the device");
+		check(int(logText().count(tokenRefusedText)) == refusedBefore + 1,
+				"login required: the Studio sent the token once, at connecting, and does not log in again by itself");
+		const bool loggedIn = device.write(map_.loginAddr, loginBytes(fakeDeviceToken, map_.loginSize));
+		const bool written = loggedIn && device.writeU8(regs_.u8.addr, 42);
+		check(written && cellShows(valueCell(table_, regs_.u8.name), QStringLiteral("42"), 5000) && rowError().isEmpty(),
+				"login required: still asked at every poll; once a session is open (another client logged in), the "
+				"values come");
+		qputenv("EVRE_TOKEN", fakeDeviceToken);
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		window_.applyStartup(startup);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"login required: done, the window polls the fake device of the other steps again");
+		fake.kill();
+		fake.waitForFinished(3000);
 	}
 
 	/* the token set, but a map without "login": nothing is sent, the Log warns. The window

@@ -35,6 +35,8 @@ jobs:
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfontconfig1 fonts-dejavu-core xvfb xauth
           pip install jsonschema
+      - name: The library's suite (1.1 and EVRe Guard)
+        run: python3 tests/run_lib_tests.py
       - name: Build
         run: |
           cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
@@ -78,6 +80,11 @@ jobs:
           export PATH="$IQTA_TOOLS/mingw1310_64/bin:$IQTA_TOOLS/Ninja:$PATH"
           cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build
+      - name: The library's suite (1.1 and EVRe Guard)
+        shell: bash
+        run: |
+          export PATH="$IQTA_TOOLS/mingw1310_64/bin:$PATH"
+          python tests/run_lib_tests.py
       - name: Tests without a window
         shell: bash
         run: |

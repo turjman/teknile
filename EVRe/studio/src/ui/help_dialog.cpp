@@ -129,6 +129,8 @@ map has no <code>"login"</code> to send it to (see the Log).</li>
 <li><i>Access denied</i> (serial): another program holds the port.</li>
 <li>Registers "not available": the device refused the address (a register the map has and this device
 or this link does not). Not an error.</li>
+<li><i>login required</i> in the Log, every register <i>error</i>: the device wants a login and has no session. Give
+its token and connect again: the Studio sends the token once, when it connects, and never again by itself.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Polling & speed"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
@@ -141,7 +143,8 @@ merged into a few <b>block reads</b>, and the sidebar says how many: <i>15 regis
 gaps of <b>8 bytes or less</b> between them become <b>one read</b>.</li>
 <li>A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.</li>
 <li>If the device still refuses a block, it is split into single registers; an address it does not have is
-dropped (<i>not available</i>) and not asked again.</li>
+dropped (<i>not available</i>) and not asked again. A block refused with <i>login required</i> is not split: it is
+asked again at the next poll.</li>
 <li>Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → <b>Read now</b>.</li>
 </ul>
 <p>The number of reads comes from the map's layout, not from a setting. Registers in the same 256-byte page
