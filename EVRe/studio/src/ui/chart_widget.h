@@ -45,6 +45,11 @@
  * Delete removes the one clicked last. A right-click asks for the chart's menu
  * (menuRequested): the Chart tab makes it.
  *
+ * Trigger: a line crossing a level (rising, falling or either), as an
+ * oscilloscope's: the view holds with the crossing at 20 % of the window and a
+ * marker there, the level a dashed line that can be dragged. Single holds on
+ * the first crossing; Normal holds on each, armed again once its view is full.
+ *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
  * antialiased stroke (20+ ms a frame for four lines at 225 % scaling). OpenGL
@@ -142,6 +147,22 @@ public:
 	void setYLog(bool on);
 	bool yLog() const { return y_.log; }
 	static constexpr double MAX_DECADES = 9;
+
+	/* The trigger (see the top). setTrigger arms it: only crossings after the line's newest sample count. */
+	enum class TriggerEdge { Rising, Falling, Either };
+	enum class TriggerMode { Single, Normal };
+	static constexpr double TRIGGER_AT = 0.2; /* of the window, from its left */
+	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode);
+	void stopTrigger();
+	void armTrigger();                   /* waits for the next crossing (Single: once more) */
+	void setTriggerLevel(double level);
+	bool triggerOn() const { return trigger_.on; }
+	bool triggerArmed() const { return trigger_.on && trigger_.armed; }
+	double triggeredAt() const { return trigger_.at; } /* the last crossing; NaN: none since armed first */
+	double triggerLevel() const { return trigger_.level; }
+	int triggerKey() const { return trigger_.on ? trigger_.key : -1; }
+	QRectF triggerTag() const { return triggerTag_; } /* tests: the marker as last drawn; empty: not in view */
+	double triggerLineY() const { return triggerLineY_; } /* tests: the level's line as last drawn; NaN: none */
 
 	/* Lanes: a plot per unit, stacked, of equal height, MAX_LANES at most (the units after share the last), on one
 	 * time axis; the cursors, the A-B bar and the notes across them, one crosshair box. Each lane has its own Y range
@@ -265,6 +286,9 @@ public:
 	double timeAt(double x) const { return timeAtX(x); }
 	/* the samples of the lines over t0..t1 (Export to CSV) */
 	QVector<recording::Line> samples(double t0, double t1) const;
+	/* one line's samples over t0..t1 (its histogram, its spectrum) */
+	void lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values) const;
+	int chipAt(const QPointF &pos) const; /* the key of the legend's chip there; -1: none */
 	/* tests: the bar between the cursors as last painted: its text (empty: none), the bar, and the text's box (inside
 	 * the bar, or beside a tag when the bar is too short for it) */
 	QString spanBarText() const { return spanBar_.text; }
@@ -302,6 +326,9 @@ signals:
 	void noteEditRequested(int index);      /* a double-click on a note's tag */
 	void menuRequested(const QPoint &globalPos, double time); /* a right-click on the chart: the time under it */
 	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels */
+	void lineMenuRequested(int key, const QPoint &globalPos); /* a right-click on a line's chip in the legend */
+	void triggered(double time);             /* the view holds on a crossing */
+	void triggerLevelChanged(double level);  /* the level's line dragged and let go */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 
 protected:
@@ -395,6 +422,10 @@ private:
 			if (!log) return rect.bottom() - (v - lo) / (hi - lo) * rect.height();
 			return v > 0 ? rect.bottom() - (std::log10(v) - logLo) / (logHi - logLo) * rect.height() : rect.bottom();
 		}
+		double value(double yPixel) const { /* the value at a height: y's inverse */
+			const double part = (rect.bottom() - yPixel) / rect.height();
+			return log ? std::pow(10.0, logLo + part * (logHi - logLo)) : lo + part * (hi - lo);
+		}
 	};
 	/* A Y range: Auto, Manual or Log (with Auto or a typed range). The plot has one; each lane its own. */
 	struct YScale {
@@ -418,7 +449,7 @@ private:
 		double content = 0;    /* the chips' total width */
 		double maxScroll() const { return std::max(0.0, content - viewport.width()); }
 	};
-	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note };
+	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level };
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
@@ -659,6 +690,31 @@ private:
 	mutable QString chipsFont_;
 	mutable int chipMeasures_ = 0;
 	mutable QHash<QRgb, QImage> dots_; /* by colour, at dotsDpr_ */
+	/* the trigger: what it watches, whether it waits for a crossing, and the last one */
+	struct Trigger {
+		bool on = false, armed = false;
+		int key = -1;
+		double level = 0;
+		TriggerEdge edge = TriggerEdge::Rising;
+		TriggerMode mode = TriggerMode::Normal;
+		double at = NAN;        /* the last crossing */
+		double armedFrom = 0;   /* crossings after this time count */
+	} trigger_;
+	void fireTrigger(double time);
+	/* the level's line and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the frame's
+	 * plots; false: nothing to draw */
+	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,
+			QRectF &tag) const;
+	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const;
+	const QImage &triggerPicture(qreal dpr) const;
+	mutable QRectF triggerTag_;
+	mutable double triggerLineY_ = NAN;
+	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */
+	mutable Axes triggerAxes_;        /* its axes (the level from the mouse) */
+	mutable double triggerLo_ = 0, triggerHi_ = 1; /* Normalise: the line's own range */
+	mutable QImage triggerImage_;
+	mutable QString triggerImageKey_;
+
 	/* the notes, the one clicked last, and their tags as drawn last (and as pictures for the card, by their key) */
 	QVector<ChartNote> notes_;
 	int selectedNote_ = -1;
