@@ -967,6 +967,7 @@ bool ChartView::event(QEvent *e) {
 		mouseX_ = -1;
 		hoverLane_ = -1;
 		hoverBar_ = false;
+		hoverSeparator_ = -1;
 		refresh();
 	}
 	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
@@ -1038,6 +1039,17 @@ bool ChartView::pressLanes(const QPointF &pos) {
 		}
 		return true;
 	}
+	const int gap = separatorAt(pos);
+	if (gap >= 0) { /* a separator: the lanes above and below it share their heights as it is dragged */
+		drag_ = Drag::LaneBorder;
+		dragSeparator_ = gap;
+		dragStartY_ = pos.y();
+		dragHeights_[0] = lanesShown_[gap].axes.rect.height();
+		dragHeights_[1] = lanesShown_[gap + 1].axes.rect.height();
+		QVector<double> heights;
+		laneHeights(lanesShown_, plot.height(), heights, dragUnit_);
+		return true;
+	}
 	if (pos.x() > plot.right() || pos.y() < plot.top() || pos.y() > plot.bottom()) return false;
 	const int lane = laneAtY(pos.y());
 	if (lane < 0) return false;
@@ -1090,6 +1102,14 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
 			notes_[selectedNote_].time = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
 		break;
+	case Drag::LaneBorder: { /* the lane above takes what the one below gives, neither under LANE_MIN_H */
+		if (dragSeparator_ < 0 || dragSeparator_ + 1 >= lanesShown_.size() || dragUnit_ <= 0) break;
+		const double d = std::clamp(pos.y() - dragStartY_, LANE_MIN_H - dragHeights_[0], dragHeights_[1] - LANE_MIN_H);
+		laneWeights_[lanesShown_[dragSeparator_].key] = (dragHeights_[0] + d) / dragUnit_;
+		laneWeights_[lanesShown_[dragSeparator_ + 1].key] = (dragHeights_[1] - d) / dragUnit_;
+		lanesShown_ = plotLayout();
+		break;
+	}
 	case Drag::LaneBar: { /* the handle follows the mouse: its free travel spans the whole scroll */
 		const double travel = laneScrollBarRect().height() - laneScrollHandleRect().height();
 		if (travel > 0) scrollLanesTo(dragStartScroll_ + (pos.y() - dragStartY_) / travel * maxLaneScroll());
@@ -1117,6 +1137,11 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
 		hoverLane_ = onLanes ? lane : -1; /* its button drawn highlighted */
 		hoverBar_ = onLaneBar;
+		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
+		if (hoverSeparator_ >= 0) {
+			setCursor(Qt::SizeVerCursor);
+			break;
+		}
 		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar ? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
@@ -1130,7 +1155,13 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 
 void ChartView::mouseReleaseEvent(QMouseEvent *) {
 	const bool cursorLetGo = draggingCursor(), noteLetGo = drag_ == Drag::Note, levelLetGo = drag_ == Drag::Level;
+	const bool borderLetGo = drag_ == Drag::LaneBorder;
 	drag_ = Drag::None;
+	if (borderLetGo) {
+		dragSeparator_ = -1;
+		emit laneHeightsChanged();
+		return; /* the resize cursor stays while the mouse is on the separator */
+	}
 	if (noteLetGo) emit notesChanged();
 	if (levelLetGo) emit triggerLevelChanged(trigger_.level);
 	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
@@ -1204,6 +1235,10 @@ void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
 	const int note = noteAtPoint(e->position());
 	if (note >= 0) { /* a note's tag: its text edited (the Chart tab asks) */
 		emit noteEditRequested(note);
+		return;
+	}
+	if (separatorAt(e->position()) >= 0) { /* a separator: every lane its equal share again */
+		resetLaneHeights();
 		return;
 	}
 	if (lanes_) { /* the lane under the mouse: Auto (not after a click on the bar, a unit name or a strip) */
@@ -1762,24 +1797,79 @@ QVector<ChartView::Lane> ChartView::plotLayout() const {
 		}
 		plots[*it].lines << i++;
 	}
-	double openHeight, content;
-	laneHeights(plots, plot.height(), openHeight, content);
+	QVector<double> heights;
+	double unit;
+	laneHeights(plots, plot.height(), heights, unit);
+	double content = LANE_GAP * double(plots.size() - 1);
+	for (double height : std::as_const(heights)) content += height;
 	double y = plot.top() - std::clamp(laneScroll_, 0.0, std::max(0.0, content - plot.height()));
-	for (Lane &lane : plots) {
-		const double height = lane.folded ? LANE_FOLDED_H : openHeight;
-		lane.axes.rect = QRectF(plot.left(), y, plot.width(), height);
-		y += height + LANE_GAP;
+	for (qsizetype k = 0; k < plots.size(); k++) {
+		plots[k].axes.rect = QRectF(plot.left(), y, plot.width(), heights[k]);
+		y += heights[k] + LANE_GAP;
 	}
 	return plots;
 }
 
-void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, double &openHeight, double &content) const {
+/* The open lanes share what the folded ones and the gaps leave by their weights (a lane dragged taller has a weight
+ * over 1, the one below it under), as equal shares do when all are 1; when that is under LANE_MIN_H each, the equal
+ * share is LANE_MIN_H and the lanes go on below the plot (scrolled) */
+void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, QVector<double> &heights, double &unit) const {
 	int folded = 0;
-	for (const Lane &lane : lanes) folded += lane.folded ? 1 : 0;
+	double weights = 0;
+	for (const Lane &lane : lanes) {
+		if (lane.folded) folded++;
+		else weights += laneWeights_.value(lane.key, 1.0);
+	}
 	const int open = int(lanes.size()) - folded;
 	const double gaps = LANE_GAP * std::max<qsizetype>(0, lanes.size() - 1);
-	openHeight = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
-	content = gaps + folded * LANE_FOLDED_H + open * openHeight;
+	const double share = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
+	unit = open > 0 && weights > 0 ? share * open / weights : share;
+	heights.resize(lanes.size());
+	for (qsizetype k = 0; k < lanes.size(); k++)
+		heights[k] = lanes[k].folded ? LANE_FOLDED_H : std::max(LANE_MIN_H, unit * laneWeights_.value(lanes[k].key, 1.0));
+}
+
+QStringList ChartView::laneHeights() const {
+	QStringList texts;
+	for (auto it = laneWeights_.begin(); it != laneWeights_.end(); ++it)
+		texts << it.key() + QLatin1Char('\t') + QString::number(it.value(), 'g', 6);
+	texts.sort();
+	return texts;
+}
+
+void ChartView::setLaneHeights(const QStringList &texts) {
+	laneWeights_.clear();
+	for (const QString &text : texts) {
+		const QStringList f = text.split(QLatin1Char('\t'));
+		bool ok = false;
+		const double weight = f.size() == 2 ? f[1].toDouble(&ok) : 0;
+		if (ok && weight > 0 && std::isfinite(weight)) laneWeights_.insert(f[0], weight);
+	}
+	refresh();
+}
+
+void ChartView::resetLaneHeights() {
+	if (laneWeights_.isEmpty()) return;
+	laneWeights_.clear();
+	lanesShown_ = plotLayout();
+	emit laneHeightsChanged();
+	refresh();
+}
+
+/* a separator takes a drag a few pixels either side of its line, from the value labels across the plot, when the lanes
+ * above and below it are open */
+int ChartView::separatorAt(const QPointF &pos) const {
+	if (!lanes_ || lanesShown_.size() < 2) return -1;
+	const QRectF plot = plotRect();
+	if (pos.x() < LANE_UNIT_W || pos.x() > plot.right()) return -1;
+	QVector<int> gaps;
+	const QVector<double> ys = separatorsY(lanesShown_, &gaps);
+	for (qsizetype i = 0; i < ys.size(); i++) {
+		const int k = gaps[i];
+		if (std::fabs(pos.y() - ys[i]) <= LANE_GAP / 2 - 1 && !lanesShown_[k].folded && !lanesShown_[k + 1].folded)
+			return k;
+	}
+	return -1;
 }
 
 double ChartView::laneContentHeight() const {
@@ -1903,6 +1993,7 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	const QRectF plot = plotRect();
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
 		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
+	if (separatorAt(pos) >= 0) return tr("Drag: this lane's height · Double-click: equal heights");
 	if (!lanes_ || pos.y() < plot.top() || pos.y() > plot.bottom() || pos.x() > plot.right()) return QString();
 	const int lane = laneAtY(pos.y());
 	if (lane < 0) return QString();
@@ -1918,13 +2009,15 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 }
 
 /* a line in the middle of each gap between two lanes, where it lies in the plot: the lanes read as plots of their own */
-QVector<double> ChartView::separatorsY(const QVector<Lane> &plots) const {
+QVector<double> ChartView::separatorsY(const QVector<Lane> &plots, QVector<int> *gaps) const {
 	QVector<double> ys;
 	if (!lanes_) return ys;
 	const QRectF plot = plotRect();
 	for (qsizetype k = 0; k + 1 < plots.size(); k++) {
 		const double y = plots[k].axes.rect.bottom() + LANE_GAP / 2;
-		if (y >= plot.top() && y <= plot.bottom()) ys << y;
+		if (y < plot.top() || y > plot.bottom()) continue;
+		ys << y;
+		if (gaps) *gaps << int(k);
 	}
 	return ys;
 }
@@ -2243,9 +2336,12 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 	/* between two lanes a line from their value labels across the plot, in the colour of a control's edge (3:1 to the
 	 * chart, where the border's 1.3:1 left the lanes reading as one chart); the card draws its part over the plot with
 	 * the grid */
-	laneSeparators_ = separatorsY(plots);
-	p.setPen(QPen(c.control, 1));
-	for (double y : std::as_const(laneSeparators_)) p.drawLine(QPointF(LANE_UNIT_W, y), QPointF(plot.right(), y));
+	QVector<int> gaps;
+	laneSeparators_ = separatorsY(plots, &gaps);
+	for (qsizetype i = 0; i < laneSeparators_.size(); i++) { /* the one under the mouse (a drag resizes) lit */
+		p.setPen(QPen(gaps[i] == hoverSeparator_ ? c.accent : c.control, 1));
+		p.drawLine(QPointF(LANE_UNIT_W, laneSeparators_[i]), QPointF(plot.right(), laneSeparators_[i]));
+	}
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
 		p.setPen(c.muted);
@@ -2554,10 +2650,12 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		}
 	}
 	/* the lanes' separators: crisp as the grid, from the layer's left edge (the CPU draws them up to it) */
-	for (double y : separatorsY(plots)) {
-		const float sy = float(std::floor(map(QPointF(0, y)).y()) + grid.widthPx / 2);
+	QVector<int> gaps;
+	const QVector<double> separators = separatorsY(plots, &gaps);
+	for (qsizetype i = 0; i < separators.size(); i++) {
+		const float sy = float(std::floor(map(QPointF(0, separators[i])).y()) + grid.widthPx / 2);
 		grid.segments.push_back({ float(map(QPointF(plot.left() - 2, 0)).x()), sy, float(bottomRight.x()), sy,
-				gpuColor(c.control) });
+				gpuColor(gaps[i] == hoverSeparator_ ? c.accent : c.control) });
 	}
 	frame.layers << grid;
 	/* the cursors' span: one bar as tall as the plot */
@@ -3041,8 +3139,10 @@ ChartView::SpanBar ChartView::spanBar(const Axes &axes) const {
 	const double top = plot.top() - 2, height = 16;
 	out.text = durationText(t1 - t0);
 	const double textWidth = QFontMetricsF(labelFont()).horizontalAdvance(out.text) + 2 * SPAN_PAD;
-	if (right - left >= 2) out.bar = QRectF(left, top, right - left, height);
+	/* the bar only with its text inside: a span too narrow for it has the text's tag beside the tags, and no sliver
+	 * of a bar between them */
 	if (right - left >= textWidth) {
+		out.bar = QRectF(left, top, right - left, height);
 		out.inside = true;
 		out.textRect = QRectF(left + (right - left - textWidth) / 2, top, textWidth, height);
 		return out;

@@ -556,6 +556,9 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
 		showLaneActions();
 	});
+	connect(view, &ChartView::laneHeightsChanged, this, [this] {
+		QSettings().setValue(settingKey("laneHeights"), chart_->view()->laneHeights());
+	});
 	connect(foldAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(true); });
 	connect(openAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(false); });
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
@@ -640,6 +643,7 @@ void ChartTab::restoreSettings() {
 	chart_->setSmooth(smooth_->isChecked());
 	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
 	chart_->view()->setFoldedLanes(settings.value(settingKey("lanesFolded")).toStringList());
+	chart_->view()->setLaneHeights(settings.value(settingKey("laneHeights")).toStringList());
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());

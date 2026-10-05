@@ -537,6 +537,7 @@ public:
 		chartLanesFit();
 		chartLanesFoldButton();
 		chartLanesSeparators();
+		chartLaneBorders();
 		heldViewReuse();
 		measureTableRepaints();
 		perfLog();
@@ -3200,7 +3201,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "lanes scrolled and folded", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "lanes scrolled and folded", "lanes resized", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3338,7 +3339,23 @@ private:
 					&& fitAlike >= 0.90, "chart on a GPU: lanes scrolled half a lane, one folded, drawn by the card as the "
 					"CPU draws them, block by block (the strip too)");
 			once->setLaneFolded(2, false);
-			for (int u = 1; u <= 8; u++) once->removeSeries(LINES + u);
+			/* lanes resized by their borders: the first two taller, the third lower */
+			for (int u = 3; u <= 8; u++) once->removeSeries(LINES + u);
+			once->setLaneScroll(0);
+			once->setLaneHeights({ QStringLiteral("\t1.4"), QStringLiteral("u1\t0.7") });
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atSized;
+			const QImage gpuSized = once->gpuPicture(&atSized).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuSized = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atSized);
+			const double sizedAlike = blocksAlike(gpuSized, cpuSized, 24);
+			std::printf("     (lanes resized: %.2f%% of the blocks like the CPU's)\n", sizedAlike * 100);
+			check(once->plotOnCard() && once->laneRect(0).height() > once->laneRect(1).height() && sizedAlike >= 0.90,
+					"chart on a GPU: lanes resized by their borders drawn by the card as the CPU draws them");
+			once->setLaneHeights({});
+			for (int u = 1; u <= 2; u++) once->removeSeries(LINES + u);
 			once->setLanes(false);
 			once->removeSeries(LINES);
 			for (int k = 0; k < 3; k++) {
@@ -3770,12 +3787,12 @@ private:
 		check(noneWithout && noneWithA && inside, "chart, A-B bar: none without both cursors; the time between them "
 				"|B - A| (durationText) centred in the bar between the tags, B before A too");
 
-		/* 0.3 s: a bar of a few pixels, its text after the right tag; 20 ms: no bar, the text there too */
+		/* 0.3 s: the span between the tags narrower than the text: no sliver of a bar, the text's tag after the right
+		 * tag; 20 ms: the same */
 		paint(94.0, 94.3);
 		const QRectF shortBar = view->spanBarRect(), shortText = view->spanBarTextRect();
-		const bool beside = view->spanBarText() == durationText(0.3) && !shortBar.isEmpty()
-				&& shortBar.width() < shortText.width() && near(shortBar.left(), x(94.0) + 11)
-				&& near(shortBar.right(), x(94.3) - 11) && near(shortText.left(), x(94.3) + 9 + 2)
+		const bool beside = view->spanBarText() == durationText(0.3) && shortBar.isEmpty()
+				&& x(94.3) - x(94.0) - 22 >= 2 && near(shortText.left(), x(94.3) + 9 + 2)
 				&& near(shortText.top(), wideText.top());
 		paint(95.0, 95.02);
 		const bool besideNoBar = view->spanBarText() == durationText(0.02) && view->spanBarRect().isEmpty()
@@ -3784,8 +3801,8 @@ private:
 			std::printf("     (0.3 s: bar %.1f..%.1f, text at %.1f (%.1f wanted); 20 ms: text at %.1f (%.1f wanted))\n",
 					shortBar.left(), shortBar.right(), shortText.left(), x(94.3) + 11, view->spanBarTextRect().left(),
 					x(95.02) + 11);
-		check(beside && besideNoBar, "chart, A-B bar: a span too narrow for its text puts the text beside the right tag "
-				"(the bar between the tags still drawn while it is 2 px or more)");
+		check(beside && besideNoBar, "chart, A-B bar: a span too narrow for its text puts the text beside the right tag, "
+				"and no bar between the tags (no sliver)");
 
 		/* both off the view, one each side: the whole plot; one off: that end at the plot's edge; both off one side:
 		 * no bar */
@@ -5145,6 +5162,109 @@ private:
 					int(cutStrip), int(wholeStrip));
 		check(whole && cutStrip && wholeStrip, "chart, Lanes: no text cut by the plot's edge or run into the next lane: "
 				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
+		tab.hide();
+		QSettings().remove(group);
+	}
+
+	/* A lane's border dragged: over a separator the resize cursor, the line lit, a tooltip; a drag gives the lane above
+	 * what the one below gives up, neither under LANE_MIN_H; the heights kept by unit (laneHeights), a new tab finds
+	 * them; a double-click on a separator: all equal again */
+	void chartLaneBorders() {
+		const QString group = QStringLiteral("laneBorders");
+		prepareLanesSettings(group);
+		const auto fourLanes = [this](ChartTab &tab) { /* V, A and the math lines' W and Ω: four lanes that fit */
+			plotMapLanes(tab, nullptr);
+			for (const RegDef &def : map_.regs)
+				if (def.isNumeric() && def.unit != regs_.volts.unit && def.unit != regs_.amps.unit) tab.plotRegister(def, false);
+		};
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		fourLanes(tab);
+		ChartView *view = tab.findChild<ChartView *>();
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		(void) view->grab();
+		const QVector<double> separators = view->laneSeparators();
+		if (view->laneCount() != 4 || separators.size() != 3 || !view->laneScrollBarRect().isEmpty()) {
+			check(false, "chart, a lane's border: four lanes that fit, three separators");
+			return;
+		}
+		const double x = view->laneRect(0).center().x();
+		const auto moveTo = [view](QPointF at, Qt::MouseButtons buttons) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, buttons, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		};
+		/* over the first separator: the resize cursor, the line lit (the accent colour), the tooltip */
+		const QPointF on(x, separators[0]);
+		moveTo(on, Qt::NoButton);
+		const QImage lit = view->grab().toImage();
+		const qreal dpr = view->devicePixelRatioF();
+		const QColor accent = Theme::colors().accent;
+		bool accentLine = false;
+		for (int dy = -1; dy <= 1 && !accentLine; dy++) {
+			/* beside the mouse: the crosshair's line is at its x */
+			const QColor c = lit.pixelColor(int((x + 40) * dpr), int(std::floor(separators[0] * dpr)) + dy);
+			accentLine = std::abs(c.red() - accent.red()) + std::abs(c.green() - accent.green()) + std::abs(c.blue() - accent.blue()) <= 6;
+		}
+		const bool hover = view->cursor().shape() == Qt::SizeVerCursor && view->hoveredSeparator() == 0 && accentLine
+				&& view->toolTipAt(on) == QStringLiteral("Drag: this lane's height · Double-click: equal heights");
+		moveTo(view->laneRect(1).center(), Qt::NoButton);
+		const bool off = view->hoveredSeparator() == -1 && view->cursor().shape() != Qt::SizeVerCursor;
+		if (!hover || !off)
+			std::printf("     (over the separator: cursor %d, hovered %d, lit %d, tooltip \"%s\"; off it: %d)\n",
+					int(view->cursor().shape()), view->hoveredSeparator(), int(accentLine), qPrintable(view->toolTipAt(on)),
+					int(off));
+		check(hover && off, "chart, a lane's border: over a separator the resize cursor, the line lit, the tooltip "
+				"\"Drag: this lane's height · Double-click: equal heights\"; off it, none of them");
+
+		/* dragged 30 px down: the first lane 30 px taller, the second 30 px lower, the others as they were; far down
+		 * and far up: held at LANE_MIN_H */
+		const double h0 = view->laneRect(0).height(), h1 = view->laneRect(1).height(), h2 = view->laneRect(2).height();
+		const auto drag = [&](double by) {
+			const double from = view->laneSeparators().value(0);
+			QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, QPoint(int(x), int(std::lround(from))));
+			moveTo(QPointF(x, std::lround(from) + by), Qt::LeftButton);
+			QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(int(x), int(std::lround(from) + by)));
+			(void) view->grab();
+		};
+		drag(30);
+		const bool moved = std::fabs(view->laneRect(0).height() - (h0 + 30)) < 0.6 && std::fabs(view->laneRect(1).height() - (h1 - 30)) < 0.6
+				&& std::fabs(view->laneRect(2).height() - h2) < 0.6 && view->laneScrollBarRect().isEmpty();
+		const QStringList saved = QSettings().value(group + QStringLiteral("/laneHeights")).toStringList();
+		const double movedH0 = view->laneRect(0).height();
+		drag(1000);
+		const bool heldBelow = std::fabs(view->laneRect(1).height() - ChartView::LANE_MIN_H) < 0.6;
+		drag(-2000);
+		const bool heldAbove = std::fabs(view->laneRect(0).height() - ChartView::LANE_MIN_H) < 0.6;
+		if (!moved || !heldBelow || !heldAbove || saved.size() != 2)
+			std::printf("     (lanes %g %g %g -> %g; far down the second %g, far up the first %g; saved %s)\n", h0, h1, h2,
+					movedH0, view->laneRect(1).height(), view->laneRect(0).height(), qPrintable(saved.join(QStringLiteral(", "))));
+		check(moved && heldBelow && heldAbove && saved.size() == 2, "chart, a lane's border dragged: the lane above "
+				"taller by as much as the one below is lower, the others as they were; neither under 80 px; saved by unit");
+
+		/* kept: a new tab of the same settings has the same heights; a double-click on a separator: all equal, saved */
+		const double kept0 = view->laneRect(0).height();
+		bool again = false;
+		{
+			ChartTab other([] { return 100.0; }, nullptr, group);
+			fourLanes(other);
+			ChartView *otherView = other.findChild<ChartView *>();
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			(void) otherView->grab();
+			again = std::fabs(otherView->laneRect(0).height() - kept0) < 0.6;
+			other.hide();
+		}
+		const QPoint sep(int(x), int(std::lround(view->laneSeparators().value(0))));
+		QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, sep);
+		(void) view->grab();
+		const bool equal = std::fabs(view->laneRect(0).height() - view->laneRect(1).height()) < 0.01
+				&& std::fabs(view->laneRect(1).height() - view->laneRect(3).height()) < 0.01
+				&& QSettings().value(group + QStringLiteral("/laneHeights")).toStringList().isEmpty();
+		if (!again || !equal)
+			std::printf("     (a new tab's first lane %g of %g; after the double-click %g %g %g)\n", again ? kept0 : -1.0, kept0,
+					view->laneRect(0).height(), view->laneRect(1).height(), view->laneRect(3).height());
+		check(again && equal, "chart, a lane's border: the heights found again by a new tab; a double-click on a "
+				"separator sets every lane back to its equal share");
 		tab.hide();
 		QSettings().remove(group);
 	}
