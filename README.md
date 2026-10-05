@@ -18,14 +18,14 @@ speaks it.
 
 ## What is inside
 
-| | |
+| Part | What it is |
 |---|---|
-| **[EVRe protocol](EVRe/docs/PROTOCOL.md)** | A small single-master register protocol: one request returns a whole block of mixed-type telemetry over UART, RS-485, I²C, SPI, USB CDC or TCP. CRC-16, pipelining, broadcast, device-initiated streaming (auto send). |
-| **[Device library](EVRe/lib/)** | `EVRe.h` and `EVRe.cpp`: C++, two files, no dependencies beyond `stdint` / `stdlib`, about 3 kB of code. |
-| **[EVRe Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers with decoded bit fields, safe writes, an oscilloscope-style chart with cursors and measurements, math lines, CSV recording, a map editor with exports, several devices on one bus, and an API for Python, MATLAB and LabVIEW. |
-| **[Map format `evre-map/1`](EVRe/studio/docs/MAP_FORMAT.md)** | One JSON file describes a device's registers for every tool, with a [JSON Schema](EVRe/studio/docs/evre-map-1.schema.json). |
-| **[`evre` and `evre-sim`](EVRe/studio/cli/)** | Command-line tools: validate and export maps, read, watch and write a device, check a device against its map, and serve a map as a simulated device. |
-| **[Python package](EVRe/studio/python/)** | A device by register name with its map, standard library only. |
+| **[EVRe&nbsp;protocol](EVRe/docs/PROTOCOL.md)** | A small single-master register protocol: one request returns a whole block of mixed-type telemetry over UART, RS-485, I²C, SPI, USB CDC or TCP. CRC-16, pipelining, broadcast, device-initiated streaming (auto send). |
+| **[Device&nbsp;library](EVRe/lib/)** | `EVRe.h` and `EVRe.cpp`: C++, two files, no dependencies beyond `stdint` / `stdlib`, about 3 kB of code. |
+| **[EVRe&nbsp;Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers with decoded bit fields, safe writes, an oscilloscope-style chart with cursors and measurements, math lines, CSV recording, a map editor with exports, several devices on one bus, and an API for Python, MATLAB and LabVIEW. |
+| **[Map&nbsp;format](EVRe/studio/docs/MAP_FORMAT.md)** | `evre-map/1`: one JSON file describes a device's registers for every tool, with a [JSON Schema](EVRe/studio/docs/evre-map-1.schema.json). |
+| **[Command&nbsp;line](EVRe/studio/cli/)** | `evre` and `evre-sim`: validate and export maps, read, watch and write a device, check a device against its map, and serve a map as a simulated device. |
+| **[Python&nbsp;package](EVRe/studio/python/)** | A device by register name with its map, standard library only. |
 
 ## Quick start
 
@@ -47,11 +47,11 @@ Windows notes, the command line and every option: [EVRe Studio's README](EVRe/st
 
 ## Documentation
 
-| | |
+| Document | What it holds |
 |---|---|
 | [Protocol](EVRe/docs/PROTOCOL.md) | frames, function codes, CRC, the register model, errors, test vectors, the device API, a conformance checklist |
-| [EVRe Studio guide](EVRe/studio/docs/STUDIO.md) | every feature, the reference, the internals and the tests |
-| [Map format](EVRe/studio/docs/MAP_FORMAT.md) | the contract for any tool that reads or writes maps |
+| [EVRe&nbsp;Studio&nbsp;guide](EVRe/studio/docs/STUDIO.md) | every feature, the reference, the internals and the tests |
+| [Map&nbsp;format](EVRe/studio/docs/MAP_FORMAT.md) | the contract for any tool that reads or writes maps |
 | [Examples](EVRe/studio/examples/) | a device from MATLAB, LabVIEW and Python through the Studio |
 | [Changelog](EVRe/CHANGELOG.md) | what each version holds |
 
