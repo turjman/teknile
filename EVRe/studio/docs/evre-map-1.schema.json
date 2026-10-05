@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/teknile/EVRe/docs/evre-map-1.schema.json",
+  "title": "EVRe register map (evre-map/1)",
+  "description": "A device's registers for EVRe Studio and the tools around EVRe. Keys not listed here are allowed: tools keep them. In an overlay (a map with \"extends\"), null for a key removes the base's key.",
+  "type": "object",
+  "properties": {
+    "format": { "type": "string", "pattern": "^evre-map/", "description": "evre-map/1" },
+    "device": { "type": "string", "description": "the device's name" },
+    "desc": { "type": ["string", "null"] },
+    "notes": { "type": ["string", "null"], "description": "longer text on the map (Markdown)" },
+    "device_id": { "oneOf": [{ "$ref": "#/$defs/word" }, { "type": "null" }], "description": "DEVICE_ID (0xA000), checked when connecting" },
+    "slave": { "type": "integer", "minimum": 1, "maximum": 255 },
+    "usb": {
+      "oneOf": [
+        { "type": "object", "properties": { "vid": { "$ref": "#/$defs/word" }, "pid": { "$ref": "#/$defs/word" } }, "required": ["vid", "pid"] },
+        { "type": "null" }
+      ]
+    },
+    "login": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "addr": { "$ref": "#/$defs/word" },
+            "size": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          },
+          "required": ["addr"]
+        },
+        { "type": "null" }
+      ],
+      "description": "the register a token is written to after connecting (UTF-8, cut or zero-padded to size)"
+    },
+    "protocol": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "transport": { "type": "string", "description": "serial, tcp, usb, or several" },
+            "baud": { "type": "integer", "minimum": 0 },
+            "tcp_port": { "type": "integer", "minimum": 0, "maximum": 65535 },
+            "timeout_ms": { "type": "integer", "minimum": 0 },
+            "notes": { "type": "string" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
+    "groups": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": "object", "properties": { "notes": { "type": "string" } } },
+      "description": "notes on a group, by its name"
+    },
+    "extends": { "type": "string", "description": "an overlay: the map it changes, relative to this file" },
+    "registers": { "type": "array", "items": { "$ref": "#/$defs/register" } }
+  },
+  "$defs": {
+    "word": {
+      "description": "a 16-bit number: \"0xD004\", \"53252\" or 53252",
+      "oneOf": [
+        { "type": "string", "pattern": "^\\s*(0[xX][0-9A-Fa-f]{1,4}|[0-9]{1,5})\\s*$" },
+        { "type": "integer", "minimum": 0, "maximum": 65535 }
+      ]
+    },
+    "names": {
+      "description": "names of values, keyed by the raw number (decimal or 0x..)",
+      "type": ["object", "null"],
+      "propertyNames": { "pattern": "^\\s*(-?[0-9]+|0[xX][0-9A-Fa-f]+)\\s*$" },
+      "additionalProperties": { "type": "string" }
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "bits": { "type": "string", "pattern": "^\\s*[0-9]+(\\s*:\\s*[0-9]+)?\\s*$", "description": "\"high:low\" or one bit" },
+        "access": { "enum": ["ro", "rw", "w1c"], "description": "only where it differs from the register's" },
+        "desc": { "type": "string" },
+        "values": { "$ref": "#/$defs/names" }
+      },
+      "required": ["name", "bits"]
+    },
+    "register": {
+      "type": "object",
+      "properties": {
+        "addr": { "$ref": "#/$defs/word" },
+        "name": { "type": "string" },
+        "type": { "enum": ["u8", "i8", "u16", "i16", "u32", "i32", "f32", "bytes", "uint8_t", "int8_t", "uint16_t", "int16_t", "uint32_t", "int32_t", "float"] },
+        "size": { "type": ["integer", "null"], "minimum": 1, "maximum": 65535, "description": "bytes; for type bytes" },
+        "unit": { "type": ["string", "null"] },
+        "access": { "enum": ["ro", "rw", "wo", null], "description": "wo: written only, never read" },
+        "write": { "enum": ["normal", "action", "w1c", null], "description": "action: does something, then reads back idle; w1c: a 1 written clears that bit" },
+        "persist": { "type": ["boolean", "null"], "description": "kept across a reset" },
+        "group": { "type": ["string", "null"] },
+        "desc": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"] },
+        "danger": { "type": ["boolean", "null"], "description": "a write moves or powers something: confirmed every time" },
+        "plot": { "type": ["boolean", "null"], "description": "false: a fixed value (an ID, a setting), not a line on a chart" },
+        "format": { "type": ["string", "null"], "description": "hex: shown as 0x.." },
+        "scale": { "type": ["number", "null"], "description": "shown = raw x scale + offset" },
+        "offset": { "type": ["number", "null"] },
+        "decimals": { "type": ["integer", "null"], "minimum": -1, "maximum": 15 },
+        "min": { "type": ["number", "null"], "description": "shown units" },
+        "max": { "type": ["number", "null"], "description": "shown units" },
+        "default": { "type": ["number", "string", "null"], "description": "shown units, or one of the register's value names" },
+        "special": {
+          "type": ["object", "null"],
+          "propertyNames": { "pattern": "^\\s*(-?[0-9.eE+-]+|0[xX][0-9A-Fa-f]+)\\s*$" },
+          "additionalProperties": { "type": "string" },
+          "description": "names of single values of a number, in shown units"
+        },
+        "enum": { "$ref": "#/$defs/names" },
+        "fields": { "type": ["array", "null"], "items": { "$ref": "#/$defs/field" } },
+        "remove": { "type": "boolean", "description": "an overlay: this register of the base goes" }
+      },
+      "required": ["addr"]
+    }
+  }
+}

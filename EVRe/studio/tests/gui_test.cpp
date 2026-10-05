@@ -1,0 +1,4021 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* evre_gui_test: drives the real MainWindow against tests/fake_device.py
+ * (127.0.0.1:1210) - NEVER a real device: it writes, including a register
+ * marked danger. A second TCP client plays "someone else" writing the same
+ * registers. Settings go under a separate name, the user's are not touched.
+ *
+ *   python tests/fake_device.py --port 1210 [--map maps/X.json] &
+ *   evre_gui_test [X.json]          (a map in maps/, default example_device.json)
+ *
+ * The registers it uses are found in the map, so any map that has them will
+ * do: the first writable u8 and the first writable 16-bit danger register of
+ * the device bank (0xD000 and up), the first writable u8 there with named
+ * values (its check fails without one), and the first read-only f32 in V and
+ * in A, which a math line multiplies. The protocol's own CONFIG register
+ * (0xA004) serves as a danger register of flags. The group check needs a
+ * group with "&" in its name, and the login checks a "login" in the map.
+ *
+ * The login: the window starts with EVRE_TOKEN set to the fake device's
+ * token (fake_device.py --token, "example-token" by default). The fake
+ * device keeps the last token written to its login register and lets it be
+ * read back, so the other client sees what arrived.
+ *
+ * The steps run in order, each one leaving the window and the device as the
+ * next expects. Qt's warnings about objects used across threads are counted
+ * too, until the window and its I/O thread are gone: any of them fails the
+ * last check (a timer started from the wrong thread never fires, and Qt only
+ * warns).
+ *
+ * Exit code: 0 all passed, 1 a check failed, 2 the map file or the fake
+ * device is missing.
+ */
+#include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QCompleter>
+#include <QElapsedTimer>
+#include <QFocusEvent>
+#include <QFrame>
+#include <QHeaderView>
+#include <QHelpEvent>
+#include <QImage>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QLabel>
+#include <QLineEdit>
+#include <QListWidget>
+#include <QMenu>
+#include <QMessageBox>
+#include <QPlainTextEdit>
+#include <QPointer>
+#include <QProcess>
+#include <QPushButton>
+#include <QRegularExpression>
+#include <QScreen>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSettings>
+#include <QSortFilterProxyModel>
+#include <QTabBar>
+#include <QSpinBox>
+#include <QStatusBar>
+#include <QTabWidget>
+#include <QTableView>
+#include <QTableWidget>
+#include <QTcpSocket>
+#include <QTextBlock>
+#include <QTextBrowser>
+#include <QTextDocument>
+#include <QTemporaryDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QTest>
+#include <QTimer>
+#include <QToolTip>
+#include <QUndoStack>
+#include <QWheelEvent>
+#include <QWidgetAction>
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstdio>
+#include <functional>
+
+#include "evre/frame.h"
+#include "io/engine.h"
+#include "io/reg_table.h"
+#include "model/bus_file.h"
+#include "model/device_map.h"
+#include "model/map_document.h"
+#include "model/register_model.h"
+#include "ui/bit_view.h"
+#include "ui/bus_panel.h"
+#include "ui/chart_tab.h"
+#include "ui/elided_label.h"
+#include "ui/field_editor.h"
+#include "ui/formula_completer.h"
+#include "ui/help_dialog.h"
+#include "ui/math_line_dialog.h"
+#include "ui/chart_widget.h"
+#include "ui/main_window.h"
+#include "ui/map_editor_tab.h"
+#include "ui/limit_spin_box.h"
+#include "ui/map_table_model.h"
+#include "ui/monitor_tab.h"
+#include "ui/registers_tab.h"
+#include "ui/sidebar.h"
+#include "ui/theme.h"
+#include "ui/value_pace.h"
+
+namespace {
+
+constexpr quint16 FAKE_DEVICE_PORT = 1210;
+constexpr quint16 FAKE_BUS_PORT = 1226; /* evre_fake_fast as several devices on one link, started by the bus step */
+constexpr quint16 FAKE_AUTO_SEND_PORT = 1236; /* evre_fake_fast as one device that can AUTO_SEND, the auto send step */
+constexpr uint16_t PROTOCOL_CONFIG = 0xA004;  /* the EVRe protocol's CONFIG register */
+constexpr int MSG_ENABLE_MASK = 0x4;           /* its MSG_ENABLE flag, bit 2 */
+constexpr int DIALOG_WAIT_MS = 10000;         /* how long a step waits for the dialog it brings */
+constexpr int UNANSWERED_DIALOG_MS = 15000;    /* a dialog open this long was answered by no step */
+
+/* the token the fake device accepts at its login register, and one it refuses */
+const QByteArray fakeDeviceToken("example-token");
+const QByteArray wrongToken("not-the-token");
+/* what the other client leaves in the login register before the window connects with a map without login */
+const QByteArray noLoginMarker("no-login-marker");
+
+/* what the window logs about the login */
+const QLatin1String tokenRefusedText("token refused: permission denied");
+const QLatin1String noLoginRegisterText("the map declares no login register: the token was not sent");
+
+/* the titles of the window's two questions before a write */
+const QLatin1String valueChangedTitle("Value changed while editing");
+const QLatin1String confirmWriteTitle("Confirm write");
+
+/* the math lines the test sets up: one over the map's registers, one naming
+ * no register of the map (shown as an error, never drawn), and one saved
+ * without its on flag, as an older entry is (shown) */
+const QString powerLine = QStringLiteral("ƒ P");
+const QString unresolvedLine = QStringLiteral("ƒ UNKNOWN");
+const QString withoutOnFlagLine = QStringLiteral("ƒ OLD");
+
+/* ---- results */
+
+int passed = 0, failed = 0;
+
+void check(bool ok, const char *what) {
+	std::printf("%s %s\n", ok ? "PASS" : "FAIL", what);
+	std::fflush(stdout);
+	(ok ? passed : failed)++;
+}
+
+/* ---- Qt's warnings about objects used across threads: counted (they come
+ * from any thread), then passed on to the handler before, so they still show */
+
+std::atomic<int> threadWarnings{ 0 };
+QtMessageHandler previousHandler = nullptr;
+
+void countThreadWarnings(QtMsgType type, const QMessageLogContext &context, const QString &message) {
+	/* parts of Qt's messages: "... from another thread" (timers, socket notifiers),
+	 * "... in a different thread" (children, a new parent, stopping a timer),
+	 * "... is not the object's thread" (moveToThread), and the rest by name */
+	static const char *const phrases[] = {
+		"another thread",
+		"different thread",
+		"object's thread",
+		"Cannot move objects with a parent",
+		"only be used with threads started with QThread",
+		"QThread: Destroyed while thread is still running",
+	};
+	for (const char *phrase : phrases) {
+		if (message.contains(QLatin1String(phrase))) {
+			threadWarnings++;
+			break;
+		}
+	}
+	if (previousHandler) previousHandler(type, context, message);
+}
+
+/* ---- the other client: plain blocking EVRe over its own socket */
+
+class OtherClient {
+public:
+	/* port: the fake device's; slave: the device on that link the requests go to */
+	bool open(quint16 port = FAKE_DEVICE_PORT, uint8_t slave = 1) {
+		slave_ = slave;
+		socket_.connectToHost(QStringLiteral("127.0.0.1"), port);
+		return socket_.waitForConnected(2000);
+	}
+	QByteArray read(uint16_t addr, int count) { /* empty: no answer */
+		QByteArray data;
+		return transact(evre::READ, addr, {}, uint16_t(count), &data) ? data : QByteArray();
+	}
+	bool write(uint16_t addr, const QByteArray &data) {
+		return transact(evre::WRITE_ACK, addr, data, uint16_t(data.size()), nullptr);
+	}
+	int readU8(uint16_t addr) { /* -1: no answer */
+		QByteArray data;
+		return transact(evre::READ, addr, {}, 1, &data) && data.size() == 1 ? uint8_t(data[0]) : -1;
+	}
+	int readI16(uint16_t addr) { /* -99999: no answer */
+		QByteArray data;
+		if (!transact(evre::READ, addr, {}, 2, &data) || data.size() != 2) return -99999;
+		return int16_t(uint8_t(data[0]) | (uint8_t(data[1]) << 8));
+	}
+	bool writeU8(uint16_t addr, uint8_t value) {
+		return transact(evre::WRITE_ACK, addr, QByteArray(1, char(value)), 1, nullptr);
+	}
+	bool writeI16(uint16_t addr, int16_t value) {
+		QByteArray data;
+		data.append(char(value & 0xFF));
+		data.append(char((value >> 8) & 0xFF));
+		return transact(evre::WRITE_ACK, addr, data, 2, nullptr);
+	}
+
+private:
+	/* one request and its answer (waited for up to 5 s): false on an error answer or none */
+	bool transact(uint8_t fn, uint16_t addr, const QByteArray &data, uint16_t count, QByteArray *answer) {
+		socket_.write(evre::build(slave_, fn, addr, count, data));
+		socket_.flush();
+		evre::Frame frame;
+		for (int i = 0; i < 50; i++) {
+			if (!socket_.waitForReadyRead(100)) continue;
+			parser_.feed(socket_.readAll());
+			while (parser_.next(frame)) {
+				if (frame.addr != addr || frame.slave != slave_) continue;
+				if (answer) *answer = frame.data;
+				return frame.fn != evre::ERROR_RESP;
+			}
+		}
+		return false;
+	}
+
+	QTcpSocket socket_;
+	evre::Parser parser_;
+	uint8_t slave_ = 1;
+};
+
+/* ---- the registers the test uses, found in the map */
+
+struct TestRegisters {
+	RegDef u8;      /* the first writable u8 of the device bank, not danger */
+	RegDef enumU8;  /* the same with named values, for the quick write's list */
+	RegDef danger;  /* the first writable 16-bit danger register of the device bank */
+	RegDef volts;   /* the first read-only f32 in V and in A (the fake device moves them) */
+	RegDef amps;
+
+	/* a register not found keeps an empty name */
+	static TestRegisters find(const DeviceMap &map) {
+		TestRegisters found;
+		const auto keepFirst = [](RegDef &slot, const RegDef &def, bool matches) {
+			if (matches && slot.name.isEmpty()) slot = def;
+		};
+		for (const RegDef &def : map.regs) {
+			const bool writableDevice = def.addr >= 0xD000 && def.rw;
+			const bool sixteenBits = def.type == RegType::I16 || def.type == RegType::U16;
+			const bool readOnlyFloat = !def.rw && def.type == RegType::F32;
+			const bool plainU8 = writableDevice && !def.danger && def.type == RegType::U8;
+			keepFirst(found.u8, def, plainU8);
+			keepFirst(found.enumU8, def, plainU8 && !def.enumValues.isEmpty());
+			keepFirst(found.danger, def, writableDevice && def.danger && sixteenBits);
+			keepFirst(found.volts, def, readOnlyFloat && def.unit == QLatin1String("V"));
+			keepFirst(found.amps, def, readOnlyFloat && def.unit == QLatin1String("A"));
+		}
+		return found;
+	}
+};
+
+/* The test's own settings: the math lines (P = V x I over the map's
+ * registers, the unresolved one, and OLD = 2 V in three fields) and a known
+ * chart memory and view. */
+void prepareSettings(const TestRegisters &regs) {
+	QSettings settings;
+	settings.setValue(QStringLiteral("chart/math"),
+			QStringList{ QStringLiteral("P\tW\t%1 * %2\t1").arg(regs.volts.name, regs.amps.name),
+					QStringLiteral("UNKNOWN\tW\tNO_SUCH_REGISTER * 2\t1"),
+					QStringLiteral("OLD\tV\t%1 * 2").arg(regs.volts.name) });
+	settings.setValue(QStringLiteral("chart/memory"), 60.0);
+	settings.setValue(QStringLiteral("chart/window"), 30.0);
+}
+
+/* a token as the login register receives it: cut or zero-padded to its size (STUDIO.md section 3.6) */
+QByteArray loginBytes(const QByteArray &token, int size) {
+	QByteArray bytes = token.left(size);
+	bytes.append(QByteArray(size - int(bytes.size()), '\0'));
+	return bytes;
+}
+
+/* ---- helpers for the window */
+
+/* the value cell of a register, by name */
+QModelIndex valueCell(QTableView *table, const QString &name) {
+	QAbstractItemModel *model = table->model();
+	for (int r = 0; r < model->rowCount(); r++)
+		if (model->index(r, RegisterModel::ColName).data().toString() == name)
+			return model->index(r, RegisterModel::ColValue);
+	return {};
+}
+
+/* opens a cell's editor, as a double-click does: nullptr if none came */
+QLineEdit *openEditor(QTableView *table, const QModelIndex &cell) {
+	table->scrollTo(cell);
+	table->setCurrentIndex(cell);
+	table->edit(cell);
+	QLineEdit *editor = nullptr;
+	(void) QTest::qWaitFor([&] {
+		for (QLineEdit *line : table->viewport()->findChildren<QLineEdit *>()) {
+			if (line->isVisible()) {
+				editor = line;
+				return true;
+			}
+		}
+		return false;
+	}, 2000);
+	return editor;
+}
+
+/* while a step waits for a dialog (answerDialog, fillDialog): the guard in main() says whether one was waiting */
+struct AwaitingDialog {
+	static inline int count = 0;
+	AwaitingDialog() { count++; }
+	~AwaitingDialog() { count--; }
+	AwaitingDialog(const AwaitingDialog &) = delete;
+	AwaitingDialog &operator=(const AwaitingDialog &) = delete;
+};
+
+/* runs trigger, then answers the modal message box it brings by clicking
+ * buttonText (or rejects it, without that button): the box's title, or empty if none came.
+ * The poll timer is local, so it stops when this returns: a poll left running
+ * after a call that brought no box would answer the next call's box itself. */
+QString answerDialog(const QString &buttonText, const std::function<void()> &trigger) {
+	QString title;
+	bool done = false;
+	const QPointer<QWidget> wasActive = QApplication::activeWindow();
+	const AwaitingDialog awaiting;
+	QTimer poll;
+	poll.setInterval(50);
+	QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+		auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+		if (!box) return;
+		poll.stop();
+		title = box->windowTitle();
+		done = true;
+		for (QAbstractButton *button : box->buttons()) {
+			if (button->text().remove(QLatin1Char('&')) == buttonText) {
+				button->click();
+				return;
+			}
+		}
+		box->reject();
+	});
+	poll.start();
+	trigger();
+	/* long enough for a busy machine (it returns as soon as the box is answered): a box that came after this
+	 * stopped waiting stayed on the screen for a person */
+	(void) QTest::qWaitFor([&] { return done; }, DIALOG_WAIT_MS);
+	/* the window active again before the next step: on Windows it comes back a little after the box closes, and an
+	 * editor opened meanwhile lost its focus then, was taken as typed (Qt commits an editor on focus out) and
+	 * brought its question while no step waited for it (xvfb has no active window: nothing to wait for there) */
+	if (done && wasActive) (void) QTest::qWaitFor([&] { return QApplication::activeWindow() == wasActive; }, 2000);
+	return title;
+}
+
+/* runs trigger, and fill(dialog) on the modal dialog it brings (not a message box): fill accepts or rejects it.
+ * True when a dialog came. */
+bool fillDialog(const std::function<void(QDialog *)> &fill, const std::function<void()> &trigger) {
+	bool done = false;
+	const QPointer<QWidget> wasActive = QApplication::activeWindow();
+	const AwaitingDialog awaiting;
+	QTimer poll;
+	poll.setInterval(50);
+	QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+		auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+		if (!dialog || qobject_cast<QMessageBox *>(dialog)) return;
+		poll.stop();
+		done = true;
+		fill(dialog);
+		if (dialog->isVisible()) dialog->reject(); /* never left open */
+	});
+	poll.start();
+	trigger();
+	(void) QTest::qWaitFor([&] { return done; }, DIALOG_WAIT_MS);
+	if (done && wasActive) (void) QTest::qWaitFor([&] { return QApplication::activeWindow() == wasActive; }, 2000);
+	return done;
+}
+
+/* Enter in an editor, answering the message box it may bring with button */
+QString enterAnswering(QLineEdit *editor, const QString &button) {
+	return answerDialog(button, [editor] {
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+	});
+}
+
+/* waits (up to ms) until a cell shows text */
+bool cellShows(const QModelIndex &cell, const QString &text, int ms = 3000) {
+	return QTest::qWaitFor([&] { return cell.data().toString() == text; }, ms);
+}
+
+/* a group check box's text is the group's name with each & doubled (a single & is a mnemonic) */
+QString groupName(const QCheckBox *box) {
+	return box->text().replace(QStringLiteral("&&"), QStringLiteral("&"));
+}
+
+/* and back: a name as a check box or a button shows it */
+QString doubleAmpersands(QString text) {
+	return text.replace(QStringLiteral("&"), QStringLiteral("&&"));
+}
+
+/* the chart's key of the line with this name, -1 if none is drawn */
+int lineKey(const ChartView *view, const QString &name) {
+	for (const ChartView::Info &line : view->lines())
+		if (line.name == name) return line.key;
+	return -1;
+}
+
+/* the P line's row of the measurements table has its area in J (column 8) and in Wh (column 9) */
+bool powerAreaInJoulesAndWattHours(const QTableWidget *table) {
+	bool found = false;
+	for (int r = 0; r < table->rowCount(); r++) {
+		const QTableWidgetItem *name = table->item(r, 0), *area = table->item(r, 8), *areaHours = table->item(r, 9);
+		if (name && name->text() == powerLine)
+			found = area && areaHours && area->text().endsWith(QLatin1String(" J"))
+					&& areaHours->text().endsWith(QLatin1String(" Wh"));
+	}
+	return found;
+}
+
+/* A link in memory, for the master's own checks: it keeps what is sent and plays back the answers given. */
+class LoopLink : public evre::Link {
+public:
+	QList<evre::Frame> sent;
+	void open() override { emit opened(); }
+	void close() override {}
+	bool isOpen() const override { return true; }
+	void send(const QByteArray &bytes) override {
+		evre::Parser parser;
+		parser.feed(bytes);
+		evre::Frame frame;
+		while (parser.next(frame)) sent << frame;
+	}
+	QString describe() const override { return QStringLiteral("loop"); }
+	void answer(uint8_t slave, uint8_t fn, uint16_t addr, uint16_t cnt, const QByteArray &data = {}) {
+		emit received(evre::build(slave, fn, addr, cnt, data));
+	}
+};
+
+/* ---- the steps */
+
+/* the widgets of the quick write panel under the table */
+struct QuickWriteWidgets {
+	QFrame *frame = nullptr;
+	QLineEdit *value = nullptr;
+	QComboBox *enumList = nullptr;
+	QCheckBox *bits = nullptr;
+
+	bool complete() const { return frame && value && enumList && bits; }
+	BitView *bitView() const { return frame->findChild<BitView *>(QStringLiteral("bitView")); }
+	/* a label of the panel shows this text (its hint: "not connected", "tick Allow writes to write") */
+	bool shows(const QString &text) const {
+		const QList<QLabel *> labels = frame->findChildren<QLabel *>();
+		return std::any_of(labels.begin(), labels.end(), [&](const QLabel *label) { return label->text() == text; });
+	}
+};
+
+class GuiTest {
+public:
+	GuiTest(MainWindow &window, OtherClient &other, const DeviceMap &map, const QString &mapName)
+		: window_(window), other_(other), map_(map), regs_(TestRegisters::find(map)), mapName_(mapName) {}
+
+	/* false: the window or the map lacks what the steps need, nothing more was tried */
+	bool run() {
+		if (!findWidgets() || !findRegisters()) return false;
+		/* before anything ticks it: Allow writes already as wide as in bold (it moved the bar at its first tick) */
+		{
+			const int unticked = allowWrites_->width();
+			allowWrites_->setChecked(true);
+			QApplication::processEvents();
+			const int ticked = allowWrites_->width();
+			allowWrites_->setChecked(false);
+			QApplication::processEvents();
+			check(unticked == ticked && allowWrites_->property("highlightWidth").isValid(),
+					"Allow writes: its bold width from the start, so even the first tick moves nothing");
+		}
+		masterSlaves();
+		connectedAndPolling();
+		tokenSentAfterConnecting();
+		writeSwitch();
+		plainWrite();
+		otherClientWrites();
+		changeWhileEditing();
+		unchangedMeanwhile();
+		dangerRegister();
+		badValueRefused();
+		noticeCoversNothing();
+		showInLogEndsNotice();
+		eventLog();
+		staleValues();
+		decodedFields();
+		quickWrite();
+		groups();
+		chart();
+		chartManyLines();
+		chartBinsAndGpu();
+		readoutSteady();
+		displayMenu();
+		helpPages();
+		measuresManyLines();
+		chartFollowsFrames();
+		frameBudget();
+		plotShownWithoutQuestion();
+		mapEditor();
+		limitsAndFields();
+		pollingSurvivesEdits();
+		uiAudit();
+		hoverEdges();
+		monitorRequests();
+		formulaCompletion();
+		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
+		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
+		other_.writeI16(regs_.danger.addr, 0);
+		wrongTokenRefused();
+		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
+		return true;
+	}
+
+private:
+	bool findWidgets() {
+		table_ = window_.findChild<QTableView *>(QStringLiteral("registers"));
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Allow writes")) allowWrites_ = box;
+			if (box->text() == QLatin1String("Poll")) poll_ = box;
+		}
+		model_ = window_.findChild<RegisterModel *>();
+		const bool found = table_ && allowWrites_ && poll_ && model_;
+		check(found, "window built: table, Allow writes, Poll");
+		/* the style sheet styles the combo boxes' drop-down: their arrow is an image the theme draws */
+		const QRegularExpressionMatch arrow =
+				QRegularExpression(QStringLiteral("QComboBox::down-arrow \\{ image: url\\(\"([^\"]+)\"\\)"))
+						.match(qApp->styleSheet());
+		check(arrow.hasMatch() && QImage(arrow.captured(1)).size() == QSize(40, 24),
+				"combo boxes have a drop-down arrow: the theme's image of it exists");
+		/* every button with a menu: the same chevron (not Fusion's triangle) */
+		const bool menuArrow = arrow.hasMatch()
+				&& qApp->styleSheet().contains(
+						QStringLiteral("QPushButton::menu-indicator { image: url(\"%1\")").arg(arrow.captured(1)));
+		QStringList plainMenuButtons;
+		for (QPushButton *button : window_.findChildren<QPushButton *>())
+			if (button->menu() && !button->property("menuButton").toBool()) plainMenuButtons << button->text();
+		if (!plainMenuButtons.isEmpty())
+			std::printf("menu buttons without the chevron: %s\n", qPrintable(plainMenuButtons.join(QStringLiteral(", "))));
+		check(menuArrow && plainMenuButtons.isEmpty(), "menu buttons (Math, Export, groups) have the combo boxes' chevron");
+		return found;
+	}
+
+	bool findRegisters() {
+		std::printf("map %s: u8 register %s (0x%04X), with names %s, danger register %s (0x%04X), math line %s * %s,"
+				" login at 0x%04X\n",
+				qPrintable(mapName_), qPrintable(regs_.u8.name), regs_.u8.addr, qPrintable(regs_.enumU8.name),
+				qPrintable(regs_.danger.name), regs_.danger.addr, qPrintable(regs_.volts.name),
+				qPrintable(regs_.amps.name), map_.loginAddr);
+		const bool found = !regs_.u8.name.isEmpty() && !regs_.danger.name.isEmpty();
+		check(found, "the map has a writable u8 and a writable danger register");
+		/* the registers were found in the file: the window must have loaded the same map */
+		const bool loaded = model_->rows().size() == map_.regs.size() && inWindowsMap(regs_.u8.name)
+				&& inWindowsMap(regs_.danger.name);
+		check(loaded, "the window loaded the map: as many registers as the file, those above among them");
+		return found && loaded;
+	}
+
+	bool inWindowsMap(const QString &name) const {
+		const QVector<RegisterModel::Row> &rows = model_->rows();
+		return std::any_of(rows.begin(), rows.end(), [&](const RegisterModel::Row &row) { return row.def.name == name; });
+	}
+
+	/* the Log tab's text, empty if there is no Log */
+	QString logText() const {
+		auto *log = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"));
+		return log ? log->toPlainText() : QString();
+	}
+
+	/* the login register as the device holds it: the last token written to it (the fake device keeps it) */
+	QByteArray deviceLogin() { return other_.read(map_.loginAddr, map_.loginSize); }
+
+	/* the window started with EVRE_TOKEN set: the token went to the map's login register, and was accepted */
+	void tokenSentAfterConnecting() {
+		const bool declared = map_.loginAddr != 0;
+		const QByteArray want = loginBytes(fakeDeviceToken, map_.loginSize);
+		const bool arrived = declared && QTest::qWaitFor([&] { return deviceLogin() == want; }, 3000);
+		const QString log = logText();
+		check(arrived && !log.contains(QLatin1String("token refused")) && !log.contains(noLoginRegisterText),
+				"a token and a map with a login: sent after connecting, zero-padded; the device holds it, accepted");
+	}
+
+	/* waits until the device holds value in the u8 / the danger register */
+	bool u8Becomes(int value) {
+		return QTest::qWaitFor([&] { return other_.readU8(regs_.u8.addr) == value; }, 3000);
+	}
+	bool dangerBecomes(int value) {
+		return QTest::qWaitFor([&] { return other_.readI16(regs_.danger.addr) == value; }, 3000);
+	}
+
+	/* the window's button with this text, nullptr if there is none */
+	QPushButton *buttonWithText(const QString &text) const { return buttonWithText(window_, text); }
+	static QPushButton *buttonWithText(const QWidget &in, const QString &text) {
+		for (QPushButton *button : in.findChildren<QPushButton *>())
+			if (button->text() == text) return button;
+		return nullptr;
+	}
+
+	/* opens a cell's editor and types text over what it holds: nullptr if no editor came */
+	QLineEdit *typeInto(const QModelIndex &cell, const QString &text) {
+		QLineEdit *editor = openEditor(table_, cell);
+		if (editor) {
+			editor->selectAll();
+			QTest::keyClicks(editor, text);
+		}
+		return editor;
+	}
+
+	/* the device starts from 0; the window, connected at startup, shows it */
+	void connectedAndPolling() {
+		other_.writeU8(regs_.u8.addr, 0);
+		other_.writeI16(regs_.danger.addr, 0);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		check(cellShows(u8Cell_, QStringLiteral("0"), 5000), "connected and polling: the u8 register shows 0");
+	}
+
+	/* 1. writes are off until Allow writes is ticked */
+	void writeSwitch() {
+		check(!(u8Cell_.flags() & Qt::ItemIsEditable), "writes off: a RW value cannot be edited");
+		allowWrites_->setChecked(true);
+		check(bool(u8Cell_.flags() & Qt::ItemIsEditable), "Allow writes on: it can");
+	}
+
+	/* 2. a plain write, read back */
+	void plainWrite() {
+		QLineEdit *editor = typeInto(u8Cell_, QStringLiteral("3"));
+		check(editor != nullptr, "double-click opens an editor");
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		check(u8Becomes(3), "u8 register: 3 written: the device holds 3");
+		check(cellShows(u8Cell_, QStringLiteral("3")), "... and the table shows 3 (read back)");
+	}
+
+	/* 3. someone else writes: the table follows the device */
+	void otherClientWrites() {
+		other_.writeU8(regs_.u8.addr, 1);
+		check(cellShows(u8Cell_, QStringLiteral("1")), "another client writes 1: the table shows 1 on the next poll");
+	}
+
+	/* 4. a change while editing: the typed text survives the refresh, the write asks first. The
+	 * editor is held by a QPointer: should it close meanwhile (focus taken by another window),
+	 * the checks fail instead of reading a deleted widget */
+	void changeWhileEditing() {
+		QPointer<QLineEdit> editor = typeInto(u8Cell_, QStringLiteral("2"));
+		other_.writeU8(regs_.u8.addr, 4);
+		QTest::qWait(600); /* several polls while the editor is open */
+		check(editor && editor->text() == QLatin1String("2"), "polls while editing do not overwrite the typed text");
+		QString title = enterAnswering(editor, QStringLiteral("Cancel"));
+		check(title == valueChangedTitle, "Enter after the device changed: \"Value changed while editing\" asked");
+		check(other_.readU8(regs_.u8.addr) == 4, "Cancel: nothing written, the device keeps the other client's 4");
+
+		/* answered from the typing on: had the editor lost its focus meanwhile (another window), its question would
+		 * come before Enter, and still be answered here, not left on the screen */
+		title = answerDialog(QStringLiteral("Write anyway"), [&] {
+			editor = typeInto(u8Cell_, QStringLiteral("2"));
+			other_.writeU8(regs_.u8.addr, 1);
+			QTest::qWait(400);
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		});
+		check(title == valueChangedTitle && u8Becomes(2), "Write anyway: the device holds 2");
+	}
+
+	/* 5. no question when nothing changed meanwhile. The table first shows
+	 * what the device holds (the I/O thread's values arrive within a frame). */
+	void unchangedMeanwhile() {
+		(void) cellShows(u8Cell_, QStringLiteral("2"));
+		QLineEdit *editor = typeInto(u8Cell_, QStringLiteral("0"));
+		const QString title = enterAnswering(editor, QStringLiteral("Cancel"));
+		check(title.isEmpty() && u8Becomes(0), "unchanged meanwhile: written without a dialog");
+	}
+
+	/* 6. a register marked danger asks every time */
+	void dangerRegister() {
+		const QModelIndex cell = valueCell(table_, regs_.danger.name);
+		QString title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Cancel"));
+		check(title == confirmWriteTitle && other_.readI16(regs_.danger.addr) == 0,
+				"the danger register: confirm asked, Cancel writes nothing");
+		title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Write"));
+		check(title == confirmWriteTitle && dangerBecomes(50), "... Write: the device holds 50");
+	}
+
+	/* 7. a bad value is refused before anything is sent */
+	void badValueRefused() {
+		QLineEdit *editor = typeInto(u8Cell_, QStringLiteral("300"));
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		check(QTest::qWaitFor([&] { return noticeShown("not written"); }, 2000) && other_.readU8(regs_.u8.addr) == 0,
+				"300 into a u8: a pop-up \"not written\", nothing sent");
+	}
+
+	/* a pop-up notice is shown whose tooltip holds text */
+	bool noticeShown(const char *text) const {
+		for (QLabel *label : window_.findChildren<QLabel *>(QStringLiteral("notice")))
+			if (label->isVisible() && label->toolTip().contains(QLatin1String(text))) return true;
+		return false;
+	}
+
+	/* the pop-up covers nothing: not the tabs, not any tab's page, not the sidebar; on every tab and size */
+	void noticeCoversNothing() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *notice = window_.findChild<QLabel *>(QStringLiteral("notice"));
+		bool clear = tabs && notice;
+		const QSize was = window_.size();
+		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
+			window_.resize(size);
+			for (int tab = 0; clear && tab < tabs->count(); tab++) {
+				tabs->setCurrentIndex(tab);
+				QApplication::processEvents();
+				if (!notice->isVisible() || !noticeOverlaps(tabs, notice)) continue;
+				const QRect n = inWindow(notice);
+				std::printf("  notice %d,%d %dx%d overlaps (tab %d, window %dx%d)\n", n.x(), n.y(), n.width(),
+						n.height(), tab, size.width(), size.height());
+				clear = false;
+			}
+		}
+		if (tabs) tabs->setCurrentIndex(0);
+		check(clear, "the pop-up covers nothing: tabs, pages, sidebar, at 1200x720 and 1600x950, every tab");
+	}
+
+	/* the notice over the current page, left of the last tab, or over the sidebar */
+	bool noticeOverlaps(const QTabWidget *tabs, const QLabel *notice) const {
+		const QRect noticeRect = inWindow(notice);
+		const QTabBar *bar = tabs->tabBar();
+		const QRect lastTab = bar->tabRect(tabs->count() - 1).translated(bar->mapTo(&window_, QPoint(0, 0)));
+		const auto *sidebar = window_.findChild<QScrollArea *>(QStringLiteral("sideScroll"));
+		return noticeRect.intersects(inWindow(tabs->currentWidget())) || noticeRect.left() <= lastTab.right()
+				|| (sidebar && noticeRect.intersects(inWindow(sidebar)));
+	}
+
+	/* "Show in Log" opens the Log tab and ends the notice: a resize of the window does not bring it back */
+	void showInLogEndsNotice() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *notice = window_.findChild<QLabel *>(QStringLiteral("notice"));
+		QLineEdit *editor = typeInto(u8Cell_, QStringLiteral("abc"));
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		const bool shown = QTest::qWaitFor([&] { return noticeShown("not a number"); }, 2000);
+		if (notice) emit notice->linkActivated(QStringLiteral("log"));
+		const bool logOpened = tabs && tabs->currentIndex() == MainWindow::TabLog;
+		const QSize was = window_.size();
+		for (const QSize &size : { was + QSize(60, 0), was }) {
+			window_.resize(size);
+			QTest::qWait(200);
+		}
+		check(shown && logOpened && notice && !notice->isVisible(),
+				"Show in Log: the Log tab, and the notice stays gone after a resize");
+		if (tabs) tabs->setCurrentIndex(0);
+	}
+
+	/* a widget's rectangle in the window's coordinates */
+	QRect inWindow(const QWidget *widget) const {
+		return QRect(widget->mapTo(&window_, QPoint(0, 0)), widget->size());
+	}
+
+	void eventLog() {
+		const QString text = logText();
+		check(text.contains(QLatin1String("not written")) && text.contains(QLatin1String("written: ")),
+				"the Log tab: the writes, and the one not written");
+	}
+
+	/* 8. stale: polling paused, values go grey */
+	void staleValues() {
+		check(!u8Greyed(), "polling: not greyed");
+		poll_->setChecked(false);
+		check(QTest::qWaitFor([&] { return u8Greyed(); }, 3000), "Poll off: greyed within two intervals");
+		poll_->setChecked(true);
+		check(QTest::qWaitFor([&] { return !u8Greyed(); }, 3000), "Poll on again: not greyed");
+	}
+
+	/* WCAG 2.1: the contrast of two colours, 1 to 21 */
+	static double contrast(const QColor &a, const QColor &b) {
+		auto luminance = [](const QColor &c) {
+			auto channel = [](double v) { return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); };
+			return 0.2126 * channel(c.redF()) + 0.7152 * channel(c.greenF()) + 0.0722 * channel(c.blueF());
+		};
+		const double la = luminance(a), lb = luminance(b);
+		return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+	}
+
+	/* AUTO_SEND (one device): evre_fake_fast on a port of its own sends its read-only block by itself once CONFIG asks.
+	 * The window writes CONFIG (bit 3, the prescaler), takes the frames (table, rate, CSV rows), polls only the rest,
+	 * reads CONFIG every 100 ms even with Poll off, clears it on Disconnect and switches it on again after a lost
+	 * link; a device that clears it by itself is told of once. A serial link's rate is cut to what it can carry. */
+	void autoSend() {
+		/* the serial cap: 32-byte frames (22 data); 70% of the bytes a 10-bit UART byte allows */
+		check(IoEngine::autoSendPrescalerFor(79, 115200, 22) == 79 && IoEngine::autoSendPrescalerFor(1, 115200, 22) == 31
+						&& IoEngine::autoSendPrescalerFor(79, 9600, 22) == 199 && IoEngine::autoSendPrescalerFor(1, 0, 22) == 1,
+				"auto send: a serial link keeps rate x frame <= 70% of baud/10 (4000 Hz at 115200 -> 250 Hz, 40 Hz the "
+				"least), TCP as asked");
+
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *box = window_.findChild<QCheckBox *>(QStringLiteral("autoSend"));
+		QCheckBox *reconnectBox = nullptr;
+		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
+			if (b->text() == QLatin1String("Reconnect by itself")) reconnectBox = b;
+		auto *rate = window_.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+		const bool found = sidebar && box && rate && reconnectBox && rate->count() == 16
+				&& rate->itemData(0).toInt() == 4000 && rate->itemData(15).toInt() == 40 && rate->findData(100) >= 0;
+		check(found, "auto send: the box and the 16 rates the device makes exactly (4000 Hz .. 40 Hz: the prescaler is the "
+				"device timer's reload, never 0) in the polling card");
+		if (!found) return;
+		/* the sidebar's rate line: one line, as wide as it gets, and no slower-than-asked hint while the frames run */
+		QLabel *rateLine = nullptr;
+		for (QLabel *label : sidebar->findChildren<QLabel *>())
+			if (label->text().contains(QLatin1String("polls/s"))) rateLine = label;
+		IoEngine::Stats slow;
+		slow.blocks = 1;
+		slow.pollHz = 0.5;
+		slow.master.avgLatencyMs = 20000; /* one answer in 20 s: a hint, polling everything */
+		sidebar->showStats(slow, true);
+		const bool hintPolling = !sidebar->slowPollHint().isEmpty();
+		slow.autoSend = true;
+		slow.autoSendHz = 3999.9;
+		slow.pollHz = 3999.9;
+		sidebar->showStats(slow, true);
+		const bool oneLine = rateLine && rateLine->text().startsWith(QStringLiteral("Auto send 4000/s · 4000 polls/s"))
+				&& rateLine->heightForWidth(rateLine->width()) < 2 * rateLine->fontMetrics().lineSpacing();
+		if (rateLine && !oneLine)
+			std::printf("  the rate line \"%s\": %d px of text in %d px\n", qPrintable(rateLine->text()),
+					rateLine->fontMetrics().horizontalAdvance(rateLine->text()), rateLine->width());
+		check(hintPolling && sidebar->slowPollHint().isEmpty() && oneLine,
+				"auto send: the rate line says frames and polls a second on one line; no \"slower than asked\" hint meanwhile");
+		sidebar->showStats(IoEngine::Stats(), true);
+
+		/* a device that takes AUTO_SEND but whose frames never come (a gateway answering from its own copy of the device):
+		 * off again after 2 s, said in the Log, the registers polled. The Python device takes it and sends nothing. */
+		const bool sendOffered = box->isEnabled();
+		if (sendOffered) box->setChecked(true);
+		const bool backOff = sendOffered && QTest::qWaitFor([&] { return !box->isChecked(); }, 4000);
+		check(backOff && logText().contains(QLatin1String("no frame came")) && box->isEnabled(),
+				"auto send: no frame in 2 s (something between does not pass them on): unticked, said in the Log, polled");
+
+		QProcess fake;
+		auto startFake = [&] {
+			fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+					{ QString::number(FAKE_AUTO_SEND_PORT), map_.path, QString::fromLatin1(fakeDeviceToken) });
+			return fake.waitForStarted(3000);
+		};
+		auto device = std::make_unique<OtherClient>();
+		const bool started = startFake()
+				&& QTest::qWaitFor([&] { return device->open(FAKE_AUTO_SEND_PORT, map_.slave); }, 5000);
+		check(started, "auto send: the fake device (evre_fake_fast, one device) started");
+		if (!started) return;
+		auto config = [&] {
+			const QByteArray bytes = device->read(PROTOCOL_CONFIG, 2);
+			return bytes.size() == 2 ? int(uint8_t(bytes[0]) | (uint8_t(bytes[1]) << 8)) : -1;
+		};
+		auto configBecomes = [&](const std::function<bool(int)> &is, int ms = 3000) {
+			return QTest::qWaitFor([&] {
+				const int value = config();
+				return value >= 0 && is(value);
+			}, ms);
+		};
+		auto connectTo = [&](quint16 port) {
+			MainWindow::Startup startup;
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(port);
+			startup.connect = true;
+			window_.applyStartup(startup);
+		};
+		reconnectBox->setChecked(true);
+		connectTo(FAKE_AUTO_SEND_PORT);
+		const bool offered = QTest::qWaitFor([&] { return box->isEnabled(); }, 5000);
+		rate->setCurrentIndex(rate->findData(200));
+		rate->setCurrentIndex(rate->findData(100)); /* a change: saved (from 100 already, nothing would be) */
+		box->setChecked(true);
+		check(offered && configBecomes([](int v) { return (v & 0x0008) && (v >> 8) == 79 && !(v & 0x0012); })
+						&& QSettings().value(QStringLiteral("poll/autoSendHz")).toInt() == 100,
+				"auto send on at 100 Hz: the device's CONFIG has AUTO_SEND (bit 3), prescaler 79, SYS_RESET and DFU 0");
+		auto framesPerSecond = [&] {
+			const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("^Auto send ([0-9.]+)/s"))
+					.match(rateLine ? rateLine->text() : QString());
+			return m.hasMatch() ? m.captured(1).toDouble() : -1.0;
+		};
+		const bool streaming = QTest::qWaitFor([&] {
+			const double hz = framesPerSecond();
+			return hz > 85 && hz < 115;
+		}, 5000);
+		if (!streaming) std::printf("  the rate line: %s\n", rateLine ? qPrintable(rateLine->text()) : "none");
+		check(streaming, "auto send: the frames come at 100 per second (the sidebar's rate line, within 15%)");
+		/* another rate while it is on: written to the device at once (200 Hz: prescaler 39), then back to 100 */
+		rate->setCurrentIndex(rate->findData(200));
+		const bool faster = configBecomes([](int v) { return (v & 0x0008) && (v >> 8) == 39; });
+		rate->setCurrentIndex(rate->findData(100));
+		check(faster && configBecomes([](int v) { return (v & 0x0008) && (v >> 8) == 79; }),
+				"auto send: a rate chosen while it is on is written at once (200 Hz: prescaler 39), and back (100 Hz: 79)");
+
+		/* Poll off: the frames still bring the read-only values, and CONFIG is still read 10 times a second */
+		auto *traffic = [&]() -> QLabel * {
+			for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("TX "))) return label;
+			return nullptr;
+		}();
+		auto sent = [&] {
+			return traffic ? traffic->text().section(QLatin1Char(' '), 1, 1).toLongLong() : 0;
+		};
+		poll_->setChecked(false);
+		QTest::qWait(600); /* the polls under way end; the status line follows */
+		const QModelIndex volts = valueCell(table_, regs_.volts.name);
+		const QString voltsBefore = volts.data().toString();
+		const qint64 txBefore = sent();
+		QTest::qWait(2000);
+		const qint64 heartbeats = sent() - txBefore;
+		const bool voltsMoved = volts.isValid() && volts.data().toString() != voltsBefore;
+		std::printf("  Poll off for 2 s: %lld requests sent\n", heartbeats);
+		check(traffic && heartbeats >= 16 && heartbeats <= 40 && voltsMoved,
+				"auto send, Poll off: the read-only values still move (the frames); CONFIG read every 100 ms still");
+		poll_->setChecked(true);
+
+		/* the Monitor reads part of the block while it streams: its answer, not a frame of the stream */
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *function = monitor ? monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) : nullptr;
+		QList<QLineEdit *> boxes = monitor ? monitor->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+		boxes.removeIf([](const QLineEdit *b) { return qobject_cast<QAbstractSpinBox *>(b->parent()) != nullptr; });
+		QPushButton *send = monitor ? buttonWithText(*monitor, QStringLiteral("Send")) : nullptr;
+		auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		bool fourBytes = false;
+		if (function && boxes.size() >= 2 && send && frames) {
+			function->setCurrentIndex(0);
+			boxes[0]->setText(addrText(0xD000));
+			boxes[1]->setText(QStringLiteral("4"));
+			frames->clear();
+			send->click();
+			const QRegularExpression answer(QStringLiteral("== %1 OK: [0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2}  \\(")
+					.arg(addrText(0xD000)));
+			fourBytes = QTest::qWaitFor([&] { return answer.match(frames->toPlainText()).hasMatch(); }, 3000);
+			boxes[1]->setText(QStringLiteral("2"));
+		}
+		check(fourBytes, "auto send: a Monitor READ of 0xD000, 4 bytes, while it streams: answered with 4 bytes");
+
+		/* one CSV row per frame, not per poll */
+		QTemporaryDir folder;
+		const QString csv = folder.filePath(QStringLiteral("stream.csv"));
+		MainWindow::Startup record;
+		record.record = csv;
+		window_.applyStartup(record);
+		QPushButton *stop = nullptr;
+		(void) QTest::qWaitFor([&] { return (stop = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+		QElapsedTimer recorded;
+		recorded.start();
+		QTest::qWait(1500);
+		if (stop) stop->click();
+		const double seconds = double(recorded.elapsed()) / 1000.0;
+		QFile file(csv);
+		int rows = -1;
+		if (QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000)
+				&& file.open(QIODevice::ReadOnly))
+			rows = int(file.readAll().count('\n')) - 1;
+		std::printf("  %d CSV rows in %.1f s\n", rows, seconds);
+		check(stop && rows > 60 * seconds && rows < 140 * seconds,
+				"auto send: one CSV row per frame (about 100 a second, not the 10 polls a second)");
+
+		/* off: cleared on the device; the polls read every register again */
+		box->setChecked(false);
+		const bool cleared = configBecomes([](int v) { return !(v & 0x0008); });
+		check(cleared && QTest::qWaitFor([&] { return rateLine->text().contains(QLatin1String("registers in")); }, 3000),
+				"auto send off: CONFIG's AUTO_SEND cleared on the device; the rate line shows the polls of every register");
+
+		/* on again, then Disconnect: cleared before the link closes; the box unticked */
+		box->setChecked(true);
+		const bool onAgain = configBecomes([](int v) { return (v & 0x0008) != 0; });
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		check(onAgain && disconnectButton && configBecomes([](int v) { return !(v & 0x0008); }) && !box->isChecked()
+						&& !box->isEnabled() && !box->toolTip().isEmpty() && !rate->isEnabled() && rate->currentIndex() < 0
+						&& rate->placeholderText() == QLatin1String("not connected"),
+				"auto send, then Disconnect: AUTO_SEND cleared on the device first; the box off, disabled, the rate list "
+				"saying why (not connected)");
+		/* each reason fits the greyed list whole: its text room is the width less the padding (2 x 8), the arrow (20) and
+		 * the edges (2) */
+		bool reasonsFit = rate != nullptr;
+		for (const QString &reason : { QStringLiteral("not connected"), QStringLiteral("not offered"), QStringLiteral("not on a bus") })
+			if (rate && rate->fontMetrics().horizontalAdvance(reason) > rate->width() - 38) reasonsFit = false;
+		check(reasonsFit, "auto send: each reason the greyed rate list shows (not connected, not offered, not on a bus) "
+				"fits it whole");
+
+		/* the off before the close, again and again: closed with the device's frames unread, the TCP connection was reset
+		 * and the device dropped the off it had not read yet (now and then a Disconnect left it sending) */
+		int clearedEveryTime = 0;
+		for (int round = 0; round < 6; round++) {
+			connectTo(FAKE_AUTO_SEND_PORT);
+			if (!QTest::qWaitFor([&] { return box->isEnabled(); }, 5000)) break;
+			box->setChecked(true);
+			if (!configBecomes([](int v) { return (v & 0x0008) != 0; })) break;
+			QTest::qWait(50); /* frames under way */
+			if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
+			if (!configBecomes([](int v) { return !(v & 0x0008); })) break;
+			clearedEveryTime++;
+		}
+		if (clearedEveryTime < 6)
+			std::printf("     (Disconnect with auto send on: cleared %d times in a row of 6)\n", clearedEveryTime);
+		check(clearedEveryTime == 6, "auto send, then Disconnect, six times: AUTO_SEND cleared on the device every time "
+				"(what the device still sends read before the close)");
+
+		/* a lost link keeps it: the device comes back, auto send goes on again by itself */
+		connectTo(FAKE_AUTO_SEND_PORT);
+		(void) QTest::qWaitFor([&] { return box->isEnabled(); }, 5000);
+		box->setChecked(true);
+		const bool onBeforeLoss = configBecomes([](int v) { return (v & 0x0008) != 0; });
+		fake.kill();
+		fake.waitForFinished(3000);
+		device = std::make_unique<OtherClient>();
+		const bool back = startFake()
+				&& QTest::qWaitFor([&] { return device->open(FAKE_AUTO_SEND_PORT, map_.slave); }, 5000);
+		check(onBeforeLoss && back && configBecomes([](int v) { return (v & 0x0008) && (v >> 8) == 79; }, 10000)
+						&& box->isChecked(),
+				"auto send: after a lost link and a reconnect, switched on again by itself");
+
+		/* the device clears it by itself (a reset): said once, the box unticked, not switched on again */
+		(void) QTest::qWaitFor([&] { return box->isEnabled(); }, 3000);
+		device->write(PROTOCOL_CONFIG, QByteArray(2, '\0'));
+		const QLatin1String stoppedText("the device stopped auto send (reset?)");
+		const bool told = QTest::qWaitFor([&] { return logText().contains(stoppedText); }, 3000);
+		QTest::qWait(500);
+		check(told && logText().count(stoppedText) == 1 && !box->isChecked()
+						&& configBecomes([](int v) { return !(v & 0x0008); }),
+				"auto send: the device cleared it by itself: the Log says so once, the box unticks, it stays off");
+
+		/* the fake device of the other steps again */
+		connectTo(FAKE_DEVICE_PORT);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"auto send: done, the window polls the fake device of the other steps again");
+		fake.kill();
+		fake.waitForFinished(3000);
+	}
+
+	/* the I/O thread's table, given the map again (a device picked, a map edited): a register keeps its value only
+	 * if it is the same device's. On a bus D2's register at D1's address took D1's value until its next poll, and an
+	 * edit open on it then asked "Value changed while editing" (22 when started, 11 "now on the device") */
+	void valuesKeptByDevice() {
+		RegDef one;
+		one.name = QStringLiteral("D1_U8");
+		one.addr = 0xD010;
+		one.type = RegType::U8;
+		one.size = 1;
+		one.slave = 1;
+		RegDef two = one;
+		two.name = QStringLiteral("D2_U8");
+		two.slave = 2;
+		RegTable table;
+		table.setDefs({ one, two }, 1);
+		table.setRaw(0, QByteArray(1, char(11)));
+		table.setRaw(1, QByteArray(1, char(22)));
+		table.setDefs({ one, two }, 2); /* the same map again: each keeps its own */
+		const bool same = table.rows()[0].raw == QByteArray(1, char(11)) && table.rows()[1].raw == QByteArray(1, char(22));
+		RegTable fresh;
+		fresh.setDefs({ one }, 1);
+		fresh.setRaw(0, QByteArray(1, char(11)));
+		fresh.setDefs({ one, two }, 2); /* D2 added: nothing read of it yet */
+		const bool notTaken = fresh.rows()[0].valid && !fresh.rows()[1].valid;
+		check(same && notTaken, "bus: given the map again, a register keeps its own device's value, never another's "
+				"at the same address");
+	}
+
+	/* Several devices on one link (a bus file): evre_fake_fast serves this map at slaves 1 and 2 on a port of its own
+	 * (and, in the second bus, another map at slave 2 and nothing at slave 9). The table holds every device's
+	 * registers named after it and shows the selected one; a write reaches only its device; a broadcast from the
+	 * Monitor reaches every device, and is refused when the maps differ, except into the reserved bank; a device
+	 * that never answers goes offline while the others keep being polled; Close bus gives one device again. */
+	void busDevices() {
+		valuesKeptByDevice();
+		QTemporaryDir folder;
+		const QString mapFile = map_.path;
+		DeviceMap otherKind = map_; /* another kind of device: another DEVICE_ID */
+		otherKind.deviceId = uint16_t(map_.deviceId ^ 0x0100);
+		const QString otherFile = folder.filePath(QStringLiteral("other_kind.json"));
+		QString error;
+		auto writeBus = [&](const QString &name, const QVector<QPair<int, QString>> &devices) {
+			BusFile bus;
+			for (const auto &d : devices) {
+				BusDevice device;
+				device.name = QStringLiteral("D%1").arg(d.first);
+				device.slave = uint8_t(d.first);
+				device.map = d.second;
+				bus.devices << device;
+			}
+			const QString file = folder.filePath(name);
+			return bus.save(file, error) ? file : QString();
+		};
+		const QString sameMaps = writeBus(QStringLiteral("same.json"), { { 1, mapFile }, { 2, mapFile } });
+		const QString mixed = writeBus(QStringLiteral("mixed.json"), { { 1, mapFile }, { 2, otherFile }, { 9, mapFile } });
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_BUS_PORT), mapFile, QString::fromLatin1(fakeDeviceToken), QStringLiteral("--slave"),
+						QStringLiteral("1"), QStringLiteral("--node"), QStringLiteral("2=") + mapFile });
+		OtherClient one, two;
+		const bool started = folder.isValid() && otherKind.save(otherFile, error) && !sameMaps.isEmpty()
+				&& !mixed.isEmpty() && fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return one.open(FAKE_BUS_PORT, 1); }, 5000) && two.open(FAKE_BUS_PORT, 2);
+		check(started, "bus: the fake devices (evre_fake_fast, slaves 1 and 2) started");
+		if (!started) return;
+		const QString u8 = regs_.u8.name, d1u8 = QStringLiteral("D1_") + u8, d2u8 = QStringLiteral("D2_") + u8;
+		one.writeU8(regs_.u8.addr, 11);
+		two.writeU8(regs_.u8.addr, 22);
+		const bool apart = one.readU8(regs_.u8.addr) == 11 && two.readU8(regs_.u8.addr) == 22;
+
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *model = window_.findChild<RegisterModel *>();
+		auto *devices = window_.findChild<QListWidget *>(QStringLiteral("busDevices"));
+		auto open = [&](const QString &busFile) {
+			MainWindow::Startup startup;
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_BUS_PORT);
+			startup.bus = busFile;
+			startup.connect = true;
+			/* an unsaved map or bus is asked about first (Discard); with nothing unsaved no question comes */
+			answerDialog(QStringLiteral("Discard"), [&] { window_.applyStartup(startup); });
+		};
+		/* Auto send ticked (as the device's state would tick it) before the bus: a bus switches it off */
+		auto *autoSendBox = window_.findChild<QCheckBox *>(QStringLiteral("autoSend"));
+		auto *sidebar = window_.findChild<Sidebar *>();
+		if (sidebar) sidebar->setAutoSendOn(true);
+		open(sameMaps);
+		/* the line under the pill: there from the start ("not read yet"), two lines tall, D1's */
+		auto *deviceInfo = window_.findChild<QLabel *>(QStringLiteral("deviceInfo"));
+		const bool infoAtOpen = deviceInfo && deviceInfo->isVisible() && deviceInfo->text().startsWith(QLatin1String("D1: "))
+				&& deviceInfo->minimumHeight() >= 2 * deviceInfo->fontMetrics().lineSpacing();
+		const int infoHeight = deviceInfo ? deviceInfo->height() : -1;
+		const int perDevice = int(map_.regs.size());
+		auto names = [&] {
+			QStringList out;
+			for (const RegisterModel::Row &row : model->rows()) out << row.def.name;
+			return out;
+		};
+		check(apart && devices && devices->count() == 2 && model->rows().size() == 2 * perDevice
+						&& names().contains(d1u8) && names().contains(d2u8) && !names().contains(u8)
+						&& table_->model()->rowCount() == perDevice,
+				"bus: every device's registers, named after it (D1_, D2_); the table shows the selected device");
+		auto *autoSendRate = window_.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+		check(autoSendBox && !autoSendBox->isEnabled() && !autoSendBox->isChecked()
+						&& autoSendBox->toolTip().contains(QLatin1String("collide")) && autoSendRate
+						&& autoSendRate->placeholderText() == QLatin1String("not on a bus") && autoSendRate->currentIndex() < 0,
+				"bus: Auto send is switched off and disabled, the tooltip says why (devices sending by themselves would "
+				"collide)");
+		check(cellShows(valueCell(table_, d1u8), QStringLiteral("11"), 5000) && !valueCell(table_, d2u8).isValid(),
+				"bus: D1 selected: its values, polled from slave 1");
+		const bool d1Read = deviceInfo && QTest::qWaitFor([&] {
+			return deviceInfo->text().startsWith(QLatin1String("D1: ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+		}, 3000);
+		if (devices) devices->setCurrentRow(1);
+		check(cellShows(valueCell(table_, d2u8), QStringLiteral("22"), 5000) && !valueCell(table_, d1u8).isValid(),
+				"bus: D2 selected in the Devices card: the table shows D2's registers, from slave 2");
+		/* D2's ID comes from its own read after the switch: waited for, not taken at once (a slow run failed here) */
+		const bool d2Read = deviceInfo && QTest::qWaitFor([&] {
+			return deviceInfo->text().startsWith(QLatin1String("D2: ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+		}, 3000);
+		check(infoAtOpen && d1Read && d2Read && deviceInfo->height() == infoHeight,
+				"bus: the device's ID under the pill: there from the start, D1's, then D2's; the card keeps its height");
+		/* the Map editor says whose map it is, and whose live values it shows */
+		auto *banner = window_.findChild<QWidget *>(QStringLiteral("mapDevices"));
+		auto *live = window_.findChild<QComboBox *>(QStringLiteral("liveDevice"));
+		auto *bannerLabel = banner ? banner->findChild<ElidedLabel *>(QStringLiteral("mapDevicesText")) : nullptr;
+		const QString bannerText = bannerLabel ? bannerLabel->fullText() : QString();
+		check(banner && !banner->isHidden() && bannerText.contains(QLatin1String("D1, D2"))
+						&& bannerText.contains(QLatin1String("all 2 devices")) && live && live->count() == 2
+						&& live->currentData().toInt() == 2,
+				"bus: the Map editor names the devices of the map it edits; live values from the selected one (D2)");
+		/* one line that never pushes: cut to its room, the whole of it in the tooltip */
+		ElidedLabel narrow;
+		narrow.setFixedWidth(60);
+		narrow.setFullText(QStringLiteral("Map of <b>D1, D2, D3 and 9 more</b> · example_device.json"));
+		check(bannerLabel && !bannerLabel->wordWrap() && bannerLabel->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored
+						&& narrow.isCut() && narrow.toolTip() == QStringLiteral("Map of D1, D2, D3 and 9 more · example_device.json"),
+				"bus: the Map editor's banner is one line, cut to its room; the tooltip has it whole");
+		/* the Registers tab's picker: every device at once */
+		auto *picker = window_.findChild<QComboBox *>(QStringLiteral("registersDevice"));
+		if (picker) {
+			picker->setCurrentIndex(picker->findData(-1));
+			emit picker->activated(picker->currentIndex());
+		}
+		const bool all = picker && table_->model()->rowCount() == 2 * perDevice && valueCell(table_, d1u8).isValid();
+		if (picker) {
+			picker->setCurrentIndex(picker->findData(2));
+			emit picker->activated(picker->currentIndex());
+		}
+		check(all && table_->model()->rowCount() == perDevice && !valueCell(table_, d1u8).isValid(),
+				"bus: the Registers tab's picker: All devices shows every device's registers, D2 its own again");
+		/* the pickers look alike, as the Devices card: the state's dot, "D2 · slave 2", the state as the row's tooltip */
+		auto pickerRow = [](const QComboBox *box, int slave) {
+			const int row = box ? box->findData(slave) : -1;
+			if (row < 0) return QString();
+			return box->itemText(row) + QLatin1Char('|') + box->itemData(row, Qt::ToolTipRole).toString()
+					+ (box->itemIcon(row).isNull() ? QStringLiteral("|no dot") : QString());
+		};
+		auto *monitorDevice = window_.findChild<QComboBox *>(QStringLiteral("monitorDevice"));
+		const QString d2Row = QStringLiteral("D2 · slave 2|answers");
+		check(pickerRow(picker, 2) == d2Row && pickerRow(live, 2) == d2Row && pickerRow(monitorDevice, 2) == d2Row
+						&& monitorDevice->itemData(monitorDevice->count() - 1).toInt() == evre::BROADCAST,
+				"bus: the device pickers (Registers, Map editor, Monitor) show a device alike: its dot, D2 · slave 2, "
+				"its state");
+		/* one width whatever the names: a long one is cut (its slave never), the row's tooltip has it whole */
+		{
+			QComboBox box;
+			fillDevicePicker(&box, { { QStringLiteral("D3"), 3, Theme::colors().good, QStringLiteral("answers") } }, 3);
+			const int width = box.width();
+			const QString longName = QStringLiteral("THE_LONGEST_DEVICE_NAME_ON_THIS_LINK");
+			fillDevicePicker(&box, { { longName, 3, Theme::colors().good, QStringLiteral("answers") } }, 3);
+			check(box.width() == width && box.minimumWidth() == box.maximumWidth()
+							&& box.itemText(0).endsWith(QStringLiteral("… · slave 3"))
+							&& box.itemData(0, Qt::ToolTipRole).toString().startsWith(longName),
+					"bus: a device picker keeps its width; a long name is cut before \" · slave 3\", whole in the tooltip");
+		}
+		QStringList twelve;
+		for (int i = 1; i <= 12; i++) twelve << QStringLiteral("D%1").arg(i);
+		check(BusPanel::namesText(twelve.mid(0, 4)) == QLatin1String("D1, D2, D3, D4")
+						&& BusPanel::namesText(twelve) == QLatin1String("D1, D2, D3 and 9 more"),
+				"bus: many devices are named in short (the Map editor's banner on one line), four in full");
+
+		allowWrites_->setChecked(true);
+		QLineEdit *editor = typeInto(valueCell(table_, d2u8), QStringLiteral("33"));
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		const bool wrote = QTest::qWaitFor([&] { return two.readU8(regs_.u8.addr) == 33; }, 3000);
+		check(wrote && one.readU8(regs_.u8.addr) == 11, "bus: a write to D2_ reaches slave 2 only");
+		quickWriteToAll(d2u8, one, two);
+		devicesCard(devices, model, d1u8, d2u8, one, two, folder.path());
+
+		/* the API: any device's register by its name, no slave given; the pass-through to the slave a frame names */
+		QCheckBox *serve = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Serve API")) serve = box;
+		if (serve) serve->setChecked(true);
+		QTcpSocket json, evreClient;
+		const bool served = serve && QTest::qWaitFor([&] {
+			json.abort();
+			json.connectToHost(QStringLiteral("127.0.0.1"), 1220);
+			return json.waitForConnected(200);
+		}, 3000) && (evreClient.connectToHost(QStringLiteral("127.0.0.1"), 1219), evreClient.waitForConnected(2000));
+		QByteArray reply;
+		if (served) {
+			json.write(QStringLiteral("{\"cmd\":\"get\",\"names\":[\"%1\",\"%2\"]}\n").arg(d1u8, d2u8).toUtf8());
+			(void) QTest::qWaitFor([&] {
+				if (json.waitForReadyRead(50)) reply += json.readAll();
+				return reply.contains('\n');
+			}, 3000);
+		}
+		const QJsonObject values = QJsonDocument::fromJson(reply).object().value(QStringLiteral("values")).toObject();
+		check(values.value(d1u8).toInt(-1) == 11 && values.value(d2u8).toInt(-1) == 33,
+				"bus: the JSON API reads D1_ and D2_ registers by name, each from its device");
+		/* the JSON broadcast: refused while API writes are off, then to both devices, read back from each */
+		auto jsonLine = [&](const QString &line) {
+			QByteArray answer;
+			json.write(line.toUtf8() + '\n');
+			(void) QTest::qWaitFor([&] {
+				if (json.waitForReadyRead(50)) answer += json.readAll();
+				return answer.contains('\n');
+			}, 3000);
+			return QJsonDocument::fromJson(answer).object();
+		};
+		const QString broadcastLine = QStringLiteral("{\"cmd\":\"broadcast\",\"name\":\"%1\",\"value\":77}").arg(d1u8);
+		const bool refusedOff = served && !jsonLine(broadcastLine).value(QStringLiteral("ok")).toBool();
+		QCheckBox *apiWrites = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Allow API writes")) apiWrites = box;
+		if (apiWrites) apiWrites->setChecked(true);
+		QTest::qWait(100);
+		const QJsonObject sent = served ? jsonLine(broadcastLine) : QJsonObject();
+		const QJsonObject after = sent.value(QStringLiteral("values")).toObject();
+		check(refusedOff && sent.value(QStringLiteral("ok")).toBool() && after.value(d1u8).toInt() == 77
+						&& after.value(d2u8).toInt() == 77 && one.readU8(regs_.u8.addr) == 77 && two.readU8(regs_.u8.addr) == 77,
+				"bus: the JSON broadcast (off without Allow API writes) reaches every device and reads each one back");
+		if (apiWrites) apiWrites->setChecked(false);
+		two.writeU8(regs_.u8.addr, 33);
+		one.writeU8(regs_.u8.addr, 11);
+		QTest::qWait(300);
+		auto passRead = [&](uint8_t slave) {
+			evreClient.write(evre::build(slave, evre::READ, regs_.u8.addr, 1));
+			evre::Parser parser;
+			evre::Frame frame;
+			for (int i = 0; i < 30; i++) {
+				if (evreClient.waitForReadyRead(100)) parser.feed(evreClient.readAll());
+				if (parser.next(frame)) return frame.slave == slave && frame.data.size() == 1 ? int(uint8_t(frame.data[0])) : -1;
+			}
+			return -1;
+		};
+		check(served && passRead(1) == 11 && passRead(2) == 33,
+				"bus: the EVRe pass-through sends a frame to the slave it names, and answers as that slave");
+		if (serve) serve->setChecked(false);
+
+		MathLine both;
+		both.formula = QStringLiteral("D1_%1 + D2_%1").arg(regs_.volts.name);
+		const bool compiled = both.compile(model->definitions());
+		check(compiled && both.inputs.size() == 2 && both.inputs[0] != both.inputs[1],
+				"bus: a math line may read registers of two devices (D1_V + D2_V)");
+
+		/* the Monitor: slave 0 is a broadcast (a WRITE, no acknowledge); both devices take it */
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *slaveBox = monitor ? monitor->findChild<QSpinBox *>(QStringLiteral("monitorSlave")) : nullptr;
+		auto *deviceBox = monitor ? monitor->findChild<QComboBox *>(QStringLiteral("monitorDevice")) : nullptr;
+		auto *function = monitor ? monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) : nullptr;
+		QList<QLineEdit *> boxes = monitor ? monitor->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+		boxes.removeIf([](const QLineEdit *box) { return qobject_cast<QAbstractSpinBox *>(box->parent()) != nullptr; });
+		QPushButton *send = monitor ? buttonWithText(*monitor, QStringLiteral("Send")) : nullptr;
+		auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		const bool monitorFound = slaveBox && function && deviceBox && boxes.size() >= 2 && send && frames;
+		check(monitorFound && slaveBox->value() == 2 && deviceBox->currentData().toInt() == 2
+						&& deviceBox->isVisibleTo(monitor) && !slaveBox->isVisibleTo(monitor),
+				"bus: the Monitor names the devices in place of the Slave number, the selected one (D2) chosen");
+		if (!monitorFound) return;
+		auto broadcast = [&](uint16_t addr, const QString &bytes) {
+			deviceBox->setCurrentIndex(deviceBox->findData(int(evre::BROADCAST)));
+			emit deviceBox->activated(deviceBox->currentIndex());
+			boxes[0]->setText(addrText(addr));
+			boxes[1]->setText(bytes);
+			frames->clear();
+			send->click();
+		};
+		broadcast(regs_.u8.addr, QStringLiteral("2C"));
+		const int sentTo = slaveBox->value();
+		const bool locked = function->currentData().toInt() == int(evre::WRITE) && !function->isEnabled();
+		const bool both2C = QTest::qWaitFor([&] {
+			return one.readU8(regs_.u8.addr) == 0x2C && two.readU8(regs_.u8.addr) == 0x2C;
+		}, 3000);
+		const bool monitorSent = frames->toPlainText().contains(QLatin1String("sent"));
+		/* it failed once in many runs: say which part, so the next failure tells why */
+		if (!(locked && both2C && monitorSent))
+			std::printf("     detail: slave %d, function locked %d, D1 0x%02X, D2 0x%02X, Monitor: %s\n", sentTo, int(locked),
+					one.readU8(regs_.u8.addr), two.readU8(regs_.u8.addr), qPrintable(frames->toPlainText().simplified()));
+		check(locked && both2C && monitorSent,
+				"bus: a broadcast from the Monitor (slave 0, WRITE only) reaches every device; none answers");
+
+		/* a broadcast kept in the bus: made in its dialog, then sent from the Broadcast menu */
+		auto *presetButton = window_.findChild<QPushButton *>(QStringLiteral("busBroadcast"));
+		auto menuAction = [&](const QString &text) -> QAction * {
+			for (QAction *action : presetButton && presetButton->menu() ? presetButton->menu()->actions() : QList<QAction *>())
+				if (action->text().startsWith(text)) return action;
+			return nullptr;
+		};
+		QAction *newPreset = menuAction(QStringLiteral("New broadcast"));
+		bool calmAtOpen = false, wrongValueSaid = false;
+		QTimer::singleShot(300, [&] {
+			auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+			if (!dialog) return;
+			/* nothing typed yet: no red text, OK waits */
+			auto texts = [dialog] {
+				QString all;
+				for (QLabel *label : dialog->findChildren<QLabel *>()) all += label->text();
+				return all;
+			};
+			QPushButton *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+			auto *problem = dialog->findChild<ElidedLabel *>(QStringLiteral("problem"));
+			calmAtOpen = problem && problem->fullText().isEmpty() && !texts().contains(Theme::colors().bad.name())
+					&& !ok->isEnabled();
+			const QRect okAtOpen = ok->geometry();
+			const QSize sizeAtOpen = dialog->size();
+			dialog->findChild<QLineEdit *>(QStringLiteral("presetName"))->setText(QStringLiteral("Fan 55"));
+			auto *reg = dialog->findChild<QComboBox *>(QStringLiteral("presetRegister"));
+			reg->setCurrentIndex(reg->findData(u8));
+			dialog->findChild<QLineEdit *>(QStringLiteral("presetValue"))->setText(QStringLiteral("not a number"));
+			QApplication::processEvents();
+			wrongValueSaid = problem && problem->fullText().contains(QLatin1String("does not take")) && !ok->isEnabled()
+					&& ok->geometry() == okAtOpen && dialog->size() == sizeAtOpen;
+			dialog->findChild<QLineEdit *>(QStringLiteral("presetValue"))->setText(QStringLiteral("55"));
+			dialog->accept();
+		});
+		if (newPreset) newPreset->trigger();
+		QAction *fan55 = menuAction(QStringLiteral("Fan 55"));
+		check(presetButton && presetButton->menu() && presetButton->menu()->toolTipsVisible(),
+				"bus: the Broadcast menu shows its actions' tooltips (why a preset is not offered)");
+		const QString asked = fan55 ? answerDialog(QStringLiteral("Broadcast"), [&] { fan55->trigger(); }) : QString();
+		const bool presetSent = QTest::qWaitFor([&] {
+			return one.readU8(regs_.u8.addr) == 55 && two.readU8(regs_.u8.addr) == 55;
+		}, 3000);
+		check(newPreset && fan55 && asked == QLatin1String("Broadcast") && presetSent,
+				"bus: a broadcast preset made in its dialog, sent from the Broadcast menu (after a confirmation) to both");
+		check(calmAtOpen && wrongValueSaid,
+				"bus: the preset dialog opens with no red text (OK waits for a name and a value); a wrong value is said "
+				"on its line, kept from the start: nothing moves");
+		/* a preset can be sent only while connected with Allow writes on: else disabled, the tooltip says why */
+		allowWrites_->setChecked(false);
+		fan55 = menuAction(QStringLiteral("Fan 55"));
+		const bool blockedOff = fan55 && !fan55->isEnabled() && fan55->toolTip().contains(QLatin1String("Allow writes"));
+		allowWrites_->setChecked(true);
+		fan55 = menuAction(QStringLiteral("Fan 55"));
+		check(blockedOff && fan55 && fan55->isEnabled(),
+				"bus: with Allow writes off a preset is disabled, its tooltip says why; on again, it is offered");
+		/* Remove: the preset leaves the menu, the bus is modified */
+		QAction *removeFan = nullptr;
+		if (QAction *removeMenu = menuAction(QStringLiteral("Remove")); removeMenu && removeMenu->menu())
+			for (QAction *action : removeMenu->menu()->actions())
+				if (action->text() == QLatin1String("Fan 55")) removeFan = action;
+		if (removeFan) removeFan->trigger();
+		check(removeFan && !menuAction(QStringLiteral("Fan 55")) && busInfoText().contains(QLatin1String("modified")),
+				"bus: Broadcast > Remove takes the preset off; the card says the bus is modified");
+
+		/* another kind of device on the link, and one that never answers */
+		open(mixed);
+		const bool threeDevices = devices && QTest::qWaitFor([&] { return devices->count() == 3; }, 3000);
+		broadcast(regs_.u8.addr, QStringLiteral("05"));
+		const bool refused = QTest::qWaitFor([&] { return frames->toPlainText().contains(QLatin1String("!! no broadcast")); },
+				2000);
+		QTest::qWait(300);
+		check(threeDevices && refused && one.readU8(regs_.u8.addr) == 55,
+				"bus: different maps on the link: a broadcast into the device bank is refused, nothing sent");
+		const QByteArray config = QByteArray::fromHex("0100");
+		broadcast(0xA004, QStringLiteral("01 00"));
+		const bool reserved = QTest::qWaitFor([&] { return one.read(0xA004, 2) == config; }, 3000);
+		check(reserved, "bus: ... but the reserved bank (CONFIG, 0xA004) is the same on every device: broadcast");
+		broadcast(0xA004, QStringLiteral("08 4F"));
+		const bool autoSendRefused = QTest::qWaitFor([&] {
+			return frames->toPlainText().contains(QLatin1String("!! no broadcast")) && frames->toPlainText().contains(QLatin1String("AUTO_SEND"));
+		}, 2000);
+		QTest::qWait(300);
+		check(autoSendRefused && one.read(0xA004, 2) == config,
+				"bus: ... except one that switches AUTO_SEND on (every device would send at once): refused, nothing sent");
+		one.write(0xA004, QByteArray(2, '\0'));
+		two.write(0xA004, QByteArray(2, '\0'));
+
+		const bool offline = QTest::qWaitFor([&] { return logText().contains(QLatin1String("D9: no answer: offline")); },
+				10000);
+		one.writeU8(regs_.u8.addr, 44);
+		if (devices) devices->setCurrentRow(0);
+		check(offline && cellShows(valueCell(table_, d1u8), QStringLiteral("44"), 4000),
+				"bus: a device that never answers (slave 9) goes offline; the others are still polled");
+		const QListWidgetItem *d9 = devices && devices->count() == 3 ? devices->item(2) : nullptr;
+		check(d9 && d9->toolTip().contains(QLatin1String("offline")) && d9->text().contains(QStringLiteral("slave 9 · offline"))
+						&& !d9->icon().isNull() && d9->data(Qt::ForegroundRole).isNull() /* text colour: readable in both looks */
+						&& devices->height() < 6 * devices->sizeHintForRow(0) + 12,
+				"bus: the Devices card shows it offline, in words too; the list is as tall as its devices");
+
+		/* the map edited, then a device with another map selected: the question first; Cancel keeps all as it was */
+		if (doc) doc->edit(QStringLiteral("test"), [](DeviceMap &m) { m.desc = QStringLiteral("edited by the test"); });
+		const QString cancelled = devices ? answerDialog(QStringLiteral("Cancel"), [&] { devices->setCurrentRow(1); })
+										  : QString();
+		const bool kept = devices && devices->currentRow() == 0 && doc && doc->isModified();
+		const QString discarded = devices ? answerDialog(QStringLiteral("Discard"), [&] { devices->setCurrentRow(1); })
+										  : QString();
+		check(cancelled == QLatin1String("Unsaved map") && kept && discarded == QLatin1String("Unsaved map")
+						&& devices->currentRow() == 1 && !doc->isModified() && doc->map().deviceId == otherKind.deviceId,
+				"bus: a device with another map selected while the map has edits: asked first; Cancel keeps D1, Discard "
+				"takes D2's map");
+		if (devices) devices->setCurrentRow(0);
+
+		/* one device again */
+		QPushButton *busFile = window_.findChild<QPushButton *>(QStringLiteral("busFile"));
+		QAction *close = nullptr;
+		for (QAction *action : busFile && busFile->menu() ? busFile->menu()->actions() : QList<QAction *>())
+			if (action->text() == QLatin1String("Close bus")) close = action;
+		if (close) close->trigger();
+		check(close && model->rows().size() == perDevice && names().contains(u8) && devices && !devices->isVisible(),
+				"bus: Close bus: one device again, the selected one's map, its names without a prefix");
+		allowWrites_->setChecked(false);
+		/* the fake device of the other steps again */
+		MainWindow::Startup back;
+		back.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		back.connect = true;
+		window_.applyStartup(back);
+		check(cellShows(valueCell(table_, u8), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"bus: closed, the window polls the one device again");
+		check(deviceInfo && QTest::qWaitFor([&] {
+			return deviceInfo->text().startsWith(QLatin1String("Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+		}, 3000),
+				"bus: closed, the device's ID under the pill again, without a device's name before it");
+		fake.kill();
+		fake.waitForFinished(3000);
+	}
+
+	/* the Devices card's line ("2 device(s) · same.json · modified") */
+	QString busInfoText() const {
+		auto *panel = window_.findChild<BusPanel *>();
+		auto *line = panel ? panel->findChild<ElidedLabel *>() : nullptr;
+		return line ? line->fullText() : QString();
+	}
+
+	/* Quick write's "To all devices" on a bus: offered only once a value is typed and with Allow writes on; it asks
+	 * first, then sends one broadcast frame, reads every device back, and the Log says each one took it. */
+	void quickWriteToAll(const QString &d2u8, OtherClient &one, OtherClient &two) {
+		auto *panel = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		auto *value = panel ? panel->findChild<QLineEdit *>(QStringLiteral("qwValue")) : nullptr;
+		auto *toAll = panel ? panel->findChild<QPushButton *>(QStringLiteral("qwBroadcast")) : nullptr;
+		table_->setCurrentIndex(valueCell(table_, d2u8));
+		if (value) value->clear();
+		const bool emptyOff = toAll && !toAll->isHidden() && !toAll->isEnabled()
+				&& toAll->toolTip().contains(QLatin1String("Type a value"));
+		if (value) value->setText(QStringLiteral("66"));
+		const bool typedOn = toAll && toAll->isEnabled();
+		allowWrites_->setChecked(false);
+		const bool writesOff = toAll && !toAll->isEnabled();
+		allowWrites_->setChecked(true);
+		if (value) value->setText(QStringLiteral("66")); /* Allow writes again: the panel was made again */
+		const QString asked = toAll && toAll->isEnabled()
+				? answerDialog(QStringLiteral("Broadcast"), [&] { toAll->click(); }) : QString();
+		const bool both = QTest::qWaitFor([&] {
+			return one.readU8(regs_.u8.addr) == 66 && two.readU8(regs_.u8.addr) == 66;
+		}, 3000);
+		const bool logged = QTest::qWaitFor([&] { return logText().contains(QLatin1String("every device took it")); }, 3000);
+		check(emptyOff && typedOn && writesOff, "bus: To all devices is offered once a value is typed, with Allow writes on");
+		check(asked == QLatin1String("Broadcast") && both && logged,
+				"bus: To all devices asks first, reaches both devices, and the Log says every device took it");
+		one.writeU8(regs_.u8.addr, 11);
+		two.writeU8(regs_.u8.addr, 33);
+	}
+
+	/* The Devices card: + Device and Edit... through their dialog (its problem line kept from the start, OK only when
+	 * nothing is wrong), a device not polled, - Device, Bus file > Save. Leaves D1 and D2, D2 selected, saved. */
+	void devicesCard(QListWidget *devices, RegisterModel *model, const QString &d1u8, const QString &d2u8,
+			OtherClient &one, OtherClient &two, const QString &folder) {
+		QPushButton *add = buttonWithText(QStringLiteral("+ Device"));
+		QPushButton *edit = buttonWithText(QStringLiteral("Edit…"));
+		QPushButton *remove = buttonWithText(QStringLiteral("− Device"));
+		check(devices && add && edit && remove, "bus: the Devices card's + Device, Edit…, − Device");
+		if (!devices || !add || !edit || !remove) return;
+		/* + Device: a slave taken is said on the problem line (nothing moves), OK waits; a free one is taken */
+		bool takenSaid = false, stays = false;
+		const bool added = fillDialog([&](QDialog *dialog) {
+			auto *name = dialog->findChild<QLineEdit *>(QStringLiteral("deviceName"));
+			auto *slave = dialog->findChild<QSpinBox *>(QStringLiteral("deviceSlave"));
+			auto *poll = dialog->findChild<QCheckBox *>();
+			auto *problem = dialog->findChild<ElidedLabel *>(QStringLiteral("problem"));
+			QPushButton *ok = dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok);
+			if (!name || !slave || !poll || !problem) return;
+			const QRect okBefore = ok->geometry();
+			name->setText(QStringLiteral("D3"));
+			slave->setValue(1);
+			QApplication::processEvents();
+			takenSaid = !problem->fullText().isEmpty() && !ok->isEnabled();
+			stays = ok->geometry() == okBefore && problem->height() > 0;
+			slave->setValue(3);
+			poll->setChecked(false); /* no device answers at 3: not polled, it never goes offline */
+			if (ok->isEnabled()) dialog->accept();
+		}, [&] { add->click(); });
+		const QListWidgetItem *d3 = devices->count() == 3 ? devices->item(2) : nullptr;
+		check(added && takenSaid && stays && d3 && d3->text().startsWith(QStringLiteral("D3 · slave 3 · not polled · "))
+						&& busInfoText().contains(QLatin1String("modified")),
+				"bus: + Device: a slave already taken is said on the dialog's line (OK waits, nothing moves); D3 added, "
+				"its row D3 · slave 3 · not polled · map");
+		/* - Device: D3 selected, asked, taken off */
+		devices->setCurrentRow(2);
+		const QString asked = answerDialog(QStringLiteral("Yes"), [&] { remove->click(); });
+		check(asked == QLatin1String("Remove device") && devices->count() == 2 && model->rows().size() == 2 * map_.regs.size(),
+				"bus: − Device asks, then takes the device off the bus (its registers leave the table)");
+		devices->setCurrentRow(1);
+		/* Edit…: D2 not polled; another client's change of D2 is not seen, D1's is */
+		auto setPolled = [&](bool polled) {
+			return fillDialog([&](QDialog *dialog) {
+				if (auto *poll = dialog->findChild<QCheckBox *>()) poll->setChecked(polled);
+				dialog->accept();
+			}, [&] { edit->click(); });
+		};
+		auto rawOf = [&](const QString &name) {
+			for (const RegisterModel::Row &row : model->rows())
+				if (row.def.name == name) return row.valid && row.raw.size() == 1 ? int(uint8_t(row.raw[0])) : -1;
+			return -1;
+		};
+		const bool unpolled = setPolled(false);
+		two.writeU8(regs_.u8.addr, 99);
+		one.writeU8(regs_.u8.addr, 12);
+		const bool d1Seen = QTest::qWaitFor([&] { return rawOf(d1u8) == 12; }, 3000);
+		QTest::qWait(500);
+		check(unpolled && devices->item(1)->text().contains(QLatin1String("not polled")) && d1Seen && rawOf(d2u8) != 99,
+				"bus: a device not polled (Edit…, unticked) is left out of the polls; the others are polled");
+		const bool polledAgain = setPolled(true);
+		check(polledAgain && QTest::qWaitFor([&] { return rawOf(d2u8) == 99; }, 3000),
+				"bus: polled again, its value comes");
+		one.writeU8(regs_.u8.addr, 11);
+		two.writeU8(regs_.u8.addr, 33);
+		(void) QTest::qWaitFor([&] { return rawOf(d1u8) == 11 && rawOf(d2u8) == 33; }, 3000);
+		/* Bus file > Save: written at once to its file (Save as… asks for a file in the system's dialog: not here) */
+		QPushButton *fileButton = window_.findChild<QPushButton *>(QStringLiteral("busFile"));
+		QAction *save = nullptr;
+		for (QAction *action : fileButton && fileButton->menu() ? fileButton->menu()->actions() : QList<QAction *>())
+			if (action->text() == QLatin1String("Save")) save = action;
+		if (save) save->trigger();
+		BusFile saved;
+		QString error;
+		check(save && !busInfoText().contains(QLatin1String("modified"))
+						&& saved.load(folder + QStringLiteral("/same.json"), error) && saved.devices.size() == 2,
+				"bus: Bus file > Save writes the bus file; the card no longer says modified");
+	}
+
+	/* Several devices on one link, in the master: each request carries its slave, an answer completes only a request
+	 * to the slave it comes from, and the broadcast address (0) takes a WRITE without acknowledge, nothing else. */
+	void masterSlaves() {
+		evre::Master master;
+		LoopLink link;
+		master.setKeepAlive(false);
+		master.setInFlight(4);
+		master.setLink(&link);
+		QByteArray fromTwo, fromThree;
+		int answers = 0, unsolicited = 0;
+		QObject::connect(&master, &evre::Master::unsolicited, [&](const evre::Frame &) { unsolicited++; });
+		master.readFrom(2, 0xA000, 2, [&](const evre::Result &r) { fromTwo = r.data; answers++; });
+		master.readFrom(3, 0xA000, 2, [&](const evre::Result &r) { fromThree = r.data; answers++; });
+		const bool addressed = link.sent.size() == 2 && link.sent[0].slave == 2 && link.sent[1].slave == 3;
+		/* slave 3 answers first; then a stranger (slave 5), then slave 2 */
+		link.answer(3, evre::READ_RESP, 0xA000, 2, QByteArray::fromHex("3333"));
+		const bool threeOnly = answers == 1 && fromThree == QByteArray::fromHex("3333") && fromTwo.isEmpty();
+		link.answer(5, evre::READ_RESP, 0xA000, 2, QByteArray::fromHex("5555"));
+		const bool strangerIgnored = answers == 1 && unsolicited == 1;
+		link.answer(2, evre::READ_RESP, 0xA000, 2, QByteArray::fromHex("2222"));
+		check(addressed && threeOnly && strangerIgnored && answers == 2 && fromTwo == QByteArray::fromHex("2222"),
+				"master: each request goes to its slave; an answer completes only a request to the slave it comes from");
+
+		/* AUTO_SEND: a frame of the whole read-only block (0xD000, 22 bytes) while a read of its first 4 bytes waits is
+		 * no answer to that read; the answer with the count asked for is */
+		QByteArray part;
+		int partAnswers = 0;
+		unsolicited = 0;
+		master.readFrom(2, 0xD000, 4, [&](const evre::Result &r) { part = r.data; partAnswers++; });
+		link.answer(2, evre::READ_RESP, 0xD000, 22, QByteArray(22, '\x11'));
+		const bool streamFrameApart = partAnswers == 0 && unsolicited == 1;
+		link.answer(2, evre::READ_RESP, 0xD000, 4, QByteArray::fromHex("01020304"));
+		check(streamFrameApart && partAnswers == 1 && part == QByteArray::fromHex("01020304"),
+				"master: a READ_RESP at the offset asked for but with another count is unsolicited, not the answer");
+
+		link.sent.clear();
+		QString readRefusal, ackRefusal;
+		bool broadcastSent = false;
+		master.readFrom(evre::BROADCAST, 0xA000, 2, [&](const evre::Result &r) { readRefusal = r.ok ? QString() : r.message; });
+		master.writeTo(evre::BROADCAST, 0xA004, QByteArray(2, 0), [&](const evre::Result &r) {
+			ackRefusal = r.ok ? QString() : r.message;
+		});
+		const bool nothingSent = link.sent.isEmpty();
+		master.writeNoAckTo(evre::BROADCAST, 0xA004, QByteArray(2, 0), [&](const evre::Result &r) { broadcastSent = r.ok; });
+		check(readRefusal.contains(QLatin1String("broadcast")) && ackRefusal.contains(QLatin1String("broadcast"))
+						&& nothingSent && broadcastSent && link.sent.size() == 1 && link.sent[0].slave == evre::BROADCAST
+						&& link.sent[0].fn == evre::WRITE,
+				"master: slave 0 (broadcast) takes a WRITE without acknowledge; a READ or WRITE_ACK to it is refused unsent");
+
+		link.sent.clear();
+		master.setSlave(7);
+		master.read(0xA000, 2);
+		check(link.sent.size() == 1 && link.sent[0].slave == 7, "master: a request without a slave goes to the master's own");
+		master.setLink(nullptr);
+
+		DeviceMap broadcastDevice = map_;
+		broadcastDevice.slave = 0;
+		const QVector<MapIssue> issues = checkMap(broadcastDevice);
+		const bool flagged = std::any_of(issues.begin(), issues.end(),
+				[](const MapIssue &i) { return i.error && i.reg < 0 && i.text.contains(QLatin1String("broadcast")); });
+		const QVector<MapIssue> asItIs = checkMap(map_);
+		check(flagged && std::none_of(asItIs.begin(), asItIs.end(),
+						  [](const MapIssue &i) { return i.text.contains(QLatin1String("broadcast")); }),
+				"map check: slave 0 is an error (the broadcast address, no device answers it)");
+	}
+
+	/* The formula box's completion (the Math line dialog): the order of the candidates, the word at the cursor,
+	 * and the list while typing: Enter takes a register or a function (name(), the cursor inside), Esc closes it. */
+	void formulaCompletion() {
+		using Candidate = FormulaCompleter::Candidate;
+		const QVector<Candidate> all = { { QStringLiteral("SUPPLY_V"), {}, false }, { QStringLiteral("SUPPLY_I"), {}, false },
+			{ QStringLiteral("ISENSE"), {}, false }, { QStringLiteral("sin"), {}, true }, { QStringLiteral("sqrt"), {}, true } };
+		auto names = [](const QVector<Candidate> &list) {
+			QStringList out;
+			for (const Candidate &c : list) out << c.name;
+			return out;
+		};
+		check(names(FormulaCompleter::rank(all, QStringLiteral("s")))
+						== QStringList({ "sin", "sqrt", "SUPPLY_I", "SUPPLY_V", "ISENSE" })
+						&& names(FormulaCompleter::rank(all, QStringLiteral("i"))) == QStringList({ "ISENSE", "SUPPLY_I", "sin" })
+						&& FormulaCompleter::rank(all, QString()).isEmpty(),
+				"formula completion: names that start with the word, then a part after _ (I: SUPPLY_I), then any that contain it");
+		const QString formula = QStringLiteral("SUPPLY_V * SUP");
+		check(FormulaCompleter::wordStart(formula, int(formula.size())) == 11
+						&& FormulaCompleter::wordStart(QStringLiteral("2.5"), 3) == 3
+						&& FormulaCompleter::wordStart(QStringLiteral("abs(x"), 5) == 4,
+				"formula completion: the word at the cursor (not a number, not the whole formula)");
+
+		MathLine start;
+		MathLineDialog dialog(start, false, map_.regs, &window_);
+		dialog.show();
+		auto *box = dialog.findChild<QLineEdit *>(QStringLiteral("formula"));
+		auto *completer = dialog.findChild<FormulaCompleter *>();
+		check(box && completer, "Math line dialog: the formula box has its completion");
+		if (!box || !completer) return;
+		const QString volts = regs_.volts.name;
+		/* a register: its first letters, the list, Enter */
+		QTest::keyClicks(box, volts.left(3));
+		const QStringList offered = completer->shown();
+		const bool listed = offered.contains(volts) && !offered.isEmpty()
+				&& offered.front().startsWith(volts.left(3), Qt::CaseInsensitive);
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Down);
+		while (completer->completer()->popup()->currentIndex().data(Qt::UserRole + 1).toString() != volts
+				&& completer->completer()->popup()->currentIndex().row() < offered.size() - 1)
+			QTest::keyClick(completer->completer()->popup(), Qt::Key_Down);
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Return);
+		check(listed && box->text() == volts && dialog.isVisible() && completer->shown().isEmpty(),
+				"formula completion: typing lists the registers, Enter puts the one picked in (the dialog stays open)");
+		/* a function, after the rest of the formula: name(), the cursor inside */
+		QTest::keyClicks(box, QStringLiteral(" * sq"));
+		const bool sqrtFirst = completer->shown().value(0) == QLatin1String("sqrt");
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Return);
+		check(sqrtFirst && box->text() == volts + QStringLiteral(" * sqrt()")
+						&& box->cursorPosition() == int(box->text().size()) - 1,
+				"formula completion: a function goes in as sqrt(), the cursor inside; the rest of the formula kept");
+		/* Esc closes the list; a word that is a whole name already offers nothing */
+		box->setText(QString());
+		QTest::keyClicks(box, QStringLiteral("ab"));
+		const bool open = !completer->shown().isEmpty();
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Escape);
+		const bool closed = completer->shown().isEmpty() && box->text() == QLatin1String("ab");
+		box->setText(QString());
+		QTest::keyClicks(box, QStringLiteral("pi"));
+		check(open && closed && completer->shown().isEmpty(),
+				"formula completion: Esc closes the list; a whole name (pi) offers nothing more");
+		dialog.close();
+	}
+
+	/* The Monitor's own requests: READ, the checks of what is typed, WRITE + ack (read back into the table), WRITE
+	 * without ack (sent, not "OK"), Enter in either box, the second box following the function, Clear. */
+	void monitorRequests() {
+		auto *tab = window_.findChild<MonitorTab *>();
+		auto *function = tab ? tab->findChild<QComboBox *>(QStringLiteral("monitorFunction")) : nullptr;
+		/* the address and value boxes: not the line edit inside the Slave box */
+		QList<QLineEdit *> boxes = tab ? tab->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+		boxes.removeIf([](const QLineEdit *box) { return qobject_cast<QAbstractSpinBox *>(box->parent()) != nullptr; });
+		QPushButton *send = tab ? buttonWithText(*tab, QStringLiteral("Send")) : nullptr;
+		QPushButton *clear = tab ? buttonWithText(*tab, QStringLiteral("Clear")) : nullptr;
+		auto *frames = tab ? tab->findChild<QPlainTextEdit *>() : nullptr;
+		check(function && boxes.size() >= 2 && send && clear && frames, "Monitor: function, address, value, Send, Clear");
+		if (!function || boxes.size() < 2 || !send || !clear || !frames) return;
+		QLineEdit *address = boxes[0], *argument = boxes[1];
+		const QString u8 = addrText(regs_.u8.addr);
+		const int u8Before = other_.readU8(regs_.u8.addr);
+		const bool writesWere = allowWrites_->isChecked();
+		auto shows = [&](const QString &text) {
+			return QTest::qWaitFor([&] { return frames->toPlainText().contains(text); }, 3000);
+		};
+		auto request = [&](int index, const QString &addr, const QString &value) {
+			function->setCurrentIndex(index);
+			address->setText(addr);
+			argument->setText(value);
+			frames->clear();
+			send->click();
+		};
+
+		/* READ: the bytes the device holds */
+		other_.writeU8(regs_.u8.addr, 7);
+		request(0, u8, QStringLiteral("1"));
+		check(shows(QStringLiteral("== %1 OK: 07").arg(u8)) && frames->toPlainText().contains(QLatin1String(" ms)")),
+				"Monitor READ: the device's bytes and the answer's time");
+		/* Enter in the address box sends too */
+		frames->clear();
+		QTest::keyClick(address, Qt::Key_Return);
+		check(shows(QStringLiteral("== %1 OK: 07").arg(u8)), "Monitor: Enter in the address box sends");
+		/* what is typed is checked first */
+		request(0, QStringLiteral("0xZZ"), QStringLiteral("1"));
+		const bool badAddress = shows(QStringLiteral("!! bad address"));
+		request(0, u8, QStringLiteral("0"));
+		check(badAddress && shows(QStringLiteral("!! READ needs a count")), "Monitor: a bad address or count is refused");
+
+		/* the second box follows the function: READ's count is no value to write */
+		function->setCurrentIndex(0);
+		argument->setText(QStringLiteral("2"));
+		function->setCurrentIndex(1);
+		check(argument->text().isEmpty() && argument->placeholderText().contains(QLatin1String("low byte first")),
+				"Monitor: WRITE empties READ's count and says how to type the bytes (low byte first)");
+
+		/* writes: only with Allow writes; hex bytes only (a decimal 300 is not taken as 03 00) */
+		allowWrites_->setChecked(false);
+		request(1, u8, QStringLiteral("05"));
+		const bool off = shows(QStringLiteral("!! writes are off"));
+		allowWrites_->setChecked(true);
+		request(1, u8, QStringLiteral("300"));
+		check(off && shows(QStringLiteral("!! not hex bytes")) && other_.readU8(regs_.u8.addr) == 7,
+				"Monitor WRITE: refused with writes off, and refused for what is not hex bytes");
+		QByteArray parsed;
+		const bool forms = MonitorTab::parseHexBytes(QStringLiteral("2C 01"), parsed) && parsed == QByteArray("\x2C\x01", 2)
+				&& MonitorTab::parseHexBytes(QStringLiteral("0x2C,0x01"), parsed) && parsed == QByteArray("\x2C\x01", 2)
+				&& MonitorTab::parseHexBytes(QStringLiteral("2c01"), parsed) && parsed == QByteArray("\x2C\x01", 2)
+				&& MonitorTab::parseHexBytes(QStringLiteral("5"), parsed) && parsed == QByteArray("\x05", 1)
+				&& !MonitorTab::parseHexBytes(QStringLiteral("300"), parsed)
+				&& !MonitorTab::parseHexBytes(QStringLiteral("2G"), parsed);
+		check(forms, "Monitor: hex bytes as 2C 01, 0x2C,0x01, 2c01 or 5; 300 and 2G refused");
+
+		/* WRITE + ack: the device's OK (not timed: no "0.0 ms"), the value in the device and in the Log */
+		request(1, u8, QStringLiteral("05"));
+		check(shows(QStringLiteral("== %1 OK").arg(u8)) && !frames->toPlainText().contains(QLatin1String("ms)"))
+						&& u8Becomes(5) && logText().contains(QStringLiteral("raw write 05 at %1: OK").arg(u8)),
+				"Monitor WRITE + ack: OK, the device holds it, the Log says so");
+		/* WRITE without ack: sent, and it says nothing confirms it (it said "OK") */
+		request(2, u8, QStringLiteral("06"));
+		check(shows(QStringLiteral("-> %1 sent: 06").arg(u8)) && !frames->toPlainText().contains(QLatin1String("OK"))
+						&& u8Becomes(6) && logText().contains(QStringLiteral("raw write 06 at %1: sent (no acknowledge)").arg(u8)),
+				"Monitor WRITE (no ack): \"sent\", not OK; the device holds it");
+
+		/* one device: the Slave box follows the sidebar's (Poll off meanwhile: no poll goes to a slave that is not
+		 * there); 0 is "0 (broadcast)" and locks the function to WRITE (no ack); a device again gets READ back */
+		auto *slaveBox = tab->findChild<LimitSpinBox *>(QStringLiteral("monitorSlave"));
+		auto *side = window_.findChild<Sidebar *>();
+		const int slaveWas = side ? side->slave() : 1;
+		poll_->setChecked(false);
+		if (side) side->setSlave(slaveWas == 7 ? 8 : 7);
+		const bool follows = side && slaveBox && slaveBox->value() == side->slave();
+		if (side) side->setSlave(slaveWas);
+		poll_->setChecked(true);
+		function->setCurrentIndex(0);
+		if (slaveBox) slaveBox->setValue(evre::BROADCAST);
+		const bool locked = slaveBox && slaveBox->text() == QLatin1String("0 (broadcast)")
+				&& function->currentData().toInt() == int(evre::WRITE) && !function->isEnabled();
+		if (slaveBox) slaveBox->setValue(slaveWas);
+		check(follows && locked && slaveBox->value() == slaveWas && function->currentIndex() == 0 && function->isEnabled(),
+				"Monitor: Slave follows the sidebar's; 0 (broadcast) locks WRITE (no ack), a device again gets READ back");
+
+		clear->click();
+		check(frames->toPlainText().isEmpty(), "Monitor: Clear empties the view");
+		function->setCurrentIndex(0);
+		argument->setText(QStringLiteral("2"));
+		allowWrites_->setChecked(writesWere);
+		if (u8Before >= 0) other_.writeU8(regs_.u8.addr, uint8_t(u8Before));
+	}
+
+	/* the UI audit of 2026-10-01: each finding, as it is now */
+	/* The input boxes' edge in the accent while the mouse is over one, as a button's (the Chart tab's first row had
+	 * none: only a click showed it); a disabled one keeps its plain edge */
+	void hoverEdges() {
+		const QColor accent = Theme::colors().accent;
+		auto edge = [](QWidget &w) { /* the top edge's middle pixel */
+			const QImage image = w.grab().toImage();
+			return image.pixelColor(image.width() / 2, 0);
+		};
+		auto near = [](const QColor &a, const QColor &b) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < 40;
+		};
+		auto *ram = window_.findChild<QComboBox *>(QStringLiteral("chartRam"));
+		QLineEdit edit;
+		QSpinBox spin;
+		QComboBox off;
+		off.addItem(QStringLiteral("1 GB"));
+		off.setEnabled(false);
+		bool all = ram != nullptr;
+		QString failed;
+		for (QWidget *w : { static_cast<QWidget *>(ram), static_cast<QWidget *>(&edit), static_cast<QWidget *>(&spin),
+				 static_cast<QWidget *>(&off) }) {
+			if (!w) continue;
+			w->resize(std::max(w->width(), 120), w->sizeHint().height());
+			w->ensurePolished();
+			const bool idle = !near(edge(*w), accent);
+			w->setAttribute(Qt::WA_UnderMouse, true);
+			const bool hovered = near(edge(*w), accent);
+			w->setAttribute(Qt::WA_UnderMouse, false);
+			const bool ok = idle && (w == &off ? !hovered : hovered);
+			if (!ok) failed += QString::fromLatin1(w->metaObject()->className()) + QLatin1Char(' ');
+			all = all && ok;
+		}
+		if (!failed.isEmpty()) std::printf("     (no hover edge: %s)\n", qPrintable(failed));
+		check(all, "the look: a combo box, text box or spin box gets the accent edge while the mouse is over it, as a "
+				"button; a disabled one does not");
+	}
+
+	void uiAudit() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		const int tabBefore = tabs ? tabs->currentIndex() : 0;
+
+		/* contrast, both looks: text 4.5:1 on what it sits on, a control's edge 3:1; the log's lines, logged in the
+		 * dark look, drawn again in the colours of the look shown (they were near-white on the light one) */
+		auto *logView = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"));
+		bool textOk = true, controlOk = true, scrollOk = true, logFollows = logView && logView->document()->blockCount() > 1;
+		for (bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			QApplication::processEvents();
+			const ThemeColors &c = Theme::colors();
+			for (QTextBlock block = logView ? logView->document()->firstBlock() : QTextBlock(); block.isValid();
+					block = block.next()) {
+				if (block.text().isEmpty()) continue;
+				const QColor color = block.begin().fragment().charFormat().foreground().color();
+				if (color != c.text && color != c.muted && color != c.warn && color != c.bad) logFollows = false;
+			}
+			for (const QColor &back : { c.bg, c.surface, c.surface2 }) {
+				for (const QColor &fore : { c.text, c.muted, c.accent, c.good, c.warn, c.bad })
+					if (contrast(fore, back) < 4.5) {
+						textOk = false;
+						std::printf("contrast %s on %s: %.2f (%s)\n", qPrintable(fore.name()), qPrintable(back.name()),
+								contrast(fore, back), dark ? "dark" : "light");
+					}
+				if (contrast(c.control, back) < 3.0) controlOk = false;
+			}
+			/* the scroll bars' handles: the control colour (3:1), not the border's (barely there) */
+			const QString sheet = qApp->styleSheet();
+			for (const char *orientation : { "vertical", "horizontal" })
+				if (!sheet.contains(QStringLiteral("QScrollBar::handle:%1 { background: %2;")
+								.arg(QLatin1String(orientation), c.control.name())))
+					scrollOk = false;
+			for (const QColor &fill : { c.accentFill, c.badFill, c.accentFill.lighter(106) })
+				if (contrast(Qt::white, fill) < 4.5) textOk = false;
+		}
+		Theme::apply(*qApp, true);
+		check(textOk, "contrast: every text colour 4.5:1 on the window, panels and cards, both looks (WCAG AA)");
+		check(controlOk, "contrast: the edge of boxes and check boxes 3:1, both looks (WCAG AA)");
+		check(scrollOk, "contrast: the scroll bars' handles in the control colour, 3:1, both looks (WCAG AA)");
+
+		/* why the polls are slower than asked: in the status bar, where it comes and goes moving nothing; the polling
+		 * card keeps only the rate (it grew and shrank, and the sidebar's scroll bar with it) */
+		{
+			auto *slow = window_.findChild<QLabel *>(QStringLiteral("statusSlow"));
+			bool cardRateOnly = false;
+			for (QLabel *label : window_.findChild<Sidebar *>()->findChildren<QLabel *>())
+				if (label->text().contains(QLatin1String("polls/s"))) cardRateOnly = !label->text().contains(QLatin1String("<br>"));
+			check(slow && window_.statusBar()->isAncestorOf(slow), "poll hint: in the status bar (it moves nothing there)");
+			check(cardRateOnly && slow && slow->sizePolicy().horizontalPolicy() == QSizePolicy::Ignored
+							&& slow->textFormat() == Qt::PlainText,
+					"poll hint: the polling card shows the rate alone; the hint is always there (empty when not slow), "
+					"plain, cut rather than widen the window: the status bar does not move");
+			/* In flight below the reads of a poll: the reads go In flight at a time (12 devices, 36 reads, In flight 1:
+			 * 36 answer times per poll); the limit is that, and the hint says so */
+			auto *side = window_.findChild<Sidebar *>();
+			const double interval = side->pollIntervalMs();
+			const int inFlight = side->inFlight();
+			side->setPollInterval(0.1);
+			side->setInFlight(1);
+			IoEngine::Stats stats;
+			stats.blocks = 36;
+			stats.pollable = 180;
+			stats.pollHz = 45;
+			stats.master.avgLatencyMs = 0.6;
+			const QString oneAtATime = side->slowPollHintFor(stats);
+			side->setInFlight(64);
+			stats.pollHz = 1500; /* 64 in flight: a poll's 36 reads go together, ~1600 polls/s at the most */
+			const QString together = side->slowPollHintFor(stats);
+			side->setPollInterval(interval);
+			side->setInFlight(inFlight);
+			/* In flight past its range: the number stays as typed, the edge amber, and Enter takes it to the range's end
+			 * (a plain spin box dropped the digit, saying nothing; no floating tooltip either) */
+			QSpinBox *inFlightBox = nullptr;
+			for (QSpinBox *box : side->findChildren<QSpinBox *>())
+				if (box->maximum() == 1024) inFlightBox = box;
+			bool typedKept = false, amber = false, settled = false;
+			if (inFlightBox) {
+				const int was = inFlightBox->value();
+				inFlightBox->setFocus();
+				inFlightBox->selectAll();
+				QTest::keyClicks(inFlightBox, QStringLiteral("2000"));
+				typedKept = inFlightBox->text() == QLatin1String("2000");
+				amber = inFlightBox->property("outOfRange").toBool();
+				QTest::keyClick(inFlightBox, Qt::Key_Return);
+				settled = inFlightBox->value() == 1024 && !inFlightBox->property("outOfRange").toBool()
+						&& inFlightBox->toolTip().endsWith(QLatin1String("1 to 1024"));
+				inFlightBox->setValue(was);
+			}
+			check(inFlightBox && typedKept && amber && settled,
+					"In flight: up to 1024; a number past it stays as typed with an amber edge, Enter makes it 1024");
+			check(oneAtATime.contains(QLatin1String("36 reads, sent 1 at a time")) && oneAtATime.contains(QLatin1String("Set In flight"))
+							&& !together.isEmpty(),
+					"poll hint: In flight below a poll's reads (36 reads, In flight 1, 45 polls/s) is said, with the In flight to set");
+		}
+		/* the sidebar's cards as wide with its scroll bar as without: one that comes or goes rewraps nothing */
+		{
+			auto *side = window_.findChild<QScrollArea *>(QStringLiteral("sideScroll"));
+			QWidget *content = side ? side->widget() : nullptr;
+			check(content && content->minimumWidth() == content->maximumWidth()
+							&& content->width() + side->verticalScrollBar()->sizeHint().width() <= side->width(),
+					"sidebar: its cards one width, with the scroll bar or without (no rewrap that brings it back)");
+		}
+		check(logFollows, "log: its lines drawn again in the colours of the look shown (readable after a switch)");
+
+		/* Allow writes in bold when on: as wide as off, the toolbar beside it does not move */
+		{
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+			const bool was = allowWrites_->isChecked();
+			allowWrites_->setChecked(false);
+			QApplication::processEvents();
+			QPushButton *plotButton = buttonWithText(QStringLiteral("Plot shown"));
+			const int offWidth = allowWrites_->width(), offX = plotButton ? plotButton->x() : -1;
+			allowWrites_->setChecked(true);
+			QApplication::processEvents();
+			check(allowWrites_->width() == offWidth && plotButton && plotButton->x() == offX,
+					"Allow writes on (bold): as wide as off, the buttons beside it stay in place");
+			allowWrites_->setChecked(was);
+		}
+
+		/* a highlight drawn in a theme colour follows a switch too: Allow writes' amber */
+		const bool writesWere = allowWrites_->isChecked();
+		allowWrites_->setChecked(true);
+		Theme::apply(*qApp, false);
+		QApplication::processEvents();
+		const bool lightAmber = allowWrites_->styleSheet().contains(Theme::colors().warn.name());
+		Theme::apply(*qApp, true);
+		QApplication::processEvents();
+		const bool darkAmber = allowWrites_->styleSheet().contains(Theme::colors().warn.name());
+		allowWrites_->setChecked(writesWere);
+		check(lightAmber && darkAmber, "Allow writes: its highlight in the amber of the look shown, after a switch");
+
+		/* polling below the timer's resolution: a wake-up late by several periods counts every one of them (they
+		 * were dropped: 0.25 ms gave 1750 polls/s); a long stall starts again from now */
+		{
+			using namespace std::chrono;
+			const auto period = microseconds(250);
+			auto deadline = steady_clock::now() - microseconds(1100); /* woke 1.1 ms late: 4 more periods passed */
+			const auto reached = deadline;
+			const int due = tickPeriodsDue(deadline, period);
+			auto onTime = steady_clock::now();
+			const int one = tickPeriodsDue(onTime, period);
+			auto stalled = steady_clock::now() - seconds(60);
+			const int many = tickPeriodsDue(stalled, period);
+			check(due == 5 && deadline == reached + 4 * period && one == 1 && many > 1000
+							&& steady_clock::now() - stalled < milliseconds(100),
+					"poll ticker: a late wake-up counts every period passed (0.25 ms: 4000 polls/s, not 1750)");
+		}
+
+		/* the hint's In flight: never past the engine's polls at once (8 x 3 reads = 24; it said 33, which runs no
+		 * more polls than 24) */
+		check(Sidebar::suggestedInFlight(3, 5, 4000, 2.6, 64) == 3 * IoEngine::MAX_POLLS_UNDER_WAY
+						&& Sidebar::suggestedInFlight(3, 5, 1000, 2.6, 64) == 9 /* 3 polls at once: 9 */
+						&& Sidebar::suggestedInFlight(3, 12, 0, 0.4, 64) == 24,
+				"poll hint: the In flight it suggests runs more polls (at most 8 at once: 24 for 3 reads)");
+
+		/* focus: a ring for the focus from the keyboard, none for a click */
+		QPushButton *plotShown = buttonWithText(window_, QStringLiteral("Plot shown"));
+		QPushButton *registerButton = buttonWithText(window_, QStringLiteral("+ Register"));
+		if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+		if (plotShown && registerButton) {
+			/* the focus events themselves: a window that is not active (xvfb, no window manager) gets none */
+			auto focus = [](QWidget *widget, QEvent::Type type, Qt::FocusReason reason) {
+				QFocusEvent event(type, reason);
+				QApplication::sendEvent(widget, &event);
+			};
+			focus(plotShown, QEvent::FocusIn, Qt::TabFocusReason);
+			const bool ring = plotShown->property("keyFocus").toBool();
+			focus(plotShown, QEvent::FocusOut, Qt::MouseFocusReason);
+			focus(registerButton, QEvent::FocusIn, Qt::MouseFocusReason);
+			const bool clicked = registerButton->property("keyFocus").toBool();
+			focus(registerButton, QEvent::FocusOut, Qt::MouseFocusReason);
+			check(ring && !plotShown->property("keyFocus").toBool() && !clicked
+							&& qApp->styleSheet().contains(QStringLiteral("QPushButton[keyFocus=\"true\"]")),
+					"focus: a ring on a button reached with Tab, none after a click");
+		}
+
+		/* check boxes: a tick when ticked, a dash when partly, not only a colour */
+		const QRegularExpressionMatch tick = QRegularExpression(
+				QStringLiteral("QCheckBox::indicator:checked \\{[^}]*image: url\\(\"([^\"]+)\"\\)")).match(qApp->styleSheet());
+		const QRegularExpressionMatch dash = QRegularExpression(
+				QStringLiteral("QCheckBox::indicator:indeterminate \\{[^}]*image: url\\(\"([^\"]+)\"\\)")).match(qApp->styleSheet());
+		check(tick.hasMatch() && dash.hasMatch() && !QImage(tick.captured(1)).isNull() && !QImage(dash.captured(1)).isNull(),
+				"check boxes: a tick when ticked and a dash when partly (their images exist)");
+
+		/* the window fits a 1366 x 768 screen (1280 x 720 at 150 %): it was 1236 x 902 at least */
+		const QSize least = window_.minimumSizeHint();
+		std::printf("window minimum %d x %d\n", least.width(), least.height());
+		check(least.width() <= 1280 && least.height() <= 660, "the window's minimum size fits 1280 x 720");
+
+		/* the spin boxes as tall as the text boxes beside them (a text box of its own, not a combo box's) */
+		auto *sidebar = window_.findChild<Sidebar *>();
+		QLineEdit *edit = nullptr;
+		for (QLineEdit *box : sidebar ? sidebar->findChildren<QLineEdit *>() : QList<QLineEdit *>())
+			if (!qobject_cast<QComboBox *>(box->parentWidget()) && !qobject_cast<QAbstractSpinBox *>(box->parentWidget())) {
+				edit = box;
+				break;
+			}
+		QSpinBox *spin = sidebar ? sidebar->findChild<QSpinBox *>() : nullptr;
+		check(edit && spin && edit->height() == spin->height(), "a spin box is as tall as a text box");
+
+		/* Registers: access as the map writes it; each header aligned as its cells; a bytes register says why it
+		 * has no Plot box */
+		const QModelIndex rwAccess = model_->index(regRow(regs_.u8.name), RegisterModel::ColAccess);
+		const auto headerAlign = [](const QAbstractItemModel *model, int column) {
+			return Qt::Alignment(model->headerData(column, Qt::Horizontal, Qt::TextAlignmentRole).toInt());
+		};
+		check(rwAccess.data().toString().startsWith(QLatin1String("rw"))
+						&& (headerAlign(model_, RegisterModel::ColValue) & Qt::AlignRight)
+						&& (headerAlign(model_, RegisterModel::ColName) & Qt::AlignLeft),
+				"Registers: access \"rw\" as in the map; Value's header at the right as its numbers, Name's at the left");
+		for (const RegisterModel::Row &row : model_->rows()) {
+			if (row.def.isNumeric()) continue;
+			const QModelIndex plot = model_->index(regRow(row.def.name), RegisterModel::ColPlot);
+			check(!plot.data(Qt::CheckStateRole).isValid() && plot.data().toString() == QStringLiteral("—")
+							&& plot.data(Qt::ToolTipRole).toString().contains(QLatin1String("not a number")),
+					"a bytes register: a dash in Plot, and why in its tooltip");
+			break;
+		}
+
+		/* the status bar: the link's numbers, the poll rate only in the sidebar */
+		bool pollTwice = false;
+		for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
+			if (label->text().startsWith(QLatin1String("Poll "))) pollTwice = true;
+		check(!pollTwice, "the status bar does not repeat the sidebar's poll rate");
+
+		/* the link state: a dot and the state, not a second button; no empty line under it */
+		auto *pill = window_.findChild<QLabel *>(QStringLiteral("pill"));
+		check(pill && pill->text().startsWith(QStringLiteral("●")), "the link state: a dot and the state");
+		/* round ends in every state: Qt squares the corners when the radius (12) is more than half the height */
+		if (auto *sidebar = window_.findChild<Sidebar *>(); sidebar && pill) {
+			const QString connectedText = pill->toolTip(); /* the whole text (the pill may show it cut) */
+			int least = pill->height();
+			sidebar->showConnecting();
+			QApplication::processEvents();
+			least = std::min(least, pill->height());
+			sidebar->showLinkError(QStringLiteral("Connection refused"));
+			QApplication::processEvents();
+			least = std::min(least, pill->height());
+			sidebar->showDisconnected();
+			QApplication::processEvents();
+			least = std::min(least, pill->height());
+			sidebar->showConnected(connectedText.mid(connectedText.indexOf(QStringLiteral("· ")) + 2));
+			QApplication::processEvents();
+			check(least >= 2 * 12 && qApp->styleSheet().contains(QLatin1String("QLabel#pill { border-radius: 12px")),
+					"the link state: round ends in every state (its height never under twice the radius)");
+			/* a long address: never cut ("Connected · " gives way first), the whole text in the tooltip (the port ran off
+			 * the pill's end: "192.168.0.254:120"; then the address was cut in the middle: "...168.0.254:1209") */
+			sidebar->showConnected(QStringLiteral("192.168.100.254:12090"));
+			QApplication::processEvents();
+			const QString shown = pill->text();
+			const bool longKept = shown.contains(QLatin1String("192.168.100.254:12090"))
+					&& pill->toolTip().contains(QStringLiteral("Connected · 192.168.100.254:12090"))
+					&& pill->fontMetrics().horizontalAdvance(shown) <= pill->contentsRect().width();
+			sidebar->showLinkError(QStringLiteral("Connection refused by 192.168.100.254:12090 after three tries, see the Log tab for the whole story"));
+			QApplication::processEvents();
+			const bool reasonWhole = pill->toolTip().endsWith(QLatin1String("the whole story"))
+					&& pill->fontMetrics().horizontalAdvance(pill->text()) <= pill->contentsRect().width();
+			sidebar->showConnected(connectedText.mid(connectedText.indexOf(QStringLiteral("· ")) + 2));
+			QApplication::processEvents();
+			check(longKept && reasonWhole,
+					"the link state: a long address is shown whole (Connected gives way), the tooltip has all; a long reason "
+					"fits, whole in the tooltip");
+		}
+
+		/* the log: one line per event; the map loaded once at start */
+		auto *log = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"));
+		check(log && log->lineWrapMode() == QPlainTextEdit::NoWrap && logText().count(QLatin1String("map loaded")) == 1,
+				"log: one line per event (a path scrolls, it does not wrap); the map loaded once at start");
+
+		/* Monitor: each box named, and the empty view says what will show there */
+		if (auto *monitor = window_.findChild<MonitorTab *>()) {
+			auto *frames = monitor->findChild<QPlainTextEdit *>();
+			auto *function = monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction"));
+			bool named = false;
+			for (QLabel *label : monitor->findChildren<QLabel *>())
+				if (label->text() == QLatin1String("Address")) named = true;
+			bool bytes = false;
+			if (function) {
+				function->setCurrentIndex(1);
+				for (QLabel *label : monitor->findChildren<QLabel *>())
+					if (label->text() == QLatin1String("Bytes")) bytes = true;
+				function->setCurrentIndex(0);
+			}
+			check(frames && !frames->placeholderText().isEmpty() && named && bytes,
+					"Monitor: Address and Count / Bytes named; the empty view says what shows there");
+		}
+
+		/* the chart's Y boxes in Auto: what the chart does, four digits (4.2, not 4.20007) but the whole part always
+		 * (17420: 1.742e+04 was cut to ".742e+04" in the box); the axis: one step's decimals for every label */
+		QLineEdit *yMin = nullptr;
+		for (QLineEdit *box : window_.findChildren<QLineEdit *>())
+			if (box->toolTip().startsWith(QLatin1String("Y range: the bottom"))) yMin = box;
+		const bool shortY = yMin && (yMin->text().isEmpty()
+				|| yMin->text() == ChartTab::yFieldText(yMin->text().toDouble(), false))
+				&& ChartTab::yFieldText(4.20007, false) == QLatin1String("4.2")
+				&& ChartTab::yFieldText(17420.3, false) == QLatin1String("17420")
+				&& ChartTab::yFieldText(-1290.4, false) == QLatin1String("-1290")
+				&& ChartTab::yFieldText(4.20007, true) == QLatin1String("4.20007");
+		check(shortY && chartAxisLabel(14, 2, false) == QLatin1String("14") && chartAxisLabel(6, 2, false) == QLatin1String("6")
+						&& chartAxisLabel(0.4, 0.2, false) == QLatin1String("0.4") && chartAxisLabel(1, 0.2, false) == QLatin1String("1.0"),
+				"chart: Y boxes in Auto with four digits, the whole part always (17420); the axis labels with their step's "
+				"decimals");
+
+		/* Map editor: the Default box keeps its hint; the name tables' buttons say what they add; no empty checks box */
+		if (auto *editorTab = window_.findChild<MapEditorTab *>()) {
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabMap);
+			editorTab->selectRegister(model_->rows()[regRow(regs_.u8.name)].def.uid);
+			QLineEdit *defaultBox = nullptr;
+			for (QLineEdit *box : editorTab->findChildren<QLineEdit *>())
+				if (box->property("emptyHint").toString().startsWith(QLatin1String("none: a number"))) defaultBox = box;
+			check(defaultBox && defaultBox->placeholderText() == defaultBox->property("emptyHint").toString(),
+					"Map editor: an empty Default still shows its hint after a register is selected");
+			check(buttonWithText(*editorTab, QStringLiteral("+ Name")) && buttonWithText(*editorTab, QStringLiteral("− Name")),
+					"Map editor: the value names' buttons say what they add (+ Name, − Name)");
+			/* a value name's good key has no colour of its own: the palette's text, in either look */
+			if (!regs_.enumU8.name.isEmpty()) {
+				editorTab->selectRegister(model_->rows()[regRow(regs_.enumU8.name)].def.uid);
+				auto *names = editorTab->findChild<QWidget *>(QStringLiteral("enumNames"));
+				auto *cells = names ? names->findChild<QTableWidget *>() : nullptr;
+				check(cells && cells->rowCount() > 0 && cells->item(0, 0)
+								&& !cells->item(0, 0)->data(Qt::ForegroundRole).isValid(),
+						"Map editor: a value name's key in the text colour of the look (none written into the cell)");
+				editorTab->selectRegister(model_->rows()[regRow(regs_.u8.name)].def.uid);
+			}
+			auto *doc = window_.findChild<MapDocument *>();
+			auto *issues = editorTab->findChild<QListWidget *>(QStringLiteral("mapIssues"));
+			if (doc && issues) {
+				const bool hiddenWhenClean = doc->issues().isEmpty() ? issues->isHidden() : !issues->isHidden();
+				check(hiddenWhenClean, "Map editor: nothing found, no empty checks box (the title alone)");
+			}
+			auto *general = editorTab->findChild<QScrollArea *>(QStringLiteral("formScroll"));
+			check(general != nullptr, "Map editor: the General form scrolls (its 18 rows set no minimum height)");
+		}
+		if (tabs) tabs->setCurrentIndex(tabBefore);
+	}
+
+	bool u8Greyed() const {
+		/* the table's colour of a value not refreshed: the theme's muted one */
+		const QColor color = u8Cell_.data(Qt::ForegroundRole).value<QColor>();
+		return color.isValid() && color == Theme::colors().muted;
+	}
+
+	/* 9. hovering: the (i) beside a decoded value shows its fields, the rest
+	 * of the value cell the usual tooltip (description, raw bytes, age) */
+	void decodedFields() {
+		const QModelIndex cell = firstDecodedValue();
+		check(cell.isValid(), "a register with decoded fields");
+		check(table_->isColumnHidden(RegisterModel::ColDecoded), "the Decoded column is hidden by default");
+		table_->scrollTo(cell);
+		QApplication::processEvents();
+		const QRect rect = table_->visualRect(cell);
+		const QString onInfo = tooltipAt(QPoint(rect.right() - 8, rect.center().y()));
+		const QString onValue = tooltipAt(QPoint(rect.left() + 10, rect.center().y()));
+		QToolTip::hideText();
+		check(onInfo.contains(QLatin1String("<hr>")) && !onInfo.contains(QLatin1String("raw:")),
+				"hover the (i): the decoded fields");
+		check(onValue.contains(QLatin1String("raw:")), "hover the value: the usual tooltip (raw bytes, age)");
+		table_->setCurrentIndex(cell);
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		const QString detailText = detail ? detail->text() : QString();
+		/* U+00C2 shows up where UTF-8 was read as Latin-1 */
+		check(detailText.contains(QStringLiteral("Decoded")) && !detailText.contains(QChar(0x00C2)),
+				"the line under the table: the decoded fields, no broken characters");
+	}
+
+	QModelIndex firstDecodedValue() const {
+		const QAbstractItemModel *model = table_->model();
+		for (int r = 0; r < model->rowCount(); r++) {
+			const QModelIndex value = model->index(r, RegisterModel::ColValue);
+			if (!value.siblingAtColumn(RegisterModel::ColDecoded).data().toString().isEmpty()) return value;
+		}
+		return {};
+	}
+
+	/* the tooltip the table shows when hovered at a point of its viewport */
+	QString tooltipAt(const QPoint &at) {
+		QToolTip::hideText();
+		QHelpEvent event(QEvent::ToolTip, at, table_->viewport()->mapToGlobal(at));
+		QApplication::sendEvent(table_->viewport(), &event);
+		return QToolTip::text();
+	}
+
+	/* 10. quick write under the table: value box, enum list, bit buttons, a flag of a danger register */
+	void quickWrite() {
+		QuickWriteWidgets panel;
+		panel.frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		if (panel.frame) {
+			panel.value = panel.frame->findChild<QLineEdit *>(QStringLiteral("qwValue"));
+			panel.enumList = panel.frame->findChild<QComboBox *>(QStringLiteral("qwEnum"));
+			for (QCheckBox *box : panel.frame->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Bits")) panel.bits = box;
+		}
+		check(panel.complete(), "quick write: value box, enum list, Bits");
+		if (!panel.complete()) return;
+		quickWriteValue(panel);
+		quickWriteBits(panel);
+		quickWriteDangerFlag(panel);
+		quickWriteFollowsLink(panel);
+	}
+
+	/* Disconnect: the panel says so at once and cannot write; Connect: it can again */
+	void quickWriteFollowsLink(const QuickWriteWidgets &panel) {
+		table_->setCurrentIndex(u8Cell_);
+		QApplication::processEvents();
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		check(disconnectButton && !panel.value->isEnabled() && panel.shows(QStringLiteral("not connected")),
+				"Disconnect: quick write disabled at once, it says \"not connected\"");
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		const bool enabledAgain = QTest::qWaitFor([&] {
+			return panel.value->isEnabled() && !panel.shows(QStringLiteral("not connected"));
+		}, 5000);
+		check(connectButton && enabledAgain && cellShows(u8Cell_, QStringLiteral("0"), 5000),
+				"Connect again: quick write enabled, the table polled again");
+	}
+
+	void quickWriteValue(const QuickWriteWidgets &panel) {
+		if (panel.bits->isChecked()) panel.bits->setChecked(false);
+		table_->setCurrentIndex(u8Cell_);
+		/* on a busy machine the panel follows a frame or two later: wait for it */
+		check(QTest::qWaitFor([&] { return panel.frame->isVisible() && panel.value->isEnabled(); }, 2000),
+				"a RW register selected, Allow writes on: quick write shown and enabled");
+		panel.value->setText(QStringLiteral("2"));
+		QTest::keyClick(panel.value, Qt::Key_Return);
+		check(u8Becomes(2), "value box + Enter: the device holds 2");
+		quickWriteNamedValue(panel);
+	}
+
+	/* a u8 with named values: its list holds them, picking one writes it (the plain u8 has no list).
+	 * The device starts from 0, and the name picked is the first of a value other than 0. */
+	void quickWriteNamedValue(const QuickWriteWidgets &panel) {
+		const bool plainHasNoList = panel.enumList->isHidden();
+		const RegDef &def = regs_.enumU8;
+		const QList<qint64> values = def.enumValues.keys();
+		const auto nonZero = std::find_if(values.begin(), values.end(), [](qint64 v) { return v != 0; });
+		const qint64 value = nonZero != values.end() ? *nonZero : -1;
+		bool listed = false, written = false;
+		if (!def.name.isEmpty() && value > 0) {
+			other_.writeU8(def.addr, 0);
+			table_->setCurrentIndex(valueCell(table_, def.name));
+			listed = QTest::qWaitFor([&] {
+				return panel.enumList->isVisible() && panel.enumList->count() == def.enumValues.size()
+						&& listsItsNames(panel.enumList, def);
+			}, 2000);
+			const int entry = panel.enumList->findData(value);
+			if (entry >= 0) {
+				panel.enumList->setCurrentIndex(entry);
+				emit panel.enumList->activated(entry);
+				written = QTest::qWaitFor([&] { return other_.readU8(def.addr) == value; }, 3000);
+			}
+			other_.writeU8(def.addr, 0);
+		}
+		const QByteArray what = (def.name.isEmpty() || value <= 0
+				? QStringLiteral("named values: the map has no writable u8 of the device bank with a name for a value"
+						" other than 0")
+				: QStringLiteral("named values: %1's list holds its %2 values, each with its name, picking %3 writes"
+						" it; the plain u8 has no list").arg(def.name).arg(def.enumValues.size()).arg(value)).toUtf8();
+		check(plainHasNoList && listed && written, what.constData());
+		table_->setCurrentIndex(u8Cell_);
+		QApplication::processEvents();
+	}
+
+	/* every entry of the list is one of the register's values, each value once, and its text shows that value's name */
+	static bool listsItsNames(const QComboBox *list, const RegDef &def) {
+		QList<qint64> seen;
+		for (int i = 0; i < list->count(); i++) {
+			bool isNumber = false;
+			const qint64 value = list->itemData(i).toLongLong(&isNumber);
+			if (!isNumber || !def.enumValues.contains(value) || seen.contains(value)
+					|| !list->itemText(i).contains(def.enumValues.value(value)))
+				return false;
+			seen << value;
+		}
+		return true;
+	}
+
+	void quickWriteBits(const QuickWriteWidgets &panel) {
+		panel.bits->setChecked(true);
+		QApplication::processEvents();
+		BitView *bitView = panel.bitView();
+		check(bitView != nullptr, "Bits: the register drawn bit by bit");
+		QTest::qWait(300); /* the cells follow the device's value */
+		const int before = other_.readU8(regs_.u8.addr);
+		if (bitView) QTest::mouseClick(bitView, Qt::LeftButton, {}, bitView->bitCell(1).center());
+		check(u8Becomes(before ^ 2), "bit 1 clicked: flipped, the other bits kept (read-modify-write)");
+		panel.bits->setChecked(false);
+		other_.writeU8(regs_.u8.addr, 0);
+	}
+
+	/* CONFIG, a danger register of flags: a click on a flag asks, then flips only that bit */
+	void quickWriteDangerFlag(const QuickWriteWidgets &panel) {
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+		QApplication::processEvents();
+		BitView *bitView = panel.bitView();
+		const QRect flag = bitView ? bitView->fieldCell(QStringLiteral("MSG_ENABLE")) : QRect();
+		check(bitView && flag.isValid(), "CONFIG: drawn as a register, MSG_ENABLE over its bit");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			saveScreenshots(panel);
+			bitView = panel.bitView();
+		}
+		const int before = other_.readI16(PROTOCOL_CONFIG);
+		const QString title = answerDialog(QStringLiteral("Write"), [&] {
+			if (bitView) QTest::mouseClick(bitView, Qt::LeftButton, {}, flag.center());
+		});
+		const auto flipped = [&] { return other_.readI16(PROTOCOL_CONFIG) == (before ^ MSG_ENABLE_MASK); };
+		check(title == confirmWriteTitle && QTest::qWaitFor(flipped, 3000),
+				"MSG_ENABLE clicked on a danger register: confirm asked, bit 2 flipped");
+		other_.writeI16(PROTOCOL_CONFIG, int16_t(before));
+	}
+
+	/* EVRE_TEST_SHOT=<path prefix>: pictures of the panel with fields and with bits, for a look */
+	void saveScreenshots(const QuickWriteWidgets &panel) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		window_.grab().save(prefix + QStringLiteral("_fields.png"));
+		panel.bits->setChecked(true);
+		QApplication::processEvents();
+		window_.grab().save(prefix + QStringLiteral("_bits.png"));
+		panel.bits->setChecked(false);
+		QApplication::processEvents();
+	}
+
+	/* 11. groups: several at once; "Plot shown" charts what the table shows */
+	void groups() {
+		auto *button = window_.findChild<QPushButton *>(QStringLiteral("groups"));
+		const QList<QCheckBox *> boxes =
+				button && button->menu() ? button->menu()->findChildren<QCheckBox *>() : QList<QCheckBox *>();
+		check(boxes.size() >= 2, "groups: a check box per group");
+		if (boxes.size() < 2) return;
+		/* the map's first group with an & ("Power & supply" in the example map) shows as it is,
+		 * not "Power _supply": its box's text has the & doubled, so it is no mnemonic */
+		const QString ampersandGroup = firstGroupWithAmpersand();
+		QCheckBox *ampersandBox = nullptr;
+		for (QCheckBox *box : boxes)
+			if (!ampersandGroup.isEmpty() && box->text() == doubleAmpersands(ampersandGroup)) ampersandBox = box;
+		const QByteArray what = QStringLiteral("a group with & in its name keeps its & (%1)")
+				.arg(ampersandGroup.isEmpty() ? QStringLiteral("the map has no such group") : ampersandGroup).toUtf8();
+		check(ampersandBox != nullptr, what.constData());
+		/* ticked first, so the button starts with its name, the & doubled there too */
+		QCheckBox *first = ampersandBox ? ampersandBox : boxes[0];
+		QCheckBox *second = first == boxes[0] ? boxes[1] : boxes[0];
+		first->setChecked(true);
+		second->setChecked(true);
+		const QString firstName = groupName(first);
+		const int want = registersInGroup(firstName) + registersInGroup(groupName(second));
+		const int upToAmpersand = firstName.contains(QLatin1Char('&')) ? int(firstName.indexOf(QLatin1Char('&'))) + 1 : 6;
+		check(table_->model()->rowCount() == want
+						&& button->text().startsWith(doubleAmpersands(firstName.left(upToAmpersand))),
+				"two groups ticked: the table shows both, the button says so");
+		plotShown();
+		first->setChecked(false);
+		second->setChecked(false);
+		check(table_->model()->rowCount() == model_->rowCount(), "groups unticked: all registers again");
+	}
+
+	/* 13. the Map editor: every change through the document, with undo; the live values stay */
+	void mapEditor() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *editorTab = window_.findChild<MapEditorTab *>();
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		auto *issues = window_.findChild<QListWidget *>(QStringLiteral("mapIssues"));
+		check(doc && tabs && editorTab && mapTable && issues, "Map editor: the tab, its table and its checks");
+		if (!doc || !tabs || !editorTab || !mapTable || !issues) return;
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		QTest::qWait(50);
+		QAbstractItemModel *table = mapTable->model();
+		check(table->rowCount() == model_->rows().size() && !doc->isModified(),
+				"Map editor: a row per register, nothing changed yet");
+		const int undoStart = doc->undoStack()->index();
+
+		/* the unit of the u8 register: the Registers table follows, its value kept */
+		const int u8Row = regRow(regs_.u8.name);
+		const quint32 u8Uid = model_->rows()[u8Row].def.uid;
+		const QByteArray valueBefore = model_->rows()[u8Row].raw;
+		const bool validBefore = model_->rows()[u8Row].valid;
+		table->setData(table->index(doc->indexOf(u8Uid), MapTableModel::ColUnit), QStringLiteral("rpm"));
+		const RegisterModel::Row &after = model_->rows()[model_->rowOfUid(u8Uid)];
+		check(after.def.unit == QLatin1String("rpm") && after.valid == validBefore && after.raw == valueBefore
+						&& doc->isModified(),
+				"edit a cell: the Registers table shows it at once, the live value is kept, the map is modified");
+
+		/* a bulk edit: two rows selected, the group set on one goes to both, as one undo step */
+		const int dangerIndex = doc->indexOf(model_->rows()[regRow(regs_.danger.name)].def.uid);
+		const int u8Index = doc->indexOf(u8Uid);
+		mapTable->selectionModel()->select(table->index(u8Index, 0),
+				QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+		mapTable->selectionModel()->select(table->index(dangerIndex, 0),
+				QItemSelectionModel::Select | QItemSelectionModel::Rows);
+		const int steps = doc->undoStack()->count();
+		table->setData(table->index(u8Index, MapTableModel::ColGroup), QStringLiteral("Bulk group"));
+		const quint32 dangerUid = doc->map().regs[dangerIndex].uid;
+		check(doc->reg(u8Uid)->group == QLatin1String("Bulk group") && doc->reg(dangerUid)->group == QLatin1String("Bulk group")
+						&& doc->undoStack()->count() == steps + 1,
+				"bulk edit: the group set on one selected row goes to both, in one undo step");
+		doc->undoStack()->undo();
+		check(doc->reg(u8Uid)->group == regs_.u8.group && doc->reg(dangerUid)->group == regs_.danger.group,
+				"undo: both groups back");
+		doc->undoStack()->redo();
+		check(doc->reg(dangerUid)->group == QLatin1String("Bulk group"), "redo: both in the new group again");
+		doc->undoStack()->undo();
+
+		/* + Register, Duplicate, copy and paste, delete */
+		const int count = int(doc->map().regs.size());
+		editorTab->addRegister(u8Uid);
+		const bool added = doc->map().regs.size() == count + 1 && model_->rows().size() == count + 1;
+		const QVector<quint32> selectedNew = selectedMapUids(mapTable, doc);
+		const RegDef *created = selectedNew.size() == 1 ? doc->reg(selectedNew.front()) : nullptr;
+		check(added && created && created->name.startsWith(QLatin1String("REG_")),
+				"+ Register: a new register, selected, in the Registers table too");
+		editorTab->deleteSelected();
+		check(doc->map().regs.size() == count, "Delete: it is gone");
+		editorTab->selectRegister(u8Uid);
+		editorTab->duplicateSelected();
+		const QVector<quint32> copies = selectedMapUids(mapTable, doc);
+		const RegDef *copy = copies.size() == 1 ? doc->reg(copies.front()) : nullptr;
+		check(copy && copy->name == regs_.u8.name + QStringLiteral("_2") && copy->addr != regs_.u8.addr
+						&& copy->type == regs_.u8.type,
+				"Duplicate: a copy named _2 at a free address");
+		editorTab->copySelected();
+		editorTab->paste();
+		const QVector<quint32> pasted = selectedMapUids(mapTable, doc);
+		const RegDef *third = pasted.size() == 1 ? doc->reg(pasted.front()) : nullptr;
+		check(third && third->name == regs_.u8.name + QStringLiteral("_3") && doc->map().regs.size() == count + 2,
+				"Copy and Paste: another copy, _3, at the next free address");
+
+		/* the checks: a name used twice is an error, listed; a click on it selects the register */
+		table->setData(table->index(doc->indexOf(third->uid), MapTableModel::ColName), regs_.danger.name);
+		QListWidgetItem *error = nullptr;
+		for (int i = 0; i < issues->count(); i++)
+			if (issues->item(i)->text().contains(QLatin1String("is also"))) error = issues->item(i);
+		check(error != nullptr, "checks: the name used twice is listed");
+		if (error) {
+			editorTab->selectRegister(0);
+			emit issues->itemClicked(error);
+			const QVector<quint32> selected = selectedMapUids(mapTable, doc);
+			check(selected.size() == 1 && doc->reg(selected.front())->name == regs_.danger.name,
+					"checks: a click selects that register");
+		}
+		/* the # column: each row's number in the map, a dot before it on a row the checks flag */
+		const int thirdRow = doc->indexOf(third->uid), u8MapRow = doc->indexOf(u8Uid);
+		check(table->headerData(MapTableModel::ColIssue, Qt::Horizontal, Qt::DisplayRole).toString() == QLatin1String("#")
+						&& table->index(u8MapRow, MapTableModel::ColIssue).data().toString()
+								== QString::number(u8MapRow + 1)
+						&& table->index(thirdRow, MapTableModel::ColIssue).data().toString()
+								== QStringLiteral("● %1").arg(thirdRow + 1),
+				"# column: the row numbers; a dot before the number of a row the checks flag");
+
+		/* nothing selected: the note in the middle instead of the form; a register selected: the form */
+		auto *emptyNote = window_.findChild<QLabel *>(QStringLiteral("editorEmpty"));
+		auto *pages = window_.findChild<QTabWidget *>(QStringLiteral("editorPages"));
+		mapTable->clearSelection();
+		check(emptyNote && pages && emptyNote->isVisibleTo(&window_) && !pages->isVisibleTo(&window_),
+				"no register selected: the note shows instead of the form");
+		editorTab->selectRegister(u8Uid);
+		check(emptyNote && pages && !emptyNote->isVisibleTo(&window_) && pages->isVisibleTo(&window_),
+				"a register selected: the form again");
+		auto *addrChip = window_.findChild<QLabel *>(QStringLiteral("editorAddr"));
+		auto *typeChip = window_.findChild<QLabel *>(QStringLiteral("editorType"));
+		auto *liveDot = window_.findChild<QLabel *>(QStringLiteral("liveDot"));
+		check(addrChip && typeChip && liveDot && addrChip->text() == addrText(regs_.u8.addr)
+						&& typeChip->text() == QLatin1String("u8")
+						&& QTest::qWaitFor([&] { return liveDot->property("state").toString() == QLatin1String("ok"); },
+								1000),
+				"the header card: its address and type chips, the live dot green with a value");
+		if (addrChip) {
+			const int addrX = addrChip->mapTo(&window_, QPoint()).x();
+			editorTab->selectRegister(model_->rows()[regRow(regs_.danger.name)].def.uid); /* another name length */
+			const int otherX = addrChip->mapTo(&window_, QPoint()).x();
+			editorTab->selectRegister(u8Uid);
+			check(regs_.danger.name.size() != regs_.u8.name.size() && otherX == addrX,
+					"the address chip keeps its place whatever the name's length");
+		}
+
+		/* a 255-byte register: no bits to draw, so the pages are no taller than for a u8 one (a tab widget is as tall
+		 * as its tallest page: the bit strip of 2040 bits made the window taller than the screen, the sidebar with it) */
+		if (pages) {
+			const int u8Height = pages->minimumSizeHint().height();
+			doc->edit(QStringLiteral("bytes"), [&](DeviceMap &map) {
+				for (RegDef &def : map.regs)
+					if (def.uid == u8Uid) {
+						def.type = RegType::Bytes;
+						def.size = 255;
+					}
+			});
+			check(pages->minimumSizeHint().height() <= u8Height,
+					"a 255-byte register selected: the editor pages keep their height (the window and sidebar are not stretched)");
+			doc->undoStack()->undo();
+		}
+
+		/* a page the selection cannot have: the tab stays where it is, with a warning sign and why as its tooltip,
+		 * and the page is a note that says why */
+		auto noteShown = [&](const QString &why) {
+			for (QLabel *note : window_.findChildren<QLabel *>(QStringLiteral("editorEmpty")))
+				if (note->isVisibleTo(&window_) && note->text().contains(why)) return true;
+			return false;
+		};
+		const int valuesPage = 1, fieldsPage = 2;
+		if (pages) {
+			const int pageBefore = pages->currentIndex();
+			pages->setCurrentIndex(fieldsPage);
+			auto *strip = window_.findChild<QWidget *>(QStringLiteral("fieldStrip"));
+			const int notesPage = 3;
+			const int fieldsWidth = pages->tabBar()->tabRect(fieldsPage).width();
+			const int notesX = pages->tabBar()->tabRect(notesPage).x();
+			check(pages->tabIcon(fieldsPage).isNull() && pages->tabToolTip(fieldsPage).isEmpty() && strip
+							&& strip->isVisibleTo(&window_),
+					"an integer register: the Bit fields tab has no sign, its page the bit strip");
+			doc->edit(QStringLiteral("bytes"), [&](DeviceMap &map) {
+				for (RegDef &def : map.regs)
+					if (def.uid == u8Uid) def.type = RegType::Bytes;
+			});
+			const QString why = pages->tabToolTip(fieldsPage);
+			check(pages->tabBar()->tabRect(fieldsPage).width() == fieldsWidth
+							&& pages->tabBar()->tabRect(notesPage).x() == notesX,
+					"the sign on the Bit fields tab: the tab keeps its width, Notes its place");
+			check(!pages->tabBar()->drawBase(), "the pages' tab bar draws no base line, as the other tab bars");
+			check(pages->currentIndex() == fieldsPage && !pages->tabIcon(fieldsPage).isNull()
+							&& why.contains(QLatin1String("bytes")) && noteShown(why) && !strip->isVisibleTo(&window_),
+					"a bytes register on the Bit fields page: it stays there, the tab has a sign and why as its tooltip, "
+					"the page says why");
+			check(why.count(QLatin1Char('\n')) == 1, "the reason: two lines, what is wrong and what is needed");
+			doc->undoStack()->undo();
+			check(pages->currentIndex() == fieldsPage && pages->tabIcon(fieldsPage).isNull()
+							&& pages->tabToolTip(fieldsPage).isEmpty() && strip->isVisibleTo(&window_),
+					"an integer register again: no sign, the bit strip back");
+
+			/* two selected: Values (and Bit fields) say to select one */
+			pages->setCurrentIndex(valuesPage);
+			const int dangerMapRow = doc->indexOf(model_->rows()[regRow(regs_.danger.name)].def.uid);
+			mapTable->selectionModel()->select(table->index(doc->indexOf(u8Uid), 0),
+					QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+			mapTable->selectionModel()->select(table->index(dangerMapRow, 0),
+					QItemSelectionModel::Select | QItemSelectionModel::Rows);
+			const QString severalWhy = pages->tabToolTip(valuesPage);
+			check(pages->currentIndex() == valuesPage && !pages->tabIcon(valuesPage).isNull()
+							&& !pages->tabIcon(fieldsPage).isNull() && !severalWhy.isEmpty() && noteShown(severalWhy),
+					"two registers selected on the Values page: it stays there, the tab has a sign, the page says why");
+			editorTab->selectRegister(u8Uid);
+			auto *names = window_.findChild<QWidget *>(QStringLiteral("enumNames"));
+			check(pages->tabIcon(valuesPage).isNull() && names && names->isVisibleTo(&window_),
+					"one register again: the Values page is the names again");
+			pages->setCurrentIndex(pageBefore);
+		}
+
+		/* the live line stays one line, however long: the pages under it do not move */
+		auto *liveLine = window_.findChild<QLabel *>(QStringLiteral("editorLive"));
+		if (liveLine && pages) {
+			QTest::qWait(400); /* the live line follows every 250 ms */
+			const int pagesTop = pages->mapTo(&window_, QPoint()).y();
+			const QString longUnit = QStringLiteral("LONG_UNIT_").repeated(30);
+			doc->edit(QStringLiteral("long unit"), [&](DeviceMap &map) {
+				for (RegDef &def : map.regs)
+					if (def.uid == u8Uid) def.unit = longUnit;
+			});
+			QTest::qWait(400);
+			check(liveLine->toolTip().contains(longUnit) && liveLine->height() < 2 * liveLine->fontMetrics().height()
+							&& pages->mapTo(&window_, QPoint()).y() == pagesTop,
+					"a live line longer than the panel: one line, cut short, whole in its tooltip; the pages stay put");
+			doc->undoStack()->undo();
+		}
+
+		/* the Values page: a name for a value of the u8 register, shown decoded on the Registers tab */
+		auto *enumTable = window_.findChild<QWidget *>(QStringLiteral("enumNames"));
+		auto *enumCells = enumTable ? enumTable->findChild<QTableWidget *>() : nullptr;
+		check(enumCells != nullptr, "Values page: the table of value names");
+		if (enumCells) {
+			const int rows = enumCells->rowCount();
+			const QByteArray raw = model_->rows()[model_->rowOfUid(u8Uid)].raw;
+			const qint64 now = raw.isEmpty() ? 0 : qint64(quint8(raw[0]));
+			enumCells->insertRow(rows);
+			enumCells->setItem(rows, 0, new QTableWidgetItem(QString::number(now)));
+			enumCells->setItem(rows, 1, new QTableWidgetItem(QStringLiteral("named-now")));
+			const RegDef *named = doc->reg(u8Uid);
+			check(named && named->enumValues.value(now) == QLatin1String("named-now"),
+					"Values page: a name typed in goes into the map");
+			const QModelIndex decoded = model_->index(model_->rowOfUid(u8Uid), RegisterModel::ColDecoded);
+			check(cellShows(decoded, QStringLiteral("named-now")),
+					"Values page: the Registers table decodes the live value with it at once");
+			auto *live = window_.findChild<QLabel *>(QStringLiteral("editorLiveDetail"));
+			check(QTest::qWaitFor([&] { return live && live->text().contains(QLatin1String("named-now")); }, 1000),
+					"the live value's decoded line shows it too");
+		}
+
+		/* the Bit fields page: a drag across bits makes a field */
+		auto *fieldEditor = window_.findChild<FieldEditor *>();
+		auto *strip = window_.findChild<BitView *>(QStringLiteral("fieldStrip"));
+		check(fieldEditor && strip, "Bit fields page: the bit strip");
+		if (fieldEditor && strip) {
+			const int fieldsBefore = int(doc->reg(u8Uid)->fields.size());
+			emit strip->bitsChosen(4, 3);
+			const RegDef *withField = doc->reg(u8Uid);
+			const bool made = withField->fields.size() == fieldsBefore + 1
+					&& std::any_of(withField->fields.begin(), withField->fields.end(),
+							[](const BitField &f) { return f.lsb == 4 && f.width == 3; });
+			check(made, "Bit fields page: bits 6:4 dragged across are a new field");
+			auto *fieldCells = window_.findChild<QTableWidget *>(QStringLiteral("fieldTable"));
+			check(fieldCells && fieldCells->rowCount() == fieldsBefore + 1, "the field table lists it");
+		}
+
+		/* the Registers tab's "Edit definition" opens it here */
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		auto *registersTab = window_.findChild<RegistersTab *>();
+		if (registersTab) emit registersTab->editDefinitionRequested(dangerUid, 0);
+		const QVector<quint32> shown = selectedMapUids(mapTable, doc);
+		check(tabs->currentIndex() == MainWindow::TabMap && shown.size() == 1 && shown.front() == dangerUid,
+				"Registers tab, Edit definition: the Map editor shows that register");
+
+		/* Export and Import CSV: the map as a sheet, and back in as one undo step */
+		{
+			QTemporaryDir folder;
+			const QString csv = folder.filePath(QStringLiteral("map.csv")), md = folder.filePath(QStringLiteral("map.md"));
+			QString err;
+			const bool exported = editorTab->exportTo(QStringLiteral("csv"), csv, QString(), err)
+					&& editorTab->exportTo(QStringLiteral("md"), md, QString(), err);
+			check(exported && QFileInfo(md).size() > 1000, "Export: the map as CSV and as a Markdown specification");
+			const int before = int(doc->map().regs.size());
+			const int steps = doc->undoStack()->count();
+			const bool imported = editorTab->importCsvFrom(csv, true, err);
+			check(imported && doc->map().regs.size() == before && doc->undoStack()->count() == steps + 1,
+					"Import CSV: the same registers back, in one undo step");
+			doc->undoStack()->undo();
+		}
+
+		/* all undone: the map as loaded, not modified */
+		doc->undoStack()->setIndex(undoStart);
+		check(!doc->isModified() && doc->map().regs.size() == count && doc->reg(u8Uid)->unit == regs_.u8.unit,
+				"undo to the start: the map as loaded, nothing to save");
+
+		/* the device table: written for a map the EVRe library can serve, else refused with the reason */
+		{
+			QTemporaryDir folder;
+			const QString table = folder.filePath(QStringLiteral("map_table.h"));
+			QString err;
+			const bool ok = editorTab->exportTo(QStringLiteral("table"), table, QString(), err);
+			check(ok ? QFileInfo(table).size() > 1000 : err.contains(QLatin1String("EVRe library")) && !QFileInfo::exists(table),
+					"Export: the device table for the EVRe library (or why the map cannot be one)");
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* 14. a write past the map's max asks first; a bit field goes on the chart as a math line */
+	void limitsAndFields() {
+		/* the Map editor step added and removed registers: the table was reset, its old indexes are gone */
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		const RegDef u8 = model_->rows()[regRow(regs_.u8.name)].def; /* a copy: the rows may move while a dialog is open */
+		if (u8.hasMax()) {
+			const QString past = QString::number(qint64(u8.max) + 1);
+			QString title = enterAnswering(typeInto(u8Cell_, past), QStringLiteral("Cancel"));
+			check(title == QLatin1String("Outside the map's limits") && other_.readU8(regs_.u8.addr) != u8.max + 1,
+					"past the map's max: asked first, Cancel writes nothing");
+			title = enterAnswering(typeInto(u8Cell_, past), QStringLiteral("Write anyway"));
+			check(title == QLatin1String("Outside the map's limits") && u8Becomes(int(u8.max) + 1),
+					"... Write anyway: written");
+			other_.writeU8(regs_.u8.addr, 0);
+			(void) u8Becomes(0);
+		} else {
+			check(false, "the map gives the u8 register a max (the example map: FAN_SPEED 0 … 100)");
+		}
+		/* the protocol's CONFIG register has fields: its first one as a line of its own */
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *view = window_.findChild<ChartView *>();
+		const int configRow = [this] {
+			for (int i = 0; i < model_->rows().size(); i++)
+				if (model_->rows()[i].def.addr == PROTOCOL_CONFIG) return i;
+			return -1;
+		}();
+		if (chartTab && view && configRow >= 0 && !model_->rows()[configRow].def.fields.isEmpty()) {
+			const RegDef config = model_->rows()[configRow].def;
+			auto *registersTab = window_.findChild<RegistersTab *>();
+			if (registersTab) emit registersTab->plotFieldRequested(configRow, 0);
+			const QString name = QStringLiteral("ƒ ") + config.name + QLatin1Char('.') + config.fields[0].name;
+			check(QTest::qWaitFor([&] { return lineKey(view, name) >= 0; }, 2000),
+					"Plot a field: a line of its own on the chart (bits of the register)");
+		} else {
+			check(false, "the map's CONFIG register (0xA004) has bit fields");
+		}
+	}
+
+	/* 15. polling as fast as it goes (interval 0) keeps going through an edit of the map */
+	void pollingSurvivesEdits() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *doc = window_.findChild<MapDocument *>();
+		if (!sidebar || !doc || regs_.volts.name.isEmpty()) {
+			check(false, "polling at max through an edit: the sidebar, the map and a moving register");
+			return;
+		}
+		const double interval = sidebar->pollIntervalMs();
+		sidebar->setPollInterval(0);
+		const quint32 uid = model_->rows()[regRow(regs_.volts.name)].def.uid;
+		doc->edit(QStringLiteral("test"), [uid](DeviceMap &map) {
+			for (RegDef &def : map.regs)
+				if (def.uid == uid) def.desc = QStringLiteral("edited while polling at max");
+		});
+		/* the fake device moves this register: its value keeps changing while polls go on. First the table
+		 * takes the last value read before the edit (that change proves nothing), then it must change again,
+		 * several times */
+		QTest::qWait(300);
+		QByteArray last = model_->rows()[regRow(regs_.volts.name)].raw;
+		int changes = 0;
+		(void) QTest::qWaitFor([&] {
+			const QByteArray now = model_->rows()[regRow(regs_.volts.name)].raw;
+			if (now != last) {
+				changes++;
+				last = now;
+			}
+			return changes >= 3;
+		}, 3000);
+		check(changes >= 3, "polling at interval 0 goes on after an edit of the map");
+		doc->undoStack()->undo();
+		sidebar->setPollInterval(interval);
+	}
+
+	/* the Registers table's row of a register, by name */
+	int regRow(const QString &name) const {
+		for (int i = 0; i < model_->rows().size(); i++)
+			if (model_->rows()[i].def.name == name) return i;
+		return -1;
+	}
+
+	/* the uids of the rows selected in the Map editor */
+	static QVector<quint32> selectedMapUids(QTableView *table, MapDocument *doc) {
+		QVector<int> rows;
+		for (const QModelIndex &index : table->selectionModel()->selectedRows())
+			rows << static_cast<QSortFilterProxyModel *>(table->model())->mapToSource(index).row();
+		std::sort(rows.begin(), rows.end());
+		QVector<quint32> uids;
+		for (int row : rows) uids << doc->map().regs[row].uid;
+		return uids;
+	}
+
+	/* the first group of the map with an & in its name, empty if none has one */
+	QString firstGroupWithAmpersand() const {
+		for (const RegisterModel::Row &row : model_->rows())
+			if (row.def.group.contains(QLatin1Char('&'))) return row.def.group;
+		return {};
+	}
+
+	int registersInGroup(const QString &group) const {
+		return int(std::count_if(model_->rows().begin(), model_->rows().end(),
+				[&](const RegisterModel::Row &row) { return row.def.group == group; }));
+	}
+
+	/* "Plot shown" puts every plottable register the table shows on the chart; pressed again, takes them off */
+	void plotShown() {
+		auto *button = window_.findChild<QPushButton *>(QStringLiteral("plotShown"));
+		const int plottable = plottableRegistersShown();
+		if (button) button->click();
+		check(button && plottedCount() == plottable,
+				"Plot shown: every plottable register shown is on the chart (not one the map marks \"plot\": false)");
+		check(button && button->text() == QLatin1String("Unplot shown"), "... the button then says Unplot shown");
+		if (button) button->click();
+		check(button && plottedCount() == 0 && button->text() == QLatin1String("Plot shown"),
+				"Unplot shown: all off the chart, the button says Plot shown again");
+	}
+
+	/* the registers shown that may be a line: numbers the map lets plot (not "plot": false, as DEVICE_ID) */
+	int plottableRegistersShown() const {
+		int plottable = 0;
+		for (int i = 0; i < table_->model()->rowCount(); i++) {
+			const QString name = table_->model()->index(i, RegisterModel::ColName).data().toString();
+			for (const RegisterModel::Row &row : model_->rows())
+				if (row.def.name == name && row.def.canPlot()) plottable++;
+		}
+		return plottable;
+	}
+
+	int plottedCount() const {
+		return int(std::count_if(model_->rows().begin(), model_->rows().end(),
+				[](const RegisterModel::Row &row) { return row.plot; }));
+	}
+
+	/* many fast lines, on a chart of its own (no device): drawn on threads, the same picture as on one; a
+	 * one-sample spike in an hour of 500 Hz samples still shown; the samples' budget shared by the lines */
+	void chartManyLines() {
+		QWidget host; /* the chart at an odd offset, as in the window: its stripes need not fall on device pixels */
+		host.resize(1300, 540);
+		auto *view = new ChartView(&host);
+		view->setGeometry(13, 7, 1270, 520);
+		view->setClock([] { return 3600.0; }, 0);
+		view->setSmooth(false);
+		view->setMemory(3600);
+		view->setWindow(60);
+		constexpr int LINES = 60, HZ = 500;
+		for (int k = 0; k < LINES; k++) {
+			view->addSeries(k, QStringLiteral("line %1").arg(k), QString(), QColor::fromHsv(k * 360 / LINES, 200, 230));
+			for (int i = 0; i < 60 * HZ; i++) {
+				const double t = 3540.0 + double(i) / HZ;
+				view->append(k, t, std::sin(t * (1 + k % 7)) * (k + 1) + k);
+			}
+		}
+		view->setDrawThreads(1);
+		const QImage one = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		view->setDrawThreads(0);
+		const QImage many = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		int worst = 0, differ = 0;
+		for (int y = 0; y < one.height() && one.size() == many.size(); y++) {
+			const QRgb *a = reinterpret_cast<const QRgb *>(one.constScanLine(y));
+			const QRgb *b = reinterpret_cast<const QRgb *>(many.constScanLine(y));
+			for (int x = 0; x < one.width(); x++) {
+				const int d = std::max({ std::abs(qRed(a[x]) - qRed(b[x])), std::abs(qGreen(a[x]) - qGreen(b[x])),
+						std::abs(qBlue(a[x]) - qBlue(b[x])) });
+				worst = std::max(worst, d);
+				if (d > 3) differ++;
+			}
+		}
+		std::printf("     (%d lines on threads vs on one: worst channel difference %d, %d pixels above 3)\n", LINES, worst,
+				differ);
+		/* where several lines cross, blending them on a stripe first rounds a little differently: a few pixels, never
+		 * a seam (a column of them) */
+		check(one.size() == many.size() && differ <= 200 && worst <= 32,
+				"chart, many lines: drawn on threads in stripes, the same picture as on one thread (no seam, at most a "
+				"few pixels rounded apart where lines cross)");
+
+		/* an hour of 500 Hz samples, all 0 but one: the chunks keep it, the view reaches it */
+		ChartView spike;
+		spike.resize(1270, 520);
+		spike.setClock([] { return 3600.0; }, 0);
+		spike.setSmooth(false);
+		spike.setMemory(3600);
+		spike.setWindow(3600);
+		spike.addSeries(1, QStringLiteral("spike"), QString(), Qt::red);
+		for (int i = 0; i < 3600 * HZ; i++) spike.append(1, double(i) / HZ, i == 1800 * HZ + 3 ? 1.0 : 0.0);
+		spike.grab();
+		check(spike.pointsKept(1) == 3600 * HZ && spike.yHi() >= 1.0 && spike.yLo() <= 0.0,
+				"chart, an hour of 500 Hz (1.8 million samples) in view: a one-sample spike still reaches the top");
+
+		/* the budget: shared by the lines; a line past its share keeps less than the memory, and says so */
+		ChartView budget;
+		budget.setClock([] { return 1000.0; }, 0);
+		budget.setMemory(3600);
+		budget.setRamBudget(ChartView::MIN_RAM_MB); /* 256 MB: 11.6 M samples, under the 16 of the largest chunks each */
+		for (int k = 0; k < 1000; k++) budget.addSeries(k, QStringLiteral("l%1").arg(k), QString(), Qt::blue);
+		const qsizetype share = budget.pointsPerLine();
+		for (int i = 0; i < 100000; i++) budget.append(0, double(i) / HZ, i % 100);
+		check(share == 65536 && budget.pointsKept(0) <= share && budget.pointsKept(0) >= share / 2 && budget.memoryFull(),
+				"chart, the samples' budget: 1000 lines share it (65536 samples each at least), a line past its share "
+				"drops its oldest and the memory strip says the memory is full");
+
+		/* what the samples take: a line long at its share holds about that (23 bytes a sample), not up to twice it
+		 * (trimmed from the front, its arrays doubled: a RAM of 1 GB took 2 GB) */
+		for (int i = 100000; i < 400000; i++) budget.append(0, double(i) / HZ, i % 100);
+		const qint64 held = budget.bytesHeld(), share23 = qint64(share) * 23;
+		if (held > share23 * 11 / 10)
+			std::printf("     (samples' memory: %lld bytes held for a share of %lld)\n", (long long) held, (long long) share23);
+		check(held <= share23 * 11 / 10, "chart, the samples' memory: a line at its share holds about its share of the "
+				"RAM, not up to twice it");
+
+		/* the memory full on many lines that fill together: their trims spread over frames, a few million samples moved
+		 * a frame (65 lines at RAM 1 GB moved 0.9 GB in one frame: 85 ms every 86 s), none past its share */
+		ChartView spread;
+		spread.setClock([] { return 1000.0; }, 0);
+		spread.setMemory(3600);
+		spread.setRamBudget(ChartView::MIN_RAM_MB);
+		for (int k = 0; k < 64; k++) spread.addSeries(k, QStringLiteral("s%1").arg(k), QString(), Qt::blue);
+		const qsizetype spreadShare = spread.pointsPerLine();
+		const qsizetype soft = spreadShare - spreadShare / 16;
+		qsizetype n = 0;
+		for (; n < soft; n++) /* a line is trimmed at its next sample from there (dropExpired comes before the append) */
+			for (int k = 0; k < 64; k++) spread.append(k, double(n) / HZ, double(n % 50));
+		auto trimmed = [&] {
+			int count = 0;
+			for (int k = 0; k < 64; k++) count += spread.pointsKept(k) < soft ? 1 : 0;
+			return count;
+		};
+		for (int k = 0; k < 64; k++) spread.append(k, double(n) / HZ, 1.0); /* every line at its soft share: one frame */
+		n++;
+		const int firstFrame = trimmed();
+		int frames = 1;
+		while (trimmed() < 64 && frames < 20) {
+			spread.frame();
+			for (int k = 0; k < 64; k++) spread.append(k, double(n) / HZ, 1.0);
+			n++;
+			frames++;
+		}
+		bool withinShare = true;
+		for (int k = 0; k < 64; k++) withinShare = withinShare && spread.pointsKept(k) <= spreadShare;
+		std::printf("     (64 full lines of %lld: %d trimmed in the first frame, all after %d frames)\n",
+				(long long) spreadShare, firstFrame, frames);
+		check(firstFrame >= 1 && firstFrame <= 30 && trimmed() == 64 && frames <= 6 && withinShare,
+				"chart, the memory full on 64 lines at once: their trims spread over a few frames, not all in one, none "
+				"past its share");
+
+		/* lines filling together grow their arrays at different moments (each by its own step, 2 to 2.44 times): no
+		 * sample makes them all grow (all at once, 64 lines at RAM 1 GB moved 0.5 GB in one frame at their last growth) */
+		ChartView growing;
+		growing.setClock([] { return 1000.0; }, 0);
+		growing.setMemory(3600);
+		growing.setRamBudget(ChartView::MIN_RAM_MB);
+		for (int k = 0; k < 32; k++) growing.addSeries(k, QStringLiteral("g%1").arg(k), QString(), Qt::blue);
+		const qint64 heldFirst = growing.bytesHeld();
+		qint64 heldGrown = heldFirst, largestGrowth = 0;
+		for (int i = 0; i < 70000; i++) {
+			for (int k = 0; k < 32; k++) growing.append(k, double(i) / HZ, double(i % 30));
+			const qint64 after = growing.bytesHeld();
+			largestGrowth = std::max(largestGrowth, after - heldGrown);
+			heldGrown = after;
+		}
+		const double growthShare = double(largestGrowth) / double(std::max<qint64>(1, heldGrown - heldFirst));
+		std::printf("     (32 lines filling together: the most their arrays grew at one sample, %.0f%% of all)\n",
+				growthShare * 100);
+		check(growthShare <= 0.25, "chart, lines filling together: their arrays grow at different moments, not all at "
+				"one sample");
+
+		/* the RAM lowered with the memory full: a line goes down to its new share at its next sample, in one go (an
+		 * eighth at each sample, each moving and copying the whole line: 1 GB to 512 MB held the window 3 s) */
+		ChartView lower;
+		lower.setClock([] { return 1000.0; }, 0);
+		lower.setMemory(3600);
+		lower.setRamBudget(512);
+		for (int k = 0; k < 8; k++) lower.addSeries(k, QStringLiteral("r%1").arg(k), QString(), Qt::blue);
+		const qsizetype wide = lower.pointsPerLine();
+		for (qsizetype i = 0; i < wide + 4096; i++) lower.append(0, double(i) / HZ, double(i % 100));
+		lower.setRamBudget(256);
+		const qsizetype narrow = lower.pointsPerLine();
+		QElapsedTimer trimTime;
+		trimTime.start();
+		lower.append(0, double(wide + 4096) / HZ, 1.0);
+		const double trimMs = trimTime.nsecsElapsed() / 1e6;
+		const qsizetype keptNow = lower.pointsKept(0);
+		const qint64 heldNow = lower.bytesHeld();
+		const bool down = keptNow <= narrow && keptNow >= narrow / 2 && heldNow <= qint64(narrow) * 23 * 11 / 10;
+		std::printf("     (RAM 512 -> 256 MB, a full line: %lld samples kept of a share of %lld after one sample, %.0f ms)\n",
+				(long long) keptNow, (long long) narrow, trimMs);
+		check(down, "chart, the RAM lowered with the memory full: a line goes down to its new share at its next sample, "
+				"in one go, and lets its room go");
+
+		/* the memory needed: the lines' rates now times the Memory; the note, and over the RAM what fits */
+		ChartView need;
+		need.setClock([] { return 100.0; }, 0);
+		need.setMemory(60);
+		for (int k = 0; k < 2; k++) {
+			need.addSeries(k, QStringLiteral("n%1").arg(k), QString(), Qt::green);
+			for (int i = 0; i < 10 * HZ; i++) need.append(k, 90.0 + double(i) / HZ, i);
+		}
+		const double expected = 2.0 * HZ * 60 * 23; /* 2 lines x 500/s x 60 s x 23 bytes */
+		bool overSmall = true, overBig = false;
+		const QString small = ChartTab::ramNeedText(need.bytesNeeded(), 2048, 60, overSmall);
+		const QString big = ChartTab::ramNeedText(qint64(3) * 1024 * 1024 * 1024, 2048, 1800, overBig);
+		std::printf("     (needed %lld bytes, expected %.0f; \"%s\", \"%s\")\n", (long long) need.bytesNeeded(), expected,
+				qPrintable(small), qPrintable(big));
+		check(std::fabs(double(need.bytesNeeded()) - expected) < expected * 0.01 && small == QLatin1String("needs 1 MB")
+						&& !overSmall && overBig && big == QLatin1String("needs 3.0 GB, keeps 20 min"),
+				"chart, the memory needed: the lines' rates times the Memory (2 x 500/s x 60 s = 1 MB); over the RAM "
+				"it says what fits (3 GB for 30 min in 2 GB: keeps 20 min)");
+
+		/* the RAM box on the Chart tab: 2 GB unless set, a size typed in MB or GB, saved; not a size: back */
+		auto *ram = window_.findChild<QComboBox *>(QStringLiteral("chartRam"));
+		auto *chartView = window_.findChild<ChartView *>();
+		const bool defaultShown = ram && chartView && chartView->ramBudget() == ChartView::DEFAULT_RAM_MB
+				&& ram->currentText() == QLatin1String("2 GB");
+		auto typeRam = [&](const QString &text) {
+			ram->lineEdit()->setText(text);
+			emit ram->lineEdit()->editingFinished();
+		};
+		if (ram && chartView) typeRam(QStringLiteral("1.5 GB"));
+		const bool typed = ram && chartView && chartView->ramBudget() == 1536 && ram->currentText() == QLatin1String("1536 MB")
+				&& QSettings().value(QStringLiteral("chart/ramMB")).toInt() == 1536;
+		if (ram) typeRam(QStringLiteral("lots"));
+		const bool refused = ram && chartView && chartView->ramBudget() == 1536 && ram->currentText() == QLatin1String("1536 MB");
+		if (ram) typeRam(QStringLiteral("10"));
+		const bool least = ram && chartView && chartView->ramBudget() == ChartView::MIN_RAM_MB;
+		if (ram) typeRam(QStringLiteral("2048"));
+		check(defaultShown && typed && refused && least && chartView->ramBudget() == ChartView::DEFAULT_RAM_MB
+						&& ram->currentText() == QLatin1String("2 GB"),
+				"chart, RAM: 2 GB by default; 1.5 GB typed is 1536 MB, saved; \"lots\" goes back; 10 MB is 256 MB at "
+				"least; 2048 shows 2 GB");
+	}
+
+	/* two pictures alike: the share of 8 x 8 pixel blocks whose mean colour is within `level` (antialiasing differs) */
+	static double blocksAlike(const QImage &a, const QImage &b, int level) {
+		if (a.size() != b.size()) return 0;
+		int alike = 0, blocks = 0;
+		for (int by = 0; by + 8 <= a.height(); by += 8) {
+			for (int bx = 0; bx + 8 <= a.width(); bx += 8) {
+				long sum[2][3] = {};
+				for (int y = by; y < by + 8; y++)
+					for (int x = bx; x < bx + 8; x++) {
+						const QRgb pa = a.pixel(x, y), pb = b.pixel(x, y);
+						sum[0][0] += qRed(pa), sum[0][1] += qGreen(pa), sum[0][2] += qBlue(pa);
+						sum[1][0] += qRed(pb), sum[1][1] += qGreen(pb), sum[1][2] += qBlue(pb);
+					}
+				int worst = 0;
+				for (int c = 0; c < 3; c++) worst = std::max(worst, int(std::abs(sum[0][c] - sum[1][c]) / 64));
+				alike += worst <= level ? 1 : 0;
+				blocks++;
+			}
+		}
+		return blocks ? double(alike) / blocks : 0;
+	}
+
+	/* the crosshair's box: made again at the values' pace or when the mouse moves, not at every frame (64 values
+	 * laid out at every frame took 7 ms at 4K); its size follows the lines read, not their digits (it moved left and
+	 * right with the widest value of the moment) */
+	void readoutSteady() {
+		QWidget host;
+		host.resize(900, 420);
+		auto *view = new ChartView(&host);
+		view->setGeometry(5, 5, 880, 400);
+		view->setClock([] { return 100.0; }, 0);
+		view->setSmooth(false);
+		view->setMemory(60);
+		view->setWindow(60);
+		view->setValuesPerSecond(1);
+		view->addSeries(0, QStringLiteral("SUPPLY_V"), QStringLiteral("V"), QColor(0x25, 0x63, 0xEB));
+		for (int i = 0; i <= 600; i++) view->append(0, 40.0 + i * 0.1, i < 300 ? 1.0 : -12345.6);
+		auto hover = [&](double fraction) {
+			const QPointF at(view->width() * fraction, view->height() / 2.0);
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			(void) host.grab();
+		};
+		hover(0.3); /* over the 1.0 */
+		const QSizeF small = view->readoutSize();
+		const int builds = view->readoutBuilds(), legends = view->legendBuilds();
+		for (int i = 0; i < 5; i++) (void) host.grab(); /* frames with the mouse still: the same box, the same legend */
+		const bool kept = view->readoutBuilds() == builds;
+		const bool legendKept = view->legendBuilds() == legends && legends > 0;
+		QTest::qWait(60); /* past READOUT_FOLLOW_MS */
+		hover(0.85); /* over the -12345.6 */
+		const QSizeF large = view->readoutSize();
+		if (!(kept && !small.isEmpty() && small == large && view->readoutBuilds() == builds + 1))
+			std::printf("     (readout: kept %d, %gx%g then %gx%g, builds %d then %d)\n", kept, small.width(), small.height(),
+					large.width(), large.height(), builds, view->readoutBuilds());
+		check(kept && !small.isEmpty() && small == large && view->readoutBuilds() == builds + 1,
+				"chart, the crosshair's box: made again when the mouse moves, not at every frame; the same size for 1 and "
+				"-12345.6");
+		check(legendKept, "chart, the legend: a picture made again when its values or lines change, not at every frame");
+
+		/* its chips measured once while the lines stay, not at every frame and every mouse move (64 names measured each
+		 * time held the chart near 52 frames a second); a line added: measured again */
+		const int measured = view->legendMeasures();
+		for (int i = 0; i < 5; i++) hover(0.3 + 0.05 * i);
+		const bool measuredOnce = view->legendMeasures() == measured && measured > 0;
+		view->addSeries(1, QStringLiteral("SUPPLY_I"), QStringLiteral("A"), QColor(0xD9, 0x77, 0x06));
+		(void) host.grab();
+		const bool remeasured = view->legendMeasures() == measured + 1;
+		view->removeSeries(1);
+		(void) host.grab();
+		check(measuredOnce && remeasured, "chart, the legend: its chips measured once while the lines stay (not at "
+				"every frame or mouse move), again when a line comes");
+
+		/* the mouse moving: the box made again at most every 50 ms, not at every frame (64 values at 4K held the chart
+		 * near 46 frames a second); where the mouse stops, its values once that time is past */
+		QTest::qWait(60);
+		const int before = view->readoutBuilds();
+		QElapsedTimer moving;
+		moving.start();
+		for (int i = 0; i < 6; i++) hover(0.5 + 0.01 * i);
+		const qint64 movedMs = moving.elapsed();
+		const int whileMoving = view->readoutBuilds() - before;
+		QTest::qWait(60);
+		(void) host.grab(); /* made where the mouse stopped, unless its last move made it there */
+		const int atStop = view->readoutBuilds() - before - whileMoving;
+		(void) host.grab();
+		const bool steady = view->readoutBuilds() - before - whileMoving - atStop == 0;
+		const bool paced = whileMoving >= 1 && whileMoving <= 1 + movedMs / 50 && atStop <= 1 && steady;
+		if (!paced)
+			std::printf("     (6 moves in %lld ms: the box made %d times, then %d where the mouse stopped)\n",
+					(long long) movedMs, whileMoving, atStop);
+		check(paced, "chart, the crosshair's box: while the mouse moves, made again at most every 50 ms, and where it "
+				"stops");
+
+		view->setHoverValues(false);
+		hover(0.5);
+		const bool gone = view->readoutSize().isEmpty();
+		view->setHoverValues(true);
+		hover(0.4);
+		const bool again = view->readoutSize() == small;
+		check(gone && again, "chart, Hover values off: no box of values beside the mouse; on again, the box as before");
+	}
+
+	/* The view's bins kept from frame to frame: a chart fed in ten steps, drawn after each, draws what one fed at once
+	 * does. The lines on a GPU (when this machine has one): the same picture as on the CPU, block by block. The
+	 * Drawing list: Auto, the adapters, CPU; CPU picked is saved and the info line says it. */
+	void chartBinsAndGpu() {
+		constexpr int LINES = 12, HZ = 500;
+		auto makeView = [](QWidget &host) {
+			host.resize(1100, 480);
+			auto *view = new ChartView(&host);
+			view->setGeometry(9, 5, 1080, 470);
+			view->setClock([] { return 3600.0; }, 0);
+			view->setSmooth(false);
+			view->setMemory(3600);
+			view->setWindow(60);
+			view->setDrawThreads(1);
+			for (int k = 0; k < LINES; k++)
+				view->addSeries(k, QStringLiteral("b%1").arg(k), QString(), QColor::fromHsv(k * 360 / LINES, 200, 230));
+			return view;
+		};
+		auto sample = [](int k, int i) {
+			const double t = 3540.0 + double(i) / HZ;
+			return std::sin(t * (0.7 + 0.13 * k)) * (k + 1) + std::sin(t * 31.0) * 0.3;
+		};
+		QWidget stepsHost, onceHost;
+		ChartView *steps = makeView(stepsHost), *once = makeView(onceHost);
+		for (int step = 0; step < 10; step++) {
+			for (int k = 0; k < LINES; k++)
+				for (int i = step * 6 * HZ; i < (step + 1) * 6 * HZ; i++) steps->append(k, 3540.0 + double(i) / HZ, sample(k, i));
+			stepsHost.grab(); /* a frame: the complete columns are kept */
+		}
+		for (int k = 0; k < LINES; k++)
+			for (int i = 0; i < 60 * HZ; i++) once->append(k, 3540.0 + double(i) / HZ, sample(k, i));
+		const QImage a = stepsHost.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const QImage b = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const double kept = blocksAlike(a, b, 3);
+		std::printf("     (kept bins vs binned at once: %.2f%% of the blocks alike)\n", kept * 100);
+		check(kept >= 0.995, "chart, the view's bins kept from frame to frame: fed in ten steps, the picture of one fed at once");
+
+		/* the crosshair's box with 64 lines: in columns that fit the plot's height */
+		const int perColumn = ChartView::readoutRowsPerColumn(700);
+		const int columns = (64 + perColumn - 1) / perColumn;
+		check(perColumn >= 30 && (perColumn + 1) * 18 + 18 <= 700 && columns == 2,
+				"chart, the crosshair's values with 64 lines: two columns in a 700 px plot, none past its bottom");
+
+		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
+		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
+		if (adapters.isEmpty()) {
+			for (const char *what : { "opened on a thread", "its frame", "a picture of the chart", "another tab and back",
+					 "the mouse", "the last line off" })
+				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
+						"the CPU draws, skipped").arg(QLatin1String(what))));
+		} else {
+			onceHost.show();
+			(void) QTest::qWaitForWindowExposed(&onceHost);
+			/* the card opened on a thread of its own: making its device wakes it (0.8 s held the window's thread when
+			 * Drawing was switched); the CPU draws meanwhile, then the card takes over and says so */
+			bool changed = false;
+			const QMetaObject::Connection said = QObject::connect(once, &ChartView::drawingChanged, [&changed] {
+				changed = true;
+			});
+			QElapsedTimer opening;
+			opening.start();
+			once->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			const double setMs = opening.nsecsElapsed() / 1e6;
+			const bool meanwhile = once->openingGpu() && !once->drawsOnGpu()
+					&& once->drawingName().startsWith(QLatin1String("CPU, opening the GPU: "));
+			const bool opened = QTest::qWaitFor([&] { return !once->openingGpu(); }, 10000) && once->drawsOnGpu() && changed;
+			QObject::disconnect(said);
+			std::printf("     (the card asked for: back in %.1f ms, the card drawing %lld ms after)\n", setMs,
+					(long long) opening.elapsed());
+			check(setMs < 60 && meanwhile && opened, "chart on a GPU: the card opened on a thread of its own (the "
+					"window's thread not held while it wakes), the CPU drawing meanwhile; then the card takes over and says so");
+			for (int k = 0; k < 3; k++) { /* two frames with the card's picture under its layer, then the layer */
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect at;
+			const QImage gpu = once->gpuPicture(&at).convertToFormat(QImage::Format_RGB32);
+			const QImage cpu = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32);
+			const bool onGpu = once->drawsOnGpu() && once->drawingName().startsWith(QLatin1String("GPU: ")) && once->plotOnCard()
+					&& !once->testAttribute(Qt::WA_NativeWindow) && once->findChildren<QWidget *>().isEmpty();
+			const double alike = blocksAlike(gpu, cpu.copy(at), 24);
+			std::printf("     (%s: %.2f%% of the blocks like the CPU's, %dx%d)\n", qPrintable(once->drawingName()), alike * 100,
+					gpu.width(), gpu.height());
+			check(onGpu && alike >= 0.93, "chart on a GPU: the plot a layer of the window (no window of its own: the chart "
+					"stays one of Qt's), drawn by the card named, its frame the CPU's picture, block by block");
+			const double grabbed = blocksAlike(cpu, b, 3);
+			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
+			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
+
+			/* another tab and back: the layer stays until the window has painted what is there now (taken away at once,
+			 * the window's old pixels showed until then), and comes back after the chart's second frame, its picture
+			 * painted under it (shown at once, it showed its frame of when the chart was left) */
+			once->hide();
+			const bool stays = once->plotOnCard();
+			QApplication::processEvents();
+			const bool gone = !once->plotOnCard();
+			once->show();
+			once->repaint();
+			QApplication::processEvents();
+			const bool waits = !once->plotOnCard(); /* one frame on the window: the layer not yet */
+			once->repaint();
+			QApplication::processEvents();
+			const bool back = once->plotOnCard();
+			if (!(stays && gone && waits && back))
+				std::printf("     (another tab and back: stays %d, gone %d, waits %d, back %d)\n", stays, gone, waits, back);
+			check(stays && gone && waits && back, "chart on a GPU, another tab and back: the layer goes once the window has "
+					"painted what replaces it, and comes back after the chart's second frame, not before");
+
+			/* the mouse over the plot is the chart's (no window of its own in the way): the crosshair's box is made, the
+			 * wheel zooms the time; on the CPU the layer goes */
+			const int builds = once->readoutBuilds();
+			const QPointF inside(once->width() * 0.7, once->height() / 2.0);
+			QMouseEvent move(QEvent::MouseMove, inside, once->mapToGlobal(inside), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(once, &move);
+			once->repaint();
+			const double window = once->window();
+			QWheelEvent wheel(inside, once->mapToGlobal(inside), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+					Qt::NoScrollPhase, false);
+			QApplication::sendEvent(once, &wheel);
+			const bool mouse = once->readoutBuilds() > builds && once->window() < window;
+			if (!mouse) std::printf("     (mouse: box made %d -> %d, window %.1f -> %.1f s)\n", builds, once->readoutBuilds(),
+					window, once->window());
+			once->setDrawing(ChartView::Drawing::Cpu);
+			check(mouse && !once->plotOnCard(), "chart on a GPU: the mouse over the plot moves the crosshair, the wheel "
+					"zooms; on the CPU the layer goes");
+
+			/* the last line off the chart: the layer goes once the window itself has the CPU's frame, its plot too (a
+			 * frame painted around the plot alone, as while the layer was there, left the old lines in the window,
+			 * which showed for a frame where the layer had been). Two frames, then the layer: the window holds the
+			 * lines painted under it, as in the app, where nothing paints the plot's part while the layer is there */
+			once->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			(void) QTest::qWaitFor([&] { return !once->openingGpu(); }, 10000);
+			for (int k = 0; k < 2; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			const bool layered = once->plotOnCard();
+			once->clearSeries();
+			for (int k = 0; k < 20 && once->plotOnCard(); k++) QTest::qWait(10);
+			QTest::qWait(50);
+			const QImage own = onceHost.screen()->grabWindow(onceHost.winId()).toImage().convertToFormat(QImage::Format_RGB32);
+			const QImage empty = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32);
+			const double ownAlike = own.size() == empty.size() ? blocksAlike(own.copy(at), empty.copy(at), 24) : 0;
+			if (!(layered && !once->plotOnCard() && ownAlike >= 0.97))
+				std::printf("     (last line off: layer before %d, after %d, the window's plot %.2f%% like the CPU's)\n", layered,
+						once->plotOnCard(), ownAlike * 100);
+			check(layered && !once->plotOnCard() && ownAlike >= 0.97, "chart on a GPU, the last line off: the layer goes "
+					"once the window has the CPU's frame, its plot too (not the old lines)");
+			once->setDrawing(ChartView::Drawing::Cpu);
+			onceHost.hide();
+		}
+
+		/* Drawing, in the Chart tab's Display menu: Auto, the adapters by name, CPU (the choices of one group) */
+		auto *display = window_.findChild<QPushButton *>(QStringLiteral("chartDisplay"));
+		auto *chartTab = window_.findChild<ChartTab *>();
+		QList<QAction *> choices;
+		if (display && display->menu())
+			for (QAction *action : display->menu()->actions())
+				if (action->actionGroup()) choices << action;
+		const bool listed = chartTab && choices.size() == adapters.size() + 2
+				&& choices.first()->text().startsWith(QLatin1String("Auto")) && choices.last()->text() == QLatin1String("CPU");
+		if (listed) choices.last()->trigger();
+		const QString info = chartTab ? chartTab->infoText() : QString();
+		const bool cpu = listed && QSettings().value(QStringLiteral("chart/drawing")).toInt() == int(ChartView::Drawing::Cpu)
+				&& info.endsWith(QStringLiteral(" · CPU")) && choices.last()->isChecked()
+				&& display->toolTip().contains(QStringLiteral("drawn by the CPU."));
+		if (listed) choices.first()->trigger();
+		if (auto *chartView = window_.findChild<ChartView *>()) /* the card opens on a thread of its own */
+			(void) QTest::qWaitFor([&] { return !chartView->openingGpu(); }, 10000);
+		const QString autoState = chartTab ? chartTab->displayState() : QString(); /* Auto with what it chose */
+		const bool autoSaid = listed && choices.first()->isChecked() && autoState.contains(adapters.isEmpty()
+				|| !adapters.first().dedicated ? QStringLiteral("drawn by the CPU") : QStringLiteral("drawn by the GPU: "));
+		if (!cpu) std::printf("     (Drawing: %d choices for %d adapters, info \"%s\")\n", int(choices.size()),
+				int(adapters.size()), qPrintable(info));
+		if (!autoSaid) std::printf("     (Display on Auto: \"%s\")\n", qPrintable(autoState));
+		check(listed && cpu && autoSaid, "chart, Display menu, Drawing: Auto, every adapter by name, CPU; CPU picked is "
+				"ticked, saved, in the button's tooltip, the info line ends \"CPU\"; on Auto the tooltip names who draws");
+	}
+
+	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):
+	 * Normalise takes the Y controls away, Smooth is saved; both in the button's tooltip; the button keeps its text */
+	void displayMenu() {
+		auto *display = window_.findChild<QPushButton *>(QStringLiteral("chartDisplay"));
+		auto *normalise = window_.findChild<QAction *>(QStringLiteral("chartNormalise"));
+		auto *smooth = window_.findChild<QAction *>(QStringLiteral("chartSmooth"));
+		auto *chartTab = window_.findChild<ChartTab *>();
+		if (!display || !normalise || !smooth || !chartTab || !display->menu()) {
+			check(false, "chart, Display menu: the button, Normalise and Smooth found");
+			return;
+		}
+		const QList<QAction *> items = display->menu()->actions();
+		const bool inMenu = items.contains(normalise) && items.contains(smooth);
+		auto *yMin = chartTab->findChild<QLineEdit *>();
+		const bool smoothWas = smooth->isChecked();
+		normalise->trigger();
+		const bool normalised = normalise->isChecked() && yMin && !yMin->isEnabled()
+				&& display->toolTip().contains(QStringLiteral("Normalise on"));
+		normalise->trigger();
+		const bool back = !normalise->isChecked() && yMin && yMin->isEnabled()
+				&& display->toolTip().contains(QStringLiteral("Normalise off"));
+		smooth->trigger();
+		const bool smoothSaved = QSettings().value(QStringLiteral("chart/smooth")).toBool() == !smoothWas
+				&& display->toolTip().contains(smoothWas ? QStringLiteral("Smooth off") : QStringLiteral("Smooth on"));
+		smooth->trigger(); /* as it was */
+		auto *hoverValues = window_.findChild<QAction *>(QStringLiteral("chartHoverValues"));
+		bool hoverSaved = false;
+		if (hoverValues && items.contains(hoverValues)) {
+			const bool was = hoverValues->isChecked();
+			hoverValues->trigger();
+			hoverSaved = QSettings().value(QStringLiteral("chart/hoverValues")).toBool() == !was
+					&& window_.findChild<ChartView *>()->hoverValues() == !was
+					&& display->toolTip().contains(was ? QStringLiteral("Hover values off") : QStringLiteral("Hover values on"));
+			hoverValues->trigger(); /* as it was */
+		}
+		check(hoverSaved, "chart, Display menu: Hover values switches the box of values, is saved and said in the tooltip");
+		const bool sameText = display->text() == QLatin1String("Display");
+		if (!(inMenu && normalised && back && smoothSaved && sameText))
+			std::printf("     (Display: in menu %d, normalised %d, back %d, smooth saved %d, text \"%s\")\n", inMenu,
+					normalised, back, smoothSaved, qPrintable(display->text()));
+		check(inMenu && normalised && back && smoothSaved && sameText, "chart, Display menu: Normalise greys the Y range "
+				"and back, Smooth is saved, both said in the tooltip; the button's text stays \"Display\"");
+
+		/* the marks of a menu: the theme's pictures at 4x (Fusion's own was small and blurred at 225 %), a box with a
+		 * tick for a check, a tick for the choice of several; the choices under a title the style shows */
+		const QString sheet = qApp->styleSheet();
+		const QRegularExpressionMatch choice =
+				QRegularExpression(QStringLiteral("QMenu::indicator:exclusive:checked \\{ image: url\\(\"([^\"]+)\"\\)"))
+						.match(sheet);
+		const bool marks = choice.hasMatch() && QImage(choice.captured(1)).size() == QSize(64, 64)
+				&& sheet.contains(QLatin1String("QMenu::indicator:non-exclusive:checked { background:"));
+		bool titled = false;
+		for (QAction *action : display->menu()->actions())
+			if (auto *widgetAction = qobject_cast<QWidgetAction *>(action))
+				if (auto *title = qobject_cast<QLabel *>(widgetAction->defaultWidget()))
+					titled = titled || (title->objectName() == QLatin1String("menuTitle")
+							&& title->text() == QLatin1String("Drawing"));
+		check(marks && titled, "chart, Display menu: its marks drawn by the theme at 4x (sharp at any scaling), the "
+				"Drawing choices under a title");
+
+		/* the popups open without Qt's animations (the system's setting turned them on): a drop-down flashed as its slide
+		 * went before it was drawn, and the fades copy the screen without the plot a card draws */
+		bool animated = false;
+		for (const Qt::UIEffect effect : { Qt::UI_AnimateMenu, Qt::UI_FadeMenu, Qt::UI_AnimateCombo, Qt::UI_AnimateTooltip,
+					 Qt::UI_FadeTooltip, Qt::UI_AnimateToolBox })
+			animated = animated || QApplication::isEffectEnabled(effect);
+		check(!animated, "the theme: menus, drop-downs and tooltips open without animations");
+	}
+
+	/* The Help: every page opens with its heading and text, every number put in (no %NAME% left), and the command
+	 * line page lists the options the Studio takes (--bus, --tab with the Map editor) */
+	void helpPages() {
+		HelpDialog help;
+		auto *topics = help.findChild<QListWidget *>(QStringLiteral("helpTopics"));
+		auto *page = help.findChild<QTextBrowser *>();
+		bool filled = topics && page && topics->count() >= 12;
+		QString commandLine, empty;
+		for (int i = 0; filled && i < topics->count(); i++) {
+			topics->setCurrentRow(i);
+			const QString text = page->toPlainText();
+			if (text.size() < 200 || text.contains(QRegularExpression(QStringLiteral("%[A-Z_]+%")))
+					|| page->toHtml().indexOf(QLatin1String("<h2")) < 0)
+				empty += topics->item(i)->text() + QLatin1Char(' ');
+			if (topics->item(i)->text() == QLatin1String("Command line")) commandLine = text;
+		}
+		const bool options = commandLine.contains(QLatin1String("--bus bus.json"))
+				&& commandLine.contains(QLatin1String("--tab registers|chart|monitor|map"));
+		if (!empty.isEmpty()) std::printf("     (help pages without their text: %s)\n", qPrintable(empty));
+		check(filled && empty.isEmpty() && options, "Help: every page opens with its heading and text, its numbers "
+				"put in; the command line page lists --bus and the Map editor's --tab");
+	}
+
+	/* the measurements of many lines (60, on a Chart tab of its own, 10 s of 500 Hz samples each): a refresh of the
+	 * table takes milliseconds, not the window's thread (each cell changed made its column measure every row) */
+	void measuresManyLines() {
+		ChartTab tab([] { return 100.0; });
+		tab.resize(1400, 800);
+		constexpr int LINES = 60, HZ = 500;
+		MathLines::Samples samples;
+		for (int k = 0; k < LINES; k++) {
+			RegDef def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("M%1").arg(k);
+			def.unit = QStringLiteral("V");
+			tab.plotRegister(def, true);
+			QVector<QPointF> &points = samples[regKey(def)];
+			for (int i = 0; i < 10 * HZ; i++) points << QPointF(90.0 + double(i) / HZ, std::sin(i * 0.01 * (k + 1)) * k);
+		}
+		tab.frame(samples);
+		auto *measure = tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *table = tab.findChild<QTableWidget *>(QStringLiteral("measures"));
+		if (measure) measure->setChecked(true); /* measured at once */
+		QElapsedTimer timer;
+		timer.start();
+		tab.setShown(true); /* measured again: the table refreshed, every value the same */
+		for (int round = 0; round < 3; round++) { /* new values in every cell */
+			MathLines::Samples more;
+			for (int k = 0; k < LINES; k++)
+				more[regKey(0, uint16_t(0xD000 + 2 * k))] << QPointF(100.0 + round * 0.002, 1000.0 * (round + 1) + k);
+			tab.frame(more);
+			tab.setShown(true);
+		}
+		const double ms = timer.nsecsElapsed() / 1e6 / 4;
+		tab.setRegisterLimit(64);
+		const QString info = tab.infoText();
+		std::printf("     (the measurements of %d lines: %.1f ms a refresh)\n", LINES, ms);
+		check(measure && table && table->rowCount() == LINES && ms < 60,
+				"chart, measurements of 60 lines: a refresh of the table takes milliseconds (columns fitted once, not at "
+				"every cell)");
+		if (!info.startsWith(QStringLiteral("60/64 plotted · "))) std::printf("     (info line: \"%s\")\n", qPrintable(info));
+		if (measure) measure->setChecked(false); /* the setting back as the other steps expect it */
+		check(info.startsWith(QStringLiteral("60/64 plotted · ")) && info.contains(QStringLiteral(" fps · ")),
+				"chart, the info line: the registers on the chart of the limit first (\"60/64 plotted\"), then "
+				"the frames");
+	}
+
+	/* The frame budget, 600 frames of 60 Hz worked out (no clock): cheap frames all painted; frames a little over
+	 * 60 % of the refresh skip one now and then (waiting after each frame over 10 ms halved the rate: 35 a second for
+	 * 11.5 ms frames); heavy ones every other refresh (60 % of the thread at most); one very slow frame (a theme
+	 * switch) holds back a frame or two, not seconds */
+	void frameBudget() {
+		auto run = [](double paintMs, double slowMs) {
+			ChartView::FrameBudget budget;
+			int painted = 0;
+			for (int i = 0; i < 600; i++) {
+				if (!budget.due(1000.0 / 60)) continue;
+				painted++;
+				budget.spent(i == 10 && slowMs > 0 ? slowMs : paintMs);
+			}
+			return painted;
+		};
+		const int cheap = run(5, 0), over = run(11, 0), heavy = run(20, 0), slow = run(5, 400), slowAll = run(41, 0);
+		std::printf("     (frames painted of 600 at 60 Hz: 5 ms %d, 11 ms %d, 20 ms %d, 5 ms with one of 400 ms %d, 41 ms "
+				"%d)\n", cheap, over, heavy, slow, slowAll);
+		check(cheap == 600 && over >= 530 && over <= 565 && heavy >= 290 && heavy <= 310 && slow >= 597
+						&& slowAll >= 135 && slowAll <= 160,
+				"chart, the frame budget: frames a little over 60 % of a refresh skip one now and then (11 ms: about 55 a "
+				"second, not 35), heavy ones every other refresh, slow ones all along 60 % of the thread too, one slow "
+				"frame holds back a frame or two");
+	}
+
+	/* The mouse and the cursors paced: while frames come, a mouse move is painted by the next frame, not at once (a
+	 * frame each made 35 frames a second of 60 with 64 lines); a cursor dragged measures at once, then at most every
+	 * 100 ms, the last place always; Cursors off takes A and B away; the lines measured on threads as one by one */
+	void chartFollowsFrames() {
+		ChartTab tab([] { return 100.0; });
+		tab.resize(1200, 700);
+		constexpr int LINES = 8, HZ = 1000;
+		MathLines::Samples samples;
+		QVector<int> keys;
+		for (int k = 0; k < LINES; k++) {
+			RegDef def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("F%1").arg(k);
+			def.unit = QStringLiteral("V");
+			tab.plotRegister(def, true);
+			keys << int(regKey(def));
+			QVector<QPointF> &points = samples[regKey(def)];
+			for (int i = 0; i < 9 * HZ; i++) points << QPointF(90.0 + double(i) / HZ, std::sin(i * 0.003 * (k + 1)) * (k + 1));
+		}
+		auto *view = tab.findChild<ChartView *>();
+		auto *measure = tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *cursors = tab.findChild<QPushButton *>(QStringLiteral("cursors"));
+		auto *table = tab.findChild<QTableWidget *>(QStringLiteral("measures"));
+		if (!view || !measure || !cursors || !table) {
+			check(false, "chart paced by the frames: the chart, Measure, Cursors and the table found");
+			return;
+		}
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		tab.frame(samples); /* frames come from now on */
+		QApplication::processEvents();
+
+		/* the mouse: 30 moves, then a frame */
+		const int before = view->paints();
+		for (int i = 0; i < 30; i++) {
+			const QPointF at(view->width() * (0.3 + 0.01 * i), view->height() / 2.0);
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QApplication::processEvents();
+		}
+		QTest::qWait(150); /* the next frame due by the frame budget, after the first frame's paint (slow on xvfb) */
+		const int betweenFrames = view->paints() - before;
+		tab.frame({});
+		QApplication::processEvents();
+		const int atFrame = view->paints() - before - betweenFrames;
+		if (betweenFrames != 0 || atFrame != 1)
+			std::printf("     (30 mouse moves: %d frames painted between frames, %d at the frame)\n", betweenFrames, atFrame);
+		check(betweenFrames == 0 && atFrame == 1, "chart: the mouse's moves painted by the next frame, none in between "
+				"(the frames at the display's rate and within the frame budget)");
+
+		/* a cursor dragged: measured at once, then at most every 100 ms, and at its last place */
+		cursors->setChecked(true); /* Measure on too */
+		view->setCursors(92.0, 97.0);
+		QTest::qWait(150);
+		const int measured = tab.measureUpdates(), fullBefore = tab.measureFullUpdates();
+		QElapsedTimer dragTime;
+		dragTime.start();
+		const QPointF grab(view->width() * 0.2, view->height() / 2.0);
+		QMouseEvent press(QEvent::MouseButtonPress, grab, view->mapToGlobal(grab), Qt::LeftButton, Qt::LeftButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(view, &press);
+		for (int i = 0; i < 40; i++) {
+			const QPointF at(view->width() * (0.2 + 0.005 * i), view->height() / 2.0);
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QTest::qWait(20); /* a drag of most of a second */
+		}
+		const int fullWhileDragged = tab.measureFullUpdates() - fullBefore;
+		QMouseEvent release(QEvent::MouseButtonRelease, grab, view->mapToGlobal(grab), Qt::LeftButton, Qt::NoButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(view, &release);
+		const qint64 dragMs = dragTime.elapsed();
+		const int during = tab.measureUpdates() - measured;
+		QTest::qWait(150);
+		QStringList shown;
+		for (int row = 0; row < table->rowCount(); row++)
+			for (int column = 0; column < table->columnCount(); column++)
+				shown << (table->item(row, column) ? table->item(row, column)->text() : QString());
+		tab.setShown(true); /* measured again now: the same, if the last place was measured */
+		QStringList now;
+		for (int row = 0; row < table->rowCount(); row++)
+			for (int column = 0; column < table->columnCount(); column++)
+				now << (table->item(row, column) ? table->item(row, column)->text() : QString());
+		const bool paced = during >= 1 && during <= 2 + dragMs / 100 + dragMs / 250; /* the timer's too */
+		if (!paced || shown != now)
+			std::printf("     (a cursor dragged 40 moves in %lld ms: measured %d times; the last place %s)\n",
+					(long long) dragMs, during, shown == now ? "measured" : "NOT measured");
+		check(paced && shown == now, "chart, Measure: a cursor dragged is measured at once, then at most every 100 ms "
+				"(not at every mouse move), and at the place it was left");
+		const bool lightWhileDragged = fullWhileDragged <= 1 + dragMs / 250;
+		if (!lightWhileDragged)
+			std::printf("     (a drag of %lld ms: all of the table measured %d times)\n", (long long) dragMs, fullWhileDragged);
+		check(lightWhileDragged, "chart, Measure: while a cursor is dragged only A, B and B - A follow it; the rest once "
+				"it is let go (and at the timer's pace)");
+
+		/* the lines measured on the chart's threads: what each measured alone gives */
+		const QVector<ChartView::Stats> together = view->stats(keys);
+		bool same = together.size() == keys.size();
+		for (int i = 0; same && i < keys.size(); i++) {
+			const ChartView::Stats alone = view->stats(keys[i]);
+			same = alone.ok == together[i].ok && alone.min == together[i].min && alone.max == together[i].max
+					&& alone.mean == together[i].mean && alone.rms == together[i].rms
+					&& alone.integral == together[i].integral && alone.n == together[i].n;
+		}
+		check(same && together.size() == LINES, "chart, Measure: the lines measured on threads as each alone");
+
+		/* Cursors off: A and B go, as with Clear cursors */
+		cursors->setChecked(false);
+		check(std::isnan(view->cursorA()) && std::isnan(view->cursorB()), "chart: Cursors off takes cursors A and B "
+				"off the chart");
+		measure->setChecked(false); /* the setting back as the other steps expect it */
+		tab.hide();
+	}
+
+	/* Plot shown with more registers than the example map has (70 numeric, on a Registers tab of its own; the first
+	 * one marked not plottable in the map): no question, the first 64 it may plot on the chart, the rest left off and
+	 * said; a 65th Plot ticked: refused. Then the limit by the rate: 64,000 samples a second for all the lines, a lower
+	 * limit taking the newest off. */
+	void plotShownWithoutQuestion() {
+		RegisterModel many;
+		MapDocument doc;
+		RegistersTab tab(&many, &doc);
+		QVector<RegDef> defs;
+		for (int i = 0; i < 70; i++) {
+			RegDef def;
+			def.addr = uint16_t(0xD000 + 2 * i);
+			def.name = QStringLiteral("R%1").arg(i);
+			def.uid = quint32(i + 1);
+			def.plottable = i != 0; /* "plot": false: a fixed value */
+			defs << def;
+		}
+		many.setDefinitions(defs);
+		bool asked = false;
+		QTimer::singleShot(300, [&] {
+			if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) {
+				asked = true;
+				dialog->reject();
+			}
+		});
+		QString said;
+		QObject::connect(&tab, &RegistersTab::statusMessage, &tab, [&](const QString &text, int) { said = text; });
+		int refusals = 0;
+		QObject::connect(&many, &RegisterModel::plotLimitReached, &tab, [&] { refusals++; });
+		auto *button = tab.findChild<QPushButton *>(QStringLiteral("plotShown"));
+		if (button) button->click();
+		QTest::qWait(400);
+		const bool first64 = many.plottedCount() == RegisterModel::MAX_PLOTTED && !many.rows()[0].plot
+				&& many.rows()[64].plot && !many.rows()[65].plot;
+		const bool ticked = many.setData(many.index(69, RegisterModel::ColPlot), Qt::Checked, Qt::CheckStateRole);
+		const bool fixedNoBox = !many.data(many.index(0, RegisterModel::ColPlot), Qt::CheckStateRole).isValid()
+				&& many.data(many.index(0, RegisterModel::ColPlot), Qt::ToolTipRole).toString().contains(QLatin1String("fixed"));
+		std::printf("     (Plot shown said: \"%s\")\n", qPrintable(said));
+		check(button && !asked && first64 && fixedNoBox && said.contains(QLatin1String("5 left off")) && !ticked
+						&& refusals == 1 && many.plottedCount() == RegisterModel::MAX_PLOTTED,
+				"Plot shown with 70 registers, one not plottable (no box, why in its tooltip): no question, the first 64 "
+				"plottable on the chart, \"5 left off\"; a 65th Plot ticked is refused");
+		/* the chart full with more shown than it holds: the button is Unplot shown (it could never be otherwise) */
+		const bool unplot = button && button->text() == QLatin1String("Unplot shown");
+		if (button) button->click();
+		check(unplot && many.plottedCount() == 0 && button->text() == QLatin1String("Plot shown"),
+				"Plot shown, the chart full: the button is Unplot shown and takes them all off, then Plot shown again");
+		if (button) button->click(); /* the 64 back, for the limit below */
+
+		/* the limit by the rate */
+		const bool limits = RegisterModel::plotLimitFor(0) == 64 && RegisterModel::plotLimitFor(500) == 64
+				&& RegisterModel::plotLimitFor(1000) == 64 && RegisterModel::plotLimitFor(1500) == 42
+				&& RegisterModel::plotLimitFor(2000) == 32 && RegisterModel::plotLimitFor(4000) == 16;
+		QStringList off;
+		QObject::connect(&many, &RegisterModel::plotsTakenOff, &tab, [&](const QStringList &names) { off = names; });
+		many.setPlotLimit(RegisterModel::plotLimitFor(2000));
+		const bool newestOff = many.plottedCount() == 32 && many.rows()[32].plot && !many.rows()[33].plot
+				&& off.size() == 32 && off.first() == QLatin1String("R64");
+		check(limits && newestOff,
+				"the plot limit by the rate: 64,000 samples a second (1000 Hz 64, 1500 Hz 42, 2000 Hz 32, 4000 Hz 16); "
+				"2000 Hz with 64 plotted takes the 32 newest off, named");
+	}
+
+	/* 12. the oscilloscope: a math line, cursors, the measurements, hold / live, memory */
+	void chart() {
+		auto *view = window_.findChild<ChartView *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		const int voltsKey = plotRegister(regs_.volts.name);
+		const int ampsKey = plotRegister(regs_.amps.name);
+		if (tabs) tabs->setCurrentIndex(1);
+		QTest::qWait(2500);
+		const int powerKey = view ? lineKey(view, powerLine) : -1;
+		const bool unresolvedDrawn = view && lineKey(view, unresolvedLine) >= 0;
+		check(view && powerKey >= 0 && voltsKey >= 0 && ampsKey >= 0 && !unresolvedDrawn,
+				"math line drawn: ƒ P = V × I (a line naming no register of the map is not)");
+		check(view && lineKey(view, withoutOnFlagLine) >= 0,
+				"a math line saved without its on flag (three fields, as an older entry) is loaded and drawn");
+		if (view && powerKey >= 0) {
+			mathLine(view, powerKey, voltsKey, ampsKey);
+			measurements(view);
+		}
+		holdAndLive(view);
+		memoryFollowsView(view);
+		legend(view);
+		valuePace(view);
+		for (int r = 0; r < model_->rows().size(); r++) model_->setPlot(r, false);
+		/* back to the Registers tab: a Value column left too narrow while it was hidden (the values grew
+		 * meanwhile) is wide enough at once, not only at the next status tick */
+		QHeaderView *columns = table_->horizontalHeader();
+		columns->resizeSection(RegisterModel::ColValue, 40);
+		if (tabs) tabs->setCurrentIndex(0);
+		check(columns->sectionSize(RegisterModel::ColValue) >= 110,
+				"the Registers tab shown again: its Value column fits the values at once");
+		QSettings().remove(QStringLiteral("chart/math"));
+	}
+
+	/* puts a register on the chart: its line's key (its address), -1 if the map has no such register */
+	int plotRegister(const QString &name) {
+		const QVector<RegisterModel::Row> &rows = model_->rows();
+		for (int r = 0; r < rows.size() && !name.isEmpty(); r++) {
+			if (rows[r].def.name != name) continue;
+			model_->setPlot(r, true);
+			return rows[r].def.addr;
+		}
+		return -1;
+	}
+
+	/* P against V and I: its value at cursor A, and its area over A..B */
+	void mathLine(ChartView *view, int powerKey, int voltsKey, int ampsKey) {
+		const double cursorA = view->timeNow() - 1.8;
+		const double cursorB = cursorA + 1.2;
+		view->setCursors(cursorA, cursorB);
+		const ChartView::Stats power = view->stats(powerKey);
+		const double want = view->stats(voltsKey).atA * view->stats(ampsKey).atA;
+		check(power.ok && power.n >= 3 && std::fabs(power.atA - want) <= 0.03 * std::max(1.0, std::fabs(want)),
+				"math line: at cursor A, P = V × I (within the interpolation between polls)");
+		check(power.integral > 0 && std::fabs(power.integral / power.mean - (cursorB - cursorA)) < 0.25,
+				"the area under P over A..B = its mean × the time (J)");
+	}
+
+	/* Measure: the table under the chart, off by default; P's area in J and Wh. The cursors go at the end. */
+	void measurements(ChartView *view) {
+		auto *table = window_.findChild<QTableWidget *>(QStringLiteral("measures"));
+		auto *button = window_.findChild<QPushButton *>(QStringLiteral("measure"));
+		check(button && !button->isChecked() && table && !table->isVisible(),
+				"Measure is off by default: no table under the chart");
+		if (button) button->click();
+		check(QTest::qWaitFor([&] { return table && table->isVisible(); }, 2000), "Measure on: the table shows");
+		QApplication::processEvents();
+		QTest::qWait(400);
+		check(table && powerAreaInJoulesAndWattHours(table), "the measurements table: P's area in J and Wh");
+		view->clearCursors();
+		if (button) button->click();
+		QApplication::processEvents();
+		check(table && !table->isVisible(), "Measure off again: the table hidden");
+		QSettings().remove(QStringLiteral("chart/measure"));
+	}
+
+	/* Hold stops the view and Live follows now again; the button keeps its place and size */
+	void holdAndLive(ChartView *view) {
+		auto *hold = window_.findChild<QPushButton *>(QStringLiteral("hold"));
+		const QRect geometry = hold ? hold->geometry() : QRect();
+		if (hold) hold->click();
+		check(QTest::qWaitFor([&] { return view && !view->live() && hold && hold->text().contains(QLatin1String("Live")); }, 2000),
+				"Hold: the view stops, the button says Live");
+		check(hold && hold->geometry() == geometry, "... the button stays in place, the same size");
+		if (hold) hold->click();
+		check(QTest::qWaitFor([&] {
+			return view && view->live() && hold && hold->text().contains(QLatin1String("Hold")) && hold->geometry() == geometry;
+		}, 2000), "Live: the view follows now again (the button still the same size)");
+	}
+
+	void memoryFollowsView(ChartView *view) {
+		if (!view) return;
+		const double window = view->window();
+		view->setMemory(10);
+		view->setWindow(40);
+		check(view->memory() >= 40, "a view longer than the memory makes the memory grow to it");
+		view->setMemory(60);
+		view->setWindow(window);
+	}
+
+	/* The legend: a chip for every line, each at a fixed place while the values change. More lines than
+	 * the row holds: the others scroll in with the wheel (which then leaves the time zoom alone) or the
+	 * bar under the chips. */
+	void legend(ChartView *view) {
+		if (!view) return;
+		const QVector<QRectF> before = view->legendChips();
+		check(!before.isEmpty() && before.size() == view->lines().size(), "the legend: a chip for every line");
+		QTest::qWait(600); /* the fake device moves the values meanwhile */
+		check(view->legendChips() == before, "... the chips keep their places and widths while the values change");
+		constexpr int EXTRA = 24, EXTRA_KEY = 0x20000;
+		for (int i = 0; i < EXTRA; i++)
+			view->addSeries(EXTRA_KEY + i, QStringLiteral("LEGEND_TEST_%1").arg(i), QStringLiteral("V"), Qt::gray);
+		const QRectF row = view->legendViewport();
+		check(view->legendChips().size() == view->lines().size() && view->legendChips().last().right() > row.right(),
+				"more lines than the row holds: still a chip for every line, the last one beyond the row");
+		view->setLegendScroll(1e9);
+		check(view->legendScroll() > 0 && std::fabs(view->legendChips().last().right() - row.right()) < 0.5,
+				"scrolled to the end: the last chip ends where the row ends");
+		const double window = view->window(), scroll = view->legendScroll();
+		QWheelEvent wheel(row.center(), view->mapToGlobal(row.center()), QPoint(), QPoint(0, 120), Qt::NoButton,
+				Qt::NoModifier, Qt::NoScrollPhase, false);
+		QApplication::sendEvent(view, &wheel);
+		check(view->legendScroll() < scroll && view->window() == window,
+				"the wheel over the legend scrolls the chips; the time zoom stays");
+		const QPoint barStart(int(row.left()) + 1, int(row.bottom()) + 5); /* the bar, just under the chips */
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, barStart);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, barStart);
+		check(view->legendScroll() == 0 && std::fabs(view->legendChips().first().left() - row.left()) < 0.5,
+				"a click at the bar's start: back to the first chip");
+		for (int i = 0; i < EXTRA; i++) view->removeSeries(EXTRA_KEY + i);
+		check(view->legendChips() == before, "the test lines removed: the chips back where they were");
+	}
+
+	/* Show values: the numbers change at the pace chosen in the sidebar, the lines at every frame */
+	void valuePace(ChartView *view) {
+		ValuePacer pacer;
+		pacer.setPerSecond(10);
+		bool paced = pacer.due(1000) && !pacer.due(1050) && pacer.due(1097) && !pacer.due(1100);
+		pacer.setPerSecond(ValuePace::EVERY_FRAME);
+		paced = paced && pacer.due(1101) && pacer.due(1102);
+		check(paced, "values pace: 10 / s is due at most every 100 ms (a refresh a few ms early counts); "
+				"every frame: at every call");
+		auto *box = window_.findChild<QComboBox *>(QStringLiteral("valuePace"));
+		if (!view || !box) {
+			check(false, "Show values: the choice is in the sidebar");
+			return;
+		}
+		const int savedBefore = ValuePace::saved();
+		QSettings().remove(QStringLiteral("ui/valueRate"));
+		check(box->currentData().toInt() == savedBefore && ValuePace::saved() == ValuePace::DEFAULT_PER_SECOND,
+				"Show values: the box shows what is saved; nothing saved: 10 / s");
+		/* the most changes of any chip's text in 1.6 s; the fake device moves its values at every poll */
+		auto mostChanges = [&] {
+			QHash<int, QString> shown;
+			QHash<int, int> changes;
+			QElapsedTimer clock;
+			clock.start();
+			while (clock.elapsed() < 1600) {
+				for (const ChartView::Info &line : view->lines()) {
+					const QString text = view->legendValue(line.key);
+					if (shown.contains(line.key) && shown.value(line.key) != text) changes[line.key]++;
+					shown[line.key] = text;
+				}
+				QTest::qWait(10);
+			}
+			int most = 0;
+			for (const int n : changes) most = std::max(most, n);
+			return most;
+		};
+		box->setCurrentIndex(box->findData(2));
+		const int slow = mostChanges();
+		check(ValuePace::saved() == 2 && slow >= 2 && slow <= 4,
+				qPrintable(QStringLiteral("2 / s chosen: saved, and the legend's values change 2..4 times in 1.6 s "
+						"(%1)").arg(slow)));
+		box->setCurrentIndex(box->findData(ValuePace::EVERY_FRAME));
+		const int fast = mostChanges();
+		check(fast > 4, qPrintable(QStringLiteral("every frame: they change at every poll (%1 times)").arg(fast)));
+		box->setCurrentIndex(box->findData(ValuePace::DEFAULT_PER_SECOND));
+		check(ValuePace::saved() == ValuePace::DEFAULT_PER_SECOND, "back to 10 / s: saved");
+	}
+
+	/* 13. the login, refused and skipped */
+
+	/* the Monitor tab's widgets: its Log frames box, its Clear button and the frames */
+	struct MonitorWidgets {
+		QCheckBox *logFrames = nullptr;
+		QPushButton *clear = nullptr;
+		QPlainTextEdit *frames = nullptr;
+
+		bool complete() const { return logFrames && clear && frames; }
+	};
+
+	MonitorWidgets findMonitor() const {
+		MonitorWidgets monitor;
+		auto *tab = window_.findChild<MonitorTab *>();
+		if (!tab) return monitor;
+		for (QCheckBox *box : tab->findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Log frames")) monitor.logFrames = box;
+		for (QPushButton *button : tab->findChildren<QPushButton *>())
+			if (button->text() == QLatin1String("Clear")) monitor.clear = button;
+		monitor.frames = tab->findChild<QPlainTextEdit *>();
+		return monitor;
+	}
+
+	/* the hex bytes of the first frame sent in the Monitor's lines ("time  TX  bytes"), empty if none */
+	static QString firstFrameSent(const QPlainTextEdit *frames) {
+		const QLatin1String sent("  TX  ");
+		for (const QString &line : frames->toPlainText().split(QLatin1Char('\n'))) {
+			const int at = int(line.indexOf(sent));
+			if (at >= 0) return line.mid(at + sent.size()).trimmed();
+		}
+		return {};
+	}
+
+	/* Disconnect, then Connect. In between, once the old link is silent, the Monitor's frames are
+	 * cleared: the first frame it shows after that is the first request on the new link. */
+	bool reconnect(const MonitorWidgets &monitor) {
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QTest::qWait(300); /* the old link's last frames reach the Monitor */
+		if (monitor.complete()) monitor.clear->click();
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		return disconnectButton && connectButton;
+	}
+
+	/* a wrong token in the token box: the device sees it and refuses it, the Log says so. The
+	 * Monitor logs the frames meanwhile: the login is the first request after connecting. */
+	void wrongTokenRefused() {
+		QLineEdit *tokenBox = nullptr;
+		for (QLineEdit *line : window_.findChildren<QLineEdit *>())
+			if (line->placeholderText() == QLatin1String("Token (not stored)")) tokenBox = line;
+		if (tokenBox) tokenBox->setText(QString::fromUtf8(wrongToken));
+		const MonitorWidgets monitor = findMonitor();
+		if (monitor.complete()) monitor.logFrames->setChecked(true);
+		QTest::qWait(100); /* the engine starts logging frames */
+		const bool reconnected = tokenBox && reconnect(monitor);
+		const QByteArray want = loginBytes(wrongToken, map_.loginSize);
+		const bool sawIt = reconnected && map_.loginAddr != 0
+				&& QTest::qWaitFor([&] { return deviceLogin() == want; }, 3000);
+		const bool logged = QTest::qWaitFor([&] { return logText().contains(tokenRefusedText); }, 3000);
+		check(tokenBox && sawIt && logged,
+				"a wrong token: the device received it and refused it, the Log says \"token refused: permission denied\"");
+
+		/* the login frame as STUDIO.md section 3.6 gives it: WRITE with acknowledge of the whole register */
+		const QString loginFrame = evre::hex(evre::build(map_.slave, evre::WRITE_ACK, map_.loginAddr,
+				uint16_t(map_.loginSize), want));
+		QString first;
+		if (monitor.complete())
+			(void) QTest::qWaitFor([&] { return !(first = firstFrameSent(monitor.frames)).isEmpty(); }, 3000);
+		if (!first.isEmpty() && first != loginFrame)
+			std::printf("  first frame sent: %s\n  the login frame:  %s\n", qPrintable(first), qPrintable(loginFrame));
+		check(reconnected && map_.loginAddr != 0 && first == loginFrame,
+				"the login is the first request after connecting (the Monitor's first frame sent)");
+		if (monitor.complete()) {
+			monitor.logFrames->setChecked(false);
+			monitor.clear->click();
+		}
+	}
+
+	/* the token set, but a map without "login": nothing is sent, the Log warns. The window
+	 * starts again from this map (the same one without its login), connected. The other
+	 * client first writes a marker to the login register (the fake device keeps it, though
+	 * refused): a token sent all the same would replace it. */
+	void tokenWithoutLoginRegister() {
+		QTemporaryDir folder;
+		DeviceMap withoutLogin = map_;
+		withoutLogin.loginAddr = 0;
+		const QString file = folder.filePath(QStringLiteral("without_login.json"));
+		QString error;
+		const bool saved = folder.isValid() && withoutLogin.save(file, error);
+		loginSavedAndLoaded(folder, file);
+		const QByteArray marker = loginBytes(noLoginMarker, map_.loginSize);
+		if (map_.loginAddr != 0) (void) other_.write(map_.loginAddr, marker); /* refused, but kept */
+		const bool marked = map_.loginAddr != 0 && deviceLogin() == marker;
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		startup.map = file;
+		startup.connect = true;
+		if (saved) window_.applyStartup(startup); /* EVRE_TOKEN fills the token box again */
+		const bool warned = saved && QTest::qWaitFor([&] { return logText().contains(noLoginRegisterText); }, 5000);
+		const bool polled = cellShows(valueCell(table_, regs_.u8.name), QStringLiteral("0"), 5000);
+		check(warned && polled && marked && deviceLogin() == marker,
+				"a token with a map that declares no login register: the Log warns, nothing is written to the device");
+	}
+
+	/* the map file keeps "login" through a save and a load, and leaves it out when there is none */
+	void loginSavedAndLoaded(const QTemporaryDir &folder, const QString &withoutLoginFile) {
+		const QString withLoginFile = folder.filePath(QStringLiteral("with_login.json"));
+		QString error;
+		DeviceMap withLogin, withoutLogin;
+		const bool kept = map_.loginAddr != 0 && map_.save(withLoginFile, error) && withLogin.load(withLoginFile, error)
+				&& withLogin.loginAddr == map_.loginAddr && withLogin.loginSize == map_.loginSize;
+		const bool leftOut = withoutLogin.load(withoutLoginFile, error) && withoutLogin.loginAddr == 0;
+		check(kept && leftOut, "the map file: \"login\" saved and loaded again, left out when the map has none");
+	}
+
+	MainWindow &window_;
+	OtherClient &other_;
+	const DeviceMap map_;
+	const TestRegisters regs_;
+	const QString mapName_;
+	QTableView *table_ = nullptr;
+	RegisterModel *model_ = nullptr;
+	QCheckBox *allowWrites_ = nullptr, *poll_ = nullptr;
+	QModelIndex u8Cell_;
+};
+
+/* the last check: no Qt warning about objects used across threads came during the test or the teardown */
+void checkThreadWarnings() {
+	const int seen = threadWarnings.load();
+	const QByteArray what = QStringLiteral("no Qt warnings about objects used across threads, the window's"
+			" teardown included (%1 seen)").arg(seen).toUtf8();
+	check(seen == 0, what.constData());
+}
+
+} // namespace
+
+int main(int argc, char **argv) {
+	previousHandler = qInstallMessageHandler(countThreadWarnings);
+	QApplication app(argc, argv);
+	QApplication::setOrganizationName(QStringLiteral("teknile"));
+	QApplication::setApplicationName(QStringLiteral("EVReStudioTest")); /* not the user's settings */
+	Theme::apply(app, true);
+
+	const QString mapName = argc > 1 ? QString::fromLocal8Bit(argv[1]) : QStringLiteral("example_device.json");
+	const QString mapPath = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/") + mapName;
+	DeviceMap map;
+	QString error;
+	if (!map.load(mapPath, error)) {
+		std::printf("map %s: %s\n", qPrintable(mapPath), qPrintable(error));
+		return 2;
+	}
+	prepareSettings(TestRegisters::find(map));
+
+	OtherClient other;
+	if (!other.open()) {
+		std::printf("no fake device on 127.0.0.1:%u - start tests/fake_device.py first\n", FAKE_DEVICE_PORT);
+		return 2;
+	}
+	/* the login register cleared (the fake device keeps even a refused token), then the token for the window */
+	if (map.loginAddr != 0) other.write(map.loginAddr, QByteArray(map.loginSize, '\0'));
+	qputenv("EVRE_TOKEN", fakeDeviceToken);
+
+	{ /* the window and its I/O thread are gone before the last check: warnings at teardown count too */
+		MainWindow window(mapPath); /* as main() does: the command line's map, opened once */
+		window.show();
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		startup.map = mapPath;
+		startup.connect = true;
+		window.applyStartup(startup);
+
+		/* a dialog no step answered (it came after answerDialog stopped waiting): a failure that names it, and closed,
+		 * never left on the screen waiting for a person */
+		QTimer unanswered;
+		QPointer<QWidget> modalSeen;
+		QElapsedTimer modalFor;
+		bool awaitedWhenSeen = false;
+		QObject::connect(&unanswered, &QTimer::timeout, [&] {
+			QWidget *modal = QApplication::activeModalWidget();
+			if (modal != modalSeen) {
+				modalSeen = modal;
+				modalFor.restart();
+				awaitedWhenSeen = AwaitingDialog::count > 0;
+				return;
+			}
+			if (!modal || modalFor.elapsed() < UNANSWERED_DIALOG_MS) return;
+			auto *box = qobject_cast<QMessageBox *>(modal);
+			/* no step waiting: it came early (an editor committed on focus out) or after its step gave up */
+			std::printf("FAIL a dialog no step answered in %d s (a step waiting for one when it came: %s), closed: "
+					"\"%s\" %s\n", UNANSWERED_DIALOG_MS / 1000, awaitedWhenSeen ? "yes" : "no",
+					qPrintable(modal->windowTitle()), box ? qPrintable(box->text()) : "");
+			std::fflush(stdout);
+			failed++;
+			if (auto *dialog = qobject_cast<QDialog *>(modal)) dialog->reject();
+			modalSeen = nullptr;
+		});
+		unanswered.start(500);
+
+		GuiTest test(window, other, map, mapName);
+		if (!test.run()) return 1;
+	}
+	QApplication::processEvents(); /* what the teardown posted */
+	checkThreadWarnings();
+	std::printf("\n%d passed, %d failed\n", passed, failed);
+	return failed == 0 ? 0 : 1;
+}

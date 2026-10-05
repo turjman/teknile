@@ -1,0 +1,2123 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* The chart: keeping the samples, the view and the mouse, the measurements, and
+ * the drawing (see chart_widget.h for what it does and why it is drawn this way). */
+#include "ui/chart_widget.h"
+
+#include <QBackingStore>
+#include <QDateTime>
+#include <QGuiApplication>
+#include <QMouseEvent>
+#include <QPaintEngine>
+#include <QPainter>
+#include <QPainterPath>
+#include <QStackedWidget>
+#include <QThread>
+#include <QTimer>
+#include <QVBoxLayout>
+#include <QWheelEvent>
+#include <algorithm>
+#include <atomic>
+#include <cmath>
+#include <cstring>
+#include <limits>
+#include <memory>
+
+#include "ui/theme.h"
+
+namespace {
+
+/* the layout around the plot, in logical pixels */
+constexpr double AXIS_W = 64;              /* the value labels, left of the plot */
+constexpr double LEGEND_H = 44;            /* the legend chips and the state, above the plot */
+constexpr double RIGHT_PAD = 18;
+constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
+constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
+constexpr double BOTTOM_PAD = 8;
+constexpr double CARD_RADIUS = 10;
+constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
+constexpr double LEGEND_ROW_H = 22;
+constexpr double STATE_W = 420;            /* the state text, right-aligned at the top right */
+constexpr double STATE_ROOM = 230;         /* the legend stops this far from the right, for the state */
+constexpr double CHIP_GAP = 6;             /* between two chips */
+constexpr double CHIP_TEXT_LEFT = 20;      /* a chip's text starts after its dot */
+constexpr double CHIP_PAD_RIGHT = 8;
+constexpr double LEGEND_BAR_Y = 37;        /* the legend's scroll bar, under the chips, inside LEGEND_H */
+constexpr double LEGEND_BAR_H = 4;
+constexpr double LEGEND_BAR_GRIP = 5;      /* the bar takes clicks this far above and below it */
+constexpr double LEGEND_THUMB_MIN = 28;
+constexpr double LEGEND_ARROW_W = 16;      /* the "more this way" marks at the row's ends */
+constexpr double LEGEND_WHEEL_STEP = 60;   /* pixels per wheel notch over the legend */
+constexpr double READOUT_ROW_H = 18;       /* a line of the crosshair's box */
+constexpr double DOT_PICTURE = 9;          /* the crosshair's dot picture: a 3.5 radius dot and its edge */
+constexpr int Y_TICKS = 5;                 /* about this many value grid lines */
+constexpr double TIME_LABEL_SPACING = 140; /* about one time label per this many pixels */
+
+/* the view (the longest: ChartView::MAX_SPAN) */
+constexpr double MIN_WINDOW = 0.001;  /* seconds */
+constexpr double MIN_MEMORY = 1;      /* seconds */
+constexpr double ZOOM_STEP = 1.25;    /* per wheel notch */
+constexpr double LIVE_SNAP = 0.002;   /* a held view this close to now (of the view) is live again */
+constexpr double MAX_FRAME_DT = 0.25; /* a stalled frame counts as this long, seconds */
+constexpr int READOUT_REACH = 20;     /* the crosshair reads a line with a sample within 1/20 of the view */
+constexpr qint64 READOUT_FOLLOW_MS = 50; /* while the mouse moves, its box made again at most this often */
+
+/* the lines */
+constexpr double LINE_WIDTH = 1.5;   /* logical pixels */
+constexpr double Y_MARGIN = 0.08;    /* free space above and below the lines, of the range */
+constexpr double FLAT_RANGE = 1e-12; /* a line's own range narrower than this: it is flat */
+constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little faded */
+constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
+constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
+                                     antialiased a little differently, and are never shown */
+constexpr double FRAME_SHARE = 0.6;            /* the chart's frames take at most this share of the thread */
+constexpr qsizetype TRIM_PER_FRAME = 4000000; /* samples moved by trims in a frame at most (about 5 ms) */
+constexpr double BUDGET_SAMPLE_MS = 30;        /* a slow paint spends at most this (or twice the frames' average) */
+constexpr int LAYER_AFTER_FRAMES = 2;          /* the card's layer shown after this many frames under it (paintFrame) */
+constexpr qint64 FRAMES_STOPPED_MS = 250;      /* no frame() this long: a change is painted at once (refresh) */
+
+/* 1, 2, 5 x 10^n steps giving about `target` ticks over span */
+double niceStep(double span, int target) {
+	if (span <= 0) return 1;
+	const double raw = span / target;
+	const double magnitude = std::pow(10.0, std::floor(std::log10(raw)));
+	const double n = raw / magnitude;
+	return (n < 1.5 ? 1 : n < 3.5 ? 2 : n < 7.5 ? 5 : 10) * magnitude;
+}
+
+/* time steps: 1/2/5 below a second, then whole seconds, minutes, hours */
+double niceTimeStep(double span, int target) {
+	const double raw = span / target;
+	if (raw < 1) return niceStep(span, target);
+	static const double steps[] = { 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400 };
+	for (double s : steps)
+		if (s >= raw) return s;
+	return 14400;
+}
+
+/* A value with about four significant digits, for the legend, the crosshair
+ * and the state line. Not the register's own format (formatValue in the model)
+ * nor the measurements' (measureText in the Chart tab): short, whatever the line. */
+QString chartNumber(double v) {
+	const double a = std::fabs(v);
+	if (a == 0) return QStringLiteral("0");
+	if (a >= 1e5 || a < 1e-3) return QString::number(v, 'g', 4);
+	return QString::number(v, 'f', a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3);
+}
+
+/* chartNumber's widest text: the exponent form with a sign (a three-digit
+ * exponent, beyond 1e100, is wider still). The legend gives every value this
+ * room, so a chip keeps its width whatever the value. */
+QString widestChartNumber() {
+	return QStringLiteral("-0.000e+00");
+}
+
+/* a length of time for the memory strip: seconds, minutes or hours */
+QString formatDuration(double seconds) {
+	if (seconds < 120) return QStringLiteral("%1 s").arg(seconds, 0, 'f', 0);
+	if (seconds < 7200) return QStringLiteral("%1 min").arg(seconds / 60, 0, 'f', 1);
+	return QStringLiteral("%1 h").arg(seconds / 3600, 0, 'f', 1);
+}
+
+QDateTime wallClock(qint64 epochMsAtZero, double t) {
+	return QDateTime::fromMSecsSinceEpoch(epochMsAtZero + qint64(std::llround(t * 1000)));
+}
+
+/* a time grid label, as precise as the grid step needs */
+QString timeLabel(qint64 epochMsAtZero, double t, double step) {
+	const QDateTime at = wallClock(epochMsAtZero, t);
+	if (step >= 1) return at.toString(QStringLiteral("HH:mm:ss"));
+	if (step >= 0.1) return at.toString(QStringLiteral("HH:mm:ss.z"));
+	QString label = at.toString(QStringLiteral("HH:mm:ss.zzz"));
+	if (step >= 0.01) label.chop(1); /* hundredths */
+	return label;
+}
+
+QFont smallFont() {
+	QFont font = QGuiApplication::font();
+	font.setPointSizeF(8.5);
+	return font;
+}
+
+QFont labelFont() {
+	QFont font = QGuiApplication::font();
+	font.setPointSizeF(9);
+	return font;
+}
+
+/* a range too narrow to scale into: one unit around it */
+void widenFlatRange(double &lo, double &hi) {
+	if (hi - lo > FLAT_RANGE) return;
+	lo -= 0.5;
+	hi += 0.5;
+}
+
+/* the index of the sample nearest to t (times rising, not empty) */
+qsizetype nearestIndex(const QVector<double> &times, double t) {
+	qsizetype k = std::lower_bound(times.begin(), times.end(), t) - times.begin();
+	if (k >= times.size()) k = times.size() - 1;
+	if (k > 0 && std::fabs(times[k - 1] - t) < std::fabs(times[k] - t)) k--;
+	return k;
+}
+
+/* the value at t, straight between the samples around it; NaN outside the samples */
+double valueAt(const QVector<double> &times, const QVector<double> &values, double t) {
+	if (!std::isfinite(t) || t < times.front() || t > times.back()) return NAN;
+	const qsizetype k = std::lower_bound(times.begin(), times.end(), t) - times.begin();
+	if (k == 0) return values[0];
+	const double ta = times[k - 1], tb = times[k];
+	return tb > ta ? values[k - 1] + (values[k] - values[k - 1]) * (t - ta) / (tb - ta) : values[k];
+}
+
+} // namespace
+
+/* A value grid label: a percentage when normalized; a rounding error at zero shows as 0. Every label of the axis
+ * with the decimals its step needs (step 2: 14, 12 … 6; step 0.2: 0.2, 0.4), not each its own (14.0 over 8.00). */
+QString chartAxisLabel(double v, double step, bool percent) {
+	if (percent) return QString::number(int(std::round(v * 100))) + QLatin1Char('%');
+	if (std::fabs(v) < step * 1e-6) return QStringLiteral("0");
+	if (step < 1e-3 || std::fabs(v) >= 1e5) return chartNumber(v);
+	const int decimals = std::max(0, int(-std::floor(std::log10(step) + 1e-9)));
+	return QString::number(v, 'f', decimals);
+}
+
+void ChartView::Bin::add(double ta, double tb, double firstValue, double lastValue, double lo, double hi, int samples) {
+	if (count == 0) {
+		t0 = ta;
+		first = firstValue;
+		min = lo;
+		max = hi;
+	} else {
+		min = std::min(min, lo);
+		max = std::max(max, hi);
+	}
+	t1 = tb;
+	last = lastValue;
+	count += samples;
+}
+
+ChartView::ChartView(QWidget *parent) : QWidget(parent) {
+	setMouseTracking(true);
+	/* it paints every pixel itself: Qt need not paint what is behind it */
+	setAttribute(Qt::WA_OpaquePaintEvent);
+	frameClock_.start();
+	fpsClock_.start();
+	valueClock_.start();
+	/* the threads that bin and draw with this one; the I/O thread and the system keep theirs */
+	pool_.setMaxThreadCount(std::clamp(QThread::idealThreadCount() - 3, 1, 8));
+	pool_.setExpiryTimeout(-1);
+	opener_.setMaxThreadCount(1);
+}
+
+/* job(i) for every i, taken in turn by the pool's threads and this one. This one waits for the jobs taken, never for
+ * a thread still waking up (on Windows that can take milliseconds): a thread that starts late finds none left and
+ * ends, so the shared state outlives this call. Fewer than jobsPerThread jobs a thread (few lines): not worth waking
+ * one, this thread alone. */
+void ChartView::inParallel(qsizetype count, const std::function<void(qsizetype)> &job, qsizetype jobsPerThread) const {
+	const int helpers = int(std::min<qsizetype>(count / jobsPerThread - 1, pool_.maxThreadCount()));
+	if (helpers <= 0) {
+		for (qsizetype i = 0; i < count; i++) job(i);
+		return;
+	}
+	struct Batch {
+		std::atomic<qsizetype> next{ 0 }, done{ 0 };
+		qsizetype count = 0;
+		const std::function<void(qsizetype)> *job = nullptr; /* used only while a job is left: this call is still on */
+	};
+	const auto batch = std::make_shared<Batch>();
+	batch->count = count;
+	batch->job = &job;
+	const auto work = [batch] {
+		for (qsizetype i = batch->next++; i < batch->count; i = batch->next++) {
+			(*batch->job)(i);
+			batch->done++;
+		}
+	};
+	for (int k = 0; k < helpers; k++) pool_.start(work);
+	work();
+	while (batch->done.load() < count) QThread::yieldCurrentThread(); /* the last jobs others took: short */
+}
+
+/* -------------------------------------------------------------- the samples */
+
+void ChartView::addSeries(int key, const QString &name, const QString &unit, const QColor &color) {
+	Series s;
+	s.name = name;
+	s.unit = unit;
+	s.color = color;
+	s.spread = int(seriesAdded_++ % 8);
+	series_.insert(key, s);
+	seriesGeneration_++;
+	capped_ = false;
+	yInitialized_ = false;
+	refresh();
+}
+
+void ChartView::removeSeries(int key) {
+	series_.remove(key);
+	seriesGeneration_++;
+	yInitialized_ = false;
+	refresh();
+}
+
+void ChartView::clearSeries() {
+	series_.clear();
+	seriesGeneration_++;
+	capped_ = false;
+	yInitialized_ = false;
+	refresh();
+}
+
+void ChartView::clearData() {
+	for (Series &s : series_) {
+		s.times.clear();
+		s.values.clear();
+		for (QVector<Chunk> &chunks : s.chunks) chunks.clear();
+		s.hasLast = false;
+		s.hasShown = false;
+	}
+	seriesGeneration_++;
+	capped_ = false;
+	yInitialized_ = false;
+	refresh();
+}
+
+/* A part of what p paints, drawn apart into an image (on another thread too): `device` is its place in pixels of
+ * p's device. `world` maps the widget's coordinates into the image's pixels: p's own mapping, then a shift by whole
+ * pixels only, so a line lands on exactly the pixels it would take drawn on p (the widget need not start on a whole
+ * device pixel: at 225 % a widget at x = 13 starts at 29.25). The image is drawn in at pixel ratio 1; finishTile
+ * gives it p's, and `at` is where it goes back, in the widget's coordinates. */
+void ChartView::prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at) {
+	const QTransform toDevice = p.deviceTransform();
+	if (image.size() != device.size()) image = QImage(device.size(), QImage::Format_ARGB32_Premultiplied);
+	image.setDevicePixelRatio(1);
+	image.fill(Qt::transparent);
+	world = toDevice * QTransform::fromTranslate(-device.left(), -device.top());
+	at = toDevice.inverted().map(QPointF(device.topLeft()));
+}
+
+qint64 ChartView::bytesNeeded() const {
+	double samples = 0;
+	for (const Series &s : series_) {
+		const qsizetype n = s.times.size();
+		if (n < 2 || s.times.back() <= s.times.front()) continue;
+		const double rate = double(n - 1) / (s.times.back() - s.times.front());
+		samples += std::min(rate * memory_, double(MAX_POINTS));
+	}
+	return qint64(samples * BYTES_PER_SAMPLE);
+}
+
+qint64 ChartView::bytesHeld() const {
+	qint64 bytes = 0;
+	for (const Series &s : series_) {
+		bytes += qint64(s.times.capacity() + s.values.capacity()) * qint64(sizeof(double));
+		for (const QVector<Chunk> &level : s.chunks) bytes += qint64(level.capacity()) * qint64(sizeof(Chunk));
+	}
+	return bytes;
+}
+
+qsizetype ChartView::pointsKept(int key) const {
+	const auto it = series_.find(key);
+	return it == series_.end() ? 0 : it->times.size();
+}
+
+void ChartView::setRamBudget(int megabytes) {
+	ramMB_ = std::max(megabytes, MIN_RAM_MB);
+	capped_ = false; /* the lines past their new share say so again at their next sample */
+	refresh();
+}
+
+qsizetype ChartView::pointsPerLine() const {
+	const qsizetype lines = std::max<qsizetype>(1, series_.size());
+	const qsizetype total = qsizetype(ramMB_) * 1024 * 1024 / BYTES_PER_SAMPLE;
+	return std::clamp<qsizetype>(total / lines, qsizetype(CHUNK_SIZE[LEVELS - 1]) * 16, MAX_POINTS);
+}
+
+namespace {
+/* A line's arrays take what its share of the RAM needs, not up to twice it (2 GB for a RAM of 1 GB): they grow by
+ * about doubling only up to `most` elements, and what goes from the front moves the rest to the front. Qt's vectors
+ * keep the room freed at the front, and when the end comes with two thirds of them in use they double instead of
+ * moving. spread (0 to 7, the line's): it grows 2 + spread / 16 times, so lines that fill together grow at different
+ * moments (all at once, 64 lines at RAM 1 GB moved 0.5 GB in one frame at their last growth) */
+template <typename T>
+void roomForOne(QVector<T> &v, qsizetype most, int spread) {
+	if (v.size() < v.capacity()) return;
+	const qsizetype grown = v.size() * (32 + spread) / 16;
+	v.reserve(std::max(v.size() + 1, std::min(std::max<qsizetype>(grown, 1024), most)));
+}
+template <typename T>
+void dropFront(QVector<T> &v, qsizetype n, qsizetype most) {
+	n = std::min(n, v.size());
+	/* the share shrank (more lines, less RAM): the room let go, what stays copied once */
+	if (v.capacity() > most + most / 4 + 1024) {
+		QVector<T> fitted;
+		fitted.reserve(std::max(most, v.size() - n));
+		fitted.resize(v.size() - n);
+		std::copy(v.constData() + n, v.constData() + v.size(), fitted.data()); /* one block copy */
+		v.swap(fitted);
+		return;
+	}
+	std::move(v.begin() + n, v.end(), v.begin());
+	v.resize(v.size() - n);
+}
+} // namespace
+
+void ChartView::append(int key, double t, double v) {
+	auto it = series_.find(key);
+	if (it == series_.end() || !std::isfinite(v)) return;
+	Series &s = *it;
+	const qsizetype limit = pointsPerLine();
+	dropExpired(s, t, limit);
+	roomForOne(s.times, limit, s.spread);
+	roomForOne(s.values, limit, s.spread);
+	s.times.push_back(t);
+	s.values.push_back(v);
+	addChunks(s, limit);
+	s.last = v;
+	s.hasLast = true;
+}
+
+/* the chunk of each level the newest sample completes: the smallest from its
+ * samples, each larger one from the LEVEL_STEP chunks below it */
+void ChartView::addChunks(Series &s, qsizetype limit) {
+	const qsizetype n = s.times.size();
+	for (int level = 0; level < LEVELS && n % CHUNK_SIZE[level] == 0; level++) {
+		Chunk chunk;
+		if (level == 0) {
+			const qsizetype begin = n - CHUNK_SIZE[0];
+			chunk = { s.times[begin], s.times[n - 1], s.values[begin], s.values[begin], s.values[begin], s.values[n - 1] };
+			for (qsizetype i = begin + 1; i < n; i++) {
+				chunk.min = std::min(chunk.min, s.values[i]);
+				chunk.max = std::max(chunk.max, s.values[i]);
+			}
+		} else {
+			const QVector<Chunk> &below = s.chunks[level - 1];
+			const qsizetype begin = below.size() - LEVEL_STEP;
+			chunk = below[begin];
+			for (qsizetype k = begin + 1; k < below.size(); k++) {
+				chunk.min = std::min(chunk.min, below[k].min);
+				chunk.max = std::max(chunk.max, below[k].max);
+			}
+			chunk.t1 = below.last().t1;
+			chunk.last = below.last().last;
+		}
+		roomForOne(s.chunks[level], limit / CHUNK_SIZE[level] + 1, s.spread);
+		s.chunks[level].push_back(chunk);
+	}
+}
+
+/* The memory: what is older than `memory` goes, about a twentieth at a time (it
+ * is let grow 5 % past it first), and from a sixteenth short of the line's share
+ * of the budget it goes down to seven eighths of the share, in whole chunks of
+ * the largest level (so chunk k of each level still covers samples k * its size
+ * on): not a sample at a time, which would move the whole vector at every poll.
+ * The lines fill together, and trimmed together they moved 0.9 GB in one frame
+ * (65 lines at RAM 1 GB: 85 ms, five frames, every 86 s): a frame moves at most
+ * TRIM_PER_FRAME samples, the other lines waiting their turn, none past its share. */
+void ChartView::dropExpired(Series &s, double t, qsizetype limit) {
+	if (s.times.isEmpty()) return;
+	const bool expired = t - s.times.front() > memory_ * 1.05 + 0.5;
+	const bool full = s.times.size() >= limit - limit / 16;
+	if (!expired && !full) return;
+	if (s.times.size() < limit && movedThisFrame_ > 0 && movedThisFrame_ + s.times.size() > TRIM_PER_FRAME)
+		return; /* its turn comes at a later frame */
+	const qsizetype largest = CHUNK_SIZE[LEVELS - 1];
+	qsizetype drop = std::lower_bound(s.times.begin(), s.times.end(), t - memory_) - s.times.begin();
+	if (full) { /* past the share by more than an eighth (the RAM lowered, lines added): all of it at once, not an
+		     * eighth at each sample, each moving the whole line (1 GB to 512 MB held the window 3 s) */
+		drop = std::max(drop, s.times.size() - limit + std::max(limit / 8, largest));
+		capped_ = true;
+	}
+	drop = (drop / largest) * largest;
+	if (drop <= 0) return;
+	dropFront(s.times, drop, limit);
+	dropFront(s.values, drop, limit);
+	s.dropped += drop;
+	for (int level = 0; level < LEVELS; level++)
+		dropFront(s.chunks[level], drop / CHUNK_SIZE[level], limit / CHUNK_SIZE[level] + 1);
+	movedThisFrame_ += s.times.size();
+}
+
+/* ----------------------------------------------------------------- the view */
+
+void ChartView::setClock(std::function<double()> clock, qint64 epochMsAtZero) {
+	clock_ = std::move(clock);
+	epochMs_ = epochMsAtZero;
+}
+
+double ChartView::clockNow() const { return clock_ ? clock_() : 0; } /* 0 until the clock is set */
+
+void ChartView::frame() {
+	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
+	framesCome_.restart();
+	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
+	if (valuePacer_.due(valueClock_.elapsed())) {
+		for (Series &s : series_) {
+			s.shown = s.last;
+			s.hasShown = s.hasLast;
+		}
+		valuesTick_++; /* the crosshair's box too */
+	}
+	/* the frame budget: the window's thread stays free for the rest (FrameBudget) */
+	if (budget_.due(sinceLastMs) && isVisible()) paintSoon();
+}
+
+/* Frames a little over the share skip one now and then (11 ms frames at 60 Hz: about 55 a second); waiting after
+ * each frame over 10 ms as long as it took to stay at 60 % halved the rate there (35 a second for 11.5 ms frames,
+ * 2026-10-05). Heavy frames still take 60 % at most: 20 ms ones every other refresh. */
+bool ChartView::FrameBudget::due(double sinceLastMs) {
+	const double earned = std::max(0.0, sinceLastMs) * FRAME_SHARE;
+	creditMs = std::min(creditMs + earned, earned);
+	return creditMs >= 0;
+}
+
+/* one slow paint among quick ones (a resize, a theme switch) counts little; slow ones all along count in full, so
+ * they too stay within the share (41 ms frames counted as 30 took 80 % of the thread) */
+void ChartView::FrameBudget::spent(double paintMs) {
+	creditMs -= std::min(paintMs, std::max(BUDGET_SAMPLE_MS, 2 * averageMs));
+	averageMs = averageMs * 0.8 + paintMs * 0.2;
+}
+
+/* While frames come, a change waits for the next: the mouse moves up to 1000 times a second, and a frame for each
+ * painted the chart past the display's rate and past the frame budget (with 64 lines on a card: 35 frames a second
+ * where 60 were drawn, and the Smooth delay up as frames came between the samples) */
+void ChartView::refresh() {
+	if (framesCome_.isValid() && framesCome_.elapsed() < FRAMES_STOPPED_MS) return; /* the next frame paints it */
+	paintSoon();
+}
+
+void ChartView::paintSoon() {
+	if (plotOnCard()) update(QRegion(rect()).subtracted(QRegion(layerRect()))); /* the card presents the plot */
+	else update();
+}
+
+void ChartView::setValuesPerSecond(int perSecond) {
+	valuePacer_.setPerSecond(perSecond); /* the next frame shows the newest values */
+}
+
+void ChartView::setWindow(double seconds) {
+	window_ = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
+	if (window_ > memory_) setMemory(window_); /* the view must fit in the memory */
+	refresh();
+}
+
+void ChartView::setMemory(double seconds) {
+	const double clamped = std::clamp(seconds, MIN_MEMORY, MAX_SPAN);
+	if (clamped == memory_) return;
+	memory_ = clamped;
+	if (window_ > memory_) window_ = memory_;
+	emit memoryChanged(memory_);
+	refresh();
+}
+
+void ChartView::setLive(bool on) {
+	if (on == live_) return;
+	if (!on) viewEnd_ = lastViewEnd_; /* hold what is shown */
+	live_ = on;
+	emit liveChanged(live_);
+	refresh();
+}
+
+void ChartView::setHoverValues(bool on) {
+	hoverValues_ = on;
+	readoutTick_ = ~quint64(0); /* made again (or let go) at the next frame */
+	refresh();
+}
+
+void ChartView::setSmooth(bool on) {
+	smooth_ = on;
+	if (!on) delay_ = 0;
+	refresh();
+}
+
+void ChartView::holdAt(double end) {
+	double m0, m1;
+	memorySpan(m0, m1);
+	const double liveEdge = liveEnd();
+	end = std::clamp(end, std::min(m0 + window_, liveEdge), liveEdge);
+	if (end >= liveEdge - window_ * LIVE_SNAP) { /* back at now: live again */
+		setLive(true);
+		return;
+	}
+	viewEnd_ = end;
+	if (live_) {
+		live_ = false;
+		emit liveChanged(false);
+	}
+	refresh();
+}
+
+void ChartView::memorySpan(double &m0, double &m1) const {
+	m1 = liveEnd();
+	m0 = m1;
+	for (const Series &s : series_)
+		if (!s.times.isEmpty()) m0 = std::min(m0, s.times.front());
+	m0 = std::max(m0, m1 - memory_);
+}
+
+void ChartView::setYAuto() {
+	yAuto_ = true;
+	yInitialized_ = false;
+	refresh();
+}
+
+void ChartView::setYManual(double lo, double hi) {
+	if (!(hi > lo)) return;
+	yAuto_ = false;
+	yLo_ = lo;
+	yHi_ = hi;
+	refresh();
+}
+
+void ChartView::clearCursors() {
+	cursorA_ = cursorB_ = NAN;
+	emit cursorsChanged();
+	refresh();
+}
+
+void ChartView::setCursors(double a, double b) {
+	cursorA_ = a;
+	cursorB_ = b;
+	emit cursorsChanged();
+	refresh();
+}
+
+QRectF ChartView::plotRect() const {
+	return QRectF(rect()).adjusted(AXIS_W, LEGEND_H, -RIGHT_PAD, -(TIME_AXIS_H + OVERVIEW_H + BOTTOM_PAD));
+}
+
+QRectF ChartView::overviewRect() const {
+	const QRectF plot = plotRect();
+	return QRectF(plot.left(), height() - OVERVIEW_H - BOTTOM_PAD, plot.width(), OVERVIEW_H);
+}
+
+double ChartView::timeAtX(double x) const {
+	const QRectF plot = plotRect();
+	return viewEnd() - window_ + (x - plot.left()) / plot.width() * window_;
+}
+
+double ChartView::xAtTime(double t) const {
+	const QRectF plot = plotRect();
+	return plot.left() + (t - (viewEnd() - window_)) / window_ * plot.width();
+}
+
+/* The display delay (Smooth): a little more than the latest gap between now and
+ * the newest sample, since samples come in bursts (per poll, per frame, per TCP
+ * packet), so the line always reaches the right edge. It follows slowly, so the
+ * scroll speed does not wobble; at most 0.5 s (a slow poll just shows its gap). */
+void ChartView::updateDelay(double frameDt) {
+	constexpr double MAX_GAP = 1.0;     /* a longer gap: no data coming, nothing to smooth */
+	constexpr double PEAK_DECAY = 0.05; /* the peak gap is forgotten this fast, seconds per second */
+	constexpr double HEADROOM = 1.1, HEADROOM_S = 0.003;
+	constexpr double MAX_DELAY = 0.5;
+	constexpr double RISE_TIME = 0.15, FALL_TIME = 2.0; /* seconds: the delay grows fast, shrinks slowly */
+	constexpr double NONE = -std::numeric_limits<double>::max();
+	if (!smooth_) return;
+	double newest = NONE;
+	for (const Series &s : series_)
+		if (!s.times.isEmpty()) newest = std::max(newest, s.times.back());
+	if (newest == NONE) return; /* no samples yet */
+	const double gap = clockNow() - newest;
+	if (gap < 0 || gap > MAX_GAP) return;
+	peakGap_ = std::max(gap, peakGap_ - frameDt * PEAK_DECAY);
+	const double target = std::min(MAX_DELAY, peakGap_ * HEADROOM + HEADROOM_S);
+	const double rate = 1 - std::exp(-frameDt / (target > delay_ ? RISE_TIME : FALL_TIME));
+	delay_ += (target - delay_) * rate;
+}
+
+/* ---------------------------------------------------------------- measuring */
+
+QVector<ChartView::Info> ChartView::lines() const {
+	QVector<Info> out;
+	for (auto it = series_.begin(); it != series_.end(); ++it)
+		out.push_back({ it.key(), it->name, it->unit, it->color });
+	return out;
+}
+
+void ChartView::range(double &t0, double &t1, bool &cursors) const {
+	cursors = std::isfinite(cursorA_) && std::isfinite(cursorB_) && cursorA_ != cursorB_;
+	if (cursors) {
+		t0 = std::min(cursorA_, cursorB_);
+		t1 = std::max(cursorA_, cursorB_);
+	} else {
+		t1 = lastViewEnd_;
+		t0 = t1 - window_;
+	}
+}
+
+/* the values at the cursors, and over the range: min, max, and from the
+ * trapezoids between the samples the area, the mean and the RMS */
+ChartView::Stats ChartView::stats(int key) const {
+	Stats result;
+	auto it = series_.find(key);
+	if (it == series_.end() || it->times.isEmpty()) return result;
+	const Series &s = *it;
+	result.atA = valueAt(s.times, s.values, cursorA_);
+	result.atB = valueAt(s.times, s.values, cursorB_);
+	double t0, t1;
+	bool cursors;
+	range(t0, t1, cursors);
+	const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+	const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+	if (i1 - i0 < 1) return result;
+	result.min = result.max = s.values[i0];
+	double area = 0, areaOfSquares = 0, span = 0;
+	for (qsizetype i = i0; i < i1; i++) {
+		result.min = std::min(result.min, s.values[i]);
+		result.max = std::max(result.max, s.values[i]);
+		if (i == i0) continue;
+		const double dt = s.times[i] - s.times[i - 1];
+		area += 0.5 * (s.values[i] + s.values[i - 1]) * dt;
+		areaOfSquares += 0.5 * (s.values[i] * s.values[i] + s.values[i - 1] * s.values[i - 1]) * dt;
+		span += dt;
+	}
+	result.n = int(i1 - i0);
+	result.integral = area;
+	if (span > 0) {
+		result.mean = area / span;
+		result.rms = std::sqrt(std::max(0.0, areaOfSquares / span));
+	} else {
+		result.mean = result.rms = s.values[i0];
+	}
+	result.ok = true;
+	return result;
+}
+
+/* each line's on a thread of the chart's: 64 lines over minutes of samples took tens of ms on one */
+QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursorsOnly) const {
+	QVector<Stats> all(keys.size());
+	inParallel(keys.size(), [&](qsizetype i) {
+		if (!cursorsOnly) {
+			all[i] = stats(keys[i]);
+			return;
+		}
+		const auto it = series_.find(keys[i]);
+		if (it == series_.end() || it->times.isEmpty()) return;
+		all[i].atA = valueAt(it->times, it->values, cursorA_);
+		all[i].atB = valueAt(it->times, it->values, cursorB_);
+	}, 2);
+	return all;
+}
+
+/* ---------------------------------------------------------------- the mouse */
+
+bool ChartView::event(QEvent *e) {
+	if (e->type() == QEvent::Leave) {
+		mouseX_ = -1;
+		refresh();
+	}
+	return QWidget::event(e);
+}
+
+void ChartView::mousePressEvent(QMouseEvent *e) {
+	if (e->button() != Qt::LeftButton) return;
+	const QPointF pos = e->position();
+	if (pressLegend(pos)) return;
+	/* on (or just by) the memory strip: the view goes there */
+	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
+		drag_ = Drag::Overview;
+		mouseMoveEvent(e);
+		return;
+	}
+	if (!plotRect().contains(pos)) return;
+	if (cursorMode_) {
+		pickCursor(pos.x());
+		return;
+	}
+	drag_ = Drag::Pan;
+	dragStartX_ = pos.x();
+	dragStartEnd_ = viewEnd();
+	setCursor(Qt::ClosedHandCursor);
+}
+
+/* cursor mode: a click places A, then B, then moves the nearer of the two */
+void ChartView::pickCursor(double x) {
+	const double t = timeAtX(x);
+	if (!std::isfinite(cursorA_)) drag_ = Drag::CurA;
+	else if (!std::isfinite(cursorB_)) drag_ = Drag::CurB;
+	else drag_ = std::fabs(xAtTime(cursorA_) - x) <= std::fabs(xAtTime(cursorB_) - x) ? Drag::CurA : Drag::CurB;
+	(drag_ == Drag::CurA ? cursorA_ : cursorB_) = t;
+	emit cursorsChanged();
+	refresh();
+}
+
+void ChartView::mouseMoveEvent(QMouseEvent *e) {
+	const QPointF pos = e->position();
+	mouseX_ = int(pos.x());
+	const QRectF plot = plotRect();
+	switch (drag_) {
+	case Drag::Pan:
+		holdAt(dragStartEnd_ - (pos.x() - dragStartX_) / plot.width() * window_);
+		break;
+	case Drag::Overview: {
+		/* the strip spans the whole memory depth, filled or not */
+		const double m1 = liveEnd(), m0 = m1 - memory_;
+		const QRectF strip = overviewRect();
+		const double t = m0 + std::clamp((pos.x() - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
+		holdAt(t + window_ / 2); /* the view centred where the mouse is */
+		break;
+	}
+	case Drag::CurA:
+	case Drag::CurB:
+		(drag_ == Drag::CurA ? cursorA_ : cursorB_) = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
+		emit cursorsChanged();
+		break;
+	case Drag::LegendBar: {
+		/* the thumb follows the mouse: its free travel spans the whole scroll */
+		const LegendLayout legend = legendLayout(plot);
+		const double travel = legendTrack(legend).width() - legendThumb(legend, 0).width();
+		if (travel > 0) scrollLegendTo(dragStartScroll_ + (pos.x() - dragStartX_) / travel * legend.maxScroll(), legend);
+		break;
+	}
+	case Drag::None: {
+		const LegendLayout legend = legendLayout(plot);
+		const double offset = legendOffset(legend);
+		const bool onLegendBar = legend.maxScroll() > 0
+				&& (legendTrack(legend).adjusted(0, -LEGEND_BAR_GRIP, 0, LEGEND_BAR_GRIP).contains(pos)
+					|| (offset > 0 && legendArrow(legend, false).contains(pos))
+					|| (offset < legend.maxScroll() && legendArrow(legend, true).contains(pos)));
+		setCursor(overviewRect().contains(pos) || onLegendBar ? Qt::PointingHandCursor
+				: plot.contains(pos) ? (cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor) : Qt::ArrowCursor);
+		break;
+	}
+	}
+	refresh();
+}
+
+void ChartView::mouseReleaseEvent(QMouseEvent *) {
+	const bool cursorLetGo = draggingCursor();
+	drag_ = Drag::None;
+	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
+	if (cursorLetGo) emit cursorsChanged(); /* measured in full now: while dragged, A and B alone followed it */
+}
+
+/* the wheel zooms the time; with Ctrl, the values; over a legend wider than
+ * its row, it scrolls the legend */
+void ChartView::wheelEvent(QWheelEvent *e) {
+	if (wheelLegend(e)) return;
+	const double notches = e->angleDelta().y() / 120.0;
+	if (notches == 0) return;
+	const double factor = std::pow(ZOOM_STEP, -notches); /* up: zoom in */
+	if (e->modifiers() & Qt::ControlModifier) {
+		zoomY(factor, e->position().y());
+		emit yChangedByUser();
+	} else {
+		zoomTime(factor, e->position().x());
+		emit windowChangedByUser(window_);
+	}
+	refresh();
+	e->accept();
+}
+
+void ChartView::zoomTime(double factor, double mouseX) {
+	const double newWindow = std::clamp(window_ * factor, MIN_WINDOW, memory_);
+	if (live_) { /* live: the right edge stays at now */
+		window_ = newWindow;
+		return;
+	}
+	/* held: zoom around the time under the mouse */
+	const QRectF plot = plotRect();
+	const double at = timeAtX(std::clamp(mouseX, plot.left(), plot.right()));
+	const double fraction = (at - (viewEnd_ - window_)) / window_;
+	window_ = newWindow;
+	holdAt(at + (1 - fraction) * newWindow);
+}
+
+/* around the value under the mouse; the Y range becomes Manual */
+void ChartView::zoomY(double factor, double mouseY) {
+	const QRectF plot = plotRect();
+	const double y = std::clamp(mouseY, plot.top(), plot.bottom());
+	const double at = yHi_ - (y - plot.top()) / plot.height() * (yHi_ - yLo_);
+	yAuto_ = false;
+	yLo_ = at - (at - yLo_) * factor;
+	yHi_ = at + (yHi_ - at) * factor;
+}
+
+void ChartView::mouseDoubleClickEvent(QMouseEvent *) {
+	setYAuto();
+	emit yChangedByUser();
+}
+
+/* A press on the legend's scroll bar or its arrows, when the chips overflow:
+ * an arrow scrolls half a row that way; on the bar, the thumb comes under the
+ * mouse and then follows it. True if the press was the legend's. */
+bool ChartView::pressLegend(const QPointF &pos) {
+	const LegendLayout legend = legendLayout(plotRect());
+	if (legend.maxScroll() <= 0) return false;
+	const double offset = legendOffset(legend);
+	const double half = legend.viewport.width() / 2;
+	if (offset > 0 && legendArrow(legend, false).contains(pos)) {
+		scrollLegendTo(offset - half, legend);
+		return true;
+	}
+	if (offset < legend.maxScroll() && legendArrow(legend, true).contains(pos)) {
+		scrollLegendTo(offset + half, legend);
+		return true;
+	}
+	if (!legendTrack(legend).adjusted(0, -LEGEND_BAR_GRIP, 0, LEGEND_BAR_GRIP).contains(pos)) return false;
+	const QRectF thumb = legendThumb(legend, offset);
+	if (pos.x() < thumb.left() || pos.x() > thumb.right()) {
+		const double travel = legendTrack(legend).width() - thumb.width();
+		const double at = (pos.x() - thumb.width() / 2 - legendTrack(legend).left()) / travel;
+		scrollLegendTo(at * legend.maxScroll(), legend);
+	}
+	drag_ = Drag::LegendBar;
+	dragStartX_ = pos.x();
+	dragStartScroll_ = legendOffset(legend);
+	return true;
+}
+
+/* The wheel over the legend's row scrolls the chips when they overflow (a
+ * sideways wheel too); otherwise the wheel zooms, as over the plot. */
+bool ChartView::wheelLegend(QWheelEvent *e) {
+	if (e->position().y() >= LEGEND_H) return false;
+	const LegendLayout legend = legendLayout(plotRect());
+	if (legend.maxScroll() <= 0) return false;
+	const QPoint delta = e->angleDelta();
+	const double notches = (delta.x() != 0 ? delta.x() : delta.y()) / 120.0;
+	scrollLegendTo(legendOffset(legend) - notches * LEGEND_WHEEL_STEP, legend);
+	e->accept();
+	return true;
+}
+
+void ChartView::scrollLegendTo(double pixels, const LegendLayout &legend) {
+	legendScroll_ = std::clamp(pixels, 0.0, legend.maxScroll());
+	refresh();
+}
+
+/* ---------------------------------------------------------------- the legend */
+
+/* every chip at its fixed place: the dot, the name, room for the widest value
+ * (right-aligned in it), then the unit. The widths are measured once while the
+ * lines and the font stay: 64 names measured at every frame and at every mouse
+ * move (the pointer's shape) held the chart near 52 frames a second */
+ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
+	const QFont font = labelFont();
+	if (chipsGeneration_ != seriesGeneration_ || chipsFont_ != font.key()) {
+		const QFontMetricsF metrics(font);
+		chipValueRoom_ = metrics.horizontalAdvance(widestChartNumber());
+		const double nameGap = metrics.horizontalAdvance(QStringLiteral("  "));
+		chipWidths_.clear();
+		for (const Series &s : series_) {
+			const double unit = s.unit.isEmpty() ? 0 : metrics.horizontalAdvance(QLatin1Char(' ') + s.unit);
+			chipWidths_ << CHIP_TEXT_LEFT + metrics.horizontalAdvance(s.name) + nameGap + chipValueRoom_ + unit
+					+ CHIP_PAD_RIGHT;
+		}
+		chipsGeneration_ = seriesGeneration_;
+		chipsFont_ = font.key();
+		chipMeasures_++;
+	}
+	LegendLayout legend;
+	legend.viewport = QRectF(plot.left(), LEGEND_TOP, std::max(0.0, plot.width() - STATE_ROOM), LEGEND_ROW_H);
+	legend.valueRoom = chipValueRoom_;
+	double x = legend.viewport.left();
+	for (const double w : std::as_const(chipWidths_)) {
+		legend.chips.push_back(QRectF(x, LEGEND_TOP, w, LEGEND_ROW_H));
+		x += w + CHIP_GAP;
+	}
+	legend.content = legend.chips.isEmpty() ? 0 : x - CHIP_GAP - legend.viewport.left();
+	return legend;
+}
+
+/* the scroll within what the chips need now (the window may have grown, or a
+ * line gone, since it was set) */
+double ChartView::legendOffset(const LegendLayout &legend) const {
+	return std::clamp(legendScroll_, 0.0, legend.maxScroll());
+}
+
+QRectF ChartView::legendTrack(const LegendLayout &legend) {
+	return QRectF(legend.viewport.left(), LEGEND_BAR_Y, legend.viewport.width(), LEGEND_BAR_H);
+}
+
+/* the thumb: as wide as the share of the chips in view, where the scroll is */
+QRectF ChartView::legendThumb(const LegendLayout &legend, double offset) {
+	const QRectF track = legendTrack(legend);
+	const double shown = legend.content > 0 ? std::min(1.0, legend.viewport.width() / legend.content) : 1;
+	const double w = std::min(track.width(), std::max(LEGEND_THUMB_MIN, track.width() * shown));
+	const double at = legend.maxScroll() > 0 ? offset / legend.maxScroll() : 0;
+	return QRectF(track.left() + at * (track.width() - w), track.top(), w, track.height());
+}
+
+/* the mark at either end of the chips' row, shown when more chips lie that way */
+QRectF ChartView::legendArrow(const LegendLayout &legend, bool right) {
+	const QRectF &v = legend.viewport;
+	return QRectF(right ? v.right() - LEGEND_ARROW_W : v.left(), v.top(), LEGEND_ARROW_W, v.height());
+}
+
+QVector<QRectF> ChartView::legendChips() const {
+	const LegendLayout legend = legendLayout(plotRect());
+	const double offset = legendOffset(legend);
+	QVector<QRectF> chips;
+	for (const QRectF &chip : legend.chips) chips.push_back(chip.translated(-offset, 0));
+	return chips;
+}
+
+QRectF ChartView::legendViewport() const {
+	return legendLayout(plotRect()).viewport;
+}
+
+double ChartView::legendScroll() const {
+	return legendOffset(legendLayout(plotRect()));
+}
+
+void ChartView::setLegendScroll(double pixels) {
+	scrollLegendTo(pixels, legendLayout(plotRect()));
+}
+
+QString ChartView::legendValue(int key) const {
+	const auto it = series_.constFind(key);
+	return it != series_.constEnd() && it->hasShown ? chartNumber(it->shown) : QString();
+}
+
+/* ------------------------------------------------------------------ drawing */
+
+void ChartView::paintEvent(QPaintEvent *) {
+	QPainter p(this);
+	/* to the window (its backing store), not a picture of the chart (grab) */
+	QBackingStore *store = QWidget::window()->backingStore();
+	const bool onScreen = store && p.paintEngine() && p.paintEngine()->paintDevice() == store->paintDevice();
+	paintFrame(p, onScreen);
+}
+
+/* The chart hidden (another tab): the card's layer stays over the window until the window has painted what is there
+ * now, all of it (the tabs' area, else the window), then goes, both at the same refresh of the screen. Taken away
+ * at once, the window's old pixels showed there until it had painted the new tab (a tenth of a second at 4K); with
+ * only the layer's part painted first, the new tab showed through the plot for a frame. */
+void ChartView::hideEvent(QHideEvent *e) {
+	if (plotOnCard())
+		QTimer::singleShot(0, this, [this] {
+			if (!plotOnCard() || isVisible()) return;
+			QWidget *area = QWidget::window();
+			for (QWidget *w = parentWidget(); w; w = w->parentWidget()) {
+				if (qobject_cast<QStackedWidget *>(w)) {
+					area = w;
+					break;
+				}
+			}
+			if (area->isVisible()) area->repaint();
+			showLayer(false);
+		});
+	QWidget::hideEvent(e);
+}
+
+void ChartView::paintFrame(QPainter &p, bool onScreen) {
+	QElapsedTimer paintTimer;
+	paintTimer.start();
+	const double frameDt = std::clamp(frameClock_.nsecsElapsed() / 1e9, 0.0, MAX_FRAME_DT);
+	frameClock_.restart();
+	updateDelay(frameDt);
+
+	Axes axes;
+	axes.rect = plotRect();
+	axes.t1 = lastViewEnd_ = viewEnd();
+	axes.t0 = axes.t1 - window_;
+	axes.span = window_;
+	axes.columns = std::max(1.0, axes.rect.width());
+	const QVector<BinnedLine> binned = binView(axes);
+	updateYRange(binned, frameDt, axes.lo, axes.hi);
+
+	/* On a card (on the screen, with lines): the plot (grid, lines, cursors, crosshair) is drawn by it into its layer
+	 * over the window, and the chart paints what is around it. While the layer is not shown yet (the chart shown
+	 * again, a card opened), the card's frame is painted under it too (read back), and the layer is shown after the
+	 * second such frame is on the window (the first is surely done on the card by then; one not done yet when the
+	 * screen shows the layer would leave its old frame there): neither the window's old pixels nor the layer's old
+	 * frame show. The other way (no line left), the CPU draws all of it, and the layer goes once that is on the window:
+	 * the whole chart painted again first, the plot's part too (a frame painted around the plot alone, as while the
+	 * layer is there, left the old lines in the window, which showed for a frame where the layer had been). */
+	const bool onCard = onScreen && gpu_ && !series_.isEmpty() && plotOnGpu(axes, binned);
+	QImage under;
+	if (onCard && !gpu_->shown()) {
+		under = gpu_->lastPicture();
+		framesUnder_++;
+	}
+	drawCard(p);
+	drawGrid(p, axes, !onCard);
+	if (!onCard) {
+		drawCursorSpan(p, axes);
+		drawLines(p, axes, binned);
+		drawCursors(p, axes);
+	} else if (!under.isNull()) {
+		under.setDevicePixelRatio(devicePixelRatioF());
+		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
+	}
+	drawMemoryStrip(p, axes);
+	drawLegend(p, axes);
+	if (!onCard) drawCrosshair(p, axes, binned);
+	drawState(p, axes);
+	if (onScreen && gpu_ && onCard != gpu_->shown() && (!onCard || framesUnder_ >= LAYER_AFTER_FRAMES))
+		QTimer::singleShot(0, this, [this, shown = onCard] { /* after this frame is on the window */
+			if (!gpu_ || gpu_->shown() == shown || (shown && (!isVisible() || series_.isEmpty()))) return;
+			if (!shown && isVisible()) repaint(); /* taken away: all of the chart on the window first */
+			showLayer(shown);
+		});
+	const double paintMs = paintTimer.nsecsElapsed() / 1e6;
+	budget_.spent(paintMs);
+	updatePaintStats(paintMs);
+	paints_++;
+}
+
+/* A line's samples from t0 to t1, one bin per pixel column on absolute time,
+ * with the min / max of what lies inside [t0, t1]. With many samples per column
+ * it bins min/max chunks instead, of the largest level that is at most half a
+ * column (a whole one on the overview), smaller ones up to where those start,
+ * so the cost follows the pixels, not the samples: a long view with millions
+ * of samples costs what a short one does. */
+void ChartView::binSeries(const Series &s, double t0, double t1, double columns, bool overview,
+		BinnedLine &out) const {
+	out.series = &s;
+	out.bins.clear();
+	out.lo = std::numeric_limits<double>::max();
+	out.hi = -out.lo;
+	if (s.times.isEmpty() || t1 <= t0) return;
+	const double columnSeconds = (t1 - t0) / columns;
+	/* from one sample before to one after, so the line enters and leaves at the edges */
+	qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+	qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+	i0 = std::max<qsizetype>(0, i0 - 1);
+	i1 = std::min<qsizetype>(s.times.size(), i1 + 1);
+	if (i1 <= i0) return;
+	out.bins.reserve(int(std::min<qsizetype>(i1 - i0, qsizetype(columns) + 4)));
+	const double perColumn = double(i1 - i0) / columns, fit = overview ? 1.0 : 2.0;
+	int top = LEVELS - 1; /* the largest level that fits a column */
+	while (top >= 0 && perColumn <= fit * CHUNK_SIZE[top]) top--;
+	binRange(s, i0, i1, columnSeconds, top, out.bins);
+	for (const Bin &bin : std::as_const(out.bins)) {
+		if (bin.t1 < t0 || bin.t0 > t1) continue; /* the range of what lies inside the span */
+		out.lo = std::min(out.lo, bin.min);
+		out.hi = std::max(out.hi, bin.max);
+	}
+}
+
+void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins) {
+	qsizetype current = i0; /* the sample the piece put starts with */
+	auto put = [&](double ta, double tb, double first, double last, double lo, double hi, int samples) {
+		const qint64 column = qint64(std::floor(ta / columnSeconds));
+		if (bins.isEmpty() || bins.back().column != column) {
+			Bin bin;
+			bin.column = column;
+			bin.firstSample = s.dropped + current;
+			bins.push_back(bin);
+		}
+		bins.back().add(ta, tb, first, last, lo, hi, samples);
+	};
+	/* a chunk that starts here, ends inside the samples asked for, and lies in one column (so a column's bin is its
+	 * own samples, whatever sample binning began at: the kept bins and the ones binned at once agree) */
+	auto fits = [&](int level, qsizetype i) {
+		const int n = CHUNK_SIZE[level];
+		if (i % n || i + n > i1 || i / n >= s.chunks[level].size()) return false;
+		const Chunk &chunk = s.chunks[level][i / n];
+		return std::floor(chunk.t0 / columnSeconds) == std::floor(chunk.t1 / columnSeconds);
+	};
+	for (qsizetype i = i0; i < i1;) {
+		current = i;
+		int level = top; /* the largest that fits */
+		while (level >= 0 && !fits(level, i)) level--;
+		if (level < 0) {
+			put(s.times[i], s.times[i], s.values[i], s.values[i], s.values[i], s.values[i], 1);
+			i++;
+			continue;
+		}
+		const Chunk &chunk = s.chunks[level][i / CHUNK_SIZE[level]];
+		put(chunk.t0, chunk.t1, chunk.first, chunk.last, chunk.min, chunk.max, CHUNK_SIZE[level]);
+		i += CHUNK_SIZE[level];
+	}
+}
+
+/* The view's bins, the complete columns kept from the frame before: only the samples after them are binned (the
+ * open last column again), so a live view costs the new samples, not the whole window. Binned from the view's start
+ * when they do not hold: another column width (window, size), the lines changed, or the view starts before them
+ * (held, dragged back). Chunks start on fixed sample numbers, so the bins come out as binned at once, give or take
+ * where a chunk at a column's edge falls (less than half a column). */
+void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
+	out.series = &s;
+	out.bins.clear();
+	out.lo = std::numeric_limits<double>::max();
+	out.hi = -out.lo;
+	Series::ViewBins &kept = s.viewBins;
+	if (s.times.isEmpty() || t1 <= t0) {
+		kept = {};
+		return;
+	}
+	const double columnSeconds = (t1 - t0) / columns;
+	qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+	qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+	i0 = std::max<qsizetype>(0, i0 - 1);
+	i1 = std::min<qsizetype>(s.times.size(), i1 + 1);
+	if (i1 <= i0) return;
+	const qint64 firstColumn = qint64(std::floor(s.times[i0] / columnSeconds));
+	/* drop what is left of the view; the rest holds when it starts at or before the view and is of these columns */
+	while (!kept.bins.isEmpty() && kept.bins.first().column < firstColumn) kept.bins.removeFirst();
+	const bool holds = kept.columnSeconds == columnSeconds && kept.generation == seriesGeneration_
+			&& kept.binnedTo >= s.dropped + i0 && kept.binnedTo <= s.dropped + i1
+			&& (kept.bins.isEmpty() ? kept.binnedTo == s.dropped + i0 : kept.bins.first().column <= firstColumn);
+	if (!holds) {
+		kept = {};
+		kept.columnSeconds = columnSeconds;
+		kept.generation = seriesGeneration_;
+		kept.binnedTo = s.dropped + i0;
+	}
+	const double perColumn = double(i1 - i0) / columns;
+	int top = LEVELS - 1; /* the largest level that fits half a column, as binSeries */
+	while (top >= 0 && perColumn <= 2.0 * CHUNK_SIZE[top]) top--;
+	QVector<Bin> fresh;
+	binRange(s, kept.binnedTo - s.dropped, i1, columnSeconds, top, fresh);
+	out.bins.reserve(kept.bins.size() + fresh.size());
+	out.bins = kept.bins;
+	out.bins += fresh;
+	/* the complete columns are kept: all but the last, which may still fill */
+	if (fresh.size() > 1) {
+		kept.bins.append(fresh.first(fresh.size() - 1));
+		kept.binnedTo = fresh.last().firstSample;
+	}
+	for (const Bin &bin : std::as_const(out.bins)) {
+		if (bin.t1 < t0 || bin.t0 > t1) continue; /* the range of what lies inside the span */
+		out.lo = std::min(out.lo, bin.min);
+		out.hi = std::max(out.hi, bin.max);
+	}
+}
+
+/* every line binned for the view, in the order of series_, on the chart's threads */
+QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes) const {
+	QVector<const Series *> lines;
+	lines.reserve(series_.size());
+	for (const Series &s : series_) lines << &s;
+	QVector<BinnedLine> binned(lines.size());
+	inParallel(lines.size(), [&](qsizetype i) { binViewSeries(*lines[i], axes.t0, axes.t1, axes.columns, binned[i]); });
+	return binned;
+}
+
+/* The Y range of this frame. Normalize: 0..1 with the margins, each line scaled
+ * into it by its own range. Auto: follows the lines. Manual: as set. */
+void ChartView::updateYRange(const QVector<BinnedLine> &lines, double frameDt, double &lo, double &hi) {
+	if (normalized_) {
+		lo = -Y_MARGIN;
+		hi = 1 + Y_MARGIN;
+		return;
+	}
+	if (yAuto_) followData(lines, frameDt);
+	lo = yLo_;
+	hi = yHi_;
+}
+
+/* Auto: the lines' range with a margin. At first, or held, it jumps there; live,
+ * it grows at once (nothing is cut off) and shrinks gently (no jumping). */
+void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
+	constexpr double FLAT = 1e-9;       /* the lines are flat: give them a range */
+	constexpr double SHRINK_TIME = 0.4; /* seconds */
+	double lo = std::numeric_limits<double>::max(), hi = -lo;
+	for (const BinnedLine &line : lines) {
+		lo = std::min(lo, line.lo);
+		hi = std::max(hi, line.hi);
+	}
+	if (lo > hi) { /* nothing in the view: keep what is shown */
+		lo = yInitialized_ ? yLo_ : 0;
+		hi = yInitialized_ ? yHi_ : 1;
+	} else {
+		if (hi - lo < FLAT) {
+			const double pad = std::max(std::fabs(hi) * 0.05, 0.5);
+			lo -= pad;
+			hi += pad;
+		}
+		const double margin = (hi - lo) * Y_MARGIN;
+		lo -= margin;
+		hi += margin;
+	}
+	if (!yInitialized_ || !live_) {
+		yLo_ = lo;
+		yHi_ = hi;
+		yInitialized_ = true;
+		return;
+	}
+	const double rate = 1 - std::exp(-frameDt / SHRINK_TIME);
+	yLo_ = lo < yLo_ ? lo : yLo_ + (lo - yLo_) * rate;
+	yHi_ = hi > yHi_ ? hi : yHi_ + (hi - yHi_) * rate;
+}
+
+/* The card: a plain fill, then its four rounded corners in the window's colour
+ * (one antialiased rounded shape the size of the chart costs milliseconds at 4K). */
+void ChartView::drawCard(QPainter &p) const {
+	const ThemeColors &c = Theme::colors();
+	p.fillRect(rect(), c.surface);
+	QPainterPath corner; /* the top-left one: the square outside a quarter circle */
+	corner.moveTo(0, 0);
+	corner.lineTo(CARD_RADIUS, 0);
+	corner.arcTo(0, 0, 2 * CARD_RADIUS, 2 * CARD_RADIUS, 90, 90);
+	corner.closeSubpath();
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(Qt::NoPen);
+	p.setBrush(c.bg);
+	const double w = width(), h = height();
+	const QPointF corners[4] = { { 0, 0 }, { w, 0 }, { w, h }, { 0, h } };
+	for (int k = 0; k < 4; k++) {
+		p.save();
+		p.translate(corners[k]);
+		p.rotate(90 * k);
+		p.drawPath(corner);
+		p.restore();
+	}
+}
+
+/* The value grid and its labels, then the time grid at fixed wall-clock times,
+ * so it moves with the data. Crisp 1 px lines: no antialiasing. */
+ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
+	GridTicks ticks;
+	ticks.valueStep = niceStep(axes.hi - axes.lo, Y_TICKS);
+	for (double v = std::ceil(axes.lo / ticks.valueStep) * ticks.valueStep; v <= axes.hi + ticks.valueStep * 1e-6;
+			v += ticks.valueStep) {
+		const double y = axes.y(v);
+		if (y >= axes.rect.top() - 1 && y <= axes.rect.bottom() + 1) ticks.values << v;
+	}
+	ticks.timeStep = niceTimeStep(window_, std::max(2, int(axes.columns / TIME_LABEL_SPACING)));
+	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
+	return ticks;
+}
+
+void ChartView::drawGrid(QPainter &p, const Axes &axes, bool lines) const {
+	const ThemeColors &c = Theme::colors();
+	const QRectF &plot = axes.rect;
+	const GridTicks ticks = gridTicks(axes);
+	p.setFont(smallFont());
+	p.setRenderHint(QPainter::Antialiasing, false);
+	for (double v : ticks.values) {
+		const double y = axes.y(v);
+		if (lines) {
+			p.setPen(QPen(c.grid, 1));
+			p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+		}
+		p.setPen(c.muted);
+		p.drawText(QRectF(2, y - 8, plot.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
+				chartAxisLabel(v, ticks.valueStep, normalized_));
+	}
+	for (double t : ticks.times) {
+		const double x = axes.x(t);
+		if (lines) {
+			p.setPen(QPen(c.grid, 1));
+			p.drawLine(QPointF(x, plot.top()), QPointF(x, plot.bottom()));
+		}
+		p.setPen(c.muted);
+		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, timeLabel(epochMs_, t, ticks.timeStep));
+	}
+	p.setRenderHint(QPainter::Antialiasing, true);
+}
+
+/* the span between the cursors, shaded behind the lines */
+void ChartView::drawCursorSpan(QPainter &p, const Axes &axes) const {
+	if (!std::isfinite(cursorA_) || !std::isfinite(cursorB_)) return;
+	const QRectF &plot = axes.rect;
+	QColor shade = Theme::colors().accent;
+	shade.setAlpha(28);
+	const double xa = std::clamp(axes.x(std::min(cursorA_, cursorB_)), plot.left(), plot.right());
+	const double xb = std::clamp(axes.x(std::max(cursorA_, cursorB_)), plot.left(), plot.right());
+	if (xb > xa) p.fillRect(QRectF(xa, plot.top(), xb - xa, plot.height()), shade);
+}
+
+/* A polyline about LINE_WIDTH thick, drawn the fast way: 1-device-pixel
+ * antialiased cosmetic polylines, a row of them side by side and a column above
+ * and below (a plus), since Qt's raster engine has a fast path for those and
+ * none for a wide antialiased stroke. `thin`: a single one. */
+void ChartView::strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr) {
+	QPen pen(color, 0);
+	pen.setCosmetic(true);
+	p.setPen(pen);
+	p.setBrush(Qt::NoBrush);
+	const int copies = thin ? 1 : std::max(2, int(std::lround(LINE_WIDTH * dpr)));
+	const qreal devicePixel = 1.0 / dpr, middle = (copies - 1) / 2.0;
+	auto drawShifted = [&](qreal dx, qreal dy) {
+		p.save();
+		p.translate(dx, dy);
+		p.drawPolyline(poly);
+		p.restore();
+	};
+	for (int i = 0; i < copies; i++) drawShifted((i - middle) * devicePixel, 0);
+	for (int j = 0; j < copies; j++)
+		if (std::fabs(j - middle) >= 0.51) drawShifted(0, (j - middle) * devicePixel); /* the row covers the middle */
+}
+
+/* A line's bins as a polyline. A column with one or two samples keeps them at
+ * their exact times (smooth at slow polls); a fuller one becomes a vertical
+ * stroke at the column's centre: its first value, the min and the max (the
+ * max first when the line falls), then its last value. With `bands`, that
+ * stroke is a plain bar the line's width instead, from the min to the max, and
+ * the polyline goes through the first and the last value only: a column of a
+ * fast, noisy line is a few pixels wide and as tall as its swing, and filling
+ * it once costs a fraction of five antialiased strokes over it. A level run is
+ * one segment: while the line stays at the same height its end moves on instead
+ * of a point being added, the same pixels drawn (a register that does not
+ * change costs two points, not four per column). A full column whose swing is
+ * under `pixel` (one device pixel) is one point: a slow line costs one point a
+ * column, not four. */
+template <typename MapX, typename MapY>
+QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, MapX x, MapY y,
+		QVector<QRectF> *bands, double bandWidth, double pixel) {
+	QPolygonF poly;
+	poly.reserve(bins.size() * 4);
+	const auto put = [&poly](const QPointF &point) {
+		const qsizetype n = poly.size();
+		if (n >= 2 && poly[n - 1].y() == point.y() && poly[n - 2].y() == point.y()) poly[n - 1] = point;
+		else if (n == 0 || poly[n - 1] != point) poly << point;
+	};
+	for (const Bin &b : bins) {
+		if (b.count <= 2) {
+			put(QPointF(x(b.t0), y(b.first)));
+			if (b.count == 2) put(QPointF(x(b.t1), y(b.last)));
+			continue;
+		}
+		const double cx = x((double(b.column) + 0.5) * columnSeconds);
+		const double top = y(b.max), bottom = y(b.min);
+		if (std::fabs(bottom - top) < pixel) { /* a stroke shorter than a pixel draws nothing more than its end */
+			put(QPointF(cx, y(b.last)));
+			continue;
+		}
+		if (bands && std::fabs(bottom - top) > bandWidth) {
+			bands->push_back(QRectF(QPointF(cx - bandWidth / 2, std::min(top, bottom)),
+					QPointF(cx + bandWidth / 2, std::max(top, bottom))));
+			put(QPointF(cx, y(b.first)));
+			put(QPointF(cx, y(b.last)));
+			continue;
+		}
+		put(QPointF(cx, y(b.first)));
+		put(QPointF(cx, y(b.first <= b.last ? b.min : b.max)));
+		put(QPointF(cx, y(b.first <= b.last ? b.max : b.min)));
+		put(QPointF(cx, y(b.last)));
+	}
+	return poly;
+}
+
+/* a line's bars, plain fills, antialiased: an edge on half a pixel is the same partly covered pixel whether it is
+ * drawn here or on a stripe (without, the two rounded it to different sides) */
+void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color) {
+	if (count <= 0) return;
+	p.save();
+	p.setPen(Qt::NoPen);
+	p.setBrush(color);
+	p.drawRects(bands, int(count));
+	p.restore();
+}
+
+/* The lines, clipped to the plot (with room for their thickness). Many points:
+ * the plot is cut into vertical stripes on whole device pixels, each drawn on a
+ * thread into an image of its own (every line's part in it, a little past its
+ * edges), then the stripes side by side: the same pixels as drawn on p. */
+void ChartView::drawLines(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const {
+	const QRectF clip = axes.rect.adjusted(-2, -2, 2, 2);
+	const qreal dpr = p.device()->devicePixelRatioF();
+	const auto x = [&axes](double t) { return axes.x(t); };
+	/* a bar as wide as the line: its copies side by side, one device pixel each */
+	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
+	QVector<QPolygonF> polys(lines.size());
+	QVector<QVector<QRectF>> bands(lines.size());
+	inParallel(lines.size(), [&](qsizetype i) {
+		const BinnedLine &line = lines[i];
+		if (line.bins.isEmpty()) return;
+		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
+		if (normalized_) widenFlatRange(lo, hi);
+		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
+		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr);
+	});
+	/* a line that is mostly bars (fast and noisy): its polyline only joins them, one stroke is enough; five over the
+	 * whole height of each column cost the most of a frame */
+	QVector<char> thin(lines.size());
+	qsizetype points = 0;
+	for (qsizetype i = 0; i < lines.size(); i++) {
+		thin[i] = 2 * bands[i].size() > lines[i].bins.size();
+		points += polys[i].size() + 2 * bands[i].size();
+	}
+	const int threads = drawThreads_ > 0 ? drawThreads_ : pool_.maxThreadCount() + 1;
+	const int stripes = int(std::clamp<qsizetype>(points / POINTS_PER_STRIPE, 1, threads));
+	if (stripes == 1) {
+		p.save();
+		p.setClipRect(clip);
+		for (qsizetype i = 0; i < lines.size(); i++) {
+			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color);
+			if (!polys[i].isEmpty()) strokePolyline(p, polys[i], lines[i].series->color, thin[i], dpr);
+		}
+		p.restore();
+		return;
+	}
+	const QRect device = p.deviceTransform().mapRect(clip).toAlignedRect();
+	const QTransform toWidget = p.deviceTransform().inverted();
+	stripeImages_.resize(stripes);
+	QVector<QPointF> places(stripes);
+	QVector<QRect> shown(stripes); /* each image's own stripe, in its pixels */
+	inParallel(stripes, [&](qsizetype k) {
+		const int a = device.left() + int(qint64(device.width()) * k / stripes);
+		const int b = device.left() + int(qint64(device.width()) * (k + 1) / stripes);
+		QImage &image = stripeImages_[k];
+		QTransform world;
+		QPointF origin;
+		prepareTile(p, QRect(a - STRIPE_OVERLAP, device.top(), b - a + 2 * STRIPE_OVERLAP, device.height()), image, world,
+				origin);
+		places[k] = toWidget.map(QPointF(a, device.top()));
+		shown[k] = QRect(STRIPE_OVERLAP, 0, b - a, device.height());
+		const QRectF rect(QPointF(toWidget.map(QPointF(a - STRIPE_OVERLAP, 0)).x(), clip.top()),
+				QPointF(toWidget.map(QPointF(b + STRIPE_OVERLAP, 0)).x(), clip.bottom())); /* drawn, in the widget's coordinates */
+		QPainter ip(&image);
+		ip.setRenderHint(QPainter::Antialiasing);
+		ip.setWorldTransform(world);
+		ip.setClipRect(clip); /* the plot's, as drawn on p; the image's own edges cut the stripe on whole pixels */
+		constexpr double REACH = 3; /* a line's thickness past the stripe's edges */
+		const auto beforeX = [](const QPointF &point, double xValue) { return point.x() < xValue; };
+		const auto afterX = [](double xValue, const QPointF &point) { return xValue < point.x(); };
+		const auto bandBefore = [](const QRectF &band, double xValue) { return band.right() < xValue; };
+		const auto bandAfter = [](double xValue, const QRectF &band) { return xValue < band.left(); };
+		for (qsizetype i = 0; i < lines.size(); i++) {
+			const QVector<QRectF> &bars = bands[i]; /* in x order too: the ones that reach the stripe */
+			const qsizetype first = std::lower_bound(bars.begin(), bars.end(), rect.left(), bandBefore) - bars.begin();
+			const qsizetype last = std::upper_bound(bars.begin(), bars.end(), rect.right(), bandAfter) - bars.begin();
+			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color);
+			const QPolygonF &poly = polys[i]; /* its x never falls: the part in the stripe, a point either side */
+			const qsizetype from = std::max<qsizetype>(
+					0, std::lower_bound(poly.begin(), poly.end(), rect.left() - REACH, beforeX) - poly.begin() - 1);
+			const qsizetype to = std::min<qsizetype>(
+					poly.size(), std::upper_bound(poly.begin(), poly.end(), rect.right() + REACH, afterX) - poly.begin() + 1);
+			if (to - from >= 1) strokePolyline(ip, poly.mid(from, to - from), lines[i].series->color, thin[i], dpr);
+		}
+		ip.end();
+		image.setDevicePixelRatio(dpr);
+	}, 1); /* a stripe is a big job: a thread each */
+	for (int k = 0; k < stripes; k++) p.drawImage(places[k], stripeImages_[k], shown[k]);
+}
+
+namespace {
+/* a colour as GpuLines takes it: bytes R, G, B, A in memory */
+quint32 gpuColor(const QColor &c) {
+	return quint32(c.red()) | quint32(c.green()) << 8 | quint32(c.blue()) << 16 | quint32(c.alpha()) << 24;
+}
+/* a dashed line from a to b as segments: dash on, gap off (pixels) */
+void dashes(QVector<GpuLines::Segment> &out, QPointF a, QPointF b, double dash, double gap, quint32 rgba) {
+	const double length = QLineF(a, b).length();
+	if (length <= 0) return;
+	const QPointF step = (b - a) / length;
+	for (double at = 0; at < length; at += dash + gap) {
+		const QPointF p0 = a + step * at, p1 = a + step * std::min(at + dash, length);
+		out.push_back({ float(p0.x()), float(p0.y()), float(p1.x()), float(p1.y()), rgba });
+	}
+}
+} // namespace
+
+QRect ChartView::layerRect() const { return plotRect().adjusted(-2, -2, 2, 2).toAlignedRect(); }
+
+void ChartView::showLayer(bool shown) {
+	QString error;
+	framesUnder_ = 0;
+	if (!gpu_ || gpu_->setShown(shown, error)) return;
+	gpu_.reset(); /* the CPU draws, from the next frame on */
+	emit drawingFailed(error);
+	update();
+}
+
+QImage ChartView::gpuPicture(QRect *inWindow) const {
+	if (!gpu_) return QImage();
+	if (inWindow) *inWindow = layerPixels_;
+	return gpu_->lastPicture();
+}
+
+/* The frame's plot as the card draws it, in the layer's pixels: the layer lies on whole pixels of the window, the
+ * chart's coordinates times the scaling may not. The grid, the cursors' span, the lines, the cursors and the
+ * crosshair's line, then the pictures over them: the cursors' tags, the crosshair's dots and its box. */
+bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
+	QString error;
+	const qreal dpr = devicePixelRatioF();
+	QWidget *top = QWidget::window();
+	const QPointF origin = QPointF(mapTo(top, QPoint(0, 0))) * dpr; /* the chart's top left, in the window's pixels */
+	const QRect logical = layerRect();
+	const QRect pixels = QRectF(origin + QPointF(logical.topLeft()) * dpr, QSizeF(logical.size()) * dpr).toAlignedRect();
+	layerPixels_ = pixels;
+	layerOrigin_ = origin;
+	const double dx = origin.x() - pixels.left(), dy = origin.y() - pixels.top();
+	const auto map = [&](QPointF pt) { return QPointF(pt.x() * dpr + dx, pt.y() * dpr + dy); };
+	const auto whole = [&](QPointF pt) { return map(pt).toPoint(); };
+	const ThemeColors &c = Theme::colors();
+	const QRectF &plot = axes.rect;
+	const QPointF topLeft = map(plot.topLeft()), bottomRight = map(plot.bottomRight());
+
+	GpuLines::Frame frame;
+	frame.background = c.surface.rgb();
+	/* the grid: crisp, each line on whole pixels as the CPU's 1 px pen (not antialiased) */
+	GpuLines::Layer grid;
+	grid.widthPx = float(std::max(1, int(std::lround(dpr))));
+	grid.caps = false;
+	const quint32 gridRgba = gpuColor(c.grid);
+	const GridTicks ticks = gridTicks(axes);
+	for (double v : ticks.values) {
+		const float y = float(std::floor(map(QPointF(0, axes.y(v))).y()) + grid.widthPx / 2);
+		grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
+	}
+	for (double t : ticks.times) {
+		const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
+		grid.segments.push_back({ x, float(topLeft.y()), x, float(bottomRight.y()), gridRgba });
+	}
+	frame.layers << grid;
+	/* the cursors' span: one bar as tall as the plot */
+	if (std::isfinite(cursorA_) && std::isfinite(cursorB_)) {
+		QColor shade = c.accent;
+		shade.setAlpha(28);
+		const double xa = std::clamp(axes.x(std::min(cursorA_, cursorB_)), plot.left(), plot.right());
+		const double xb = std::clamp(axes.x(std::max(cursorA_, cursorB_)), plot.left(), plot.right());
+		if (xb > xa) {
+			GpuLines::Layer span;
+			span.caps = false;
+			span.widthPx = float(bottomRight.y() - topLeft.y());
+			const float y = float((topLeft.y() + bottomRight.y()) / 2);
+			span.segments.push_back({ float(map(QPointF(xa, 0)).x()), y, float(map(QPointF(xb, 0)).x()), y, gpuColor(shade) });
+			frame.layers << span;
+		}
+	}
+	/* the lines: as thick as the CPU's, its copies one device pixel each */
+	QVector<QVector<GpuLines::Segment>> parts(lines.size());
+	const auto x = [&axes](double t) { return axes.x(t); };
+	inParallel(lines.size(), [&](qsizetype i) {
+		const BinnedLine &line = lines[i];
+		if (line.bins.isEmpty()) return;
+		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
+		if (normalized_) widenFlatRange(lo, hi);
+		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
+		const QPolygonF poly = toPolyline(line.bins, axes.columnSeconds(), x, y, nullptr, 0, 1 / dpr);
+		const quint32 rgba = gpuColor(line.series->color);
+		QVector<GpuLines::Segment> &segments = parts[i];
+		segments.resize(std::max<qsizetype>(1, poly.size() - 1));
+		/* scale and shift as arithmetic, not a transform per point */
+		float x0 = float(poly[0].x() * dpr + dx), y0 = float(poly[0].y() * dpr + dy);
+		if (poly.size() == 1) segments[0] = { x0, y0, x0, y0, rgba };
+		for (qsizetype k = 1; k < poly.size(); k++) {
+			const float x1 = float(poly[k].x() * dpr + dx), y1 = float(poly[k].y() * dpr + dy);
+			segments[k - 1] = { x0, y0, x1, y1, rgba };
+			x0 = x1;
+			y0 = y1;
+		}
+	});
+	GpuLines::Layer drawn;
+	drawn.widthPx = float(std::max(2, int(std::lround(LINE_WIDTH * dpr))));
+	qsizetype total = 0;
+	for (const auto &part : std::as_const(parts)) total += part.size();
+	drawn.segments.reserve(total);
+	for (const auto &part : std::as_const(parts)) drawn.segments += part;
+	frame.layers << drawn;
+	/* the cursors: dashed as the CPU's pen (1.2 px: dashes of 4.8, gaps of 2.4), a tag each */
+	GpuLines::Layer marks;
+	marks.widthPx = float(1.2 * dpr);
+	const double times[2] = { cursorA_, cursorB_ };
+	for (int k = 0; k < 2; k++) {
+		const double t = times[k];
+		if (!std::isfinite(t) || t < axes.t0 || t > axes.t1) continue;
+		const double cx = axes.x(t);
+		dashes(marks.segments, map(QPointF(cx, plot.top())), map(QPointF(cx, plot.bottom())), 4.8 * dpr, 2.4 * dpr,
+				gpuColor(c.accent));
+		frame.sprites.push_back({ tagPicture(k, dpr), whole(QPointF(cx - 9, plot.top() - 2)) });
+	}
+	frame.layers << marks;
+	/* the crosshair: its dashed line (1 px: 4 on, 2 off), the dots, the box */
+	Crosshair hair;
+	if (crosshair(axes, lines, dpr, hair)) {
+		GpuLines::Layer line;
+		line.widthPx = float(dpr);
+		dashes(line.segments, map(QPointF(hair.x, plot.top())), map(QPointF(hair.x, plot.bottom())), 4 * dpr, 2 * dpr,
+				gpuColor(c.muted));
+		frame.layers << line;
+		for (const auto &dot : std::as_const(hair.dots))
+			frame.sprites.push_back({ dotPicture(dot.second, dpr), whole(dot.first - QPointF(DOT_PICTURE, DOT_PICTURE) / 2) });
+		if (!readout_.isNull()) frame.sprites.push_back({ readout_, whole(hair.boxAt) });
+	}
+
+	if (gpu_->present(top->winId(), pixels, frame, error)) return true;
+	gpu_.reset(); /* the CPU draws, from this frame on, and paints all of the plot at the next (its layer is gone) */
+	emit drawingFailed(error);
+	update();
+	return false;
+}
+
+void ChartView::setDrawing(Drawing drawing) {
+	drawing_ = drawing;
+	openGeneration_++; /* a card still being opened for an earlier choice goes when it is ready */
+	opening_ = false;
+	if (gpu_) { /* the CPU's frame on the window first, then the layer away once that is on the screen (setShown) */
+		std::unique_ptr<GpuLines> closing = std::move(gpu_);
+		if (isVisible()) repaint();
+		QString error;
+		closing->setShown(false, error); /* failed: the card is closed all the same */
+	}
+	const QVector<GpuLines::Adapter> adapters = drawing == Drawing::Cpu ? QVector<GpuLines::Adapter>() : GpuLines::adapters();
+	const GpuLines::Adapter *chosen = nullptr;
+	for (const GpuLines::Adapter &adapter : adapters) {
+		const bool wanted = drawing == Drawing::Internal ? !adapter.dedicated : adapter.dedicated;
+		if (wanted && !chosen) chosen = &adapter;
+	}
+	if (chosen) {
+		/* Opened on a thread of its own: making its device wakes the card (0.8 s on an Optimus laptop the first time,
+		 * 0.13 s awake; its shaders take 10 ms), and the window's thread was held all along. The CPU draws meanwhile;
+		 * gpuOpened takes the card on this thread. The posted call is let go if the chart goes first (opener_ waits) */
+		opening_ = true;
+		openingName_ = chosen->name;
+		const auto card = std::make_shared<std::unique_ptr<GpuLines>>(std::make_unique<GpuLines>());
+		opener_.start([this, card, adapter = *chosen, generation = openGeneration_] {
+			QString error;
+			const bool ok = (*card)->open(adapter, error);
+			QMetaObject::invokeMethod(this, [this, card, ok, error, generation] {
+				gpuOpened(std::move(*card), ok, error, generation);
+			}, Qt::QueuedConnection);
+		});
+	} else if (drawing == Drawing::Dedicated || drawing == Drawing::Internal) {
+		/* Auto without a dedicated card: the CPU, as meant; a card asked for and not there: said */
+		emit drawingFailed(drawing == Drawing::Dedicated ? tr("no dedicated GPU here") : tr("no internal GPU here"));
+	}
+	refresh();
+}
+
+QString ChartView::drawingName() const {
+	if (gpu_) return tr("GPU: %1").arg(gpu_->name());
+	return opening_ ? tr("CPU, opening the GPU: %1").arg(openingName_) : tr("CPU");
+}
+
+void ChartView::gpuOpened(std::unique_ptr<GpuLines> gpu, bool ok, const QString &error, quint64 generation) {
+	if (generation != openGeneration_) return; /* chosen again since: this card goes */
+	opening_ = false;
+	if (ok) gpu_ = std::move(gpu);
+	else emit drawingFailed(error);
+	refresh();
+	emit drawingChanged();
+}
+
+/* the cursors: a dashed line each, its letter in a tag at the top */
+void ChartView::drawCursors(QPainter &p, const Axes &axes) const {
+	const ThemeColors &c = Theme::colors();
+	const double times[2] = { cursorA_, cursorB_ };
+	for (int k = 0; k < 2; k++) {
+		const double t = times[k];
+		if (!std::isfinite(t) || t < axes.t0 || t > axes.t1) continue;
+		const double x = axes.x(t);
+		p.setPen(QPen(c.accent, 1.2, Qt::DashLine));
+		p.drawLine(QPointF(x, axes.rect.top()), QPointF(x, axes.rect.bottom()));
+		const QRectF tag(x - 9, axes.rect.top() - 2, 18, 16);
+		p.setPen(Qt::NoPen);
+		p.setBrush(c.accentFill); /* white text on it */
+		p.drawRoundedRect(tag, 4, 4);
+		p.setPen(Qt::white);
+		p.setFont(labelFont());
+		p.drawText(tag, Qt::AlignCenter, k == 0 ? QStringLiteral("A") : QStringLiteral("B"));
+	}
+}
+
+/* a cursor's tag for the card, drawn as drawCursors draws it */
+const QImage &ChartView::tagPicture(int k, qreal dpr) const {
+	const QString key = QStringLiteral("%1|%2").arg(dpr).arg(Theme::isDark());
+	if (key != tagsKey_) {
+		tagsKey_ = key;
+		for (int i = 0; i < 2; i++) {
+			QImage &tag = tags_[i];
+			tag = QImage((QSizeF(18, 16) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+			tag.setDevicePixelRatio(dpr);
+			tag.fill(Qt::transparent);
+			QPainter p(&tag);
+			p.setRenderHint(QPainter::Antialiasing);
+			p.setPen(Qt::NoPen);
+			p.setBrush(Theme::colors().accentFill); /* white text on it */
+			p.drawRoundedRect(QRectF(0, 0, 18, 16), 4, 4);
+			p.setPen(Qt::white);
+			p.setFont(labelFont());
+			p.drawText(QRectF(0, 0, 18, 16), Qt::AlignCenter, i == 0 ? QStringLiteral("A") : QStringLiteral("B"));
+		}
+	}
+	return tags_[k];
+}
+
+/* The memory strip: the whole memory depth, as an oscilloscope's, the data
+ * filling it from the right; the view is marked on it, and while it fills it
+ * says how much is kept so far. */
+void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
+	const ThemeColors &c = Theme::colors();
+	const QRectF box = overviewRect();
+	p.setPen(QPen(c.border, 1));
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(box, 5, 5);
+	Axes strip;
+	strip.rect = box.adjusted(0, 3, 0, -3); /* the lines keep 3 px off its top and bottom */
+	strip.t1 = liveEnd();
+	strip.t0 = strip.t1 - memory_;
+	strip.span = strip.t1 - strip.t0;
+	strip.columns = std::max(1.0, box.width());
+	if (strip.t1 > strip.t0) {
+		/* the lines: drawn again when the data has moved a pixel on the strip, or the lines or its size changed */
+		const QRect device = p.deviceTransform().mapRect(box).toAlignedRect();
+		if (stripImage_.size() != device.size() || stripImage_.devicePixelRatio() != p.device()->devicePixelRatioF()
+				|| stripGeneration_ != seriesGeneration_ || stripMemory_ != memory_ || strip.t1 < stripEnd_
+				|| strip.t1 - stripEnd_ >= strip.columnSeconds()) {
+			QTransform world;
+			prepareTile(p, device, stripImage_, world, stripAt_);
+			QPainter ip(&stripImage_);
+			ip.setRenderHint(QPainter::Antialiasing);
+			ip.setWorldTransform(world);
+			ip.setClipRect(box.adjusted(1, 1, -1, -1)); /* inside the border */
+			drawMemoryLines(ip, strip);
+			ip.end();
+			stripImage_.setDevicePixelRatio(p.device()->devicePixelRatioF());
+			stripEnd_ = strip.t1;
+			stripMemory_ = memory_;
+			stripGeneration_ = seriesGeneration_;
+		}
+		p.drawImage(stripAt_, stripImage_);
+		/* the view on it */
+		const double va = std::max(strip.x(axes.t0), box.left()), vb = std::min(strip.x(axes.t1), box.right());
+		QColor fill = c.accent;
+		fill.setAlpha(45);
+		p.setPen(QPen(c.accent, 1.2));
+		p.setBrush(fill);
+		p.drawRoundedRect(QRectF(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2), 3, 3);
+		/* still filling: how much is kept, in the empty part when there is room */
+		double k0, k1;
+		memorySpan(k0, k1);
+		const double emptyW = strip.x(k0) - box.left();
+		if (k1 - k0 < memory_ * 0.98 && emptyW > 150) {
+			p.setFont(smallFont());
+			p.setPen(c.muted);
+			p.drawText(QRectF(box.left() + 8, box.top(), emptyW - 16, box.height()), Qt::AlignLeft | Qt::AlignVCenter,
+					capped_ ? tr("memory full: %1 of %2 kept (%3 lines)")
+									.arg(formatDuration(k1 - k0), formatDuration(memory_)).arg(series_.size())
+							: tr("filling: %1 of %2 kept").arg(formatDuration(k1 - k0), formatDuration(memory_)));
+		}
+	}
+	p.setFont(smallFont());
+	p.setPen(c.muted);
+	p.drawText(QRectF(2, box.top(), axes.rect.left() - 8, box.height()), Qt::AlignRight | Qt::AlignVCenter,
+			tr("memory"));
+}
+
+/* the lines on the memory strip, each in its own range, thin and faded */
+void ChartView::drawMemoryLines(QPainter &p, const Axes &strip) const {
+	QVector<const Series *> lines;
+	lines.reserve(series_.size());
+	for (const Series &s : series_) lines << &s;
+	QVector<BinnedLine> all(lines.size());
+	inParallel(lines.size(), [&](qsizetype i) { binSeries(*lines[i], strip.t0, strip.t1, strip.columns, true, all[i]); });
+	for (const BinnedLine &binned : std::as_const(all)) {
+		const Series &s = *binned.series;
+		if (binned.bins.isEmpty()) continue;
+		Axes line = strip;
+		line.lo = binned.lo;
+		line.hi = binned.hi;
+		widenFlatRange(line.lo, line.hi);
+		QColor color = s.color;
+		color.setAlpha(STRIP_ALPHA);
+		const auto x = [&line](double t) { return line.x(t); };
+		const auto y = [&line](double v) { return line.y(v); };
+		strokePolyline(p, toPolyline(binned.bins, strip.columnSeconds(), x, y), color, true, 1);
+	}
+}
+
+/* The legend: a chip per line across the top with its latest value (taken at
+ * the values' pace by frame()), each at a fixed place beside the state. Chips
+ * that do not fit are reached with the
+ * scroll bar under them; with no line yet, a hint in the plot. */
+void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
+	p.setFont(labelFont());
+	if (series_.isEmpty()) {
+		p.setPen(Theme::colors().muted);
+		p.drawText(axes.rect, Qt::AlignCenter, tr("Tick \"Plot\" on any register to chart it"));
+		return;
+	}
+	const LegendLayout legend = legendLayout(axes.rect);
+	const double offset = legendOffset(legend);
+	/* a picture of the chips and their bar, made again only when what it shows changes: its digits change at the
+	 * values' pace, not at every frame (drawn at every frame it took 1.3 ms at 4K) */
+	const qreal dpr = p.device()->devicePixelRatioF();
+	const QRectF area(legend.viewport.left(), LEGEND_TOP, legend.viewport.width(), LEGEND_BAR_Y + LEGEND_BAR_H + 1 - LEGEND_TOP);
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
+			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark());
+	if (key != legendKey_ || legendImage_.isNull()) {
+		legendKey_ = key;
+		legendBuilds_++;
+		legendImage_ = QImage((area.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+		legendImage_.setDevicePixelRatio(dpr);
+		legendImage_.fill(Qt::transparent);
+		QPainter lp(&legendImage_);
+		lp.setRenderHint(QPainter::Antialiasing);
+		lp.setFont(p.font());
+		lp.translate(-area.topLeft());
+		lp.setClipRect(legend.viewport);
+		qsizetype i = 0;
+		for (const Series &s : series_) {
+			const QRectF chip = legend.chips[i++].translated(-offset, 0);
+			if (chip.right() >= legend.viewport.left() && chip.left() <= legend.viewport.right())
+				drawChip(lp, s, chip, legend.valueRoom);
+		}
+		lp.setClipping(false);
+		if (legend.maxScroll() > 0) drawLegendBar(lp, legend, offset);
+	}
+	p.drawImage(area.topLeft(), legendImage_);
+}
+
+/* one chip: the line's dot and name on the left; its value right-aligned in
+ * the room every value gets, then the unit, so only the digits change */
+void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom) const {
+	const ThemeColors &c = Theme::colors();
+	p.setPen(Qt::NoPen);
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(chip, LEGEND_ROW_H / 2, LEGEND_ROW_H / 2);
+	p.setBrush(s.color);
+	p.drawEllipse(QPointF(chip.left() + 11, chip.center().y()), 4, 4);
+	p.setPen(c.text);
+	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT, 0);
+	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, s.name);
+	if (!s.hasShown) return;
+	const QString unit = s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit;
+	const double unitW = QFontMetricsF(p.font()).horizontalAdvance(unit);
+	const QRectF value(text.right() - unitW - valueRoom, chip.top(), valueRoom, chip.height());
+	p.drawText(value, Qt::AlignVCenter | Qt::AlignRight, chartNumber(s.shown));
+	if (!unit.isEmpty())
+		p.drawText(QRectF(value.right(), chip.top(), unitW, chip.height()), Qt::AlignVCenter | Qt::AlignLeft, unit);
+}
+
+/* the chips overflow: a thin bar under them with a thumb for the part in view,
+ * and a mark at each end of the row where more chips lie */
+void ChartView::drawLegendBar(QPainter &p, const LegendLayout &legend, double offset) const {
+	const ThemeColors &c = Theme::colors();
+	const double radius = LEGEND_BAR_H / 2;
+	p.setPen(Qt::NoPen);
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(legendTrack(legend), radius, radius);
+	p.setBrush(c.muted);
+	p.drawRoundedRect(legendThumb(legend, offset), radius, radius);
+	for (const bool right : { false, true }) {
+		if (right ? offset >= legend.maxScroll() : offset <= 0) continue;
+		const QRectF mark = legendArrow(legend, right);
+		p.setBrush(c.surface); /* the chart's own background, over the chip cut at the edge */
+		p.drawRect(mark);
+		const double cx = mark.center().x(), cy = mark.center().y(), d = right ? 3.5 : -3.5;
+		const QPointF tip[3] = { { cx + d, cy }, { cx - d, cy - 5 }, { cx - d, cy + 5 } };
+		p.setBrush(c.text);
+		p.drawPolygon(tip, 3);
+	}
+}
+
+/* the crosshair: a dashed line at the mouse, a dot on every line near it, and
+ * their values in a box */
+bool ChartView::crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qreal dpr, Crosshair &out) const {
+	const QRectF &plot = axes.rect;
+	if (drag_ != Drag::None || mouseX_ < plot.left() || mouseX_ > plot.right() || series_.isEmpty()) return false;
+	const double t = axes.t0 + (mouseX_ - plot.left()) / plot.width() * window_;
+	out.x = mouseX_;
+	/* the box's texts only when it is made again: at the values' pace (the legend's), as the mouse moves (at most
+	 * every READOUT_FOLLOW_MS: made at every frame while the mouse moved, its 4.5 ms at 4K held the chart near 46
+	 * frames a second), or the plot, scaling or theme changed. 64 values laid out and drawn at every frame took 7 ms
+	 * at 4K; digits that change at every frame cannot be read anyway. The box and the dots follow the mouse at every
+	 * frame. */
+	const bool moved = readoutMouseX_ != mouseX_ && (!readoutMade_.isValid() || readoutMade_.elapsed() >= READOUT_FOLLOW_MS);
+	const bool remake = readoutTick_ != valuesTick_ || moved || readoutPlotHeight_ != plot.height() || readoutDpr_ != dpr
+			|| readoutDark_ != Theme::isDark();
+	QVector<ReadoutRow> rows;
+	for (const BinnedLine &line : lines) {
+		const Series &s = *line.series;
+		if (s.times.isEmpty()) continue;
+		const qsizetype k = nearestIndex(s.times, t);
+		if (std::fabs(s.times[k] - t) > window_ / READOUT_REACH) continue;
+		const double v = s.values[k];
+		if (remake && hoverValues_) rows.push_back({ s.name, chartNumber(v), s.unit, s.color });
+		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
+		widenFlatRange(lo, hi);
+		const double y = normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v);
+		out.dots.push_back({ QPointF(axes.x(s.times[k]), y), s.color });
+	}
+	if (remake) {
+		const QString timeText = QStringLiteral("%1   -%2 s").arg(
+				wallClock(epochMs_, t).toString(QStringLiteral("HH:mm:ss.zzz")), chartNumber(clockNow() - t));
+		readout_ = rows.isEmpty() ? QImage() : readoutPicture(plot.height(), timeText, rows, dpr);
+		readoutTick_ = valuesTick_;
+		readoutMouseX_ = mouseX_;
+		readoutPlotHeight_ = plot.height();
+		readoutDpr_ = dpr;
+		readoutDark_ = Theme::isDark();
+		readoutBuilds_++;
+		readoutMade_.restart();
+	}
+	if (!readout_.isNull()) {
+		/* right of the mouse, or left of it when there is no room; inside the plot */
+		const double w = readout_.deviceIndependentSize().width();
+		double left = mouseX_ + 14;
+		if (left + w > plot.right()) left = mouseX_ - 14 - w;
+		out.boxAt = QPointF(std::max(left, plot.left()), plot.top() + 8);
+	}
+	return true;
+}
+
+void ChartView::drawCrosshair(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const {
+	const qreal dpr = p.device()->devicePixelRatioF();
+	Crosshair hair;
+	if (!crosshair(axes, lines, dpr, hair)) return;
+	const QRectF &plot = axes.rect;
+	p.setPen(QPen(Theme::colors().muted, 1, Qt::DashLine));
+	p.drawLine(QPointF(hair.x, plot.top()), QPointF(hair.x, plot.bottom()));
+	/* stamped: one small picture per colour (64 antialiased circles took 1.4 ms a frame) */
+	for (const auto &dot : std::as_const(hair.dots))
+		p.drawImage(dot.first - QPointF(DOT_PICTURE, DOT_PICTURE) / 2, dotPicture(dot.second, dpr));
+	if (!readout_.isNull()) drawBoxPicture(p, hair.boxAt, readout_, 8);
+}
+
+/* The crosshair's box: the time, then each line's value by a dot in its colour, in as many columns as the plot's
+ * height needs (64 lines do not fit one). Every column has room for the longest name, the widest number (as the
+ * legend gives) and the longest unit, the number right-aligned in its room: the box and its columns keep their
+ * places while the digits change (it moved by the widest value of the moment). The base is kept; only the time
+ * and the numbers are written, on a copy of it. */
+QImage ChartView::readoutPicture(double plotHeight, const QString &timeText, const QVector<ReadoutRow> &rows,
+		qreal dpr) const {
+	const ReadoutBase &base = readoutBase(plotHeight, rows, dpr);
+	/* into the last box's memory when it is the base's size: a new 6 MB picture each time (4K) cost more in
+	 * fresh memory than the copy itself */
+	QImage image;
+	std::swap(image, readout_);
+	if (image.size() != base.image.size() || image.format() != base.image.format())
+		image = QImage(base.image.size(), base.image.format());
+	std::memcpy(image.bits(), base.image.constBits(), size_t(base.image.sizeInBytes()));
+	image.setDevicePixelRatio(dpr);
+	QPainter p(&image);
+	p.setFont(labelFont());
+	const QFontMetricsF metrics(p.font());
+	const double baseline = (READOUT_ROW_H + metrics.ascent() - metrics.descent()) / 2;
+	p.setPen(Theme::colors().muted);
+	p.drawText(QPointF(20.5, 5.5 + baseline), timeText);
+	p.setPen(Theme::colors().text);
+	for (int i = 0; i < rows.size(); i++) {
+		const double x = 0.5 + (i / base.perColumn) * base.columnW + 20;
+		const double y = 5.5 + (i % base.perColumn + 1) * READOUT_ROW_H;
+		const double right = x + base.nameW + base.gap + base.valueRoom;
+		p.drawText(QPointF(right - metrics.horizontalAdvance(rows[i].value), y + baseline), rows[i].value);
+	}
+	return image;
+}
+
+const ChartView::ReadoutBase &ChartView::readoutBase(double plotHeight, const QVector<ReadoutRow> &rows, qreal dpr) const {
+	QString key = QStringLiteral("%1|%2|%3").arg(plotHeight).arg(dpr).arg(Theme::isDark());
+	for (const ReadoutRow &row : rows) key += QLatin1Char('|') + row.name + QLatin1Char('|') + row.unit
+			+ QLatin1Char('|') + row.color.name();
+	if (key == readoutBase_.key) return readoutBase_;
+	ReadoutBase &base = readoutBase_;
+	base.key = key;
+	const ThemeColors &c = Theme::colors();
+	const QFont font = labelFont();
+	const QFontMetricsF metrics(font);
+	base.perColumn = readoutRowsPerColumn(plotHeight);
+	const int columns = int((rows.size() + base.perColumn - 1) / base.perColumn);
+	const int rowsShown = int(std::min<qsizetype>(rows.size(), base.perColumn));
+	base.nameW = base.unitW = 0;
+	for (const ReadoutRow &row : rows) {
+		base.nameW = std::max(base.nameW, metrics.horizontalAdvance(row.name));
+		if (!row.unit.isEmpty()) base.unitW = std::max(base.unitW, metrics.horizontalAdvance(QLatin1Char(' ') + row.unit));
+	}
+	base.gap = metrics.horizontalAdvance(QStringLiteral("  "));
+	base.valueRoom = metrics.horizontalAdvance(widestChartNumber());
+	base.columnW = 20 + base.nameW + base.gap + base.valueRoom + base.unitW + 10;
+	/* the time row as wide as it can get, so it does not move the box either */
+	const double timeW = metrics.horizontalAdvance(QStringLiteral("00:00:00.000   -%1 s").arg(widestChartNumber()));
+	base.width = std::max(timeW + 30, columns * base.columnW + 4);
+	const double h = (rowsShown + 1) * READOUT_ROW_H + 10;
+
+	base.image = QImage((QSizeF(base.width + 1, h + 1) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+	base.image.setDevicePixelRatio(dpr);
+	base.image.fill(Qt::transparent);
+	QPainter p(&base.image);
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setFont(font);
+	const QRectF box(0.5, 0.5, base.width, h);
+	p.setPen(QPen(c.border, 1));
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(box, 8, 8);
+	for (int i = 0; i < rows.size(); i++) {
+		const ReadoutRow &row = rows[i];
+		const double x = box.left() + (i / base.perColumn) * base.columnW + 20;
+		const double y = box.top() + 5 + (i % base.perColumn + 1) * READOUT_ROW_H;
+		p.setPen(Qt::NoPen);
+		p.setBrush(row.color);
+		p.drawEllipse(QPointF(x - 9, y + READOUT_ROW_H / 2), 3.5, 3.5);
+		p.setPen(c.text);
+		p.drawText(QRectF(x, y, base.nameW, READOUT_ROW_H), Qt::AlignVCenter | Qt::AlignLeft, row.name);
+		if (!row.unit.isEmpty())
+			p.drawText(QRectF(x + base.nameW + base.gap + base.valueRoom, y, base.unitW, READOUT_ROW_H),
+					Qt::AlignVCenter | Qt::AlignLeft, QLatin1Char(' ') + row.unit);
+	}
+	return base;
+}
+
+/* A picture of a rounded box (opaque inside): the rows of its corners and its side edges blended, the rest
+ * copied, a third of a blend's cost (the crosshair's box is 1.6 M pixels at 4K). The pieces share the picture's
+ * memory; at goes on a whole device pixel, so they meet exactly. */
+void ChartView::drawBoxPicture(QPainter &p, QPointF at, const QImage &image, double radius) {
+	const QTransform toDevice = p.deviceTransform();
+	const QPointF device = toDevice.map(at);
+	at = toDevice.inverted().map(QPointF(std::round(device.x()), std::round(device.y())));
+	const qreal dpr = image.devicePixelRatio();
+	const int w = image.width(), h = image.height();
+	const int band = std::min(h / 2, int(std::ceil(radius * dpr)) + 1);
+	const int edge = std::min(w / 2, int(std::ceil(2 * dpr)) + 1);
+	auto piece = [&](int x, int y, int pw, int ph) {
+		if (pw <= 0 || ph <= 0) return;
+		QImage part(image.constBits() + qsizetype(y) * image.bytesPerLine() + x * 4, pw, ph, image.bytesPerLine(),
+				image.format());
+		part.setDevicePixelRatio(dpr);
+		p.drawImage(QPointF(at.x() + x / dpr, at.y() + y / dpr), part);
+	};
+	piece(0, 0, w, band);
+	piece(0, h - band, w, band);
+	piece(0, band, edge, h - 2 * band);
+	piece(w - edge, band, edge, h - 2 * band);
+	const QPainter::CompositionMode mode = p.compositionMode();
+	p.setCompositionMode(QPainter::CompositionMode_Source);
+	piece(edge, band, w - 2 * edge, h - 2 * band);
+	p.setCompositionMode(mode);
+}
+
+const QImage &ChartView::dotPicture(const QColor &color, qreal dpr) const {
+	if (dpr != dotsDpr_) {
+		dots_.clear();
+		dotsDpr_ = dpr;
+	}
+	auto it = dots_.find(color.rgba());
+	if (it != dots_.end()) return *it;
+	QImage dot((QSizeF(DOT_PICTURE, DOT_PICTURE) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+	dot.setDevicePixelRatio(dpr);
+	dot.fill(Qt::transparent);
+	QPainter p(&dot);
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(Qt::NoPen);
+	p.setBrush(color);
+	p.drawEllipse(QPointF(DOT_PICTURE / 2, DOT_PICTURE / 2), 3.5, 3.5);
+	p.end();
+	return *dots_.insert(color.rgba(), dot);
+}
+
+int ChartView::readoutRowsPerColumn(double plotHeight) {
+	/* the box's top margin, the time row and the box's padding off the plot's height */
+	return std::max(1, int((plotHeight - 8 - 10) / READOUT_ROW_H) - 1);
+}
+
+/* the state, top right: held, manual Y, cursor mode */
+void ChartView::drawState(QPainter &p, const Axes &axes) const {
+	QStringList state;
+	if (!live_) state << tr("held: -%1 s · Live to follow").arg(chartNumber(clockNow() - axes.t1));
+	if (!yAuto_ && !normalized_) state << tr("Y manual");
+	if (cursorMode_) state << tr("cursors: click / drag");
+	if (state.isEmpty()) return;
+	const ThemeColors &c = Theme::colors();
+	p.setFont(labelFont());
+	p.setPen(!live_ ? c.warn : c.muted);
+	p.drawText(QRectF(axes.rect.right() - STATE_W, LEGEND_TOP, STATE_W, LEGEND_ROW_H),
+			Qt::AlignRight | Qt::AlignVCenter, state.join(QStringLiteral("  ·  ")));
+}
+
+/* the paint time as a running average; the frames counted over each second */
+void ChartView::updatePaintStats(double paintMs) {
+	paintMs_ = paintMs_ * 0.9 + paintMs * 0.1;
+	fpsFrames_++;
+	if (fpsClock_.elapsed() >= 1000) {
+		fps_ = fpsFrames_ * 1000.0 / double(fpsClock_.elapsed());
+		fpsFrames_ = 0;
+		fpsClock_.restart();
+	}
+}
+
+/* -------------------------------------------------------------- ChartWidget */
+
+ChartWidget::ChartWidget(QWidget *parent) : QWidget(parent), view_(new ChartView(this)) {
+	setMinimumHeight(260);
+	auto *layout = new QVBoxLayout(this);
+	layout->setContentsMargins(0, 0, 0, 0);
+	layout->addWidget(view_);
+	connect(view_, &ChartView::windowChangedByUser, this, &ChartWidget::windowChangedByUser);
+	connect(view_, &ChartView::yChangedByUser, this, &ChartWidget::yChangedByUser);
+}

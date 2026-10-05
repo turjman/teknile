@@ -1,0 +1,11 @@
+EVRe
+Copyright 2023-2026 teknile
+
+This product includes software developed by teknile: the EVRe protocol, the
+EVRe device library, EVRe Studio and its tools (evre, evre-sim, the evre
+Python package).
+
+EVRe Studio uses Qt (https://www.qt.io). Qt is not part of this repository;
+it is used under the GNU Lesser General Public License version 3. Binary
+releases of EVRe Studio ship the Qt libraries as separate files, with the
+LGPLv3 text, so that they can be replaced.

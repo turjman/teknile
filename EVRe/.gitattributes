@@ -1,0 +1,4 @@
+# every text file with LF line ends, whatever the editor or the platform
+* text=auto eol=lf
+*.png binary
+*.ico binary

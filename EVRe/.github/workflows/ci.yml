@@ -1,0 +1,72 @@
+# Build EVRe Studio and its tools, and run the tests, on Linux and Windows.
+# Every test that writes does it to a fake device or a simulator the job starts itself.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - name: Qt, CMake, Ninja, jsonschema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev libgl1-mesa-dev
+          pip install jsonschema
+      - name: Build
+        run: |
+          cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Map files and exports
+        run: ./build/evre_map_test
+      - name: JSON Schema
+        run: python3 studio/tests/schema_test.py
+      - name: evre command line
+        run: python3 studio/tests/cli_test.py build
+      - name: evre-sim
+        run: python3 studio/tests/sim_test.py build
+      - name: Device table, compiled with lib/EVRe.cpp
+        run: python3 studio/tests/device_table_test.py build
+      - name: Python package
+        run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
+      - name: GUI test (against the fake device)
+        run: |
+          python3 studio/tests/fake_device.py --port 1210 &
+          sleep 2
+          (cd build && ./evre_gui_test example_device.json)
+      - name: Login of the fake devices
+        run: python3 studio/tests/fake_login_test.py build
+
+  windows:
+    runs-on: windows-2022
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_mingw
+          modules: qtserialport
+          tools: "tools_mingw1310,tools_ninja"
+      - name: Build
+        shell: bash
+        run: |
+          export PATH="$IQTA_TOOLS/mingw1310_64/bin:$IQTA_TOOLS/Ninja:$PATH"
+          cmake -S studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Tests without a window
+        shell: bash
+        run: |
+          export PATH="$IQTA_TOOLS/mingw1310_64/bin:$QT_ROOT_DIR/bin:$PATH"
+          ./build/evre_map_test
+          python studio/tests/cli_test.py build
+          python studio/tests/sim_test.py build
+          python studio/tests/device_table_test.py build
+          EVRE_BUILD=build python -m unittest discover -s studio/python/tests

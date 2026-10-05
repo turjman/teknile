@@ -1,0 +1,23 @@
+# build output
+build/
+build-*/
+cmake-build-*/
+out/
+*.exe
+*.dll
+*.o
+*.obj
+
+# editors
+.vscode/
+.idea/
+*.user
+*.autosave
+CMakeUserPresets.json
+
+# Python
+__pycache__/
+*.pyc
+
+# recordings made while testing
+*.csv

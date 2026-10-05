@@ -1,0 +1,12 @@
+{
+  "format": "evre-bus/1",
+  "name": "Example bus",
+  "devices": [
+    { "name": "D1", "slave": 1, "map": "example_device.json" },
+    { "name": "D2", "slave": 2, "map": "example_device.json" }
+  ],
+  "broadcasts": [
+    { "name": "Fans off", "register": "FAN_SPEED", "value": "0" },
+    { "name": "Fans 50 %", "register": "FAN_SPEED", "value": "50" }
+  ]
+}

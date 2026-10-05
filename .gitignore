@@ -1,0 +1,8 @@
+# Only EVRe (the protocol library, EVRe Studio, their docs and tests) is published from this folder;
+# the deployed programs, work in progress and other folders stay local.
+/*
+!/EVRe/
+!/.gitignore
+!/CLAUDE.md
+!/LICENSE
+!/README.md
