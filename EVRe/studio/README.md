@@ -171,7 +171,7 @@ Part IV how to make one in the Map editor.
 | `tests/cli_test.py` | the `evre` command line end to end (48 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes, a fast stream included (29 checks) |
 | `tests/device_table_test.py` | the device table export compiled with the EVRe library and run (24 checks; needs `g++` and the library) |
-| `python/tests/test_evre.py` | the Python package: frames, maps, overlays, a session against `evre-sim`, and a bus on `evre_fake_fast` |
+| `python/tests/test_evre.py` | the Python package: frames, maps, overlays, answers matched to their requests, a session against `evre-sim`, and a bus on `evre_fake_fast` |
 | `tests/api_test.py` | the API end to end, in three modes: `readonly`, `writes`, `danger` (24, 25 and 25 checks) |
 | `evre_probe` | the protocol core without the window, for checking a real device; it only reads, apart from the login token when `EVRE_TOKEN` is set |
 | `evre_fake_fast` | a fast fake device in C++, for measuring the Studio |

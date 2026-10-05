@@ -64,4 +64,5 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   terminal or CI; a bus of devices by its bus file.
 - `evre-sim`: a map served as a device over TCP, behaving as the map says; its fast streams too.
 - `evre record`: a fast stream's blocks into a `.evrs` file, as they came, with time marks.
-- `evre` for Python (`studio/python`): a device by register name with its map, standard library only.
+- `evre` for Python (`studio/python`): a device by register name with its map, standard library only. An answer is
+  matched by its slave, offset and count, so a frame the device sends by itself is never taken for one.

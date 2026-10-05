@@ -208,6 +208,14 @@ This is a standard CRC — most languages have it as **CRC-16/X-25** (also calle
 CRC-16/IBM-SDLC or CRC-B). If your library offers it by name, use that rather
 than porting the table.
 
+**What it catches.** In a frame of up to 4086 data bytes: every error of one,
+two or three bits. The polynomial repeats after 32 767 bits, and such a frame
+has at most 32 760 from its start byte to its CRC. In a longer frame, 4087 to
+4096 data bytes (a `READ_RESP` or a write of nearly a whole bank), two flipped
+bits exactly 32 767 bits apart can pass the CRC. At any length it catches
+every error of an odd number of bits and every burst of up to 16 bits. Where
+that matters, read a bank in two requests.
+
 ---
 
 ## Register model
