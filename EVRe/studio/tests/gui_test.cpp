@@ -31,6 +31,13 @@
  */
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
+#include <QContextMenuEvent>
+#include <QDropEvent>
+#include <QInputDialog>
+#include <QMimeData>
+#include <QProgressDialog>
+#include <QSignalSpy>
 #include <QComboBox>
 #include <QDialogButtonBox>
 #include <QCompleter>
@@ -88,10 +95,12 @@
 #include "model/bus_file.h"
 #include "model/device_map.h"
 #include "model/map_document.h"
+#include "model/recording_file.h"
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
+#include "ui/recording_window.h"
 #include "ui/frame_clock.h"
 #include "ui/elided_label.h"
 #include "ui/field_editor.h"
@@ -514,8 +523,13 @@ public:
 		chartLogScale();
 		chartInfoLine();
 		frameClockPacing();
+		recordingFiles();
+		chartMenuAndPictures();
+		chartExport();
+		chartNotes();
 		frameBudget();
 		plotShownWithoutQuestion();
+		recordingWindows();
 		mapEditor();
 		limitsAndFields();
 		pollingSurvivesEdits();
@@ -3960,6 +3974,443 @@ private:
 		ok = ok && pacing.waited(16.7) && pacing.timer(); /* the 30 ms wait broke the run */
 		check(ok, "frame clock: 3 refreshes in a row later than 34 ms and the 16 ms timer ticks (on battery, 13 Hz); 10 "
 				"within 25 ms and the refreshes pace again; a wait between ends either run");
+	}
+
+	/* a QInputDialog's text typed and accepted (fillDialog's fill) */
+	static void typeAndAccept(QDialog *dialog, const QString &text) {
+		if (auto *input = qobject_cast<QInputDialog *>(dialog)) {
+			input->setTextValue(text);
+			input->accept();
+		}
+	}
+
+	/* The recording's format read and written (model/recording_file.h): rows shared by samples closer than a quarter of
+	 * their interval, a title's comma a semicolon, an empty cell no sample, a column of hex left out, the estimate from
+	 * the head and the tail, a read from the middle, the notes beside it */
+	void recordingFiles() {
+		QTemporaryDir folder;
+		const QString path = folder.filePath(QStringLiteral("lines.csv"));
+		recording::Line volts{ QStringLiteral("VOLTS"), QStringLiteral("V"), {}, {} };
+		recording::Line amps{ QStringLiteral("AMPS"), QStringLiteral("A"), {}, {} };
+		recording::Line slow{ QStringLiteral("SLOW, X"), QString(), { 0.55 }, { 7.0 } };
+		for (int i = 0; i < 10; i++) {
+			volts.times << i * 0.1;
+			volts.values << 12.0 + i;
+			amps.times << i * 0.1 + 0.001; /* a millisecond later: the same row */
+			amps.values << 0.5 * i;
+		}
+		const qint64 epoch = QDateTime(QDate(2026, 10, 5), QTime(14, 3, 12)).toMSecsSinceEpoch();
+		std::atomic<bool> cancel{ false };
+		qint64 rows = 0;
+		QString error;
+		const bool written = recording::write(path, { volts, amps, slow }, epoch, cancel, {}, rows, error);
+		QFile file(path);
+		QString header, first;
+		if (file.open(QIODevice::ReadOnly)) {
+			header = QString::fromUtf8(file.readLine()).trimmed();
+			first = QString::fromUtf8(file.readLine()).trimmed();
+			file.close();
+		}
+		recording::Data data;
+		const bool read = recording::read(path, 0, cancel, {}, data, error);
+		bool same = read && data.columns.size() == 3 && data.columns[1].times.size() == 10
+				&& data.columns[2].name == QLatin1String("SLOW; X") && data.columns[2].times.size() == 1
+				&& data.columns[0].unit == QLatin1String("V") && data.epochMs == epoch;
+		for (int i = 0; same && i < 10; i++)
+			same = std::fabs(data.columns[0].times[i] - i * 0.1) < 1e-6 && data.columns[0].values[i] == 12.0 + i
+					&& std::fabs(data.columns[1].times[i] - i * 0.1) < 1e-6 && data.columns[1].values[i] == 0.5 * i;
+		if (!same || rows != 11)
+			std::printf("     (%lld rows; \"%s\" / \"%s\"; read %s)\n", (long long) rows, qPrintable(header),
+					qPrintable(first), read ? "yes" : qPrintable(error));
+		check(written && rows == 11 && header == QLatin1String("time_s,datetime,VOLTS [V],AMPS [A],SLOW; X")
+						&& first == QLatin1String("0.000000,2026-10-05T14:03:12.000,12,0,") && same,
+				"recording files: written as a recording (\"time_s,datetime,NAME [unit]\"), samples a millisecond apart "
+				"share a row, a lone one has its own, an empty cell is no sample; read back the same");
+
+		/* a byte array's hex: left out; the estimate; a read from the middle */
+		const QString hex = folder.filePath(QStringLiteral("hex.csv"));
+		QFile out(hex);
+		if (out.open(QIODevice::WriteOnly)) {
+			out.write("time_s,datetime,BUF,N [bar]\n");
+			for (int i = 0; i < 1000; i++)
+				out.write(QStringLiteral("%1,2026-10-05T14:03:%2.000,%3,%4\n").arg(10 + i * 0.01, 0, 'f', 6)
+						.arg(12 + i / 100, 2, 10, QLatin1Char('0')).arg(i % 2 ? QStringLiteral("00ff") : QStringLiteral("0a"))
+						.arg(i).toUtf8());
+			out.close();
+		}
+		recording::Data hexData;
+		recording::Estimate estimate;
+		const bool skipped = recording::read(hex, 0, cancel, {}, hexData, error) && hexData.skipped == 1
+				&& hexData.columns.size() == 1 && hexData.columns[0].name == QLatin1String("N")
+				&& hexData.columns[0].unit == QLatin1String("bar") && hexData.columns[0].times.size() == 1000;
+		const bool estimated = recording::estimate(hex, estimate, error) && std::abs(estimate.rows - 1000) <= 50
+				&& estimate.firstTime == 10.0 && std::fabs(estimate.lastTime - 19.99) < 1e-9 && estimate.titles.size() == 2;
+		recording::Data half;
+		const bool middle = recording::read(hex, estimate.headerBytes + (estimate.bytes - estimate.headerBytes) / 2, cancel,
+				{}, half, error) && !half.columns.isEmpty() && half.columns.last().times.size() > 400
+				&& half.columns.last().times.size() < 600 && half.columns.last().times.last() == hexData.columns[0].times.last();
+		if (!skipped || !estimated || !middle)
+			std::printf("     (left out %d, %d columns; estimate %lld rows, %.3f .. %.3f; half %lld samples)\n",
+					hexData.skipped, int(hexData.columns.size()), (long long) estimate.rows, estimate.firstTime,
+					estimate.lastTime, half.columns.isEmpty() ? -1LL : (long long) half.columns.last().times.size());
+		check(skipped && estimated && middle, "recording files: a column of hex (a byte array) left out; the estimate from "
+				"the head and the tail (rows, first and last time); a read from the middle keeps the last part");
+
+		/* the notes beside it */
+		const QVector<ChartNote> notes{ { 0.25, QStringLiteral("pump on") }, { 0.75, QStringLiteral("Ü, \"quoted\"") } };
+		QVector<ChartNote> back;
+		const bool saved = recording::saveNotes(path, notes, epoch, error) && QFile::exists(path + QStringLiteral(".notes.json"))
+				&& recording::loadNotes(path, back, error) && back == notes;
+		const bool removed = recording::saveNotes(path, {}, epoch, error) && !QFile::exists(recording::notesPath(path))
+				&& !recording::loadNotes(path, back, error) && error.isEmpty();
+		check(saved && removed, "recording files: the notes saved beside it (<file>.notes.json) and read back; none left: "
+				"the file removed");
+	}
+
+	/* the right-click on the chart: its menu; the picture copied and saved, painted by the CPU */
+	void chartMenuAndPictures() {
+		LoneChart chart(QStringLiteral("PIC"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 1000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i * 0.01, std::sin(i * 0.02));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		const QPoint at(chart.view->width() / 2, chart.view->height() / 2);
+		QContextMenuEvent right(QContextMenuEvent::Mouse, at, chart.view->mapToGlobal(at));
+		QApplication::sendEvent(chart.view, &right);
+		QMenu *menu = chart.tab.chartMenu();
+		QStringList texts;
+		if (menu)
+			for (QAction *action : menu->actions())
+				if (!action->isSeparator()) texts << action->text();
+		const QStringList want{ QStringLiteral("Copy picture"), QStringLiteral("Save picture…"),
+			QStringLiteral("Export to CSV…"), QStringLiteral("Add note here"), QStringLiteral("Open recording…"),
+			QStringLiteral("Recent recordings") };
+		const bool shown = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000) && texts == want;
+		if (!shown) std::printf("     (the chart's menu: %s)\n", qPrintable(texts.join(QStringLiteral(" | "))));
+		if (menu) menu->close();
+		check(shown, "chart: a right-click shows its menu: Copy picture, Save picture, Export to CSV, Add note here, Open "
+				"recording, Recent recordings");
+		QTemporaryDir folder;
+		const QString png = folder.filePath(QStringLiteral("chart.png"));
+		const bool saved = chart.tab.savePicture(png);
+		const QImage image(png);
+		const QSize device = (QSizeF(chart.view->size()) * chart.view->devicePixelRatioF()).toSize();
+		chart.tab.copyPicture();
+		const QImage copied = QApplication::clipboard()->image();
+		check(saved && image.size() == device && copied.size() == device,
+				"chart: Save picture writes a PNG of the chart as shown (its size in pixels), Copy picture puts it on the "
+				"clipboard; both painted by the CPU");
+		chart.tab.hide();
+	}
+
+	/* Export to CSV: the view, or A -> B; the notes in it beside it; a big one on a thread, with its progress and
+	 * Cancel (the file then removed) */
+	void chartExport() {
+		LoneChart chart(QStringLiteral("EXP"), QStringLiteral("V"));
+		RegDef second = chart.def;
+		second.addr = 0xD002;
+		second.name = QStringLiteral("EXP2");
+		chart.tab.plotRegister(second, true);
+		MathLines::Samples samples;
+		for (int i = 0; i < 2000; i++) { /* 90 .. 99.995 s, 200 Hz, both in the same polls */
+			samples[regKey(chart.def)] << QPointF(90.0 + i * 0.005, i);
+			samples[regKey(second)] << QPointF(90.0 + i * 0.005, -i);
+		}
+		chart.tab.frame(samples);
+		chart.view->setWindow(5); /* the view: 95 .. 100 */
+		(void) chart.view->grab();
+		QTemporaryDir folder;
+		const auto run = [&](const QString &name, qint64 &rows, QString &error) {
+			QSignalSpy done(&chart.tab, &ChartTab::exported);
+			const QString file = folder.filePath(name);
+			if (!chart.tab.exportCsv(file)) return QStringList();
+			if (!done.wait(10000)) return QStringList();
+			rows = done.first().at(1).toLongLong();
+			error = done.first().at(2).toString();
+			QFile in(file);
+			if (!in.open(QIODevice::ReadOnly)) return QStringList();
+			return QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+		};
+		qint64 rows = 0;
+		QString error;
+		const QStringList view = run(QStringLiteral("view.csv"), rows, error);
+		const bool ofView = rows == 1000 && view.size() == 1001 && view[0] == QLatin1String("time_s,datetime,EXP [V],EXP2 [V]")
+				&& view[1].startsWith(QLatin1String("95.000000,")) && view[1].endsWith(QLatin1String(",1000,-1000"))
+				&& error.isEmpty();
+		if (!ofView) std::printf("     (view: %lld rows, %s / %s)\n", (long long) rows, qPrintable(view.value(0)), qPrintable(view.value(1)));
+		chart.view->setCursors(92.0, 91.0);
+		chart.view->addNote(91.5, QStringLiteral("inside"));
+		chart.view->addNote(93.0, QStringLiteral("outside"));
+		const QStringList span = run(QStringLiteral("span.csv"), rows, error);
+		QVector<ChartNote> notes;
+		QString notesError;
+		const bool ofSpan = rows == 201 && span.value(1).startsWith(QLatin1String("91.000000,"))
+				&& span.last().startsWith(QLatin1String("92.000000,"))
+				&& recording::loadNotes(folder.filePath(QStringLiteral("span.csv")), notes, notesError)
+				&& notes == QVector<ChartNote>{ { 91.5, QStringLiteral("inside") } }
+				&& RecordingWindow::recentFiles().value(0) == QFileInfo(folder.filePath(QStringLiteral("span.csv"))).absoluteFilePath();
+		check(ofView && ofSpan, "chart, Export to CSV: the view's samples in the recording's format (the lines of one poll "
+				"in one row); with cursors A -> B only, the notes in it beside it; listed in Recent recordings");
+
+		/* a big one: 40 lines of 150 000 samples, on a thread; Cancel removes the file */
+		LoneChart big(QStringLiteral("BIG0"), QStringLiteral("V"));
+		MathLines::Samples many;
+		for (int k = 0; k < 40; k++) {
+			RegDef def = big.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("BIG%1").arg(k);
+			if (k > 0) big.tab.plotRegister(def, true);
+			QVector<QPointF> &points = many[regKey(def)];
+			points.reserve(150000);
+			for (int i = 0; i < 150000; i++) points << QPointF(i * 0.0001, std::sin(i * 0.001 + k));
+		}
+		big.now = 15.0;
+		big.tab.frame(many);
+		big.view->setMemory(30);
+		big.view->setWindow(20);
+		big.tab.show();
+		(void) QTest::qWaitForWindowExposed(&big.tab);
+		(void) big.view->grab();
+		QSignalSpy done(&big.tab, &ChartTab::exported);
+		const QString file = folder.filePath(QStringLiteral("big.csv"));
+		QElapsedTimer started;
+		started.start();
+		const bool began = big.tab.exportCsv(file);
+		const qint64 returnedMs = started.elapsed();
+		const bool running = big.tab.exporting() && !big.tab.exportCsv(folder.filePath(QStringLiteral("again.csv")));
+		QProgressDialog *progress = nullptr;
+		const bool progressShown = QTest::qWaitFor([&] {
+			progress = big.tab.findChild<QProgressDialog *>(QStringLiteral("exportProgress"));
+			return progress && progress->isVisible();
+		}, 3000);
+		const int valueSeen = progress ? progress->value() : -1;
+		if (QPushButton *cancel = progress ? buttonWithText(*progress, QStringLiteral("Cancel")) : nullptr) cancel->click();
+		const bool ended = done.wait(10000) || done.size() == 1;
+		const QString why = done.isEmpty() ? QString() : done.first().at(2).toString();
+		std::printf("     (6 M samples: the export started in %lld ms, its progress at %d of 1000 when cancelled; %s %s %s %s "
+				"\"%s\" %s)\n", (long long) returnedMs, valueSeen, began ? "began" : "-", running ? "running" : "-",
+				progressShown ? "shown" : "-", ended ? "ended" : "-", qPrintable(why), QFile::exists(file) ? "file left" : "");
+		check(began && running && returnedMs < 2000 && progressShown && ended && why == QLatin1String("cancelled")
+						&& !QFile::exists(file) && !big.tab.exporting(),
+				"chart, Export to CSV: a big one runs on a thread (the window answers), a progress dialog with Cancel; "
+				"cancelled, its file is removed");
+		big.tab.hide();
+	}
+
+	/* Notes: Add note here (its text asked), a tag at the bottom of the plot; dragged to move; double-click edits;
+	 * clicked, Delete removes it */
+	void chartNotes() {
+		LoneChart chart(QStringLiteral("NOTE"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 1000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i * 0.01, std::sin(i * 0.02));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab();
+		chart.view->setLive(false);
+		QSignalSpy changed(&chart.tab, &ChartTab::notesChanged);
+		const QPoint at(chart.view->width() / 2, chart.view->height() / 2);
+		const double time = chart.view->timeAt(at.x());
+		QContextMenuEvent right(QContextMenuEvent::Mouse, at, chart.view->mapToGlobal(at));
+		QApplication::sendEvent(chart.view, &right);
+		QAction *add = nullptr;
+		if (QMenu *menu = chart.tab.chartMenu())
+			for (QAction *action : menu->actions())
+				if (action->text() == QLatin1String("Add note here")) add = action;
+		const bool asked = add && fillDialog([](QDialog *d) { typeAndAccept(d, QStringLiteral("valve open")); }, [&] { add->trigger(); });
+		if (QMenu *menu = chart.tab.chartMenu()) menu->close();
+		(void) chart.view->grab();
+		const QRectF tag = chart.view->noteTag(0);
+		const bool added = asked && chart.view->notes().size() == 1 && std::fabs(chart.view->notes()[0].time - time) < 1e-9
+				&& chart.view->notes()[0].text == QLatin1String("valve open") && !tag.isEmpty()
+				&& std::fabs(tag.left() - at.x()) < 1.5 && tag.bottom() < chart.view->lastPlot().bottom() && changed.size() == 1;
+		check(added, "chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
+				"plot");
+
+		/* dragged by its tag */
+		const QPoint grab = tag.center().toPoint(), to = grab + QPoint(100, 0);
+		QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, grab);
+		QMouseEvent move(QEvent::MouseMove, QPointF(to), chart.view->mapToGlobal(QPointF(to)), Qt::NoButton, Qt::LeftButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(chart.view, &move);
+		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, to);
+		const double moved = chart.view->notes().value(0).time;
+		const bool dragged = std::fabs(moved - chart.view->timeAt(to.x())) < 1e-9 && moved > time && changed.size() == 2;
+		/* double-click: edited */
+		(void) chart.view->grab();
+		const QPoint tagAt = chart.view->noteTag(0).center().toPoint();
+		const bool edited = fillDialog([](QDialog *d) { typeAndAccept(d, QStringLiteral("valve shut")); },
+				[&] { QTest::mouseDClick(chart.view, Qt::LeftButton, Qt::NoModifier, tagAt); })
+				&& chart.view->notes().value(0).text == QLatin1String("valve shut");
+		check(dragged && edited, "chart, notes: a tag dragged moves its note; a double-click on it edits the text");
+		/* clicked, then Delete */
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, tagAt);
+		const bool chosen = chart.view->selectedNote() == 0;
+		QTest::keyClick(chart.view, Qt::Key_Delete);
+		check(chosen && chart.view->notes().isEmpty(), "chart, notes: a tag clicked and Delete removes its note");
+		chart.tab.hide();
+	}
+
+	/* Recordings in windows of their own: opened from the file (with the map: names matched, a byte array left out, a
+	 * math line computed from the file), held, titled with the name and span, notes read and saved; the RAM question;
+	 * dropped on the window; several at once while the live chart goes on; a recording's notes written while it runs */
+	void recordingWindows() {
+		QTemporaryDir folder;
+		const QString path = folder.filePath(QStringLiteral("bench.csv"));
+		QFile file(path);
+		const QString volts = regs_.volts.name, amps = regs_.amps.name;
+		if (file.open(QIODevice::WriteOnly)) {
+			file.write(QStringLiteral("time_s,datetime,%1 [V],%2 [A],LED_MODE,MSG_BUFFER,CONFIG,UNKNOWN [bar]\n")
+					.arg(volts, amps).toUtf8());
+			for (int i = 0; i < 600; i++) /* 10 Hz for a minute; UNKNOWN empty at every tenth */
+				file.write(QStringLiteral("%1,2026-10-05T09:00:%2.%3,%4,%5,%6,00ff00,%7,%8\n").arg(100 + i * 0.1, 0, 'f', 6)
+						.arg(i / 10, 2, 10, QLatin1Char('0')).arg((i % 10) * 100, 3, 10, QLatin1Char('0'))
+						.arg(12.0 + 0.01 * i).arg(2.0).arg(i % 3).arg(i % 8)
+						.arg(i % 10 ? QString::number(i) : QString()).toUtf8());
+			file.close();
+		}
+		QString error;
+		recording::saveNotes(path, { { 130.0, QStringLiteral("half way") } }, 0, error);
+		QSettings().setValue(QStringLiteral("recording/math"), QStringList{ QStringLiteral("P\tW\t%1 * %2\t1").arg(volts, amps) });
+		RecordingWindow::closeAll();
+		auto *liveView = window_.findChild<ChartView *>();
+		window_.openRecording(path);
+		RecordingWindow *opened = nullptr;
+		(void) QTest::qWaitFor([&] { return !(RecordingWindow::windows().isEmpty() || !(opened = RecordingWindow::windows().first())); }, 5000);
+		if (!opened) {
+			check(false, "recording window: opened");
+			return;
+		}
+		(void) QTest::qWaitForWindowExposed(opened);
+		ChartView *view = opened->chartTab()->view();
+		const QVector<RegDef> defs = opened->definitions();
+		const auto keyOf = [&](const QString &name) {
+			for (const RegDef &def : defs)
+				if (def.name == name) return int(regKey(def));
+			return -1;
+		};
+		auto *hold = opened->findChild<QPushButton *>(QStringLiteral("hold"));
+		const bool title = opened->windowTitle().startsWith(QStringLiteral("bench.csv · 2026-10-05 09:00:00 – 09:00:59 (59.9 s)"));
+		const bool held = !view->live() && hold && !hold->isVisible() && std::fabs(view->window() - 59.9) < 1e-6;
+		const bool lines = defs.size() == 5 && keyOf(QStringLiteral("MSG_BUFFER")) < 0 && opened->skipped() == 1
+				&& view->pointsKept(keyOf(volts)) == 600 && view->pointsKept(keyOf(QStringLiteral("UNKNOWN"))) == 540;
+		bool matched = false, made = false;
+		for (const RegDef &def : defs) {
+			if (def.name == QLatin1String("LED_MODE")) matched = !def.enumValues.isEmpty();
+			if (def.name == QLatin1String("UNKNOWN")) made = def.unit == QLatin1String("bar") && def.enumValues.isEmpty();
+		}
+		const int powerKey = lineKey(view, QStringLiteral("ƒ P"));
+		const ChartView::Stats power = view->stats(powerKey);
+		const bool math = powerKey >= 0 && view->pointsKept(powerKey) == 600 && std::fabs(power.max - 2 * (12.0 + 5.99)) < 1e-6;
+		const bool notes = view->notes() == QVector<ChartNote>{ { 130.0, QStringLiteral("half way") } };
+		if (!title || !held || !lines)
+			std::printf("     (\"%s\"; window %.3f s; %d lines, %lld and %lld samples)\n", qPrintable(opened->windowTitle()),
+					view->window(), int(defs.size()), (long long) view->pointsKept(keyOf(volts)),
+					(long long) view->pointsKept(keyOf(QStringLiteral("UNKNOWN"))));
+		check(title && held, "recording window: titled with the file's name and span, held on all of it (no Live)");
+		check(lines && matched && made, "recording window: a line per column, the map's registers matched by name (LED_MODE "
+				"with its value names), a byte array left out, an empty cell no sample");
+		check(math && notes, "recording window: a math line of its own (recording/math) computed from the file; the notes "
+				"beside it shown");
+
+		/* a field from the Lines menu; a note added: saved beside the file */
+		auto *linesButton = opened->findChild<QPushButton *>(QStringLiteral("recordingLines"));
+		QAction *field = nullptr;
+		if (linesButton && linesButton->menu()) {
+			emit linesButton->menu()->aboutToShow();
+			for (QAction *action : linesButton->menu()->actions())
+				if (action->menu() && action->text() == QLatin1String("Fields of CONFIG"))
+					for (QAction *f : action->menu()->actions())
+						if (!field) field = f;
+		}
+		if (field) field->trigger();
+		const int fieldKey = field ? lineKey(view, QStringLiteral("ƒ CONFIG.") + field->text()) : -1;
+		view->addNote(140.0, QStringLiteral("added"));
+		QVector<ChartNote> saved;
+		recording::loadNotes(path, saved, error);
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* a recording window, for a look */
+			(void) view->grab();
+			opened->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_recording.png"));
+		}
+		check(fieldKey >= 0 && view->pointsKept(fieldKey) == 600 && saved.size() == 2
+						&& view->pointsKept(keyOf(volts)) == 600,
+				"recording window: a register's field plotted from the Lines menu (from the file's values); a note added is "
+				"saved beside the file");
+
+		/* the live chart goes on; a second recording, dropped on the window */
+		const int livePaints = liveView ? liveView->paints() : 0;
+		const bool live = liveView && liveView->live();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		if (tabs) tabs->setCurrentIndex(1);
+		const QString copy = folder.filePath(QStringLiteral("copy.csv"));
+		QFile::copy(path, copy);
+		QMimeData mime;
+		mime.setUrls({ QUrl::fromLocalFile(copy) });
+		QDragEnterEvent enter(QPoint(200, 200), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(&window_, &enter);
+		QDropEvent drop(QPointF(200, 200), Qt::CopyAction, &mime, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(&window_, &drop);
+		const bool two = enter.isAccepted() && QTest::qWaitFor([&] { return RecordingWindow::windows().size() == 2; }, 5000);
+		QTest::qWait(300);
+		const bool goesOn = live && liveView->live() && liveView->paints() > livePaints;
+		if (tabs) tabs->setCurrentIndex(0);
+		check(two && goesOn, "recording window: a .csv dropped on the window opens a second; the live chart goes on");
+
+		/* more than the RAM: the last part, if wanted */
+		RecordingWindow *part = nullptr;
+		const QString asked = answerDialog(QStringLiteral("Keep the last part"), [&] {
+			RecordingWindow::open(nullptr, path, {}, 0, [&](RecordingWindow *w) { part = w; });
+		});
+		(void) QTest::qWaitFor([&] { return part != nullptr; }, 5000);
+		const qint64 kept = part ? part->chartTab()->view()->pointsKept(int(regKey(part->definitions().value(0)))) : -1;
+		bool none = true;
+		const QString refused = answerDialog(QStringLiteral("Cancel"), [&] {
+			RecordingWindow::open(nullptr, path, {}, 0, [&](RecordingWindow *) { none = false; });
+		});
+		QTest::qWait(300);
+		check(asked == QLatin1String("Open recording") && kept == 0 && refused == asked && none,
+				"recording window: a file bigger than the chart's RAM asks to keep the last part (none of it at RAM 0), "
+				"Cancel opens nothing");
+		RecordingWindow::closeAll();
+
+		/* the last 8, newest first; the sidebar's Open recording beside Record CSV */
+		for (int i = 0; i < 10; i++) RecordingWindow::remember(folder.filePath(QStringLiteral("r%1.csv").arg(i)));
+		const QStringList recent = RecordingWindow::recentFiles();
+		auto *openButton = window_.findChild<QPushButton *>(QStringLiteral("openRecording"));
+		QPushButton *record = buttonWithText(QStringLiteral("●  Record CSV"));
+		check(recent.size() == 8 && recent.first().endsWith(QLatin1String("r9.csv")) && openButton && openButton->menu()
+						&& record && openButton->isVisible() && std::abs(openButton->geometry().center().y()
+								- record->geometry().center().y()) <= 2,
+				"recording: Open recording beside Record CSV, its menu the last 8 recordings, newest first");
+
+		/* a recording's notes written while it runs */
+		const QString recorded = folder.filePath(QStringLiteral("live.csv"));
+		MainWindow::Startup start;
+		start.record = recorded;
+		window_.applyStartup(start);
+		QPushButton *stop = nullptr;
+		(void) QTest::qWaitFor([&] { return (stop = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+		QTest::qWait(400);
+		auto *chartTab = window_.findChild<ChartTab *>();
+		if (chartTab) chartTab->view()->addNote(chartTab->view()->timeNow(), QStringLiteral("while recording"));
+		QVector<ChartNote> written;
+		const bool during = recording::loadNotes(recorded, written, error) && written.size() == 1;
+		QTest::qWait(400);
+		if (stop) stop->click();
+		(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+		RecordingWindow *again = nullptr;
+		RecordingWindow::open(nullptr, recorded, map_.regs, 2048, [&](RecordingWindow *w) { again = w; });
+		(void) QTest::qWaitFor([&] { return again != nullptr; }, 5000);
+		const bool shownThere = again && again->chartTab()->view()->notes().size() == 1
+				&& again->chartTab()->view()->notes()[0].text == QLatin1String("while recording");
+		check(stop && during && shownThere, "recording: a note added while recording is written beside the file at once, "
+				"and the recording opened shows it");
+		if (chartTab) chartTab->view()->setNotes({});
+		RecordingWindow::closeAll();
+		QSettings().remove(QStringLiteral("recording/math"));
 	}
 
 	/* Plot shown with more registers than the example map has (70 numeric, on a Registers tab of its own; the first

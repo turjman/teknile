@@ -39,6 +39,12 @@
  * Totals: every line's area since the chart's Clear, summed from each sample as
  * it comes (append), not from the memory, so a trim loses nothing.
  *
+ * Notes: labelled markers at a time, a dashed line with a tag at the bottom of
+ * the plot (drawn by the CPU, and as a picture on the card like the cursors'
+ * tags); drag a tag to move it, double-click it to edit (noteEditRequested),
+ * Delete removes the one clicked last. A right-click asks for the chart's menu
+ * (menuRequested): the Chart tab makes it.
+ *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
  * antialiased stroke (20+ ms a frame for four lines at 225 % scaling). OpenGL
@@ -65,6 +71,7 @@
 #include <cmath>
 #include <functional>
 
+#include "model/recording_file.h"
 #include "ui/gpu_lines.h"
 #include "ui/value_pace.h"
 
@@ -107,6 +114,16 @@ public:
 	double memory() const { return memory_; }
 	void setLive(bool on);              /* follow now, or hold the view where it is */
 	bool live() const { return live_; }
+	/* held on t0..t1 (a recording: its whole span), the memory grown to hold it */
+	void showSpan(double t0, double t1);
+	void showLastValues(); /* the legend's values now (no frames come: a recording's chart) */
+	/* a recording's chart: nothing comes after its end, so the state says nothing of Live */
+	void setRecording(bool on) { recording_ = on; }
+	/* the view as last painted (Export to CSV: the view's samples) */
+	void viewSpan(double &t0, double &t1) const {
+		t1 = lastViewEnd_;
+		t0 = t1 - window_;
+	}
 	void setNormalized(bool on) {
 		normalized_ = on;
 		yInitialized_ = false;
@@ -179,6 +196,8 @@ public:
 	/* The memory the samples may take, all the lines together, in MB (RAM on the Chart tab): with many fast lines
 	 * the memory holds less than asked, and the strip says so. */
 	static constexpr int DEFAULT_RAM_MB = 2048;
+	/* a sample's memory: its time and value (16 bytes) and its share of the chunks (48 bytes per 8, per 64, ...) */
+	static constexpr int BYTES_PER_SAMPLE = 23;
 	static constexpr int MIN_RAM_MB = 256;
 	void setRamBudget(int megabytes);
 	int ramBudget() const { return ramMB_; }
@@ -211,6 +230,18 @@ public:
 	int legendMeasures() const { return chipMeasures_; } /* tests: the legend's chips measured (not at every frame) */
 	int paints() const { return paints_; }             /* tests: the frames painted so far */
 	QSizeF readoutSize() const { return readout_.isNull() ? QSizeF() : readout_.deviceIndependentSize(); }
+	/* the notes: a time and a text each. Changes made with the mouse (moved, removed) emit notesChanged; editing
+	 * the text is the Chart tab's (noteEditRequested on a double-click) */
+	const QVector<ChartNote> &notes() const { return notes_; }
+	void setNotes(const QVector<ChartNote> &notes);
+	int addNote(double time, const QString &text); /* its index */
+	void setNoteText(int index, const QString &text);
+	void removeNote(int index);
+	int selectedNote() const { return selectedNote_; } /* -1: none; Delete removes it */
+	QRectF noteTag(int index) const;   /* where a note's tag was last drawn; empty: not in view (tests) */
+	double timeAt(double x) const { return timeAtX(x); }
+	/* the samples of the lines over t0..t1 (Export to CSV) */
+	QVector<recording::Line> samples(double t0, double t1) const;
 	/* tests: the bar between the cursors as last painted: its text (empty: none), the bar, and the text's box (inside
 	 * the bar, or beside a tag when the bar is too short for it) */
 	QString spanBarText() const { return spanBar_.text; }
@@ -244,6 +275,9 @@ signals:
 	void cursorsChanged();
 	void drawingFailed(const QString &why); /* the GPU asked for could not draw: the CPU does */
 	void drawingChanged();                  /* a card opened (or failed to) after setDrawing: who draws now */
+	void notesChanged();
+	void noteEditRequested(int index);      /* a double-click on a note's tag */
+	void menuRequested(const QPoint &globalPos, double time); /* a right-click on the chart: the time under it */
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -254,6 +288,8 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *e) override;
 	void wheelEvent(QWheelEvent *e) override;
 	void mouseDoubleClickEvent(QMouseEvent *e) override;
+	void contextMenuEvent(QContextMenuEvent *e) override;
+	void keyPressEvent(QKeyEvent *e) override;
 
 private:
 	/* Samples per min/max chunk, four levels, each LEVEL_STEP chunks of the one
@@ -265,8 +301,6 @@ private:
 	static constexpr int CHUNK_SIZE[LEVELS] = { 8, 64, 512, 4096 };
 	/* per series, whatever the memory and the RAM: trimming moves the line's arrays, 16 M samples (256 MB) at most */
 	static constexpr qsizetype MAX_POINTS = 16000000;
-	/* a sample's memory: its time and value (16 bytes) and its share of the chunks (48 bytes per 8, per 64, ...) */
-	static constexpr int BYTES_PER_SAMPLE = 23;
 
 	struct Chunk {
 		double t0, t1, min, max, first, last;
@@ -347,7 +381,7 @@ private:
 		double content = 0;    /* the chips' total width */
 		double maxScroll() const { return std::max(0.0, content - viewport.width()); }
 	};
-	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar };
+	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note };
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
@@ -417,6 +451,12 @@ private:
 	/* the layer shown or taken away (once the window holds what goes under it); a failure closes the card */
 	void showLayer(bool shown);
 	void drawCursors(QPainter &p, const Axes &axes) const;
+	/* the notes: a dashed line and a tag at the bottom of the plot each (the tags' places kept for the mouse) */
+	void drawNotes(QPainter &p, const Axes &axes) const;
+	QRectF noteTagRect(const Axes &axes, int index) const; /* empty: not in view */
+	void drawNoteTag(QPainter &p, const QRectF &tag, int index) const;
+	const QImage &notePicture(int index, const QRectF &tag, qreal dpr) const; /* for the card */
+	int noteAtPoint(const QPointF &pos) const; /* the note whose tag is there; -1: none */
 	/* a cursor's tag (k 0: A, 1: B) as a picture, for the card */
 	const QImage &tagPicture(int k, qreal dpr) const;
 	/* The bar between the cursors' tags at the top of the plot, with the time between them: a cursor off the view
@@ -517,7 +557,7 @@ private:
 	double window_ = 30, memory_ = 60;
 	double viewEnd_ = 0;      /* held: where the view ends */
 	double lastViewEnd_ = 0;  /* where the view ended in the last frame drawn */
-	bool live_ = true, normalized_ = false, smooth_ = true, hoverValues_ = true;
+	bool live_ = true, normalized_ = false, smooth_ = true, hoverValues_ = true, recording_ = false;
 	double delay_ = 0, peakGap_ = 0; /* Smooth: the display delay, and the gap it covers */
 
 	/* the Y range; yInitialized_: Auto has a range to move from */
@@ -569,6 +609,11 @@ private:
 	mutable QString chipsFont_;
 	mutable int chipMeasures_ = 0;
 	mutable QHash<QRgb, QImage> dots_; /* by colour, at dotsDpr_ */
+	/* the notes, the one clicked last, and their tags as drawn last (and as pictures for the card, by their key) */
+	QVector<ChartNote> notes_;
+	int selectedNote_ = -1;
+	mutable QVector<QRectF> noteTags_;
+	mutable QHash<QString, QImage> notePictures_;
 	mutable qreal dotsDpr_ = 0;
 
 	/* the legend's scroll, pixels; may be past what the chips need after a

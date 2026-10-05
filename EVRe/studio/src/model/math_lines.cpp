@@ -9,7 +9,6 @@
 
 namespace {
 
-const QString SETTINGS_KEY = QStringLiteral("chart/math");
 
 /* the first numeric register of this name (in any case), nullptr if none */
 const RegDef *numericRegister(const QVector<RegDef> &registers, const QString &name) {
@@ -65,9 +64,10 @@ bool MathLine::compile(const QVector<RegDef> &registers) {
 
 /* ------------------------------------------------------------- the settings */
 
-void MathLines::load() {
+void MathLines::load(const QString &key) {
+	key_ = key;
 	lines_.clear();
-	for (const QString &text : QSettings().value(SETTINGS_KEY).toStringList()) {
+	for (const QString &text : QSettings().value(key_).toStringList()) {
 		const QStringList fields = text.split(QLatin1Char('\t'));
 		if (fields.size() < 3) continue;
 		MathLine line;
@@ -85,7 +85,7 @@ void MathLines::save() const {
 		texts << QStringList{ line.name, line.unit, line.formula, line.on ? QStringLiteral("1") : QStringLiteral("0") }
 						.join(QLatin1Char('\t'));
 	}
-	QSettings().setValue(SETTINGS_KEY, texts);
+	QSettings().setValue(key_, texts);
 }
 
 /* ------------------------------------------------------------------ changes */

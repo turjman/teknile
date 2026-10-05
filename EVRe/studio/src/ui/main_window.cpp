@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QCloseEvent>
+#include <QMimeData>
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
@@ -30,6 +31,7 @@
 #include "model/register_model.h"
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
+#include "ui/chart_widget.h"
 #include "ui/elided_label.h"
 #include "ui/event_log.h"
 #include "ui/frame_clock.h"
@@ -37,6 +39,7 @@
 #include "ui/map_editor_tab.h"
 #include "ui/map_settings_dialog.h"
 #include "ui/monitor_tab.h"
+#include "ui/recording_window.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
 #include "ui/theme.h"
@@ -101,6 +104,7 @@ RegisterModel::Colors registerColors() {
 MainWindow::MainWindow(const QString &mapAtStart, const QString &busAtStart, QWidget *parent)
 	: QMainWindow(parent), mapAtStart_(mapAtStart), busAtStart_(busAtStart) {
 	setWindowTitle(QStringLiteral("EVRe Studio"));
+	setAcceptDrops(true); /* a .csv dropped on the window: opened as a recording */
 	resize(1400, 860);
 	model_ = new RegisterModel(this);
 	model_->setColors(registerColors());
@@ -163,6 +167,7 @@ void MainWindow::applyStartup(const Startup &startup) {
 }
 
 MainWindow::~MainWindow() {
+	RecordingWindow::closeAll();
 	frameClock_->stop();
 	if (ioThread_->isRunning()) {
 		QMetaObject::invokeMethod(engine_, [engine = engine_] { engine->shutdown(); }, Qt::BlockingQueuedConnection);
@@ -194,7 +199,36 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 	settings.setValue(QStringLiteral("ui/geometry"), saveGeometry());
 	wantConnected_ = false;
 	disconnectLink();
+	RecordingWindow::closeAll(); /* else the program would go on while one is open */
 	event->accept();
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
+	for (const QUrl &url : event->mimeData()->urls()) {
+		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)) {
+			event->acceptProposedAction();
+			return;
+		}
+	}
+}
+
+void MainWindow::dropEvent(QDropEvent *event) {
+	for (const QUrl &url : event->mimeData()->urls())
+		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive))
+			openRecording(url.toLocalFile());
+	event->acceptProposedAction();
+}
+
+void MainWindow::openRecording(const QString &file) {
+	const int ramMB = QSettings().value(QStringLiteral("chart/ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
+	const auto opened = [this](RecordingWindow *window) {
+		connect(window, &RecordingWindow::logged, this, [this](int level, const QString &text) {
+			logEvent(LogLevel(level), text);
+		});
+		logEvent(LogLevel::Info, tr("recording opened: %1").arg(QDir::toNativeSeparators(window->file())));
+	};
+	if (file.isEmpty()) RecordingWindow::choose(this, model_->definitions(), ramMB, opened);
+	else RecordingWindow::open(this, file, model_->definitions(), ramMB, opened);
 }
 
 /* ------------------------------------------------------------------- building */
@@ -286,6 +320,7 @@ void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::newMapClicked, this, &MainWindow::newMap);
 	connect(sidebar_, &Sidebar::saveMapClicked, this, &MainWindow::saveMap);
 	connect(sidebar_, &Sidebar::recordClicked, this, &MainWindow::toggleRecord);
+	connect(sidebar_, &Sidebar::openRecordingClicked, this, &MainWindow::openRecording);
 	connect(sidebar_, &Sidebar::apiServeChanged, this, &MainWindow::setApiRunning);
 	connect(sidebar_, &Sidebar::apiWritesChanged, this, &MainWindow::pushApiWrites);
 	connect(sidebar_, &Sidebar::helpClicked, this, &MainWindow::showHelp);
@@ -364,6 +399,8 @@ QWidget *MainWindow::buildChartTab() {
 	connect(chartTab_, &ChartTab::mathRegistersChanged, this, &MainWindow::pushPlotted);
 	connect(chartTab_, &ChartTab::unplotAllRequested, this, &MainWindow::unplotAll);
 	connect(chartTab_, &ChartTab::logged, this, &MainWindow::logEvent);
+	connect(chartTab_, &ChartTab::openRecordingRequested, this, &MainWindow::openRecording);
+	connect(chartTab_, &ChartTab::notesChanged, this, &MainWindow::saveRecordingNotes);
 	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) { chartTab_->setShown(tab == TabChart); });
 	return chartTab_;
 }
@@ -1097,6 +1134,7 @@ void MainWindow::startRecord(const QString &file) {
 		if (!row.log || row.unavailable || !isPollable(row.def)) continue;
 		columns << regKey(row.def);
 	}
+	recordFile_ = file;
 	engine_->post([engine = engine_, file, columns] { engine->startRecord(file, columns); });
 }
 
@@ -1112,10 +1150,23 @@ void MainWindow::onRecordStarted(bool ok, const QString &err) {
 	}
 	logEvent(LogLevel::Info, tr("CSV recording started"));
 	recording_ = true;
+	recordFrom_ = engine_->now();
 	sidebar_->setRecording(true);
+	RecordingWindow::remember(recordFile_);
+}
+
+void MainWindow::saveRecordingNotes() {
+	if (!recording_) return;
+	QVector<ChartNote> notes;
+	for (const ChartNote &note : chartTab_->view()->notes())
+		if (note.time >= recordFrom_) notes << note;
+	QString error;
+	if (!recording::saveNotes(recordFile_, notes, chartTab_->view()->epochMs(), error))
+		logEvent(LogLevel::Warning, tr("notes not saved beside %1: %2").arg(QDir::toNativeSeparators(recordFile_), error));
 }
 
 void MainWindow::onRecordStopped(const QString &file, quint64 rows) {
+	saveRecordingNotes(); /* the last time, with the notes as they are now */
 	recording_ = false;
 	sidebar_->setRecording(false);
 	sidebar_->showRecordSaved(file, rows);

@@ -330,6 +330,19 @@ the next start; the menu shows, edits and removes them.</p>
 <p><b>● Record CSV</b> asks for a file, then writes one row per poll (one per frame with <i>Auto send</i>):
 <code>time_s</code> (since start), <code>datetime</code>, then every register ticked <b>Log</b> (all by default), as
 the values shown (scaled). Columns are fixed when the recording starts. <b>■ Stop recording</b> closes the file.</p>
+<h3>Right-click on the chart</h3>
+<ul>
+<li><b>Copy picture</b>, <b>Save picture…</b> (PNG): the chart as shown, drawn by the CPU.</li>
+<li><b>Export to CSV…</b>: the samples of every line over the view, or between the cursors A → B when both are
+placed, in the recording's format (a row per poll); a big one runs on its own with a progress bar and Cancel.</li>
+<li><b>Add note here</b>: a labelled marker at that time, a tag at the bottom of the plot. Drag the tag to move it,
+double-click it to edit, click it and press <b>Delete</b> to remove it. While recording, the notes are written beside
+the file (<code>run.csv.notes.json</code>), and an export takes the notes of its span.</li>
+<li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
+window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
+own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
+registers' value names and fields are matched by name: <b>Lines</b> plots a register's field.</li>
+</ul>
 )HTML" },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), R"HTML(
 <h2>Device maps (JSON)</h2>
@@ -508,6 +521,9 @@ cancels · right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
+<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
+<tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
+<b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /
 <b>Ctrl+V</b> copy / paste registers (as JSON, also between maps) · <b>Del</b> delete</td></tr>

@@ -15,22 +15,31 @@
  *    each line's total since Clear; a right-click on the header shows or
  *    hides columns.
  *
+ *  - a right-click on the chart: Copy picture, Save picture (painted by the
+ *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
+ *    thread, with progress and Cancel), Add note here, Open recording.
+ *
  * The window says which registers are plotted (plotRegister) and hands over
  * the samples of every display frame (frame()); the tab adds the math lines'
  * points from them. What the user sets here is kept in the settings under
- * "chart/..." and comes back at the next start. */
+ * "chart/..." and comes back at the next start; a recording's chart
+ * (recording_window.h) is a second tab, its settings under a group of its own. */
 #pragma once
 
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 #include "model/device_map.h"
 #include "model/math_lines.h"
+#include "model/recording_file.h"
 #include "model/register_model.h"
 
+class ChartView;
 class ChartWidget;
 class QAction;
 class QActionGroup;
@@ -39,6 +48,7 @@ class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QMenu;
+class QProgressDialog;
 class QPushButton;
 class QTableWidget;
 enum class LogLevel;
@@ -46,8 +56,12 @@ enum class LogLevel;
 class ChartTab : public QWidget {
 	Q_OBJECT
 public:
-	/* clock: the time base of the samples, in seconds, read at every display frame */
-	explicit ChartTab(std::function<double()> clock, QWidget *parent = nullptr);
+	/* clock: the time base of the samples, in seconds, read at every display frame; settingsGroup: where its settings
+	 * are kept ("chart": the live chart's) */
+	explicit ChartTab(std::function<double()> clock, QWidget *parent = nullptr,
+			const QString &settingsGroup = QStringLiteral("chart"));
+	~ChartTab() override; /* an export still running is cancelled and waited for */
+	ChartView *view() const;
 
 	/* the note right of RAM: the memory the lines need for the Memory set ("needs 1.4 GB"); over the RAM, what fits
 	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. */
@@ -95,6 +109,31 @@ public:
 	void refreshStatus();
 	/* the theme changed: the chart is drawn again in its colours */
 	void themeChanged();
+	/* A recording's chart (recording_window.h): no Live, Memory, RAM, Clear or Remove all; Smooth off; the labels'
+	 * clock from the file (epochMs: its time base's zero); RAM ramMB; the memory as long as t0..t1. The samples come
+	 * once (frame), then the view shows t0..t1 (ChartView::showSpan). */
+	void setRecording(qint64 epochMs, double t0, double t1, int ramMB, int columns);
+	bool isRecording() const { return recording_; }
+	void showSpan(double t0, double t1); /* the view on t0..t1, held; the Window box says how long */
+
+	/* the right-click's actions, for the menu and the tests */
+	QImage picture() const;                 /* the chart as shown, painted by the CPU */
+	void copyPicture() const;
+	bool savePicture(const QString &file) const;
+	/* the samples of the view, or A -> B with both cursors placed, in the recording's format, on a thread of its own
+	 * (a progress dialog with Cancel when it takes long); the notes in that span beside it. Done: exported(). False:
+	 * another export still runs */
+	bool exportCsv(const QString &file);
+	bool exporting() const { return job_ != nullptr; }
+	void cancelExport();
+	/* a note at `time`: its text asked for (empty: none) */
+	void addNoteAt(double time);
+	void editNote(int index); /* its text asked for again; emptied: removed */
+	/* the chart's menu at a place on the screen, `time` under it (a right-click); tests: the menu, built at each
+	 * right-click */
+	void showChartMenu(const QPoint &globalPos, double time);
+	QMenu *chartMenu() const { return chartMenu_; }
+
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
 
@@ -105,8 +144,15 @@ signals:
 	void unplotAllRequested();
 	/* for the event log */
 	void logged(LogLevel level, const QString &text);
+	/* Open recording: a file, or empty to choose one */
+	void openRecordingRequested(const QString &file);
+	/* an export ended: rows written, or error (cancelled: error says so) */
+	void exported(const QString &file, qint64 rows, const QString &error);
+	void notesChanged();
 
 private:
+	QString settingKey(const char *name) const { return group_ + QLatin1Char('/') + QLatin1String(name); }
+
 	/* building the tab */
 	QHBoxLayout *buildAxesRow();
 	QHBoxLayout *buildActionsRow();
@@ -136,6 +182,9 @@ private:
 	void rebuildMathMenu();       /* the ƒ Math button's menu and label */
 	void editMathLine(int line);  /* -1: a new one */
 
+	QString group_;               /* the settings' group: "chart", or a recording's */
+	std::function<double()> clock_;
+	bool recording_ = false;
 	ChartWidget *chart_;
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
@@ -168,4 +217,20 @@ private:
 	int measureUpdates_ = 0, measureFullUpdates_ = 0;
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
+
+	/* the right-click on the chart */
+	QMenu *chartMenu_ = nullptr;
+	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
+	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */
+	struct ExportJob {
+		std::atomic<bool> cancel{ false }, done{ false };
+		std::atomic<int> permille{ 0 };
+		QString file, error;
+		qint64 rows = 0;
+	};
+	std::shared_ptr<ExportJob> job_;
+	QProgressDialog *exportProgress_ = nullptr;
+	QTimer exportTimer_;          /* the progress followed, the end seen */
+	QVector<ChartNote> exportNotes_; /* the notes of the span exported, saved beside it at the end */
+	void exportDone();
 };

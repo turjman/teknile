@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
 #include <QSerialPortInfo>
@@ -27,6 +28,7 @@
 #include "ui/bus_panel.h"
 #include "ui/elided_label.h"
 #include "ui/limit_spin_box.h"
+#include "ui/recording_window.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 #include "ui/value_pace.h"
@@ -320,6 +322,23 @@ QWidget *Sidebar::buildPollingCard() {
 	recordButton_ = new QPushButton(tr("●  Record CSV"));
 	recordButton_->setCursor(Qt::PointingHandCursor);
 	connect(recordButton_, &QPushButton::clicked, this, &Sidebar::recordClicked);
+	/* a recording opened in a window of its own: a file, or one of the last ones */
+	openRecording_ = new QPushButton(tr("Open")); /* beside Record CSV in the card's width; its menu says the rest */
+	openRecording_->setObjectName(QStringLiteral("openRecording"));
+	openRecording_->setToolTip(tr("Open a recording (a CSV recorded or exported here) in a window of its own: its chart, "
+			"measurements and notes. The live chart goes on. A .csv dropped on the window opens too."));
+	auto *recordings = new QMenu(openRecording_);
+	connect(recordings, &QMenu::aboutToShow, this, [this, recordings] {
+		RecordingWindow::fillRecentMenu(recordings, [this](const QString &file) { emit openRecordingClicked(file); });
+		QAction *choose = new QAction(tr("Open recording…"), recordings);
+		connect(choose, &QAction::triggered, this, [this] { emit openRecordingClicked(QString()); });
+		recordings->insertAction(recordings->actions().value(0), choose);
+		recordings->insertSeparator(recordings->actions().value(1));
+	});
+	setButtonMenu(openRecording_, recordings);
+	auto *recordRow = new QHBoxLayout;
+	recordRow->addWidget(recordButton_, 3);
+	recordRow->addWidget(openRecording_, 2);
 	recordInfo_ = mutedLabel(tr("One CSV row per poll (Log column).")); /* one line in the card */
 	recordInfo_->setWordWrap(true);
 	auto *content = new QVBoxLayout;
@@ -328,7 +347,7 @@ QWidget *Sidebar::buildPollingCard() {
 	content->addLayout(autoSendRow);
 	content->addLayout(paceRow);
 	content->addSpacing(4);
-	content->addWidget(recordButton_);
+	content->addLayout(recordRow);
 	content->addWidget(recordInfo_);
 	return card(tr("Polling & recording"), content);
 }

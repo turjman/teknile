@@ -13,7 +13,8 @@
  *  - Polling & recording: Poll and its interval, the poll rate reached (and,
  *    when it is slower than asked, why); Auto send and its rate (the device
  *    sends its read-only block by itself; one device only); Show values (how
- *    often the numbers on screen change, value_pace.h); Record CSV.
+ *    often the numbers on screen change, value_pace.h); Record CSV, and Open
+ *    recording beside it (a file, or one of the last ones).
  *  - API server: Serve API, Network, Allow API writes (and the ⚠ registers).
  *  - Help and the theme, then the version.
  *
@@ -140,6 +141,7 @@ signals:
 	void newMapClicked();
 	void saveMapClicked(bool saveAs);
 	void recordClicked();
+	void openRecordingClicked(const QString &file); /* empty: choose one */
 	void apiServeChanged(bool on); /* Serve API; Network switched while serving: on again, with it */
 	void apiWritesChanged();       /* Allow API writes, or including ⚠ registers */
 	void helpClicked();
@@ -199,6 +201,7 @@ private:
 	QString rateHelp_;            /* the list's tooltip while offered (not offered: the reason) */
 	QComboBox *valuePace_;        /* Show values */
 	QPushButton *recordButton_;
+	QPushButton *openRecording_;  /* its menu: Open a file…, the last recordings */
 	QLabel *recordInfo_;
 
 	/* the API card */

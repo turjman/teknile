@@ -4,6 +4,8 @@
 #include "ui/chart_widget.h"
 
 #include <QBackingStore>
+#include <QContextMenuEvent>
+#include <QKeyEvent>
 #include <QDateTime>
 #include <QGuiApplication>
 #include <QMouseEvent>
@@ -75,6 +77,12 @@ constexpr qsizetype TRIM_PER_FRAME = 4000000; /* samples moved by trims in a fra
 constexpr double BUDGET_SAMPLE_MS = 30;        /* a slow paint spends at most this (or twice the frames' average) */
 constexpr int LAYER_AFTER_FRAMES = 2;          /* the card's layer shown after this many frames under it (paintFrame) */
 constexpr qint64 FRAMES_STOPPED_MS = 250;      /* no frame() this long: a change is painted at once (refresh) */
+
+/* the notes' tags: at the bottom of the plot, the text cut to this width at most */
+constexpr double NOTE_TAG_H = 16;
+constexpr double NOTE_TAG_BOTTOM = 4;          /* above the plot's bottom edge */
+constexpr double NOTE_TEXT_MAX = 180;
+constexpr double NOTE_PAD = 6;
 
 /* 1, 2, 5 x 10^n steps giving about `target` ticks over span */
 double niceStep(double span, int target) {
@@ -230,6 +238,7 @@ void ChartView::Bin::add(double ta, double tb, double firstValue, double lastVal
 
 ChartView::ChartView(QWidget *parent) : QWidget(parent) {
 	setMouseTracking(true);
+	setFocusPolicy(Qt::ClickFocus); /* Delete removes the note clicked */
 	/* it paints every pixel itself: Qt need not paint what is behind it */
 	setAttribute(Qt::WA_OpaquePaintEvent);
 	frameClock_.start();
@@ -575,6 +584,81 @@ void ChartView::setLive(bool on) {
 	refresh();
 }
 
+void ChartView::showSpan(double t0, double t1) {
+	const double span = std::clamp(t1 - t0, MIN_WINDOW, MAX_SPAN);
+	if (span > memory_) setMemory(span);
+	window_ = std::min(span, memory_);
+	viewEnd_ = t1;
+	if (live_) {
+		live_ = false;
+		emit liveChanged(false);
+	}
+	refresh();
+}
+
+void ChartView::showLastValues() {
+	for (Series &s : series_) {
+		s.shown = s.last;
+		s.hasShown = s.hasLast;
+	}
+	valuesTick_++;
+	refresh();
+}
+
+QVector<recording::Line> ChartView::samples(double t0, double t1) const {
+	QVector<recording::Line> out;
+	for (const Series &s : series_) {
+		const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+		const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+		recording::Line line;
+		line.name = s.name;
+		line.unit = s.unit;
+		if (i1 > i0) {
+			line.times = s.times.mid(i0, i1 - i0);
+			line.values = s.values.mid(i0, i1 - i0);
+		}
+		out << line;
+	}
+	return out;
+}
+
+void ChartView::setNotes(const QVector<ChartNote> &notes) {
+	notes_ = notes;
+	selectedNote_ = -1;
+	refresh();
+}
+
+int ChartView::addNote(double time, const QString &text) {
+	notes_ << ChartNote{ time, text };
+	selectedNote_ = int(notes_.size() - 1);
+	emit notesChanged();
+	refresh();
+	return selectedNote_;
+}
+
+void ChartView::setNoteText(int index, const QString &text) {
+	if (index < 0 || index >= notes_.size() || notes_[index].text == text) return;
+	notes_[index].text = text;
+	emit notesChanged();
+	refresh();
+}
+
+void ChartView::removeNote(int index) {
+	if (index < 0 || index >= notes_.size()) return;
+	notes_.removeAt(index);
+	selectedNote_ = -1;
+	emit notesChanged();
+	refresh();
+}
+
+QRectF ChartView::noteTag(int index) const { return index >= 0 && index < noteTags_.size() ? noteTags_[index] : QRectF(); }
+
+int ChartView::noteAtPoint(const QPointF &pos) const {
+	for (qsizetype i = std::min(noteTags_.size(), notes_.size()) - 1; i >= 0; i--)
+		if (noteTags_[i].adjusted(-2, -2, 2, 2).contains(pos)) return int(i);
+	return -1;
+}
+
 void ChartView::setHoverValues(bool on) {
 	hoverValues_ = on;
 	readoutTick_ = ~quint64(0); /* made again (or let go) at the next frame */
@@ -796,6 +880,16 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton) return;
 	const QPointF pos = e->position();
 	if (pressLegend(pos)) return;
+	/* a note's tag: chosen (Delete removes it) and dragged */
+	const int note = noteAtPoint(pos);
+	if (note >= 0 || selectedNote_ >= 0) {
+		selectedNote_ = note;
+		refresh();
+	}
+	if (note >= 0) {
+		drag_ = Drag::Note;
+		return;
+	}
 	/* on (or just by) the memory strip: the view goes there */
 	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
 		drag_ = Drag::Overview;
@@ -845,6 +939,10 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		(drag_ == Drag::CurA ? cursorA_ : cursorB_) = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
 		emit cursorsChanged();
 		break;
+	case Drag::Note:
+		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
+			notes_[selectedNote_].time = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
+		break;
 	case Drag::LegendBar: {
 		/* the thumb follows the mouse: its free travel spans the whole scroll */
 		const LegendLayout legend = legendLayout(plot);
@@ -860,6 +958,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 					|| (offset > 0 && legendArrow(legend, false).contains(pos))
 					|| (offset < legend.maxScroll() && legendArrow(legend, true).contains(pos)));
 		setCursor(overviewRect().contains(pos) || onLegendBar ? Qt::PointingHandCursor
+				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: plot.contains(pos) ? (cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor) : Qt::ArrowCursor);
 		break;
 	}
@@ -868,8 +967,9 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void ChartView::mouseReleaseEvent(QMouseEvent *) {
-	const bool cursorLetGo = draggingCursor();
+	const bool cursorLetGo = draggingCursor(), noteLetGo = drag_ == Drag::Note;
 	drag_ = Drag::None;
+	if (noteLetGo) emit notesChanged();
 	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
 	if (cursorLetGo) emit cursorsChanged(); /* measured in full now: while dragged, A and B alone followed it */
 }
@@ -918,9 +1018,29 @@ void ChartView::zoomY(double factor, double mouseY) {
 	yHi_ = fromScale(at + (hi - at) * factor, log);
 }
 
-void ChartView::mouseDoubleClickEvent(QMouseEvent *) {
+void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
+	const int note = noteAtPoint(e->position());
+	if (note >= 0) { /* a note's tag: its text edited (the Chart tab asks) */
+		emit noteEditRequested(note);
+		return;
+	}
 	setYAuto();
 	emit yChangedByUser();
+}
+
+void ChartView::contextMenuEvent(QContextMenuEvent *e) {
+	const QRectF plot = plotRect();
+	emit menuRequested(e->globalPos(), timeAtX(std::clamp(double(e->pos().x()), plot.left(), plot.right())));
+	e->accept();
+}
+
+void ChartView::keyPressEvent(QKeyEvent *e) {
+	if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && selectedNote_ >= 0) {
+		removeNote(selectedNote_);
+		e->accept();
+		return;
+	}
+	QWidget::keyPressEvent(e);
 }
 
 /* A press on the legend's scroll bar or its arrows, when the chips overflow:
@@ -1123,6 +1243,7 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	if (!onCard) {
 		drawCursorSpan(p, axes);
 		drawLines(p, axes, binned);
+		drawNotes(p, axes);
 		drawCursors(p, axes);
 	} else if (!under.isNull()) {
 		under.setDevicePixelRatio(devicePixelRatioF());
@@ -1757,6 +1878,16 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 				gpuColor(c.accent));
 		frame.sprites.push_back({ tagPicture(k, dpr), whole(QPointF(cx - 9, plot.top() - 2)) });
 	}
+	/* the notes: dashed as the CPU's pen, a tag each */
+	noteTags_.resize(notes_.size());
+	for (int i = 0; i < notes_.size(); i++) {
+		noteTags_[i] = noteTagRect(axes, i);
+		if (noteTags_[i].isEmpty()) continue;
+		const double nx = axes.x(notes_[i].time);
+		dashes(marks.segments, map(QPointF(nx, plot.top())), map(QPointF(nx, plot.bottom())), 4.8 * dpr, 2.4 * dpr,
+				gpuColor(c.warn));
+		frame.sprites.push_back({ notePicture(i, noteTags_[i], dpr), whole(noteTags_[i].topLeft()) });
+	}
 	frame.layers << marks;
 	spanBar_ = spanBar(axes);
 	if (!spanBar_.text.isEmpty()) {
@@ -1854,6 +1985,60 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes) const {
 	}
 	spanBar_ = spanBar(axes);
 	drawSpanBar(p, spanBar_);
+}
+
+/* a note's tag at the bottom of the plot, its left edge on the note's line (its right edge when the plot ends) */
+QRectF ChartView::noteTagRect(const Axes &axes, int index) const {
+	const ChartNote &note = notes_[index];
+	if (note.time < axes.t0 || note.time > axes.t1) return QRectF();
+	const QFontMetricsF metrics(labelFont());
+	const QString text = metrics.elidedText(note.text.isEmpty() ? QStringLiteral(" ") : note.text, Qt::ElideRight, NOTE_TEXT_MAX);
+	const double w = metrics.horizontalAdvance(text) + 2 * NOTE_PAD, x = axes.x(note.time);
+	const double left = x + w <= axes.rect.right() ? x : x - w;
+	return QRectF(left, axes.rect.bottom() - NOTE_TAG_BOTTOM - NOTE_TAG_H, w, NOTE_TAG_H);
+}
+
+void ChartView::drawNoteTag(QPainter &p, const QRectF &tag, int index) const {
+	const ThemeColors &c = Theme::colors();
+	const bool chosen = index == selectedNote_;
+	p.save();
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(QPen(chosen ? c.accent : c.warn, chosen ? 2 : 1.2));
+	p.setBrush(c.surface2);
+	p.drawRoundedRect(tag.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+	p.setPen(c.text);
+	p.setFont(labelFont());
+	p.drawText(tag.adjusted(NOTE_PAD, 0, -NOTE_PAD + 1, 0), Qt::AlignVCenter | Qt::AlignLeft,
+			QFontMetricsF(labelFont()).elidedText(notes_[index].text, Qt::ElideRight, NOTE_TEXT_MAX));
+	p.restore();
+}
+
+/* a dashed line in the warning colour at each note, its tag at the bottom of the plot */
+void ChartView::drawNotes(QPainter &p, const Axes &axes) const {
+	noteTags_.resize(notes_.size());
+	for (int i = 0; i < notes_.size(); i++) {
+		noteTags_[i] = noteTagRect(axes, i);
+		if (noteTags_[i].isEmpty()) continue;
+		const double x = axes.x(notes_[i].time);
+		p.setPen(QPen(Theme::colors().warn, 1.2, Qt::DashLine));
+		p.drawLine(QPointF(x, axes.rect.top()), QPointF(x, axes.rect.bottom()));
+		drawNoteTag(p, noteTags_[i], i);
+	}
+}
+
+const QImage &ChartView::notePicture(int index, const QRectF &tag, qreal dpr) const {
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5").arg(notes_[index].text).arg(tag.width(), 0, 'f', 2).arg(dpr)
+			.arg(Theme::isDark()).arg(index == selectedNote_);
+	auto it = notePictures_.find(key);
+	if (it != notePictures_.end()) return *it;
+	if (notePictures_.size() > 64) notePictures_.clear(); /* texts edited away */
+	QImage image((tag.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+	image.setDevicePixelRatio(dpr);
+	image.fill(Qt::transparent);
+	QPainter p(&image);
+	drawNoteTag(p, QRectF(QPointF(0, 0), tag.size()), index);
+	p.end();
+	return *notePictures_.insert(key, image);
 }
 
 namespace {
@@ -2321,7 +2506,7 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 /* the state, top right: held, manual Y, cursor mode */
 void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	QStringList state;
-	if (!live_) state << tr("held: -%1 s · Live to follow").arg(chartNumber(clockNow() - axes.t1));
+	if (!live_ && !recording_) state << tr("held: -%1 s · Live to follow").arg(chartNumber(clockNow() - axes.t1));
 	if (logShown()) state << (yAuto_ ? tr("Y log") : tr("Y log, manual"));
 	else if (!yAuto_ && !normalized_) state << tr("Y manual");
 	if (cursorMode_) state << tr("cursors: click / drag");
