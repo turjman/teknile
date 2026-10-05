@@ -320,6 +320,15 @@ as it comes, so it covers hours while the memory keeps minutes; a gap of more th
 nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
+<h3>Histogram, spectrum, trigger</h3>
+<p><b>Right-click a line's chip</b> in the legend: <b>Histogram</b> (how its values spread, bins by the
+Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
+2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
+its own with a readout under the mouse, a picture and CSV.</p>
+<p><b>Display → Trigger</b>: a row to pick a line, Rising / Falling / Either, a level (a dashed line on the chart you
+can drag) and <b>Normal</b> (holds on each crossing, armed again once the view is full) or <b>Single</b> (the first;
+<b>Arm</b> for the next). The chart holds with the crossing at 20 % of the window and a <b>T</b> over it; the
+measurements, export and pictures take that view. <b>Live</b> follows now again.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -528,6 +537,8 @@ all fit</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
+<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Right-click</b> a lane's values: its Y range (Auto, Manual…, Log) · <b>Ctrl +
 wheel</b> zooms the lane · <b>double-click</b> it: Auto</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /

@@ -17,6 +17,10 @@
  *
  *  - Lanes (Display): a plot per unit, stacked; each lane's Y range by a
  *    right-click on its value labels (Auto, Manual, Log).
+ *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
+ *    over A -> B (or the view), in a small window (analysis_window.h).
+ *  - Trigger (Display): a row under the actions: a line, its edge, the level,
+ *    Single or Normal, Arm; the chart holds on each crossing (ChartView).
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
  *    thread, with progress and Cancel), Add note here, Open recording.
@@ -40,6 +44,7 @@
 #include "model/math_lines.h"
 #include "model/recording_file.h"
 #include "model/register_model.h"
+#include "ui/analysis_window.h"
 
 class ChartView;
 class ChartWidget;
@@ -139,6 +144,13 @@ public:
 	void showLaneMenu(int lane, const QPoint &globalPos);
 	QMenu *laneMenu() const { return laneMenu_; }
 	void editLaneRange(int lane); /* Manual…: its min and max asked */
+	/* a line's menu (a right-click on its chip): Histogram, Spectrum; tests: the menu */
+	void showLineMenu(int key, const QPoint &globalPos);
+	QMenu *lineMenu() const { return lineMenu_; }
+	/* a line's histogram or spectrum over A -> B (or the view), in a window of its own over this one */
+	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
+	/* the trigger row's state in words ("armed", "triggered at 14:03:12.345", ...): tests */
+	QString triggerState() const;
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
@@ -210,7 +222,7 @@ private:
 	QComboBox *ram_;              /* the samples' RAM, all the lines together */
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
-	QAction *normalize_, *smooth_, *hoverValues_, *lanes_;
+	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
 
@@ -228,6 +240,19 @@ private:
 	/* the right-click on the chart */
 	QMenu *chartMenu_ = nullptr;
 	QMenu *laneMenu_ = nullptr;
+	QMenu *lineMenu_ = nullptr;
+
+	/* the trigger's row (Display -> Trigger) */
+	QWidget *buildTriggerRow();
+	void applyTrigger();          /* the row's choices to the chart, armed again */
+	void fillTriggerLines();      /* the lines it can watch (registers and math lines), the one chosen kept */
+	void showTriggerState();
+	QWidget *triggerRow_ = nullptr;
+	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
+	QLineEdit *triggerLevel_ = nullptr;
+	QPushButton *triggerArm_ = nullptr;
+	QLabel *triggerState_ = nullptr;
+	QVector<int> triggerKeys_;    /* the lines in the list, by key */
 	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */
 	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
 	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */

@@ -135,6 +135,7 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	/* two rows over the chart: the axes, then what to do */
 	layout->addLayout(buildAxesRow());
 	layout->addLayout(buildActionsRow());
+	layout->addWidget(buildTriggerRow());
 
 	chart_ = new ChartWidget;
 	/* the chart reads the clock at every frame; its zero, in wall-clock time, for the labels */
@@ -314,6 +315,11 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	lanes_->setCheckable(true);
 	lanes_->setToolTip(tr("A plot per unit, stacked, each with its own Y range (right-click its values: Auto, Manual, "
 			"Log); one time axis, the cursors and notes across them. At most 8: the units after share the last."));
+	trigger_ = displayMenu->addAction(tr("Trigger"));
+	trigger_->setObjectName(QStringLiteral("chartTrigger"));
+	trigger_->setCheckable(true);
+	trigger_->setToolTip(tr("Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the "
+			"window.\nSingle: the first crossing; Normal: each one, armed again once the view is full."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -482,6 +488,23 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::laneMenuRequested, this, &ChartTab::showLaneMenu);
+	connect(view, &ChartView::lineMenuRequested, this, &ChartTab::showLineMenu);
+	connect(trigger_, &QAction::toggled, this, [this](bool on) {
+		triggerRow_->setVisible(on);
+		if (on) {
+			fillTriggerLines();
+			applyTrigger();
+		} else {
+			chart_->view()->stopTrigger();
+		}
+		showTriggerState();
+		showDisplayState();
+	});
+	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
+	connect(view, &ChartView::triggerLevelChanged, this, [this](double level) {
+		triggerLevel_->setText(QString::number(level, 'g', 6));
+		QSettings().setValue(settingKey("triggerLevel"), level);
+	});
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
 	});
@@ -597,6 +620,7 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	}
 	smooth_->setEnabled(false);
 	chart_->setSmooth(false);
+	trigger_->setVisible(false); /* nothing comes after the file to cross a level */
 	chart_->view()->setRamBudget(ramMB);
 	chart_->setMemory(std::max(1.0, t1 - t0));
 	registerLimit_ = columns;
@@ -693,6 +717,122 @@ QString ChartTab::infoTip() const {
 			"draw, the word \"plotted\" and the delay go first.");
 }
 
+/* ---------------------------------------------------------------- the trigger */
+
+QWidget *ChartTab::buildTriggerRow() {
+	triggerRow_ = new QWidget;
+	triggerRow_->setObjectName(QStringLiteral("triggerRow"));
+	triggerLine_ = new QComboBox;
+	triggerLine_->setObjectName(QStringLiteral("triggerLine"));
+	triggerLine_->setToolTip(tr("The line watched: a register or a math line on the chart"));
+	triggerLine_->setMinimumWidth(140);
+	triggerEdge_ = new QComboBox;
+	triggerEdge_->setObjectName(QStringLiteral("triggerEdge"));
+	triggerEdge_->addItem(tr("Rising"), int(ChartView::TriggerEdge::Rising));
+	triggerEdge_->addItem(tr("Falling"), int(ChartView::TriggerEdge::Falling));
+	triggerEdge_->addItem(tr("Either"), int(ChartView::TriggerEdge::Either));
+	triggerEdge_->setToolTip(tr("Rising: from below the level to it or above; Falling: the other way; Either: both"));
+	triggerLevel_ = new QLineEdit;
+	triggerLevel_->setObjectName(QStringLiteral("triggerLevel"));
+	auto *validator = new QDoubleValidator(triggerLevel_);
+	validator->setLocale(QLocale::c());
+	triggerLevel_->setValidator(validator);
+	triggerLevel_->setFixedWidth(90);
+	triggerLevel_->setAlignment(Qt::AlignRight);
+	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
+	triggerMode_ = new QComboBox;
+	triggerMode_->setObjectName(QStringLiteral("triggerMode"));
+	triggerMode_->addItem(tr("Normal"), int(ChartView::TriggerMode::Normal));
+	triggerMode_->addItem(tr("Single"), int(ChartView::TriggerMode::Single));
+	triggerMode_->setToolTip(tr("Normal: holds on each crossing, armed again once the view is full; Single: holds on the "
+			"first, Arm for the next"));
+	triggerArm_ = new QPushButton(tr("Arm"));
+	triggerArm_->setObjectName(QStringLiteral("triggerArm"));
+	triggerArm_->setToolTip(tr("Wait for the next crossing"));
+	triggerState_ = mutedLabel(QString());
+	triggerState_->setObjectName(QStringLiteral("triggerState"));
+	auto *row = new QHBoxLayout(triggerRow_);
+	row->setContentsMargins(0, 0, 0, 0);
+	row->setSpacing(6);
+	row->addWidget(mutedLabel(tr("Trigger")));
+	row->addWidget(triggerLine_);
+	row->addWidget(triggerEdge_);
+	row->addWidget(mutedLabel(tr("level")));
+	row->addWidget(triggerLevel_);
+	row->addWidget(triggerMode_);
+	row->addWidget(triggerArm_);
+	row->addSpacing(8);
+	row->addWidget(triggerState_, 1);
+	triggerRow_->hide();
+
+	const QSettings settings;
+	triggerLevel_->setText(QString::number(settings.value(settingKey("triggerLevel"), 0.0).toDouble(), 'g', 6));
+	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(settings.value(settingKey("triggerEdge"), 0).toInt())));
+	triggerMode_->setCurrentIndex(std::max(0, triggerMode_->findData(settings.value(settingKey("triggerMode"), 1).toInt())));
+	for (QComboBox *box : { triggerLine_, triggerEdge_, triggerMode_ })
+		connect(box, &QComboBox::activated, this, &ChartTab::applyTrigger);
+	connect(triggerLevel_, &QLineEdit::editingFinished, this, [this] {
+		bool ok = false;
+		const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
+		if (!ok) {
+			triggerLevel_->setText(QString::number(chart_->view()->triggerLevel(), 'g', 6));
+			return;
+		}
+		chart_->view()->setTriggerLevel(level);
+		QSettings().setValue(settingKey("triggerLevel"), level);
+	});
+	connect(triggerArm_, &QPushButton::clicked, this, [this] {
+		chart_->view()->armTrigger();
+		showTriggerState();
+	});
+	return triggerRow_;
+}
+
+void ChartTab::fillTriggerLines() {
+	const QString chosen = triggerLine_->currentText().isEmpty()
+			? QSettings().value(settingKey("triggerLine")).toString() : triggerLine_->currentText();
+	const QSignalBlocker quiet(triggerLine_);
+	triggerLine_->clear();
+	triggerKeys_.clear();
+	for (const ChartView::Info &line : chart_->view()->lines()) {
+		triggerLine_->addItem(noMnemonic(line.name), line.key);
+		triggerKeys_ << line.key;
+	}
+	const int index = triggerLine_->findText(noMnemonic(chosen));
+	triggerLine_->setCurrentIndex(index >= 0 ? index : 0);
+}
+
+void ChartTab::applyTrigger() {
+	if (!trigger_->isChecked()) return;
+	bool ok = false;
+	const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
+	if (triggerLine_->currentIndex() < 0) {
+		chart_->view()->stopTrigger();
+	} else {
+		chart_->view()->setTrigger(triggerLine_->currentData().toInt(), ok ? level : 0,
+				ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
+				ChartView::TriggerMode(triggerMode_->currentData().toInt()));
+		QSettings settings;
+		settings.setValue(settingKey("triggerLine"), chart_->view()->lines().value(triggerLine_->currentIndex()).name);
+		settings.setValue(settingKey("triggerEdge"), triggerEdge_->currentData().toInt());
+		settings.setValue(settingKey("triggerMode"), triggerMode_->currentData().toInt());
+	}
+	showTriggerState();
+}
+
+QString ChartTab::triggerState() const {
+	const ChartView *view = chart_->view();
+	if (!view->triggerOn()) return trigger_->isChecked() ? tr("no line to watch") : QString();
+	if (view->triggerArmed()) return tr("armed: waiting for a crossing");
+	const double at = view->triggeredAt();
+	const QString when = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(at * 1000)))
+			.toString(QStringLiteral("HH:mm:ss.zzz"));
+	return triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single)
+			? tr("triggered at %1 · Arm for the next").arg(when) : tr("triggered at %1").arg(when);
+}
+
+void ChartTab::showTriggerState() { triggerState_->setText(triggerState()); }
+
 void ChartTab::refreshStatus() {
 	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
 	const QString info = shown_ ? infoText(chartInfo_->contentsRect().width()) : QString();
@@ -700,6 +840,15 @@ void ChartTab::refreshStatus() {
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
 	if (chart_->yAuto()) showYRange(false);
+	if (trigger_->isChecked()) { /* the lines may have changed; the state moves on (Normal armed again) */
+		QVector<int> keys;
+		for (const ChartView::Info &line : chart_->view()->lines()) keys << line.key;
+		if (keys != triggerKeys_) {
+			fillTriggerLines();
+			if (chart_->view()->triggerKey() != triggerLine_->currentData().toInt()) applyTrigger();
+		}
+		showTriggerState();
+	}
 	bool over = false;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
 			chart_->memory(), over) : QString();
@@ -771,9 +920,9 @@ void ChartTab::applyDrawing(int choice) {
 
 QString ChartTab::displayState() const {
 	const QString onOff[] = { tr("off"), tr("on") };
-	return tr("Normalise %1 · Lanes %2 · Smooth %3 · Hover values %4 · drawn by the %5").arg(onOff[normalize_->isChecked()],
-			onOff[lanes_->isChecked()], onOff[smooth_->isChecked()], onOff[hoverValues_->isChecked()],
-			chart_->view()->drawingName());
+	return tr("Normalise %1 · Lanes %2 · Smooth %3 · Trigger %4 · Hover values %5 · drawn by the %6")
+			.arg(onOff[normalize_->isChecked()], onOff[lanes_->isChecked()], onOff[smooth_->isChecked()],
+					onOff[trigger_->isChecked()], onOff[hoverValues_->isChecked()], chart_->view()->drawingName());
 }
 
 void ChartTab::showDisplayState() {
@@ -1004,6 +1153,43 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	log->setCheckable(true);
 	log->setChecked(view->laneYLog(lane));
 	laneMenu_->popup(globalPos);
+}
+
+void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
+	QString name;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		if (line.key == key) name = line.name;
+	if (lineMenu_) lineMenu_->deleteLater();
+	lineMenu_ = new QMenu(this);
+	lineMenu_->setObjectName(QStringLiteral("lineMenu"));
+	lineMenu_->setToolTipsVisible(true);
+	double t0, t1;
+	bool cursors;
+	chart_->view()->range(t0, t1, cursors);
+	const QString over = cursors ? tr("between the cursors, A → B") : tr("over the view");
+	QAction *histogram = lineMenu_->addAction(tr("Histogram of %1").arg(noMnemonic(name)), this,
+			[this, key] { openAnalysis(AnalysisWindow::Kind::Histogram, key); });
+	histogram->setToolTip(tr("How its values spread, %1").arg(over));
+	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
+			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
+	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	lineMenu_->popup(globalPos);
+}
+
+AnalysisWindow *ChartTab::openAnalysis(AnalysisWindow::Kind kind, int key) {
+	const ChartView *view = chart_->view();
+	ChartView::Info info{ key, QString(), QString(), QColor() };
+	for (const ChartView::Info &line : view->lines())
+		if (line.key == key) info = line;
+	double t0, t1;
+	bool cursors;
+	view->range(t0, t1, cursors);
+	QVector<double> times, values;
+	view->lineSamples(key, t0, t1, times, values);
+	const QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
+	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window());
+	analysis->show();
+	return analysis;
 }
 
 void ChartTab::editLaneRange(int lane) {

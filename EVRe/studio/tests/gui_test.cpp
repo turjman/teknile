@@ -99,6 +99,8 @@
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bus_panel.h"
+#include "model/analysis.h"
+#include "ui/analysis_window.h"
 #include "ui/chart_tab.h"
 #include "ui/recording_window.h"
 #include "ui/frame_clock.h"
@@ -527,6 +529,9 @@ public:
 		chartExport();
 		chartNotes();
 		chartLanes();
+		analysisMath();
+		analysisWindows();
+		chartTrigger();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -4502,6 +4507,235 @@ private:
 		check(view->laneCount() == 0 && mode->isEnabled() && !QSettings().value(QStringLiteral("chart/lanes")).toBool(),
 				"chart, Lanes off: one plot again, the Y range row back");
 		QSettings().remove(QStringLiteral("chart/laneY"));
+		chart.tab.hide();
+	}
+
+	/* The analysis's own arithmetic: the FFT (an impulse, a sine, back again), the histogram's Freedman-Diaconis bins,
+	 * the spectrum of a sine polled unevenly (resampled, Welch with a Hann window: its amplitude and frequency) */
+	void analysisMath() {
+		QVector<std::complex<double>> impulse(64, 0.0);
+		impulse[0] = 1;
+		analysis::fft(impulse);
+		bool flat = true;
+		for (const auto &x : impulse) flat = flat && std::abs(x - std::complex<double>(1, 0)) < 1e-12;
+		QVector<std::complex<double>> sine(256), back;
+		for (int k = 0; k < 256; k++) sine[k] = std::sin(2 * M_PI * 8 * k / 256.0);
+		back = sine;
+		analysis::fft(sine);
+		const bool bin = std::abs(std::abs(sine[8]) - 128) < 1e-9 && std::abs(sine[7]) < 1e-9 && std::abs(sine[0]) < 1e-9;
+		QVector<std::complex<double>> round = sine;
+		analysis::fft(round, true);
+		bool again = true;
+		for (int k = 0; k < 256; k++) again = again && std::abs(round[k] / 256.0 - back[k]) < 1e-12;
+		check(flat && bin && again, "analysis: the FFT of an impulse is flat, a sine of 8 periods in 256 lands in bin 8 "
+				"(N/2), and back again");
+
+		QVector<double> uniform;
+		for (int i = 0; i < 1000; i++) uniform << i;
+		const analysis::Histogram h = analysis::histogram(uniform);
+		qint64 sum = 0;
+		for (qint64 count : h.counts) sum += count;
+		const analysis::Histogram one = analysis::histogram({ 5.0, 5.0, 5.0 });
+		QVector<double> levels(100, 5.0);
+		levels[0] = 1;
+		levels[99] = 9;
+		const analysis::Histogram few = analysis::histogram(levels);
+		check(h.counts.size() == 10 && std::fabs(h.width - 99.9) < 1e-9 && sum == 1000 && h.total == 1000
+						&& one.counts == QVector<qint64>{ 3 } && few.counts.size() == 10 && few.counts[5] == 98,
+				"analysis, histogram: 0 .. 999 in 10 bins of 99.9 (2 IQR / n^(1/3)); one value in one bin; values that "
+				"do not spread: the square root of n bins");
+
+		QVector<double> times, values;
+		quint32 seed = 12345;
+		for (int i = 0; i < 10000; i++) { /* polls 1 ms apart, give or take 0.3 ms */
+			seed = seed * 1664525u + 1013904223u;
+			const double t = 100.0 + i * 0.001 + (double(seed >> 8) / double(1 << 24) - 0.5) * 0.0006;
+			times << t;
+			values << 1.0 + 2.0 * std::sin(2 * M_PI * 62.5 * t);
+		}
+		const analysis::Spectrum s = analysis::spectrum(times, values);
+		qsizetype peak = 1;
+		for (qsizetype j = 1; j < s.amplitude.size(); j++)
+			if (s.amplitude[j] > s.amplitude[peak]) peak = j;
+		std::printf("     (spectrum: %.2f Hz, %d segments of %d, peak %.4g at %.4g Hz, DC %.4g)\n", s.rate, s.segments,
+				s.segment, s.amplitude.value(peak), s.frequency.value(peak), s.amplitude.value(0));
+		check(std::fabs(s.rate - 1000) < 1 && s.segment == 2048 && s.segments >= 8
+						&& std::fabs(s.frequency.value(peak) - 62.5) < s.resolution() && std::fabs(s.amplitude.value(peak) - 2) < 0.05
+						&& std::fabs(s.amplitude.value(0) - 1) < 0.05 && std::fabs(s.frequency.last() - s.rate / 2) < 1e-9
+						&& analysis::spectrum(QVector<double>(10, 1.0), QVector<double>(10, 1.0)).frequency.isEmpty(),
+				"analysis, spectrum: a sine of 2 V at 62.5 Hz polled unevenly reads 2 V at 62.5 Hz (resampled at the mean "
+				"rate, Welch, Hann, 50 % overlap), its mean at 0 Hz, up to half the rate; too few samples: none");
+	}
+
+	/* Histogram and Spectrum from a right-click on a line's chip: windows of their own over the view or A -> B, a
+	 * readout under the mouse, the picture and CSV */
+	void analysisWindows() {
+		LoneChart chart(QStringLiteral("WAVE"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 10000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i * 0.001, 3 * std::sin(2 * M_PI * 62.5 * i * 0.001));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab();
+		chart.view->setLive(false);
+		const QRectF chip = chart.view->legendChips().value(0);
+		QContextMenuEvent right(QContextMenuEvent::Mouse, chip.center().toPoint(), chart.view->mapToGlobal(chip.center().toPoint()));
+		QApplication::sendEvent(chart.view, &right);
+		QMenu *menu = chart.tab.lineMenu();
+		QStringList texts;
+		QAction *histogramAction = nullptr;
+		if (menu)
+			for (QAction *action : menu->actions()) {
+				texts << action->text();
+				if (action->text().startsWith(QLatin1String("Histogram"))) histogramAction = action;
+			}
+		const bool listed = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
+				&& texts == QStringList{ QStringLiteral("Histogram of WAVE"), QStringLiteral("Spectrum of WAVE") };
+		if (histogramAction) histogramAction->trigger();
+		if (menu) menu->close();
+		auto *histogram = chart.tab.findChild<AnalysisWindow *>(QStringLiteral("histogramWindow"));
+		const bool opened = histogram && histogram->isVisible() && histogram->windowTitle().startsWith(QStringLiteral(
+				"Histogram of WAVE — the view")) && histogram->histogram().total >= 9000;
+		const QRectF area = histogram ? QRectF(histogram->plot()->rect()).adjusted(64, 30, -18, -30) : QRectF();
+		const QString readout = histogram ? histogram->readoutAt(area.center().x()) : QString();
+		if (!listed || !opened) std::printf("     (the line's menu: %s; \"%s\")\n", qPrintable(texts.join(QStringLiteral(" | "))),
+				histogram ? qPrintable(histogram->windowTitle()) : "no window");
+		check(listed && opened && readout.contains(QStringLiteral(" V: ")) && readout.endsWith(QLatin1String("%)")),
+				"analysis: a right-click on a line's chip offers its Histogram and Spectrum; the histogram over the view in "
+				"a window of its own, the bin and its count under the mouse");
+
+		/* A -> B: the spectrum of a second; its picture and CSV */
+		chart.view->setCursors(92.0, 93.0);
+		AnalysisWindow *spectrum = chart.tab.openAnalysis(AnalysisWindow::Kind::Spectrum, chart.key());
+		QTemporaryDir folder;
+		QString error;
+		const bool exported = spectrum->exportCsv(folder.filePath(QStringLiteral("s.csv")), error);
+		QFile csv(folder.filePath(QStringLiteral("s.csv")));
+		QStringList rows;
+		/* the platform's line ends (CRLF on Windows) */
+		if (csv.open(QIODevice::ReadOnly))
+			rows = QString::fromUtf8(csv.readAll()).split(QRegularExpression(QStringLiteral("\r?\n")), Qt::SkipEmptyParts);
+		const bool picture = spectrum->savePicture(folder.filePath(QStringLiteral("s.png")))
+				&& QImage(folder.filePath(QStringLiteral("s.png"))).size() == (QSizeF(spectrum->plot()->size()) * spectrum->devicePixelRatioF()).toSize();
+		const QRectF plotArea = QRectF(spectrum->plot()->rect()).adjusted(64, 30, -18, -30);
+		const QString at = spectrum->readoutAt(plotArea.left() + plotArea.width() * 62.5 / (spectrum->spectrum().rate / 2));
+		spectrum->setLogScale(true);
+		const QSize pictureSize = QImage(folder.filePath(QStringLiteral("s.png"))).size();
+		std::printf("     (spectrum: \"%s\" / \"%s\" / at \"%s\" / csv %s, %lld rows for %lld / picture %dx%d for %.1fx%.1f)\n",
+				qPrintable(spectrum->windowTitle()), qPrintable(spectrum->summary()), qPrintable(at),
+				exported ? "written" : "not written", (long long) rows.size(),
+				(long long) spectrum->spectrum().frequency.size() + 1, pictureSize.width(), pictureSize.height(),
+				spectrum->plot()->width() * spectrum->devicePixelRatioF(),
+				spectrum->plot()->height() * spectrum->devicePixelRatioF());
+		check(spectrum->windowTitle().startsWith(QStringLiteral("Spectrum of WAVE — A → B, 1 s"))
+						&& spectrum->summary().contains(QStringLiteral("peak 62.5 Hz: 3")) && (at == QStringLiteral("62.5 Hz: 3 V") || at.startsWith(QStringLiteral("62.5 Hz: 2.9")))
+						&& exported && rows.value(0) == QLatin1String("frequency [Hz],amplitude [V]")
+						&& rows.size() == spectrum->spectrum().frequency.size() + 1 && picture,
+				"analysis: the spectrum over A -> B (its peak, 62.5 Hz at 3 V; the frequency and amplitude under the "
+				"mouse); exported as CSV, its picture saved");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the two windows, for a look */
+			spectrum->setLogScale(false);
+			if (histogram) histogram->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_histogram.png"));
+			spectrum->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_spectrum.png"));
+		}
+		for (AnalysisWindow *w : chart.tab.findChildren<AnalysisWindow *>()) w->close();
+		chart.tab.hide();
+	}
+
+	/* The trigger: the view holds on a crossing with it at 20 % of the window and a marker; Normal holds on each and is
+	 * armed again once the view is full; Single holds on the first; rising, falling, either; the level dragged; the
+	 * measurements over what is held */
+	void chartTrigger() {
+		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine" })
+			QSettings().remove(QLatin1String(key)); /* the defaults: Rising, Normal */
+		LoneChart chart(QStringLiteral("TRIG"), QStringLiteral("V"));
+		chart.view->setWindow(1);
+		chart.view->setSmooth(false);
+		double fed = 99.0;
+		const auto feed = [&](double until) { /* 1 kHz of a 1 Hz sine, the clock with it */
+			MathLines::Samples samples;
+			for (; fed < until - 1e-9; fed += 0.001) samples[regKey(chart.def)] << QPointF(fed, std::sin(2 * M_PI * fed));
+			chart.now = fed;
+			chart.tab.frame(samples);
+		};
+		feed(99.95);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *action = chart.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *row = chart.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+		auto *level = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *edge = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerEdge"));
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *arm = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerArm"));
+		if (!action || !row || !level || !edge || !mode || !arm) {
+			check(false, "chart, Trigger: in the Display menu, its row");
+			return;
+		}
+		level->setText(QStringLiteral("0.5"));
+		action->setChecked(true);
+		const bool shown = row->isVisible() && chart.view->triggerArmed() && chart.view->triggerLevel() == 0.5;
+		feed(100.5); /* rising through 0.5 at 100 + 1/12 */
+		const double first = 100.0 + 1.0 / 12;
+		(void) chart.view->grab();
+		double t0, t1;
+		bool cursors;
+		chart.view->range(t0, t1, cursors);
+		const bool held = std::fabs(chart.view->triggeredAt() - first) < 1e-6 && !chart.view->live()
+				&& std::fabs(t0 - (first - 0.2)) < 1e-6 && std::fabs(t1 - (first + 0.8)) < 1e-6 && !chart.view->triggerTag().isEmpty()
+				&& std::fabs(chart.view->triggerTag().center().x() - chart.view->lastPlot().left() - 0.2 * chart.view->lastPlot().width()) < 1;
+		const ChartView::Stats measured = chart.view->stats(chart.key());
+		if (!held) std::printf("     (triggered at %.6f, wanted %.6f; the view %.4f .. %.4f)\n", chart.view->triggeredAt(), first, t0, t1);
+		check(shown && held && measured.ok && std::fabs(measured.max - 1) < 1e-3,
+				"chart, Trigger: rising through 0.5: the view holds with the crossing at 20 % of the window and its marker; "
+				"the measurements over it");
+
+		/* Normal: the next period's crossing once the view is full */
+		feed(100.9); /* full at 100.883: armed again */
+		const bool armedAgain = chart.view->triggerArmed();
+		feed(101.5);
+		const bool next = std::fabs(chart.view->triggeredAt() - (first + 1)) < 1e-6;
+		check(armedAgain && next, "chart, Trigger, Normal: armed again once the view is full, holds on the next crossing");
+
+		/* Single, falling: once */
+		mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Single)));
+		edge->setCurrentIndex(edge->findData(int(ChartView::TriggerEdge::Falling)));
+		emit mode->activated(mode->currentIndex());
+		feed(102.9); /* falling through 0.5 at 102 + 5/12 */
+		const double falling = 102.0 + 5.0 / 12;
+		const bool single = std::fabs(chart.view->triggeredAt() - falling) < 1e-6 && !chart.view->triggerArmed();
+		feed(104.0);
+		const bool stays = std::fabs(chart.view->triggeredAt() - falling) < 1e-6
+				&& chart.tab.triggerState().contains(QLatin1String("Arm for the next"));
+		arm->click();
+		edge->setCurrentIndex(edge->findData(int(ChartView::TriggerEdge::Either)));
+		emit edge->activated(edge->currentIndex());
+		feed(104.2); /* either: rising at 104 + 1/12 */
+		const bool either = std::fabs(chart.view->triggeredAt() - (104.0 + 1.0 / 12)) < 1e-6;
+		check(single && stays && either, "chart, Trigger: Single holds on the first falling crossing and stays; Arm, Either: "
+				"the next crossing of any direction");
+
+		/* the level dragged */
+		const QPixmap heldPicture = chart.tab.grab();
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the chart held on a crossing, for a look */
+			heldPicture.save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger.png"));
+		const double y = chart.view->triggerLineY();
+		const QPoint from(int(chart.view->lastPlot().center().x()), int(std::lround(y)));
+		const QPoint to(from.x(), int(std::lround(chart.view->yOfValue(0.8))));
+		QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, from);
+		QMouseEvent move(QEvent::MouseMove, QPointF(to), chart.view->mapToGlobal(QPointF(to)), Qt::NoButton, Qt::LeftButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(chart.view, &move);
+		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, to);
+		const double dragged = chart.view->triggerLevel();
+		check(std::isfinite(y) && std::fabs(dragged - 0.8) < 0.02 && std::fabs(level->text().toDouble() - dragged) < 1e-5
+						&& std::fabs(QSettings().value(QStringLiteral("chart/triggerLevel")).toDouble() - dragged) < 1e-5,
+				"chart, Trigger: the level's dashed line dragged to 0.8: the level follows, the row and the setting too");
+		action->setChecked(false);
+		check(!chart.view->triggerOn() && !row->isVisible(), "chart, Trigger off: its row hidden, the chart no longer held "
+				"by crossings");
+		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine" })
+			QSettings().remove(QLatin1String(key));
 		chart.tab.hide();
 	}
 

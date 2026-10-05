@@ -52,6 +52,8 @@ EVRe is a protocol of **teknile**.
   every sample; columns chosen by a right-click on the header.
 - **Recordings:** the chart's view or A → B exported to CSV, pictures of the chart, notes on it; a recording or an
   export opened in a window of its own (its chart, measurements, notes, math lines) while the live chart goes on.
+- **Analysis:** a line's histogram or spectrum (Welch, our own FFT) over A → B in a window of its own; a trigger that
+  holds the chart on a level crossing, Single or Normal, as an oscilloscope.
 - **Math lines:** formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers.
 - **Auto send:** a device that can sends its read-only block by itself at a set rate; each frame is one chart
   point and one CSV row.
@@ -155,7 +157,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (324 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (334 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus and auto send steps) |
 | `evre_map_test` | the map files without a window (21 tests): saved byte for byte, edits, overlays, keys, checks, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema (needs the `jsonschema` package) |
 | `tests/cli_test.py` | the `evre` command line end to end (33 checks), against its own fake device and a bus of two devices on `evre_fake_fast` |
