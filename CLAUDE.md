@@ -23,6 +23,28 @@ Apache-2.0. The Studio's full guide is `EVRe/studio/docs/STUDIO.md`; read its ch
   nothing about what the data means; names, units and limits live in the map (a higher layer).
 - Match the code around you: its comment style (sentences about why), naming and idiom.
 
+## For the human eye (the owner's rule for every screen, chart, table and diagram)
+
+Judge each change by what a person sees, not only by what the code does; the owner reviews the
+screenshots.
+
+- **Grouping is visible.** Separate things look separate: stacked plots, panels and groups have a
+  separator, a gap or a frame, so two axes never read as one (the lanes' "15 10 5 15 10 5").
+- **Readable sizes.** A plot, lane or list keeps enough height for its labels (at least two value
+  labels on an axis); when things do not fit, scroll or fold rather than squeeze; text is never
+  cut mid-letter, overlapping or drawn over lines.
+- **Every action is discoverable.** A click target looks clickable (a button shape, an icon such
+  as "▾" / "▸", a pointing-hand cursor and a highlight on hover) and has a tooltip; nothing is
+  reachable only by a right-click, a modifier key or a hidden spot. A right-click menu repeats
+  what is visible, it is not the only way.
+- **Both themes and both languages.** Check contrast in dark and light (faint grey on faint grey
+  fails), and the layout in English and Arabic (right-to-left, longer words).
+- **Tables and diagrams in the docs.** A short cell (a name, a key, a setting, a value) stays on one
+  line (`&nbsp;` between its words; longer text goes in the last column); every table has a header
+  row; an ASCII diagram is aligned in a monospaced block and fits in 100 columns.
+- **Show it.** A PR that changes what is seen says what to look at, and the Windows run adds
+  dark and light screenshots of it.
+
 ## Build and test on Linux
 
 ```sh
@@ -243,3 +265,18 @@ the lines in it. Lanes must stay readable however many units are plotted.
    Both drawing paths (the card: with the grid's segments), the picture check at its level. A check
    that the separators are where the gaps are (their y per gap) and in the colour, the docs (7.12,
    23), and a Help sentence.
+9. **Markdown tables: no short cell on two lines (the owner, after the root README fix 406a99d).**
+   On GitHub a table squeezes its columns, and a short name such as "EVRe protocol" or "Ctrl + wheel"
+   wraps onto two lines. Go through every tracked `*.md` (about 1,200 table rows, 981 in STUDIO.md)
+   and fix each table the way 406a99d fixed `README.md` (look at its diff):
+   - In every column but the last (the prose one), a cell of up to about 32 visible characters is
+     kept on one line: `&nbsp;` between its words, outside backticks (`Ctrl&nbsp;+&nbsp;wheel`,
+     `**[Map&nbsp;format](...)**`, `` `chart/lanes`&nbsp;(bool) ``). Links and code stay as they are.
+   - A first-column cell longer than that: shorten it to a name and move the rest (a code name,
+     a remark) to the start of the next column, as "Map format `evre-map/1`" became "Map format".
+   - A header row that is empty (`| | |`) gets real column names.
+   - Change nothing else: no rewording, no reordering; the tables' content and the anchors stay.
+   - Check: a small script (not committed) that lists every table cell of a non-last column with a
+     plain space and at most 32 visible characters must list none; the Python test that reads the
+     README's check count, the Help test and every Linux test still pass. One commit, "Docs: tables'
+     short cells on one line", pushed to PR #7, and a line about it in the PR's text.
