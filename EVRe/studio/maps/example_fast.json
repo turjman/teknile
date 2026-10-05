@@ -15,12 +15,15 @@
       "desc": "time since the device started" },
     { "addr": "0xD004", "name": "SUPPLY_V", "type": "f32", "unit": "V", "access": "ro", "group": "Power" },
     { "addr": "0xD008", "name": "TEMPERATURE", "type": "f32", "unit": "°C", "access": "ro", "group": "Sensors" },
+    { "addr": "0xD00C", "name": "ADC_RATE", "type": "u32", "unit": "Hz", "access": "ro", "group": "Power", "plot": false,
+      "desc": "the ADC stream's samples a second" },
 
     { "addr": "0xD080", "name": "ADC_STREAM", "type": "u8", "access": "rw", "group": "Power",
       "desc": "the ADC stream: 1 starts it, 0 stops it", "enum": { "0": "off", "1": "on" } }
   ],
   "streams": [
-    { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000, "enable": "ADC_STREAM",
+    { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000, "rate_reg": "ADC_RATE",
+      "enable": "ADC_STREAM",
       "group": "Power", "desc": "load current and bus voltage, sampled together",
       "channels": [
         { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },

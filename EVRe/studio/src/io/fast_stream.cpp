@@ -3,6 +3,7 @@
  * and a stream as a device sends it. */
 #include "io/fast_stream.h"
 
+#include <QTimer>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -235,6 +236,47 @@ QByteArray FastSource::block(int n) {
 	}
 	pending_ = 0;
 	return evre::build(slave_, evre::READ_RESP, def_.addr, uint16_t(data.size()), data);
+}
+
+/* --------------------------------------------------------------- the sender */
+
+FastSender::FastSender(QObject *owner, const QVector<StreamDef> &streams, uint8_t slave,
+		const FastSource::Options &options, Send send, Stopped stopped)
+	: options_(options), send_(std::move(send)), stopped_(std::move(stopped)) {
+	for (const StreamDef &def : streams) sources_.emplace_back(def, slave);
+	timer_ = new QTimer(owner);
+	timer_->setTimerType(Qt::PreciseTimer);
+	timer_->setInterval(1);
+	QObject::connect(timer_, &QTimer::timeout, timer_, [this] { tick(); });
+	clock_.start();
+	sinceHeard_.start();
+}
+
+void FastSender::enable(int stream, bool on) {
+	if (stream < 0 || stream >= int(sources_.size())) return;
+	FastSource &source = sources_[size_t(stream)];
+	if (!on) source.stop();
+	else if (!source.running()) source.start(options_, clock_.nsecsElapsed());
+	const bool any = std::any_of(sources_.begin(), sources_.end(), [](const FastSource &s) { return s.running(); });
+	if (any && !timer_->isActive()) timer_->start();
+	if (!any) timer_->stop();
+}
+
+/* every running stream's blocks due by now, in one send; a silent host stops them all */
+void FastSender::tick() {
+	if (sinceHeard_.elapsed() > WATCHDOG_MS) {
+		for (int i = 0; i < int(sources_.size()); i++)
+			if (sources_[size_t(i)].running()) {
+				sources_[size_t(i)].stop();
+				if (stopped_) stopped_(i);
+			}
+		timer_->stop();
+		return;
+	}
+	QByteArray out;
+	const qint64 now = clock_.nsecsElapsed();
+	for (FastSource &source : sources_) out += source.due(now);
+	if (!out.isEmpty()) send_(out);
 }
 
 /* ---------------------------------------------------------------- channels */

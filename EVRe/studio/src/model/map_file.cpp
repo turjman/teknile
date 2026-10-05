@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
 #include <QObject>
@@ -968,6 +969,27 @@ const RegDef *DeviceMap::registerNamed(const QString &name) const {
 
 void DeviceMap::sort() {
 	std::stable_sort(regs.begin(), regs.end(), [](const RegDef &a, const RegDef &b) { return a.addr < b.addr; });
+}
+
+/* ------------------------------------------------------------- the streams */
+
+QByteArray streamToJson(const StreamDef &stream) {
+	Value list = streamsJson({ stream });
+	jsondoc::forgetSource(list);
+	return jsondoc::render(list.items.front(), jsondoc::Style{ false, QByteArray(" "), 1 << 30 }, 0);
+}
+
+bool streamFromJson(const QByteArray &json, StreamDef &stream, QString &err) {
+	QJsonParseError parseError;
+	const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
+	if (!doc.isObject()) {
+		err = parseError.errorString();
+		return false;
+	}
+	QVector<StreamDef> streams;
+	if (!parseStreams(QJsonArray{ doc.object() }, streams, err)) return false;
+	stream = streams.front();
+	return true;
 }
 
 /* ------------------------------------------------------------ the clipboard */

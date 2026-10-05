@@ -4,6 +4,7 @@
  *
  *   evre-sim MAP [--port 1210] [--any] [--slave N] [--token T] [--require-login]
  *                [--strict] [--state FILE] [--verbose]
+ *                [--fast-lose N] [--fast-ppm P] [--fast-first K] [--fast-rate R]
  *
  * The device does what its map says:
  *   - every register starts at its "default" (else 0); DEVICE_ID is the map's,
@@ -31,6 +32,17 @@
  *   - its slave address is the map's "slave" (--slave N: another); a frame for
  *     another slave gets no answer. A broadcast (slave 0) WRITE is taken as a
  *     WRITE to it, and not answered; any other broadcast is dropped.
+ *   - Fast EVRe (a map with "streams"), on each connection: a write of a
+ *     stream's "enable" register that leaves it not 0 starts the stream - a
+ *     wave per channel at the map's rate, in blocks sent when full or 10 ms
+ *     old, as READ_RESP frames of its window nobody asked for - and a 0 stops
+ *     it. So does a host silent for 2 s (the host watchdog, which then sets the
+ *     enable register back to 0) and the connection's end. A READ of a window
+ *     is refused (4): no register is there. The test aids: --fast-lose N (every
+ *     N-th block is not sent; the next says LOST), --fast-ppm P (the sample
+ *     clock P parts in a million fast; negative: slow), --fast-first K (the
+ *     first block starts at record K), --fast-rate R (R records a second in
+ *     place of the map's rate).
  *
  * It listens on 127.0.0.1 (--any: every interface). --verbose prints each write.
  */
@@ -51,6 +63,7 @@
 
 #include "evre/frame.h"
 #include "evre/registers.h"
+#include "io/fast_stream.h"
 #include "model/device_map.h"
 
 namespace {
@@ -68,6 +81,7 @@ struct Options {
 	int slave = -1; /* -1: the map's */
 	bool any = false, requireLogin = false, strict = false, verbose = false;
 	QString token = QStringLiteral("example-token"), stateFile;
+	fast::FastSource::Options fast;
 };
 
 /* each connection's own state */
@@ -93,10 +107,26 @@ public:
 		for (const RegDef &r : map.regs)
 			if (!protocolBank(r)) setLatchedBits(r);
 		loadState();
+		/* a stream's rate register holds the rate it runs at (the map's, or --fast-rate) */
+		for (const StreamDef &stream : map.streams)
+			if (const RegDef *rate = map.registerNamed(stream.rateReg)) {
+				QByteArray bytes;
+				QString why;
+				const double hz = options.fast.rate > 0 ? options.fast.rate : stream.rate;
+				if (encodeValue(*rate, QString::number(hz, 'g', 12), bytes, why))
+					std::memcpy(&memory_[rate->addr], bytes.constData(), size_t(bytes.size()));
+			}
 		clock_.start();
 	}
 
 	uint8_t slave() const { return slave_; }
+	const DeviceMap &map() const { return map_; }
+	const Options &options() const { return options_; }
+	/* a register's shown value now, and set back to its idle value */
+	double value(const RegDef &r) const {
+		return decodeNumber(r, QByteArray(reinterpret_cast<const char *>(&memory_[r.addr]), r.size));
+	}
+	void rest(const RegDef &r) { setIdle(r); }
 
 	/* a frame heard on the link: this device's, a broadcast (a WRITE taken, never answered) or another's (silence) */
 	QByteArray hear(const evre::Frame &request, Connection &connection) {
@@ -226,11 +256,17 @@ private:
 
 	/* ---- the moving values, refreshed on every READ */
 
+	/* a stream's rate register: it holds the rate the stream runs at, it does not move */
+	bool isRateRegister(const RegDef &r) const {
+		return std::any_of(map_.streams.begin(), map_.streams.end(), [&](const StreamDef &s) { return s.rateReg == r.name; });
+	}
+
 	void animate() {
 		const double t = double(clock_.nsecsElapsed()) / 1e9;
 		for (int i = 0; i < map_.regs.size(); i++) {
 			const RegDef &r = map_.regs[i];
-			if (r.rw || !r.isNumeric() || !r.enumValues.isEmpty() || !r.fields.isEmpty() || r.hasDefault() || protocolBank(r))
+			if (r.rw || !r.isNumeric() || !r.enumValues.isEmpty() || !r.fields.isEmpty() || r.hasDefault() || protocolBank(r)
+					|| isRateRegister(r))
 				continue;
 			if (r.type == RegType::U32 && r.unit == QLatin1String("ms")) {
 				const uint32_t ms = uint32_t(t * 1000.0);
@@ -302,15 +338,39 @@ private:
 	QElapsedTimer clock_;
 };
 
+/* the request is a write that reached the device and covers the register r */
+bool writes(const evre::Frame &request, uint8_t slave, const RegDef &r) {
+	const bool write = request.fn == evre::WRITE || request.fn == evre::WRITE_ACK;
+	const bool reaches = request.slave == slave || request.slave == evre::BROADCAST;
+	return write && reaches && int(request.addr) < r.addr + r.size && int(r.addr) < int(request.addr) + request.cnt;
+}
+
 void serve(QTcpSocket *socket, Simulator &sim) {
 	socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
 	auto parser = std::make_shared<evre::Parser>();
 	auto connection = std::make_shared<Connection>();
-	QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser, connection, &sim] {
+	/* the map's fast streams on this connection, each switched by its enable register */
+	std::shared_ptr<fast::FastSender> sender;
+	if (!sim.map().streams.isEmpty())
+		sender = std::make_shared<fast::FastSender>(socket, sim.map().streams, sim.slave(), sim.options().fast,
+				[socket](const QByteArray &bytes) { socket->write(bytes); },
+				[&sim](int stream) {
+					if (const RegDef *enable = sim.map().registerNamed(sim.map().streams[stream].enable)) sim.rest(*enable);
+				});
+	QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser, connection, sender, &sim] {
 		parser->feed(socket->readAll());
 		evre::Frame request;
 		QByteArray out;
-		while (parser->next(request)) out += sim.hear(request, *connection);
+		while (parser->next(request)) {
+			out += sim.hear(request, *connection);
+			if (!sender) continue;
+			if (request.slave == sim.slave()) sender->heard();
+			const QVector<StreamDef> &streams = sim.map().streams;
+			for (int s = 0; s < streams.size(); s++) {
+				const RegDef *enable = sim.map().registerNamed(streams[s].enable);
+				if (enable && writes(request, sim.slave(), *enable)) sender->enable(s, sim.value(*enable) != 0);
+			}
+		}
 		if (!out.isEmpty()) socket->write(out);
 	});
 	QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
@@ -342,9 +402,14 @@ int main(int argc, char **argv) {
 		else if (a == QLatin1String("--strict")) options.strict = true;
 		else if (a == QLatin1String("--state")) options.stateFile = next();
 		else if (a == QLatin1String("--verbose")) options.verbose = true;
+		else if (a == QLatin1String("--fast-lose")) options.fast.loseEvery = next().toInt();
+		else if (a == QLatin1String("--fast-ppm")) options.fast.ppm = next().toDouble();
+		else if (a == QLatin1String("--fast-first")) options.fast.first = quint32(next().toULongLong());
+		else if (a == QLatin1String("--fast-rate")) options.fast.rate = next().toDouble();
 		else if (a.startsWith(QLatin1String("--")) || !mapFile.isEmpty()) {
 			std::fprintf(stderr, "usage: evre-sim MAP [--port 1210] [--any] [--slave N] [--token T] [--require-login]"
-					" [--strict] [--state FILE] [--verbose]\n");
+					" [--strict] [--state FILE] [--verbose] [--fast-lose N] [--fast-ppm P] [--fast-first K]"
+					" [--fast-rate R]\n");
 			return 2;
 		} else mapFile = a;
 	}
@@ -371,7 +436,8 @@ int main(int argc, char **argv) {
 		std::fprintf(stderr, "evre-sim: port %u: %s\n", options.port, qPrintable(server.errorString()));
 		return 1;
 	}
-	std::printf("evre-sim: %s, %d registers, slave %d, on %s:%u%s\n", qPrintable(map.device), int(map.regs.size()),
+	std::printf("evre-sim: %s, %d registers%s, slave %d, on %s:%u%s\n", qPrintable(map.device), int(map.regs.size()),
+			map.streams.isEmpty() ? "" : qPrintable(QStringLiteral(", %1 fast streams").arg(map.streams.size())),
 			int(sim.slave()), options.any ? "0.0.0.0" : "127.0.0.1", options.port,
 			map.loginAddr ? qPrintable(QStringLiteral(" (login at %1%2)").arg(addrText(map.loginAddr),
 					options.requireLogin ? QStringLiteral(", required") : QString())) : "");

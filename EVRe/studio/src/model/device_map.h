@@ -312,6 +312,12 @@ struct MapIssue {
 };
 QVector<MapIssue> checkMap(const DeviceMap &map);
 
+/* ------------------------------------------------------------- the streams */
+
+/* one stream as the map writes it (the Studio's way), and back: for a recording's head (model/fast_recording.h) */
+QByteArray streamToJson(const StreamDef &stream);
+bool streamFromJson(const QByteArray &json, StreamDef &stream, QString &err);
+
 /* ------------------------------------------------------------ the clipboard */
 
 /* registers as a JSON list, the map file's way (copy) */

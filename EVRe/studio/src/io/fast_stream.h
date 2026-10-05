@@ -11,16 +11,23 @@
  *                  the blocks' arrival times (the earliest are the truth: a block can arrive late, never early)
  *   FastStream     one stream's running state: the 64-bit numbers, starts, losses and the counts
  *   FastSource     a stream as a device sends it, a wave per channel: for evre-sim and the fake devices
+ *   FastSender     a device's streams on one connection, switched by their enable registers, with a host watchdog
  *
  * "Records" here, as in PROTOCOL.md; the window says "samples" (a record is one instant of all channels).
  */
 #pragma once
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QVector>
 #include <cstdint>
+#include <functional>
+#include <vector>
 
 #include "model/device_map.h"
+
+class QObject;
+class QTimer;
 
 namespace fast {
 
@@ -166,6 +173,34 @@ private:
 	quint32 next_ = 0;         /* the device's number of the next record */
 	quint64 blockNo_ = 0;
 	uint8_t pending_ = 0;
+};
+
+/* A device's streams on one connection (evre-sim, the fake devices): each switched on and off by its enable
+ * register, sent from a 1 ms timer, and stopped when the host is silent for WATCHDOG_MS (the device's host
+ * watchdog: a host that streams reads CONFIG every 100 ms) or the connection closes. The timer is a child of
+ * `owner` (the connection): it goes with it. */
+class FastSender {
+public:
+	static constexpr int WATCHDOG_MS = 2000;
+	using Send = std::function<void(const QByteArray &)>;
+	using Stopped = std::function<void(int stream)>; /* stopped by the watchdog: the device clears its enable */
+	FastSender(QObject *owner, const QVector<StreamDef> &streams, uint8_t slave, const FastSource::Options &options,
+			Send send, Stopped stopped);
+	/* a request from the host: the watchdog sees it */
+	void heard() { sinceHeard_.restart(); }
+	/* the enable register of stream i was written: on (not 0) starts it when it is off, 0 stops it */
+	void enable(int stream, bool on);
+	bool running(int stream) const { return sources_[size_t(stream)].running(); }
+
+private:
+	void tick();
+
+	std::vector<FastSource> sources_;
+	FastSource::Options options_;
+	Send send_;
+	Stopped stopped_;
+	QTimer *timer_;
+	QElapsedTimer clock_, sinceHeard_;
 };
 
 /* a channel's raw bytes in a record -> its shown value (scale and offset applied) */

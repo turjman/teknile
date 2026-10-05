@@ -11,7 +11,9 @@ Exit code: 0 all passed, 1 a check failed, 2 the tool or the device is missing."
 import argparse
 import json
 import os
+import math
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -19,6 +21,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MAP = os.path.join(HERE, '..', 'maps', 'example_device.json')
+FAST_MAP = os.path.join(HERE, '..', 'maps', 'example_fast.json')
 TOKEN = 'example-token'  # fake_device.py's default
 passed = failed = 0
 
@@ -119,6 +122,117 @@ def slave_checks(opts, run, lines_json):
     finally:
         fake.kill()
         fake.wait()
+
+
+def read_evrs(path):
+    """a .evrs file's pieces: [(name, body)], up to the last whole one"""
+    pieces = []
+    data = open(path, 'rb').read()
+    at = 0
+    while at + 8 <= len(data):
+        name, size = data[at:at + 4].decode('ascii', 'replace'), struct.unpack_from('<I', data, at + 4)[0]
+        if at + 8 + size > len(data):
+            break
+        pieces.append((name, data[at + 8:at + 8 + size]))
+        at += 8 + size
+    return pieces
+
+
+def wave(channel, record, rate):
+    """the fake devices' i16 wave (src/io/fast_stream.cpp, FastSource::wave)"""
+    return round(13000 * math.sin(2 * math.pi * 50.0 * (channel + 1) * record / rate + channel))
+
+
+def fast_checks(opts, run, lines_json):
+    """Fast EVRe: evre info lists a map's streams, validate checks them, evre record writes a .evrs (evre_fake_fast)"""
+    fast = os.path.join(opts.build, 'evre_fake_fast.exe' if os.name == 'nt' else 'evre_fake_fast')
+    if not os.path.exists(fast):
+        check(False, 'fast: evre_fake_fast is missing')
+        return
+    port = opts.port + 26  # 1238
+    link = ['--tcp', '127.0.0.1:%d' % port, '--map', FAST_MAP]
+    rc, out, _ = run('validate', FAST_MAP)
+    check(rc == 0 and '0 error(s)' in out, 'fast: validate the fast example map: no errors')
+    with tempfile.TemporaryDirectory() as tmp:
+        bad = os.path.join(tmp, 'bad_stream.json')
+        doc = json.load(open(FAST_MAP, encoding='utf-8'))
+        doc['streams'][0]['addr'] = '0xD000'  # over UPTIME
+        doc['streams'][0]['enable'] = 'UPTIME'  # read-only
+        with open(bad, 'w', encoding='utf-8') as f:
+            json.dump(doc, f)
+        rc, out, _ = run('validate', bad, '--json')
+        texts = [i['text'] for i in lines_json(out) if i['error']]
+        check(rc == 1 and any('shares bytes with the register UPTIME' in t for t in texts)
+              and any('cannot write' in t for t in texts), 'fast: validate refuses a window over a register and an '
+              'enable that cannot be written (%s)' % texts)
+        for args, what in (([], 'the map\'s rate'), (['--fast-lose', '5', '--fast-first', '4294967000'],
+                                                     'every 5th block lost, across the wrap')):
+            fake = subprocess.Popen([fast, str(port), os.path.abspath(FAST_MAP)] + args, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL)
+            try:
+                for _ in range(50):
+                    try:
+                        socket.create_connection(('127.0.0.1', port), 0.2).close()
+                        break
+                    except OSError:
+                        time.sleep(0.1)
+                if not args:
+                    rc, out, _ = run('info', *link, '--json')
+                    info = (lines_json(out) or [{}])[0]
+                    streams = info.get('streams', [])
+                    check(rc == 0 and len(streams) == 1 and streams[0]['name'] == 'ADC' and streams[0]['addr'] == '0xDC00'
+                          and [c['name'] for c in streams[0]['channels']] == ['I_LOAD', 'V_BUS'],
+                          'fast: info lists the map\'s stream and its channels')
+                    rc, out, _ = run('info', *link)
+                    check('fast stream   ADC: window 0xDC00, 1024 bytes, 10000 records/s' in out,
+                          'fast: info in words: %s' % [l for l in out.splitlines() if 'fast' in l])
+                    rc, _, err = run('record', *link, '--stream', 'NOPE', '-o', os.path.join(tmp, 'x.evrs'))
+                    check(rc == 2 and 'no stream NOPE' in err, 'fast: record a stream the map has not: exit 2')
+                target = os.path.join(tmp, 'run.ADC.evrs')
+                rc, out, err = run('record', *link, '--stream', 'adc', '-o', target, '--seconds', '2', '--json')
+                summary = (lines_json(out) or [{}])[0]
+                pieces = read_evrs(target) if os.path.exists(target) else []
+                head = json.loads(pieces[0][1]) if pieces and pieces[0][0] == 'EVRS' else {}
+                blocks = [b for n, b in pieces if n == 'BLK ']
+                check(rc == 0 and head.get('format') == 'evre-fast-rec/1' and head.get('device') == 'Example fast device'
+                      and head.get('stream', {}).get('name') == 'ADC' and 'start' in head,
+                      'fast: record (%s): the head (%s)' % (what, err.strip()))
+                check(len(pieces) > 1 and pieces[1][0] == 'TIME' and len(pieces[1][1]) == 16,
+                      'fast: record: a time mark before the first block')
+                # the blocks as they came: the numbers, the losses, the values
+                expected, lost, records, wrong = None, 0, 0, 0
+                for b in blocks:
+                    first, count, flags, spare = struct.unpack_from('<IHBB', b)
+                    if expected is not None:
+                        lost += (first - expected) % (1 << 32)
+                    expected = (first + count) % (1 << 32)
+                    records += count
+                    for k in (0, count - 1) if count else ():
+                        v = struct.unpack_from('<hh', b, 8 + 4 * k)
+                        number = (first + k) % (1 << 32)
+                        if abs(v[0] - wave(0, number, 10000)) > 1 or abs(v[1] - wave(1, number, 10000)) > 1:
+                            wrong += 1
+                check(records == summary.get('records') and lost == summary.get('lost') and wrong == 0
+                      and 15000 <= records + lost <= 25000, 'fast: record: %d records in %d blocks, %d lost, as the '
+                      'summary says, each value as the device made it' % (records, len(blocks), lost))
+                if args:
+                    check(lost >= 3 * 254 and summary.get('starts') == 1,
+                          'fast: record: the lost blocks counted (%d records), no restart at the wrap' % lost)
+                rc, out, _ = run('read', *link, 'ADC_STREAM', '--json')
+                check((lines_json(out) or [{}])[0].get('value') == 0, 'fast: record switched the stream off at the end')
+            finally:
+                fake.kill()
+                fake.wait()
+        # nothing sends: a stream without an enable register (only listened to) at the plain fake device
+        quiet = os.path.join(tmp, 'listen.json')
+        doc = json.load(open(FAST_MAP, encoding='utf-8'))
+        del doc['streams'][0]['enable']
+        with open(quiet, 'w', encoding='utf-8') as f:
+            json.dump(doc, f)
+        rc, _, err = run('record', '--tcp', '127.0.0.1:%d' % opts.port, '--map', quiet, '--stream', 'ADC', '-o',
+                         os.path.join(tmp, 'none.evrs'), '--seconds', '3')
+        check(rc == 1 and 'no block came in 2 s' in err, 'fast: record from a device that does not stream: exit 1 (%s)'
+              % err.strip())
 
 
 def main():
@@ -235,6 +349,7 @@ def main():
         check(rc == 1 and err.strip(), 'no device at the port: exit 1, why (%s)' % err.strip())
         bus_checks(opts, tool, run, lines_json)
         slave_checks(opts, run, lines_json)
+        fast_checks(opts, run, lines_json)
     finally:
         device.kill()
         device.wait()
