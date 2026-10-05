@@ -312,6 +312,28 @@ The owner's Windows run measures; this phase gives it the tool and fixes the kno
 5. Docs (STUDIO.md 23 for the reuse, 26 for the aid), Help only if something visible changes. In
    the PR: what the owner's run should measure (drag at 1 min and 5 min, with and without
    Normalise, CPU and GPU), and the before numbers above.
+6. **The measure table's full statistics (the owner's Windows run of #8, with the timing aid).** The
+   view's reuse works (binned 0 of 385 frames while dragging) and a GPU frame paints in 3-5 ms, yet
+   the chart runs at 43-54 fps: `measureTimer_` measures in full every 250 ms, always, even with the
+   view held and nothing in range changed. At 64 lines x 1000 Hz x 5 min (19 M samples) one full
+   update takes ~35 ms on the window thread and costs two frames. Measured (GPU, held, still): 5 min
+   48-54 fps, measure 65-83 ms per 500 ms; dragging: 1 min 52 fps, 5 min 43 fps. The memory strip
+   is ~1 ms a frame on this PC (the container's 60 ms was its CPU): no change for it.
+   - A held view is measured again only when what it depends on changes: the cursors, the view's
+     times, the lines, a line's samples inside the measured range (as absolute sample numbers, as
+     `viewBins` does; new samples outside the range or trims before it do not count), Normalise,
+     the hidden columns. The "Since Clear" totals still follow every 250 ms (they are running sums,
+     cheap: update that column alone).
+   - The full statistics run on the chart's threads without the window thread waiting: started
+     from the timer, the table filled when they are done; a new start while one runs waits for it
+     (at most one under way, the newest wins). A live view keeps its 250 ms rhythm this way.
+   - While a cursor is dragged, the timer starts no full update (A, B and B - A follow the drag);
+     one full update when it is let go, as now.
+   - Checks: a held view with samples arriving outside the range: no full update in 2 s; a sample
+     inside the range: one; dragging: none until let go; the table's values equal to a synchronous
+     measurement; the window thread never waits (a hook counts waits: 0). The timing aid's
+     `measure` field times the window thread's part only, and a new field the threads' part.
+   - The owner's run is repeated after (same script): the target is 58-60 fps in every case.
 
 ### Phase 7: installers and releases (branch `phase7-installers`)
 

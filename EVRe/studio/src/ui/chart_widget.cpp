@@ -432,6 +432,14 @@ void dropFront(QVector<T> &v, qsizetype n, qsizetype most) {
 } // namespace
 
 void ChartView::append(int key, double t, double v) {
+	if (measuring_) { /* the threads read the arrays as they were: in when they are done (measureAsync) */
+		heldSamples_.push_back({ key, t, v });
+		return;
+	}
+	appendNow(key, t, v);
+}
+
+void ChartView::appendNow(int key, double t, double v) {
 	auto it = series_.find(key);
 	if (it == series_.end() || !std::isfinite(v)) return;
 	Series &s = *it;
@@ -900,30 +908,35 @@ ChartView::Stats ChartView::stats(int key) const {
 	Stats result;
 	auto it = series_.find(key);
 	if (it == series_.end()) return result;
-	result.total = std::isnan(it->totalT) ? NAN : it->total;
-	if (it->times.isEmpty()) return result;
-	const Series &s = *it;
-	result.atA = valueAt(s.times, s.values, cursorA_);
-	result.atB = valueAt(s.times, s.values, cursorB_);
 	double t0, t1;
 	bool cursors;
 	range(t0, t1, cursors);
-	const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
-	const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+	if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
+	result.total = std::isnan(it->totalT) ? NAN : it->total;
+	return result;
+}
+
+ChartView::Stats ChartView::statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1,
+		double a, double b) {
+	Stats result;
+	result.atA = valueAt(times, values, a);
+	result.atB = valueAt(times, values, b);
+	const qsizetype i0 = std::lower_bound(times.begin(), times.end(), t0) - times.begin();
+	const qsizetype i1 = std::upper_bound(times.begin(), times.end(), t1) - times.begin();
 	if (i1 - i0 < 1) return result;
-	result.min = result.max = s.values[i0];
+	result.min = result.max = values[i0];
 	/* the standard deviation from sums shifted by the first value: a 12 V line with 1 mV of ripple squared whole loses
 	 * the ripple to the 144 V^2 (rms^2 - mean^2 cancels to the rounding) */
-	const double shift = s.values[i0];
+	const double shift = values[i0];
 	double area = 0, areaOfSquares = 0, span = 0, shifted = 0, shiftedSquares = 0;
 	for (qsizetype i = i0; i < i1; i++) {
-		result.min = std::min(result.min, s.values[i]);
-		result.max = std::max(result.max, s.values[i]);
+		result.min = std::min(result.min, values[i]);
+		result.max = std::max(result.max, values[i]);
 		if (i == i0) continue;
-		const double dt = s.times[i] - s.times[i - 1];
-		area += 0.5 * (s.values[i] + s.values[i - 1]) * dt;
-		areaOfSquares += 0.5 * (s.values[i] * s.values[i] + s.values[i - 1] * s.values[i - 1]) * dt;
-		const double d1 = s.values[i] - shift, d0 = s.values[i - 1] - shift;
+		const double dt = times[i] - times[i - 1];
+		area += 0.5 * (values[i] + values[i - 1]) * dt;
+		areaOfSquares += 0.5 * (values[i] * values[i] + values[i - 1] * values[i - 1]) * dt;
+		const double d1 = values[i] - shift, d0 = values[i - 1] - shift;
 		shifted += 0.5 * (d1 + d0) * dt;
 		shiftedSquares += 0.5 * (d1 * d1 + d0 * d0) * dt;
 		span += dt;
@@ -937,7 +950,7 @@ ChartView::Stats ChartView::stats(int key) const {
 		const double shiftedMean = shifted / span;
 		result.std = std::sqrt(std::max(0.0, shiftedSquares / span - shiftedMean * shiftedMean));
 	} else {
-		result.mean = result.rms = s.values[i0];
+		result.mean = result.rms = values[i0];
 	}
 	result.ok = true;
 	return result;
@@ -945,6 +958,7 @@ ChartView::Stats ChartView::stats(int key) const {
 
 /* each line's on a thread of the chart's: 64 lines over minutes of samples took tens of ms on one */
 QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursorsOnly) const {
+	if (!cursorsOnly) const_cast<ChartView *>(this)->fullStatsSync_++; /* the window thread waits for these */
 	QVector<Stats> all(keys.size());
 	inParallel(keys.size(), [&](qsizetype i) {
 		if (!cursorsOnly) {
@@ -958,6 +972,111 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 		all[i].atB = valueAt(it->times, it->values, cursorB_);
 	}, 2);
 	return all;
+}
+
+/* The measurements' key: equal keys, equal values. The samples in the range are numbered from the line's start
+ * (dropped + index), so a sample added after the range or one let go before it changes nothing; with the cursors, the
+ * samples beside them too (the values at A and B lie between them). */
+QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
+	double t0, t1;
+	bool cursors;
+	range(t0, t1, cursors);
+	/* a cursor not placed as -inf: NaN is never equal to itself, the key would never be the same */
+	const auto placed = [](double t) { return std::isfinite(t) ? t : -std::numeric_limits<double>::infinity(); };
+	QVector<double> key{ t0, t1, placed(cursorA_), placed(cursorB_), double(seriesGeneration_), double(normalized_) };
+	for (int k : keys) {
+		const auto it = series_.constFind(k);
+		if (it == series_.constEnd()) {
+			key << -1 << -1;
+			continue;
+		}
+		const Series &s = *it;
+		qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+		qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+		if (cursors) {
+			i0 = std::max<qsizetype>(0, i0 - 1);
+			i1 = std::min<qsizetype>(s.times.size(), i1 + 1);
+		}
+		key << double(s.dropped + i0) << double(s.dropped + i1);
+	}
+	return key;
+}
+
+ChartView::~ChartView() { pool_.waitForDone(); }
+
+void ChartView::measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done) {
+	MeasureRequest request{ keys, std::move(done) };
+	if (measuring_) { /* its turn when the one under way is done; a newer one replaces it */
+		nextMeasure_ = std::move(request);
+		measureNext_ = true;
+		return;
+	}
+	startMeasure(std::move(request));
+}
+
+/* The lines' arrays shared with the threads (Qt's vectors copy only when one is changed): the window thread changes
+ * none while they read, its samples held back (append), and a line taken off or cleared meanwhile leaves the threads
+ * its arrays. The threads give them back before the result is posted. */
+void ChartView::startMeasure(MeasureRequest request) {
+	struct Job {
+		QVector<QVector<double>> times, values;
+		QVector<double> totals;
+		double t0 = 0, t1 = 0, a = NAN, b = NAN;
+		QVector<Stats> out;
+		std::atomic<int> left{ 0 };
+		QElapsedTimer clock;
+		MeasureRequest request;
+	};
+	const auto job = std::make_shared<Job>();
+	bool cursors;
+	range(job->t0, job->t1, cursors);
+	job->a = cursorA_;
+	job->b = cursorB_;
+	const qsizetype n = request.keys.size();
+	job->times.resize(n);
+	job->values.resize(n);
+	job->totals.fill(NAN, n);
+	job->out.resize(n);
+	for (qsizetype i = 0; i < n; i++) {
+		const auto it = series_.constFind(request.keys[i]);
+		if (it == series_.constEnd()) continue;
+		job->times[i] = it->times;
+		job->values[i] = it->values;
+		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
+	}
+	job->request = std::move(request);
+	measuring_ = true;
+	job->clock.start();
+	if (n == 0) {
+		QMetaObject::invokeMethod(this, [this, job] {
+			measuring_ = false;
+			job->request.done(job->out, 0);
+		}, Qt::QueuedConnection);
+		return;
+	}
+	job->left = int(n);
+	for (qsizetype i = 0; i < n; i++)
+		pool_.start([this, job, i] {
+			if (!job->times[i].isEmpty())
+				job->out[i] = statsOf(job->times[i], job->values[i], job->t0, job->t1, job->a, job->b);
+			job->out[i].total = job->totals[i];
+			if (--job->left > 0) return;
+			/* the last: the arrays given back, then the result to the window thread */
+			job->times.clear();
+			job->values.clear();
+			const double ms = job->clock.nsecsElapsed() / 1e6;
+			QMetaObject::invokeMethod(this, [this, job, ms] {
+				measuring_ = false;
+				const QVector<HeldSample> held = std::exchange(heldSamples_, {});
+				for (const HeldSample &sample : held) appendNow(sample.key, sample.t, sample.v);
+				if (!held.isEmpty()) refresh();
+				job->request.done(job->out, ms);
+				if (measureNext_ && !measuring_) {
+					measureNext_ = false;
+					startMeasure(std::move(nextMeasure_));
+				}
+			}, Qt::QueuedConnection);
+		});
 }
 
 /* ---------------------------------------------------------------- the mouse */
@@ -1419,7 +1538,10 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.t0 = axes.t1 - window_;
 	axes.span = window_;
 	axes.columns = std::max(1.0, axes.rect.width());
-	const QVector<BinnedLine> binned = binView(axes);
+	QElapsedTimer stage; /* the timing aid's stages (perf_) */
+	stage.start();
+	const QVector<BinnedLine> binned = viewBins(axes);
+	perf_.bin += stage.nsecsElapsed() / 1e6;
 	/* the plots: all of it, or the lanes, each with its own Y range on the same times */
 	QVector<Lane> plots = plotLayout();
 	for (Lane &plot : plots) {
@@ -1447,7 +1569,10 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	 * frame show. The other way (no line left), the CPU draws all of it, and the layer goes once that is on the window:
 	 * the whole chart painted again first, the plot's part too (a frame painted around the plot alone, as while the
 	 * layer is there, left the old lines in the window, which showed for a frame where the layer had been). */
+	stage.restart();
+	const double cardBefore = perf_.segments + perf_.present;
 	const bool onCard = onScreen && gpu_ && !series_.isEmpty() && plotOnGpu(axes, plots, binned);
+	if (onCard) perf_.marks += stage.nsecsElapsed() / 1e6 - (perf_.segments + perf_.present - cardBefore);
 	QImage under;
 	if (onCard && !gpu_->shown()) {
 		under = gpu_->lastPicture();
@@ -1457,7 +1582,15 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	drawGrid(p, plots, axes, !onCard);
 	if (!onCard) {
 		drawCursorSpan(p, axes);
-		drawLines(p, plots, binned);
+		stage.restart();
+		if (!live_ && lineReuse_) {
+			drawLinesPicture(p, plots, binned); /* held: drawn again only when they change */
+		} else {
+			drawLines(p, plots, binned);
+			lineBuilds_++;
+		}
+		perf_.lines += stage.nsecsElapsed() / 1e6;
+		stage.restart();
 		/* the marks' lines, the folded strips over them, then the marks' tags (as the card: its pictures over all) */
 		drawNotes(p, axes, Marks::Lines);
 		drawTrigger(p, plots, binned, Marks::Lines);
@@ -1466,14 +1599,21 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		drawNotes(p, axes, Marks::Tags);
 		drawTrigger(p, plots, binned, Marks::Tags);
 		drawCursors(p, axes, Marks::Tags);
+		perf_.marks += stage.nsecsElapsed() / 1e6;
 	} else if (!under.isNull()) {
 		under.setDevicePixelRatio(devicePixelRatioF());
 		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
 	}
 	drawLaneBar(p); /* in the right pad, outside the card's layer */
+	stage.restart();
 	drawMemoryStrip(p, axes);
+	perf_.strip += stage.nsecsElapsed() / 1e6;
+	stage.restart();
 	drawLegend(p, axes);
+	perf_.legend += stage.nsecsElapsed() / 1e6;
+	stage.restart();
 	if (!onCard) drawCrosshair(p, axes, plots, binned);
+	perf_.marks += stage.nsecsElapsed() / 1e6;
 	drawState(p, axes);
 	if (onScreen && gpu_ && onCard != gpu_->shown() && (!onCard || framesUnder_ >= LAYER_AFTER_FRAMES))
 		QTimer::singleShot(0, this, [this, shown = onCard] { /* after this frame is on the window */
@@ -1485,6 +1625,80 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	budget_.spent(paintMs);
 	updatePaintStats(paintMs);
 	paints_++;
+	perf_.frames++;
+	perf_.paintSum += paintMs;
+	perf_.paintMax = std::max(perf_.paintMax, paintMs);
+}
+
+ChartView::PerfStats ChartView::takePerfStats() {
+	const PerfStats taken = perf_;
+	perf_ = PerfStats();
+	return taken;
+}
+
+/* Binning a held view again gives the same bins while its times and columns, the lines and each line's samples in
+ * view (as absolute numbers: samples are only added at the end and let go at the start) are the same: then the last
+ * binning is used again. A live view moves at every frame and is binned (its complete columns kept, binViewSeries). */
+QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
+	QVector<double> key{ axes.t0, axes.t1, axes.columns, double(seriesGeneration_) };
+	key.reserve(4 + 2 * series_.size());
+	for (const Series &s : series_) {
+		if (s.times.isEmpty()) {
+			key << -1 << -1;
+			continue;
+		}
+		/* the samples binViewSeries takes: one past each end of the view */
+		const qsizetype i0 = std::max<qsizetype>(0, std::lower_bound(s.times.begin(), s.times.end(), axes.t0) - s.times.begin() - 1);
+		const qsizetype i1 = std::min<qsizetype>(s.times.size(),
+				std::upper_bound(s.times.begin(), s.times.end(), axes.t1) - s.times.begin() + 1);
+		key << double(s.dropped + i0) << double(s.dropped + i1);
+	}
+	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) return lastBinned_;
+	lastBinned_ = binView(axes);
+	lastBinKey_ = key;
+	binnings_++;
+	binnedVersion_++;
+	perf_.binnings++;
+	return lastBinned_;
+}
+
+QString ChartView::linesKey(const QVector<Lane> &plots, qreal dpr) const {
+	QString key = QStringLiteral("%1|%2|%3|%4|%5").arg(binnedVersion_).arg(dpr).arg(normalized_).arg(Theme::isDark())
+			.arg(lanes_);
+	for (const Lane &plot : plots)
+		key += QStringLiteral("|%1,%2,%3,%4,%5,%6,%7,%8").arg(plot.axes.rect.x()).arg(plot.axes.rect.y())
+				.arg(plot.axes.rect.width()).arg(plot.axes.rect.height()).arg(plot.axes.lo, 0, 'g', 17)
+				.arg(plot.axes.hi, 0, 'g', 17).arg(plot.axes.log).arg(plot.folded);
+	return key;
+}
+
+/* The lines as a picture on whole device pixels (as a stripe of drawLines is: the same pixels), drawn again only
+ * when they change; between, a cursor dragged over a held view costs a copy of it */
+void ChartView::drawLinesPicture(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) {
+	const qreal dpr = p.device()->devicePixelRatioF();
+	const QRectF plotArea = plotRect();
+	QRectF all;
+	for (const Lane &plot : plots) {
+		const QRectF shown = lanes_ ? laneVisible(plot.axes.rect, plotArea) : plot.axes.rect;
+		if (!plot.folded && !shown.isEmpty()) all = all.united(shown);
+	}
+	if (all.isEmpty()) return;
+	const QRect device = p.deviceTransform().mapRect(all.adjusted(-2, -2, 2, 2)).toAlignedRect();
+	const QString key = linesKey(plots, dpr) + QStringLiteral("|%1,%2,%3,%4").arg(device.x()).arg(device.y())
+			.arg(device.width()).arg(device.height());
+	if (key != linesPictureKey_ || linesPicture_.isNull()) {
+		linesPictureKey_ = key;
+		lineBuilds_++;
+		QTransform world;
+		prepareTile(p, device, linesPicture_, world, linesAt_);
+		QPainter ip(&linesPicture_);
+		ip.setRenderHint(QPainter::Antialiasing);
+		ip.setWorldTransform(world);
+		drawLines(ip, plots, lines, dpr);
+		ip.end();
+		linesPicture_.setDevicePixelRatio(dpr);
+	}
+	p.drawImage(linesAt_, linesPicture_);
 }
 
 /* A line's samples from t0 to t1, one bin per pixel column on absolute time,
@@ -2257,7 +2471,7 @@ void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, con
  * the plot is cut into vertical stripes on whole device pixels, each drawn on a
  * thread into an image of its own (every line's part in it, a little past its
  * edges), then the stripes side by side: the same pixels as drawn on p. */
-void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const {
+void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, qreal dpr) const {
 	/* each line in its plot (lanes: its unit's), clipped to it with room for its thickness; lanes: to its part in the
 	 * plot, none for a folded lane or one scrolled out of view */
 	const QRectF plotArea = plotRect();
@@ -2276,7 +2490,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	if (all.isEmpty()) return;
 	const QRectF clip = all.adjusted(-2, -2, 2, 2);
 	const auto clipOf = [&clips](qsizetype i) { return clips[i]; };
-	const qreal dpr = p.device()->devicePixelRatioF();
+	if (dpr <= 0) dpr = p.device()->devicePixelRatioF();
 	/* a bar as wide as the line: its copies side by side, one device pixel each */
 	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
 	QVector<QPolygonF> polys(lines.size());
@@ -2493,8 +2707,13 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		}
 	}
 	const float lineWidth = float(std::max(2, int(std::lround(LINE_WIDTH * dpr))));
-	QVector<QVector<GpuLines::Segment>> parts(lines.size());
-	inParallel(lines.size(), [&](qsizetype i) {
+	/* held, the same lines in the same places: the segments made last time (a dragged cursor over a held view) */
+	QElapsedTimer made;
+	made.start();
+	const QString linesKeyNow = linesKey(plots, dpr) + QStringLiteral("|%1,%2").arg(dx).arg(dy);
+	const bool sameLines = lineReuse_ && !live_ && linesKeyNow == gpuLinesKey_;
+	QVector<QVector<GpuLines::Segment>> parts(sameLines ? 0 : lines.size());
+	inParallel(parts.size(), [&](qsizetype i) {
 		const BinnedLine &line = lines[i];
 		if (line.bins.isEmpty() || !axesOf[i]) return;
 		const Axes &axes = *axesOf[i];
@@ -2524,11 +2743,19 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	});
 	GpuLines::Layer drawn;
 	drawn.widthPx = lineWidth;
-	qsizetype total = 0;
-	for (const auto &part : std::as_const(parts)) total += part.size();
-	drawn.segments.reserve(total);
-	for (const auto &part : std::as_const(parts)) drawn.segments += part;
+	if (sameLines) {
+		drawn.segments = gpuLines_;
+	} else {
+		qsizetype total = 0;
+		for (const auto &part : std::as_const(parts)) total += part.size();
+		drawn.segments.reserve(total);
+		for (const auto &part : std::as_const(parts)) drawn.segments += part;
+		gpuLines_ = drawn.segments;
+		gpuLinesKey_ = linesKeyNow;
+		lineBuilds_++;
+	}
 	frame.layers << drawn;
+	perf_.segments += made.nsecsElapsed() / 1e6;
 	/* the folded lanes' strips: the first pictures, over the marks' lines and under their tags, as the CPU draws them */
 	for (const Lane &plot : plots) {
 		const QRectF shown = lanes_ ? laneVisible(plot.axes.rect, axes.rect) : QRectF();
@@ -2586,7 +2813,11 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (!readout_.isNull()) frame.sprites.push_back({ readout_, whole(hair.boxAt) });
 	}
 
-	if (gpu_->present(top->winId(), pixels, frame, error)) return true;
+	QElapsedTimer presenting;
+	presenting.start();
+	const bool presented = gpu_->present(top->winId(), pixels, frame, error);
+	perf_.present += presenting.nsecsElapsed() / 1e6;
+	if (presented) return true;
 	gpu_.reset(); /* the CPU draws, from this frame on, and paints all of the plot at the next (its layer is gone) */
 	emit drawingFailed(error);
 	update();

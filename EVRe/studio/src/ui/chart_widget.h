@@ -98,6 +98,7 @@ public:
 	static constexpr double MAX_SPAN = 86400; /* a day: the longest view and memory, seconds */
 
 	explicit ChartView(QWidget *parent = nullptr);
+	~ChartView() override; /* a measurement under way finished first (measureAsync) */
 
 	void addSeries(int key, const QString &name, const QString &unit, const QColor &color);
 	void removeSeries(int key);
@@ -252,6 +253,16 @@ public:
 	QVector<Info> lines() const;
 	void range(double &t0, double &t1, bool &cursors) const; /* what the measurements cover */
 	Stats stats(int key) const;
+	/* The full measurements of these lines (as stats(keys)) on the chart's threads, without the window thread waiting:
+	 * done(stats, ms the threads took) is called on the window thread when they are in. While they run, the samples
+	 * given to append() wait in a queue (with the trims they bring) and go in when they are done: the threads read the
+	 * lines' arrays as they were. One at a time: a call while one runs waits its turn, the newest replacing an older. */
+	void measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done);
+	bool measuring() const { return measuring_; }
+	/* what the measurements of these lines depend on: the range, the cursors, the lines, each one's samples in the range
+	 * (absolute sample numbers: samples after it or trims before it do not count), Normalise. Equal: the same values */
+	QVector<double> measureKey(const QVector<int> &keys) const;
+	int fullStatsOnWindowThread() const { return fullStatsSync_; } /* tests: full measurements the window thread waited for */
 	/* several lines at once, on the chart's threads; cursorsOnly: the values at A and B alone (ok false) */
 	QVector<Stats> stats(const QVector<int> &keys, bool cursorsOnly = false) const;
 	bool draggingCursor() const { return drag_ == Drag::CurA || drag_ == Drag::CurB; }
@@ -303,6 +314,22 @@ public:
 	int legendBuilds() const { return legendBuilds_; } /* tests: the legend's picture made (not at every frame) */
 	int legendMeasures() const { return chipMeasures_; } /* tests: the legend's chips measured (not at every frame) */
 	int paints() const { return paints_; }             /* tests: the frames painted so far */
+	/* A held view where only the marks move (a cursor, a note or the trigger's level dragged) reuses its lines: the
+	 * binned lines while the view's times, its columns, the lines and the samples in view are the same, and the
+	 * lines drawn (the CPU's picture, the card's segments) while the plots' places and Y ranges, Normalise, the
+	 * theme and the scaling are the same too. Tests: the binnings and the lines drawn so far, and the reuse off (the
+	 * picture must be the same). */
+	int binnings() const { return binnings_; }
+	int lineBuilds() const { return lineBuilds_; }
+	void setLineReuse(bool on) { lineReuse_ = on; refresh(); }
+	/* the paint's cost since the last call, for the timing aid (EVRE_PERF_LOG, ChartTab): frames, the paint's average
+	 * and longest, and its stages summed (ms) */
+	struct PerfStats {
+		int frames = 0, binnings = 0;
+		double paintSum = 0, paintMax = 0;
+		double bin = 0, lines = 0, segments = 0, present = 0, marks = 0, strip = 0, legend = 0;
+	};
+	PerfStats takePerfStats();
 	QSizeF readoutSize() const { return readout_.isNull() ? QSizeF() : readout_.deviceIndependentSize(); }
 	/* the notes: a time and a text each. Changes made with the mouse (moved, removed) emit notesChanged; editing
 	 * the text is the Chart tab's (noteEditRequested on a double-click) */
@@ -545,7 +572,15 @@ private:
 	/* the grid's lines (not when the card drew them) and its labels: each plot's values, the time under them all */
 	void drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &axes, bool lines = true) const;
 	void drawCursorSpan(QPainter &p, const Axes &axes) const;
-	void drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const;
+	/* dpr: the scaling the lines are drawn for (0: p's device's; a picture of them is drawn at 1 with the scaling in its
+	 * transform) */
+	void drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, qreal dpr = 0) const;
+	/* held, on the CPU: the lines as a picture, drawn again only when linesKey changes */
+	void drawLinesPicture(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines);
+	/* what the lines drawn depend on besides the binned lines: the plots' places and ranges, Normalise, the theme */
+	QString linesKey(const QVector<Lane> &plots, qreal dpr) const;
+	/* the view binned, or the last binning again when nothing it depends on changed (lineReuse_) */
+	QVector<BinnedLine> viewBins(const Axes &axes);
 	/* the card's layer: over the plot and 2 px around it (the lines' antialiasing) */
 	QRect layerRect() const;
 	/* the plot drawn by the card into its layer, all that lies on it; false: the card failed (closed, said) */
@@ -796,6 +831,36 @@ private:
 	/* the status line's numbers */
 	QElapsedTimer frameClock_, fpsClock_;
 	int fpsFrames_ = 0, paints_ = 0;
+	/* the reuse of a held view's lines (viewBins, drawLinesPicture, plotOnGpu) */
+	bool lineReuse_ = true;
+	int binnings_ = 0, lineBuilds_ = 0;
+	quint64 binnedVersion_ = 0;           /* a new binning */
+	QVector<BinnedLine> lastBinned_;
+	QVector<double> lastBinKey_;          /* t0, t1, columns, generation, then each line's sample range */
+	QImage linesPicture_;
+	QPointF linesAt_;
+	QString linesPictureKey_, gpuLinesKey_;
+	QVector<GpuLines::Segment> gpuLines_; /* the card's line segments as last made */
+	PerfStats perf_;
+	/* the measurements on the chart's threads (measureAsync): one under way, the next asked for, the samples kept back */
+	struct MeasureRequest {
+		QVector<int> keys;
+		std::function<void(const QVector<Stats> &, double)> done;
+	};
+	bool measuring_ = false;
+	bool measureNext_ = false;
+	MeasureRequest nextMeasure_;
+	struct HeldSample {
+		int key;
+		double t, v;
+	};
+	QVector<HeldSample> heldSamples_;
+	int fullStatsSync_ = 0;
+	void startMeasure(MeasureRequest request);
+	void appendNow(int key, double t, double v);
+	/* a line's measurements from its arrays, over t0..t1, its values at the times a and b */
+	static Stats statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1, double a,
+			double b);
 	double fps_ = 0, paintMs_ = 0;
 
 	FrameBudget budget_;

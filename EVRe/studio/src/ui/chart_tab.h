@@ -34,6 +34,7 @@
  * (recording_window.h) is a second tab, its settings under a group of its own. */
 #pragma once
 
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -44,6 +45,7 @@
 
 #include "model/device_map.h"
 #include "model/math_lines.h"
+#include "ui/chart_widget.h" /* its Info and Stats in the measurements' functions */
 #include "model/recording_file.h"
 #include "model/register_model.h"
 #include "ui/analysis_window.h"
@@ -157,6 +159,8 @@ public:
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
+	int measureInfoChanges() const { return measureInfoChanges_; } /* tests: the line over the table written anew */
+	int measureFills() const { return measureFills_; } /* tests: the table filled with all of it (from the threads) */
 
 signals:
 	/* the math lines read other registers now (shown, hidden, edited, removed, or the map changed) */
@@ -193,6 +197,13 @@ private:
 	/* the measurements under the chart; measureSoon: at once, then at most every MEASURE_FOLLOW_MS while the cursors
 	 * move (a drag moves them at every mouse move) */
 	void updateMeasures(bool cursorsOnly = false); /* cursorsOnly: A, B and B - A (a cursor dragged) */
+	void measureTick(); /* the timer's: all of it again only when it changed, the totals each time */
+	QVector<double> measureKeyNow(const QVector<int> &keys) const;
+	void fillMeasures(const QVector<ChartView::Info> &lines, const QVector<ChartView::Stats> &stats, bool cursorsOnly,
+			const QElapsedTimer &timed);
+	QVector<double> lastMeasureKey_; /* what the last full measurement was of */
+	double measureThreadMs_ = 0;     /* the timing aid: the threads' part of the measurements */
+	int measureFills_ = 0;
 	void measureSoon();
 	QString measuredRangeText() const;
 	void showMeasureColumns(); /* the columns hidden as saved (chart/measureColumns) */
@@ -237,7 +248,15 @@ private:
 	QTimer measureTimer_;         /* the measurements follow the lines while they are shown */
 	QTimer measureFollow_;        /* the cursors moved: the measurements again at its end, not before (measureSoon) */
 	bool measurePending_ = false;
-	int measureUpdates_ = 0, measureFullUpdates_ = 0;
+	int measureUpdates_ = 0, measureFullUpdates_ = 0, measureInfoChanges_ = 0;
+	/* the timing aid (EVRE_PERF_LOG=<file>, a test aid like EVRE_SHOT): every PERF_LOG_MS a line of the paint's cost,
+	 * the measurements' and the polls' since the last one, appended to the file */
+	void writePerfLine();
+	QString perfLogPath_;
+	QElapsedTimer perfClock_;
+	double measureMs_ = 0;
+	int measuresTimed_ = 0;
+	qint64 pollsSince_ = 0;
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 
