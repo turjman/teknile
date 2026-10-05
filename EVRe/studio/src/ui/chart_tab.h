@@ -34,6 +34,7 @@
  * (recording_window.h) is a second tab, its settings under a group of its own. */
 #pragma once
 
+#include <QElapsedTimer>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -157,6 +158,7 @@ public:
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
+	int measureInfoChanges() const { return measureInfoChanges_; } /* tests: the line over the table written anew */
 
 signals:
 	/* the math lines read other registers now (shown, hidden, edited, removed, or the map changed) */
@@ -237,7 +239,15 @@ private:
 	QTimer measureTimer_;         /* the measurements follow the lines while they are shown */
 	QTimer measureFollow_;        /* the cursors moved: the measurements again at its end, not before (measureSoon) */
 	bool measurePending_ = false;
-	int measureUpdates_ = 0, measureFullUpdates_ = 0;
+	int measureUpdates_ = 0, measureFullUpdates_ = 0, measureInfoChanges_ = 0;
+	/* the timing aid (EVRE_PERF_LOG=<file>, a test aid like EVRE_SHOT): every PERF_LOG_MS a line of the paint's cost,
+	 * the measurements' and the polls' since the last one, appended to the file */
+	void writePerfLine();
+	QString perfLogPath_;
+	QElapsedTimer perfClock_;
+	double measureMs_ = 0;
+	int measuresTimed_ = 0;
+	qint64 pollsSince_ = 0;
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 

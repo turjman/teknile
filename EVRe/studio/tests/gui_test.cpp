@@ -536,6 +536,9 @@ public:
 		chartLanesFit();
 		chartLanesFoldButton();
 		chartLanesSeparators();
+		heldViewReuse();
+		measureTableRepaints();
+		perfLog();
 		analysisMath();
 		analysisWindows();
 		chartTrigger();
@@ -5133,6 +5136,219 @@ private:
 				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
 		tab.hide();
 		QSettings().remove(group);
+	}
+
+	/* A held view where only a cursor moves reuses its lines: 20 drag steps bin nothing and draw no line again; a sample
+	 * in view, the window, the size bin again; a Y range, Normalise or a fold draws the lines again; the picture is the
+	 * one drawn without the reuse */
+	void heldViewReuse() {
+		LoneChart chart(QStringLiteral("R0"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		QVector<RegDef> defs{ chart.def };
+		for (int k = 1; k < 16; k++) {
+			RegDef def = chart.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("R%1").arg(k);
+			chart.tab.plotRegister(def, true);
+			defs << def;
+		}
+		for (const RegDef &def : std::as_const(defs))
+			for (int i = 0; i < 15000; i++) /* 1 kHz for 15 s, up to 95 s: the view held at 100 ends after them */
+				samples[regKey(def)] << QPointF(80.0 + i * 0.001, def.addr % 7 + std::sin(i * 0.003 + def.addr));
+		chart.tab.frame(samples);
+		ChartView *view = chart.view;
+		view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) view->grab(); /* painted live first: held, the view stays where it was painted (90 .. 100) */
+		view->setLive(false);
+		view->setCursorMode(true);
+		(void) view->grab();
+		double t0, t1;
+		view->viewSpan(t0, t1);
+		const bool linesInView = t1 > 96 && t0 <= 90.5;
+		const QRectF plot = view->laneScrollBarRect().isEmpty() ? QRectF(view->rect()).adjusted(64, 44, -18, -68)
+				: view->laneScrollBarRect();
+		const QPoint start(int(plot.left() + plot.width() * 0.3), int(plot.center().y()));
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, start);
+		(void) view->grab();
+		const int binnings = view->binnings(), builds = view->lineBuilds();
+		for (int step = 1; step <= 20; step++) {
+			const QPointF at(start.x() + step * 10, start.y());
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			(void) view->grab();
+		}
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(start.x() + 200, start.y()));
+		(void) view->grab();
+		const int dragBinnings = view->binnings() - binnings, dragBuilds = view->lineBuilds() - builds;
+		if (dragBinnings || dragBuilds)
+			std::printf("     (20 drag steps: %d binnings, %d lines drawn)\n", dragBinnings, dragBuilds);
+		if (!linesInView) std::printf("     (the view %g .. %g: not over the lines)\n", t0, t1);
+		check(linesInView && dragBinnings == 0 && dragBuilds == 0 && std::isfinite(view->cursorA()), "chart, a held view: a cursor "
+				"dragged 20 steps bins nothing and draws no line again (the lines reused)");
+
+		/* each key changed: binned again (the samples in view, the window, the size) or drawn again (a Y range,
+		 * Normalise) */
+		QStringList missed;
+		const auto bins = [&](const char *what, const std::function<void()> &change) {
+			const int before = view->binnings();
+			change();
+			(void) view->grab();
+			if (view->binnings() == before) missed << QString::fromLatin1(what);
+		};
+		const auto draws = [&](const char *what, const std::function<void()> &change) {
+			const int before = view->lineBuilds();
+			change();
+			(void) view->grab();
+			if (view->lineBuilds() == before) missed << QString::fromLatin1(what);
+		};
+		bins("a sample in view", [&] {
+			MathLines::Samples one;
+			one[regKey(defs[3])] << QPointF(97.0, 3.5); /* after the last, before the view's end */
+			chart.tab.frame(one);
+		});
+		bins("the window", [&] { view->setWindow(8); });
+		bins("the size", [&] { chart.tab.resize(1100, 700); });
+		draws("a Y range", [&] { view->setYManual(-2, 9); });
+		draws("Normalise", [&] { view->setNormalized(true); });
+		view->setNormalized(false);
+		view->setYAuto();
+		(void) view->grab();
+		if (!missed.isEmpty()) std::printf("     (not again after: %s)\n", qPrintable(missed.join(QStringLiteral(", "))));
+
+		/* the picture with the lines reused is the one drawn without */
+		const QImage reused = view->grab().toImage();
+		view->setLineReuse(false);
+		const QImage fresh = view->grab().toImage();
+		view->setLineReuse(true);
+		/* the same pixels, but for the lines' antialiased edges: drawn into a clear picture and that onto the chart,
+		 * an edge's blend is rounded once more (at most 2 of 255) */
+		int differing = 0, most = 0;
+		for (int y = 0; y < reused.height() && reused.size() == fresh.size(); y++)
+			for (int x = 0; x < reused.width(); x++) {
+				const QRgb a = reused.pixel(x, y), b = fresh.pixel(x, y);
+				if (a == b) continue;
+				differing++;
+				most = std::max({ most, std::abs(qRed(a) - qRed(b)), std::abs(qGreen(a) - qGreen(b)),
+						std::abs(qBlue(a) - qBlue(b)) });
+			}
+		std::printf("     (the lines reused and drawn afresh: %d pixels apart, by %d of 255 at most)\n", differing, most);
+		check(missed.isEmpty() && reused.size() == fresh.size() && most <= 2, "chart, a held view: a sample in view, the "
+				"window or the size bins again, a Y range or Normalise draws the lines again; the picture with the lines "
+				"reused is the one drawn afresh (edges within 2 of 255)");
+		view->setCursorMode(false);
+		chart.tab.hide();
+	}
+
+	/* The measure table while a cursor moves: one repaint per update (its updates off while the cells are written),
+	 * the line over it written only when its text changes */
+	void measureTableRepaints() {
+		QSettings().remove(QStringLiteral("chart/measureColumns"));
+		LoneChart chart(QStringLiteral("M0"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 2000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i * 0.005, std::sin(i * 0.01));
+		chart.tab.frame(samples);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		QTableWidget *table = chart.table();
+		if (!measure || !table) {
+			check(false, "chart, the measure table: its button and table");
+			return;
+		}
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab(); /* painted live first, then held there */
+		chart.view->setLive(false);
+		measure->setChecked(true);
+		QApplication::processEvents();
+		struct PaintCounter : QObject {
+			int paints = 0;
+			bool eventFilter(QObject *, QEvent *e) override {
+				if (e->type() == QEvent::Paint) paints++;
+				return false;
+			}
+		} counter;
+		/* cursor A dragged over the chart in eight steps, the measurements following it (at most every 100 ms) */
+		ChartView *view = chart.view;
+		view->setCursorMode(true);
+		view->clearCursors();
+		(void) view->grab();
+		QApplication::processEvents();
+		table->viewport()->installEventFilter(&counter);
+		const int updates = chart.tab.measureUpdates(), infos = chart.tab.measureInfoChanges(), paints = counter.paints;
+		const QPoint start(300, 200);
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, start);
+		for (int step = 1; step <= 8; step++) {
+			const QPointF at(start.x() + step * 15, start.y());
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QTest::qWait(120);
+		}
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(start.x() + 120, start.y()));
+		QTest::qWait(200);
+		const int moved = chart.tab.measureUpdates() - updates, drawn = counter.paints - paints;
+		const int movedInfos = chart.tab.measureInfoChanges() - infos;
+		table->viewport()->removeEventFilter(&counter);
+		/* the same measurements again: the line over the table is not written */
+		const int sameInfos = chart.tab.measureInfoChanges();
+		for (int k = 0; k < 4; k++) chart.tab.setShown(true);
+		const int unchanged = chart.tab.measureInfoChanges() - sameInfos;
+		view->setCursorMode(false);
+		if (drawn > moved + 1 || movedInfos > 1 || unchanged != 0 || moved < 4)
+			std::printf("     (%d updates, %d paints of the table; the line over it written %d times, %d with the same text)\n",
+					moved, drawn, movedInfos, unchanged);
+		check(moved >= 4 && drawn <= moved + 1 && movedInfos <= 1 && unchanged == 0, "chart, the measure table while a "
+				"cursor is dragged: one repaint per update at most, the line over it written only when its text changes");
+		measure->setChecked(false);
+		chart.tab.hide();
+	}
+
+	/* The timing aid: EVRE_PERF_LOG=<file> writes a line every 500 ms with the frames, the paint and its stages, the
+	 * binnings, the measurements and the polls */
+	void perfLog() {
+		const QString path = QDir::temp().filePath(QStringLiteral("evre_perf_test.log"));
+		QFile::remove(path);
+		qputenv("EVRE_PERF_LOG", path.toLocal8Bit());
+		bool written = false;
+		QString first;
+		{
+			double now = 100;
+			ChartTab tab([&now] { return now; }, nullptr, QStringLiteral("perfTest"));
+			tab.resize(900, 500);
+			RegDef def;
+			def.addr = 0xD000;
+			def.name = QStringLiteral("P0");
+			tab.plotRegister(def, true);
+			tab.show();
+			(void) QTest::qWaitForWindowExposed(&tab);
+			ChartView *view = tab.findChild<ChartView *>();
+			QElapsedTimer running;
+			running.start();
+			while (running.elapsed() < 1300) {
+				MathLines::Samples samples;
+				for (int i = 0; i < 16; i++) samples[regKey(def)] << QPointF(now + i * 0.001, std::sin(now + i * 0.001));
+				now += 0.016;
+				tab.frame(samples);
+				(void) view->grab();
+				QTest::qWait(16);
+			}
+			QFile file(path);
+			if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QStringList lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+				first = lines.value(0);
+				written = lines.size() >= 2;
+				for (const QString &line : lines)
+					for (const char *part : { " perfTest ", " fps ", " paint ", " max ", "| bin ", " lines ", " segments ",
+							 " present ", " marks ", " strip ", " legend ", "| binned ", "| measure ", "| polls " })
+						written = written && line.contains(QLatin1String(part));
+			}
+			tab.hide();
+		}
+		qunsetenv("EVRE_PERF_LOG");
+		QFile::remove(path);
+		if (!written) std::printf("     (the log: \"%s\")\n", qPrintable(first));
+		check(written, "the timing aid: EVRE_PERF_LOG writes a line every 500 ms (frames, the paint, its stages, the "
+				"binnings, the measurements, the polls)");
 	}
 
 	/* The analysis's own arithmetic: the FFT (an impulse, a sine, back again), the histogram's Freedman-Diaconis bins,

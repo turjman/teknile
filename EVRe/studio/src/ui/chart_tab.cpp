@@ -15,7 +15,9 @@
 #include <QFormLayout>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QTime>
 #include <QDoubleValidator>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -53,6 +55,8 @@
 #include "ui/ui_helpers.h"
 
 namespace {
+
+constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF_LOG) */
 
 /* the shortest Window that can be typed; shorter views are only reached with the wheel */
 constexpr double MIN_TYPED_WINDOW = 0.01;
@@ -155,6 +159,36 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	connectControls();
 	restoreSettings();
 	mathLines_.load(settingKey("math")); /* compiled and drawn once the map's registers come (setRegisters) */
+
+	perfLogPath_ = qEnvironmentVariable("EVRE_PERF_LOG");
+	if (!perfLogPath_.isEmpty()) {
+		auto *perfTimer = new QTimer(this);
+		perfTimer->setInterval(PERF_LOG_MS);
+		connect(perfTimer, &QTimer::timeout, this, &ChartTab::writePerfLine);
+		perfTimer->start();
+		perfClock_.start();
+	}
+}
+
+/* One line of the timing aid: frames a second, the paint's average and longest, its stages a frame on average (ms),
+ * the binnings (a held view whose lines are reused bins none), the measurements' time and count, polls a second */
+void ChartTab::writePerfLine() {
+	const ChartView::PerfStats p = chart_->view()->takePerfStats();
+	const double seconds = std::max(1e-3, perfClock_.restart() / 1000.0);
+	const double frames = std::max(1, p.frames);
+	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
+			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 | polls %17/s\n")
+			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
+			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
+			.arg(p.bin / frames, 0, 'f', 2).arg(p.lines / frames, 0, 'f', 2).arg(p.segments / frames, 0, 'f', 2)
+			.arg(p.present / frames, 0, 'f', 2).arg(p.marks / frames, 0, 'f', 2).arg(p.strip / frames, 0, 'f', 2)
+			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
+			.arg(measuresTimed_).arg(double(pollsSince_) / seconds, 0, 'f', 0);
+	measureMs_ = 0;
+	measuresTimed_ = 0;
+	pollsSince_ = 0;
+	QFile file(perfLogPath_);
+	if (file.open(QIODevice::Append | QIODevice::Text)) file.write(line.toUtf8());
 }
 
 ChartTab::~ChartTab() {
@@ -683,8 +717,12 @@ QVector<RegKey> ChartTab::mathRegisters() const { return mathLines_.registersRea
 
 void ChartTab::frame(const MathLines::Samples &samples) {
 	/* every poll's samples, not one per frame */
-	for (auto it = samples.begin(); it != samples.end(); ++it)
+	qsizetype polls = 0; /* the timing aid: a poll brings one sample of each register */
+	for (auto it = samples.begin(); it != samples.end(); ++it) {
 		for (const QPointF &point : it.value()) chart_->append(int(it.key()), point.x(), point.y());
+		polls = std::max(polls, it.value().size());
+	}
+	pollsSince_ += polls;
 	if (!mathLines_.isEmpty())
 		mathLines_.evaluate(samples, [this](int key, double time, double value) { chart_->append(key, time, value); });
 	chart_->frame();
@@ -1045,8 +1083,16 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 	if (lineKeys != measuredKeys_ || measures_->rowCount() != lines.size()) cursorsOnly = false; /* other lines: all */
 	measureUpdates_++;
 	if (!cursorsOnly) measureFullUpdates_++;
-	measureInfo_->setText(measuredRangeText());
+	QElapsedTimer timed;
+	timed.start();
+	const QString info = measuredRangeText();
+	if (measureInfo_->text() != info) { /* written only when it changes: a new text lays the panel out again */
+		measureInfo_->setText(info);
+		measureInfoChanges_++;
+	}
 	const QVector<ChartView::Stats> stats = view->stats(lineKeys, cursorsOnly);
+	/* the cells written with the table's updates off: one repaint when they are all in, not one per cell */
+	measures_->setUpdatesEnabled(false);
 	const QString none = QStringLiteral("—");
 	measures_->setRowCount(int(lines.size()));
 	for (int row = 0; row < lines.size(); row++) {
@@ -1081,7 +1127,16 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 			if (column == 0 && item->foreground().color() != line.color) item->setForeground(line.color);
 		}
 	}
-	if (cursorsOnly) return; /* the columns fitted when all of it is measured */
+	/* the table shown again (one repaint), and the time the update took for the timing aid */
+	const auto done = [&] {
+		measures_->setUpdatesEnabled(true);
+		measureMs_ += timed.nsecsElapsed() / 1e6;
+		measuresTimed_++;
+	};
+	if (cursorsOnly) { /* the columns fitted when all of it is measured */
+		done();
+		return;
+	}
 	/* the columns fit their contents, measured once; they only grow while the lines are the same, so the table does
 	 * not jump as the values change */
 	const bool sameLines = lineKeys == measuredKeys_;
@@ -1094,6 +1149,7 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 		if (fit != header->sectionSize(column) && (!sameLines || fit > header->sectionSize(column)))
 			header->resizeSection(column, fit);
 	}
+	done(); /* the cells and the columns in one repaint */
 }
 
 /* over what the measurements run: the cursors, or the view (with a hint on placing the cursors); then since when the

@@ -233,6 +233,8 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [26.4 The fake devices](#264-the-fake-devices)
     - [26.5 The probe](#265-the-probe)
     - [26.6 `EVRE_SHOT`](#266-evre_shot)
+    - [26.7 The map test and the schema test](#267-the-map-test-and-the-schema-test)
+    - [26.8 `EVRE_PERF_LOG`](#268-evre_perf_log)
   - [27. Design decisions and pitfalls](#27-design-decisions-and-pitfalls)
   - [28. Glossary](#28-glossary)
   - [29. Open items](#29-open-items)
@@ -2013,6 +2015,7 @@ The link fields, the interval and the other sidebar values set by options are sa
 |---|---|
 | `EVRE_TOKEN` | Fills the token box at start (see 3.6). This is the only way to pass a token without typing it: a command line is visible to other users of the computer. |
 | `EVRE_SHOT` | A test aid that saves a picture of the window and quits (see 26.6). While it is set, the Studio uses separate settings (`EVReStudio-test`), so yours are not touched. |
+| `EVRE_PERF_LOG` | A timing aid: every 500 ms a line of what the chart's frames cost is appended to the file it names (see 26.8). Nothing when unset. |
 
 ### 14.3 Settings
 
@@ -3710,8 +3713,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` (tests: the measurements made, all of the table, the line over it written anew), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples`, `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
@@ -3959,6 +3962,17 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 
 The following choices keep a frame cheap on a high-DPI screen:
 
+- **A held view reuses its lines.** Dragging a cursor, a note or the trigger's level over a held view changes no
+  line. `viewBins` keeps the last binning while the view's times and columns, the lines' generation and each line's
+  samples in view (as absolute sample numbers, `dropped` plus the index: samples are only added at the end and let
+  go at the start) are the same; `linesKey` (the binning, the plots' rects and Y ranges, folds, Normalise, the theme,
+  the scaling) decides whether the lines are drawn again. On the CPU, held, the lines are a picture
+  (`drawLinesPicture`, on whole device pixels as a stripe of `drawLines`) drawn onto the chart at every frame; on a
+  card, its line segments (`gpuLines_`) are sent again as they are. Only the marks, the pictures and the rest are
+  made anew. Live, the view moves at every frame and both are done every frame. The tests count both
+  (`binnings`, `lineBuilds`) and compare the picture with one drawn without the reuse (`setLineReuse(false)`): an
+  antialiased edge drawn into the clear picture and then onto the chart is rounded once more, at most 2 of 255.
+
 - **Lines as cosmetic polylines.** Qt's raster engine has a fast path for 1-device-pixel antialiased cosmetic
   lines, and none for a wide antialiased stroke. `strokePolyline` draws the polyline with a cosmetic pen of width 0,
   `copies = max(2, round(1.5 × devicePixelRatio))` times. It shifts the copies by one device pixel side by side, and
@@ -4132,7 +4146,9 @@ Measure is on, when the tab is shown, and when the cursors move: at once, then a
 (`ChartTab::measureSoon`, `MEASURE_FOLLOW_MS`), the last place always measured. While a cursor is dragged, only
 A, B and B − A follow it (`stats(keys, cursorsOnly)`, the columns not fitted again); the rest over A → B comes once it
 is let go (`cursorsChanged` at the release) and at the 250 ms pace: all of it at every step held the chart near 51
-frames a second with 64 lines. A dragged cursor moves at every
+frames a second with 64 lines. Each update writes the cells with the table's updates off and fits the columns
+before they are on again (`setUpdatesEnabled`): one repaint per update, not one per cell; the line over the table
+(`measureInfo_`) is written only when its text changes, a new text laying the panel out again. A dragged cursor moves at every
 mouse move, and 64 lines over 5 minutes of 1000 Hz samples measured at each held the chart near 17 frames a second.
 The lines are measured on the chart's threads (`stats(keys)`, as `inParallel`), each as `stats(key)` alone.
 
@@ -4552,6 +4568,18 @@ labels, at the plot's left edge and in its middle; none with Lanes off. No text 
 by the plot's top, every value label's box (`valueLabelRects`) whole inside its lane's part in view; a folded strip
 half above the plot writes nothing (`foldedText` empty), whole it writes its lines.
 
+**A held view's lines reused** (`heldViewReuse`, 16 lines of 1000 Hz, the view held over them): cursor A dragged 20
+steps bins nothing and draws no line again; a sample in the view, another window or another size bins again; a
+Manual Y range or Normalise draws the lines again; the picture with the lines reused is the one drawn without the
+reuse, its antialiased edges within 2 of 255.
+
+**The measure table while a cursor is dragged** (`measureTableRepaints`, Measure on, a held view): eight steps of a
+dragged cursor, the table's paints at most one per update; the line over the table written at most once while the
+cursor moves (its text the same), and not at all for four updates with the same text.
+
+**The timing aid** (`perfLog`): with `EVRE_PERF_LOG` set, a Chart tab fed frames for 1.3 s writes at least two
+lines, each with its group, `fps`, `paint`, `max`, the stages, `binned`, `measure` and `polls` (26.8).
+
 **Analysis and trigger** (`analysisMath`, `analysisWindows`, `chartTrigger`): the FFT of an impulse is flat, a sine of 8
 periods in 256 lands in bin 8 with N/2, and comes back; 0 .. 999 makes 10 bins of 99.9, one value one bin, few levels
 √n bins; a sine of 2 V at 62.5 Hz polled 1 ms ± 0.3 ms apart reads 2 V (± 0.05) at 62.5 Hz with 8 segments of 2048,
@@ -4604,7 +4632,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 357 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 361 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -4764,6 +4792,26 @@ settings but takes no picture and does not quit.
 
 `tests/schema_test.py` checks the schema itself (draft 2020-12), every map in `maps/` (or the files named), and that
 a broken map is refused. It needs the `jsonschema` package and says SKIP without it.
+
+### 26.8 `EVRE_PERF_LOG`
+
+`EVRE_PERF_LOG=<file>` is a timing aid (`ChartTab::writePerfLine`), for measuring the chart on a given computer:
+every 500 ms each Chart tab (the live one, and a recording's window) appends one line to the file:
+
+```
+14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 ms | binned 3/29 | measure 1.20 ms x 5 | polls 1000/s
+```
+
+- `fps`: frames painted a second; `paint`, `max`: the paint's average and longest, ms.
+- The stages, ms a frame on average (`ChartView::takePerfStats`): `bin` the view's binning, `lines` the CPU's lines,
+  `segments` the card's segment list, `present` the card's present, `marks` the cursors, notes, trigger, strips and
+  crosshair, `strip` the memory strip, `legend` the legend. What the stages leave of `paint` is the grid, the
+  labels, the Y ranges and the state.
+- `binned N/M`: frames that binned the view of the frames painted (a held view whose lines are reused bins none).
+- `measure`: the measurement table's updates, their time in all and their count.
+- `polls`: polls a second (the samples of the register with the most).
+
+Unset, nothing is timed into a file. The aid does not change the settings.
 
 ## 27. Design decisions and pitfalls
 
