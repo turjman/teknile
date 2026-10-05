@@ -89,8 +89,10 @@ jobs:
           choco install innosetup --no-progress -y > /dev/null
           app="EVReStudio-$VERSION"
           mkdir -p dist
-          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/DAppVersion=$VERSION" "/DSourceDir=$(cygpath -w "$PWD/$app")" \
-            "/DOutputDir=$(cygpath -w "$PWD/dist")" EVRe/studio/packaging/windows/evre_studio.iss
+          # MSYS_NO_PATHCONV: Git's bash would take ISCC's /DName=value for paths and rewrite them
+          MSYS_NO_PATHCONV=1 "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/DAppVersion=$VERSION" \
+            "/DSourceDir=$(cygpath -w "$PWD/$app")" "/DOutputDir=$(cygpath -w "$PWD/dist")" \
+            EVRe/studio/packaging/windows/evre_studio.iss
           7z a -tzip "dist/EVReStudio-$VERSION-windows.zip" "$app" > /dev/null
           ls -l dist
       - name: The tools start from the folder
