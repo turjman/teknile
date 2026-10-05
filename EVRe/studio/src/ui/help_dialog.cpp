@@ -286,7 +286,10 @@ plot's edge, and when the cursors are too close for the text, the text stands be
 removes them, and so does turning <b>Cursors</b> off.</li>
 <li><b>ƒ Math</b>: lines made from a formula (below).</li>
 <li><b>Display</b>, a menu of how the lines are drawn (its tooltip says what is on): <b>Normalise</b>, every line
-scaled to its own range, to compare shapes of different units; <b>Smooth</b> (on by default): the picture is delayed
+scaled to its own range, to compare shapes of different units; <b>Lanes</b>, a plot per unit stacked under each other
+(8 at most, the units after share the last), each with its own Y range: right-click a lane's values for Auto,
+Manual… or Log, Ctrl + wheel over it zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and
+crosshair across them all; <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; <b>Hover values</b> (on by default): the box of values beside the mouse, off to see
 only the crosshair and its dots; <b>Drawing</b>: who draws the plot: <b>Auto</b> (a dedicated graphics card when there
@@ -525,6 +528,8 @@ all fit</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
+<tr><td><b>Lanes</b></td><td><b>Right-click</b> a lane's values: its Y range (Auto, Manual…, Log) · <b>Ctrl +
+wheel</b> zooms the lane · <b>double-click</b> it: Auto</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /
 <b>Ctrl+V</b> copy / paste registers (as JSON, also between maps) · <b>Del</b> delete</td></tr>
 <tr><td><b>Math line</b></td><td>The list of names: <b>Up</b> / <b>Down</b> pick, <b>Enter</b> or <b>Tab</b> takes one,

@@ -126,7 +126,7 @@ public:
 	}
 	void setNormalized(bool on) {
 		normalized_ = on;
-		yInitialized_ = false;
+		forgetRanges();
 		refresh();
 	}
 	void setSmooth(bool on);
@@ -136,14 +136,37 @@ public:
 	void setYAuto();
 	/* false: not a range (hi <= lo, or lo <= 0 on the Log scale), nothing changed */
 	bool setYManual(double lo, double hi);
-	bool yAuto() const { return yAuto_; }
+	bool yAuto() const { return y_.autoRange; }
 	/* the logarithmic scale (Auto: the positive values in view, at most MAX_DECADES); it has no effect while
 	 * normalised. Manual keeps its range when it is positive, else Auto */
 	void setYLog(bool on);
-	bool yLog() const { return yLog_; }
+	bool yLog() const { return y_.log; }
 	static constexpr double MAX_DECADES = 9;
-	double yLo() const { return yLo_; }  /* the range shown now */
-	double yHi() const { return yHi_; }
+
+	/* Lanes: a plot per unit, stacked, of equal height, MAX_LANES at most (the units after share the last), on one
+	 * time axis; the cursors, the A-B bar and the notes across them, one crosshair box. Each lane has its own Y range
+	 * (kept by its unit), set by a right-click on its value labels (laneMenuRequested), Ctrl + wheel over it, and a
+	 * double-click (Auto). The Y range above (setYAuto ...) is the plot's without lanes. */
+	static constexpr int MAX_LANES = 8;
+	void setLanes(bool on);
+	bool lanes() const { return lanes_; }
+	int laneCount() const;               /* the lanes now (0 without) */
+	QString laneLabel(int lane) const;   /* its units: "V", or "W · Ω" for the last one shared */
+	QRectF laneRect(int lane) const;
+	QVector<int> laneLines(int lane) const; /* the keys of its lines */
+	bool laneYAuto(int lane) const;
+	bool laneYLog(int lane) const;
+	double laneYLo(int lane) const;      /* as last painted */
+	double laneYHi(int lane) const;
+	void setLaneYAuto(int lane);
+	bool setLaneYManual(int lane, double lo, double hi); /* false: not a range (lo <= 0 on the Log scale) */
+	void setLaneYLog(int lane, bool on);
+	/* the lanes' ranges for the settings, one text per unit ("unit\tauto\tlog\tlo\thi"), and back */
+	QStringList laneScales() const;
+	void setLaneScales(const QStringList &texts);
+	double laneYOfValue(int lane, double value) const; /* tests: where a value lies in a lane, as last painted */
+	double yLo() const { return y_.lo; }  /* the range shown now */
+	double yHi() const { return y_.hi; }
 
 	/* cursors: with cursor mode on, a click places / drags the nearest */
 	void setCursorMode(bool on) { cursorMode_ = on; refresh(); }
@@ -278,6 +301,8 @@ signals:
 	void notesChanged();
 	void noteEditRequested(int index);      /* a double-click on a note's tag */
 	void menuRequested(const QPoint &globalPos, double time); /* a right-click on the chart: the time under it */
+	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels */
+	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -371,6 +396,18 @@ private:
 			return v > 0 ? rect.bottom() - (std::log10(v) - logLo) / (logHi - logLo) * rect.height() : rect.bottom();
 		}
 	};
+	/* A Y range: Auto, Manual or Log (with Auto or a typed range). The plot has one; each lane its own. */
+	struct YScale {
+		bool autoRange = true, initialized = false, log = false;
+		double lo = 0, hi = 1;
+	};
+	/* A plot of a frame: all of it with every line, or one lane (Lanes: a lane per unit). lines: indices into
+	 * series_'s order (and the frame's binned lines) */
+	struct Lane {
+		QString key, label; /* key: its first unit (its Y range is kept by it); label: its units */
+		QVector<int> lines;
+		Axes axes;
+	};
 	/* The legend's chips at fixed places: a chip's width comes from its name,
 	 * its unit and room for the widest number the legend writes, never from the
 	 * value, so a changing value cannot push the chips after it. */
@@ -427,8 +464,10 @@ private:
 	 * column */
 	static void binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins);
 	QVector<BinnedLine> binView(const Axes &axes) const;
-	void updateYRange(const QVector<BinnedLine> &lines, double frameDt, double &lo, double &hi);
-	void followData(const QVector<BinnedLine> &lines, double frameDt);
+	/* the Y range of this frame for a plot's lines (which: indices into lines) */
+	void updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,
+			double &lo, double &hi);
+	void followData(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt);
 	/* a frame: the plot on the card (onScreen: into the window, a card open, lines to show) or on the CPU */
 	void paintFrame(QPainter &p, bool onScreen);
 	void drawCard(QPainter &p) const;
@@ -440,14 +479,14 @@ private:
 		bool labelMinor = false; /* Log over less than two decades: the faint lines labelled too */
 	};
 	GridTicks gridTicks(const Axes &axes) const;
-	/* the grid's lines (not when the card drew them) and its labels */
-	void drawGrid(QPainter &p, const Axes &axes, bool lines = true) const;
+	/* the grid's lines (not when the card drew them) and its labels: each plot's values, the time under them all */
+	void drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &axes, bool lines = true) const;
 	void drawCursorSpan(QPainter &p, const Axes &axes) const;
-	void drawLines(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const;
+	void drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const;
 	/* the card's layer: over the plot and 2 px around it (the lines' antialiasing) */
 	QRect layerRect() const;
 	/* the plot drawn by the card into its layer, all that lies on it; false: the card failed (closed, said) */
-	bool plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines);
+	bool plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines);
 	/* the layer shown or taken away (once the window holds what goes under it); a failure closes the card */
 	void showLayer(bool shown);
 	void drawCursors(QPainter &p, const Axes &axes) const;
@@ -482,8 +521,9 @@ private:
 		QVector<QPair<QPointF, QColor>> dots; /* centres */
 		QPointF boxAt;                         /* readout_'s top left; readout_ null: no box */
 	};
-	bool crosshair(const Axes &axes, const QVector<BinnedLine> &lines, qreal dpr, Crosshair &out) const;
-	void drawCrosshair(QPainter &p, const Axes &axes, const QVector<BinnedLine> &lines) const;
+	bool crosshair(const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, qreal dpr,
+			Crosshair &out) const;
+	void drawCrosshair(QPainter &p, const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const;
 	/* one line's row in the crosshair's box */
 	struct ReadoutRow {
 		QString name, value, unit;
@@ -560,10 +600,20 @@ private:
 	bool live_ = true, normalized_ = false, smooth_ = true, hoverValues_ = true, recording_ = false;
 	double delay_ = 0, peakGap_ = 0; /* Smooth: the display delay, and the gap it covers */
 
-	/* the Y range; yInitialized_: Auto has a range to move from */
-	bool yAuto_ = true, yInitialized_ = false, yLog_ = false;
-	double yLo_ = 0, yHi_ = 1;
-	bool logShown() const { return yLog_ && !normalized_; } /* the Log scale drawn now */
+	/* the Y range of the plot (lanes: of each lane, by its key); initialized: Auto has a range to move from */
+	YScale y_;
+	QHash<QString, YScale> laneScales_;
+	bool lanes_ = false;
+	mutable QVector<Lane> lanesShown_; /* the plots as last painted: one, or the lanes */
+	bool logOf(const YScale &scale) const { return scale.log && !normalized_; } /* the Log scale drawn now */
+	bool logShown() const { return logOf(y_); }
+	/* the plots of a frame: the whole plot with every line, or a lane per unit (their rects, lines and keys; their
+	 * axes' times and ranges are set by paintFrame) */
+	QVector<Lane> plotLayout() const;
+	YScale &scaleOf(const Lane &lane) { return lanes_ ? laneScales_[lane.key] : y_; }
+	int laneAtY(double y) const; /* the lane last painted at that height (the nearest); -1: no lanes */
+	QString laneKey(int lane) const; /* its unit, by which its Y range is kept */
+	void forgetRanges(); /* the lines changed: every Auto range jumps to them at the next frame */
 	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
 	mutable QStringList valueLabels_;
 	bool stripLog_ = false;          /* the memory strip's image drawn on the Log scale */
