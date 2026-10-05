@@ -319,6 +319,8 @@ void MainWindow::onBusChanged() {
 		pushAutoSend();
 	}
 	updateAutoSendOffer();
+	if (isBus()) stopFastStreams();
+	updateFastOffer();
 	const uint8_t shown = isBus() ? bus_.devices[selectedDevice_].slave : 0;
 	if (!isBus()) allDevices_ = false;
 	model_->setSelectedDevice(shown);

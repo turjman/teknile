@@ -51,6 +51,7 @@ Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 	layout->addWidget(buildBusCard());
 	layout->addWidget(buildMapCard());
 	layout->addWidget(buildPollingCard());
+	layout->addWidget(buildFastCard());
 	layout->addWidget(buildApiCard());
 	layout->addStretch();
 	addFooter(layout);
@@ -351,6 +352,15 @@ QWidget *Sidebar::buildPollingCard() {
 	content->addLayout(recordRow);
 	content->addWidget(recordInfo_);
 	return card(tr("Polling & recording"), content);
+}
+
+/* Fast EVRe: a row for each of the map's streams, made by setFastStreams; hidden until the map has one */
+QWidget *Sidebar::buildFastCard() {
+	fastRowsLayout_ = new QVBoxLayout;
+	fastRowsLayout_->setSpacing(8);
+	fastCard_ = card(tr("Fast streams"), fastRowsLayout_);
+	fastCard_->setVisible(false);
+	return fastCard_;
 }
 
 QWidget *Sidebar::buildApiCard() {
@@ -657,6 +667,146 @@ void Sidebar::setAutoSendOffered(bool offered, const QString &why, const QString
 	autoSendRate_->setToolTip(offered ? rateHelp_ : why);
 }
 
+/* ------------------------------------------------------------- fast streams */
+
+/* a row a stream: the button (Start / Stop and its name) over its two numbers, each on a line of its own (1.23 M
+ * samples/s with its correction and "lost 123 456 789" do not fit one line, in Arabic even less); every line always
+ * there, so the card keeps its height */
+void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
+	bool same = streams.size() == fastRows_.size();
+	for (int i = 0; same && i < streams.size(); i++)
+		same = streams[i].name == fastRows_[i].def.name && streams[i].rate == fastRows_[i].def.rate
+				&& streams[i].enable == fastRows_[i].def.enable && streams[i].channels.size() == fastRows_[i].def.channels.size();
+	if (same) {
+		for (int i = 0; i < streams.size(); i++) fastRows_[i].def = streams[i];
+		return;
+	}
+	while (QLayoutItem *item = fastRowsLayout_->takeAt(0)) {
+		if (QLayout *row = item->layout())
+			while (QLayoutItem *inner = row->takeAt(0)) {
+				delete inner->widget();
+				delete inner;
+			}
+		delete item->widget();
+		delete item;
+	}
+	fastRows_.clear();
+	for (int i = 0; i < streams.size(); i++) {
+		FastRow row;
+		row.def = streams[i];
+		row.button = new QPushButton;
+		row.button->setObjectName(QStringLiteral("fastStream"));
+		row.button->setCursor(Qt::PointingHandCursor);
+		connect(row.button, &QPushButton::clicked, this, [this, i] {
+			if (i >= fastRows_.size()) return;
+			fastRows_[i].on = !fastRows_[i].on;
+			showFastButton(i);
+			emit fastStreamToggled(i, fastRows_[i].on);
+		});
+		row.rate = mutedLabel(QString());
+		row.lost = mutedLabel(QStringLiteral(" ")); /* a line's height while empty */
+		auto *numbers = new QVBoxLayout;
+		numbers->setSpacing(2);
+		numbers->addWidget(row.rate);
+		numbers->addWidget(row.lost);
+		fastRowsLayout_->addWidget(row.button);
+		fastRowsLayout_->addLayout(numbers);
+		fastRows_.push_back(row);
+	}
+	fastCard_->setVisible(!fastRows_.isEmpty());
+	setFastOffered(fastOffered_, fastWhy_, fastShortWhy_);
+}
+
+QPushButton *Sidebar::fastButton(int stream) const {
+	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].button : nullptr;
+}
+
+QString Sidebar::fastRateText(int stream) const {
+	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].rate->text() : QString();
+}
+
+QString Sidebar::fastLostText(int stream) const {
+	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].lost->text().trimmed() : QString();
+}
+
+bool Sidebar::fastOn(int stream) const { return stream >= 0 && stream < fastRows_.size() && fastRows_[stream].on; }
+
+void Sidebar::setFastOn(int stream, bool on) {
+	if (stream < 0 || stream >= fastRows_.size() || fastRows_[stream].on == on) return;
+	fastRows_[stream].on = on;
+	showFastButton(stream);
+}
+
+/* Start: the device is told to send (its enable register written 1); Stop: red, as Stop recording */
+void Sidebar::showFastButton(int stream) {
+	const FastRow &row = fastRows_[stream];
+	row.button->setText(row.on ? tr("■  Stop %1").arg(row.def.name) : tr("▶  Start %1").arg(row.def.name));
+	row.button->setObjectName(row.on ? QStringLiteral("danger") : QStringLiteral("fastStream"));
+	repolish(row.button);
+	QStringList channels;
+	for (const StreamChannel &c : row.def.channels) channels << c.name;
+	const QString what = tr("%1: %2 samples a second of %3.").arg(row.def.name).arg(row.def.rate)
+			.arg(channels.join(QStringLiteral(", ")));
+	const QString how = row.def.enable.isEmpty()
+			? tr("The device sends it by its own choice: Start listens for its blocks, Stop no longer takes them.")
+			: tr("Start writes 1 to %1, Stop writes 0: the device sends its samples in numbered blocks, and every "
+				 "sample lost on the way is counted.").arg(row.def.enable);
+	row.button->setToolTip(fastOffered_ ? what + QLatin1Char('\n') + how + QLatin1Char('\n')
+			+ tr("Not remembered: it changes the device, so it is off at every start.") : fastWhy_);
+}
+
+void Sidebar::setFastOffered(bool offered, const QString &why, const QString &shortWhy) {
+	fastOffered_ = offered;
+	fastWhy_ = why;
+	fastShortWhy_ = shortWhy;
+	for (int i = 0; i < fastRows_.size(); i++) {
+		FastRow &row = fastRows_[i];
+		row.button->setEnabled(offered);
+		showFastButton(i);
+		if (!offered) {
+			row.rate->setText(shortWhy);
+			row.rate->setToolTip(why);
+			row.lost->setText(QStringLiteral(" "));
+		}
+	}
+}
+
+/* "10.0 k samples/s (+32 ppm)" and "lost 1 024", or the map's rate while off */
+void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
+	if (!fastOffered_ || !connected) return;
+	auto samples = [](double hz) {
+		return hz >= 1e6 ? tr("%1 M samples/s").arg(hz / 1e6, 0, 'f', 2)
+				: hz >= 1e3 ? tr("%1 k samples/s").arg(hz / 1e3, 0, 'f', 1) : tr("%1 samples/s").arg(hz, 0, 'f', 1);
+	};
+	for (int i = 0; i < fastRows_.size(); i++) {
+		FastRow &row = fastRows_[i];
+		const IoEngine::Stats::Fast *f = i < stats.fast.size() ? &stats.fast[i] : nullptr;
+		if (!f || !f->on) {
+			row.rate->setText(tr("off · %1").arg(samples(row.def.rate)));
+			row.rate->setToolTip(tr("The rate the map gives the stream"));
+		} else if (f->rate <= 0) {
+			row.rate->setText(tr("waiting for the first block"));
+			row.rate->setToolTip(QString());
+		} else {
+			const QString ppm = QStringLiteral("%1%2 ppm").arg(f->ppm >= 0 ? QStringLiteral("+") : QString())
+					.arg(qRound(f->ppm));
+			row.rate->setText(QStringLiteral("%1 (%2)").arg(samples(f->rate), ppm));
+			row.rate->setToolTip(tr("The samples a second as the Studio's clock measures the device's: the rate the "
+					"device was set to, corrected by %1 parts in a million.\n%2 samples in %3 blocks since Start; "
+					"%4 bad blocks.").arg(ppm).arg(f->records).arg(f->blocks).arg(f->badBlocks + f->newerBlocks));
+		}
+		const quint64 lost = f ? f->lost : 0;
+		/* a count in groups of three, "1 024" (a space that does not break the line), kept one left-to-right number in
+		 * a right-to-left line (an isolate: the groups would otherwise be laid out right to left, "024 1") */
+		QString count = QString::number(lost);
+		for (int at = int(count.size()) - 3; at > 0; at -= 3) count.insert(at, QChar(0x00A0));
+		if (count.size() > 3) count = QChar(0x2066) + count + QChar(0x2069);
+		row.lost->setText(f && (f->on || lost) ? tr("lost %1").arg(count) : QStringLiteral(" "));
+		row.lost->setToolTip(tr("Samples the device numbered but the Studio did not get: a gap, never filled in"));
+		setHighlighted(row.lost, lost > 0, Theme::colors().warn);
+	}
+}
+
 void Sidebar::setRecording(bool recording) {
 	recordButton_->setText(recording ? tr("■  Stop recording") : tr("●  Record CSV"));
 	recordButton_->setObjectName(recording ? QStringLiteral("danger") : QString());
@@ -681,6 +831,7 @@ void Sidebar::showApiNotStarted(const QString &error) {
 
 void Sidebar::showStats(const IoEngine::Stats &stats, bool connected) {
 	showPollRate(stats, connected);
+	showFastStats(stats, connected);
 	if (stats.recording) {
 		recordInfo_->setText(tr("Recording %1 columns · %2 rows\n%3").arg(stats.csvCols).arg(stats.csvRows)
 				.arg(QFileInfo(stats.csvFile).fileName()));

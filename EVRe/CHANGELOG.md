@@ -9,6 +9,10 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - EVRe protocol revision 1 (`docs/PROTOCOL.md`): frames, function codes, CRC-16/X-25, the reserved bank at
   `0xA000`, messages, errors, test vectors, the device API and a conformance checklist.
 - The device library `lib/EVRe.h`, `lib/EVRe.cpp`; `lib/ports/stm32h7/malloc_lock.c` for newlib on Cortex-M7.
+- Fast EVRe (`docs/PROTOCOL.md`, "Fast EVRe"), a layer above the protocol, not part of it: a device sends samples
+  taken on its own clock in numbered blocks, as READ_RESP frames of a window of the device bank that nobody asked
+  for; every lost record is counted. `lib/fast/evre_fast.*` builds a block's frame around the records where they
+  lie (no copy, no heap), with the library's public names only.
 
 ### The map format `evre-map/1`
 
@@ -16,6 +20,9 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - Registers with types, scale and offset, value names, special values, bit fields (with their own access), limits,
   defaults, write behaviour (action, write-1-to-clear), write-only access, persistence, notes; the device's ID, USB
   IDs, login register, protocol and group notes; overlays (`extends`).
+- `streams` (optional): a device's fast streams, each its window, rate, enable and rate registers and the channels
+  of one record; the checks refuse a window outside the device bank, over a register or another window, or too
+  small for one record.
 - The device's slave address (`slave`, 1 to 255; 0 is the broadcast address), and `plot`: `false` for a value that
   does not change with time (an ID, a version, a setting), which a host does not offer as a line on a chart.
 
@@ -33,6 +40,9 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   without slowing the others. Broadcast writes, where the map allows them, read back from each device.
 - Auto send: a device that can sends its read-only block by itself at a set rate (40 to 4000 a second); each frame is
   one chart point and one CSV row; switched off on the device at Disconnect.
+- Fast streams (Fast EVRe): the sidebar's card starts and stops a map's streams (their enable registers), counts the
+  blocks, shows the samples a second as fitted to the Studio's clock with the correction in ppm, and the samples
+  lost; CONFIG read every 100 ms meanwhile; off on the device at Disconnect, on again after a lost link.
 - The chart for many fast lines: min/max summaries of 8 to 4096 samples, binning and drawing on several threads, a
   RAM budget the samples keep to (with a note of what the Memory set needs), at most 64 lines at 1000 samples a
   second (fewer at faster rates), the plot drawn by a dedicated graphics card when there is one, or a card picked by
@@ -52,5 +62,6 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 
 - `evre`: validate, export, info, read, dump, watch, write, broadcast and check a device against its map, from a
   terminal or CI; a bus of devices by its bus file.
-- `evre-sim`: a map served as a device over TCP, behaving as the map says.
+- `evre-sim`: a map served as a device over TCP, behaving as the map says; its fast streams too.
+- `evre record`: a fast stream's blocks into a `.evrs` file, as they came, with time marks.
 - `evre` for Python (`studio/python`): a device by register name with its map, standard library only.
