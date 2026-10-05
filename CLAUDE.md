@@ -67,6 +67,10 @@ and one pull request into `main`; a later PR says "after #N". Finish a phase com
 check per behaviour, STUDIO.md, Help, the check count, every Linux test) before starting the next.
 If the session has to stop, push what is done and say in that phase's PR where it stopped.
 
+Phases 1-4 and 8 are merged into `main`. **Phase 9 is the open one**: its branch
+`phase9-lanes-fit` exists (made from `main`, it holds this plan); work on it, and open its PR into
+`main`.
+
 Keep token use lean: read the parts of files you need (grep, then read the lines), not whole
 files; STUDIO.md is long, read the chapters a phase touches. Build once per change set, not per
 edit. The owner checks each PR on Windows (the graphics card, the frame clock, screenshots) and
@@ -158,3 +162,56 @@ made).
    committed.
 4. Checks: every .ts complete (no unfinished entries), placeholders and tags match, the main
    window's minimum width at most 1280 px in each language; the GUI test stays in English.
+
+### Phase 9: lanes that fit (branch `phase9-lanes-fit`)
+
+The owner's picture: 8 units on a laptop screen, each lane about 50 px high, one or two value
+labels, five lines on top of each other, and the shared last lane ("% · ...", 0-200) flattening
+the lines in it. Lanes must stay readable however many units are plotted.
+
+1. **A lane per unit, a minimum height, scrolling.** `MAX_LANES` and the shared last lane go:
+   every unit gets its own lane. An open lane is at least `LANE_MIN_H` = 80 px high (so it has
+   at least two value labels); when the lanes do not fit, they keep that height and the lanes
+   scroll up and down inside the plot (`laneScroll_`, px from the top, clamped whenever the
+   layout changes: resize, a line added or removed, a fold; set back to 0 when Lanes is turned
+   on). Scrolling: the wheel over the lanes' value labels (left of the plot; Ctrl + wheel there
+   stays the lane's Y zoom, the wheel over the plot stays the time zoom), and a scroll bar painted
+   in the right pad (`RIGHT_PAD`), only when the lanes do not fit, draggable, a click above or
+   below its handle moves one plot height. Painted, not a `QScrollBar` widget: nothing goes over
+   the card's layer. A lane cut by the plot's top or bottom edge is drawn cut (lines, grid, value
+   labels and its unit name only inside the plot); a lane out of view is not drawn at all and has
+   no rect for `laneAtY`. The time axis, the memory strip, the cursors, the A-B bar, the notes,
+   the crosshair and its box stay on the whole plot; the trigger's level line and tag only when
+   the trigger's lane is in view. `plotLayout()` returns every lane with its rect in widget
+   coordinates after the scroll; the drawing paths skip or cut by the plot rect.
+2. **Fold a lane.** A click on a lane's unit name (the rotated text left of its value labels)
+   folds it; a click anywhere on a folded lane opens it again; the lane menu (right-click on the
+   value labels) gets "Fold lane" / "Open lane" too. A folded lane is a strip `LANE_FOLDED_H` =
+   22 px high: its unit, then for each of its lines the colour dot, the name and the latest value
+   in view (as the legend writes it), cut with "..." when they do not fit; no grid, no lines, no
+   value labels; the crosshair box and cursor readouts skip it. Open lanes share the height left
+   (equal, at least `LANE_MIN_H`). Folds are kept by unit, saved under the tab's prefix
+   (`settingKey("lanesFolded")`, a string list), so a recording window keeps its own. A click on
+   a folded strip does not place a cursor or add a note.
+3. **Both drawing paths.** The card already cuts each line to its lane's rows: cut to the lane's
+   rect intersected with the plot rect, skip lanes out of view, and draw a folded strip's dots
+   and text on the CPU only (as text is now). Keep the card's picture equal to the CPU's.
+4. **API for the tests and the Chart tab**: `laneFolded(int)`, `setLaneFolded(int, bool)`,
+   `laneScroll()`, `setLaneScroll(double)`, `laneContentHeight()` (all lanes stacked, gaps
+   included), `laneScrollBarRect()` (empty when the lanes fit); `laneRect` may now be partly or
+   wholly outside the plot.
+5. **Checks** (in `gui_test.cpp`, Linux and Windows): with the example map, plot lines of at
+   least 10 units (add math lines with other units if the map has fewer): 10 lanes, none shared,
+   each at least 80 px; the content is taller than the plot, the scroll bar shows; the wheel over
+   the value labels scrolls by a step and is clamped at both ends; a drag of the scroll bar's
+   handle scrolls; a lane out of view gets no `laneAtY`; a click on a unit name folds that lane
+   (22 px, the other lanes taller, the strip lists its lines with values), a click on the strip
+   opens it; the fold is saved and comes back after `setLanes(false)` / `setLanes(true)` and in
+   a new `ChartTab`; with few lanes nothing scrolls and no bar shows. On Windows the card's
+   picture check: scrolled half a lane and one lane folded, the strips compared as in the
+   existing lanes check.
+6. **Docs and texts.** STUDIO.md (the lanes section of the chart chapter, 23 for the layout, the
+   settings row for `lanesFolded`, the check count), the Help's chart page, the header comment
+   on `MAX_LANES` replaced. Every new text in `translations/evre_studio_ar.ts` with its Arabic
+   (the glossary in `translations/README.md`: lane مسار; commands as verbal nouns, so "Fold lane"
+   طيّ المسار, "Open lane" فتح المسار), no unfinished entries.
