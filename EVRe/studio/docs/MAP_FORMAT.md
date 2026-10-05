@@ -8,6 +8,10 @@ This document is the format's contract, for anyone who writes a tool that reads 
 [`evre-map-1.schema.json`](evre-map-1.schema.json) says the same in a form tools can check. How EVRe Studio uses a
 map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 
+The map is the layer above the protocol: EVRe itself moves bytes and never interprets them (PROTOCOL.md,
+"Layers"). Everything a map says (types, units, limits, value names, the login) is for the tools and for EVRe
+Guard on the device, never for the protocol.
+
 ## 1. The file
 
 - JSON (RFC 8259), UTF-8. A UTF-8 byte order mark is allowed and should be kept by a tool that rewrites the file.
@@ -44,6 +48,13 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `groups` | object | none | notes per group: `{ "Power": { "notes": "…" } }` |
 | `extends` | string | none | an overlay: the path of the map this one changes, relative to this file (section 7) |
 | `registers` | array | `[]` | the registers (section 4) |
+
+For a device with EVRe Guard, the login's `size` is the guard's `login_size` (1 – 32): the token goes in as one
+write of exactly that many bytes, to the map's `slave`. A login by broadcast (slave 0) never logs in. While no
+session is open such a device answers `LOGIN_REQUIRED` (13) to every request the library itself would take, but a
+read of DEVICE_ID, STATUS or its open reads and the login itself, and `PERMISSION_DENIED` (3) to a login that
+failed (PROTOCOL.md, "EVRe Guard"). The library's own checks come first: a request it refuses keeps its code (3,
+4 or 5). A broadcast is never answered.
 
 ## 4. A register
 
