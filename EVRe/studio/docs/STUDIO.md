@@ -3063,11 +3063,6 @@ a period as met up to 4 ms early, so 10 per second is every sixth refresh at 60 
   session or with the screen off. After more than 20 of those in a row, the thread starts the 16 ms timer and then
   checks again every 250 ms (8 ms before that). When `DwmFlush` waits again, it stops the timer, and the refreshes
   pace the ticks again.
-- **Slow refreshes.** On a laptop on battery, `DwmFlush` came back every 76 ms (13 Hz), and the whole window ran at 13
-  frames a second. `RefreshPacing` (`frame_clock.h`, apart from Windows so that a GUI check tests it on Linux) is
-  fed each wait: later than 34 ms three times in a row, the 16 ms timer ticks; back within 25 ms ten times in a row,
-  the timer stops and the refreshes pace the ticks again. A wait between the two ends either run. Meanwhile the
-  thread keeps calling `DwmFlush`, without posting ticks, to see the refreshes come back.
 - **Elsewhere.** The 16 ms `Qt::PreciseTimer`.
 
 ### 20.7 Every QObject on the I/O thread is a child of a moved object
@@ -3349,7 +3344,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/formula_completer.h`, `.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
 | `src/ui/monitor_tab.h`, `.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
 | `src/ui/event_log.h`, `.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
-| `src/ui/frame_clock.h`, `.cpp` | `FrameClock`: one tick per display refresh; `RefreshPacing`: the timer while the refreshes come too slowly |
+| `src/ui/frame_clock.h`, `.cpp` | `FrameClock`: one tick per display refresh |
 | `src/ui/value_pace.h`, `.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`, `.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`, `.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
@@ -3581,7 +3576,6 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `MonitorTab` | frame log and single requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog` / `Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
 | `FrameClock` | ticks per display refresh | `start`, `stop`; signal `tick` | runs in every test |
-| `RefreshPacing` | the frame clock's choice of the timer while the refreshes come later than 34 ms (on battery) | `waited(ms)`, `timer` | GUI test |
 | `HelpDialog` | the help pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
 | `Theme`, `ui_helpers` | look and shared helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look) | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch) |
 
@@ -4319,8 +4313,6 @@ made up for the check:
   Auto again is linear. With `EVRE_TEST_SHOT` set it saves `<prefix>_log.png`.
 - **The info line** (`chartInfoLine`): narrowed pixel by pixel, the paint time goes first, then *plotted*, then the
   delay; no width gives a part cut in the middle or an ellipsis; the tooltip starts with the whole text.
-- **The frame clock** (`frameClockPacing`): `RefreshPacing` fed 76 ms waits takes the timer at the third, 16.7 ms
-  ones give it back at the tenth, a 30 ms wait ends either run.
 
 The last check counts Qt's warnings about objects used across threads. It installs a message handler at start and
 looks for messages that contain one of these phrases:
@@ -4335,7 +4327,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 314 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 315 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

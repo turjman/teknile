@@ -522,7 +522,6 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
-		frameClockPacing();
 		recordingFiles();
 		chartMenuAndPictures();
 		chartExport();
@@ -3184,7 +3183,7 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "Log Y", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -3240,7 +3239,29 @@ private:
 			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
 					"between them, drawn by the card as the CPU draws them");
 			once->clearCursors();
-			const double grabbed = blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
+			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
+			once->setYLog(true);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atLog;
+			const QImage gpuLog = once->gpuPicture(&atLog).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuLog = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atLog);
+			const double logAlike = blocksAlike(gpuLog, cpuLog, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_card.png"));
+				cpuLog.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/log_cpu.png"));
+			}
+			std::printf("     (Log Y: %.2f%% of the blocks like the CPU's)\n", logAlike * 100);
+			check(once->yLog() && once->plotOnCard() && logAlike >= 0.93, "chart on a GPU: Log Y drawn by the card as the "
+					"CPU draws it, block by block");
+			once->setYLog(false);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			const double grabbed =blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
 			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
 			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
 
@@ -3930,6 +3951,14 @@ private:
 			check(false, "chart, the info line found");
 			return;
 		}
+		/* the info line and the measure line in the muted colour, as every mutedLabel (their own names, for tests, keep it) */
+		bool muted = true;
+		for (const char *name : { "chartInfo", "measureInfo" }) {
+			auto *line = chart.tab.findChild<QLabel *>(QLatin1String(name));
+			if (line) line->ensurePolished();
+			muted = muted && line && line->palette().color(line->foregroundRole()) == Theme::colors().muted;
+		}
+		check(muted, "chart: the info line and the measure line in the muted colour");
 		if (auto *smooth = chart.tab.findChild<QAction *>(QStringLiteral("chartSmooth"))) smooth->setChecked(true); /* a delay */
 		const QString full = chart.tab.infoText();
 		QString noPaint = full, noPlotted, noDelay;
@@ -3957,23 +3986,6 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
-	}
-
-	/* The frame clock: refreshes later than 34 ms three times in a row (a laptop on battery, 13 Hz) and the 16 ms timer
-	 * ticks; back within 25 ms ten times in a row and the refreshes pace again; a wait between ends both runs */
-	void frameClockPacing() {
-		RefreshPacing pacing;
-		bool ok = true;
-		for (int i = 0; i < 20; i++) ok = ok && !pacing.waited(16.7);
-		ok = ok && !pacing.waited(76) && !pacing.waited(76) && pacing.waited(76); /* the third: the timer */
-		for (int i = 0; i < 9; i++) ok = ok && pacing.waited(16.7);
-		ok = ok && !pacing.waited(16.7); /* the tenth: the refreshes again */
-		ok = ok && !pacing.waited(40) && !pacing.waited(40) && !pacing.waited(30) && !pacing.waited(40) && !pacing.waited(40)
-				&& pacing.waited(40);
-		for (int i = 0; i < 9; i++) ok = ok && pacing.waited(i == 5 ? 30 : 16.7);
-		ok = ok && pacing.waited(16.7) && pacing.timer(); /* the 30 ms wait broke the run */
-		check(ok, "frame clock: 3 refreshes in a row later than 34 ms and the 16 ms timer ticks (on battery, 13 Hz); 10 "
-				"within 25 ms and the refreshes pace again; a wait between ends either run");
 	}
 
 	/* a QInputDialog's text typed and accepted (fillDialog's fill) */
