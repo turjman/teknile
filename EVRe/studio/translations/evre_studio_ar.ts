@@ -333,8 +333,8 @@
     <message numerus="yes">
         <source>%n device(s) · %1</source>
         <translation>
-            <numerusform>%n أجهزة · %1</numerusform>
-            <numerusform>جهاز %n · %1</numerusform>
+            <numerusform>لا أجهزة · %1</numerusform>
+            <numerusform>جهاز واحد · %1</numerusform>
             <numerusform>جهازان (%n) · %1</numerusform>
             <numerusform>%n أجهزة · %1</numerusform>
             <numerusform>%n جهازًا · %1</numerusform>
@@ -620,7 +620,7 @@ so the line always reaches the right edge and scrolls without steps.</source>
     </message>
     <message>
         <source>Trigger</source>
-        <translation>الزناد</translation>
+        <translation>القدح</translation>
     </message>
     <message>
         <source>Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the window.
@@ -696,7 +696,7 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>Peak-peak</source>
-        <translation>من القمة إلى القمة</translation>
+        <translation>قمة–قمة</translation>
     </message>
     <message>
         <source>Area ∫ dt</source>
@@ -716,7 +716,7 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>Peak to peak: Max − Min over the range</source>
-        <translation>من القمة إلى القمة: الأعلى − الأدنى على المدى</translation>
+        <translation>قمة–قمة: الأعلى − الأدنى على المدى</translation>
     </message>
     <message>
         <source>The area under the line over the range: value × seconds (W → J, A → A·s)</source>
@@ -804,11 +804,11 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>Normal: holds on each crossing, armed again once the view is full; Single: holds on the first, Arm for the next</source>
-        <translation>عادي: يثبّت عند كل عبور، ويُسلَّح من جديد حين يمتلئ العرض؛ مرة واحدة: يثبّت عند الأول، و«تسليح» للتالي</translation>
+        <translation>عادي: يثبّت عند كل عبور، ويُسلَّح من جديد حين يمتلئ العرض؛ مرة واحدة: يثبّت عند الأول، و«تجهيز» للتالي</translation>
     </message>
     <message>
         <source>Arm</source>
-        <translation>تسليح</translation>
+        <translation>تجهيز</translation>
     </message>
     <message>
         <source>Wait for the next crossing</source>
@@ -824,11 +824,11 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>armed: waiting for a crossing</source>
-        <translation>مسلّح: بانتظار عبور</translation>
+        <translation>جاهز: بانتظار عبور</translation>
     </message>
     <message>
         <source>triggered at %1 · Arm for the next</source>
-        <translation>قُدح عند %1 · «تسليح» للتالي</translation>
+        <translation>قُدح عند %1 · «تجهيز» للتالي</translation>
     </message>
     <message>
         <source>triggered at %1</source>
@@ -852,7 +852,7 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>Normalise %1 · Lanes %2 · Smooth %3 · Trigger %4 · Hover values %5 · drawn by the %6</source>
-        <translation>التطبيع %1 · المسارات %2 · التنعيم %3 · الزناد %4 · قيم التحويم %5 · يرسم %6</translation>
+        <translation>التطبيع %1 · المسارات %2 · التنعيم %3 · القدح %4 · قيم التحويم %5 · يرسم %6</translation>
     </message>
     <message>
         <source>Display: how the lines are drawn. Now: %1.
@@ -990,7 +990,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>Add note here</source>
-        <translation>أضف ملاحظة هنا</translation>
+        <translation>إضافة ملاحظة هنا</translation>
     </message>
     <message>
         <source>Open recording…</source>
@@ -1137,7 +1137,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>trigger: armed</source>
-        <translation>الزناد: مسلّح</translation>
+        <translation>القدح: جاهز</translation>
     </message>
     <message>
         <source>triggered</source>
@@ -1145,7 +1145,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>trigger: Arm</source>
-        <translation>الزناد: «تسليح»</translation>
+        <translation>القدح: «تجهيز»</translation>
     </message>
 </context>
 <context>
@@ -1378,7 +1378,7 @@ API تستخدم هذه الأسماء: مسجّل أي جهاز باسمه وح
 لكل جهاز: إلى مسجّلات البنك المحجوز القابلة للكتابة (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG،
 الرسائل) دائمًا؛ وإلى أي مكان آخر فقط حين يكون لكل جهاز على الوصلة الخريطة نفسها. ولا يرسل أبدًا ما يفعّل
 AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فورًا، فوق البقية. &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; في الكتابة
-السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقب يرسل بايتات خامًا؛ وقائمة
+السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقبة يرسل بايتات خامًا؛ وقائمة
 &lt;b&gt;البث&lt;/b&gt; في بطاقة الأجهزة تحفظ بثوثًا بأسمائها في ملف الناقل (&lt;i&gt;أوقف الكل&lt;/i&gt;)، كل منها يُرسل بعد
 تأكيد، ثم يُقرأ كل جهاز للتحقق. تُعرض ما دام متصلًا و&lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّل؛ وتلميح البث المحفوظ
 يقول لماذا حين لا يُعرض.&lt;/p&gt;
@@ -1473,7 +1473,7 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 &lt;li&gt;القراءة لا تعبر صفحة أبدًا: كثيرًا ما تحفظ الأجهزة بنوكًا منفصلة هناك، وبعضها يرفض قراءة عبرها.&lt;/li&gt;
 &lt;li&gt;إن ظل الجهاز يرفض كتلة، تُقسم إلى مسجّلات مفردة؛ والعنوان الذي لا يملكه
 يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد.&lt;/li&gt;
-&lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;اقرأ الآن&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;قراءة الآن&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;عدد القراءات يأتي من ترتيب الخريطة، لا من إعداد. المسجّلات في الصفحة نفسها من 256 بايت
 بفجوات 8 بايت على الأكثر تُقرأ معًا، فالخريطة التي تقع مسجّلاتها في ثلاثة نطاقات عناوين منفصلة
@@ -1584,12 +1584,12 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
 </source>
         <translation>
 &lt;h2&gt;المسجّلات والكتابات&lt;/h2&gt;
-&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;المفكوكة&lt;/b&gt; أو اسم القيمة،
+&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;فك الترميزة&lt;/b&gt; أو اسم القيمة،
 النوع والوصول. مربع البحث ومرشّح المجموعات في الأعلى. مرّر الفأرة فوق صف لترى وصفه، وبايتاته الخام،
-والحقول المفكوكة واحدًا في كل سطر، وعمره.&lt;/p&gt;
+والحقول فك الترميزة واحدًا في كل سطر، وعمره.&lt;/p&gt;
 &lt;p&gt;القيمة ذات حقول البتات أو اسم القيمة بجانبها &lt;b&gt;ⓘ&lt;/b&gt;: مرّر الفأرة فوق ⓘ لتراها مفكوكة، واحدًا في كل سطر
-(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;المفكوك&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
-بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود المفكوك&lt;/b&gt; لإظهاره.&lt;/p&gt;
+(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;فك الترميز&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
+بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود فك الترميز&lt;/b&gt; لإظهاره.&lt;/p&gt;
 &lt;p&gt;لا شيء يُقصّ: تتسع الأعمدة لأطول نص فيها (شريط تمرير إن كانت النافذة أضيق)، و
 &lt;b&gt;المسجّل المحدّد&lt;/b&gt; يُعرض كاملًا تحت الجدول (القيمة، البايتات الخام، كل حقل مفكوك،
 الوصف). النقر بالزر الأيمن ← &lt;b&gt;ملاءمة الأعمدة&lt;/b&gt; يقلّصها من جديد بعد قيمة طويلة.&lt;/p&gt;
@@ -1627,10 +1627,10 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
 &lt;li&gt;إن غيّر الجهاز، أو عميل آخر، القيمة وأنت تحرّرها، تُسأل قبل أن
 تكتب قيمتك فوقها.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;ارسم حقلًا&lt;/b&gt; (مسجّل له حقول بتات: حقل
-واحد خطًا خاصًا)، &lt;b&gt;اقرأ الآن&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. وفي أي مكان من
-الجدول: &lt;b&gt;ارسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
-الأعمدة&lt;/b&gt;، &lt;b&gt;عمود المفكوك&lt;/b&gt;، &lt;b&gt;سجّل الكل&lt;/b&gt; / &lt;b&gt;لا تسجّل شيئًا&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
+&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;رسم حقل&lt;/b&gt; (مسجّل له حقول بتات: حقل
+واحد خطًا خاصًا)، &lt;b&gt;قراءة الآن&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. وفي أي مكان من
+الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
+الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
 </translation>
     </message>
     <message>
@@ -1826,7 +1826,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
 &lt;b&gt;B&lt;/b&gt;، و&lt;b&gt;B − A&lt;/b&gt;، وعلى A → B (أو على العرض بلا مؤشرين) &lt;b&gt;الأدنى&lt;/b&gt;، و&lt;b&gt;الأعلى&lt;/b&gt;، و&lt;b&gt;المتوسط&lt;/b&gt;،
 و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: 12 V مع تموّج 1 mV يُقرأ 0.707 mV)،
-و&lt;b&gt;من القمة إلى القمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
+و&lt;b&gt;قمة–قمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
 &lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. والفاصل فوق
 الجدول يتحرك. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;منذ المسح&lt;/b&gt;: مجموع كل خط منذ &lt;b&gt;مسح&lt;/b&gt; المخطط، بـ Wh أو Ah أو unit·h، مجموعًا من كل عينة
@@ -1834,20 +1834,20 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (1 h 12 min)&lt;/i&gt;. الخط المُزال عن
 المخطط ثم المُعاد يحافظ على مجموعه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على ترويسة الجدول&lt;/b&gt; لتُظهر أعمدته أو تخفيها؛ ويُحفظ الاختيار.&lt;/p&gt;
-&lt;h3&gt;المدرّج التكراري، الطيف، الزناد&lt;/h3&gt;
+&lt;h3&gt;المدرّج التكراري، الطيف، القدح&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على شارة خط&lt;/b&gt; في المفتاح: &lt;b&gt;المدرّج التكراري&lt;/b&gt; (كيف تتوزع قيمه، فئات بقاعدة
 فريدمان–دياكونيس) أو &lt;b&gt;الطيف&lt;/b&gt; (أي الترددات فيه، سعاتٍ بوحدته: جيب 2 V يُقرأ
 2 V؛ مُعاد أخذه بخطوات متساوية، طريقة ويلش بنافذة هان، حتى نصف المعدّل)، على A → B أو العرض، في نافذة
 خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;العرض ← الزناد&lt;/b&gt;: صف لاختيار خط، صاعد / هابط / أيّهما، ومستوى (خط متقطع على المخطط
+&lt;p&gt;&lt;b&gt;العرض ← القدح&lt;/b&gt;: صف لاختيار خط، صاعد / هابط / أيّهما، ومستوى (خط متقطع على المخطط
 يمكنك سحبه) و&lt;b&gt;عادي&lt;/b&gt; (يثبّت عند كل عبور، ويُسلَّح من جديد حين يمتلئ العرض) أو &lt;b&gt;مرة واحدة&lt;/b&gt; (الأول؛
-و&lt;b&gt;تسليح&lt;/b&gt; للتالي). يثبت المخطط ونقطة العبور عند 20 % من النافذة وفوقها &lt;b&gt;T&lt;/b&gt;؛ و
+و&lt;b&gt;تجهيز&lt;/b&gt; للتالي). يثبت المخطط ونقطة العبور عند 20 % من النافذة وفوقها &lt;b&gt;T&lt;/b&gt;؛ و
 القياسات والتصدير والصور تأخذ ذلك العرض. و&lt;b&gt;مباشر&lt;/b&gt; يتبع الآن من جديد.&lt;/p&gt;
 &lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
 exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign clamp، وbits(x, lsb, width) لحقل
-بتات (النقر بالزر الأيمن على مسجّل له حقول ← &lt;i&gt;ارسم حقلًا&lt;/i&gt; يصنع خطًا كهذا). اكتب بضعة حروف من اسم فتعرض
+بتات (النقر بالزر الأيمن على مسجّل له حقول ← &lt;i&gt;رسم حقل&lt;/i&gt; يصنع خطًا كهذا). اكتب بضعة حروف من اسم فتعرض
 قائمة المسجّلات (بوحداتها) والدوال: الأعلى والأسفل للاختيار، وEnter أو Tab يأخذ واحدًا، وEsc يغلقها؛
 والدالة تدخل بصيغة &lt;code&gt;name()&lt;/code&gt;، والمؤشر داخلها. تُرسم وتُقاس مثل
 المسجّل، من الاستطلاعات نفسها؛ والمسجّلات التي تقرؤها تُؤخذ عيناتها لها حتى إن لم تكن مرسومة. تُحفظ
@@ -1861,7 +1861,7 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;li&gt;&lt;b&gt;نسخ الصورة&lt;/b&gt;، و&lt;b&gt;حفظ الصورة…&lt;/b&gt; (PNG): المخطط كما يُعرض، يرسمه المعالج المركزي.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;تصدير إلى CSV…&lt;/b&gt;: عينات كل خط على العرض، أو بين المؤشرين A → B حين يوضع
 كلاهما، بصيغة التسجيل (صف لكل استطلاع)؛ والكبير يعمل وحده بشريط تقدّم وإلغاء.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;أضف ملاحظة هنا&lt;/b&gt;: علامة مسمّاة عند ذلك الزمن، ووسم في أسفل المخطط. اسحب الوسم لتحرّكها،
+&lt;li&gt;&lt;b&gt;إضافة ملاحظة هنا&lt;/b&gt;: علامة مسمّاة عند ذلك الزمن، ووسم في أسفل المخطط. اسحب الوسم لتحرّكها،
 وانقر عليه نقرًا مزدوجًا لتحرّرها، وانقر عليه واضغط &lt;b&gt;Delete&lt;/b&gt; لتزيلها. أثناء التسجيل، تُكتب الملاحظات بجانب
 الملف (&lt;code&gt;run.csv.notes.json&lt;/code&gt;)، ويأخذ التصدير ملاحظات مداه.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;فتح تسجيل…&lt;/b&gt; و&lt;b&gt;التسجيلات الأخيرة&lt;/b&gt; (و&lt;b&gt;فتح&lt;/b&gt; بجانب «تسجيل CSV» أيضًا، أو أفلت ملف .csv على
@@ -1940,7 +1940,7 @@ little endian.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: المعروض = الخام × scale + offset (وتُحوَّل الكتابات بالعكس).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; يعرض القيمة بالست عشري.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = أكّد كل كتابة، وعملاء API يحتاجون مفتاح ⚠.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «ارسم المعروض».&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «رسم المعروض».&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (في المستوى الأعلى): VID/PID الخاصان بـ USB للجهاز، لتعليم منفذه واختياره.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;login&lt;/b&gt; (في المستوى الأعلى، اختياري): المسجّل الذي يُكتب فيه مربع رمز الدخول بعد الاتصال، وحجمه
 بالبايت (يُقصّ الرمز أو يُكمَّل بالأصفار إليه). بدونه لا يُرسل رمز دخول.&lt;/li&gt;
@@ -2119,7 +2119,7 @@ print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pr
     </message>
     <message>
         <source>Monitor</source>
-        <translation>المراقب</translation>
+        <translation>المراقبة</translation>
     </message>
     <message>
         <source>
@@ -2136,7 +2136,7 @@ to say it arrived; READ it to see.&lt;/p&gt;
 takes and none answers. A device chosen again gets back the function chosen before.&lt;/p&gt;
 </source>
         <translation>
-&lt;h2&gt;المراقب&lt;/h2&gt;
+&lt;h2&gt;المراقبة&lt;/h2&gt;
 &lt;p&gt;&lt;b&gt;سجل الإطارات&lt;/b&gt; يعرض كل إطار مُرسل ومستقبَل (معطّل افتراضيًا: مع الاستطلاع السريع يكون نصًا كثيرًا).
 &lt;b&gt;مسح&lt;/b&gt; يفرغ القائمة.&lt;/p&gt;
 &lt;p&gt;صف الطلب يرسل طلبًا خامًا واحدًا: &lt;b&gt;READ&lt;/b&gt; لـ&lt;b&gt;عدد&lt;/b&gt; من البايتات من &lt;b&gt;عنوان&lt;/b&gt;، أو &lt;b&gt;WRITE +
@@ -2280,12 +2280,12 @@ wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto&lt;/t
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
 كلها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، أضف ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
 &lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط: مدرّجه التكراري أو طيفه&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الزناد&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيم مسار: مدى Y له (تلقائي، يدوي…، لوغاريتمي) · &lt;b&gt;Ctrl +
 العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
@@ -2353,13 +2353,13 @@ none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/
 &lt;b&gt;+ مسجّل&lt;/b&gt;.&lt;/p&gt;
 &lt;h3&gt;ماذا هناك أيضًا&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;b&gt;المسجّلات&lt;/b&gt;: البحث، والمجموعات (فعّل عدة)، و&lt;b&gt;ارسم المعروض&lt;/b&gt; («رسم» على كل مسجّل معروض، بقدر ما يحمل
+&lt;li&gt;&lt;b&gt;المسجّلات&lt;/b&gt;: البحث، والمجموعات (فعّل عدة)، و&lt;b&gt;رسم المعروض&lt;/b&gt; («رسم» على كل مسجّل معروض، بقدر ما يحمل
 المخطط بمعدّل الاستطلاع: &lt;i&gt;المخطط والتسجيل&lt;/i&gt;)؛ حدّد مسجّلًا لتراه كاملًا ولـ&lt;b&gt;تكتبه&lt;/b&gt;
 سريعًا تحت الجدول (قيمة، قائمة أسمائها، بتاتها مرسومة كما في ورقة البيانات).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المخطط&lt;/b&gt;: مثل راسم الإشارة: عمق الذاكرة منفصل عن العرض، &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt;، &lt;b&gt;القياسات&lt;/b&gt;
 (الأدنى، الأعلى، المتوسط، RMS، المساحة تحت الخط: W → Wh)، &lt;b&gt;المؤشران&lt;/b&gt; A وB، خطوط &lt;b&gt;ƒ الرياضيات&lt;/b&gt; (SUPPLY_V *
 SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ببطاقة رسوميات حين يكون في الحاسوب واحدة.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المراقب&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;: اصنع خريطة من لا شيء أو غيّر واحدة، وافحصها، وصدّرها (مواصفة، ترويسة C،
 وحدة Python).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الاتصالات، الكتابات ونتائجها، الأخطاء)، ويُحفظ أيضًا في ملف؛ وتظهر التحذيرات والأخطاء
@@ -2456,7 +2456,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
     </message>
     <message>
         <source>Monitor</source>
-        <translation>المراقب</translation>
+        <translation>المراقبة</translation>
     </message>
     <message>
         <source>Map editor</source>
@@ -2935,7 +2935,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
     </message>
     <message>
         <source>Broadcast anyway</source>
-        <translation>ابثّ مع ذلك</translation>
+        <translation>بُثّ مع ذلك</translation>
     </message>
     <message>
         <source>Broadcast</source>
@@ -3103,8 +3103,8 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
     <message numerus="yes">
         <source>%n error(s)</source>
         <translation>
-            <numerusform>%n أخطاء</numerusform>
-            <numerusform>خطأ %n</numerusform>
+            <numerusform>لا أخطاء</numerusform>
+            <numerusform>خطأ واحد</numerusform>
             <numerusform>خطآن (%n)</numerusform>
             <numerusform>%n أخطاء</numerusform>
             <numerusform>%n خطأً</numerusform>
@@ -3114,8 +3114,8 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
     <message numerus="yes">
         <source>%n warning(s)</source>
         <translation>
-            <numerusform>%n تحذيرات</numerusform>
-            <numerusform>تحذير %n</numerusform>
+            <numerusform>لا تحذيرات</numerusform>
+            <numerusform>تحذير واحد</numerusform>
             <numerusform>تحذيران (%n)</numerusform>
             <numerusform>%n تحذيرات</numerusform>
             <numerusform>%n تحذيرًا</numerusform>
@@ -3150,7 +3150,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
         <source>Delete %n registers</source>
         <translation>
             <numerusform>حذف %n مسجّلات</numerusform>
-            <numerusform>حذف مسجّل %n</numerusform>
+            <numerusform>حذف مسجّل واحد</numerusform>
             <numerusform>حذف مسجّلين (%n)</numerusform>
             <numerusform>حذف %n مسجّلات</numerusform>
             <numerusform>حذف %n مسجّلًا</numerusform>
@@ -3187,7 +3187,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
         <source>Paste %n register(s)</source>
         <translation>
             <numerusform>لصق %n مسجّلات</numerusform>
-            <numerusform>لصق مسجّل %n</numerusform>
+            <numerusform>لصق مسجّل واحد</numerusform>
             <numerusform>لصق مسجّلين (%n)</numerusform>
             <numerusform>لصق %n مسجّلات</numerusform>
             <numerusform>لصق %n مسجّلًا</numerusform>
@@ -3198,7 +3198,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
         <source>Duplicate %n register(s)</source>
         <translation>
             <numerusform>تكرار %n مسجّلات</numerusform>
-            <numerusform>تكرار مسجّل %n</numerusform>
+            <numerusform>تكرار مسجّل واحد</numerusform>
             <numerusform>تكرار مسجّلين (%n)</numerusform>
             <numerusform>تكرار %n مسجّلات</numerusform>
             <numerusform>تكرار %n مسجّلًا</numerusform>
@@ -3550,7 +3550,7 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
         <source>%1 of %n registers</source>
         <translation>
             <numerusform>%1 من %n مسجّلات</numerusform>
-            <numerusform>%1 من مسجّل %n</numerusform>
+            <numerusform>%1 من مسجّل واحد</numerusform>
             <numerusform>%1 من مسجّلين (%n)</numerusform>
             <numerusform>%1 من %n مسجّلات</numerusform>
             <numerusform>%1 من %n مسجّلًا</numerusform>
@@ -4423,7 +4423,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>%n value name(s)</source>
         <translation>
             <numerusform>%n أسماء قيم</numerusform>
-            <numerusform>اسم قيمة %n</numerusform>
+            <numerusform>اسم قيمة واحد</numerusform>
             <numerusform>اسما قيمتين (%n)</numerusform>
             <numerusform>%n أسماء قيم</numerusform>
             <numerusform>%n اسم قيمة</numerusform>
@@ -4434,7 +4434,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>%n special</source>
         <translation>
             <numerusform>%n قيم خاصة</numerusform>
-            <numerusform>قيمة خاصة %n</numerusform>
+            <numerusform>قيمة خاصة واحدة</numerusform>
             <numerusform>قيمتان خاصتان (%n)</numerusform>
             <numerusform>%n قيم خاصة</numerusform>
             <numerusform>%n قيمة خاصة</numerusform>
@@ -4445,7 +4445,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>%n field(s)</source>
         <translation>
             <numerusform>%n حقول</numerusform>
-            <numerusform>حقل %n</numerusform>
+            <numerusform>حقل واحد</numerusform>
             <numerusform>حقلان (%n)</numerusform>
             <numerusform>%n حقول</numerusform>
             <numerusform>%n حقلًا</numerusform>
@@ -4681,7 +4681,7 @@ Keep the last part: about the last %5 of %6?</source>
     </message>
     <message>
         <source>danger: confirm every write</source>
-        <translation>danger: أكّد كل كتابة</translation>
+        <translation>خطر: أكّد كل كتابة</translation>
     </message>
     <message>
         <source>show in hex</source>
@@ -4693,7 +4693,7 @@ Keep the last part: about the last %5 of %6?</source>
     </message>
     <message>
         <source>Untick for a value that does not change with time (an ID, a version, a setting): it gets no Plot box, and Plot shown passes it by</source>
-        <translation>ألغِه لقيمة لا تتغير مع الزمن (معرّف، إصدار، إعداد): لا يحصل على مربع «رسم»، ويتجاوزه «ارسم المعروض»</translation>
+        <translation>ألغِه لقيمة لا تتغير مع الزمن (معرّف، إصدار، إعداد): لا يحصل على مربع «رسم»، ويتجاوزه «رسم المعروض»</translation>
     </message>
     <message>
         <source>auto</source>
@@ -4807,7 +4807,7 @@ Keep the last part: about the last %5 of %6?</source>
         <source>%1 of %n registers</source>
         <translation>
             <numerusform>%1 من %n مسجّلات</numerusform>
-            <numerusform>%1 من مسجّل %n</numerusform>
+            <numerusform>%1 من مسجّل واحد</numerusform>
             <numerusform>%1 من مسجّلين (%n)</numerusform>
             <numerusform>%1 من %n مسجّلات</numerusform>
             <numerusform>%1 من %n مسجّلًا</numerusform>
@@ -4846,7 +4846,7 @@ Keep the last part: about the last %5 of %6?</source>
         <source>%n registers selected</source>
         <translation>
             <numerusform>%n مسجّلات محدّدة</numerusform>
-            <numerusform>مسجّل %n محدّد</numerusform>
+            <numerusform>مسجّل واحد محدّد</numerusform>
             <numerusform>مسجّلان محدّدان (%n)</numerusform>
             <numerusform>%n مسجّلات محدّدة</numerusform>
             <numerusform>%n مسجّلًا محدّدًا</numerusform>
@@ -4950,7 +4950,7 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
     <message>
         <source>Decoded</source>
-        <translation>المفكوك</translation>
+        <translation>فك الترميز</translation>
     </message>
     <message>
         <source>Type</source>
@@ -4989,7 +4989,7 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
     <message>
         <source>Plot shown</source>
-        <translation>ارسم المعروض</translation>
+        <translation>رسم المعروض</translation>
     </message>
     <message>
         <source>Chart every numeric register the table shows now (after the search and the groups).
@@ -5019,11 +5019,11 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Plot a field</source>
-        <translation>ارسم حقلًا</translation>
+        <translation>رسم حقل</translation>
     </message>
     <message>
         <source>Read now</source>
-        <translation>اقرأ الآن</translation>
+        <translation>قراءة الآن</translation>
     </message>
     <message>
         <source>Copy value</source>
@@ -5039,7 +5039,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Plot all shown (%1)</source>
-        <translation>ارسم كل المعروض (%1)</translation>
+        <translation>رسم كل المعروض (%1)</translation>
     </message>
     <message>
         <source>Remove shown from the chart</source>
@@ -5055,11 +5055,11 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Log all</source>
-        <translation>سجّل الكل</translation>
+        <translation>تسجيل الكل</translation>
     </message>
     <message>
         <source>Log none</source>
-        <translation>لا تسجّل شيئًا</translation>
+        <translation>إلغاء تسجيل الكل</translation>
     </message>
     <message>
         <source>Add register…</source>
@@ -5067,7 +5067,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Decoded column</source>
-        <translation>عمود المفكوك</translation>
+        <translation>عمود فك الترميز</translation>
     </message>
     <message>
         <source>All groups</source>
@@ -5091,7 +5091,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Unplot shown</source>
-        <translation>أزل رسم المعروض</translation>
+        <translation>إزالة رسم المعروض</translation>
     </message>
     <message>
         <source>Remove the %1 registers shown from the chart</source>
@@ -5132,7 +5132,7 @@ Right-click the table to remove them again.</source>
         <source>Remove %n register(s)</source>
         <translation>
             <numerusform>إزالة %n مسجّلات</numerusform>
-            <numerusform>إزالة مسجّل %n</numerusform>
+            <numerusform>إزالة مسجّل واحد</numerusform>
             <numerusform>إزالة مسجّلين (%n)</numerusform>
             <numerusform>إزالة %n مسجّلات</numerusform>
             <numerusform>إزالة %n مسجّلًا</numerusform>
@@ -5152,7 +5152,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Select a register to see it here in full: value, decoded, raw bytes, description.</source>
-        <translation>حدّد مسجّلًا لتراه هنا كاملًا: القيمة، المفكوك، البايتات الخام، الوصف.</translation>
+        <translation>حدّد مسجّلًا لتراه هنا كاملًا: القيمة، فك الترميز، البايتات الخام، الوصف.</translation>
     </message>
     <message>
         <source>Value</source>
@@ -5160,7 +5160,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Decoded</source>
-        <translation>المفكوك</translation>
+        <translation>فك الترميز</translation>
     </message>
 </context>
 <context>
@@ -5199,7 +5199,7 @@ Right-click the table to remove them again.</source>
     </message>
     <message>
         <source>Look for ports again</source>
-        <translation>ابحث عن المنافذ من جديد</translation>
+        <translation>البحث عن المنافذ من جديد</translation>
     </message>
     <message>
         <source>Baud</source>
@@ -5389,7 +5389,7 @@ A number that changes at every frame cannot be read; the chart&apos;s lines stil
     </message>
     <message>
         <source>Restart now</source>
-        <translation>أعد التشغيل الآن</translation>
+        <translation>إعادة التشغيل الآن</translation>
     </message>
     <message>
         <source>Close the Studio and start it again in the language chosen</source>
@@ -5429,7 +5429,7 @@ A number that changes at every frame cannot be read; the chart&apos;s lines stil
     </message>
     <message>
         <source>Stop reconnecting</source>
-        <translation>أوقف إعادة الاتصال</translation>
+        <translation>إيقاف إعادة الاتصال</translation>
     </message>
     <message>
         <source>not saved</source>
