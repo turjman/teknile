@@ -197,14 +197,28 @@ public:
 	 * empty: out of view */
 	QRectF laneFoldButtonRect(int lane) const;
 	int hoveredLane() const { return hoverLane_; } /* tests: the lane whose button is highlighted; -1: none */
+	/* the menu button ("⋯") under an open lane's fold button: a click shows the lane's menu (laneMenuRequested);
+	 * empty: folded, out of view, or no room for it */
+	QRectF laneMenuButtonRect(int lane) const;
+	int hoveredLaneMenu() const { return hoverMenu_; } /* tests: the lane whose menu button is highlighted; -1: none */
 	int foldedLaneCount() const;          /* of the lanes now */
 	void setAllLanesFolded(bool folded);  /* Fold all lanes / Open all lanes */
 	/* the lanes' tooltips there (a button, a strip, the value labels, the scroll bar) */
 	QString toolTipAt(const QPointF &pos) const;
 	bool laneBarHovered() const { return hoverBar_; } /* tests: the scroll bar's handle highlighted */
 	QVector<double> laneSeparators() const { return laneSeparators_; } /* tests: the lines between lanes, as painted */
+	/* A lane's height: dragged by the separator under it (the lane below gives or takes, neither under LANE_MIN_H),
+	 * kept by unit as a weight (1: the equal share; the weights share the room, so a resize keeps the proportions);
+	 * a double-click on a separator sets all back to equal (laneHeightsChanged: to be saved) */
+	QStringList laneHeights() const;      /* "unit\tweight" for each lane not of weight 1, for the settings */
+	void setLaneHeights(const QStringList &texts);
+	void resetLaneHeights();
+	int separatorAt(const QPointF &pos) const; /* the gap (k: under lane k) whose separator takes a drag there; -1 */
+	int hoveredSeparator() const { return hoverSeparator_; } /* tests: the separator drawn highlighted; -1: none */
 	QVector<QRectF> valueLabelRects() const { return valueLabelRects_; } /* tests: the value labels' boxes, as painted */
 	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
+	QString stateFullText() const { return stateFull_; } /* tests: its whole text (its tooltip) */
+	QRectF stateRect() const { return stateRect_; }      /* tests: its room as last painted; empty: no state */
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -382,12 +396,13 @@ signals:
 	void notesChanged();
 	void noteEditRequested(int index);      /* a double-click on a note's tag */
 	void menuRequested(const QPoint &globalPos, double time); /* a right-click on the chart: the time under it */
-	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels */
+	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels, its ⋯ button */
 	void lineMenuRequested(int key, const QPoint &globalPos); /* a right-click on a line's chip in the legend */
 	void triggered(double time);             /* the view holds on a crossing */
 	void triggerLevelChanged(double level);  /* the level's line dragged and let go */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
+	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -508,7 +523,7 @@ private:
 		double content = 0;    /* the chips' total width */
 		double maxScroll() const { return std::max(0.0, content - viewport.width()); }
 	};
-	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level, LaneBar };
+	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level, LaneBar, LaneBorder };
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
@@ -645,6 +660,8 @@ private:
 	/* a dot in a line's colour (the crosshair's), drawn once per colour and scaling */
 	const QImage &dotPicture(const QColor &color, qreal dpr) const;
 	void drawState(QPainter &p, const Axes &axes) const;
+	QStringList stateVariants(bool measuring) const;
+	void fitState(double plotWidth, int &variant, double &width) const;
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
 	static void strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr);
 	static void prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at);
@@ -707,10 +724,19 @@ private:
 	double laneScroll_ = 0;           /* px from the top of the lanes (clamped when painted and when set) */
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
 	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
+	int hoverMenu_ = -1;              /* the lane whose menu button is under the mouse */
 	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
-	QVector<double> separatorsY(const QVector<Lane> &plots) const; /* the gaps' middles in the plot */
+	mutable QString stateFull_;
+	mutable QRectF stateRect_;
+	/* the gaps' middles in the plot, and (gaps) each one's number: the lane above it */
+	QVector<double> separatorsY(const QVector<Lane> &plots, QVector<int> *gaps = nullptr) const;
+	QHash<QString, double> laneWeights_; /* the lanes' heights by unit (1 when not there) */
+	int hoverSeparator_ = -1;         /* the separator under the mouse (a drag resizes), drawn highlighted */
+	int dragSeparator_ = -1;          /* LaneBorder: the gap dragged */
+	double dragHeights_[2] = { 0, 0 }; /* LaneBorder: the heights of the lanes above and below it when it began */
+	double dragUnit_ = 1;             /* LaneBorder: the height of a weight of 1 then */
 	bool pressedLanes_ = false;       /* the last press was the lanes' own (pressLanes): its double-click is not a lane's */
 	double dragStartY_ = 0;           /* LaneBar: where the drag began */
 	mutable QHash<QString, QImage> foldedImages_; /* the folded strips' pictures, by unit, at foldedKeys_ */
@@ -723,11 +749,14 @@ private:
 	 * axes' times and ranges are set by paintFrame) */
 	QVector<Lane> plotLayout() const;
 	YScale &scaleOf(const Lane &lane) { return lanes_ ? laneScales_[lane.key] : y_; }
-	/* the lanes' heights: an open one's (equal, at least LANE_MIN_H) and all of them stacked, for these lanes */
-	void laneHeights(const QVector<Lane> &lanes, double plotHeight, double &openHeight, double &content) const;
+	/* the lanes' heights: a folded one LANE_FOLDED_H, the open ones sharing what is left by their weights, none under
+	 * LANE_MIN_H; unit: the height of a weight of 1 */
+	void laneHeights(const QVector<Lane> &lanes, double plotHeight, QVector<double> &heights, double &unit) const;
 	double maxLaneScroll() const;
 	void scrollLanesTo(double pixels);
 	static QRectF laneVisible(const QRectF &lane, const QRectF &plot); /* its part in the plot; empty: out of view */
+	static void laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu); /* an open lane's, in its part in view */
+	int laneMenuButtonAt(const QPointF &pos) const;
 	/* a press on the lanes' own places: the scroll bar, a unit name (fold), a folded strip (open); true if it was */
 	bool pressLanes(const QPointF &pos);
 	/* a folded lane's strip: its unit, then each line's dot, name and value (the legend's; held, the latest in view),

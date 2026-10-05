@@ -253,7 +253,9 @@ every line at that moment: a box beside the mouse holds every line's value (its 
 values</b> pace, as the legend's, and the box keeps its size).</p>
 <p>Each line keeps its place in the legend; only its digits change, at the <b>Show values</b> pace
 (10 per second by default) while the line itself moves at every frame. When the lines do not all fit, scroll
-the legend with the <b>mouse wheel</b> over it, the <b>bar</b> under it, or the arrows at its ends.</p>
+the legend with the <b>mouse wheel</b> over it, the <b>bar</b> under it, or the arrows at its ends. The top right
+says what holds the view or changes its reading (held, Y log or manual, cursors, the trigger); when the row is short
+it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.</p>
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
 the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
@@ -295,7 +297,9 @@ scaled to its own range, to compare shapes of different units; <b>Lanes</b>, a p
 a line between two lanes, each at least 80 px high: when they do not fit they scroll (the wheel over their values, or
 the bar at the right); a click on a lane's ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
-Lanes do it for all; each lane has its own Y range: right-click a lane's values for Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
+Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
+equal again); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -547,9 +551,11 @@ all fit</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
 <tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
-<tr><td><b>Lanes</b></td><td><b>Right-click</b> a lane's values: its Y range (Auto, Manual…, Log), Fold lane ·
+<tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
+Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·
-<b>click</b> its ▾ or unit name: fold it, the strip: open it</td></tr>
+<b>click</b> its ▾ or unit name: fold it, the strip: open it · <b>drag</b> the line between two lanes: their heights
+(<b>double-click</b> it: equal)</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /
 <b>Ctrl+V</b> copy / paste registers (as JSON, also between maps) · <b>Del</b> delete</td></tr>
 <tr><td><b>Math line</b></td><td>The list of names: <b>Up</b> / <b>Down</b> pick, <b>Enter</b> or <b>Tab</b> takes one,
