@@ -507,9 +507,10 @@ def main():
                 for std in stds:
                     for opt in ('-O0', '-Os', '-O2'):
                         builds += 1
+                        # into a file, not os.devnull: that is "nul" on Windows, which MinGW's assembler cannot create
                         r = subprocess.run([compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror',
                                            '-I', folder, '-I', lib, '-I', os.path.join(lib, 'guard'), '-c', source_path, '-o',
-                                           os.devnull], capture_output=True, text=True)
+                                           os.path.join(folder, 'matrix.o')], capture_output=True, text=True)
                         if r.returncode:
                             bad += 1
                             print('     %s %s %s: %s' % (compiler, std, opt, r.stderr.strip()[:300]))
@@ -545,7 +546,8 @@ def main():
             with open(os.path.join(folder, 'moved.cpp'), 'w') as f:
                 f.write('#include "moved_table.h"\n')
             r = subprocess.run([cc, '-std=c++11', '-I', folder, '-I', lib, '-I', os.path.join(lib, 'guard'), '-c',
-                                os.path.join(folder, 'moved.cpp'), '-o', os.devnull], capture_output=True, text=True)
+                                os.path.join(folder, 'moved.cpp'), '-o', os.path.join(folder, 'moved.o')],
+                               capture_output=True, text=True)
             check(moved != text11 and r.returncode != 0 and 'LEVEL: its entry is its member' in r.stderr,
                   '[1.1] an entry moved off its member (LEVEL at 0xD007): the build fails and names LEVEL')
             # the header on the build matrix
@@ -560,7 +562,8 @@ def main():
                         builds += 1
                         r = subprocess.run([compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror',
                                            '-I', folder, '-I', lib, '-I', os.path.join(lib, 'guard'), '-c',
-                                           os.path.join(folder, 'uses11.cpp'), '-o', os.devnull], capture_output=True, text=True)
+                                           os.path.join(folder, 'uses11.cpp'), '-o', os.path.join(folder, 'uses11.o')],
+                                           capture_output=True, text=True)
                         if r.returncode:
                             bad += 1
                             print('     %s %s %s: %s' % (compiler, std, opt, r.stderr.strip()[:300]))

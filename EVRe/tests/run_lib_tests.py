@@ -763,7 +763,10 @@ def usable(name, compiler, skip):
         print('     skipped (--skip): %s' % name)
         return False
     if name == 'm32':
-        r = subprocess.run(['g++', '-m32', '-x', 'c++', '-', '-o', os.devnull], input='int main(){}', capture_output=True, text=True)
+        # into a file: os.devnull is "nul" on Windows, which MinGW's assembler and linker cannot create
+        with tempfile.TemporaryDirectory() as probe:
+            r = subprocess.run(['g++', '-m32', '-x', 'c++', '-', '-o', os.path.join(probe, 'm32')], input='int main(){}',
+                               capture_output=True, text=True)
         ok = r.returncode == 0
     else:
         ok = shutil.which(compiler) is not None
@@ -782,8 +785,11 @@ def matrix(folder, skip):
         for std in stds:
             for opt in ('-O0', '-O1', '-O2', '-O3', '-Os'):
                 for source in MATRIX_FILES:
+                    # each build into a file of its own (they run side by side), not os.devnull: that is "nul" on
+                    # Windows, which MinGW's assembler cannot create
                     cmd = [compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', NEW,
-                                                                    '-I', GUARD, '-c', source, '-o', os.devnull]
+                                                                    '-I', GUARD, '-c', source, '-o',
+                                                                    os.path.join(folder, 'matrix_%d.o' % len(jobs))]
                     jobs.append(('%s %s %s %s' % (' '.join([compiler] + flags[:1]), std, opt, os.path.basename(source)), cmd))
 
     def one(job):
