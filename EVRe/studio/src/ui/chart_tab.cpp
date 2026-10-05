@@ -508,6 +508,9 @@ void ChartTab::connectControls() {
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
 	});
+	connect(view, &ChartView::laneFoldsChanged, this, [this] {
+		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
+	});
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
 		QSettings().setValue(settingKey("smooth"), on);
@@ -589,6 +592,7 @@ void ChartTab::restoreSettings() {
 	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
 	chart_->setSmooth(smooth_->isChecked());
 	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
+	chart_->view()->setFoldedLanes(settings.value(settingKey("lanesFolded")).toStringList());
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
@@ -1152,6 +1156,11 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	});
 	log->setCheckable(true);
 	log->setChecked(view->laneYLog(lane));
+	laneMenu_->addSeparator();
+	const bool folded = view->laneFolded(lane);
+	laneMenu_->addAction(folded ? tr("Open lane") : tr("Fold lane"), this, [view, lane, folded] {
+		view->setLaneFolded(lane, !folded);
+	});
 	laneMenu_->popup(globalPos);
 }
 

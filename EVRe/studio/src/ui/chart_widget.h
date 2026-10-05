@@ -67,6 +67,7 @@
 #include <QMap>
 #include <QImage>
 #include <QRectF>
+#include <QSet>
 #include <QStringList>
 #include <QThreadPool>
 #include <QTransform>
@@ -164,16 +165,33 @@ public:
 	QRectF triggerTag() const { return triggerTag_; } /* tests: the marker as last drawn; empty: not in view */
 	double triggerLineY() const { return triggerLineY_; } /* tests: the level's line as last drawn; NaN: none */
 
-	/* Lanes: a plot per unit, stacked, of equal height, MAX_LANES at most (the units after share the last), on one
-	 * time axis; the cursors, the A-B bar and the notes across them, one crosshair box. Each lane has its own Y range
-	 * (kept by its unit), set by a right-click on its value labels (laneMenuRequested), Ctrl + wheel over it, and a
-	 * double-click (Auto). The Y range above (setYAuto ...) is the plot's without lanes. */
-	static constexpr int MAX_LANES = 8;
+	/* Lanes: a plot per unit, stacked, on one time axis; the cursors, the A-B bar and the notes across them, one
+	 * crosshair box. Every unit has a lane of its own, however many: an open lane is at least LANE_MIN_H high (room
+	 * for two value labels), and when they do not fit the lanes keep that height and scroll inside the plot (the
+	 * wheel over the value labels, or the bar painted in the right pad). A lane is folded by a click on its unit name
+	 * (the rotated text left of its labels), or its menu: a strip LANE_FOLDED_H high that lists its lines and their
+	 * values; a click on the strip opens it again. Folds are kept by unit. Each lane has its own Y range (kept by its
+	 * unit), set by a right-click on its value labels (laneMenuRequested), Ctrl + wheel over it, and a double-click
+	 * (Auto). The Y range above (setYAuto ...) is the plot's without lanes. */
+	static constexpr double LANE_MIN_H = 80;
+	static constexpr double LANE_FOLDED_H = 22;
 	void setLanes(bool on);
 	bool lanes() const { return lanes_; }
 	int laneCount() const;               /* the lanes now (0 without) */
-	QString laneLabel(int lane) const;   /* its units: "V", or "W · Ω" for the last one shared */
+	QString laneLabel(int lane) const;   /* its unit */
+	/* in the widget's coordinates, after the scroll: partly or wholly outside the plot when scrolled away */
 	QRectF laneRect(int lane) const;
+	int laneAtY(double y) const;         /* the lane in view at that height (the nearest); -1: none, or no lanes */
+	bool laneFolded(int lane) const;
+	void setLaneFolded(int lane, bool folded);
+	QStringList foldedLanes() const;     /* the units folded, for the settings, and back */
+	void setFoldedLanes(const QStringList &units);
+	QString foldedText(int lane) const;  /* tests: a folded strip's text as last painted ("V  L0 12.0 V  ...") */
+	double laneScroll() const;           /* px from the top of the lanes, clamped to what there is to scroll */
+	void setLaneScroll(double pixels);
+	double laneContentHeight() const;    /* all the lanes stacked, the gaps between them included */
+	QRectF laneScrollBarRect() const;    /* the bar's track in the right pad; empty: the lanes fit */
+	QRectF laneScrollHandleRect() const; /* its handle; empty: the lanes fit */
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -330,6 +348,7 @@ signals:
 	void triggered(double time);             /* the view holds on a crossing */
 	void triggerLevelChanged(double level);  /* the level's line dragged and let go */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
+	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -435,9 +454,10 @@ private:
 	/* A plot of a frame: all of it with every line, or one lane (Lanes: a lane per unit). lines: indices into
 	 * series_'s order (and the frame's binned lines) */
 	struct Lane {
-		QString key, label; /* key: its first unit (its Y range is kept by it); label: its units */
+		QString key, label; /* key: its unit (its Y range and its fold are kept by it); label: the same, shown */
 		QVector<int> lines;
-		Axes axes;
+		Axes axes;          /* rect: after the scroll, maybe partly or wholly outside the plot */
+		bool folded = false;
 	};
 	/* The legend's chips at fixed places: a chip's width comes from its name,
 	 * its unit and room for the widest number the legend writes, never from the
@@ -449,7 +469,7 @@ private:
 		double content = 0;    /* the chips' total width */
 		double maxScroll() const { return std::max(0.0, content - viewport.width()); }
 	};
-	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level };
+	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level, LaneBar };
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
@@ -520,9 +540,11 @@ private:
 	bool plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QVector<BinnedLine> &lines);
 	/* the layer shown or taken away (once the window holds what goes under it); a failure closes the card */
 	void showLayer(bool shown);
-	void drawCursors(QPainter &p, const Axes &axes) const;
+	/* the marks across the plot drawn in two turns: their lines, then (over the folded strips) their tags */
+	enum class Marks { Lines, Tags };
+	void drawCursors(QPainter &p, const Axes &axes, Marks part) const;
 	/* the notes: a dashed line and a tag at the bottom of the plot each (the tags' places kept for the mouse) */
-	void drawNotes(QPainter &p, const Axes &axes) const;
+	void drawNotes(QPainter &p, const Axes &axes, Marks part) const;
 	QRectF noteTagRect(const Axes &axes, int index) const; /* empty: not in view */
 	void drawNoteTag(QPainter &p, const QRectF &tag, int index) const;
 	const QImage &notePicture(int index, const QRectF &tag, qreal dpr) const; /* for the card */
@@ -635,6 +657,13 @@ private:
 	YScale y_;
 	QHash<QString, YScale> laneScales_;
 	bool lanes_ = false;
+	double laneScroll_ = 0;           /* px from the top of the lanes (clamped when painted and when set) */
+	QSet<QString> lanesFolded_;       /* the folded lanes' units */
+	bool pressedLanes_ = false;       /* the last press was the lanes' own (pressLanes): its double-click is not a lane's */
+	double dragStartY_ = 0;           /* LaneBar: where the drag began */
+	mutable QHash<QString, QImage> foldedImages_; /* the folded strips' pictures, by unit, at foldedKeys_ */
+	mutable QHash<QString, QString> foldedKeys_;
+	mutable QHash<QString, QString> foldedTexts_; /* tests: their texts as last painted */
 	mutable QVector<Lane> lanesShown_; /* the plots as last painted: one, or the lanes */
 	bool logOf(const YScale &scale) const { return scale.log && !normalized_; } /* the Log scale drawn now */
 	bool logShown() const { return logOf(y_); }
@@ -642,7 +671,23 @@ private:
 	 * axes' times and ranges are set by paintFrame) */
 	QVector<Lane> plotLayout() const;
 	YScale &scaleOf(const Lane &lane) { return lanes_ ? laneScales_[lane.key] : y_; }
-	int laneAtY(double y) const; /* the lane last painted at that height (the nearest); -1: no lanes */
+	/* the lanes' heights: an open one's (equal, at least LANE_MIN_H) and all of them stacked, for these lanes */
+	void laneHeights(const QVector<Lane> &lanes, double plotHeight, double &openHeight, double &content) const;
+	double maxLaneScroll() const;
+	void scrollLanesTo(double pixels);
+	static QRectF laneVisible(const QRectF &lane, const QRectF &plot); /* its part in the plot; empty: out of view */
+	/* a press on the lanes' own places: the scroll bar, a unit name (fold), a folded strip (open); true if it was */
+	bool pressLanes(const QPointF &pos);
+	/* a folded lane's strip: its unit, then each line's dot, name and value (the legend's; held, the latest in view),
+	 * as a picture of the part in the plot, for both drawing paths */
+	struct FoldedItem {
+		QColor color;
+		QString text;
+	};
+	QVector<FoldedItem> foldedItems(const Lane &lane, double t0, double t1) const;
+	const QImage &foldedPicture(const Lane &lane, const QRectF &visible, double t0, double t1, qreal dpr) const;
+	void drawFolded(QPainter &p, const QVector<Lane> &plots) const;
+	void drawLaneBar(QPainter &p) const;
 	QString laneKey(int lane) const; /* its unit, by which its Y range is kept */
 	void forgetRanges(); /* the lines changed: every Auto range jumps to them at the next frame */
 	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
@@ -663,7 +708,7 @@ private:
 	double cursorA_ = NAN, cursorB_ = NAN;
 	Drag drag_ = Drag::None;
 	double dragStartX_ = 0, dragStartEnd_ = 0; /* Pan: where the drag began, and the view's end then */
-	double dragStartScroll_ = 0;               /* LegendBar: the legend's scroll when the drag began */
+	double dragStartScroll_ = 0;               /* LegendBar, LaneBar: the scroll when the drag began */
 	int mouseX_ = -1;                          /* -1: the mouse is not over the chart */
 	/* the crosshair's box: made again when the values move on (valuesTick_), the mouse moves (at most every
 	 * READOUT_FOLLOW_MS, readoutMade_), or the plot, the scaling or the theme changes; in between the same picture
@@ -705,7 +750,7 @@ private:
 	 * plots; false: nothing to draw */
 	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,
 			QRectF &tag) const;
-	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines) const;
+	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const;
 	const QImage &triggerPicture(qreal dpr) const;
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;

@@ -15,8 +15,9 @@
  *    each line's total since Clear; a right-click on the header shows or
  *    hides columns.
  *
- *  - Lanes (Display): a plot per unit, stacked; each lane's Y range by a
- *    right-click on its value labels (Auto, Manual, Log).
+ *  - Lanes (Display): a plot per unit, stacked, scrolling when they do not
+ *    fit; each lane's Y range by a right-click on its value labels (Auto,
+ *    Manual, Log, Fold lane / Open lane); the folds kept by unit.
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
@@ -140,7 +141,8 @@ public:
 	 * right-click */
 	void showChartMenu(const QPoint &globalPos, double time);
 	QMenu *chartMenu() const { return chartMenu_; }
-	/* a lane's Y range menu (a right-click on its value labels): Auto, Manual…, Log; tests: the menu */
+	/* a lane's menu (a right-click on its value labels or its folded strip): Auto, Manual…, Log, Fold lane / Open
+	 * lane; tests: the menu */
 	void showLaneMenu(int lane, const QPoint &globalPos);
 	QMenu *laneMenu() const { return laneMenu_; }
 	void editLaneRange(int lane); /* Manual…: its min and max asked */
