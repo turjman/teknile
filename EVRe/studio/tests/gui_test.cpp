@@ -4944,14 +4944,20 @@ private:
 
 		/* the mouse over a button: the pointing hand, the button highlighted, the tooltip */
 		const QRectF button2 = view->laneFoldButtonRect(2);
-		const QRect area = button2.adjusted(-1, -1, 1, 1).toAlignedRect();
-		const QImage plain = view->grab().toImage().copy(area);
+		/* the button's area in the picture's own pixels: grab() is in device pixels (2.25 x at 225 %) */
+		const auto buttonPicture = [view, &button2] {
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			const QRectF area = button2.adjusted(-1, -1, 1, 1);
+			return whole.copy(QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect());
+		};
+		const QImage plain = buttonPicture();
 		const auto moveTo = [view](QPointF at) {
 			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
 			QApplication::sendEvent(view, &move);
 		};
 		moveTo(button2.center());
-		const QImage lit = view->grab().toImage().copy(area);
+		const QImage lit = buttonPicture();
 		const bool hand = view->cursor().shape() == Qt::PointingHandCursor && view->hoveredLane() == 2 && plain != lit;
 		QHelpEvent help(QEvent::ToolTip, button2.center().toPoint(), view->mapToGlobal(button2.center().toPoint()));
 		QApplication::sendEvent(view, &help);
@@ -4973,10 +4979,14 @@ private:
 
 		/* the scroll bar: the pointing hand, its handle brighter, a tooltip; away from it, as before */
 		const QRectF handle = view->laneScrollHandleRect();
-		const QRect handleArea = handle.toAlignedRect();
-		const QImage handleRest = view->grab().toImage().copy(handleArea);
+		const auto handlePicture = [view, &handle] { /* in the picture's device pixels, as the button's */
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			return whole.copy(QRectF(handle.topLeft() * dpr, handle.size() * dpr).toAlignedRect());
+		};
+		const QImage handleRest = handlePicture();
 		moveTo(handle.center());
-		const QImage handleLit = view->grab().toImage().copy(handleArea);
+		const QImage handleLit = handlePicture();
 		const bool barHover = view->laneBarHovered() && view->cursor().shape() == Qt::PointingHandCursor
 				&& handleRest != handleLit && view->toolTipAt(handle.center())
 						== QStringLiteral("Scroll the lanes: drag the handle, or click above or below it for a page");
