@@ -8,10 +8,12 @@
  *  - what to do: Hold / Live, Measure, Cursors and Clear cursors, the math
  *    lines (ƒ Math: a formula over registers, model/math_lines.h), Display
  *    (Normalise, Smooth, Hover values and who draws the lines), the info
- *    line, Clear and Remove all.
+ *    line (whole parts dropped when narrow), Clear and Remove all.
  *  - the measurements (Measure on), in a splitter under the chart: the value
- *    at cursors A and B, min, max, mean, RMS and the area under each line,
- *    over the cursors or the view.
+ *    at cursors A and B, min, max, mean, RMS, standard deviation, peak to
+ *    peak and the area under each line, over the cursors or the view, and
+ *    each line's total since Clear; a right-click on the header shows or
+ *    hides columns.
  *
  * The window says which registers are plotted (plotRegister) and hands over
  * the samples of every display frame (frame()); the tab adds the math lines'
@@ -36,6 +38,7 @@ class QComboBox;
 class QHBoxLayout;
 class QLabel;
 class QLineEdit;
+class QMenu;
 class QPushButton;
 class QTableWidget;
 enum class LogLevel;
@@ -51,6 +54,11 @@ public:
 	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over);
 	/* a Y box's text: Manual six digits; Auto four, but never fewer than the whole part (17420, not 1.742e+04) */
 	static QString yFieldText(double value, bool manual);
+	/* the measurement table's columns; every one but the line's can be hidden (a right-click on the header) */
+	enum MeasureColumn { ColLine, ColAtA, ColAtB, ColDiff, ColMin, ColMax, ColMean, ColRms, ColStd, ColP2p, ColArea,
+		ColAreaHours, ColTotal, MEASURE_COLUMNS };
+	/* the Y range list: Auto, Manual, Log (its range Auto or typed) */
+	enum YMode { YAuto, YManual, YLog };
 
 	/* the map's registers, again after every change of the map: the math lines are compiled against them */
 	void setRegisters(const QVector<RegDef> &registers);
@@ -73,8 +81,11 @@ public:
 	/* the registers the chart may hold now (RegisterModel::plotLimit): the info line says "N/LIMIT plotted" */
 	void setRegisterLimit(int limit) { registerLimit_ = limit; }
 	void logDrawing(); /* the Log: who draws the lines (at start, once the window listens, and at each change) */
-	/* the info line's text: the lines on the chart, then frames, paint time, delay (for tests too) */
-	QString infoText() const;
+	/* the info line's text: the lines on the chart, then frames, paint time, delay (for tests too). width >= 0: what
+	 * fits that many pixels of the line's font, whole parts dropped (the paint time, the word "plotted", the delay,
+	 * then the frames, who draws, the math lines), never letters cut */
+	QString infoText(int width = -1) const;
+	QString infoTip() const; /* what the info line's numbers are */
 	/* the Display menu's state in words: "Normalise off · Smooth on · Hover values on · drawn by the GPU: <name>" (its
 	 * tooltip; tests) */
 	QString displayState() const;
@@ -117,6 +128,7 @@ private:
 	void updateMeasures(bool cursorsOnly = false); /* cursorsOnly: A, B and B - A (a cursor dragged) */
 	void measureSoon();
 	QString measuredRangeText() const;
+	void showMeasureColumns(); /* the columns hidden as saved (chart/measureColumns) */
 
 	/* the math lines */
 	void rebuildMath();           /* formulas -> registers, chart lines, the menu */
@@ -155,4 +167,5 @@ private:
 	bool measurePending_ = false;
 	int measureUpdates_ = 0, measureFullUpdates_ = 0;
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
+	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 };

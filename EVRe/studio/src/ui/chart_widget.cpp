@@ -145,6 +145,13 @@ QFont labelFont() {
 	return font;
 }
 
+/* the Log scale's lines at 2..9 of a decade: the grid's colour, fainter */
+QColor faintGrid() {
+	QColor faint = Theme::colors().grid;
+	faint.setAlphaF(faint.alphaF() * 0.45);
+	return faint;
+}
+
 /* a range too narrow to scale into: one unit around it */
 void widenFlatRange(double &lo, double &hi) {
 	if (hi - lo > FLAT_RANGE) return;
@@ -169,6 +176,20 @@ double valueAt(const QVector<double> &times, const QVector<double> &values, doub
 	return tb > ta ? values[k - 1] + (values[k] - values[k - 1]) * (t - ta) / (tb - ta) : values[k];
 }
 
+/* the smallest positive value a bin is known to hold (its min, else its first, last or max); +inf: none. A bin of
+ * chunks whose min is <= 0 may hold a smaller positive one: close enough for the Log scale's Auto range */
+double smallestPositive(double min, double first, double last, double max) {
+	if (min > 0) return min;
+	double out = std::numeric_limits<double>::infinity();
+	for (const double v : { first, last, max })
+		if (v > 0) out = std::min(out, v);
+	return out;
+}
+
+/* a value on the Y scale's own axis: log10 on the Log scale */
+double toScale(double v, bool log) { return log ? std::log10(v) : v; }
+double fromScale(double v, bool log) { return log ? std::pow(10.0, v) : v; }
+
 } // namespace
 
 /* A value grid label: a percentage when normalized; a rounding error at zero shows as 0. Every label of the axis
@@ -179,6 +200,17 @@ QString chartAxisLabel(double v, double step, bool percent) {
 	if (step < 1e-3 || std::fabs(v) >= 1e5) return chartNumber(v);
 	const int decimals = std::max(0, int(-std::floor(std::log10(step) + 1e-9)));
 	return QString::number(v, 'f', decimals);
+}
+
+/* 1, 10 ... 10000 as the chart writes values; below and above with an SI prefix, three digits at most before it */
+QString chartLogLabel(double v) {
+	if (!(v > 0)) return QStringLiteral("0");
+	if (v >= 1 && v < 1e5) return QString::number(v, 'g', 6);
+	static const char *const prefixes[] = { "f", "p", "n", "µ", "m", "", "k", "M", "G", "T", "P" };
+	const int exponent = int(std::floor(std::log10(v) + 1e-9));
+	const int group = std::clamp(int(std::floor(exponent / 3.0)), -5, 5);
+	const double mantissa = v / std::pow(10.0, group * 3);
+	return QString::number(mantissa, 'g', 4) + QLatin1Char(' ') + QString::fromUtf8(prefixes[group + 5]);
 }
 
 void ChartView::Bin::add(double ta, double tb, double firstValue, double lastValue, double lo, double hi, int samples) {
@@ -246,6 +278,14 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 	s.unit = unit;
 	s.color = color;
 	s.spread = int(seriesAdded_++ % 8);
+	/* a line put back keeps its total since Clear; another line under its key starts at 0 */
+	const auto kept = keptTotals_.constFind(key);
+	if (kept != keptTotals_.constEnd() && kept->name == name && kept->unit == unit) {
+		s.total = kept->total;
+		s.totalT = kept->t;
+		s.totalV = kept->v;
+	}
+	keptTotals_.remove(key);
 	series_.insert(key, s);
 	seriesGeneration_++;
 	capped_ = false;
@@ -254,6 +294,8 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 }
 
 void ChartView::removeSeries(int key) {
+	const auto it = series_.constFind(key);
+	if (it != series_.constEnd()) keptTotals_.insert(key, { it->name, it->unit, it->total, it->totalT, it->totalV });
 	series_.remove(key);
 	seriesGeneration_++;
 	yInitialized_ = false;
@@ -262,6 +304,8 @@ void ChartView::removeSeries(int key) {
 
 void ChartView::clearSeries() {
 	series_.clear();
+	keptTotals_.clear(); /* another set of lines: the totals from 0 */
+	totalsSince_ = NAN;
 	seriesGeneration_++;
 	capped_ = false;
 	yInitialized_ = false;
@@ -275,7 +319,11 @@ void ChartView::clearData() {
 		for (QVector<Chunk> &chunks : s.chunks) chunks.clear();
 		s.hasLast = false;
 		s.hasShown = false;
+		s.total = 0;
+		s.totalT = NAN;
 	}
+	keptTotals_.clear();
+	totalsSince_ = NAN; /* the first sample from now on */
 	seriesGeneration_++;
 	capped_ = false;
 	yInitialized_ = false;
@@ -366,6 +414,15 @@ void ChartView::append(int key, double t, double v) {
 	auto it = series_.find(key);
 	if (it == series_.end() || !std::isfinite(v)) return;
 	Series &s = *it;
+	/* the total since Clear, from every sample as it comes (not from what the memory keeps: trims lose nothing); a gap
+	 * over TOTAL_GAP is not bridged */
+	if (std::isnan(s.totalT) || t >= s.totalT) {
+		const double dt = t - s.totalT;
+		if (dt > 0 && dt <= TOTAL_GAP) s.total += 0.5 * (v + s.totalV) * dt;
+		s.totalT = t;
+		s.totalV = v;
+		if (std::isnan(totalsSince_)) totalsSince_ = t;
+	}
 	const qsizetype limit = pointsPerLine();
 	dropExpired(s, t, limit);
 	roomForOne(s.times, limit, s.spread);
@@ -561,12 +618,26 @@ void ChartView::setYAuto() {
 	refresh();
 }
 
-void ChartView::setYManual(double lo, double hi) {
-	if (!(hi > lo)) return;
+bool ChartView::setYManual(double lo, double hi) {
+	if (!(hi > lo) || (yLog_ && !(lo > 0))) return false;
 	yAuto_ = false;
 	yLo_ = lo;
 	yHi_ = hi;
 	refresh();
+	return true;
+}
+
+void ChartView::setYLog(bool on) {
+	if (on == yLog_) return;
+	yLog_ = on;
+	yInitialized_ = false; /* Auto ranges again on the new scale */
+	if (on && !yAuto_ && !(yLo_ > 0)) yAuto_ = true; /* a range through zero has no logarithm */
+	refresh();
+}
+
+double ChartView::total(int key) const {
+	const auto it = series_.constFind(key);
+	return it == series_.constEnd() || std::isnan(it->totalT) ? NAN : it->total;
 }
 
 void ChartView::clearCursors() {
@@ -650,7 +721,9 @@ void ChartView::range(double &t0, double &t1, bool &cursors) const {
 ChartView::Stats ChartView::stats(int key) const {
 	Stats result;
 	auto it = series_.find(key);
-	if (it == series_.end() || it->times.isEmpty()) return result;
+	if (it == series_.end()) return result;
+	result.total = std::isnan(it->totalT) ? NAN : it->total;
+	if (it->times.isEmpty()) return result;
 	const Series &s = *it;
 	result.atA = valueAt(s.times, s.values, cursorA_);
 	result.atB = valueAt(s.times, s.values, cursorB_);
@@ -661,7 +734,10 @@ ChartView::Stats ChartView::stats(int key) const {
 	const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 	if (i1 - i0 < 1) return result;
 	result.min = result.max = s.values[i0];
-	double area = 0, areaOfSquares = 0, span = 0;
+	/* the standard deviation from sums shifted by the first value: a 12 V line with 1 mV of ripple squared whole loses
+	 * the ripple to the 144 V^2 (rms^2 - mean^2 cancels to the rounding) */
+	const double shift = s.values[i0];
+	double area = 0, areaOfSquares = 0, span = 0, shifted = 0, shiftedSquares = 0;
 	for (qsizetype i = i0; i < i1; i++) {
 		result.min = std::min(result.min, s.values[i]);
 		result.max = std::max(result.max, s.values[i]);
@@ -669,13 +745,19 @@ ChartView::Stats ChartView::stats(int key) const {
 		const double dt = s.times[i] - s.times[i - 1];
 		area += 0.5 * (s.values[i] + s.values[i - 1]) * dt;
 		areaOfSquares += 0.5 * (s.values[i] * s.values[i] + s.values[i - 1] * s.values[i - 1]) * dt;
+		const double d1 = s.values[i] - shift, d0 = s.values[i - 1] - shift;
+		shifted += 0.5 * (d1 + d0) * dt;
+		shiftedSquares += 0.5 * (d1 * d1 + d0 * d0) * dt;
 		span += dt;
 	}
 	result.n = int(i1 - i0);
 	result.integral = area;
+	result.p2p = result.max - result.min;
 	if (span > 0) {
 		result.mean = area / span;
 		result.rms = std::sqrt(std::max(0.0, areaOfSquares / span));
+		const double shiftedMean = shifted / span;
+		result.std = std::sqrt(std::max(0.0, shiftedSquares / span - shiftedMean * shiftedMean));
 	} else {
 		result.mean = result.rms = s.values[i0];
 	}
@@ -693,6 +775,7 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 		}
 		const auto it = series_.find(keys[i]);
 		if (it == series_.end() || it->times.isEmpty()) return;
+		all[i].total = std::isnan(it->totalT) ? NAN : it->total;
 		all[i].atA = valueAt(it->times, it->values, cursorA_);
 		all[i].atB = valueAt(it->times, it->values, cursorB_);
 	}, 2);
@@ -827,10 +910,12 @@ void ChartView::zoomTime(double factor, double mouseX) {
 void ChartView::zoomY(double factor, double mouseY) {
 	const QRectF plot = plotRect();
 	const double y = std::clamp(mouseY, plot.top(), plot.bottom());
-	const double at = yHi_ - (y - plot.top()) / plot.height() * (yHi_ - yLo_);
+	const bool log = logShown() && yLo_ > 0 && yHi_ > yLo_; /* Log: around the value under the mouse in decades */
+	const double lo = toScale(yLo_, log), hi = toScale(yHi_, log);
+	const double at = hi - (y - plot.top()) / plot.height() * (hi - lo);
 	yAuto_ = false;
-	yLo_ = at - (at - yLo_) * factor;
-	yHi_ = at + (yHi_ - at) * factor;
+	yLo_ = fromScale(at - (at - lo) * factor, log);
+	yHi_ = fromScale(at + (hi - at) * factor, log);
 }
 
 void ChartView::mouseDoubleClickEvent(QMouseEvent *) {
@@ -1014,7 +1099,10 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.span = window_;
 	axes.columns = std::max(1.0, axes.rect.width());
 	const QVector<BinnedLine> binned = binView(axes);
-	updateYRange(binned, frameDt, axes.lo, axes.hi);
+	double lo, hi;
+	updateYRange(binned, frameDt, lo, hi);
+	axes.setRange(lo, hi, logShown());
+	lastAxes_ = axes;
 
 	/* On a card (on the screen, with lines): the plot (grid, lines, cursors, crosshair) is drawn by it into its layer
 	 * over the window, and the chart paints what is around it. While the layer is not shown yet (the chart shown
@@ -1068,6 +1156,7 @@ void ChartView::binSeries(const Series &s, double t0, double t1, double columns,
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
 	out.hi = -out.lo;
+	out.posLo = std::numeric_limits<double>::infinity();
 	if (s.times.isEmpty() || t1 <= t0) return;
 	const double columnSeconds = (t1 - t0) / columns;
 	/* from one sample before to one after, so the line enters and leaves at the edges */
@@ -1085,6 +1174,7 @@ void ChartView::binSeries(const Series &s, double t0, double t1, double columns,
 		if (bin.t1 < t0 || bin.t0 > t1) continue; /* the range of what lies inside the span */
 		out.lo = std::min(out.lo, bin.min);
 		out.hi = std::max(out.hi, bin.max);
+		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
 }
 
@@ -1133,6 +1223,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
 	out.hi = -out.lo;
+	out.posLo = std::numeric_limits<double>::infinity();
 	Series::ViewBins &kept = s.viewBins;
 	if (s.times.isEmpty() || t1 <= t0) {
 		kept = {};
@@ -1173,6 +1264,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 		if (bin.t1 < t0 || bin.t0 > t1) continue; /* the range of what lies inside the span */
 		out.lo = std::min(out.lo, bin.min);
 		out.hi = std::max(out.hi, bin.max);
+		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
 }
 
@@ -1204,16 +1296,33 @@ void ChartView::updateYRange(const QVector<BinnedLine> &lines, double frameDt, d
 void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
 	constexpr double FLAT = 1e-9;       /* the lines are flat: give them a range */
 	constexpr double SHRINK_TIME = 0.4; /* seconds */
+	constexpr double MIN_DECADES = 1;   /* Log: at least one decade, around what is shown */
+	/* Log: the positive values in view, at most MAX_DECADES under the top; the margins and the gentle shrink in decades */
+	const bool log = logShown();
 	double lo = std::numeric_limits<double>::max(), hi = -lo;
 	for (const BinnedLine &line : lines) {
-		lo = std::min(lo, line.lo);
+		if (log) {
+			if (!(line.hi > 0)) continue;
+			lo = std::min(lo, line.posLo);
+		} else {
+			lo = std::min(lo, line.lo);
+		}
 		hi = std::max(hi, line.hi);
 	}
 	if (lo > hi) { /* nothing in the view: keep what is shown */
-		lo = yInitialized_ ? yLo_ : 0;
-		hi = yInitialized_ ? yHi_ : 1;
+		lo = yInitialized_ ? toScale(yLo_, log) : 0;
+		hi = yInitialized_ ? toScale(yHi_, log) : 1;
 	} else {
-		if (hi - lo < FLAT) {
+		lo = toScale(lo, log);
+		hi = toScale(hi, log);
+		if (log) {
+			lo = std::max(lo, hi - MAX_DECADES);
+			if (hi - lo < MIN_DECADES) {
+				const double middle = (lo + hi) / 2;
+				lo = middle - MIN_DECADES / 2;
+				hi = middle + MIN_DECADES / 2;
+			}
+		} else if (hi - lo < FLAT) {
 			const double pad = std::max(std::fabs(hi) * 0.05, 0.5);
 			lo -= pad;
 			hi += pad;
@@ -1223,14 +1332,15 @@ void ChartView::followData(const QVector<BinnedLine> &lines, double frameDt) {
 		hi += margin;
 	}
 	if (!yInitialized_ || !live_) {
-		yLo_ = lo;
-		yHi_ = hi;
+		yLo_ = fromScale(lo, log);
+		yHi_ = fromScale(hi, log);
 		yInitialized_ = true;
 		return;
 	}
 	const double rate = 1 - std::exp(-frameDt / SHRINK_TIME);
-	yLo_ = lo < yLo_ ? lo : yLo_ + (lo - yLo_) * rate;
-	yHi_ = hi > yHi_ ? hi : yHi_ + (hi - yHi_) * rate;
+	const double shownLo = toScale(yLo_, log), shownHi = toScale(yHi_, log);
+	yLo_ = fromScale(lo < shownLo ? lo : shownLo + (lo - shownLo) * rate, log);
+	yHi_ = fromScale(hi > shownHi ? hi : shownHi + (hi - shownHi) * rate, log);
 }
 
 /* The card: a plain fill, then its four rounded corners in the window's colour
@@ -1261,14 +1371,39 @@ void ChartView::drawCard(QPainter &p) const {
  * so it moves with the data. Crisp 1 px lines: no antialiasing. */
 ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 	GridTicks ticks;
+	ticks.timeStep = niceTimeStep(window_, std::max(2, int(axes.columns / TIME_LABEL_SPACING)));
+	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
+	if (axes.log) {
+		/* a line at each decade, faint ones at 2..9 of it while a decade is tall enough; over less than two decades
+		 * those are labelled too where they have room */
+		constexpr double MINOR_DECADE_PX = 24, MINOR_LABEL_PX = 16;
+		const double decadePx = axes.rect.height() / (axes.logHi - axes.logLo);
+		for (int d = int(std::ceil(axes.logLo - 1e-9)); d <= int(std::floor(axes.logHi + 1e-9)); d++)
+			ticks.values << std::pow(10.0, d);
+		if (decadePx >= MINOR_DECADE_PX) {
+			for (int d = int(std::floor(axes.logLo)); d <= int(std::floor(axes.logHi)); d++)
+				for (int m = 2; m <= 9; m++) {
+					const double v = m * std::pow(10.0, d);
+					if (v >= axes.lo && v <= axes.hi) ticks.minor << v;
+				}
+		}
+		ticks.labelMinor = ticks.values.size() < 2 && decadePx * std::log10(10.0 / 9) >= MINOR_LABEL_PX;
+		if (ticks.values.size() < 2 && !ticks.labelMinor) { /* too tight for all of them: 2 and 5 */
+			QVector<double> some;
+			for (double v : std::as_const(ticks.minor)) {
+				const double m = v / std::pow(10.0, std::floor(std::log10(v) + 1e-9));
+				if (std::fabs(m - 2) < 1e-6 || std::fabs(m - 5) < 1e-6) some << v;
+			}
+			ticks.values += some;
+		}
+		return ticks;
+	}
 	ticks.valueStep = niceStep(axes.hi - axes.lo, Y_TICKS);
 	for (double v = std::ceil(axes.lo / ticks.valueStep) * ticks.valueStep; v <= axes.hi + ticks.valueStep * 1e-6;
 			v += ticks.valueStep) {
 		const double y = axes.y(v);
 		if (y >= axes.rect.top() - 1 && y <= axes.rect.bottom() + 1) ticks.values << v;
 	}
-	ticks.timeStep = niceTimeStep(window_, std::max(2, int(axes.columns / TIME_LABEL_SPACING)));
-	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
 	return ticks;
 }
 
@@ -1278,15 +1413,27 @@ void ChartView::drawGrid(QPainter &p, const Axes &axes, bool lines) const {
 	const GridTicks ticks = gridTicks(axes);
 	p.setFont(smallFont());
 	p.setRenderHint(QPainter::Antialiasing, false);
+	valueLabels_.clear();
+	const auto label = [&](double v) {
+		const QString text = axes.log ? chartLogLabel(v) : chartAxisLabel(v, ticks.valueStep, normalized_);
+		valueLabels_ << text;
+		p.setPen(c.muted);
+		p.drawText(QRectF(2, axes.y(v) - 8, plot.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter, text);
+	};
+	for (double v : ticks.minor) {
+		if (lines) {
+			p.setPen(QPen(faintGrid(), 1));
+			p.drawLine(QPointF(plot.left(), axes.y(v)), QPointF(plot.right(), axes.y(v)));
+		}
+		if (ticks.labelMinor) label(v);
+	}
 	for (double v : ticks.values) {
 		const double y = axes.y(v);
 		if (lines) {
 			p.setPen(QPen(c.grid, 1));
 			p.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
 		}
-		p.setPen(c.muted);
-		p.drawText(QRectF(2, y - 8, plot.left() - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
-				chartAxisLabel(v, ticks.valueStep, normalized_));
+		label(v);
 	}
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
@@ -1539,6 +1686,11 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 	grid.caps = false;
 	const quint32 gridRgba = gpuColor(c.grid);
 	const GridTicks ticks = gridTicks(axes);
+	const quint32 faintRgba = gpuColor(faintGrid());
+	for (double v : ticks.minor) {
+		const float y = float(std::floor(map(QPointF(0, axes.y(v))).y()) + grid.widthPx / 2);
+		grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, faintRgba });
+	}
 	for (double v : ticks.values) {
 		const float y = float(std::floor(map(QPointF(0, axes.y(v))).y()) + grid.widthPx / 2);
 		grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
@@ -1810,7 +1962,7 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 		/* the lines: drawn again when the data has moved a pixel on the strip, or the lines or its size changed */
 		const QRect device = p.deviceTransform().mapRect(box).toAlignedRect();
 		if (stripImage_.size() != device.size() || stripImage_.devicePixelRatio() != p.device()->devicePixelRatioF()
-				|| stripGeneration_ != seriesGeneration_ || stripMemory_ != memory_ || strip.t1 < stripEnd_
+				|| stripGeneration_ != seriesGeneration_ || stripMemory_ != memory_ || stripLog_ != logShown() || strip.t1 < stripEnd_
 				|| strip.t1 - stripEnd_ >= strip.columnSeconds()) {
 			QTransform world;
 			prepareTile(p, device, stripImage_, world, stripAt_);
@@ -1823,6 +1975,7 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			stripImage_.setDevicePixelRatio(p.device()->devicePixelRatioF());
 			stripEnd_ = strip.t1;
 			stripMemory_ = memory_;
+			stripLog_ = logShown();
 			stripGeneration_ = seriesGeneration_;
 		}
 		p.drawImage(stripAt_, stripImage_);
@@ -1863,9 +2016,16 @@ void ChartView::drawMemoryLines(QPainter &p, const Axes &strip) const {
 		const Series &s = *binned.series;
 		if (binned.bins.isEmpty()) continue;
 		Axes line = strip;
-		line.lo = binned.lo;
-		line.hi = binned.hi;
-		widenFlatRange(line.lo, line.hi);
+		if (logShown() && binned.hi > 0) {
+			/* Log: the line's positive values, at most MAX_DECADES, and a decade at least (as the plot's Auto) */
+			const double top = std::log10(binned.hi), bottom = std::max(std::log10(binned.posLo), top - MAX_DECADES);
+			const double middle = (top + bottom) / 2, half = std::max(0.5, (top - bottom) / 2);
+			line.setRange(std::pow(10.0, middle - half), std::pow(10.0, middle + half), true);
+		} else {
+			double lo = binned.lo, hi = binned.hi;
+			widenFlatRange(lo, hi);
+			line.setRange(lo, hi, false);
+		}
 		QColor color = s.color;
 		color.setAlpha(STRIP_ALPHA);
 		const auto x = [&line](double t) { return line.x(t); };
@@ -2162,7 +2322,8 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	QStringList state;
 	if (!live_) state << tr("held: -%1 s · Live to follow").arg(chartNumber(clockNow() - axes.t1));
-	if (!yAuto_ && !normalized_) state << tr("Y manual");
+	if (logShown()) state << (yAuto_ ? tr("Y log") : tr("Y log, manual"));
+	else if (!yAuto_ && !normalized_) state << tr("Y manual");
 	if (cursorMode_) state << tr("cursors: click / drag");
 	if (state.isEmpty()) return;
 	const ThemeColors &c = Theme::colors();

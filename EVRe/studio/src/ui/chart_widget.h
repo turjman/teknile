@@ -32,8 +32,12 @@
  * all the lines together (setRamBudget, in MB), which their arrays keep to: with
  * many fast lines the memory holds less than asked, and says so.
  *
- * Y axis: Auto (grows at once, shrinks gently) or Manual. Ctrl + wheel zooms Y
- * around the mouse (Manual), a double-click goes back to Auto.
+ * Y axis: Auto (grows at once, shrinks gently) or Manual, on a linear or a
+ * logarithmic scale (Log: decades, values <= 0 on the bottom edge). Ctrl +
+ * wheel zooms Y around the mouse (Manual), a double-click goes back to Auto.
+ *
+ * Totals: every line's area since the chart's Clear, summed from each sample as
+ * it comes (append), not from the memory, so a trim loses nothing.
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
@@ -52,6 +56,7 @@
 #include <QMap>
 #include <QImage>
 #include <QRectF>
+#include <QStringList>
 #include <QThreadPool>
 #include <QTransform>
 #include <QVector>
@@ -69,6 +74,9 @@ class QPolygonF;
 /* a value axis label: every label of the axis with the decimals its step needs (14, 12 … 6; 0.2, 0.4), a
  * percentage when normalized */
 QString chartAxisLabel(double value, double step, bool percent);
+/* a value axis label on a logarithmic scale: 1, 10, 100, 1000, 10000 as written, smaller and larger with an SI
+ * prefix (100 m, 1 µ, 100 k, 1 M) */
+QString chartLogLabel(double value);
 
 /* ChartView: the chart itself, a raster widget that paints every pixel at each display frame */
 class ChartView : public QWidget {
@@ -99,14 +107,24 @@ public:
 	double memory() const { return memory_; }
 	void setLive(bool on);              /* follow now, or hold the view where it is */
 	bool live() const { return live_; }
-	void setNormalized(bool on) { normalized_ = on; refresh(); }
+	void setNormalized(bool on) {
+		normalized_ = on;
+		yInitialized_ = false;
+		refresh();
+	}
 	void setSmooth(bool on);
 	/* the crosshair's box of values (the line and its dots stay without it) */
 	void setHoverValues(bool on);
 	bool hoverValues() const { return hoverValues_; }
 	void setYAuto();
-	void setYManual(double lo, double hi);
+	/* false: not a range (hi <= lo, or lo <= 0 on the Log scale), nothing changed */
+	bool setYManual(double lo, double hi);
 	bool yAuto() const { return yAuto_; }
+	/* the logarithmic scale (Auto: the positive values in view, at most MAX_DECADES); it has no effect while
+	 * normalised. Manual keeps its range when it is positive, else Auto */
+	void setYLog(bool on);
+	bool yLog() const { return yLog_; }
+	static constexpr double MAX_DECADES = 9;
 	double yLo() const { return yLo_; }  /* the range shown now */
 	double yHi() const { return yHi_; }
 
@@ -130,7 +148,9 @@ public:
 	/* measurements of one line over A..B, or over the view */
 	struct Stats {
 		bool ok = false;
-		double atA = NAN, atB = NAN, min = 0, max = 0, mean = 0, rms = 0, integral = 0; /* integral: unit x s */
+		/* integral: unit x s; std: the standard deviation, time-weighted as the mean; p2p: max - min */
+		double atA = NAN, atB = NAN, min = 0, max = 0, mean = 0, rms = 0, std = 0, p2p = 0, integral = 0;
+		double total = NAN; /* the area since Clear (totalsSince), unit x s; NaN: no sample yet */
 		int n = 0;
 	};
 	struct Info {
@@ -144,6 +164,13 @@ public:
 	/* several lines at once, on the chart's threads; cursorsOnly: the values at A and B alone (ok false) */
 	QVector<Stats> stats(const QVector<int> &keys, bool cursorsOnly = false) const;
 	bool draggingCursor() const { return drag_ == Drag::CurA || drag_ == Drag::CurB; }
+	/* The totals (Stats::total): each line's value x dt by trapezoids from every sample as it is appended, a gap over
+	 * TOTAL_GAP not bridged; reset by clearData (the chart's Clear) and a new set of lines (clearSeries) only: a line
+	 * taken off and put back keeps its total. totalsSince: the time base of the first sample since then, NaN none. */
+	static constexpr double TOTAL_GAP = 1.0;
+	double total(int key) const;
+	double totalsSince() const { return totalsSince_; }
+	qint64 epochMs() const { return epochMs_; } /* the wall-clock time of the time base's zero, ms since the epoch */
 
 	/* for the status line: frames per second, average paint time, delay */
 	double fps() const { return fps_; }
@@ -187,6 +214,10 @@ public:
 	/* tests: the bar between the cursors as last painted: its text (empty: none), the bar, and the text's box (inside
 	 * the bar, or beside a tag when the bar is too short for it) */
 	QString spanBarText() const { return spanBar_.text; }
+	/* tests: the value labels of the last frame painted, and where a value lies on its Y axis */
+	QStringList valueLabels() const { return valueLabels_; }
+	double yOfValue(double value) const { return lastAxes_.y(value); }
+	QRectF lastPlot() const { return lastAxes_.rect; }
 	QRectF spanBarRect() const { return spanBar_.bar; }
 	QRectF spanBarTextRect() const { return spanBar_.textRect; }
 
@@ -258,6 +289,8 @@ private:
 		double last = 0;
 		bool hasShown = false; /* the legend's value: last, taken at the values' pace */
 		double shown = 0;
+		/* the total since Clear, and the sample it was summed to (time NaN: none yet) */
+		double total = 0, totalT = NAN, totalV = 0;
 		qsizetype dropped = 0; /* the samples the memory let go: times[0] is sample `dropped` of the line */
 		int spread = 0;        /* 0 to 7, by the order the lines came: its arrays' growth step (roomForOne) */
 		/* the view's bins kept from frame to frame: a column on absolute time that is complete never changes, so a
@@ -277,6 +310,7 @@ private:
 		const Series *series = nullptr;
 		QVector<Bin> bins;
 		double lo = 0, hi = 0;
+		double posLo = 0; /* the smallest positive value of what lies inside the span (the Log scale); +inf: none */
 	};
 	/* a time span and a value range mapped onto a rectangle of pixels: the plot
 	 * in one frame, or the memory strip */
@@ -284,10 +318,24 @@ private:
 		QRectF rect;
 		double t0 = 0, t1 = 1, span = 1; /* the times shown, seconds; span = t1 - t0 */
 		double lo = 0, hi = 1;           /* the values shown */
+		bool log = false;                /* log10 between lo and hi (both > 0); a value <= 0 on the bottom edge */
+		double logLo = 0, logHi = 1;
 		double columns = 1;              /* pixel columns across, at least 1 */
+		void setRange(double low, double high, bool logScale) {
+			lo = low;
+			hi = high;
+			log = logScale && low > 0 && high > low;
+			if (log) {
+				logLo = std::log10(low);
+				logHi = std::log10(high);
+			}
+		}
 		double columnSeconds() const { return span / columns; }
 		double x(double t) const { return rect.left() + (t - t0) / span * rect.width(); }
-		double y(double v) const { return rect.bottom() - (v - lo) / (hi - lo) * rect.height(); }
+		double y(double v) const {
+			if (!log) return rect.bottom() - (v - lo) / (hi - lo) * rect.height();
+			return v > 0 ? rect.bottom() - (std::log10(v) - logLo) / (logHi - logLo) * rect.height() : rect.bottom();
+		}
 	};
 	/* The legend's chips at fixed places: a chip's width comes from its name,
 	 * its unit and room for the widest number the legend writes, never from the
@@ -354,6 +402,8 @@ private:
 	struct GridTicks {
 		double valueStep = 1, timeStep = 1;
 		QVector<double> values, times;
+		QVector<double> minor; /* Log: the faint lines at 2..9 of each decade */
+		bool labelMinor = false; /* Log over less than two decades: the faint lines labelled too */
 	};
 	GridTicks gridTicks(const Axes &axes) const;
 	/* the grid's lines (not when the card drew them) and its labels */
@@ -471,8 +521,21 @@ private:
 	double delay_ = 0, peakGap_ = 0; /* Smooth: the display delay, and the gap it covers */
 
 	/* the Y range; yInitialized_: Auto has a range to move from */
-	bool yAuto_ = true, yInitialized_ = false;
+	bool yAuto_ = true, yInitialized_ = false, yLog_ = false;
 	double yLo_ = 0, yHi_ = 1;
+	bool logShown() const { return yLog_ && !normalized_; } /* the Log scale drawn now */
+	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
+	mutable QStringList valueLabels_;
+	bool stripLog_ = false;          /* the memory strip's image drawn on the Log scale */
+
+	/* the totals since Clear: of the lines taken off the chart, by key, kept for when they come back (with their
+	 * name and unit: another line under that key starts at 0) */
+	struct KeptTotal {
+		QString name, unit;
+		double total = 0, t = NAN, v = 0;
+	};
+	QHash<int, KeptTotal> keptTotals_;
+	double totalsSince_ = NAN;
 
 	/* the cursors and the mouse */
 	bool cursorMode_ = false;
@@ -555,7 +618,9 @@ public:
 	void setNormalized(bool on) { view_->setNormalized(on); }
 	void setSmooth(bool on) { view_->setSmooth(on); }
 	void setYAuto() { view_->setYAuto(); }
-	void setYManual(double lo, double hi) { view_->setYManual(lo, hi); }
+	bool setYManual(double lo, double hi) { return view_->setYManual(lo, hi); }
+	void setYLog(bool on) { view_->setYLog(on); }
+	bool yLog() const { return view_->yLog(); }
 	bool yAuto() const { return view_->yAuto(); }
 	double yLo() const { return view_->yLo(); }
 	double yHi() const { return view_->yHi(); }
