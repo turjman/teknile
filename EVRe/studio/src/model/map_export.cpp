@@ -507,6 +507,47 @@ QString listLine(const QString &what, const QStringList &names) {
 	return out + QLatin1Char('\n');
 }
 
+/* an image: a packed struct with a member per register of regs in first..end - 1, in address order, gaps filled;
+ * each member's offset asserted */
+QString imageStruct(const QVector<const RegDef *> &regs, const QString &type, uint16_t first, uint16_t end, const QString &what,
+		Names &members, QHash<const RegDef *, QString> &memberOf, QStringList &asserts) {
+	QString s = QStringLiteral("\n/* %1 */\ntypedef struct __attribute__((packed)) {\n").arg(what);
+	uint16_t at = first;
+	for (const RegDef *defp : regs) {
+		const RegDef &def = *defp;
+		if (def.addr < first || def.addr >= end) continue;
+		if (def.addr > at)
+			s += QStringLiteral("\tuint8_t _gap_%1[%2]; /* %3..%4: no register */\n").arg(QString::number(at, 16)).arg(def.addr - at)
+					.arg(addrText(at), addrText(uint16_t(def.addr - 1)));
+		const QString member = members.take(memberName(def.name));
+		memberOf.insert(defp, member);
+		QString decl = cType(def.type) + QLatin1Char(' ') + member;
+		if (def.type == RegType::Bytes) decl += QStringLiteral("[%1]").arg(def.size);
+		if (def.hasDefault() && def.isNumeric()) decl += QStringLiteral(" = ") + rawLiteral(def, rawOf(def, def.defaultValue));
+		QStringList facts{ QStringLiteral("%1 %2").arg(addrText(def.addr), def.name) };
+		if (!def.unit.isEmpty()) facts << def.unit;
+		if (def.scale != 1.0 || def.offset != 0.0)
+			facts << QStringLiteral("shown = raw x %1").arg(number(def.scale))
+							+ (def.offset != 0.0 ? QStringLiteral(" + ") + number(def.offset) : QString());
+		if (!def.readable) facts << QStringLiteral("write-only");
+		if (def.write != WriteKind::Normal) facts << writeWord(def.write);
+		if (def.persist) facts << QStringLiteral("persist");
+		if (def.danger) facts << QStringLiteral("danger");
+		if (def.hasDefault() && def.isNumeric() && (def.scale != 1.0 || def.offset != 0.0))
+			facts << QStringLiteral("default %1").arg(number(def.defaultValue));
+		const int natural = typeSize(def.type);
+		if (natural > 1 && (def.addr - BANK_FIRST) % natural) facts << QStringLiteral("not aligned");
+		s += QStringLiteral("\t%1; /* %2 */\n").arg(decl, cComment(facts.join(QStringLiteral(", "))));
+		asserts << QStringLiteral("static_assert(offsetof(%1, %2) == 0x%3u, \"%4 at %5\");").arg(type, member)
+				.arg(def.addr - first, 0, 16).arg(cComment(def.name), addrText(def.addr));
+		at = uint16_t(def.addr + def.size);
+	}
+	if (end > at)
+		s += QStringLiteral("\tuint8_t _gap_%1[%2]; /* %3..%4: no register */\n").arg(QString::number(at, 16)).arg(end - at)
+				.arg(addrText(at), addrText(uint16_t(end - 1)));
+	return s + QStringLiteral("} %1;\n").arg(type);
+}
+
 } // namespace
 
 bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByteArray &out, QStringList &problems) {
@@ -644,41 +685,7 @@ bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByte
 	QHash<const RegDef *, QString> memberOf;
 	QStringList asserts;
 	auto image = [&](const QString &type, uint16_t first, uint16_t end, const QString &what) {
-		QString s = QStringLiteral("\n/* %1 */\ntypedef struct __attribute__((packed)) {\n").arg(what);
-		uint16_t at = first;
-		for (const RegDef *defp : regs) {
-			const RegDef &def = *defp;
-			if (def.addr < first || def.addr >= end) continue;
-			if (def.addr > at)
-				s += QStringLiteral("\tuint8_t _gap_%1[%2]; /* %3..%4: no register */\n").arg(QString::number(at, 16)).arg(def.addr - at)
-						.arg(addrText(at), addrText(uint16_t(def.addr - 1)));
-			const QString member = members.take(memberName(def.name));
-			memberOf.insert(defp, member);
-			QString decl = cType(def.type) + QLatin1Char(' ') + member;
-			if (def.type == RegType::Bytes) decl += QStringLiteral("[%1]").arg(def.size);
-			if (def.hasDefault() && def.isNumeric()) decl += QStringLiteral(" = ") + rawLiteral(def, rawOf(def, def.defaultValue));
-			QStringList facts{ QStringLiteral("%1 %2").arg(addrText(def.addr), def.name) };
-			if (!def.unit.isEmpty()) facts << def.unit;
-			if (def.scale != 1.0 || def.offset != 0.0)
-				facts << QStringLiteral("shown = raw x %1").arg(number(def.scale))
-								+ (def.offset != 0.0 ? QStringLiteral(" + ") + number(def.offset) : QString());
-			if (!def.readable) facts << QStringLiteral("write-only");
-			if (def.write != WriteKind::Normal) facts << writeWord(def.write);
-			if (def.persist) facts << QStringLiteral("persist");
-			if (def.danger) facts << QStringLiteral("danger");
-			if (def.hasDefault() && def.isNumeric() && (def.scale != 1.0 || def.offset != 0.0))
-				facts << QStringLiteral("default %1").arg(number(def.defaultValue));
-			const int natural = typeSize(def.type);
-			if (natural > 1 && (def.addr - BANK_FIRST) % natural) facts << QStringLiteral("not aligned");
-			s += QStringLiteral("\t%1; /* %2 */\n").arg(decl, cComment(facts.join(QStringLiteral(", "))));
-			asserts << QStringLiteral("static_assert(offsetof(%1, %2) == 0x%3u, \"%4 at %5\");").arg(type, member)
-					.arg(def.addr - first, 0, 16).arg(cComment(def.name), addrText(def.addr));
-			at = uint16_t(def.addr + def.size);
-		}
-		if (end > at)
-			s += QStringLiteral("\tuint8_t _gap_%1[%2]; /* %3..%4: no register */\n").arg(QString::number(at, 16)).arg(end - at)
-					.arg(addrText(at), addrText(uint16_t(end - 1)));
-		return s + QStringLiteral("} %1;\n").arg(type);
+		return imageStruct(regs, type, first, end, what, members, memberOf, asserts);
 	};
 	if (roSize) {
 		h += image(roType, BANK_FIRST, writeMin, QStringLiteral("%1..%2, read-only: the device writes it").arg(addrText(BANK_FIRST),
@@ -907,10 +914,11 @@ GuardEntry guardEntry(const RegDef &def) {
 	return entry;
 }
 
-bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QString &headerName, QByteArray &header,
-		QByteArray &source, QStringList &problems) {
-	problems.clear();
-	QVector<const RegDef *> regs;
+namespace {
+
+/* the registers of the Guard's table (a host writes them, in the device bank, the login's left out), in address
+ * order, each with its entry; what keeps one out of a table goes to problems */
+void guardRegisters(const DeviceMap &map, QVector<const RegDef *> &regs, QVector<GuardEntry> &entries, QStringList &problems) {
 	for (const RegDef &def : map.regs) {
 		if (!hostWrites(def)) continue;
 		if (def.addr >= RESERVED_FIRST && def.addr <= RESERVED_LAST) continue; /* the library's, never the table's */
@@ -924,8 +932,6 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 		else regs << &def;
 	}
 	std::stable_sort(regs.begin(), regs.end(), [](const RegDef *a, const RegDef *b) { return a->addr < b->addr; });
-	if (regs.isEmpty() && problems.isEmpty()) problems << QObject::tr("no register a host writes in the device bank 0xD000..0xDFFF");
-	QVector<GuardEntry> entries;
 	for (int i = 0; i < regs.size(); i++) {
 		if (i && regs[i]->addr < regs[i - 1]->addr + regs[i - 1]->size)
 			problems << QObject::tr("%1 (%2) overlaps %3 (%4)").arg(regs[i]->name, addrText(regs[i]->addr), regs[i - 1]->name,
@@ -933,58 +939,30 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 		entries << guardEntry(*regs[i]);
 		problems << entries.last().errors;
 	}
-	if (!problems.isEmpty()) return false;
+}
 
-	const QString upper = identifier(!options.prefix.isEmpty() ? options.prefix
-			: map.device.isEmpty() ? QStringLiteral("device") : map.device);
-	const QString lower = upper.toLower();
-	const QString table = lower + QStringLiteral("_table");
-	const QString device = cComment(map.device.isEmpty() ? QStringLiteral("Device") : map.device);
-	const QString from = options.source.isEmpty() ? QString() : QStringLiteral(", from %1").arg(cComment(options.source));
-	const QString command = QStringLiteral("evre export %1 --to guard").arg(options.source.isEmpty() ? QStringLiteral("MAP")
-			: cComment(options.source));
+/* the Guard's table as text: the typed raw limits, the value list and the entries (one line each) */
+struct GuardText {
+	QStringList constants, values, entries;
+};
 
-	/* the header: the table's name and the typed constants, safe to include anywhere */
-	const QString guard = upper + QStringLiteral("_GUARD_H");
-	QString h = QStringLiteral("/* %1: EVRe Guard's register checks for its map (%2)%3.\n"
-			" * Generated by %4. Change the map, not this file.\n"
-			" * EVRe Guard checks: size, type, limits, listed values, bits that must be 0.\n"
-			" * Still the device's: state rules, rules across registers, read-only bits\n"
-			" * inside a writable register, the effects of action and w1c, persistence. */\n")
-			.arg(device, map.format, from, command);
-	h += QStringLiteral("#ifndef %1\n#define %1\n\n#include <stdint.h>\n\n#include \"evre_guard_desc.h\"\n\n"
-			"#if !defined(EVRE_GUARD_TABLE_FORMAT) || EVRE_GUARD_TABLE_FORMAT != 1\n"
-			"#error \"this file is for EVRe Guard table format 1\"\n#endif\n\n").arg(guard);
-	h += QStringLiteral("extern const evre_guard_table_t %1;\n").arg(table);
+GuardText guardText(const QVector<const RegDef *> &regs, const QVector<GuardEntry> &entries, const QString &upper) {
+	GuardText out;
 	Names names;
-	QStringList constants;
+	int nValues = 0;
 	for (int i = 0; i < regs.size(); i++) {
 		const RegDef &def = *regs[i];
 		const GuardEntry &entry = entries[i];
 		const QString base = upper + QLatin1Char('_') + identifier(def.name);
 		auto constant = [&](const QString &suffix, double raw) {
-			constants << QStringLiteral("constexpr %1 %2 = %3;").arg(cType(def.type), names.take(base + suffix), rawLiteral(def, raw));
+			out.constants << QStringLiteral("constexpr %1 %2 = %3;").arg(cType(def.type), names.take(base + suffix), rawLiteral(def, raw));
 		};
 		if (entry.hasRawMin) constant(QStringLiteral("_RAW_MIN"), entry.rawMin);
 		if (entry.hasRawMax) constant(QStringLiteral("_RAW_MAX"), entry.rawMax);
-	}
-	if (!constants.isEmpty())
-		h += QStringLiteral("\n/* The map's limits, raw and typed, for the device's own clamps and static_asserts. */\n")
-				+ constants.join(QLatin1Char('\n')) + QLatin1Char('\n');
-	h += QStringLiteral("\n#endif /* %1 */\n").arg(guard);
-	header = h.toUtf8();
 
-	/* the source: the value list, the entries, the table */
-	QString c = QStringLiteral("/* %1: EVRe Guard's table (%2)%3.\n * Generated by %4. Change the map, not this file. */\n"
-			"#include \"%5\"\n").arg(device, map.format, from, command, headerName);
-	QStringList valueLines, entryLines;
-	int nValues = 0;
-	for (int i = 0; i < regs.size(); i++) {
-		const RegDef &def = *regs[i];
-		const GuardEntry &entry = entries[i];
 		const int first = nValues;
 		for (const auto &value : entry.values) {
-			valueLines << QStringLiteral("\t%1, /* %2: %3 */").arg(bits8(value.first), cComment(def.name), cComment(value.second));
+			out.values << QStringLiteral("\t%1, /* %2: %3 */").arg(bits8(value.first), cComment(def.name), cComment(value.second));
 			nValues++;
 		}
 		QString what;
@@ -1005,25 +983,265 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 			if (entry.zeroBits) what += QStringLiteral(", bits 0x%1 must be 0").arg(QString::number(entry.zeroBits, 16).toUpper());
 			else if (!entry.hasRawMin && !entry.hasRawMax) what = QStringLiteral("the type's full range");
 			if (!entry.values.isEmpty()) {
-				QStringList names;
-				for (const auto &value : entry.values) names << value.second;
-				what += QStringLiteral(", or ") + names.join(QStringLiteral(", "));
+				QStringList listedNames;
+				for (const auto &value : entry.values) listedNames << value.second;
+				what += QStringLiteral(", or ") + listedNames.join(QStringLiteral(", "));
 			}
 		}
-		entryLines << QStringLiteral("\t{ 0x%1u, %2u, %3, %4, %5u, 0u, %6u, 0u, %7, %8, %9 }, /* %10: %11 */")
+		out.entries << QStringLiteral("\t{ 0x%1u, %2u, %3, %4, %5u, 0u, %6u, 0u, %7, %8, %9 }, /* %10: %11 */")
 				.arg(QString::number(def.addr, 16).toUpper()).arg(def.size).arg(guardType(def.type))
 				.arg(entry.closed ? QStringLiteral("EVRE_GUARD_CLOSED") : QStringLiteral("0u")).arg(entry.values.size())
 				.arg(entry.values.isEmpty() ? 0 : first).arg(bits8(def.isNumeric() ? entry.min : 0), bits8(def.isNumeric() ? entry.max : 0),
 						bits8(entry.zeroBits), cComment(def.name), cComment(what));
 	}
-	if (!valueLines.isEmpty())
-		c += QStringLiteral("\nstatic const uint32_t %1_values[] = {\n%2\n};\n").arg(lower, valueLines.join(QLatin1Char('\n')));
-	c += QStringLiteral("\nstatic const evre_guard_desc_t %1_regs[] = {\n"
-			"\t/* addr, size, type, flags, n_values, spare1, first_value, spare2, min, max, zero_bits */\n%2\n};\n")
-			.arg(lower, entryLines.join(QLatin1Char('\n')));
+	return out;
+}
+
+const char *const GUARD_FIELDS = "\t/* addr, size, type, flags, n_values, spare1, first_value, spare2, min, max, zero_bits */\n";
+const char *const GUARD_FORMAT_CHECK = "#if !defined(EVRE_GUARD_TABLE_FORMAT) || EVRE_GUARD_TABLE_FORMAT != 1\n"
+		"#error \"this file is for EVRe Guard table format 1\"\n#endif\n";
+
+} // namespace
+
+bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QString &headerName, QByteArray &header,
+		QByteArray &source, QStringList &problems) {
+	problems.clear();
+	QVector<const RegDef *> regs;
+	QVector<GuardEntry> entries;
+	guardRegisters(map, regs, entries, problems);
+	if (regs.isEmpty() && problems.isEmpty()) problems << QObject::tr("no register a host writes in the device bank 0xD000..0xDFFF");
+	if (!problems.isEmpty()) return false;
+
+	const QString upper = identifier(!options.prefix.isEmpty() ? options.prefix
+			: map.device.isEmpty() ? QStringLiteral("device") : map.device);
+	const QString lower = upper.toLower();
+	const QString table = lower + QStringLiteral("_table");
+	const QString device = cComment(map.device.isEmpty() ? QStringLiteral("Device") : map.device);
+	const QString from = options.source.isEmpty() ? QString() : QStringLiteral(", from %1").arg(cComment(options.source));
+	const QString command = QStringLiteral("evre export %1 --to guard").arg(options.source.isEmpty() ? QStringLiteral("MAP")
+			: cComment(options.source));
+	const GuardText text = guardText(regs, entries, upper);
+
+	/* the header: the table's name and the typed constants, safe to include anywhere */
+	const QString guard = upper + QStringLiteral("_GUARD_H");
+	QString h = QStringLiteral("/* %1: EVRe Guard's register checks for its map (%2)%3.\n"
+			" * Generated by %4. Change the map, not this file.\n"
+			" * EVRe Guard checks: size, type, limits, listed values, bits that must be 0.\n"
+			" * Still the device's: state rules, rules across registers, read-only bits\n"
+			" * inside a writable register, the effects of action and w1c, persistence. */\n")
+			.arg(device, map.format, from, command);
+	h += QStringLiteral("#ifndef %1\n#define %1\n\n#include <stdint.h>\n\n#include \"evre_guard_desc.h\"\n\n").arg(guard)
+			+ QLatin1String(GUARD_FORMAT_CHECK) + QLatin1Char('\n');
+	h += QStringLiteral("extern const evre_guard_table_t %1;\n").arg(table);
+	if (!text.constants.isEmpty())
+		h += QStringLiteral("\n/* The map's limits, raw and typed, for the device's own clamps and static_asserts. */\n")
+				+ text.constants.join(QLatin1Char('\n')) + QLatin1Char('\n');
+	h += QStringLiteral("\n#endif /* %1 */\n").arg(guard);
+	header = h.toUtf8();
+
+	/* the source: the value list, the entries, the table */
+	QString c = QStringLiteral("/* %1: EVRe Guard's table (%2)%3.\n * Generated by %4. Change the map, not this file. */\n"
+			"#include \"%5\"\n").arg(device, map.format, from, command, headerName);
+	if (!text.values.isEmpty())
+		c += QStringLiteral("\nstatic const uint32_t %1_values[] = {\n%2\n};\n").arg(lower, text.values.join(QLatin1Char('\n')));
+	c += QStringLiteral("\nstatic const evre_guard_desc_t %1_regs[] = {\n%2%3\n};\n")
+			.arg(lower, QLatin1String(GUARD_FIELDS), text.entries.join(QLatin1Char('\n')));
 	c += QStringLiteral("\nconst evre_guard_table_t %1 = { %2_regs, %3, %4u, %5u };\n").arg(table, lower,
-			valueLines.isEmpty() ? QStringLiteral("nullptr") : lower + QStringLiteral("_values")).arg(regs.size()).arg(nValues);
+			text.values.isEmpty() ? QStringLiteral("nullptr") : lower + QStringLiteral("_values")).arg(regs.size()).arg(text.values.size());
 	source = c.toUtf8();
+	return true;
+}
+
+bool exportDeviceTable11(const DeviceMap &map, const ExportOptions &options, QByteArray &out, QStringList &problems) {
+	problems.clear();
+	/* the device bank's registers in address order; the protocol bank is the library's own */
+	QVector<const RegDef *> regs;
+	for (const RegDef &def : map.regs) {
+		if (def.addr >= RESERVED_FIRST && def.addr <= RESERVED_LAST) continue;
+		if (def.addr < BANK_FIRST)
+			problems << QObject::tr("%1 (%2): outside 0xD000..0xDFFF, the only device bank the EVRe library serves")
+					.arg(def.name, addrText(def.addr));
+		else if (int(def.addr) + def.size - 1 > BANK_LAST)
+			problems << QObject::tr("%1 (%2): runs past 0xDFFF, the end of the device bank").arg(def.name, addrText(def.addr));
+		else regs << &def;
+	}
+	std::stable_sort(regs.begin(), regs.end(), [](const RegDef *a, const RegDef *b) { return a->addr < b->addr; });
+	if (regs.isEmpty() && problems.isEmpty()) problems << QObject::tr("no register in the device bank 0xD000..0xDFFF");
+	for (int i = 1; i < regs.size(); i++)
+		if (regs[i]->addr < regs[i - 1]->addr + regs[i - 1]->size)
+			problems << QObject::tr("%1 (%2) overlaps %3 (%4)").arg(regs[i]->name, addrText(regs[i]->addr), regs[i - 1]->name,
+					addrText(regs[i - 1]->addr));
+	/* the Guard's entries, from the same registers: what keeps one out of the table keeps the export out */
+	QVector<const RegDef *> guarded;
+	QVector<GuardEntry> entries;
+	QStringList guardProblems;
+	guardRegisters(map, guarded, entries, guardProblems);
+	for (const QString &problem : guardProblems)
+		if (!problems.contains(problem)) problems << problem;
+	if (!problems.isEmpty()) return false;
+
+	const QString upper = identifier(!options.prefix.isEmpty() ? options.prefix
+			: map.device.isEmpty() ? QStringLiteral("device") : map.device);
+	const QString lower = upper.toLower();
+	const QString imageType = lower + QStringLiteral("_image_t");
+	const uint16_t readMax = uint16_t(regs.last()->addr + regs.last()->size - 1);
+	const auto hex = [](uint32_t value) { return QStringLiteral("0x%1u").arg(value, 0, 16); };
+
+	/* the ranges: runs of one kind in address order. A gap between two writable registers is writable (one block
+	 * write may cross it, and the Guard refuses its bytes); any other gap is read-only, as 1.0's boundary made it */
+	struct Range {
+		uint16_t start, end;
+		bool writable;
+	};
+	QVector<Range> ranges;
+	for (int i = 0; i < regs.size(); i++) {
+		const bool writable = hostWrites(*regs[i]);
+		const uint16_t from = i ? uint16_t(regs[i - 1]->addr + regs[i - 1]->size) : BANK_FIRST;
+		const uint16_t end = uint16_t(regs[i]->addr + regs[i]->size);
+		if (from < regs[i]->addr) { /* a gap before this register */
+			const bool gapWritable = writable && i && hostWrites(*regs[i - 1]);
+			if (!ranges.isEmpty() && ranges.last().writable == gapWritable) ranges.last().end = regs[i]->addr;
+			else ranges << Range{ from, regs[i]->addr, gapWritable };
+		}
+		if (!ranges.isEmpty() && ranges.last().writable == writable) ranges.last().end = end;
+		else ranges << Range{ regs[i]->addr, end, writable };
+	}
+
+	/* what the map asks and neither the library nor the Guard does, for the comment on top */
+	QStringList clamped, actions, w1c, roBits, writeOnly, persist;
+	for (const RegDef *defp : regs) {
+		const RegDef &def = *defp;
+		const bool writes = hostWrites(def);
+		if (writes && def.clamps && def.isNumeric() && (def.hasMin() || def.hasMax())) clamped << def.name;
+		if (def.write == WriteKind::Action) actions << def.name;
+		if (def.write == WriteKind::WriteOneToClear) w1c << def.name;
+		for (const BitField &field : def.fields) {
+			const QString name = def.name + QLatin1Char('.') + field.name;
+			if (field.access == FieldAccess::WriteOneToClear && def.write != WriteKind::WriteOneToClear) w1c << name;
+			if (field.access == FieldAccess::ReadOnly && writes) roBits << name;
+		}
+		if (!def.readable) writeOnly << def.name;
+		if (def.persist) persist << def.name;
+	}
+
+	const QString command = QStringLiteral("evre export %1 --to table --lib 1.1").arg(options.source.isEmpty() ? QStringLiteral("MAP")
+			: cComment(options.source));
+	QString h = QStringLiteral("/* %1: the device side of its EVRe register map (%2)%3.\n"
+			" * Generated by %4. Change the map, not this file.\n *\n")
+			.arg(cComment(map.device.isEmpty() ? QStringLiteral("Device") : map.device), map.format,
+					options.source.isEmpty() ? QString() : QStringLiteral(", from %1").arg(cComment(options.source)), command);
+	h += QStringLiteral(" * For the EVRe device library 1.1 (lib/EVRe.h) with EVRe Guard's register checks\n"
+			" * (lib/guard/evre_guard_desc.h). The device bank %1..%2 is served from one image, in address\n"
+			" * order, through %3: one per run of read-only or writable registers, so a read-only\n"
+			" * register may come after a writable one. The image holds the values as they go on the wire (raw,\n"
+			" * little endian): where a register has a scale, shown = raw x scale + offset. A gap reads 0.\n *\n")
+			.arg(addrText(BANK_FIRST), addrText(readMax), ranges.size() == 1 ? QStringLiteral("one range")
+					: QStringLiteral("%1 ranges").arg(ranges.size()));
+	h += QStringLiteral(" * In one source file of the device:\n *\n"
+			" *     %1 image;  // the device keeps its read-only registers up to date; the host writes the rest\n")
+			.arg(imageType);
+	if (!guarded.isEmpty())
+		h += QStringLiteral(" *     evre_guard_check_t check;\n");
+	h += QStringLiteral(" *     uint8_t protocolConfigure(base_t *dev) { return %1_bind(dev, &image); }\n").arg(lower);
+	if (!guarded.isEmpty())
+		h += QStringLiteral(" *     after protocolInit():  %1_check_init(&check, &dev)  (a bad table: the device bank takes no write)\n"
+				" *     the write handler:     evre_guard_check_write(&check, d, off, data, cnt), or with a login\n"
+				" *                            evre_guard_write_checked(&guard, &check, d, off, data, cnt)\n").arg(lower);
+	h += QStringLiteral(" *\n * The ranges are set in protocolConfigure(): protocolInit() checks a range table only then.\n");
+	if (!guarded.isEmpty())
+		h += QStringLiteral(" * EVRe Guard refuses a write past a register's limits, outside a closed set or with a reserved\n"
+				" * bit set (15), and part of a number or a byte no register covers (3): then nothing is stored.\n"
+				" * A write it lets through lands in the image at once.\n");
+	else
+		h += QStringLiteral(" * No register a host writes: no EVRe Guard table.\n");
+	if (!clamped.isEmpty() || !actions.isEmpty() || !w1c.isEmpty() || !roBits.isEmpty() || !writeOnly.isEmpty()
+			|| !persist.isEmpty() || map.loginAddr) {
+		h += QStringLiteral(" *\n * What the map says and neither the library nor the Guard does, the device's part:\n");
+		if (!clamped.isEmpty())
+			h += QStringLiteral(" *   clamp       the Guard takes any value of the type; clamp it to the _RAW_ limits:\n")
+					+ listLine(QString(), clamped);
+		if (!actions.isEmpty()) h += QStringLiteral(" *   action      do it, then set the register back to idle:\n") + listLine(QString(), actions);
+		if (!w1c.isEmpty())
+			h += QStringLiteral(" *   w1c         a 1 written clears the bit, a 0 leaves it (the library stores what was written):\n")
+					+ listLine(QString(), w1c);
+		if (!roBits.isEmpty())
+			h += QStringLiteral(" *   ro bits     read-only bits of a writable register: put them back after a write:\n")
+					+ listLine(QString(), roBits);
+		if (!writeOnly.isEmpty())
+			h += QStringLiteral(" *   write-only  the library still answers a read, with what was written:\n") + listLine(QString(), writeOnly);
+		if (!persist.isEmpty())
+			h += QStringLiteral(" *   persist     keep across a reset (EEPROM, flash) and load at start:\n") + listLine(QString(), persist);
+		if (map.loginAddr)
+			h += QStringLiteral(" *   login       the map's login at %1: EVRe Guard part 1 (lib/guard/evre_guard.h)\n")
+					.arg(addrText(map.loginAddr));
+	}
+	h += QStringLiteral(" *\n * Value names and bit fields: the C header export has them (_POS, _MSK).\n */\n");
+	const QString guard = upper + QStringLiteral("_TABLE_H");
+	h += QStringLiteral("#ifndef %1\n#define %1\n\n#include <stddef.h>\n#include <stdint.h>\n\n#include \"EVRe.h\"\n").arg(guard);
+	if (!guarded.isEmpty()) h += QStringLiteral("#include \"evre_guard_desc.h\"\n\n") + QLatin1String(GUARD_FORMAT_CHECK);
+	h += QLatin1Char('\n');
+	if (map.deviceId) h += QStringLiteral("#define %1_ID %2\n").arg(upper, hex(map.deviceId));
+	h += QStringLiteral("#define %1_SLAVE %2u\n").arg(upper).arg(map.slave);
+	h += QStringLiteral("#define %1_READ_MAX %2 /* the bank's last byte */\n").arg(upper, hex(readMax));
+	h += QStringLiteral("#define %1_SIZE %2u\n").arg(upper).arg(readMax + 1 - BANK_FIRST);
+	h += QStringLiteral("#define %1_RANGES %2u\n").arg(upper).arg(ranges.size());
+
+	/* the image: a member per register */
+	Names members;
+	QHash<const RegDef *, QString> memberOf;
+	QStringList asserts;
+	h += imageStruct(regs, imageType, BANK_FIRST, uint16_t(readMax + 1), QStringLiteral("%1..%2: the device bank").arg(addrText(BANK_FIRST),
+			addrText(readMax)), members, memberOf, asserts);
+	asserts.prepend(QStringLiteral("static_assert(sizeof(%1) == %2_SIZE, \"the image\");").arg(imageType, upper));
+	h += QLatin1Char('\n') + asserts.join(QLatin1Char('\n')) + QLatin1Char('\n');
+
+	h += QStringLiteral("\n/* The device bank served from the image: return it from protocolConfigure(), where protocolInit()\n"
+			" * checks the ranges. One range per run of read-only or writable registers. */\n");
+	h += QStringLiteral("inline uint8_t %1_bind(base_t *dev, %2 *image) {\n\tstatic evre_range_t ranges[%3_RANGES];\n"
+			"\tif (dev == nullptr || image == nullptr) return INSTANCE_IS_NULL;\n"
+			"\tuint8_t *p = reinterpret_cast<uint8_t *>(image);\n").arg(lower, imageType, upper);
+	for (int i = 0; i < ranges.size(); i++) {
+		const Range &range = ranges[i];
+		h += QStringLiteral("\tranges[%1] = { %2, %3, p + %4, %5 }; /* %6..%7, %8 */\n").arg(i).arg(hex(range.start))
+				.arg(hex(uint16_t(range.end - range.start)), hex(uint16_t(range.start - BANK_FIRST)), range.writable ? QStringLiteral("1u")
+						: QStringLiteral("0u"), addrText(range.start), addrText(uint16_t(range.end - 1)),
+						range.writable ? QStringLiteral("read-write") : QStringLiteral("read-only"));
+	}
+	h += QStringLiteral("\tdev->SALVE_ID_REG = %1_SLAVE;\n").arg(upper);
+	if (map.deviceId) h += QStringLiteral("\tdev->DEVICE_ID = %1_ID;\n").arg(upper);
+	h += QStringLiteral("\tdev->D_RANGES = ranges;\n\tdev->D_RANGE_CNT = %1_RANGES;\n\treturn NO_ERROR;\n}\n").arg(upper);
+
+	if (!guarded.isEmpty()) {
+		const GuardText text = guardText(guarded, entries, upper);
+		if (!text.constants.isEmpty())
+			h += QStringLiteral("\n/* The map's limits, raw and typed, for the device's own clamps and static_asserts. */\n")
+					+ text.constants.join(QLatin1Char('\n')) + QLatin1Char('\n');
+		/* in an inline function: one table for the whole program, whichever files include this one; each entry tied
+		 * to its member, so the image and the table cannot drift apart */
+		h += QStringLiteral("\n/* EVRe Guard's table: an entry for each register a host writes (the login's aside), each tied to\n"
+				" * its member of the image. */\ninline const evre_guard_table_t *%1_guard_table() {\n").arg(lower);
+		const auto inside = [](const QStringList &lines) { /* one tab more: in the function */
+			QStringList more;
+			for (const QString &line : lines) more << QLatin1Char('\t') + line;
+			return more.join(QLatin1Char('\n'));
+		};
+		if (!text.values.isEmpty())
+			h += QStringLiteral("\tstatic constexpr uint32_t values[] = {\n%1\n\t};\n").arg(inside(text.values));
+		h += QStringLiteral("\tstatic constexpr evre_guard_desc_t regs[] = {\n\t%1%2\n\t};\n")
+				.arg(QLatin1String(GUARD_FIELDS), inside(text.entries));
+		for (int i = 0; i < guarded.size(); i++) {
+			const QString member = memberOf.value(guarded[i]);
+			h += QStringLiteral("\tstatic_assert(regs[%1].addr == 0xd000u + offsetof(%2, %3)\n\t\t\t&& regs[%1].size == sizeof(%2::%3), "
+					"\"%4: its entry is its member\");\n").arg(i).arg(imageType, member, cComment(guarded[i]->name));
+		}
+		h += QStringLiteral("\tstatic constexpr evre_guard_table_t table = { regs, %1, %2u, %3u };\n\treturn &table;\n}\n")
+				.arg(text.values.isEmpty() ? QStringLiteral("nullptr") : QStringLiteral("values")).arg(guarded.size()).arg(text.values.size());
+		h += QStringLiteral("\n/* After protocolInit(): the table checked against the device's ranges. */\n"
+				"inline uint8_t %1_check_init(evre_guard_check_t *check, const base_t *dev) {\n"
+				"\treturn evre_guard_check_init(check, %1_guard_table(), dev);\n}\n").arg(lower);
+	}
+	h += QStringLiteral("\n#endif /* %1 */\n").arg(guard);
+	out = h.toUtf8();
 	return true;
 }
 

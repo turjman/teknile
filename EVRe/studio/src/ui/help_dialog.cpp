@@ -439,7 +439,8 @@ max… Click one to go there.</li>
 <li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups.</li>
 <li><b>Export</b>: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
 the device, and the <i>device table</i> for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones), and the <i>EVRe Guard
+bind function; library 1.0 needs every read-only register below the writable ones), the <i>device table for
+library 1.1</i> (one image on ranges, in any order, with EVRe Guard's table tied to it), and the <i>EVRe Guard
 table</i> a device checks every host write against (its .h and .cpp). <b>Import CSV…</b> reads a sheet back.</li>
 </ul>
 <p>On the Registers tab, <b>+ Register</b> and <i>Edit definition…</i> come here. The live values stay while a

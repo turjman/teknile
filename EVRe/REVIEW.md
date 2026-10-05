@@ -105,6 +105,14 @@ to G.6, each with a pull request into `evre-1.1`.
   tables), 34 mutants (four new: the flag or `zero_bits` ignored, init letting either through), the table test's
   closed and reserved registers, and the GUI step `guardKeys`. Measured on the Cortex-M7 at `-Os`: part 2 is 1404 B
   of code (46 B more), `evre_guard_check_write` still 56 B of stack.
+- **G.5** (the addition A3, plan phase P5): `evre export MAP --to table --lib 1.1` and the Map editor's item: one
+  image of the device bank on `D_RANGES` (one range per run of read-only or writable registers, so the 1.0 rule
+  "read-only first" goes), the Guard's entries of `--to guard` from the same registers in an inline function, each
+  tied to its member of the image by a `static_assert` (address and size), and `P_check_init()`. `--to table` alone
+  stays byte for byte (`tests/golden/example_device_table.h`). Tests: `guard_table_test.py` section 7 (the test map,
+  which 1.0 refuses, bound by the table and driven with every vector of the Guard's test, each answer as on the
+  hand-made ranges; an entry moved off its member fails the build naming it; the header on the build matrix; the
+  golden `example_device_table_11.h`; `--check` and `--lib`'s misuse), and the GUI step `guardKeys`.
 
 ## After review round 2: your decisions D-25 and N11
 

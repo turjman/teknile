@@ -60,6 +60,10 @@ must know, and `REVIEW.md` holds the review and its decisions.
   register that clamps; `closed` and `reserved_zero` are refused with 15.
 - The hosts ask before (the window) or refuse (the API, `evre`, the Python package) a value outside a closed set or
   with a reserved bit set; the Guard table writes `EVRE_GUARD_CLOSED` and `zero_bits` from the two keys.
+- `evre export MAP --to table --lib 1.1` and the Map editor's **Export > Device table for library 1.1, with EVRe
+  Guard**: one image of the device bank served through ranges (one per run of read-only or writable registers, so
+  their order is free) and EVRe Guard's table from the same registers, each entry tied to its member of the image
+  by a `static_assert`. `--to table` alone writes the table for 1.0 as before, byte for byte.
 - The C header and the device table write an `f32` limit past the largest float as the largest (it was `inf`).
 - EVRe Studio, `evre` and the Python package name code 13 *login required*. A register refused with 13 is asked again
   at the next poll (only 3, 4 and 5 mark it *not available*), and the Studio does not log in again by itself: the Log

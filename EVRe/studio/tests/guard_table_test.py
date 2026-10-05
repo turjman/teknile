@@ -23,6 +23,11 @@
    tests/golden/example_device_table.h byte for byte.
 6. The generated table compiled on the build matrix with -Wall -Wextra -Wpedantic -Werror: g++ as C++11 to C++20,
    and -m32, arm-none-eabi-g++ (Cortex-M7, Cortex-M0) and avr-g++ where they are there (or named on --skip).
+7. --to table --lib 1.1: the test map (with its login register), which 1.0 refuses for its read-only register after
+   a writable one, exported as one image on ranges with the Guard's entries; a device bound by it answers every
+   vector of 1. as the device of 1. does; its ranges are one per run; an entry moved off its member fails the build
+   with that register's name; the header on the build matrix; --check; --lib's misuse; example_device.json equals
+   tests/golden/example_device_table_11.h byte for byte.
 Without the library or g++ the compile parts say SKIP.
 Exit code: 0 all passed, 1 a check failed, 2 a program is missing."""
 import argparse
@@ -239,6 +244,21 @@ int main() {
 	return failed ? 1 : 0;
 }
 '''
+
+# 7: the same device on library 1.1's table (ranges, the image and the Guard's entries in one header). The map
+# gets its login register, so the image holds it and a range serves it.
+MAP11 = dict(MAP, registers=MAP['registers'] + [
+    {"addr": "0xD030", "name": "LOGIN", "type": "bytes", "size": 8, "access": "wo"}])
+PROGRAM11 = PROGRAM.replace('#include "guard_test_guard.h"', '#include "guard_test_table.h"').replace(
+    'static uint8_t ro[4], rw[0x26], loginMemory[8];\n'
+    'static const evre_range_t ranges[] = { { 0xD000, 4, ro, 0 }, { 0xD004, 0x26, rw, 1 }, { 0xD030, 8, loginMemory, 1 } };\n',
+    'static guard_test_image_t image;\n'
+    'uint8_t protocolConfigure(base_t *d) { return guard_test_bind(d, &image); }\n').replace(
+    '\tdev.D_RANGES = ranges;\n\tdev.D_RANGE_CNT = 3;\n', '').replace(
+    'evre_guard_check_init(&check, &guard_test_table, &dev)', 'guard_test_check_init(&check, &dev)').replace(
+    'sizeof rw', 'sizeof image').replace('before, rw, sizeof', 'before, &image, sizeof').replace(
+    'int main() {', 'int main() {\n\tresult(GUARD_TEST_RANGES == 4u, "[1.1] four ranges: UPTIME, TEMP_SET .. CLEAR, STATUS_RO, SPEED '
+    '.. the login");')
 
 # keep_limits (the device table) against the Guard, value by value; the table knows neither a
 # closed set nor reserved bits, so COMMAND and CTRL stay out
@@ -496,6 +516,57 @@ def main():
             check(builds and not bad, 'the generated table on the build matrix: %d builds, -Wall -Wextra -Wpedantic -Werror, '
                   '%d failed' % (builds, bad))
 
+            # 7. library 1.1's table: the same vectors through the image on ranges
+            r10, _ = export(cli, folder, MAP11, 'guard_test', 'table')
+            r, table11 = export(cli, folder, MAP11, 'guard_test', 'table', ('--lib', '1.1'))
+            check(r10.returncode == 1 and 'read-only but comes after' in r10.stderr and r.returncode == 0,
+                  '--to table refuses the test map (STATUS_RO after a writable register), --lib 1.1 exports it (%s)'
+                  % r.stderr.strip()[:200])
+            text11 = open(table11, encoding='utf-8').read() if os.path.exists(table11) else ''
+            check('D_RANGES = ranges' in text11 and 'D000 = ' not in text11 and 'keep_limits' not in text11
+                  and set(entries(text11)) == set(got) and 'LOGIN: its entry' not in text11,
+                  '[1.1] the device bank on ranges, no pointer table and no keep_limits; the Guard\'s entries are '
+                  '--to guard\'s, the login\'s aside')
+            with open(os.path.join(folder, 'program11.cpp'), 'w') as f:
+                f.write(PROGRAM11)
+            c, run = compile_run(cc, folder, lib, [os.path.join(folder, 'program11.cpp')], 'program11', ['-Wpedantic'])
+            check(c.returncode == 0, '[1.1] the device bound by the table builds (-Wall -Wextra -Wpedantic -Werror) %s'
+                  % c.stderr.strip()[:600])
+            if run:
+                for line in run.stdout.splitlines():
+                    if line.startswith(('PASS', 'FAIL')):
+                        check(line.startswith('PASS'), '[1.1 device] ' + line.split(' ', 1)[1])
+                check(run.returncode == 0, '[1.1] the device program passed: every vector answered as on the device of 1.')
+            # an entry off its member: the build fails and names the register
+            moved = text11.replace('{ 0xD006u, 1u, EVRE_GUARD_U8,', '{ 0xD007u, 1u, EVRE_GUARD_U8,')
+            moved_path = os.path.join(folder, 'moved_table.h')
+            with open(moved_path, 'w', encoding='utf-8') as f:
+                f.write(moved)
+            with open(os.path.join(folder, 'moved.cpp'), 'w') as f:
+                f.write('#include "moved_table.h"\n')
+            r = subprocess.run([cc, '-std=c++11', '-I', folder, '-I', lib, '-I', os.path.join(lib, 'guard'), '-c',
+                                os.path.join(folder, 'moved.cpp'), '-o', os.devnull], capture_output=True, text=True)
+            check(moved != text11 and r.returncode != 0 and 'LEVEL: its entry is its member' in r.stderr,
+                  '[1.1] an entry moved off its member (LEVEL at 0xD007): the build fails and names LEVEL')
+            # the header on the build matrix
+            with open(os.path.join(folder, 'uses11.cpp'), 'w') as f:
+                f.write('#include "guard_test_table.h"\n')
+            builds = bad = 0
+            for name, compiler, flags, stds in matrix:
+                if name in skip or not shutil.which(compiler):
+                    continue
+                for std in stds:
+                    for opt in ('-O0', '-Os'):
+                        builds += 1
+                        r = subprocess.run([compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror',
+                                           '-I', folder, '-I', lib, '-I', os.path.join(lib, 'guard'), '-c',
+                                           os.path.join(folder, 'uses11.cpp'), '-o', os.devnull], capture_output=True, text=True)
+                        if r.returncode:
+                            bad += 1
+                            print('     %s %s %s: %s' % (compiler, std, opt, r.stderr.strip()[:300]))
+            check(builds and not bad, '[1.1] the table on the build matrix: %d builds, -Wall -Wextra -Wpedantic -Werror, '
+                  '%d failed' % (builds, bad))
+
         # the export errors, each on its map
         def bad_map(**keys):
             reg = dict({'addr': '0xD010', 'name': 'X', 'type': 'u8', 'access': 'rw'}, **keys)
@@ -548,6 +619,20 @@ def main():
                            capture_output=True, text=True)
         same = r.returncode == 0 and os.path.exists(golden) and open(out, 'rb').read() == open(golden, 'rb').read()
         check(same, '--to table of maps/example_device.json equals tests/golden/example_device_table.h byte for byte')
+        golden11 = os.path.join(HERE, 'golden', 'example_device_table_11.h')
+        example = os.path.join(HERE, '..', 'maps', 'example_device.json')
+        r = subprocess.run([cli, 'export', example, '--to', 'table', '--lib', '1.1', '-o', out], capture_output=True, text=True)
+        same = r.returncode == 0 and os.path.exists(golden11) and open(out, 'rb').read() == open(golden11, 'rb').read()
+        check(same, '--to table --lib 1.1 of maps/example_device.json equals tests/golden/example_device_table_11.h byte '
+              'for byte')
+        fresh = subprocess.run([cli, 'export', example, '--to', 'table', '--lib', '1.1', '-o', out, '--check'],
+                               capture_output=True).returncode
+        older = subprocess.run([cli, 'export', example, '--to', 'table', '-o', out, '--check'], capture_output=True).returncode
+        misuse = [subprocess.run([cli, 'export', example] + extra, capture_output=True).returncode
+                  for extra in (['--to', 'table', '--lib', '1.2'], ['--to', 'h', '--lib', '1.1'])]
+        check((fresh, older, misuse) == (0, 1, [2, 2]),
+              '--lib 1.1 with --check: 0 when fresh, 1 against the 1.0 table; --lib 1.2, or --lib with --to h: 2 (%s)'
+              % [fresh, older, misuse])
     print('\n%d passed, %d failed' % (passed, failed))
     return 0 if failed == 0 else 1
 

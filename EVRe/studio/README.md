@@ -41,7 +41,8 @@ EVRe is a protocol of **teknile**.
 - **Export** for the people and programs that implement or use the device: a Markdown specification (with ASCII
   bit diagrams), a C header, a Python module, CSV; CSV back in. A JSON Schema of the format for other tools. For
   firmware on the EVRe device library, a **device table**: the register images as packed structs, their addresses
-  checked at compile time, and the function that serves them (`evre export map.json --to table`).
+  checked at compile time, and the function that serves them (`evre export map.json --to table`); for library 1.1,
+  one image on ranges with EVRe Guard's table tied to it (`--to table --lib 1.1`).
 - **English and Arabic** (العربية, right to left; the chart, numbers and register names stay left to right), the Help
   pages too; chosen at the bottom of the sidebar.
 - **Chart** like an oscilloscope: memory depth apart from the view, Hold / Live, a memory strip, cursors A and B,
@@ -160,13 +161,13 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (395 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus, auto send and login required steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (396 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus, auto send and login required steps) |
 | `evre_map_test` | the map files without a window (21 tests): saved byte for byte, edits, overlays, keys, checks, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema (needs the `jsonschema` package) |
 | `tests/cli_test.py` | the `evre` command line end to end (38 checks), against its own fake device, a bus of two devices on `evre_fake_fast` and a device whose login is required |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes (30 checks) |
 | `tests/device_table_test.py` | the device table export compiled with the EVRe library and run (24 checks; needs `g++` and the library) |
-| `tests/guard_table_test.py` | the EVRe Guard table export compiled with the library and the Guard, and driven at every limit's edges (103 checks; needs `g++` and the library) |
+| `tests/guard_table_test.py` | the EVRe Guard table export compiled with the library and the Guard, and driven at every limit's edges (174 checks; needs `g++` and the library) |
 | `python/tests/test_evre.py` | the Python package: frames, maps, overlays, answers matched to their requests, a session against `evre-sim`, and a bus on `evre_fake_fast` |
 | `tests/api_test.py` | the API end to end, in three modes: `readonly`, `writes`, `danger` (24, 25 and 25 checks) |
 | `evre_probe` | the protocol core without the window, for checking a real device; it only reads, apart from the login token when `EVRE_TOKEN` is set |
