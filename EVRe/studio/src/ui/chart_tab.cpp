@@ -177,13 +177,14 @@ void ChartTab::writePerfLine() {
 	const double seconds = std::max(1e-3, perfClock_.restart() / 1000.0);
 	const double frames = std::max(1, p.frames);
 	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
-			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 | polls %17/s\n")
+			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s\n")
 			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
 			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
 			.arg(p.bin / frames, 0, 'f', 2).arg(p.lines / frames, 0, 'f', 2).arg(p.segments / frames, 0, 'f', 2)
 			.arg(p.present / frames, 0, 'f', 2).arg(p.marks / frames, 0, 'f', 2).arg(p.strip / frames, 0, 'f', 2)
 			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
-			.arg(measuresTimed_).arg(double(pollsSince_) / seconds, 0, 'f', 0);
+			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0);
+	measureThreadMs_ = 0;
 	measureMs_ = 0;
 	measuresTimed_ = 0;
 	pollsSince_ = 0;
@@ -609,7 +610,7 @@ void ChartTab::connectControls() {
 	});
 	measureTimer_.setInterval(250);
 	connect(&measureTimer_, &QTimer::timeout, this, [this] {
-		if (shown_ && measureButton_->isChecked()) updateMeasures();
+		if (shown_ && measureButton_->isChecked()) measureTick();
 	});
 	measureTimer_.start();
 
@@ -1079,8 +1080,10 @@ void ChartTab::measureSoon() {
 	measureFollow_.start();
 }
 
+/* A, B and B - A at once (a cursor dragged: cheap); all of it on the chart's threads, the table filled when it is in,
+ * the window thread not waiting for it (64 lines over 5 min of 1000 Hz held it 35 ms) */
 void ChartTab::updateMeasures(bool cursorsOnly) {
-	const ChartView *view = chart_->view();
+	ChartView *view = chart_->view();
 	const QVector<ChartView::Info> lines = view->lines();
 	QVector<int> lineKeys;
 	for (const ChartView::Info &line : lines) lineKeys << line.key;
@@ -1094,7 +1097,61 @@ void ChartTab::updateMeasures(bool cursorsOnly) {
 		measureInfo_->setText(info);
 		measureInfoChanges_++;
 	}
-	const QVector<ChartView::Stats> stats = view->stats(lineKeys, cursorsOnly);
+	if (cursorsOnly) {
+		fillMeasures(lines, view->stats(lineKeys, true), true, timed);
+		return;
+	}
+	lastMeasureKey_ = measureKeyNow(lineKeys);
+	measureMs_ += timed.nsecsElapsed() / 1e6;
+	view->measureAsync(lineKeys, [this, lines, lineKeys](const QVector<ChartView::Stats> &stats, double threadMs) {
+		measureThreadMs_ += threadMs;
+		QElapsedTimer filling;
+		filling.start();
+		QVector<int> now;
+		for (const ChartView::Info &line : chart_->view()->lines()) now << line.key;
+		if (now != lineKeys) { /* lines came or went meanwhile: measured again */
+			updateMeasures();
+			return;
+		}
+		fillMeasures(lines, stats, false, filling);
+		measureFills_++;
+	});
+}
+
+/* the measurements' key: the view's (ChartView::measureKey) and the columns shown */
+QVector<double> ChartTab::measureKeyNow(const QVector<int> &keys) const {
+	QVector<double> key = chart_->view()->measureKey(keys);
+	for (int column = 0; column < measures_->columnCount(); column++) key << (measures_->isColumnHidden(column) ? 1 : 0);
+	return key;
+}
+
+/* Every MEASURE_MS: all of it again only when what it depends on changed (a held view still, or with samples coming
+ * after it, measures nothing); the totals since Clear follow each time, running sums, cheap. Not while a cursor is
+ * dragged: A, B and B - A follow it, and all of it comes when it is let go. */
+void ChartTab::measureTick() {
+	ChartView *view = chart_->view();
+	if (view->draggingCursor()) return;
+	const QVector<ChartView::Info> lines = view->lines();
+	QVector<int> keys;
+	for (const ChartView::Info &line : lines) keys << line.key;
+	if (keys != measuredKeys_ || measures_->rowCount() != lines.size() || measureKeyNow(keys) != lastMeasureKey_) {
+		updateMeasures();
+		return;
+	}
+	const QString none = QStringLiteral("—");
+	for (int row = 0; row < lines.size(); row++) {
+		const double total = view->total(lines[row].key);
+		const QString text = std::isfinite(total)
+				? measureText(total / 3600.0) + QStringLiteral(" ") + areaUnit(lines[row].unit, true) : none;
+		QTableWidgetItem *item = measures_->item(row, ColTotal);
+		if (item && item->text() != text) item->setText(text);
+	}
+}
+
+void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector<ChartView::Stats> &stats,
+		bool cursorsOnly, const QElapsedTimer &timed) {
+	QVector<int> lineKeys;
+	for (const ChartView::Info &line : lines) lineKeys << line.key;
 	/* the cells written with the table's updates off: one repaint when they are all in, not one per cell */
 	measures_->setUpdatesEnabled(false);
 	const QString none = QStringLiteral("—");
