@@ -32,6 +32,20 @@ QString secondsText(double seconds) {
 	return QStringLiteral("%1 h").arg(number(seconds / 3600));
 }
 
+QString durationText(double seconds) {
+	const double s = std::fabs(seconds);
+	/* 4 significant digits, in the first unit where they stay below 1000 (999.96 ms is "1 s", not "1000 ms") */
+	const auto below = [](double v, double limit) { return QString::number(v, 'g', 4).toDouble() < limit; };
+	if (below(s * 1e6, 1000)) return QStringLiteral("%1 µs").arg(QString::number(s * 1e6, 'g', 4));
+	if (below(s * 1e3, 1000)) return QStringLiteral("%1 ms").arg(QString::number(s * 1e3, 'g', 4));
+	if (below(s, 60)) return QStringLiteral("%1 s").arg(QString::number(s, 'g', 4));
+	const qint64 tenths = std::llround(s * 10);
+	if (tenths < 36000)
+		return QStringLiteral("%1 min %2 s").arg(tenths / 600).arg((tenths % 600) / 10.0, 0, 'f', 1);
+	const qint64 minutes = std::llround(s / 60);
+	return QStringLiteral("%1 h %2 min").arg(minutes / 60).arg(minutes % 60, 2, 10, QLatin1Char('0'));
+}
+
 double parseSeconds(const QString &text) {
 	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(ms|s|sec|m|min|h)?\\s*$"),
 			QRegularExpression::CaseInsensitiveOption);

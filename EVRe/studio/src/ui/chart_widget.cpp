@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 namespace {
 
@@ -1605,6 +1606,11 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<BinnedLine> &lines) {
 		frame.sprites.push_back({ tagPicture(k, dpr), whole(QPointF(cx - 9, plot.top() - 2)) });
 	}
 	frame.layers << marks;
+	spanBar_ = spanBar(axes);
+	if (!spanBar_.text.isEmpty()) {
+		const QRectF area = spanBar_.bar.isEmpty() ? spanBar_.textRect : spanBar_.bar.united(spanBar_.textRect);
+		frame.sprites.push_back({ spanBarPicture(spanBar_, area, dpr), whole(area.topLeft()) });
+	}
 	/* the crosshair: its dashed line (1 px: 4 on, 2 off), the dots, the box */
 	Crosshair hair;
 	if (crosshair(axes, lines, dpr, hair)) {
@@ -1694,6 +1700,72 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes) const {
 		p.setFont(labelFont());
 		p.drawText(tag, Qt::AlignCenter, k == 0 ? QStringLiteral("A") : QStringLiteral("B"));
 	}
+	spanBar_ = spanBar(axes);
+	drawSpanBar(p, spanBar_);
+}
+
+namespace {
+constexpr double TAG_HALF = 9;   /* a cursor's tag: 18 x 16, centred on it, its top 2 px above the plot (drawCursors) */
+constexpr double SPAN_GAP = 2;   /* between a tag and the bar */
+constexpr double SPAN_PAD = 6;   /* the text's margin each side */
+}
+
+ChartView::SpanBar ChartView::spanBar(const Axes &axes) const {
+	SpanBar out;
+	if (!std::isfinite(cursorA_) || !std::isfinite(cursorB_)) return out;
+	const double t0 = std::min(cursorA_, cursorB_), t1 = std::max(cursorA_, cursorB_);
+	if (t1 < axes.t0 || t0 > axes.t1) return out;
+	const QRectF &plot = axes.rect;
+	const bool leftShown = t0 >= axes.t0, rightShown = t1 <= axes.t1;
+	const double left = leftShown ? axes.x(t0) + TAG_HALF + SPAN_GAP : plot.left();
+	const double right = rightShown ? axes.x(t1) - TAG_HALF - SPAN_GAP : plot.right();
+	const double top = plot.top() - 2, height = 16;
+	out.text = durationText(t1 - t0);
+	const double textWidth = QFontMetricsF(labelFont()).horizontalAdvance(out.text) + 2 * SPAN_PAD;
+	if (right - left >= 2) out.bar = QRectF(left, top, right - left, height);
+	if (right - left >= textWidth) {
+		out.inside = true;
+		out.textRect = QRectF(left + (right - left - textWidth) / 2, top, textWidth, height);
+		return out;
+	}
+	const double afterRight = (rightShown ? axes.x(t1) + TAG_HALF : plot.right()) + SPAN_GAP;
+	const double beforeLeft = (leftShown ? axes.x(t0) - TAG_HALF : plot.left()) - SPAN_GAP;
+	const double x = afterRight + textWidth <= plot.right() ? afterRight : std::max(plot.left(), beforeLeft - textWidth);
+	out.textRect = QRectF(x, top, textWidth, height);
+	return out;
+}
+
+void ChartView::drawSpanBar(QPainter &p, const SpanBar &bar) const {
+	if (bar.text.isEmpty()) return;
+	p.save();
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(Qt::NoPen);
+	p.setBrush(Theme::colors().accentFill); /* white text on it, as the tags */
+	if (!bar.bar.isEmpty()) p.drawRoundedRect(bar.bar, 4, 4);
+	if (!bar.inside) p.drawRoundedRect(bar.textRect, 4, 4);
+	p.setPen(Qt::white);
+	p.setFont(labelFont());
+	p.drawText(bar.textRect, Qt::AlignCenter, bar.text);
+	p.restore();
+}
+
+const QImage &ChartView::spanBarPicture(const SpanBar &bar, const QRectF &area, qreal dpr) const {
+	const QRectF b = bar.bar.translated(-area.topLeft()), t = bar.textRect.translated(-area.topLeft());
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8").arg(bar.text).arg(dpr).arg(Theme::isDark())
+			.arg(b.left(), 0, 'f', 2).arg(b.width(), 0, 'f', 2).arg(t.left(), 0, 'f', 2).arg(area.width(), 0, 'f', 2)
+			.arg(bar.inside);
+	if (key != spanBarKey_) {
+		spanBarKey_ = key;
+		spanBarImage_ = QImage((area.size() * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
+		spanBarImage_.setDevicePixelRatio(dpr);
+		spanBarImage_.fill(Qt::transparent);
+		QPainter p(&spanBarImage_);
+		SpanBar local = bar;
+		local.bar = b;
+		local.textRect = t;
+		drawSpanBar(p, local);
+	}
+	return spanBarImage_;
 }
 
 /* a cursor's tag for the card, drawn as drawCursors draws it */
