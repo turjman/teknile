@@ -78,8 +78,10 @@ class Master:
                     raise EvreError('no answer from %s to 0x%02X at 0x%04X' % (self.link.name, fn, addr))
                 self.parser.feed(self.link.receive(left))
                 answer = self.parser.next()
-            if answer.addr != addr or answer.slave != self.slave:
-                continue  # a late answer to an earlier request
+            # every answer echoes its request's offset and count (PROTOCOL.md): another one is a late answer to an
+            # earlier request, or a frame the device sent by itself (AUTO_SEND's block is not a read of part of it)
+            if answer.slave != self.slave or answer.addr != addr or answer.count != count:
+                continue
             if answer.fn == f.ERROR_RESP:
                 code = answer.data[0] if answer.data else 0
                 raise EvreError('0x%04X: %s' % (addr, f.ERRORS.get(code, 'error %d' % code)), code)

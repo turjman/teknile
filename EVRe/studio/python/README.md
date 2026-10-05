@@ -29,6 +29,9 @@ with evre.connect_tcp('127.0.0.1', 1210, 'maps/example_device.json', token='exam
 | `evre.build`, `evre.Parser`, `evre.crc16` | frames by hand |
 | `evre.EvreError` | the device's ERROR_RESP (`.code`), a timeout, or a refusal by the map |
 
+An answer is matched by its slave, offset and count, as the protocol asks. A frame the device sends by itself
+(AUTO_SEND's block) is skipped, also when a read asks for part of that block.
+
 Several devices on one link: a bus file (`evre-bus/1`, as EVRe Studio writes it), each device at its own slave
 address with its own map. A device without `"slave"` is at slave 1; a bus without a map for a device, or without
 devices, is refused. `bus.broadcast` takes a register by the map's own name (`FAN_SPEED`) or a bus name
