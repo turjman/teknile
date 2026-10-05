@@ -243,3 +243,18 @@ the lines in it. Lanes must stay readable however many units are plotted.
    Both drawing paths (the card: with the grid's segments), the picture check at its level. A check
    that the separators are where the gaps are (their y per gap) and in the colour, the docs (7.12,
    23), and a Help sentence.
+9. **Markdown tables: no short cell on two lines (the owner, after the root README fix 406a99d).**
+   On GitHub a table squeezes its columns, and a short name such as "EVRe protocol" or "Ctrl + wheel"
+   wraps onto two lines. Go through every tracked `*.md` (about 1,200 table rows, 981 in STUDIO.md)
+   and fix each table the way 406a99d fixed `README.md` (look at its diff):
+   - In every column but the last (the prose one), a cell of up to about 32 visible characters is
+     kept on one line: `&nbsp;` between its words, outside backticks (`Ctrl&nbsp;+&nbsp;wheel`,
+     `**[Map&nbsp;format](...)**`, `` `chart/lanes`&nbsp;(bool) ``). Links and code stay as they are.
+   - A first-column cell longer than that: shorten it to a name and move the rest (a code name,
+     a remark) to the start of the next column, as "Map format `evre-map/1`" became "Map format".
+   - A header row that is empty (`| | |`) gets real column names.
+   - Change nothing else: no rewording, no reordering; the tables' content and the anchors stay.
+   - Check: a small script (not committed) that lists every table cell of a non-last column with a
+     plain space and at most 32 visible characters must list none; the Python test that reads the
+     README's check count, the Help test and every Linux test still pass. One commit, "Docs: tables'
+     short cells on one line", pushed to PR #7, and a line about it in the PR's text.
