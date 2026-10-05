@@ -24,5 +24,5 @@ one finished. The GUI test fails while a message is unfinished or empty, or when
 - Numbers keep Western digits and a decimal point; units, symbols, register names, addresses, file names, code and the
   JSON keys stay as they are.
 - The glossary used: register مسجّل, map خريطة, device جهاز, link وصلة, poll استطلاع, chart مخطط, line خط, sample
-  عينة, cursor مؤشر, Log (the tab) السجل, Log (the column) تسجيل, Plot رسم, trigger القدح, arm تجهيز, lane مسار, fold (a lane) طيّ, strip (a folded lane) شريحة, scroll bar شريط التمرير, separator (between lanes) خط فاصل, note ملاحظة,
+  عينة, cursor مؤشر, Log (the tab) السجل, Log (the column) تسجيل, Plot رسم, trigger القدح, arm تجهيز, lane مسار, fold (a lane) طيّ, strip (a folded lane) شريحة, scroll bar شريط التمرير, separator (between lanes) خط فاصل, options (a lane's ⋯) خيارات, note ملاحظة,
   recording تسجيل, broadcast بث, slave التابع, token رمز الدخول, In flight قيد الإرسال, Auto send الإرسال التلقائي, Monitor (the tab) المراقبة, Decoded فك الترميز. Commands are verbal nouns (رسم المعروض, إعادة التشغيل الآن), not imperatives; a singular reads "واحد", not "%n" after the noun.

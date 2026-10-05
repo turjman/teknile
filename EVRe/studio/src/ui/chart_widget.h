@@ -197,6 +197,10 @@ public:
 	 * empty: out of view */
 	QRectF laneFoldButtonRect(int lane) const;
 	int hoveredLane() const { return hoverLane_; } /* tests: the lane whose button is highlighted; -1: none */
+	/* the menu button ("⋯") under an open lane's fold button: a click shows the lane's menu (laneMenuRequested);
+	 * empty: folded, out of view, or no room for it */
+	QRectF laneMenuButtonRect(int lane) const;
+	int hoveredLaneMenu() const { return hoverMenu_; } /* tests: the lane whose menu button is highlighted; -1: none */
 	int foldedLaneCount() const;          /* of the lanes now */
 	void setAllLanesFolded(bool folded);  /* Fold all lanes / Open all lanes */
 	/* the lanes' tooltips there (a button, a strip, the value labels, the scroll bar) */
@@ -390,7 +394,7 @@ signals:
 	void notesChanged();
 	void noteEditRequested(int index);      /* a double-click on a note's tag */
 	void menuRequested(const QPoint &globalPos, double time); /* a right-click on the chart: the time under it */
-	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels */
+	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels, its ⋯ button */
 	void lineMenuRequested(int key, const QPoint &globalPos); /* a right-click on a line's chip in the legend */
 	void triggered(double time);             /* the view holds on a crossing */
 	void triggerLevelChanged(double level);  /* the level's line dragged and let go */
@@ -716,6 +720,7 @@ private:
 	double laneScroll_ = 0;           /* px from the top of the lanes (clamped when painted and when set) */
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
 	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
+	int hoverMenu_ = -1;              /* the lane whose menu button is under the mouse */
 	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
@@ -744,6 +749,8 @@ private:
 	double maxLaneScroll() const;
 	void scrollLanesTo(double pixels);
 	static QRectF laneVisible(const QRectF &lane, const QRectF &plot); /* its part in the plot; empty: out of view */
+	static void laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu); /* an open lane's, in its part in view */
+	int laneMenuButtonAt(const QPointF &pos) const;
 	/* a press on the lanes' own places: the scroll bar, a unit name (fold), a folded strip (open); true if it was */
 	bool pressLanes(const QPointF &pos);
 	/* a folded lane's strip: its unit, then each line's dot, name and value (the legend's; held, the latest in view),

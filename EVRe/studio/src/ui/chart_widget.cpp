@@ -46,6 +46,8 @@ constexpr double STATE_ROOM = 230;
 constexpr double LANE_GAP = 10;            /* between two lanes (Lanes) */         /* the legend stops this far from the right, for the state */
 constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left of its value labels (Lanes) */
 constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
+constexpr double LANE_BUTTON_GAP = 2;      /* between the fold button and the lane's menu button under it */
+constexpr double LANE_NAME_MIN = 24;       /* the menu button only with room left for a short unit name ("°C") */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -1085,6 +1087,7 @@ bool ChartView::event(QEvent *e) {
 	if (e->type() == QEvent::Leave) {
 		mouseX_ = -1;
 		hoverLane_ = -1;
+		hoverMenu_ = -1;
 		hoverBar_ = false;
 		hoverSeparator_ = -1;
 		refresh();
@@ -1176,6 +1179,11 @@ bool ChartView::pressLanes(const QPointF &pos) {
 	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
 	const bool folded = lanesShown_[lane].folded;
 	if (!folded && pos.x() >= LANE_UNIT_W) return false;
+	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button */
+		const QRectF menu = laneMenuButtonRect(lane);
+		emit laneMenuRequested(lane, mapToGlobal(QPoint(int(menu.left()), int(menu.bottom()) + 1)));
+		return true;
+	}
 	setLaneFolded(lane, !folded);
 	return true;
 }
@@ -1254,7 +1262,8 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLanes = lane >= 0 && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()))
 				&& (lanesShown_[lane].folded || pos.x() < LANE_UNIT_W);
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
-		hoverLane_ = onLanes ? lane : -1; /* its button drawn highlighted */
+		hoverMenu_ = onLanes ? laneMenuButtonAt(pos) : -1; /* the menu button highlighted, not the fold's */
+		hoverLane_ = onLanes && hoverMenu_ < 0 ? lane : -1; /* its button drawn highlighted */
 		hoverBar_ = onLaneBar;
 		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
 		if (hoverSeparator_ >= 0) {
@@ -2015,6 +2024,14 @@ QRectF ChartView::laneVisible(const QRectF &lane, const QRectF &plot) {
 	return bottom > top ? QRectF(lane.left(), top, lane.width(), bottom - top) : QRectF();
 }
 
+/* an open lane's buttons at the top of its unit column, in its part in view: the fold button ("▾"), and under it the
+ * lane's menu ("⋯") when there is room for it and some of the unit name */
+void ChartView::laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu) {
+	*fold = QRectF(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+	const double top = fold->bottom() + LANE_BUTTON_GAP;
+	*menu = shown.bottom() - top >= LANE_BUTTON_H + LANE_NAME_MIN ? QRectF(0, top, LANE_UNIT_W, LANE_BUTTON_H) : QRectF();
+}
+
 /* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
 QRectF ChartView::laneScrollBarRect() const {
 	const QRectF plot = plotRect();
@@ -2081,7 +2098,32 @@ QRectF ChartView::laneFoldButtonRect(int lane) const {
 	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
 	if (shown.isEmpty()) return QRectF();
 	if (plots[lane].folded) return QRectF(0, shown.top(), LANE_UNIT_W, shown.height());
-	return QRectF(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+	QRectF fold, menu;
+	laneButtons(shown, &fold, &menu);
+	return fold;
+}
+
+QRectF ChartView::laneMenuButtonRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size() || plots[lane].folded) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	if (shown.isEmpty()) return QRectF();
+	QRectF fold, menu;
+	laneButtons(shown, &fold, &menu);
+	return menu;
+}
+
+/* the open lane whose menu button is at pos, of the lanes as last painted; -1: none */
+int ChartView::laneMenuButtonAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || pos.x() >= LANE_UNIT_W || pos.y() < plot.top() || pos.y() > plot.bottom()) return -1;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0 || lanesShown_[lane].folded) return -1;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (shown.isEmpty()) return -1;
+	QRectF fold, menu;
+	laneButtons(shown, &fold, &menu);
+	return menu.contains(pos) ? lane : -1;
 }
 
 int ChartView::foldedLaneCount() const {
@@ -2119,6 +2161,7 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
 	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return QString(); /* between two lanes */
 	if (lanesShown_[lane].folded) return tr("Open lane");
+	if (laneMenuButtonAt(pos) == lane) return tr("Y range and lane options");
 	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
 	if (pos.x() >= plot.left()) return QString();
 	QStringList parts;
@@ -2388,6 +2431,18 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		p.drawPolygon(folded ? shut : open, 3);
 		p.restore();
 	};
+	/* a lane's menu button ("⋯", three dots) under its fold button, in the same shape; highlighted under the mouse */
+	const auto menuButton = [&](int index, const QRectF &button) {
+		const double cx = button.center().x(), cy = button.center().y();
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(Qt::NoPen);
+		p.setBrush(index == hoverMenu_ ? c.border : c.surface2);
+		p.drawRoundedRect(QRectF(cx - 8, cy - 7, 16, 14), 4, 4);
+		p.setBrush(index == hoverMenu_ ? c.text : c.muted);
+		for (double dx : { -4.0, 0.0, 4.0 }) p.drawEllipse(QPointF(cx + dx, cy), 1.5, 1.5);
+		p.restore();
+	};
 	for (int index = 0; index < plots.size(); index++) {
 		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
@@ -2438,11 +2493,14 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			p.setPen(QPen(c.grid, 1));
 			p.drawLine(QPointF(axes.x(t), shown.top()), QPointF(axes.x(t), shown.bottom()));
 		}
-		if (lanes_) { /* its fold button, then its unit up the left edge of its labels, in the part in view (a click on
-		               * either folds it) */
-			const QRectF button(0, shown.top() + 1, LANE_UNIT_W, std::min(LANE_BUTTON_H, shown.height() - 1));
+		if (lanes_) { /* its fold button and its menu's, then its unit up the left edge of its labels, in the part in view
+		               * (a click on the unit name folds it too) */
+			QRectF button, menu;
+			laneButtons(shown, &button, &menu);
 			foldButton(index, button, false);
-			const QRectF name(0, button.bottom(), LANE_UNIT_W, shown.bottom() - button.bottom());
+			if (!menu.isEmpty()) menuButton(index, menu);
+			const double nameTop = menu.isEmpty() ? button.bottom() : menu.bottom();
+			const QRectF name(0, nameTop, LANE_UNIT_W, shown.bottom() - nameTop);
 			p.setPen(c.text);
 			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);

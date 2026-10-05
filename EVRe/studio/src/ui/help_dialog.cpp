@@ -296,7 +296,8 @@ a line between two lanes, each at least 80 px high: when they do not fit they sc
 the bar at the right); a click on a lane's ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again); each lane has its own Y range: right-click a lane's values for Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
+equal again); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -548,7 +549,8 @@ all fit</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
 <tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
-<tr><td><b>Lanes</b></td><td><b>Right-click</b> a lane's values: its Y range (Auto, Manual…, Log), Fold lane ·
+<tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
+Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·
 <b>click</b> its ▾ or unit name: fold it, the strip: open it · <b>drag</b> the line between two lanes: their heights
 (<b>double-click</b> it: equal)</td></tr>

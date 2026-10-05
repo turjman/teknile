@@ -5007,6 +5007,89 @@ private:
 		check(hand && tipShown && stripTip && unlit, "chart, Lanes: over a fold button the pointing hand, the button "
 				"highlighted, the tooltip \"Fold lane\" (\"Open lane\" on a strip); away from it, no highlight");
 
+		/* the lane's menu button ("⋯") under every open lane's fold button in view; none on a folded strip */
+		bool menus = true;
+		view->setLaneFolded(4, true);
+		(void) view->grab();
+		for (int k = 0; k < view->laneCount() && menus; k++) {
+			const QRectF fold = view->laneFoldButtonRect(k), menu = view->laneMenuButtonRect(k);
+			const bool inView = view->laneRect(k).top() >= plot.top() && view->laneRect(k).bottom() <= plot.bottom();
+			menus = view->laneFolded(k) ? menu.isEmpty() /* a lane wholly in view has it; one cut, where there is room */
+					: !inView || (menu.left() == 0 && menu.right() <= 18 && menu.height() == 16
+							&& std::fabs(menu.top() - fold.bottom() - 2) < 0.01);
+			if (!menus) std::printf("     (lane %d: fold %g,%g %gx%g, menu %g,%g %gx%g)\n", k, fold.x(), fold.y(),
+					fold.width(), fold.height(), menu.x(), menu.y(), menu.width(), menu.height());
+		}
+		view->setLaneFolded(4, false);
+		const QImage menuRest = view->grab().toImage();
+		menus = menus && menuRest.pixelColor((view->laneMenuButtonRect(1).topLeft() + QPointF(4, 3)).toPoint()
+				* view->devicePixelRatioF()) != surface;
+		check(menus, "chart, Lanes: a menu button (⋯) under every open lane's fold button in view, in a button's shape; "
+				"none on a folded strip");
+
+		/* a click on it: the lane's menu (Auto, Manual…, Log, Fold lane) under the button; its Fold lane folds */
+		const QRectF menu1 = view->laneMenuButtonRect(1);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, menu1.center().toPoint());
+		QMenu *laneMenu = tab.laneMenu();
+		QStringList items;
+		QAction *foldItem = nullptr;
+		if (laneMenu)
+			for (QAction *action : laneMenu->actions()) {
+				if (!action->isSeparator()) items << action->text();
+				if (action->text() == QStringLiteral("Fold lane")) foldItem = action;
+			}
+		const bool shown = laneMenu && laneMenu->isVisible() && !view->laneFolded(1)
+				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
+						QStringLiteral("Fold lane") }
+				&& std::abs(laneMenu->pos().y() - view->mapToGlobal(menu1.bottomLeft().toPoint()).y()) <= 2;
+		if (foldItem) foldItem->trigger();
+		if (laneMenu) laneMenu->close();
+		(void) view->grab();
+		const bool menuFolds = view->laneFolded(1);
+		view->setLaneFolded(1, false);
+		(void) view->grab();
+		if (!shown || !menuFolds)
+			std::printf("     (the menu %s, at %d (the button's bottom %d); its items \"%s\"; folded %d)\n",
+					laneMenu && laneMenu->isVisible() ? "shown" : "not shown", laneMenu ? laneMenu->pos().y() : -1,
+					view->mapToGlobal(menu1.bottomLeft().toPoint()).y(), qPrintable(items.join(QStringLiteral(", "))),
+					int(menuFolds));
+		check(shown && menuFolds, "chart, Lanes: a click on a lane's ⋯ shows its menu under the button: Auto, Manual…, "
+				"Log, Fold lane (no fold by the click itself)");
+
+		/* the mouse over it: the pointing hand, it highlighted (not the fold button), the tooltip */
+		const QRectF menu2 = view->laneMenuButtonRect(2);
+		const auto menuPicture = [view, &menu2] { /* in the picture's device pixels, as the fold button's */
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			const QRectF area = menu2.adjusted(-1, -1, 1, 1);
+			return whole.copy(QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect());
+		};
+		const QImage menuPlain = menuPicture();
+		moveTo(menu2.center());
+		const QImage menuLit = menuPicture();
+		const bool menuHand = view->cursor().shape() == Qt::PointingHandCursor && view->hoveredLaneMenu() == 2
+				&& view->hoveredLane() == -1 && menuPlain != menuLit;
+		QHelpEvent menuHelp(QEvent::ToolTip, menu2.center().toPoint(), view->mapToGlobal(menu2.center().toPoint()));
+		QApplication::sendEvent(view, &menuHelp);
+		const bool menuTip = QTest::qWaitFor([] { return QToolTip::text() == QStringLiteral("Y range and lane options"); },
+				2000);
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the buttons, lane 2's ⋯ under the mouse, in both themes */
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_lane_menu_dark.png") : QStringLiteral("_lane_menu_light.png")));
+			}
+		}
+		moveTo(view->laneRect(2).center()); /* over the plot */
+		const bool menuUnlit = view->hoveredLaneMenu() == -1;
+		QToolTip::hideText();
+		if (!menuHand || !menuTip || !menuUnlit)
+			std::printf("     (cursor %d, menu hovered %d, fold hovered %d, highlighted %d; tooltip \"%s\"; off %d)\n",
+					int(view->cursor().shape()), view->hoveredLaneMenu(), view->hoveredLane(), int(menuPlain != menuLit),
+					qPrintable(QToolTip::text()), int(menuUnlit));
+		check(menuHand && menuTip && menuUnlit, "chart, Lanes: over a lane's ⋯ the pointing hand, it highlighted, the "
+				"tooltip \"Y range and lane options\"; away from it, no highlight");
+
 		/* the scroll bar: the pointing hand, its handle brighter, a tooltip; away from it, as before */
 		const QRectF handle = view->laneScrollHandleRect();
 		const auto handlePicture = [view, &handle] { /* in the picture's device pixels, as the button's */

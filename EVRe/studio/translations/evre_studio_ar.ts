@@ -1191,6 +1191,10 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <source>Drag: this lane&apos;s height · Double-click: equal heights</source>
         <translation>السحب: ارتفاع هذا المسار · النقر المزدوج: ارتفاعات متساوية</translation>
     </message>
+    <message>
+        <source>Y range and lane options</source>
+        <translation>مدى Y وخيارات المسار</translation>
+    </message>
 </context>
 <context>
     <name>EventLog</name>
@@ -2181,7 +2185,8 @@ a line between two lanes, each at least 80 px high: when they do not fit they sc
 the bar at the right); a click on a lane&apos;s ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and &lt;b&gt;Fold all lanes&lt;/b&gt; / &lt;b&gt;Open all lanes&lt;/b&gt; under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again); each lane has its own Y range: right-click a lane&apos;s values for Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
+equal again); each lane has its own Y range: a click on a lane&apos;s ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
 &lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -2302,7 +2307,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ واسحب الخط بين مسارين لتجعل الذي فوقه أطول أو أقصر (والنقر المزدوج عليه:
 تتساوى كلها من جديد)؛ ولكل مسار
 مدى Y خاص:
-انقر بالزر الأيمن على قيم مسار لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ محور زمن واحد، والمؤشران والملاحظات و
+انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ محور زمن واحد، والمؤشران والملاحظات و
 خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
 بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
 اليمنى ويتمرر دون قفزات؛ &lt;b&gt;قيم التحويم&lt;/b&gt; (مفعّلة افتراضيًا): مربع القيم بجانب الفأرة، عطّلها لترى
@@ -2390,7 +2395,8 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; a line&apos;s chip: its Histogram or Spectrum&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s dashed line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; a lane&apos;s values: its Y range (Auto, Manual…, Log), Fold lane ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log), Fold lane ·
 &lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
 &lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
 (&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
@@ -2418,7 +2424,7 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط: مدرّجه التكراري أو طيفه&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيم مسار: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
 &lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·
 &lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
 (&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
