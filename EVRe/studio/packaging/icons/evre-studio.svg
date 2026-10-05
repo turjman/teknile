@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="teknile"><title>teknile</title><rect width="256" height="256" rx="60" fill="#35363b"/><g transform="translate(21.5,19.58) scale(2.13)"><defs><linearGradient id="gD" x1="50" y1="97" x2="50" y2="3" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#8fa2ab"/><stop offset="1" stop-color="#4fd3f5"/></linearGradient></defs>
+<g fill="none" stroke="url(#gD)" stroke-linecap="round" stroke-linejoin="round">
+<path d="M50 86.4C50 80 38 79 38 70 38 60 62 58 62 48 62 38 50 36 50 32" stroke-width="9.0"/>
+<path d="M48.5 33C44.5 28 34 26.5 26.4 22.6" stroke-width="6.5"/>
+<path d="M51.5 33C55.5 28 66 26.5 73.6 22.6" stroke-width="6.5"/>
+<path d="M50 33V16.4" stroke-width="6.5"/></g><path fill="#4fd3f5" fill-rule="evenodd" d="M15.8 20a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0 -12.4 0ZM19.3 20a2.7 2.7 0 1 0 5.4 0a2.7 2.7 0 1 0 -5.4 0Z"/><path fill="#4fd3f5" fill-rule="evenodd" d="M71.8 20a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0 -12.4 0ZM75.3 20a2.7 2.7 0 1 0 5.4 0a2.7 2.7 0 1 0 -5.4 0Z"/><path fill="#E4B44A" fill-rule="evenodd" d="M43.8 10a6.2 6.2 0 1 0 12.4 0a6.2 6.2 0 1 0 -12.4 0ZM47.3 10a2.7 2.7 0 1 0 5.4 0a2.7 2.7 0 1 0 -5.4 0Z"/><circle cx="38" cy="70" r="3.4" fill="none" stroke="#E4B44A" stroke-width="2.0"/><circle cx="62" cy="48" r="3.4" fill="none" stroke="#E4B44A" stroke-width="2.0"/><path fill="#8fa2ab" fill-rule="evenodd" d="M44.0 92a6.0 6.0 0 1 0 12.0 0a6.0 6.0 0 1 0 -12.0 0ZM47.6 92a2.4 2.4 0 1 0 4.8 0a2.4 2.4 0 1 0 -4.8 0Z"/></g></svg>

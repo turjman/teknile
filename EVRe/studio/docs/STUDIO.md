@@ -29,7 +29,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [1.3 Features](#13-features)
     - [1.4 The design rule: the device is the truth](#14-the-design-rule-the-device-is-the-truth)
   - [2. Getting started](#2-getting-started)
-    - [2.1 Build](#21-build)
+    - [2.1 Install or build](#21-install-or-build)
     - [2.2 Start the fake device](#22-start-the-fake-device)
     - [2.3 A first session, step by step](#23-a-first-session-step-by-step)
     - [2.4 From the command line](#24-from-the-command-line)
@@ -226,6 +226,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [25.2 Windows (Qt + MinGW + CMake + Ninja)](#252-windows-qt--mingw--cmake--ninja)
     - [25.3 Linux](#253-linux)
     - [25.4 CMake targets and options](#254-cmake-targets-and-options)
+    - [25.5 Installers and releases](#255-installers-and-releases)
   - [26. Tests](#26-tests)
     - [26.1 Overview](#261-overview)
     - [26.2 The GUI test](#262-the-gui-test)
@@ -325,11 +326,24 @@ The Studio never shows what it *thinks* a register holds. It only shows what the
 
 ## 2. Getting started
 
-This chapter builds the Studio, starts the fake device from `tests/` and walks through a first session: connect, read, plot, measure, write and record.
+This chapter installs or builds the Studio, starts the fake device from `tests/` and walks through a first session: connect, read, plot, measure, write and record.
 
-### 2.1 Build
+### 2.1 Install or build
 
-You need:
+**Install.** Each release on the project's GitHub page (**Releases**) has:
+
+| File | What it is |
+|---|---|
+| `EVReStudio-<version>-setup.exe` | Windows: an installer for you alone (no administrator needed): a Start menu entry, a desktop icon if you choose, an uninstaller (Settings, Apps). |
+| `EVReStudio-<version>-windows.zip` | Windows, portable: unzip anywhere and run `EVReStudio.exe`. |
+| `EVReStudio-<version>-x86_64.AppImage` | Linux: make it executable (`chmod +x`) and run it. |
+| `evre-tools-<version>-linux-x86_64.tar.gz` | Linux: `evre` and `evre-sim` with the Qt libraries they need (`bin/`, `lib/`). |
+
+The Windows installer and zip hold the Studio, `evre`, `evre-sim`, the Qt runtime, the example map (`maps/`),
+README, LICENSE and NOTICE. The installer is not code-signed: Windows SmartScreen may say it does not know it;
+choose **More info**, then **Run anyway**.
+
+**Build from source.** You need:
 
 - Qt 6.5 or newer, with the modules Widgets, Network, SerialPort and Test. Test is needed for every build, not only for the GUI test: CMake asks for all four modules at once, so configuring fails without it.
 - a C++17 compiler
@@ -3484,7 +3498,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, exports) without a window |
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
@@ -3725,7 +3739,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
-| `Theme`,&nbsp;`ui_helpers` | look&nbsp;and&nbsp;shared&nbsp;helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look) | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch) |
+| `Theme`,&nbsp;`ui_helpers` | look&nbsp;and&nbsp;shared&nbsp;helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look), `studioIcon` | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch, the icon) |
 
 Widgets that tests or the theme find carry fixed object names. Examples: `registers`, `measures`, `quickWrite`,
 `qwValue`, `qwEnum`, `bitView`, `groups`, `plotShown`, `hold`, `measure`, `math`, `cursors`, `eventLog`, `notice`,
@@ -4339,8 +4353,8 @@ A serial port needs read and write access for the user. On most distributions th
 that owns `/dev/ttyACM*` and `/dev/ttyUSB*` (often `dialout`).
 
 **Deployment.** There is no install target. Run the program from the build folder, or copy `EVReStudio` together
-with `maps/` beside it. The target machine needs the same Qt 6 runtime packages, or a bundle made with a third-party
-tool.
+with `maps/` beside it. The target machine needs the same Qt 6 runtime packages; the release's AppImage (25.5) brings
+its own.
 
 ### 25.4 CMake targets and options
 
@@ -4360,6 +4374,25 @@ tool.
 The project defines no options of its own. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
 (where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.0.0)`. It reaches the code as
 `EVRE_STUDIO_VERSION`, is shown in the sidebar's footer, and is printed by `--version`. AUTOMOC is on.
+
+The Studio's icon is the teknile mark (`packaging/icons/evre-studio.svg`, made from the logo's mark on its dark rounded
+square; the PNGs of 16 to 256 px and `evre-studio.ico` are drawn from it). The PNGs are in the core's resources at
+`:/icons` (`studioIcon()`, every window's); on Windows `packaging/windows/evre_studio.rc.in` becomes the executable's
+icon and version (`configure_file`, `enable_language(RC)`).
+
+### 25.5 Installers and releases
+
+`.github/workflows/release.yml` makes the files a release offers. It runs on a tag `vX.Y.Z`, on a pull request that
+touches it or `packaging/`, and by hand (`workflow_dispatch`); never on other pushes.
+
+| Job | What it does |
+|---|---|
+| `version` | The version from `project(VERSION)`. On a tag: stops with a message unless the tag is that version and `EVRe/CHANGELOG.md` has a section `## X.Y.Z`. |
+| `windows` | Qt 6.8.3 MinGW (as `ci.yml`): `EVReStudio`, `evre`, `evre-sim` built; `windeployqt` with the compiler runtime and the translations, `qtbase_ar.qm` too; the installer (`packaging/windows/evre_studio.iss`, Inno Setup 6: per user, no administrator, Start menu, optional desktop icon, uninstaller) and the portable zip of the same folder. |
+| `linux` | On Ubuntu 22.04 (an older glibc: it runs on more systems): the AppImage with `linuxdeploy` and its Qt plugin (`packaging/linux/evre-studio.desktop`, the icons), started under xvfb with `EVRE_SHOT` to check it pictures its window; `evre` and `evre-sim` with their Qt libraries in a tarball, `evre validate` run from it. |
+| `release` | On a tag only: a GitHub release with the files and the changelog's section as its text, and a note that the installer is not code-signed. |
+
+On a pull request the files are the run's artifacts, nothing is published. Making a release: `EVRe/CONTRIBUTING.md`.
 
 ## 26. Tests
 
@@ -4580,6 +4613,9 @@ cursor moves (its text the same), and not at all for four updates with the same 
 **The timing aid** (`perfLog`): with `EVRE_PERF_LOG` set, a Chart tab fed frames for 1.3 s writes at least two
 lines, each with its group, `fps`, `paint`, `max`, the stages, `binned`, `measure` and `polls` (26.8).
 
+**The icon** (`studioIcon`): the application's icon has every size from 16 to 256 px, is a rounded square (its corner
+clear, its middle not), and is the main window's and the Help's.
+
 **Analysis and trigger** (`analysisMath`, `analysisWindows`, `chartTrigger`): the FFT of an impulse is flat, a sine of 8
 periods in 256 lands in bin 8 with N/2, and comes back; 0 .. 999 makes 10 bins of 99.9, one value one bin, few levels
 √n bins; a sine of 2 V at 62.5 Hz polled 1 ms ± 0.3 ms apart reads 2 V (± 0.05) at 62.5 Hz with 8 segments of 2048,
@@ -4632,7 +4668,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 361 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 362 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -4914,7 +4950,7 @@ Unset, nothing is timed into a file. The aid does not change the settings.
 | API&nbsp;ports&nbsp;only&nbsp;in&nbsp;the&nbsp;settings | `api/evrePort` and `api/jsonPort` have no field in the window and no command-line option |
 | Unit&nbsp;tests | the map files and the exports have their own test (`evre_map_test`); `Expr`, value coding and the frame parser are still tested only through the GUI and API tests |
 | Translations | user text goes through `tr()`, but no translation files are built or shipped |
-| Packaging | no install target, no installer, no Linux bundle |
+| Packaging | no CMake install target; the installers are made by the release workflow (25.5), and they are not code-signed |
 | macOS | the code has the macOS path (condition-variable ticker, timer frame clock) but has not been built or run there |
 
 ---

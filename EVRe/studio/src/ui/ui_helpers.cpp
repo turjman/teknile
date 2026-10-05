@@ -219,6 +219,13 @@ QIcon warningIcon(const QColor &color, int size) {
 	return QIcon(pixmap);
 }
 
+QIcon studioIcon() {
+	QIcon icon;
+	for (const int size : { 16, 24, 32, 48, 64, 128, 256 })
+		icon.addFile(QStringLiteral(":/icons/evre-studio-%1.png").arg(size), QSize(size, size));
+	return icon;
+}
+
 QIcon stateDot(const QColor &color, qreal ratio) {
 	QPixmap pixmap(QSize(10, 10) * ratio);
 	pixmap.setDevicePixelRatio(ratio);

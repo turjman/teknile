@@ -104,6 +104,7 @@ RegisterModel::Colors registerColors() {
 MainWindow::MainWindow(const QString &mapAtStart, const QString &busAtStart, QWidget *parent)
 	: QMainWindow(parent), mapAtStart_(mapAtStart), busAtStart_(busAtStart) {
 	setWindowTitle(QStringLiteral("EVRe Studio"));
+	QApplication::setWindowIcon(studioIcon()); /* every window's, the recordings', the Help's and the dialogs' too */
 	setAcceptDrops(true); /* a .csv dropped on the window: opened as a recording */
 	resize(1400, 860);
 	model_ = new RegisterModel(this);
