@@ -53,6 +53,10 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - Fast streams recorded: while a CSV records, each stream's blocks as they came beside it (`run.ADC.evrs`); the
   recording window opens a CSV with its streams' recordings, or a `.evrs` alone, the file mapped (larger than the RAM
   too), a file cut off up to its last whole piece. `evre.read_recording` in the Python package.
+- Fast streams in the Map editor (Map settings, a Streams page: the window, rate, enable and rate registers and the
+  channels, the map's checks live), in the exports (Markdown, C header, Python module), in `evre check --writes` (a
+  stream starts with START, its numbers follow, its rate within 2 %, it stops) and live in Python (`dev.stream`); a
+  math line naming a fast channel is told why it cannot read it.
 - The chart for many fast lines: min/max summaries of 8 to 4096 samples, binning and drawing on several threads, a
   RAM budget the samples keep to (with a note of what the Memory set needs), at most 64 lines at 1000 samples a
   second (fewer at faster rates), the plot drawn by a dedicated graphics card when there is one, or a card picked by

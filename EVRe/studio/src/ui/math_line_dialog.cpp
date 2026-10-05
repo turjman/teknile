@@ -2,6 +2,7 @@
 /* The dialog for a math line: see math_line_dialog.h. */
 #include "ui/math_line_dialog.h"
 
+#include <QRegularExpression>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -24,6 +25,7 @@ MathLineDialog::MathLineDialog(const MathLine &start, bool editing, const QVecto
 	formula_->setMinimumWidth(380);
 	new FormulaCompleter(formula_, registers, this); /* a list of the registers and functions while a name is typed */
 	state_ = new QLabel;
+	state_->setObjectName(QStringLiteral("mathState"));
 	state_->setWordWrap(true);
 	auto *help = mutedLabel(tr("Type a name and a list offers the registers and functions (Enter or Tab takes one).\n"
 			"Register names, numbers, + − * / ^, ( ), pi, and abs sqrt exp log log10 sin cos tan "
@@ -56,6 +58,11 @@ MathLine MathLineDialog::result() const {
 	return line;
 }
 
+void MathLineDialog::setFastChannels(const QStringList &names) {
+	fastChannels_ = names;
+	validate();
+}
+
 void MathLineDialog::validate() {
 	MathLine trial;
 	trial.formula = formula_->text();
@@ -63,7 +70,17 @@ void MathLineDialog::validate() {
 	const ThemeColors &colors = Theme::colors();
 	const QStringList names = trial.expr.names();
 	const QString reads = names.isEmpty() ? tr("no register") : names.join(QStringLiteral(", "));
-	state_->setText(ok ? coloredSpan(tr("OK: reads %1").arg(reads), colors.good)
-			: coloredSpan(trial.error.toHtmlEscaped(), colors.bad));
+	QString error = trial.error;
+	if (!ok) { /* a fast stream's channel named: why it is no register (Fast EVRe: math over fast channels comes later) */
+		static const QRegularExpression word(QStringLiteral("[A-Za-z_][A-Za-z0-9_.]*"));
+		for (auto it = word.globalMatch(formula_->text()); it.hasNext();) {
+			const QString name = it.next().captured();
+			if (!fastChannels_.contains(name, Qt::CaseInsensitive)) continue;
+			error = tr("%1 is a fast stream's channel: a math line reads registers, not fast channels, in this version")
+					.arg(name);
+			break;
+		}
+	}
+	state_->setText(ok ? coloredSpan(tr("OK: reads %1").arg(reads), colors.good) : coloredSpan(error.toHtmlEscaped(), colors.bad));
 	buttons_->button(QDialogButtonBox::Ok)->setEnabled(ok && !name_->text().trimmed().isEmpty());
 }

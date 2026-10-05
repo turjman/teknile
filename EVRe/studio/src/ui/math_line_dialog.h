@@ -20,12 +20,15 @@ public:
 	/* start: the line to edit, or the proposal for a new one; registers: the map's, for the formula */
 	MathLineDialog(const MathLine &start, bool editing, const QVector<RegDef> &registers, QWidget *parent = nullptr);
 	MathLine result() const; /* start, with the name, unit and formula typed, and shown */
+	/* the fast streams' channels (STREAM.CHANNEL): a formula naming one is told why it cannot read it */
+	void setFastChannels(const QStringList &names);
 
 private:
 	void validate();
 
 	MathLine start_;
 	QVector<RegDef> registers_;
+	QStringList fastChannels_;
 	QLineEdit *name_, *unit_, *formula_;
 	QLabel *state_;               /* "OK: reads ..." or the formula's error */
 	QDialogButtonBox *buttons_;

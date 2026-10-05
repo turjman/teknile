@@ -1628,6 +1628,7 @@ Function names match in any case.
 |---|---|
 | `empty` | No formula. |
 | `no register "X" in the map` | An unknown name, or a register that is not numeric (a byte array). |
+| `X is a fast stream's channel: …` | A fast line (`ADC.I_LOAD`, 7.14): a math line reads registers, not fast channels, in this version. |
 | `no function "X"` | An unknown name before `(`. |
 | `X takes N values` | The wrong number of arguments. |
 | `a ) is missing` | An unclosed parenthesis. |
@@ -2702,8 +2703,9 @@ registers that switch it, and the channels of one record. MAP_FORMAT.md section 
 A block holds up to (`size` - 8) / record size records: 254 in the example (a record of two `i16` is 4 bytes). The
 checks (30.6, `evre validate`) refuse a window outside the device bank, over a register or another window, or too
 small for the header and one record; a stream without channels, a `bytes` channel, a rate not above 0; an `enable`
-or `rate_reg` that names no register, an `enable` a host cannot write; a name used twice. The Map editor keeps
-`streams` as written; it has no page for them yet (an edit of the file's text is kept by the Studio's save).
+or `rate_reg` that names no register, an `enable` a host cannot write; a name used twice. The Map editor edits them
+on Map settings' **Streams** page (30.7); its save writes `streams` again only when they changed, after the
+registers in a new map.
 
 ## 17. The API
 
@@ -3711,7 +3713,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/register_editor.h`,&nbsp;`.cpp` | `RegisterEditor`: the form (General, Values, Bit fields, Notes) and the live line |
 | `src/ui/name_table.h`,&nbsp;`.cpp` | `NameTable`: value names or special values, Paste lines, Hex |
 | `src/ui/field_editor.h`,&nbsp;`.cpp` | `FieldEditor`: bit fields on the bit strip, their list and value names |
-| `src/ui/map_settings_dialog.h`, `.cpp` | `MapSettingsDialog(doc, onBus, parent)`: device, protocol and notes of the map, one undo step; on a bus its Slave box is disabled |
+| `src/ui/map_settings_dialog.h`, `.cpp` | `MapSettingsDialog(doc, onBus, parent)`: device, protocol, notes and fast streams of the map, one undo step; on a bus its Slave box is disabled; the Streams page (`streamsPage`, `addStream` / `removeStream` / `addChannel` / `removeChannel`, `streamChecks`: the tests) |
 | `src/ui/chart_tab.h`,&nbsp;`.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, the right-click menu (pictures, export, notes), chart settings |
 | `src/ui/analysis_window.h`,&nbsp;`.cpp` | `AnalysisWindow`: a line's histogram or spectrum in a window of its own, its plot, readout, picture and CSV |
 | `src/ui/recording_window.h`,&nbsp;`.cpp` | `RecordingWindow`: a recording opened in a window of its own, its reading on a thread, the recent recordings |
@@ -3737,7 +3739,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `cli/evre_sim.cpp` | `evre-sim`: a device made from a map (chapter 35) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour of chapter 35 |
 | `python/evre/` | the `evre` Python package: frames, link and master, the map, a device by register name, a fast stream's recording (`fast.py`, `read_recording`) (`python/README.md`) |
-| `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim`, a bus on `evre_fake_fast`, and fast streams' recordings: one made by hand (the numbers across a gap and the 32-bit wrap, a new start, the times from the marks, a bad block, a cut, a CSV refused) and one `evre record` writes from `evre_fake_fast` losing every 5th block (the device's waves, the gaps) |
+| `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim`, a bus on `evre_fake_fast`, and fast streams' recordings: one made by hand (the numbers across a gap and the 32-bit wrap, a new start, the times from the marks, a bad block, a cut, a CSV refused) and one `evre record` writes from `evre_fake_fast` losing every 5th block (the device's waves, the gaps); the same stream live with `dev.stream` (its blocks for a second, the numbers and gaps, the waves, switched off at the end) |
 | `tests/cli_test.py` | `evre` end to end, against its own fake device on port 1212 |
 | `tests/schema_test.py` | the maps against `docs/evre-map-1.schema.json` (needs the `jsonschema` package) |
 | `docs/evre-map-1.schema.json` | the JSON Schema of `evre-map/1` |
@@ -3981,7 +3983,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
 | `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
-| `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
+| `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastChannels` (a fast channel named: why it cannot be read, 9.5) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
@@ -4751,7 +4753,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
 | `tests/fake_login_test.py` | the login of both fake devices, and the probe's | the build folder (`evre_fake_fast`, `evre_probe`) | only to the fake devices' login register |
 | `evre_map_test` | the map files, the exports (26.7) | nothing; `gcc` and `python` on PATH compile and import the exports | only its own temporary folder |
-| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; a map's streams in `info` and `validate`, `record` (34.2) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232 and with the fast map on 1238, itself | yes, to its own fake devices |
+| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; a map's streams in `info` and `validate`, `record` (34.2), `check --writes` on a stream (34.1) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232 and with the fast map on 1238, itself | yes, to its own fake devices |
 | `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict, login, persist, a fast stream (its enable, rate register, `evre record`, watchdog, test aids) | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
 | `tests/schema_test.py` | the maps against the JSON Schema; a stream's keys and refusals; MAP_FORMAT.md's stream keys against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `evre_fast_test` | Fast EVRe without a window (26.9): the block's rules, a fuzz, the clock's fit, the fake devices' source | nothing | no |
@@ -4927,6 +4929,14 @@ as the window feeds it:
 - **With the rest**: lanes by unit beside a polled line, the legend with the newest values, the crosshair.
 - **On a card** (Windows): the card's picture of two fast lines like the CPU's (93 % of its 24 px blocks alike; skipped
   where there is none).
+
+The Map settings' Streams page (`mapStreamsPage`, after the Map editor's step), a dialog of its own on the fast
+example: the stream ADC listed with its window `0xDC00`, its 2 channels, *A sample: 4 bytes · at most 254 samples a
+block*, no check failing, its buttons with a pointing hand and a tooltip; in English and Arabic at the dialog's least
+size every label, button and column header whole; **+ Stream** gives `S2` and *stream S2: it has no channel*, **+
+Channel** takes that away, its window over `0xD000` is told at once (*shares bytes with the register UPTIME*);
+OK puts two streams into the map as one undo step, undone one again. A math line `SUPPLY_V * adc.i_load` is refused
+with *adc.i_load is a fast stream's channel: …* (9.5), `SUPPLY_V * 2` reads `OK`.
 
 Fast lines measured (`chartFastMeasure`, after `chartFastLines`), records of 10 kHz fed as the window feeds them:
 
@@ -5110,7 +5120,8 @@ exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake dev
 Log scale, `<prefix>_log.png`, one of a recording's window, `<prefix>_recording.png`, and the Fast streams card at
 its widest numbers in English and Arabic, `<prefix>_fast_en.png` and `<prefix>_fast_ar.png`, and the window with two
 fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) and 2 ms
-(`<prefix>_fast_records.png`), and a recording opened with its fast stream (`<prefix>_fast_recording.png`).
+(`<prefix>_fast_records.png`), a recording opened with its fast stream (`<prefix>_fast_recording.png`), and the Map
+settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`).
 
 ### 26.3 The API test
 
@@ -5267,7 +5278,9 @@ settings but takes no picture and does not quit.
 - **checks:** a name used twice, registers sharing bytes, min above max, a field past the bits, fields on a float
 - **exports:** the Markdown has every register and ASCII diagrams; the C header is compiled with `gcc -Wall -Wextra
   -Werror` and the Python module imported (each when found on PATH, else a warning); CSV out and back gives the same
-  registers, and a sheet with only some columns is read
+  registers, and a sheet with only some columns is read; the fast example's stream in each (`exportStreams`): its
+  window, rate, record and channels in the Markdown, `EX_ADC_FAST_ADDR` and `EX_ADC_V_BUS_OFFSET` compiled, `STREAMS`
+  imported
 - **bus files (3.9):** loaded, saved with the maps relative to the file, the broadcasts kept and unknown keys kept; a slave address twice,
   slave 0, device names that make register names ambiguous (`D1`, `D1_A`) and a bad name are refused; the next free
   device; a map is not a bus file
@@ -5601,6 +5614,15 @@ The checks never stop a save: a map under construction may be incomplete.
 | Device | device name, description, device ID (checked when connecting, 3.7), slave address, USB vendor and product ID (mark its port, 3.2), login: the token register and its size (3.6) |
 | Protocol | transport (serial, tcp, usb, or several), baud rate, TCP port, answer timeout, notes; the byte order is always little endian |
 | Notes | notes on the whole map, and a note per group |
+| Streams | the map's fast streams (Fast EVRe, 13.9, 16.13): the list on the left (**+&nbsp;Stream**, **Remove**), the selected one's name, its window (**Address** and **Size**), its rate in samples a second, its **Enable** and **Rate register** (the map's registers offered, any name typed), its description, and its channels in a table: name, type (`u8` … `i32`, `f32`), unit, scale, offset, decimals, description (**+&nbsp;Channel**, **Remove&nbsp;channel**) |
+
+**The Streams page** says under the channels what a sample takes and how many fit a block (*A sample: 4 bytes · at
+most 254 samples a block*), and under everything the map's checks of the streams as they are typed (16.13): a
+window outside the device bank or over a register or another stream, too small for one sample, no channel, a channel
+of bytes or a scale of 0, an enable a host cannot write, a rate register that cannot be read. **+ Stream** makes
+`S2` (or the next number) with the first free 256 bytes of the device bank from `0xDC00` down, 1000 samples a
+second and no channel yet; **+ Channel** adds `CH1` (`i16`) at the end of a sample. OK puts the streams into the map
+with the other settings, one undo step; Save writes them after the registers (16.13).
 
 The protocol page is for the reader of the map and of its export: it tells an implementer how the device is reached.
 The Studio itself connects as the sidebar says.
@@ -5670,6 +5692,9 @@ The whole map as a document an engineer (or an AI agent) can implement the devic
 - the register summary: every register in one table
 - each group with its notes, then each register: its facts (type, access, write behaviour, persist, danger, not
   plotted, unit, scale, range, default), its description and notes, its value names and special values
+- the fast streams (16.13), each its window, rate, a record's size and the records a block, its enable and rate
+  registers, and a table of its channels with each one's byte in a record, after a paragraph on the block (the
+  header's fields and flags)
 - for a register with fields, an ASCII diagram of its bits and a table of its fields:
 
 ```
@@ -5692,6 +5717,9 @@ The whole map as a document an engineer (or an AI agent) can implement the devic
 | `P_NAME_<VALUE>` | each value name's number; special values marked `/* special */` |
 | `P_NAME_<FIELD>_POS`,&nbsp;`_MSK` | each field's position and mask, `P_NAME_<FIELD>_<VALUE>` its values |
 | `P_DEVICE_ID`, `P_LOGIN_ADDR`, `P_LOGIN_SIZE` | the map's device ID and login |
+| `P_S_FAST_ADDR`,&nbsp;`_SIZE`,&nbsp;`_RATE` | a fast stream `S`'s window and rate (records a second); `_FAST`, not `_STREAM`: an enable register is often named so |
+| `P_S_FAST_RECORD_SIZE`,&nbsp;`_RECORDS_PER_BLOCK` | a record's bytes, the most records a block holds |
+| `P_S_<CHANNEL>_OFFSET` | a channel's byte in a record, its type, unit and scale in the comment |
 
 Names are made C identifiers (`Power & supply` → `POWER_SUPPLY`); a name that would be defined twice gets `_2`.
 The header is guarded, and the tests compile it with `gcc -Wall -Wextra -Werror` (26.7).
@@ -5701,7 +5729,8 @@ The header is guarded, and the tests compile it with `gcc -Wall -Wextra -Werror`
 A module for host scripts: `DEVICE`, `DEVICE_ID`, `SLAVE`, `LOGIN`, one constant per register address, and
 `REGISTERS`, a dict of every register's definition (address, type, size, access, group, unit, description, write,
 persist, danger, plot (only when `False`), scale, offset, min, max, default, `enum`, `special`, `fields` with `lsb`,
-`width` and `values`).
+`width` and `values`), and `STREAMS`, a dict of the fast streams (address, size, rate, `record_size`, enable,
+rate_reg, description, `channels` each with its name, type, `at` (its byte in a record), unit, scale and offset).
 
 ### 32.4 CSV and Import CSV
 
@@ -5865,6 +5894,7 @@ A line per register, `PASS`, `WARN` or `FAIL`, then a summary; exit 1 if anythin
 | its&nbsp;value | WARN: past `min` / `max`, or an enum value the map has no name for (a special value is fine) |
 | a&nbsp;write-only&nbsp;register | WARN: the device answers a read the map says it refuses |
 | with `--writes`, each read-write register (not `action`) | the value it holds is written back and read again: FAIL if the write is refused, WARN if it reads back otherwise. Danger registers only with `--force` |
+| with&nbsp;`--writes`,&nbsp;each&nbsp;fast&nbsp;stream | switched on for 2 s (its enable written 1, CONFIG read every 100 ms) and off again, four lines under its name: FAIL when no block comes or the first does not say START; when the numbers do not follow (a record lost, a restart, a bad block); when the rate, from the first block's arrival to the last's, is more than 2 % from the device's (its `rate_reg`, else the map's); when a block still comes 300 ms after the 0 was taken |
 
 Without `--writes` it only reads: safe on a running device. Run it on a new firmware against its map, in CI against
 `evre-sim`, or after changing a map.
@@ -5956,6 +5986,12 @@ limits without `force=True`) and reads writes back. Standard library only; a ser
 `python/README.md` lists its API. The master takes a frame for its answer only when the slave, the offset and the
 count are the request's (18.6), so a frame the device sends by itself (auto send's block) is never taken for the
 answer to a read of part of it.
+
+A fast stream (13.9): `dev.stream('ADC', seconds=2)` switches it on (its enable written 1, not waited for), yields
+each block as it comes (`first`, `count`, `lost`, `new_start`, `values` per channel in the map's units), reads CONFIG
+every 100 ms meanwhile without waiting for the answers, and writes 0 at the end, also when the loop breaks. A
+recording (12.7): `evre.read_recording('run.ADC.evrs')` gives each sample's number, time and values, the gaps and
+the starts; a file cut off is read up to its last whole piece.
 
 Several devices on one link: `evre.connect_bus_tcp(host, port, bus_file, token=...)` gives a `Bus` of the devices of
 a bus file (3.9). Its registers go by their names on the bus (`bus['D2_FAN_SPEED'] = 40`), `bus['D1']` is a device's

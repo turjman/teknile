@@ -58,7 +58,21 @@ with evre.connect_bus_tcp('127.0.0.1', 1231, 'maps/example_bus.json', token='exa
 | `bus['D1_NAME']`, `bus.read(*names)`, `bus.write(name, value, force=False)` | registers by their names on the bus |
 | `bus.broadcast(name, value, force=False)`, `bus.broadcast_refusal(addr, count)` | one frame to every device (slave 0), then each read back; the rule: the reserved bank's writable registers always, elsewhere only when every device has the same map; never CONFIG with AUTO_SEND (bit 3) on, which would make every device send by itself at once |
 
-A fast stream's recording (Fast EVRe: a `.evrs` file EVRe Studio writes beside its CSV, or `evre record` writes):
+A fast stream (Fast EVRe: the device sends its samples in numbered blocks by itself), live:
+
+```python
+with evre.connect_tcp('127.0.0.1', 1240, 'maps/example_fast.json', token='example-token') as dev:
+    for block in dev.stream('ADC', seconds=2):   # its enable written 1, then 0 at the end (also on a break)
+        print(block.first, block.count, block.lost, block.values['I_LOAD'][:3])
+```
+
+`dev.stream(name, seconds=None, heartbeat=0.1)` yields a `Block` per block that comes: `first` (its first record's
+number, 64 bits from the stream's start), `count`, `lost` (records missing before it), `new_start`, `values`
+(`{channel: [value, ...]}` in the map's units) and `arrival` (`time.monotonic()`). CONFIG is read every `heartbeat`
+seconds meanwhile (the device's host watchdog), the answers not waited for. A bad block, or one of a newer kind, is
+skipped.
+
+A fast stream's recording (a `.evrs` file EVRe Studio writes beside its CSV, or `evre record` writes):
 
 ```python
 rec = evre.read_recording('run.ADC.evrs')
@@ -77,4 +91,4 @@ t = rec.times                    # seconds on the writer's clock (EVRe Studio: t
 
 Tests: `python -m unittest discover -s python/tests`, with `EVRE_BUILD=<build folder>` to include a session
 against `evre-sim` serving the example map, a bus of two devices on `evre_fake_fast`, and a recording `evre record`
-writes from it.
+writes from it, and the stream live with `dev.stream`.

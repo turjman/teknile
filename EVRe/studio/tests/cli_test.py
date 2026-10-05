@@ -220,6 +220,21 @@ def fast_checks(opts, run, lines_json):
                           'fast: record: the lost blocks counted (%d records), no restart at the wrap' % lost)
                 rc, out, _ = run('read', *link, 'ADC_STREAM', '--json')
                 check((lines_json(out) or [{}])[0].get('value') == 0, 'fast: record switched the stream off at the end')
+                # evre check --writes: the stream starts with START, its numbers follow, its rate, it stops
+                rc, out, _ = run('check', *link, '--writes', '--json')
+                adc = [(i['result'], i['text']) for i in lines_json(out) if i.get('register') == 'ADC']
+                if not args:
+                    check(rc == 0 and len(adc) == 4 and all(r == 'PASS' for r, _ in adc)
+                          and 'START set' in adc[0][1] and 'the numbers follow' in adc[1][1] and 'within 2 %' in adc[2][1]
+                          and 'stops' in adc[3][1], 'fast: check --writes: the stream starts, its numbers follow, its '
+                          'rate, it stops (%s)' % adc)
+                    rc, out, _ = run('check', *link, '--json')
+                    check(rc == 0 and not any(i.get('register') == 'ADC' for i in lines_json(out)),
+                          'fast: check without --writes leaves the stream alone (switching it on writes)')
+                else:
+                    check(rc == 1 and len(adc) == 4 and adc[1][0] == 'FAIL' and ' lost' in adc[1][1],
+                          'fast: check --writes on a device losing every 5th block: the numbers do not follow, FAIL '
+                          '(%s)' % adc[1:2])
             finally:
                 fake.kill()
                 fake.wait()

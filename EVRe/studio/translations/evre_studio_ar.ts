@@ -1733,64 +1733,6 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>محرر الخريطة</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Map editor&lt;/h2&gt;
-&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
-cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
-JSON, also between maps.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
-&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
-the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
-amber past a limit, grey without one; hover it for a long value in full).
-With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
-a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
-page, for why.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
-max… Click one to go there.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
-the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones). &lt;b&gt;Import CSV…&lt;/b&gt; reads a
-sheet back.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
-register is edited, as long as it is read the same way.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
-&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
-التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
-JSON، وبين الخرائط أيضًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
-المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
-&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
-الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
-كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
-وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
-bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
-الصفحة، لتعرف لماذا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
-أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
-و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
-ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ
-جدولًا عائدًا.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
-يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>API (MATLAB, LabVIEW, Python)</source>
         <translation>API (MATLAB وLabVIEW وPython)</translation>
     </message>
@@ -2501,6 +2443,9 @@ how fast, the register that switches the stream, and what one sample holds (its 
     &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
     &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
                   { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;In the Map editor they are on &lt;b&gt;Map settings…&lt;/b&gt;, the &lt;b&gt;Streams&lt;/b&gt; page: each stream&apos;s window, rate and
+channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/code&gt; switches each on for 2 s and checks its START,
+its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;▶ Start ADC&lt;/b&gt; writes 1 to the stream&apos;s enable register (after reading its rate register, if the map names
@@ -2545,6 +2490,9 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
     &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
     &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
                   { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;في محرر الخريطة تجدها في &lt;b&gt;إعدادات الخريطة…&lt;/b&gt;، صفحة &lt;b&gt;التدفقات&lt;/b&gt;: نافذة كل تدفق ومعدّله وقنواته، وفحوص
+الخريطة تحتها. &lt;code&gt;evre check --writes&lt;/code&gt; يشغّل كلًّا منها ثانيتين ويفحص START وأرقامه ومعدّله؛ وتقرؤه بايثون مباشرةً
+بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;▶ بدء ADC&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
@@ -2576,6 +2524,64 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 &lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
 لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
 ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Map editor&lt;/h2&gt;
+&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
+cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
+JSON, also between maps.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
+scale, decimals, min, max, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
+&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
+the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
+amber past a limit, grey without one; hover it for a long value in full).
+With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
+a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
+page, for why.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
+max… Click one to go there.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the &lt;i&gt;Streams&lt;/i&gt; page).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
+the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
+bind function; the library needs every read-only register below the writable ones). &lt;b&gt;Import CSV…&lt;/b&gt; reads a
+sheet back.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
+register is edited, as long as it is read the same way.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
+&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
+التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
+JSON، وبين الخرائط أيضًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
+المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
+&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
+الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
+كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
+وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
+bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
+الصفحة، لتعرف لماذا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
+أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها، والتدفقات السريعة (صفحة &lt;i&gt;التدفقات&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
+و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
+ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ
+جدولًا عائدًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
+يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
 </translation>
     </message>
 </context>
@@ -3732,6 +3738,138 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
         <source>Token register: an address (not 0x0000)</source>
         <translation>مسجّل رمز الدخول: عنوان (ليس 0x0000)</translation>
     </message>
+    <message>
+        <source>Streams</source>
+        <translation>التدفقات</translation>
+    </message>
+    <message>
+        <source>+ Stream</source>
+        <translation>+ تدفق</translation>
+    </message>
+    <message>
+        <source>A new fast stream: its window, rate and channels to fill in</source>
+        <translation>تدفق سريع جديد: تُملأ نافذته ومعدّله وقنواته</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>إزالة</translation>
+    </message>
+    <message>
+        <source>Remove the selected stream from the map</source>
+        <translation>إزالة التدفق المحدد من الخريطة</translation>
+    </message>
+    <message>
+        <source>The stream&apos;s name: its lines are NAME.CHANNEL</source>
+        <translation>اسم التدفق: خطوطه NAME.CHANNEL</translation>
+    </message>
+    <message>
+        <source>Where its blocks come from: the first address of its window in the device bank (0xD000 … 0xDFFF), which no register uses</source>
+        <translation>من أين تأتي كتله: أول عنوان لنافذته في بنك الجهاز (0xD000 … 0xDFFF)، ولا يستعمله أي مسجّل</translation>
+    </message>
+    <message>
+        <source> bytes</source>
+        <translation> بايت</translation>
+    </message>
+    <message>
+        <source>The window&apos;s bytes: the largest block, its 8-byte header included</source>
+        <translation>بايتات النافذة: أكبر كتلة، مع رأسها ذي البايتات الثمانية</translation>
+    </message>
+    <message>
+        <source>The samples a second the device is built for</source>
+        <translation>العينات في الثانية التي صُنع الجهاز لها</translation>
+    </message>
+    <message>
+        <source>A writable register: 1 starts the stream, 0 stops it. Empty: the device sends by itself</source>
+        <translation>مسجّل قابل للكتابة: 1 يبدأ التدفق، و0 يوقفه. فارغ: الجهاز يرسل من تلقاء نفسه</translation>
+    </message>
+    <message>
+        <source>A register whose value is the rate the device is set to now. Empty: the rate above</source>
+        <translation>مسجّل قيمته المعدّل المضبوط عليه الجهاز الآن. فارغ: المعدّل أعلاه</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>الاسم</translation>
+    </message>
+    <message>
+        <source>Address, size</source>
+        <translation>العنوان، الحجم</translation>
+    </message>
+    <message>
+        <source>samples/s</source>
+        <translation>عينة/ث</translation>
+    </message>
+    <message>
+        <source>Rate</source>
+        <translation>المعدّل</translation>
+    </message>
+    <message>
+        <source>Enable</source>
+        <translation>التشغيل</translation>
+    </message>
+    <message>
+        <source>Rate register</source>
+        <translation>مسجّل المعدّل</translation>
+    </message>
+    <message>
+        <source>Channel</source>
+        <translation>القناة</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>النوع</translation>
+    </message>
+    <message>
+        <source>Unit</source>
+        <translation>الوحدة</translation>
+    </message>
+    <message>
+        <source>Scale</source>
+        <translation>المعامل</translation>
+    </message>
+    <message>
+        <source>Offset</source>
+        <translation>الإزاحة</translation>
+    </message>
+    <message>
+        <source>Decimals</source>
+        <translation>المنازل العشرية</translation>
+    </message>
+    <message>
+        <source>The channels of one sample, in the order the device packs them: shown value = raw x scale + offset</source>
+        <translation>قنوات العينة الواحدة، بالترتيب الذي يرصّها به الجهاز: القيمة المعروضة = الخام × المعامل + الإزاحة</translation>
+    </message>
+    <message>
+        <source>+ Channel</source>
+        <translation>+ قناة</translation>
+    </message>
+    <message>
+        <source>Remove channel</source>
+        <translation>إزالة القناة</translation>
+    </message>
+    <message>
+        <source>Remove the selected channel</source>
+        <translation>إزالة القناة المحددة</translation>
+    </message>
+    <message>
+        <source>Fast streams (Fast EVRe): the device sends their samples in numbered blocks by itself, from a window of the device bank that no register uses.</source>
+        <translation>التدفقات السريعة (Fast EVRe): الجهاز يرسل عيناتها في كتل مرقّمة من تلقاء نفسه، من نافذة في بنك الجهاز لا يستعملها أي مسجّل.</translation>
+    </message>
+    <message>
+        <source>(no name)</source>
+        <translation>(بلا اسم)</translation>
+    </message>
+    <message>
+        <source>A sample: %1 bytes · at most %2 samples a block</source>
+        <translation>العينة: %1 بايت · على الأكثر %2 عينة في الكتلة</translation>
+    </message>
+    <message>
+        <source>A sample: %1 bytes · no block fits the window</source>
+        <translation>العينة: %1 بايت · لا تتسع النافذة لأي كتلة</translation>
+    </message>
+    <message>
+        <source>A new channel, after the others in a sample</source>
+        <translation>قناة جديدة، بعد القنوات الأخرى في العينة</translation>
+    </message>
 </context>
 <context>
     <name>MapTableModel</name>
@@ -3899,6 +4037,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>OK: reads %1</source>
         <translation>صحيح: يقرأ %1</translation>
+    </message>
+    <message>
+        <source>%1 is a fast stream&apos;s channel: a math line reads registers, not fast channels, in this version</source>
+        <translation>%1 قناة تدفق سريع: الخط الرياضي يقرأ المسجّلات، لا القنوات السريعة، في هذا الإصدار</translation>
     </message>
 </context>
 <context>
@@ -4828,6 +4970,54 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>its window shares bytes with the stream %1</source>
         <translation>نافذته تشترك في بايتات مع التدفق %1</translation>
+    </message>
+    <message>
+        <source>## Fast streams</source>
+        <translation>## التدفقات السريعة</translation>
+    </message>
+    <message>
+        <source>Fast EVRe (PROTOCOL.md, &quot;Fast EVRe&quot;): the device sends each stream&apos;s samples by itself, in numbered blocks: READ_RESP frames nobody asked for, at the first address of the stream&apos;s window. A block is an 8-byte header (the first record&apos;s number u32, the records&apos; count u16, flags u8: START 0x01, LOST 0x02, a spare byte 0) and its records, all channels of one instant together, little endian.</source>
+        <translation>Fast EVRe (PROTOCOL.md، &quot;Fast EVRe&quot;): يرسل الجهاز عينات كل تدفق من تلقاء نفسه، في كتل مرقّمة: إطارات READ_RESP لم يطلبها أحد، عند أول عنوان في نافذة التدفق. الكتلة رأس من 8 بايتات (رقم أول سجلّ u32، وعدد السجلات u16، والأعلام u8: START 0x01، LOST 0x02، وبايت احتياطي 0) ثم سجلاتها، كل قنوات اللحظة الواحدة معًا، بترتيب little endian.</translation>
+    </message>
+    <message>
+        <source>| Window | `%1`, %2 bytes |
+</source>
+        <translation>| النافذة | `%1`، %2 بايت |
+</translation>
+    </message>
+    <message>
+        <source>| Rate | %1 records a second |
+</source>
+        <translation>| المعدّل | %1 سجلّ في الثانية |
+</translation>
+    </message>
+    <message>
+        <source>| Record | %1 bytes; at most %2 records a block |
+</source>
+        <translation>| السجلّ | %1 بايت؛ على الأكثر %2 سجلّ في الكتلة |
+</translation>
+    </message>
+    <message>
+        <source>| Enable | `%1`: 1 starts the stream, 0 stops it |
+</source>
+        <translation>| التشغيل | `%1`: 1 يبدأ التدفق، و0 يوقفه |
+</translation>
+    </message>
+    <message>
+        <source>| Rate register | `%1`: the rate now |
+</source>
+        <translation>| مسجّل المعدّل | `%1`: المعدّل الآن |
+</translation>
+    </message>
+    <message>
+        <source>| Group | %1 |
+</source>
+        <translation>| المجموعة | %1 |
+</translation>
+    </message>
+    <message>
+        <source>| Byte | Channel | Type | Unit | Scale | Offset | Description |</source>
+        <translation>| البايت | القناة | النوع | الوحدة | المعامل | الإزاحة | الوصف |</translation>
     </message>
 </context>
 <context>
