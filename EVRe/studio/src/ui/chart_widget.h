@@ -184,6 +184,11 @@ public:
 	int legendMeasures() const { return chipMeasures_; } /* tests: the legend's chips measured (not at every frame) */
 	int paints() const { return paints_; }             /* tests: the frames painted so far */
 	QSizeF readoutSize() const { return readout_.isNull() ? QSizeF() : readout_.deviceIndependentSize(); }
+	/* tests: the bar between the cursors as last painted: its text (empty: none), the bar, and the text's box (inside
+	 * the bar, or beside a tag when the bar is too short for it) */
+	QString spanBarText() const { return spanBar_.text; }
+	QRectF spanBarRect() const { return spanBar_.bar; }
+	QRectF spanBarTextRect() const { return spanBar_.textRect; }
 
 	/* who draws the lines (gpu_lines.h): Auto = a dedicated card if there is one, else the CPU (the processor's
 	 * graphics draws slower than the CPU at 4K); a choice that cannot be had falls back to the CPU, and says why
@@ -364,6 +369,18 @@ private:
 	void drawCursors(QPainter &p, const Axes &axes) const;
 	/* a cursor's tag (k 0: A, 1: B) as a picture, for the card */
 	const QImage &tagPicture(int k, qreal dpr) const;
+	/* The bar between the cursors' tags at the top of the plot, with the time between them: a cursor off the view
+	 * ends it at the plot's edge; text too wide for it goes beside the right tag (the left one when the plot ends
+	 * there). Empty text: no bar (a cursor not placed, or both off the view on one side). */
+	struct SpanBar {
+		QRectF bar, textRect;
+		QString text;
+		bool inside = false;
+	};
+	SpanBar spanBar(const Axes &axes) const;
+	void drawSpanBar(QPainter &p, const SpanBar &bar) const;
+	/* the same as a picture over `area` (the bar and its text), for the card */
+	const QImage &spanBarPicture(const SpanBar &bar, const QRectF &area, qreal dpr) const;
 	void drawMemoryStrip(QPainter &p, const Axes &axes);
 	void drawMemoryLines(QPainter &p, const Axes &strip) const;
 	void drawLegend(QPainter &p, const Axes &axes) const;
@@ -440,6 +457,9 @@ private:
 	int framesUnder_ = 0;                  /* frames drawn by the card while its layer is not shown (read back under it) */
 	mutable QImage tags_[2];               /* the cursors' tags for the card, at tagsKey_ */
 	mutable QString tagsKey_;
+	mutable SpanBar spanBar_;              /* the bar between the cursors as last painted (tests) */
+	mutable QImage spanBarImage_;          /* its picture for the card, at spanBarKey_ */
+	mutable QString spanBarKey_;
 	std::function<double()> clock_;
 	qint64 epochMs_ = 0;
 

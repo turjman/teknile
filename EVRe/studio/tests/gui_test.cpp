@@ -106,6 +106,7 @@
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 #include "ui/value_pace.h"
 
 namespace {
@@ -505,6 +506,7 @@ public:
 		helpPages();
 		measuresManyLines();
 		chartFollowsFrames();
+		cursorSpanBar();
 		frameBudget();
 		plotShownWithoutQuestion();
 		mapEditor();
@@ -3161,7 +3163,8 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "a picture of the chart", "another tab and back",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a picture of the chart",
+					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
 						"the CPU draws, skipped").arg(QLatin1String(what))));
@@ -3186,6 +3189,7 @@ private:
 					(long long) opening.elapsed());
 			check(setMs < 60 && meanwhile && opened, "chart on a GPU: the card opened on a thread of its own (the "
 					"window's thread not held while it wakes), the CPU drawing meanwhile; then the card takes over and says so");
+			once->setCursors(3570.0, 3571.5); /* the tags and the bar between them drawn by the card too */
 			for (int k = 0; k < 3; k++) { /* two frames with the card's picture under its layer, then the layer */
 				once->repaint();
 				QApplication::processEvents();
@@ -3200,7 +3204,22 @@ private:
 					gpu.width(), gpu.height());
 			check(onGpu && alike >= 0.93, "chart on a GPU: the plot a layer of the window (no window of its own: the chart "
 					"stays one of Qt's), drawn by the card named, its frame the CPU's picture, block by block");
-			const double grabbed = blocksAlike(cpu, b, 3);
+			/* the cursors' tags and the bar between them: the layer's top 16 px (they sit 2 px above the plot, on the
+			 * layer's edge), the card's against the CPU's */
+			const int stripRows = int(std::ceil(16 * once->devicePixelRatioF()));
+			const QImage gpuStrip = gpu.copy(0, 0, gpu.width(), stripRows);
+			const QImage cpuStrip = cpu.copy(at).copy(0, 0, gpu.width(), stripRows);
+			const double stripAlike = blocksAlike(gpuStrip, cpuStrip, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuStrip.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/bar_card.png"));
+				cpuStrip.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/bar_cpu.png"));
+			}
+			std::printf("     (the cursors' strip: %.2f%% of the blocks like the CPU's; the bar \"%s\")\n", stripAlike * 100,
+					qPrintable(once->spanBarText()));
+			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
+					"between them, drawn by the card as the CPU draws them");
+			once->clearCursors();
+			const double grabbed = blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
 			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
 			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
 
@@ -3566,6 +3585,105 @@ private:
 		check(std::isnan(view->cursorA()) && std::isnan(view->cursorB()), "chart: Cursors off takes cursors A and B "
 				"off the chart");
 		measure->setChecked(false); /* the setting back as the other steps expect it */
+		tab.hide();
+	}
+
+	/* The bar between the cursors' tags: the time between them as durationText writes it, whichever comes first; a span
+	 * too narrow for the text puts it beside the right tag; a cursor off the view ends the bar at the plot's edge.
+	 * Painted by grab() (the CPU), the view held so that the cursors stay where they are from one picture to the next. */
+	void cursorSpanBar() {
+		const bool texts = durationText(123e-6) == QStringLiteral("123 µs")
+				&& durationText(3.525e-3) == QLatin1String("3.525 ms") && durationText(12.35) == QLatin1String("12.35 s")
+				&& durationText(83.4) == QLatin1String("1 min 23.4 s") && durationText(7500) == QLatin1String("2 h 05 min")
+				&& durationText(999.96e-6) == QLatin1String("1 ms") && durationText(-0.5) == QLatin1String("500 ms");
+		check(texts, "chart, A-B bar: the time written as 123 µs, 3.525 ms, 12.35 s, 1 min 23.4 s, 2 h 05 min (999.96 µs "
+				"is 1 ms; the sign dropped)");
+
+		ChartTab tab([] { return 100.0; });
+		tab.resize(1200, 700);
+		RegDef def;
+		def.addr = 0xD000;
+		def.name = QStringLiteral("BAR");
+		def.unit = QStringLiteral("V");
+		tab.plotRegister(def, true);
+		MathLines::Samples samples;
+		for (int i = 0; i < 1000; i++) samples[regKey(def)] << QPointF(90.0 + i * 0.01, std::sin(i * 0.01));
+		auto *view = tab.findChild<ChartView *>();
+		if (!view) {
+			check(false, "chart, A-B bar: the chart found");
+			return;
+		}
+		view->setWindow(10);
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		tab.frame(samples);
+		QApplication::processEvents();
+		(void) view->grab();
+		view->setLive(false); /* the view where it was painted */
+		const auto paint = [&](double a, double b) {
+			view->setCursors(a, b);
+			(void) view->grab();
+		};
+		const auto near = [](double x, double want) { return std::fabs(x - want) < 0.5; };
+
+		paint(NAN, NAN);
+		const bool noneWithout = view->spanBarText().isEmpty();
+		paint(92.0, NAN);
+		const bool noneWithA = view->spanBarText().isEmpty();
+
+		/* B before A: the time between them, in the bar between the tags (each 9 px from its cursor, 2 px apart) */
+		paint(96.4567, 92.0);
+		const QRectF wide = view->spanBarRect(), wideText = view->spanBarTextRect();
+		const bool inside = view->spanBarText() == durationText(4.4567) && view->spanBarText() == QLatin1String("4.457 s")
+				&& wide.width() > wideText.width() && wide.contains(wideText) && near(wide.center().x(), wideText.center().x());
+		const double pxPerSecond = (wide.width() + 2 * 11) / 4.4567;
+		const auto x = [&](double t) { return wide.left() - 11 + (t - 92.0) * pxPerSecond; };
+		if (!inside)
+			std::printf("     (A 96.4567, B 92: \"%s\", bar %.1f..%.1f, text %.1f..%.1f)\n", qPrintable(view->spanBarText()),
+					wide.left(), wide.right(), wideText.left(), wideText.right());
+		check(noneWithout && noneWithA && inside, "chart, A-B bar: none without both cursors; the time between them "
+				"|B - A| (durationText) centred in the bar between the tags, B before A too");
+
+		/* 0.3 s: a bar of a few pixels, its text after the right tag; 20 ms: no bar, the text there too */
+		paint(94.0, 94.3);
+		const QRectF shortBar = view->spanBarRect(), shortText = view->spanBarTextRect();
+		const bool beside = view->spanBarText() == durationText(0.3) && !shortBar.isEmpty()
+				&& shortBar.width() < shortText.width() && near(shortBar.left(), x(94.0) + 11)
+				&& near(shortBar.right(), x(94.3) - 11) && near(shortText.left(), x(94.3) + 9 + 2)
+				&& near(shortText.top(), wideText.top());
+		paint(95.0, 95.02);
+		const bool besideNoBar = view->spanBarText() == durationText(0.02) && view->spanBarRect().isEmpty()
+				&& near(view->spanBarTextRect().left(), x(95.02) + 11);
+		if (!beside || !besideNoBar)
+			std::printf("     (0.3 s: bar %.1f..%.1f, text at %.1f (%.1f wanted); 20 ms: text at %.1f (%.1f wanted))\n",
+					shortBar.left(), shortBar.right(), shortText.left(), x(94.3) + 11, view->spanBarTextRect().left(),
+					x(95.02) + 11);
+		check(beside && besideNoBar, "chart, A-B bar: a span too narrow for its text puts the text beside the right tag "
+				"(the bar between the tags still drawn while it is 2 px or more)");
+
+		/* both off the view, one each side: the whole plot; one off: that end at the plot's edge; both off one side:
+		 * no bar */
+		paint(50.0, 150.0);
+		const QRectF whole = view->spanBarRect();
+		const bool across = view->spanBarText() == durationText(100) && near(whole.width(), 10 * pxPerSecond)
+				&& whole.left() > 0 && whole.right() < view->width(); /* the window's 10 s: the plot from edge to edge */
+		paint(50.0, 96.0);
+		const QRectF leftOff = view->spanBarRect();
+		paint(93.0, 150.0);
+		const QRectF rightOff = view->spanBarRect();
+		const bool edges = near(leftOff.left(), whole.left()) && near(leftOff.right(), x(96.0) - 11)
+				&& near(rightOff.right(), whole.right()) && near(rightOff.left(), x(93.0) + 11)
+				&& view->spanBarTextRect().top() == wideText.top();
+		paint(50.0, 60.0);
+		const bool offOneSide = view->spanBarText().isEmpty();
+		view->clearCursors();
+		(void) view->grab();
+		const bool cleared = view->spanBarText().isEmpty();
+		if (!across || !edges)
+			std::printf("     (A-B across: %.1f..%.1f, %.1f px wanted; A off: %.1f..%.1f; B off: %.1f..%.1f)\n", whole.left(),
+					whole.right(), 10 * pxPerSecond, leftOff.left(), leftOff.right(), rightOff.left(), rightOff.right());
+		check(across && edges && offOneSide && cleared, "chart, A-B bar: a cursor off the view ends the bar at the plot's "
+				"edge (both off, one each side: all of the plot); both off one side, or cleared: no bar");
 		tab.hide();
 	}
 

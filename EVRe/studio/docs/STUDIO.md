@@ -1134,6 +1134,23 @@ With **Cursors** on:
 
 Drag a cursor to move it. Each cursor is a dashed line with a lettered tag at the top, and the span between them is shaded. The top right shows *cursors: click / drag*.
 
+Once both are placed, a bar joins their tags at the top of the plot and says the time between them, |B − A|, whether A or B is the earlier:
+
+- **The text.** Four significant digits below a minute, in the first unit where they stay below 1000: *123 µs*, *3.525 ms*, *12.35 s* (999.96 µs is written *1 ms*). From a minute: *1 min 23.4 s*; from an hour: *2 h 05 min*. The line above the measurements says the same span to the millisecond (*A → B = 4.457 s*, chapter 8); the bar is there to read at a glance.
+- **A cursor off the view.** The bar ends at the plot's edge on that side, and its text stays the whole time between them. With both off, one each side, it runs across the plot. With both off on one side there is no bar.
+- **Close cursors.** When the text does not fit between the tags, it stands beside the right tag (beside the left one when the plot ends there). The bar between the tags stays while it is 2 px or more.
+
+```
+   +-+ +-----------------------+ +-+
+   |A| |       4.457 s         | |B|          the text in the bar
+   +-+ +-----------------------+ +-+
+    |                             |
+
+   +-+ +-+ +-+ +--------+
+   |A| | | |B| | 300 ms |                     too close: the text beside B
+   +-+ +-+ +-+ +--------+
+```
+
 Cursors are fixed **times**, not screen positions. In a live view they move left with the data. Once both are placed, the measurements cover A → B instead of the view.
 
 ### 7.8 Mouse and keyboard
@@ -3185,7 +3202,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`, `.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`, `.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`, `.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`, `.cpp` | time lengths as text and back, `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker) |
+| `src/ui/ui_helpers.h`, `.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, exports) without a window |
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
@@ -3389,7 +3406,7 @@ names, kept in the same table as the functions) and constants, for the formula b
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
 | `ChartTab` | chart controls, measurements, math lines, chart settings | `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats`, `range`, `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks) |
+| `ChartView` / `ChartWidget` | the chart (chapter 23) | `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats`, `range`, `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`, `wordStart`, `shown` | GUI test |
@@ -3701,9 +3718,13 @@ layer of the window over the chart (DirectComposition), which a card draws and s
 - **All of the plot.** `plotOnGpu` lists, in the layer's pixels, the background, the grid lines (crisp: on whole
   pixels, as the CPU's 1 px pen), the cursors' span (a bar as tall as the plot), the lines, the cursors' and the
   crosshair's dashed lines (`GpuLines::Layer`: segments of one width), then the pictures over them
-  (`GpuLines::Sprite`): the cursors' tags (`tagPicture`), the crosshair's dots (`dotPicture`) and its box
-  (`readout_`). A picture stays on the card while it is the same `QImage` (`cacheKey`): the dots and tags once, the
-  box when it is made again (23.6).
+  (`GpuLines::Sprite`): the cursors' tags (`tagPicture`), the A-B bar with its text (`spanBarPicture`), the
+  crosshair's dots (`dotPicture`) and its box (`readout_`). A picture stays on the card while it is the same `QImage`
+  (`cacheKey`): the dots and tags once, the box when it is made again (23.6), the A-B bar when its text, its length or
+  where the text stands changes (a live view moves both cursors alike, so the bar keeps its picture while it scrolls).
+- **The A-B bar** (7.7) is laid out once for both drawings (`spanBar`: the bar, the text's box, whether the text is
+  inside it) and painted by one function (`drawSpanBar`): by the CPU in `drawCursors`, and for the card into a
+  picture of the bar and its text, placed on whole pixels as the tags are. So the two drawings show the same bar.
 - **A segment is an instance.** Each line's polyline (23.2, without the bars: a card draws the strokes) becomes
   segments of 20 bytes (`GpuLines::Segment`: two points in the layer's pixels, the colour); the vertex shader makes
   each a quad the line's width (as the CPU's copies: `max(2, round(1.5 × devicePixelRatio))` pixels) and half the
@@ -4082,7 +4103,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 276 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 281 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
