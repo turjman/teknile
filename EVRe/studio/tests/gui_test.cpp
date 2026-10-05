@@ -3163,7 +3163,8 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "a picture of the chart", "another tab and back",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a picture of the chart",
+					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
 						"the CPU draws, skipped").arg(QLatin1String(what))));
@@ -3188,6 +3189,7 @@ private:
 					(long long) opening.elapsed());
 			check(setMs < 60 && meanwhile && opened, "chart on a GPU: the card opened on a thread of its own (the "
 					"window's thread not held while it wakes), the CPU drawing meanwhile; then the card takes over and says so");
+			once->setCursors(3570.0, 3571.5); /* the tags and the bar between them drawn by the card too */
 			for (int k = 0; k < 3; k++) { /* two frames with the card's picture under its layer, then the layer */
 				once->repaint();
 				QApplication::processEvents();
@@ -3202,7 +3204,22 @@ private:
 					gpu.width(), gpu.height());
 			check(onGpu && alike >= 0.93, "chart on a GPU: the plot a layer of the window (no window of its own: the chart "
 					"stays one of Qt's), drawn by the card named, its frame the CPU's picture, block by block");
-			const double grabbed = blocksAlike(cpu, b, 3);
+			/* the cursors' tags and the bar between them: the layer's top 16 px (they sit 2 px above the plot, on the
+			 * layer's edge), the card's against the CPU's */
+			const int stripRows = int(std::ceil(16 * once->devicePixelRatioF()));
+			const QImage gpuStrip = gpu.copy(0, 0, gpu.width(), stripRows);
+			const QImage cpuStrip = cpu.copy(at).copy(0, 0, gpu.width(), stripRows);
+			const double stripAlike = blocksAlike(gpuStrip, cpuStrip, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuStrip.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/bar_card.png"));
+				cpuStrip.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/bar_cpu.png"));
+			}
+			std::printf("     (the cursors' strip: %.2f%% of the blocks like the CPU's; the bar \"%s\")\n", stripAlike * 100,
+					qPrintable(once->spanBarText()));
+			check(!once->spanBarText().isEmpty() && stripAlike >= 0.93, "chart on a GPU: the cursors' tags and the bar "
+					"between them, drawn by the card as the CPU draws them");
+			once->clearCursors();
+			const double grabbed = blocksAlike(onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32), b, 3);
 			if (grabbed < 0.995) std::printf("     (a picture of the chart on a card vs on the CPU: %.2f%%)\n", grabbed * 100);
 			check(grabbed >= 0.995, "chart on a GPU: a picture of the chart (grab) has the plot, drawn by the CPU");
 
