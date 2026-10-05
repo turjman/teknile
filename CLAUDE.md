@@ -215,3 +215,23 @@ the lines in it. Lanes must stay readable however many units are plotted.
    on `MAX_LANES` replaced. Every new text in `translations/evre_studio_ar.ts` with its Arabic
    (the glossary in `translations/README.md`: lane مسار; commands as verbal nouns, so "Fold lane"
    طيّ المسار, "Open lane" فتح المسار), no unfinished entries.
+7. **Make it visible (the owner's review of PR #7, on the same branch and PR).** The owner did not
+   find the fold: a rotated unit name looks like a label, and the lane menu is only a right-click.
+   - A **fold button on every lane**: a "▾" at the top of each open lane's unit column (above its
+     rotated unit name), matching the "▸" a folded strip already shows; a click on either folds or
+     opens (the unit name and the strip keep working as now).
+   - **Hover**: over the button, the unit name and a folded strip, the pointing-hand cursor, the
+     button drawn highlighted, and a tooltip "Fold lane" / "Open lane".
+   - **The hint** in the chart's state corner (beside "cursors: click / drag"): with Lanes on, "lanes:
+     ▾ folds" instead of "lanes".
+   - **Display menu**: "Fold all lanes" and "Open all lanes" under Lanes, shown only with Lanes on,
+     each disabled when there is nothing to do (a way back when everything is folded).
+   - **Tooltip on the lanes' value labels**: "Wheel: scroll the lanes · Ctrl + wheel: zoom this lane ·
+     Right-click: its Y range and Fold lane" (only the parts that apply: no scrolling when they fit).
+   - Both drawing paths: the buttons are drawn as the unit names are (CPU text, the card as now), the
+     card's picture check stays at its level.
+   - Checks: the button's rect per lane, a click on it folds and on the strip's opens, the hover
+     cursor and tooltip, the hint text, Fold all / Open all (enabled states, folds saved), the value
+     labels' tooltip with and without scrolling. Docs (STUDIO.md 7.12, the mouse table, chapter 23),
+     the Help's chart page, the check count, the Arabic texts (glossary terms), no unfinished entries.
+     Push to `phase9-lanes-fit` (PR #7) and add a short "UI/UX follow-up" section to the PR's text.
