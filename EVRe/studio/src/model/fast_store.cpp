@@ -38,6 +38,8 @@ void Store::reset(const StreamDef &def) {
 /* Everything let go but the newest time mark: the stream goes on, and its next records still need their times */
 void Store::clear() {
 	pieces_.clear();
+	spans_.clear();
+	spanOfChunk_.clear();
 	dropped_ = 0;
 	size_ = 0;
 	segments_.clear();
@@ -50,13 +52,29 @@ void Store::clear() {
 	for (Channel &c : channels_) c.small = c.large = Summary();
 }
 
-void Store::append(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost) {
+void Store::begin(quint64 first, qsizetype count, bool newStart, quint64 lost) {
 	if (newStart || epochs_.isEmpty()) epochs_.push_back(Epoch());
 	if (recordSize_ <= 0 || count <= 0) return;
 	const int epoch = epochBase_ + int(epochs_.size()) - 1;
 	const qint64 at = dropped_ + size_;
 	if (segments_.isEmpty() || newStart || lost > 0 || first != nextRecord_ || segments_.last().epoch != epoch)
 		segments_.push_back({ at, first, epoch });
+}
+
+void Store::appendMapped(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost) {
+	begin(first, count, newStart, lost);
+	if (recordSize_ <= 0 || count <= 0) return;
+	spans_.push_back({ records, size_, count });
+	for (qsizetype chunk = spanOfChunk_.size(); chunk * SMALL < size_ + count; chunk++)
+		spanOfChunk_.push_back(int(spans_.size() - 1));
+	size_ += count;
+	nextRecord_ = first + quint64(count);
+	summarize();
+}
+
+void Store::append(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost) {
+	begin(first, count, newStart, lost);
+	if (recordSize_ <= 0 || count <= 0) return;
 	/* into the pieces, a piece's room taken at once */
 	qsizetype done = 0;
 	while (done < count) {
@@ -96,6 +114,7 @@ bool Store::hasTime() const {
 }
 
 void Store::dropFront(qsizetype records) {
+	if (!spans_.isEmpty()) return; /* mapped: the file holds them */
 	const qsizetype pieces = std::min(records / PIECE, size_ / PIECE);
 	if (pieces <= 0) return;
 	const qsizetype n = pieces * PIECE;
@@ -132,6 +151,7 @@ void Store::dropFront(qsizetype records) {
 qint64 Store::bytes() const {
 	qint64 total = 0;
 	for (const QByteArray &piece : pieces_) total += piece.capacity();
+	total += spans_.capacity() * qint64(sizeof(Span)) + spanOfChunk_.capacity() * qint64(sizeof(int)); /* not the file's */
 	for (const Channel &c : channels_)
 		total += qint64(c.small.min.capacity() + c.large.min.capacity()) * 4 * qint64(sizeof(double));
 	total += segments_.capacity() * qint64(sizeof(Segment));
@@ -140,13 +160,17 @@ qint64 Store::bytes() const {
 }
 
 double Store::bytesPerRecord() const {
-	return recordSize_ + channels() * 4.0 * sizeof(double) * (1.0 / SMALL + 1.0 / LARGE);
+	return (spans_.isEmpty() ? recordSize_ : 0) + channels() * 4.0 * sizeof(double) * (1.0 / SMALL + 1.0 / LARGE);
 }
 
 /* ------------------------------------------------------------------ reading */
 
 const char *Store::recordAt(qsizetype i) const {
-	return pieces_[i / PIECE].constData() + (i % PIECE) * recordSize_;
+	if (spans_.isEmpty()) return pieces_[i / PIECE].constData() + (i % PIECE) * recordSize_;
+	/* mapped: from the span of its chunk's first record on, a step or two (a block holds hundreds of records) */
+	int k = spanOfChunk_[i / SMALL];
+	while (spans_[k].begin + spans_[k].count <= i) k++;
+	return spans_[k].data + (i - spans_[k].begin) * recordSize_;
 }
 
 double Store::decode(const Channel &c, const char *record) const {

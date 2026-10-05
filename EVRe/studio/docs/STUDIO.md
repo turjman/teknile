@@ -115,6 +115,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [12.4 Timing](#124-timing)
     - [12.5 Notes beside a recording](#125-notes-beside-a-recording)
     - [12.6 Opening a recording](#126-opening-a-recording)
+    - [12.7 Fast streams' recordings (.evrs)](#127-fast-streams-recordings-evrs)
   - [13. Polling performance and tuning](#13-polling-performance-and-tuning)
     - [13.1 What a poll is](#131-what-a-poll-is)
     - [13.2 The interval](#132-the-interval)
@@ -1894,7 +1895,8 @@ math lines, notes and the right-click menu as on the Chart tab. The live chart g
 recordings can be open.
 
 - **Open it:** **Open** beside **● Record CSV** (*Open recording…*, or one of the last 8 recordings), **Open
-  recording…** or **Recent recordings** on the chart's right-click menu, or drop a `.csv` on the window.
+  recording…** or **Recent recordings** on the chart's right-click menu, or drop a `.csv` (or a fast stream's `.evrs`,
+  12.7) on the window.
 - **Read on a thread.** A progress dialog shows while a big file is read, with **Cancel**. A file that is not a
   recording (its first line is not `time_s,datetime,…`) says so.
 - **The RAM applies.** A recording takes about 39 bytes a sample: the chart's 23 (7.4) and the window's own copy of
@@ -1914,6 +1916,40 @@ recordings can be open.
 - **Its own settings.** The window's chart keeps its choices under `recording/…` (14.3): its Window, Y range, Measure
   and columns, Display, and its **own math lines** (`recording/math`), computed from the file's values.
 - **Notes** beside the file (12.5) are shown, and saved again at every change.
+
+### 12.7 Fast streams' recordings (.evrs)
+
+A fast stream (13.9) cannot go into the CSV: a row per sample would be about 60 MB of text a second at a million
+samples a second. While **● Record CSV** runs, each stream that sends is recorded **beside the CSV, as it came**:
+`run.csv` gets `run.ADC.evrs`, one file a stream. Nothing is converted and nothing is lost: gaps stay gaps.
+
+- **Written by the I/O thread**, the blocks as they arrive, from the first block after the recording starts to
+  **■ Stop recording**; whether the chart shows the stream or not. With the CSV's flush (every 250 ms) its data goes
+  to the disk. The Log says at the stop: *fast stream ADC recorded: run.ADC.evrs (1517 blocks, 5.9 MB)*.
+- **The clock.** The file's time marks are the clock's fit (13.9) on the Studio's clock, the CSV's `time_s`: a
+  recording opened with its CSV lays both on one time axis.
+- **The format** (`evre-fast-rec/1`, FAST_PLAN.md section 8.3): pieces, each a name of 4 bytes and a length before
+  its body. `EVRS` first, the head in JSON: the format, the map's device, the stream as the map writes it, the start's
+  local time and the Studio's clock then (`start_s`). `TIME`: a record's number (u64) and its time (f64), before
+  the first block of every start and then about once a second. `BLK `: a block as it came, its 8-byte header and its
+  records. A reader skips a piece it does not know. `evre record` (34.x) writes the same, its clock the seconds since
+  it began.
+
+**Opening one.** **Open recording…** (the dialog lists `*.csv *.evrs`), the recent recordings, or a `.evrs` dropped on
+the window:
+
+- **A CSV** opens with the streams' recordings beside it (`run.*.evrs`): its columns and a fast line per channel
+  (7.14), on its clock. **A `.evrs` alone** opens with its fast lines only, on the wall clock of its head.
+- **Mapped, not read.** The file is mapped into memory and only the summaries are made (23.11), on the same thread
+  and progress dialog as the CSV: a recording larger than the RAM opens, and the RAM question (12.6) counts only the
+  CSV.
+- **The line above the chart** adds each stream: *· ADC: 1 517 000 samples, 1 024 lost*.
+- **A file cut off** (a crash, a full disk) opens up to its last whole piece, and that line says *(the file ends cut
+  off: read up to its last whole piece)*. A file that is not a recording says so.
+- **Lines** lists the channels too, each with its tick. A fast line in the window is measured, exported and analysed
+  as on the live chart (7.14); its total since Clear covers the whole file.
+- **From Python:** `evre.read_recording('run.ADC.evrs')` (the `python/` package) gives the samples' numbers, times
+  and values in the map's units, the gaps and the starts.
 
 ## 13. Polling performance and tuning
 
@@ -2106,8 +2142,8 @@ What the Studio does with a stream on:
   second of 4 bytes, 16 s). A window that stalls longer loses the oldest: their samples are counted as *not shown* in
   the rate's tooltip, and their line breaks there.
 
-The chart draws the channels (7.14). The CSV recording and the API do not take the samples yet; the Registers tab
-lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
+The chart draws the channels (7.14), and a CSV recording records the streams beside it (12.7). The API does not take
+the samples; the Registers tab lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
 
 ## 14. Command line, environment variables, settings
 
@@ -3654,7 +3690,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
 | `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
 | `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records), 23.11 |
-| `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record`; `recordingFileFor` (`run.csv` -> `run.ADC.evrs`) |
+| `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record` and the engine beside a CSV; `fast::readRecording` / `Recording`: one read, the file mapped, into a mapped store (12.7); `recordingFileFor` (`run.csv` -> `run.ADC.evrs`), `recordingsBeside` |
 | `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
 | `src/api/api_server.h`,&nbsp;`.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
@@ -3700,8 +3736,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
 | `cli/evre_sim.cpp` | `evre-sim`: a device made from a map (chapter 35) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour of chapter 35 |
-| `python/evre/` | the `evre` Python package: frames, link and master, the map, a device by register name (`python/README.md`) |
-| `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim` and a bus on `evre_fake_fast` |
+| `python/evre/` | the `evre` Python package: frames, link and master, the map, a device by register name, a fast stream's recording (`fast.py`, `read_recording`) (`python/README.md`) |
+| `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim`, a bus on `evre_fake_fast`, and fast streams' recordings: one made by hand (the numbers across a gap and the 32-bit wrap, a new start, the times from the marks, a bad block, a cut, a CSV refused) and one `evre record` writes from `evre_fake_fast` losing every 5th block (the device's waves, the gaps) |
 | `tests/cli_test.py` | `evre` end to end, against its own fake device on port 1212 |
 | `tests/schema_test.py` | the maps against `docs/evre-map-1.schema.json` (needs the `jsonschema` package) |
 | `docs/evre-map-1.schema.json` | the JSON Schema of `evre-map/1` |
@@ -3770,7 +3806,8 @@ pass-through checks compare frames byte for byte (chapter 26).
   cut the rate), `autoSendStopped()` (CONFIG shows it cleared). `Stats::autoSend` and `Stats::autoSendHz` give the
   sidebar its rate line.
 - Fast EVRe: `setFastStream(stream, on)` (posted; the stream's index in `DeviceMap::streams`); signals
-  `fastStreamSet(stream, on, rate, err)` and `fastStreamNote(stream, text, stopped)`; `Stats::fast`, one entry a
+  `fastStreamSet(stream, on, rate, err)`, `fastStreamNote(stream, text, stopped)` and `fastRecorded(text)` (a stream's
+  recording beside the CSV closed, 12.7: `recordBlock` writes it); `Stats::fast`, one entry a
   stream (its state, the fitted rate and ppm, records/s, records, blocks, lost, bad and newer blocks, starts).
 
 **Auto send (13.8).** `setAutoSend` keeps the wish; `applyAutoSend()` reads CONFIG and writes it (only after
@@ -3942,12 +3979,12 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
 | `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerState` (the trigger row's state), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
+| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerKey` / `triggerTag` / `triggerLineY` (23.10; signals `triggered`, `triggerLevelChanged`), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
-| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
+| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
@@ -4474,6 +4511,10 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   a break are left out. A fast line is mostly bars (a column of a noisy signal covers its whole range): `fillBands`
   draws its bars snapped to whole device pixels with `fillRect` and no antialiasing (`crisp`), the same pixels on a
   stripe and on the window, under a millisecond a line where antialiased bars took 4.5.
+- **Mapped** (a recording, 12.7). `appendMapped` leaves a block's records in the mapped file and keeps a span per
+  block (`spans_`) and, per 256 records, the span of its first (`spanOfChunk_`): `recordAt` takes a step or two from
+  there. Only the summaries and the lists are made; the store holds the file (`keep`), is not trimmed, and Clear
+  leaves it; `bytes()` counts the lists, not the file.
 - **Memory.** `trimFast` drops whole pieces past the Memory (5 % let grow first, as `dropExpired`) or past the
   stream's share of the RAM budget: `ramMB / lines x its plotted lines`, at `bytesPerRecord()` (the record's bytes
   and its summaries'). `bytesNeeded`, `bytesHeld` and `pointsKept` count the store; `memorySpan` and the smooth delay
@@ -4860,7 +4901,11 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   tick, *· 1 fast* in the chart's info line. Measured: its row in the Measure table reads the device's 50 Hz sine of
   6.55 A at about 4.6 A RMS; the trigger's line list offers it (its tooltip names fast lines); its chip's menu offers
   Histogram and Spectrum, and the spectrum takes its samples as they are (*evenly spaced*, the rate written whole, no
-  *e+*), its peak within one step of 50 Hz. The tick off takes the line off.
+  *e+*), its peak within one step of 50 Hz. Recorded (12.7): **Record CSV** for 1.5 s writes `fast.ADC.evrs` beside
+  `fast.csv` and the Log says so; the recording opens with it, a fast line of its samples (about 15 000, none lost)
+  equal to those the live chart took at the same times; the `.evrs` alone opens on the same wall clock (within 50 ms)
+  and says its samples; a copy cut 3 bytes into its last piece opens and says it was cut off. The tick off takes the
+  line off.
 - **Fast speed** (`fastSpeed`, after the fast streams step). `evre_fake_fast` with `--fast-rate 1000000` on port
   1240: both channels plotted over a 10 s window, the Chart tab shown, the stream on for 20 s. About 20 million
   records taken, none lost, no bad block, none left unshown (the rate's tooltip), the rate 0.95 to 1.04 M samples/s;
@@ -5065,7 +5110,7 @@ exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake dev
 Log scale, `<prefix>_log.png`, one of a recording's window, `<prefix>_recording.png`, and the Fast streams card at
 its widest numbers in English and Arabic, `<prefix>_fast_en.png` and `<prefix>_fast_ar.png`, and the window with two
 fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) and 2 ms
-(`<prefix>_fast_records.png`).
+(`<prefix>_fast_records.png`), and a recording opened with its fast stream (`<prefix>_fast_recording.png`).
 
 ### 26.3 The API test
 
@@ -5294,6 +5339,11 @@ python3 tests/fast_lib_test.py build            # [--lib DIR]: the EVRe library 
   the records lost before it (`storeBounds`); a new start whose clock begins before the last one ended, shifted
   after it, its gap not counted (`storeNewStart`); a trim drops whole pieces, what stays reads the same, its min and
   max still right, the bytes it says it holds what its arrays hold (`storeTrim`)
+- **a recording (12.7):** written as the Studio writes it from the fake devices' source (every 7th block lost, a
+  restart) and read back mapped: as many records as a store fed live, the same values, the same gaps and records
+  lost, times within 0.1 ms (1.8e-15 s here), the same min and max; a copy cut 5 bytes into its last piece reads one
+  block less and says it is cut; a CSV is refused; `recordingsBeside` finds it beside its CSV
+  (`recordingReadBack`)
 
 `tests/fast_lib_test.py` compiles `EVRe/lib/fast/evre_fast.cpp` with the library and a test program as C++11, 14, 17
 and 20 at -O0, -O1, -O2, -O3 and -Os, the helper with `-Wall -Wextra -Wpedantic -Werror`, and runs each build: a

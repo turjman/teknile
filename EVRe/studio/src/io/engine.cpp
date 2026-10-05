@@ -14,6 +14,7 @@
 
 #include "api/api_server.h"
 #include "model/bus_file.h"
+#include "model/fast_recording.h"
 #include "evre/frame.h"
 
 #ifdef Q_OS_WIN
@@ -741,6 +742,8 @@ void IoEngine::updateStats() {
 		rateClock_.restart();
 	}
 	if (csvFile_->isOpen()) csvStream_.flush();
+	for (FastRun &run : fastRuns_)
+		if (run.writer) run.writer->flush();
 	const auto &rows = table_.rows();
 	QMutexLocker lock(&crossThreadMutex_);
 	stats_.master = master_->stats();
@@ -1101,6 +1104,7 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 				"not know): none of their samples is used").arg(run.def.name), false);
 	}
 	if (check != fast::BlockCheck::Ok) return;
+	if (csvFile_->isOpen()) recordBlock(stream, taken, frame.data);
 	FastBlock block;
 	block.stream = stream;
 	block.first = taken.first;
@@ -1142,6 +1146,38 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 	run.lastBlockMs = clock_.elapsed();
 	run.silenceAsked = false;
 	run.recordsSinceRate += quint64(taken.count);
+}
+
+/* The CSV records: the block as it came into its stream's file beside the CSV, made at its first block with a time
+ * mark before it (the clock's newest: the reader lays the records from there), then a mark whenever the clock makes
+ * one. A file that cannot be written is said once and left. */
+void IoEngine::recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data) {
+	FastRun &run = fastRuns_[stream];
+	if (run.writeFailed) return;
+	bool marked = taken.newMark;
+	if (!run.writer) {
+		run.writer = std::make_shared<fast::RecordingWriter>();
+		run.recordedBlocks = 0;
+		QString err;
+		const QString file = fast::recordingFileFor(csvFile_->fileName(), run.def.name);
+		if (!run.writer->open(file, deviceName_, run.def, QDateTime::currentDateTime(), err, now())) {
+			run.writeFailed = true;
+			run.writer.reset();
+			emit fastStreamNote(stream, tr("fast stream %1 not recorded: %2: %3").arg(run.def.name, file, err), false);
+			return;
+		}
+		marked = true;
+	}
+	bool ok = true;
+	if (marked) ok = run.writer->mark(run.state.clock().mark().record, run.state.clock().mark().time);
+	ok = ok && run.writer->block(data);
+	if (!ok) {
+		run.writeFailed = true;
+		emit fastStreamNote(stream, tr("fast stream %1: its recording stopped: %2").arg(run.def.name, run.writer->errorString()), false);
+		run.writer.reset();
+		return;
+	}
+	run.recordedBlocks++;
 }
 
 /* Every 500 ms while a stream is on. No block FIRST_FRAME_MS after the device took the enable: something between does
@@ -1236,6 +1272,17 @@ void IoEngine::writeCsvRow(double t) {
 }
 
 void IoEngine::stopRecord() {
+	for (int i = 0; i < fastRuns_.size(); i++) { /* the streams' files beside it */
+		FastRun &run = fastRuns_[i];
+		run.writeFailed = false;
+		if (!run.writer) continue;
+		const qint64 bytes = run.writer->bytes();
+		run.writer->close();
+		run.writer.reset();
+		emit fastRecorded(tr("fast stream %1 recorded: %2 (%3 blocks, %4 MB)").arg(run.def.name,
+				fast::recordingFileFor(csvFile_->fileName(), run.def.name)).arg(run.recordedBlocks)
+				.arg(double(bytes) / (1024 * 1024), 0, 'f', 1));
+	}
 	if (!csvFile_->isOpen()) return;
 	csvStream_.flush();
 	const QString file = csvFile_->fileName();

@@ -21,6 +21,7 @@
 #include <limits>
 #include <memory>
 
+#include "model/fast_store.h"
 #include "model/register_model.h"
 #include "ui/chart_tab.h"
 #include "ui/chart_widget.h"
@@ -43,8 +44,19 @@ struct LoadJob {
 	std::atomic<int> permille{ 0 };
 	bool ok = false;
 	recording::Data data;
+	QVector<fast::Recording> fast;
 	QString error;
 };
+
+bool isFastRecording(const QString &file) { return file.endsWith(QLatin1String(".evrs"), Qt::CaseInsensitive); }
+
+/* a count in groups of three, "1 024 000", one left-to-right number in a right-to-left line too (as the sidebar's) */
+QString groupedNumber(qint64 n) {
+	QString count = QString::number(n);
+	for (int at = int(count.size()) - 3; at > (count.startsWith(QLatin1Char('-')) ? 1 : 0); at -= 3) count.insert(at, QChar(0x00A0));
+	if (count.size() > 3) count = QChar(0x2066) + count + QChar(0x2069);
+	return count;
+}
 
 QString clockText(qint64 epochMs, double t, const QString &format) {
 	return QDateTime::fromMSecsSinceEpoch(epochMs + qint64(std::llround(t * 1000))).toString(format);
@@ -59,7 +71,12 @@ void RecordingWindow::open(QWidget *dialogParent, const QString &file, const QVe
 	const QString where = QDir::toNativeSeparators(file);
 	recording::Estimate estimate;
 	QString error;
-	if (!recording::estimate(file, estimate, error)) {
+	/* a fast stream's recording alone, or the CSV with the streams' recordings beside it */
+	const bool alone = isFastRecording(file);
+	const QStringList fastFiles = alone ? QStringList{ file } : fast::recordingsBeside(file);
+	if (alone) {
+		estimate = recording::Estimate();
+	} else if (!recording::estimate(file, estimate, error)) {
 		QMessageBox::warning(dialogParent, tr("Cannot open the recording"), tr("%1:\n%2").arg(where, error));
 		return;
 	}
@@ -96,9 +113,21 @@ void RecordingWindow::open(QWidget *dialogParent, const QString &file, const QVe
 	progress->setAutoReset(false);
 	QObject::connect(progress, &QProgressDialog::canceled, progress, [job] { job->cancel = true; });
 	QObject::connect(progress, &QObject::destroyed, [job] { job->cancel = true; }); /* its window went first */
-	QThreadPool::globalInstance()->start([job, file, from] {
-		job->ok = recording::read(file, from, job->cancel, [&job](double part) { job->permille = int(part * 1000); },
-				job->data, job->error);
+	QThreadPool::globalInstance()->start([job, file, from, alone, fastFiles] {
+		/* the CSV's part of the bar, then each stream's recording an equal part */
+		const double parts = double(fastFiles.size() + (alone ? 0 : 1));
+		job->ok = alone || recording::read(file, from, job->cancel,
+						[&job, parts](double part) { job->permille = int(part * 1000 / parts); }, job->data, job->error);
+		for (qsizetype i = 0; job->ok && i < fastFiles.size(); i++) {
+			fast::Recording one;
+			const double before = double(i + (alone ? 0 : 1));
+			job->ok = fast::readRecording(fastFiles[i], job->cancel,
+					[&job, before, parts](double part) { job->permille = int((before + part) * 1000 / parts); }, one,
+					job->error);
+			if (!job->ok && !job->error.isEmpty())
+				job->error = QStringLiteral("%1: %2").arg(QDir::toNativeSeparators(fastFiles[i]), job->error);
+			if (job->ok) job->fast << std::move(one);
+		}
 		job->done = true;
 	});
 	auto *follow = new QTimer(progress);
@@ -112,7 +141,7 @@ void RecordingWindow::open(QWidget *dialogParent, const QString &file, const QVe
 				QMessageBox::warning(dialogParent, tr("Cannot open the recording"), tr("%1:\n%2").arg(where, job->error));
 			return;
 		}
-		auto *window = new RecordingWindow(file, std::move(job->data), map, ramMB);
+		auto *window = new RecordingWindow(file, std::move(job->data), map, ramMB, std::move(job->fast));
 		window->show();
 		remember(file);
 		if (done) done(window);
@@ -125,7 +154,7 @@ void RecordingWindow::choose(QWidget *dialogParent, const QVector<RegDef> &map, 
 	const QStringList recent = recentFiles();
 	const QString start = recent.isEmpty() ? QDir::homePath() : QFileInfo(recent.first()).absolutePath();
 	const QString file = QFileDialog::getOpenFileName(dialogParent, tr("Open recording"), start,
-			tr("Recordings (*.csv);;All files (*)"));
+			tr("Recordings (*.csv *.evrs);;All files (*)"));
 	if (!file.isEmpty()) open(dialogParent, file, map, ramMB, done);
 }
 
@@ -168,8 +197,9 @@ void RecordingWindow::closeAll() {
 
 /* ------------------------------------------------------------------ the window */
 
-RecordingWindow::RecordingWindow(const QString &file, recording::Data data, const QVector<RegDef> &map, int ramMB)
-	: file_(file), data_(std::move(data)), map_(map), ramMB_(ramMB), skipped_(data_.skipped) {
+RecordingWindow::RecordingWindow(const QString &file, recording::Data data, const QVector<RegDef> &map, int ramMB,
+		QVector<fast::Recording> fast)
+	: file_(file), data_(std::move(data)), map_(map), ramMB_(ramMB), skipped_(data_.skipped), fast_(std::move(fast)) {
 	setAttribute(Qt::WA_DeleteOnClose);
 	setObjectName(QStringLiteral("recordingWindow"));
 	registry() << this;
@@ -211,7 +241,14 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 		t0_ = std::min(t0_, column.times.first());
 		t1_ = std::max(t1_, column.times.last());
 	}
+	for (const fast::Recording &stream : std::as_const(fast_)) {
+		if (!stream.store || stream.store->size() == 0) continue;
+		t0_ = std::min(t0_, stream.firstTime);
+		t1_ = std::max(t1_, stream.lastTime);
+	}
 	if (t0_ > t1_) t0_ = t1_ = 0;
+	/* a stream's recording alone: its clock from its head (the writer's clock at its start) */
+	if (data_.columns.isEmpty() && data_.rows == 0 && !fast_.isEmpty()) data_.epochMs = fast_.first().epochMs();
 
 	/* the title: the file and its span */
 	const QString span = tr("%1 – %2 (%3)").arg(clockText(data_.epochMs, t0_, QStringLiteral("yyyy-MM-dd HH:mm:ss")),
@@ -219,8 +256,15 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	setWindowTitle(tr("%1 · %2 — EVRe Studio").arg(QFileInfo(file_).fileName(), span));
 	info_ = mutedLabel(QString());
 	info_->setObjectName(QStringLiteral("recordingInfo"));
-	QString info = tr("%1 · %2 lines · %3 rows").arg(span).arg(defs_.size()).arg(data_.rows);
+	QString info = isFastRecording(file_) ? span : tr("%1 · %2 lines · %3 rows").arg(span).arg(defs_.size()).arg(data_.rows);
 	if (skipped_ > 0) info += tr(" · columns left out (not numbers): %1").arg(skipped_);
+	for (const fast::Recording &stream : std::as_const(fast_)) { /* each stream: its samples, the lost, a cut */
+		const qint64 records = stream.store ? stream.store->size() : 0;
+		info += stream.lost > 0 ? tr(" · %1: %2 samples, %3 lost").arg(stream.stream.name, groupedNumber(records),
+												groupedNumber(qint64(stream.lost)))
+								: tr(" · %1: %2 samples").arg(stream.stream.name, groupedNumber(records));
+		if (stream.cut) info += tr(" (the file ends cut off: read up to its last whole piece)");
+	}
 	info_->setText(info);
 	info_->setToolTip(QDir::toNativeSeparators(file_));
 	lines_ = new QPushButton(tr("Lines"));
@@ -243,9 +287,20 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	tab_->setRecording(data_.epochMs, t0_, t1_, ramMB_, int(defs_.size()));
 	tab_->setRegisters(defs_);
 	plotted_.fill(false, defs_.size());
+	int lines = 0;
 	for (int c = 0; c < defs_.size() && c < RegisterModel::MAX_PLOTTED; c++) {
 		plotted_[c] = true;
 		tab_->plotRegister(defs_[c], true);
+		lines++;
+	}
+	/* the streams' lines: their stores laid in, each channel a line while there is room */
+	QVector<StreamDef> streams;
+	for (const fast::Recording &stream : std::as_const(fast_)) streams << stream.stream;
+	tab_->setFastStreams(streams);
+	for (int i = 0; i < fast_.size(); i++) {
+		tab_->view()->setFastStore(i, fast_[i].store);
+		for (int c = 0; c < fast_[i].stream.channels.size() && lines < RegisterModel::MAX_PLOTTED; c++, lines++)
+			tab_->plotFastChannel(i, c, true);
 	}
 	feed();
 	tab_->showSpan(t0_, t1_);
@@ -322,6 +377,18 @@ void RecordingWindow::rebuildLinesMenu() {
 			tab_->plotRegister(defs_[c], on);
 			if (on) feedColumn(c);
 		});
+	}
+	/* the streams' channels */
+	for (int i = 0; i < fast_.size(); i++) {
+		menu->addSeparator();
+		for (int c = 0; c < fast_[i].stream.channels.size(); c++) {
+			const StreamChannel &channel = fast_[i].stream.channels[c];
+			QAction *shown = menu->addAction(noMnemonic(recording::title(fast_[i].stream.name + QLatin1Char('.') + channel.name,
+					channel.unit)));
+			shown->setCheckable(true);
+			shown->setChecked(tab_->fastPlotted(i, c));
+			connect(shown, &QAction::toggled, this, [this, i, c](bool on) { tab_->plotFastChannel(i, c, on); });
+		}
 	}
 	/* the fields of a register matched in the map, as on the Registers tab (not of a scaled one: no raw bits) */
 	bool title = false;

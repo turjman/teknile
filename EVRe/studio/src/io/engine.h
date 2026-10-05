@@ -64,6 +64,9 @@
 
 class ApiServer;
 class QFile;
+namespace fast {
+class RecordingWriter;
+}
 class QTimer;
 
 /* The poll ticker woke at or after `deadline`: the periods due (that one and every later one already past, which a
@@ -221,6 +224,8 @@ signals:
 	void fastStreamSet(int stream, bool on, double rate, const QString &err);
 	/* something to say of a stream: blocks of a newer kind (once), the device stopped it (no longer wanted) */
 	void fastStreamNote(int stream, const QString &text, bool stopped);
+	/* a stream's recording beside the CSV, closed: what it holds (the Log, as information) */
+	void fastRecorded(const QString &text);
 
 private:
 	/* one read of a poll: registers of one device close together, read at once */
@@ -295,7 +300,12 @@ private:
 		quint64 recordsSinceRate = 0;
 		double recordsHz = 0;
 		quint64 notShown = 0;
+		/* while the CSV records: its blocks as they came beside it (run.csv -> run.ADC.evrs), opened at the first */
+		std::shared_ptr<fast::RecordingWriter> writer;
+		bool writeFailed = false;
+		qint64 recordedBlocks = 0;
 	};
+	void recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data);
 	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
 	void fastFailed(int stream, bool on, const QString &why);
 	bool anyFastOn() const;

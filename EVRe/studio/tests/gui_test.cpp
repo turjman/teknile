@@ -1258,6 +1258,83 @@ private:
 				"fast streams: a fast line's chip menu offers Histogram and Spectrum; the spectrum takes its samples as they "
 				"are (evenly spaced, its rate written whole: 10000 Hz, not 1e+04), its peak at the device's 50 Hz (within one "
 				"step of its frequencies)");
+		/* recorded: Record CSV while the stream is on writes its blocks beside the CSV (fast.csv, fast.ADC.evrs); the
+		 * recording opens with them, the fast line's samples those the live chart took; the .evrs opens alone too, on the
+		 * same clock; one cut off opens up to its last whole piece and says so */
+		{
+			QTemporaryDir folder;
+			const QString csv = folder.filePath(QStringLiteral("fast.csv")), evrs = folder.filePath(QStringLiteral("fast.ADC.evrs"));
+			MainWindow::Startup record;
+			record.record = csv;
+			window_.applyStartup(record);
+			QPushButton *stop = nullptr;
+			(void) QTest::qWaitFor([&] { return (stop = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+			QTest::qWait(1500);
+			if (stop) stop->click();
+			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+			const bool written = QFileInfo::exists(evrs) && logText().contains(QLatin1String("fast stream ADC recorded: "));
+			RecordingWindow *opened = nullptr, *alone = nullptr, *cut = nullptr;
+			RecordingWindow::open(nullptr, csv, {}, 2048, [&](RecordingWindow *w) { opened = w; });
+			(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+			qint64 samples = 0, compared = 0, differ = 0;
+			quint64 lostThere = 1;
+			bool lined = false;
+			if (opened && opened->fastRecordings().size() == 1 && opened->fastRecordings()[0].store && chartView) {
+				const fast::Store &file = *opened->fastRecordings()[0].store;
+				const fast::Store *live = chartView->fastStore(0);
+				samples = file.size();
+				lostThere = opened->fastRecordings()[0].lost;
+				for (const ChartView::Info &line : opened->chartTab()->view()->lines()) lined = lined || line.key == iLoad;
+				for (qsizetype i = 0; live && i < file.size(); i += std::max<qsizetype>(1, file.size() / 2000)) {
+					const double t = file.timeAt(i);
+					const qsizetype j = live->lowerBound(t - 1e-7);
+					if (j >= live->size() || std::fabs(live->timeAt(j) - t) > 1e-6) continue;
+					compared++;
+					differ += live->value(0, j) != file.value(0, i) || live->value(1, j) != file.value(1, i);
+				}
+			}
+			std::printf("  recorded beside the CSV: %d; opened with it: %lld samples, %llu lost, %lld compared with the live "
+					"chart's, %lld differ\n", int(written), (long long) samples, (unsigned long long) lostThere,
+					(long long) compared, (long long) differ);
+			check(written && samples >= 10000 && lostThere == 0 && lined && compared >= 1000 && differ == 0,
+					"fast streams recorded: Record CSV writes the stream's blocks beside the CSV (fast.ADC.evrs), the Log says "
+					"so; the recording opens with them, a fast line whose samples are those the live chart took");
+			if (opened && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the recording with its fast lines */
+				opened->resize(1400, 800);
+				QTest::qWait(300);
+				opened->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_recording.png"));
+			}
+			/* the .evrs alone, on the clock of its head: the same wall-clock time as beside the CSV */
+			RecordingWindow::open(nullptr, evrs, {}, 2048, [&](RecordingWindow *w) { alone = w; });
+			(void) QTest::qWaitFor([&] { return alone != nullptr; }, 5000);
+			const auto infoOf = [](RecordingWindow *w) {
+				const QLabel *info = w ? w->findChild<QLabel *>(QStringLiteral("recordingInfo")) : nullptr;
+				return info ? info->text() : QString();
+			};
+			double apart = 1e9;
+			if (opened && alone && !alone->fastRecordings().isEmpty() && !opened->fastRecordings().isEmpty())
+				apart = std::fabs(double(alone->chartTab()->view()->epochMs()) + alone->fastRecordings()[0].firstTime * 1000
+						- double(opened->chartTab()->view()->epochMs()) - opened->fastRecordings()[0].firstTime * 1000);
+			std::printf("  the .evrs alone: \"%s\", its first sample %.1f ms from where the CSV's window lays it\n",
+					qPrintable(infoOf(alone)), apart);
+			check(alone && infoOf(alone).contains(QLatin1String("ADC: ")) && apart < 50,
+					"fast streams recorded: the .evrs opens alone, its samples counted in the window's line, on the same "
+					"wall clock as beside its CSV (its head's start)");
+			/* cut off inside its last piece */
+			const QString cutFile = folder.filePath(QStringLiteral("cut.ADC.evrs"));
+			bool truncated = QFile::copy(evrs, cutFile);
+			if (truncated) {
+				QFile f(cutFile);
+				truncated = f.open(QIODevice::ReadWrite) && f.resize(f.size() - 3);
+			}
+			if (truncated) RecordingWindow::open(nullptr, cutFile, {}, 2048, [&](RecordingWindow *w) { cut = w; });
+			(void) QTest::qWaitFor([&] { return cut != nullptr; }, 5000);
+			std::printf("  cut off: \"%s\"\n", qPrintable(infoOf(cut)));
+			check(cut && infoOf(cut).contains(QLatin1String("cut off")) && !cut->fastRecordings().isEmpty()
+							&& cut->fastRecordings()[0].store->size() > 0,
+					"fast streams recorded: a .evrs cut off opens up to its last whole piece, and its window says so");
+			RecordingWindow::closeAll();
+		}
 		if (plotBox) plotBox->setChecked(false);
 		check(!onChart(iLoad), "fast streams: the tick off: the line off the chart");
 

@@ -120,6 +120,9 @@ public:
 	static int fastKey(int stream, int channel) { return FIRST_FAST_KEY + 256 * stream + channel; }
 	static bool isFastKey(int key) { return key >= FIRST_FAST_KEY; }
 	void setFastStream(int stream, const StreamDef &def); /* kept when it is the same stream again */
+	/* a recording's store (fast::readRecording: its records in the mapped file) for the stream, its lines' too: not
+	 * cleared by Clear, its lines' totals over all of it */
+	void setFastStore(int stream, std::shared_ptr<fast::Store> store);
 	void clearFastStreams();
 	/* a block's records (the stream's rules applied: io/fast_stream.h), and a time mark of its start */
 	void appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart, quint64 lost);
