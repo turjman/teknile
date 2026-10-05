@@ -497,6 +497,7 @@ public:
 			check(unticked == ticked && allowWrites_->property("highlightWidth").isValid(),
 					"Allow writes: its bold width from the start, so even the first tick moves nothing");
 		}
+		studioIcon();
 		masterSlaves();
 		connectedAndPolling();
 		tokenSentAfterConnecting();
@@ -5487,6 +5488,20 @@ private:
 		if (!written) std::printf("     (the log: \"%s\")\n", qPrintable(first));
 		check(written, "the timing aid: EVRE_PERF_LOG writes a line every 500 ms (frames, the paint, its stages, the "
 				"binnings, the measurements, the polls)");
+	}
+
+	/* The Studio's icon, the teknile mark: the application's, so every window's (the main window, the Help, a recording),
+	 * in every size from 16 to 256 px, a rounded square (its corner clear, its middle not) */
+	void studioIcon() {
+		const QIcon icon = QApplication::windowIcon();
+		QList<QSize> sizes = icon.availableSizes();
+		bool all = true;
+		for (const int size : { 16, 24, 32, 48, 64, 128, 256 }) all = all && sizes.contains(QSize(size, size));
+		const QImage at32 = icon.pixmap(QSize(32, 32), 1.0).toImage();
+		const bool shape = at32.size() == QSize(32, 32) && qAlpha(at32.pixel(0, 0)) == 0 && qAlpha(at32.pixel(16, 26)) == 255;
+		HelpDialog help;
+		const bool shared = window_.windowIcon().cacheKey() == icon.cacheKey() && help.windowIcon().cacheKey() == icon.cacheKey();
+		check(all && shape && shared, "the Studio's icon (the teknile mark): every window's, 16 to 256 px, a rounded square");
 	}
 
 	/* The analysis's own arithmetic: the FFT (an impulse, a sine, back again), the histogram's Freedman-Diaconis bins,

@@ -44,6 +44,18 @@ The GUI and API tests write registers, a danger register included: run them only
 A change to what the Studio does updates `studio/docs/STUDIO.md` and the help pages (`studio/src/ui/help_dialog.cpp`);
 a change to a map key updates MAP_FORMAT.md and the schema too. `CHANGELOG.md` gets a line.
 
+## Making a release
+
+Only the owner tags. A tag builds and publishes everything (`.github/workflows/release.yml`, STUDIO.md 25.5):
+
+1. Set the version in `studio/CMakeLists.txt`: `project(EVReStudio VERSION X.Y.Z ...)`.
+2. Give `CHANGELOG.md` a section `## X.Y.Z` (its first line may say the date) with what the version holds: it becomes
+   the release's text.
+3. Merge both into `main`, then tag that commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
+
+The workflow stops with a message when the tag is not the CMake version or the changelog has no such section. A pull
+request that touches the workflow or `studio/packaging/` builds the same files as artifacts, to try them first.
+
 ## License
 
 EVRe is under the Apache License 2.0 (`LICENSE`, `NOTICE`). A contribution is made under the same license

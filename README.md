@@ -32,6 +32,11 @@ speaks it.
 | **[Command&nbsp;line](EVRe/studio/cli/)** | `evre` and `evre-sim`: validate and export maps, read, watch and write a device, check a device against its map, and serve a map as a simulated device. |
 | **[Python&nbsp;package](EVRe/studio/python/)** | A device by register name with its map, standard library only. |
 
+## Download
+
+The Windows installer, a portable zip, the Linux AppImage and the command-line tools of each version are on the
+[Releases](https://github.com/turjman/teknile/releases) page.
+
 ## Quick start
 
 Build the Studio (Qt 6.5 or newer with Widgets, Network, SerialPort and Test; CMake 3.21+; a C++17 compiler):

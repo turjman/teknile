@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=EVRe Studio
+Comment=Registers, charts and maps of EVRe devices
+Exec=EVReStudio
+Icon=evre-studio
+Categories=Development;Electronics;
+Terminal=false

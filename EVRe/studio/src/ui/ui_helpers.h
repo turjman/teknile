@@ -85,6 +85,10 @@ QIcon refreshIcon(const QColor &color, int size = 18);
 /* a state's dot: a filled circle in its colour, sharp on any screen (beside a device's name) */
 QIcon stateDot(const QColor &color, qreal ratio);
 
+/* The Studio's icon, the teknile mark (packaging/icons), in every size the resources hold (16 to 256 px): every
+ * window's, set for the whole application by the main window */
+QIcon studioIcon();
+
 /* A row of a device picker: a device of a bus (its name, its slave, its state as the dot's colour and in words), or
  * a choice of another kind ("All devices": no dot, the name alone). The row's data is the slave. */
 struct PickerDevice {

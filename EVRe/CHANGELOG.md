@@ -45,6 +45,8 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   offsets checked at compile time, the defaults as start values, a bind function, a limits check); a map the
   library cannot serve (a read-only register above a writable one, a register outside `0xD000..0xDFFF`) is refused
   with the registers in the way.
+- Installers: a Windows installer (per user, no administrator) and a portable zip, a Linux AppImage, and the
+  command-line tools for Linux, made by the release workflow; the teknile mark as the program's icon.
 
 ### Tools
 

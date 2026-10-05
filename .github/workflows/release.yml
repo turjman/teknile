@@ -1,0 +1,224 @@
+# Installers and releases of EVRe Studio: the Windows installer and a portable zip, the Linux AppImage and the
+# command-line tools.
+# - a tag vX.Y.Z: checks that it is the CMake project(VERSION) and that EVRe/CHANGELOG.md has that version's section,
+#   builds everything and publishes a GitHub release with that section as its text
+# - a pull request that touches this file or EVRe/studio/packaging/, or a manual run: builds the same files as the
+#   run's artifacts and publishes nothing
+# It never runs on other pushes, so a push to main cannot turn it red.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - EVRe/studio/packaging/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: The version (and, for a tag, that it is the one CMake and the changelog have)
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^project(EVReStudio VERSION \([0-9][0-9.]*\).*/\1/p' EVRe/studio/CMakeLists.txt)
+          if [ -z "$version" ]; then
+            echo "::error::no project(EVReStudio VERSION x.y.z) in EVRe/studio/CMakeLists.txt"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$version" ]; then
+              echo "::error::the tag $GITHUB_REF_NAME is not the version in EVRe/studio/CMakeLists.txt ($version): set project(VERSION $tag) there, or tag v$version"
+              exit 1
+            fi
+            if ! grep -Eq "^## ${version//./\\.}( |$)" EVRe/CHANGELOG.md; then
+              echo "::error::EVRe/CHANGELOG.md has no section '## $version': add what this version holds before tagging it"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-2022
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      # the same Qt and compiler as ci.yml
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          arch: win64_mingw
+          modules: qtserialport
+          tools: "tools_mingw1310 tools_ninja"
+          cache: true
+      - name: Build
+        run: |
+          export PATH="$IQTA_TOOLS/mingw1310_64/bin:$IQTA_TOOLS/Ninja:$PATH"
+          cmake -S EVRe/studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target EVReStudio evre evre-sim
+      - name: The folder the installer and the zip hold
+        run: |
+          export PATH="$IQTA_TOOLS/mingw1310_64/bin:$QT_ROOT_DIR/bin:$PATH"
+          app="EVReStudio-$VERSION"
+          mkdir -p "$app/maps" "$app/translations"
+          cp build/EVReStudio.exe build/evre.exe build/evre-sim.exe "$app/"
+          cp EVRe/studio/maps/example_device.json "$app/maps/"
+          cp EVRe/studio/README.md EVRe/LICENSE EVRe/NOTICE "$app/"
+          windeployqt --release --compiler-runtime --translations ar,en "$app/EVReStudio.exe"
+          windeployqt --release --compiler-runtime --no-translations "$app/evre.exe" "$app/evre-sim.exe"
+          # Qt's own Arabic texts (OK, Cancel), loaded by name as qtbase_ar.qm (language.cpp)
+          cp "$QT_ROOT_DIR/translations/qtbase_ar.qm" "$app/translations/"
+          ls -R "$app" | head -60
+      - name: Installer (Inno Setup) and zip
+        run: |
+          choco install innosetup --no-progress -y > /dev/null
+          app="EVReStudio-$VERSION"
+          mkdir -p dist
+          # MSYS_NO_PATHCONV: Git's bash would take ISCC's /DName=value for paths and rewrite them
+          MSYS_NO_PATHCONV=1 "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "/DAppVersion=$VERSION" \
+            "/DSourceDir=$(cygpath -w "$PWD/$app")" "/DOutputDir=$(cygpath -w "$PWD/dist")" \
+            EVRe/studio/packaging/windows/evre_studio.iss
+          7z a -tzip "dist/EVReStudio-$VERSION-windows.zip" "$app" > /dev/null
+          ls -l dist
+      - name: The tools start from the folder
+        run: |
+          "./EVReStudio-$VERSION/evre.exe" validate "EVReStudio-$VERSION/maps/example_device.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    # an older glibc than the newest: the AppImage runs on more systems
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtserialport
+          cache: true
+      - name: CMake, Ninja, xvfb, what Qt's xcb plugin needs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libegl1 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 libfontconfig1 fonts-dejavu-core xvfb xauth libfuse2 file
+      - name: Build
+        run: |
+          cmake -S EVRe/studio -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake --build build --target EVReStudio evre evre-sim
+      - name: linuxdeploy and its Qt plugin
+        run: |
+          base=https://github.com/linuxdeploy
+          curl -fsSL -o linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -fsSL -o linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+      - name: AppImage
+        env:
+          OUTPUT: EVReStudio-${{ env.VERSION }}-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          export PATH="$PWD:$PATH" QMAKE="$QT_ROOT_DIR/bin/qmake"
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}"
+          mkdir -p AppDir/usr/bin/maps
+          cp build/EVReStudio build/evre build/evre-sim AppDir/usr/bin/
+          cp EVRe/studio/maps/example_device.json AppDir/usr/bin/maps/
+          for size in 16 24 32 48 64 128 256; do
+            mkdir -p "AppDir/usr/share/icons/hicolor/${size}x${size}/apps"
+            cp "EVRe/studio/packaging/icons/evre-studio-$size.png" "AppDir/usr/share/icons/hicolor/${size}x${size}/apps/evre-studio.png"
+          done
+          cp EVRe/studio/packaging/icons/evre-studio.svg evre-studio.svg
+          ./linuxdeploy --appdir AppDir -e AppDir/usr/bin/EVReStudio -e AppDir/usr/bin/evre -e AppDir/usr/bin/evre-sim \
+            -d EVRe/studio/packaging/linux/evre-studio.desktop -i AppDir/usr/share/icons/hicolor/256x256/apps/evre-studio.png \
+            --plugin qt
+          # Qt's own Arabic texts (OK, Cancel), loaded by name as qtbase_ar.qm (language.cpp)
+          mkdir -p AppDir/usr/translations
+          cp "$QT_ROOT_DIR/translations/qtbase_ar.qm" AppDir/usr/translations/
+          ./linuxdeploy --appdir AppDir --output appimage
+          mkdir -p dist
+          mv "$OUTPUT" dist/
+      - name: The AppImage starts and pictures its window (EVRE_SHOT)
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          EVRE_SHOT="$PWD/shot.png;4000;1280x800" xvfb-run -a -s '-screen 0 1920x1200x24' \
+            "./dist/EVReStudio-$VERSION-x86_64.AppImage"
+          test -s shot.png
+          file shot.png
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage-shot
+          path: shot.png
+      - name: The command-line tools, with the Qt libraries they need
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}"
+          ./linuxdeploy --appdir ToolsDir -e build/evre -e build/evre-sim
+          tools="evre-tools-$VERSION-linux-x86_64"
+          mkdir -p "$tools"
+          cp -r ToolsDir/usr/bin ToolsDir/usr/lib "$tools/"
+          cp EVRe/studio/maps/example_device.json EVRe/LICENSE EVRe/NOTICE "$tools/"
+          env -u LD_LIBRARY_PATH "$tools/bin/evre" validate "$tools/example_device.json"
+          tar -czf "dist/$tools.tar.gz" "$tools"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [version, windows, linux]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: "{windows,linux}"
+          merge-multiple: true
+      - name: The release, its text from the changelog
+        run: |
+          awk -v head="## $VERSION" 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' EVRe/CHANGELOG.md > notes.md
+          {
+            echo
+            echo "### Files"
+            echo
+            echo "- \`EVReStudio-$VERSION-setup.exe\`: the Windows installer (for you alone, no administrator needed)"
+            echo "- \`EVReStudio-$VERSION-windows.zip\`: the same, portable: unzip and run \`EVReStudio.exe\`"
+            echo "- \`EVReStudio-$VERSION-x86_64.AppImage\`: Linux; make it executable and run it"
+            echo "- \`evre-tools-$VERSION-linux-x86_64.tar.gz\`: \`evre\` and \`evre-sim\` for Linux, with the Qt libraries they need"
+            echo
+            echo "The Windows installer is not code-signed: Windows SmartScreen may say it does not know it. Choose"
+            echo "**More info**, then **Run anyway**."
+          } >> notes.md
+          gh release create "$GITHUB_REF_NAME" dist/* --title "EVRe Studio $VERSION" --notes-file notes.md

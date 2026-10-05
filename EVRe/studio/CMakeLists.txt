@@ -96,6 +96,12 @@ qt_add_translations(evre_studio_core
     SOURCES ${STUDIO_TEXT_SOURCES}
     LUPDATE_OPTIONS -no-obsolete -locations none
     RESOURCE_PREFIX /i18n)
+# The Studio's icon, the teknile mark (packaging/icons, made from its SVG): every window's, from the core's resources
+# at :/icons; the executable's on Windows (packaging/windows/evre_studio.rc)
+qt_add_resources(evre_studio_core studio_icons PREFIX /icons BASE packaging/icons FILES
+    packaging/icons/evre-studio-16.png packaging/icons/evre-studio-24.png packaging/icons/evre-studio-32.png
+    packaging/icons/evre-studio-48.png packaging/icons/evre-studio-64.png packaging/icons/evre-studio-128.png
+    packaging/icons/evre-studio-256.png)
 target_compile_definitions(evre_studio_core PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
 target_link_libraries(evre_studio_core PUBLIC evre_protocol Qt6::Widgets)
 if(WIN32)
@@ -106,6 +112,12 @@ endif()
 
 qt_add_executable(EVReStudio WIN32 src/main.cpp)
 target_link_libraries(EVReStudio PRIVATE evre_studio_core)
+if(WIN32)
+    enable_language(RC)
+    set(EVRE_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/evre-studio.ico")
+    configure_file(packaging/windows/evre_studio.rc.in ${CMAKE_CURRENT_BINARY_DIR}/evre_studio.rc @ONLY)
+    target_sources(EVReStudio PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/evre_studio.rc)
+endif()
 
 # The maps travel with the programs: maps/ is copied beside them at every
 # build, so an edited map is there even when no program had to be linked
