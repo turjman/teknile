@@ -3305,11 +3305,13 @@ private:
 			check(once->lanes() && once->plotOnCard() && lanesAlike >= 0.90, "chart on a GPU: lanes (two units) drawn by the "
 					"card as the CPU draws them, block by block");
 			/* lanes that do not fit: eight more units, scrolled half a lane (the first two cut by the plot's top), the
-			 * third folded: its strip a picture over the layer, cut lanes cut on the card as on the CPU */
+			 * third folded: its strip a picture over the layer, cut lanes cut on the card as on the CPU. One slow wave
+			 * for all, each at its own phase: a wave of a few samples per cycle is a dense zig-zag, which the card and
+			 * the CPU draw differently with or without lanes, and it is the lanes' places this compares */
 			for (int u = 1; u <= 8; u++) {
 				once->addSeries(LINES + u, QStringLiteral("u%1").arg(u), QStringLiteral("u%1").arg(u),
 						Theme::colors().series[u % Theme::colors().series.size()]);
-				for (int i = 0; i < 60 * HZ; i += 10) once->append(LINES + u, 3540.0 + double(i) / HZ, u + std::sin(i * 0.01 * u));
+				for (int i = 0; i < 60 * HZ; i += 10) once->append(LINES + u, 3540.0 + double(i) / HZ, u + std::sin(i * 0.01 + u));
 			}
 			once->setLaneScroll(ChartView::LANE_MIN_H / 2);
 			once->setLaneFolded(2, true);
