@@ -2902,7 +2902,7 @@ How the Studio uses them:
 | 5 | count&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
 | 12 | length&nbsp;mismatch | the register shows *error*, and is tried again |
 | 13 | login&nbsp;required | the registers show *error*, and are tried again at every poll; a merged block is not split; the Log says it once for the device |
-| 15 | value&nbsp;refused | a write: the device's EVRe Guard did not take the value (past its limits, NaN or an infinity); nothing was stored. The Log shows *write refused: …: value refused* |
+| 15 | value&nbsp;refused | a write: the device's EVRe Guard did not take the value (past its limits, outside its closed set, a bit set that must be 0, NaN or an infinity); nothing was stored. The Log shows *write refused: …: value refused* |
 | other | `error <n>` | the register shows *error*, and is tried again |
 
 An error answer to a merged block splits the block first (13.4), except code 13: a device with EVRe Guard's login refuses every request without a session, so the code says nothing about the addresses. Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
@@ -4609,7 +4609,7 @@ Three more steps cover several devices on one link (3.9, 3.10) and auto send (13
   Registers tab's All devices shows both devices' registers; the three device pickers show D2 alike (its dot,
   *D2 · slave 2*, its state) and many names are written in short; a math line reads registers of both; the Monitor
   names the devices in place of its Slave number, and a broadcast from it (*Broadcast · slave 0*) reaches both devices; a broadcast preset made in its dialog and sent from the Broadcast menu
-  reaches both; Auto send is disabled, its tooltip says why. With the second (D1, D2 with another device ID, D9 at a
+  reaches both; a broadcast past the map's max asks first (*Outside the map's limits*), and Cancel sends nothing; Auto send is disabled, its tooltip says why. With the second (D1, D2 with another device ID, D9 at a
   slave nobody answers): a broadcast into the device bank is refused, one into CONFIG (0xA004) is sent, one into
   CONFIG with AUTO_SEND set is refused and nothing sent; D9 goes offline (the
   Log, the card, in words too) while D1 is still polled. Close bus gives one device again, and the window connects
@@ -4787,7 +4787,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 396 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 397 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

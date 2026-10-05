@@ -556,7 +556,7 @@ and count of the request plus one error byte. It is always 11 bytes:
 | 12 | `LENGTH_MISMATCH` | a frame of a function code the library decodes is not 10 + *n* bytes, *n* from its function code ([Frame](#frame)) | yes |
 | 13 | `LOGIN_REQUIRED` | the device's access layer needs a login first: log in and retry (1.1). The library only reserves the code: a handler returns it (EVRe Guard, while no session is open) | from a handler |
 | 14 | `RANGE_TABLE_INVALID` | `protocolInit()`: the range table is not valid, and `protocolConfigure()` did not fail (its own code comes first) (1.1) | never |
-| 15 | `VALUE_REFUSED` | the device's layer above did not take a value; nothing was stored: outside the register's limits, NaN or an infinity (EVRe Guard's register checks). The library only reserves the code: a handler returns it | from a handler |
+| 15 | `VALUE_REFUSED` | the device's layer above did not take a value; nothing was stored: outside the register's limits or its closed set, a bit set that must be 0, NaN or an infinity (EVRe Guard's register checks). The library only reserves the code: a handler returns it | from a handler |
 
 "Yes" means in an `ERROR_RESP`, under the rules of
 [When a device is silent](#when-a-device-is-silent) below. A handler may return
@@ -1181,10 +1181,10 @@ part 2 only chooses the code):
 | a&nbsp;broadcast,&nbsp;every&nbsp;register&nbsp;good | 0 | silent | all |
 | a&nbsp;broadcast,&nbsp;one&nbsp;register&nbsp;bad | 15&nbsp;or&nbsp;3 | silent | none, for the whole broadcast |
 | a&nbsp;bad&nbsp;or&nbsp;missing&nbsp;table | 3 | `ERROR_RESP`(3), for every write to the device bank; silent for a broadcast | none; the reserved bank works as without it |
-| a&nbsp;mirror | 3 | silent for a `READ_RESP` | none |
+| a&nbsp;mirror | 3 | silent&nbsp;for&nbsp;a&nbsp;`READ_RESP` | none |
 | a&nbsp;refused&nbsp;`WRITE_ACK`,&nbsp;an&nbsp;output&nbsp;buffer&nbsp;of&nbsp;10&nbsp;B | 15&nbsp;or&nbsp;3 | silent (an `ERROR_RESP` needs 11 B) | none |
-| a&nbsp;`READ` | - | part 2 is not asked | - |
-| a&nbsp;frame&nbsp;the&nbsp;library&nbsp;refuses | as&nbsp;without&nbsp;it | part 2 is not asked | none |
+| a&nbsp;`READ` | - | part&nbsp;2&nbsp;is&nbsp;not&nbsp;asked | - |
+| a&nbsp;frame&nbsp;the&nbsp;library&nbsp;refuses | as&nbsp;without&nbsp;it | part&nbsp;2&nbsp;is&nbsp;not&nbsp;asked | none |
 
 The wiring, with a login (`evre_guard_write_checked` puts it first):
 

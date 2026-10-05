@@ -1426,6 +1426,18 @@ private:
 		fan55 = menuAction(QStringLiteral("Fan 55"));
 		check(blockedOff && fan55 && fan55->isEnabled(),
 				"bus: with Allow writes off a preset is disabled, its tooltip says why; on again, it is offered");
+		/* a broadcast past the map's limits asks first, as a write does (the same check: limits, a closed set, the bits
+		 * no field covers); Cancel sends nothing */
+		auto *registersTab = window_.findChild<RegistersTab *>();
+		const int d1Row = regRow(d1u8);
+		const RegDef d1Def = d1Row >= 0 ? model_->rows()[d1Row].def : RegDef();
+		const QString past = d1Def.hasMax() ? QString::number(qint64(d1Def.max) + 1) : QString();
+		const QString pastTitle = registersTab && d1Row >= 0 && !past.isEmpty()
+				? answerDialog(QStringLiteral("Cancel"), [&] { emit registersTab->broadcastRequested(d1Row, past); }) : QString();
+		QTest::qWait(300);
+		check(pastTitle == QLatin1String("Outside the map's limits") && one.readU8(regs_.u8.addr) == 55
+						&& two.readU8(regs_.u8.addr) == 55,
+				"bus: a broadcast past the map's max asks first (\"Outside the map's limits\"), Cancel sends nothing");
 		/* Remove: the preset leaves the menu, the bus is modified */
 		QAction *removeFan = nullptr;
 		if (QAction *removeMenu = menuAction(QStringLiteral("Remove")); removeMenu && removeMenu->menu())
