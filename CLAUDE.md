@@ -235,3 +235,11 @@ the lines in it. Lanes must stay readable however many units are plotted.
      labels' tooltip with and without scrolling. Docs (STUDIO.md 7.12, the mouse table, chapter 23),
      the Help's chart page, the check count, the Arabic texts (glossary terms), no unfinished entries.
      Push to `phase9-lanes-fit` (PR #7) and add a short "UI/UX follow-up" section to the PR's text.
+8. **A separator between lanes (the owner: the lanes read as one chart).** The value labels run on
+   ("15 10 5 15 10 5") as if one axis. In each gap between two lanes (open or folded) a 1 px line,
+   centred in `LANE_GAP`, from the left edge of the value labels to the plot's right edge, in the
+   theme's border colour (a step stronger than the grid lines; a theme token if there is none),
+   both themes. Only between lanes in view (cut by the plot like the lanes); none without Lanes.
+   Both drawing paths (the card: with the grid's segments), the picture check at its level. A check
+   that the separators are where the gaps are (their y per gap) and in the colour, the docs (7.12,
+   23), and a Help sentence.
