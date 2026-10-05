@@ -58,7 +58,13 @@
  * With a graphics card (setDrawing), the plot is a layer of the window over
  * the chart, which the card draws and shows (gpu_lines.h): the chart then
  * paints only what is around the plot. A picture of the chart (grab()) is drawn
- * by the CPU, the plot too. */
+ * by the CPU, the plot too.
+ *
+ * Fast lines (Fast EVRe): a fast stream's channels are lines like any other (keys from FIRST_FAST_KEY), their records
+ * kept as they came in a store (model/fast_store.h) with summaries, not as times and values: binned from the
+ * summaries, a view of an hour and one of 100 us cost the same, and where the view holds few records each is drawn
+ * at its own time. Lost records break the line: nothing is drawn across a gap. The RAM is shared: a fast line is one
+ * of the lines its budget is divided by. */
 #pragma once
 
 #include <QColor>
@@ -76,7 +82,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <memory>
 
+#include "model/fast_store.h"
 #include "model/recording_file.h"
 #include "ui/gpu_lines.h"
 #include "ui/value_pace.h"
@@ -105,6 +113,27 @@ public:
 	void clearSeries();
 	void clearData();
 	void append(int key, double t, double v);
+
+	/* Fast EVRe: a stream's records, kept once for all its channels (the lines keyed fastKey(stream, channel)). A
+	 * stream is set before its lines are added; its records are kept while one of its lines is on the chart. */
+	static constexpr int FIRST_FAST_KEY = 2 << 24;
+	static int fastKey(int stream, int channel) { return FIRST_FAST_KEY + 256 * stream + channel; }
+	static bool isFastKey(int key) { return key >= FIRST_FAST_KEY; }
+	void setFastStream(int stream, const StreamDef &def); /* kept when it is the same stream again */
+	void clearFastStreams();
+	/* a block's records (the stream's rules applied: io/fast_stream.h), and a time mark of its start */
+	void appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart, quint64 lost);
+	void markFast(int stream, quint64 record, double time, double period);
+	const fast::Store *fastStore(int stream) const; /* nullptr: none */
+	/* tests: a line's bins as last binned for the view (each column's samples: their times, min, max, count, and a
+	 * gap before them), and the time labels as last painted */
+	struct BinInfo {
+		double t0, t1, min, max;
+		int count;
+		bool gap;
+	};
+	QVector<BinInfo> lastBins(int key) const;
+	QStringList timeLabels() const { return timeLabels_; }
 
 	/* the time base, seconds (read at every frame), and the wall-clock time of
 	 * its zero (ms since the epoch) for the axis labels */
@@ -203,8 +232,9 @@ public:
 	int hoveredLaneMenu() const { return hoverMenu_; } /* tests: the lane whose menu button is highlighted; -1: none */
 	int foldedLaneCount() const;          /* of the lanes now */
 	void setAllLanesFolded(bool folded);  /* Fold all lanes / Open all lanes */
-	/* the lanes' tooltips there (a button, a strip, the value labels, the scroll bar) */
+	/* the lanes' tooltips there (a button, a strip, the value labels, the scroll bar), and a fast line's gap's */
 	QString toolTipAt(const QPointF &pos) const;
+	QString fastGapAt(const QPointF &pos) const; /* the records a fast line lost there; empty: no gap there */
 	bool laneBarHovered() const { return hoverBar_; } /* tests: the scroll bar's handle highlighted */
 	QVector<double> laneSeparators() const { return laneSeparators_; } /* tests: the lines between lanes, as painted */
 	/* A lane's height: dragged by the separator under it (the lane below gives or takes, neither under LANE_MIN_H),
@@ -437,6 +467,7 @@ private:
 		int count = 0;
 		qsizetype firstSample = 0; /* the line's sample it starts with, counted since the line began */
 		double t0 = 0, t1 = 0, first = 0, last = 0, min = 0, max = 0;
+		bool gap = false;          /* a fast line: records were lost (or the stream started again) before it */
 		void add(double ta, double tb, double firstValue, double lastValue, double lo, double hi, int samples);
 	};
 	struct Series {
@@ -462,6 +493,9 @@ private:
 			qsizetype binnedTo = 0; /* counted since the line began */
 		};
 		mutable ViewBins viewBins;
+		/* a fast line: its stream's records, and its channel there (times and values stay empty) */
+		std::shared_ptr<fast::Store> fast;
+		int channel = 0;
 	};
 	/* one line's samples in a span, binned per pixel column, with the range of
 	 * what lies inside the span */
@@ -568,6 +602,10 @@ private:
 	/* samples i0 .. i1 - 1 into bins, chunks of level `top` at most where they start and end inside and lie in one
 	 * column */
 	static void binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins);
+	/* a fast line from its store: a bin per column (two where a gap falls in one), each column's min and max from the
+	 * summaries, so the cost follows the columns, not the records */
+	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out) const;
+	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
 	QVector<BinnedLine> binView(const Axes &axes) const;
 	/* the Y range of this frame for a plot's lines (which: indices into lines) */
 	void updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,
@@ -668,12 +706,18 @@ private:
 	template <typename MapX, typename MapY>
 	/* bands: given, a full column's min..max is a bar there (bandWidth wide) and the polyline only goes through its
 	 * first and last value; not given (the memory strip), the polyline draws the whole stroke */
+	/* breaks: given, where a bin says a gap (a fast line's), the polyline is broken: the index of the first point after
+	 * each break; nothing is drawn across it */
 	static QPolygonF toPolyline(const QVector<Bin> &bins, double columnSeconds, MapX x, MapY y,
-			QVector<QRectF> *bands = nullptr, double bandWidth = 0, double pixel = 0);
-	static void fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color);
+			QVector<QRectF> *bands = nullptr, double bandWidth = 0, double pixel = 0, QVector<qsizetype> *breaks = nullptr);
+	/* the polyline's points from .. to - 1 as strokes, broken where `breaks` says */
+	static void strokePieces(QPainter &p, const QPolygonF &poly, const QVector<qsizetype> &breaks, qsizetype from,
+			qsizetype to, const QColor &color, bool thin, qreal dpr);
+	static void fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp = false);
 	void updatePaintStats(double paintMs);
 
 	QMap<int, Series> series_;
+	QHash<int, std::shared_ptr<fast::Store>> fastStores_; /* by stream */
 	quint64 seriesGeneration_ = 0; /* a line added or removed, or the samples cleared */
 	quint64 seriesAdded_ = 0;      /* lines added so far: each line's spread */
 
@@ -773,6 +817,7 @@ private:
 	void forgetRanges(); /* the lines changed: every Auto range jumps to them at the next frame */
 	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
 	mutable QStringList valueLabels_;
+	mutable QStringList timeLabels_;
 	mutable QVector<QRectF> valueLabelRects_; /* where they were written */
 	bool stripLog_ = false;          /* the memory strip's image drawn on the Log scale */
 

@@ -142,6 +142,12 @@ QHash<RegKey, QVector<QPointF>> IoEngine::takeSamples() {
 	return out;
 }
 
+QVector<IoEngine::FastBlock> IoEngine::takeFastBlocks() {
+	QMutexLocker lock(&crossThreadMutex_);
+	fastQueued_ = 0;
+	return std::exchange(fastBlocks_, {});
+}
+
 QStringList IoEngine::takeFrames(int &dropped) {
 	QMutexLocker lock(&crossThreadMutex_);
 	dropped = monitorLinesDropped_;
@@ -768,6 +774,7 @@ void IoEngine::updateStats() {
 		f.badBlocks = run.state.badBlocks;
 		f.newerBlocks = run.state.newerBlocks;
 		f.starts = run.state.starts;
+		f.notShown = run.notShown;
 	}
 }
 
@@ -991,6 +998,7 @@ void IoEngine::applyFast(int stream) {
 		FastRun &run = fastRuns_[stream];
 		if (request != run.request) return;
 		run.state.reset(run.def, rate);
+		run.notShown = 0;
 		run.on = true;
 		run.newerSaid = run.silenceAsked = false;
 		run.lastBlockMs = run.takenMs = -1;
@@ -1093,6 +1101,44 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 				"not know): none of their samples is used").arg(run.def.name), false);
 	}
 	if (check != fast::BlockCheck::Ok) return;
+	FastBlock block;
+	block.stream = stream;
+	block.first = taken.first;
+	block.count = taken.count;
+	block.newStart = taken.newStart;
+	block.lost = taken.lost;
+	block.records = frame.data.mid(fast::HEADER);
+	if (taken.newMark) {
+		block.marked = true;
+		block.markRecord = run.state.clock().mark().record;
+		block.markTime = run.state.clock().mark().time;
+		block.markPeriod = run.state.clock().period();
+	}
+	{
+		QMutexLocker lock(&crossThreadMutex_);
+		fastQueued_ += block.records.size();
+		fastBlocks_.push_back(std::move(block));
+		/* a window that does not take them: the oldest go, counted; a start or a mark they carried goes on with the
+		 * next, so the chart still lays what follows on the clock */
+		qsizetype gone = 0;
+		while (fastQueued_ > FAST_QUEUE_BYTES && fastBlocks_.size() - gone > 1) {
+			const FastBlock &old = fastBlocks_[gone];
+			FastBlock &next = fastBlocks_[gone + 1];
+			fastQueued_ -= old.records.size();
+			if (old.stream < fastRuns_.size()) fastRuns_[old.stream].notShown += quint64(old.count);
+			if (next.stream == old.stream) {
+				next.newStart = next.newStart || old.newStart;
+				if (old.marked && !next.marked) {
+					next.marked = true;
+					next.markRecord = old.markRecord;
+					next.markTime = old.markTime;
+					next.markPeriod = old.markPeriod;
+				}
+			}
+			gone++;
+		}
+		if (gone > 0) fastBlocks_.remove(0, gone);
+	}
 	run.lastBlockMs = clock_.elapsed();
 	run.silenceAsked = false;
 	run.recordsSinceRate += quint64(taken.count);

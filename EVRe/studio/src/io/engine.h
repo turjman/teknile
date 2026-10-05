@@ -140,12 +140,29 @@ public:
 			double ppm = 0;       /* the fit's correction against the rate the device was set to */
 			double recordsHz = 0; /* records that came a second, measured as pollHz is */
 			quint64 records = 0, blocks = 0, lost = 0, badBlocks = 0, newerBlocks = 0, starts = 0;
+			quint64 notShown = 0; /* records the window did not take in time (FAST_QUEUE_BYTES) */
 		};
 		QVector<Fast> fast;
 	};
 	Stats stats() const;
 	/* the samples of the plotted registers since the last call, every poll, by register key */
 	QHash<RegKey, QVector<QPointF>> takeSamples();
+	/* Fast EVRe: the blocks taken since the last call, for the chart (the window takes them once a frame). Capped at
+	 * FAST_QUEUE_BYTES: past it the oldest go, counted in Stats::Fast::notShown (a window that stalls loses them on
+	 * the chart only). */
+	static constexpr qint64 FAST_QUEUE_BYTES = 64ll * 1024 * 1024;
+	struct FastBlock {
+		int stream = 0;
+		quint64 first = 0;       /* the number of its first record in its start (64 bits) */
+		int count = 0;
+		bool newStart = false;   /* a new start of the stream: a new epoch of times */
+		quint64 lost = 0;        /* records lost before it */
+		QByteArray records;      /* count records, as they came */
+		bool marked = false;     /* a time mark came with it: */
+		quint64 markRecord = 0;
+		double markTime = 0, markPeriod = 0;
+	};
+	QVector<FastBlock> takeFastBlocks();
 	/* the monitor's lines since the last call (when monitoring), and how many
 	 * were dropped: at thousands of frames a second only the newest are kept */
 	QStringList takeFrames(int &dropped);
@@ -277,6 +294,7 @@ private:
 		bool silenceAsked = false;  /* no block for a while: its enable read once */
 		quint64 recordsSinceRate = 0;
 		double recordsHz = 0;
+		quint64 notShown = 0;
 	};
 	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
 	void fastFailed(int stream, bool on, const QString &why);
@@ -378,4 +396,6 @@ private:
 	QHash<RegKey, QVector<QPointF>> samples_;
 	QStringList monitorLines_;
 	int monitorLinesDropped_ = 0;
+	QVector<FastBlock> fastBlocks_;
+	qint64 fastQueued_ = 0;                      /* the bytes in fastBlocks_ */
 };

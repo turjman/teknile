@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* evre_fast_test: Fast EVRe without a window or a device (FAST_PLAN.md section 10): the rules of the block, a fuzz
  * of random bytes, the clock's fit against a device that runs fast or slow, the source the fake devices send from,
- * and the frames lib/fast builds (tests/fast_lib_test.py hands them over in EVRE_FAST_FRAMES). */
+ * the frames lib/fast builds (tests/fast_lib_test.py hands them over in EVRE_FAST_FRAMES), and the store the chart
+ * keeps a stream's records in (model/fast_store.h). */
 #include <QFile>
 #include <QtTest>
 #include <cmath>
@@ -10,6 +11,7 @@
 #include "evre/frame.h"
 #include "io/fast_stream.h"
 #include "model/device_map.h"
+#include "model/fast_store.h"
 
 using namespace fast;
 
@@ -346,6 +348,174 @@ private slots:
 			records += h.count;
 		}
 		QVERIFY2(records >= 100000 && records <= 100100, qPrintable(QString::number(records)));
+	}
+
+	/* ---- the store */
+
+	/* 300 000 records of two i16 channels in blocks of random sizes, now and then some lost, marks at the clock's
+	 * pace: every record's time and value, and the summaries over random spans equal a plain loop */
+	void storeSummaries() {
+		const StreamDef def = exampleStream(100000);
+		fast::Store store(def);
+		std::mt19937 random(11);
+		QVector<qint16> current, voltage;
+		QVector<quint64> numbers;
+		quint64 next = 0;
+		bool first = true;
+		while (numbers.size() < 300000) {
+			const int count = int(random() % 300) + 1;
+			const quint64 lost = random() % 40 == 0 ? random() % 500 + 1 : 0;
+			next += lost;
+			QByteArray records(count * 4, '\0');
+			for (int k = 0; k < count; k++) {
+				const qint16 a = qint16(random()), b = qint16(random() % 2000 - 1000);
+				records[4 * k] = char(a);
+				records[4 * k + 1] = char(a >> 8);
+				records[4 * k + 2] = char(b);
+				records[4 * k + 3] = char(b >> 8);
+				current << a;
+				voltage << b;
+				numbers << next + quint64(k);
+			}
+			store.append(next, count, records.constData(), first, first ? 0 : lost);
+			if (first || numbers.size() % 7 == 0) store.mark(next + quint64(count), 1.0 + double(next + quint64(count)) * 1e-5, 1e-5);
+			first = false;
+			next += quint64(count);
+		}
+		QCOMPARE(store.size(), qsizetype(numbers.size()));
+		bool values = true, times = true;
+		for (qsizetype i = 0; i < store.size(); i += 97) {
+			values = values && store.value(0, i) == current[i] * 0.0005 && store.value(1, i) == voltage[i] * 0.001;
+			times = times && std::fabs(store.timeAt(i) - (1.0 + double(numbers[i]) * 1e-5)) < 1e-9;
+		}
+		QVERIFY(values);
+		QVERIFY(times);
+		int wrong = 0;
+		for (int round = 0; round < 3000; round++) {
+			qsizetype i0 = qsizetype(random() % quint32(store.size())), i1 = qsizetype(random() % quint32(store.size()));
+			if (round % 3 == 0) i1 = std::min<qsizetype>(store.size(), i0 + qsizetype(random() % 600)); /* short ones */
+			if (i0 > i1) std::swap(i0, i1);
+			if (i0 == i1) continue;
+			for (int c = 0; c < 2; c++) {
+				double lo = 1e300, hi = -1e300, sum = 0, squares = 0;
+				for (qsizetype i = i0; i < i1; i++) {
+					const double v = c == 0 ? current[i] * 0.0005 : voltage[i] * 0.001;
+					lo = std::min(lo, v);
+					hi = std::max(hi, v);
+					sum += v;
+					squares += v * v;
+				}
+				double slo, shi, ssum, ssquares;
+				store.minMax(c, i0, i1, slo, shi);
+				store.sums(c, i0, i1, ssum, ssquares);
+				if (slo != lo || shi != hi || std::fabs(ssum - sum) > 1e-9 * (1 + std::fabs(sum))
+						|| std::fabs(ssquares - squares) > 1e-9 * (1 + squares))
+					wrong++;
+			}
+		}
+		QCOMPARE(wrong, 0);
+		/* the gaps: where the numbers jump, and only there */
+		int gapsSeen = 0, gapsWrong = 0;
+		for (qsizetype i = 1; i < store.size(); i++) {
+			const bool gap = numbers[i] != numbers[i - 1] + 1;
+			gapsSeen += gap;
+			if (store.startsAfterGap(i) != gap) gapsWrong++;
+		}
+		QCOMPARE(gapsWrong, 0);
+		QCOMPARE(qsizetype(gapsSeen), store.gaps());
+		QVERIFY(gapsSeen > 10);
+		QCOMPARE(store.segmentEnd(0) > 0, true);
+		QVERIFY(!store.startsAfterGap(0));
+	}
+
+	/* lowerBound and upperBound: the first record at or after a time, and after it, across gaps */
+	void storeBounds() {
+		fast::Store store(exampleStream(1000));
+		QByteArray records(4 * 100, '\0');
+		store.append(0, 100, records.constData(), true, 0);
+		store.mark(100, 10.0, 0.001);         /* record 100 at 10 s: record 0 at 9.9 s */
+		store.append(150, 100, records.constData(), false, 50);
+		std::mt19937 random(3);
+		bool right = true;
+		for (int k = 0; k < 2000; k++) {
+			const double t = 9.85 + (random() % 400000) * 1e-6;
+			const qsizetype lo = store.lowerBound(t), up = store.upperBound(t);
+			if (lo < store.size() && store.timeAt(lo) < t) right = false;
+			if (lo > 0 && store.timeAt(lo - 1) >= t) right = false;
+			if (up < store.size() && store.timeAt(up) <= t) right = false;
+			if (up > 0 && store.timeAt(up - 1) > t) right = false;
+		}
+		QVERIFY(right);
+		QCOMPARE(store.lowerBound(9.9), qsizetype(0));
+		QCOMPARE(store.lowerBound(10.0), qsizetype(100)); /* in the gap: the first record after it, number 150 */
+		QCOMPARE(store.timeAt(100), 10.05);
+		QCOMPARE(store.upperBound(100.0), store.size());
+		QCOMPARE(store.segmentEnd(10), qsizetype(100));
+		QVERIFY(store.startsAfterGap(100));
+		QCOMPARE(store.lostBefore(100), qint64(50)); /* the gap's count, for its tooltip */
+		QCOMPARE(store.lostBefore(99), qint64(0));
+	}
+
+	/* a new start whose clock begins before the last one ended: shifted after it, the times never go back */
+	void storeNewStart() {
+		fast::Store store(exampleStream(1000));
+		QByteArray records(4 * 100, '\0');
+		store.append(0, 100, records.constData(), true, 0);
+		store.mark(100, 10.0, 0.001);
+		store.append(0, 100, records.constData(), true, 0);
+		store.mark(100, 9.95, 0.001); /* its first record at 9.85 s: before 9.999 */
+		bool rising = true;
+		for (qsizetype i = 1; i < store.size(); i++) rising = rising && store.timeAt(i) > store.timeAt(i - 1);
+		QVERIFY(rising);
+		QVERIFY(store.startsAfterGap(100));
+		QCOMPARE(store.lostBefore(100), qint64(-1)); /* a new start: not counted */
+		QVERIFY(std::fabs(store.timeAt(100) - (store.timeAt(99) + 0.001)) < 1e-9);
+	}
+
+	/* trims drop whole pieces; what stays reads the same; the bytes it says it holds are what its arrays hold */
+	void storeTrim() {
+		fast::Store store(exampleStream(1000000));
+		const qsizetype n = 5 * fast::Store::PIECE + 1234;
+		QByteArray records(int(n * 4), '\0');
+		for (qsizetype k = 0; k < n; k++) {
+			records[int(4 * k)] = char(k);
+			records[int(4 * k + 1)] = char(k >> 8);
+		}
+		store.append(0, n, records.constData(), true, 0);
+		store.mark(quint64(n), 100.0, 1e-6);
+		const double t = store.timeAt(2 * fast::Store::PIECE + 10);
+		const double v = store.value(0, 2 * fast::Store::PIECE + 10);
+		store.dropFront(2 * fast::Store::PIECE + 5);
+		QCOMPARE(store.dropped(), qint64(2 * fast::Store::PIECE));
+		QCOMPARE(store.size(), n - 2 * fast::Store::PIECE);
+		QCOMPARE(store.timeAt(10), t);
+		QCOMPARE(store.value(0, 10), v);
+		double lo, hi;
+		store.minMax(0, 0, store.size(), lo, hi);
+		double plo = 1e300, phi = -1e300;
+		for (qsizetype i = 0; i < store.size(); i++) {
+			plo = std::min(plo, store.value(0, i));
+			phi = std::max(phi, store.value(0, i));
+		}
+		QCOMPARE(lo, plo);
+		QCOMPARE(hi, phi);
+		store.dropFront(100 * fast::Store::PIECE); /* never the records after the last whole piece */
+		QCOMPARE(store.size(), qsizetype(1234));
+		/* what it says it holds: its pieces (each a piece's room) and its summaries, near a record's share each */
+		const qint64 held = store.bytes();
+		QVERIFY(held >= qint64(store.size()) * 4);
+		QVERIFY2(held <= qint64(fast::Store::PIECE) * 4 + 16384, qPrintable(QString::number(held)));
+		fast::Store full(exampleStream(1000000));
+		full.append(0, n, records.constData(), true, 0);
+		full.mark(quint64(n), 100.0, 1e-6);
+		const double perRecord = double(full.bytes()) / double(full.size());
+		QVERIFY2(perRecord >= full.bytesPerRecord() * 0.95 && perRecord <= full.bytesPerRecord() * 1.25,
+				qPrintable(QStringLiteral("%1 bytes a record held, %2 said").arg(perRecord).arg(full.bytesPerRecord())));
+		/* Clear keeps the newest mark: the stream goes on with times */
+		full.clear();
+		full.append(quint64(n), 10, records.constData(), false, 0);
+		QVERIFY(full.hasTime());
+		QCOMPARE(full.timeAt(0), 100.0); /* record n, at its mark */
 	}
 
 	/* the frames lib/fast built (tests/fast_lib_test.py): through the Studio's parser and the block's rules. The file

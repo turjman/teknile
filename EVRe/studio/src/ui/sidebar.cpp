@@ -711,6 +711,28 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		numbers->addWidget(row.lost);
 		fastRowsLayout_->addWidget(row.button);
 		fastRowsLayout_->addLayout(numbers);
+		/* each channel: its Plot tick (a line on the chart, as a register's) and its newest value */
+		for (int c = 0; c < streams[i].channels.size(); c++) {
+			const StreamChannel &channel = streams[i].channels[c];
+			auto *plot = new QCheckBox(channel.name);
+			plot->setObjectName(QStringLiteral("fastPlot"));
+			plot->setCursor(Qt::PointingHandCursor);
+			plot->setToolTip(tr("Plot %1.%2 on the chart: every sample at its own time, the line broken where samples "
+					"were lost.%3").arg(streams[i].name, channel.name,
+							channel.desc.isEmpty() ? QString() : QLatin1Char('\n') + channel.desc));
+			connect(plot, &QCheckBox::toggled, this, [this, i, c](bool on) { emit fastPlotToggled(i, c, on); });
+			auto *value = mutedLabel(QStringLiteral(" "));
+			value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+			value->setToolTip(tr("The newest sample of %1.%2").arg(streams[i].name, channel.name));
+			auto *channelRow = new QHBoxLayout;
+			channelRow->addSpacing(4);
+			channelRow->addWidget(plot);
+			channelRow->addStretch();
+			channelRow->addWidget(value);
+			fastRowsLayout_->addLayout(channelRow);
+			row.plots << plot;
+			row.values << value;
+		}
 		fastRows_.push_back(row);
 	}
 	fastCard_->setVisible(!fastRows_.isEmpty());
@@ -725,8 +747,60 @@ QString Sidebar::fastRateText(int stream) const {
 	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].rate->text() : QString();
 }
 
+QString Sidebar::fastRateTip(int stream) const {
+	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].rate->toolTip() : QString();
+}
+
 QString Sidebar::fastLostText(int stream) const {
 	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].lost->text().trimmed() : QString();
+}
+
+void Sidebar::setFastPlot(int stream, int channel, bool on) {
+	QCheckBox *box = fastPlotBox(stream, channel);
+	if (!box) return;
+	const QSignalBlocker blocker(box);
+	box->setChecked(on);
+}
+
+bool Sidebar::fastPlot(int stream, int channel) const {
+	const QCheckBox *box = fastPlotBox(stream, channel);
+	return box && box->isChecked();
+}
+
+void Sidebar::clearFastPlots() {
+	for (int i = 0; i < fastRows_.size(); i++)
+		for (int c = 0; c < fastRows_[i].plots.size(); c++) setFastPlot(i, c, false);
+}
+
+void Sidebar::setFastPlotsEnabled(bool enabled, const QString &why) {
+	for (const FastRow &row : std::as_const(fastRows_))
+		for (QCheckBox *box : row.plots) {
+			box->setEnabled(enabled);
+			if (!enabled && !why.isEmpty()) box->setToolTip(why);
+		}
+}
+
+QCheckBox *Sidebar::fastPlotBox(int stream, int channel) const {
+	if (stream < 0 || stream >= fastRows_.size() || channel < 0 || channel >= fastRows_[stream].plots.size()) return nullptr;
+	return fastRows_[stream].plots[channel];
+}
+
+/* the value as the map writes it: its decimals, or four significant digits; and its unit */
+void Sidebar::showFastValues(int stream, const QVector<double> &values) {
+	if (stream < 0 || stream >= fastRows_.size()) return;
+	const FastRow &row = fastRows_[stream];
+	for (int c = 0; c < row.values.size(); c++) {
+		const double v = values.value(c, NAN);
+		if (!std::isfinite(v)) continue;
+		const StreamChannel &channel = row.def.channels[c];
+		const QString number = channel.decimals >= 0 ? QString::number(v, 'f', channel.decimals) : QString::number(v, 'g', 4);
+		row.values[c]->setText(channel.unit.isEmpty() ? number : number + QLatin1Char(' ') + channel.unit);
+	}
+}
+
+QString Sidebar::fastValueText(int stream, int channel) const {
+	if (stream < 0 || stream >= fastRows_.size() || channel < 0 || channel >= fastRows_[stream].values.size()) return QString();
+	return fastRows_[stream].values[channel]->text().trimmed();
 }
 
 bool Sidebar::fastOn(int stream) const { return stream >= 0 && stream < fastRows_.size() && fastRows_[stream].on; }
@@ -793,7 +867,8 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 			row.rate->setText(QStringLiteral("%1 (%2)").arg(samples(f->rate), ppm));
 			row.rate->setToolTip(tr("The samples a second as the Studio's clock measures the device's: the rate the "
 					"device was set to, corrected by %1 parts in a million.\n%2 samples in %3 blocks since Start; "
-					"%4 bad blocks.").arg(ppm).arg(f->records).arg(f->blocks).arg(f->badBlocks + f->newerBlocks));
+					"%4 bad blocks; %5 samples not shown (the window did not take them in time).").arg(ppm).arg(f->records)
+					.arg(f->blocks).arg(f->badBlocks + f->newerBlocks).arg(f->notShown));
 		}
 		const quint64 lost = f ? f->lost : 0;
 		/* a count in groups of three, "1 024" (a space that does not break the line), kept one left-to-right number in

@@ -27,6 +27,9 @@
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
  *    thread, with progress and Cancel), Add note here, Open recording.
  *
+ * Fast lines (Fast EVRe): the map's streams (setFastStreams), a channel's line on or off (plotFastChannel, named
+ * STREAM.CHANNEL), and each block's records as they come (appendFast) into the chart's store of the stream.
+ *
  * The window says which registers are plotted (plotRegister) and hands over
  * the samples of every display frame (frame()); the tab adds the math lines'
  * points from them. What the user sets here is kept in the settings under
@@ -93,9 +96,18 @@ public:
 	/* one bit field of a register on the chart: a math line "REG.FIELD" = bits(REG, lsb, width),
 	 * made if there is none (a register shown scaled has no raw bits to take: not offered) */
 	void plotField(const RegDef &def, const BitField &field);
+	/* Fast EVRe: the map's streams; a channel's line on or off; a block's records (the stream's rules applied) with the
+	 * time mark it brought (marked), once a frame before frame() */
+	void setFastStreams(const QVector<StreamDef> &streams);
+	void plotFastChannel(int stream, int channel, bool on);
+	bool fastPlotted(int stream, int channel) const;
+	int fastLines() const; /* fast lines on the chart */
+	void appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
+			bool marked, quint64 markRecord, double markTime, double markPeriod);
 	/* every line off the chart, and the colours from the first again: for a new map (the math
 	 * lines come back with the next setRegisters) */
 	void clearLines();
+	QVector<StreamDef> fastStreams() const { return fastStreams_; }
 	/* the registers the math lines shown read: they must be sampled too, plotted or not */
 	QVector<RegKey> mathRegisters() const;
 
@@ -220,6 +232,7 @@ private:
 	ChartWidget *chart_;
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
+	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */
 	MathLines mathLines_;
 	QVector<RegDef> registers_;   /* the map's, for the math lines */
 
@@ -257,6 +270,7 @@ private:
 	double measureMs_ = 0;
 	int measuresTimed_ = 0;
 	qint64 pollsSince_ = 0;
+	quint64 fastSince_ = 0;       /* the fast streams' records taken (the timing aid) */
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 

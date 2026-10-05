@@ -59,7 +59,7 @@ namespace {
 constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF_LOG) */
 
 /* the shortest Window that can be typed; shorter views are only reached with the wheel */
-constexpr double MIN_TYPED_WINDOW = 0.01;
+constexpr double MIN_TYPED_WINDOW = 1e-5; /* 10 us: a fast line's single records */
 /* the measurements while the cursors move: at most this often (ChartTab::measureSoon) */
 constexpr int MEASURE_FOLLOW_MS = 100;
 
@@ -171,19 +171,23 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 }
 
 /* One line of the timing aid: frames a second, the paint's average and longest, its stages a frame on average (ms),
- * the binnings (a held view whose lines are reused bins none), the measurements' time and count, polls a second */
+ * the binnings (a held view whose lines are reused bins none), the measurements' time and count, polls a second, the
+ * fast lines' records a second */
 void ChartTab::writePerfLine() {
 	const ChartView::PerfStats p = chart_->view()->takePerfStats();
 	const double seconds = std::max(1e-3, perfClock_.restart() / 1000.0);
 	const double frames = std::max(1, p.frames);
 	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
-			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s\n")
+			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s "
+			"fast %19/s\n")
 			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
 			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
 			.arg(p.bin / frames, 0, 'f', 2).arg(p.lines / frames, 0, 'f', 2).arg(p.segments / frames, 0, 'f', 2)
 			.arg(p.present / frames, 0, 'f', 2).arg(p.marks / frames, 0, 'f', 2).arg(p.strip / frames, 0, 'f', 2)
 			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
-			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0);
+			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0)
+			.arg(double(fastSince_) / seconds, 0, 'f', 0);
+	fastSince_ = 0;
 	measureThreadMs_ = 0;
 	measureMs_ = 0;
 	measuresTimed_ = 0;
@@ -713,6 +717,53 @@ void ChartTab::plotField(const RegDef &def, const BitField &field) {
 	emit logged(LogLevel::Info, tr("math line %1 = %2").arg(line.name, line.formula));
 }
 
+void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
+	ChartView *view = chart_->view();
+	/* a stream changed or gone: its lines go (the window ticks them again) */
+	for (int i = 0; i < fastStreams_.size(); i++) {
+		const bool same = i < streams.size() && streams[i].name == fastStreams_[i].name
+				&& streams[i].addr == fastStreams_[i].addr && streams[i].recordSize() == fastStreams_[i].recordSize();
+		if (same) continue;
+		for (int c = 0; c < fastStreams_[i].channels.size(); c++) view->removeSeries(ChartView::fastKey(i, c));
+	}
+	fastStreams_ = streams;
+	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
+}
+
+void ChartTab::plotFastChannel(int stream, int channel, bool on) {
+	if (stream < 0 || stream >= fastStreams_.size() || channel < 0 || channel >= fastStreams_[stream].channels.size()) return;
+	const int key = ChartView::fastKey(stream, channel);
+	if (!on) {
+		chart_->removeSeries(key);
+		return;
+	}
+	if (fastPlotted(stream, channel)) return;
+	const StreamChannel &c = fastStreams_[stream].channels[channel];
+	const QVector<QColor> &palette = Theme::colors().series;
+	chart_->addSeries(key, fastStreams_[stream].name + QLatin1Char('.') + c.name, c.unit, palette[nextColor_++ % palette.size()]);
+}
+
+bool ChartTab::fastPlotted(int stream, int channel) const {
+	const int key = ChartView::fastKey(stream, channel);
+	for (const ChartView::Info &line : chart_->view()->lines())
+		if (line.key == key) return true;
+	return false;
+}
+
+int ChartTab::fastLines() const {
+	int n = 0;
+	for (const ChartView::Info &line : chart_->view()->lines()) n += ChartView::isFastKey(line.key);
+	return n;
+}
+
+void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
+		bool marked, quint64 markRecord, double markTime, double markPeriod) {
+	ChartView *view = chart_->view();
+	view->appendFast(stream, first, count, records, newStart, lost);
+	if (marked) view->markFast(stream, markRecord, markTime, markPeriod);
+	fastSince_ += quint64(std::max(0, count));
+}
+
 void ChartTab::clearLines() {
 	chart_->clearSeries();
 	nextColor_ = 0;
@@ -742,16 +793,17 @@ void ChartTab::setShown(bool shown) {
 }
 
 QString ChartTab::infoText(int width) const {
-	int registers = 0, math = 0;
+	int registers = 0, math = 0, fast = 0;
 	for (const ChartView::Info &line : chart_->view()->lines())
-		(line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
+		(ChartView::isFastKey(line.key) ? fast : line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
 	/* the parts in their places, and the order they go in when the line is narrow: a part cut in the middle ("32/64
 	 * plotted · 60 fp…") said less than the parts left whole */
-	enum Part { Count, Plotted, Math, Fps, PaintTime, Delay, Drawer, PARTS };
+	enum Part { Count, Plotted, Math, Fast, Fps, PaintTime, Delay, Drawer, PARTS };
 	QString parts[PARTS];
 	parts[Count] = QStringLiteral("%1/%2").arg(registers).arg(registerLimit_);
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
+	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
 	parts[Fps] = tr(" · %1 fps").arg(chart_->fps(), 0, 'f', 0);
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
@@ -763,7 +815,7 @@ QString ChartTab::infoText(int width) const {
 	};
 	if (width < 0) return joined();
 	const QFontMetrics metrics = chartInfo_->fontMetrics();
-	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Count }) {
+	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast, Count }) {
 		if (metrics.horizontalAdvance(joined()) <= width) break;
 		parts[drop].clear();
 	}
@@ -1322,6 +1374,11 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	if (ChartView::isFastKey(key)) /* its records are not measured yet: the next version */
+		for (QAction *action : { histogram, spectrum }) {
+			action->setEnabled(false);
+			action->setToolTip(tr("Not for a fast line in this version"));
+		}
 	lineMenu_->popup(globalPos);
 }
 

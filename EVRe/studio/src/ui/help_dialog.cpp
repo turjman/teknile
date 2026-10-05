@@ -222,8 +222,14 @@ is told once in the Log.</li>
 <li>One device only: on a bus the card is greyed (a device sending by itself would collide with the others).</li>
 <li>The Monitor names a block <i>READ_RESP (fast stream ADC)</i>.</li>
 </ul>
-<p>This version counts the blocks; the chart and the recordings take the samples in a later one.
-<code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
+<p>Under the stream, each channel has a <b>Plot</b> tick and its newest value. Ticked, the channel is a line on the
+chart, <i>ADC.I_LOAD</i>, like a register's: its legend chip, its lane, the crosshair, the cursors. Every sample
+keeps its own time: a view of an hour shows the lowest and highest sample of each pixel column, so a spike of one
+sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
+each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
+The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
+<p>In this version the Measure table, the histogram, the spectrum, the trigger and Export to CSV leave fast lines
+out, and the recordings do not take them yet. <code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
 Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
 page) or the API's <code>stream</code> command (values at a period for an API client).</p>
 )HTML") },
@@ -291,7 +297,8 @@ it drops its hints first (Live to follow, click / drag), never runs over the leg
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
 the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
-of how many it may hold: <i>32/64 plotted</i>.</p>
+of how many it may hold: <i>32/64 plotted</i>. A fast stream's channel (the <i>Fast streams</i> page) is one of
+the 64 lines, not of the samples a second.</p>
 <h3>The first row: what is shown and kept</h3>
 <ul>
 <li><b>Window</b>: how much time is shown. Pick one, or type any length: <code>45</code> (seconds),

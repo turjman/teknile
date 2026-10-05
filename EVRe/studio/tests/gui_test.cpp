@@ -519,6 +519,7 @@ public:
 		chart();
 		chartManyLines();
 		chartBinsAndGpu();
+		chartFastLines();
 		readoutSteady();
 		displayMenu();
 		helpPages();
@@ -560,6 +561,7 @@ public:
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
+		fastSpeed();   /* the same */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
@@ -1165,6 +1167,46 @@ private:
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
 
+		/* a channel's Plot tick in the card: its line on the chart, its records kept, its newest value beside it */
+		auto *chartTab = window_.findChild<ChartTab *>();
+		ChartView *chartView = chartTab ? chartTab->view() : nullptr;
+		QCheckBox *plotBox = sidebar->fastPlotBox(0, 0);
+		const int iLoad = ChartView::fastKey(0, 0);
+		const auto onChart = [&](int key) {
+			if (!chartView) return false;
+			for (const ChartView::Info &line : chartView->lines())
+				if (line.key == key) return true;
+			return false;
+		};
+		bool plotted = false;
+		if (plotBox && chartView) {
+			plotBox->setChecked(true);
+			plotted = onChart(iLoad) && QTest::qWaitFor([&] { return chartView->pointsKept(iLoad) >= 10000; }, 4000)
+					&& QTest::qWaitFor([&] { return sidebar->fastValueText(0, 0).endsWith(QLatin1String(" A")); }, 3000);
+		}
+		std::printf("  ADC.I_LOAD on the chart (%d): %lld samples kept, the card shows \"%s\", the info line \"%s\"; the box: "
+				"hand %d, tip \"%s\"\n", int(plotted),
+				(long long) (chartView ? chartView->pointsKept(iLoad) : 0), qPrintable(sidebar->fastValueText(0, 0)),
+				chartTab ? qPrintable(chartTab->infoText()) : "", plotBox ? int(plotBox->cursor().shape()) : -1,
+				plotBox ? qPrintable(plotBox->toolTip()) : "");
+		check(plotted && plotBox->cursor().shape() == Qt::PointingHandCursor && plotBox->toolTip().contains(QLatin1String("ADC.I_LOAD"))
+						&& chartTab->infoText().contains(QStringLiteral(" · 1 fast")),
+				"fast streams: a channel's Plot tick in the card (a pointing hand, a tooltip): ADC.I_LOAD on the chart, its "
+				"samples kept, its newest value beside the tick, \"1 fast\" in the chart's info line");
+		/* its legend chip's menu: the histogram and the spectrum greyed, with why (they come with the measuring) */
+		bool greyed = false;
+		if (plotted) {
+			chartTab->showLineMenu(iLoad, QPoint(0, 0));
+			QMenu *menu = chartTab->lineMenu();
+			greyed = menu && menu->actions().size() == 2;
+			for (QAction *action : menu ? menu->actions() : QList<QAction *>())
+				greyed = greyed && !action->isEnabled() && action->toolTip() == QLatin1String("Not for a fast line in this version");
+			if (menu) menu->hide();
+		}
+		check(greyed, "fast streams: a fast line's chip menu: Histogram and Spectrum greyed, the tooltip says why");
+		if (plotBox) plotBox->setChecked(false);
+		check(!onChart(iLoad), "fast streams: the tick off: the line off the chart");
+
 		/* Poll off: CONFIG still read every 100 ms; the device's 2 s watchdog never stops the stream */
 		auto *traffic = [&]() -> QLabel * {
 			for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
@@ -1327,6 +1369,87 @@ private:
 		check(sidebar->fastCard()->isHidden()
 						&& cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
 				"fast streams: done; the example map again (no card), the window polls the fake device of the other steps");
+	}
+
+	/* Fast EVRe's speed on this machine (FAST_PLAN.md section 16): evre_fake_fast sending a million records a second of
+	 * two i16 (--fast-rate), both channels on the chart over a 10 s window, for 20 s: no record lost, no bad block,
+	 * none left unshown, and the chart's paint on average at most 8 ms a frame over the last 10 s */
+	void fastSpeed() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		const QString fastMapFile = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		QTemporaryDir folder;
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_FAST_PORT), fastMapFile, QString::fromLatin1(fakeDeviceToken), QStringLiteral("--fast-rate"),
+					QStringLiteral("1000000") });
+		OtherClient device;
+		const bool started = sidebar && chartTab && tabs && QFile::copy(map_.path, exampleFile) && fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device.open(FAKE_FAST_PORT, 1); }, 5000);
+		check(started, "fast speed: evre_fake_fast at 1 000 000 records a second started");
+		if (!started) return;
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup connectFast;
+		connectFast.map = fastMapFile;
+		connectFast.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_FAST_PORT);
+		connectFast.connect = true;
+		window_.applyStartup(connectFast);
+		QPushButton *button = sidebar->fastButton(0);
+		const bool offered = button && QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		ChartView *view = chartTab->view();
+		const double windowBefore = view->window();
+		view->setWindow(10);
+		sidebar->fastPlotBox(0, 0)->setChecked(true);
+		sidebar->fastPlotBox(0, 1)->setChecked(true);
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		if (offered) button->click();
+		const QRegularExpression rate(QStringLiteral("^(9[5-9][0-9]\\.[0-9]|10[0-4][0-9]\\.[0-9]) k samples/s|^1\\.0[0-4] M samples/s"));
+		QTest::qWait(10000); /* the window filled */
+		(void) view->takePerfStats();
+		QTest::qWait(10000);
+		const ChartView::PerfStats perf = view->takePerfStats();
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the window with two fast lines, live */
+			window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_chart.png"));
+			view->setLive(false);
+			view->setWindow(0.002);
+			view->refresh();
+			QTest::qWait(300);
+			window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_records.png"));
+			view->setLive(true);
+			view->setWindow(10);
+		}
+		const double paint = perf.frames ? perf.paintSum / perf.frames : 1e9;
+		const QString tip = sidebar->fastRateTip(0);
+		const QRegularExpressionMatch counts = QRegularExpression(
+				QStringLiteral("(\\d+) samples in (\\d+) blocks since Start; (\\d+) bad blocks; (\\d+) samples not shown")).match(tip);
+		const qint64 records = counts.hasMatch() ? counts.captured(1).toLongLong() : 0;
+		const qint64 bad = counts.hasMatch() ? counts.captured(3).toLongLong() : -1;
+		const qint64 notShown = counts.hasMatch() ? counts.captured(4).toLongLong() : -1;
+		std::printf("  fast speed: %s, %s; %lld records, %lld bad blocks, %lld not shown; %d frames in 10 s, paint %.2f ms "
+				"on average (bin %.2f, lines %.2f, strip %.2f), at most %.1f ms\n", qPrintable(sidebar->fastRateText(0)),
+				qPrintable(sidebar->fastLostText(0)), (long long) records, (long long) bad, (long long) notShown, perf.frames,
+				paint, perf.bin / std::max(1, perf.frames), perf.lines / std::max(1, perf.frames),
+				perf.strip / std::max(1, perf.frames), perf.paintMax);
+		check(offered && records >= 15000000 && sidebar->fastLostText(0) == QLatin1String("lost 0") && bad == 0 && notShown == 0
+						&& rate.match(sidebar->fastRateText(0)).hasMatch(),
+				"fast speed: 20 s at a million records a second of two i16: about 20 million records taken, none lost, "
+				"no bad block, none left unshown");
+		check(perf.frames > 100 && paint <= 8.0, "fast speed: two fast lines over a 10 s window of a million records a "
+				"second: the chart's paint at most 8 ms a frame on average");
+		button->click();
+		view->setWindow(windowBefore);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"fast speed: done; the example map again, the window polls the fake device of the other steps");
+		fake.kill();
+		fake.waitForFinished(3000);
 	}
 
 	/* the I/O thread's table, given the map again (a device picked, a map edited): a register keeps its value only
@@ -3336,6 +3459,255 @@ private:
 		return blocks ? double(alike) / blocks : 0;
 	}
 
+	/* Fast EVRe, part 5.2: fast lines on the chart from a stream's store, fed here as the window feeds them (records and
+	 * time marks), on charts of their own: a spike of one record in a long run at every zoom, single records at their
+	 * own times, a gap not bridged, the time labels below a millisecond, the RAM shared with the polled lines, the
+	 * lanes, the legend and the crosshair, and the card's picture against the CPU's */
+	void chartFastLines() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		def.addr = 0xDC00;
+		def.size = 1024;
+		def.rate = 10000;
+		StreamChannel current;
+		current.name = QStringLiteral("I_LOAD");
+		current.unit = QStringLiteral("A");
+		current.scale = 0.0005;
+		StreamChannel voltage;
+		voltage.name = QStringLiteral("V_BUS");
+		voltage.unit = QStringLiteral("V");
+		voltage.scale = 0.001;
+		def.channels = { current, voltage };
+		const int iLoad = ChartView::fastKey(0, 0), vBus = ChartView::fastKey(0, 1);
+		auto makeView = [&](QWidget &host, double now) {
+			host.resize(1100, 480);
+			auto *view = new ChartView(&host);
+			view->setGeometry(9, 5, 1080, 470);
+			view->setClock([now] { return now; }, 0);
+			view->setSmooth(false);
+			view->setDrawThreads(1);
+			view->setFastStream(0, def);
+			view->addSeries(iLoad, QStringLiteral("ADC.I_LOAD"), QStringLiteral("A"), QColor(255, 0, 0));
+			return view;
+		};
+		/* n records from `first` at 10 kHz from t0 (record k at t0 + k / 10 kHz): I_LOAD a small wave (raw +-100),
+		 * V_BUS 12 V; spike: the record whose I_LOAD is 15 A */
+		auto feed = [&](ChartView *view, quint64 first, qsizetype n, double t0, qint64 spike = -1, quint64 lost = 0,
+							 bool start = true) {
+			QByteArray records(int(n * 4), '\0');
+			for (qsizetype k = 0; k < n; k++) {
+				const qint64 number = qint64(first) + k;
+				const qint16 a = number == spike ? qint16(30000) : qint16(std::lround(100 * std::sin(number * 0.01)));
+				const qint16 b = 12000;
+				records[int(4 * k)] = char(a);
+				records[int(4 * k + 1)] = char(a >> 8);
+				records[int(4 * k + 2)] = char(b);
+				records[int(4 * k + 3)] = char(b >> 8);
+			}
+			view->appendFast(0, first, n, records, start, lost);
+			view->markFast(0, first + quint64(n), t0 + double(first + quint64(n)) / 10000.0, 1e-4);
+		};
+		/* the spike: one record of 15 A in 1000 s of 10 kHz (10 million records), held at windows from all of it to 1 ms */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 1100.0);
+			view->setMemory(1000);
+			const qint64 spike = 7777777;
+			for (qint64 first = 0; first < 10000000; first += 1000000)
+				feed(view, quint64(first), 1000000, 100.0, spike, 0, first == 0);
+			const double at = 100.0 + spike / 10000.0;
+			QStringList missed;
+			for (double window : { 1000.0, 100.0, 10.0, 1.0, 0.01, 0.001 }) {
+				view->setWindow(window);
+				view->showSpan(at - window / 2, at + window / 2);
+				host.grab();
+				bool shown = false;
+				for (const ChartView::BinInfo &bin : view->lastBins(iLoad))
+					if (bin.max == 15.0 && bin.t0 <= at + 1e-9 && bin.t1 >= at - 1e-9) shown = true;
+				if (!shown || view->yHi() < 15.0) missed << QString::number(window);
+			}
+			const fast::Store *store = view->fastStore(0);
+			if (!missed.isEmpty()) std::printf("  the spike not shown at %s s\n", qPrintable(missed.join(QStringLiteral(", "))));
+			check(missed.isEmpty() && store && store->size() == 10000000 && view->pointsKept(iLoad) == 10000000,
+					"chart, fast lines: a spike of one record in 10 million (1000 s at 10 kHz) shows at every zoom, from all "
+					"of it to 1 ms, in its column's max and the Y range");
+			/* single records at their own times: 1 ms holds 10 */
+			view->setWindow(0.001);
+			view->showSpan(at - 0.0005, at + 0.0005);
+			host.grab();
+			const QVector<ChartView::BinInfo> bins = view->lastBins(iLoad);
+			bool own = bins.size() >= 10;
+			for (const ChartView::BinInfo &bin : bins) {
+				const double k = (bin.t0 - 100.0) * 10000.0;
+				own = own && bin.count == 1 && std::fabs(k - std::round(k)) < 1e-6;
+			}
+			check(own, "chart, fast lines: in a view of 1 ms each record is a bin of its own, at its own time");
+			/* the time labels below a millisecond: microseconds */
+			view->setWindow(5e-5);
+			view->showSpan(at - 2.5e-5, at + 2.5e-5);
+			host.grab();
+			const QStringList labels = view->timeLabels();
+			const QRegularExpression micro(QStringLiteral("^\\d\\d:\\d\\d:\\d\\d\\.\\d{6}$"));
+			bool labelled = labels.size() >= 3 && QSet<QString>(labels.begin(), labels.end()).size() == labels.size();
+			for (const QString &label : labels) labelled = labelled && micro.match(label).hasMatch();
+			check(labelled && std::fabs(view->window() - 5e-5) < 1e-9, qPrintable(QStringLiteral("chart, fast lines: a view of 50 us (the "
+					"shortest is 10 us), its time labels in microseconds: %1").arg(labels.join(QStringLiteral(", ")))));
+			/* the labels below a millisecond have room: none cut at the chart's edge, a gap between two */
+			view->setWindow(2e-3);
+			view->showSpan(at - 1.3e-3, at + 0.7e-3);
+			host.grab();
+			const QStringList wide = view->timeLabels();
+			QFont small = QGuiApplication::font(); /* the chart's labels' */
+			small.setPointSizeF(8.5);
+			const QFontMetricsF metrics(small);
+			const auto seconds = [](const QString &label) { return label.mid(6).toDouble(); }; /* "ss.fffff" */
+			const double perSecond = view->lastPlot().width() / view->window();
+			bool room = wide.size() >= 3;
+			for (qsizetype k = 1; k < wide.size(); k++)
+				room = room && (seconds(wide[k]) - seconds(wide[k - 1])) * perSecond
+								>= metrics.horizontalAdvance(wide[k]) + 20;
+			check(room, qPrintable(QStringLiteral("chart, fast lines: a view of 2 ms: its labels whole, a gap between two: %1")
+										   .arg(wide.join(QStringLiteral(", ")))));
+		}
+		/* a gap: 50 ms of records lost in the middle of 200 ms; nothing drawn across it */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 10.0);
+			feed(view, 0, 1000, 9.8);
+			feed(view, 1500, 500, 9.8, -1, 500, false);
+			view->setYManual(-1, 1);
+			view->setWindow(0.2);
+			view->showSpan(9.8, 10.0);
+			const QImage picture = host.grab().toImage();
+			int gaps = 0;
+			for (const ChartView::BinInfo &bin : view->lastBins(iLoad)) gaps += bin.gap;
+			const QRectF plot = view->lastPlot();
+			const double dpr = picture.devicePixelRatio();
+			const auto red = [&](double x0, double x1) {
+				int n = 0;
+				for (int x = int(std::ceil((9 + x0) * dpr)); x < int((9 + x1) * dpr); x++)
+					for (int y = int((5 + plot.top()) * dpr); y < int((5 + plot.bottom()) * dpr); y++) {
+						const QColor c = picture.pixelColor(x, y);
+						if (c.red() > 180 && c.green() < 90 && c.blue() < 90) n++;
+					}
+				return n;
+			};
+			const double xa = plot.left() + plot.width() * 0.5, xb = plot.left() + plot.width() * 0.75;
+			const int inGap = red(xa + 3, xb - 3), before = red(plot.left() + 10, xa - 10);
+			std::printf("     (the gap: %d bins after one, %d of its pixels red, %d before it)\n", gaps, inGap, before);
+			check(gaps == 1 && inGap == 0 && before > 50, "chart, fast lines: 500 records lost: the bin after them says so, "
+					"and nothing is drawn across the gap");
+			/* the gap's tooltip: how many records are missing there, nothing beside it */
+			const double ym = plot.center().y();
+			const QString there = view->toolTipAt(QPointF((xa + xb) / 2, ym)), beside = view->toolTipAt(QPointF(xa - 40, ym));
+			std::printf("     (the gap's tooltip: \"%s\")\n", qPrintable(there));
+			check(there.contains(QStringLiteral("500")) && there.contains(QStringLiteral("lost")) && beside.isEmpty(),
+					"chart, fast lines: the gap's tooltip says how many records were lost there");
+		}
+		/* the RAM shared: 256 MB for a polled line and a fast one of 32 channels (128 bytes a record): each line half */
+		{
+			StreamDef wide = def;
+			wide.channels.clear();
+			for (int c = 0; c < 32; c++) {
+				StreamChannel channel;
+				channel.name = QStringLiteral("C%1").arg(c);
+				channel.type = RegType::I32;
+				wide.channels << channel;
+			}
+			QWidget host;
+			host.resize(1100, 480);
+			auto *view = new ChartView(&host);
+			view->setGeometry(9, 5, 1080, 470);
+			view->setClock([] { return 1000.0; }, 0);
+			view->setMemory(3600);
+			view->setRamBudget(256);
+			view->setFastStream(0, wide);
+			view->addSeries(1, QStringLiteral("POLLED"), QStringLiteral("V"), Qt::blue);
+			view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.C0"), QString(), Qt::red);
+			QByteArray records(65536 * 128, '\x01');
+			for (int b = 0; b < 32; b++) {
+				view->appendFast(0, quint64(b) * 65536, 65536, records, b == 0, 0);
+				view->markFast(0, quint64(b + 1) * 65536, 100.0 + (b + 1) * 65536 / 1e5, 1e-5);
+			}
+			const fast::Store *store = view->fastStore(0);
+			const qint64 share = 256ll * 1024 * 1024 / 2;
+			std::printf("     (the fast line's store: %lld MB of its %lld MB share, %lld records; a polled line %lld samples)\n",
+					(long long) (store->bytes() >> 20), (long long) (share >> 20), (long long) store->size(),
+					(long long) view->pointsPerLine());
+			check(store->bytes() <= share + 65536 * 128 && store->bytes() >= share / 2 && view->memoryFull()
+							&& view->pointsPerLine() == qsizetype(share / ChartView::BYTES_PER_SAMPLE)
+							&& view->bytesHeld() >= store->bytes(),
+					"chart, fast lines: the RAM shared: a fast line is one of the lines the budget is divided by, its store "
+					"trimmed to its share (memory full), the polled line's share the other half");
+		}
+		/* lanes, the legend and the crosshair: a polled line in V, I_LOAD and V_BUS */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 10.0);
+			view->addSeries(vBus, QStringLiteral("ADC.V_BUS"), QStringLiteral("V"), QColor(0, 160, 0));
+			view->addSeries(5, QStringLiteral("POLLED"), QStringLiteral("V"), Qt::blue);
+			feed(view, 0, 2000, 9.8);
+			for (int i = 0; i < 20; i++) view->append(5, 9.8 + i * 0.01, 11.0);
+			view->setWindow(0.2);
+			view->setLanes(true);
+			view->frame();
+			host.show();
+			(void) QTest::qWaitForWindowExposed(&host);
+			const QRectF plot = view->lastPlot().isEmpty() ? QRectF(80, 60, 900, 300) : view->lastPlot();
+			QTest::mouseMove(view, QPoint(int(plot.center().x()), int(plot.center().y())));
+			view->repaint();
+			QApplication::processEvents();
+			int voltLane = -1, ampLane = -1;
+			for (int lane = 0; lane < view->laneCount(); lane++) {
+				if (view->laneLabel(lane) == QLatin1String("V")) voltLane = lane;
+				if (view->laneLabel(lane) == QLatin1String("A")) ampLane = lane;
+			}
+			const bool laned = view->laneCount() == 2 && voltLane >= 0 && ampLane >= 0
+					&& view->laneLines(voltLane).contains(vBus) && view->laneLines(voltLane).contains(5)
+					&& view->laneLines(ampLane).contains(iLoad);
+			const bool legend = view->legendValue(vBus) == QLatin1String("12.0") && !view->legendValue(iLoad).isEmpty();
+			const bool hair = view->readoutSize().isValid() && view->readoutBuilds() > 0;
+			std::printf("     (lanes %d, legend \"%s\" \"%s\", the crosshair's box %dx%d)\n", view->laneCount(),
+					qPrintable(view->legendValue(vBus)), qPrintable(view->legendValue(iLoad)), int(view->readoutSize().width()),
+					int(view->readoutSize().height()));
+			check(laned && legend && hair, "chart, fast lines: in the lanes by their units beside a polled line, in the "
+					"legend with their newest values, read by the crosshair");
+		}
+		/* both drawing paths: the card's picture of fast lines against the CPU's (Windows) */
+		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
+		if (adapters.isEmpty()) {
+			check(true, "chart, fast lines on a GPU: no adapter on this machine (Direct3D 11 on Windows only): the CPU "
+					"draws, skipped");
+		} else {
+			QWidget host;
+			ChartView *view = makeView(host, 10.0);
+			view->addSeries(vBus, QStringLiteral("ADC.V_BUS"), QStringLiteral("V"), QColor(0, 160, 0));
+			feed(view, 0, 60000, 4.0);
+			feed(view, 61000, 30000, 4.0, -1, 1000, false); /* a gap too */
+			view->setWindow(6);
+			view->showSpan(4.0, 10.0);
+			host.show();
+			(void) QTest::qWaitForWindowExposed(&host);
+			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			(void) QTest::qWaitFor([&] { return !view->openingGpu(); }, 10000);
+			for (int k = 0; k < 3; k++) {
+				view->repaint();
+				QApplication::processEvents();
+			}
+			QRect at;
+			const QImage gpu = view->gpuPicture(&at).convertToFormat(QImage::Format_RGB32);
+			const QImage cpu = host.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(at);
+			const double alike = blocksAlike(gpu, cpu, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpu.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/fast_card.png"));
+				cpu.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/fast_cpu.png"));
+			}
+			std::printf("     (fast lines on %s: %.2f%% of the blocks like the CPU's)\n", qPrintable(view->drawingName()),
+					alike * 100);
+			check(view->plotOnCard() && alike >= 0.93, "chart, fast lines on a GPU: the card's picture of two fast lines "
+					"with a gap, block by block the CPU's");
+		}
+	}
 	/* the crosshair's box: made again at the values' pace or when the mouse moves, not at every frame (64 values
 	 * laid out at every frame took 7 ms at 4K); its size follows the lines read, not their digits (it moved left and
 	 * right with the widest value of the moment) */

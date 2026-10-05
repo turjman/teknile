@@ -331,6 +331,7 @@ void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::fastStreamToggled, this, [this](int stream, bool on) {
 		engine_->post([engine = engine_, stream, on] { engine->setFastStream(stream, on); });
 	});
+	connect(sidebar_, &Sidebar::fastPlotToggled, this, &MainWindow::onFastPlotToggled);
 	connect(sidebar_, &Sidebar::openMapClicked, this, &MainWindow::openMap);
 	connect(sidebar_, &Sidebar::newMapClicked, this, &MainWindow::newMap);
 	connect(sidebar_, &Sidebar::saveMapClicked, this, &MainWindow::saveMap);
@@ -738,7 +739,23 @@ void MainWindow::onAutoSendSet(bool on, int hz, const QString &err) {
 /* the card's rows: the map's streams (the one device's; on a bus the selected device's map, greyed) */
 void MainWindow::showFastStreams() {
 	sidebar_->setFastStreams(doc_->map().streams);
+	/* the chart's stores: the one device's streams; a bus has none */
+	chartTab_->setFastStreams(isBus() ? QVector<StreamDef>() : doc_->map().streams);
+	for (int i = 0; i < doc_->map().streams.size(); i++)
+		for (int c = 0; c < doc_->map().streams[i].channels.size(); c++)
+			sidebar_->setFastPlot(i, c, !isBus() && chartTab_->fastPlotted(i, c));
 	updateFastOffer();
+}
+
+/* a fast line counts as one of the chart's lines (RegisterModel::MAX_PLOTTED), not in the polled samples' rate */
+void MainWindow::onFastPlotToggled(int stream, int channel, bool on) {
+	if (on && model_->plottedCount() + chartTab_->fastLines() >= RegisterModel::MAX_PLOTTED) {
+		sidebar_->setFastPlot(stream, channel, false);
+		statusBar()->showMessage(tr("At most %1 lines on the chart: untick one first").arg(RegisterModel::MAX_PLOTTED), 6000);
+		return;
+	}
+	chartTab_->plotFastChannel(stream, channel, on);
+	updatePlotLimit();
 }
 
 void MainWindow::updateFastOffer() {
@@ -751,6 +768,7 @@ void MainWindow::updateFastOffer() {
 		shortWhy = tr("not connected");
 	}
 	sidebar_->setFastOffered(why.isEmpty(), why, shortWhy);
+	sidebar_->setFastPlotsEnabled(!isBus(), why);
 }
 
 void MainWindow::stopFastStreams() {
@@ -809,6 +827,7 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 		rememberedBus_.clear(); /* a map chosen: one device, the next start too */
 	}
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({}); /* another map: nothing of the one before stays plotted or kept */
 	const bool wasBus = isBus();
 	clearBus();                 /* one device: the map's */
@@ -871,6 +890,7 @@ void MainWindow::newMap() {
 	map.device = tr("New device");
 	map.regs = reservedRegisters();
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({});
 	const bool wasBus = isBus();
 	clearBus();
@@ -964,7 +984,9 @@ double MainWindow::sampleRateHz() const {
 }
 
 void MainWindow::updatePlotLimit() {
-	model_->setPlotLimit(RegisterModel::plotLimitFor(sampleRateHz()));
+	/* the fast lines are lines too: the registers get what is left of MAX_PLOTTED */
+	model_->setPlotLimit(std::min(RegisterModel::plotLimitFor(sampleRateHz()),
+			std::max(1, RegisterModel::MAX_PLOTTED - chartTab_->fastLines())));
 	chartTab_->setRegisterLimit(model_->plotLimit());
 }
 
@@ -1041,6 +1063,26 @@ void MainWindow::sync() {
 					value.valid ? nowMs - value.updatedMs : 0);
 		}
 	}
+	/* the fast streams' blocks into the chart; each stream's newest record for its channels' values in the sidebar */
+	for (const IoEngine::FastBlock &block : engine_->takeFastBlocks()) {
+		chartTab_->appendFast(block.stream, block.first, block.count, block.records, block.newStart, block.lost,
+				block.marked, block.markRecord, block.markTime, block.markPeriod);
+		const QVector<StreamDef> &streams = doc_->map().streams;
+		if (block.count <= 0 || block.stream >= streams.size() || isBus()) continue;
+		const StreamDef &def = streams[block.stream];
+		const int size = def.recordSize();
+		if (size <= 0 || block.records.size() < block.count * size) continue;
+		const char *last = block.records.constData() + (block.count - 1) * size;
+		QVector<double> &values = fastValues_[block.stream];
+		values.resize(def.channels.size());
+		int offset = 0;
+		for (int c = 0; c < def.channels.size(); c++) {
+			values[c] = fast::channelValue(def.channels[c], last + offset);
+			offset += typeSize(def.channels[c].type);
+		}
+	}
+	if (copyValues)
+		for (auto it = fastValues_.constBegin(); it != fastValues_.constEnd(); ++it) sidebar_->showFastValues(it.key(), it.value());
 	/* samples, and the chart moves on */
 	chartTab_->frame(engine_->takeSamples());
 	/* frames for the monitor */
@@ -1177,6 +1219,15 @@ void MainWindow::onPlotChanged(int row, bool on) {
 
 void MainWindow::unplotAll() {
 	for (int row = 0; row < model_->rows().size(); row++) model_->setPlot(row, false);
+	/* and the fast lines */
+	const QVector<StreamDef> &streams = doc_->map().streams;
+	for (int i = 0; i < streams.size(); i++)
+		for (int c = 0; c < streams[i].channels.size(); c++) {
+			if (!chartTab_->fastPlotted(i, c)) continue;
+			chartTab_->plotFastChannel(i, c, false);
+			sidebar_->setFastPlot(i, c, false);
+		}
+	updatePlotLimit();
 }
 
 /* -------------------------------------------------------------- CSV recording */

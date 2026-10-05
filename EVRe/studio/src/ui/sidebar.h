@@ -16,7 +16,9 @@
  *    often the numbers on screen change, value_pace.h); Record CSV, and Open
  *    recording beside it (a file, or one of the last ones).
  *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Start / Stop button, its samples a second
- *    as the clock's fit has them with the correction, and the samples lost. One device only, as Auto send.
+ *    as the clock's fit has them with the correction, the samples lost, and a Plot tick for each of its channels with
+ *    its newest value (the channels' rows are here, not in the Registers tab: they are no registers). One device only,
+ *    as Auto send.
  *  - API server: Serve API, Network, Allow API writes (and the ⚠ registers).
  *  - Help and the theme, then the version.
  *
@@ -126,6 +128,16 @@ public:
 	QPushButton *fastButton(int stream) const;
 	QString fastRateText(int stream) const;
 	QString fastLostText(int stream) const;
+	QString fastRateTip(int stream) const; /* tests: the rate's tooltip (the counts) */
+	/* a channel's Plot tick (the chart's line STREAM.CHANNEL), set without fastPlotToggled; all off */
+	void setFastPlot(int stream, int channel, bool on);
+	bool fastPlot(int stream, int channel) const;
+	void clearFastPlots();
+	void setFastPlotsEnabled(bool enabled, const QString &why = QString()); /* a bus: no fast line (why: the tooltip) */
+	QCheckBox *fastPlotBox(int stream, int channel) const; /* tests */
+	/* the channels' newest values, at the values' pace (NaN: none yet) */
+	void showFastValues(int stream, const QVector<double> &values);
+	QString fastValueText(int stream, int channel) const; /* tests */
 	void setRecording(bool recording);   /* the record button: start or stop */
 	void showRecordSaved(const QString &file, quint64 rows);
 	bool apiNetwork() const;
@@ -152,6 +164,7 @@ signals:
 	void valuePaceChanged();       /* Show values: how often the numbers on screen change */
 	void autoSendChanged();        /* Auto send ticked or not, or its rate changed */
 	void fastStreamToggled(int stream, bool on); /* a fast stream's Start or Stop pressed */
+	void fastPlotToggled(int stream, int channel, bool on); /* a channel's Plot tick */
 	void openMapClicked();
 	void newMapClicked();
 	void saveMapClicked(bool saveAs);
@@ -229,6 +242,8 @@ private:
 		QPushButton *button = nullptr;
 		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
 		QLabel *lost = nullptr;   /* the samples lost */
+		QVector<QCheckBox *> plots; /* a channel's Plot tick */
+		QVector<QLabel *> values;   /* its newest value */
 		bool on = false;
 	};
 	QWidget *fastCard_;
