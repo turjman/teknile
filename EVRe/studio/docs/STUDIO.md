@@ -4711,7 +4711,8 @@ and not empty, Arabic's numerus messages six forms, and each translation (each f
 العربية) saves `ui/language`, Restart now shows while the choice is not the language running; a second main window in
 English and in Arabic is at most 1280 px wide at its narrowest; in Arabic the window is right to left with the chart
 and the bit view left to right and the sidebar right to left, a text and the plurals of 4 and 11 devices are Arabic,
-numbers have Western digits, the Help's first page is Arabic and its code blocks are made; English again after. The
+numbers have Western digits, the Help's first page is Arabic and its code blocks are made, the chart's and a
+histogram's value labels are at the right of their boxes by the plot; English again after. The
 rest of the test runs in English. With `EVRE_TEST_SHOT` set it saves `<prefix>_arabic.png`, `<prefix>_arabic_chart.png`
 and `<prefix>_arabic_help.png`.
 
@@ -4745,7 +4746,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 376 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 377 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -4965,6 +4966,7 @@ Unset, nothing is timed into a file. The aid does not change the settings.
 | **Pitfall:** buttons whose text changes (Hold and Live) | size them for the longest text once, or the row jumps |
 | **Pitfall:** the sidebar is 312 px wide, fixed | anything in it must fit; test both themes' button texts |
 | **Pitfall:** Qt 6.10 deprecated `invalidateFilter()` | `RegisterFilter` uses `beginFilterChange()` / `endFilterChange()` there, and the old call before 6.10 |
+| **Pitfall:** a painter on a widget takes the application's direction | not the widget's: in Arabic a left to right widget's right-aligned labels went to its left edge; the chart's frame and the analysis plots set `Qt::LayoutDirectionAuto`, as a painter on a picture has it (placed as aligned, an Arabic text still right to left) |
 | **Pitfall:** Qt warnings are invisible on Windows GUI builds | they go to the debugger output; the GUI test counts the thread warnings for that reason |
 | **Pitfall:** a read that fails keeps the last good value | the table marks the error, but that poll's sample and CSV cell repeat the old value (chapter 29) |
 
