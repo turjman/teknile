@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -86,13 +87,23 @@ class Maps(unittest.TestCase):
             with self.assertRaises(ValueError):
                 setpoint.encode(bad)
         self.assertEqual(len(setpoint.encode(3.4e38)), 4)
-        self.assertIn('maximum', setpoint.write_limit_problem(150))
+        self.assertIn('maximum', setpoint.write_problem(struct.pack('<f', 150)))
         clamped = evre.Register({'addr': '0xD000', 'name': 'S', 'type': 'i16', 'access': 'rw', 'min': -100,
                                             'max': 100, 'past_limits': 'clamp'})
         self.assertTrue(clamped.clamps and not setpoint.clamps)
-        self.assertIsNone(clamped.write_limit_problem(150))
+        self.assertIsNone(clamped.write_problem(struct.pack('<h', 150)))
         self.assertIn('maximum', clamped.limit_problem(150))
         self.assertEqual(frame.ERRORS[15], 'value refused')
+        # a closed set (its value names, an action's idle value) and the bits no field covers (reserved_zero)
+        mode = evre.Register({'addr': '0xD001', 'name': 'CMD', 'type': 'u8', 'access': 'rw', 'write': 'action',
+                              'closed': True, 'enum': {'1': 'go', '2': 'stop'}})
+        self.assertIsNone(mode.write_problem(b'\x01'))
+        self.assertIsNone(mode.write_problem(b'\x00'))  # idle: its default, else 0
+        self.assertIn('closed set', mode.write_problem(b'\x03'))
+        bits = evre.Register({'addr': '0xD002', 'name': 'CTRL', 'type': 'u8', 'access': 'rw', 'reserved_zero': True,
+                              'fields': [{'name': 'MODE', 'bits': '1:0'}]})
+        self.assertIsNone(bits.write_problem(b'\x03'))
+        self.assertIn('bits', bits.write_problem(b'\x04'))
 
     def test_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:

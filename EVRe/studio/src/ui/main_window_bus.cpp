@@ -426,7 +426,7 @@ void MainWindow::broadcastValue(const RegDef &def, const QString &text) {
 		logEvent(LogLevel::Error, tr("broadcast of %1 not sent: %2").arg(name, refusal));
 		return;
 	}
-	const QString outside = def.isNumeric() ? writeLimitProblem(def, decodeNumber(def, bytes)) : QString();
+	const QString outside = writeProblem(def, bytes);
 	if (!outside.isEmpty() && !confirmed(this, tr("Outside the map's limits"),
 			tr("<b>%1</b> = <b>%2</b> is %3 the map gives it, on every device. Broadcast it anyway?")
 					.arg(name.toHtmlEscaped(), text.toHtmlEscaped(), outside.toHtmlEscaped()),

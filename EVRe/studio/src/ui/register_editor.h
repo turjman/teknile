@@ -102,7 +102,7 @@ private:
 	QLineEdit *address_, *name_, *unit_, *desc_, *scale_, *offset_, *min_, *max_, *default_;
 	QComboBox *type_, *access_, *write_, *group_, *pastLimits_;
 	QSpinBox *size_, *decimals_;
-	QCheckBox *persist_, *danger_, *hex_, *plot_;
+	QCheckBox *persist_, *danger_, *hex_, *plot_, *closed_, *reservedZero_;
 	QPlainTextEdit *notes_;
 	/* Values and Bit fields when the selection cannot have them: why (empty: it can), and the note in their place */
 	QString valuesWhy_, fieldsWhy_;

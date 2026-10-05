@@ -598,7 +598,7 @@ QString ApiServer::encodeForSet(const QString &name, const QJsonValue &value, Re
 	QString err;
 	if (!encodeValue(def, typedText(value), bytes, err)) return tr("%1: %2").arg(def.name, err);
 	/* the map's limits hold for the API: there is no one to ask "write anyway?" */
-	const QString outside = def.isNumeric() ? writeLimitProblem(def, decodeNumber(def, bytes)) : QString();
+	const QString outside = writeProblem(def, bytes);
 	if (!outside.isEmpty()) return tr("%1: %2 is %3 (the map's limit)").arg(def.name, typedText(value), outside);
 	key = regKey(def);
 	return {};

@@ -22,6 +22,9 @@
  *         "min": 0, "max": 30,                optional: the shown value's limits for writes
  *         "past_limits": "clamp",             optional: "refuse" (the default) or "clamp": the
  *                                             device takes a value past them and clamps it
+ *         "closed": true,                     optional: only the value names and specials may
+ *                                             be written (an action's idle value too)
+ *         "reserved_zero": true,              optional: the bits no field covers are written 0
  *         "default": 12,                      optional: the value after a reset (a number,
  *                                             or one of the register's names)
  *         "special": { "-1": "not measured" },  optional: names for single values of a number
@@ -138,6 +141,8 @@ struct RegDef {
 	/* "past_limits": "clamp": the device takes any value of the type and clamps it, so a host sends a value past
 	 * min or max as it is (EVRe Guard checks only NaN and the infinities). false: "refuse", the default */
 	bool clamps = false;
+	bool closed = false;       /* "closed": only its value names (enum), specials and an action's idle value are written */
+	bool reservedZero = false; /* "reserved_zero": the bits no field covers must be written 0 */
 	double defaultValue = NO_LIMIT;  /* the value after a reset; NaN = not given */
 	QVector<SpecialValue> special;
 	bool enumHex = false;            /* the file keyed its enum 0x..: saved the same way */
@@ -189,9 +194,15 @@ bool encodeValue(const RegDef &def, const QString &text, QByteArray &out, QStrin
 /* why a shown value is outside the register's "min" / "max" ("above the maximum 30 V");
  * empty if it is inside them, or is one of its special values */
 QString limitProblem(const RegDef &def, double shown);
-/* limitProblem for a value a host is about to send: empty too for a register the device clamps
- * ("past_limits": "clamp"), which takes any value of its type */
-QString writeLimitProblem(const RegDef &def, double shown);
+/* why a host should not send these bytes to a number register, as a device with EVRe Guard would refuse them, in
+ * the words of limitProblem ("outside the closed set of values", "outside the fields' bits", "above the maximum
+ * 30 V"): a value outside a closed set ("closed"), a bit no field covers set ("reserved_zero"), or past min or max
+ * (but for a register the device clamps, "past_limits": "clamp", which takes any value of its type). Empty: it may go */
+QString writeProblem(const RegDef &def, const QByteArray &raw);
+/* the raw value an action register reads back idle: its default, else 0 */
+qint64 idleRaw(const RegDef &def);
+/* the bits of a register with fields that no field covers */
+quint64 bitsNoFieldCovers(const RegDef &def);
 /* a host writes it: access rw or wo, or a field with access rw or w1c (EVRe Guard's table has an entry for it) */
 bool hostWrites(const RegDef &def);
 /* the bytes written to a map's login register: the token as UTF-8, cut or zero-padded to size.

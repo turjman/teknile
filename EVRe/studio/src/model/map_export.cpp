@@ -163,6 +163,8 @@ void markdownRegister(QString &md, const RegDef &def) {
 		row(QObject::tr("Range"), QStringLiteral("%1 … %2%3").arg(def.hasMin() ? number(def.min) : QStringLiteral("−"),
 				def.hasMax() ? number(def.max) : QStringLiteral("+"), def.unit.isEmpty() ? QString() : QStringLiteral(" ") + def.unit));
 	if (def.clamps) row(QObject::tr("Past limits"), QObject::tr("the device takes a value past them and clamps it"));
+	if (def.closed) row(QObject::tr("Closed"), QObject::tr("only the value names and special values may be written"));
+	if (def.reservedZero) row(QObject::tr("Reserved bits"), QObject::tr("the bits no field covers must be written 0"));
 	if (def.hasDefault()) row(QObject::tr("Default"), number(def.defaultValue) + (def.unit.isEmpty() ? QString() : QStringLiteral(" ") + def.unit)
 			+ (def.persist ? QObject::tr(" (factory value)") : QString()));
 	if (def.hex) row(QObject::tr("Shown"), QObject::tr("in hex"));
@@ -325,6 +327,8 @@ QByteArray exportCHeader(const DeviceMap &map, const ExportOptions &options) {
 			if (def.persist) facts << QStringLiteral("persist");
 			if (def.danger) facts << QStringLiteral("danger");
 			if (def.clamps) facts << QStringLiteral("clamps past its limits");
+			if (def.closed) facts << QStringLiteral("closed");
+			if (def.reservedZero) facts << QStringLiteral("reserved bits 0");
 			if (def.scale != 1.0 || def.offset != 0.0) facts << QStringLiteral("x%1 %2").arg(number(def.scale), number(def.offset));
 			h += QStringLiteral("\n/* %1: %2 (%3) */\n").arg(cComment(def.name), cComment(def.desc.isEmpty() ? QStringLiteral("-") : def.desc),
 					cComment(facts.join(QStringLiteral(", "))));
@@ -385,6 +389,8 @@ QByteArray exportPython(const DeviceMap &map, const ExportOptions &options) {
 		if (def.hasMin()) items << QStringLiteral("\"min\": %1").arg(pyNumber(def.min));
 		if (def.hasMax()) items << QStringLiteral("\"max\": %1").arg(pyNumber(def.max));
 		if (def.clamps) items << QStringLiteral("\"past_limits\": \"clamp\"");
+		if (def.closed) items << QStringLiteral("\"closed\": True");
+		if (def.reservedZero) items << QStringLiteral("\"reserved_zero\": True");
 		if (def.hasDefault()) items << QStringLiteral("\"default\": %1").arg(pyNumber(def.defaultValue));
 		if (!def.enumValues.isEmpty()) {
 			QStringList enumItems;
@@ -815,7 +821,11 @@ bool rawLimit(const RegDef &def, double shown, bool isMin, double &raw, QStringL
 
 GuardEntry guardEntry(const RegDef &def) {
 	GuardEntry entry;
-	if (!def.isNumeric()) return entry; /* bytes: only the span is checked */
+	if (!def.isNumeric()) { /* bytes: only the span is checked */
+		if (def.closed || def.reservedZero)
+			entry.errors << QObject::tr("%1: \"closed\" or \"reserved_zero\" on a bytes register: it has no value").arg(def.name);
+		return entry;
+	}
 	const bool f32 = def.type == RegType::F32;
 	double low, high;
 	rawRange(def.type, low, high);
@@ -861,6 +871,35 @@ GuardEntry guardEntry(const RegDef &def) {
 			bits = storedBits(whole);
 		}
 		listed.insert(bits, QStringLiteral("%1 \"%2\"").arg(number(special.value), special.name));
+	}
+	/* a closed set: its value names too, and an action's idle value, so a block write of what was read back passes */
+	if (def.closed) {
+		if (f32)
+			entry.errors << QObject::tr("%1: \"closed\" on an f32 register: a closed set is for integers").arg(def.name);
+		else if (def.enumValues.isEmpty())
+			entry.errors << QObject::tr("%1: \"closed\" without value names: nothing could be written").arg(def.name);
+		entry.closed = true;
+		for (auto it = def.enumValues.begin(); it != def.enumValues.end(); ++it) {
+			if (double(it.key()) < low || double(it.key()) > high) continue; /* outside the type: no value of it */
+			listed.insert(storedBits(double(it.key())), QStringLiteral("%1 \"%2\"").arg(it.key()).arg(it.value()));
+			const double shown = double(it.key()) * def.scale + def.offset;
+			if ((def.hasMin() && shown < def.min) || (def.hasMax() && shown > def.max))
+				entry.warnings << QObject::tr("%1: the value name %2 is outside min .. max: the closed set lets it through")
+						.arg(def.name, it.value());
+		}
+		if (def.write == WriteKind::Action) {
+			if (!def.hasDefault())
+				entry.warnings << QObject::tr("%1: an action register without a default: 0 is taken as its idle value").arg(def.name);
+			if (!listed.contains(storedBits(double(idleRaw(def)))))
+				listed.insert(storedBits(double(idleRaw(def))), QStringLiteral("%1 idle").arg(idleRaw(def)));
+		}
+	}
+	/* the bits no field covers, which must be written 0 */
+	if (def.reservedZero) {
+		if (def.fields.isEmpty() || f32)
+			entry.errors << QObject::tr("%1: \"reserved_zero\" without bit fields: no bit is reserved").arg(def.name);
+		else
+			entry.zeroBits = uint32_t(bitsNoFieldCovers(def) & 0xFFFFFFFFULL);
 	}
 	if (listed.size() > 255)
 		entry.errors << QObject::tr("%1: more than 255 listed values: use min and max").arg(def.name);
@@ -909,7 +948,7 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 	const QString guard = upper + QStringLiteral("_GUARD_H");
 	QString h = QStringLiteral("/* %1: EVRe Guard's register checks for its map (%2)%3.\n"
 			" * Generated by %4. Change the map, not this file.\n"
-			" * EVRe Guard checks: size, type, limits, listed values.\n"
+			" * EVRe Guard checks: size, type, limits, listed values, bits that must be 0.\n"
 			" * Still the device's: state rules, rules across registers, read-only bits\n"
 			" * inside a writable register, the effects of action and w1c, persistence. */\n")
 			.arg(device, map.format, from, command);
@@ -962,6 +1001,8 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 				what += QStringLiteral(", raw %1 .. %2").arg(entry.hasRawMin ? number(entry.rawMin) : QStringLiteral("-"),
 						entry.hasRawMax ? number(entry.rawMax) : QStringLiteral("+"));
 			if (def.clamps) what += QStringLiteral(", clamped by the device: the type's full range");
+			if (entry.closed) what += QStringLiteral(", closed");
+			if (entry.zeroBits) what += QStringLiteral(", bits 0x%1 must be 0").arg(QString::number(entry.zeroBits, 16).toUpper());
 			else if (!entry.hasRawMin && !entry.hasRawMax) what = QStringLiteral("the type's full range");
 			if (!entry.values.isEmpty()) {
 				QStringList names;
@@ -969,10 +1010,11 @@ bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QStri
 				what += QStringLiteral(", or ") + names.join(QStringLiteral(", "));
 			}
 		}
-		entryLines << QStringLiteral("\t{ 0x%1u, %2u, %3, 0u, %4u, 0u, %5u, 0u, %6, %7, 0x00000000UL }, /* %8: %9 */")
-				.arg(QString::number(def.addr, 16).toUpper()).arg(def.size).arg(guardType(def.type)).arg(entry.values.size())
+		entryLines << QStringLiteral("\t{ 0x%1u, %2u, %3, %4, %5u, 0u, %6u, 0u, %7, %8, %9 }, /* %10: %11 */")
+				.arg(QString::number(def.addr, 16).toUpper()).arg(def.size).arg(guardType(def.type))
+				.arg(entry.closed ? QStringLiteral("EVRE_GUARD_CLOSED") : QStringLiteral("0u")).arg(entry.values.size())
 				.arg(entry.values.isEmpty() ? 0 : first).arg(bits8(def.isNumeric() ? entry.min : 0), bits8(def.isNumeric() ? entry.max : 0),
-						cComment(def.name), cComment(what));
+						bits8(entry.zeroBits), cComment(def.name), cComment(what));
 	}
 	if (!valueLines.isEmpty())
 		c += QStringLiteral("\nstatic const uint32_t %1_values[] = {\n%2\n};\n").arg(lower, valueLines.join(QLatin1Char('\n')));
@@ -991,7 +1033,7 @@ namespace {
 
 const QStringList CSV_COLUMNS{ "addr", "name", "type", "size", "unit", "access", "write", "persist", "group", "desc",
 	"notes", "danger", "format", "scale", "offset", "decimals", "min", "max", "default", "special", "enum", "fields",
-	"plot", "past_limits" };
+	"plot", "past_limits", "closed", "reserved_zero" };
 
 /* inside the compact columns, \ ; = | { } # @ are written with a \ before them */
 QString esc(const QString &text) {
@@ -1135,7 +1177,8 @@ QByteArray exportCsv(const DeviceMap &map) {
 			def.decimals >= 0 ? QString::number(def.decimals) : QString(), def.hasMin() ? number(def.min) : QString(),
 			def.hasMax() ? number(def.max) : QString(), def.hasDefault() ? number(def.defaultValue) : QString(),
 			namesText(special), namesText(enumNames), fields.join(QLatin1Char('|')),
-			def.plottable ? QString() : QStringLiteral("0"), def.clamps ? QStringLiteral("clamp") : QString() };
+			def.plottable ? QString() : QStringLiteral("0"), def.clamps ? QStringLiteral("clamp") : QString(),
+			def.closed ? QStringLiteral("1") : QString(), def.reservedZero ? QStringLiteral("1") : QString() };
 		QStringList out;
 		for (const QString &text : cells) out << csvCell(text);
 		csv += out.join(QLatin1Char(',')) + QLatin1Char('\n');
@@ -1199,6 +1242,8 @@ bool importCsv(const QByteArray &text, QVector<RegDef> &regs, QString &err) {
 		auto yes = [](const QString &t) { return t == QLatin1String("1") || t.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0
 					|| t.compare(QLatin1String("yes"), Qt::CaseInsensitive) == 0; };
 		def.persist = yes(get("persist"));
+		def.closed = yes(get("closed"));
+		def.reservedZero = yes(get("reserved_zero"));
 		def.danger = yes(get("danger"));
 		const QString plot = get("plot").trimmed(); /* empty (an older file without the column): plotted */
 		def.plottable = plot.isEmpty() || yes(plot);

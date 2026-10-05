@@ -71,10 +71,10 @@ QVector<MapIssue> checkMap(const DeviceMap &map) {
 	for (int i = 0; i < map.regs.size(); i++) {
 		const RegDef &def = map.regs[i];
 		const bool reserved = def.addr >= 0xA000 && def.addr <= 0xA105;
-		if (def.clamps && reserved)
-			warning(i, QObject::tr("%1: \"past_limits\" in the reserved bank: EVRe Guard's table leaves that bank to the "
-					"library, so it does nothing on the device").arg(def.name));
-		if (!hostWrites(def) || !def.isNumeric() || reserved) continue;
+		if ((def.clamps || def.closed || def.reservedZero) && reserved)
+			warning(i, QObject::tr("%1: \"past_limits\", \"closed\" or \"reserved_zero\" in the reserved bank: EVRe Guard's "
+					"table leaves that bank to the library, so it does nothing on the device").arg(def.name));
+		if (!hostWrites(def) || reserved) continue;
 		if (def.clamps && !def.hasMin() && !def.hasMax())
 			warning(i, QObject::tr("%1: \"past_limits\": \"clamp\" without min or max: there is nothing to clamp to").arg(def.name));
 		const GuardEntry entry = guardEntry(def);

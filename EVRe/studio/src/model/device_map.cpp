@@ -256,7 +256,30 @@ QString limitProblem(const RegDef &def, double shown) {
 	return {};
 }
 
-QString writeLimitProblem(const RegDef &def, double shown) {
+qint64 idleRaw(const RegDef &def) {
+	return def.hasDefault() ? qint64(std::llround((def.defaultValue - def.offset) / (def.scale == 0 ? 1 : def.scale))) : 0;
+}
+
+quint64 bitsNoFieldCovers(const RegDef &def) {
+	quint64 covered = 0;
+	for (const BitField &field : def.fields) covered |= bitMask(field.width) << field.lsb;
+	return bitMask(8 * def.size) & ~covered;
+}
+
+QString writeProblem(const RegDef &def, const QByteArray &raw) {
+	if (!def.isNumeric()) return {};
+	const double shown = decodeNumber(def, raw);
+	if (def.reservedZero && !def.fields.isEmpty()) {
+		const quint64 bits = quint64(decodeRaw(def, raw)) & bitMask(8 * def.size);
+		if (bits & bitsNoFieldCovers(def))
+			return QObject::tr("outside the fields' bits"); /* a bit no field covers set: they must be 0 */
+	}
+	if (def.closed) {
+		const qint64 value = decodeRaw(def, raw);
+		const bool listed = def.enumValues.contains(value) || !specialName(def, shown).isEmpty()
+				|| (def.write == WriteKind::Action && value == idleRaw(def));
+		if (!listed) return QObject::tr("outside the closed set of values");
+	}
 	return def.clamps ? QString() : limitProblem(def, shown);
 }
 

@@ -142,7 +142,7 @@ class Bus:
         if refusal:
             raise EvreError('no broadcast: %s' % refusal)
         if reg.is_number and not force:
-            problem = reg.write_limit_problem(reg.decode(data))
+            problem = reg.write_problem(data)
             if problem:
                 raise EvreError('%s = %s is %s (the map\'s limit; force=True sends it)' % (reg.name, value, problem))
         if reg.danger and not force:

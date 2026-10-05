@@ -78,6 +78,8 @@ failed (PROTOCOL.md, "EVRe Guard"). The library's own checks come first: a reque
 | `decimals` | integer&nbsp;−1&nbsp;–&nbsp;15 | automatic | the shown value's decimals |
 | `min`,&nbsp;`max` | numbers | none | the shown value's limits for a write (section 6) |
 | `past_limits` | `"refuse"`,&nbsp;`"clamp"` | `"refuse"` | what the device does with a value past `min` or `max`: `refuse` it (a device with EVRe Guard answers 15), or `clamp`: take any value of the type and clamp it (section 6.1) |
+| `closed` | boolean | `false` | `true`: only the register's `enum` values, its `special` values and, for a `write: "action"` register, its idle value (its `default`, else 0) may be written. Integers only (section 6.1) |
+| `reserved_zero` | boolean | `false` | `true`, on a register with `fields`: the bits no field covers must be written 0 (section 6.1) |
 | `default` | number&nbsp;or&nbsp;string | none | the value after a reset (with `persist`: the factory value); a number in shown units, or one of the register's `enum` or `special` names |
 | `special` | object | none | names for single values of a number, keyed by shown value: `{ "-1": "not measured" }` |
 | `enum` | object | none | names of raw values: `{ "0": "off", "0x10": "boost" }` (keys decimal or `0x` hex) |
@@ -150,6 +152,8 @@ write, and stores nothing, when:
 |---|---|
 | a&nbsp;value&nbsp;past&nbsp;`min`&nbsp;or&nbsp;`max`&nbsp;(not&nbsp;a&nbsp;`special`) | 15, `VALUE_REFUSED`; not with `past_limits: "clamp"` |
 | NaN&nbsp;or&nbsp;an&nbsp;infinity&nbsp;in&nbsp;an&nbsp;`f32` | 15, always |
+| a&nbsp;value&nbsp;outside&nbsp;a&nbsp;`closed`&nbsp;set | 15, whatever `min` and `max` say |
+| a&nbsp;bit&nbsp;no&nbsp;field&nbsp;covers,&nbsp;with&nbsp;`reserved_zero` | 15 |
 | only&nbsp;part&nbsp;of&nbsp;a&nbsp;number&nbsp;register | 3: a number is written whole; any part of a `bytes` register may be written |
 | a&nbsp;byte&nbsp;no&nbsp;register&nbsp;covers | 3: a gap between registers, a read-only register inside a writable run, past the last one |
 
@@ -163,10 +167,15 @@ How the table takes the map's numbers, and how a host makes its raw value, so th
 - A limit the map leaves out is the type's end.
 - Each `special` always passes: for an integer it must be a whole raw value of the type, for an `f32` a finite
   value (`-0` is listed as `0`). More than 255 of them is an error: use `min` and `max`.
+- `closed` lists the `enum` values too, and for an `action` register its idle value, so a block write of what was
+  read back passes. `closed` without an `enum`, or on an `f32` or `bytes` register, is an error.
+- `reserved_zero` makes the bits no field covers bits that must be 0; it needs `fields`.
 - A `w1c` register has no limits; a `bytes` register only its span.
 
 The map check says where the table differs from the map: a limit past the type or between raw steps, `clamp` with
-no `min` or `max`, `past_limits` in the reserved bank, and a gap between two registers a host writes. A block
+no `min` or `max`, an `enum` value of a `closed` register outside `min` .. `max`, an `action` register in a closed
+set without a `default` (0 is taken as idle), `past_limits`, `closed` or `reserved_zero` in the reserved bank, and a
+gap between two registers a host writes. A block
 write across such a gap is refused; declare the gap as a `bytes` register if one must pass.
 
 ## 7. Overlays

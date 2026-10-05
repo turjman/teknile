@@ -1043,7 +1043,9 @@ A write from the window goes through these steps in order:
    the default). A special value is never outside them. The API refuses such a write instead (17.3). A register
    with `"past_limits": "clamp"` is not asked about: the device clamps the value, and the Log says so. A device with
    EVRe Guard refuses a value past the limits of any other register with 15 (*value refused*, 18.3), even after
-   **Write anyway**.
+   **Write anyway**. The same question comes for a register with `"closed": true` and a value it does not list
+   (*outside the closed set of values*), and for one with `"reserved_zero": true` and a bit no field covers set
+   (*outside the fields' bits*): a device with EVRe Guard refuses those with 15 too.
 4. A danger register? Ask (6.3).
 5. Write with acknowledgement (`WRITE_ACK`).
 6. If the device acknowledged the write, read the register back. The table shows the answer, and the next polls keep reading it.
@@ -2328,6 +2330,8 @@ Unknown keys are kept: a save writes them back as they were (16.9).
 | `decimals` | number | automatic | The shown value with this many decimals (0 – 15). |
 | `min`,&nbsp;`max` | number | none | The shown value's limits for writes, in shown units: the window asks before writing past them, the API refuses (6.4). |
 | `past_limits` | string | `"refuse"` | What the device does with a value past `min` or `max`: `"refuse"` it (a device with EVRe Guard answers 15, *value refused*), or `"clamp"` it: the device takes any value of the type and clamps it, so the window, the API, `evre` and the Python package send such a value without asking, and the Log says the device clamps it. EVRe Guard's table (32.7) gives a clamping register the type's full range. |
+| `closed` | boolean | `false` | Only the register's value names (`enum`), its specials and, for an action, its idle value may be written; the window asks before any other value, the API, `evre` and the Python package refuse it, and a device with EVRe Guard answers 15, whatever `min` and `max` say. For an integer register with value names. |
+| `reserved_zero` | boolean | `false` | The bits no field covers must be written 0: the window asks before a value with one set, the API, `evre` and the Python package refuse it, a device with EVRe Guard answers 15. For an integer register with `fields`. |
 | `default` | number&nbsp;or&nbsp;string | none | The value after a reset, in shown units, or one of the register's value names. The quick-write panel's **Default** writes it. |
 | `special` | object | none | Names of single values of a number, in shown units: `{ "-1": "not measured" }`. Decoded shows the name, a write may always set them (31.2). |
 | `enum` | object | none | Names of values (16.6). |
@@ -4477,7 +4481,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict (15, 3, a register that clamps), login, persist | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
 | `tests/schema_test.py` | the maps against the JSON Schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
-| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and EVRe Guard, driven at every limit's edges; the typed constants; `keep_limits` and the Guard agreeing; a struct tied to the C header; the export errors; `--check`; `--to table` against `tests/golden/example_device_table.h`; the build matrix (`--skip` names a cross-compiler that is not there) | the build folder (`evre`); `g++` and the library with `guard/` for the compile part, SKIP without | only its own temporary folder |
+| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and EVRe Guard, driven at every limit's edges, a closed set and reserved bits; the typed constants; `keep_limits` and the Guard agreeing; a struct tied to the C header; the export errors; `--check`; `--to table` against `tests/golden/example_device_table.h`; the build matrix (`--skip` names a cross-compiler that is not there) | the build folder (`evre`); `g++` and the library with `guard/` for the compile part, SKIP without | only its own temporary folder |
 
 **The rule: the GUI test and the API test write only to a fake device.** They write registers of the device bank
 and set a register marked danger. Never point them at a real device. `evre_probe` is the only test program meant for
@@ -4639,8 +4643,11 @@ register editor's *Past limits* choice has two items (refused, clamped) and a to
 register it reads *refused*, and *clamped* sets `"past_limits": "clamp"` in one undo step, the Registers table
 following; then a value 5 past its max is written without the question, and the Log says the device clamps it;
 undo: refused again; the broadcast check refuses one byte of the 16-bit danger register (*writes only part of*) and
-lets both go; Export: the EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the
-Export menu; *nan* typed into an `f32` register: the pop-up *not a finite number*, nothing sent.
+lets both go; the *closed* and *reserved_zero* boxes, off, with tooltips naming EVRe Guard; *closed* ticked on the
+u8 register sets `"closed": true` in one undo step, the Registers table following, and 3 (inside min and max, but
+not listed) asks first, *outside the closed set of values*, Cancel writes nothing; undo: open again; Export: the
+EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the Export menu; *nan* typed
+into an `f32` register: the pop-up *not a finite number*, nothing sent.
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
@@ -4777,7 +4784,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 391 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 395 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5146,13 +5153,13 @@ it *not modified* again.
 
 The right side shows the selected register in full, over four pages. With no register selected it shows a note in
 the middle instead, in the warning colour: *No register selected*, and how to pick one. The General page scrolls
-when the window is short: its 19 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
+when the window is short: its 21 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
 shows its hint (*none*, *none: a number or a value name*), with any register selected.
 
 **General**: address, name, type, size, unit, access, write behaviour, group, description; *persist* (kept across a
 reset), *danger* (confirm every write), *show in hex*, *plot* (a line on the chart: untick for a value that does not
 change with time, `"plot": false`); scale and offset (shown = raw × scale + offset); decimals
-(*auto*, or a fixed number); min, max, past limits and default.
+(*auto*, or a fixed number); min, max, past limits, *closed*, *reserved_zero* and default.
 
 - **Min and max** are in shown units. A write past them from the window asks first (6.4); the API refuses it. A
   special value is always allowed.
@@ -5161,6 +5168,10 @@ change with time, `"plot": false`); scale and offset (shown = raw × scale + off
   and clamps it*: then the window, the API, `evre` and the Python package send such a value without asking, and the
   Log says the device clamps it. Its tooltip says both. EVRe Guard's table gives a clamping register the type's full
   range (32.7).
+- **closed** (`"closed"`): only the value names, the specials and, for an action, its idle value may be written; any
+  other value asks first, and a device with EVRe Guard refuses it (15), whatever min and max say.
+- **reserved_zero** (`"reserved_zero"`): the bits no bit field covers must be written 0; a value with one set asks
+  first, and a device with EVRe Guard refuses it (15). For a register with bit fields.
 - **Default** is the value after a reset (with *persist*: the factory value): a number, or one of the register's
   value names. The quick-write panel writes it with **Default** (5.1).
 
@@ -5204,7 +5215,8 @@ register (a finding on the map itself opens the Map settings). With nothing foun
 | a writable field in a read-only register | warning |
 | a format that is not `evre-map/…`; a USB vendor ID without a product ID | warning |
 | EVRe Guard's table (32.7): a special that is not a whole raw value of the type; no raw value left between min and max; more than 255 listed values | error |
-| EVRe Guard's table: a limit past the type or between raw steps (the table takes the type's end, or the next step inward); `"past_limits": "clamp"` without min or max, or in the reserved bank; a gap between two registers a host writes (a block write across it is refused) | warning |
+| EVRe Guard's table: a limit past the type or between raw steps (the table takes the type's end, or the next step inward); `"past_limits": "clamp"` without min or max; `past_limits`, `closed` or `reserved_zero` in the reserved bank; a value name outside min … max of a closed register; an action without a default (0 is its idle value); `reserved_zero` without fields; a gap between two registers a host writes (a block write across it is refused) | warning |
+| EVRe Guard's table: `closed` on an `f32` or without value names; `closed` or `reserved_zero` on a `bytes` register | error |
 
 The checks never stop a save: a map under construction may be incomplete.
 
@@ -5391,7 +5403,7 @@ differs, so a table older than its map fails the build. `--check` works for ever
 | Part | What |
 |---|---|
 | `p_table` | the table, in the `.cpp`, `extern` in the `.h`: an entry for each register a host writes (`rw`, `wo`, or a `rw` or `w1c` field) in `0xD000..0xDFFF`, in address order. The reserved bank and the map's login register get none |
-| an&nbsp;entry | the address, size and type; the raw limits as bits (an unsigned value, a signed one sign-extended, an `f32` as its IEEE 754 bits) with the shown values in a comment; the listed values (the specials) |
+| an&nbsp;entry | the address, size and type; the flags (`EVRE_GUARD_CLOSED` for `"closed"`, else `0u`); the raw limits as bits (an unsigned value, a signed one sign-extended, an `f32` as its IEEE 754 bits) with the shown values in a comment; the listed values (the specials; for a closed register its value names and an action's idle value too); `zero_bits`, the bits that must be 0 (`"reserved_zero"`: the bits no field covers, else 0) |
 | `P_NAME_RAW_MIN`,&nbsp;`_MAX` | in the `.h`: the map's limits in raw units, typed (`constexpr int16_t`), for the device's own clamps and `static_assert`s; a clamping register keeps them though its entry has the type's full range |
 | the&nbsp;format&nbsp;check | `#error` unless `EVRE_GUARD_TABLE_FORMAT` is 1 |
 
@@ -5402,7 +5414,7 @@ raw value of the type (or a finite `f32`), `-0` listed as `0`. A `w1c` register 
 span only. The export stops, and names the register, for a special that is not a whole raw value, no raw value left
 between `min` and `max`, more than 255 listed values, a writable register outside the bank, two that overlap, or no
 register a host writes. The Map editor's checks list the same, and where the table takes another value than the map
-(a limit past the type or between raw steps), `clamp` without limits, `past_limits` in the reserved bank, and a gap
+(a limit past the type or between raw steps), `clamp` without limits, the Guard's keys in the reserved bank, and a gap
 between two registers a host writes: a device with EVRe Guard refuses a block write across it, so declare the gap as
 a `bytes` register if one must pass.
 
@@ -5540,7 +5552,7 @@ The device does what its map says:
 | `"write": "action"` | holds the value written 200 ms, then reads back idle (its default, else 0) |
 | `"write": "w1c"`, a field `"access": "w1c"` | a 1 written clears the bit, a 0 leaves it; such bits start set, like a latched fault |
 | a field `"access": "ro"` in a writable register | keeps its bits whatever is written |
-| `min`,&nbsp;`max`&nbsp;with&nbsp;`--strict` | as a device with EVRe Guard's register checks: a value past them (a special aside), NaN or an infinity is refused with ERROR_RESP 15 (*value refused*), a write of part of a number with 3; a register with `"past_limits": "clamp"` takes a value past them and is set to the limit it passed |
+| `min`,&nbsp;`max`&nbsp;with&nbsp;`--strict` | as a device with EVRe Guard's register checks: a value past them (a special aside), NaN or an infinity is refused with ERROR_RESP 15 (*value refused*), a write of part of a number with 3; a register with `"past_limits": "clamp"` takes a value past them and is set to the limit it passed; `"closed"` and `"reserved_zero"` are refused with 15 as the Guard refuses them |
 | `login` | a write of the whole login register is accepted with the token (`--token`, default `example-token`), else refused; `--require-login`: nothing else is written on a connection before its login |
 | `persist`&nbsp;with&nbsp;`--state FILE` | those registers are kept in FILE (JSON) across restarts |
 | an&nbsp;address&nbsp;in&nbsp;no&nbsp;register | ERROR_RESP 4 (offset out of range) |

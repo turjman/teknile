@@ -123,8 +123,12 @@ static bool inLimits(const evre_guard_desc_t *reg, uint32_t value) {
 }
 
 /* One whole number register, its bytes as they came: NO_ERROR, or the reason
- * it is refused. raw is read before any sign extension. */
+ * it is refused. raw is read before any sign extension, so a signed register's
+ * bits that must be 0 stay inside its own width. */
 static uint8_t valueOk(const evre_guard_table_t *table, const evre_guard_desc_t *reg, uint32_t raw) {
+	if ((raw & reg->zero_bits) != 0) {
+		return EVRE_GUARD_WHY_BITS;
+	}
 	uint32_t value = raw;
 	if (reg->type == EVRE_GUARD_F32) {
 		if (!isFinite(value)) {
@@ -138,6 +142,9 @@ static uint8_t valueOk(const evre_guard_table_t *table, const evre_guard_desc_t 
 	}
 	if (listed(table, reg, value)) {
 		return EVRE_GUARD_WHY_NONE; /* a special: it passes, even outside min..max */
+	}
+	if ((reg->flags & EVRE_GUARD_CLOSED) != 0) {
+		return EVRE_GUARD_WHY_NOT_LISTED;
 	}
 	if (!inLimits(reg, value)) {
 		return EVRE_GUARD_WHY_LIMIT;
@@ -278,16 +285,26 @@ static bool inType(uint8_t type, uint16_t size, uint32_t value) {
 	return (value & ~widthMask(size)) == 0;
 }
 
-/* the entry on its own: type, size, place, the members this version does not use */
+/* the entry on its own: type, size, place, flags; the members this version
+ * does not use are 0 */
 static bool entryOk(const evre_guard_desc_t *reg) {
-	if (reg->spare1 != 0 || reg->spare2 != 0 || reg->flags != 0 || reg->zero_bits != 0) {
+	if (reg->spare1 != 0 || reg->spare2 != 0 || (reg->flags & ~EVRE_GUARD_CLOSED) != 0) {
 		return false;
 	}
 	if (reg->type == EVRE_GUARD_BYTES) {
-		if (reg->size == 0 || reg->size > MAX_REGS || reg->min != 0 || reg->max != 0 || reg->n_values != 0) {
+		if (reg->size == 0 || reg->size > MAX_REGS || reg->min != 0 || reg->max != 0 || reg->n_values != 0
+				|| reg->flags != 0 || reg->zero_bits != 0) {
 			return false;
 		}
 	} else if (!isNumber(reg->type) || reg->size != sizeOf(reg->type)) {
+		return false;
+	}
+	/* bits that must be 0: integers only, inside the register's width */
+	if (reg->zero_bits != 0 && (reg->type == EVRE_GUARD_F32 || (reg->zero_bits & ~widthMask(reg->size)) != 0)) {
+		return false;
+	}
+	/* a closed set with no value would refuse every write */
+	if ((reg->flags & EVRE_GUARD_CLOSED) != 0 && reg->n_values == 0) {
 		return false;
 	}
 	return reg->addr >= BANK_START && endOf(reg) <= BANK_END;

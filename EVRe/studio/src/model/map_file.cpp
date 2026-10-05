@@ -144,6 +144,8 @@ bool parseRegister(const QJsonObject &json, RegDef &def, QString &err) {
 	def.min = optionalNumber(json, "min");
 	def.max = optionalNumber(json, "max");
 	def.clamps = json.value(QLatin1String("past_limits")).toString().trimmed().toLower() == QLatin1String("clamp");
+	def.closed = json.value(QLatin1String("closed")).toBool(false);
+	def.reservedZero = json.value(QLatin1String("reserved_zero")).toBool(false);
 	def.enumValues = parseValues(json.value(QLatin1String("enum")).toObject(), def.enumHex);
 	def.special = parseSpecial(json.value(QLatin1String("special")).toObject(), def.specialHex);
 	const QJsonArray fields = json.value(QLatin1String("fields")).toArray();
@@ -388,7 +390,8 @@ namespace {
 
 /* the Studio's way of writing a map (a new map, a changed register): these keys, in this order */
 const QStringList REGISTER_KEYS{ "addr", "name", "type", "size", "unit", "access", "write", "persist", "group",
-	"desc", "notes", "danger", "plot", "format", "scale", "offset", "decimals", "min", "max", "past_limits", "default",
+	"desc", "notes", "danger", "plot", "format", "scale", "offset", "decimals", "min", "max", "past_limits", "closed",
+	"reserved_zero", "default",
 	"special", "enum", "fields" };
 const QStringList FIELD_KEYS{ "name", "bits", "access", "desc", "values" };
 const QStringList SETTINGS_KEYS{ "format", "device", "desc", "notes", "device_id", "slave", "usb", "login",
@@ -463,6 +466,8 @@ Value registerJson(const RegDef &def) {
 	if (def.hasMin()) add(json, QStringLiteral("min"), num(def.min));
 	if (def.hasMax()) add(json, QStringLiteral("max"), num(def.max));
 	if (def.clamps) add(json, QStringLiteral("past_limits"), str(QStringLiteral("clamp")));
+	if (def.closed) add(json, QStringLiteral("closed"), Value::makeBool(true));
+	if (def.reservedZero) add(json, QStringLiteral("reserved_zero"), Value::makeBool(true));
 	if (def.hasDefault()) add(json, QStringLiteral("default"), num(def.defaultValue));
 	if (!def.special.isEmpty()) add(json, QStringLiteral("special"), specialJson(def.special, def.specialHex));
 	if (!def.enumValues.isEmpty()) add(json, QStringLiteral("enum"), valuesJson(def.enumValues, def.enumHex));

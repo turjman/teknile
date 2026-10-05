@@ -6,8 +6,8 @@
  * Each case makes a device from the seed: a few ranges of the device bank
  * (read-only and read-write, with gaps, some adjacent), a login register, and a
  * random valid table over the writable ranges (every type, limits leaning to
- * the type's ends, value lists, bytes registers, gaps, the type's full range as
- * a register the device clamps). Sometimes the table is made bad by one field
+ * the type's ends, value lists, closed sets, bits that must be 0, bytes
+ * registers, gaps, the type's full range as a register the device clamps). Sometimes the table is made bad by one field
  * (init must refuse it), and sometimes the device is a mirror, from the start
  * or set after init. Then the same frames go through four devices, in step:
  *
@@ -136,6 +136,8 @@ struct Reg {
 	uint32_t min, max;
 	uint32_t list[6];
 	uint8_t n;
+	bool closed;        /* only the listed values pass (D-34) */
+	uint32_t zeroBits;  /* bits that must be 0, raw (D-35) */
 };
 
 static Reg regs[64];
@@ -218,6 +220,8 @@ static bool makeReg(Reg &r, uint16_t addr, uint16_t room) {
 		r.size = (uint16_t) (1 + below(room < 8 ? room : 8));
 		r.min = r.max = 0;
 		r.n = 0;
+		r.closed = false;
+		r.zeroBits = 0;
 		return true;
 	}
 	r.type = (uint8_t) (1 + below(7));
@@ -255,6 +259,12 @@ static bool makeReg(Reg &r, uint16_t addr, uint16_t room) {
 				r.list[j] = r.list[j - 1];
 				r.list[j - 1] = t;
 			}
+	}
+	r.closed = r.n > 0 && chance(30);
+	r.zeroBits = 0;
+	if (r.type != EVRE_GUARD_F32 && chance(20)) { /* some bits of the register's width */
+		const uint32_t width = r.size == 4 ? 0xFFFFFFFFUL : (1UL << (8 * r.size)) - 1;
+		r.zeroBits = rnd32() & rnd32() & width;
 	}
 	return true;
 }
@@ -321,6 +331,8 @@ static void makeTable() {
 				r.min = 0;
 				r.max = 0xFF;
 				r.n = 0;
+				r.closed = false;
+				r.zeroBits = 0;
 				break;
 			}
 		}
@@ -333,14 +345,14 @@ static void makeTable() {
 		d.addr = r.addr;
 		d.size = r.size;
 		d.type = r.type;
-		d.flags = 0;
+		d.flags = r.closed ? EVRE_GUARD_CLOSED : 0;
 		d.n_values = r.n;
 		d.spare1 = 0;
 		d.first_value = nValues;
 		d.spare2 = 0;
 		d.min = r.min;
 		d.max = r.max;
-		d.zero_bits = 0;
+		d.zero_bits = r.zeroBits;
 		for (unsigned k = 0; k < r.n; ++k) values[nValues++] = r.list[k];
 		for (unsigned k = 0; k < r.size; ++k) owner[r.addr - BANK + k] = (int) i;
 	}
@@ -359,7 +371,7 @@ static void breakTable() {
 		if (regs[i].type != EVRE_GUARD_BYTES && numberAt < 0) numberAt = (int) i;
 		if ((regs[i].type == EVRE_GUARD_F32 || regs[i].type == EVRE_GUARD_BYTES) && wide < 0) wide = (int) i;
 	}
-	switch (below(12)) {
+	switch (below(13)) {
 		case 0: descs[below(nRegs)].type = 0; break;
 		case 1: descs[below(nRegs)].type = 9; break;
 		case 2:
@@ -394,6 +406,14 @@ static void breakTable() {
 			break;
 		case 9: descs[last].addr = 0xD100; break; /* past every range */
 		case 10: table.n_regs = 0; break;
+		case 11:
+			if (numberAt >= 0) { /* a closed set with no value */
+				descs[numberAt].flags = EVRE_GUARD_CLOSED;
+				descs[numberAt].n_values = 0;
+			} else {
+				descs[0].type = 0;
+			}
+			break;
 		default:
 			if (wide >= 0) descs[wide].zero_bits = 1; /* never allowed on f32 or bytes */
 			else descs[0].spare1 = 1;
@@ -414,11 +434,13 @@ struct Verdict {
 static uint8_t notAllowed(const Reg &r, const uint8_t *bytes) {
 	uint32_t raw = 0;
 	for (unsigned k = 0; k < r.size; ++k) raw |= (uint32_t) bytes[k] << (8 * k);
+	if (raw & r.zeroBits) return EVRE_GUARD_WHY_BITS;
 	if (r.type == EVRE_GUARD_F32) {
 		const double v = floatOf(raw);
 		if (std::isnan(v) || std::isinf(v)) return EVRE_GUARD_WHY_NOT_FINITE;
 		for (unsigned k = 0; k < r.n; ++k)
 			if ((double) floatOf(r.list[k]) == v) return 0;
+		if (r.closed) return EVRE_GUARD_WHY_NOT_LISTED;
 		return v >= (double) floatOf(r.min) && v <= (double) floatOf(r.max) ? 0 : EVRE_GUARD_WHY_LIMIT;
 	}
 	int64_t v, low, high;
@@ -435,6 +457,7 @@ static uint8_t notAllowed(const Reg &r, const uint8_t *bytes) {
 		const int64_t listed = signedType(r.type) ? (int64_t) (int32_t) r.list[k] : (int64_t) r.list[k];
 		if (listed == v) return 0;
 	}
+	if (r.closed) return EVRE_GUARD_WHY_NOT_LISTED;
 	return v >= low && v <= high ? 0 : EVRE_GUARD_WHY_LIMIT;
 }
 
@@ -662,7 +685,8 @@ static void runCase() {
 			for (unsigned i = 0; i < nRegs; ++i) {
 				const Reg &r = regs[i];
 				if (r.type == EVRE_GUARD_BYTES || r.addr < off || (uint32_t) r.addr + r.size > (uint32_t) off + cnt || !chance(75)) continue;
-				const uint32_t v = biased(r);
+				uint32_t v = biased(r);
+				if (r.zeroBits && chance(70)) v &= ~r.zeroBits; /* mostly clear of the bits that must be 0 */
 				for (unsigned b = 0; b < r.size; ++b) data[r.addr - off + b] = (uint8_t) (v >> (8 * b));
 			}
 		}

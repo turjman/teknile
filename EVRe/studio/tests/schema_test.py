@@ -54,6 +54,11 @@ def main():
     wrong = len(list(validator.iter_errors(reg(past_limits='wrap')))) == 1
     print('%s "past_limits": "refuse" and "clamp" are valid, "wrap" is not' % ('PASS' if good and wrong else 'FAIL'))
     failed += 0 if good and wrong else 1
+    flags = not list(validator.iter_errors(reg(closed=True, enum={'0': 'off'}, reserved_zero=True,
+                                                fields=[{'name': 'A', 'bits': '0'}])))
+    not_bool = len(list(validator.iter_errors(reg(closed='yes', reserved_zero=1)))) == 2
+    print('%s "closed" and "reserved_zero" are booleans' % ('PASS' if flags and not_bool else 'FAIL'))
+    failed += 0 if flags and not_bool else 1
     return 1 if failed else 0
 
 

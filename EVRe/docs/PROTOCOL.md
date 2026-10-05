@@ -1011,6 +1011,14 @@ logout. A device uses it or not; the protocol is the same either way.
   silent), in either bank: a broadcast never goes past the guard. With 0, a
   broadcast into the device bank never gets that far (3, from the library),
   session or not.
+- **The device's own frames are its own to stop** (library 1.1, D-50). The
+  handlers are asked about requests only, never about a frame the device sends
+  by itself (`AUTO_SEND`, a stream of blocks). So a device with a login sends
+  by itself only while `evre_guard_logged_in()` says a session is open, and
+  stops when the session ends, an idle logout included: otherwise its
+  read-only block goes to a host that never logged in. A host that only
+  listens keeps no session open, as the idle time runs on: it goes on asking
+  (EVRe Studio reads `CONFIG` every 100 ms while it streams).
 - **The session belongs to the link**, not to a host: while a session is
   open, a broadcast from anyone on the link reaches that device, as a unicast
   write would. Behind a gateway that puts several clients on one link, the
@@ -1072,6 +1080,9 @@ if (evre_guard_init(&guard, &guard_config) != NO_ERROR) { /* a bad config: the g
 evre_guard_restore(&guard, saved_failures, now64());     /* optional */
 dev.READ_HANDLER  = onRead;
 dev.WRITE_HANDLER = onWrite;
+
+/* in the main loop: the device's own frames (AUTO_SEND) only while a session is open */
+const bool sending = (dev.CONFIG & (1U << AUTO_SEND)) != 0 && evre_guard_logged_in(&guard) != 0;
 ```
 
 `evre_guard_write` takes the device as the write handler got it: its
@@ -1097,7 +1108,8 @@ stored.
   requests).
 - **Two codes.** `VALUE_REFUSED` (15) for a whole register holding a value the
   device does not take: outside min..max (and not a listed value), NaN or an
-  infinity. `PERMISSION_DENIED` (3) for a byte that cannot be written this
+  infinity, a value a closed register does not list, or a bit set that must
+  be 0. `PERMISSION_DENIED` (3) for a byte that cannot be written this
   way: no entry covers it (a gap, a read-only register inside a writable
   range, past the last entry), or only part of a number register. 3 is about
   where, 15 about what. A bytes register (a name, a blob) may be written in
@@ -1110,8 +1122,10 @@ stored.
   DFU over EVRe. Init refuses a table with a null pointer, an unknown type, a
   size that is not the type's, entries out of order or overlapping, a list
   that is not strictly ascending or holds NaN or -0.0, a limit outside the
-  type or min above max, a spare member or flag that is not 0, and an entry
-  that does not lie inside one writable range of the device. Report its answer
+  type or min above max, a spare member that is not 0, an unknown flag, a
+  closed register with no listed value, bits that must be 0 on an f32 or
+  bytes register or past its width, and an entry that does not lie inside one
+  writable range of the device. Report its answer
   loudly: a bad table is found at the first start on the bench.
 - **After the login.** `evre_guard_write_checked()` asks part 1 first and
   the values only on its `NO_ERROR`: a host without a session gets 13 and
@@ -1123,6 +1137,13 @@ stored.
   device's 15 on.
 - **Broadcasts** (with `ACCEPT_BROADCAST_D000` 1) get the same checks; one
   bad value drops the whole broadcast, silently, for every device.
+- **A closed set** (D-34, the map's `"closed"`): an entry with the flag
+  `EVRE_GUARD_CLOSED` takes only its listed values (the map's value names,
+  specials and an action's idle value), whatever its limits say. For an
+  integer register.
+- **Bits that must be 0** (D-35, the map's `"reserved_zero"`): an entry's
+  `zero_bits` are the bits no field covers; a value with one of them set is
+  refused before its limits are looked at. For an integer register.
 - **f32** is compared in integers: the bits of a finite float become a key
   that sorts as the float does. The answer is exact on every target, whatever
   the FPU's flush-to-zero mode; no FPU state is saved in the decoder's

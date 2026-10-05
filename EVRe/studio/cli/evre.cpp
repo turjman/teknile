@@ -696,7 +696,7 @@ int cmdWrite(const Args &a) {
 			err(QStringLiteral("%1: %2").arg(def->name, why));
 			return 1;
 		}
-		const QString outside = def->isNumeric() ? writeLimitProblem(*def, decodeNumber(*def, w.bytes)) : QString();
+		const QString outside = writeProblem(*def, w.bytes);
 		if (!outside.isEmpty() && !a.force) {
 			err(QStringLiteral("%1 = %2 is %3 (the map's limit; --force writes it anyway)").arg(def->name, w.text, outside));
 			return 1;
@@ -770,7 +770,7 @@ int cmdBroadcast(const Args &a) {
 		err(QStringLiteral("no broadcast: %1").arg(refusal));
 		return 1;
 	}
-	const QString outside = def->isNumeric() ? writeLimitProblem(*def, decodeNumber(*def, bytes)) : QString();
+	const QString outside = writeProblem(*def, bytes);
 	if (!outside.isEmpty() && !a.force) {
 		err(QStringLiteral("%1 = %2 is %3 (the map's limit; --force sends it anyway)").arg(def->name, text, outside));
 		return 1;
