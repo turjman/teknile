@@ -5485,7 +5485,9 @@ evre dump --tcp 127.0.0.1:1210 --map maps/example_device.json
 the CRC, a TCP or serial link, a master that waits for each answer, the map (with `extends`), and a `Device` that
 reads and writes registers by name in shown units, refuses what the map refuses (read-only; danger and past the
 limits without `force=True`) and reads writes back. Standard library only; a serial port needs `pyserial`.
-`python/README.md` lists its API.
+`python/README.md` lists its API. The master takes a frame for its answer only when the slave, the offset and the
+count are the request's (18.6), so a frame the device sends by itself (auto send's block) is never taken for the
+answer to a read of part of it.
 
 Several devices on one link: `evre.connect_bus_tcp(host, port, bus_file, token=...)` gives a `Bus` of the devices of
 a bus file (3.9). Its registers go by their names on the bus (`bus['D2_FAN_SPEED'] = 40`), `bus['D1']` is a device's

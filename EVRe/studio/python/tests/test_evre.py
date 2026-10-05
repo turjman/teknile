@@ -137,6 +137,45 @@ class BusFiles(unittest.TestCase):
         self.assertEqual((frame.CAP_AUTO_SEND, frame.CONFIG_AUTO_SEND, frame.AUTO_SEND_BASE_HZ), (0x0800, 0x0008, 8000))
 
 
+class _CannedLink:
+    """a link whose device says only what it is given: the bytes a master receives, piece by piece"""
+    name = 'canned'
+
+    def __init__(self, *pieces):
+        self.pieces = list(pieces)
+
+    def send(self, data):
+        pass
+
+    def receive(self, timeout):
+        return self.pieces.pop(0) if self.pieces else b''
+
+    def close(self):
+        pass
+
+
+class Answers(unittest.TestCase):
+    """an answer is matched by its slave, offset and count (PROTOCOL.md): a frame the device sends by itself is none"""
+
+    def test_auto_send_frame_is_not_the_answer(self):
+        block = evre.build(1, frame.READ_RESP, 0xD000, 16, bytes(range(16)))  # AUTO_SEND: the read-only block, unasked
+        answer = evre.build(1, frame.READ_RESP, 0xD000, 4, b'\xAA\xBB\xCC\xDD')
+        master = evre.Master(_CannedLink(block + answer), slave=1, timeout=0.5)
+        self.assertEqual(master.read(0xD000, 4), b'\xAA\xBB\xCC\xDD')
+        with self.assertRaises(evre.EvreError) as none:  # the frame alone answers nothing
+            evre.Master(_CannedLink(block), slave=1, timeout=0.05).read(0xD000, 4)
+        self.assertIsNone(none.exception.code)
+
+    def test_another_requests_error_is_skipped(self):
+        late = evre.build(1, frame.ERROR_RESP, 0xD084, 2, b'\x05')  # the refusal of an earlier, longer write
+        ack = evre.build(1, frame.WRITE_ACK_RESP, 0xD084, 1)
+        evre.Master(_CannedLink(late + ack), slave=1, timeout=0.5).write(0xD084, b'\x01')  # not this write's: no error
+        own = evre.build(1, frame.ERROR_RESP, 0xD084, 1, b'\x03')
+        with self.assertRaises(evre.EvreError) as refused:  # its own refusal still raises, with the code
+            evre.Master(_CannedLink(own), slave=1, timeout=0.5).write(0xD084, b'\x01')
+        self.assertEqual(refused.exception.code, 3)
+
+
 BUILD = os.environ.get('EVRE_BUILD')
 SIM = os.path.join(BUILD or '', 'evre-sim.exe' if os.name == 'nt' else 'evre-sim')
 
