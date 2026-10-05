@@ -98,6 +98,7 @@ public:
 	static constexpr double MAX_SPAN = 86400; /* a day: the longest view and memory, seconds */
 
 	explicit ChartView(QWidget *parent = nullptr);
+	~ChartView() override; /* a measurement under way finished first (measureAsync) */
 
 	void addSeries(int key, const QString &name, const QString &unit, const QColor &color);
 	void removeSeries(int key);
@@ -252,6 +253,16 @@ public:
 	QVector<Info> lines() const;
 	void range(double &t0, double &t1, bool &cursors) const; /* what the measurements cover */
 	Stats stats(int key) const;
+	/* The full measurements of these lines (as stats(keys)) on the chart's threads, without the window thread waiting:
+	 * done(stats, ms the threads took) is called on the window thread when they are in. While they run, the samples
+	 * given to append() wait in a queue (with the trims they bring) and go in when they are done: the threads read the
+	 * lines' arrays as they were. One at a time: a call while one runs waits its turn, the newest replacing an older. */
+	void measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done);
+	bool measuring() const { return measuring_; }
+	/* what the measurements of these lines depend on: the range, the cursors, the lines, each one's samples in the range
+	 * (absolute sample numbers: samples after it or trims before it do not count), Normalise. Equal: the same values */
+	QVector<double> measureKey(const QVector<int> &keys) const;
+	int fullStatsOnWindowThread() const { return fullStatsSync_; } /* tests: full measurements the window thread waited for */
 	/* several lines at once, on the chart's threads; cursorsOnly: the values at A and B alone (ok false) */
 	QVector<Stats> stats(const QVector<int> &keys, bool cursorsOnly = false) const;
 	bool draggingCursor() const { return drag_ == Drag::CurA || drag_ == Drag::CurB; }
@@ -831,6 +842,25 @@ private:
 	QString linesPictureKey_, gpuLinesKey_;
 	QVector<GpuLines::Segment> gpuLines_; /* the card's line segments as last made */
 	PerfStats perf_;
+	/* the measurements on the chart's threads (measureAsync): one under way, the next asked for, the samples kept back */
+	struct MeasureRequest {
+		QVector<int> keys;
+		std::function<void(const QVector<Stats> &, double)> done;
+	};
+	bool measuring_ = false;
+	bool measureNext_ = false;
+	MeasureRequest nextMeasure_;
+	struct HeldSample {
+		int key;
+		double t, v;
+	};
+	QVector<HeldSample> heldSamples_;
+	int fullStatsSync_ = 0;
+	void startMeasure(MeasureRequest request);
+	void appendNow(int key, double t, double v);
+	/* a line's measurements from its arrays, over t0..t1, its values at the times a and b */
+	static Stats statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1, double a,
+			double b);
 	double fps_ = 0, paintMs_ = 0;
 
 	FrameBudget budget_;

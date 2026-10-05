@@ -45,6 +45,7 @@
 
 #include "model/device_map.h"
 #include "model/math_lines.h"
+#include "ui/chart_widget.h" /* its Info and Stats in the measurements' functions */
 #include "model/recording_file.h"
 #include "model/register_model.h"
 #include "ui/analysis_window.h"
@@ -159,6 +160,7 @@ public:
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
 	int measureFullUpdates() const { return measureFullUpdates_; } /* tests: of those, all of the table */
 	int measureInfoChanges() const { return measureInfoChanges_; } /* tests: the line over the table written anew */
+	int measureFills() const { return measureFills_; } /* tests: the table filled with all of it (from the threads) */
 
 signals:
 	/* the math lines read other registers now (shown, hidden, edited, removed, or the map changed) */
@@ -195,6 +197,13 @@ private:
 	/* the measurements under the chart; measureSoon: at once, then at most every MEASURE_FOLLOW_MS while the cursors
 	 * move (a drag moves them at every mouse move) */
 	void updateMeasures(bool cursorsOnly = false); /* cursorsOnly: A, B and B - A (a cursor dragged) */
+	void measureTick(); /* the timer's: all of it again only when it changed, the totals each time */
+	QVector<double> measureKeyNow(const QVector<int> &keys) const;
+	void fillMeasures(const QVector<ChartView::Info> &lines, const QVector<ChartView::Stats> &stats, bool cursorsOnly,
+			const QElapsedTimer &timed);
+	QVector<double> lastMeasureKey_; /* what the last full measurement was of */
+	double measureThreadMs_ = 0;     /* the timing aid: the threads' part of the measurements */
+	int measureFills_ = 0;
 	void measureSoon();
 	QString measuredRangeText() const;
 	void showMeasureColumns(); /* the columns hidden as saved (chart/measureColumns) */

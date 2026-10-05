@@ -538,6 +538,7 @@ public:
 		chartLanesSeparators();
 		heldViewReuse();
 		measureTableRepaints();
+		measureInBackground();
 		perfLog();
 		analysisMath();
 		analysisWindows();
@@ -3550,15 +3551,18 @@ private:
 		auto *measure = tab.findChild<QPushButton *>(QStringLiteral("measure"));
 		auto *table = tab.findChild<QTableWidget *>(QStringLiteral("measures"));
 		if (measure) measure->setChecked(true); /* measured at once */
+		measured(tab.view());
 		QElapsedTimer timer;
 		timer.start();
 		tab.setShown(true); /* measured again: the table refreshed, every value the same */
+		measured(tab.view());
 		for (int round = 0; round < 3; round++) { /* new values in every cell */
 			MathLines::Samples more;
 			for (int k = 0; k < LINES; k++)
 				more[regKey(0, uint16_t(0xD000 + 2 * k))] << QPointF(100.0 + round * 0.002, 1000.0 * (round + 1) + k);
 			tab.frame(more);
 			tab.setShown(true);
+			measured(tab.view());
 		}
 		const double ms = timer.nsecsElapsed() / 1e6 / 4;
 		tab.setRegisterLimit(64);
@@ -3813,6 +3817,11 @@ private:
 	}
 
 	/* a chart tab of its own, a clock that stands still (moved by the test), one line of `unit` named `name` */
+	/* the full measurements, on the chart's threads, in and in the table (ChartTab::updateMeasures) */
+	static void measured(ChartView *view) {
+		(void) QTest::qWaitFor([view] { return !view->measuring(); }, 5000);
+	}
+
 	struct LoneChart {
 		double now = 100;
 		ChartTab tab{ [this] { return now; } };
@@ -3856,6 +3865,7 @@ private:
 			return;
 		}
 		measure->setChecked(true);
+		measured(chart.view);
 		const bool columns = table->horizontalHeaderItem(ChartTab::ColRms)->text() == QLatin1String("RMS")
 				&& table->horizontalHeaderItem(ChartTab::ColStd)->text() == QLatin1String("Std dev")
 				&& table->horizontalHeaderItem(ChartTab::ColP2p)->text() == QLatin1String("Peak-peak")
@@ -3930,6 +3940,7 @@ private:
 		feed(115.0, 10);
 		chart.now = 100.0 + 3600 + 12 * 60;
 		if (measure) measure->setChecked(true);
+		measured(chart.view);
 		const QString total = chart.cell(ChartTab::ColTotal);
 		const QString range = info ? info->text() : QString();
 		const QString since = QDateTime::fromMSecsSinceEpoch(chart.view->epochMs() + 100000).toString(QStringLiteral("HH:mm:ss"));
@@ -3940,6 +3951,7 @@ private:
 		check(keptOff && shown, "chart, totals: a line taken off and put back keeps its total; the Since Clear column in "
 				"Ah, the measure line \"totals since <clock> (1 h 12 min)\"");
 		if (measure) measure->setChecked(false);
+		measured(chart.view); /* the samples that came meanwhile in */
 
 		auto *clear = chart.tab.findChild<QPushButton *>(QStringLiteral("chartClear"));
 		if (clear) clear->click();
@@ -5313,6 +5325,116 @@ private:
 		chart.tab.hide();
 	}
 
+	/* The full measurements on the chart's threads, the window thread never waiting for them: a held view is measured
+	 * again only when a sample lands in its range (samples after it change nothing); a dragged cursor starts none until
+	 * it is let go; the table's values are those measured on the window thread */
+	void measureInBackground() {
+		LoneChart chart(QStringLiteral("B0"), QStringLiteral("V"));
+		QVector<RegDef> defs{ chart.def };
+		for (int k = 1; k < 8; k++) {
+			RegDef def = chart.def;
+			def.addr = uint16_t(0xD000 + 2 * k);
+			def.name = QStringLiteral("B%1").arg(k);
+			chart.tab.plotRegister(def, true);
+			defs << def;
+		}
+		MathLines::Samples samples;
+		for (const RegDef &def : std::as_const(defs))
+			for (int i = 0; i < 15000; i++) /* 1 kHz up to 95 s: the view held at 100 ends after them */
+				samples[regKey(def)] << QPointF(80.0 + i * 0.001, def.addr % 5 + std::sin(i * 0.004 + def.addr));
+		chart.tab.frame(samples);
+		ChartView *view = chart.view;
+		view->setWindow(10);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		if (!measure) {
+			check(false, "chart, measurements in the background: the Measure button");
+			return;
+		}
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) view->grab(); /* painted live first, then held there (90 .. 100) */
+		view->setLive(false);
+		const int waitsBefore = view->fullStatsOnWindowThread();
+		measure->setChecked(true);
+		chart.tab.setShown(true); /* as the window says when the Chart tab is the one shown: its timer measures */
+		measured(view);
+		QTest::qWait(300); /* a tick of the timer: nothing changed, nothing measured */
+		measured(view);
+		const auto feed = [&](double t) {
+			MathLines::Samples one;
+			for (const RegDef &def : std::as_const(defs)) one[regKey(def)] << QPointF(t, 1.0);
+			chart.tab.frame(one);
+		};
+		/* a sample inside the range: measured once more; then samples after the view's end for 2 s: none */
+		int full = chart.tab.measureFullUpdates();
+		feed(96.0);
+		(void) QTest::qWaitFor([&] { return chart.tab.measureFullUpdates() > full; }, 2000);
+		measured(view);
+		const int inside = chart.tab.measureFullUpdates() - full;
+		full = chart.tab.measureFullUpdates();
+		QElapsedTimer twoSeconds;
+		twoSeconds.start();
+		for (double t = 100.5; twoSeconds.elapsed() < 2000; t += 0.05) {
+			chart.now = t; /* the clock goes on as the samples come: the held view stays behind */
+			feed(t);
+			QTest::qWait(50);
+		}
+		const int outside = chart.tab.measureFullUpdates() - full;
+		if (inside != 1 || outside != 0)
+			std::printf("     (a sample in the range: %d full measurements; samples after it for 2 s: %d)\n", inside, outside);
+		check(inside == 1 && outside == 0, "chart, measurements of a held view: measured again once for a sample in its "
+				"range, not at all for 2 s of samples after it");
+
+		/* cursor A dragged for a second: no full measurement until it is let go, then one */
+		view->setCursorMode(true);
+		measured(view);
+		full = chart.tab.measureFullUpdates();
+		const QPoint start(300, 200);
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, start);
+		for (int step = 1; step <= 4; step++) {
+			const QPointF at(start.x() + step * 20, start.y());
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QTest::qWait(300);
+		}
+		const int whileDragged = chart.tab.measureFullUpdates() - full;
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(start.x() + 80, start.y()));
+		(void) QTest::qWaitFor([&] { return chart.tab.measureFullUpdates() > full; }, 2000);
+		measured(view);
+		const int letGo = chart.tab.measureFullUpdates() - full;
+		view->setCursorMode(false);
+		if (whileDragged != 0 || letGo < 1)
+			std::printf("     (dragged: %d full measurements; let go: %d)\n", whileDragged, letGo);
+		check(whileDragged == 0 && letGo >= 1, "chart, measurements while a cursor is dragged: no full measurement until "
+				"it is let go, then one");
+
+		/* the table's values: those measured on the window thread; and the window thread waited for none */
+		const int waits = view->fullStatsOnWindowThread() - waitsBefore;
+		QVector<int> keys;
+		for (const RegDef &def : std::as_const(defs)) keys << int(regKey(def));
+		const QVector<ChartView::Stats> direct = view->stats(keys);
+		bool same = chart.table() && chart.table()->rowCount() == keys.size();
+		const auto number = [&](int row, int column) {
+			const QTableWidgetItem *item = chart.table()->item(row, column);
+			return item ? item->text().section(QLatin1Char(' '), 0, 0).toDouble() : NAN;
+		};
+		for (int row = 0; same && row < keys.size(); row++) {
+			const ChartView::Stats &s = direct[row];
+			const auto near = [](double a, double b) { return std::fabs(a - b) <= 1e-3 * std::max(1.0, std::fabs(b)); };
+			same = near(number(row, ChartTab::ColMin), s.min) && near(number(row, ChartTab::ColMax), s.max)
+					&& near(number(row, ChartTab::ColMean), s.mean) && near(number(row, ChartTab::ColRms), s.rms);
+		}
+		if (!same || waits != 0)
+			std::printf("     (the table as measured on the window thread: %d; the window thread waited %d times)\n", int(same),
+					waits);
+		check(same && waits == 0, "chart, measurements on the chart's threads: the table's values those measured on the "
+				"window thread, which never waited for them");
+		measure->setChecked(false);
+		chart.tab.setShown(false);
+		measured(view);
+		chart.tab.hide();
+	}
+
 	/* The timing aid: EVRE_PERF_LOG=<file> writes a line every 500 ms with the frames, the paint and its stages, the
 	 * binnings, the measurements and the polls */
 	void perfLog() {
@@ -5349,7 +5471,7 @@ private:
 				written = lines.size() >= 2;
 				for (const QString &line : lines)
 					for (const char *part : { " perfTest ", " fps ", " paint ", " max ", "| bin ", " lines ", " segments ",
-							 " present ", " marks ", " strip ", " legend ", "| binned ", "| measure ", "| polls " })
+							 " present ", " marks ", " strip ", " legend ", "| binned ", "| measure ", " threads ", "| polls " })
 						written = written && line.contains(QLatin1String(part));
 			}
 			tab.hide();

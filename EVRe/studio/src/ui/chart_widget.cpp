@@ -432,6 +432,14 @@ void dropFront(QVector<T> &v, qsizetype n, qsizetype most) {
 } // namespace
 
 void ChartView::append(int key, double t, double v) {
+	if (measuring_) { /* the threads read the arrays as they were: in when they are done (measureAsync) */
+		heldSamples_.push_back({ key, t, v });
+		return;
+	}
+	appendNow(key, t, v);
+}
+
+void ChartView::appendNow(int key, double t, double v) {
 	auto it = series_.find(key);
 	if (it == series_.end() || !std::isfinite(v)) return;
 	Series &s = *it;
@@ -900,30 +908,35 @@ ChartView::Stats ChartView::stats(int key) const {
 	Stats result;
 	auto it = series_.find(key);
 	if (it == series_.end()) return result;
-	result.total = std::isnan(it->totalT) ? NAN : it->total;
-	if (it->times.isEmpty()) return result;
-	const Series &s = *it;
-	result.atA = valueAt(s.times, s.values, cursorA_);
-	result.atB = valueAt(s.times, s.values, cursorB_);
 	double t0, t1;
 	bool cursors;
 	range(t0, t1, cursors);
-	const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
-	const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+	if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
+	result.total = std::isnan(it->totalT) ? NAN : it->total;
+	return result;
+}
+
+ChartView::Stats ChartView::statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1,
+		double a, double b) {
+	Stats result;
+	result.atA = valueAt(times, values, a);
+	result.atB = valueAt(times, values, b);
+	const qsizetype i0 = std::lower_bound(times.begin(), times.end(), t0) - times.begin();
+	const qsizetype i1 = std::upper_bound(times.begin(), times.end(), t1) - times.begin();
 	if (i1 - i0 < 1) return result;
-	result.min = result.max = s.values[i0];
+	result.min = result.max = values[i0];
 	/* the standard deviation from sums shifted by the first value: a 12 V line with 1 mV of ripple squared whole loses
 	 * the ripple to the 144 V^2 (rms^2 - mean^2 cancels to the rounding) */
-	const double shift = s.values[i0];
+	const double shift = values[i0];
 	double area = 0, areaOfSquares = 0, span = 0, shifted = 0, shiftedSquares = 0;
 	for (qsizetype i = i0; i < i1; i++) {
-		result.min = std::min(result.min, s.values[i]);
-		result.max = std::max(result.max, s.values[i]);
+		result.min = std::min(result.min, values[i]);
+		result.max = std::max(result.max, values[i]);
 		if (i == i0) continue;
-		const double dt = s.times[i] - s.times[i - 1];
-		area += 0.5 * (s.values[i] + s.values[i - 1]) * dt;
-		areaOfSquares += 0.5 * (s.values[i] * s.values[i] + s.values[i - 1] * s.values[i - 1]) * dt;
-		const double d1 = s.values[i] - shift, d0 = s.values[i - 1] - shift;
+		const double dt = times[i] - times[i - 1];
+		area += 0.5 * (values[i] + values[i - 1]) * dt;
+		areaOfSquares += 0.5 * (values[i] * values[i] + values[i - 1] * values[i - 1]) * dt;
+		const double d1 = values[i] - shift, d0 = values[i - 1] - shift;
 		shifted += 0.5 * (d1 + d0) * dt;
 		shiftedSquares += 0.5 * (d1 * d1 + d0 * d0) * dt;
 		span += dt;
@@ -937,7 +950,7 @@ ChartView::Stats ChartView::stats(int key) const {
 		const double shiftedMean = shifted / span;
 		result.std = std::sqrt(std::max(0.0, shiftedSquares / span - shiftedMean * shiftedMean));
 	} else {
-		result.mean = result.rms = s.values[i0];
+		result.mean = result.rms = values[i0];
 	}
 	result.ok = true;
 	return result;
@@ -945,6 +958,7 @@ ChartView::Stats ChartView::stats(int key) const {
 
 /* each line's on a thread of the chart's: 64 lines over minutes of samples took tens of ms on one */
 QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursorsOnly) const {
+	if (!cursorsOnly) const_cast<ChartView *>(this)->fullStatsSync_++; /* the window thread waits for these */
 	QVector<Stats> all(keys.size());
 	inParallel(keys.size(), [&](qsizetype i) {
 		if (!cursorsOnly) {
@@ -958,6 +972,111 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 		all[i].atB = valueAt(it->times, it->values, cursorB_);
 	}, 2);
 	return all;
+}
+
+/* The measurements' key: equal keys, equal values. The samples in the range are numbered from the line's start
+ * (dropped + index), so a sample added after the range or one let go before it changes nothing; with the cursors, the
+ * samples beside them too (the values at A and B lie between them). */
+QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
+	double t0, t1;
+	bool cursors;
+	range(t0, t1, cursors);
+	/* a cursor not placed as -inf: NaN is never equal to itself, the key would never be the same */
+	const auto placed = [](double t) { return std::isfinite(t) ? t : -std::numeric_limits<double>::infinity(); };
+	QVector<double> key{ t0, t1, placed(cursorA_), placed(cursorB_), double(seriesGeneration_), double(normalized_) };
+	for (int k : keys) {
+		const auto it = series_.constFind(k);
+		if (it == series_.constEnd()) {
+			key << -1 << -1;
+			continue;
+		}
+		const Series &s = *it;
+		qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+		qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
+		if (cursors) {
+			i0 = std::max<qsizetype>(0, i0 - 1);
+			i1 = std::min<qsizetype>(s.times.size(), i1 + 1);
+		}
+		key << double(s.dropped + i0) << double(s.dropped + i1);
+	}
+	return key;
+}
+
+ChartView::~ChartView() { pool_.waitForDone(); }
+
+void ChartView::measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done) {
+	MeasureRequest request{ keys, std::move(done) };
+	if (measuring_) { /* its turn when the one under way is done; a newer one replaces it */
+		nextMeasure_ = std::move(request);
+		measureNext_ = true;
+		return;
+	}
+	startMeasure(std::move(request));
+}
+
+/* The lines' arrays shared with the threads (Qt's vectors copy only when one is changed): the window thread changes
+ * none while they read, its samples held back (append), and a line taken off or cleared meanwhile leaves the threads
+ * its arrays. The threads give them back before the result is posted. */
+void ChartView::startMeasure(MeasureRequest request) {
+	struct Job {
+		QVector<QVector<double>> times, values;
+		QVector<double> totals;
+		double t0 = 0, t1 = 0, a = NAN, b = NAN;
+		QVector<Stats> out;
+		std::atomic<int> left{ 0 };
+		QElapsedTimer clock;
+		MeasureRequest request;
+	};
+	const auto job = std::make_shared<Job>();
+	bool cursors;
+	range(job->t0, job->t1, cursors);
+	job->a = cursorA_;
+	job->b = cursorB_;
+	const qsizetype n = request.keys.size();
+	job->times.resize(n);
+	job->values.resize(n);
+	job->totals.fill(NAN, n);
+	job->out.resize(n);
+	for (qsizetype i = 0; i < n; i++) {
+		const auto it = series_.constFind(request.keys[i]);
+		if (it == series_.constEnd()) continue;
+		job->times[i] = it->times;
+		job->values[i] = it->values;
+		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
+	}
+	job->request = std::move(request);
+	measuring_ = true;
+	job->clock.start();
+	if (n == 0) {
+		QMetaObject::invokeMethod(this, [this, job] {
+			measuring_ = false;
+			job->request.done(job->out, 0);
+		}, Qt::QueuedConnection);
+		return;
+	}
+	job->left = int(n);
+	for (qsizetype i = 0; i < n; i++)
+		pool_.start([this, job, i] {
+			if (!job->times[i].isEmpty())
+				job->out[i] = statsOf(job->times[i], job->values[i], job->t0, job->t1, job->a, job->b);
+			job->out[i].total = job->totals[i];
+			if (--job->left > 0) return;
+			/* the last: the arrays given back, then the result to the window thread */
+			job->times.clear();
+			job->values.clear();
+			const double ms = job->clock.nsecsElapsed() / 1e6;
+			QMetaObject::invokeMethod(this, [this, job, ms] {
+				measuring_ = false;
+				const QVector<HeldSample> held = std::exchange(heldSamples_, {});
+				for (const HeldSample &sample : held) appendNow(sample.key, sample.t, sample.v);
+				if (!held.isEmpty()) refresh();
+				job->request.done(job->out, ms);
+				if (measureNext_ && !measuring_) {
+					measureNext_ = false;
+					startMeasure(std::move(nextMeasure_));
+				}
+			}, Qt::QueuedConnection);
+		});
 }
 
 /* ---------------------------------------------------------------- the mouse */
