@@ -4613,12 +4613,21 @@ private:
 		const bool exported = spectrum->exportCsv(folder.filePath(QStringLiteral("s.csv")), error);
 		QFile csv(folder.filePath(QStringLiteral("s.csv")));
 		QStringList rows;
-		if (csv.open(QIODevice::ReadOnly)) rows = QString::fromUtf8(csv.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+		/* the platform's line ends (CRLF on Windows) */
+		if (csv.open(QIODevice::ReadOnly))
+			rows = QString::fromUtf8(csv.readAll()).split(QRegularExpression(QStringLiteral("\r?\n")), Qt::SkipEmptyParts);
 		const bool picture = spectrum->savePicture(folder.filePath(QStringLiteral("s.png")))
 				&& QImage(folder.filePath(QStringLiteral("s.png"))).size() == (QSizeF(spectrum->plot()->size()) * spectrum->devicePixelRatioF()).toSize();
 		const QRectF plotArea = QRectF(spectrum->plot()->rect()).adjusted(64, 30, -18, -30);
 		const QString at = spectrum->readoutAt(plotArea.left() + plotArea.width() * 62.5 / (spectrum->spectrum().rate / 2));
 		spectrum->setLogScale(true);
+		const QSize pictureSize = QImage(folder.filePath(QStringLiteral("s.png"))).size();
+		std::printf("     (spectrum: \"%s\" / \"%s\" / at \"%s\" / csv %s, %lld rows for %lld / picture %dx%d for %.1fx%.1f)\n",
+				qPrintable(spectrum->windowTitle()), qPrintable(spectrum->summary()), qPrintable(at),
+				exported ? "written" : "not written", (long long) rows.size(),
+				(long long) spectrum->spectrum().frequency.size() + 1, pictureSize.width(), pictureSize.height(),
+				spectrum->plot()->width() * spectrum->devicePixelRatioF(),
+				spectrum->plot()->height() * spectrum->devicePixelRatioF());
 		check(spectrum->windowTitle().startsWith(QStringLiteral("Spectrum of WAVE — A → B, 1 s"))
 						&& spectrum->summary().contains(QStringLiteral("peak 62.5 Hz: 3")) && (at == QStringLiteral("62.5 Hz: 3 V") || at.startsWith(QStringLiteral("62.5 Hz: 2.9")))
 						&& exported && rows.value(0) == QLatin1String("frequency [Hz],amplitude [V]")

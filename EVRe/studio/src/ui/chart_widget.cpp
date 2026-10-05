@@ -2251,8 +2251,9 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	QRectF levelLane, tag;
 	if (triggerGeometry(plots, lines, levelY, levelLane, tag)) {
 		const QColor color = series_.value(trigger_.key).color;
-		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)), 6 * dpr,
-				3 * dpr, gpuColor(color));
+		/* as the CPU's pen (1.2 px, Qt::DashLine: dashes of 4.8, gaps of 2.4), the cursors and the notes */
+		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)), 4.8 * dpr,
+				2.4 * dpr, gpuColor(color));
 		if (!tag.isEmpty()) frame.sprites.push_back({ triggerPicture(dpr), whole(tag.topLeft()) });
 	}
 	frame.layers << marks;
