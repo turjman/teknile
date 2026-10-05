@@ -25,6 +25,7 @@
 #include <QTimer>
 #include <optional>
 
+#include "ui/help_dialog.h"
 #include "ui/language.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
@@ -145,11 +146,11 @@ void saveLogPicture(QWidget &window, const QString &path) {
 }
 
 void saveHelpPicture(const QWidget &window, const QString &path) {
-	if (QPushButton *help = buttonWithText(window, QStringLiteral("Help"))) help->click();
+	/* by name and class, not by text: the same in every language */
+	if (auto *help = window.findChild<QPushButton *>(QStringLiteral("sidebarHelp"))) help->click();
 	QApplication::processEvents();
 	for (QWidget *topLevel : QApplication::topLevelWidgets())
-		if (topLevel != &window && topLevel->isVisible() && topLevel->windowTitle().contains(QLatin1String("Help")))
-			topLevel->grab().save(path);
+		if (topLevel != &window && topLevel->isVisible() && qobject_cast<HelpDialog *>(topLevel)) topLevel->grab().save(path);
 }
 
 /* the Map editor tab, then the tab that was shown again. withFields: the first register whose "More"

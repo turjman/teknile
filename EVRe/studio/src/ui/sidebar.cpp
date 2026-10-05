@@ -397,6 +397,7 @@ QWidget *Sidebar::buildApiCard() {
 
 void Sidebar::addFooter(QVBoxLayout *layout) {
 	auto *helpButton = new QPushButton(tr("Help"));
+	helpButton->setObjectName(QStringLiteral("sidebarHelp"));
 	helpButton->setCursor(Qt::PointingHandCursor);
 	helpButton->setToolTip(tr("Help (F1)"));
 	connect(helpButton, &QPushButton::clicked, this, &Sidebar::helpClicked);

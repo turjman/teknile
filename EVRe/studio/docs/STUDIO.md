@@ -3695,7 +3695,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 
 Widgets that tests or the theme find carry fixed object names. Examples: `registers`, `measures`, `quickWrite`,
 `qwValue`, `qwEnum`, `bitView`, `groups`, `plotShown`, `hold`, `measure`, `math`, `cursors`, `eventLog`, `notice`,
-`detail`, `sideScroll`, `sidebar`, `pill`, `primary`, `danger`, `valuePace`, `formScroll`, `helpTopics`,
+`detail`, `sideScroll`, `sidebar`, `sidebarHelp`, `pill`, `primary`, `danger`, `valuePace`, `formScroll`, `helpTopics`,
 `mapIssues`, `autoSend`, `deviceInfo`, `mapDevicesText`, `problem` (the bus dialogs' problem line), `mapSlave`,
 `monitorDevice`, `monitorFunction`, `registersDevice`, `liveDevice`, `chartDisplay`, `chartNormalise`, `chartSmooth`,
 `chartHoverValues` (the Display menu's actions), `chartRam`, `ramNeed`, `menuTitle` (a menu's title label).
