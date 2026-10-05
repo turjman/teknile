@@ -3,8 +3,17 @@
 #include "ui/chart_tab.h"
 
 #include <QActionGroup>
+#include <QApplication>
+#include <QClipboard>
+#include <QFileDialog>
+#include <QInputDialog>
+#include <QProgressDialog>
+#include <QThread>
+#include <QThreadPool>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QDoubleValidator>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -37,6 +46,7 @@
 #include "ui/chart_widget.h"
 #include "ui/event_log.h"
 #include "ui/math_line_dialog.h"
+#include "ui/recording_window.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 
@@ -115,7 +125,8 @@ QComboBox *lengthBox(const QList<double> &presets) {
 
 } // namespace
 
-ChartTab::ChartTab(std::function<double()> clock, QWidget *parent) : QWidget(parent) {
+ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
+	: QWidget(parent), group_(settingsGroup), clock_(clock) {
 	auto *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(0, 12, 0, 0);
 	layout->setSpacing(8);
@@ -140,8 +151,16 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent) : QWidget(par
 
 	connectControls();
 	restoreSettings();
-	mathLines_.load(); /* compiled and drawn once the map's registers come (setRegisters) */
+	mathLines_.load(settingKey("math")); /* compiled and drawn once the map's registers come (setRegisters) */
 }
+
+ChartTab::~ChartTab() {
+	if (!job_) return;
+	job_->cancel = true; /* the thread holds the job, not this tab: let it end before the tab goes */
+	while (!job_->done.load()) QThread::msleep(5);
+}
+
+ChartView *ChartTab::view() const { return chart_->view(); }
 
 /* ----------------------------------------------------------------- building */
 
@@ -214,10 +233,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addWidget(mutedLabel(tr("Window")));
 	row->addWidget(window_);
 	row->addSpacing(6);
-	row->addWidget(mutedLabel(tr("Memory")));
+	memoryLabel_ = mutedLabel(tr("Memory"));
+	row->addWidget(memoryLabel_);
 	row->addWidget(memory_);
 	row->addSpacing(6);
-	row->addWidget(mutedLabel(tr("RAM")));
+	ramLabel_ = mutedLabel(tr("RAM"));
+	row->addWidget(ramLabel_);
 	row->addWidget(ram_);
 	row->addSpacing(6);
 	row->addWidget(ramNeed_, 1);
@@ -364,7 +385,7 @@ QWidget *ChartTab::buildMeasurements() {
 			QStringList hidden;
 			for (int c = ColAtA; c < MEASURE_COLUMNS; c++)
 				if (measures_->isColumnHidden(c)) hidden << QLatin1String(MEASURE_KEYS[c]);
-			QSettings().setValue(QStringLiteral("chart/measureColumns"), hidden);
+			QSettings().setValue(settingKey("measureColumns"), hidden);
 		});
 	}
 	measures_->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -396,7 +417,7 @@ void ChartTab::connectControls() {
 	connect(memory_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyMemoryText);
 	connect(ram_, &QComboBox::activated, this, [this] { applyRamText(); });
 	connect(drawingChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
-		QSettings().setValue(QStringLiteral("chart/drawing"), action->data().toInt());
+		QSettings().setValue(settingKey("drawing"), action->data().toInt());
 		applyDrawing(action->data().toInt());
 	});
 	connect(view, &ChartView::drawingFailed, this, [this](const QString &why) {
@@ -415,11 +436,11 @@ void ChartTab::connectControls() {
 	connect(ram_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyRamText);
 	connect(chart_, &ChartWidget::windowChangedByUser, this, [this](double seconds) {
 		window_->setEditText(secondsText(seconds));
-		QSettings().setValue(QStringLiteral("chart/window"), seconds);
+		QSettings().setValue(settingKey("window"), seconds);
 	});
 	connect(view, &ChartView::memoryChanged, this, [this](double seconds) {
 		memory_->setEditText(secondsText(seconds));
-		QSettings().setValue(QStringLiteral("chart/memory"), seconds);
+		QSettings().setValue(settingKey("memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
 		if (mode == YLog) {
@@ -448,12 +469,12 @@ void ChartTab::connectControls() {
 	});
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
-		QSettings().setValue(QStringLiteral("chart/smooth"), on);
+		QSettings().setValue(settingKey("smooth"), on);
 		showDisplayState();
 	});
 	connect(hoverValues_, &QAction::toggled, this, [this](bool on) {
 		chart_->view()->setHoverValues(on);
-		QSettings().setValue(QStringLiteral("chart/hoverValues"), on);
+		QSettings().setValue(settingKey("hoverValues"), on);
 		showDisplayState();
 	});
 
@@ -472,7 +493,7 @@ void ChartTab::connectControls() {
 	 * measuring: ticking them shows the measurements, hiding those takes the cursors away. */
 	connect(measureButton_, &QPushButton::toggled, this, [this](bool on) {
 		measurePanel_->setVisible(on);
-		QSettings().setValue(QStringLiteral("chart/measure"), on);
+		QSettings().setValue(settingKey("measure"), on);
 		if (on) updateMeasures();
 		else if (cursorsButton_->isChecked()) cursorsButton_->setChecked(false);
 	});
@@ -498,6 +519,17 @@ void ChartTab::connectControls() {
 	});
 	measureTimer_.start();
 
+	/* the right-click and the notes */
+	connect(view, &ChartView::menuRequested, this, &ChartTab::showChartMenu);
+	connect(view, &ChartView::noteEditRequested, this, &ChartTab::editNote);
+	connect(view, &ChartView::notesChanged, this, &ChartTab::notesChanged);
+	exportTimer_.setInterval(50);
+	connect(&exportTimer_, &QTimer::timeout, this, [this] {
+		if (!job_) return;
+		if (exportProgress_) exportProgress_->setValue(job_->permille.load());
+		if (job_->done.load()) exportDone();
+	});
+
 	/* the lines */
 	connect(clearButton_, &QPushButton::clicked, chart_, &ChartWidget::clearData);
 	connect(removeAllButton_, &QPushButton::clicked, this, &ChartTab::unplotAllRequested);
@@ -505,31 +537,50 @@ void ChartTab::connectControls() {
 
 void ChartTab::restoreSettings() {
 	QSettings settings;
-	chart_->setMemory(settings.value(QStringLiteral("chart/memory"), 60.0).toDouble());
+	chart_->setMemory(settings.value(settingKey("memory"), 60.0).toDouble());
 	memory_->setEditText(secondsText(chart_->memory()));
-	applyDrawing(settings.value(QStringLiteral("chart/drawing"), int(ChartView::Drawing::Auto)).toInt());
-	const int ram = settings.value(QStringLiteral("chart/ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
+	applyDrawing(settings.value(settingKey("drawing"), int(ChartView::Drawing::Auto)).toInt());
+	const int ram = settings.value(settingKey("ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
 	chart_->view()->setRamBudget(std::clamp(ram, int(ChartView::MIN_RAM_MB), maxRamMB()));
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
-	chart_->setWindow(settings.value(QStringLiteral("chart/window"), 30.0).toDouble());
+	chart_->setWindow(settings.value(settingKey("window"), 30.0).toDouble());
 	window_->setEditText(secondsText(chart_->window()));
-	smooth_->setChecked(settings.value(QStringLiteral("chart/smooth"), true).toBool());
+	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
 	chart_->setSmooth(smooth_->isChecked());
-	hoverValues_->setChecked(settings.value(QStringLiteral("chart/hoverValues"), true).toBool());
+	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
-	chart_->setYLog(settings.value(QStringLiteral("chart/yLog"), false).toBool());
-	if (!settings.value(QStringLiteral("chart/yAuto"), true).toBool()) {
-		chart_->setYManual(settings.value(QStringLiteral("chart/yMin"), 0.0).toDouble(),
-				settings.value(QStringLiteral("chart/yMax"), 1.0).toDouble());
+	chart_->setYLog(settings.value(settingKey("yLog"), false).toBool());
+	if (!settings.value(settingKey("yAuto"), true).toBool()) {
+		chart_->setYManual(settings.value(settingKey("yMin"), 0.0).toDouble(),
+				settings.value(settingKey("yMax"), 1.0).toDouble());
 	}
 	showYRange();
 	showMeasureColumns();
 	/* last: measured at once (the button's toggle), over the view restored above */
-	measureButton_->setChecked(settings.value(QStringLiteral("chart/measure"), false).toBool());
+	measureButton_->setChecked(settings.value(settingKey("measure"), false).toBool());
 	measurePanel_->setVisible(measureButton_->isChecked());
 }
 
 /* ----------------------------------------------------- what the window asks */
+
+void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int columns) {
+	recording_ = true;
+	chart_->view()->setRecording(true);
+	chart_->setClock(clock_, epochMs);
+	/* nothing comes after the file: no Live, no memory to set, nothing to clear */
+	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, ramNeed_,
+				clearButton_, removeAllButton_ })
+		w->hide();
+	{
+		const QSignalBlocker quiet(smooth_);
+		smooth_->setChecked(false);
+	}
+	smooth_->setEnabled(false);
+	chart_->setSmooth(false);
+	chart_->view()->setRamBudget(ramMB);
+	chart_->setMemory(std::max(1.0, t1 - t0));
+	registerLimit_ = columns;
+}
 
 void ChartTab::setRegisters(const QVector<RegDef> &registers) {
 	registers_ = registers;
@@ -672,7 +723,7 @@ void ChartTab::applyWindowText() {
 	seconds = std::clamp(seconds, MIN_TYPED_WINDOW, ChartView::MAX_SPAN);
 	chart_->setWindow(seconds);
 	window_->setEditText(secondsText(seconds));
-	QSettings().setValue(QStringLiteral("chart/window"), seconds);
+	QSettings().setValue(settingKey("window"), seconds);
 }
 
 QString ChartTab::yFieldText(double value, bool manual) {
@@ -725,7 +776,7 @@ void ChartTab::applyRamText() {
 	const int typed = preset >= 0 ? ram_->itemData(preset).toInt() : parseRam(ram_->currentText());
 	if (typed > 0) {
 		chart_->view()->setRamBudget(std::clamp(typed, int(ChartView::MIN_RAM_MB), maxRamMB()));
-		QSettings().setValue(QStringLiteral("chart/ramMB"), chart_->view()->ramBudget());
+		QSettings().setValue(settingKey("ramMB"), chart_->view()->ramBudget());
 	}
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
 }
@@ -740,7 +791,7 @@ void ChartTab::applyMemoryText() {
 	chart_->setMemory(seconds);
 	memory_->setEditText(secondsText(chart_->memory()));
 	window_->setEditText(secondsText(chart_->window())); /* the view fits in the memory */
-	QSettings().setValue(QStringLiteral("chart/memory"), chart_->memory());
+	QSettings().setValue(settingKey("memory"), chart_->memory());
 }
 
 void ChartTab::showYRange(bool save) {
@@ -757,11 +808,11 @@ void ChartTab::showYRange(bool save) {
 	}
 	if (!save) return;
 	QSettings settings;
-	settings.setValue(QStringLiteral("chart/yAuto"), !manual);
-	settings.setValue(QStringLiteral("chart/yLog"), chart_->yLog());
+	settings.setValue(settingKey("yAuto"), !manual);
+	settings.setValue(settingKey("yLog"), chart_->yLog());
 	if (manual) {
-		settings.setValue(QStringLiteral("chart/yMin"), chart_->yLo());
-		settings.setValue(QStringLiteral("chart/yMax"), chart_->yHi());
+		settings.setValue(settingKey("yMin"), chart_->yLo());
+		settings.setValue(settingKey("yMax"), chart_->yHi());
 	}
 }
 
@@ -885,13 +936,145 @@ QString ChartTab::measuredRangeText() const {
 }
 
 void ChartTab::showMeasureColumns() {
-	const QStringList hidden = QSettings().value(QStringLiteral("chart/measureColumns")).toStringList();
+	const QStringList hidden = QSettings().value(settingKey("measureColumns")).toStringList();
 	for (QAction *action : measureColumns_->actions()) {
 		const int column = action->data().toInt();
 		const QSignalBlocker quiet(action); /* not saved again column by column, the later ones not yet shown */
 		action->setChecked(!hidden.contains(QLatin1String(MEASURE_KEYS[column])));
 		measures_->setColumnHidden(column, !action->isChecked());
 	}
+}
+
+void ChartTab::showSpan(double t0, double t1) {
+	chart_->view()->showSpan(t0, t1);
+	window_->setEditText(secondsText(chart_->window()));
+	memory_->setEditText(secondsText(chart_->memory()));
+}
+
+/* -------------------------------------------------------- the right-click menu */
+
+void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
+	if (chartMenu_) chartMenu_->deleteLater();
+	chartMenu_ = new QMenu(this);
+	chartMenu_->setObjectName(QStringLiteral("chartMenu"));
+	chartMenu_->setToolTipsVisible(true);
+	chartMenu_->addAction(tr("Copy picture"), this, &ChartTab::copyPicture);
+	chartMenu_->addAction(tr("Save picture…"), this, [this] {
+		const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
+				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+		const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
+		if (file.isEmpty()) return;
+		if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
+		else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
+	});
+	double t0, t1;
+	bool cursors;
+	chart_->view()->range(t0, t1, cursors);
+	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, [this] {
+		const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
+				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+		const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
+		if (!file.isEmpty()) exportCsv(file);
+	});
+	exportAction->setToolTip(cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
+			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)"));
+	exportAction->setEnabled(!job_);
+	chartMenu_->addAction(tr("Add note here"), this, [this, time] { addNoteAt(time); });
+	chartMenu_->addSeparator();
+	chartMenu_->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); });
+	RecordingWindow::fillRecentMenu(chartMenu_->addMenu(tr("Recent recordings")),
+			[this](const QString &file) { emit openRecordingRequested(file); });
+	chartMenu_->popup(globalPos);
+}
+
+QImage ChartTab::picture() const { return chart_->view()->grab().toImage(); } /* grab(): drawn by the CPU */
+
+void ChartTab::copyPicture() const { QApplication::clipboard()->setImage(picture()); }
+
+bool ChartTab::savePicture(const QString &file) const { return picture().save(file, "PNG"); }
+
+bool ChartTab::exportCsv(const QString &file) {
+	if (job_) return false;
+	const ChartView *view = chart_->view();
+	double t0, t1;
+	bool cursors;
+	view->range(t0, t1, cursors);
+	/* the samples copied here (a memory copy, quick); written out as text on a thread: that is the slow part */
+	QVector<recording::Line> lines = view->samples(t0, t1);
+	qint64 samples = 0;
+	for (const recording::Line &line : std::as_const(lines)) samples += line.times.size();
+	auto job = std::make_shared<ExportJob>();
+	job->file = file;
+	job_ = job;
+	exportProgress_ = new QProgressDialog(tr("Exporting %1 samples to %2…").arg(samples).arg(QFileInfo(file).fileName()),
+			tr("Cancel"), 0, 1000, this);
+	exportProgress_->setObjectName(QStringLiteral("exportProgress"));
+	exportProgress_->setWindowTitle(tr("Export to CSV"));
+	exportProgress_->setWindowModality(Qt::WindowModal);
+	exportProgress_->setMinimumDuration(400); /* a quick one shows nothing */
+	exportProgress_->setAutoClose(false);
+	exportProgress_->setAutoReset(false);
+	connect(exportProgress_, &QProgressDialog::canceled, this, &ChartTab::cancelExport);
+	const qint64 epoch = view->epochMs();
+	QThreadPool::globalInstance()->start([job, lines = std::move(lines), epoch] {
+		qint64 rows = 0;
+		QString error;
+		const bool ok = recording::write(job->file, lines, epoch, job->cancel,
+				[&job](double part) { job->permille = int(part * 1000); }, rows, error);
+		job->rows = rows;
+		job->error = ok ? QString() : error.isEmpty() ? QStringLiteral("cancelled") : error;
+		job->done = true; /* last: the rest is read once this is seen */
+	});
+	/* the notes of that span, kept beside it once it is written */
+	exportNotes_.clear();
+	for (const ChartNote &note : view->notes())
+		if (note.time >= t0 && note.time <= t1) exportNotes_ << note;
+	exportTimer_.start();
+	return true;
+}
+
+void ChartTab::cancelExport() {
+	if (job_) job_->cancel = true;
+}
+
+void ChartTab::exportDone() {
+	exportTimer_.stop();
+	const std::shared_ptr<ExportJob> job = std::move(job_);
+	if (exportProgress_) exportProgress_->deleteLater();
+	exportProgress_ = nullptr;
+	const QString where = QDir::toNativeSeparators(job->file);
+	QString error = job->error == QLatin1String("cancelled") ? tr("cancelled") : job->error;
+	if (error.isEmpty()) {
+		QString notesError;
+		if (!recording::saveNotes(job->file, exportNotes_, chart_->view()->epochMs(), notesError))
+			emit logged(LogLevel::Warning, tr("the notes not saved beside %1: %2").arg(where, notesError));
+		RecordingWindow::remember(job->file); /* opened as a recording (Recent recordings) */
+		emit logged(LogLevel::Info, tr("chart exported: %1 rows to %2").arg(job->rows).arg(where));
+	} else {
+		emit logged(LogLevel::Warning, tr("chart not exported to %1: %2").arg(where, error));
+	}
+	emit exported(job->file, job->rows, error);
+}
+
+/* ------------------------------------------------------------------ the notes */
+
+void ChartTab::addNoteAt(double time) {
+	const QDateTime at = QDateTime::fromMSecsSinceEpoch(chart_->view()->epochMs() + qint64(std::llround(time * 1000)));
+	bool ok = false;
+	const QString text = QInputDialog::getText(this, tr("Add note"),
+			tr("A note at %1:").arg(at.toString(QStringLiteral("HH:mm:ss.zzz"))), QLineEdit::Normal, QString(), &ok);
+	if (ok && !text.trimmed().isEmpty()) chart_->view()->addNote(time, text.trimmed());
+}
+
+void ChartTab::editNote(int index) {
+	const QVector<ChartNote> &notes = chart_->view()->notes();
+	if (index < 0 || index >= notes.size()) return;
+	bool ok = false;
+	const QString text = QInputDialog::getText(this, tr("Edit note"), tr("The note's text (empty: removed):"),
+			QLineEdit::Normal, notes[index].text, &ok);
+	if (!ok) return;
+	if (text.trimmed().isEmpty()) chart_->view()->removeNote(index);
+	else chart_->view()->setNoteText(index, text.trimmed());
 }
 
 /* ----------------------------------------------------------- the math lines */

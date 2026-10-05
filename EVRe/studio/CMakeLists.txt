@@ -45,6 +45,7 @@ target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPor
 qt_add_library(evre_studio_core STATIC
     src/model/expr.h            src/model/expr.cpp
     src/model/math_lines.h      src/model/math_lines.cpp
+    src/model/recording_file.h  src/model/recording_file.cpp
     src/model/register_model.h  src/model/register_model.cpp
     src/model/map_document.h    src/model/map_document.cpp
     src/ui/bus_panel.h          src/ui/bus_panel.cpp
@@ -67,6 +68,7 @@ qt_add_library(evre_studio_core STATIC
     src/ui/math_line_dialog.h   src/ui/math_line_dialog.cpp
     src/ui/formula_completer.h  src/ui/formula_completer.cpp
     src/ui/chart_tab.h          src/ui/chart_tab.cpp
+    src/ui/recording_window.h   src/ui/recording_window.cpp
     src/ui/monitor_tab.h        src/ui/monitor_tab.cpp
     src/ui/map_table_model.h    src/ui/map_table_model.cpp
     src/ui/name_table.h         src/ui/name_table.cpp

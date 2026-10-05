@@ -78,6 +78,8 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [7.7 Cursors A and B](#77-cursors-a-and-b)
     - [7.8 Mouse and keyboard](#78-mouse-and-keyboard)
     - [7.9 Legend, labels and the info line](#79-legend-labels-and-the-info-line)
+    - [7.10 The right-click menu: pictures and export](#710-the-right-click-menu-pictures-and-export)
+    - [7.11 Notes](#711-notes)
   - [8. Measurements](#8-measurements)
     - [8.1 The range](#81-the-range)
     - [8.2 The values](#82-the-values)
@@ -107,6 +109,8 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [12.2 Which columns](#122-which-columns)
     - [12.3 The format](#123-the-format)
     - [12.4 Timing](#124-timing)
+    - [12.5 Notes beside a recording](#125-notes-beside-a-recording)
+    - [12.6 Opening a recording](#126-opening-a-recording)
   - [13. Polling performance and tuning](#13-polling-performance-and-tuning)
     - [13.1 What a poll is](#131-what-a-poll-is)
     - [13.2 The interval](#132-the-interval)
@@ -296,6 +300,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Monitor | Every frame sent and received. Raw reads and writes, to any slave address or as a broadcast. |
 | Log | Every event in a tab and in a daily file. Pop-ups for warnings and errors; the same message pops up at most every 30 s (11.3). |
 | CSV | One row per poll of the registers you choose (per frame with auto send). |
+| Recordings | A recording (or an export of the chart) opened in a window of its own with its chart, measurements and notes, while the live chart goes on; the chart's view or A → B exported to CSV; pictures of the chart; notes on the chart, kept beside a recording (7.10, 7.11, 12.6). |
 | API | Port 1220: JSON lines by register name. Port 1219: EVRe pass-through for existing EVRe clients. |
 | Speed | All device I/O runs on its own thread with a high-resolution poll clock. Registers are merged into block reads and polls can overlap. Auto send: one device sends its read-only block by itself, up to 4000 frames/s (13.8). |
 
@@ -1179,7 +1184,9 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Chart | Drag, left button | Pan through the memory, and hold. |
 | Chart | Wheel | Zoom the time by 1.25 per notch. Live, the right edge stays at now. Held, the zoom is around the time under the mouse. |
 | Chart | Ctrl + wheel | Zoom Y around the mouse (switches to Manual). |
-| Chart | Double-click | Y back to Auto. |
+| Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
+| Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
+| Note's tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
 | Legend (chips overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
 | Legend scroll bar | Click / drag | Bring the thumb under the mouse, then drag it. |
 | Legend arrows | Click | Scroll half a row that way. |
@@ -1190,7 +1197,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Anywhere | F1 | Help. |
 | Register table | Enter / Esc / F2 | Write the edited value / cancel the edit / start an edit. |
 
-The chart itself takes no keyboard input.
+The chart takes one key: **Delete** (or Backspace) removes the note clicked last (7.11).
 
 ### 7.9 Legend, labels and the info line
 
@@ -1204,6 +1211,52 @@ The chart itself takes no keyboard input.
 - **Info line.** It starts with the registers on the chart of the limit at the rate now (*32/64 plotted*) and the math lines, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
+
+### 7.10 The right-click menu: pictures and export
+
+A right-click on the chart opens its menu:
+
+| Item | What it does |
+|---|---|
+| **Copy picture** | The chart as shown, legend, axes and memory strip included, onto the clipboard. |
+| **Save picture…** | The same as a PNG file (the suggested name is `chart_<yyyyMMdd_HHmmss>.png`). Its size is the chart's in the screen's pixels: 2700 px wide for a 1200 px chart at 225 %. |
+| **Export to CSV…** | The samples of every line on the chart, plotted registers and math lines, over the view, or between the cursors (A → B) when both are placed. |
+| **Add note here** | A note at the time under the mouse (7.11). |
+| **Open recording…** | A recording in a window of its own (12.6). |
+| **Recent recordings** | The last 8 recordings opened or exported, newest first. |
+
+**The pictures are painted by the CPU**, the plot too, also while a graphics card draws the chart on the screen: they
+are what the CPU would show, the same lines, grid and tags.
+
+**The export** is in the recording's format (12.3): `time_s,datetime,NAME [unit],…`, a column per line (a math line
+as named on the chart, `ƒ P [W]`), so it opens as a recording too (12.6). Only the samples the chart keeps are
+there (its Memory, 7.3), as they are, not resampled:
+
+- **Rows.** The samples are merged by time. A row starts at the earliest sample not written yet; a sample of each
+  other line joins it when it is no later than a quarter of that line's own interval after it (its median gap):
+  the registers of one poll share their row, and a line of another rate gets rows of its own. A row's `time_s` is its
+  earliest sample's; a cell with no sample is empty.
+- **Notes.** The notes in the span are written beside it, `<file>.notes.json` (12.5).
+- **On a thread.** The samples are copied at once (a memory copy); writing them as text runs on a thread of its own,
+  so the window goes on. When it takes more than a moment, a progress dialog shows, with **Cancel**: a cancelled
+  export removes its file. Another export waits until this one ends (its menu item is disabled meanwhile).
+- The Log says *chart exported: 1000 rows to <file>*, and the file joins the recent recordings.
+
+### 7.11 Notes
+
+A note marks a moment on the chart with a few words: *pump on*, *valve shut*.
+
+- **Add one:** right-click the chart at that time, **Add note here**, and type its text. It is a dashed line in the
+  warning colour at that time and a tag with the text at the bottom of the plot (a long text is cut to 180 px; the
+  tag stands left of its line at the plot's right edge).
+- **Move it:** drag its tag. **Edit it:** double-click its tag (an empty text removes it). **Remove it:** click its
+  tag (its edge turns to the accent colour) and press **Delete**.
+- Notes are times, as the cursors are: in a live view they move left with the data, and a note older than the
+  memory is no longer shown. **Clear** leaves them.
+- A graphics card draws them too: the line on the card, the tag as a picture, as the cursors' tags.
+- **Kept beside a recording.** While a CSV recording runs, the live chart's notes from its start on are written
+  beside it at every change, `<recording>.notes.json` (12.5); an export writes the notes of its span beside it. A
+  recording opened shows its notes, and saves them again at every change. Notes made otherwise are not saved.
 
 ## 8. Measurements
 
@@ -1309,7 +1362,7 @@ The **ƒ Math** menu lists every line as `P = SUPPLY_V * SUPPLY_I`. A line whose
 - **Edit…**
 - **Remove**
 
-Math lines are kept in the settings (`chart/math`), not in the map. They are saved at every change and come back at the next start. They are compiled again whenever the map changes. A line that names registers the current map does not have shows its error and is not drawn. It works again with a map that has them.
+Math lines are kept in the settings (`chart/math`; a recording's window keeps its own, `recording/math`, 12.6), not in the map. They are saved at every change and come back at the next start. They are compiled again whenever the map changes. A line that names registers the current map does not have shows its error and is not drawn. It works again with a map that has them.
 
 On the chart, a math line is named `ƒ P`. Math lines take colours from the end of the palette, while registers take them from its start. Up to 64 math lines are drawn. More are kept, but not drawn.
 
@@ -1521,6 +1574,9 @@ start (one *map loaded*), not after the one chosen last.
 | Writes, refusals, cancels, raw writes (6.5) | Info / Error |
 | `CSV recording started`, `CSV recording stopped: 1200 rows in <path>` | Info |
 | `CSV recording not started: <why>` (also a message box) | Error |
+| `recording opened: <path>` | Info |
+| `chart exported: 1000 rows to <path>`, `chart picture saved to <path>` | Info |
+| `chart not exported to <path>: <why>` (cancelled too), `notes not saved beside <path>: <why>` | Warning |
 | `API server started` | Info |
 | `API server not started: <why>` | Error |
 | `math line P = SUPPLY_V * SUPPLY_I` | Info |
@@ -1569,7 +1625,7 @@ While another tab is shown, the Log tab's title counts the warnings and errors l
 
 ### 12.1 Starting and stopping
 
-**● Record CSV**, in the *Polling & recording* card, asks for a file. The suggested name is `evre_<yyyyMMdd_HHmmss>.csv` in your home folder. An existing file is overwritten.
+**● Record CSV**, in the *Polling & recording* card, asks for a file. Beside it, **Open** opens a recording (12.6). The suggested name is `evre_<yyyyMMdd_HHmmss>.csv` in your home folder. An existing file is overwritten.
 
 - While recording, the button reads **■ Stop recording**. The card shows *Recording 15 columns · 1234 rows* and the file's name.
 - **■ Stop recording** closes the file. The card then says *Saved 1234 rows to <path>*.
@@ -1615,6 +1671,51 @@ time_s,datetime,DEVICE_ID,STATUS,CONFIG,MSG_CNT,UPTIME [ms],SUPPLY_V [V],SUPPLY_
 - **Rows are written in the I/O thread.** The window's drawing never delays a row, and CSV gets every poll.
 - **The file is flushed every 250 ms** and when the recording stops.
 - **A failed read keeps the last good value.** When a read times out, that poll's row still carries the register's last good value. A row therefore shows what the Studio knew at the end of the poll, not proof of a fresh read. To find gaps, compare `time_s` with the interval, and check the Log for timeouts.
+
+### 12.5 Notes beside a recording
+
+The chart's notes (7.11) are kept in a file beside the recording, its name with `.notes.json` added
+(`run.csv.notes.json`). While a recording runs, the live chart's notes from its start on are written there at
+every change and when it stops; an export writes the notes of its span. No note: no file.
+
+```json
+{
+    "format": "evre-notes/1",
+    "notes": [
+        { "time_s": 130.5, "datetime": "2026-10-05T09:00:30.500", "text": "valve shut" }
+    ]
+}
+```
+
+`time_s` is on the recording's own clock, the column of the same name; `datetime` is there to be read.
+
+### 12.6 Opening a recording
+
+A recording, or an export of the chart (7.10), opens in a **window of its own**: its chart, with Measure, cursors,
+math lines, notes and the right-click menu as on the Chart tab. The live chart goes on meanwhile, and several
+recordings can be open.
+
+- **Open it:** **Open** beside **● Record CSV** (*Open recording…*, or one of the last 8 recordings), **Open
+  recording…** or **Recent recordings** on the chart's right-click menu, or drop a `.csv` on the window.
+- **Read on a thread.** A progress dialog shows while a big file is read, with **Cancel**. A file that is not a
+  recording (its first line is not `time_s,datetime,…`) says so.
+- **The RAM applies.** A recording takes about 39 bytes a sample: the chart's 23 (7.4) and the window's own copy of
+  the file's values (16), from which a math line or a field added later is computed. When the file's samples need
+  more than the chart's RAM, it asks: *Keep the last part: about the last 12 min of 1 h 30 min?* **Keep the last
+  part** reads from that place on; **Cancel** opens nothing.
+- **The window.** Its title is the file's name and its span: *run.csv · 2026-10-05 09:00:00 – 10:30:00 (1 h 30 min)*.
+  The line above the chart says the same, with the lines, the rows and the columns left out. The chart is held on
+  the whole recording: there is no Live, Memory, RAM, Clear or Remove all, and Smooth is off; Window, the wheel, a
+  drag and the memory strip move through it as through a held chart.
+- **The columns** come by their titles, `NAME [unit]` (a title without `[…]` has no unit). Each is a line; the first
+  64 are plotted, and the **Lines** menu shows or hides each. A cell that is empty is no sample. A column with a cell
+  that is not a number (a byte array's hex) is left out.
+- **With a map loaded,** a column named as one of its registers takes that register's definition: its value names
+  and fields. **Lines** then lists the fields of such a register (*Fields of CONFIG*) and plots one as a math line
+  (`CONFIG.MSG_ENABLE`, 31.4). A byte array of the map is left out.
+- **Its own settings.** The window's chart keeps its choices under `recording/…` (14.3): its Window, Y range, Measure
+  and columns, Display, and its **own math lines** (`recording/math`), computed from the file's values.
+- **Notes** beside the file (12.5) are shown, and saved again at every change.
 
 ## 13. Polling performance and tuning
 
@@ -1849,6 +1950,8 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/measure` | `false` | on change | Measure shown. |
 | `chart/measureColumns` | empty | on change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
 | `chart/math` | empty | on change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
+| `recording/…` | as `chart/…` | on change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
+| `recording/recent` | empty | at each open or export | The last 8 recordings opened or exported, newest first. |
 
 **Never saved, by design:**
 
@@ -3212,6 +3315,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/bus_file.h`, `.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
 | `src/model/expr.h`, `.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
 | `src/model/math_lines.h`, `.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
+| `src/model/recording_file.h`, `.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`, `.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
 | `src/api/api_server.h`, `.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
 | `src/ui/main_window.h`, `.cpp` | `MainWindow`: builds the window, wires the parts to the engine, sync per frame, writes, CSV, API, log |
@@ -3232,7 +3336,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/name_table.h`, `.cpp` | `NameTable`: value names or special values, Paste lines, Hex |
 | `src/ui/field_editor.h`, `.cpp` | `FieldEditor`: bit fields on the bit strip, their list and value names |
 | `src/ui/map_settings_dialog.h`, `.cpp` | `MapSettingsDialog(doc, onBus, parent)`: device, protocol and notes of the map, one undo step; on a bus its Slave box is disabled |
-| `src/ui/chart_tab.h`, `.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, chart settings |
+| `src/ui/chart_tab.h`, `.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, the right-click menu (pictures, export, notes), chart settings |
+| `src/ui/recording_window.h`, `.cpp` | `RecordingWindow`: a recording opened in a window of its own, its reading on a thread, the recent recordings |
 | `src/ui/chart_widget.h`, `.cpp` | `ChartView` (the chart) and `ChartWidget` (its wrapper) |
 | `src/ui/gpu_lines.h`, `.cpp` | `GpuLines`: the chart's plot drawn by a graphics card and shown as a layer of the window (Direct3D 11, a swap chain, DirectComposition) |
 | `src/ui/math_line_dialog.h`, `.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
@@ -3382,7 +3487,7 @@ names, kept in the same table as the functions) and constants, for the formula b
 
 **`MathLines`.**
 
-- `load` and `save` use the setting `chart/math`: one text per line, `name \t unit \t formula \t 1|0`. A missing
+- `load(key)` and `save` use the setting `chart/math` (`recording/math` for a recording's chart): one text per line, `name \t unit \t formula \t 1|0`. A missing
   fourth field means shown, for entries written by older versions.
 - `compile(registers)` compiles every line. A formula that does not parse, or that names a register the map does
   not have or one that is not numeric, keeps its reason in `error` and is not drawn. A formula that names no
@@ -3391,6 +3496,22 @@ names, kept in the same table as the functions) and constants, for the formula b
 - `registersRead()` lists the registers the active lines read.
 - `evaluate(samples, sink)` computes the points for one frame.
 - Line i is keyed `FIRST_CHART_KEY + i` (1 << 24) on the chart, clear of every register key (`regKey`). At most 64 lines are drawn.
+
+**`recording` (`recording_file.*`).** Nothing of the chart or a window; the reading and the writing run on a
+thread of their caller's, with a cancel flag and a progress callback (every 4096 rows).
+
+- `estimate(path)` reads the header and the first 200 rows (their length gives the rows of the whole file) and the
+  last 64 KB (the last row's time): a file of gigabytes is sized in a moment. `RecordingWindow` asks from it whether
+  to keep the last part.
+- `read(path, from)` reads the rows from the first whole row after byte `from`. A row whose time does not parse, or
+  goes back, is skipped. The first row's `datetime` less its `time_s` is the time base's zero (`epochMs`). A cell
+  that is not a number takes its column out (`skipped`).
+- `write(path, lines, epochMs)` merges the lines' samples into rows (7.10): each line's tolerance is `ROW_SHARE`
+  (0.25) of its median gap. Opened in text mode, as the recording is (the platform's line endings). Cancelled or
+  failed, the file is removed.
+- `splitTitle` / `title`: `NAME [unit]` and back (a comma becomes a semicolon).
+- `saveNotes` / `loadNotes`: `<file>.notes.json`, `evre-notes/1` (12.5); written whole with `QSaveFile`; no note: no
+  file.
 
 **`RegisterModel` / `RegisterFilter`.**
 
@@ -3446,10 +3567,11 @@ names, kept in the same table as the functions) and constants, for the formula b
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one definition by hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView` / `ChartWidget` | the chart (chapter 23) | `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` (tests: the measurements made, all of the table); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView` / `ChartWidget` | the chart (chapter 23) | `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()` | GUI test (with its completion) |
+| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`, `wordStart`, `shown` | GUI test |
 | `MonitorTab` | frame log and single requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog` / `Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
@@ -3650,7 +3772,7 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
 
 1. card
 2. grid (on a card: its labels only; the card draws the plot, 23.7)
-3. cursor span, then the lines (not on a card)
+3. cursor span, then the lines, then the notes (not on a card)
 4. cursors (not on a card)
 5. memory strip
 6. legend (the chips clipped to their part of the row, then the scroll bar and arrows when they overflow)
@@ -3768,8 +3890,9 @@ layer of the window over the chart (DirectComposition), which a card draws and s
 - **All of the plot.** `plotOnGpu` lists, in the layer's pixels, the background, the grid lines (crisp: on whole
   pixels, as the CPU's 1 px pen), the cursors' span (a bar as tall as the plot), the lines, the cursors' and the
   crosshair's dashed lines (`GpuLines::Layer`: segments of one width), then the pictures over them
-  (`GpuLines::Sprite`): the cursors' tags (`tagPicture`), the A-B bar with its text (`spanBarPicture`), the
-  crosshair's dots (`dotPicture`) and its box (`readout_`). A picture stays on the card while it is the same `QImage`
+  (`GpuLines::Sprite`): the cursors' tags (`tagPicture`), the notes' tags (`notePicture`, kept by their text, width
+  and look; their dashed lines with the cursors'), the A-B bar with its text (`spanBarPicture`), the crosshair's dots
+  (`dotPicture`) and its box (`readout_`). A picture stays on the card while it is the same `QImage`
   (`cacheKey`): the dots and tags once, the box when it is made again (23.6), the A-B bar when its text, its length or
   where the text stands changes (a live view moves both cursors alike, so the bar keeps its picture while it scrolls).
 - **The A-B bar** (7.7) is laid out once for both drawings (`spanBar`: the bar, the text's box, whether the text is
@@ -4149,6 +4272,31 @@ Three more steps cover several devices on one link (3.9, 3.10) and auto send (13
   Log, the card, in words too) while D1 is still polled. Close bus gives one device again, and the window connects
   back to the Python fake device for the steps after it.
 
+Phase-two steps, before the Map editor's: the recording format and a recording window.
+
+- **Recording files** (`recordingFiles`): three lines written (two a millisecond apart share 10 rows, a lone sample
+  has its own: 11 rows), the header `time_s,datetime,VOLTS [V],AMPS [A],SLOW; X` and the first row exactly, read back
+  the same (its time base's zero from the first row); a column of hex left out; the estimate from the head and the
+  tail within 5 % of the rows; a read from the middle keeps the last part; the notes saved and read back, none
+  left: no file.
+- **The right-click** (`chartMenuAndPictures`): its six items in order; Save picture's PNG and the clipboard's
+  picture the chart's size in pixels.
+- **Export** (`chartExport`): the view (1000 rows, two lines of a poll in each, the first row's time and values),
+  A → B with a note inside and one outside (only the inside one beside it), the file first in Recent recordings; 40
+  lines of 150 000 samples: the call returns at once, a second export is refused meanwhile, the progress dialog
+  shows, its Cancel ends it and removes the file.
+- **Notes** (`chartNotes`): Add note here answered, its tag at the time clicked, at the bottom of the plot; dragged
+  100 px it moves to that time; a double-click edits it; clicked and Delete removes it.
+- **Recording windows** (`recordingWindows`, the window connected to the fake device): a recording with the map's
+  SUPPLY_V, SUPPLY_I, LED_MODE, MSG_BUFFER and CONFIG and an UNKNOWN column with every tenth cell empty, a note beside
+  it and a math line in `recording/math`: titled with its name and span, held on 59.9 s without Hold; five lines
+  (MSG_BUFFER left out), LED_MODE with its value names, UNKNOWN made from its title with 540 samples; the math line
+  over all 600 rows; the note shown; a field of CONFIG from the Lines menu plotted from the file; a note added saved
+  beside it; a second dropped on the window while the live chart goes on; RAM 0: the question, the last part kept
+  (nothing), Cancel opens nothing; the recent list holds the last 8; **Open** beside Record CSV; a note added while
+  recording is written beside the recording at once and shown when it is opened. With `EVRE_TEST_SHOT` set it saves
+  `<prefix>_recording.png`.
+
 Some chart steps run on a Chart tab of their own, its clock standing still and moved by the test, fed samples
 made up for the check:
 
@@ -4179,12 +4327,12 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 297 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 316 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
 `<prefix>_fields.png` (CONFIG with its fields) and `<prefix>_bits.png` (with Bits ticked), and one of a chart on the
-Log scale, `<prefix>_log.png`.
+Log scale, `<prefix>_log.png`, and one of a recording's window, `<prefix>_recording.png`.
 
 ### 26.3 The API test
 

@@ -82,9 +82,14 @@ public:
 			QWidget *parent = nullptr);
 	~MainWindow() override;
 	void applyStartup(const Startup &startup);
+	/* a recording in a window of its own (recording_window.h): this file, or one chosen (empty); its registers matched
+	 * with the map loaded now */
+	void openRecording(const QString &file);
 
 protected:
 	void closeEvent(QCloseEvent *event) override;
+	void dragEnterEvent(QDragEnterEvent *event) override; /* a .csv dropped: opened as a recording */
+	void dropEvent(QDropEvent *event) override;
 	void resizeEvent(QResizeEvent *event) override;
 
 private:
@@ -209,6 +214,8 @@ private:
 	void stopRecord();
 	void onRecordStarted(bool ok, const QString &err);
 	void onRecordStopped(const QString &file, quint64 rows);
+	/* the live chart's notes since the recording started, beside it ("<file>.notes.json"), at every change */
+	void saveRecordingNotes();
 
 	/* the API server */
 	void setApiRunning(bool on);
@@ -271,6 +278,8 @@ private:
 	bool wantConnected_ = false;  /* Connect clicked and not Disconnect: a lost link is tried again */
 	bool retrying_ = false;       /* a reconnect by itself: not logged each time */
 	bool recording_ = false;
+	QString recordFile_;          /* the file being recorded into (asked for: startRecord; certain: onRecordStarted) */
+	double recordFrom_ = 0;       /* the time base when it started: the notes from then on go beside it */
 
 	/* the clocks */
 	FrameClock *frameClock_ = nullptr;

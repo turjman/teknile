@@ -56,8 +56,8 @@ public:
 	/* where evaluate() puts each point of a math line */
 	using PointSink = std::function<void(int chartKey, double time, double value)>;
 
-	/* the lines kept in the settings */
-	void load();
+	/* the lines kept in the settings, under `key` (a recording's chart keeps its own) */
+	void load(const QString &key = QStringLiteral("chart/math"));
 
 	const QVector<MathLine> &lines() const { return lines_; }
 	bool isEmpty() const { return lines_.isEmpty(); }
@@ -83,4 +83,5 @@ private:
 	void save() const;
 
 	QVector<MathLine> lines_;
+	QString key_ = QStringLiteral("chart/math");
 };
