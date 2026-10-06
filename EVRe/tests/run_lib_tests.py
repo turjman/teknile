@@ -868,7 +868,7 @@ def arm_stack_and_size(folder, skip):
                 'static_assert(sizeof(evre_guard_desc_t) == 24, "entry");\n'
                 'static_assert(sizeof(evre_guard_table_t) == 12, "table");\n'
                 'static_assert(sizeof(evre_guard_check_t) == 12, "check");\n')
-    sizes = subprocess.run(m7 + ['-c', probe, '-o', os.devnull], capture_output=True, text=True)
+    sizes = subprocess.run(m7 + ['-c', probe, '-o', os.path.join(folder, 'sizes_m7.o')], capture_output=True, text=True)
     return {'write': functions.get('evre_guard_check_write', 0), 'init': functions.get('evre_guard_check_init', 0),
             'stack': public.get('evre_guard_check_write', (0,))[0], 'sizes': sizes.returncode == 0}
 
@@ -908,7 +908,7 @@ def docs_checks(cc, folder, measured):
         bad = []
         for std in ('c++11', 'c++17'):
             r = subprocess.run([cc, '-std=' + std, '-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', folder, '-I', NEW, '-I', GUARD,
-                                '-c', source, '-o', os.devnull], capture_output=True, text=True)
+                                '-c', source, '-o', source + '.o'], capture_output=True, text=True)
             if r.returncode:
                 bad.append('%s: %s' % (std, r.stderr.strip()[:300]))
         check(not bad, 'docs: PROTOCOL.md\'s wiring of %s compiles as written (C++11, C++17, -Wpedantic -Werror)%s'
