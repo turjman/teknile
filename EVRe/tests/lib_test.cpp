@@ -20,6 +20,13 @@
  *                           device bank takes broadcasts, as in 1.0, and
  *                           STATUS says so (D-24); with -DMIRROR too, STATUS
  *                           goes out as the mirror holds it, as in 1.0 (D-25)
+ *   -DGUARD_CHECK           (with TRANSCRIPT and USE_RANGES) EVRe Guard part 2,
+ *                           the check alone, wired as the write handler with a
+ *                           neutral table over the 35 writable bytes; with
+ *                           -DGUARD_BAD_TABLE a table init refuses. Compared
+ *                           with the same build without a handler, every line
+ *                           must be the same but for the classes of
+ *                           GUARD_CLASSES (run_lib_tests.py).
  *   -DFEATURES              1.1 only: ranges, the handlers, EVRe Guard, a frame
  *                           for each order of steps the transcript cannot tell
  *                           apart, and one or more for each decision of stage 2
@@ -36,6 +43,9 @@
 #include "EVRe.h"
 #ifdef FEATURES
 #include "evre_guard.h"
+#endif
+#ifdef GUARD_CHECK
+#include "evre_guard_desc.h"
 #endif
 
 static int failed = 0;
@@ -118,6 +128,36 @@ static uint32_t hash(bool all) {
 	return h;
 }
 
+#ifdef GUARD_CHECK
+/* A neutral table over the writable block 0xD0DC..0xD0FE: every type, limits, a special, a bytes register and a
+ * gap. run_lib_tests.py's guard_verdict() is the same table in Python, worked out independently. */
+static const uint32_t guardValues[] = { 0x00000000UL };
+static const evre_guard_desc_t guardRegs[] = {
+	/* addr, size, type, flags, n_values, spare1, first_value, spare2, min, max, zero_bits */
+	{ 0xD0DCu, 1u, EVRE_GUARD_U8, 0u, 1u, 0u, 0u, 0u, 0x0000000AUL, 0x000000F0UL, 0UL },
+	{ 0xD0DDu, 1u, EVRE_GUARD_I8, 0u, 0u, 0u, 0u, 0u, 0xFFFFFF9CUL, 0x00000064UL, 0UL },
+	{ 0xD0DEu, 2u, EVRE_GUARD_U16, 0u, 0u, 0u, 0u, 0u, 0x00000000UL, 0x00007FFFUL, 0UL },
+	{ 0xD0E0u, 2u, EVRE_GUARD_I16, 0u, 0u, 0u, 0u, 0u, 0xFFFFFC18UL, 0x00002710UL, 0UL }, /* -1000 .. 10000 */
+	{ 0xD0E2u, 4u, EVRE_GUARD_U32, 0u, 0u, 0u, 0u, 0u, 0x00000000UL, 0xFFFFFFFFUL, 0UL },
+	{ 0xD0E6u, 4u, EVRE_GUARD_F32, 0u, 0u, 0u, 0u, 0u, 0xFF7FFFFFUL, 0x7F7FFFFFUL, 0UL },
+	{ 0xD0EAu, 8u, EVRE_GUARD_BYTES, 0u, 0u, 0u, 0u, 0u, 0UL, 0UL, 0UL },
+	/* 0xD0F2, 0xD0F3: a gap */
+	{ 0xD0F4u, 2u, EVRE_GUARD_U16, 0u, 0u, 0u, 0u, 0u, 0x00000000UL, 0x0000FFFFUL, 0UL },
+	{ 0xD0F6u, 4u, EVRE_GUARD_I32, 0u, 0u, 0u, 0u, 0u, 0x80000000UL, 0x7FFFFFFFUL, 0UL },
+	{ 0xD0FAu, 4u, EVRE_GUARD_F32, 0u, 0u, 0u, 0u, 0u, 0xC47A0000UL, 0x447A0000UL, 0UL }, /* -1000 .. 1000 */
+	{ 0xD0FEu, 1u, EVRE_GUARD_U8, 0u, 0u, 0u, 0u, 0u, 0x00000000UL, 0x000000FFUL, 0UL },
+};
+#ifdef GUARD_BAD_TABLE
+static const evre_guard_table_t guardTable = { guardRegs, guardValues, 11u, 0u }; /* a list past the value list */
+#else
+static const evre_guard_table_t guardTable = { guardRegs, guardValues, 11u, 1u };
+#endif
+static evre_guard_check_t guardCheck;
+static uint8_t checkWrite(evre_base_t *d, uint16_t off, const uint8_t *bytes, uint16_t cnt) {
+	return evre_guard_check_write(&guardCheck, d, off, bytes, cnt);
+}
+#endif
+
 static void printAnswer(const char *what, unsigned a, unsigned b, unsigned c, unsigned d, uint8_t ret, const uint8_t *out, uint16_t len) {
 	std::printf("%s %02X %04X %u %u -> %u %u:", what, a, b, c, d, ret, len);
 	for (uint16_t i = 0; i < len; ++i) std::printf("%02X", out[i]);
@@ -143,6 +183,10 @@ int main() {
 	static const evre_range_t ranges[] = { { 0xD000, 220, ro, 0 }, { 0xD0DC, 35, rw, 1 } };
 	dev.D_RANGES = ranges;
 	dev.D_RANGE_CNT = 2;
+#ifdef GUARD_CHECK
+	evre_guard_check_init(&guardCheck, &guardTable, &dev); /* refused on a mirror and for the bad table: on purpose */
+	dev.WRITE_HANDLER = checkWrite;
+#endif
 #else
 	dev.D000 = new uint8_t *[255];
 	for (unsigned i = 0; i < 220; ++i) dev.D000[i] = &ro[i];

@@ -1,0 +1,3 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* A stand-in for avr-g++, which has no C++ library: EVRe.cpp checks std::is_standard_layout. Only the AVR build sees it. */
+namespace std { template <class T> struct is_standard_layout { static const bool value = __is_standard_layout(T); }; }

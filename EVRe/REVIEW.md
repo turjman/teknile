@@ -66,6 +66,28 @@ to G.6, each with a pull request into `evre-1.1`.
   Guard refuses a newer table. Measured with arm-none-eabi-g++ 13.2 for a Cortex-M7 at `-Os`: 504 B for
   `evre_guard_check_write`, 610 B for `evre_guard_check_init`, 1447 B for the whole unit; 56 B of stack for the
   check.
+- **G.2** (the proof, plan phase P2), all in `tests/run_lib_tests.py`:
+  - the transcript: the 12 096 frames of 1.0 through the check alone with a neutral table, as a device, taking
+    broadcasts, as a mirror and with a bad table, against the same 1.1 builds without a handler. Every line that
+    differs falls in a class of `GUARD_CLASSES`, worked out in Python from the frame's own bytes: G-VALUE (D-26), G-PART
+    (D-30), G-UNCOVERED (D-31), G-SETUP (D-38), G-BCAST (D-40), G-MIRROR (D-39); each changed line is checked for its
+    code, its answer or silence, and the memory as it was;
+  - `tests/guard_fuzz.cpp`: four devices in step (A the login, B the login and the check, C the check alone, N no
+    handler) on a random valid table from the seed, B against A and C against N, every verdict the oracle's (a map of
+    the bank, a linear walk, int64_t and double compares), the logins equal, every accepted register allowed, the
+    library never 15; random bad tables and overlapping ranges must fail init. 2 seeds x 300 000 cases at -O1 and
+    -O2, and 2 x 50 000 under the sanitizers on Linux: 0 failures, every class seen;
+  - `tests/guard_mutants.py`: 30 mutants, one per decision or rule (the NaN test, max and min, signed compare, sign
+    extension, big endian, the part and gap rules, the list, the reserved bank, a bad table, each init rule, the
+    order with the login, `EVRE_HANDLED`, the first register only, the search, mirrors, -0.0, the f32 key, the ranges'
+    order and fit, the count). Each fails a feature check of its decision and the fuzz;
+  - the build matrix: 380 builds (g++, `-m32`, a Cortex-M7, a Cortex-M0, `avr-g++` with the stand-in headers of
+    `tests/avr`; C++11 to C++20; `-O0` to `-O3`, `-Os`; the library, parts 1 and 2 and a device) with `-Wall -Wextra
+    -Wpedantic -Werror`, 0 warnings; R3 (no heap by `nm`, no recursion by `-fcallgraph-info`, no goto, no cast of the
+    data pointer) and R4 (ASCII, LF);
+  - measured on the Cortex-M7: at `-Os` part 2 is 1358 B of code, `evre_guard_check_write` 56 B of stack (the limit is
+    96 B); with the firmware's `-Oz -flto`, a device with parts 1 and 2 linked has the guarded write path at about
+    116 B (main 48, the write handler 56 with the login and the check inlined, the clock look 12).
 
 ## After review round 2: your decisions D-25 and N11
 

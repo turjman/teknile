@@ -496,13 +496,16 @@ static void spans() {
 			&& std::memcmp(rw + 0x18, name, 8) == 0, "D-30: any part of a bytes register may be written");
 
 	snap(dev);
-	check(ask(&dev, WRITE_ACK, GAP, 1, data) == PERMISSION_DENIED && untouched(dev), "D-31: a gap: 3");
+	check(ask(&dev, WRITE_ACK, GAP, 1, data) == PERMISSION_DENIED && untouched(dev) && evre_guard_check_last(&chk, &addr, &why)
+			&& addr == GAP && why == EVRE_GUARD_WHY_NOT_WRITABLE, "D-31: a gap: 3, the reason NOT_WRITABLE at the gap");
 	snap(dev);
 	check(ask(&dev, WRITE_ACK, I16, 4, data) == PERMISSION_DENIED && untouched(dev),
 			"D-31: a write across the gap after a good register: 3, none stored");
 	snap(dev);
-	check(ask(&dev, WRITE_ACK, RO, 1, data) == PERMISSION_DENIED && untouched(dev),
-			"D-31: a read-only register inside a writable range (the library cannot see it): 3");
+	check(ask(&dev, WRITE_ACK, RO, 1, data) == PERMISSION_DENIED && untouched(dev) && evre_guard_check_last(&chk, &addr, &why)
+			&& addr == RO && why == EVRE_GUARD_WHY_NOT_WRITABLE,
+			"D-31: a read-only register inside a writable range (the library cannot see it): 3, NOT_WRITABLE");
+
 	snap(dev);
 	check(ask(&dev, WRITE_ACK, PAST, 4, data) == PERMISSION_DENIED && untouched(dev), "D-31: a span past the last entry: 3");
 	evre_guard_check_last(&chk, &addr, &why);
@@ -658,6 +661,7 @@ static void init() {
 		{ "a type of 0", [](evre_guard_desc_t *r, uint32_t *) { r[0].type = 0; } },
 		{ "a type of 9", [](evre_guard_desc_t *r, uint32_t *) { r[0].type = 9; } },
 		{ "a size that is not the type's", [](evre_guard_desc_t *r, uint32_t *) { r[2].size = 1; } },
+		{ "a u8 entry of 2 bytes (its limits fit 16 bits)", [](evre_guard_desc_t *r, uint32_t *) { r[2].type = EVRE_GUARD_U8; } },
 		{ "a bytes register of 0 bytes", [](evre_guard_desc_t *r, uint32_t *) { r[8].size = 0; } },
 		{ "a bytes register with limits", [](evre_guard_desc_t *r, uint32_t *) { r[8].max = 1; } },
 		{ "a bytes register with a list", [](evre_guard_desc_t *r, uint32_t *) { r[8].n_values = 1; } },
@@ -683,16 +687,20 @@ static void init() {
 		{ "an f32 list with NaN", [](evre_guard_desc_t *, uint32_t *v) { v[2] = 0x7FC00000UL; } },
 		{ "an entry past 0xDFFF", [](evre_guard_desc_t *r, uint32_t *) { r[8].size = 0x1000; } },
 	};
-	bool all = true;
+	bool all = true, later = true;
 	for (const Change &change : changes) {
 		std::memcpy(copy, regs, sizeof regs);
 		std::memcpy(vals, values, sizeof values);
 		change.apply(copy, vals);
 		const evre_guard_table_t bad = { copy, vals, N_REGS, 3 };
-		all = refusedTable(bad, change.what) && all;
+		const bool spare = std::strstr(change.what, "spare") != nullptr || std::strstr(change.what, "flag") != nullptr
+				|| std::strstr(change.what, "zero_bits") != nullptr;
+		(spare ? later : all) = refusedTable(bad, change.what) && (spare ? later : all);
 	}
-	check(all, "D-38: every init rule on its own (27 tables, one field changed each): init refuses it, and then every write to "
+	check(all, "D-38: every init rule on its own (25 tables, one field changed each): init refuses it, and then every write to "
 			"the device bank is refused (3) while CONFIG still lands");
+	check(later, "D-42: a spare member, a flag bit or zero_bits not 0 (kept for later parts): init refuses the table, as an "
+			"older Guard refuses a newer one");
 	const evre_guard_table_t noRegs = { nullptr, values, 1, 3 };
 	const evre_guard_table_t zeroRegs = { regs, values, 0, 3 };
 	const evre_guard_table_t tooMany = { regs, values, 0x1001, 3 };
@@ -735,6 +743,11 @@ static void init() {
 	other.D_RANGE_CNT = 2;
 	check(evre_guard_check_init(&c, &twoTable, &other) == PERMISSION_DENIED,
 			"D-41: a range table set after protocolInit() and out of order: init refuses it");
+	static const evre_range_t overlapping[2] = { { 0xD000, 0x10, a, 1 }, { 0xD008, 16, b, 0 } };
+	other.D_RANGES = overlapping;
+	check(evre_guard_check_init(&c, &twoTable, &other) == PERMISSION_DENIED,
+			"D-41: a range table set after protocolInit() whose ranges overlap (a read-only one over a writable one): init "
+			"refuses it, though each entry lies in a writable range");
 	other.D_RANGES = adjacent;
 	check(evre_guard_check_init(&c, &twoTable, &other) == PERMISSION_DENIED,
 			"D-41: an entry across two adjacent writable ranges: refused (a register lies in one block of memory)");
@@ -865,6 +878,7 @@ static void lockBuild() {
 #endif
 
 int main() {
+	std::setvbuf(stdout, nullptr, _IONBF, 0); /* every line out before a crash (a mutant that reads past the frame) */
 	wire();
 	values_();
 	floats();

@@ -46,6 +46,12 @@ the `evre-sim` simulator and the `evre` Python package.
   frames of the 1.0 transcript, `FUZZ_CLASSES` and a tag in `fuzz_test.cpp` for the fuzz), and the class checks the
   new answer of every frame it covers. A `FEATURES` check in `lib_test.cpp` fails without the change and passes with
   it. A change that is meant to change nothing (a refactor) passes the fuzz with identical output.
+- **EVRe Guard's register checks (part 2) carry their proof too.** A change of what they answer gets a class in
+  `GUARD_CLASSES` (`run_lib_tests.py`), worked out from a frame's inputs alone, for the transcript and for the oracle
+  of `tests/guard_fuzz.cpp`; a check in `tests/guard_desc_test.cpp` named by its decision; and a mutant in
+  `tests/guard_mutants.py` that the check and the fuzz both catch. The Guard compiles with `-Wall -Wextra -Wpedantic
+  -Werror` on the build matrix: g++, `-m32`, `arm-none-eabi-g++` (a Cortex-M7 and a Cortex-M0) and `avr-g++` (with
+  the two stand-in headers of `tests/avr`), C++11 to C++20, `-O0` to `-O3` and `-Os`.
 
 ## Tests
 
@@ -53,7 +59,7 @@ Every change comes with its tests, and all of them pass on Linux and Windows (`.
 
 | Test | Run |
 |---|---|
-| the&nbsp;library | `python tests/run_lib_tests.py`: the 1.0 transcript, features, EVRe Guard (the login, and the register checks of `tests/guard_desc_test.cpp`), public names, warnings (`--old DIR`: the 1.0 library, by default the frozen copy in `tests/lib_1.0`) |
+| the&nbsp;library | `python tests/run_lib_tests.py`: the 1.0 transcript, features, EVRe Guard (the login, and the register checks: their checks, transcript, oracle fuzz, mutants, build matrix), public names, warnings (`--old DIR`: the 1.0 library, by default the frozen copy in `tests/lib_1.0`; `--skip m32,arm-none-eabi-g++,avr-g++`: compilers of the matrix not to use, as the Windows run does; a missing one not named there fails the run) |
 | a&nbsp;library&nbsp;change | `python tests/run_lib_tests.py --fuzz <the library before the change> [--fuzz-cases 300000]`: against the library before it, every line the same, or in a decided class and checked |
 | the&nbsp;public&nbsp;names&nbsp;alone | `g++ -std=c++11 -Wall -Wextra -Werror -I lib -I lib/guard tests/api_compat.cpp lib/EVRe.cpp lib/guard/evre_guard.cpp lib/guard/evre_guard_desc.cpp -o api_compat && ./api_compat` |
 | `protocolConfigure` | `tests/configure_test.cpp`: `protocolInit` with a device's own `protocolConfigure`, run by `run_lib_tests.py` on Linux; on MinGW, where an override of a weak function is not reliable, only compiled |
