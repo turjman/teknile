@@ -237,9 +237,14 @@ def main():
                         su = os.path.join(os.getcwd(), 'evre_fast.su')
                     if os.path.exists(su):
                         sizes = [int(line.split('\t')[1]) for line in open(su) if '\t' in line]
-                        check(sizes and max(sizes) <= 64, 'its stack: at most %d bytes a call' % max(sizes or [0]))
+                        # 64-bit Windows: a function that calls another keeps 32 bytes more, the calling convention's
+                        # room for the callee's arguments (MinGW says 80 for the frame builder)
+                        limit = 64 + (32 if os.name == 'nt' else 0)
+                        check(sizes and max(sizes) <= limit, 'its stack: at most %d bytes a call' % max(sizes or [0]))
         # the frames through the Studio's parser and the block's rules
-        env = dict(os.environ, EVRE_FAST_FRAMES=frames)
+        # QT_FORCE_STDERR_LOGGING: on Windows QtTest writes its results for a debugger, and nothing to a stdout
+        # that is not a console, unless it is told to write them out
+        env = dict(os.environ, EVRE_FAST_FRAMES=frames, QT_FORCE_STDERR_LOGGING='1')
         r = subprocess.run([fast_test, 'helperFrames'], capture_output=True, text=True, env=env)
         check(r.returncode == 0 and 'PASS   : FastTest::helperFrames()' in r.stdout,
               "the helper's frames through the Studio's parser and the block's rules %s" %

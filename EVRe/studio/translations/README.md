@@ -23,6 +23,10 @@ one finished. The GUI test fails while a message is unfinished or empty, or when
   A text with two counts says them as labels instead: «الخطوط: %2 · الصفوف: %3».
 - Numbers keep Western digits and a decimal point; units, symbols, register names, addresses, file names, code and the
   JSON keys stay as they are.
+- A number with a Latin prefix or unit beside an Arabic word is laid out piece by piece, right to left: "10.0 k" comes
+  out as "k 10.0", and "(+32 ppm)" loses its brackets' order. Such a piece goes between the characters U+2066 and
+  U+2069 (a left-to-right isolate; invisible in the file) in the translation: `%1 k` in «%1 k عينة/ث», `(%2)` in
+  «%1 (%2)». A line that starts with such a piece then still counts as Arabic, and sits at the right.
 - The glossary used: register مسجّل, map خريطة, device جهاز, link وصلة, poll استطلاع, chart مخطط, line خط, sample
   عينة, cursor مؤشر, Log (the tab) السجل, Log (the column) تسجيل, Plot رسم, trigger القدح, arm تجهيز, lane مسار, fold (a lane) طيّ, strip (a folded lane) شريحة, scroll bar شريط التمرير, separator (between lanes) خط فاصل, options (a lane's ⋯) خيارات, note ملاحظة,
   recording تسجيل, broadcast بث, slave التابع, token رمز الدخول, In flight قيد الإرسال, Auto send الإرسال التلقائي, Monitor (the tab) المراقبة, Decoded فك الترميز, fast stream تدفق سريع (Fast streams, the card: التدفقات السريعة), block (of a stream) كتلة, window (of a stream) نافذة, channel قناة, record (one instant of a stream's channels) سجلّ, lost (samples) مفقودة, fast line خط سريع, gap (in a line) فجوة, mapped (a file, into memory) يُربط بالذاكرة, cut off (a file) مقطوع, Streams (the Map settings page) التدفقات, ppm (kept as it is). Commands are verbal nouns (رسم المعروض, إعادة التشغيل الآن), not imperatives; a singular reads "واحد", not "%n" after the noun.

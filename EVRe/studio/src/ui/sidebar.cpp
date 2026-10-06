@@ -864,7 +864,9 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 		} else {
 			const QString ppm = QStringLiteral("%1%2 ppm").arg(f->ppm >= 0 ? QStringLiteral("+") : QString())
 					.arg(qRound(f->ppm));
-			row.rate->setText(QStringLiteral("%1 (%2)").arg(samples(f->rate), ppm));
+			/* a text of its own for the line's direction alone: Arabic keeps "(+32 ppm)" one left-to-right piece */
+			row.rate->setText(tr("%1 (%2)", "a stream's rate and its correction: 10.0 k samples/s (+32 ppm)")
+					.arg(samples(f->rate), ppm));
 			row.rate->setToolTip(tr("The samples a second as the Studio's clock measures the device's: the rate the "
 					"device was set to, corrected by %1 parts in a million.\n%2 samples in %3 blocks since Start; "
 					"%4 bad blocks; %5 samples not shown (the window did not take them in time).").arg(ppm).arg(f->records)
