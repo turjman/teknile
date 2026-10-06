@@ -1378,8 +1378,10 @@ repeating wave held still.
 
 - **The level** is a dashed line in the line's colour: in the line's own lane with Lanes (7.12), over the one plot in
   the line's Y scale without. Its **tag** at the plot's right end names the line, the level in its unit and the edge:
-  *I_LOAD 1.20 A, rising*. **Drag** the line or the tag up or down: the level follows from where it was taken. It is
-  kept within the plot when the range does not reach it, so it can always be found.
+  *I_LOAD 1.20 A, rising*. **Drag** the line or the tag up or down: the level follows from where it was taken, and
+  the trigger watches the new level at once, before the mouse is let go. It is kept within the plot when the range
+  does not reach it, so it can always be found. Where the crossing's **T** marker (below) stands at the plot's top
+  under the tag, the tag moves left of it.
 - **The edge symbol** at the tag's right end (↑ rising, ↓ falling, ↕ either) is a button: a **click** takes the next
   edge. Over the tag the mouse is a pointing hand, the symbol is lit under it, and the tooltip says what a drag and a
   click do.
@@ -1404,7 +1406,9 @@ repeating wave held still.
 **The modes**, as a scope's:
 
 - **Auto** runs live while no crossing comes, holds on a crossing, and runs live again when none comes for a window's
-  length after the hold-off.
+  length after the next one could count (the hold-off and the view's fill passed, whichever is later), by the samples'
+  time: a line whose samples come late still holds from crossing to crossing. A view you held (**Hold**), dragged or
+  moved on the memory strip stays where you put it; a zoom keeps the trigger's.
 - **Normal** holds on each crossing and waits for the next; it never runs live by itself.
 - **Single** holds on the first crossing and stays: **Arm** for the next.
 
@@ -1422,7 +1426,9 @@ still running) or *auto: free running*.
 - **A fast line**'s crossing is looked for between each two of its records, never across a gap, by the engine as each
   block comes (13.9): the view holds on it at the next frame, at its record's time.
 - **What works on it.** It is a held view: the measurements (chapter 8), Export to CSV, the pictures, the histogram
-  and the spectrum all take it. **Live** follows now again; in Normal the next crossing holds it again.
+  and the spectrum all take it. **Live** follows now again (a crossing waiting for its view, a steady picture's, is
+  dropped); in Normal the next crossing holds it again. **Clear** keeps the trigger armed; a change of the window's
+  length (typed, the wheel) counts the next crossing after the new view's fill.
 - The line, each line's level and edge, the mode, the hold-off and the place are kept (`chart/trigger…`, 14.3); the
   trigger itself is off at each start. A recording's window has no trigger (its chips' menus do not offer it):
   nothing comes after its end.
@@ -3850,7 +3856,7 @@ pass-through checks compare frames byte for byte (chapter 26).
   cut the rate), `autoSendStopped()` (CONFIG shows it cleared). `Stats::autoSend` and `Stats::autoSendHz` give the
   sidebar its rate line.
 - Fast EVRe: `setFastTrigger(stream, watch)` (posted: the chart's trigger on a channel, -1 none; each block's crossings
-  in `FastBlock::crossings`, 23.10); `setFastStream(stream, on)` (posted; the stream's index in `DeviceMap::streams`); signals
+  in `FastBlock::crossings`, the blocks still queued scanned again by `rescanWaiting`, public for the tests, 23.10); `setFastStream(stream, on)` (posted; the stream's index in `DeviceMap::streams`); signals
   `fastStreamSet(stream, on, rate, err)`, `fastStreamNote(stream, text, stopped)` and `fastRecorded(text)` (a stream's
   recording beside the CSV closed, 12.7: `recordBlock` writes it); `Stats::fast`, one entry a
   stream (its state, the fitted rate and ppm, records/s, records, blocks, lost, bad and newer blocks, starts).
@@ -4024,7 +4030,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
 | `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` (23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
+| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` / `TriggerSettings` / `triggerPosition` / `triggerHoldoff` / `triggerMarkHovered` / `triggerEdgeHovered` / `triggerPending` (tests: a crossing waiting for its view) / `fastColumnsBinned` (tests) (`TRIGGER_AT`, `TRIGGER_AT_MAX`, `MAX_HOLDOFF`, `STEADY_WINDOW`; 23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` (signal `lineMenuRequested`), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastChannels` (a fast channel named: why it cannot be read, 9.5) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
@@ -4534,12 +4540,29 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   serial is not used. The engine follows the window's rule for the next crossing (`rearm`: the larger of the hold-off
   and the view's fill; Single: off after the first), so Normal and Auto go on without waiting for the window. The
   window's per-frame look at the records (before: `scanFastTrigger`) is gone.
+- **No crossing lost between the two.** A new watch would see only the blocks after it, while a frame's blocks (more
+  after the window's thread was held) wait in the queue, after the window's newest record, which the arm counts from:
+  `setFastTrigger` scans them again (`IoEngine::rescanWaiting`), the first paired with the record before it
+  (`FastBlock::before`, `TriggerScan::pairWith`). A block the queue drops (past `FAST_QUEUE_BYTES`) never reaches the
+  window: its last crossing arms the scan again from it (`TriggerScan::dropped`), else Single would wait for ever. A
+  crossing for this arm that `fastCrossings` cannot hold on (its record before is not in the store, as after a Clear,
+  or at or before the one held on) posts the watch again, and so does Clear. `from` is on the stream's clock: the
+  store shifts a new start that would begin before the last one ended (`Epoch::shift`), the clock does not, so
+  `fastTriggerWatch` takes `Store::newestShift` off and `markFast` posts again when a start is shifted.
+- **Changes while dragging** (`watchDue_`): a drag of the level or of the crossing's place changes the settings at
+  each mouse move but posts at the next `frame()` (and at the release), once: each post is a new arm, and one per move
+  dropped every crossing found meanwhile. The polled line's check in `append` reads the level at once.
 - **The modes** (`fireTrigger`): the view holds with the crossing at `triggerPosition_` of the window (`TRIGGER_AT`,
   20 %, by default; `TRIGGER_AT_MAX` 90 %): `viewEnd_` is after now while the samples after it come, so the plot
   fills from the left as an oscilloscope's does. Single then waits for `armTrigger`; Normal and Auto count the next
   crossing after `armedFrom` = the crossing + the larger of `holdoffSeconds()` (`triggerHoldoff_`, -1: the window's
-  length) and the view's fill, by the samples' time. Auto in `frame()`: armed, held, and no crossing a window's length
-  after `armedFrom`: `setLive(true)`. `triggerStateText` gives the state corner's words.
+  length) and the view's fill, by the samples' time. Auto in `frame()`: armed, held by a crossing (`Trigger::holding`,
+  set by `fireTrigger`, cleared by `setLive`, `holdAt` and `showSpan`: the user's Hold, a pan, the memory strip; a
+  zoom keeps it), and no crossing a window's length after `armedFrom` by `triggerTime()` (the line's newest sample's
+  time, as `armedFrom`; by the clock a fast line at a short window ran live at every other frame): `setLive(true)`.
+  `triggerArmed` and `triggerStateText` (the state corner's words) take the same time. Every change of `window_`
+  goes through `putWindow` (`setWindow`, `setMemory`, `showSpan`, the wheel's `zoomTime`): held on a crossing, Normal
+  and Auto count the next after the new fill, and the engine is given it.
 - **A steady picture** (`crossed`, `firePending`): a window under `STEADY_WINDOW` (1 s) already held on a crossing
   keeps a later crossing in `pending` until the line's newest sample reaches the end of that crossing's view, then
   holds on it (`frame()` looks at every frame, and so does the next crossing): every picture is whole, and a
@@ -4547,9 +4570,11 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   drawn before, none since (26.2). The binning of a re-trigger needed nothing: the view's bins are kept on absolute
   columns (23.2, 23.11), so a crossing that moves the view bins only the new columns; 50 re-triggers with no hold-off
   and the crossing at 90 % bin 40 columns each of a polled line's 200 in view, and the samples' columns of a fast
-  line (100 a frame of 998 in view) (`polledColumnsBinned`, `fastColumnsBinned`).
+  line (100 a frame of 998 in view) (`polledColumnsBinned`, `fastColumnsBinned`). `pending` is dropped by Live, Stop,
+  Arm, Clear and a change of the level, edge, hold-off or place: else it pulled a live view back to an older crossing.
 - **Drawn** by both paths from the same place (`triggerGeometry`: the line's plot, the level's height kept within it,
-  the level's tag at its right end, the marker's tag when the crossing is in view): the CPU draws a dashed line and
+  the level's tag at its right end, left of the marker's column where the two would meet, else under the marker; the
+  marker's tag when the crossing is in view): the CPU draws a dashed line and
   the tags' pictures (`triggerPicture`, `levelTagPicture`: the tag and its edge symbol, lit under the mouse), the card
   the same dashes with the cursors' and the pictures as sprites. The crossing's place (`drawTriggerMark`, a triangle
   on the time labels' row) lies under the plot, outside the card's layer: the CPU draws it on both paths.
@@ -5176,23 +5201,37 @@ Single falling holds at 102 + 5/12 and stays; Arm,
 Either: the next crossing; the level's line dragged to 0.8 moves the level, its box and its setting; off: the row
 hidden. With `EVRE_TEST_SHOT` set it saves `<prefix>_histogram.png`, `<prefix>_spectrum.png` and `<prefix>_trigger.png`.
 
-**Trigger v2** (`chartTriggerLines`, `chartTriggerModes`, `chartTriggerSteady`, on Chart tabs of their own). Per line:
+**Trigger v2** (`chartTriggerLines`, `chartTriggerModes`, `chartTriggerSteady`, `chartTriggerFast`, `chartTriggerAuto`,
+on Chart tabs of their own). Per line:
 two lines of other units; a line never set starts at its mid-range, rising; a right-click on its chip offers *Trigger
 on this line*, which turns the trigger on, armed on it, the row showing the same; each line keeps its level and edge
 (another chosen starts at its own, the first's come back), saved by name and read back by a new tab; the level's tag
-at the plot's right end on its line (*AMPS 0.600 A, falling*), dragged by it without lanes and in its own lane with
-Lanes on (the row and the setting follow); a pointing hand and a tooltip over the tag, its edge symbol lit under the
-mouse, a click takes the next edge. Modes: Auto runs live (*auto: free running*), holds on a step (*triggered*), is
+at the plot's right end on its line (*AMPS 0.600 A, falling*), dragged by it, taken off its middle, without lanes and
+in its own lane with Lanes on: the line follows the mouse's move, within a pixel (the row and the setting follow); a
+pointing hand and a tooltip over the tag, its edge symbol lit under the mouse, a click takes the next edge; a level
+dragged keeps all its digits through a change of the mode in the row; the hold-off and the place read back by a new
+tab, the one level saved before per-line levels taken over by its line, not over levels saved since. Modes: Auto runs live (*auto: free running*), holds on a step (*triggered*), is
 ready after the hold-off (*trigger: waiting*, still held), runs live a window's length later and holds on the next
 step; the crossing's place: the triangle at 20 % (a hand, a tooltip), dragged to 50 % the held view moves with it,
-clamped to 90 % and 0 %, the row's box follows and moves it; the hold-off: a 1 kHz sine in a 10 ms window holds 40 to
+clamped to 90 % and 0 %, the row's box follows and moves it; at 90 % with the level above the plot the level's tag
+lies left of the T marker; the hold-off: a 1 kHz sine in a 10 ms window holds 40 to
 51 times in 0.5 s (once a window, not once a cycle), and with a hold-off of 0 and the crossing at 90 % at least 200.
 A steady picture: the same sine fed as at 60 frames a second, 51 holds: every picture held after the first is whole;
 the re-trigger's binning: 50 re-triggers with no hold-off and the crossing at 90 %, fed 1 ms a frame, bin about the
-new samples' columns (at most twice the samples fed and 4 a frame polled, 1.2 times and 4 a frame fast), not the
-whole view. The Help's Chart page says how the trigger works (*Trigger on this line*, the modes, the hold-off). On
+new samples' columns (at most twice the samples fed and 4 a frame polled, 1.2 times and 4 a frame fast, at least
+0.8 of the columns the view moved by), not the whole view. On a fast line, the engine played by a `fast::TriggerScan`
+given each watch posted: the level dragged in ten moves posts once, at the next frame, and Single holds at the new
+level before the release; the place dragged posts once a frame and only when it moved; Clear with Single armed (a
+crossing at a block's first record, its record before cleared) and the next crossing holds; a new start 20 ms early
+(the store shifts it) and a step 7 ms into it holds; the wheel's zoom posts the new re-arm and the next crossing counts
+after the new fill; the scan alone: a crossing dropped with its block arms Single again, the blocks waiting scanned
+again for a new watch. Auto (`chartTriggerAuto`): samples 50 ms late, a 1 kHz sine in a 10 ms window stays held for
+60 frames; Live drops a crossing waiting for its view (the next hold after Live); Hold and a pan stay for 3 s with no
+crossing. The Help's Chart page says how the trigger works (*Trigger on this line*, the modes, the hold-off). On
 Windows the card's picture of the level's tag is compared with the CPU's (93 % of the 24 px blocks of its area, the
-lines under its edges included). With `EVRE_TEST_SHOT` set it saves `<prefix>_trigger_lane.png` (the tag in its lane).
+lines under its edges included), and of the dashed line's 8 px strip from the plot's left to the tag, at 11.5 where
+only two of the 12 lines reach. The language step measures the main window's minimum width with the trigger's row
+shown too. A recording window offers no trigger (no chip menu entry, no Display entry). With `EVRE_TEST_SHOT` set it saves `<prefix>_trigger_lane.png` (the tag in its lane).
 
 **Languages** (`languages`, after the Help step): every `.ts` in `translations/` has each message translated, finished
 and not empty, Arabic's numerus messages six forms, and each translation (each form) the English's `%1` placeholders,
@@ -5235,7 +5274,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 441 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 456 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

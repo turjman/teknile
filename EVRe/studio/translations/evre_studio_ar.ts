@@ -2443,7 +2443,7 @@ for rising, falling or either. Each line keeps its own level and edge.&lt;/p&gt;
 over it: &lt;b&gt;drag&lt;/b&gt; the small triangle under the chart to move it (0 to 90 %). In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held; &lt;b&gt;Live&lt;/b&gt;
-follows now again.&lt;/p&gt;
+follows now again. In Auto a view you hold or drag stays where you put it.&lt;/p&gt;
 &lt;h3&gt;Math lines&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;: a name, a unit and a formula over register names, e.g. &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; in W (the power; its area is the energy). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;, &lt;code&gt;pi&lt;/code&gt;, and abs sqrt
@@ -2573,7 +2573,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 يُحسب فيها عبور آخر. نقطة العبور عند 20 % من النافذة وفوقها &lt;b&gt;T&lt;/b&gt;: &lt;b&gt;اسحب&lt;/b&gt; المثلث الصغير تحت المخطط لتحريكها
 (من 0 إلى 90 %). وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
 عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
-المثبّت، و&lt;b&gt;مباشر&lt;/b&gt; يتبع الآن من جديد.&lt;/p&gt;
+المثبّت، و&lt;b&gt;مباشر&lt;/b&gt; يتبع الآن من جديد. وفي التلقائي يبقى العرض الذي تثبّته أو تسحبه حيث وضعته.&lt;/p&gt;
 &lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
