@@ -44,6 +44,7 @@
 #include <QCompleter>
 #include <QElapsedTimer>
 #include <QFocusEvent>
+#include <QFormLayout>
 #include <QFrame>
 #include <QHeaderView>
 #include <QHelpEvent>
@@ -2857,6 +2858,39 @@ private:
 			tabs->setCurrentIndex(MainWindow::TabMap);
 			doc->undoStack()->undo();
 			check(!doc->reg(u8Uid)->closed, "undo: open again");
+		}
+		/* the three Guard rows close the General form under a heading of their own, "Default" above it */
+		{
+			auto *heading = window_.findChild<QLabel *>(QStringLiteral("guardHeading"));
+			auto *pages = window_.findChild<QTabWidget *>(QStringLiteral("editorPages"));
+			if (pages) pages->setCurrentIndex(0);
+			editorTab->selectRegister(u8Uid);
+			QApplication::processEvents();
+			auto *form = heading && heading->parentWidget() ? qobject_cast<QFormLayout *>(heading->parentWidget()->layout()) : nullptr;
+			int row = -1;
+			QFormLayout::ItemRole role = QFormLayout::LabelRole;
+			if (form) form->getWidgetPosition(heading, &row, &role);
+			const auto rowOf = [&](QWidget *widget) {
+				int at = -1;
+				QFormLayout::ItemRole itsRole = QFormLayout::LabelRole;
+				if (form && widget) form->getWidgetPosition(widget, &at, &itsRole);
+				return at;
+			};
+			QLayoutItem *defaultLabel = form && row > 0 ? form->itemAt(row - 1, QFormLayout::LabelRole) : nullptr;
+			QLayoutItem *defaultBox = form && row > 0 ? form->itemAt(row - 1, QFormLayout::FieldRole) : nullptr;
+			auto *defaultName = defaultLabel ? qobject_cast<QLabel *>(defaultLabel->widget()) : nullptr;
+			QWidget *defaultField = defaultBox ? defaultBox->widget() : nullptr;
+			const bool shown = heading && heading->isVisible() && heading->text() == QLatin1String("EVRe Guard")
+					&& heading->toolTip().contains(QLatin1String("EVRe Guard"));
+			const bool rows = form && role == QFormLayout::SpanningRole && defaultName
+					&& defaultName->text() == QLatin1String("Default") && rowOf(choice) == row + 1
+					&& rowOf(closedBox) == row + 2 && rowOf(reservedBox) == row + 3 && form->rowCount() == row + 4;
+			const bool placed = rows && defaultField && choice && defaultField->y() < heading->y() && heading->y() < choice->y();
+			if (!shown || !rows || !placed)
+				std::printf("  heading shown: %d, its row %d of %d, rows in order: %d, below Default and above Past limits: %d\n",
+						shown, row, form ? form->rowCount() : -1, rows, placed);
+			check(shown && rows && placed, "Map editor: an \"EVRe Guard\" heading (with a tooltip) over Past limits, closed and "
+					"reserved_zero, which close the General form; Default above it");
 		}
 		/* the broadcast check of the window's map: part of a number is refused, as a device with EVRe Guard refuses it */
 		const QString part = broadcastRefusal({ &doc->map() }, regs_.danger.addr, 1);

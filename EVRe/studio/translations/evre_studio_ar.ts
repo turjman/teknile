@@ -2418,7 +2418,8 @@ cell set in one of them is set in all (a bulk edit). The red or amber dot: what 
 &lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
 JSON, also between maps.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, past limits, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
+scale, decimals, min, max, default, and under the heading &lt;i&gt;EVRe Guard&lt;/i&gt; what the device checks: past limits,
+closed, reserved_zero), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
 &lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
 the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
 amber past a limit, grey without one; hover it for a long value in full).
@@ -2447,7 +2448,8 @@ register is edited, as long as it is read the same way.&lt;/p&gt;
 &lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
 JSON، وبين الخرائط أيضًا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
-المعامل، المنازل العشرية، الأدنى، الأعلى، خارج الحدود، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
+المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي، وتحت العنوان &lt;i&gt;EVRe Guard&lt;/i&gt; ما يفحصه الجهاز: خارج الحدود،
+closed، reserved_zero)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
 &lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
 الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
 كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
@@ -5170,6 +5172,14 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>Reserved bits</source>
         <translation>البتات المحجوزة</translation>
+    </message>
+    <message>
+        <source>EVRe Guard</source>
+        <translation>EVRe Guard</translation>
+    </message>
+    <message>
+        <source>The device-side checks of EVRe Guard (library 1.1): what a device does with a value past the limits, a closed set of values, and reserved bits</source>
+        <translation>فحوص EVRe Guard على الجهاز (المكتبة 1.1): ما يفعله الجهاز بقيمة خارج الحدود، ومجموعة القيم المغلقة، والبتات المحجوزة</translation>
     </message>
 </context>
 <context>

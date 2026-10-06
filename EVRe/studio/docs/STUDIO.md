@@ -4647,7 +4647,9 @@ following; then a value 5 past its max is written without the question, and the 
 undo: refused again; the broadcast check refuses one byte of the 16-bit danger register (*writes only part of*) and
 lets both go; the *closed* and *reserved_zero* boxes, off, with tooltips naming EVRe Guard; *closed* ticked on the
 u8 register sets `"closed": true` in one undo step, the Registers table following, and 3 (inside min and max, but
-not listed) asks first, *outside the closed set of values*, Cancel writes nothing; undo: open again; Export: the
+not listed) asks first, *outside the closed set of values*, Cancel writes nothing; undo: open again; the heading
+*EVRe Guard* (`guardHeading`, with a tooltip) shown on the General page, a row across both columns below *Default*
+and above *Past limits*, and the three Guard rows the last of the form; Export: the
 EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the Export menu; the device
 table for library 1.1 (the bank on ranges, the Guard's entries tied to the image) and its item; *nan* typed
 into an `f32` register: the pop-up *not a finite number*, nothing sent.
@@ -4787,7 +4789,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 397 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 398 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5156,16 +5158,21 @@ it *not modified* again.
 
 The right side shows the selected register in full, over four pages. With no register selected it shows a note in
 the middle instead, in the warning colour: *No register selected*, and how to pick one. The General page scrolls
-when the window is short: its 21 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
+when the window is short: its 23 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
 shows its hint (*none*, *none: a number or a value name*), with any register selected.
 
 **General**: address, name, type, size, unit, access, write behaviour, group, description; *persist* (kept across a
 reset), *danger* (confirm every write), *show in hex*, *plot* (a line on the chart: untick for a value that does not
 change with time, `"plot": false`); scale and offset (shown = raw × scale + offset); decimals
-(*auto*, or a fixed number); min, max, past limits, *closed*, *reserved_zero* and default.
+(*auto*, or a fixed number); min, max and default; then, under a heading **EVRe Guard**, past limits, *closed* and
+*reserved_zero*, which close the form. These three rows say what a device with EVRe Guard (library 1.1) checks on
+its side, not how the Studio shows the value: the heading, a bold line with a rule under it in the border colour,
+says so, and its tooltip names the three checks.
 
 - **Min and max** are in shown units. A write past them from the window asks first (6.4); the API refuses it. A
   special value is always allowed.
+- **Default** is the value after a reset (with *persist*: the factory value): a number, or one of the register's
+  value names. The quick-write panel writes it with **Default** (5.1).
 - **Past limits** (`"past_limits"`) says what the device does with a value past min or max: *refused: the device
   refuses a value past them* (the default: a device with EVRe Guard answers 15), or *clamped: the device takes it
   and clamps it*: then the window, the API, `evre` and the Python package send such a value without asking, and the
@@ -5175,8 +5182,6 @@ change with time, `"plot": false`); scale and offset (shown = raw × scale + off
   other value asks first, and a device with EVRe Guard refuses it (15), whatever min and max say.
 - **reserved_zero** (`"reserved_zero"`): the bits no bit field covers must be written 0; a value with one set asks
   first, and a device with EVRe Guard refuses it (15). For a register with bit fields.
-- **Default** is the value after a reset (with *persist*: the factory value): a number, or one of the register's
-  value names. The quick-write panel writes it with **Default** (5.1).
 
 **Values** and **Bit fields**: chapter 31. **Notes**: longer text on the register, as long as needed, Markdown
 allowed. It goes into the export (chapter 32).

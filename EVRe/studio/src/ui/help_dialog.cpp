@@ -427,7 +427,8 @@ cell set in one of them is set in all (a bulk edit). The red or amber dot: what 
 <li><b>+ Register</b>, <b>Duplicate</b> (Ctrl+D), <b>Delete</b> (Del); Ctrl+C / Ctrl+V copy and paste registers as
 JSON, also between maps.</li>
 <li><b>The form</b> at the right: <i>General</i> (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, past limits, default), <i>Values</i> (value names, special values; <i>Paste lines</i> takes "0 off"),
+scale, decimals, min, max, default, and under the heading <i>EVRe Guard</i> what the device checks: past limits,
+closed, reserved_zero), <i>Values</i> (value names, special values; <i>Paste lines</i> takes "0 off"),
 <i>Bit fields</i> (drag across bits to make a field, click one to edit it), <i>Notes</i>. The card over them shows
 the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
 amber past a limit, grey without one; hover it for a long value in full).
