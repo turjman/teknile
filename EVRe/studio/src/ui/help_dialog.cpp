@@ -397,7 +397,7 @@ for rising, falling or either. Each line keeps its own level and edge.</p>
 over it: <b>drag</b> the small triangle under the chart to move it (0 to 90 %). In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held; <b>Live</b>
-follows now again.</p>
+follows now again. In Auto a view you hold or drag stays where you put it.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt

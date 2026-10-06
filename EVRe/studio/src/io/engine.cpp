@@ -145,6 +145,30 @@ QHash<RegKey, QVector<QPointF>> IoEngine::takeSamples() {
 
 void IoEngine::setFastTrigger(int stream, const fast::TriggerWatch &watch) {
 	for (int i = 0; i < fastRuns_.size(); i++) fastRuns_[i].trigger.set(i == stream ? watch : fast::TriggerWatch());
+	if (stream < 0 || stream >= fastRuns_.size()) return;
+	FastRun &run = fastRuns_[stream];
+	QMutexLocker lock(&crossThreadMutex_);
+	rescanWaiting(run.trigger, run.def, stream, fastBlocks_, run.state.clock().mark(), run.state.clock().period());
+}
+
+/* A frame's blocks wait for the window (more when its thread was held): scanned only for the watch before, a crossing
+ * in them after the window's newest record was lost to the new one. The times come from the clock as it is now: they
+ * only decide which crossings count, and the window takes each one's time from its own store. */
+void IoEngine::rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+		const fast::FastClock::Mark &mark, double period) {
+	bool first = true;
+	for (FastBlock &block : blocks) {
+		if (block.stream != stream) continue;
+		if (first) scan.pairWith(def, block.before); /* the record before it is the window's newest */
+		first = false;
+		fast::BlockTaken taken;
+		taken.first = block.first;
+		taken.count = block.count;
+		taken.newStart = block.newStart;
+		taken.lost = block.lost;
+		block.crossings.clear();
+		scan.scan(def, taken, block.records.constData(), mark, period, block.crossings);
+	}
 }
 
 QVector<IoEngine::FastBlock> IoEngine::takeFastBlocks() {
@@ -1116,6 +1140,10 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 	block.newStart = taken.newStart;
 	block.lost = taken.lost;
 	block.records = frame.data.mid(fast::HEADER);
+	const int size = run.def.recordSize();
+	if (taken.lost == 0 && !taken.newStart) block.before = run.lastRecord;
+	if (size > 0 && block.records.size() >= qsizetype(taken.count) * size)
+		run.lastRecord = block.records.mid(qsizetype(taken.count - 1) * size, size);
 	if (taken.newMark) {
 		block.marked = true;
 		block.markRecord = run.state.clock().mark().record;
@@ -1137,8 +1165,12 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 			FastBlock &next = fastBlocks_[gone + 1];
 			fastQueued_ -= old.records.size();
 			if (old.stream < fastRuns_.size()) fastRuns_[old.stream].notShown += quint64(old.count);
+			/* its trigger crossing never reaches the window: the scan waits for the next one instead */
+			if (old.stream < fastRuns_.size() && !old.crossings.isEmpty())
+				fastRuns_[old.stream].trigger.dropped(old.crossings.last());
 			if (next.stream == old.stream) {
 				next.newStart = next.newStart || old.newStart;
+				next.before.clear(); /* the window never has the record before it */
 				if (old.marked && !next.marked) {
 					next.marked = true;
 					next.markRecord = old.markRecord;

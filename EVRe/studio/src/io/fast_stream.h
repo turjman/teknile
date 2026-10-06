@@ -21,6 +21,7 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QVector>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -149,7 +150,9 @@ struct TriggerWatch {
 	int channel = 0;
 	double level = 0;       /* in the channel's shown value (scale and offset applied) */
 	int edge = 0;           /* 0 rising (from below the level to it or above), 1 falling, 2 either */
-	double from = 0;        /* crossings after this time count (the arm) */
+	/* crossings after this time count (the arm), on the stream's clock: the window's store shifts a start that would
+	 * begin before the one before ended (fast::Store), so the window takes that shift off */
+	double from = 0;
 	/* after a crossing at t, the next counts after t + rearm (the hold-off, the view's fill); < 0: none (Single: the
 	 * window arms it again) */
 	double rearm = -1;
@@ -170,12 +173,19 @@ public:
 	 * lost between them and the stream did not start again */
 	void scan(const StreamDef &def, const BlockTaken &taken, const char *records, const FastClock::Mark &mark,
 			double period, QVector<Crossing> &out);
+	/* the record before the next block scanned, as it came (empty: none to pair with): the blocks still waiting for
+	 * the window are scanned again for a new watch, the first of them paired with the record the window has before it */
+	void pairWith(const StreamDef &def, const QByteArray &record);
+	/* a crossing that went with a block the window never took (the engine's queue overflowed): the window did not
+	 * hold on it, so the scan is armed again from it (Single had stopped there; Normal and Auto waited its re-arm) */
+	void dropped(const Crossing &crossing);
 
 private:
 	TriggerWatch watch_;
 	bool hasLast_ = false;
 	int lastChannel_ = -1;
 	double last_ = 0;       /* the channel's value in the last record of the block before */
+	double counted_ = NAN;  /* the time of the last crossing counted */
 };
 
 /* A stream as a device sends it (evre-sim, the fake devices): blocks when full or BLOCK_AGE_MS old, a wave per

@@ -166,8 +166,14 @@ public:
 		quint64 markRecord = 0;
 		double markTime = 0, markPeriod = 0;
 		QVector<fast::Crossing> crossings; /* the chart's trigger crossing in it (setFastTrigger) */
+		QByteArray before;       /* the record before it, when it follows that one (nothing lost, the same start) */
 	};
 	QVector<FastBlock> takeFastBlocks();
+	/* the blocks of `stream` still waiting for the window, scanned again for a new watch (their crossings for the
+	 * one before are of no use): the window armed from its newest record, which comes before them. Public for the
+	 * tests. */
+	static void rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+			const fast::FastClock::Mark &mark, double period);
 	/* the monitor's lines since the last call (when monitoring), and how many
 	 * were dropped: at thousands of frames a second only the newest are kept */
 	QStringList takeFrames(int &dropped);
@@ -294,6 +300,7 @@ private:
 		RegDef enableReg, rateReg;  /* the map's registers it names; no name: none */
 		fast::FastStream state;
 		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
+		QByteArray lastRecord;      /* the last block's last record (FastBlock::before) */
 		bool wanted = false;
 		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
 		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */

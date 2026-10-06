@@ -1029,8 +1029,12 @@ void ChartTab::applyTrigger() {
 	if (triggerLine_->currentIndex() < 0) {
 		chart_->view()->stopTrigger();
 	} else {
-		chart_->view()->setTrigger(triggerLine_->currentData().toInt(), ok ? level : 0,
-				ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
+		/* the box shows the line's level to 6 digits: it is written back only when it says another (typed), so a level
+		 * dragged to 0.1234567 stays as it is through a change of the mode or an Arm */
+		const int key = triggerLine_->currentData().toInt();
+		const double kept = chart_->view()->triggerSettings(key).level;
+		const bool typed = ok && triggerLevel_->text().trimmed() != QString::number(kept, 'g', 6);
+		chart_->view()->setTrigger(key, typed ? level : kept, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
 				ChartView::TriggerMode(triggerMode_->currentData().toInt()));
 		QSettings settings;
 		settings.setValue(settingKey("triggerLine"), chart_->view()->lines().value(triggerLine_->currentIndex()).name);

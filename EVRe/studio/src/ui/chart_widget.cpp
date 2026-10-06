@@ -375,6 +375,12 @@ void ChartView::clearData() {
 	}
 	keptTotals_.clear();
 	totalsSince_ = NAN; /* the first sample from now on */
+	/* the trigger: a crossing waiting for its view lay in what went. The engine is armed again: its next crossing may
+	 * pair a block's first record with one cleared here, which the view cannot hold on (fastCrossings) */
+	if (trigger_.on) {
+		trigger_.pending = NAN;
+		postWatch();
+	}
 	seriesGeneration_++;
 	capped_ = false;
 	forgetRanges();
@@ -632,25 +638,40 @@ qint64 ChartView::appendFast(int stream, quint64 first, qsizetype count, const Q
 void ChartView::markFast(int stream, quint64 record, double time, double period) {
 	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
 	if (!store) return;
+	const double shift = store->newestShift();
 	store->mark(record, time, period);
 	for (Series &s : series_)
 		if (s.fast == store) sumFast(s); /* the first block's records have times from the first mark on */
+	/* a new start shifted after the one before: the engine's clock is not, so it is given the arm in its own terms */
+	const auto watched = series_.constFind(trigger_.key);
+	if (trigger_.on && store->newestShift() != shift && watched != series_.constEnd() && watched->fast == store) postWatch();
 }
 
 /* The crossings the engine found (fast::TriggerScan, with the same level, edge and re-arm as here), each at the time
- * this store gives its record: the view holds on them as on a polled line's crossing. One found for an older arm, or
- * at or before the crossing held on, is not used */
+ * this store gives its record: the view holds on them as on a polled line's crossing. One found for an older arm is
+ * not used. One for this arm that the view cannot hold on (its record before is not in the store, as after a Clear,
+ * or it lies at or before the crossing held on) is not dropped silently: the engine counted it (Single stopped there,
+ * Normal waits its re-arm), so the engine is armed again */
 void ChartView::fastCrossings(int stream, qint64 first, const QVector<fast::Crossing> &crossings) {
 	const auto it = series_.constFind(trigger_.key);
-	if (!trigger_.on || first < 0 || it == series_.constEnd() || !it->fast || it->fast != fastStores_.value(stream)) return;
+	if (!trigger_.on || it == series_.constEnd() || !it->fast || it->fast != fastStores_.value(stream)) return;
 	const fast::Store &store = *it->fast;
+	bool unused = false;
 	for (const fast::Crossing &crossing : crossings) {
+		if (crossing.serial != watchSerial_ || !trigger_.armed) continue;
 		const qsizetype i = qsizetype(first - store.dropped()) + crossing.record;
-		if (crossing.serial != watchSerial_ || !trigger_.armed || i < 1 || i >= store.size() || !store.hasTime()) continue;
+		if (first < 0 || i < 1 || i >= store.size() || !store.hasTime()) {
+			unused = true;
+			continue;
+		}
 		const double before = store.timeAt(i - 1), time = before + crossing.fraction * (store.timeAt(i) - before);
-		if (std::isfinite(trigger_.at) && time <= trigger_.at) continue;
+		if (std::isfinite(trigger_.at) && time <= trigger_.at) {
+			unused = true;
+			continue;
+		}
 		crossed(time, store.timeAt(store.size() - 1));
 	}
+	if (unused) postWatch();
 }
 
 fast::TriggerWatch ChartView::fastTriggerWatch(int &stream) const {
@@ -664,13 +685,14 @@ fast::TriggerWatch ChartView::fastTriggerWatch(int &stream) const {
 	watch.channel = it->channel;
 	watch.level = watched.level;
 	watch.edge = int(watched.edge);
-	watch.from = trigger_.armedFrom;
+	watch.from = trigger_.armedFrom - it->fast->newestShift(); /* on the stream's clock (TriggerWatch::from) */
 	watch.rearm = trigger_.mode == TriggerMode::Single ? -1 : std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
 	watch.serial = watchSerial_;
 	return watch;
 }
 
 void ChartView::postWatch() {
+	watchDue_ = false;
 	watchSerial_++;
 	emit fastTriggerChanged();
 }
@@ -781,10 +803,13 @@ void ChartView::frame() {
 	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
+	if (watchDue_) postWatch(); /* a drag's change to the engine, once a frame */
 	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
-	/* Auto: no crossing for a window's length since it was armed again (or since it was set): the view runs live */
-	if (trigger_.on && trigger_.mode == TriggerMode::Auto && trigger_.armed && !live_
-			&& clockNow() >= trigger_.armedFrom + window_)
+	/* Auto: held by a crossing, and no other for a window's length since it was armed again, by the samples' time as
+	 * the arm (a fast line's records come a block late: by the clock, a short window ran live at every other frame):
+	 * the view runs live. A view the user held or moved stays where it is */
+	if (trigger_.on && trigger_.mode == TriggerMode::Auto && trigger_.armed && !live_ && trigger_.holding
+			&& triggerTime() >= trigger_.armedFrom + window_)
 		setLive(true);
 	if (valuePacer_.due(valueClock_.elapsed())) {
 		for (Series &s : series_) {
@@ -831,17 +856,30 @@ void ChartView::setValuesPerSecond(int perSecond) {
 }
 
 void ChartView::setWindow(double seconds) {
-	window_ = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
-	if (window_ > memory_) setMemory(window_); /* the view must fit in the memory */
-	if (trigger_.on) postWatch(); /* the next crossing counts after the view's fill, the hold-off of the window's length */
+	const double window = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
+	if (window > memory_) setMemory(window); /* the view must fit in the memory */
+	putWindow(window);
 	refresh();
+}
+
+/* The trigger's next crossing counts after the view's fill and the hold-off (the window's length by default), from the
+ * last crossing: both follow the new length, here and in the engine. The wheel, a span shown and a smaller memory
+ * change it too */
+void ChartView::putWindow(double seconds) {
+	if (seconds == window_) return;
+	window_ = seconds;
+	if (!trigger_.on) return;
+	const double last = std::isfinite(trigger_.pending) ? trigger_.pending : trigger_.at;
+	if (trigger_.armed && std::isfinite(last) && trigger_.mode != TriggerMode::Single)
+		trigger_.armedFrom = last + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	postWatch();
 }
 
 void ChartView::setMemory(double seconds) {
 	const double clamped = std::clamp(seconds, MIN_MEMORY, MAX_SPAN);
 	if (clamped == memory_) return;
 	memory_ = clamped;
-	if (window_ > memory_) window_ = memory_;
+	if (window_ > memory_) putWindow(memory_);
 	emit memoryChanged(memory_);
 	refresh();
 }
@@ -849,6 +887,9 @@ void ChartView::setMemory(double seconds) {
 void ChartView::setLive(bool on) {
 	if (on == live_) return;
 	if (!on) viewEnd_ = lastViewEnd_; /* hold what is shown */
+	/* Live: a crossing waiting for its view must not pull the view back to it; held: by the user, not the trigger */
+	if (on) trigger_.pending = NAN;
+	trigger_.holding = false;
 	live_ = on;
 	emit liveChanged(live_);
 	refresh();
@@ -857,8 +898,9 @@ void ChartView::setLive(bool on) {
 void ChartView::showSpan(double t0, double t1) {
 	const double span = std::clamp(t1 - t0, MIN_WINDOW, MAX_SPAN);
 	if (span > memory_) setMemory(span);
-	window_ = std::min(span, memory_);
+	putWindow(std::min(span, memory_));
 	viewEnd_ = t1;
+	trigger_.holding = false;
 	if (live_) {
 		live_ = false;
 		emit liveChanged(false);
@@ -899,7 +941,10 @@ ChartView::TriggerSettings ChartView::triggerSettings(int key) const {
 
 void ChartView::setTriggerSettings(int key, const TriggerSettings &settings) {
 	triggerSettings_.insert(lineName(key), settings);
-	if (trigger_.on && key == trigger_.key) postWatch();
+	if (trigger_.on && key == trigger_.key) {
+		trigger_.pending = NAN; /* found by the settings before */
+		postWatch();
+	}
 	refresh();
 }
 
@@ -959,6 +1004,7 @@ void ChartView::armTrigger() {
 void ChartView::setTriggerLevel(double level) {
 	if (!trigger_.on) return;
 	watchedSettingsRef().level = level;
+	trigger_.pending = NAN;
 	postWatch();
 	refresh();
 }
@@ -994,12 +1040,20 @@ double ChartView::newestTime(int key) const {
 	return it->times.isEmpty() ? NAN : it->times.back();
 }
 
-bool ChartView::triggerArmed() const { return trigger_.on && trigger_.armed && clockNow() >= trigger_.armedFrom; }
+bool ChartView::triggerArmed() const { return trigger_.on && trigger_.armed && triggerTime() >= trigger_.armedFrom; }
+
+/* the trigger's now: the watched line's newest sample's time, as its arm and hold-off are (the samples come a poll or
+ * a block after their time); the clock's before the first */
+double ChartView::triggerTime() const {
+	const double newest = newestTime(trigger_.key);
+	return std::isnan(newest) ? clockNow() : newest;
+}
 
 double ChartView::holdoffSeconds() const { return triggerHoldoff_ < 0 ? window_ : triggerHoldoff_; }
 
 void ChartView::setTriggerHoldoff(double seconds) {
 	triggerHoldoff_ = seconds < 0 ? -1 : std::min(seconds, MAX_HOLDOFF);
+	trigger_.pending = NAN;
 	if (trigger_.on && trigger_.armed && std::isfinite(trigger_.at) && trigger_.mode != TriggerMode::Single)
 		trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
 	if (trigger_.on) postWatch();
@@ -1007,19 +1061,26 @@ void ChartView::setTriggerHoldoff(double seconds) {
 }
 
 void ChartView::setTriggerPosition(double fraction) {
-	triggerPosition_ = std::clamp(fraction, 0.0, TRIGGER_AT_MAX);
+	if (placeTrigger(fraction) && trigger_.on) postWatch();
+	refresh();
+}
+
+bool ChartView::placeTrigger(double fraction) {
+	const double place = std::clamp(fraction, 0.0, TRIGGER_AT_MAX);
+	if (place == triggerPosition_) return false;
+	triggerPosition_ = place;
+	trigger_.pending = NAN;
 	if (trigger_.on && std::isfinite(trigger_.at)) {
 		if (!live_) viewEnd_ = trigger_.at + (1 - triggerPosition_) * window_; /* held on it: the crossing moves along */
 		if (trigger_.armed && trigger_.mode != TriggerMode::Single)
 			trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
 	}
-	if (trigger_.on) postWatch();
-	refresh();
+	return true;
 }
 
 QString ChartView::triggerStateText() const {
 	if (!trigger_.on) return QString();
-	const bool ready = trigger_.armed && clockNow() >= trigger_.armedFrom;
+	const bool ready = trigger_.armed && triggerTime() >= trigger_.armedFrom;
 	if (ready && trigger_.mode == TriggerMode::Auto && live_) return tr("auto: free running");
 	return ready ? tr("trigger: waiting") : tr("triggered");
 }
@@ -1027,6 +1088,7 @@ QString ChartView::triggerStateText() const {
 void ChartView::setTriggerEdge(TriggerEdge edge) {
 	if (!trigger_.on) return;
 	watchedSettingsRef().edge = edge;
+	trigger_.pending = NAN;
 	postWatch();
 	refresh();
 }
@@ -1044,6 +1106,7 @@ void ChartView::fireTrigger(double time) {
 		live_ = false;
 		emit liveChanged(false);
 	}
+	trigger_.holding = true;
 	emit triggered(time);
 	refresh();
 }
@@ -1194,6 +1257,7 @@ void ChartView::holdAt(double end) {
 		return;
 	}
 	viewEnd_ = end;
+	trigger_.holding = false; /* the user's: Auto leaves it */
 	if (live_) {
 		live_ = false;
 		emit liveChanged(false);
@@ -1587,6 +1651,7 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	if (trigger_.on && triggerEdgeButton_.contains(pos)) {
 		TriggerSettings &watched = watchedSettingsRef();
 		watched.edge = TriggerEdge((int(watched.edge) + 1) % 3);
+		trigger_.pending = NAN;
 		postWatch();
 		emit triggerSettingsChanged();
 		refresh();
@@ -1608,12 +1673,12 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		drag_ = Drag::Note;
 		return;
 	}
-	/* on (or just by) the memory strip: the view goes there */
 	/* the trigger's place in the window: its mark dragged along the time labels */
 	if (trigger_.on && triggerMark_.contains(pos)) {
 		drag_ = Drag::Position;
 		return;
 	}
+	/* on (or just by) the memory strip: the view goes there */
 	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
 		drag_ = Drag::Overview;
 		mouseMoveEvent(e);
@@ -1710,13 +1775,18 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		(drag_ == Drag::CurA ? cursorA_ : cursorB_) = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
 		emit cursorsChanged();
 		break;
-	case Drag::Level: {
+	case Drag::Level: { /* the engine watches the new level from the next frame on, not after the release */
 		const double at = triggerAxes_.value(std::clamp(pos.y() - levelGrab_, triggerLane_.top(), triggerLane_.bottom()));
-		watchedSettingsRef().level = normalized_ ? triggerLo_ + at * (triggerHi_ - triggerLo_) : at;
+		const double level = normalized_ ? triggerLo_ + at * (triggerHi_ - triggerLo_) : at;
+		if (level != watchedSettingsRef().level) {
+			watchedSettingsRef().level = level;
+			trigger_.pending = NAN;
+			watchDue_ = true;
+		}
 		break;
 	}
 	case Drag::Position:
-		setTriggerPosition((pos.x() - plot.left()) / plot.width());
+		if (placeTrigger((pos.x() - plot.left()) / plot.width())) watchDue_ = true;
 		break;
 	case Drag::Note:
 		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
@@ -1781,6 +1851,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 
 void ChartView::mouseReleaseEvent(QMouseEvent *) {
 	const bool cursorLetGo = draggingCursor(), noteLetGo = drag_ == Drag::Note, levelLetGo = drag_ == Drag::Level;
+	if (watchDue_) postWatch(); /* the drag's last change, now */
 	if (drag_ == Drag::Position) emit triggerPositionChanged(triggerPosition_);
 	const bool borderLetGo = drag_ == Drag::LaneBorder;
 	drag_ = Drag::None;
@@ -1790,10 +1861,7 @@ void ChartView::mouseReleaseEvent(QMouseEvent *) {
 		return; /* the resize cursor stays while the mouse is on the separator */
 	}
 	if (noteLetGo) emit notesChanged();
-	if (levelLetGo) {
-		postWatch();
-		emit triggerSettingsChanged();
-	}
+	if (levelLetGo) emit triggerSettingsChanged();
 	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
 	if (cursorLetGo) emit cursorsChanged(); /* measured in full now: while dragged, A and B alone followed it */
 }
@@ -1829,15 +1897,17 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 void ChartView::zoomTime(double factor, double mouseX) {
 	const double newWindow = std::clamp(window_ * factor, MIN_WINDOW, memory_);
 	if (live_) { /* live: the right edge stays at now */
-		window_ = newWindow;
+		putWindow(newWindow);
 		return;
 	}
-	/* held: zoom around the time under the mouse */
+	/* held: zoom around the time under the mouse; held by the trigger, still the trigger's (Auto runs on) */
 	const QRectF plot = plotRect();
 	const double at = timeAtX(std::clamp(mouseX, plot.left(), plot.right()));
 	const double fraction = (at - (viewEnd_ - window_)) / window_;
-	window_ = newWindow;
+	const bool holding = trigger_.holding;
+	putWindow(newWindow);
 	holdAt(at + (1 - fraction) * newWindow);
+	trigger_.holding = holding && !live_;
 }
 
 /* around the value under the mouse; the Y range becomes Manual */
@@ -3952,8 +4022,14 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 			/* on whole pixels: the CPU and the card put its picture on the same ones */
 			const double top = std::round(std::clamp(levelY - LEVEL_TAG_H / 2, shown.top(), shown.bottom() - LEVEL_TAG_H));
 			levelTag = QRectF(std::round(shown.right() - 4 - width), top, width, LEVEL_TAG_H);
+			/* the crossing's marker at the plot's top: the tag goes left of its column, else under it (no room on
+			 * the left), never over it */
+			if (!tag.isEmpty() && levelTag.intersects(tag.adjusted(-2, 0, 2, 2))) {
+				if (tag.left() - 2 - width >= shown.left()) levelTag.moveRight(std::round(tag.left() - 2));
+				else levelTag.moveTop(std::round(std::min(tag.bottom() + 2, shown.bottom() - LEVEL_TAG_H)));
+			}
 			triggerLevelTag_ = levelTag;
-			triggerEdgeButton_ = QRectF(levelTag.right() - LEVEL_TAG_H, top, LEVEL_TAG_H, LEVEL_TAG_H);
+			triggerEdgeButton_ = QRectF(levelTag.right() - LEVEL_TAG_H, levelTag.top(), LEVEL_TAG_H, LEVEL_TAG_H);
 		}
 		return true;
 	}

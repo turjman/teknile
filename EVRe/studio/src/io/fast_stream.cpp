@@ -176,12 +176,32 @@ void TriggerScan::scan(const StreamDef &def, const BlockTaken &taken, const char
 		const double time = timeOf(k) - (1 - fraction) * period; /* straight between the two records */
 		if (time <= watch_.from) continue;
 		out.push_back({ k, fraction, time, watch_.serial });
+		counted_ = time;
 		if (watch_.rearm < 0) watch_.on = false; /* Single: until the window arms it again */
 		else watch_.from = time + watch_.rearm;
 	}
 	hasLast_ = true;
 	lastChannel_ = channel;
 	last_ = valueAt(taken.count - 1);
+}
+
+void TriggerScan::pairWith(const StreamDef &def, const QByteArray &record) {
+	const int channel = watch_.channel;
+	hasLast_ = false;
+	if (channel < 0 || channel >= def.channels.size() || record.size() < def.recordSize()) return;
+	int offset = 0;
+	for (int c = 0; c < channel; c++) offset += typeSize(def.channels[c].type);
+	hasLast_ = true;
+	lastChannel_ = channel;
+	last_ = channelValue(def.channels[channel], record.constData() + offset);
+}
+
+/* only the last one counted: a later one the window has (Normal) re-arms as it should, and an older one's re-arm
+ * is long past */
+void TriggerScan::dropped(const Crossing &crossing) {
+	if (crossing.serial != watch_.serial || crossing.time != counted_) return;
+	watch_.on = true;
+	watch_.from = std::min(watch_.from, crossing.time);
 }
 
 /* --------------------------------------------------------------- the source */

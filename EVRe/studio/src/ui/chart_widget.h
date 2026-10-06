@@ -226,6 +226,7 @@ public:
 	bool triggerOn() const { return trigger_.on; }
 	bool triggerArmed() const; /* a crossing now would count: armed, the hold-off and the view's fill passed */
 	double triggeredAt() const { return trigger_.at; } /* the last crossing; NaN: none since armed first */
+	double triggerPending() const { return trigger_.pending; } /* tests: a crossing waiting for its view (crossed) */
 	double triggerLevel() const { return watchedSettings().level; }
 	TriggerEdge triggerEdge() const { return watchedSettings().edge; }
 	int triggerKey() const { return trigger_.on ? trigger_.key : -1; }
@@ -957,6 +958,9 @@ private:
 		double at = NAN;        /* the last crossing */
 		double armedFrom = 0;   /* crossings after this time count */
 		double pending = NAN;   /* a crossing whose view is shown once it is full (crossed); NaN: none */
+		/* the view was held by a crossing, not by the user (Hold, a pan, the memory strip): only then does Auto run
+		 * live again by itself */
+		bool holding = false;
 	} trigger_;
 	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
 	TriggerSettings watchedSettings() const;           /* the line watched's */
@@ -966,6 +970,12 @@ private:
 	 * are not used), handed over by fastTriggerChanged */
 	quint64 watchSerial_ = 0;
 	void postWatch();
+	/* a drag of the level or of the crossing's place: the engine is given the change at the next frame (frame()), not
+	 * at each of the mouse's moves, each a new arm that drops the crossings found for the one before */
+	bool watchDue_ = false;
+	bool placeTrigger(double fraction); /* setTriggerPosition but the post; false: no change */
+	/* every change of the window's length: the trigger's next crossing counts after the new window's fill */
+	void putWindow(double seconds);
 	QString lineName(int key) const;                   /* empty: no such line */
 	void fireTrigger(double time);
 	/* a crossing that counts: held at once, or (a short window held full) once its view is full too; newest: the line's
@@ -973,6 +983,7 @@ private:
 	void crossed(double time, double newest);
 	void firePending(double newest);
 	double newestTime(int key) const; /* NaN: no sample */
+	double triggerTime() const;       /* the watched line's newest sample's time (the clock's before the first) */
 	/* the level's line, its tag and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the
 	 * frame's plots; false: nothing to draw */
 	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,
