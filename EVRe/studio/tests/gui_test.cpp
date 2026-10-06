@@ -2773,8 +2773,8 @@ private:
 	/* EVRe Guard's key in the Map editor and in the writes: the register editor's "Past limits" choice (refused or
 	 * clamped) with its tooltip, saved as "past_limits" and undone; a register that clamps written past its max
 	 * without the question, the Log saying the device clamps it; NaN never sent; the Guard table exported from the
-	 * Map editor, both files; errorName 15; the "closed" and "reserved_zero" boxes, and a closed register's write
-	 * asking first. */
+	 * Map editor, both files, and the device table for library 1.1; errorName 15; the "closed" and "reserved_zero"
+	 * boxes, and a closed register's write asking first. */
 	void guardKeys() {
 		auto *doc = window_.findChild<MapDocument *>();
 		auto *tabs = window_.findChild<QTabWidget *>();
@@ -2865,6 +2865,18 @@ private:
 				for (QAction *action : m->actions())
 					if (action->text().startsWith(QLatin1String("EVRe Guard table"))) menu = m;
 			check(both && menu, "Export: the EVRe Guard table (C++), its .h and its .cpp beside it; in the Export menu");
+			/* the device table for library 1.1: one file, the bank on ranges and the Guard's entries tied to the image */
+			const QString table11 = folder.filePath(QStringLiteral("map_table.h"));
+			const bool ok11 = editorTab->exportTo(QStringLiteral("table11"), table11, QString(), err);
+			QFile file11(table11);
+			const QByteArray text11 = ok11 && file11.open(QIODevice::ReadOnly) ? file11.readAll() : QByteArray();
+			bool inMenu = false;
+			for (QMenu *m : window_.findChildren<QMenu *>())
+				for (QAction *action : m->actions())
+					if (action->text().startsWith(QLatin1String("Device table for library 1.1"))) inMenu = true;
+			check(text11.contains("dev->D_RANGES = ranges;") && text11.contains("_guard_table()")
+					&& text11.contains("its entry is its member") && inMenu,
+					"Export: the device table for library 1.1 (ranges, the Guard's entries tied to the image); in the Export menu");
 		}
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
 

@@ -1708,64 +1708,6 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>محرر الخريطة</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Map editor&lt;/h2&gt;
-&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
-cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
-JSON, also between maps.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, past limits, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
-&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
-the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
-amber past a limit, grey without one; hover it for a long value in full).
-With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
-a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
-page, for why.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
-max… Click one to go there.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
-the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones), and the &lt;i&gt;EVRe Guard
-table&lt;/i&gt; a device checks every host write against (its .h and .cpp). &lt;b&gt;Import CSV…&lt;/b&gt; reads a sheet back.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
-register is edited, as long as it is read the same way.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
-&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
-التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
-JSON، وبين الخرائط أيضًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
-المعامل، المنازل العشرية، الأدنى، الأعلى، خارج الحدود، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
-&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
-الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
-كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
-وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
-bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
-الصفحة، لتعرف لماذا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
-أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
-و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
-ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة)، و&lt;i&gt;جدول EVRe Guard&lt;/i&gt; الذي يفحص به الجهاز
-كل كتابة من المضيف (ملفاه .h و .cpp). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ جدولًا عائدًا.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
-يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>API (MATLAB, LabVIEW, Python)</source>
         <translation>API (MATLAB وLabVIEW وPython)</translation>
     </message>
@@ -2463,6 +2405,66 @@ little endian.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;المسجّلات المتقاربة تُقرأ في طلب واحد (الصفحة نفسها من 256 بايت، فجوات حتى 8 بايت).
 الكتلة التي يرفضها الجهاز تُقسم؛ والعنوان الذي يرفضه يُسقط.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Map editor&lt;/h2&gt;
+&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
+cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
+JSON, also between maps.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
+scale, decimals, min, max, past limits, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
+&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
+the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
+amber past a limit, grey without one; hover it for a long value in full).
+With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
+a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
+page, for why.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
+max… Click one to go there.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
+the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
+bind function; library 1.0 needs every read-only register below the writable ones), the &lt;i&gt;device table for
+library 1.1&lt;/i&gt; (one image on ranges, in any order, with EVRe Guard&apos;s table tied to it), and the &lt;i&gt;EVRe Guard
+table&lt;/i&gt; a device checks every host write against (its .h and .cpp). &lt;b&gt;Import CSV…&lt;/b&gt; reads a sheet back.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
+register is edited, as long as it is read the same way.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
+&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
+التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
+JSON، وبين الخرائط أيضًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
+المعامل، المنازل العشرية، الأدنى، الأعلى، خارج الحدود، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
+&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
+الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
+كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
+وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
+bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
+الصفحة، لتعرف لماذا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
+أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
+و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
+ربط؛ والمكتبة 1.0 تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة)، و&lt;i&gt;جدول الجهاز للمكتبة
+1.1&lt;/i&gt; (صورة واحدة على نطاقات، بأي ترتيب، ومعها جدول EVRe Guard مربوطًا بها)، و&lt;i&gt;جدول EVRe Guard&lt;/i&gt; الذي يفحص به الجهاز
+كل كتابة من المضيف (ملفاه .h و .cpp). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ جدولًا عائدًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
+يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
 </translation>
     </message>
 </context>
@@ -3419,6 +3421,14 @@ little endian.&lt;/li&gt;
     <message>
         <source>A prefix for the names (MYDEV makes mydev_table and MYDEV_SPEED_RAW_MIN), or empty for the device&apos;s name:</source>
         <translation>بادئة للأسماء (MYDEV تعطي mydev_table و MYDEV_SPEED_RAW_MIN)، أو فارغة لاسم الجهاز:</translation>
+    </message>
+    <message>
+        <source>Device table for library 1.1, with EVRe Guard (C++)…</source>
+        <translation>جدول الجهاز للمكتبة 1.1، مع EVRe Guard (C++)…</translation>
+    </message>
+    <message>
+        <source>A prefix for the names (MYDEV makes mydev_image_t and mydev_bind), or empty for the device&apos;s name:</source>
+        <translation>بادئة للأسماء (MYDEV تعطي mydev_image_t و mydev_bind)، أو فارغة لاسم الجهاز:</translation>
     </message>
 </context>
 <context>

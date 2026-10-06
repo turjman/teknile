@@ -46,6 +46,11 @@ QByteArray exportCsv(const DeviceMap &map);
  * 0xD000..0xDFFF (the protocol bank 0xA000 is the library's own and left out):
  * false, with what is in the way in problems, if the map is not like that. */
 bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByteArray &out, QStringList &problems);
+/* The device table for library 1.1 (C++): one image of the device bank served through ranges (D_RANGES), one per
+ * run of read-only or writable registers, so their order is free; and EVRe Guard's table from the same registers,
+ * each entry tied to its member of the image by a static_assert. false, with the reasons in problems, for a
+ * register outside the bank, an overlap, or one the Guard's table cannot hold. */
+bool exportDeviceTable11(const DeviceMap &map, const ExportOptions &options, QByteArray &out, QStringList &problems);
 
 /* What EVRe Guard's table holds for one register (exportGuard), worked out from the map: the type's raw limits
  * as the entry's bits, its listed values (the specials), and the map's own limits in raw units for the typed

@@ -262,6 +262,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [32.5 The JSON Schema](#325-the-json-schema)
     - [32.6 Device table for the EVRe library](#326-device-table-for-the-evre-library)
     - [32.7 EVRe Guard table](#327-evre-guard-table)
+    - [32.8 Device table for library 1.1](#328-device-table-for-library-11)
   - [33. Overlays](#33-overlays)
   - [34. The `evre` command-line tool](#34-the-evre-command-line-tool)
     - [34.1 `evre check`: does the device answer as its map says?](#341-evre-check-does-the-device-answer-as-its-map-says)
@@ -299,7 +300,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Writes | Only when *Allow writes* is on. Registers marked danger ask first. Every write is read back, and a write asks first when the value changed while you were editing. |
 | Quick&nbsp;write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
 | Map&nbsp;editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
-| Export | The map as a Markdown specification, a C header, a Python module, CSV, or the device table for firmware on the EVRe library; CSV back in; a JSON Schema of the format (chapter 32). |
+| Export | The map as a Markdown specification, a C header, a Python module, CSV, the device table for firmware on the EVRe library (1.0, or 1.1 with EVRe Guard), or EVRe Guard's table; CSV back in; a JSON Schema of the format (chapter 32). |
 | Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto or Manual Y, Normalise and Smooth. |
 | Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS, standard deviation, peak to peak and area over A..B or over the view, and the total since Clear. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). Columns shown or hidden by a right-click on the header. |
 | Math&nbsp;lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
@@ -3495,7 +3496,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
 | `src/model/json_doc.h`,&nbsp;`.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence` |
-| `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV and device table export, CSV import, `identifier` |
+| `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV, device table (`exportDeviceTable`, `exportDeviceTable11`) and EVRe Guard table export, CSV import, `identifier` |
 | `src/model/map_document.h`,&nbsp;`.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
 | `src/model/bus_file.h`,&nbsp;`.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
@@ -3549,6 +3550,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `tests/schema_test.py` | the maps against `docs/evre-map-1.schema.json` (needs the `jsonschema` package) |
 | `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and the Guard, and driven |
 | `tests/golden/example_device_table.h` | the device table of `maps/example_device.json`, as `--to table` must write it byte for byte |
+| `tests/golden/example_device_table_11.h` | the same for library 1.1, as `--to table --lib 1.1` must write it (32.8) |
 | `docs/evre-map-1.schema.json` | the JSON Schema of `evre-map/1` |
 | `tests/api_test.py` | the API end to end, in three modes |
 | `tests/fake_device.py` | a fake EVRe device over TCP (Python, standard library only) |
@@ -4481,7 +4483,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict (15, 3, a register that clamps), login, persist | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
 | `tests/schema_test.py` | the maps against the JSON Schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
-| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and EVRe Guard, driven at every limit's edges, a closed set and reserved bits; the typed constants; `keep_limits` and the Guard agreeing; a struct tied to the C header; the export errors; `--check`; `--to table` against `tests/golden/example_device_table.h`; the build matrix (`--skip` names a cross-compiler that is not there) | the build folder (`evre`); `g++` and the library with `guard/` for the compile part, SKIP without | only its own temporary folder |
+| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and EVRe Guard, driven at every limit's edges, a closed set and reserved bits; the typed constants; `keep_limits` and the Guard agreeing; a struct tied to the C header; the export errors; `--check`; `--to table` against `tests/golden/example_device_table.h`; the device table for library 1.1 (32.8) driven with the same vectors, an entry moved off its member failing the build, against `tests/golden/example_device_table_11.h`; the build matrix (`--skip` names a cross-compiler that is not there) | the build folder (`evre`); `g++` and the library with `guard/` for the compile part, SKIP without | only its own temporary folder |
 
 **The rule: the GUI test and the API test write only to a fake device.** They write registers of the device bank
 and set a register marked danger. Never point them at a real device. `evre_probe` is the only test program meant for
@@ -4646,7 +4648,8 @@ undo: refused again; the broadcast check refuses one byte of the 16-bit danger r
 lets both go; the *closed* and *reserved_zero* boxes, off, with tooltips naming EVRe Guard; *closed* ticked on the
 u8 register sets `"closed": true` in one undo step, the Registers table following, and 3 (inside min and max, but
 not listed) asks first, *outside the closed set of values*, Cancel writes nothing; undo: open again; Export: the
-EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the Export menu; *nan* typed
+EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the Export menu; the device
+table for library 1.1 (the bank on ranges, the Guard's entries tied to the image) and its item; *nan* typed
 into an `f32` register: the pop-up *not a finite number*, nothing sent.
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
@@ -4784,7 +4787,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 395 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 396 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5423,6 +5426,35 @@ A device with its own memory layout ties its structs to the map with `static_ass
 `tests/guard_table_test.py` exports a map with every case, compiles it with the library and the Guard, drives it
 through `decodePacketInto()` at every limit's edges, and checks the rest of this section (26.1).
 
+### 32.8 Device table for library 1.1
+
+For firmware on library 1.1 with EVRe Guard's register checks: one C++ header that serves the map's device bank
+through a range table and checks every host write. **Export > Device table for library 1.1, with EVRe Guard
+(C++)...** in the Map editor, or `evre export MAP --to table --lib 1.1 [--prefix P] [-o FILE] [--check]`. Without
+`--lib`, or with `--lib 1.0`, `--to table` writes the table of 32.6, unchanged.
+
+| Part | What |
+|---|---|
+| `P_READ_MAX`,&nbsp;`P_SIZE`,&nbsp;`P_RANGES` | the bank's last byte, the image's size, the number of ranges; also `P_ID`, `P_SLAVE` |
+| `p_image_t` | one image of the device bank: a packed struct with a member per register in address order, gaps as `_gap_...`, the defaults as start values in raw units; a `static_assert` per member and on the size |
+| `p_bind(dev, &image)` | the range table (a static array, no heap): one range per run of read-only or writable registers, pointing into the image; the slave address and `DEVICE_ID`. Return it from `protocolConfigure()`: `protocolInit()` checks a range table only then |
+| `P_NAME_RAW_MIN`,&nbsp;`_MAX` | the map's limits in raw units, typed, as in 32.7 |
+| `p_guard_table()` | EVRe Guard's table, the same entries as `--to guard` (32.7) from the same registers, in an inline function (one table for the whole program); each entry tied to its member by a `static_assert` on its address and size, so an entry off its member names the register in the build's error |
+| `p_check_init(&check, &dev)` | `evre_guard_check_init()` with that table, after `protocolInit()` |
+
+With ranges the rule of 32.6 goes: a read-only register may come after a writable one, each run gets a range of
+its own. A gap between two writable registers is in their range (the Guard refuses a write to it, 3); any other gap
+is read-only, as the boundary of 1.0 made it. So a map that 32.6 can serve is served the same way here, and the
+Guard does what `keep_limits` did: a write past the limits is refused (15), not put back. The comment on top lists
+what the map says and neither the library nor the Guard does: the clamps of `"past_limits": "clamp"` (the typed
+limits are there for them), action registers, write-1-to-clear, read-only bits of a writable register, write-only
+registers, persistence, the login (EVRe Guard part 1). A map without a register a host writes gets no Guard table.
+The export stops for a register outside the bank, two that overlap, or one the Guard's table cannot hold (32.7).
+
+`tests/guard_table_test.py` exports its test map this way (which 32.6 refuses: a read-only register comes after
+writable ones), builds a device with part 1's login on it, and drives it with every vector of the Guard table's
+test: each answer as on the device with hand-made ranges (26.1).
+
 ## 33. Overlays
 
 A map can **extend** another: `"extends": "base.json"` (the path relative to this file). The overlay's settings
@@ -5463,6 +5495,7 @@ from a terminal. It is built with the Studio (`build/evre`, `evre.exe` on Window
 ```
 evre validate MAP...                        the Map editor's checks (30.6); exit 1 if one is an error
 evre export MAP --to md|h|py|csv|table|guard   the exports of chapter 32  [--prefix P] [-o FILE] [--check]
+                                            [--lib 1.0|1.1]: the device table for that library (32.6, 32.8)
 evre info  LINK [--map MAP]                 DEVICE_ID, protocol revision, capabilities, CONFIG
 evre read  LINK --map MAP NAME...           values, by name (any case) or 0x address
 evre read  LINK --addr 0xD000 --count N     raw bytes, no map needed

@@ -5,7 +5,8 @@
  *   evre validate MAP...                   the map's checks; exit 1 if one has an error
  *   evre export MAP --to md|h|py|csv|table|guard   a specification, a C header, a Python module, a sheet,
  *                   [--prefix P] [-o FILE]  the device table for the EVRe library (C++), or EVRe
- *                   [--check]               Guard's table (FILE.h and FILE.cpp). --check: export again and
+ *                   [--lib 1.0|1.1]         Guard's table (FILE.h and FILE.cpp). --lib 1.1: the table on
+ *                   [--check]               ranges with the Guard's entries. --check: export again and
  *                                           compare with the files there; exit 1 if they differ (a build's
  *                                           check that its generated files are fresh)
  *   evre info  LINK [--map MAP]            DEVICE_ID, protocol revision, capabilities
@@ -70,7 +71,7 @@ void outJson(const QJsonObject &object) { out(QString::fromUtf8(QJsonDocument(ob
 
 const char *USAGE = R"(usage:
   evre validate MAP...
-  evre export MAP --to md|h|py|csv|table|guard [--prefix P] [-o FILE] [--check]
+  evre export MAP --to md|h|py|csv|table|guard [--prefix P] [-o FILE] [--lib 1.0|1.1] [--check]
   evre info  LINK [--map MAP]
   evre read  LINK --map MAP NAME...          (or --addr 0xD000 --count N)
   evre dump  LINK --map MAP
@@ -87,7 +88,7 @@ the login token (if the map has a login register): EVRE_TOKEN)";
 struct Args {
 	QString command;
 	QStringList positional;
-	QString tcp, serial, map, bus, to, prefix, output, addr;
+	QString tcp, serial, map, bus, to, prefix, output, addr, lib;
 	int count = -1, slave = -1, timeoutMs = -1;
 	double intervalMs = 500;
 	bool force = false, writes = false, check = false;
@@ -128,6 +129,7 @@ bool parseArgs(const QStringList &argv, Args &a, QString &why) {
 		else if (arg == QLatin1String("--bus")) ok = value(a.bus);
 		else if (arg == QLatin1String("--to")) ok = value(a.to);
 		else if (arg == QLatin1String("--prefix")) ok = value(a.prefix);
+		else if (arg == QLatin1String("--lib")) ok = value(a.lib);
 		else if (arg == QLatin1String("-o") || arg == QLatin1String("--output")) ok = value(a.output);
 		else if (arg == QLatin1String("--addr")) ok = value(a.addr);
 		else if (arg == QLatin1String("--count")) ok = number(a.count);
@@ -461,6 +463,11 @@ int cmdExport(const Args &a) {
 		err(QStringLiteral("export MAP --to md|h|py|csv|table|guard"));
 		return 2;
 	}
+	/* the library the device table is for: 1.0 (a pointer per byte, the default) or 1.1 (ranges and the Guard) */
+	if (!a.lib.isEmpty() && (a.to != QLatin1String("table") || (a.lib != QLatin1String("1.0") && a.lib != QLatin1String("1.1")))) {
+		err(QStringLiteral("--lib 1.0 or 1.1, with --to table"));
+		return 2;
+	}
 	DeviceMap map;
 	if (!loadMap(a.positional[0], map)) return 2;
 	ExportOptions options;
@@ -486,7 +493,8 @@ int cmdExport(const Args &a) {
 	else if (a.to == QLatin1String("csv")) text = exportCsv(map);
 	else if (a.to == QLatin1String("table")) {
 		QStringList problems;
-		if (!exportDeviceTable(map, options, text, problems)) {
+		const bool lib11 = a.lib == QLatin1String("1.1");
+		if (!(lib11 ? exportDeviceTable11(map, options, text, problems) : exportDeviceTable(map, options, text, problems))) {
 			err(QStringLiteral("%1: not a device table for the EVRe library:").arg(QFileInfo(a.positional[0]).fileName()));
 			for (const QString &problem : problems) err(QStringLiteral("  ") + problem);
 			return 1;
