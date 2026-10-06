@@ -7095,8 +7095,8 @@ private:
 				written = lines.size() >= 2;
 				for (const QString &line : lines)
 					for (const char *part : { " perfTest ", " fps ", " paint ", " max ", "| bin ", " lines ", " segments ",
-							 " present ", " marks ", " strip ", " legend ", "| binned ", "| measure ", " threads ", "| polls ",
-							 " fast ", " columns " })
+							 " present ", " marks ", " strip ", " legend ", " grid ", "| binned ", "| measure ", " threads ",
+							 "| polls ", " fast ", " columns " })
 						written = written && line.contains(QLatin1String(part));
 			}
 			tab.hide();

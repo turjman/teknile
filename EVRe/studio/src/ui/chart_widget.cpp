@@ -1963,8 +1963,10 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		under = gpu_->lastPicture();
 		framesUnder_++;
 	}
+	stage.restart();
 	drawCard(p);
 	drawGrid(p, plots, axes, !onCard);
+	perf_.grid += stage.nsecsElapsed() / 1e6;
 	if (!onCard) {
 		drawCursorSpan(p, axes);
 		stage.restart();
@@ -1989,7 +1991,9 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		under.setDevicePixelRatio(devicePixelRatioF());
 		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
 	}
+	stage.restart();
 	drawLaneBar(p); /* in the right pad, outside the card's layer */
+	perf_.grid += stage.nsecsElapsed() / 1e6;
 	stage.restart();
 	drawMemoryStrip(p, axes);
 	perf_.strip += stage.nsecsElapsed() / 1e6;
@@ -1999,7 +2003,9 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	stage.restart();
 	if (!onCard) drawCrosshair(p, axes, plots, binned);
 	perf_.marks += stage.nsecsElapsed() / 1e6;
+	stage.restart();
 	drawState(p, axes);
+	perf_.grid += stage.nsecsElapsed() / 1e6;
 	if (onScreen && gpu_ && onCard != gpu_->shown() && (!onCard || framesUnder_ >= LAYER_AFTER_FRAMES))
 		QTimer::singleShot(0, this, [this, shown = onCard] { /* after this frame is on the window */
 			if (!gpu_ || gpu_->shown() == shown || (shown && (!isVisible() || series_.isEmpty()))) return;

@@ -5322,14 +5322,14 @@ channel tables list exactly the schema's keys. It needs the `jsonschema` package
 every 500 ms each Chart tab (the live one, and a recording's window) appends one line to the file:
 
 ```
-14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
+14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 grid 1.10 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
 ```
 
 - `fps`: frames painted a second; `paint`, `max`: the paint's average and longest, ms.
 - The stages, ms a frame on average (`ChartView::takePerfStats`): `bin` the view's binning, `lines` the CPU's lines,
   `segments` the card's segment list, `present` the card's present, `marks` the cursors, notes, trigger, strips and
-  crosshair, `strip` the memory strip, `legend` the legend. What the stages leave of `paint` is the grid, the
-  labels, the Y ranges and the state.
+  crosshair, `strip` the memory strip, `legend` the legend, `grid` the chart's frame, the grid with its labels, the
+  lane bar and the state corner. What the stages leave of `paint` is the Y ranges and the layout.
 - `binned N/M`: frames that binned the view of the frames painted (a held view whose lines are reused bins none).
 - `measure`: the measurement table's updates, the window thread's time in all and their count; `threads`: the
   chart's threads' time on the full measurements (23.8).

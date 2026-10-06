@@ -382,6 +382,7 @@ public:
 		qint64 fastColumns = 0; /* columns of fast lines binned, the kept ones not counted */
 		double paintSum = 0, paintMax = 0;
 		double bin = 0, lines = 0, segments = 0, present = 0, marks = 0, strip = 0, legend = 0;
+		double grid = 0; /* the chart's frame, the grid with its labels, the lane bar, the state corner */
 	};
 	PerfStats takePerfStats();
 	QSizeF readoutSize() const { return readout_.isNull() ? QSizeF() : readout_.deviceIndependentSize(); }
