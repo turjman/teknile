@@ -551,9 +551,9 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
-	connect(view, &ChartView::triggerLevelChanged, this, [this](double level) {
-		triggerLevel_->setText(QString::number(level, 'g', 6));
-		QSettings().setValue(settingKey("triggerLevel"), level);
+	connect(view, &ChartView::triggerSettingsChanged, this, [this] { /* dragged, or the edge clicked on the chart */
+		showLineSettings();
+		saveTriggerSettings();
 	});
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
@@ -650,6 +650,14 @@ void ChartTab::restoreSettings() {
 	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
 	chart_->view()->setFoldedLanes(settings.value(settingKey("lanesFolded")).toStringList());
 	chart_->view()->setLaneHeights(settings.value(settingKey("laneHeights")).toStringList());
+	/* each line's trigger level and edge; saved before they were kept per line: the one level of the line saved */
+	QStringList triggerLevels = settings.value(settingKey("triggerLevels")).toStringList();
+	const QString oldLine = settings.value(settingKey("triggerLine")).toString();
+	if (!settings.contains(settingKey("triggerLevels")) && !oldLine.isEmpty() && settings.contains(settingKey("triggerLevel")))
+		triggerLevels << QStringLiteral("%1\t%2\t%3").arg(oldLine,
+				QString::number(settings.value(settingKey("triggerLevel")).toDouble(), 'g', QLocale::FloatingPointShortest))
+				.arg(settings.value(settingKey("triggerEdge"), 0).toInt());
+	chart_->view()->setTriggerSettingsTexts(triggerLevels);
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
@@ -879,20 +887,26 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerRow_->hide();
 
 	const QSettings settings;
-	triggerLevel_->setText(QString::number(settings.value(settingKey("triggerLevel"), 0.0).toDouble(), 'g', 6));
-	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(settings.value(settingKey("triggerEdge"), 0).toInt())));
 	triggerMode_->setCurrentIndex(std::max(0, triggerMode_->findData(settings.value(settingKey("triggerMode"), 1).toInt())));
-	for (QComboBox *box : { triggerLine_, triggerEdge_, triggerMode_ })
+	/* another line: its own level and edge in the boxes, then armed on it */
+	connect(triggerLine_, &QComboBox::activated, this, [this] {
+		showLineSettings();
+		applyTrigger();
+	});
+	for (QComboBox *box : { triggerEdge_, triggerMode_ })
 		connect(box, &QComboBox::activated, this, &ChartTab::applyTrigger);
 	connect(triggerLevel_, &QLineEdit::editingFinished, this, [this] {
 		bool ok = false;
 		const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
-		if (!ok) {
-			triggerLevel_->setText(QString::number(chart_->view()->triggerLevel(), 'g', 6));
+		const int key = triggerLine_->currentData().toInt();
+		if (!ok || triggerLine_->currentIndex() < 0) {
+			showLineSettings();
 			return;
 		}
-		chart_->view()->setTriggerLevel(level);
-		QSettings().setValue(settingKey("triggerLevel"), level);
+		ChartView *view = chart_->view();
+		if (view->triggerOn() && view->triggerKey() == key) view->setTriggerLevel(level);
+		else view->setTriggerSettings(key, { level, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()) });
+		saveTriggerSettings();
 	});
 	connect(triggerArm_, &QPushButton::clicked, this, [this] {
 		chart_->view()->armTrigger();
@@ -913,6 +927,30 @@ void ChartTab::fillTriggerLines() {
 	}
 	const int index = triggerLine_->findText(noMnemonic(chosen));
 	triggerLine_->setCurrentIndex(index >= 0 ? index : 0);
+	showLineSettings();
+}
+
+/* the boxes show the line chosen's own level and edge (kept by its name; a line never set: its mid-range) */
+void ChartTab::showLineSettings() {
+	if (triggerLine_->currentIndex() < 0) return;
+	const ChartView::TriggerSettings settings = chart_->view()->triggerSettings(triggerLine_->currentData().toInt());
+	triggerLevel_->setText(QString::number(settings.level, 'g', 6));
+	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(int(settings.edge))));
+}
+
+void ChartTab::saveTriggerSettings() {
+	QSettings().setValue(settingKey("triggerLevels"), chart_->view()->triggerSettingsTexts());
+}
+
+void ChartTab::triggerOnLine(int key) {
+	if (!trigger_->isVisible()) return; /* a recording: nothing comes after the file */
+	fillTriggerLines();
+	const int index = triggerLine_->findData(key);
+	if (index < 0) return;
+	triggerLine_->setCurrentIndex(index);
+	showLineSettings();
+	if (trigger_->isChecked()) applyTrigger();
+	else trigger_->setChecked(true); /* the row shown, armed on the line (its toggle) */
 }
 
 void ChartTab::applyTrigger() {
@@ -927,8 +965,8 @@ void ChartTab::applyTrigger() {
 				ChartView::TriggerMode(triggerMode_->currentData().toInt()));
 		QSettings settings;
 		settings.setValue(settingKey("triggerLine"), chart_->view()->lines().value(triggerLine_->currentIndex()).name);
-		settings.setValue(settingKey("triggerEdge"), triggerEdge_->currentData().toInt());
 		settings.setValue(settingKey("triggerMode"), triggerMode_->currentData().toInt());
+		saveTriggerSettings();
 	}
 	showTriggerState();
 }
@@ -1375,6 +1413,13 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	if (trigger_->isVisible()) { /* not in a recording's window */
+		lineMenu_->addSeparator();
+		QAction *watch = lineMenu_->addAction(tr("Trigger on this line"), this, [this, key] { triggerOnLine(key); });
+		watch->setObjectName(QStringLiteral("triggerOnLine"));
+		watch->setToolTip(tr("Hold the chart when %1 crosses its level: the level a dashed line in its lane, to drag")
+				.arg(noMnemonic(name)));
+	}
 	lineMenu_->popup(globalPos);
 }
 

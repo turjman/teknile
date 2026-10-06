@@ -554,6 +554,7 @@ public:
 		analysisMath();
 		analysisWindows();
 		chartTrigger();
+		chartTriggerLines();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -1248,7 +1249,7 @@ private:
 			if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
 			chartTab->showLineMenu(iLoad, QPoint(0, 0));
 			QMenu *menu = chartTab->lineMenu();
-			menuOffered = menu && menu->actions().size() == 2;
+			menuOffered = menu && menu->actions().size() == 4; /* Histogram, Spectrum, Trigger on this line */
 			for (QAction *action : menu ? menu->actions() : QList<QAction *>()) menuOffered = menuOffered && action->isEnabled();
 			if (menu) menu->hide();
 			if (AnalysisWindow *spectrum = chartTab->openAnalysis(AnalysisWindow::Kind::Spectrum, iLoad)) {
@@ -7253,7 +7254,8 @@ private:
 				if (action->text().startsWith(QLatin1String("Histogram"))) histogramAction = action;
 			}
 		const bool listed = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
-				&& texts == QStringList{ QStringLiteral("Histogram of WAVE"), QStringLiteral("Spectrum of WAVE") };
+				&& texts == QStringList{ QStringLiteral("Histogram of WAVE"), QStringLiteral("Spectrum of WAVE"), QString(),
+						QStringLiteral("Trigger on this line") };
 		if (histogramAction) histogramAction->trigger();
 		if (menu) menu->close();
 		auto *histogram = chart.tab.findChild<AnalysisWindow *>(QStringLiteral("histogramWindow"));
@@ -7309,7 +7311,8 @@ private:
 	 * armed again once the view is full; Single holds on the first; rising, falling, either; the level dragged; the
 	 * measurements over what is held */
 	void chartTrigger() {
-		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine" })
+		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
+					 "chart/triggerLevels" })
 			QSettings().remove(QLatin1String(key)); /* the defaults: Rising, Normal */
 		LoneChart chart(QStringLiteral("TRIG"), QStringLiteral("V"));
 		chart.view->setWindow(1);
@@ -7334,8 +7337,9 @@ private:
 			check(false, "chart, Trigger: in the Display menu, its row");
 			return;
 		}
-		level->setText(QStringLiteral("0.5"));
 		action->setChecked(true);
+		level->setText(QStringLiteral("0.5")); /* the line's own level, typed */
+		emit level->editingFinished();
 		const bool shown = row->isVisible() && chart.view->triggerArmed() && chart.view->triggerLevel() == 0.5;
 		feed(100.5); /* rising through 0.5 at 100 + 1/12 */
 		const double first = 100.0 + 1.0 / 12;
@@ -7390,15 +7394,216 @@ private:
 		QApplication::sendEvent(chart.view, &move);
 		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, to);
 		const double dragged = chart.view->triggerLevel();
+		const QStringList savedLevels = QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList();
 		check(std::isfinite(y) && std::fabs(dragged - 0.8) < 0.02 && std::fabs(level->text().toDouble() - dragged) < 1e-5
-						&& std::fabs(QSettings().value(QStringLiteral("chart/triggerLevel")).toDouble() - dragged) < 1e-5,
+						&& savedLevels.size() == 1 && savedLevels[0].startsWith(QStringLiteral("TRIG\t"))
+						&& std::fabs(savedLevels[0].section(QLatin1Char('\t'), 1, 1).toDouble() - dragged) < 1e-5,
 				"chart, Trigger: the level's dashed line dragged to 0.8: the level follows, the row and the setting too");
 		action->setChecked(false);
 		check(!chart.view->triggerOn() && !row->isVisible(), "chart, Trigger off: its row hidden, the chart no longer held "
 				"by crossings");
-		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine" })
+		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
+					 "chart/triggerLevels" })
 			QSettings().remove(QLatin1String(key));
 		chart.tab.hide();
+	}
+
+	/* Trigger v2, each line its own: two lines of other units, VOLTS and AMPS, on one tab */
+	struct TriggerPair {
+		double now = 100, fed = 99;
+		ChartTab tab{ [this] { return now; } };
+		RegDef volts, amps;
+		ChartView *view = nullptr;
+		TriggerPair() {
+			tab.resize(1200, 700);
+			volts.addr = 0xD000;
+			volts.name = QStringLiteral("VOLTS");
+			volts.unit = QStringLiteral("V");
+			amps.addr = 0xD002;
+			amps.name = QStringLiteral("AMPS");
+			amps.unit = QStringLiteral("A");
+			tab.plotRegister(volts, true);
+			tab.plotRegister(amps, true);
+			view = tab.view();
+			view->setSmooth(false);
+			view->setWindow(1);
+		}
+		int voltsKey() const { return int(regKey(volts)); }
+		int ampsKey() const { return int(regKey(amps)); }
+		/* 1 kHz samples to `until`: VOLTS 5 + 2 sin(2 pi t), AMPS 0.5 + 0.25 sin(2 pi t + 1); the clock with them */
+		void feed(double until) {
+			MathLines::Samples samples;
+			for (; fed < until - 1e-9; fed += 0.001) {
+				samples[regKey(volts)] << QPointF(fed, 5 + 2 * std::sin(2 * M_PI * fed));
+				samples[regKey(amps)] << QPointF(fed, 0.5 + 0.25 * std::sin(2 * M_PI * fed + 1));
+			}
+			now = fed;
+			tab.frame(samples);
+		}
+	};
+	static void clearTriggerSettings() {
+		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
+					 "chart/triggerLevels", "chart/triggerPosition", "chart/triggerHoldoff", "chart/lanes" })
+			QSettings().remove(QLatin1String(key));
+	}
+
+	/* Trigger v2, per line: each line keeps its level and edge by its name (switching the line watched keeps the
+	 * others'), saved and read back by a new tab; a line never set starts at its mid-range; armed from a chip's menu
+	 * (Trigger on this line); the level a dashed line in its lane with a tag naming the line and the level in its unit,
+	 * dragged by the tag with Lanes on and off; the tag's edge symbol cycles the edge (a hand, lit, a tooltip) and the
+	 * panel follows */
+	void chartTriggerLines() {
+		clearTriggerSettings();
+		TriggerPair pair;
+		ChartView *view = pair.view;
+		pair.feed(99.95);
+		pair.tab.show();
+		(void) QTest::qWaitForWindowExposed(&pair.tab);
+		(void) view->grab();
+		auto *action = pair.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *row = pair.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+		auto *line = pair.tab.findChild<QComboBox *>(QStringLiteral("triggerLine"));
+		auto *level = pair.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *edge = pair.tab.findChild<QComboBox *>(QStringLiteral("triggerEdge"));
+		if (!action || !row || !line || !level || !edge) {
+			check(false, "chart, Trigger per line: the row's controls found");
+			return;
+		}
+		/* a line never set: its mid-range in view (AMPS 0.5 +- 0.25), rising */
+		const ChartView::TriggerSettings fresh = view->triggerSettings(pair.ampsKey());
+		const bool midRange = std::fabs(fresh.level - 0.5) < 0.01 && fresh.edge == ChartView::TriggerEdge::Rising;
+
+		/* armed from AMPS's chip menu: the entry is there, enabled, with a tooltip; the trigger on, on AMPS, the panel too */
+		pair.tab.showLineMenu(pair.ampsKey(), QPoint(0, 0));
+		QMenu *menu = pair.tab.lineMenu();
+		QAction *watch = menu ? menu->findChild<QAction *>(QStringLiteral("triggerOnLine")) : nullptr;
+		const bool offered = watch && watch->isVisible() && watch->isEnabled() && watch->text() == QStringLiteral("Trigger on this line")
+				&& watch->toolTip().contains(QLatin1String("AMPS"));
+		if (menu) menu->hide();
+		if (watch) watch->trigger();
+		const bool armed = action->isChecked() && row->isVisible() && view->triggerOn() && view->triggerKey() == pair.ampsKey()
+				&& view->triggerArmed() && line->currentData().toInt() == pair.ampsKey()
+				&& std::fabs(level->text().toDouble() - view->triggerLevel()) < 1e-5 && std::fabs(view->triggerLevel() - 0.5) < 0.01;
+		check(midRange && offered && armed, "chart, Trigger per line: a right-click on a line's chip offers Trigger on this "
+				"line; it turns the trigger on, armed on that line at its mid-range (rising), the panel showing the same");
+
+		/* each its own: AMPS 0.6 falling, VOLTS 6 either; back to AMPS: its own again; both saved by name */
+		level->setText(QStringLiteral("0.6"));
+		emit level->editingFinished();
+		edge->setCurrentIndex(edge->findData(int(ChartView::TriggerEdge::Falling)));
+		emit edge->activated(edge->currentIndex());
+		line->setCurrentIndex(line->findData(pair.voltsKey()));
+		emit line->activated(line->currentIndex());
+		const bool voltsFresh = view->triggerKey() == pair.voltsKey() && std::fabs(view->triggerLevel() - 5) < 0.05
+				&& std::fabs(level->text().toDouble() - view->triggerLevel()) < 1e-5;
+		level->setText(QStringLiteral("6"));
+		emit level->editingFinished();
+		edge->setCurrentIndex(edge->findData(int(ChartView::TriggerEdge::Either)));
+		emit edge->activated(edge->currentIndex());
+		line->setCurrentIndex(line->findData(pair.ampsKey()));
+		emit line->activated(line->currentIndex());
+		const bool ampsKept = view->triggerKey() == pair.ampsKey() && view->triggerLevel() == 0.6
+				&& view->triggerEdge() == ChartView::TriggerEdge::Falling && level->text() == QStringLiteral("0.6")
+				&& edge->currentData().toInt() == int(ChartView::TriggerEdge::Falling);
+		const QStringList saved = QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList();
+		const bool savedBoth = saved == QStringList{ QStringLiteral("AMPS\t0.6\t1"), QStringLiteral("VOLTS\t6\t2") };
+		bool readBack = false;
+		{
+			ChartTab again([&pair] { return pair.now; });
+			again.plotRegister(pair.volts, true);
+			again.plotRegister(pair.amps, true);
+			const ChartView::TriggerSettings a = again.view()->triggerSettings(pair.ampsKey());
+			const ChartView::TriggerSettings v = again.view()->triggerSettings(pair.voltsKey());
+			readBack = a.level == 0.6 && a.edge == ChartView::TriggerEdge::Falling && v.level == 6
+					&& v.edge == ChartView::TriggerEdge::Either;
+		}
+		if (!savedBoth || !voltsFresh) std::printf("     (saved: \"%s\"; VOLTS's level when first chosen %g)\n",
+				qPrintable(saved.join(QStringLiteral(" | "))), view->triggerLevel());
+		check(voltsFresh && ampsKept && savedBoth && readBack, "chart, Trigger per line: each line keeps its own level "
+				"and edge (another line chosen starts at its own, the first one's come back with it), saved by name "
+				"(chart/triggerLevels) and read back by a new tab");
+
+		/* the tag: the line, the level in its unit, the edge in words; at the plot's right end on the level's line */
+		(void) view->grab();
+		const QRectF tag = view->triggerLevelTag();
+		const bool tagged = view->triggerTagText() == QStringLiteral("AMPS 0.600 A, falling") && !tag.isEmpty()
+				&& std::fabs(tag.center().y() - view->triggerLineY()) <= 1 && tag.right() <= view->lastPlot().right()
+				&& tag.right() > view->lastPlot().right() - 10 && view->triggerEdgeButton().right() == tag.right();
+		/* the level dragged by its tag, without lanes: it follows the mouse from where it was taken */
+		const auto drag = [view](QPointF from, QPointF to) {
+			QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, from.toPoint());
+			QMouseEvent move(QEvent::MouseMove, to, view->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+			(void) view->grab();
+		};
+		const QPointF grip(tag.left() + 8, tag.center().y());
+		const double offset = grip.y() - view->triggerLineY();
+		drag(grip, QPointF(grip.x(), view->yOfValue(0.7) + offset));
+		const double plain = view->triggerLevel();
+		const bool draggedPlain = std::fabs(plain - 0.7) < 0.01 && std::fabs(level->text().toDouble() - plain) < 1e-5
+				&& std::fabs(QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList().value(0)
+						.section(QLatin1Char('\t'), 1, 1).toDouble() - plain) < 1e-9;
+		/* with Lanes: the level's line and tag in AMPS's lane, dragged there */
+		view->setLanes(true);
+		(void) view->grab();
+		int ampsLane = -1;
+		for (int i = 0; i < view->laneCount(); i++)
+			if (view->laneLabel(i) == QLatin1String("A")) ampsLane = i;
+		const QRectF lane = ampsLane >= 0 ? view->laneRect(ampsLane) : QRectF();
+		const QRectF laneTag = view->triggerLevelTag();
+		const bool inLane = ampsLane >= 0 && lane.contains(laneTag) && view->triggerLineY() >= lane.top()
+				&& view->triggerLineY() <= lane.bottom() && std::fabs(view->triggerLineY() - view->laneYOfValue(ampsLane, plain)) < 1;
+		const QPointF laneGrip(laneTag.left() + 8, laneTag.center().y());
+		drag(laneGrip, QPointF(laneGrip.x(), view->laneYOfValue(ampsLane, 0.4) + laneGrip.y() - view->triggerLineY()));
+		const double inLaneLevel = view->triggerLevel();
+		const bool draggedInLane = inLane && std::fabs(inLaneLevel - 0.4) < 0.01
+				&& std::fabs(level->text().toDouble() - inLaneLevel) < 1e-5;
+		if (!tagged || !draggedPlain || !draggedInLane)
+			std::printf("     (the tag \"%s\" at %.1f,%.1f %.0fx%.0f, the line at %.1f; dragged to %g, in its lane %d to %g)\n",
+					qPrintable(view->triggerTagText()), tag.x(), tag.y(), tag.width(), tag.height(), view->triggerLineY(), plain,
+					int(inLane), inLaneLevel);
+		check(tagged && draggedPlain && draggedInLane, "chart, Trigger per line: the level's tag at the plot's right end "
+				"on its line (\"AMPS 0.600 A, falling\"); dragged by it, the level follows the mouse, without lanes and in the "
+				"line's own lane with Lanes on; the panel and the setting follow");
+
+		/* the edge symbol: a hand and its tooltip over the tag, the symbol lit under the mouse; a click takes the next
+		 * edge (falling -> either), the panel and the setting follow, the tag says so */
+		const QRectF symbol = view->triggerEdgeButton();
+		const auto moveTo = [view](QPointF at) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		};
+		const auto symbolPicture = [view, &symbol] {
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			return whole.copy(QRectF(symbol.topLeft() * dpr, symbol.size() * dpr).toAlignedRect());
+		};
+		moveTo(QPointF(view->triggerLevelTag().left() + 8, symbol.center().y()));
+		const bool handOnTag = view->cursor().shape() == Qt::PointingHandCursor && !view->triggerEdgeHovered()
+				&& view->toolTipAt(QPointF(view->triggerLevelTag().left() + 8, symbol.center().y())).startsWith(QStringLiteral("Drag: the trigger's level"));
+		const QImage rest = symbolPicture();
+		moveTo(symbol.center());
+		const QImage lit = symbolPicture();
+		const bool handOnSymbol = view->cursor().shape() == Qt::PointingHandCursor && view->triggerEdgeHovered() && rest != lit
+				&& view->toolTipAt(symbol.center()) == QStringLiteral("Click: the next edge (rising, falling, either)");
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, symbol.center().toPoint());
+		(void) view->grab();
+		const bool cycled = view->triggerEdge() == ChartView::TriggerEdge::Either
+				&& edge->currentData().toInt() == int(ChartView::TriggerEdge::Either)
+				&& view->triggerTagText().endsWith(QStringLiteral(", either")) && std::fabs(view->triggerLevel() - inLaneLevel) < 1e-12
+				&& QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList().value(0).endsWith(QStringLiteral("\t2"));
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, symbol.center().toPoint());
+		const bool cycledOn = view->triggerEdge() == ChartView::TriggerEdge::Rising;
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the level's tag in its lane, for a look */
+			pair.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_lane.png"));
+		check(handOnTag && handOnSymbol && cycled && cycledOn, "chart, Trigger per line: over the level's tag a pointing hand "
+				"and a tooltip; its edge symbol lit under the mouse, a click takes the next edge (either, then rising), the "
+				"panel, the setting and the tag follow");
+		view->setLanes(false);
+		action->setChecked(false);
+		pair.tab.hide();
+		clearTriggerSettings();
 	}
 
 	/* Recordings in windows of their own: opened from the file (with the map: names matched, a byte array left out, a

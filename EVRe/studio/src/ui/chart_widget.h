@@ -187,22 +187,44 @@ public:
 	bool yLog() const { return y_.log; }
 	static constexpr double MAX_DECADES = 9;
 
-	/* The trigger (see the top). setTrigger arms it: only crossings after the line's newest sample count. */
+	/* The trigger (see the top). setTrigger arms it: only crossings after the line's newest sample count. One line is
+	 * watched at a time; each line keeps its own level and edge (TriggerSettings, by its name), so switching the line
+	 * watched keeps the others'. */
 	enum class TriggerEdge { Rising, Falling, Either };
 	enum class TriggerMode { Single, Normal };
+	struct TriggerSettings {
+		double level = 0;
+		TriggerEdge edge = TriggerEdge::Rising;
+	};
 	static constexpr double TRIGGER_AT = 0.2; /* of the window, from its left */
 	static constexpr double STRIP_REDRAW_S = 1.0; /* the memory strip's lines drawn again at most this often */
-	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode);
+	/* armed on a line with its own settings: the ones kept for its name, else its mid-range in view, rising */
+	void setTrigger(int key, TriggerMode mode);
+	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode); /* the line's settings set first */
 	void stopTrigger();
 	void armTrigger();                   /* waits for the next crossing (Single: once more) */
-	void setTriggerLevel(double level);
+	void setTriggerLevel(double level);  /* of the line watched */
+	void setTriggerEdge(TriggerEdge edge);
 	bool triggerOn() const { return trigger_.on; }
 	bool triggerArmed() const { return trigger_.on && trigger_.armed; }
 	double triggeredAt() const { return trigger_.at; } /* the last crossing; NaN: none since armed first */
-	double triggerLevel() const { return trigger_.level; }
+	double triggerLevel() const { return watchedSettings().level; }
+	TriggerEdge triggerEdge() const { return watchedSettings().edge; }
 	int triggerKey() const { return trigger_.on ? trigger_.key : -1; }
+	/* a line's settings: those kept for its name; a line never set, its mid-range in view and Rising */
+	TriggerSettings triggerSettings(int key) const;
+	void setTriggerSettings(int key, const TriggerSettings &settings);
+	/* every line's settings for the settings ("name\tlevel\tedge" each), and back */
+	QStringList triggerSettingsTexts() const;
+	void setTriggerSettingsTexts(const QStringList &texts);
 	QRectF triggerTag() const { return triggerTag_; } /* tests: the marker as last drawn; empty: not in view */
 	double triggerLineY() const { return triggerLineY_; } /* tests: the level's line as last drawn; NaN: none */
+	/* the level's tag at the right edge of its plot ("I_LOAD 1.20 A, rising"), and its edge symbol (a click cycles
+	 * Rising, Falling, Either), as last drawn; empty: not in view. Tests: the tag's text */
+	QRectF triggerLevelTag() const { return triggerLevelTag_; }
+	QRectF triggerEdgeButton() const { return triggerEdgeButton_; }
+	QString triggerTagText() const { return triggerTagText_; }
+	bool triggerEdgeHovered() const { return hoverEdge_; } /* tests: the edge symbol drawn highlighted */
 
 	/* Lanes: a plot per unit, stacked, on one time axis; the cursors, the A-B bar and the notes across them, one
 	 * crosshair box. Every unit has a lane of its own, however many: an open lane is at least LANE_MIN_H high (room
@@ -442,7 +464,8 @@ signals:
 	void laneMenuRequested(int lane, const QPoint &globalPos); /* a right-click on a lane's value labels, its ⋯ button */
 	void lineMenuRequested(int key, const QPoint &globalPos); /* a right-click on a line's chip in the legend */
 	void triggered(double time);             /* the view holds on a crossing */
-	void triggerLevelChanged(double level);  /* the level's line dragged and let go */
+	/* the level's line or tag dragged and let go, or the tag's edge symbol clicked: triggerSettingsTexts() to be saved */
+	void triggerSettingsChanged();
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
@@ -812,6 +835,7 @@ private:
 	double dragUnit_ = 1;             /* LaneBorder: the height of a weight of 1 then */
 	bool pressedLanes_ = false;       /* the last press was the lanes' own (pressLanes): its double-click is not a lane's */
 	double dragStartY_ = 0;           /* LaneBar: where the drag began */
+	double levelGrab_ = 0;            /* Level: the mouse's height over the level's line when the drag began */
 	mutable QHash<QString, QImage> foldedImages_; /* the folded strips' pictures, by unit, at foldedKeys_ */
 	mutable QHash<QString, QString> foldedKeys_;
 	mutable QHash<QString, QString> foldedTexts_; /* tests: their texts as last painted */
@@ -895,19 +919,30 @@ private:
 	struct Trigger {
 		bool on = false, armed = false;
 		int key = -1;
-		double level = 0;
-		TriggerEdge edge = TriggerEdge::Rising;
 		TriggerMode mode = TriggerMode::Normal;
 		double at = NAN;        /* the last crossing */
 		double armedFrom = 0;   /* crossings after this time count */
 	} trigger_;
+	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
+	TriggerSettings watchedSettings() const;           /* the line watched's */
+	TriggerSettings &watchedSettingsRef();             /* the same, to change (made when there is none) */
+	double midRange(int key) const;                    /* the line's middle in view (a level never set) */
+	QString lineName(int key) const;                   /* empty: no such line */
 	void fireTrigger(double time);
-	/* the level's line and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the frame's
-	 * plots; false: nothing to draw */
+	/* the level's line, its tag and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the
+	 * frame's plots; false: nothing to draw */
 	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,
-			QRectF &tag) const;
+			QRectF &tag, QRectF &levelTag) const;
 	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const;
 	const QImage &triggerPicture(qreal dpr) const;
+	QString triggerTagLabel() const;                   /* "I_LOAD 1.20 A, rising" */
+	QString edgeSymbol() const;                        /* ↑ rising, ↓ falling, ↕ either */
+	const QImage &levelTagPicture(qreal dpr) const;    /* the level's tag with its edge symbol, both paths */
+	mutable QRectF triggerLevelTag_, triggerEdgeButton_;
+	mutable QString triggerTagText_;
+	mutable QImage levelTagImage_;
+	mutable QString levelTagKey_;
+	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */

@@ -161,11 +161,13 @@ public:
 	void showLaneMenu(int lane, const QPoint &globalPos);
 	QMenu *laneMenu() const { return laneMenu_; }
 	void editLaneRange(int lane); /* Manual…: its min and max asked */
-	/* a line's menu (a right-click on its chip): Histogram, Spectrum; tests: the menu */
+	/* a line's menu (a right-click on its chip): Histogram, Spectrum, Trigger on this line; tests: the menu */
 	void showLineMenu(int key, const QPoint &globalPos);
 	QMenu *lineMenu() const { return lineMenu_; }
 	/* a line's histogram or spectrum over A -> B (or the view), in a window of its own over this one */
 	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
+	/* a line's chip menu, Trigger on this line: the trigger on, armed on that line with its own level and edge */
+	void triggerOnLine(int key);
 	/* the trigger row's state in words ("armed", "triggered at 14:03:12.345", ...): tests */
 	QString triggerState() const;
 
@@ -283,6 +285,8 @@ private:
 	QWidget *buildTriggerRow();
 	void applyTrigger();          /* the row's choices to the chart, armed again */
 	void fillTriggerLines();      /* the lines it can watch (registers and math lines), the one chosen kept */
+	void showLineSettings();      /* the level and edge boxes: the line chosen's own */
+	void saveTriggerSettings();   /* every line's level and edge (chart/triggerLevels) */
 	void showTriggerState();
 	QWidget *triggerRow_ = nullptr;
 	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
