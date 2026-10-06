@@ -40,8 +40,11 @@ using Clock = std::chrono::steady_clock;
 bool pollable(const RegValue &v) { return !v.unavailable && isPollable(v.def); }
 
 /* EVRe refusals a retry will not change: permission denied (3), offset out
- * of range (4), count out of range (5) */
+ * of range (4), count out of range (5). Not login required (13): a session
+ * opened meanwhile (by another client of a gateway, say) answers the next
+ * poll. */
 bool refusedForGood(uint8_t error) { return error == 3 || error == 4 || error == 5; }
+constexpr uint8_t LOGIN_REQUIRED = 13;
 
 /* a CSV column title: "NAME [unit]", a comma in it made a semicolon */
 QString csvTitle(const RegDef &d) {
@@ -616,8 +619,14 @@ void IoEngine::storeBlock(const Block &block, const QByteArray &data) {
 /* The device refused a block: a merged read over a gap it does not have, or
  * a register it does not have. A merged block is split into one read per
  * register; a register refused for good is marked unavailable and no longer
- * polled. */
+ * polled. A login refusal (13) says nothing of the addresses: the block stays
+ * as it is, its registers show the refusal and are asked again at the next
+ * poll, and the Studio does not log in again by itself. */
 void IoEngine::onBlockRefused(const Block &block, const evre::Result &r) {
+	if (r.error == LOGIN_REQUIRED) {
+		for (int row : block.rows) table_.setError(row, r.message, false);
+		return;
+	}
 	if (!block.single) {
 		splitBlock(block);
 		return;

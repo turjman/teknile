@@ -103,6 +103,7 @@ QString errorName(uint8_t code) {
 	case 4: return QStringLiteral("offset out of range");
 	case 5: return QStringLiteral("count out of range");
 	case 12: return QStringLiteral("length mismatch");
+	case 13: return QStringLiteral("login required");
 	default: return QStringLiteral("error %1").arg(code);
 	}
 }

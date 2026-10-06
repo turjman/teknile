@@ -81,6 +81,33 @@ def bus_checks(opts, tool, run, lines_json):
             fake.wait()
 
 
+def login_checks(opts, run):
+    """a device that requires a login (evre_fake_fast --login-required): code 13 is named "login required";
+    with the token the read works"""
+    fast = os.path.join(opts.build, 'evre_fake_fast.exe' if os.name == 'nt' else 'evre_fake_fast')
+    if not os.path.exists(fast):
+        check(False, 'login: evre_fake_fast is missing')
+        return
+    port = opts.port + 26  # 1238
+    link = ['--tcp', '127.0.0.1:%d' % port]
+    fake = subprocess.Popen([fast, str(port), os.path.abspath(MAP), TOKEN, '--login-required'],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', port), 0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        rc, _, err = run('read', *link, '--map', MAP, 'FAN_SPEED', token='')
+        check(rc == 1 and 'login required' in err, 'login required: without a token, code 13 is named (%s)' % err.strip())
+        rc, out, _ = run('read', *link, '--map', MAP, 'FAN_SPEED')
+        check(rc == 0 and 'FAN_SPEED' in out, 'login required: with the token, the read works')
+    finally:
+        fake.kill()
+        fake.wait()
+
+
 def slave_checks(opts, run, lines_json):
     """fake_device.py at another slave (--slave 3): it answers only its own address and takes a broadcast; the
     broadcast of one device (--map) and the broadcast rule's refusals"""
@@ -234,6 +261,7 @@ def main():
         rc, _, err = run('read', '--tcp', '127.0.0.1:1', '--map', MAP, 'SUPPLY_V', '--timeout', '300')
         check(rc == 1 and err.strip(), 'no device at the port: exit 1, why (%s)' % err.strip())
         bus_checks(opts, tool, run, lines_json)
+        login_checks(opts, run)
         slave_checks(opts, run, lines_json)
     finally:
         device.kill()

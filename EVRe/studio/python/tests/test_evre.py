@@ -257,5 +257,40 @@ class BusOverTcp(unittest.TestCase):
             evre.connect_bus_tcp('127.0.0.1', BUS_PORT, self.bus_file, token='example-token', tokens={'D2': 'wrong-token'})
 
 
+LOGIN_PORT = 1216
+
+
+@unittest.skipUnless(BUILD and os.path.exists(FAST), 'EVRE_BUILD does not name a build folder with evre_fake_fast')
+class LoginRequired(unittest.TestCase):
+    """a device that requires a login (evre_fake_fast --login-required): code 13, named "login required" """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fake = subprocess.Popen([FAST, str(LOGIN_PORT), MAP, 'example-token', '--login-required'],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', LOGIN_PORT), 0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fake.kill()
+        cls.fake.wait()
+
+    def test_name(self):
+        self.assertEqual(frame.ERRORS[13], 'login required')
+
+    def test_without_and_with_a_session(self):
+        with evre.connect_tcp('127.0.0.1', LOGIN_PORT, MAP) as dev:
+            with self.assertRaisesRegex(evre.EvreError, 'login required') as caught:
+                dev.read_raw(0xA000, 2)
+            self.assertEqual(caught.exception.code, 13)
+        with evre.connect_tcp('127.0.0.1', LOGIN_PORT, MAP, token='example-token') as dev:
+            self.assertEqual(dev.device_id(), 0x1001)
+
+
 if __name__ == '__main__':
     unittest.main()

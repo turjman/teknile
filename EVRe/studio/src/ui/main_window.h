@@ -269,6 +269,8 @@ private:
 	ValuePacer valuePacer_;             /* when the next copy is due: at the pace chosen for the values */
 	QElapsedTimer valueClock_;
 	QHash<int, qint64> readErrorLoggedMs_; /* per row: when its last read error was logged */
+	QSet<int> loginRequiredLogged_;        /* devices (RegDef::slave) whose "login required" this connection logged */
+	static constexpr uint8_t LOGIN_REQUIRED_CODE = 13;
 
 	/* requests that are answered: their callbacks, by request id */
 	quint64 nextRequestId_ = 1;
