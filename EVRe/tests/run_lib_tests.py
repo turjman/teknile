@@ -31,7 +31,9 @@
    returns 15; R3 and R4 (no heap, recursion, goto or cast of the data pointer; ASCII, LF); the build matrix (g++,
    -m32, arm-none-eabi-g++ for a Cortex-M7 and a Cortex-M0, avr-g++; C++11 to C++20; -O0 to -O3 and -Os; -Wall
    -Wextra -Wpedantic -Werror; --skip names a compiler not to use, a missing one fails the run); the stack and size
-   on the Cortex-M7 at -Os, and the firmware's -Oz -flto.
+   on the Cortex-M7 at -Os, and the firmware's -Oz -flto; the docs checks (section 9, item 9): PROTOCOL.md's two
+   wirings of the Guard compile as written, its error table is EVRe.h's codes, its "Cost" is what the Cortex-M7
+   build measured.
 7. With --fuzz DIR: fuzz_test.cpp built against the library in DIR and against
    ../lib; the two outputs must be identical, line for line, but for the
    operations of FUZZ_CLASSES, each checked; and in the ../lib run every frame
@@ -809,7 +811,8 @@ def matrix(folder, skip):
 
 def arm_stack_and_size(folder, skip):
     """On the Cortex-M7 at -Os: the code size of part 2, every new function's stack static and the check's under
-    STACK_LIMIT; then the firmware's own release flags (-Oz -flto), linked, with the guarded write path's stack."""
+    STACK_LIMIT; then the firmware's own release flags (-Oz -flto), linked, with the guarded write path's stack. Returns
+    what docs_checks compares with the docs (None without the compiler)."""
     if 'arm-none-eabi-g++' in skip or not shutil.which('arm-none-eabi-g++'):
         return
     m7 = ['arm-none-eabi-g++', '-mcpu=cortex-m7', '-mthumb', '-mfpu=fpv5-d16', '-mfloat-abi=hard', '-fno-exceptions', '-fno-rtti',
@@ -829,6 +832,12 @@ def arm_stack_and_size(folder, skip):
                 usage[parts[0].split(':')[-1].split('(')[0].split()[-1]] = (int(parts[1]), parts[2].strip())
     size = subprocess.run(['arm-none-eabi-size', '-A', obj], capture_output=True, text=True).stdout
     text = sum(int(line.split()[1]) for line in size.splitlines() if line.startswith('.text'))
+    # each function's code, from its own section (-ffunction-sections): what PROTOCOL.md's "Cost" names
+    functions = {}
+    for line in size.splitlines():
+        for name in ('evre_guard_check_write', 'evre_guard_check_init'):
+            if line.startswith('.text._Z%d%s' % (len(name), name)):  # its C++ name, mangled
+                functions[name] = int(line.split()[1])
     public = dict((k, v) for k, v in usage.items() if k.startswith('evre_guard_'))
     print('     Cortex-M7 -Os: part 2 %d B of code; stack %s' % (text, ', '.join('%s %d B' % (k, v[0]) for k, v in sorted(public.items()))))
     check(usage and all(kind == 'static' for _, kind in usage.values()), 'R3: every function of part 2 has a static stack (no alloca, '
@@ -852,6 +861,86 @@ def arm_stack_and_size(folder, skip):
         ', '.join('%s %d' % (k, v) for k, v in sorted(frames.items()) if v), path))
     check(r.returncode == 0 and frames, 'Cortex-M7 -Oz -flto (the firmware\'s release flags): the device with parts 1 and 2 links, '
           'its stack measured')
+    # the sizes of the entry, the table and the check on this target
+    probe = os.path.join(folder, 'sizes_m7.cpp')
+    with open(probe, 'w') as f:
+        f.write('#include "evre_guard_desc.h"\n'
+                'static_assert(sizeof(evre_guard_desc_t) == 24, "entry");\n'
+                'static_assert(sizeof(evre_guard_table_t) == 12, "table");\n'
+                'static_assert(sizeof(evre_guard_check_t) == 12, "check");\n')
+    sizes = subprocess.run(m7 + ['-c', probe, '-o', os.devnull], capture_output=True, text=True)
+    return {'write': functions.get('evre_guard_check_write', 0), 'init': functions.get('evre_guard_check_init', 0),
+            'stack': public.get('evre_guard_check_write', (0,))[0], 'sizes': sizes.returncode == 0}
+
+
+def docs_checks(cc, folder, measured):
+    """GUARD_PLAN.md section 9, item 9: the docs say what the code does. PROTOCOL.md's two wirings of EVRe Guard
+    compile as written; its error table names every code of EVRe.h with its value; its "Cost" equals what the
+    Cortex-M7 build measured (when it ran)."""
+    import re
+    protocol = open(os.path.join(HERE, '..', 'docs', 'PROTOCOL.md'), encoding='utf-8').read()
+    blocks = re.findall(r'```c\n(.*?)```', protocol, re.S)
+    part1 = [b for b in blocks if 'evre_guard_config_t guard_config' in b]
+    part2 = [b for b in blocks if 'evre_guard_write_checked' in b]
+    check(len(part1) == 1 and len(part2) == 1, 'docs: PROTOCOL.md has one wiring for part 1 and one for parts 1 and 2')
+
+    def program(block, before):
+        # the lines before "at start-up" are the file's, the rest the body of a function, as a device writes them
+        head, _, body = block.partition('/* at start-up')
+        body = '/* at start-up' + body
+        sending = '\t(void) sending;\n' if 'sending' in body else ''
+        return ('#include <stdint.h>\n#include "EVRe.h"\n#include "evre_guard.h"\n' + before + head +
+                'void setup(void);\nvoid setup(void) {\n' + body + sending + '}\n')
+    stand_in = os.path.join(folder, 'example_guard.h')
+    with open(stand_in, 'w') as f:
+        f.write('/* a stand-in for evre export example.json --to guard */\n#include "evre_guard_desc.h"\n'
+                'extern const evre_guard_table_t example_table;\n')
+    scaffold1 = 'static evre_base_t dev;\nstatic uint8_t saved_failures;\n'
+    scaffold2 = ('static evre_base_t dev;\nstatic uint64_t now64(void) { return 0; }\n'
+                 'static uint8_t token[16];\nstatic const evre_guard_config_t guard_config = { 0xD010, 16, token, nullptr, 0, 3, '
+                 '1000, 60000, 300000, now64 };\n')
+    for what, block, before in (('part 1', part1, scaffold1), ('parts 1 and 2', part2, scaffold2)):
+        if not block:
+            continue
+        source = os.path.join(folder, 'wiring_%d.cpp' % len(before))
+        with open(source, 'w', encoding='utf-8') as f:
+            f.write(program(block[0], before))
+        bad = []
+        for std in ('c++11', 'c++17'):
+            r = subprocess.run([cc, '-std=' + std, '-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', folder, '-I', NEW, '-I', GUARD,
+                                '-c', source, '-o', os.devnull], capture_output=True, text=True)
+            if r.returncode:
+                bad.append('%s: %s' % (std, r.stderr.strip()[:300]))
+        check(not bad, 'docs: PROTOCOL.md\'s wiring of %s compiles as written (C++11, C++17, -Wpedantic -Werror)%s'
+              % (what, ' %s' % bad if bad else ''))
+
+    # the error table against the enum
+    header = open(os.path.join(NEW, 'EVRe.h'), encoding='utf-8').read()
+    enum = re.search(r'enum ERR_CODE_ENUM \{(.*?)\};', header, re.S).group(1)
+    codes = dict((m.group(1), int(m.group(2))) for m in re.finditer(r'^\s*(\w+) = (\d+)U,', enum, re.M))
+    errors = protocol.split('| Code | Name | Meaning | On the wire |', 1)[-1].split('\n\n', 1)[0]
+    table = dict((m.group(2), int(m.group(1))) for m in re.finditer(r'^\| (\d+) \| `(\w+)` \|', errors, re.M))
+    check(codes and table == codes, 'docs: PROTOCOL.md\'s error table names every code of EVRe.h with its value (%d codes)%s'
+          % (len(codes), '' if table == codes else ' %s' % sorted(set(table.items()) ^ set(codes.items()))))
+
+    # the Cost paragraph against the Cortex-M7 build
+    if not measured:
+        print('     the Cost numbers are checked with arm-none-eabi-g++ only: skipped')
+        return
+    cost = re.search(r'\*\*Cost\.\*\* About ([\d.]+) KB of code for the write check and ([\d.]+) KB for init.*?'
+                     r'(\d+) B of flash per writable register.*?(\d+) B per table; (\d+) B of RAM; (\d+) B of the decoder\'s stack',
+                     protocol, re.S)
+    if not cost:
+        check(False, 'docs: PROTOCOL.md\'s "Cost" paragraph is where the check reads it')
+        return
+    write_kb, init_kb, entry, table_b, ram, stack = cost.groups()
+    kb = lambda n: '%.1f' % (n / 1024.0)
+    check(kb(measured['write']) == write_kb and kb(measured['init']) == init_kb,
+          'docs: the Cost\'s code sizes are the measured ones (the write check %d B = %s KB, init %d B = %s KB)'
+          % (measured['write'], write_kb, measured['init'], init_kb))
+    check(int(stack) == measured['stack'], 'docs: the Cost\'s stack is the measured one (%s B, measured %d B)' % (stack, measured['stack']))
+    check(measured['sizes'] and (entry, table_b, ram) == ('24', '12', '12'),
+          'docs: the Cost\'s 24 B per register, 12 B per table and 12 B of RAM are the sizes on the Cortex-M7')
 
 
 def r3_checks(cc, folder):
@@ -991,7 +1080,8 @@ def main():
         r3_checks(opts.cc, folder)
         r4_scan()
         matrix(folder, skip)
-        arm_stack_and_size(folder, skip)
+        measured = arm_stack_and_size(folder, skip)
+        docs_checks(opts.cc, folder, measured)
 
         if opts.fuzz:
             fuzz(opts.cc, folder, os.path.abspath(opts.fuzz), opts.fuzz_cases)

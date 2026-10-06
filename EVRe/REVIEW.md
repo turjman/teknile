@@ -113,6 +113,55 @@ to G.6, each with a pull request into `evre-1.1`.
   which 1.0 refuses, bound by the table and driven with every vector of the Guard's test, each answer as on the
   hand-made ranges; an entry moved off its member fails the build naming it; the header on the build matrix; the
   golden `example_device_table_11.h`; `--check` and `--lib`'s misuse), and the GUI step `guardKeys`.
+- **G.6** (the review, plan phase P6): the section below.
+
+### G.6: the review of G.1 to G.5 against the build rules
+
+One pass over the diff of G.0 to G.5 (60 files), each rule of GUARD_PLAN.md section 12 with its "checked by":
+
+| Rule | Checked&nbsp;by | Found |
+|---|---|---|
+| R1&nbsp;layering | the diff of `lib/EVRe.*`; a grep for `evre_guard_`; the library fuzz | the diff is the `VALUE_REFUSED` line and its comment; no `evre_guard_` name in `lib/EVRe.*`; the library never returns 15 |
+| R2&nbsp;the&nbsp;API&nbsp;grows | `api_compat.cpp`; the 9 positional configs of `lib_test.cpp`; PROTOCOL.md's wiring | every name of parts 1 and 2 pinned; `evre_guard_check_t` marks where it may grow; PROTOCOL.md's two wirings were not compiled by anything: now they are (below) |
+| R3&nbsp;C++11,&nbsp;no&nbsp;heap | the matrix (380 builds); `nm`; `-fcallgraph-info`; `-fstack-usage`; the big-endian mutant | as the rule says; the check 56 B of stack (limit 96 B) |
+| R4&nbsp;readable | `r4_scan` (ASCII, LF in the Guard's files); a scan of the whole diff for CR and the section sign | none; three short cells of PROTOCOL.md's wire table were on two lines in a narrow window: `&nbsp;` now, as the repo's rule for tables asks |
+| R5&nbsp;interrupt-safe | the lock build; the table of who writes what in `evre_guard_desc.h` | init and `_last` take the lock once each, the check none |
+| R6&nbsp;fail&nbsp;closed | a feature test per init rule; the bad tables of the fuzz; the mutants | as the rule says |
+| R7&nbsp;tests | section 9, item by item (below) | one gap: item 9's docs checks did not exist (below) |
+| R8&nbsp;docs | the docs checks; the D-numbers | PROTOCOL.md's row of 15 and STUDIO.md 18.3 named neither the closed set nor the bits that must be 0: fixed |
+| R9&nbsp;hygiene | a scan of the diff for names of companies and products | none; the word list of the owner's scan before publishing stays outside the tree |
+
+Section 9, item by item:
+
+- **1, the feature tests.** Every case of the list has its check, named by its D-number. Every row of the wire table
+  has its `wire:` test (17 rows, 26 tests).
+- **2, the lock build**, **3, the classes**, **4, the fuzz**, **6, the pins** and **7, the matrix**: as G.2 says
+  above, with G.4's closed sets and bits in the oracle.
+- **5, the mutants.** 34, each caught by a feature check of its decision and by the fuzz. The list of section 9 has
+  one more, "zero_bits tested after sign extension". It is an equivalent mutant: init refuses `zero_bits` past the
+  register's width, so the bits a sign extension sets are never in the mask, and the two versions refuse the same
+  values. `guard_mutants.py` says so where it would be.
+- **8, the generator.** `guard_table_test.py` covers the list; G.5 added the table for library 1.1.
+- **9, the docs checks**, new in `run_lib_tests.py` (`docs_checks`):
+  - PROTOCOL.md's two wirings of the Guard (part 1, and parts 1 and 2) are taken from the file and compiled as
+    written, as C++11 and C++17 with `-Wpedantic -Werror`: the lines before "at start-up" at file scope, the rest
+    in a function;
+  - its error table names every code of `EVRe.h` with its value;
+  - its "Cost" is what the Cortex-M7 build measures: 0.5 KB for the write check (508 B), 0.6 KB for init
+    (664 B), 56 B of stack, 24 B per register, 12 B per table and 12 B of RAM.
+  
+  `schema_test.py` now also checks that the register keys of MAP_FORMAT.md section 4 are the schema's, and that
+  STUDIO.md 16.3 names the Guard's keys.
+- **10, the Studio.** A check for each behaviour, as the work plan asks. One was missing, the broadcast check with
+  the new keys. All three hosts send a broadcast through `writeProblem`, which knows the keys; the GUI step of the
+  bus now checks that a broadcast past the map's max asks first and that Cancel sends nothing.
+
+The counts at the end of G.6 (Linux, g++ 13.3, arm-none-eabi-g++ 13.2, avr-g++ 7.3): `run_lib_tests.py` 1025
+passed, 0 failed (34 mutants, 380 matrix builds, the fuzz 2 x 300 000 cases at -O1 and -O2 and 2 x 50 000 under
+the sanitizers, 0 failures); `guard_table_test.py` 174; `evre_gui_test` 397; `sim_test.py` 30; `cli_test.py` 38;
+`device_table_test.py` 24; `fake_login_test.py` 14; `evre_map_test` 22; the Python package 21; `schema_test.py`
+passes. On the Cortex-M7 at `-Os`: part 2 1404 B of code, the write check 508 B, init 664 B, the check's stack
+56 B; with `-Oz -flto` the guarded write path about 116 B.
 
 ## After review round 2: your decisions D-25 and N11
 

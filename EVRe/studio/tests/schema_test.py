@@ -4,11 +4,13 @@
 
     python schema_test.py [map.json ...]     (default: every map in ../maps; bus files are not maps: left out)
 
+Also: the register keys MAP_FORMAT.md and STUDIO.md document are the schema's.
 Needs the jsonschema package; without it the test says SKIP and passes.
 Exit code: 0 all valid (or skipped), 1 a map is not valid."""
 import glob
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -59,6 +61,19 @@ def main():
     not_bool = len(list(validator.iter_errors(reg(closed='yes', reserved_zero=1)))) == 2
     print('%s "closed" and "reserved_zero" are booleans' % ('PASS' if flags and not_bool else 'FAIL'))
     failed += 0 if flags and not_bool else 1
+    # the docs and the schema name the same register keys: MAP_FORMAT.md's table of section 4 (an overlay's
+    # "remove" is in section 7) and STUDIO.md 16.3
+    def keys_of(path, start, stop):
+        text = open(os.path.join(HERE, '..', 'docs', path), encoding='utf-8').read()
+        part = text.split(start, 1)[-1].split(stop, 1)[0]
+        return set(re.findall(r'`(\w+)`', ''.join(line.split(' | ')[0] for line in part.splitlines() if line.startswith('| `'))))
+    in_schema = set(schema['$defs']['register']['properties'])
+    in_format = keys_of('MAP_FORMAT.md', '## 4. A register', '## 5. Values') | {'remove'}
+    in_studio = keys_of('STUDIO.md', '### 16.3 Register keys', '### 16.4')
+    same = in_format == in_schema and in_studio <= in_schema and {'past_limits', 'closed', 'reserved_zero'} <= in_studio
+    print('%s the register keys of MAP_FORMAT.md section 4 are the schema\'s, and STUDIO.md 16.3 names them%s'
+          % ('PASS' if same else 'FAIL', '' if same else ' %s %s' % (sorted(in_format ^ in_schema), sorted(in_studio - in_schema))))
+    failed += 0 if same else 1
     return 1 if failed else 0
 
 
