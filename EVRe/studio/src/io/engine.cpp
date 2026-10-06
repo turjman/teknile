@@ -143,6 +143,10 @@ QHash<RegKey, QVector<QPointF>> IoEngine::takeSamples() {
 	return out;
 }
 
+void IoEngine::setFastTrigger(int stream, const fast::TriggerWatch &watch) {
+	for (int i = 0; i < fastRuns_.size(); i++) fastRuns_[i].trigger.set(i == stream ? watch : fast::TriggerWatch());
+}
+
 QVector<IoEngine::FastBlock> IoEngine::takeFastBlocks() {
 	QMutexLocker lock(&crossThreadMutex_);
 	fastQueued_ = 0;
@@ -1118,6 +1122,9 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 		block.markTime = run.state.clock().mark().time;
 		block.markPeriod = run.state.clock().period();
 	}
+	/* the chart's trigger: its crossing found here, as the block comes, so the window holds on it at the next frame */
+	run.trigger.scan(run.def, taken, frame.data.constData() + fast::HEADER, run.state.clock().mark(),
+			run.state.clock().period(), block.crossings);
 	{
 		QMutexLocker lock(&crossThreadMutex_);
 		fastQueued_ += block.records.size();

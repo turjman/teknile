@@ -608,19 +608,17 @@ QVector<ChartView::BinInfo> ChartView::freshBins(int key) const {
 
 /* A block's records into its stream's store, kept while one of its lines is on the chart; the legend's values from
  * the newest record */
-void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart,
+qint64 ChartView::appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart,
 		quint64 lost) {
 	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
-	if (!store || count <= 0 || records.size() < count * store->recordSize()) return;
+	if (!store || count <= 0 || records.size() < count * store->recordSize()) return -1;
 	int lines = 0;
 	for (const Series &s : std::as_const(series_)) lines += s.fast == store;
-	if (lines == 0) return;
+	if (lines == 0) return -1;
+	const qint64 at = store->dropped() + store->size();
 	store->append(first, count, records.constData(), newStart, lost);
 	for (Series &s : series_)
-		if (s.fast == store) {
-			sumFast(s); /* before a trim: every record counts */
-			scanFastTrigger(s);
-		}
+		if (s.fast == store) sumFast(s); /* before a trim: every record counts */
 	trimFast(*store, lines);
 	const qsizetype newest = store->size() - 1;
 	for (Series &s : series_) {
@@ -628,6 +626,7 @@ void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QBy
 		s.last = store->value(s.channel, newest);
 		s.hasLast = true;
 	}
+	return at;
 }
 
 void ChartView::markFast(int stream, quint64 record, double time, double period) {
@@ -635,42 +634,45 @@ void ChartView::markFast(int stream, quint64 record, double time, double period)
 	if (!store) return;
 	store->mark(record, time, period);
 	for (Series &s : series_)
-		if (s.fast == store) { /* the first block's records have times from the first mark on */
-			sumFast(s);
-			scanFastTrigger(s);
-		}
+		if (s.fast == store) sumFast(s); /* the first block's records have times from the first mark on */
 }
 
-/* the trigger on a fast line: the first pair of records in one segment (none across a gap) that crosses the level,
- * after it was armed; its time straight between the two, as a polled line's */
-void ChartView::scanFastTrigger(Series &s) {
-	const fast::Store &store = *s.fast;
-	if (!trigger_.armed || store.size() == 0 || !store.hasTime() || series_.constFind(trigger_.key) == series_.constEnd()
-			|| &*series_.constFind(trigger_.key) != &s) {
-		s.scannedTo = store.dropped() + store.size();
-		return;
+/* The crossings the engine found (fast::TriggerScan, with the same level, edge and re-arm as here), each at the time
+ * this store gives its record: the view holds on them as on a polled line's crossing. One found for an older arm, or
+ * at or before the crossing held on, is not used */
+void ChartView::fastCrossings(int stream, qint64 first, const QVector<fast::Crossing> &crossings) {
+	const auto it = series_.constFind(trigger_.key);
+	if (!trigger_.on || first < 0 || it == series_.constEnd() || !it->fast || it->fast != fastStores_.value(stream)) return;
+	const fast::Store &store = *it->fast;
+	for (const fast::Crossing &crossing : crossings) {
+		const qsizetype i = qsizetype(first - store.dropped()) + crossing.record;
+		if (crossing.serial != watchSerial_ || !trigger_.armed || i < 1 || i >= store.size() || !store.hasTime()) continue;
+		const double before = store.timeAt(i - 1), time = before + crossing.fraction * (store.timeAt(i) - before);
+		if (std::isfinite(trigger_.at) && time <= trigger_.at) continue;
+		crossed(time, store.timeAt(store.size() - 1));
 	}
-	const qsizetype end = store.size();
-	qsizetype i = std::max<qsizetype>(store.upperBound(trigger_.armedFrom), qsizetype(s.scannedTo - store.dropped()));
-	i = std::max<qsizetype>(i, 1);
-	const TriggerSettings watched = triggerSettings_.value(s.name);
-	const double level = watched.level;
-	const TriggerEdge edge = watched.edge;
-	while (i < end) {
-		const qsizetype segmentEnd = store.segmentEnd(i);
-		if (store.startsAfterGap(i)) i++; /* its first record: no pair across the gap */
-		for (; i < segmentEnd; i++) {
-			const double pv = store.value(s.channel, i - 1), v = store.value(s.channel, i);
-			const bool up = pv < level && v >= level, down = pv > level && v <= level;
-			if ((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down)) {
-				const double pt = store.timeAt(i - 1), t = store.timeAt(i);
-				s.scannedTo = store.dropped() + i + 1;
-				crossed(v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t, store.timeAt(end - 1));
-				return;
-			}
-		}
-	}
-	s.scannedTo = store.dropped() + end;
+}
+
+fast::TriggerWatch ChartView::fastTriggerWatch(int &stream) const {
+	stream = -1;
+	fast::TriggerWatch watch;
+	const auto it = series_.constFind(trigger_.key);
+	if (!trigger_.on || it == series_.constEnd() || !it->fast) return watch;
+	stream = (trigger_.key - FIRST_FAST_KEY) / 256;
+	const TriggerSettings watched = watchedSettings();
+	watch.on = trigger_.armed;
+	watch.channel = it->channel;
+	watch.level = watched.level;
+	watch.edge = int(watched.edge);
+	watch.from = trigger_.armedFrom;
+	watch.rearm = trigger_.mode == TriggerMode::Single ? -1 : std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	watch.serial = watchSerial_;
+	return watch;
+}
+
+void ChartView::postWatch() {
+	watchSerial_++;
+	emit fastTriggerChanged();
 }
 
 namespace {
@@ -831,6 +833,7 @@ void ChartView::setValuesPerSecond(int perSecond) {
 void ChartView::setWindow(double seconds) {
 	window_ = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
 	if (window_ > memory_) setMemory(window_); /* the view must fit in the memory */
+	if (trigger_.on) postWatch(); /* the next crossing counts after the view's fill, the hold-off of the window's length */
 	refresh();
 }
 
@@ -896,6 +899,7 @@ ChartView::TriggerSettings ChartView::triggerSettings(int key) const {
 
 void ChartView::setTriggerSettings(int key, const TriggerSettings &settings) {
 	triggerSettings_.insert(lineName(key), settings);
+	if (trigger_.on && key == trigger_.key) postWatch();
 	refresh();
 }
 
@@ -935,6 +939,7 @@ void ChartView::setTriggerSettingsTexts(const QStringList &texts) {
 void ChartView::stopTrigger() {
 	trigger_.on = trigger_.armed = false;
 	trigger_.at = trigger_.pending = NAN;
+	postWatch();
 	refresh();
 }
 
@@ -947,12 +952,14 @@ void ChartView::armTrigger() {
 	trigger_.armedFrom = it != series_.constEnd() && !it->times.isEmpty() ? it->times.back()
 			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
 				? it->fast->timeAt(it->fast->size() - 1) : -std::numeric_limits<double>::infinity();
+	postWatch();
 	refresh();
 }
 
 void ChartView::setTriggerLevel(double level) {
 	if (!trigger_.on) return;
 	watchedSettingsRef().level = level;
+	postWatch();
 	refresh();
 }
 
@@ -995,6 +1002,7 @@ void ChartView::setTriggerHoldoff(double seconds) {
 	triggerHoldoff_ = seconds < 0 ? -1 : std::min(seconds, MAX_HOLDOFF);
 	if (trigger_.on && trigger_.armed && std::isfinite(trigger_.at) && trigger_.mode != TriggerMode::Single)
 		trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	if (trigger_.on) postWatch();
 	refresh();
 }
 
@@ -1005,6 +1013,7 @@ void ChartView::setTriggerPosition(double fraction) {
 		if (trigger_.armed && trigger_.mode != TriggerMode::Single)
 			trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
 	}
+	if (trigger_.on) postWatch();
 	refresh();
 }
 
@@ -1018,6 +1027,7 @@ QString ChartView::triggerStateText() const {
 void ChartView::setTriggerEdge(TriggerEdge edge) {
 	if (!trigger_.on) return;
 	watchedSettingsRef().edge = edge;
+	postWatch();
 	refresh();
 }
 
@@ -1577,6 +1587,7 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	if (trigger_.on && triggerEdgeButton_.contains(pos)) {
 		TriggerSettings &watched = watchedSettingsRef();
 		watched.edge = TriggerEdge((int(watched.edge) + 1) % 3);
+		postWatch();
 		emit triggerSettingsChanged();
 		refresh();
 		return;
@@ -1779,7 +1790,10 @@ void ChartView::mouseReleaseEvent(QMouseEvent *) {
 		return; /* the resize cursor stays while the mouse is on the separator */
 	}
 	if (noteLetGo) emit notesChanged();
-	if (levelLetGo) emit triggerSettingsChanged();
+	if (levelLetGo) {
+		postWatch();
+		emit triggerSettingsChanged();
+	}
 	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
 	if (cursorLetGo) emit cursorsChanged(); /* measured in full now: while dragged, A and B alone followed it */
 }

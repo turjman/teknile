@@ -553,6 +553,11 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
+	connect(view, &ChartView::fastTriggerChanged, this, [this] {
+		int stream = -1;
+		const fast::TriggerWatch watch = chart_->view()->fastTriggerWatch(stream);
+		emit fastTriggerChanged(stream, watch);
+	});
 	connect(view, &ChartView::triggerPositionChanged, this, [this](double fraction) { /* its mark dragged */
 		const QSignalBlocker quiet(triggerPosition_);
 		triggerPosition_->setValue(int(std::lround(fraction * 100)));
@@ -780,10 +785,11 @@ int ChartTab::fastLines() const {
 }
 
 void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
-		bool marked, quint64 markRecord, double markTime, double markPeriod) {
+		bool marked, quint64 markRecord, double markTime, double markPeriod, const QVector<fast::Crossing> &crossings) {
 	ChartView *view = chart_->view();
-	view->appendFast(stream, first, count, records, newStart, lost);
+	const qint64 at = view->appendFast(stream, first, count, records, newStart, lost);
 	if (marked) view->markFast(stream, markRecord, markTime, markPeriod);
+	if (!crossings.isEmpty()) view->fastCrossings(stream, at, crossings); /* their times from the mark */
 	fastSince_ += quint64(std::max(0, count));
 }
 

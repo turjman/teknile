@@ -164,6 +164,7 @@ public:
 		bool marked = false;     /* a time mark came with it: */
 		quint64 markRecord = 0;
 		double markTime = 0, markPeriod = 0;
+		QVector<fast::Crossing> crossings; /* the chart's trigger crossing in it (setFastTrigger) */
 	};
 	QVector<FastBlock> takeFastBlocks();
 	/* the monitor's lines since the last call (when monitoring), and how many
@@ -184,6 +185,8 @@ public:
 	/* AUTO_SEND on or off at 8000 / (prescaler + 1) Hz, on the one device (never on a bus). Kept: switched on
 	 * again after a reconnect, once the device's STATUS says it can. Answered by autoSendSet. */
 	void setAutoSend(bool on, int prescaler);
+	/* Fast EVRe: the chart's trigger on a channel of a stream (-1: on none), looked for in each block as it comes */
+	void setFastTrigger(int stream, const fast::TriggerWatch &watch);
 	/* Fast EVRe: the map's stream (its index in DeviceMap::streams) on or off, on the one device (never on a bus).
 	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
 	void setFastStream(int stream, bool on);
@@ -289,6 +292,7 @@ private:
 		const RegDef *rate() const { return rateReg.name.isEmpty() ? nullptr : &rateReg; }
 		RegDef enableReg, rateReg;  /* the map's registers it names; no name: none */
 		fast::FastStream state;
+		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
 		bool wanted = false;
 		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
 		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */

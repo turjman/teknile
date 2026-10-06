@@ -106,7 +106,8 @@ public:
 	bool fastPlotted(int stream, int channel) const;
 	int fastLines() const; /* fast lines on the chart */
 	void appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
-			bool marked, quint64 markRecord, double markTime, double markPeriod);
+			bool marked, quint64 markRecord, double markTime, double markPeriod,
+			const QVector<fast::Crossing> &crossings = {}); /* the trigger's, found by the engine (setFastTrigger) */
 	/* every line off the chart, and the colours from the first again: for a new map (the math
 	 * lines come back with the next setRegisters) */
 	void clearLines();
@@ -191,6 +192,8 @@ signals:
 	/* an export ended: rows written, or error (cancelled: error says so) */
 	void exported(const QString &file, qint64 rows, const QString &error);
 	void notesChanged();
+	/* the trigger watches a fast line now, or no longer (stream -1): the engine looks for its crossings */
+	void fastTriggerChanged(int stream, const fast::TriggerWatch &watch);
 
 private:
 	QString settingKey(const char *name) const { return group_ + QLatin1Char('/') + QLatin1String(name); }

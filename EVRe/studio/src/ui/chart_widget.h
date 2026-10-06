@@ -85,6 +85,7 @@
 #include <functional>
 #include <memory>
 
+#include "io/fast_stream.h"
 #include "model/fast_store.h"
 #include "model/recording_file.h"
 #include "ui/gpu_lines.h"
@@ -125,9 +126,15 @@ public:
 	 * cleared by Clear, its lines' totals over all of it */
 	void setFastStore(int stream, std::shared_ptr<fast::Store> store);
 	void clearFastStreams();
-	/* a block's records (the stream's rules applied: io/fast_stream.h), and a time mark of its start */
-	void appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart, quint64 lost);
+	/* a block's records (the stream's rules applied: io/fast_stream.h), and a time mark of its start. Returns where its
+	 * first record lies in the stream's store, counted since the store began; -1: not kept (none of its lines plotted) */
+	qint64 appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart, quint64 lost);
 	void markFast(int stream, quint64 record, double time, double period);
+	/* the trigger on a fast line: the crossings the engine found in a block as it came (fast::TriggerScan), the block's
+	 * first record at `first` (appendFast's), taken after its mark. The view holds on them as on a polled line's */
+	void fastCrossings(int stream, qint64 first, const QVector<fast::Crossing> &crossings);
+	/* what the engine is to watch now (fastTriggerChanged): stream -1 and off when the trigger is not on a fast line */
+	fast::TriggerWatch fastTriggerWatch(int &stream) const;
 	const fast::Store *fastStore(int stream) const; /* nullptr: none */
 	/* tests: a line's bins as last binned for the view (each column's samples: their times, min, max, count, and a
 	 * gap before them), and the time labels as last painted */
@@ -489,6 +496,7 @@ signals:
 	/* the level's line or tag dragged and let go, or the tag's edge symbol clicked: triggerSettingsTexts() to be saved */
 	void triggerSettingsChanged();
 	void triggerPositionChanged(double fraction); /* the mark under the plot dragged and let go: to be saved */
+	void fastTriggerChanged(); /* armed, stopped or set otherwise: fastTriggerWatch() to be given to the engine */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
@@ -556,7 +564,6 @@ private:
 		std::shared_ptr<fast::Store> fast;
 		int channel = 0;
 		qint64 totalTo = 0; /* a fast line: its total sums its records up to this one (counted since its store began) */
-		qint64 scannedTo = 0; /* a fast line watched by the trigger: its records looked at up to this one */
 	};
 	/* one line's samples in a span, binned per pixel column, with the range of
 	 * what lies inside the span */
@@ -674,7 +681,6 @@ private:
 	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
 	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
-	void scanFastTrigger(Series &s);              /* the trigger's crossing in its records since the last look */
 	/* a fast line's records over t0..t1 into arrays, at most `most`; withoutGap: the longest part without a gap */
 	static bool fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
 			QVector<double> &values);
@@ -952,6 +958,10 @@ private:
 	TriggerSettings watchedSettings() const;           /* the line watched's */
 	TriggerSettings &watchedSettingsRef();             /* the same, to change (made when there is none) */
 	double midRange(int key) const;                    /* the line's middle in view (a level never set) */
+	/* a fast line's trigger is the engine's: each change to what it watches is a new arm (its crossings found before
+	 * are not used), handed over by fastTriggerChanged */
+	quint64 watchSerial_ = 0;
+	void postWatch();
 	QString lineName(int key) const;                   /* empty: no such line */
 	void fireTrigger(double time);
 	/* a crossing that counts: held at once, or (a short window held full) once its view is full too; newest: the line's

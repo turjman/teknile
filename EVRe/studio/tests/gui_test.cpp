@@ -1274,6 +1274,47 @@ private:
 		check(QRegularExpression(QStringLiteral("^4\\.[5-7]\\d* A$")).match(rms).hasMatch() && !mean.isEmpty(),
 				"fast streams: a fast line's row in the Measure table: the device's 50 Hz sine of 6.55 A reads about 4.6 A RMS");
 		check(inTrigger, "fast streams: the trigger's line list offers the fast line (its tooltip names fast lines)");
+		/* the trigger on the fast line, its crossing found on the engine's thread as each block comes: armed from its chip's
+		 * menu (Trigger on this line), level 0, rising; the view holds on a crossing between two of its records (within
+		 * one record), at the time the store gives it; how long after the crossing the window held is said */
+		bool engineCrossing = false;
+		double offsetRecords = -1, delayMs = -1;
+		if (plotted) {
+			auto *level = chartTab->findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+			auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+			double heldAt = NAN;
+			const QMetaObject::Connection seen = QObject::connect(chartView, &ChartView::triggered, chartView, [&](double) {
+				if (std::isnan(heldAt)) heldAt = chartView->timeNow();
+			});
+			chartTab->triggerOnLine(iLoad);
+			if (level) {
+				level->setText(QStringLiteral("0"));
+				emit level->editingFinished();
+			}
+			const int before = chartView->triggerHolds();
+			heldAt = NAN;
+			const bool held = QTest::qWaitFor([&] { return chartView->triggerHolds() > before; }, 4000);
+			const double at = chartView->triggeredAt();
+			QObject::disconnect(seen);
+			const fast::Store *store = chartView->fastStore(0);
+			if (held && store) {
+				const qsizetype i = store->lowerBound(at);
+				if (i > 0 && i < store->size()) {
+					const double pt = store->timeAt(i - 1), t = store->timeAt(i);
+					const double pv = store->value(0, i - 1), v = store->value(0, i);
+					const double expected = v != pv ? pt + (0 - pv) / (v - pv) * (t - pt) : t;
+					offsetRecords = std::fabs(at - expected) / (t - pt);
+					engineCrossing = pv < 0 && v >= 0 && at >= pt && at <= t && offsetRecords < 1e-3;
+				}
+				delayMs = (heldAt - at) * 1000;
+			}
+			if (trigger) trigger->setChecked(false);
+			chartView->setLive(true);
+		}
+		std::printf("  the trigger on ADC.I_LOAD: held %d, %.2g records off the crossing between its records; held %.1f ms "
+				"after the crossing's time\n", int(engineCrossing), offsetRecords, delayMs);
+		check(engineCrossing, "fast streams: the trigger on a fast line, armed from its chip's menu: its crossing found on the "
+				"engine's thread as each block comes, the view held at the crossing's time between its two records");
 		check(menuOffered && summary.contains(QLatin1String("evenly spaced")) && !summary.contains(QLatin1String("e+")) && resolution > 0 && std::fabs(peak - 50) <= resolution
 						&& histogramSummary.contains(QLatin1String("samples")),
 				"fast streams: a fast line's chip menu offers Histogram and Spectrum; the spectrum takes its samples as they "
@@ -3869,7 +3910,9 @@ private:
 		const auto rawI = [](qint64 k) { return qint16(std::lround(2000 * std::sin(2 * M_PI * 50 * k / 10000.0)) + 400); };
 		const auto rawV = [](qint64 k) { return qint16(12000 + std::lround(3 * std::sin(2 * M_PI * 50 * k / 10000.0 + 1))); };
 		const auto timeOf = [](qint64 k) { return 100.0 + k / 10000.0; };
-		/* a block of n records from `first`, I_LOAD given by `current` (else the wave), and its time mark */
+		/* a block of n records from `first`, I_LOAD given by `current` (else the wave), and its time mark; with a scanner,
+		 * the engine's part too: the trigger's crossings in it, handed to the view with the block */
+		fast::TriggerScan *scanner = nullptr;
 		const auto feed = [&](ChartView *view, qint64 first, qint64 n, bool start, quint64 lost,
 								  const std::function<qint16(qint64)> &current = {}) {
 			QByteArray records(int(n * 4), '\0');
@@ -3880,8 +3923,20 @@ private:
 				records[int(4 * k + 2)] = char(b);
 				records[int(4 * k + 3)] = char(b >> 8);
 			}
-			view->appendFast(0, quint64(first), n, records, start, lost);
+			const qint64 at = view->appendFast(0, quint64(first), n, records, start, lost);
 			view->markFast(0, quint64(first + n), timeOf(first + n), 1e-4);
+			if (!scanner) return;
+			int stream = -1;
+			const fast::TriggerWatch watch = view->fastTriggerWatch(stream);
+			if (watch.serial != scanner->watch().serial) scanner->set(watch); /* as the window posts it to the engine */
+			fast::BlockTaken taken;
+			taken.first = quint64(first);
+			taken.count = int(n);
+			taken.lost = lost;
+			taken.newStart = start;
+			QVector<fast::Crossing> crossings;
+			scanner->scan(def, taken, records.constData(), { quint64(first + n), timeOf(first + n) }, 1e-4, crossings);
+			view->fastCrossings(0, at, crossings);
 		};
 		/* the plain loop over the records kept: the trapezoids of each part without a gap */
 		struct Plain {
@@ -3998,11 +4053,14 @@ private:
 					"chart, fast lines measured: the total since Clear sums every record as it comes (the memory's trims lose "
 					"nothing, the gap not bridged); Clear starts it again");
 		}
-		/* the trigger on a fast line: Rising through 0.5 A, after 0 A, 50 records lost, then 1 A: the gap is no crossing;
-		 * the step at record 300 is, its time between records 299 and 300 */
+		/* the trigger on a fast line, found as the engine finds it (each block as it comes): Rising through 0.5 A, after
+		 * 0 A, 50 records lost, then 1 A: the gap is no crossing; the step at record 300 is, its time between records 299
+		 * and 300 */
 		{
 			QWidget host;
 			ChartView *view = makeView(host, 101.0);
+			fast::TriggerScan scan;
+			scanner = &scan;
 			const auto step = [](qint64 k) { return qint16(k < 100 ? 0 : k < 250 ? 2000 : k < 300 ? 0 : 2000); };
 			feed(view, 0, 100, true, 0, step);
 			view->setTrigger(iLoad, 0.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Single);
@@ -4016,6 +4074,7 @@ private:
 			check(quietAcrossGap && std::fabs(at - expected) < 1e-9 && !view->triggerArmed(),
 					"chart, fast lines: the trigger on a fast line fires between the two records around the level, never "
 					"across a gap");
+			scanner = nullptr;
 		}
 		/* the export: each record a row, both channels of the stream in it */
 		{
@@ -7692,17 +7751,28 @@ private:
 		fastView->addSeries(key, QStringLiteral("WAVE.V"), QStringLiteral("V"), QColor(255, 0, 0));
 		fastView->setWindow(0.01);
 		qint64 next = 0;
-		const auto feedFast = [&](qint64 n) { /* n records of the sine, their time mark; the clock with them */
+		fast::TriggerScan scan; /* the engine's part: each block's crossings */
+		const auto feedFast = [&](qint64 n) { /* n records of the sine, their time mark, its crossings; the clock with them */
 			QByteArray records(int(n * 2), '\0');
 			for (qint64 k = 0; k < n; k++) {
 				const qint16 raw = qint16(std::lround(1000 * std::sin(2 * M_PI * 1000 * double(next + k) / 100000.0)));
 				records[int(2 * k)] = char(raw);
 				records[int(2 * k + 1)] = char(raw >> 8);
 			}
-			fastView->appendFast(0, quint64(next), n, records, next == 0, 0);
+			const qint64 at = fastView->appendFast(0, quint64(next), n, records, next == 0, 0);
+			fast::BlockTaken taken;
+			taken.first = quint64(next);
+			taken.count = int(n);
+			taken.newStart = next == 0;
 			next += n;
 			fastView->markFast(0, quint64(next), 100.0 + double(next) / 100000.0, 1e-5);
 			now = 100.0 + double(next) / 100000.0;
+			int stream = -1;
+			const fast::TriggerWatch watch = fastView->fastTriggerWatch(stream);
+			if (watch.serial != scan.watch().serial) scan.set(watch);
+			QVector<fast::Crossing> crossings;
+			scan.scan(def, taken, records.constData(), { quint64(next), now }, 1e-5, crossings);
+			fastView->fastCrossings(0, at, crossings);
 		};
 		host.show();
 		(void) QTest::qWaitForWindowExposed(&host);
