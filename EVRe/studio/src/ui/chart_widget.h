@@ -141,6 +141,7 @@ public:
 	 * lastBins must equal */
 	QVector<BinInfo> freshBins(int key) const;
 	qint64 fastColumnsBinned() const { return fastColumnsBinned_; } /* tests: columns of fast lines binned so far */
+	qint64 polledColumnsBinned() const { return polledColumnsBinned_; } /* tests: the same of the polled lines' views */
 	QStringList timeLabels() const { return timeLabels_; }
 
 	/* the time base, seconds (read at every frame), and the wall-clock time of
@@ -201,6 +202,8 @@ public:
 	static constexpr double TRIGGER_AT = 0.2;     /* the crossing's place in the window by default, from its left */
 	static constexpr double TRIGGER_AT_MAX = 0.9; /* the place set at most */
 	static constexpr double MAX_HOLDOFF = 10;     /* seconds */
+	/* a window shorter than this, held on a crossing, shows the next crossing's view once it is full (a steady picture) */
+	static constexpr double STEADY_WINDOW = 1.0;
 	static constexpr double STRIP_REDRAW_S = 1.0; /* the memory strip's lines drawn again at most this often */
 	/* armed on a line with its own settings: the ones kept for its name, else its mid-range in view, rising */
 	void setTrigger(int key, TriggerMode mode);
@@ -668,6 +671,7 @@ private:
 	 * summaries, so the cost follows the columns, not the records */
 	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous) const;
 	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
+	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
 	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
 	void scanFastTrigger(Series &s);              /* the trigger's crossing in its records since the last look */
@@ -942,6 +946,7 @@ private:
 		TriggerMode mode = TriggerMode::Normal;
 		double at = NAN;        /* the last crossing */
 		double armedFrom = 0;   /* crossings after this time count */
+		double pending = NAN;   /* a crossing whose view is shown once it is full (crossed); NaN: none */
 	} trigger_;
 	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
 	TriggerSettings watchedSettings() const;           /* the line watched's */
@@ -949,6 +954,11 @@ private:
 	double midRange(int key) const;                    /* the line's middle in view (a level never set) */
 	QString lineName(int key) const;                   /* empty: no such line */
 	void fireTrigger(double time);
+	/* a crossing that counts: held at once, or (a short window held full) once its view is full too; newest: the line's
+	 * newest sample's time */
+	void crossed(double time, double newest);
+	void firePending(double newest);
+	double newestTime(int key) const; /* NaN: no sample */
 	/* the level's line, its tag and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the
 	 * frame's plots; false: nothing to draw */
 	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,

@@ -501,7 +501,7 @@ void ChartView::appendNow(int key, double t, double v) {
 		const TriggerEdge edge = watched.edge;
 		const double at = v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t;
 		if (((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down)) && at > trigger_.armedFrom)
-			fireTrigger(at);
+			crossed(at, t);
 	}
 	const qsizetype limit = pointsPerLine();
 	dropExpired(s, t, limit);
@@ -665,7 +665,7 @@ void ChartView::scanFastTrigger(Series &s) {
 			if ((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down)) {
 				const double pt = store.timeAt(i - 1), t = store.timeAt(i);
 				s.scannedTo = store.dropped() + i + 1;
-				fireTrigger(v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t);
+				crossed(v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t, store.timeAt(end - 1));
 				return;
 			}
 		}
@@ -779,6 +779,7 @@ void ChartView::frame() {
 	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
+	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
 	/* Auto: no crossing for a window's length since it was armed again (or since it was set): the view runs live */
 	if (trigger_.on && trigger_.mode == TriggerMode::Auto && trigger_.armed && !live_
 			&& clockNow() >= trigger_.armedFrom + window_)
@@ -868,7 +869,7 @@ void ChartView::setTrigger(int key, TriggerMode mode) {
 	trigger_.on = true;
 	trigger_.key = key;
 	trigger_.mode = mode;
-	trigger_.at = NAN;
+	trigger_.at = trigger_.pending = NAN;
 	armTrigger();
 }
 
@@ -933,7 +934,7 @@ void ChartView::setTriggerSettingsTexts(const QStringList &texts) {
 
 void ChartView::stopTrigger() {
 	trigger_.on = trigger_.armed = false;
-	trigger_.at = NAN;
+	trigger_.at = trigger_.pending = NAN;
 	refresh();
 }
 
@@ -941,6 +942,7 @@ void ChartView::stopTrigger() {
 void ChartView::armTrigger() {
 	if (!trigger_.on) return;
 	trigger_.armed = true;
+	trigger_.pending = NAN;
 	const auto it = series_.constFind(trigger_.key);
 	trigger_.armedFrom = it != series_.constEnd() && !it->times.isEmpty() ? it->times.back()
 			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
@@ -952,6 +954,37 @@ void ChartView::setTriggerLevel(double level) {
 	if (!trigger_.on) return;
 	watchedSettingsRef().level = level;
 	refresh();
+}
+
+/* A short window held on a full view shows the next crossing's view once it is full too: a repeating wave stands still,
+ * as on a scope, where each crossing showed its view half drawn, filling, until the next replaced it (at 60 frames a
+ * second and a 10 ms window, a new half-drawn picture at nearly every frame). The next crossing still counts from this
+ * one (armedFrom: the engine's rule). The first crossing, Single, and a window of a second or more hold at once, the
+ * view filling as the samples come. */
+void ChartView::crossed(double time, double newest) {
+	firePending(newest);
+	const double fill = (1 - triggerPosition_) * window_;
+	const bool steady = trigger_.mode != TriggerMode::Single && !live_ && std::isfinite(trigger_.at) && window_ < STEADY_WINDOW;
+	if (steady && !(newest >= time + fill)) {
+		if (std::isnan(trigger_.pending)) trigger_.pending = time;
+		trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
+		return;
+	}
+	fireTrigger(time);
+}
+
+void ChartView::firePending(double newest) {
+	if (std::isnan(trigger_.pending) || !(newest >= trigger_.pending + (1 - triggerPosition_) * window_)) return;
+	const double time = trigger_.pending;
+	trigger_.pending = NAN;
+	fireTrigger(time);
+}
+
+double ChartView::newestTime(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return NAN;
+	if (it->fast) return it->fast->size() > 0 && it->fast->hasTime() ? it->fast->timeAt(it->fast->size() - 1) : NAN;
+	return it->times.isEmpty() ? NAN : it->times.back();
 }
 
 bool ChartView::triggerArmed() const { return trigger_.on && trigger_.armed && clockNow() >= trigger_.armedFrom; }
@@ -995,7 +1028,7 @@ void ChartView::fireTrigger(double time) {
 	triggerHolds_++;
 	const double fill = (1 - triggerPosition_) * window_;
 	if (trigger_.mode == TriggerMode::Single) trigger_.armed = false;
-	else trigger_.armedFrom = time + std::max(holdoffSeconds(), fill);
+	else trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
 	viewEnd_ = time + fill;
 	if (live_) {
 		live_ = false;
@@ -2335,6 +2368,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 	while (top >= 0 && perColumn <= 2.0 * CHUNK_SIZE[top]) top--;
 	QVector<Bin> fresh;
 	binRange(s, kept.binnedTo - s.dropped, i1, columnSeconds, top, fresh);
+	polledColumnsBinned_ += fresh.size();
 	out.bins.reserve(kept.bins.size() + fresh.size());
 	out.bins = kept.bins;
 	out.bins += fresh;

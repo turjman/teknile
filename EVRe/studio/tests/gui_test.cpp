@@ -556,6 +556,7 @@ public:
 		chartTrigger();
 		chartTriggerLines();
 		chartTriggerModes();
+		chartTriggerSteady();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -7604,6 +7605,136 @@ private:
 		check(perWindow >= 40 && perWindow <= 51 && perCycle >= 200 && sineHoldoff->currentText() == QStringLiteral("0 s"),
 				"chart, Trigger, hold-off: a 1 kHz signal in a 10 ms window holds once a window (the hold-off of the window's "
 				"length, the default), not once a cycle; with a hold-off of 0 and the crossing at 90 % nearly every cycle counts");
+		clearTriggerSettings();
+	}
+
+	/* Trigger v2, a steady picture at a short window: a 1 kHz sine (20 kHz samples) in a 10 ms window, Normal, fed as at
+	 * 60 frames a second: after the first, every view held is shown full (the next crossing's view waits until it is), so
+	 * a repeating wave stands still. And a re-trigger bins only the columns that are new: with no hold-off and the
+	 * crossing at 90 % each crossing moves the view by a cycle or two; 50 of them, fed 1 ms a frame, bin about the new
+	 * samples' columns (the binning counters), not the whole view each time: a polled line and a fast one */
+	void chartTriggerSteady() {
+		clearTriggerSettings();
+		LoneChart sine(QStringLiteral("STEADY"), QStringLiteral("V"));
+		ChartView *view = sine.view;
+		view->setWindow(0.01);
+		view->setSmooth(false);
+		double fed = 99.0;
+		const auto feed = [&](int samples) { /* 20 kHz */
+			MathLines::Samples batch;
+			for (int i = 0; i < samples; i++, fed += 0.00005)
+				batch[regKey(sine.def)] << QPointF(fed, std::sin(2 * M_PI * 1000 * fed));
+			sine.now = fed;
+			sine.tab.frame(batch);
+		};
+		feed(20000);
+		sine.tab.show();
+		(void) QTest::qWaitForWindowExposed(&sine.tab);
+		(void) view->grab();
+		view->setTrigger(sine.key(), 0.1, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		int frames = 0, shown = 0, partial = 0;
+		int holds = view->triggerHolds();
+		while (view->triggerHolds() - holds < 51 && frames < 600) {
+			feed(334); /* 16.7 ms */
+			(void) view->grab();
+			frames++;
+			double t0, t1;
+			bool cursors;
+			view->range(t0, t1, cursors);
+			if (view->live() || view->triggerHolds() - holds < 2) continue; /* the first holds at once, filling */
+			shown++;
+			if (t1 > fed - 0.00005 + 1e-9) partial++; /* its end after the newest sample: not full */
+		}
+		std::printf("     (a 1 kHz sine in a 10 ms window at 60 frames a second: %d frames, %d holds; %d of the %d pictures "
+				"held after the first not full)\n", frames, view->triggerHolds() - holds, partial, shown);
+		check(view->triggerHolds() - holds >= 51 && shown >= 30 && partial == 0, "chart, Trigger, a short window: after the "
+				"first crossing every view held is shown full (the next crossing's view once it is), a repeating wave stands "
+				"still");
+
+		/* the re-trigger's binning: no hold-off, the crossing at 90 % (the next counts 1 ms after), 1 ms a frame */
+		view->setTriggerHoldoff(0);
+		view->setTriggerPosition(0.9);
+		feed(20);
+		(void) view->grab();
+		holds = view->triggerHolds();
+		const qint64 polledBefore = view->polledColumnsBinned();
+		int polledFrames = 0;
+		while (view->triggerHolds() - holds < 50 && polledFrames < 400) {
+			feed(20);
+			(void) view->grab();
+			polledFrames++;
+		}
+		const qint64 polledColumns = view->polledColumnsBinned() - polledBefore;
+		const int polledHolds = view->triggerHolds() - holds;
+		view->stopTrigger();
+		sine.tab.hide();
+
+		/* the fast line: 100 k records a second, a record a column */
+		StreamDef def;
+		def.name = QStringLiteral("WAVE");
+		def.addr = 0xDC00;
+		def.size = 1024;
+		def.rate = 100000;
+		StreamChannel channel;
+		channel.name = QStringLiteral("V");
+		channel.unit = QStringLiteral("V");
+		channel.scale = 0.001;
+		def.channels = { channel };
+		QWidget host;
+		host.resize(1100, 480);
+		auto *fastView = new ChartView(&host);
+		fastView->setGeometry(9, 5, 1080, 470);
+		double now = 100.0;
+		fastView->setClock([&now] { return now; }, 0);
+		fastView->setSmooth(false);
+		const int key = ChartView::fastKey(0, 0);
+		fastView->setFastStream(0, def);
+		fastView->addSeries(key, QStringLiteral("WAVE.V"), QStringLiteral("V"), QColor(255, 0, 0));
+		fastView->setWindow(0.01);
+		qint64 next = 0;
+		const auto feedFast = [&](qint64 n) { /* n records of the sine, their time mark; the clock with them */
+			QByteArray records(int(n * 2), '\0');
+			for (qint64 k = 0; k < n; k++) {
+				const qint16 raw = qint16(std::lround(1000 * std::sin(2 * M_PI * 1000 * double(next + k) / 100000.0)));
+				records[int(2 * k)] = char(raw);
+				records[int(2 * k + 1)] = char(raw >> 8);
+			}
+			fastView->appendFast(0, quint64(next), n, records, next == 0, 0);
+			next += n;
+			fastView->markFast(0, quint64(next), 100.0 + double(next) / 100000.0, 1e-5);
+			now = 100.0 + double(next) / 100000.0;
+		};
+		host.show();
+		(void) QTest::qWaitForWindowExposed(&host);
+		feedFast(2000);
+		(void) fastView->grab();
+		fastView->setTrigger(key, 0.1, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		fastView->setTriggerHoldoff(0);
+		fastView->setTriggerPosition(0.9);
+		feedFast(200);
+		(void) fastView->grab();
+		holds = fastView->triggerHolds();
+		const qint64 fastBefore = fastView->fastColumnsBinned();
+		int fastFrames = 0;
+		while (fastView->triggerHolds() - holds < 50 && fastFrames < 400) {
+			feedFast(100);
+			(void) fastView->grab();
+			fastFrames++;
+		}
+		const qint64 fastColumns = fastView->fastColumnsBinned() - fastBefore;
+		const int fastHolds = fastView->triggerHolds() - holds;
+		const double columns = fastView->lastPlot().width();
+		/* about the samples fed (a bin each: 20 a frame polled, 100 a frame fast) and the two ends of each frame */
+		const bool polledNew = polledHolds >= 50 && polledColumns <= 2 * 20 * polledFrames + 4 * polledFrames;
+		const bool fastNew = fastHolds >= 50 && fastColumns <= 1.2 * 100 * fastFrames + 4 * fastFrames;
+		std::printf("     (re-triggered: the polled line %d times in %d frames, %lld columns binned (%.0f a re-trigger, %.0f in "
+				"its view); the fast line %d times in %d frames, %lld columns (%.0f a re-trigger, %.0f in the view))\n",
+				polledHolds, polledFrames, (long long) polledColumns, double(polledColumns) / std::max(1, polledHolds),
+				0.01 / 0.00005, fastHolds, fastFrames, (long long) fastColumns, double(fastColumns) / std::max(1, fastHolds),
+				columns);
+		check(polledNew && fastNew, "chart, Trigger, a short window re-triggered 50 times (no hold-off, the crossing at 90 %): "
+				"only the new columns are binned, a polled line's and a fast line's, not the whole view each time");
+		host.hide();
 		clearTriggerSettings();
 	}
 
