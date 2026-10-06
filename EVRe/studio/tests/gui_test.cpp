@@ -555,6 +555,7 @@ public:
 		analysisWindows();
 		chartTrigger();
 		chartTriggerLines();
+		chartTriggerModes();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -7333,14 +7334,18 @@ private:
 		auto *edge = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerEdge"));
 		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
 		auto *arm = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerArm"));
-		if (!action || !row || !level || !edge || !mode || !arm) {
+		auto *holdoff = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerHoldoff"));
+		if (!action || !row || !level || !edge || !mode || !arm || !holdoff) {
 			check(false, "chart, Trigger: in the Display menu, its row");
 			return;
 		}
 		action->setChecked(true);
 		level->setText(QStringLiteral("0.5")); /* the line's own level, typed */
 		emit level->editingFinished();
-		const bool shown = row->isVisible() && chart.view->triggerArmed() && chart.view->triggerLevel() == 0.5;
+		holdoff->setEditText(QStringLiteral("0.9 s")); /* the window's length by default: a period here, 1 s */
+		emit holdoff->lineEdit()->editingFinished();
+		const bool shown = row->isVisible() && chart.view->triggerArmed() && chart.view->triggerLevel() == 0.5
+				&& chart.view->triggerHoldoff() == 0.9;
 		feed(100.5); /* rising through 0.5 at 100 + 1/12 */
 		const double first = 100.0 + 1.0 / 12;
 		(void) chart.view->grab();
@@ -7357,11 +7362,12 @@ private:
 				"the measurements over it");
 
 		/* Normal: the next period's crossing once the view is full */
-		feed(100.9); /* full at 100.883: armed again */
+		feed(101.0); /* full at 100.883, the hold-off over at 100.983: armed again */
 		const bool armedAgain = chart.view->triggerArmed();
 		feed(101.5);
 		const bool next = std::fabs(chart.view->triggeredAt() - (first + 1)) < 1e-6;
-		check(armedAgain && next, "chart, Trigger, Normal: armed again once the view is full, holds on the next crossing");
+		check(armedAgain && next, "chart, Trigger, Normal: armed again once the view is full and the hold-off has passed, "
+				"holds on the next crossing");
 
 		/* Single, falling: once */
 		mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Single)));
@@ -7403,7 +7409,7 @@ private:
 		check(!chart.view->triggerOn() && !row->isVisible(), "chart, Trigger off: its row hidden, the chart no longer held "
 				"by crossings");
 		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
-					 "chart/triggerLevels" })
+					 "chart/triggerLevels", "chart/triggerHoldoff" })
 			QSettings().remove(QLatin1String(key));
 		chart.tab.hide();
 	}
@@ -7445,6 +7451,160 @@ private:
 		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
 					 "chart/triggerLevels", "chart/triggerPosition", "chart/triggerHoldoff", "chart/lanes" })
 			QSettings().remove(QLatin1String(key));
+	}
+
+	/* Trigger v2, the modes, the hold-off and the crossing's place: Auto runs live while no crossing comes, holds on one,
+	 * is ready again once the hold-off has passed and runs live again when none comes for a window's length; the
+	 * hold-off keeps a 1 kHz sine in a 10 ms window to a picture a window; the place dragged by its mark under the plot */
+	void chartTriggerModes() {
+		clearTriggerSettings();
+		LoneChart chart(QStringLiteral("STEP"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		double fed = 99.0;
+		/* 1 kHz samples to `until`: 1 V while high(t), else 0; the clock with them */
+		const auto feed = [&](double until, const std::function<bool(double)> &high) {
+			MathLines::Samples samples;
+			for (; fed < until - 1e-9; fed += 0.001) samples[regKey(chart.def)] << QPointF(fed, high(fed) ? 1.0 : 0.0);
+			chart.now = fed;
+			chart.tab.frame(samples);
+		};
+		const auto steps = [](double t) { return (t >= 100.3 && t < 102.5) || t >= 102.8; }; /* up at 100.3 and 102.8 */
+		feed(99.95, steps);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *action = chart.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *level = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *holdoff = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerHoldoff"));
+		auto *position = chart.tab.findChild<QSpinBox *>(QStringLiteral("triggerPosition"));
+		if (!action || !level || !mode || !holdoff || !position) {
+			check(false, "chart, Trigger modes: the row's controls found (mode, hold-off, position)");
+			return;
+		}
+		action->setChecked(true);
+		level->setText(QStringLiteral("0.5"));
+		emit level->editingFinished();
+		mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Auto)));
+		emit mode->activated(mode->currentIndex());
+		/* the state corner's last part: the trigger's */
+		const auto corner = [view] {
+			(void) view->grab();
+			return view->stateFullText().section(QStringLiteral("  ·  "), -1);
+		};
+		const QString first = corner();
+		const bool freeAtFirst = view->live() && first == QStringLiteral("auto: free running")
+				&& holdoff->currentText() == QStringLiteral("window") && view->holdoffSeconds() == 1;
+		feed(100.5, steps); /* up at 100.3: held, the crossing at 20 % */
+		const double at = view->triggeredAt();
+		const QString second = corner();
+		const bool held = !view->live() && std::fabs(at - 100.2995) < 1e-6 && second == QStringLiteral("triggered");
+		feed(101.4, steps); /* the hold-off (the window's 1 s) over at 101.2995: ready, still held */
+		const QString third = corner();
+		const bool waiting = !view->live() && view->triggerArmed() && third == QStringLiteral("trigger: waiting")
+				&& view->triggeredAt() == at;
+		feed(102.4, steps); /* no crossing for a window's length after that: live again */
+		const QString fourth = corner();
+		const bool runsAgain = view->live() && fourth == QStringLiteral("auto: free running");
+		feed(103.0, steps); /* down at 102.5 (rising only), up at 102.8: held again */
+		const bool heldAgain = !view->live() && std::fabs(view->triggeredAt() - 102.7995) < 1e-6 && view->triggerHolds() == 2;
+		std::printf("     (Auto: \"%s\", \"%s\" at %.4f, \"%s\", \"%s\"; held again at %.4f, %d holds)\n", qPrintable(first),
+				qPrintable(second), at, qPrintable(third), qPrintable(fourth), view->triggeredAt(), view->triggerHolds());
+		check(freeAtFirst && held && waiting && runsAgain && heldAgain, "chart, Trigger, Auto: runs live while no crossing "
+				"comes (\"auto: free running\"), holds on one (\"triggered\"), ready again after the hold-off (\"trigger: "
+				"waiting\", still held), runs live again when none comes for a window's length, and holds on the next");
+
+		/* the crossing's place: its mark under the plot at 20 %, a hand and a tooltip over it; dragged to 50 % the held
+		 * view moves so the crossing sits there; clamped to 90 % and 0 %; the panel and the setting follow */
+		(void) view->grab();
+		const QRectF plot = view->lastPlot();
+		const QRectF mark = view->triggerPositionMark();
+		const bool atTwenty = !mark.isEmpty() && std::fabs(mark.center().x() - (plot.left() + 0.2 * plot.width())) < 1
+				&& mark.top() > plot.bottom() && position->value() == 20;
+		QMouseEvent hover(QEvent::MouseMove, mark.center(), view->mapToGlobal(mark.center()), Qt::NoButton, Qt::NoButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(view, &hover);
+		const bool hand = view->cursor().shape() == Qt::PointingHandCursor && view->triggerMarkHovered()
+				&& view->toolTipAt(mark.center()).startsWith(QStringLiteral("Drag: where the crossing sits in the window"));
+		const auto dragTo = [view](double x) { /* from where the mark is now */
+			const QRectF from = view->triggerPositionMark();
+			QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, from.center().toPoint());
+			const QPointF to(x, from.center().y());
+			QMouseEvent move(QEvent::MouseMove, to, view->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+			(void) view->grab();
+		};
+		dragTo(plot.left() + 0.5 * plot.width());
+		double t0, t1;
+		bool cursors;
+		view->range(t0, t1, cursors);
+		const double crossing = view->triggeredAt();
+		const bool atHalf = std::fabs(view->triggerPosition() - 0.5) < 0.005 && position->value() == 50
+				&& std::fabs(t1 - (crossing + (1 - view->triggerPosition()) * view->window())) < 1e-9
+				&& std::fabs(view->triggerTag().center().x() - (plot.left() + view->triggerPosition() * plot.width())) < 1
+				&& std::fabs(QSettings().value(QStringLiteral("chart/triggerPosition")).toDouble() - view->triggerPosition()) < 1e-12;
+		dragTo(plot.right() + 60);
+		const bool clampedHigh = view->triggerPosition() == ChartView::TRIGGER_AT_MAX && position->value() == 90;
+		dragTo(plot.left() - 60);
+		const bool clampedLow = view->triggerPosition() == 0 && position->value() == 0;
+		position->setValue(20); /* typed in the panel: the mark follows */
+		const bool typed = view->triggerPosition() == 0.2;
+		if (!atTwenty || !atHalf) std::printf("     (the mark at %.1f, the plot %.1f .. %.1f; dragged to %.3f)\n", mark.center().x(),
+				plot.left(), plot.right(), view->triggerPosition());
+		check(atTwenty && hand && atHalf && clampedHigh && clampedLow && typed, "chart, Trigger: the crossing's place, a "
+				"mark under the plot at 20 % (a hand and a tooltip over it); dragged to 50 % the held view moves so the crossing "
+				"sits there; clamped to 90 % and 0 %; the panel's box and the setting follow, and the box moves the mark");
+		action->setChecked(false);
+		chart.tab.hide();
+
+		/* the hold-off: a 1 kHz sine (20 samples a cycle) in a 10 ms window, Normal, half a second of it: the window's
+		 * length by default, a picture a window (45 to 51 holds), not one a cycle; hold-off 0 and the crossing at 90 %:
+		 * the next counts 1 ms after (one every cycle or two) */
+		LoneChart sine(QStringLiteral("SINE"), QStringLiteral("V"));
+		sine.view->setWindow(0.01);
+		sine.view->setSmooth(false);
+		double sineFed = 99.0;
+		const auto feedSine = [&](double until) {
+			while (sineFed < until - 1e-9) { /* 10 ms a frame */
+				MathLines::Samples samples;
+				for (int i = 0; i < 200; i++, sineFed += 0.00005)
+					samples[regKey(sine.def)] << QPointF(sineFed, std::sin(2 * M_PI * 1000 * sineFed));
+				sine.now = sineFed;
+				sine.tab.frame(samples);
+			}
+		};
+		feedSine(99.5);
+		auto *sineAction = sine.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *sineLevel = sine.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *sineMode = sine.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *sineHoldoff = sine.tab.findChild<QComboBox *>(QStringLiteral("triggerHoldoff"));
+		auto *sinePosition = sine.tab.findChild<QSpinBox *>(QStringLiteral("triggerPosition"));
+		int perWindow = 0, perCycle = 0;
+		if (sineAction && sineLevel && sineMode && sineHoldoff && sinePosition) {
+			sineAction->setChecked(true);
+			sineLevel->setText(QStringLiteral("0.1"));
+			emit sineLevel->editingFinished();
+			sineMode->setCurrentIndex(sineMode->findData(int(ChartView::TriggerMode::Normal)));
+			emit sineMode->activated(sineMode->currentIndex());
+			const int before = sine.view->triggerHolds();
+			feedSine(100.0);
+			perWindow = sine.view->triggerHolds() - before;
+			sineHoldoff->setEditText(QStringLiteral("0"));
+			emit sineHoldoff->lineEdit()->editingFinished();
+			sinePosition->setValue(90);
+			const int middle = sine.view->triggerHolds();
+			feedSine(100.5);
+			perCycle = sine.view->triggerHolds() - middle;
+			sineAction->setChecked(false);
+		}
+		std::printf("     (a 1 kHz sine in a 10 ms window, 0.5 s: %d holds with the hold-off of the window, %d with 0 and the "
+				"crossing at 90 %%; the box says \"%s\")\n", perWindow, perCycle, sineHoldoff ? qPrintable(sineHoldoff->currentText()) : "");
+		check(perWindow >= 40 && perWindow <= 51 && perCycle >= 200 && sineHoldoff->currentText() == QStringLiteral("0 s"),
+				"chart, Trigger, hold-off: a 1 kHz signal in a 10 ms window holds once a window (the hold-off of the window's "
+				"length, the default), not once a cycle; with a hold-off of 0 and the crossing at 90 % nearly every cycle counts");
+		clearTriggerSettings();
 	}
 
 	/* Trigger v2, per line: each line keeps its level and edge by its name (switching the line watched keeps the

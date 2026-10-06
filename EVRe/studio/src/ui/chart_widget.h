@@ -191,12 +191,16 @@ public:
 	 * watched at a time; each line keeps its own level and edge (TriggerSettings, by its name), so switching the line
 	 * watched keeps the others'. */
 	enum class TriggerEdge { Rising, Falling, Either };
-	enum class TriggerMode { Single, Normal };
+	/* Auto: the view runs live, holds on a crossing and runs again when none comes for a window's length after the
+	 * hold-off; Normal: holds on each crossing and waits for the next; Single: the first crossing holds until Arm */
+	enum class TriggerMode { Single, Normal, Auto };
 	struct TriggerSettings {
 		double level = 0;
 		TriggerEdge edge = TriggerEdge::Rising;
 	};
-	static constexpr double TRIGGER_AT = 0.2; /* of the window, from its left */
+	static constexpr double TRIGGER_AT = 0.2;     /* the crossing's place in the window by default, from its left */
+	static constexpr double TRIGGER_AT_MAX = 0.9; /* the place set at most */
+	static constexpr double MAX_HOLDOFF = 10;     /* seconds */
 	static constexpr double STRIP_REDRAW_S = 1.0; /* the memory strip's lines drawn again at most this often */
 	/* armed on a line with its own settings: the ones kept for its name, else its mid-range in view, rising */
 	void setTrigger(int key, TriggerMode mode);
@@ -206,11 +210,26 @@ public:
 	void setTriggerLevel(double level);  /* of the line watched */
 	void setTriggerEdge(TriggerEdge edge);
 	bool triggerOn() const { return trigger_.on; }
-	bool triggerArmed() const { return trigger_.on && trigger_.armed; }
+	bool triggerArmed() const; /* a crossing now would count: armed, the hold-off and the view's fill passed */
 	double triggeredAt() const { return trigger_.at; } /* the last crossing; NaN: none since armed first */
 	double triggerLevel() const { return watchedSettings().level; }
 	TriggerEdge triggerEdge() const { return watchedSettings().edge; }
 	int triggerKey() const { return trigger_.on ? trigger_.key : -1; }
+	TriggerMode triggerMode() const { return trigger_.mode; }
+	/* where the crossing sits in the window, 0 to TRIGGER_AT_MAX of it from its left (the mark under the plot, dragged):
+	 * held on a crossing, the view moves with it */
+	void setTriggerPosition(double fraction);
+	double triggerPosition() const { return triggerPosition_; }
+	/* the time after a crossing in which no other counts; < 0: the window's length (the default: one picture a window).
+	 * Armed again when it has passed and the view held is full, whichever is later */
+	void setTriggerHoldoff(double seconds);
+	double triggerHoldoff() const { return triggerHoldoff_; } /* as set (< 0: the window's length) */
+	double holdoffSeconds() const;                            /* in effect */
+	/* the trigger in the state corner: "trigger: waiting", "triggered", "auto: free running"; empty: off */
+	QString triggerStateText() const;
+	int triggerHolds() const { return triggerHolds_; } /* tests: the crossings the view held on so far */
+	QRectF triggerPositionMark() const { return triggerMark_; } /* tests: the mark under the plot as last drawn */
+	bool triggerMarkHovered() const { return hoverMark_; }
 	/* a line's settings: those kept for its name; a line never set, its mid-range in view and Rising */
 	TriggerSettings triggerSettings(int key) const;
 	void setTriggerSettings(int key, const TriggerSettings &settings);
@@ -466,6 +485,7 @@ signals:
 	void triggered(double time);             /* the view holds on a crossing */
 	/* the level's line or tag dragged and let go, or the tag's edge symbol clicked: triggerSettingsTexts() to be saved */
 	void triggerSettingsChanged();
+	void triggerPositionChanged(double fraction); /* the mark under the plot dragged and let go: to be saved */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
@@ -598,7 +618,7 @@ private:
 		double content = 0;    /* the chips' total width */
 		double maxScroll() const { return std::max(0.0, content - viewport.width()); }
 	};
-	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level, LaneBar, LaneBorder };
+	enum class Drag { None, Pan, Overview, CurA, CurB, LegendBar, Note, Level, LaneBar, LaneBorder, Position };
 
 	/* the samples; limit: the line's share (pointsPerLine) */
 	void dropExpired(Series &s, double t, qsizetype limit);
@@ -943,6 +963,14 @@ private:
 	mutable QImage levelTagImage_;
 	mutable QString levelTagKey_;
 	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
+	double triggerPosition_ = TRIGGER_AT;
+	double triggerHoldoff_ = -1;
+	int triggerHolds_ = 0;
+	/* the crossing's place in the window: a triangle under the plot, on the time labels' row (outside the card's layer:
+	 * the CPU draws it on both paths); dragged along it */
+	void drawTriggerMark(QPainter &p, const Axes &axes) const;
+	mutable QRectF triggerMark_;      /* where it takes the mouse */
+	bool hoverMark_ = false;
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */

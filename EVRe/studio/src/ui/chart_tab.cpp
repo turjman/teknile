@@ -30,6 +30,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStyle>
 #include <QTableWidget>
@@ -368,7 +369,8 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	trigger_->setObjectName(QStringLiteral("chartTrigger"));
 	trigger_->setCheckable(true);
 	trigger_->setToolTip(tr("Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the "
-			"window.\nSingle: the first crossing; Normal: each one, armed again once the view is full."));
+			"window (or where its mark is set).\nAuto: runs live between crossings; Normal: holds on each; Single: on the "
+			"first. Right-click a line's chip: Trigger on this line."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -551,6 +553,11 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
+	connect(view, &ChartView::triggerPositionChanged, this, [this](double fraction) { /* its mark dragged */
+		const QSignalBlocker quiet(triggerPosition_);
+		triggerPosition_->setValue(int(std::lround(fraction * 100)));
+		QSettings().setValue(settingKey("triggerPosition"), fraction);
+	});
 	connect(view, &ChartView::triggerSettingsChanged, this, [this] { /* dragged, or the edge clicked on the chart */
 		showLineSettings();
 		saveTriggerSettings();
@@ -658,6 +665,13 @@ void ChartTab::restoreSettings() {
 				QString::number(settings.value(settingKey("triggerLevel")).toDouble(), 'g', QLocale::FloatingPointShortest))
 				.arg(settings.value(settingKey("triggerEdge"), 0).toInt());
 	chart_->view()->setTriggerSettingsTexts(triggerLevels);
+	chart_->view()->setTriggerHoldoff(settings.value(settingKey("triggerHoldoff"), -1.0).toDouble());
+	showHoldoff();
+	chart_->view()->setTriggerPosition(settings.value(settingKey("triggerPosition"), ChartView::TRIGGER_AT).toDouble());
+	{
+		const QSignalBlocker quiet(triggerPosition_);
+		triggerPosition_->setValue(int(std::lround(chart_->view()->triggerPosition() * 100)));
+	}
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
@@ -863,10 +877,28 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
 	triggerMode_ = new QComboBox;
 	triggerMode_->setObjectName(QStringLiteral("triggerMode"));
+	triggerMode_->addItem(tr("Auto"), int(ChartView::TriggerMode::Auto));
 	triggerMode_->addItem(tr("Normal"), int(ChartView::TriggerMode::Normal));
 	triggerMode_->addItem(tr("Single"), int(ChartView::TriggerMode::Single));
-	triggerMode_->setToolTip(tr("Normal: holds on each crossing, armed again once the view is full; Single: holds on the "
-			"first, Arm for the next"));
+	triggerMode_->setToolTip(tr("Auto: runs live, holds on a crossing and runs again when none comes; Normal: holds on "
+			"each crossing and waits for the next; Single: holds on the first, Arm for the next"));
+	/* the hold-off: the window's length by default (a picture per window), or a time typed */
+	triggerHoldoff_ = new QComboBox;
+	triggerHoldoff_->setObjectName(QStringLiteral("triggerHoldoff"));
+	triggerHoldoff_->setEditable(true);
+	triggerHoldoff_->setInsertPolicy(QComboBox::NoInsert);
+	triggerHoldoff_->addItem(tr("window"), -1.0);
+	for (double seconds : { 0.0, 0.001, 0.01, 0.1, 1.0 })
+		triggerHoldoff_->addItem(seconds > 0 ? secondsText(seconds) : QStringLiteral("0 s"), seconds);
+	triggerHoldoff_->setMinimumWidth(90);
+	triggerHoldoff_->setToolTip(tr("Hold-off: after a crossing, no other counts for this long (0 to 10 s); window: the "
+			"window's length, one picture a window. Armed again when it has passed and the view is full"));
+	triggerPosition_ = new QSpinBox;
+	triggerPosition_->setObjectName(QStringLiteral("triggerPosition"));
+	triggerPosition_->setRange(0, int(std::lround(ChartView::TRIGGER_AT_MAX * 100)));
+	triggerPosition_->setSuffix(QStringLiteral(" %"));
+	triggerPosition_->setToolTip(tr("Where the crossing sits in the window, from its left (0 to 90 %): the mark under the "
+			"chart, which can be dragged"));
 	triggerArm_ = new QPushButton(tr("Arm"));
 	triggerArm_->setObjectName(QStringLiteral("triggerArm"));
 	triggerArm_->setToolTip(tr("Wait for the next crossing"));
@@ -881,6 +913,10 @@ QWidget *ChartTab::buildTriggerRow() {
 	row->addWidget(mutedLabel(tr("level")));
 	row->addWidget(triggerLevel_);
 	row->addWidget(triggerMode_);
+	row->addWidget(mutedLabel(tr("hold-off")));
+	row->addWidget(triggerHoldoff_);
+	row->addWidget(mutedLabel(tr("at")));
+	row->addWidget(triggerPosition_);
 	row->addWidget(triggerArm_);
 	row->addSpacing(8);
 	row->addWidget(triggerState_, 1);
@@ -895,6 +931,13 @@ QWidget *ChartTab::buildTriggerRow() {
 	});
 	for (QComboBox *box : { triggerEdge_, triggerMode_ })
 		connect(box, &QComboBox::activated, this, &ChartTab::applyTrigger);
+	connect(triggerHoldoff_, &QComboBox::activated, this, &ChartTab::applyHoldoffText);
+	connect(triggerHoldoff_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyHoldoffText);
+	connect(triggerPosition_, &QSpinBox::valueChanged, this, [this](int percent) {
+		if (std::lround(chart_->view()->triggerPosition() * 100) == percent) return; /* the mark dragged: shown here */
+		chart_->view()->setTriggerPosition(percent / 100.0);
+		QSettings().setValue(settingKey("triggerPosition"), percent / 100.0);
+	});
 	connect(triggerLevel_, &QLineEdit::editingFinished, this, [this] {
 		bool ok = false;
 		const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
@@ -938,6 +981,26 @@ void ChartTab::showLineSettings() {
 	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(int(settings.edge))));
 }
 
+/* the hold-off picked or typed: "window", or a time ("50 ms", "0"), 0 to 10 s */
+void ChartTab::applyHoldoffText() {
+	const int preset = triggerHoldoff_->findText(triggerHoldoff_->currentText());
+	double seconds = preset >= 0 ? triggerHoldoff_->itemData(preset).toDouble() : parseSeconds(triggerHoldoff_->currentText());
+	if (preset < 0 && seconds < 0) { /* not a time: back to what is in effect */
+		showHoldoff();
+		return;
+	}
+	if (seconds >= 0) seconds = std::min(seconds, ChartView::MAX_HOLDOFF);
+	chart_->view()->setTriggerHoldoff(seconds);
+	QSettings().setValue(settingKey("triggerHoldoff"), chart_->view()->triggerHoldoff());
+	showHoldoff();
+}
+
+void ChartTab::showHoldoff() {
+	const double seconds = chart_->view()->triggerHoldoff();
+	triggerHoldoff_->setEditText(seconds < 0 ? triggerHoldoff_->itemText(0) : seconds > 0 ? secondsText(seconds)
+			: QStringLiteral("0 s"));
+}
+
 void ChartTab::saveTriggerSettings() {
 	QSettings().setValue(settingKey("triggerLevels"), chart_->view()->triggerSettingsTexts());
 }
@@ -974,12 +1037,14 @@ void ChartTab::applyTrigger() {
 QString ChartTab::triggerState() const {
 	const ChartView *view = chart_->view();
 	if (!view->triggerOn()) return trigger_->isChecked() ? tr("no line to watch") : QString();
-	if (view->triggerArmed()) return tr("armed: waiting for a crossing");
+	if (view->triggerArmed())
+		return view->triggerMode() == ChartView::TriggerMode::Auto && view->live()
+				? tr("auto: free running, waiting for a crossing") : tr("armed: waiting for a crossing");
 	const double at = view->triggeredAt();
 	const QString when = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(at * 1000)))
 			.toString(QStringLiteral("HH:mm:ss.zzz"));
-	return triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single)
-			? tr("triggered at %1 · Arm for the next").arg(when) : tr("triggered at %1").arg(when);
+	return view->triggerMode() == ChartView::TriggerMode::Single ? tr("triggered at %1 · Arm for the next").arg(when)
+			: tr("triggered at %1").arg(when);
 }
 
 void ChartTab::showTriggerState() { triggerState_->setText(triggerState()); }

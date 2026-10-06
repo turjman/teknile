@@ -22,7 +22,9 @@
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
- *    Single or Normal, Arm; the chart holds on each crossing (ChartView).
+ *    Auto, Normal or Single, the hold-off, the crossing's place in the
+ *    window, Arm; the chart holds on a crossing (ChartView). A line's chip
+ *    menu arms it on that line; each line keeps its own level and edge.
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
  *    thread, with progress and Cancel), Add note here, Open recording.
@@ -64,6 +66,7 @@ class QLineEdit;
 class QMenu;
 class QProgressDialog;
 class QPushButton;
+class QSpinBox;
 class QTableWidget;
 enum class LogLevel;
 
@@ -290,6 +293,10 @@ private:
 	void showTriggerState();
 	QWidget *triggerRow_ = nullptr;
 	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
+	QComboBox *triggerHoldoff_ = nullptr; /* "window" (its length) or a time typed, 0 to 10 s */
+	QSpinBox *triggerPosition_ = nullptr; /* the crossing's place in the window, % */
+	void applyHoldoffText();
+	void showHoldoff();
 	QLineEdit *triggerLevel_ = nullptr;
 	QPushButton *triggerArm_ = nullptr;
 	QLabel *triggerState_ = nullptr;
