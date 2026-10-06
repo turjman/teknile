@@ -212,8 +212,9 @@ channels, the map's checks under them. <code>evre check --writes</code> switches
 its numbers and its rate; Python reads one live with <code>dev.stream('ADC')</code>.</p>
 <p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
 <ul>
-<li><b>▶ Start ADC</b> writes 1 to the stream's enable register (after reading its rate register, if the map names
-one); the button turns red, <b>■ Stop ADC</b>, which writes 0. A stream without an enable register is only
+<li>Each stream's row is headed by its name. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
+reading its rate register, if the map names one); the button turns red, <b>■ Stop stream</b>, which writes 0. A
+stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.</li>
 <li>Under it: the samples a second as the Studio's clock measures them, with the correction in parts in a million
 (<i>10.0 k samples/s (+32 ppm)</i>), and the samples lost (<i>lost 1 024</i>, in amber).</li>

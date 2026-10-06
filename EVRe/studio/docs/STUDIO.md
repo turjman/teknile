@@ -2101,12 +2101,12 @@ sample, how many it holds, two flags) and its samples, every channel of one inst
 alike stay apart: **Auto send** (13.8) is the device's read-only block at a timer's rate; the API's **`stream`**
 command (17) sends values at a period to an API client; a **fast stream** is one of the map's `streams`.
 
-The **Fast streams** card, under *Polling & recording*, shows a row for each stream of the map (it is hidden for a map
-without one):
+The **Fast streams** card, under *Device map*, shows a row for each stream of the map (it is hidden for a map
+without one), headed by the stream's name (its description in the tooltip):
 
 | Part | Behaviour |
 |---|---|
-| **▶&nbsp;Start&nbsp;ADC** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;ADC**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
+| **▶&nbsp;Start&nbsp;stream** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;ADC**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
 | The&nbsp;rate | *off · 10.0 k samples/s* (the map's rate) while off; *waiting for the first block*; then *10.0 k samples/s (+32 ppm)*: the samples a second as the Studio's clock measures the device's, and the correction against the rate the device was set to (below). Its tooltip counts the samples and blocks since Start, the bad blocks, and the samples not shown (below). |
 | Lost | *lost 0*, or *lost 1 024* in amber: samples the device numbered that never arrived, counted from the blocks' numbers (a gap, never filled in). |
 | Channels | Under the stream's row, each channel: its **Plot** tick (its line on the chart, 7.14) and its newest value with its unit, at the pace of *Show values*. The tick's tooltip says what it draws and gives the channel's `desc`. |
@@ -4889,7 +4889,9 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   `evre_fake_fast` with `maps/example_fast.json` on port 1240 and loads that map: the card shows a row for `ADC`,
   greyed with *not connected*; connected, the button is offered (a pointing hand, a tooltip naming what it writes)
   and the card says *off · 10.0 k samples/s*. Start writes 1 to `ADC_STREAM` on the device, the button turns red
-  (*■ Stop ADC*), the card shows 9.9 to 10.1 k samples/s with its correction in ppm and *lost 0*, and the Log says so;
+  (*■ Stop stream*), the card shows 9.9 to 10.1 k samples/s with its correction in ppm and *lost 0*, and the Log says
+  so; the row is headed by the stream's name with the map's description as its tooltip, and the card sits before
+  *Polling & recording*;
   with Poll off 24 to 45 requests go out in 3 s (CONFIG every 100 ms) and after those 3 s the stream still runs (the
   fake device's 2 s watchdog never stops it); with *Log frames* the Monitor names a block *READ_RESP (fast stream
   ADC)*; Stop writes 0. On again, then Disconnect: 0 written before the link closes, the button Start, greyed. On
@@ -5114,7 +5116,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 425 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 426 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
