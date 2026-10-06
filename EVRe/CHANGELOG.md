@@ -26,6 +26,15 @@ must know, and `REVIEW.md` holds the review and its decisions.
 - `lib/guard/evre_guard.*`, beside the library and optional: a token written to a login register opens a session;
   without one every request is refused with 13; a lockout after wrong tokens, and a logout after an idle time.
 
+### EVRe Guard, part 2: the register checks
+
+- `lib/guard/evre_guard_desc.*`: a const table made from the map says, for each register a host may write, its
+  place, size, type, raw limits and the values that always pass. The check walks every register a frame touches,
+  after the login and before the library stores a byte: a value outside the limits, NaN or an infinity is refused
+  with the new code 15 `VALUE_REFUSED`; a byte no entry covers, or part of a number, with 3. Nothing is clamped,
+  nothing stored. A bad table refuses every write to the device bank and lets the reserved bank through.
+- `lib/EVRe.h` reserves 15 `VALUE_REFUSED`; the library never returns it.
+
 ### The tools
 
 - EVRe Studio, `evre` and the Python package name code 13 *login required*. A register refused with 13 is asked again

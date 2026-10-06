@@ -53,9 +53,9 @@ Every change comes with its tests, and all of them pass on Linux and Windows (`.
 
 | Test | Run |
 |---|---|
-| the&nbsp;library | `python tests/run_lib_tests.py`: the 1.0 transcript, features, EVRe Guard, public names, warnings (`--old DIR`: the 1.0 library, by default the frozen copy in `tests/lib_1.0`) |
+| the&nbsp;library | `python tests/run_lib_tests.py`: the 1.0 transcript, features, EVRe Guard (the login, and the register checks of `tests/guard_desc_test.cpp`), public names, warnings (`--old DIR`: the 1.0 library, by default the frozen copy in `tests/lib_1.0`) |
 | a&nbsp;library&nbsp;change | `python tests/run_lib_tests.py --fuzz <the library before the change> [--fuzz-cases 300000]`: against the library before it, every line the same, or in a decided class and checked |
-| the&nbsp;public&nbsp;names&nbsp;alone | `g++ -std=c++11 -Wall -Wextra -Werror -I lib tests/api_compat.cpp lib/EVRe.cpp -o api_compat && ./api_compat` |
+| the&nbsp;public&nbsp;names&nbsp;alone | `g++ -std=c++11 -Wall -Wextra -Werror -I lib -I lib/guard tests/api_compat.cpp lib/EVRe.cpp lib/guard/evre_guard.cpp lib/guard/evre_guard_desc.cpp -o api_compat && ./api_compat` |
 | `protocolConfigure` | `tests/configure_test.cpp`: `protocolInit` with a device's own `protocolConfigure`, run by `run_lib_tests.py` on Linux; on MinGW, where an override of a weak function is not reliable, only compiled |
 | map&nbsp;files,&nbsp;exports | `build/evre_map_test` |
 | JSON&nbsp;Schema | `python studio/tests/schema_test.py` (needs `jsonschema`) |

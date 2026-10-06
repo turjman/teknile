@@ -7,7 +7,8 @@
  * device uses it or not, and the protocol is the same either way. It plugs
  * into the library's two hooks, READ_HANDLER and WRITE_HANDLER (EVRe 1.1).
  *
- * This first part is the login:
+ * Part 2, the register checks (the values a host may write), is
+ * evre_guard_desc.h. This first part is the login:
  *
  *   - Before a login only DEVICE_ID and STATUS (0xA000..0xA003) and the spans
  *     in open_reads can be read, and only the login register written.

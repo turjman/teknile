@@ -89,8 +89,10 @@ or not; the protocol is the same either way.
 |   units, limits, value names, fields, login. For the tools.   |
 +---------------------------------------------------------------+
 | EVRe Guard (optional, in the device): who may read and write  |
-|   - login with a token, lockout against brute force, idle     |
-|   logout; checks a device adds itself                         |
+|   part 1: login with a token, lockout against brute force,    |
+|           idle logout                                         |
+|   part 2: register checks, a const table made from the map:   |
+|           size, type, raw limits, the values that always pass |
 +-------------------------------+-------------------------------+
                                 |  bytes up, a verdict down
                                 |  (READ_HANDLER, WRITE_HANDLER)
@@ -104,8 +106,9 @@ or not; the protocol is the same either way.
 The rule for every change: **nothing that interprets data goes into EVRe.**
 The library may learn *where* bytes are and *whether* they may be read or
 written; *what they are* belongs to EVRe Guard, the map, or the device. The
-library even reserves a code for the layer above, `LOGIN_REQUIRED`, without
-knowing what a login is: only a handler returns it. It tells a handler which
+library even reserves codes for the layer above, `LOGIN_REQUIRED` and
+`VALUE_REFUSED`, without knowing what a login or a limit is: only a handler
+returns them. It tells a handler which
 frame it runs for (`RX_SLAVE_ID`, library 1.1: a broadcast or not), because
 that is framing, not meaning.
 
@@ -553,6 +556,7 @@ and count of the request plus one error byte. It is always 11 bytes:
 | 12 | `LENGTH_MISMATCH` | a frame of a function code the library decodes is not 10 + *n* bytes, *n* from its function code ([Frame](#frame)) | yes |
 | 13 | `LOGIN_REQUIRED` | the device's access layer needs a login first: log in and retry (1.1). The library only reserves the code: a handler returns it (EVRe Guard, while no session is open) | from a handler |
 | 14 | `RANGE_TABLE_INVALID` | `protocolInit()`: the range table is not valid, and `protocolConfigure()` did not fail (its own code comes first) (1.1) | never |
+| 15 | `VALUE_REFUSED` | the device's layer above did not take a value; nothing was stored: outside the register's limits, NaN or an infinity (EVRe Guard's register checks). The library only reserves the code: a handler returns it | from a handler |
 
 "Yes" means in an `ERROR_RESP`, under the rules of
 [When a device is silent](#when-a-device-is-silent) below. A handler may return
@@ -1075,6 +1079,127 @@ dev.WRITE_HANDLER = onWrite;
 calls `evre_guard_write` from its own code, with a device whose `RX_SLAVE_ID`
 is 0, has every login treated as a broadcast: that fails closed.
 
+#### Register checks (EVRe Guard part 2)
+
+`lib/guard/evre_guard_desc.h` checks the values a host writes. It runs in the
+write handler, after the login and before the library stores a byte, and
+reads a const table made from the device's map (`evre export MAP --to
+guard`). For each register a host may write, the table says where it is, its
+size and type, its raw limits and the values that always pass (the map's
+specials). The check walks every register a frame touches and gives one
+verdict for the whole frame: one bad register refuses it, and nothing is
+stored.
+
+- **Refuse, never clamp.** The check never stores and never returns
+  `EVRE_HANDLED`: the library stores every byte of the frame or none. A
+  device that keeps its own clamps (and its state rules) keeps them behind the
+  check, as the second line ([Patterns](#patterns): treat writes as
+  requests).
+- **Two codes.** `VALUE_REFUSED` (15) for a whole register holding a value the
+  device does not take: outside min..max (and not a listed value), NaN or an
+  infinity. `PERMISSION_DENIED` (3) for a byte that cannot be written this
+  way: no entry covers it (a gap, a read-only register inside a writable
+  range, past the last entry), or only part of a number register. 3 is about
+  where, 15 about what. A bytes register (a name, a blob) may be written in
+  any part.
+- **The device bank only.** A write inside the reserved bank (`CONFIG`, the
+  queue's clear, the acks) is the library's and passes untouched.
+- **A bad table** (`evre_guard_check_init()` refused it, or never ran) refuses
+  every write to the device bank with 3 and lets the reserved bank through, so
+  a device whose release carries a bad table can still be reset and sent into
+  DFU over EVRe. Init refuses a table with a null pointer, an unknown type, a
+  size that is not the type's, entries out of order or overlapping, a list
+  that is not strictly ascending or holds NaN or -0.0, a limit outside the
+  type or min above max, a spare member or flag that is not 0, and an entry
+  that does not lie inside one writable range of the device. Report its answer
+  loudly: a bad table is found at the first start on the bench.
+- **After the login.** `evre_guard_write_checked()` asks part 1 first and
+  the values only on its `NO_ERROR`: a host without a session gets 13 and
+  learns nothing about the limits. A refused value in a session still counts
+  as activity. A device without a login wires `evre_guard_check_write()`
+  alone.
+- **Mirrors** are refused: init fails, and a write is refused (3) whenever
+  `ACCEPT_READ_RESP` is set. A gateway that keeps a mirror passes its
+  device's 15 on.
+- **Broadcasts** (with `ACCEPT_BROADCAST_D000` 1) get the same checks; one
+  bad value drops the whole broadcast, silently, for every device.
+- **f32** is compared in integers: the bits of a finite float become a key
+  that sorts as the float does. The answer is exact on every target, whatever
+  the FPU's flush-to-zero mode; no FPU state is saved in the decoder's
+  interrupt, and no soft-float code comes in on an MCU without an FPU. -0.0
+  counts as +0.0, so a listed 0 takes it.
+- **The frame's bytes** are read one at a time, never through a cast pointer:
+  they lie at frame byte 7, at any alignment.
+- **What it does not check:** reads, read-only bits inside a writable
+  register, the effects of an action or a write-1-to-clear, state rules and
+  rules across registers, persistence, and frames the device sends by itself.
+- **Diagnostics.** The check counts its refusals and keeps the last one's
+  register and reason (`evre_guard_check_last()`, from the main loop, under
+  `EVRE_LOCK`): the wire says only 15 or 3 for the whole frame.
+- **Cost.** About 0.5 KB of code for the write check and 0.6 KB for init on
+  a Cortex-M7 at `-Os`; 24 B of flash per writable register, 4 B per listed
+  value, 12 B per table; 12 B of RAM; 56 B of the decoder's stack for the
+  check. One pass per register the frame touches: the worst frame is one
+  one-byte register per data byte, so a device measures its own worst frame
+  against its receive window.
+
+The answers on the wire, with part 2 (all of it is the library's behaviour;
+part 2 only chooses the code):
+
+| Case | Code | Answered&nbsp;or&nbsp;silent | Stored |
+|---|---|---|---|
+| a&nbsp;unicast&nbsp;`WRITE_ACK`,&nbsp;every&nbsp;register&nbsp;good | 0 | `WRITE_ACK_RESP` | all, and `HEARTBEAT` is set |
+| a&nbsp;unicast&nbsp;`WRITE`,&nbsp;every&nbsp;register&nbsp;good | 0 | silent | all, and `HEARTBEAT` is set |
+| a&nbsp;unicast&nbsp;`WRITE`&nbsp;or&nbsp;`WRITE_ACK`,&nbsp;one&nbsp;value&nbsp;bad | 15 | `ERROR_RESP`(15), echoing the request's offset and count; a plain `WRITE`'s refusal is answered too | none, and no `HEARTBEAT` |
+| only&nbsp;part&nbsp;of&nbsp;a&nbsp;number&nbsp;register | 3 | `ERROR_RESP`(3) | none |
+| a&nbsp;byte&nbsp;no&nbsp;entry&nbsp;covers | 3 | `ERROR_RESP`(3) | none |
+| part&nbsp;of&nbsp;a&nbsp;bytes&nbsp;register,&nbsp;the&nbsp;rest&nbsp;good | 0 | as&nbsp;the&nbsp;function | all |
+| the&nbsp;reserved&nbsp;bank | as&nbsp;without&nbsp;it | as&nbsp;without&nbsp;it | as without it |
+| with&nbsp;a&nbsp;login,&nbsp;no&nbsp;session | 13 | `ERROR_RESP`(13): part 1 answers, no value is looked at | none |
+| a&nbsp;login,&nbsp;or&nbsp;a&nbsp;write&nbsp;over&nbsp;the&nbsp;login&nbsp;register | as&nbsp;part&nbsp;1 | as&nbsp;part&nbsp;1 | as part 1 |
+| a&nbsp;broadcast,&nbsp;every&nbsp;register&nbsp;good | 0 | silent | all |
+| a&nbsp;broadcast,&nbsp;one&nbsp;register&nbsp;bad | 15&nbsp;or&nbsp;3 | silent | none, for the whole broadcast |
+| a&nbsp;bad&nbsp;or&nbsp;missing&nbsp;table | 3 | `ERROR_RESP`(3), for every write to the device bank; silent for a broadcast | none; the reserved bank works as without it |
+| a&nbsp;mirror | 3 | silent for a `READ_RESP` | none |
+| a&nbsp;refused&nbsp;`WRITE_ACK`,&nbsp;an&nbsp;output&nbsp;buffer&nbsp;of&nbsp;10&nbsp;B | 15&nbsp;or&nbsp;3 | silent (an `ERROR_RESP` needs 11 B) | none |
+| a&nbsp;`READ` | - | part 2 is not asked | - |
+| a&nbsp;frame&nbsp;the&nbsp;library&nbsp;refuses | as&nbsp;without&nbsp;it | part 2 is not asked | none |
+
+The wiring, with a login (`evre_guard_write_checked` puts it first):
+
+```c
+#include "evre_guard_desc.h"
+#include "example_guard.h"           /* evre export example.json --to guard */
+
+static evre_guard_t guard;           /* part 1, the login */
+static evre_guard_check_t check;     /* part 2, the values */
+
+static uint8_t onRead(evre_base_t *d, uint16_t off, uint16_t cnt) {
+    (void) d;
+    return evre_guard_read(&guard, off, cnt);
+}
+/* The login comes first: without a session no value is looked at. */
+static uint8_t onWrite(evre_base_t *d, uint16_t off, const uint8_t *data, uint16_t cnt) {
+    return evre_guard_write_checked(&guard, &check, d, off, data, cnt);
+}
+
+/* at start-up, after protocolInit() */
+if (evre_guard_init(&guard, &guard_config) != NO_ERROR) { /* a bad config: every request refused */ }
+if (evre_guard_check_init(&check, &example_table, &dev) != NO_ERROR) { /* a bad table: the device bank takes no write */ }
+dev.READ_HANDLER  = onRead;
+dev.WRITE_HANDLER = onWrite;   /* set even when a check failed: without it every write would land */
+```
+
+Without a login, the write handler is
+`return evre_guard_check_write(&check, d, off, data, cnt);` alone. In the main
+loop, `evre_guard_check_last(&check, &addr, &why)` gives the count of
+refusals, and the last one's register and reason, for the device's log.
+`evre_guard_write_checked` calls part 1, so a device without a login still
+builds `evre_guard.cpp`; with `-ffunction-sections` and `--gc-sections` the
+linker drops what it never calls. One check per decoder: a device with two
+links whose decoders run at different priorities gives each its own
+`evre_guard_check_t` (the table may be shared).
+
 ### A host's mirror (library 1.1)
 
 A host that keeps a copy of a device's registers in an `evre_base_t` of its
@@ -1331,7 +1456,9 @@ to power the system down. A response is not a request: since library 1.1 a
 `WRITE_ACK_RESP` echoed back to a device is refused and feeds no watchdog.
 
 **Read back what you wrote.** A value may be clamped rather than rejected. The
-matching read-only register tells you what was actually applied.
+matching read-only register tells you what was actually applied. A device with
+EVRe Guard's register checks refuses a value outside its limits instead
+(`VALUE_REFUSED`, 15): write with `WRITE_ACK` to hear it.
 
 ---
 
@@ -1357,7 +1484,9 @@ matching read-only register tells you what was actually applied.
 | A&nbsp;range&nbsp;table&nbsp;set&nbsp;after&nbsp;`protocolInit()` | never checked |
 | Assuming the low byte of an address is the register index | wrong once the map passes `0xnn FF` |
 | Casting a pointer into the response buffer | misaligned unless the map is ordered widest-first |
-| Assuming&nbsp;a&nbsp;write&nbsp;took&nbsp;effect | it may have been clamped — read it back |
+| Assuming&nbsp;a&nbsp;write&nbsp;took&nbsp;effect | it may have been clamped — read it back — or refused with 15 (EVRe Guard's register checks): write with `WRITE_ACK` |
+| Writing one byte of a float, or a block over bytes the map does not describe, to a device with EVRe Guard's register checks | refused with 3: a number is written whole, and a gap in a writable run takes no write (declare it as a `bytes` register if one must pass) |
+| A&nbsp;mirror&nbsp;wired&nbsp;to&nbsp;EVRe&nbsp;Guard's&nbsp;register&nbsp;checks | init refuses it, and every write is refused: the checks are for devices |
 | Using an optional feature without checking `STATUS` | works on one device, fails on the next |
 
 ---

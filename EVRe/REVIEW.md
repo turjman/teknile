@@ -19,6 +19,54 @@ which frame it runs for (`RX_SLAVE_ID`, a broadcast or not): that is framing, no
 answers to Q1 to Q7. Sections 1 to 11 are round 3 as you reviewed it. Where round 4, review round 2 or D-25 and
 N11 changed something there, a note in brackets says so.
 
+## EVRe Guard part 2: your decisions D-26 to D-50
+
+Part 2 checks the values a host writes (`docs/GUARD_PLAN.md`, revision 2). You confirmed every decision, G-1 to
+G-25, as recommended on 2026-10-05. They are D-26 to D-50 here, in that order, and from now on a test, a class or a
+mutant is named by its D-number. Phase G of the work plan builds them on the line of `evre-1.1`, in the parts G.0
+to G.6, each with a pull request into `evre-1.1`.
+
+| # | Plan | The&nbsp;question | Your decision |
+|---|---|---|---|
+| D-26 | G-1 | a&nbsp;value&nbsp;outside&nbsp;the&nbsp;limits | DECIDED: refused, never clamped. The check never stores and never returns `EVRE_HANDLED` |
+| D-27 | G-2 | the&nbsp;codes | DECIDED: a new code 15, `VALUE_REFUSED`, for a value; 3 for a place. One line in `lib/EVRe.h`; the library never returns 15 |
+| D-28 | G-3 | where&nbsp;the&nbsp;check&nbsp;sits | DECIDED: a unit of its own, `lib/guard/evre_guard_desc.*`, and `evre_guard_write_checked`, which puts the login first |
+| D-29 | G-4 | a&nbsp;refused&nbsp;value&nbsp;and&nbsp;the&nbsp;session | DECIDED: it counts as activity (part 1 resets the idle time first) |
+| D-30 | G-5 | part&nbsp;of&nbsp;a&nbsp;register | DECIDED: refused (3) for a number; any part of a bytes register may be written |
+| D-31 | G-6 | bytes&nbsp;no&nbsp;entry&nbsp;covers | DECIDED: refused (3): a gap, a read-only register inside a writable range, past the last entry |
+| D-32 | G-7 | NaN&nbsp;and&nbsp;the&nbsp;infinities | DECIDED: always refused (15), by a bit test |
+| D-33 | G-8 | a&nbsp;special&nbsp;outside&nbsp;the&nbsp;limits | DECIDED: it passes: a sorted value list for each register |
+| D-34 | G-9 | a&nbsp;closed&nbsp;set&nbsp;of&nbsp;values&nbsp;(A1) | DECIDED: a map key, `closed` |
+| D-35 | G-10 | bits&nbsp;no&nbsp;field&nbsp;covers&nbsp;(A2) | DECIDED: a map key, `reserved_zero` |
+| D-36 | G-11 | a&nbsp;register&nbsp;the&nbsp;device&nbsp;clamps | DECIDED: a map key, `past_limits` (`"refuse"` by default, `"clamp"`): the type's full range in the entry |
+| D-37 | G-12 | limits&nbsp;into&nbsp;raw&nbsp;values | DECIDED: ceil and floor for integers, the nearest float for f32; past `FLT_MAX`, `FLT_MAX` |
+| D-38 | G-13 | a&nbsp;bad&nbsp;or&nbsp;missing&nbsp;table | DECIDED (b): the device bank refused, the reserved bank let through |
+| D-39 | G-14 | mirrors | DECIDED: refused (init fails; a write is refused whenever `ACCEPT_READ_RESP` is set) |
+| D-40 | G-15 | broadcasts | DECIDED: the same check; one bad value drops the whole broadcast |
+| D-41 | G-16 | init&nbsp;and&nbsp;the&nbsp;device | DECIDED: init checks the table against the device's ranges, and their order |
+| D-42 | G-17 | the&nbsp;entry's&nbsp;format | DECIDED: 24 B, frozen, with spare members; `EVRE_GUARD_TABLE_FORMAT` 1 |
+| D-43 | G-18 | diagnostics | DECIDED: a count, the last register and the reason |
+| D-44 | G-19 | what&nbsp;stays&nbsp;out | DECIDED: all of its list (reads, read-only fields, w1c, actions, persist, run-time limits, state rules) |
+| D-45 | G-20 | names&nbsp;and&nbsp;files | DECIDED: `lib/guard/evre_guard_desc.*`, `evre_guard_write_checked` in the same file |
+| D-46 | G-21 | the&nbsp;generator | DECIDED: a new `--to guard`, with `--check` |
+| D-47 | G-22 | the&nbsp;firmware's&nbsp;adoption | DECIDED: observe, then clamp, then refuse register by register (not part of phase G) |
+| D-48 | G-23 | the&nbsp;firmware's&nbsp;limits | DECIDED: tied to the generated constants (not part of phase G) |
+| D-49 | G-24 | comparing&nbsp;f32 | DECIDED (b): in integers, a key that sorts as the float does |
+| D-50 | G-25 | the device's own frames and the login | DECIDED: the device stops them without a session (a rule in the docs and the header) |
+
+### What is built, part by part
+
+- **G.0** (the dev copy at home in the repo): CI runs this suite on Linux and Windows; the tools name code 13.
+- **G.1** (the check, plan phase P1): `VALUE_REFUSED` (15) in `lib/EVRe.h`, its row in PROTOCOL.md's error table
+  and its pin; `lib/guard/evre_guard_desc.h` and `.cpp`; `tests/guard_desc_test.cpp`, a check or more for each
+  decision that the check carries (D-26 to D-33, D-36, D-38 to D-43, D-49) and one for each row of the wire table;
+  the pins of every public name of parts 1 and 2 in `api_compat.cpp`; the lock build; PROTOCOL.md (the Layers
+  diagram, the error table, "Register checks" with its wire table, Patterns, Pitfalls). D-34 and D-35 (the closed
+  set, the bits that must be 0) come with G.4: until then init refuses a flag bit and `zero_bits`, as an older
+  Guard refuses a newer table. Measured with arm-none-eabi-g++ 13.2 for a Cortex-M7 at `-Os`: 504 B for
+  `evre_guard_check_write`, 610 B for `evre_guard_check_init`, 1447 B for the whole unit; 56 B of stack for the
+  check.
+
 ## After review round 2: your decisions D-25 and N11
 
 | # | The&nbsp;question | Your decision |

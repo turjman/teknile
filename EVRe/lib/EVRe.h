@@ -430,6 +430,10 @@ enum ERR_CODE_ENUM {
 	 * handler does (EVRe Guard, when no session is open). */
 	LOGIN_REQUIRED = 13U,
 	RANGE_TABLE_INVALID = 14U, /* protocolInit(): D_RANGES has a range of 0 bytes or without memory, or is unsorted, overlapping or outside 0xD000..0xDFFF; never sent */
+	/* On the wire: the device's layer above did not take a value; nothing was
+	 * stored. The library only reserves the code and never returns it: a
+	 * handler does (EVRe Guard). */
+	VALUE_REFUSED = 15U,
 };
 
 #ifdef EVRE_RESTORE_NO_ERROR
