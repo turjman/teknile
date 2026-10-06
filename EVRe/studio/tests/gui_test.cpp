@@ -1657,6 +1657,7 @@ private:
 		const double framePeriod = 1000.0 / std::max(60.0, window_.screen() ? window_.screen()->refreshRate() : 60.0);
 		(void) view->takePerfStats();
 		const int paintsBefore = view->paints();
+		const int leftOverBefore = window_.fastSyncsLeftOver();
 		QThread::msleep(700);
 		QElapsedTimer sinceHold;
 		sinceHold.start();
@@ -1673,11 +1674,21 @@ private:
 			if (slot > 0) fewest = std::min(fewest, after.frames); /* the first slot holds the frame that took the pile */
 			paintAfter = std::max(paintAfter, after.paintMax);
 		}
+		/* the pile is appended over several frames (MainWindow::sync, FAST_APPEND_NS), none of it lost */
+		const int backlogSyncs = window_.fastSyncsLeftOver() - leftOverBefore;
+		const QRegularExpressionMatch afterCounts = QRegularExpression(
+				QStringLiteral("(\\d+) samples not shown")).match(sidebar->fastRateTip(0));
+		const qint64 notShownAfter = afterCounts.hasMatch() ? afterCounts.captured(1).toLongLong() : -1;
 		std::printf("  fast speed, after 700 ms held: the first paint %.1f ms after (a frame %.1f ms); frames in 200 ms "
-				"slots: %s; the longest paint %.1f ms\n", firstPaint, framePeriod, qPrintable(inSlots), paintAfter);
+				"slots: %s; the longest paint %.1f ms; the blocks left for a later frame by %d syncs; %s, %lld not shown\n",
+				firstPaint, framePeriod, qPrintable(inSlots), paintAfter, backlogSyncs,
+				qPrintable(sidebar->fastLostText(0)), (long long) notShownAfter);
 		check(firstPaint <= 2 * framePeriod + 2 && paintAfter <= 40 && fewest >= 6,
 				"fast speed: the window's thread held 700 ms (a title bar's button pressed): the chart paints again within "
 				"two frames, no paint after it over 40 ms, and the frames go on (at least 6 in each 200 ms)");
+		check(backlogSyncs >= 1 && sidebar->fastLostText(0) == QLatin1String("lost 0") && notShownAfter == 0,
+				"fast speed: the blocks piled up in the 700 ms are appended over more than one frame (a sync left some for "
+				"the next), none lost and none left unshown");
 		button->click();
 		view->setWindow(windowBefore);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
