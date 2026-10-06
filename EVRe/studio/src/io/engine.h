@@ -33,7 +33,8 @@
  * first); one without an enable is only listened to. While one is on, CONFIG is read every HEARTBEAT_MS as for
  * AUTO_SEND. Disconnect switches every stream off first, the way it clears AUTO_SEND; a lost link keeps the wish,
  * and the stream is switched on again after the reconnect. No block FIRST_FRAME_MS after the enable was taken: off
- * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.)
+ * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.) The chart's trigger on a
+ * channel (setFastTrigger) is looked for in each block as it comes, and its crossings go with the block.
  *
  * Every QObject the engine uses is its child (or is made in its thread), so
  * moveToThread() takes them all along: a timer left in the window's thread

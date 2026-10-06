@@ -4552,7 +4552,8 @@ private:
 		/* the GPU: the first adapter, its frame in the window's layer against the CPU's picture of the same pixels */
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
-			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag", "Log Y", "lanes", "lanes scrolled and folded", "lanes resized", "a picture of the chart",
+			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag",
+					 "the trigger's level and tag", "Log Y", "lanes", "lanes scrolled and folded", "lanes resized", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -4622,6 +4623,36 @@ private:
 					"draws it");
 			once->setNotes({});
 			once->clearCursors();
+			/* the trigger's level on b0 at its mid-range: its dashed line and its tag (a picture on the card), the rows
+			 * around the tag, the card's against the CPU's */
+			once->setTrigger(0, ChartView::TriggerMode::Normal);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atTrigger;
+			const QImage gpuTrigger = once->gpuPicture(&atTrigger).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuTrigger = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atTrigger);
+			const QRectF levelTag = once->triggerLevelTag();
+			const qreal triggerDpr = once->devicePixelRatioF();
+			const int tagTop = std::max(0, int(std::floor((levelTag.top() - 4 - (once->lastPlot().top() - 2)) * triggerDpr)));
+			const int tagRows = std::min(gpuTrigger.height() - tagTop, int(std::ceil((levelTag.height() + 8) * triggerDpr)));
+			/* the tag's own columns: the band's other blocks are the 12 lines crossing at their middle, whose edges the
+			 * card rounds a little differently (92 % of the whole band's blocks alike on a Quadro T1000) */
+			const int tagLeft = std::max(0, int(std::floor((levelTag.left() - 4 - (once->lastPlot().left() - 2)) * triggerDpr)));
+			const int tagColumns = std::min(gpuTrigger.width() - tagLeft, int(std::ceil((levelTag.width() + 8) * triggerDpr)));
+			const QRect tagArea(tagLeft, tagTop, tagColumns, tagRows);
+			const double triggerAlike = levelTag.isEmpty() || tagRows <= 0 || tagColumns <= 0 ? 0
+					: blocksAlike(gpuTrigger.copy(tagArea), cpuTrigger.copy(tagArea), 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuTrigger.copy(tagArea).save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/trigger_card.png"));
+				cpuTrigger.copy(tagArea).save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/trigger_cpu.png"));
+			}
+			std::printf("     (the trigger's level and tag \"%s\": %.2f%% of the blocks like the CPU's)\n",
+					qPrintable(once->triggerTagText()), triggerAlike * 100);
+			check(once->plotOnCard() && !levelTag.isEmpty() && triggerAlike >= 0.93, "chart on a GPU: the trigger's level "
+					"line and its tag drawn by the card as the CPU draws them");
+			once->stopTrigger();
 			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
 			once->setYLog(true);
 			for (int k = 0; k < 3; k++) {
@@ -4897,6 +4928,18 @@ private:
 		if (!empty.isEmpty()) std::printf("     (help pages without their text: %s)\n", qPrintable(empty));
 		check(filled && empty.isEmpty() && options, "Help: every page opens with its heading and text, its numbers "
 				"put in; the command line page lists --bus and the Map editor's --tab");
+		/* Trigger v2: the Chart page says how it is armed and what the modes, the hold-off and the triangle do */
+		QString chartPage, keysPage;
+		for (int i = 0; filled && i < topics->count(); i++) {
+			topics->setCurrentRow(i);
+			if (topics->item(i)->text() == QLatin1String("Chart & recording")) chartPage = page->toPlainText();
+			if (topics->item(i)->text() == QLatin1String("Keys & mouse")) keysPage = page->toPlainText();
+		}
+		check(chartPage.contains(QLatin1String("Trigger on this line")) && chartPage.contains(QLatin1String("hold-off"))
+						&& chartPage.contains(QLatin1String("Auto runs live")) && chartPage.contains(QLatin1String("triangle"))
+						&& keysPage.contains(QLatin1String("the tag's arrow")),
+				"Help: the Chart page's Trigger says how it is armed (Trigger on this line), the level's tag, Auto, Normal and "
+				"Single, the hold-off and the triangle; Keys & mouse lists the tag and the triangle");
 	}
 
 	/* the measurements of many lines (60, on a Chart tab of its own, 10 s of 500 Hz samples each): a refresh of the

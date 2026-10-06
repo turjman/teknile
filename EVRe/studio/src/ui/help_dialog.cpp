@@ -381,15 +381,23 @@ as it comes, so it covers hours while the memory keeps minutes; a gap of more th
 nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
-<h3>Histogram, spectrum, trigger</h3>
+<h3>Histogram and spectrum</h3>
 <p><b>Right-click a line's chip</b> in the legend: <b>Histogram</b> (how its values spread, bins by the
 Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
 2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
 its own with a readout under the mouse, a picture and CSV.</p>
-<p><b>Display → Trigger</b>: a row to pick a line, Rising / Falling / Either, a level (a dashed line on the chart you
-can drag) and <b>Normal</b> (holds on each crossing, armed again once the view is full) or <b>Single</b> (the first;
-<b>Arm</b> for the next). The chart holds with the crossing at 20 % of the window and a <b>T</b> over it; the
-measurements, export and pictures take that view. <b>Live</b> follows now again.</p>
+<h3>Trigger</h3>
+<p><b>Right-click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
+line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane with a tag at its right end,
+<i>I_LOAD 1.20 A, rising</i>: <b>drag</b> the line or the tag to move the level; <b>click</b> the tag's arrow (↑ ↓ ↕)
+for rising, falling or either. Each line keeps its own level and edge.</p>
+<p><b>Auto</b> runs live and holds on each crossing; <b>Normal</b> holds on each crossing and waits for the next;
+<b>Single</b> holds on the first (<b>Arm</b> for the next). The <b>hold-off</b> (the window's length by default, 0 to
+10 s) is the time after a crossing in which no other counts. The crossing sits at 20 % of the window with a <b>T</b>
+over it: <b>drag</b> the small triangle under the chart to move it (0 to 90 %). In a window under a second the next
+picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
+The row under the actions sets the same; the measurements, export and pictures take the view held; <b>Live</b>
+follows now again.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -600,8 +608,9 @@ all fit</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
-<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
-<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
+<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum, Trigger on this line</td></tr>
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line or tag · <b>click</b> the tag's arrow: rising, falling,
+either · <b>drag</b> the triangle under the chart: where the crossing sits</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
 Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·

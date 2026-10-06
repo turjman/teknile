@@ -45,10 +45,14 @@
  * Delete removes the one clicked last. A right-click asks for the chart's menu
  * (menuRequested): the Chart tab makes it.
  *
- * Trigger: a line crossing a level (rising, falling or either), as an
- * oscilloscope's: the view holds with the crossing at 20 % of the window and a
- * marker there, the level a dashed line that can be dragged. Single holds on
- * the first crossing; Normal holds on each, armed again once its view is full.
+ * Trigger: a line crossing its level (rising, falling or either; each line
+ * keeps its own), as an oscilloscope's: the view holds with the crossing at its
+ * place in the window (20 %; a triangle under the plot, dragged) and a marker
+ * there, the level a dashed line with a tag, both dragged. Auto runs live
+ * between crossings, Normal holds on each, Single on the first; the next counts
+ * once the hold-off has passed and the view is full. A short window shows each
+ * picture whole. A fast line's crossings are found by the engine as its blocks
+ * come (fast::TriggerScan).
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
