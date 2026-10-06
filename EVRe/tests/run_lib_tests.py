@@ -765,7 +765,10 @@ def usable(name, compiler, skip):
         print('     skipped (--skip): %s' % name)
         return False
     if name == 'm32':
-        r = subprocess.run(['g++', '-m32', '-x', 'c++', '-', '-o', os.devnull], input='int main(){}', capture_output=True, text=True)
+        # into a file: os.devnull is "nul" on Windows, which MinGW's assembler and linker cannot create
+        with tempfile.TemporaryDirectory() as probe:
+            r = subprocess.run(['g++', '-m32', '-x', 'c++', '-', '-o', os.path.join(probe, 'm32')], input='int main(){}',
+                               capture_output=True, text=True)
         ok = r.returncode == 0
     else:
         ok = shutil.which(compiler) is not None
@@ -784,8 +787,11 @@ def matrix(folder, skip):
         for std in stds:
             for opt in ('-O0', '-O1', '-O2', '-O3', '-Os'):
                 for source in MATRIX_FILES:
+                    # each build into a file of its own (they run side by side), not os.devnull: that is "nul" on
+                    # Windows, which MinGW's assembler cannot create
                     cmd = [compiler, '-std=' + std, opt] + flags + ['-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', NEW,
-                                                                    '-I', GUARD, '-c', source, '-o', os.devnull]
+                                                                    '-I', GUARD, '-c', source, '-o',
+                                                                    os.path.join(folder, 'matrix_%d.o' % len(jobs))]
                     jobs.append(('%s %s %s %s' % (' '.join([compiler] + flags[:1]), std, opt, os.path.basename(source)), cmd))
 
     def one(job):
@@ -862,7 +868,7 @@ def arm_stack_and_size(folder, skip):
                 'static_assert(sizeof(evre_guard_desc_t) == 24, "entry");\n'
                 'static_assert(sizeof(evre_guard_table_t) == 12, "table");\n'
                 'static_assert(sizeof(evre_guard_check_t) == 12, "check");\n')
-    sizes = subprocess.run(m7 + ['-c', probe, '-o', os.devnull], capture_output=True, text=True)
+    sizes = subprocess.run(m7 + ['-c', probe, '-o', os.path.join(folder, 'sizes_m7.o')], capture_output=True, text=True)
     return {'write': functions.get('evre_guard_check_write', 0), 'init': functions.get('evre_guard_check_init', 0),
             'stack': public.get('evre_guard_check_write', (0,))[0], 'sizes': sizes.returncode == 0}
 
@@ -902,7 +908,7 @@ def docs_checks(cc, folder, measured):
         bad = []
         for std in ('c++11', 'c++17'):
             r = subprocess.run([cc, '-std=' + std, '-Wall', '-Wextra', '-Wpedantic', '-Werror', '-I', folder, '-I', NEW, '-I', GUARD,
-                                '-c', source, '-o', os.devnull], capture_output=True, text=True)
+                                '-c', source, '-o', source + '.o'], capture_output=True, text=True)
             if r.returncode:
                 bad.append('%s: %s' % (std, r.stderr.strip()[:300]))
         check(not bad, 'docs: PROTOCOL.md\'s wiring of %s compiles as written (C++11, C++17, -Wpedantic -Werror)%s'
