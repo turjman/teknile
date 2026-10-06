@@ -8,8 +8,8 @@ Writes a map with every behaviour into a temporary folder, starts
 <build>/evre-sim on 127.0.0.1:<port> (its own process, stopped at the end),
 and checks: defaults, moving read-only values inside min..max, write-only,
 read-only, action, write-1-to-clear (register and field), a read-only field,
---strict as a device with EVRe Guard's register checks (15 for a value, 3 for part of a number, a register that
-clamps), --require-login, --state (persist across a restart), --slave (another slave gets no answer, a
+--strict as a device with EVRe Guard's register checks (15 for a value, a closed set, a reserved bit; 3 for part
+of a number; a register that clamps), --require-login, --state (persist across a restart), --slave (another slave gets no answer, a
 broadcast WRITE is taken, an address outside 1..255 refused).
 Exit code: 0 all passed, 1 a check failed, 2 a program is missing."""
 import argparse
@@ -41,6 +41,10 @@ MAP = {
         {"addr": "0xD010", "name": "SPEED", "type": "i16", "access": "rw", "min": -100, "max": 100,
          "past_limits": "clamp"},
         {"addr": "0xD012", "name": "SETP", "type": "f32", "access": "rw", "min": 0, "max": 24},
+        {"addr": "0xD016", "name": "MODE", "type": "u8", "access": "rw", "closed": True,
+         "enum": {"0": "off", "1": "on", "3": "auto"}},
+        {"addr": "0xD017", "name": "BITS", "type": "u8", "access": "rw", "reserved_zero": True,
+         "fields": [{"name": "A", "bits": "1:0"}]},
     ]}
 
 
@@ -144,6 +148,16 @@ def main():
         check(rc == 0 and value('SPEED') == 100, '--strict: a register that clamps takes 150 (sent without --force) and reads 100')
         rc, _, _ = evre('write', *link, 'SPEED=-120')
         check(rc == 0 and value('SPEED') == -100, '--strict: ... and -120 as -100')
+        rc, _, err = evre('write', *link, 'MODE=2', '--force')
+        check(rc == 1 and 'value refused' in err, '--strict: a value outside a closed set: 15 (%s)' % err.strip())
+        rc, _, err = evre('write', *link, 'MODE=2')
+        check(rc == 1 and 'closed set' in err, 'evre: a value outside a closed set needs --force (%s)' % err.strip())
+        rc, _, _ = evre('write', *link, 'MODE=auto')
+        check(rc == 0 and value('MODE') == 3, '--strict: a closed set takes its names (auto = 3)')
+        rc, _, err = evre('write', *link, 'BITS=4', '--force')
+        check(rc == 1 and 'value refused' in err, '--strict: a bit no field covers (reserved_zero): 15 (%s)' % err.strip())
+        rc, _, _ = evre('write', *link, 'BITS=3')
+        check(rc == 0 and value('BITS') == 3, '--strict: the field\'s bits are written')
         rc, _, err = evre('write', *link, 'SETP=nan', '--force')
         check(rc == 1 and 'not a finite number' in err, 'evre: NaN is never sent, even with --force (%s)' % err.strip())
         # frames evre would not send: one byte of a number, NaN in an f32

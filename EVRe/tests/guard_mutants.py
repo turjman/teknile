@@ -21,7 +21,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LIB = os.path.normpath(os.path.join(HERE, '..', 'lib'))
 SOURCE = os.path.join(LIB, 'guard', 'evre_guard_desc.cpp')
 
-# (name, the decision or rule it breaks, the text, its replacement)
+# (name, the decision or rule it breaks, the text, its replacement). Section 9's "zero_bits tested after sign
+# extension" has no mutant here: init keeps zero_bits inside the register's width, where the raw bits and the
+# sign-extended ones are the same, so such a change cannot change any verdict (an equivalent mutant).
 MUTANTS = [
     ('the NaN test removed', 'D-32',
      '\t\tif (!isFinite(value)) {\n\t\t\treturn EVRE_GUARD_WHY_NOT_FINITE;',
@@ -69,12 +71,12 @@ MUTANTS = [
     ('init skips the size of the type', 'D-38',
      '} else if (!isNumber(reg->type) || reg->size != sizeOf(reg->type)) {',
      '} else if (!isNumber(reg->type)) {'),
-    ('init skips the flags', 'D-42',
-     'if (reg->spare1 != 0 || reg->spare2 != 0 || reg->flags != 0 || reg->zero_bits != 0) {',
-     'if (reg->spare1 != 0 || reg->spare2 != 0 || reg->zero_bits != 0) {'),
+    ('init skips the unknown flag bits', 'D-42',
+     'if (reg->spare1 != 0 || reg->spare2 != 0 || (reg->flags & ~EVRE_GUARD_CLOSED) != 0) {',
+     'if (reg->spare1 != 0 || reg->spare2 != 0) {'),
     ('init skips the spare members', 'D-42',
-     'if (reg->spare1 != 0 || reg->spare2 != 0 || reg->flags != 0 || reg->zero_bits != 0) {',
-     'if (reg->flags != 0 || reg->zero_bits != 0) {'),
+     'if (reg->spare1 != 0 || reg->spare2 != 0 || (reg->flags & ~EVRE_GUARD_CLOSED) != 0) {',
+     'if ((reg->flags & ~EVRE_GUARD_CLOSED) != 0) {'),
     ('init skips the limits', 'D-38',
      '\t\tif (!entryOk(reg) || !limitsOk(reg) || !listOk(table, reg)) {',
      '\t\tif (!entryOk(reg) || !listOk(table, reg)) {'),
@@ -112,6 +114,18 @@ MUTANTS = [
     ('init not checking the entries against the ranges', 'D-41',
      '\t\treturn rangesInOrder(device) && insideRanges(table, device);',
      '\t\treturn rangesInOrder(device);'),
+    ('CLOSED ignored', 'D-34',
+     '\tif ((reg->flags & EVRE_GUARD_CLOSED) != 0) {\n\t\treturn EVRE_GUARD_WHY_NOT_LISTED;',
+     '\tif (false) {\n\t\treturn EVRE_GUARD_WHY_NOT_LISTED;'),
+    ('init lets a closed set be empty', 'D-42',
+     'if ((reg->flags & EVRE_GUARD_CLOSED) != 0 && reg->n_values == 0) {',
+     'if (false) {'),
+    ('zero_bits ignored', 'D-35',
+     '\tif ((raw & reg->zero_bits) != 0) {\n\t\treturn EVRE_GUARD_WHY_BITS;',
+     '\tif (false) {\n\t\treturn EVRE_GUARD_WHY_BITS;'),
+    ('init lets zero_bits past the width or on an f32', 'D-42',
+     'if (reg->zero_bits != 0 && (reg->type == EVRE_GUARD_F32 || (reg->zero_bits & ~widthMask(reg->size)) != 0)) {',
+     'if (false) {'),
     ('no refusal counted', 'D-43',
      '\t\t++check->refused;',
      '\t\tcheck->refused += 0;'),

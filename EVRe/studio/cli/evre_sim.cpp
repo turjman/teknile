@@ -22,9 +22,10 @@
  *   - a field with "access": "ro" in a writable register keeps the device's bits
  *   - --strict: the device answers as one with EVRe Guard's register checks
  *     would: a value past min or max (a special value aside), NaN or an
- *     infinity is refused with 15 (value refused), a write of part of a number
- *     with 3; a register with "past_limits": "clamp" takes a value past its
- *     limits and clamps it, as such a device's main loop does
+ *     infinity, a value outside a "closed" set, a bit no field covers set on a
+ *     "reserved_zero" register is refused with 15 (value refused), a write of
+ *     part of a number with 3; a register with "past_limits": "clamp" takes a
+ *     value past its limits and clamps it, as such a device's main loop does
  *   - the login (a map with "login"): a write of the whole login register is
  *     accepted when it holds the token (--token, default "example-token"), else
  *     refused (3). --require-login: on a connection that has not logged in,
@@ -146,8 +147,8 @@ private:
 			if (!r.rw) return refuse(PERMISSION_DENIED);
 			if (!options_.strict || !r.isNumeric()) continue;
 			if (int(r.addr) < addr || r.addr + r.size > addr + count) return refuse(PERMISSION_DENIED); /* part of a number */
-			const double shown = decodeNumber(r, data.mid(r.addr - addr, r.size));
-			if (!std::isfinite(shown) || (!r.clamps && !limitProblem(r, shown).isEmpty())) return refuse(VALUE_REFUSED);
+			const QByteArray bytes = data.mid(r.addr - addr, r.size);
+			if (!std::isfinite(decodeNumber(r, bytes)) || !writeProblem(r, bytes).isEmpty()) return refuse(VALUE_REFUSED);
 		}
 		for (int i = 0; i < data.size(); i++) writeByte(uint16_t(addr + i), uint8_t(data[i]));
 		if (options_.strict) clampWritten(addr, count);

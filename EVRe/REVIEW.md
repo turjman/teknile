@@ -88,6 +88,23 @@ to G.6, each with a pull request into `evre-1.1`.
   - measured on the Cortex-M7: at `-Os` part 2 is 1358 B of code, `evre_guard_check_write` 56 B of stack (the limit is
     96 B); with the firmware's `-Oz -flto`, a device with parts 1 and 2 linked has the guarded write path at about
     116 B (main 48, the write handler 56 with the login and the check inlined, the clock look 12).
+- **G.3** (the map's keys, the hosts and the generator, plan phases P3a and P3b): the register key `past_limits`
+  (`"refuse"`, `"clamp"`) in MAP_FORMAT.md 6.1, the schema and every host; the hosts send a clamping register's value
+  past its limits without asking, never send NaN or an infinity, and refuse a broadcast of part of a number;
+  `evre export MAP --to guard` and the Map editor's export (`.h` with the typed raw limits, `.cpp` with the table),
+  `--check` for every export with `-o`; the map check names where the table takes another value than the map;
+  `evre-sim --strict` answers 15 and 3 as the Guard does. Tests: `studio/tests/guard_table_test.py` (the export
+  compiled with the library and the Guard and driven at every edge, `keep_limits` and the Guard agreeing value by
+  value, the golden device table), the map, CLI, sim, Python and schema tests, and the GUI step `guardKeys`.
+- **G.4** (the additions A1 and A2 and the device's own frames, plan phase P4 and G-25): the flag
+  `EVRE_GUARD_CLOSED` (D-34) and `zero_bits` (D-35) in the check, init refusing an unknown flag, a closed entry with
+  no listed value and `zero_bits` past the width or on an `f32` or bytes entry; the map's keys `closed` and
+  `reserved_zero` in MAP_FORMAT.md, the schema, the Map editor, every host and the generator; the rule of D-50 in
+  `evre_guard.h` and PROTOCOL.md, with the wiring line in its example. Tests: `guard_desc_test.cpp` (D-34, D-35,
+  D-50 and the new init rules), the oracle of `guard_fuzz.cpp` with both (and a closed set left empty among the bad
+  tables), 34 mutants (four new: the flag or `zero_bits` ignored, init letting either through), the table test's
+  closed and reserved registers, and the GUI step `guardKeys`. Measured on the Cortex-M7 at `-Os`: part 2 is 1404 B
+  of code (46 B more), `evre_guard_check_write` still 56 B of stack.
 
 ## After review round 2: your decisions D-25 and N11
 

@@ -41,6 +41,14 @@
  *     idle_logout_ms without a read or a write. In a session, a write that runs
  *     over the login register without being a login (a block write of the
  *     settings next to it) is refused, and the session goes on.
+ *   - The device's own frames are its own to stop. The handlers are asked
+ *     about requests only, never about a frame the device sends by itself
+ *     (AUTO_SEND, a stream of blocks): so a device with a login sends by
+ *     itself only while evre_guard_logged_in() says a session is open, and
+ *     stops when the session ends, an idle logout included. Without that, its
+ *     read-only block goes to a host that never logged in. A host that only
+ *     listens keeps no session open: the idle time runs on, so it goes on
+ *     asking (a read of CONFIG every 100 ms, as EVRe Studio does).
  *
  * Two answers for a refusal, so a host can tell "log in again" from "no such
  * register" and still learns nothing about a token:
@@ -105,6 +113,8 @@
  *   evre_guard_restore(&guard, saved_failures, now64());   (optional)
  *   dev.READ_HANDLER = onRead;
  *   dev.WRITE_HANDLER = onWrite;
+ *   ...
+ *   in the main loop: sending = autoSendWanted && evre_guard_logged_in(&guard);   (its own frames: in a session only)
  *
  * The login register must lie in a writable range of the device bank (the
  * library checks that before it asks the guard), in a range of its own is

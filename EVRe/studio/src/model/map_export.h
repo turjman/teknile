@@ -53,6 +53,8 @@ bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByte
  * in place of what the map says (the map check shows both). */
 struct GuardEntry {
 	uint32_t min = 0, max = 0;            /* the entry's limits: an unsigned value, a signed one sign-extended, f32 bits */
+	bool closed = false;                  /* only the listed values pass ("closed") */
+	uint32_t zeroBits = 0;                /* bits a write must leave 0 ("reserved_zero") */
 	QVector<QPair<uint32_t, QString>> values; /* listed, ascending as uint32_t, each with what the map calls it */
 	bool hasRawMin = false, hasRawMax = false;
 	double rawMin = 0, rawMax = 0;        /* the map's limits in raw units, as the entry rounds them */

@@ -1045,7 +1045,7 @@ void MainWindow::onWriteRequested(int row, const QString &text, const QByteArray
 		return;
 	}
 	/* past the map's min or max: only when the user says so (a special value is always allowed) */
-	const QString outside = def.isNumeric() ? writeLimitProblem(def, decodeNumber(def, bytes)) : QString();
+	const QString outside = writeProblem(def, bytes);
 	if (!outside.isEmpty() && !confirmed(this, tr("Outside the map's limits"),
 			tr("<b>%1</b> = <b>%2</b> is %3 the map gives it.<br><br>The map may be stricter than the device, or the "
 			   "device may not take it (a device with EVRe Guard refuses it). Write it anyway?").arg(def.name.toHtmlEscaped(), text.toHtmlEscaped(),

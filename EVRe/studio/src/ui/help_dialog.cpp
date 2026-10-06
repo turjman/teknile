@@ -406,6 +406,9 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 <li><b>past_limits</b>: <code>"clamp"</code> = the device takes a value past min or max and clamps it, so it is
 written without asking; <code>"refuse"</code> (the default) = it is asked first, and a device with EVRe Guard refuses
 it (<i>value refused</i>, 15). NaN and the infinities are never written.</li>
+<li><b>closed</b>: <code>true</code> = only the value names, the specials and an action's idle value may be
+written; <b>reserved_zero</b>: <code>true</code> = the bits no field covers are written 0. Any other value is asked
+first, and a device with EVRe Guard refuses it (15).</li>
 <li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms),
 <b>groups</b> (notes per group), and on a field <b>access</b> and <b>desc</b>.</li>
 <li><b>extends</b>: <code>"base.json"</code> makes the map an overlay that changes another one.</li>

@@ -168,10 +168,13 @@ enum : uint16_t {
 	U8ALL = 0xD029,  /* 0 .. 255 */
 	U16ALL = 0xD02A, /* 0 .. 0xFFFF */
 	F32LIST = 0xD02C, /* 1.0 .. 10.0, or 0 */
-	PAST = 0xD030    /* past the last entry, in the writable range */
+	CLOSED = 0xD030,  /* a closed set: 0, 1, 2, 7 only (D-34) */
+	BITS16 = 0xD031,  /* bits 15..12 and 3..0 must be 0 (D-35) */
+	BITS8 = 0xD033,   /* an i8 whose bit 7 must be 0: no negative value (D-35) */
+	PAST = 0xD034    /* past the last entry, in the writable range */
 };
 
-static const uint32_t values[] = { 0x00000000UL, 0xFFFF8000UL, 0x00000000UL };
+static const uint32_t values[] = { 0x00000000UL, 0xFFFF8000UL, 0x00000000UL, 0UL, 1UL, 2UL, 7UL };
 
 static evre_guard_desc_t regs[] = {
 	/* addr, size, type, flags, n_values, spare1, first_value, spare2, min, max, zero_bits */
@@ -187,9 +190,12 @@ static evre_guard_desc_t regs[] = {
 	{ U8ALL, 1, EVRE_GUARD_U8, 0, 0, 0, 0, 0, 0UL, 0xFFUL, 0 },
 	{ U16ALL, 2, EVRE_GUARD_U16, 0, 0, 0, 0, 0, 0UL, 0xFFFFUL, 0 },
 	{ F32LIST, 4, EVRE_GUARD_F32, 0, 1, 0, 2, 0, 0x3F800000UL, 0x41200000UL, 0 },
+	{ CLOSED, 1, EVRE_GUARD_U8, EVRE_GUARD_CLOSED, 4, 0, 3, 0, 0UL, 0xFFUL, 0 },
+	{ BITS16, 2, EVRE_GUARD_U16, 0, 0, 0, 0, 0, 0UL, 0xFFFFUL, 0xF00FUL },
+	{ BITS8, 1, EVRE_GUARD_I8, 0, 0, 0, 0, 0, 0xFFFFFF80UL, 0x7FUL, 0x80UL },
 };
 static const uint16_t N_REGS = sizeof regs / sizeof regs[0];
-static evre_guard_table_t table = { regs, values, N_REGS, 3 };
+static evre_guard_table_t table = { regs, values, N_REGS, 7 };
 
 static uint64_t clockMs = 1000;
 static uint64_t fakeClock() { return clockMs; }
@@ -468,6 +474,36 @@ static void floats() {
 			"D-33: 0.5, not listed and below 1.0: refused; 1.0 passes");
 }
 
+/* D-34: a closed set; D-35: bits that must be 0, read on the raw bytes before any sign extension */
+static void additions() {
+	evre_base_t dev;
+	device(dev);
+	uint16_t addr = 0;
+	uint8_t why = 0;
+	check(writeValue(dev, CLOSED, 0, 1) == NO_ERROR && writeValue(dev, CLOSED, 1, 1) == NO_ERROR && writeValue(dev, CLOSED, 2, 1) == NO_ERROR
+			&& writeValue(dev, CLOSED, 7, 1) == NO_ERROR, "D-34: a closed set takes its listed values (0, 1, 2, 7)");
+	check(writeValue(dev, CLOSED, 3, 1) == VALUE_REFUSED && evre_guard_check_last(&chk, &addr, &why) && addr == CLOSED
+			&& why == EVRE_GUARD_WHY_NOT_LISTED, "D-34: a value it does not list, inside min..max: 15, the reason NOT_LISTED");
+	check(writeValue(dev, CLOSED, 0xFF, 1) == VALUE_REFUSED && writeValue(dev, CLOSED, 6, 1) == VALUE_REFUSED,
+			"D-34: 255 and 6 (a retired value, unlisted): refused");
+	check(writeValue(dev, BITS16, 0x0FF0, 2) == NO_ERROR && writeValue(dev, BITS16, 0, 2) == NO_ERROR,
+			"D-35: the bits a field covers may be set (0x0FF0), and none");
+	check(writeValue(dev, BITS16, 0x0FF1, 2) == VALUE_REFUSED && evre_guard_check_last(&chk, &addr, &why) && addr == BITS16
+			&& why == EVRE_GUARD_WHY_BITS, "D-35: bit 0, which must be 0: 15, the reason BITS");
+	check(writeValue(dev, BITS16, 0x1000, 2) == VALUE_REFUSED && writeValue(dev, BITS16, 0x8000, 2) == VALUE_REFUSED,
+			"D-35: bit 12 and bit 15 (the high byte): refused");
+	check(writeValue(dev, BITS8, 0x7F, 1) == NO_ERROR && writeValue(dev, BITS8, 0x80, 1) == VALUE_REFUSED
+			&& writeValue(dev, BITS8, 0xFF, 1) == VALUE_REFUSED,
+			"D-35: an i8 with bit 7 to stay 0: 127 passes, -128 and -1 refused (the raw byte, before sign extension)");
+	uint8_t both[4];
+	put(both, 1, 1);
+	put(both + 1, 0x0001, 2);
+	snap(dev);
+	check(ask(&dev, WRITE_ACK, CLOSED, 3, both) == VALUE_REFUSED && untouched(dev) && evre_guard_check_last(&chk, &addr, &why)
+			&& addr == BITS16 && why == EVRE_GUARD_WHY_BITS, "D-35: a closed value and a bad bit in one frame: 15, nothing stored, "
+			"the bad register named");
+}
+
 static void spans() {
 	evre_base_t dev;
 	device(dev);
@@ -626,6 +662,54 @@ static void order() {
 	dev.READ_HANDLER = nullptr;
 }
 
+/* D-50: a device with a login sends by itself only in a session. The main loop of PROTOCOL.md's wiring example: its
+ * AUTO_SEND frames go out while evre_guard_logged_in() says a session is open, none before a login, none after an idle
+ * logout or a logout, though AUTO_SEND stays on in CONFIG (a host that only listens keeps no session) */
+static void ownFrames() {
+	evre_base_t dev;
+	device(dev);
+	evre_guard_init(&guard, &loginConfig);
+	dev.WRITE_HANDLER = withLogin;
+	dev.READ_HANDLER = readLogin;
+	clockMs = 50000;
+	unsigned sent = 0;
+	auto mainLoop = [&](unsigned passes) {
+		for (unsigned pass = 0; pass < passes; ++pass) {
+			const bool sending = (dev.CONFIG & (1U << AUTO_SEND)) != 0 && evre_guard_logged_in(&guard) != 0;
+			if (sending) {
+				uint8_t frameOut[64];
+				uint16_t len = 0;
+				if (encodePacketInto(&dev, 1, READ_RESP, 0xD000, 8, nullptr, frameOut, sizeof frameOut, &len) == NO_ERROR && len)
+					++sent;
+			}
+			clockMs += 100;
+		}
+	};
+	dev.CONFIG |= 1U << AUTO_SEND; /* switched on: by the device itself, or by a host in a session that has since ended */
+	mainLoop(10);
+	const bool noneBefore = sent == 0;
+	const uint8_t config[2] = { 0x08, 0x00 };
+	ask(&dev, WRITE_ACK, 0xD040, 16, token);
+	ask(&dev, WRITE_ACK, 0xA004, 2, config);
+	mainLoop(10);
+	const unsigned inSession = sent;
+	mainLoop(60); /* 6 s without a request: the idle logout (5 s) */
+	const unsigned afterIdle = sent;
+	mainLoop(10);
+	check(noneBefore && inSession == 10 && afterIdle >= inSession && afterIdle < inSession + 60 && sent == afterIdle
+			&& (dev.CONFIG & (1U << AUTO_SEND)) != 0,
+			"D-50: the device's own frames (AUTO_SEND) only in a session: none before the login, every pass in it, none after "
+			"the idle logout, though AUTO_SEND stays on");
+	ask(&dev, WRITE_ACK, 0xD040, 16, token);
+	mainLoop(3);
+	const unsigned again = sent;
+	evre_guard_logout(&guard);
+	mainLoop(5);
+	check(again == afterIdle + 3 && sent == again, "D-50: a login sends again, a logout stops them at once");
+	dev.WRITE_HANDLER = checkOnly;
+	dev.READ_HANDLER = nullptr;
+}
+
 /* a table that breaks one init rule, and the check that refuses with it */
 static bool refusedTable(const evre_guard_table_t &bad, const char *what) {
 	evre_base_t dev;
@@ -655,7 +739,7 @@ static void init() {
 		const char *what;
 		void (*apply)(evre_guard_desc_t *, uint32_t *);
 	};
-	static uint32_t vals[3];
+	static uint32_t vals[7];
 	static evre_guard_desc_t copy[N_REGS];
 	const Change changes[] = {
 		{ "a type of 0", [](evre_guard_desc_t *r, uint32_t *) { r[0].type = 0; } },
@@ -668,11 +752,15 @@ static void init() {
 		{ "an entry before 0xD000", [](evre_guard_desc_t *r, uint32_t *) { r[0].addr = 0xC000; } },
 		{ "an entry out of order", [](evre_guard_desc_t *r, uint32_t *) { r[1].addr = 0xD007; } },
 		{ "two entries that overlap", [](evre_guard_desc_t *r, uint32_t *) { r[3].addr = 0xD00B; } },
-		{ "a flag bit set", [](evre_guard_desc_t *r, uint32_t *) { r[0].flags = 0x01; } },
+		{ "an unknown flag bit set", [](evre_guard_desc_t *r, uint32_t *) { r[0].flags = 0x02; } },
 		{ "a high flag bit set", [](evre_guard_desc_t *r, uint32_t *) { r[0].flags = 0x80; } },
+		{ "a closed set with no value (D-34)", [](evre_guard_desc_t *r, uint32_t *) { r[2].flags = EVRE_GUARD_CLOSED; } },
+		{ "a flag on a bytes register", [](evre_guard_desc_t *r, uint32_t *) { r[8].flags = EVRE_GUARD_CLOSED; } },
 		{ "spare1 not 0", [](evre_guard_desc_t *r, uint32_t *) { r[0].spare1 = 1; } },
 		{ "spare2 not 0", [](evre_guard_desc_t *r, uint32_t *) { r[0].spare2 = 1; } },
-		{ "zero_bits not 0", [](evre_guard_desc_t *r, uint32_t *) { r[0].zero_bits = 0x80; } },
+		{ "zero_bits past the register's width (D-35)", [](evre_guard_desc_t *r, uint32_t *) { r[0].zero_bits = 0x100; } },
+		{ "zero_bits on an f32 (D-35)", [](evre_guard_desc_t *r, uint32_t *) { r[6].zero_bits = 1; } },
+		{ "zero_bits on a bytes register", [](evre_guard_desc_t *r, uint32_t *) { r[8].zero_bits = 1; } },
 		{ "min above max", [](evre_guard_desc_t *r, uint32_t *) { r[0].min = 201; } },
 		{ "a signed min above max (as signed)", [](evre_guard_desc_t *r, uint32_t *) { r[3].min = 1001; } },
 		{ "a u8 limit past the type", [](evre_guard_desc_t *r, uint32_t *) { r[0].max = 0x100; } },
@@ -680,7 +768,7 @@ static void init() {
 		{ "an f32 limit that is NaN", [](evre_guard_desc_t *r, uint32_t *) { r[6].max = 0x7FC00000UL; } },
 		{ "an f32 limit that is infinite", [](evre_guard_desc_t *r, uint32_t *) { r[7].max = 0x7F800000UL; } },
 		{ "an f32 min above max", [](evre_guard_desc_t *r, uint32_t *) { r[6].min = 0x41C00001UL; } },
-		{ "a list past the value list", [](evre_guard_desc_t *r, uint32_t *) { r[11].first_value = 3; } },
+		{ "a list past the value list", [](evre_guard_desc_t *r, uint32_t *) { r[11].first_value = 7; } },
 		{ "a list not ascending", [](evre_guard_desc_t *r, uint32_t *v) { r[3].n_values = 2; v[2] = 0x00000000UL; } },
 		{ "a list value past the type", [](evre_guard_desc_t *, uint32_t *v) { v[0] = 0x100; } },
 		{ "an f32 list with -0.0", [](evre_guard_desc_t *, uint32_t *v) { v[2] = 0x80000000UL; } },
@@ -692,19 +780,19 @@ static void init() {
 		std::memcpy(copy, regs, sizeof regs);
 		std::memcpy(vals, values, sizeof values);
 		change.apply(copy, vals);
-		const evre_guard_table_t bad = { copy, vals, N_REGS, 3 };
+		const evre_guard_table_t bad = { copy, vals, N_REGS, 7 };
 		const bool spare = std::strstr(change.what, "spare") != nullptr || std::strstr(change.what, "flag") != nullptr
-				|| std::strstr(change.what, "zero_bits") != nullptr;
+				|| std::strstr(change.what, "zero_bits") != nullptr || std::strstr(change.what, "closed set") != nullptr;
 		(spare ? later : all) = refusedTable(bad, change.what) && (spare ? later : all);
 	}
 	check(all, "D-38: every init rule on its own (25 tables, one field changed each): init refuses it, and then every write to "
 			"the device bank is refused (3) while CONFIG still lands");
-	check(later, "D-42: a spare member, a flag bit or zero_bits not 0 (kept for later parts): init refuses the table, as an "
-			"older Guard refuses a newer one");
-	const evre_guard_table_t noRegs = { nullptr, values, 1, 3 };
-	const evre_guard_table_t zeroRegs = { regs, values, 0, 3 };
-	const evre_guard_table_t tooMany = { regs, values, 0x1001, 3 };
-	const evre_guard_table_t noValues = { regs, nullptr, N_REGS, 3 };
+	check(later, "D-42: a spare member not 0, an unknown flag bit, a flag or zero_bits where they have no meaning, zero_bits "
+			"past the register's width, a closed set with no value: init refuses the table (an older Guard refuses a newer one)");
+	const evre_guard_table_t noRegs = { nullptr, values, 1, 7 };
+	const evre_guard_table_t zeroRegs = { regs, values, 0, 7 };
+	const evre_guard_table_t tooMany = { regs, values, 0x1001, 7 };
+	const evre_guard_table_t noValues = { regs, nullptr, N_REGS, 7 };
 	check(refusedTable(noRegs, "no entries") && refusedTable(zeroRegs, "n_regs 0") && refusedTable(tooMany, "n_regs 0x1001")
 			&& refusedTable(noValues, "values null with n_values 3"), "D-38: no entries, n_regs 0 or above 0x1000, no value list: refused");
 
@@ -721,7 +809,7 @@ static void init() {
 	chk = zeroed;
 	check(evre_guard_check_write(&chk, &dev, U8, one, 1) == PERMISSION_DENIED, "D-38: a zeroed check (init never ran): every write to the device bank refused");
 	evre_guard_check_init(&chk, &table, &dev);
-	const evre_guard_table_t empty = { regs, values, 0, 3 };
+	const evre_guard_table_t empty = { regs, values, 0, 7 };
 	check(evre_guard_check_init(&chk, &empty, &dev) == PERMISSION_DENIED && evre_guard_check_write(&chk, &dev, U8, one, 1) == PERMISSION_DENIED,
 			"D-38: a failed re-init after a good one leaves the check refusing");
 
@@ -867,7 +955,7 @@ static void lockBuild() {
 	locks = unlocks = deepest = 0;
 	evre_guard_check_init(&c, &table, &dev);
 	check(locks == 1 && unlocks == 1 && deepest == 1 && depth == 0, "D-43 lock: evre_guard_check_init takes EVRE_LOCK once");
-	const evre_guard_table_t empty = { regs, values, 0, 3 };
+	const evre_guard_table_t empty = { regs, values, 0, 7 };
 	locks = unlocks = 0;
 	evre_guard_check_init(&c, &empty, &dev);
 	check(locks == 1 && unlocks == 1, "D-43 lock: a failed init takes it once too (the nullptr stored under it)");
@@ -882,9 +970,11 @@ int main() {
 	wire();
 	values_();
 	floats();
+	additions();
 	spans();
 	alignment();
 	order();
+	ownFrames();
 	init();
 	reservedBank();
 	diagnostics();

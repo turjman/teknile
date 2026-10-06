@@ -31,8 +31,9 @@
  * The verdicts:
  *
  *   - VALUE_REFUSED (15): a whole register holds a value the device does not
- *     take: outside min..max, NaN or an infinity. A value the register lists
- *     (a special, such as 0 "off" below a minimum of 5) always passes.
+ *     take: outside min..max, NaN or an infinity, a bit that must be 0, or (in
+ *     a closed set) a value the register does not list. A value the register
+ *     lists (a special, such as 0 "off" below a minimum of 5) always passes.
  *   - PERMISSION_DENIED (3): a byte that cannot be written this way: no entry
  *     covers it (a gap, a read-only register inside a writable range, past the
  *     last entry), or the frame writes only part of a number. Also every write
@@ -53,7 +54,8 @@
  *     not inside 0xD000..0xDFFF, or no data .................... 3
  *     each register the frame touches, in address order:
  *       a byte no entry covers, part of a number ............... 3
- *       NaN or an infinity, not listed and outside min..max .... 15
+ *       a bit that must be 0, NaN or an infinity, a value not
+ *         in a closed set, not listed and outside min..max ..... 15
  *     NO_ERROR: the library stores every byte
  *
  * A bad table (init refused it, or never ran) refuses every write to the
@@ -117,6 +119,13 @@
  * into the spare members and the free flag bits, which this version refuses
  * (a newer table on an older Guard fails closed). EVRE_GUARD_TABLE_FORMAT
  * names this layout; a generated file checks it with #error.
+ *
+ * What the table leaves out, and stays the device's: names and units (the host
+ * has the map), scale and offset (the limits are raw), the default (a device
+ * starts from its own state), persistence, the effects of an action and of a
+ * write-1-to-clear (the main loop's), read-only bits inside a writable
+ * register, limits changed at run time, state rules and rules across
+ * registers.
  */
 
 #ifndef EVRE_GUARD_DESC_H
@@ -141,15 +150,19 @@ enum EVRE_GUARD_TYPE_ENUM {
 	EVRE_GUARD_BYTES = 8U
 };
 
+enum EVRE_GUARD_FLAG_ENUM {
+	EVRE_GUARD_CLOSED = 0x01U /* only the listed values pass (the map's "closed"); any other bit: a bad table */
+};
+
 /* Why the last write was refused, for the device's log (evre_guard_check_last). */
 enum EVRE_GUARD_WHY_ENUM {
 	EVRE_GUARD_WHY_NONE = 0U,         /* nothing refused yet */
 	EVRE_GUARD_WHY_SETUP = 1U,        /* no good table, a null pointer, a mirror */
 	EVRE_GUARD_WHY_NOT_WRITABLE = 2U, /* a byte no entry covers, or outside the device bank */
 	EVRE_GUARD_WHY_PART = 3U,         /* only part of a number register */
-	EVRE_GUARD_WHY_BITS = 4U,         /* a bit that must be 0 (a later part) */
+	EVRE_GUARD_WHY_BITS = 4U,         /* a bit that must be 0 (the map's "reserved_zero") */
 	EVRE_GUARD_WHY_NOT_FINITE = 5U,   /* NaN or an infinity in an f32 register */
-	EVRE_GUARD_WHY_NOT_LISTED = 6U,   /* not one of a closed set of values (a later part) */
+	EVRE_GUARD_WHY_NOT_LISTED = 6U,   /* not one of a closed set of values (the map's "closed") */
 	EVRE_GUARD_WHY_LIMIT = 7U         /* outside min..max, and not a listed value */
 };
 
@@ -159,20 +172,21 @@ enum EVRE_GUARD_WHY_ENUM {
  * signed one sign-extended to 32 bits (-1000 is 0xFFFFFC18), an f32 as its IEEE
  * 754 bits (24.0 is 0x41C00000). A limit the map leaves out is the type's end
  * (u8 0..0xFF, f32 -FLT_MAX..FLT_MAX), so every number takes the same compare.
- * A bytes register has min = max = 0 and no list: only its span is checked.
+ * A bytes register has min = max = 0, no list, no flags and no zero_bits: only
+ * its span is checked.
  * The member order is fixed for good. */
 typedef struct {
 	uint16_t addr;        /* the first byte, 0xD000..0xDFFF */
 	uint16_t size;        /* bytes: 1, 2 or 4 by the type; 1..0x1000 for BYTES */
 	uint8_t type;         /* EVRE_GUARD_U8 .. EVRE_GUARD_BYTES; a uint8_t, so the entry's size never depends on an enum's */
-	uint8_t flags;        /* 0; the bits are kept for later parts. Any bit set: a bad table */
-	uint8_t n_values;     /* how many values this register lists, 0..255: they always pass */
+	uint8_t flags;        /* EVRE_GUARD_CLOSED: only listed values pass. Any other bit: a bad table */
+	uint8_t n_values;     /* how many values this register lists, 0..255: they always pass (with CLOSED, only they) */
 	uint8_t spare1;       /* 0. Kept for a later part. Not 0: a bad table */
 	uint16_t first_value; /* where this register's values start in the table's value list */
 	uint16_t spare2;      /* 0. Kept for a later part. Not 0: a bad table */
 	uint32_t min;         /* the raw low limit, as bits */
 	uint32_t max;         /* the raw high limit, as bits */
-	uint32_t zero_bits;   /* 0; kept for a later part. Not 0: a bad table */
+	uint32_t zero_bits;   /* bits a write must leave 0, in the register's width; integers only; 0: no rule */
 } evre_guard_desc_t;
 
 /* The whole table. values is one array for every register: each register's

@@ -2773,7 +2773,8 @@ private:
 	/* EVRe Guard's key in the Map editor and in the writes: the register editor's "Past limits" choice (refused or
 	 * clamped) with its tooltip, saved as "past_limits" and undone; a register that clamps written past its max
 	 * without the question, the Log saying the device clamps it; NaN never sent; the Guard table exported from the
-	 * Map editor, both files; errorName 15. */
+	 * Map editor, both files; errorName 15; the "closed" and "reserved_zero" boxes, and a closed register's write
+	 * asking first. */
 	void guardKeys() {
 		auto *doc = window_.findChild<MapDocument *>();
 		auto *tabs = window_.findChild<QTabWidget *>();
@@ -2816,6 +2817,35 @@ private:
 		tabs->setCurrentIndex(MainWindow::TabMap);
 		doc->undoStack()->undo();
 		check(!doc->reg(u8Uid)->clamps, "undo: refused again");
+
+		/* "closed" and "reserved_zero": two boxes with tooltips; a closed register without the value written asks */
+		auto *closedBox = window_.findChild<QCheckBox *>(QStringLiteral("closedSet"));
+		auto *reservedBox = window_.findChild<QCheckBox *>(QStringLiteral("reservedZero"));
+		check(closedBox && reservedBox && closedBox->toolTip().contains(QLatin1String("EVRe Guard"))
+				&& reservedBox->toolTip().contains(QLatin1String("EVRe Guard")) && !closedBox->isChecked() && !reservedBox->isChecked(),
+				"Map editor: the \"closed\" and \"reserved_zero\" boxes, off by default, with tooltips that say what EVRe Guard does");
+		if (closedBox && reservedBox) {
+			editorTab->selectRegister(u8Uid);
+			QApplication::processEvents();
+			const int before = doc->undoStack()->index();
+			closedBox->click();
+			const bool closedSaved = doc->reg(u8Uid)->closed && doc->undoStack()->index() == before + 1
+					&& doc->map().toJson(doc->map().path).contains("\"closed\": true");
+			const bool followed = QTest::qWaitFor([&] { return model_->rows()[regRow(regs_.u8.name)].def.closed; }, 2000);
+			check(closedSaved && followed, "closed: ticked sets \"closed\": true on the register, one undo step, the "
+					"Registers table follows");
+			/* the u8 register has no value names: 3 is inside min and max, yet outside its closed set */
+			tabs->setCurrentIndex(MainWindow::TabRegisters);
+			u8Cell_ = valueCell(table_, regs_.u8.name);
+			const QString title = enterAnswering(typeInto(u8Cell_, QStringLiteral("3")), QStringLiteral("Cancel"));
+			check(title == QLatin1String("Outside the map's limits") && other_.readU8(regs_.u8.addr) != 3
+					&& logText().contains(QLatin1String("outside the closed set of values")),
+					"a closed register: a value it does not list asks first (\"outside the closed set of values\"), "
+					"Cancel writes nothing");
+			tabs->setCurrentIndex(MainWindow::TabMap);
+			doc->undoStack()->undo();
+			check(!doc->reg(u8Uid)->closed, "undo: open again");
+		}
 		/* the broadcast check of the window's map: part of a number is refused, as a device with EVRe Guard refuses it */
 		const QString part = broadcastRefusal({ &doc->map() }, regs_.danger.addr, 1);
 		check(part.contains(QLatin1String("only part of")) && broadcastRefusal({ &doc->map() }, regs_.danger.addr, 2).isEmpty(),

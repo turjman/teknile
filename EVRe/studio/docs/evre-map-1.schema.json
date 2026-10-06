@@ -102,6 +102,8 @@
         "min": { "type": ["number", "null"], "description": "shown units" },
         "max": { "type": ["number", "null"], "description": "shown units" },
         "past_limits": { "enum": ["refuse", "clamp", null], "description": "refuse (the default): a value past min or max is refused (EVRe Guard: 15); clamp: the device takes it and clamps it" },
+        "closed": { "type": ["boolean", "null"], "description": "only the value names (enum), the special values and an action's idle value may be written" },
+        "reserved_zero": { "type": ["boolean", "null"], "description": "the bits no field covers must be written 0" },
         "default": { "type": ["number", "string", "null"], "description": "shown units, or one of the register's value names" },
         "special": {
           "type": ["object", "null"],

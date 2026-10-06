@@ -675,8 +675,10 @@ def register_checks(cc, folder):
         print('     without part 2 these checks fail, as they must: %s' % ', '.join(
             '%s %d' % (tag, fails[tag]) for tag in sorted(fails, key=lambda t: (t[0] != 'D', t))))
         # every decision that changes what a device answers or stores fails without part 2; the others (activity,
-        # a clamp register, a broadcast of CONFIG, the entry's size) hold either way and are proven by their mutants
-        must = ('D-26', 'D-27', 'D-28', 'D-30', 'D-31', 'D-32', 'D-33', 'D-38', 'D-39', 'D-41', 'D-43', 'D-49', 'wire')
+        # a clamp register, a broadcast of CONFIG, the entry's size, the device's own frames) hold either way and are
+        # proven by their mutants or are part 1's
+        must = ('D-26', 'D-27', 'D-28', 'D-30', 'D-31', 'D-32', 'D-33', 'D-34', 'D-35', 'D-38', 'D-39', 'D-41', 'D-43',
+                'D-49', 'wire')
         missing = [tag for tag in must if not fails.get(tag)]
         check(not missing, 'without part 2 the checks of %s fail (each a behaviour part 2 adds)%s'
               % (', '.join(must), ': not ' + ', '.join(missing) if missing else ''))

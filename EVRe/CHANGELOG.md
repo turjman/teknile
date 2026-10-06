@@ -34,11 +34,18 @@ must know, and `REVIEW.md` holds the review and its decisions.
   with the new code 15 `VALUE_REFUSED`; a byte no entry covers, or part of a number, with 3. Nothing is clamped,
   nothing stored. A bad table refuses every write to the device bank and lets the reserved bank through.
 - `lib/EVRe.h` reserves 15 `VALUE_REFUSED`; the library never returns it.
+- Two additions to the table: the flag `EVRE_GUARD_CLOSED` (only the listed values pass, whatever the limits say)
+  and `zero_bits` (bits that must be 0); either refused with 15. The table's checks refuse an unknown flag, a closed
+  register with no listed value, and `zero_bits` past the register's width or on an `f32`.
+- A device sends its own frames only while `evre_guard_logged_in()` reports a session (PROTOCOL.md, the wiring
+  example).
 
 ### The map format
 
 - A new optional register key, `past_limits`: `"refuse"` (the default) or `"clamp"`, what the device does with a
   value past `min` or `max` (MAP_FORMAT.md 6.1, the schema, the Studio's model, editor, CSV and exports).
+- Two more: `closed` (only the value names, the specials and an action's idle value may be written) and
+  `reserved_zero` (the bits no field covers are written 0), in the same places.
 
 ### The tools
 
@@ -50,7 +57,9 @@ must know, and `REVIEW.md` holds the review and its decisions.
 - EVRe Studio, `evre`, the API and the Python package send a value past the limits of a register that clamps without
   asking, never send NaN or an infinity, refuse a broadcast of part of a number, and name code 15 *value refused*.
 - `evre-sim --strict` answers as a device with the Guard: 15 for a value, 3 for part of a number, and clamps a
-  register that clamps.
+  register that clamps; `closed` and `reserved_zero` are refused with 15.
+- The hosts ask before (the window) or refuse (the API, `evre`, the Python package) a value outside a closed set or
+  with a reserved bit set; the Guard table writes `EVRE_GUARD_CLOSED` and `zero_bits` from the two keys.
 - The C header and the device table write an `f32` limit past the largest float as the largest (it was `inf`).
 - EVRe Studio, `evre` and the Python package name code 13 *login required*. A register refused with 13 is asked again
   at the next poll (only 3, 4 and 5 mark it *not available*), and the Studio does not log in again by itself: the Log

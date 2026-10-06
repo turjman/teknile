@@ -7,7 +7,8 @@
 1. A neutral test map with every type, a negative scale, an offset, limits beyond the type, a special outside the
    limits, an f32 limit that is no exact float (3.65), limits past the largest f32, a -0 special, a bytes register,
    a w1c register, a read-only register inside a writable run, a gap, "past_limits": "clamp", an action register
-   with a default, and a login register in the device bank. It is exported with <build>/evre, compiled with the
+   with a default, a "closed" action register (its idle value listed), a "reserved_zero" register with fields, and a
+   login register in the device bank. It is exported with <build>/evre, compiled with the
    library (lib/EVRe.cpp: --lib, else $EVRE_LIB, else ../../lib) and EVRe Guard (lib/guard) into a device, and
    driven through decodePacketInto: every limit at its edges (acknowledged, 3 or 15, the edges worked out here from
    the map's numbers and GUARD_PLAN.md's rounding rules, not from the export), the memory unchanged after a refusal,
@@ -65,6 +66,10 @@ MAP = {
          "max": 3},
         {"addr": "0xD01F", "name": "TOTAL", "type": "u32", "access": "rw", "min": 10, "max": 4e9},
         {"addr": "0xD023", "name": "SIGNED", "type": "i32", "access": "rw", "min": -2e9, "max": 2e9},
+        {"addr": "0xD027", "name": "COMMAND", "type": "u8", "access": "rw", "write": "action", "closed": True,
+         "max": 15, "enum": {"1": "go", "2": "stop", "5": "home"}},
+        {"addr": "0xD028", "name": "CTRL", "type": "u16", "access": "rw", "reserved_zero": True,
+         "fields": [{"name": "MODE", "bits": "1:0"}, {"name": "LEVEL", "bits": "11:8"}]},
     ]}
 
 TOKEN = b'token123'
@@ -139,6 +144,13 @@ VECTORS = [
     ('TEMP_SET .. MODE_I8, the last bad: none stored', 0xD004, struct.pack(I16, 1) + struct.pack(U8, 2) + struct.pack(I8, 120), 15),
     ('TOTAL .. SIGNED, the first bad: none stored', 0xD01F, struct.pack(U32, 1) + struct.pack(I32, 0), 15),
     ('the login register in a session: part 1 refuses a write over it', 0xD030, b'\x00' * 4, 3),
+    ('COMMAND 1 "go" (closed)', 0xD027, struct.pack(U8, 1), 0),
+    ('COMMAND 5 "home"', 0xD027, struct.pack(U8, 5), 0),
+    ('COMMAND 0, the idle value of an action (no default)', 0xD027, struct.pack(U8, 0), 0),
+    ('COMMAND 3: inside min .. max, not in the closed set', 0xD027, struct.pack(U8, 3), 15),
+    ('CTRL 0x0F03: MODE and LEVEL bits', 0xD028, struct.pack(U16, 0x0F03), 0),
+    ('CTRL 0x0004: bit 2, no field covers it', 0xD028, struct.pack(U16, 0x0004), 15),
+    ('CTRL 0x8000: bit 15, no field covers it', 0xD028, struct.pack(U16, 0x8000), 15),
 ]
 
 PROGRAM = r'''
@@ -150,8 +162,8 @@ PROGRAM = r'''
 #include "evre_guard_desc.h"
 #include "guard_test_guard.h"
 
-static uint8_t ro[4], rw[0x23], loginMemory[8];
-static const evre_range_t ranges[] = { { 0xD000, 4, ro, 0 }, { 0xD004, 0x23, rw, 1 }, { 0xD030, 8, loginMemory, 1 } };
+static uint8_t ro[4], rw[0x26], loginMemory[8];
+static const evre_range_t ranges[] = { { 0xD000, 4, ro, 0 }, { 0xD004, 0x26, rw, 1 }, { 0xD030, 8, loginMemory, 1 } };
 static const uint8_t token[8] = { 't', 'o', 'k', 'e', 'n', '1', '2', '3' };
 static uint64_t clockMs = 1;
 static uint64_t now() { return clockMs; }
@@ -228,10 +240,12 @@ int main() {
 }
 '''
 
-# keep_limits (the device table) against the Guard, value by value
+# keep_limits (the device table) against the Guard, value by value; the table knows neither a
+# closed set nor reserved bits, so COMMAND and CTRL stay out
 AGREE_MAP = {
     "format": "evre-map/1", "device": "Agree",
-    "registers": [r for r in MAP["registers"] if r["addr"] not in ("0xA004", "0xD000", "0xD019", "0xD00C", "0xD01A")]
+    "registers": [r for r in MAP["registers"] if r["addr"] not in ("0xA004", "0xD000", "0xD019", "0xD00C", "0xD01A",
+                                                                            "0xD027", "0xD028")]
     + [{"addr": "0xD000", "name": "UPTIME", "type": "u32"}]}
 
 AGREE_PROGRAM = r'''
@@ -329,8 +343,8 @@ def vectors_h(vectors):
 def entries(source):
     """the generated .cpp's entries: name -> (type, min, max, n_values, first_value)"""
     out = {}
-    for m in re.finditer(r'\{ 0x([0-9A-F]+)u, (\d+)u, (EVRE_GUARD_\w+), 0u, (\d+)u, 0u, (\d+)u, 0u, 0x([0-9A-F]+)UL, '
-                         r'0x([0-9A-F]+)UL, 0x00000000UL \}, /\* (\w+):', source):
+    for m in re.finditer(r'\{ 0x([0-9A-F]+)u, (\d+)u, (EVRE_GUARD_\w+), (?:0u|EVRE_GUARD_CLOSED), (\d+)u, 0u, (\d+)u, 0u, '
+                         r'0x([0-9A-F]+)UL, 0x([0-9A-F]+)UL, 0x[0-9A-F]{8}UL \}, /\* (\w+):', source):
         out[m.group(8)] = (m.group(3), int(m.group(6), 16), int(m.group(7), 16), int(m.group(4)), int(m.group(5)))
     return out
 
@@ -388,6 +402,9 @@ def main():
         check(got.get('SPEED', (0, 0, 0))[1:3] == (0xFFFF8000, 0x00007FFF) and 'GUARD_TEST_SPEED_RAW_MIN = -100' in header,
               'SPEED (clamp): the type\'s full range in the entry, the map\'s limits in its typed constants')
         check(got.get('CLEAR', (0, 1, 1))[1:3] == (0, 0xFF), 'CLEAR (w1c): no limits')
+        check('{ 0xD027u, 1u, EVRE_GUARD_U8, EVRE_GUARD_CLOSED, 4u, 0u,' in source and '0x00000000UL, /* COMMAND: 0 idle */' in source,
+              'COMMAND (closed): EVRE_GUARD_CLOSED, its three names and its idle value 0 listed')
+        check('0x0000F0FCUL }, /* CTRL:' in source, 'CTRL (reserved_zero): zero_bits 0xF0FC, the bits no field covers')
         check(got.get('TEMP_SET', (0, 0, 0))[1:3] == (0xFFFFFED4, 700),
               'TEMP_SET (scale -0.1, offset 20): min and max swapped in raw, -300 .. 700')
         check(got.get('COUNT', (0, 0, 0))[1:3] == (2, 200), 'COUNT (scale 0.5): 0.75 .. 100.2 rounded inward to raw 2 .. 200')

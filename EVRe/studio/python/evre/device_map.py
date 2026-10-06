@@ -66,6 +66,8 @@ class Register:
         self.min, self.max = spec.get('min'), spec.get('max')
         # "past_limits": "clamp": the device takes a value past min or max and clamps it (EVRe Guard lets it through)
         self.clamps = str(spec.get('past_limits') or 'refuse').strip().lower() == 'clamp'
+        self.closed = bool(spec.get('closed', False))  # only the value names, specials and an action's idle value
+        self.reserved_zero = bool(spec.get('reserved_zero', False))  # the bits no field covers are written 0
         self.enum = {number_key(k): v for k, v in (spec.get('enum') or {}).items()}
         self.special = {float(number_key(k)): v for k, v in (spec.get('special') or {}).items()}
         self.fields = [Field(s) for s in spec.get('fields') or []]
@@ -157,8 +159,23 @@ class Register:
             return 'above the maximum %s %s' % (self.max, self.unit)
         return None
 
-    def write_limit_problem(self, shown):
-        """limit_problem for a value about to be sent: None too for a register the device clamps (past_limits)"""
+    def write_problem(self, data):
+        """why these bytes should not be sent, as a device with EVRe Guard would refuse them, or None: a value outside a
+        closed set, a bit no field covers set (reserved_zero), past min or max (not for a register that clamps)"""
+        shown, raw = self.decode(data), self.raw_int(data)
+        if self.type.startswith('i'):
+            raw = struct.unpack(TYPES[self.type][0], data[:self.size])[0]
+        if self.reserved_zero and self.fields:
+            covered = 0
+            for fl in self.fields:
+                covered |= fl.mask
+            if raw & ((1 << (8 * self.size)) - 1) & ~covered:
+                return "outside the fields' bits"
+        if self.closed:
+            idle = round(((self.default or 0) - self.offset) / (self.scale or 1))
+            if raw not in self.enum and not any(math.isclose(shown, v, rel_tol=1e-6, abs_tol=1e-9) for v in self.special) \
+                    and not (self.write_kind == 'action' and raw == idle):
+                return 'outside the closed set of values'
         return None if self.clamps else self.limit_problem(shown)
 
 

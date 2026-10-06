@@ -713,8 +713,8 @@ private slots:
 		RegDef *set = byName(map, QStringLiteral("SET"));
 		QVERIFY(speed && set && speed->clamps && !set->clamps);
 		QCOMPARE(map.toJson(path(QStringLiteral("guard.json"))), text); /* as written */
-		QVERIFY(writeLimitProblem(*speed, 150).isEmpty() && !limitProblem(*speed, 150).isEmpty());
-		QVERIFY(!writeLimitProblem(*set, 25).isEmpty());
+		QVERIFY(writeProblem(*speed, QByteArray("\x96\x00", 2)).isEmpty() && !limitProblem(*speed, 150).isEmpty());
+		QVERIFY(!writeProblem(*set, QByteArray("\x00\x00\xC8\x41", 4)).isEmpty()); /* 25.0 */
 		set->clamps = true;
 		speed->clamps = false;
 		const QByteArray after = map.toJson(path(QStringLiteral("guard.json")));
@@ -827,6 +827,58 @@ private slots:
 		good.max = 200;
 		clean.regs = { good };
 		QVERIFY(checkMap(clean).isEmpty());
+
+		/* closed (A1) and reserved_zero (A2): saved, what a host may send, the entry, the checks */
+		RegDef cmd = u8;
+		cmd.addr = 0xD010;
+		cmd.name = QStringLiteral("CMD");
+		cmd.write = WriteKind::Action;
+		cmd.min = NO_LIMIT;
+		cmd.max = 15;
+		cmd.closed = true;
+		cmd.enumValues = { { 1, QStringLiteral("go") }, { 2, QStringLiteral("stop") }, { 20, QStringLiteral("past") } };
+		entry = guardEntry(cmd); /* the names, and 0 as idle (no default), CLOSED */
+		QVERIFY(entry.closed && entry.values.size() == 4 && entry.values[0].first == 0 && entry.values[3].first == 20);
+		QVERIFY(entry.warnings.join(QLatin1Char('|')).contains(QLatin1String("value name past is outside min .. max"))
+				&& entry.warnings.join(QLatin1Char('|')).contains(QLatin1String("0 is taken as its idle value")));
+		QVERIFY(writeProblem(cmd, QByteArray(1, '\x01')).isEmpty() && writeProblem(cmd, QByteArray(1, '\0')).isEmpty()
+				&& writeProblem(cmd, QByteArray(1, '\x03')) == QLatin1String("outside the closed set of values"));
+		RegDef ctrl = u8;
+		ctrl.addr = 0xD011;
+		ctrl.name = QStringLiteral("CTRL");
+		ctrl.min = NO_LIMIT;
+		ctrl.max = NO_LIMIT;
+		ctrl.reservedZero = true;
+		BitField mode;
+		mode.name = QStringLiteral("MODE");
+		mode.lsb = 0;
+		mode.width = 2;
+		BitField latch;
+		latch.name = QStringLiteral("LATCH");
+		latch.lsb = 7;
+		ctrl.fields = { mode, latch };
+		entry = guardEntry(ctrl);
+		QVERIFY(entry.zeroBits == 0x7C && entry.errors.isEmpty());
+		QVERIFY(writeProblem(ctrl, QByteArray(1, '\x83')).isEmpty() && writeProblem(ctrl, QByteArray(1, '\x04')) == QLatin1String("outside the fields' bits"));
+		RegDef noNames = cmd;
+		noNames.enumValues.clear();
+		RegDef floatClosed = volts;
+		floatClosed.closed = true;
+		RegDef noFields = ctrl;
+		noFields.fields.clear();
+		QVERIFY(guardEntry(noNames).errors.join(QLatin1Char('|')).contains(QLatin1String("without value names"))
+				&& guardEntry(floatClosed).errors.join(QLatin1Char('|')).contains(QLatin1String("on an f32 register"))
+				&& guardEntry(noFields).errors.join(QLatin1Char('|')).contains(QLatin1String("without bit fields")));
+		DeviceMap keyed = loadText(QStringLiteral("keyed.json"), "{ \"format\": \"evre-map/1\", \"registers\": [\n"
+				"  { \"addr\": \"0xD000\", \"name\": \"C\", \"type\": \"u8\", \"access\": \"rw\", \"closed\": true, "
+				"\"reserved_zero\": true, \"enum\": { \"0\": \"off\" }, \"fields\": [ { \"name\": \"A\", \"bits\": \"0\" } ] }\n] }\n");
+		QVERIFY(keyed.regs.size() == 1 && keyed.regs[0].closed && keyed.regs[0].reservedZero);
+		keyed.regs[0].closed = false;
+		QVERIFY(!keyed.toJson(path(QStringLiteral("keyed.json"))).contains("closed")
+				&& keyed.toJson(path(QStringLiteral("keyed.json"))).contains("\"reserved_zero\": true"));
+		QVector<RegDef> sheet;
+		keyed.regs[0].closed = true;
+		QVERIFY(importCsv(exportCsv(keyed), sheet, err) && sheet.size() == 1 && sheet[0].closed && sheet[0].reservedZero);
 
 		/* the export: the plan's example, entry for entry */
 		DeviceMap example = loadText(QStringLiteral("example.json"),
