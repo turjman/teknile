@@ -139,7 +139,7 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])
 | `studio/tests/fake_device.py` | A fake EVRe device over TCP, from any map, with moving values. |
 | `studio/tests/gui_test.cpp` | EVRe Studio's window driven by QtTest against the fake device: writes, read-back, change-while-editing, ⚠ confirmation, stale values, a bus, auto send, the Map editor, the chart (on a graphics card too). |
 | `studio/tests/api_test.py` | The API server end to end, in its three write modes, JSON and pass-through. |
-| `studio/tests/map_test.cpp`, `cli_test.py`, `sim_test.py`, `device_table_test.py`, `schema_test.py` | The map files and exports, `evre`, `evre-sim`, the device table compiled with the library, the JSON Schema. |
+| `studio/tests/map_test.cpp`, `cli_test.py`, `sim_test.py`, `device_table_test.py`, `guard_table_test.py`, `schema_test.py` | The map files and exports, `evre`, `evre-sim`, the device table and EVRe Guard's table compiled with the library, the JSON Schema. |
 | `studio/python/tests` | The Python package against `evre-sim`. |
 | `studio/tests/evre_probe.cpp` | The Studio's protocol core against a real device, read only. |
 

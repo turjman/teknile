@@ -39,7 +39,7 @@ namespace {
 /* one merge key per box: typing into it is one undo step */
 enum Key { KeyAddr = 1, KeyName, KeyType, KeySize, KeyUnit, KeyAccess, KeyWrite, KeyGroup, KeyDesc, KeyScale,
 	KeyOffset, KeyDecimals, KeyMin, KeyMax, KeyDefault, KeyPersist, KeyDanger, KeyHex, KeyNotes, KeyEnum, KeySpecial,
-	KeyFields, KeyPlot };
+	KeyFields, KeyPlot, KeyPastLimits };
 
 /* the pages, in their order */
 enum Page { PageGeneral, PageValues, PageFields, PageNotes };
@@ -53,6 +53,8 @@ QString numberText(double value) {
 }
 
 QString accessOf(const RegDef &def) { return accessText(def); }
+
+QString pastLimitsOf(const RegDef &def) { return def.clamps ? QStringLiteral("clamp") : QStringLiteral("refuse"); }
 
 QString writeOf(const RegDef &def) {
 	return MapTableModel::writeChoices().value(int(def.write));
@@ -321,6 +323,13 @@ QWidget *RegisterEditor::buildGeneral() {
 	min_ = new QLineEdit;
 	max_ = new QLineEdit;
 	default_ = new QLineEdit;
+	pastLimits_ = new QComboBox;
+	pastLimits_->setObjectName(QStringLiteral("pastLimits"));
+	pastLimits_->addItem(tr("refused: the device refuses a value past them"), QStringLiteral("refuse"));
+	pastLimits_->addItem(tr("clamped: the device takes it and clamps it"), QStringLiteral("clamp"));
+	pastLimits_->setToolTip(tr("What the device does with a value past min or max (\"past_limits\"). Refused: hosts "
+			"ask before they send one, and a device with EVRe Guard refuses it (value refused, 15). Clamped: hosts "
+			"send it as it is, and EVRe Guard checks only that it is a number of the type"));
 	for (QLineEdit *box : { scale_, offset_, min_, max_, default_ }) box->setClearButtonEnabled(true);
 	min_->setPlaceholderText(tr("none"));
 	max_->setPlaceholderText(tr("none"));
@@ -355,10 +364,11 @@ QWidget *RegisterEditor::buildGeneral() {
 	form->addRow(tr("Decimals"), decimals_);
 	form->addRow(tr("Min"), min_);
 	form->addRow(tr("Max"), max_);
+	form->addRow(tr("Past limits"), pastLimits_);
 	form->addRow(tr("Default"), default_);
 	auto *page = new QWidget;
 	page->setLayout(form);
-	/* in a scroll area: its 18 rows would make the window taller than a 768-line screen (theme: #formScroll) */
+	/* in a scroll area: its 19 rows would make the window taller than a 768-line screen (theme: #formScroll) */
 	auto *scroll = new QScrollArea;
 	scroll->setObjectName(QStringLiteral("formScroll"));
 	scroll->setWidget(page);
@@ -443,6 +453,10 @@ void RegisterEditor::connectBoxes() {
 			d.rw = access != QLatin1String("ro");
 			d.readable = access != QLatin1String("wo");
 		});
+	});
+	connect(pastLimits_, &QComboBox::activated, this, [this, step] {
+		const bool clamps = pastLimits_->currentData().toString() == QLatin1String("clamp");
+		apply(step(tr("Past limits")), KeyPastLimits, [clamps](RegDef &d) { d.clamps = clamps; });
 	});
 	connect(write_, &QComboBox::activated, this, [this, step] {
 		const WriteKind kind = WriteKind(write_->currentIndex());
@@ -589,6 +603,7 @@ void RegisterEditor::reload() {
 	pick(type_, [](const RegDef &d) { return typeName(d.type); }, false);
 	pick(access_, accessOf, true);
 	pick(write_, writeOf, true);
+	pick(pastLimits_, pastLimitsOf, true);
 	if (!group_->lineEdit()->hasFocus()) {
 		group_->clear();
 		group_->addItems(doc_->groups());

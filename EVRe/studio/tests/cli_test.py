@@ -197,6 +197,17 @@ def main():
                 rc, _, _ = run('export', MAP, '--to', kind, '--prefix', 'ex', '-o', target)
                 text = open(target, encoding='utf-8').read() if os.path.exists(target) else ''
                 check(rc == 0 and marker in text, 'export --to %s: written (%d bytes)' % (kind, len(text)))
+            # EVRe Guard's table: FILE.h and FILE.cpp; --check: 0 while they are as the map exports them
+            base = os.path.join(tmp, 'example_guard')
+            rc, _, _ = run('export', MAP, '--to', 'guard', '-o', base)
+            made = all(os.path.exists(base + ext) for ext in ('.h', '.cpp'))
+            rc_check, out, _ = run('export', MAP, '--to', 'guard', '-o', base, '--check')
+            check(rc == 0 and made and rc_check == 0 and 'as the map exports it' in out,
+                  'export --to guard: the .h and the .cpp; --check finds them fresh')
+            with open(base + '.h', 'a', encoding='utf-8') as f:
+                f.write('\n')
+            rc_check, _, err = run('export', MAP, '--to', 'guard', '-o', base, '--check')
+            check(rc_check == 1 and 'export it again' in err, 'export --check: a file changed since: exit 1, which one')
         rc, _, err = run('export', MAP, '--to', 'pdf')
         check(rc == 2 and '--to' in err, 'export --to pdf: refused as a usage error (exit 2)')
 
@@ -231,6 +242,8 @@ def main():
         check(rc == 0 and w.get('value') == 5, 'write FAN_SPEED=5: read back 5')
         rc, _, err = run('write', *link, '--map', MAP, 'FAN_SPEED=150')
         check(rc == 1 and 'maximum' in err, 'write past the map\'s max: refused (%s)' % err.strip())
+        rc, _, err = run('write', *link, '--map', MAP, 'SETPOINT=nan', '--force')
+        check(rc == 1 and 'not a finite number' in err, 'write NaN to an f32: never sent, even with --force (%s)' % err.strip())
         rc, _, err = run('write', *link, '--map', MAP, 'MOTOR_SPEED=10')
         check(rc == 1 and 'danger' in err, 'write a danger register without --force: refused')
         rc, out, _ = run('write', *link, '--map', MAP, 'MOTOR_SPEED=10', '--force', '--json')

@@ -104,6 +104,7 @@ QString errorName(uint8_t code) {
 	case 5: return QStringLiteral("count out of range");
 	case 12: return QStringLiteral("length mismatch");
 	case 13: return QStringLiteral("login required");
+	case 15: return QStringLiteral("value refused");
 	default: return QStringLiteral("error %1").arg(code);
 	}
 }

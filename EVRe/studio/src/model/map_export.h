@@ -16,6 +16,10 @@
  *   table      0xD000.. as packed read-only and read-write images in address
  *              order, their offsets checked, the defaults as start values, a
  *              bind function that serves them, and a check of the limits
+ *   guard      EVRe Guard's table (lib/guard/evre_guard_desc.h): an entry for
+ *   table      each register a host writes, its raw limits and listed values,
+ *              in a .h (the table's name, the raw limits as typed constants)
+ *              and a .cpp (the value list, the entries, the table)
  *
  * No window here: the Studio and command-line tools share these. */
 #pragma once
@@ -24,6 +28,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <cstdint>
 
 #include "model/device_map.h"
 
@@ -41,6 +46,25 @@ QByteArray exportCsv(const DeviceMap &map);
  * 0xD000..0xDFFF (the protocol bank 0xA000 is the library's own and left out):
  * false, with what is in the way in problems, if the map is not like that. */
 bool exportDeviceTable(const DeviceMap &map, const ExportOptions &options, QByteArray &out, QStringList &problems);
+
+/* What EVRe Guard's table holds for one register (exportGuard), worked out from the map: the type's raw limits
+ * as the entry's bits, its listed values (the specials), and the map's own limits in raw units for the typed
+ * constants. errors: why the register cannot have an entry (the export stops); warnings: what the entry takes
+ * in place of what the map says (the map check shows both). */
+struct GuardEntry {
+	uint32_t min = 0, max = 0;            /* the entry's limits: an unsigned value, a signed one sign-extended, f32 bits */
+	QVector<QPair<uint32_t, QString>> values; /* listed, ascending as uint32_t, each with what the map calls it */
+	bool hasRawMin = false, hasRawMax = false;
+	double rawMin = 0, rawMax = 0;        /* the map's limits in raw units, as the entry rounds them */
+	QStringList errors, warnings;
+};
+GuardEntry guardEntry(const RegDef &def);
+
+/* EVRe Guard's table: header (for headerName, the name the source includes) and source. The registers a host
+ * writes in 0xD000..0xDFFF, in address order; the reserved bank and the map's login register get no entry.
+ * false, with the reasons in problems, when a register cannot have an entry. */
+bool exportGuard(const DeviceMap &map, const ExportOptions &options, const QString &headerName, QByteArray &header,
+		QByteArray &source, QStringList &problems);
 
 /* The registers of a CSV (as exportCsv writes it, or a sheet with some of its
  * columns: "addr" and "name" are needed, the others have defaults). false with

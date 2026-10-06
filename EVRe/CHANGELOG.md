@@ -35,8 +35,23 @@ must know, and `REVIEW.md` holds the review and its decisions.
   nothing stored. A bad table refuses every write to the device bank and lets the reserved bank through.
 - `lib/EVRe.h` reserves 15 `VALUE_REFUSED`; the library never returns it.
 
+### The map format
+
+- A new optional register key, `past_limits`: `"refuse"` (the default) or `"clamp"`, what the device does with a
+  value past `min` or `max` (MAP_FORMAT.md 6.1, the schema, the Studio's model, editor, CSV and exports).
+
 ### The tools
 
+- `evre export MAP --to guard` and the Map editor's **Export > EVRe Guard table**: EVRe Guard's table (`.h` with the
+  typed raw limits, `.cpp` with the value list and the entries). `--check` compares with the files there and exits
+  1 when one is older than the map; it works for every export with `-o`.
+- The map check names what the Guard's table takes in place of the map's numbers (a limit past the type or between
+  raw steps), its export errors, `clamp` without limits, and a gap between two registers a host writes.
+- EVRe Studio, `evre`, the API and the Python package send a value past the limits of a register that clamps without
+  asking, never send NaN or an infinity, refuse a broadcast of part of a number, and name code 15 *value refused*.
+- `evre-sim --strict` answers as a device with the Guard: 15 for a value, 3 for part of a number, and clamps a
+  register that clamps.
+- The C header and the device table write an `f32` limit past the largest float as the largest (it was `inf`).
 - EVRe Studio, `evre` and the Python package name code 13 *login required*. A register refused with 13 is asked again
   at the next poll (only 3, 4 and 5 mark it *not available*), and the Studio does not log in again by itself: the Log
   says so once for the device.
@@ -96,4 +111,5 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - `evre`: validate, export, info, read, dump, watch, write, broadcast and check a device against its map, from a
   terminal or CI; a bus of devices by its bus file.
 - `evre-sim`: a map served as a device over TCP, behaving as the map says.
-- `evre` for Python (`studio/python`): a device by register name with its map, standard library only.
+- `evre` for Python (`studio/python`): a device by register name with its map, standard library only. An answer is
+  matched by its slave, offset and count, so a frame the device sends by itself is never taken for one.

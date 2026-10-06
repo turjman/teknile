@@ -55,6 +55,8 @@ jobs:
         run: python3 studio/tests/sim_test.py build
       - name: Device table, compiled with lib/EVRe.cpp
         run: python3 studio/tests/device_table_test.py build
+      - name: EVRe Guard table, compiled with the library and the Guard
+        run: python3 studio/tests/guard_table_test.py build
       - name: Python package
         run: EVRE_BUILD=build python3 -m unittest discover -s studio/python/tests
       - name: GUI test (against the fake device, on a virtual screen)
@@ -98,4 +100,5 @@ jobs:
           python studio/tests/cli_test.py build
           python studio/tests/sim_test.py build
           python studio/tests/device_table_test.py build
+          python studio/tests/guard_table_test.py build --skip m32,arm-none-eabi-g++,avr-g++
           EVRE_BUILD=build python -m unittest discover -s studio/python/tests

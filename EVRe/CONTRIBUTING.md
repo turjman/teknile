@@ -68,6 +68,7 @@ Every change comes with its tests, and all of them pass on Linux and Windows (`.
 | command&nbsp;line | `python studio/tests/cli_test.py build` |
 | simulator | `python studio/tests/sim_test.py build` |
 | device&nbsp;table&nbsp;with&nbsp;the&nbsp;library | `python studio/tests/device_table_test.py build` (needs `g++`; finds `lib/`) |
+| EVRe&nbsp;Guard&nbsp;table | `python studio/tests/guard_table_test.py build [--skip m32,arm-none-eabi-g++,avr-g++]` (needs `g++`; finds `lib/` and `lib/guard`) |
 | Python&nbsp;package | `EVRE_BUILD=build python -m unittest discover -s studio/python/tests` |
 | the&nbsp;window | `python studio/tests/fake_device.py &` then `build/evre_gui_test` |
 | the&nbsp;API | the Studio with `--api` against the fake device, then `python studio/tests/api_test.py readonly` |

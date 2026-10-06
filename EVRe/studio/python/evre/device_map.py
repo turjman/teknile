@@ -64,6 +64,8 @@ class Register:
         self.desc, self.notes = spec.get('desc', ''), spec.get('notes', '')
         self.scale, self.offset = float(spec.get('scale', 1)), float(spec.get('offset', 0))
         self.min, self.max = spec.get('min'), spec.get('max')
+        # "past_limits": "clamp": the device takes a value past min or max and clamps it (EVRe Guard lets it through)
+        self.clamps = str(spec.get('past_limits') or 'refuse').strip().lower() == 'clamp'
         self.enum = {number_key(k): v for k, v in (spec.get('enum') or {}).items()}
         self.special = {float(number_key(k)): v for k, v in (spec.get('special') or {}).items()}
         self.fields = [Field(s) for s in spec.get('fields') or []]
@@ -103,9 +105,17 @@ class Register:
             return data
         if isinstance(value, str):
             value = self.value_of_name(value)
+        if not math.isfinite(value):  # no device takes NaN or an infinity (EVRe Guard refuses them, 15)
+            raise ValueError('%s: %s is not a finite number' % (self.name, value))
         raw = (value - self.offset) / (self.scale or 1)
         if self.type == 'f32':
-            return struct.pack('<f', raw)
+            try:
+                data = struct.pack('<f', raw)
+            except OverflowError:
+                data = b''
+            if not data or not math.isfinite(struct.unpack('<f', data)[0]):
+                raise ValueError('%s: %s is past the largest f32 value' % (self.name, value))
+            return data
         raw = int(round(raw))
         try:
             return struct.pack(TYPES[self.type][0], raw)
@@ -146,6 +156,10 @@ class Register:
         if self.max is not None and shown > self.max and not math.isclose(shown, self.max, rel_tol=1e-6):
             return 'above the maximum %s %s' % (self.max, self.unit)
         return None
+
+    def write_limit_problem(self, shown):
+        """limit_problem for a value about to be sent: None too for a register the device clamps (past_limits)"""
+        return None if self.clamps else self.limit_problem(shown)
 
 
 class DeviceMap:

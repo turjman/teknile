@@ -23,11 +23,14 @@ with evre.connect_tcp('127.0.0.1', 1210, 'maps/example_device.json', token='exam
 | `connect_tcp(host, port, map, token=, slave=, timeout=)`, `connect_serial(port, baud, map, ...)` | a `Device`; the map is a path or a `DeviceMap`; the token is written to the map's login register first |
 | `dev[name]`, `dev.read(*names)`, `dev.read_all()` | shown values (one, a dict, all) |
 | `dev.decoded(name)` | a special or enum name, or the fields as a dict |
-| `dev.write(name, value, force=False)`, `dev[name] = value` | refused for a read-only register; a danger register and a value past the map's min or max need `force=True` |
+| `dev.write(name, value, force=False)`, `dev[name] = value` | refused for a read-only register; a danger register and a value past the map's min or max need `force=True` (not for a register with `"past_limits": "clamp"`: the device clamps it); NaN and the infinities are never sent; a device with EVRe Guard refuses a value with `EvreError` code 15, *value refused* |
 | `dev.read_raw(addr, count)`, `dev.write_raw(addr, data)`, `dev.device_id()` | bytes, no map needed |
 | `evre.DeviceMap.load(path)` | the map, with `extends` resolved: `map[name]` is a `Register` with `encode`, `decode`, `decoded`, `limit_problem`, `fields`, `enum`, `special`, `min`, `max`, `default` |
 | `evre.build`, `evre.Parser`, `evre.crc16` | frames by hand |
 | `evre.EvreError` | the device's ERROR_RESP (`.code`), a timeout, or a refusal by the map |
+
+An answer is matched by its slave, offset and count, as the protocol asks. A frame the device sends by itself
+(AUTO_SEND's block) is skipped, also when a read asks for part of that block.
 
 Several devices on one link: a bus file (`evre-bus/1`, as EVRe Studio writes it), each device at its own slave
 address with its own map. A device without `"slave"` is at slave 1; a bus without a map for a device, or without
@@ -53,7 +56,7 @@ with evre.connect_bus_tcp('127.0.0.1', 1231, 'maps/example_bus.json', token='exa
 | `connect_bus_tcp(host, port, bus_file, token=, timeout=, tokens=)`, `connect_bus_serial(port, bus_file, baud, ...)` | a `Bus`; `token` for every device with a login register, `tokens={'D2': '...'}` for one whose token is another |
 | `bus[device]`,&nbsp;`bus.devices` | a device's `Device` |
 | `bus['D1_NAME']`, `bus.read(*names)`, `bus.write(name, value, force=False)` | registers by their names on the bus |
-| `bus.broadcast(name, value, force=False)`, `bus.broadcast_refusal(addr, count)` | one frame to every device (slave 0), then each read back; the rule: the reserved bank's writable registers always, elsewhere only when every device has the same map; never CONFIG with AUTO_SEND (bit 3) on, which would make every device send by itself at once |
+| `bus.broadcast(name, value, force=False)`, `bus.broadcast_refusal(addr, count)` | one frame to every device (slave 0), then each read back; the rule: the reserved bank's writable registers always, elsewhere only when every device has the same map; never CONFIG with AUTO_SEND (bit 3) on, which would make every device send by itself at once, and never part of a number (a device with EVRe Guard refuses it) |
 
 Tests: `python -m unittest discover -s python/tests`, with `EVRE_BUILD=<build folder>` to include a session
 against `evre-sim` serving the example map, and a bus of two devices on `evre_fake_fast`.

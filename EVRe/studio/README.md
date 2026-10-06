@@ -160,13 +160,14 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (383 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus, auto send and login required steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (391 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast and auto send included; it also starts `evre_fake_fast` for the bus, auto send and login required steps) |
 | `evre_map_test` | the map files without a window (21 tests): saved byte for byte, edits, overlays, keys, checks, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema (needs the `jsonschema` package) |
-| `tests/cli_test.py` | the `evre` command line end to end (35 checks), against its own fake device, a bus of two devices on `evre_fake_fast` and a device whose login is required |
-| `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes (21 checks) |
+| `tests/cli_test.py` | the `evre` command line end to end (38 checks), against its own fake device, a bus of two devices on `evre_fake_fast` and a device whose login is required |
+| `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes (25 checks) |
 | `tests/device_table_test.py` | the device table export compiled with the EVRe library and run (24 checks; needs `g++` and the library) |
-| `python/tests/test_evre.py` | the Python package: frames, maps, overlays, a session against `evre-sim`, and a bus on `evre_fake_fast` |
+| `tests/guard_table_test.py` | the EVRe Guard table export compiled with the library and the Guard, and driven at every limit's edges (94 checks; needs `g++` and the library) |
+| `python/tests/test_evre.py` | the Python package: frames, maps, overlays, answers matched to their requests, a session against `evre-sim`, and a bus on `evre_fake_fast` |
 | `tests/api_test.py` | the API end to end, in three modes: `readonly`, `writes`, `danger` (24, 25 and 25 checks) |
 | `evre_probe` | the protocol core without the window, for checking a real device; it only reads, apart from the login token when `EVRE_TOKEN` is set |
 | `evre_fake_fast` | a fast fake device in C++, for measuring the Studio |
