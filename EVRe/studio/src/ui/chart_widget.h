@@ -67,6 +67,7 @@
  * of the lines its budget is divided by. */
 #pragma once
 
+#include <atomic>
 #include <QColor>
 #include <QElapsedTimer>
 #include <QHash>
@@ -136,6 +137,10 @@ public:
 		bool gap;
 	};
 	QVector<BinInfo> lastBins(int key) const;
+	/* tests: a fast line binned afresh for the last frame's view, with nothing kept from the frame before: what
+	 * lastBins must equal */
+	QVector<BinInfo> freshBins(int key) const;
+	qint64 fastColumnsBinned() const { return fastColumnsBinned_; } /* tests: columns of fast lines binned so far */
 	QStringList timeLabels() const { return timeLabels_; }
 
 	/* the time base, seconds (read at every frame), and the wall-clock time of
@@ -186,6 +191,7 @@ public:
 	enum class TriggerEdge { Rising, Falling, Either };
 	enum class TriggerMode { Single, Normal };
 	static constexpr double TRIGGER_AT = 0.2; /* of the window, from its left */
+	static constexpr double STRIP_REDRAW_S = 1.0; /* the memory strip's lines drawn again at most this often */
 	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode);
 	void stopTrigger();
 	void armTrigger();                   /* waits for the next crossing (Single: once more) */
@@ -373,6 +379,7 @@ public:
 	 * and longest, and its stages summed (ms) */
 	struct PerfStats {
 		int frames = 0, binnings = 0;
+		qint64 fastColumns = 0; /* columns of fast lines binned, the kept ones not counted */
 		double paintSum = 0, paintMax = 0;
 		double bin = 0, lines = 0, segments = 0, present = 0, marks = 0, strip = 0, legend = 0;
 	};
@@ -512,6 +519,9 @@ private:
 		QVector<Bin> bins;
 		double lo = 0, hi = 0;
 		double posLo = 0; /* the smallest positive value of what lies inside the span (the Log scale); +inf: none */
+		/* a fast line: what its bins were made with, so the next frame can keep the whole columns it shares */
+		double columnSeconds = 0;
+		int timeVersion = -1;
 	};
 	/* a time span and a value range mapped onto a rectangle of pixels: the plot
 	 * in one frame, or the memory strip */
@@ -606,13 +616,15 @@ private:
 	/* overview: a chunk may fill a whole column (the memory strip); otherwise at most half of one */
 	void binSeries(const Series &s, double t0, double t1, double columns, bool overview, BinnedLine &out) const;
 	/* the same for the view, with the bins kept from the frame before (Series::viewBins) */
-	void binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out) const;
+	void binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out,
+			const BinnedLine *previous = nullptr) const;
 	/* samples i0 .. i1 - 1 into bins, chunks of level `top` at most where they start and end inside and lie in one
 	 * column */
 	static void binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins);
 	/* a fast line from its store: a bin per column (two where a gap falls in one), each column's min and max from the
 	 * summaries, so the cost follows the columns, not the records */
-	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out) const;
+	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous) const;
+	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
 	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
 	void scanFastTrigger(Series &s);              /* the trigger's crossing in its records since the last look */
@@ -623,7 +635,7 @@ private:
 	 * across a gap), as statsOf from a polled line's arrays */
 	static Stats statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b);
 	static double fastValueAt(const fast::Store &store, int channel, double t); /* NaN: outside, or in a gap */
-	QVector<BinnedLine> binView(const Axes &axes) const;
+	QVector<BinnedLine> binView(const Axes &axes, const QVector<BinnedLine> &previous) const;
 	/* the Y range of this frame for a plot's lines (which: indices into lines) */
 	void updateYRange(YScale &scale, const QVector<BinnedLine> &lines, const QVector<int> &which, double frameDt,
 			double &lo, double &hi);

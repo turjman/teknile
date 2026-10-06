@@ -62,6 +62,9 @@ public:
 
 	qsizetype size() const { return size_; }
 	qint64 dropped() const { return dropped_; }
+	/* counts up whenever the times of records already kept can change (a clear, a new start, a start's shift):
+	 * bins made from them before are stale then. A new mark changes only the times after it, so it does not count */
+	int timeVersion() const { return timeVersion_; }
 	qint64 bytes() const;                 /* the memory held now: pieces, summaries, the lists */
 	double bytesPerRecord() const;        /* a record's share: its bytes (not when mapped) and its summaries' */
 	bool hasTime() const;                 /* a mark has come: the records have times */
@@ -127,6 +130,7 @@ private:
 	std::shared_ptr<void> owner_;
 	qint64 dropped_ = 0;
 	qsizetype size_ = 0;
+	int timeVersion_ = 0;
 	QVector<Segment> segments_;
 	QVector<Epoch> epochs_;               /* each start's marks */
 	int epochBase_ = 0;                   /* epochs dropped from the front */

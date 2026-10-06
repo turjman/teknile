@@ -593,6 +593,16 @@ QVector<ChartView::BinInfo> ChartView::lastBins(int key) const {
 	return out;
 }
 
+QVector<ChartView::BinInfo> ChartView::freshBins(int key) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast || lastBinKey_.size() < 3) return out;
+	BinnedLine line;
+	binFast(*it, lastBinKey_[0], lastBinKey_[1], lastBinKey_[2], line, nullptr);
+	for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap });
+	return out;
+}
+
 /* A block's records into its stream's store, kept while one of its lines is on the chart; the legend's values from
  * the newest record */
 void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart,
@@ -2006,7 +2016,8 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 }
 
 ChartView::PerfStats ChartView::takePerfStats() {
-	const PerfStats taken = perf_;
+	PerfStats taken = perf_;
+	taken.fastColumns = fastColumnsBinned_.exchange(0);
 	perf_ = PerfStats();
 	return taken;
 }
@@ -2036,7 +2047,7 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 		key << double(s.dropped + i0) << double(s.dropped + i1);
 	}
 	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) return lastBinned_;
-	lastBinned_ = binView(axes);
+	lastBinned_ = binView(axes, lastBinned_);
 	lastBinKey_ = key;
 	binnings_++;
 	binnedVersion_++;
@@ -2091,8 +2102,8 @@ void ChartView::drawLinesPicture(QPainter &p, const QVector<Lane> &plots, const 
  * of samples costs what a short one does. */
 void ChartView::binSeries(const Series &s, double t0, double t1, double columns, bool overview,
 		BinnedLine &out) const {
-	if (s.fast) {
-		binFast(s, t0, t1, columns, out);
+	if (s.fast) { /* the memory strip: binned whole (a strip of 60 px) */
+		binFast(s, t0, t1, columns, out, nullptr);
 		return;
 	}
 	out.series = &s;
@@ -2161,9 +2172,10 @@ void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double col
  * when they do not hold: another column width (window, size), the lines changed, or the view starts before them
  * (held, dragged back). Chunks start on fixed sample numbers, so the bins come out as binned at once, give or take
  * where a chunk at a column's edge falls (less than half a column). */
-void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
-	if (s.fast) { /* from its summaries at every frame: what a column costs does not grow with its records */
-		binFast(s, t0, t1, columns, out);
+void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out,
+		const BinnedLine *previous) const {
+	if (s.fast) { /* from its summaries: what a column costs does not grow with its records */
+		binFast(s, t0, t1, columns, out, previous);
 		return;
 	}
 	out.series = &s;
@@ -2220,52 +2232,101 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
  * records, and a spike of one record is in every column's max that holds it). A column where few records lie keeps
  * each at its own time (toPolyline: one or two in a bin). A gap ends a column's bin early, and the bin after it says
  * so: the line is not drawn across. */
-void ChartView::binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
+/* A column is a whole number of columnSeconds from time 0, so the last frame's bins of the columns this frame
+ * shares are the same bins: a live view, which moves by a column or two a frame, keeps them and bins only the
+ * columns at its ends (the first and the last bin of a frame may be part of a column: never kept). Kept bins hold
+ * their records' numbers, so a trim that dropped them, a clear, a new start or a shift of a start (the store's
+ * timeVersion) and another column width start afresh. */
+void ChartView::binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous)
+		const {
 	out.series = &s;
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
 	out.hi = -out.lo;
 	out.posLo = std::numeric_limits<double>::infinity();
 	const fast::Store &store = *s.fast;
+	out.columnSeconds = (t1 - t0) / columns;
+	out.timeVersion = store.timeVersion();
 	if (store.size() == 0 || !store.hasTime() || t1 <= t0) return;
-	const double columnSeconds = (t1 - t0) / columns;
+	const double columnSeconds = out.columnSeconds;
 	const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(t0) - 1);
 	const qsizetype i1 = std::min(store.size(), store.upperBound(t1) + 1);
 	if (i1 <= i0) return;
 	out.bins.reserve(int(std::min<qsizetype>(i1 - i0, qsizetype(columns) * 2 + 4)));
-	for (qsizetype i = i0; i < i1;) {
-		const double ti = store.timeAt(i);
-		const qint64 column = qint64(std::floor(ti / columnSeconds));
-		qsizetype j = std::min(store.segmentEnd(i), i1);
-		j = std::min(j, store.lowerBound(double(column + 1) * columnSeconds));
-		if (j <= i) j = i + 1;
-		Bin bin;
-		bin.column = column;
-		bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
-		bin.firstSample = qsizetype(store.dropped()) + i;
-		bin.t0 = ti;
-		bin.t1 = j - 1 == i ? ti : store.timeAt(j - 1);
-		bin.first = store.value(s.channel, i);
-		bin.last = store.value(s.channel, j - 1);
-		store.minMax(s.channel, i, j, bin.min, bin.max);
-		bin.gap = i > i0 && store.startsAfterGap(i);
-		out.bins.push_back(bin);
+	qint64 binned = 0;
+	/* the records from i to end into bins, as the loop always did */
+	auto binRecords = [&](qsizetype i, qsizetype end) {
+		while (i < end) {
+			const double ti = store.timeAt(i);
+			const qint64 column = qint64(std::floor(ti / columnSeconds));
+			qsizetype j = std::min(store.segmentEnd(i), end);
+			j = std::min(j, store.lowerBound(double(column + 1) * columnSeconds));
+			if (j <= i) j = i + 1;
+			Bin bin;
+			bin.column = column;
+			bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
+			bin.firstSample = qsizetype(store.dropped()) + i;
+			bin.t0 = ti;
+			bin.t1 = j - 1 == i ? ti : store.timeAt(j - 1);
+			bin.first = store.value(s.channel, i);
+			bin.last = store.value(s.channel, j - 1);
+			store.minMax(s.channel, i, j, bin.min, bin.max);
+			bin.gap = i > i0 && store.startsAfterGap(i);
+			out.bins.push_back(bin);
+			binned++;
+			i = j;
+		}
+	};
+	/* the kept bins: whole columns of the last frame (not its first or last bin) inside this frame's columns, with
+	 * their records still kept, made with the same column width over the same times */
+	qsizetype keep0 = -1, keep1 = -1; /* previous->bins[keep0 .. keep1) */
+	if (previous && previous->series == &s && previous->columnSeconds == columnSeconds
+			&& previous->timeVersion == store.timeVersion() && previous->bins.size() >= 3) {
+		const qint64 c0 = qint64(std::floor(t0 / columnSeconds)), c1 = qint64(std::floor(t1 / columnSeconds));
+		const qint64 firstColumn = previous->bins.first().column, lastColumn = previous->bins.last().column;
+		for (qsizetype k = 1; k + 1 < previous->bins.size(); k++) {
+			const Bin &b = previous->bins[k];
+			const qsizetype from = qsizetype(b.firstSample - store.dropped()); /* its records, as indexes now */
+			const bool whole = b.column > firstColumn && b.column < lastColumn && b.column >= c0 && b.column <= c1
+					&& from >= i0 && from + b.count <= i1; /* inside what this frame bins: its ends stay partial bins */
+			if (whole && keep0 < 0) keep0 = k;
+			if (whole) keep1 = k + 1;
+			if (!whole && keep0 >= 0) break; /* one run: the kept bins stay contiguous in records */
+		}
+	}
+	if (keep0 < 0) {
+		binRecords(i0, i1);
+	} else {
+		const Bin &firstKept = previous->bins[keep0], &lastKept = previous->bins[keep1 - 1];
+		const qsizetype keptFrom = qsizetype(firstKept.firstSample - store.dropped());
+		const qsizetype keptTo = qsizetype(lastKept.firstSample - store.dropped()) + lastKept.count;
+		binRecords(i0, std::min(keptFrom, i1));           /* before the kept columns */
+		for (qsizetype k = keep0; k < keep1; k++) out.bins.push_back(previous->bins[k]);
+		binRecords(std::max(keptTo, i0), i1);             /* the newest columns */
+	}
+	fastColumnsBinned_ += binned;
+	for (const Bin &bin : out.bins) {
 		if (bin.t1 >= t0 && bin.t0 <= t1) { /* the range of what lies inside the span */
 			out.lo = std::min(out.lo, bin.min);
 			out.hi = std::max(out.hi, bin.max);
 			out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 		}
-		i = j;
 	}
 }
 
 /* every line binned for the view, in the order of series_, on the chart's threads */
-QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes) const {
+QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes, const QVector<BinnedLine> &previous) const {
 	QVector<const Series *> lines;
 	lines.reserve(series_.size());
 	for (const Series &s : series_) lines << &s;
 	QVector<BinnedLine> binned(lines.size());
-	inParallel(lines.size(), [&](qsizetype i) { binViewSeries(*lines[i], axes.t0, axes.t1, axes.columns, binned[i]); });
+	inParallel(lines.size(), [&](qsizetype i) {
+		/* the last frame's bins of the same line, for the columns both frames share */
+		const BinnedLine *before = nullptr;
+		for (const BinnedLine &line : previous)
+			if (line.series == lines[i]) before = &line;
+		binViewSeries(*lines[i], axes.t0, axes.t1, axes.columns, binned[i], before);
+	});
 	return binned;
 }
 
@@ -3899,11 +3960,13 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 	strip.span = strip.t1 - strip.t0;
 	strip.columns = std::max(1.0, box.width());
 	if (strip.t1 > strip.t0) {
-		/* the lines: drawn again when the data has moved a pixel on the strip, or the lines or its size changed */
+		/* the lines: drawn again when the data has moved a pixel on the strip but at most once a second (its lines
+		 * bin the whole memory: 15 times a second for a minute's strip, a frame's worth each), or when the lines or
+		 * its size changed */
 		const QRect device = p.deviceTransform().mapRect(box).toAlignedRect();
 		if (stripImage_.size() != device.size() || stripImage_.devicePixelRatio() != p.device()->devicePixelRatioF()
 				|| stripGeneration_ != seriesGeneration_ || stripMemory_ != memory_ || stripLog_ != logShown() || strip.t1 < stripEnd_
-				|| strip.t1 - stripEnd_ >= strip.columnSeconds()) {
+				|| strip.t1 - stripEnd_ >= std::max(strip.columnSeconds(), STRIP_REDRAW_S)) {
 			QTransform world;
 			prepareTile(p, device, stripImage_, world, stripAt_);
 			QPainter ip(&stripImage_);
