@@ -182,7 +182,7 @@ void ChartTab::writePerfLine() {
 	const double seconds = std::max(1e-3, perfClock_.restart() / 1000.0);
 	const double frames = std::max(1, p.frames);
 	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
-			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s "
+			"marks %10 strip %11 legend %12 grid %21 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s "
 			"fast %19/s columns %20\n")
 			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
 			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
@@ -190,7 +190,8 @@ void ChartTab::writePerfLine() {
 			.arg(p.present / frames, 0, 'f', 2).arg(p.marks / frames, 0, 'f', 2).arg(p.strip / frames, 0, 'f', 2)
 			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
 			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0)
-			.arg(double(fastSince_) / seconds, 0, 'f', 0).arg(double(p.fastColumns) / frames, 0, 'f', 1);
+			.arg(double(fastSince_) / seconds, 0, 'f', 0).arg(double(p.fastColumns) / frames, 0, 'f', 1)
+			.arg(p.grid / frames, 0, 'f', 2);
 	fastSince_ = 0;
 	measureThreadMs_ = 0;
 	measureMs_ = 0;

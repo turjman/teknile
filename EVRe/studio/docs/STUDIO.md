@@ -2242,7 +2242,10 @@ What the Studio does with a stream on:
   and hands it to the chart with the block, which holds on it at the next frame.
 - **To the window.** The blocks wait for the window's next frame in a queue of at most 64 MB (at a million samples a
   second of 4 bytes, 16 s). A window that stalls longer loses the oldest: their samples are counted as *not shown* in
-  the rate's tooltip, and their line breaks there.
+  the rate's tooltip, and their line breaks there. A frame takes the blocks into the chart for about 8 ms at most:
+  after the window was held (a title bar's button pressed, a dialog closed with its X) the chart moves on at once,
+  and the blocks that piled up follow over the next frames, in their order; none of them is lost (beyond 64 MB
+  waiting, a frame takes them all).
 
 The chart draws the channels (7.14), and a CSV recording records the streams beside it (12.7). The API does not take
 the samples; the Registers tab lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
@@ -4734,11 +4737,20 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   `markFast` (`Store::mark`, the clock's mark of 13.9, about once a second). A stream's store is made by
   `setFastStream` (kept when the map loaded again has the same stream; a stream gone from the map takes its store
   with it, `removeFastStream`, so the same stream later starts afresh) and shared by its plotted channels
-  (`Series::fast`); the window is the only writer, the chart's
-  threads read it while they bin, between two writes. `sync()` takes every block queued at once, also after the
-  window's thread was held (Windows holds it while a title bar's button is pressed, a dialog closed with its X): at
-  a million records a second, 700 ms of blocks are appended and the chart paints again within two frames, no paint
-  over 40 ms after it (26.2, *fast speed*), so they are not spread over several frames.
+  (`Series::fast`); the window is the only writer, the chart's threads read it while they bin, between two writes.
+  `sync()` appends blocks for `FAST_APPEND_NS` (8 ms) at most, then the frame goes on: after the window's thread was
+  held (Windows holds it while a title bar's button is pressed, a dialog closed with its X) the first frame paid for
+  the whole pile (700 ms of a million records a second, about 2.8 MB: the paint 30 to 70 ms late). `takeFastBlocks`
+  still hands over the whole queue; the blocks not appended wait in the window (`fastRest_`, in their order) and go
+  first at the next sync. The chart paints first, then takes the rest: the first sync after the thread was held (no
+  sync for `FAST_HELD_MS`, 50 ms) appends none, so the frame it asks for shows the view moved on at once; and a sync
+  that comes before the frame asked for at the one before was painted (Qt's paint request waits behind the events
+  posted meanwhile, the frame clock's tick among them) appends none either: 8 ms more there only put that paint off
+  (done 33 ms after the hold, not 25). A sync waits so once, never two in a row (`ChartView::paints`), so a chart
+  that does not paint (hidden, over its `FrameBudget`) still takes the rest. That rest is held to `FAST_QUEUE_BYTES`
+  too: past it a sync appends them all, whatever the time, so nothing is dropped in the window and the counts
+  (taken, lost, not shown) stay the engine's. `fastSyncsLeftOver()` counts the syncs that left some (26.2, *fast
+  speed*).
 - **Times.** A record's time is its epoch's mark before it plus the records since times the mark's period; before
   the first mark, the first's backwards. A new start whose first time falls before the end of the one before is
   shifted after it (`Epoch::shift`): times never go back, so `lowerBound` / `upperBound` (a binary search on the
@@ -5187,8 +5199,10 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   and over the last 10 s the chart's paint (the timing aid's, 26.8) at most 8 ms a frame on average. Then the
   window's thread held 700 ms (`QThread::msleep`, as Windows holds it while a title bar's button is pressed): the
   chart paints again within two frames, no paint after it over 40 ms, and at least 6 frames in each 200 ms slot
-  after the first (it prints the first paint's delay and the frames and longest paint of five slots). Then the
-  example map again, connected to the Python fake device.
+  after the first; the blocks that piled up were appended over more than one frame (a sync left some for the next,
+  `fastSyncsLeftOver`), none lost and none left unshown (it prints the first paint's delay, the frames and longest
+  paint of five slots, and the syncs that left blocks). Then the example map again, connected to the Python fake
+  device.
 
 Fast lines without a device (`chartFastLines`, after the chart's many-lines steps), a chart of its own fed records
 as the window feeds it:
@@ -5472,7 +5486,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 493 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 494 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5664,14 +5678,14 @@ channel tables list exactly the schema's keys. It needs the `jsonschema` package
 every 500 ms each Chart tab (the live one, and a recording's window) appends one line to the file:
 
 ```
-14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
+14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 grid 1.10 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
 ```
 
 - `fps`: frames painted a second; `paint`, `max`: the paint's average and longest, ms.
 - The stages, ms a frame on average (`ChartView::takePerfStats`): `bin` the view's binning, `lines` the CPU's lines,
   `segments` the card's segment list, `present` the card's present, `marks` the cursors, notes, trigger, strips and
-  crosshair, `strip` the memory strip, `legend` the legend. What the stages leave of `paint` is the grid, the
-  labels, the Y ranges and the state.
+  crosshair, `strip` the memory strip, `legend` the legend, `grid` the chart's frame, the grid with its labels, the
+  lane bar and the state corner. What the stages leave of `paint` is the Y ranges and the layout.
 - `binned N/M`: frames that binned the view of the frames painted (a held view whose lines are reused bins none).
 - `measure`: the measurement table's updates, the window thread's time in all and their count; `threads`: the
   chart's threads' time on the full measurements (23.8).

@@ -57,6 +57,14 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   channels, the map's checks live), in the exports (Markdown, C header, Python module), in `evre check --writes` (a
   stream starts with START, its numbers follow, its rate within 2 %, it stops) and live in Python (`dev.stream`); a
   math line naming a fast channel is told why it cannot read it.
+- The Fast streams card: a stream's name as the row's title, "Start stream" / "Stop stream", the card before Polling
+  and recording; the Map settings' channel table with columns that fit their words.
+- Fast lines at 60 frames a second: a view moved by a few columns keeps the columns it had and bins only the new
+  ones, the memory strip binned at most once a second, and the timing aid (`EVRE_PERF_LOG`) counting the fast
+  columns binned and the grid's time.
+- The window's thread held (a dialog closed with its title bar's X, a title-bar button pressed): the Chart tab's
+  dialogs open and close without the desktop's animations, and the fast blocks queued meanwhile are taken over
+  the next frames (at most about 8 ms a frame, the chart painting first), so no frame pays for the whole pile.
 - The chart for many fast lines: min/max summaries of 8 to 4096 samples, binning and drawing on several threads, a
   RAM budget the samples keep to (with a note of what the Memory set needs), at most 64 lines at 1000 samples a
   second (fewer at faster rates), the plot drawn by a dedicated graphics card when there is one, or a card picked by

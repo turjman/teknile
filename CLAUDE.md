@@ -93,19 +93,20 @@ and one pull request into `main`; a later PR says "after #N". Finish a phase com
 check per behaviour, STUDIO.md, Help, the check count, every Linux test) before starting the next.
 If the session has to stop, push what is done and say in that phase's PR where it stopped.
 
-Phases 1-4, 8, 9, 0, 7 and 10 are merged into `main`; their texts below are kept as a record (the
-code and STUDIO.md are the truth now). **Two lines of work are open, each for a session of its own**
-(their texts are at the end of this plan):
+Phases 1-4, 8, 9, 0, 7, 10 and 5 are merged into `main`; their texts below are kept as a record (the
+code and STUDIO.md are the truth now). Phase 5, Fast EVRe, went in on 2026-10-07 (pull requests #16 to
+#30: parts 5.1 to 5.5, the Windows fixes, the streams card, fast lines at 60 frames a second, the
+window's thread held). **One line of work is still open** (its text is at the end of this plan):
 
-- **Phase 5, Fast EVRe**, on the line of `main`: parts 5.1 to 5.5 in order. 5.1 is on the branch
-  `phase5a-fast-wire` (it exists, made from `main`, with this plan); each later part on a branch made
-  from the one before; pull requests into `main`.
 - **Phase G, EVRe Guard part 2**, on the line of the branch `evre-1.1` (library 1.1 and Guard part 1,
   not in `main` yet): parts G.0 to G.6 in order, each on a branch made from the one before (G.0's
-  from `evre-1.1`); pull requests into **`evre-1.1`, never into `main`**.
+  from `evre-1.1`); pull requests into **`evre-1.1`, never into `main`**. G.0 to G.7 are merged into
+  `evre-1.1`; its merge into `main` is the owner's next step.
 
-A session works on the one line its command names and leaves the other alone. Do not change this
-work plan: say in the pull requests how far a line is. Phase 6 (macOS) is kept for later: do not
+The trigger's second version (each line its own level and edge set in its lane, Auto, Normal and Single
+with Run and Stop, hold-off, a draggable trigger position, the crossing found by the engine for fast
+lines) is on the branch `trigger-v2`, a pull request into `main` when its review is done. Do not change
+this work plan: say in the pull requests how far a line is. Phase 6 (macOS) is kept for later: do not
 start it.
 
 Keep token use lean: read the parts of files you need (grep, then read the lines), not whole
@@ -409,7 +410,7 @@ The owner's Windows run measures; this phase gives it the tool and fixes the kno
      that order; the tooltip holds the full text; with room, nothing is dropped. Docs (7.x where the
      state corner is described, 23), Arabic (the texts change: Arabic is longer, check it there too).
 
-### Phase 5: Fast EVRe, parts 5.1 to 5.5 (first branch `phase5a-fast-wire`, pull requests into `main`)
+### Phase 5: Fast EVRe, parts 5.1 to 5.5 (merged into `main` 2026-10-07; kept as a record)
 
 Sample streams: a device sends its samples in numbered blocks, as `READ_RESP` frames nobody asked
 for, at an address span of the device bank that the map gives the stream. **The design, the

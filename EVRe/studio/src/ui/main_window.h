@@ -33,6 +33,7 @@
 #include <QVector>
 #include <functional>
 
+#include "io/engine.h"
 #include "model/bus_file.h"
 #include "model/device_map.h"
 #include "ui/value_pace.h"
@@ -90,6 +91,8 @@ public:
 	static bool restartAsked();
 	/* tests: what the engine's fast trigger watches on a stream now, asked on its thread after what was posted to it */
 	fast::TriggerWatch engineFastWatch(int stream) const;
+	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
+	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
 
 protected:
 	void closeEvent(QCloseEvent *event) override;
@@ -141,6 +144,12 @@ private:
 	void stopFastStreams(); /* Disconnect asked for: no stream switched on again at the next connect */
 	void onFastPlotToggled(int stream, int channel, bool on); /* a channel's Plot tick: its line, within the lines' limit */
 	QHash<int, QVector<double>> fastValues_; /* each stream's newest record, its channels' values */
+	QVector<IoEngine::FastBlock> fastRest_;  /* blocks taken from the engine and not yet appended, in their order */
+	qint64 fastRestBytes_ = 0;
+	int fastSyncsLeftOver_ = 0;
+	int fastPaints_ = 0;      /* the chart's paints at the last sync */
+	bool fastWaited_ = false; /* the last sync left the rest for the chart's paint */
+	QElapsedTimer fastSyncClock_; /* since the last sync */
 	void refreshPorts();          /* the sidebar's serial ports, the map's device named among them */
 
 	/* the map */

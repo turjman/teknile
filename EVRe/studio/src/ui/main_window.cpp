@@ -49,6 +49,10 @@ namespace {
 
 constexpr int STATUS_INTERVAL_MS = 500;
 constexpr qint64 READ_ERROR_LOG_MS = 5000; /* a register's read errors: one line in the log per 5 s at most */
+/* a sync appends the fast streams' blocks for this long at most: about half a 60 Hz frame, the rest is the chart's
+ * paint (its FrameBudget) and the other events */
+constexpr qint64 FAST_APPEND_NS = 8000000;
+constexpr qint64 FAST_HELD_MS = 50; /* no sync for this long (three frames): the window's thread was held */
 
 /* a bus file (model/bus_file.h) and not a map: its "format" is "evre-bus/..." */
 bool isBusFile(const QString &path) {
@@ -1077,8 +1081,38 @@ void MainWindow::sync() {
 					value.valid ? nowMs - value.updatedMs : 0);
 		}
 	}
-	/* the fast streams' blocks into the chart; each stream's newest record for its channels' values in the sidebar */
-	for (const IoEngine::FastBlock &block : engine_->takeFastBlocks()) {
+	/* the fast streams' blocks into the chart; each stream's newest record for its channels' values in the sidebar.
+	 * At most FAST_APPEND_NS of them a sync: while a title bar's button is pressed (a dialog closed with its X)
+	 * Windows' loop holds this thread, the blocks pile up, and the first frame after it paid for the whole pile
+	 * (700 ms of a million records a second: about 2.8 MB, the frame 30 to 70 ms late). A frame now paints with what
+	 * it has, and the rest follows over the next frames, in the order they came. The rest is held to the engine's
+	 * FAST_QUEUE_BYTES: past it the blocks are appended now, whatever the time (nothing is dropped here, as before) */
+	const bool restLeft = !fastRest_.isEmpty();
+	for (IoEngine::FastBlock &block : engine_->takeFastBlocks()) {
+		fastRestBytes_ += block.records.size();
+		fastRest_.push_back(std::move(block));
+	}
+	/* The chart paints first, then takes the rest: the first sync after the thread was held appends none (the frame
+	 * asked for now shows the view moved on, the pile follows), and a sync whose tick came before the frame the sync
+	 * before asked for was painted appends none either (Qt's paint request waits behind the events posted meanwhile):
+	 * 8 ms of blocks there only put that frame off (the first paint done 33 ms after the hold, not 25). One sync waits,
+	 * never two in a row: a chart that does not paint (hidden, or over its FrameBudget) still takes the rest. */
+	const qint64 sinceSyncMs = fastSyncClock_.isValid() ? fastSyncClock_.restart() : 0;
+	if (!fastSyncClock_.isValid()) fastSyncClock_.start();
+	const int paints = chartTab_->view()->paints();
+	const bool waitForPaint = !fastWaited_ && chartTab_->view()->isVisible()
+			&& ((restLeft && paints == fastPaints_) || sinceSyncMs > FAST_HELD_MS);
+	fastPaints_ = paints;
+	fastWaited_ = waitForPaint;
+	QElapsedTimer appending;
+	appending.start();
+	qsizetype taken = 0;
+	while (taken < fastRest_.size()) {
+		if (fastRestBytes_ <= IoEngine::FAST_QUEUE_BYTES
+				&& (waitForPaint || (taken > 0 && appending.nsecsElapsed() >= FAST_APPEND_NS)))
+			break;
+		const IoEngine::FastBlock &block = fastRest_[taken++];
+		fastRestBytes_ -= block.records.size();
 		chartTab_->appendFast(block.stream, block.first, block.count, block.records, block.newStart, block.lost,
 				block.marked, block.markRecord, block.markTime, block.markPeriod, block.crossings);
 		const QVector<StreamDef> &streams = doc_->map().streams;
@@ -1095,6 +1129,8 @@ void MainWindow::sync() {
 			offset += typeSize(def.channels[c].type);
 		}
 	}
+	fastRest_.remove(0, taken);
+	if (!fastRest_.isEmpty()) fastSyncsLeftOver_++;
 	if (copyValues)
 		for (auto it = fastValues_.constBegin(); it != fastValues_.constEnd(); ++it) sidebar_->showFastValues(it.key(), it.value());
 	/* samples, and the chart moves on */

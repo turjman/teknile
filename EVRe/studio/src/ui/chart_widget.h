@@ -474,7 +474,7 @@ public:
 	int readoutBuilds() const { return readoutBuilds_; }
 	int legendBuilds() const { return legendBuilds_; } /* tests: the legend's picture made (not at every frame) */
 	int legendMeasures() const { return chipMeasures_; } /* tests: the legend's chips measured (not at every frame) */
-	int paints() const { return paints_; }             /* tests: the frames painted so far */
+	int paints() const { return paints_; } /* the frames painted so far (tests; MainWindow::sync's fast blocks) */
 	/* A held view where only the marks move (a cursor, a note or the trigger's level dragged) reuses its lines: the
 	 * binned lines while the view's times, its columns, the lines and the samples in view are the same, and the
 	 * lines drawn (the CPU's picture, the card's segments) while the plots' places and Y ranges, Normalise, the
@@ -490,6 +490,7 @@ public:
 		qint64 fastColumns = 0; /* columns of fast lines binned, the kept ones not counted */
 		double paintSum = 0, paintMax = 0;
 		double bin = 0, lines = 0, segments = 0, present = 0, marks = 0, strip = 0, legend = 0;
+		double grid = 0; /* the chart's frame, the grid with its labels, the lane bar, the state corner */
 	};
 	PerfStats takePerfStats();
 	QSizeF readoutSize() const { return readout_.isNull() ? QSizeF() : readout_.deviceIndependentSize(); }

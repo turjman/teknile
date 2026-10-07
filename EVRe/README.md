@@ -36,6 +36,7 @@ host                                   device
 | Folder | What |
 |---|---|
 | [`lib/`](lib/) | The device-side library: `EVRe.h`, `EVRe.cpp`. `ports/stm32h7/malloc_lock.c` is an optional heap lock for newlib on Cortex-M7. |
+| [`lib/fast/`](lib/fast/) | Fast EVRe, a layer above the protocol (not part of it): a device sends samples taken on its own clock in numbered blocks, as `READ_RESP` frames of a window of the device bank that nobody asked for; `evre_fast.h` builds a block's frame around the records where they lie (no copy, no heap). The chapter "Fast EVRe" of `docs/PROTOCOL.md` says the rest; the Studio plots, measures, triggers on and records the streams (`.evrs`), and `evre record` writes one. |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The protocol: frame, function codes, CRC, register model, reserved bank, messages, errors, test vectors, device API, host notes, conformance checklist. |
 | [`studio/`](studio/) | **EVRe Studio**, the desktop tool (C++17, Qt 6). |
 | [`studio/docs/MAP_FORMAT.md`](studio/docs/MAP_FORMAT.md) | The register map format `evre-map/1`: the contract for any tool that reads or writes maps, and its [JSON Schema](studio/docs/evre-map-1.schema.json). |
