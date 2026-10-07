@@ -551,6 +551,7 @@ public:
 		chartLanesFoldButton();
 		chartLanesSeparators();
 		chartLaneBorders();
+		chartLaneRanges();
 		chartStateFits();
 		heldViewReuse();
 		measureTableRepaints();
@@ -6671,7 +6672,7 @@ private:
 					&& view->laneLines(k).size() == 2;
 			if (k > 0) stacked = stacked && view->laneRect(k).top() > view->laneRect(k - 1).bottom();
 		}
-		const bool saved = QSettings().value(QStringLiteral("chart/lanes")).toBool() && !mode->isEnabled();
+		const bool saved = QSettings().value(QStringLiteral("chart/lanes")).toBool() && mode->isEnabled(); /* the current lane's */
 		/* each its own Auto range: 12 V in the first, 0.5 A in the second */
 		const bool ranges = view->laneYLo(0) < 11.5 && view->laneYHi(0) > 12.5 && view->laneYHi(0) < 15
 				&& view->laneYLo(1) < 0.4 && view->laneYHi(1) < 1.0 && view->laneYOfValue(0, 12) > view->laneRect(0).top()
@@ -6681,7 +6682,7 @@ private:
 			std::printf("     (%d lanes; V %.3g .. %.3g, A %.3g .. %.3g)\n", view->laneCount(), view->laneYLo(0),
 					view->laneYHi(0), view->laneYLo(1), view->laneYHi(1));
 		check(stacked && saved && ranges, "chart, Lanes: a plot per unit in the order they came (V, A, W, none), stacked, "
-				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row disabled");
+				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row the current lane's");
 
 		/* the second lane's Y range from its labels: Manual 0 .. 5; the third's Log */
 		(void) chart.view->grab();
@@ -6699,7 +6700,7 @@ private:
 			}
 		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
 				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
-						QStringLiteral("Fold lane") }
+						QStringLiteral("All lanes: Auto"), QStringLiteral("Fold lane") }
 				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
 		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
 		bool unanimated = false; /* made without the window animations (STUDIO.md 27) */
@@ -6731,7 +6732,7 @@ private:
 		}
 		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
 				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed; a dialog without the window "
-				"animations), Log, Fold lane; each lane alone; kept (chart/laneY) for the next start");
+				"animations), Log, All lanes: Auto, Fold lane; each lane alone; kept (chart/laneY) for the next start");
 
 		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
 		const QPointF inFirst(view->laneRect(0).center());
@@ -7119,7 +7120,7 @@ private:
 			}
 		const bool shown = laneMenu && laneMenu->isVisible() && !view->laneFolded(1)
 				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
-						QStringLiteral("Fold lane") }
+						QStringLiteral("All lanes: Auto"), QStringLiteral("Fold lane") }
 				&& std::abs(laneMenu->pos().y() - view->mapToGlobal(menu1.bottomLeft().toPoint()).y()) <= 2;
 		if (foldItem) foldItem->trigger();
 		if (laneMenu) laneMenu->close();
@@ -7133,7 +7134,7 @@ private:
 					view->mapToGlobal(menu1.bottomLeft().toPoint()).y(), qPrintable(items.join(QStringLiteral(", "))),
 					int(menuFolds));
 		check(shown && menuFolds, "chart, Lanes: a click on a lane's ⋯ shows its menu under the button: Auto, Manual…, "
-				"Log, Fold lane (no fold by the click itself)");
+				"Log, All lanes: Auto, Fold lane (no fold by the click itself)");
 
 		/* the mouse over it: the pointing hand, it highlighted (not the fold button), the tooltip */
 		const QRectF menu2 = view->laneMenuButtonRect(2);
@@ -7232,11 +7233,12 @@ private:
 		(void) view->grab();
 		const QString fitting = view->toolTipAt(QPointF(40, view->laneRect(0).center().y()));
 		const bool labelsTip = scrolling == QStringLiteral("Wheel: scroll the lanes · Ctrl + wheel: zoom this lane · "
-				"Right-click: its Y range and Fold lane")
-				&& fitting == QStringLiteral("Ctrl + wheel: zoom this lane · Right-click: its Y range and Fold lane");
+				"Click: its Y range in the toolbar · Double-click: Auto · Right-click: its Y range and Fold lane")
+				&& fitting == QStringLiteral("Ctrl + wheel: zoom this lane · Click: its Y range in the toolbar · "
+						"Double-click: Auto · Right-click: its Y range and Fold lane");
 		if (!labelsTip) std::printf("     (scrolling: \"%s\"; fitting: \"%s\")\n", qPrintable(scrolling), qPrintable(fitting));
-		check(labelsTip, "chart, Lanes: the value labels' tooltip names the wheel (while the lanes scroll), Ctrl + wheel "
-				"and the right-click");
+		check(labelsTip, "chart, Lanes: the value labels' tooltip names the wheel (while the lanes scroll), Ctrl + wheel, "
+				"the click, the double-click and the right-click");
 		tab.hide();
 		QSettings().remove(group);
 	}
@@ -7451,6 +7453,237 @@ private:
 				"Arabic: the same, its longer words shortened in the same order, never over the legend");
 	}
 
+
+	/* P7b: every lane's Y range seen and set on its own. A lane not in Auto has a tag at the top of its value labels
+	 * ("Manual" in the warn colour, "Log"); a click on it: Auto. A click on a lane's value labels (its ⋯, its tag)
+	 * makes it the current lane, whose range the toolbar's Y range shows and sets ("Y range (A)"); Display and each
+	 * lane's ⋯ have All lanes: Auto; a double-click on the labels: Auto; a manual lane comes back tagged */
+	void chartLaneRanges() {
+		const QString group = QStringLiteral("laneRanges");
+		QSettings().remove(group);
+		QSettings().setValue(group + QStringLiteral("/lanes"), true);
+		QVector<RegDef> defs;
+		MathLines::Samples samples;
+		for (int k = 0; k < 2; k++) { /* a line in V around 12 and one in A, a sine from 3 to 17 */
+			RegDef def;
+			def.addr = uint16_t(0xD100 + 2 * k);
+			def.name = k == 0 ? QStringLiteral("BUS_V") : QStringLiteral("LOAD_I");
+			def.unit = k == 0 ? QStringLiteral("V") : QStringLiteral("A");
+			defs << def;
+			for (int i = 0; i < 4000; i++)
+				samples[regKey(def)] << QPointF(90.0 + i * 0.0025, k == 0 ? 12 + std::sin(i * 0.01) : 10 + 7 * std::sin(i * 0.01));
+		}
+		const auto plot = [&](ChartTab &tab) {
+			for (const RegDef &def : std::as_const(defs)) tab.plotRegister(def, true);
+			tab.frame(samples);
+		};
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		tab.resize(1200, 700);
+		plot(tab);
+		ChartView *view = tab.findChild<ChartView *>();
+		view->setWindow(10);
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		auto *mode = tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *low = tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *high = tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		auto *allAuto = tab.findChild<QAction *>(QStringLiteral("chartAllLanesAuto"));
+		auto *lanes = tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+		QLabel *rangeLabel = nullptr;
+		for (QLabel *label : tab.findChildren<QLabel *>())
+			if (label->text().startsWith(QStringLiteral("Y range"))) rangeLabel = label;
+		(void) view->grab();
+		if (!mode || !low || !high || !allAuto || !lanes || !rangeLabel || view->laneCount() != 2) {
+			check(false, "chart, a lane's Y range: two lanes, the toolbar's Y range and All lanes: Auto found");
+			return;
+		}
+		const QRectF plotArea(view->laneRect(0).left(), view->laneRect(0).top(), view->laneRect(0).width(),
+				view->laneRect(1).bottom() - view->laneRect(0).top());
+
+		/* the tag: none in Auto; "Manual" for a manual lane, in the warn colour, in its value labels' column at its top,
+		 * no value label under it, a tooltip with its range */
+		const bool noTag = view->laneRangeTagRect(0).isEmpty() && view->laneRangeTagRect(1).isEmpty()
+				&& view->laneRangeTagText(1).isEmpty();
+		view->setLaneYManual(1, 4.94, 17.14);
+		QImage picture = view->grab().toImage();
+		qreal dpr = picture.devicePixelRatio();
+		const QRectF tag = view->laneRangeTagRect(1);
+		const QColor warn = Theme::colors().warn;
+		const auto near = [](QColor a, QColor b, int most) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < most;
+		};
+		int warnPixels = 0;
+		for (int y = int(tag.top() * dpr); y < int(tag.bottom() * dpr); y++)
+			for (int x = int(tag.left() * dpr); x < int(tag.right() * dpr); x++)
+				if (near(picture.pixelColor(x, y), warn, 90)) warnPixels++;
+		bool clear = true; /* the labels are right-aligned in the column: none at the tag's height */
+		for (const QRectF &label : view->valueLabelRects())
+			if (label.top() < tag.bottom() && label.bottom() > tag.top()) clear = false;
+		const QString tip = view->toolTipAt(tag.center());
+		const bool tagged = noTag && view->laneRangeTagText(1) == QStringLiteral("Manual") && view->laneRangeTagRect(0).isEmpty()
+				&& tag.left() >= 18 && tag.right() <= plotArea.left() && std::fabs(tag.top() - view->laneRect(1).top() - 1) < 0.01
+				&& warnPixels > 4 && clear
+				&& tip == QStringLiteral("This lane's Y range is manual: 4.94 to 17.1 A · Click: back to Auto");
+		if (!tagged)
+			std::printf("     (no tag in Auto %d; the tag \"%s\" at %g,%g %gx%g, %d warn pixels, labels clear %d; tooltip \"%s\")\n",
+					int(noTag), qPrintable(view->laneRangeTagText(1)), tag.x(), tag.y(), tag.width(), tag.height(), warnPixels,
+					int(clear), qPrintable(tip));
+		check(tagged, "chart, a lane's Y range: a manual lane has a \"Manual\" tag in the warn colour at the top of its value "
+				"labels (none under it), its tooltip its range and \"Click: back to Auto\"; none in Auto");
+
+		/* the current lane: the first by default, the toolbar's Y range its own with its unit; a click on the other's value
+		 * labels: that one, its unit name lit, the toolbar its range at once */
+		/* the label follows the lanes with the info line (the window's status, twice a second): the lines came after
+		 * Lanes was on */
+		tab.refreshStatus();
+		const bool first = rangeLabel->text() == QStringLiteral("Y range (V)") && view->currentLane() == 0
+				&& mode->isEnabled() && mode->currentIndex() == 0;
+		if (!first)
+			std::printf("     (at first: lane %d, \"%s\", mode %d %s)\n", view->currentLane(), qPrintable(rangeLabel->text()),
+					mode->currentIndex(), mode->isEnabled() ? "enabled" : "disabled");
+		const QPoint labels1(40, int(view->laneRect(1).bottom() - 20));
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, labels1);
+		picture = view->grab().toImage();
+		const QColor accent = Theme::colors().accent;
+		const auto accentIn = [&](int lane) { /* the unit name's column under the lane's buttons */
+			const QRectF r = view->laneRect(lane);
+			int n = 0;
+			for (int y = int((r.top() + 40) * dpr); y < int(r.bottom() * dpr); y++)
+				for (int x = 0; x < int(18 * dpr); x++)
+					if (near(picture.pixelColor(x, y), accent, 90)) n++;
+			return n;
+		};
+		const bool current = view->currentLane() == 1 && rangeLabel->text() == QStringLiteral("Y range (A)")
+				&& mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94") && high->text() == QStringLiteral("17.14")
+				&& accentIn(1) > 20 && accentIn(0) * 4 < accentIn(1); /* lit: its name in the accent, the other's not */
+		/* the toolbar sets it: 1 .. 20 typed, then Auto chosen; the first lane untouched */
+		low->setText(QStringLiteral("1"));
+		high->setText(QStringLiteral("20"));
+		emit high->editingFinished();
+		const bool typed = !view->laneYAuto(1) && view->laneYLo(1) == 1 && view->laneYHi(1) == 20 && view->laneYAuto(0);
+		mode->setCurrentIndex(0);
+		emit mode->activated(0);
+		(void) view->grab();
+		const bool toAuto = view->laneYAuto(1) && view->laneRangeTagRect(1).isEmpty() && view->laneYAuto(0);
+		/* the ⋯ button makes its lane current too */
+		const QRectF menu0 = view->laneMenuButtonRect(0);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, menu0.center().toPoint());
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		const bool byMenu = view->currentLane() == 0 && rangeLabel->text() == QStringLiteral("Y range (V)");
+		if (!first || !current || !typed || !toAuto || !byMenu)
+			std::printf("     (first %d; after the click: lane %d, \"%s\", mode %d, %s .. %s, lit %d/%d; typed %d; Auto %d; by ⋯ %d)\n",
+					int(first), view->currentLane(), qPrintable(rangeLabel->text()), mode->currentIndex(), qPrintable(low->text()),
+					qPrintable(high->text()), accentIn(1), accentIn(0), int(typed), int(toAuto), int(byMenu));
+		check(first && current && typed && toAuto && byMenu, "chart, a lane's Y range: the current lane (the first by "
+				"default) drives the toolbar's Y range, labelled with its unit; a click on another lane's value labels (or "
+				"its ⋯) makes it current, its unit name lit, the toolbar its range at once; typing and Auto there set that "
+				"lane alone");
+
+		/* the tag's click: Auto (and linear); over it the pointing hand and the tag lit */
+		view->setLaneYManual(1, 4.94, 17.14);
+		(void) view->grab();
+		const QRectF tag1 = view->laneRangeTagRect(1);
+		const auto tagPicture = [&] {
+			const QImage whole = view->grab().toImage();
+			return whole.copy(QRectF(tag1.topLeft() * dpr, tag1.size() * dpr).toAlignedRect());
+		};
+		const QImage rest = tagPicture();
+		QMouseEvent move(QEvent::MouseMove, tag1.center(), view->mapToGlobal(tag1.center()), Qt::NoButton, Qt::NoButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(view, &move);
+		const bool hover = view->hoveredRangeTag() == 1 && view->cursor().shape() == Qt::PointingHandCursor && tagPicture() != rest;
+		view->setLaneYLog(0, true); /* the first lane Log: its tag "Log" */
+		(void) view->grab();
+		const bool logTag = view->laneRangeTagText(0) == QStringLiteral("Log");
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, tag1.center().toPoint());
+		(void) view->grab();
+		const bool clicked = view->laneYAuto(1) && !view->laneYLog(1) && view->laneRangeTagRect(1).isEmpty()
+				&& view->currentLane() == 1 && mode->currentIndex() == 0;
+		if (!hover || !logTag || !clicked)
+			std::printf("     (hovered %d, cursor %d, lit %d; the Log tag \"%s\"; after the click: auto %d, tag %s, current %d, mode %d)\n",
+					view->hoveredRangeTag(), int(view->cursor().shape()), int(tagPicture() != rest),
+					qPrintable(view->laneRangeTagText(0)), int(view->laneYAuto(1)),
+					view->laneRangeTagRect(1).isEmpty() ? "gone" : "shown", view->currentLane(), mode->currentIndex());
+		check(hover && logTag && clicked, "chart, a lane's Y range: over the tag the pointing hand and the tag lit; a Log "
+				"lane's tag says \"Log\"; a click on the tag sets that lane to Auto (linear) and makes it current");
+
+		/* All lanes: Auto, in Display (shown with Lanes, enabled while a lane is not Auto) and in each lane's ⋯ */
+		view->setLaneYManual(1, 0, 5);
+		const bool enabled = allAuto->isVisible() && allAuto->isEnabled();
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, view->laneMenuButtonRect(1).center().toPoint());
+		QAction *menuAll = nullptr;
+		if (tab.laneMenu())
+			for (QAction *action : tab.laneMenu()->actions())
+				if (action->text() == QStringLiteral("All lanes: Auto")) menuAll = action;
+		const bool inMenu = menuAll && menuAll->isEnabled();
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		allAuto->trigger();
+		(void) view->grab();
+		const bool allDone = view->allLanesYAuto() && view->laneYAuto(0) && !view->laneYLog(0) && view->laneYAuto(1)
+				&& !allAuto->isEnabled() && view->laneRangeTagRect(0).isEmpty() && view->laneRangeTagRect(1).isEmpty();
+		lanes->setChecked(false);
+		const bool hidden = !allAuto->isVisible() && rangeLabel->text() == QStringLiteral("Y range");
+		lanes->setChecked(true);
+		(void) view->grab();
+		if (!enabled || !inMenu || !allDone || !hidden)
+			std::printf("     (Display's entry %s %s; the ⋯ menu's %s; all Auto %d, then %s; without Lanes hidden %d, \"%s\")\n",
+					allAuto->isVisible() ? "shown" : "hidden", enabled ? "enabled" : "disabled",
+					menuAll ? (menuAll->isEnabled() ? "enabled" : "disabled") : "missing", int(allDone),
+					allAuto->isEnabled() ? "enabled" : "disabled", int(hidden), qPrintable(rangeLabel->text()));
+		check(enabled && inMenu && allDone && hidden, "chart, a lane's Y range: All lanes: Auto in Display (with Lanes, "
+				"enabled while a lane is not Auto) and in each lane's ⋯ menu sets every lane to Auto");
+
+		/* a double-click on a lane's value labels: Auto; their tooltip says so */
+		view->setLaneYManual(0, 11, 13);
+		(void) view->grab();
+		const QPoint labels0(40, int(view->laneRect(0).bottom() - 20));
+		const QString labelsTip = view->toolTipAt(labels0);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, labels0); /* a double-click's first click (QTest sends */
+		QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, labels0); /* the second alone) */
+		const bool doubled = view->laneYAuto(0) && labelsTip.contains(QStringLiteral("Double-click: Auto"))
+				&& labelsTip.contains(QStringLiteral("Click: its Y range in the toolbar"));
+		if (!doubled) std::printf("     (after the double-click auto %d; the tooltip \"%s\")\n", int(view->laneYAuto(0)),
+				qPrintable(labelsTip));
+		check(doubled, "chart, a lane's Y range: a double-click on a lane's value labels sets it to Auto; their tooltip "
+				"names the click (the toolbar) and the double-click");
+
+		/* kept: a manual lane is tagged again in a new tab (the next start) */
+		view->setLaneYManual(1, 4.94, 17.14);
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the tag, the current lane, the toolbar's unit, both themes */
+			QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(40, int(view->laneRect(1).bottom() - 20)));
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_lane_range_dark.png") : QStringLiteral("_lane_range_light.png")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		tab.hide();
+		bool again = false;
+		{
+			ChartTab other([] { return 100.0; }, nullptr, group);
+			other.resize(1200, 700);
+			plot(other);
+			other.show(); /* laid out: the lanes their heights */
+			(void) QTest::qWaitForWindowExposed(&other);
+			auto *otherView = other.findChild<ChartView *>();
+			if (otherView) {
+				otherView->setWindow(10);
+				(void) otherView->grab();
+				again = otherView->lanes() && otherView->laneRangeTagText(1) == QStringLiteral("Manual")
+						&& otherView->laneRangeTagText(0).isEmpty() && otherView->laneYHi(1) == 17.14;
+				if (!again)
+					std::printf("     (the new tab: lanes %d, %d of them, tags \"%s\" \"%s\", the second %g .. %g)\n",
+							int(otherView->lanes()), otherView->laneCount(), qPrintable(otherView->laneRangeTagText(0)),
+							qPrintable(otherView->laneRangeTagText(1)), otherView->laneYLo(1), otherView->laneYHi(1));
+			}
+			other.hide();
+		}
+		check(again, "chart, a lane's Y range: a manual lane kept (laneY) comes back tagged in a new tab");
+		QSettings().remove(group);
+	}
 
 	/* A lane's border dragged: over a separator the resize cursor, the line lit, a tooltip; a drag gives the lane above
 	 * what the one below gives up, neither under LANE_MIN_H; the heights kept by unit (laneHeights), a new tab finds
@@ -11162,6 +11395,44 @@ private:
 				&& !row->isVisible() && hold->text() == QStringLiteral("Hold") && view->stateFullText() == QStringLiteral("Auto (short window)")
 				&& std::fabs(view->triggerLevel() - 0.2) < 0.05 && view->triggerLevelTag().isEmpty()
 				&& view->triggerPositionMark().isEmpty() && view->triggerTag().isEmpty();
+		/* the lock's words as a badge: the accent colour (not the warn amber of Stopped) on a tint of it, a tooltip */
+		const QString badgeTip = QStringLiteral("The view locks on the first line's crossings at windows under 100 ms · "
+				"Display → Lock short windows turns it off");
+		const auto badgeSeen = [&](QString &why) {
+			const QImage picture = view->grab().toImage();
+			const qreal dpr = picture.devicePixelRatio();
+			const QRectF badge = view->stateBadgeRect();
+			if (badge.isEmpty() || !view->stateRect().adjusted(-0.5, -0.5, 0.5, 0.5).contains(badge)) {
+				why = QStringLiteral("no badge");
+				return false;
+			}
+			const QColor accent = Theme::colors().accent;
+			const auto distance = [](QColor a, QColor b) {
+				return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+			};
+			int ink = 0;
+			for (int y = int(badge.top() * dpr); y < int(badge.bottom() * dpr); y++)
+				for (int x = int(badge.left() * dpr); x < int(badge.right() * dpr); x++)
+					if (distance(picture.pixelColor(x, y), accent) < 90) ink++;
+			const QColor tint = picture.pixelColor((QPointF(badge.left() + 2, badge.center().y()) * dpr).toPoint());
+			const QColor ground = picture.pixelColor((QPointF(badge.left() - 3, badge.center().y()) * dpr).toPoint());
+			const QString tip = view->toolTipAt(badge.center());
+			why = QStringLiteral("%1 accent pixels, tint %2 ground %3, tooltip \"%4\"").arg(ink).arg(tint.name(), ground.name(), tip);
+			return ink > 4 && distance(tint, accent) < distance(ground, accent) && tip == badgeTip;
+		};
+		QString badgeWhy;
+		const bool badgeLocked = badgeSeen(badgeWhy);
+		std::printf("     (the badge, locked: %s)\n", qPrintable(badgeWhy));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the badge in both themes, for a look */
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_lock_badge_dark.png") : QStringLiteral("_lock_badge_light.png")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
 		/* 30 frames: the view's end moves by whole periods of 20 ms, so the wave stands still */
 		double first = NAN, worst = 0;
 		int moves = 0, texts = 0;
@@ -11190,6 +11461,8 @@ private:
 		flat = true;
 		for (int k = 0; k < 90; k++) frame();
 		const bool free = view->shortLocked() && view->live() && view->stateFullText() == QStringLiteral("Auto · free running");
+		const bool badgeFree = badgeSeen(badgeWhy);
+		std::printf("     (the badge, free running: %s)\n", qPrintable(badgeWhy));
 		flat = false;
 		for (int k = 0; k < 10; k++) frame();
 		const bool lockedAgain = view->stateFullText() == QStringLiteral("Auto (short window)");
@@ -11198,6 +11471,7 @@ private:
 		for (int k = 0; k < 5; k++) frame();
 		const bool entryOff = !view->shortLocked() && view->live() && view->stateFullText().isEmpty()
 				&& !QSettings().value(QStringLiteral("chart/autoShortWindows"), true).toBool();
+		const bool badgeGone = view->stateBadgeRect().isEmpty();
 		lock->setChecked(true);
 		for (int k = 0; k < 10; k++) frame();
 		const bool entryOn = view->shortLocked() && QSettings().value(QStringLiteral("chart/autoShortWindows")).toBool();
@@ -11232,6 +11506,9 @@ private:
 				"chart, short windows lock: \"Auto · free running\" while the line does not cross, locked again when it does; "
 				"off with Display's \"Lock short windows\" (saved as chart/autoShortWindows), at a 100 ms window and with "
 				"Hold (until Live); the user's trigger takes over and the lock comes back after it");
+		check(badgeLocked && badgeFree && badgeGone, "chart, short windows lock: \"Auto (short window)\" and \"Auto · free "
+				"running\" as a badge, the accent colour on a tint of it, its tooltip what the lock does and where it is "
+				"turned off; none without the lock");
 		chart.tab.hide();
 		view->setWindow(1);
 		clearTriggerSettings();

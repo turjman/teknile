@@ -355,8 +355,11 @@ the bar at the right); a click on a lane's ▾ (above its unit name) or on its u
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
 equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
-Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
-zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
+Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
+zooms it, a double-click sets it to Auto; a lane not in Auto has a <i>Manual</i> (amber) or <i>Log</i> tag at the top of
+its values, and a click on the tag sets it back to Auto; a click on a lane's values makes it the current lane, whose
+range the Y range row shows and sets (<i>Y range (A)</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
+one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; <b>Hover values</b> (on by default): the box of values beside the mouse, off to see
@@ -425,7 +428,7 @@ to arm</i> ...), and change only when it does, with no number while it runs; whi
 crossing, a faint line marks where the data ends.</p>
 <p><b>Short windows lock by themselves</b>: below a 100 ms window a live chart with the trigger off holds on each
 rising crossing of its first line's middle (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
-cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 <b>Display → Lock short windows</b> turns it off.</p>
 <p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
 <b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
@@ -649,8 +652,10 @@ Spectrum, Trigger on this line</td></tr>
 arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
 it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
-Log), Fold lane ·
-<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·
+Log, All lanes: Auto), Fold lane · <b>click</b> its values: the current lane (the Y range row) · <b>click</b> its
+Manual or Log tag: Auto ·
+<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it or its
+values: Auto ·
 <b>click</b> its ▾ or unit name: fold it, the strip: open it · <b>drag</b> the line between two lanes: their heights
 (<b>double-click</b> it: equal)</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /

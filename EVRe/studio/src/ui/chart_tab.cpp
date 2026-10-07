@@ -361,7 +361,8 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addSpacing(6);
 	row->addWidget(ramNeed_, 1);
 	row->addSpacing(12);
-	row->addWidget(mutedLabel(tr("Y range")));
+	yRangeLabel_ = mutedLabel(tr("Y range"));
+	row->addWidget(yRangeLabel_);
 	row->addWidget(yMode_);
 	row->addSpacing(4);
 	row->addWidget(mutedLabel(tr("min")));
@@ -436,8 +437,13 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	foldAll_->setObjectName(QStringLiteral("chartFoldAll"));
 	openAll_ = displayMenu->addAction(tr("Open all lanes"));
 	openAll_->setObjectName(QStringLiteral("chartOpenAll"));
+	/* every lane back to Auto at once: a lane's range set long ago is easy to miss among many */
+	allAuto_ = displayMenu->addAction(tr("All lanes: Auto"));
+	allAuto_->setObjectName(QStringLiteral("chartAllLanesAuto"));
+	allAuto_->setToolTip(tr("Every lane's Y range back to Auto (linear): the lanes tagged Manual or Log"));
 	foldAll_->setVisible(false); /* until Lanes is on (showLaneActions) */
 	openAll_->setVisible(false);
+	allAuto_->setVisible(false);
 	connect(displayMenu, &QMenu::aboutToShow, this, &ChartTab::showLaneActions);
 	trigger_ = displayMenu->addAction(tr("Trigger"));
 	trigger_->setObjectName(QStringLiteral("chartTrigger"));
@@ -621,6 +627,17 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
+		ChartView *view = chart_->view();
+		const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+		if (lane >= 0) { /* Lanes: the current lane's range, as its menu sets it */
+			const double lo = view->laneYLo(lane), hi = view->laneYHi(lane);
+			if (mode == YLog) normalize_->setChecked(false); /* Log and Normalise exclude each other */
+			view->setLaneYLog(lane, mode == YLog);
+			if (mode == YAuto) view->setLaneYAuto(lane);
+			else if (mode == YManual) view->setLaneYManual(lane, lo, hi); /* from what is shown now */
+			showYRange(false);
+			return;
+		}
 		if (mode == YLog) {
 			normalize_->setChecked(false); /* Log and Normalise exclude each other */
 			chart_->setYLog(true);         /* a Manual range kept when it is above 0, else Auto */
@@ -650,6 +667,7 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("lanes"), on);
 		showLaneActions();
 		showYControls();
+		showYRange(false); /* the current lane's range, or the plot's again */
 		showDisplayState();
 	});
 	connect(view, &ChartView::laneMenuRequested, this, &ChartTab::showLaneMenu);
@@ -683,6 +701,12 @@ void ChartTab::connectControls() {
 	});
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
+		showYRange(false);
+		showLaneActions(); /* All lanes: Auto enabled while a lane is not */
+	});
+	connect(view, &ChartView::currentLaneChanged, this, [this] { /* the toolbar's Y range: that lane's at once */
+		showYControls();
+		showYRange(false);
 	});
 	connect(view, &ChartView::laneFoldsChanged, this, [this] {
 		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
@@ -693,6 +717,7 @@ void ChartTab::connectControls() {
 	});
 	connect(foldAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(true); });
 	connect(openAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(false); });
+	connect(allAuto_, &QAction::triggered, this, [view] { view->setAllLanesYAuto(); });
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
 		QSettings().setValue(settingKey("smooth"), on);
@@ -1336,7 +1361,8 @@ void ChartTab::refreshStatus() {
 	chartInfo_->setText(info);
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
-	if (chart_->yAuto()) showYRange(false);
+	if (lanes_->isChecked()) showYControls(); /* the current lane's unit: its lines may have gone */
+	if (lanes_->isChecked() || chart_->yAuto()) showYRange(false); /* Auto (a lane's too) follows what is shown */
 	if (trigger_->isChecked()) { /* the lines may have changed; the state moves on (Normal armed again) */
 		QVector<int> keys;
 		for (const ChartView::Info &line : chart_->view()->lines()) keys << line.key;
@@ -1466,18 +1492,22 @@ void ChartTab::applyMemoryText() {
 }
 
 void ChartTab::showYRange(bool save) {
-	const bool manual = !chart_->yAuto();
-	const int mode = chart_->yLog() ? YLog : manual ? YManual : YAuto;
+	/* Lanes: the current lane's range (saved with the lanes' ranges, chart/laneY); without, the plot's */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	const bool manual = lane >= 0 ? !view->laneYAuto(lane) : !chart_->yAuto();
+	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
+	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(chart_->yHi(), manual));
+	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
 		yMin_->setStyleSheet(look);
 		yMax_->setStyleSheet(look);
 	}
-	if (!save) return;
+	if (!save || lane >= 0) return;
 	QSettings settings;
 	settings.setValue(settingKey("yAuto"), !manual);
 	settings.setValue(settingKey("yLog"), chart_->yLog());
@@ -1493,6 +1523,19 @@ void ChartTab::applyYFields() {
 	double high = QLocale::c().toDouble(yMax_->text().trimmed(), &highOk);
 	if (!lowOk || !highOk) {
 		showYRange();
+		return;
+	}
+	ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	if (lane >= 0) { /* Lanes: the current lane's range */
+		const bool laneManual = !view->laneYAuto(lane);
+		if (yMin_->text().trimmed() == yFieldText(view->laneYLo(lane), laneManual)
+				&& yMax_->text().trimmed() == yFieldText(view->laneYHi(lane), laneManual))
+			return; /* no change */
+		if (low > high) std::swap(low, high);
+		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
+		view->setLaneYManual(lane, low, high); /* refused on the Log scale at 0 or below: the fields back */
+		showYRange(false);
 		return;
 	}
 	const bool manual = !chart_->yAuto();
@@ -1700,14 +1743,23 @@ void ChartTab::showSpan(double t0, double t1) {
 }
 
 void ChartTab::showYControls() {
-	/* lanes: each its own range (its menu); normalised: the min and max mean nothing, the list offers Log */
-	const bool lanes = lanes_->isChecked();
-	yMode_->setEnabled(!lanes);
-	yMin_->setEnabled(!lanes && !normalize_->isChecked());
-	yMax_->setEnabled(!lanes && !normalize_->isChecked());
-	const QString why = tr("Lanes: each lane has its own Y range: right-click its values");
-	if (lanes) yMode_->setToolTip(why);
-	else if (yMode_->toolTip() == why) yMode_->setToolTip(yModeTip_);
+	/* lanes: the current lane's range, its unit beside "Y range" (a long one cut, so the row keeps its width);
+	 * normalised: the min and max mean nothing, the list offers Log */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	yMin_->setEnabled(!normalize_->isChecked());
+	yMax_->setEnabled(!normalize_->isChecked());
+	/* set only when they change: the info line's refresh calls this twice a second with Lanes on */
+	QString label = tr("Y range"), tip = yModeTip_;
+	if (lane >= 0) {
+		const QString unit = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
+		label = tr("Y range (%1)").arg(yRangeLabel_->fontMetrics().elidedText(unit, Qt::ElideRight, 48));
+		tip = tr("Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane's value labels "
+				"chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.").arg(unit)
+				+ QStringLiteral("\n\n") + yModeTip_;
+	}
+	if (yRangeLabel_->text() != label) yRangeLabel_->setText(label);
+	if (yMode_->toolTip() != tip) yMode_->setToolTip(tip);
 }
 
 void ChartTab::showLaneActions() {
@@ -1716,8 +1768,10 @@ void ChartTab::showLaneActions() {
 	const int folded = view->foldedLaneCount();
 	foldAll_->setVisible(on);
 	openAll_->setVisible(on);
+	allAuto_->setVisible(on);
 	foldAll_->setEnabled(on && folded < view->laneCount());
 	openAll_->setEnabled(on && folded > 0);
+	allAuto_->setEnabled(on && !view->allLanesYAuto());
 }
 
 void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
@@ -1740,6 +1794,8 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	});
 	log->setCheckable(true);
 	log->setChecked(view->laneYLog(lane));
+	QAction *allAuto = laneMenu_->addAction(tr("All lanes: Auto"), this, [view] { view->setAllLanesYAuto(); });
+	allAuto->setEnabled(!view->allLanesYAuto());
 	laneMenu_->addSeparator();
 	const bool folded = view->laneFolded(lane);
 	laneMenu_->addAction(folded ? tr("Open lane") : tr("Fold lane"), this, [view, lane, folded] {

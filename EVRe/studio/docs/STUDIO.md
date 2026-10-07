@@ -1073,7 +1073,7 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 | **Memory** | How much is kept, like an oscilloscope's memory depth. Pick a preset or type a length. Default 60 s. |
 | **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). |
 | Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
-| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). |
+| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). With Lanes on, the row is the **current lane's**, labelled with its unit (*Y range (A)*, 7.12). |
 | **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
@@ -1180,6 +1180,10 @@ so a current of 1 µA and one of 1 A can be read on the same chart.
 - **Log and Normalise exclude each other.** Picking Log turns Normalise off, and Normalise turns Log off (the range
   mode, Auto or Manual, stays). Auto or Manual in the list are linear again.
 
+**With Lanes** (7.12) each lane has a range of its own. The row then shows and sets the **current lane's** range, its
+unit in the label (*Y range (A)*): a click on a lane's value labels makes it current. A lane not in Auto says so with a
+tag at the top of its value labels, *Manual* in amber or *Log*; a click on the tag sets it back to Auto.
+
 ### 7.6 Normalise and Smooth
 
 **Normalise** scales each line into the chart by its own range in the view, so lines of different units can be compared by their shapes. The value labels become percentages (0 % – 100 %). The min and max fields are disabled while Normalise is on; the Y range list stays, and picking Log from it turns Normalise off (7.5). Normalise turns Log off. Normalise is not saved.
@@ -1240,7 +1244,9 @@ so the bar between them keeps its room; live, or without a crossing in view, the
 | Folded&nbsp;strip&nbsp;or&nbsp;its&nbsp;▸ | Click | Open the lane again (7.12). |
 | Separator&nbsp;between&nbsp;lanes | Drag&nbsp;/&nbsp;double-click | The lane above taller or lower, the one below giving or taking / every lane its equal share again (7.12). |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
-| Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log; Fold lane / Open lane (7.12). |
+| Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log, All lanes: Auto; Fold lane / Open lane (7.12). |
+| Lane's&nbsp;value&nbsp;labels | Click&nbsp;/&nbsp;double-click | Make it the current lane: the toolbar's Y range shows and sets its range / that lane back to Auto (7.12). |
+| Lane's&nbsp;range&nbsp;tag | Click | That lane back to Auto, linear (*Manual* or *Log* at the top of its value labels, 7.12). |
 | Legend&nbsp;chip | Click&nbsp;/&nbsp;right-click | The line's menu, under the chip: its Histogram or Spectrum (8.6), and Trigger on this line, ticked for the line watched (7.13). The chip's ▾ says so; over it the mouse is a pointing hand, the ▾ is lit and the tooltip names the entries. |
 | Trigger's&nbsp;level&nbsp;marker,&nbsp;tab&nbsp;or&nbsp;line | Drag | Move the level, from where it was taken (7.13); the marker (*T▸*) lies left of the plot, the tab (*0.4 A ↑*) right of it, both lit under the mouse, their tooltips the level in words. |
 | Trigger&nbsp;tab's&nbsp;arrow | Click | The next edge: rising, falling, either (7.13). |
@@ -1370,16 +1376,28 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   lights up, and a tooltip says *Fold lane* or
   *Open lane* (*Y range and lane options* over the ⋯ button). **Display → Fold all lanes** and **Open all lanes** (shown
   with Lanes on) fold or open them all, a way back when everything is folded. The value labels' tooltip names what
-  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a
-  right-click has its Y range and Fold lane. Folds are kept by
+  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a click
+  makes it the current lane, a double-click sets it to Auto, a right-click has its Y range and Fold lane. Folds are kept by
   unit and saved, so a unit folded stays folded when it comes back, at the next start too; a recording's window
   keeps its own.
 - **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
   a **click on its ⋯ button**, under its ▾, opens the lane's menu under the button: **Auto**, **Manual…** (its min
-  and max asked), **Log** (7.5) and **Fold lane**; a right-click on its value labels opens the same menu. The ⋯
-  shows on every open lane with room for it and a short unit name (not on a lane cut to a sliver by the plot's edge). **Ctrl + wheel**
-  over a lane zooms that lane (Manual); a **double-click** in it sets it to Auto. The Y range row above the chart is
-  the plot's without lanes, and is disabled meanwhile.
+  and max asked), **Log** (7.5), **All lanes: Auto** and **Fold lane**; a right-click on its value labels opens the
+  same menu. The ⋯ shows on every open lane with room for it and a short unit name (not on a lane cut to a sliver by
+  the plot's edge). **Ctrl + wheel** over a lane zooms that lane (Manual); a **double-click** in it or on its value
+  labels sets it to Auto.
+- **A range is never hidden:** a lane whose range is not Auto has a **tag** at the top of its value labels, beside
+  its buttons: *Manual* in amber (the warn colour: its range does not follow the lines) or *Log* in the accent
+  colour; no value label is drawn under it. Its tooltip gives the range (*This lane's Y range is manual: 4.94 to 17.1
+  A · Click: back to Auto*); over it the mouse is a pointing hand and the tag lights up; a **click** sets the lane to
+  Auto (linear). A range set long ago (a Ctrl + wheel, saved by unit) comes back tagged at the next start.
+- **The current lane drives the toolbar:** with Lanes on, the Y range row (7.1) shows and sets the range of the
+  **current lane**, its unit in the label (*Y range (A)*), and its unit name is lit in the accent colour (with more
+  than one lane). The first lane is current until a **click on another lane's value labels**, its ⋯ or its tag
+  chooses it; the row follows at once. Auto, Manual, Log, min and max there act on that lane alone. Without lanes
+  the row is the plot's again.
+- **Display → All lanes: Auto** (shown with Lanes on, enabled while a lane is not in Auto) sets every lane back to
+  Auto, linear.
 - **A line between two lanes**, in the middle of the gap, from the value labels across the plot, in the colour of a
   control's edge (3:1 to the chart in both themes; the border colour, 1.3:1, was too faint): the lanes read as plots
   of their own, and the value labels of one do not run on into the next. Only between lanes in view.
@@ -1525,7 +1543,9 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   first line: the level at that line's middle in view (Find level's rule, taken again each second while it runs
   free), rising. An untriggered wave at 20 ms left ghosts and labels over each other, as the eye blended frames that
   each showed the wave elsewhere; locked, it stands still whenever it crosses. The corner says *Auto (short window)*
-  while it locks and *Auto · free running* while the line does not cross (after a second without a crossing). It is
+  while it locks and *Auto · free running* while the line does not cross (after a second without a crossing), as a
+  **badge**: the accent colour (the Live button's blue, not the amber of Stopped) on a tint of it, rounded, so the
+  view's state is seen at a glance; its tooltip says what locks and that Display → Lock short windows turns it off. It is
   an aid, not your trigger: no row, no tab, no flag, and the toolbar's button stays Hold. Your trigger takes over
   when you turn it on; **Hold**, a pan, or a window of 100 ms or more ends it (Live brings it back).
   **Display → Lock short windows** (on by default, `chart/autoShortWindows`, 14.3) turns it off. It costs no
@@ -4372,7 +4392,15 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
   `followData` run per plot over its lines, folded or out of view too (its range is ready when it shows); the
   binning is the same for all (one time axis). The frame keeps its plots (`lanesShown_`) for the mouse: `laneAtY`
   finds the lane in view under it (a lane out of view is nowhere) for Ctrl + wheel, the double-click and the
-  right-click on its labels or its strip (`laneMenuRequested`). `pressLanes` takes the lanes' own clicks before the
+  right-click on its labels or its strip (`laneMenuRequested`). A press on an open lane's value labels
+  (`pressLaneLabels`, before `pressLanes`, and not one of the lanes' own presses, so its double-click still sets
+  Auto) makes it the current lane (`currentLane_`, its unit; the first lane when none: `currentLane`,
+  `setCurrentLane`, signal `currentLaneChanged`), whose range the Chart tab's Y range row shows and sets
+  (`showYRange`, `applyYFields`, `showYControls`). A lane whose `YScale` is not Auto and linear gets a range tag
+  (`rangeTag`: in the value labels' column at the top of its part in view, `tagFont`, `RANGE_TAG_H`); `drawGrid`
+  draws it on the CPU (outside the card's layer, as the lanes' buttons) and leaves out the value labels under it; a
+  press on it sets the lane to Auto, linear (`rangeTagAt`, `hoverTag_`). `setAllLanesYAuto` / `allLanesYAuto` are
+  All lanes: Auto. `pressLanes` takes the lanes' own clicks before the
   cursors and the pan: the scroll bar (`laneScrollBarRect`, painted in `RIGHT_PAD` outside the card's layer by
   `drawLaneBar`, not a `QScrollBar`: nothing goes over the layer; its handle `Drag::LaneBar`), a unit name
   (`LANE_UNIT_W`, folds) and a folded strip (opens); the wheel over the value labels scrolls by `LANE_WHEEL_STEP`
@@ -4844,7 +4872,10 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   `endShortLock` and hold the view as shown (no lock until Live); a longer window, the setting off or no line end it
   and go live; `setTrigger` (the user's) clears `automatic` and takes over. The corner says *Auto (short window)*
   while Triggered and *Auto · free running* otherwise (`triggerStateText`), with the other parts of the state
-  (`stateVariants` leaves out *held*).
+  (`stateVariants` leaves out *held*). `drawState` draws that last part as a badge (`stateBadge_`: the accent on a
+  tint of it, `BADGE_PAD` either side, `BADGE_GAP` from the other words, at the end the words are read to); its width
+  counts in the state's room (`stateWidth` in `fitState`), and a state too narrow even for its shortest text is
+  written plain, cut.
 
 ### 23.11 Fast lines
 
@@ -5686,7 +5717,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 524 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 531 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

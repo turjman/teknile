@@ -68,6 +68,9 @@ constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left 
 constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
 constexpr double LANE_BUTTON_GAP = 2;      /* between the fold button and the lane's menu button under it */
 constexpr double LANE_NAME_MIN = 24;       /* the menu button only with room left for a short unit name ("°C") */
+constexpr double RANGE_TAG_H = 14;         /* a lane's range tag ("Manual", "Log") at the top of its value labels */
+constexpr double BADGE_PAD = 6;            /* the short window's lock badge: its text's margin either side */
+constexpr double BADGE_GAP = 8;            /* between the state's other words and the badge */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -194,6 +197,13 @@ QFont smallFont() {
 QFont labelFont() {
 	QFont font = QGuiApplication::font();
 	font.setPointSizeF(9);
+	return font;
+}
+
+/* a lane's range tag: smaller than the value labels, so "Manual" fits their column beside the lane's buttons */
+QFont tagFont() {
+	QFont font = QGuiApplication::font();
+	font.setPointSizeF(7.5);
 	return font;
 }
 
@@ -1905,6 +1915,7 @@ bool ChartView::event(QEvent *e) {
 		mouseX_ = -1;
 		hoverLane_ = -1;
 		hoverMenu_ = -1;
+		hoverTag_ = -1;
 		hoverBar_ = false;
 		hoverSeparator_ = -1;
 		hoverEdge_ = false;
@@ -1981,6 +1992,7 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		mouseMoveEvent(e);
 		return;
 	}
+	if (pressLaneLabels(pos)) return; /* not the lanes' own press: a double-click on the labels sets Auto */
 	if (pressLanes(pos)) { /* the lanes' scroll bar, a unit name, a folded strip: no cursor, no pan */
 		pressedLanes_ = true;
 		return;
@@ -2031,12 +2043,32 @@ bool ChartView::pressLanes(const QPointF &pos) {
 	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
 	const bool folded = lanesShown_[lane].folded;
 	if (!folded && pos.x() >= LANE_UNIT_W) return false;
-	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button */
+	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button; the lane current */
+		setCurrentLane(lane);
 		const QRectF menu = laneMenuButtonRect(lane);
 		emit laneMenuRequested(lane, mapToGlobal(QPoint(int(menu.left()), int(menu.bottom()) + 1)));
 		return true;
 	}
 	setLaneFolded(lane, !folded);
+	return true;
+}
+
+/* Lanes: a press on an open lane's value labels makes it the current lane (the toolbar's Y range shows and sets it);
+ * one on its range tag sets it back to Auto too */
+bool ChartView::pressLaneLabels(const QPointF &pos) {
+	if (!lanes_) return false;
+	const QRectF plot = plotRect();
+	if (pos.x() < LANE_UNIT_W || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return false;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0 || lanesShown_[lane].folded) return false;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
+	setCurrentLane(lane);
+	if (rangeTagAt(pos) == lane) {
+		laneScales_[lanesShown_[lane].key].log = false; /* the tag gone: Auto on the linear scale */
+		hoverTag_ = -1;
+		setLaneYAuto(lane);
+	}
 	return true;
 }
 
@@ -2128,6 +2160,10 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
 		hoverMenu_ = onLanes ? laneMenuButtonAt(pos) : -1; /* the menu button highlighted, not the fold's */
 		hoverLane_ = onLanes && hoverMenu_ < 0 ? lane : -1; /* its button drawn highlighted */
+		/* an open lane's value labels take a click (the lane current, its tag: Auto): a hand, the tag lit */
+		const bool onLabels = lane >= 0 && !onLanes && !lanesShown_[lane].folded && pos.x() >= LANE_UNIT_W
+				&& pos.x() < plot.left() && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()));
+		hoverTag_ = onLabels ? rangeTagAt(pos) : -1;
 		hoverBar_ = onLaneBar;
 		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
 		/* the trigger's level tab and marker: a hand, both lit, the tab's edge part lit more */
@@ -2145,7 +2181,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 			setCursor(Qt::SizeVerCursor);
 			break;
 		}
-		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar || onLevelTag || hoverMark_
+		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLabels || onLaneBar || onLevelTag || hoverMark_
 						|| hoverChip_ >= 0
 						? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
@@ -3151,6 +3187,78 @@ void ChartView::laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu) {
 	*menu = shown.bottom() - top >= LANE_BUTTON_H + LANE_NAME_MIN ? QRectF(0, top, LANE_UNIT_W, LANE_BUTTON_H) : QRectF();
 }
 
+QRectF ChartView::rangeTag(const Lane &lane, const QRectF &shown, QString *text) const {
+	const YScale scale = laneScales_.value(lane.key);
+	if (lane.folded || (scale.autoRange && !scale.log) || shown.height() < RANGE_TAG_H + 6) return QRectF();
+	const QString words = scale.log ? tr("Log") : tr("Manual");
+	if (text) *text = words;
+	/* in the value labels' column (the trigger's marker keeps its own right of it), its text whole when it fits */
+	const double left = LANE_UNIT_W + 1, right = plotRect().left() - 2 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+	const double width = std::min(right - left, std::ceil(QFontMetricsF(tagFont()).horizontalAdvance(words)) + 6);
+	return QRectF(left, shown.top() + 1, width, RANGE_TAG_H);
+}
+
+QRectF ChartView::laneRangeTagRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return shown.isEmpty() ? QRectF() : rangeTag(plots[lane], shown);
+}
+
+QString ChartView::laneRangeTagText(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QString();
+	QString text;
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return !shown.isEmpty() && !rangeTag(plots[lane], shown, &text).isEmpty() ? text : QString();
+}
+
+int ChartView::rangeTagAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return -1;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return -1;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	return !shown.isEmpty() && rangeTag(lanesShown_[lane], shown).adjusted(-1, -1, 1, 1).contains(pos) ? lane : -1;
+}
+
+bool ChartView::allLanesYAuto() const {
+	if (!lanes_) return true;
+	for (const Lane &lane : plotLayout()) {
+		const YScale scale = laneScales_.value(lane.key);
+		if (!scale.autoRange || scale.log) return false;
+	}
+	return true;
+}
+
+void ChartView::setAllLanesYAuto() {
+	if (!lanes_ || allLanesYAuto()) return;
+	for (const Lane &lane : plotLayout()) {
+		YScale &scale = laneScales_[lane.key];
+		scale.autoRange = true;
+		scale.log = false;
+		scale.initialized = false;
+	}
+	emit laneYChanged();
+	refresh();
+}
+
+int ChartView::currentLane() const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || plots.isEmpty()) return -1;
+	for (int k = 0; k < plots.size(); k++)
+		if (plots[k].key == currentLane_) return k;
+	return 0; /* none chosen, or its unit gone: the first */
+}
+
+void ChartView::setCurrentLane(int lane) {
+	const QString key = laneKey(lane);
+	if (!lanes_ || lane < 0 || lane >= laneCount() || lane == currentLane()) return;
+	currentLane_ = key;
+	emit currentLaneChanged();
+	refresh();
+}
+
 /* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
 QRectF ChartView::laneScrollBarRect() const {
 	const QRectF plot = plotRect();
@@ -3270,6 +3378,9 @@ void ChartView::setAllLanesFolded(bool folded) {
 /* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
+	if (stateBadge_.contains(pos)) /* the short window's lock: what it is and where it is turned off */
+		return tr("The view locks on the first line's crossings at windows under 100 ms · Display → Lock short windows "
+				"turns it off");
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
 	if (memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos))
 		return tr("The view: drag it along the memory · Wheel: a window earlier or later");
@@ -3324,9 +3435,19 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (laneMenuButtonAt(pos) == lane) return tr("Y range and lane options");
 	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
 	if (pos.x() >= plot.left()) return QString();
+	if (rangeTagAt(pos) == lane) { /* its range in words, and what the click does */
+		const YScale scale = laneScales_.value(lanesShown_[lane].key);
+		const QString unit = lanesShown_[lane].label;
+		const QString range = tr("%1 to %2").arg(chartNumber(laneYLo(lane)), chartNumber(laneYHi(lane)))
+				+ (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit);
+		return scale.log ? (scale.autoRange ? tr("This lane's Y scale is logarithmic · Click: back to Auto")
+						: tr("This lane's Y scale is logarithmic, manual: %1 · Click: back to Auto").arg(range))
+				: tr("This lane's Y range is manual: %1 · Click: back to Auto").arg(range);
+	}
 	QStringList parts;
 	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
-	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
+	parts << tr("Ctrl + wheel: zoom this lane") << tr("Click: its Y range in the toolbar") << tr("Double-click: Auto")
+			<< tr("Right-click: its Y range and Fold lane");
 	return parts.join(QStringLiteral(" · "));
 }
 
@@ -3694,6 +3815,7 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		for (double dx : { -4.0, 0.0, 4.0 }) p.drawEllipse(QPointF(cx + dx, cy), 1.5, 1.5);
 		p.restore();
 	};
+	const int current = lanes_ && plots.size() > 1 ? currentLane() : -1; /* lit: one lane of several */
 	for (int index = 0; index < plots.size(); index++) {
 		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
@@ -3705,6 +3827,8 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			continue;
 		}
 		const GridTicks values = gridTicks(a);
+		QString tagText;
+		const QRectF tag = lanes_ ? rangeTag(lane, shown, &tagText) : QRectF();
 		p.save();
 		const auto label = [&](double v) {
 			const QString text = a.log ? chartLogLabel(v) : chartAxisLabel(v, values.valueStep, normalized_);
@@ -3715,11 +3839,15 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 				if (shown.height() < 16) return;
 				top = std::clamp(top, shown.top(), shown.bottom() - 16);
 			}
-			valueLabels_ << text;
-			p.setPen(c.muted);
 			const double left = lanes_ ? LANE_UNIT_W : 2; /* lanes: their units up the left edge */
 			/* the trigger on: right of them its level's marker has a column of its own, so it covers none */
 			const double right = plot.left() - 6 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+			/* none under the lane's range tag: a label there would be half covered */
+			if (!tag.isEmpty() && top < tag.bottom() + 1
+					&& right - QFontMetricsF(p.font()).horizontalAdvance(text) < tag.right() + 2)
+				return;
+			valueLabels_ << text;
+			p.setPen(c.muted);
 			valueLabelRects_ << QRectF(left, top, right - left, 16);
 			p.drawText(valueLabelRects_.last(), Qt::AlignRight | Qt::AlignVCenter, text);
 		};
@@ -3754,7 +3882,26 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			if (!menu.isEmpty()) menuButton(index, menu);
 			const double nameTop = menu.isEmpty() ? button.bottom() : menu.bottom();
 			const QRectF name(0, nameTop, LANE_UNIT_W, shown.bottom() - nameTop);
-			p.setPen(c.text);
+			if (!tag.isEmpty()) { /* Manual in the warn colour (a range that does not follow), Log in the accent */
+				const QColor ink = laneScales_.value(lane.key).log ? c.accent : c.warn;
+				QColor fill = ink;
+				fill.setAlphaF(index == hoverTag_ ? 0.32 : 0.16);
+				p.save();
+				p.setRenderHint(QPainter::Antialiasing, true);
+				p.setPen(Qt::NoPen);
+				p.setBrush(fill);
+				p.drawRoundedRect(tag, 4, 4);
+				/* a longer word (Arabic's "Log") a little smaller rather than cut; cut only below 6 pt */
+				QFont font = tagFont();
+				while (font.pointSizeF() > 6 && QFontMetricsF(font).horizontalAdvance(tagText) > tag.width() - 4)
+					font.setPointSizeF(font.pointSizeF() - 0.5);
+				p.setFont(font);
+				p.setPen(ink);
+				p.drawText(tag, Qt::AlignCenter, QFontMetricsF(font).elidedText(tagText, Qt::ElideRight, tag.width() - 2));
+				p.restore();
+			}
+			/* the current lane's unit lit: the one the toolbar's Y range shows (only with more than one lane) */
+			p.setPen(index == current ? c.accent : c.text);
 			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);
 			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
@@ -5653,12 +5800,22 @@ void ChartView::fitState(double plotWidth, int &variant, double &width) const {
 	const double most = std::max(0.0, plotWidth - legendMin);
 	const double room = std::min(plotWidth * STATE_SHARE, most);
 	for (qsizetype i = 0; i < variants.size(); i++) {
-		width = std::ceil(metrics.horizontalAdvance(variants[i]));
+		width = std::ceil(stateWidth(variants[i]));
 		variant = int(i);
 		if (width <= room) return;
 	}
 	if (width <= most) return; /* the shortest, whole, past its share */
 	width = most;              /* a chart too narrow even for that: it ends with "…" (drawState) */
+}
+
+double ChartView::stateWidth(const QString &text) const {
+	const QFontMetricsF metrics(labelFont());
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	if (badge.isEmpty() || !text.endsWith(badge)) return metrics.horizontalAdvance(text);
+	QString rest = text.chopped(badge.size());
+	if (rest.endsWith(QStringLiteral("  ·  "))) rest.chop(5);
+	return (rest.isEmpty() ? 0 : metrics.horizontalAdvance(rest) + BADGE_GAP) + metrics.horizontalAdvance(badge)
+			+ 2 * BADGE_PAD;
 }
 
 /* the state, top right: held, manual Y, cursor mode, the trigger; as much of it as fits, the whole in its tooltip */
@@ -5670,23 +5827,54 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	stateFull_ = texts.first();
 	stateText_.clear();
 	stateRect_ = QRectF();
+	stateBadge_ = QRectF();
 	if (variant < 0) return;
 	const QFontMetricsF metrics(labelFont());
 	stateText_ = texts[variant];
+	const bool whole = stateWidth(stateText_) <= width + 0.5;
 	if (metrics.horizontalAdvance(stateText_) > width) stateText_ = metrics.elidedText(stateText_, Qt::ElideRight, width);
 	stateRect_ = QRectF(axes.rect.right() - width, LEGEND_TOP, width, LEGEND_ROW_H);
 	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setFont(labelFont());
+	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
+	/* the short window's lock: the view's state, not the user's trigger nor a stop; a badge in the accent colour (the
+	 * Live button's), on a tint of it, at the end the words are read to (the right; in Arabic the left) */
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	QRectF textRoom = stateRect_;
+	if (!badge.isEmpty() && whole && stateText_.endsWith(badge)) {
+		const double badgeWidth = metrics.horizontalAdvance(badge) + 2 * BADGE_PAD;
+		stateBadge_ = QRectF(rightToLeft ? stateRect_.left() : stateRect_.right() - badgeWidth, stateRect_.top() + 2,
+				badgeWidth, stateRect_.height() - 4);
+		QColor tint = c.accent;
+		tint.setAlphaF(Theme::isDark() ? 0.22 : 0.14);
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(Qt::NoPen);
+		p.setBrush(tint);
+		p.drawRoundedRect(stateBadge_, 4, 4);
+		p.setPen(c.accent);
+		p.drawText(stateBadge_, Qt::AlignCenter, badge);
+		p.restore();
+		stateText_.chop(badge.size());
+		if (stateText_.endsWith(QStringLiteral("  ·  "))) stateText_.chop(5);
+		textRoom = rightToLeft ? stateRect_.adjusted(badgeWidth + BADGE_GAP, 0, 0, 0)
+				: stateRect_.adjusted(0, 0, -(badgeWidth + BADGE_GAP), 0);
+		if (stateText_.isEmpty()) {
+			stateText_ = badge;
+			p.restore();
+			return;
+		}
+	}
 	p.setPen((trigger_.on ? trigger_.stopped : !live_) ? c.warn : c.muted); /* the trigger on: amber for Stopped only */
 	/* words, not the chart's time: read in the language's direction (Arabic from the right, its first part rightmost),
 	 * still at the chart's right end; right to left, a mark either side of each dot keeps a part's Latin end ("s") and
 	 * the next part's Latin start ("Y") from running together into one left-to-right run */
-	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
 	p.setLayoutDirection(QGuiApplication::layoutDirection());
 	const QString dot = QStringLiteral("  ·  ");
-	p.drawText(stateRect_, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
+	p.drawText(textRoom, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
 			rightToLeft ? QString(stateText_).replace(dot, QChar(0x200F) + dot + QChar(0x200F)) : stateText_);
+	if (!stateBadge_.isEmpty()) stateText_ += dot + badge; /* tests read the words, the badge's too */
 	p.restore();
 }
 

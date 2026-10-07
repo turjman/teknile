@@ -839,10 +839,6 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <translation> · المجاميع منذ %1 (%2)</translation>
     </message>
     <message>
-        <source>Lanes: each lane has its own Y range: right-click its values</source>
-        <translation>المسارات: لكل مسار مدى Y خاص: انقر بالزر الأيمن على قيمه</translation>
-    </message>
-    <message>
         <source>no unit</source>
         <translation>بلا وحدة</translation>
     </message>
@@ -1230,6 +1226,22 @@ With many fast lines the Memory holds less than asked, and the memory strip says
         <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
         <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
+    <message>
+        <source>All lanes: Auto</source>
+        <translation>كل المسارات: تلقائي</translation>
+    </message>
+    <message>
+        <source>Every lane&apos;s Y range back to Auto (linear): the lanes tagged Manual or Log</source>
+        <translation>إعادة مدى Y لكل مسار إلى تلقائي (خطّي): المسارات الموسومة «يدوي» أو «لوغاريتمي»</translation>
+    </message>
+    <message>
+        <source>Y range (%1)</source>
+        <translation>مدى Y (⁦%1⁩)</translation>
+    </message>
+    <message>
+        <source>Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane&apos;s value labels chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.</source>
+        <translation>المسارات: مدى Y للمسار الحالي (⁦%1⁩، واسم وحدته مضاء). النقر على قيم مسار آخر يختاره؛ ووسمه (يدوي، لوغاريتمي) أو النقر المزدوج هناك يعيده إلى تلقائي.</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1505,6 +1517,42 @@ With many fast lines the Memory holds less than asked, and the memory strip says
     <message>
         <source>The view: drag it along the memory · Wheel: a window earlier or later</source>
         <translation>العرض: اسحبه على طول الذاكرة · العجلة: نافذة إلى الأقدم أو الأحدث</translation>
+    </message>
+    <message>
+        <source>Log</source>
+        <translation>لوغاريتمي</translation>
+    </message>
+    <message>
+        <source>Manual</source>
+        <translation>يدوي</translation>
+    </message>
+    <message>
+        <source>The view locks on the first line&apos;s crossings at windows under 100 ms · Display → Lock short windows turns it off</source>
+        <translation>يُقفَل العرض على عبورات الخط الأول في النوافذ الأقصر من ⁦100 ms⁩ · العرض ← قفل النوافذ القصيرة يُطفئه</translation>
+    </message>
+    <message>
+        <source>%1 to %2</source>
+        <translation>%1 إلى %2</translation>
+    </message>
+    <message>
+        <source>This lane&apos;s Y scale is logarithmic · Click: back to Auto</source>
+        <translation>مقياس Y لهذا المسار لوغاريتمي · النقر: العودة إلى تلقائي</translation>
+    </message>
+    <message>
+        <source>This lane&apos;s Y scale is logarithmic, manual: %1 · Click: back to Auto</source>
+        <translation>مقياس Y لهذا المسار لوغاريتمي، يدوي: %1 · النقر: العودة إلى تلقائي</translation>
+    </message>
+    <message>
+        <source>This lane&apos;s Y range is manual: %1 · Click: back to Auto</source>
+        <translation>مدى Y لهذا المسار يدوي: %1 · النقر: العودة إلى تلقائي</translation>
+    </message>
+    <message>
+        <source>Click: its Y range in the toolbar</source>
+        <translation>النقر: مدى Y له في شريط الأدوات</translation>
+    </message>
+    <message>
+        <source>Double-click: Auto</source>
+        <translation>النقر المزدوج: تلقائي</translation>
     </message>
 </context>
 <context>
@@ -2509,6 +2557,48 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
     </message>
     <message>
         <source>
+&lt;h2&gt;Log &amp;amp; pop-ups&lt;/h2&gt;
+&lt;p&gt;The &lt;b&gt;Log&lt;/b&gt; tab lists what happened, with the time: connecting, connected, lost (and why), the
+device ID, a token refused, every &lt;b&gt;write&lt;/b&gt; (register, value, bytes, address) and its result: written,
+&lt;b&gt;refused&lt;/b&gt; by the device (with its reason), not written (a bad value), cancelled. Also read errors
+of a register (when they start and when it reads again), timeouts, error answers, bad frames, maps
+loaded, CSV recordings, the API server.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Warnings in amber, errors in red. While you are on another tab, the tab title counts them: &lt;b&gt;Log (3)&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;Every line also goes to &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; beside the program (one file a day);
+&lt;b&gt;Open folder&lt;/b&gt; shows it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Show info&lt;/b&gt; off: only warnings and errors in the tab (the file keeps everything).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Pop-ups&lt;/b&gt;: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
+beside the tabs (right of them, or left of them in Arabic), where they cover nothing; &lt;i&gt;Show in Log&lt;/i&gt; opens the tab and closes the pop-up. They do not
+block anything. When the window is too narrow for them there, the status bar shows them instead.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
+(numbers aside) pops up at most every 30 s; one pop-up is shown at a time, the newest, with &lt;i&gt;+N more&lt;/i&gt; for the
+others that came while it was up. All of them are in the Log; hover the pop-up for its full text.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;السجل والنوافذ المنبثقة&lt;/h2&gt;
+&lt;p&gt;لسان &lt;b&gt;السجل&lt;/b&gt; يسرد ما حدث، مع الزمن: الاتصال، والاتصال الناجح، والانقطاع (ولماذا)، و
+معرّف الجهاز، ورمز دخول مرفوض، وكل &lt;b&gt;كتابة&lt;/b&gt; (المسجّل، القيمة، البايتات، العنوان) ونتيجتها: كُتبت،
+أو &lt;b&gt;رفضها&lt;/b&gt; الجهاز (مع سببه)، أو لم تُكتب (قيمة غير صالحة)، أو أُلغيت. وكذلك أخطاء قراءة
+مسجّل (حين تبدأ وحين يُقرأ من جديد)، والمهلات، وأجوبة الخطأ، والإطارات التالفة، والخرائط
+المحمّلة، وتسجيلات CSV، وخادم API.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;التحذيرات بالكهرماني، والأخطاء بالأحمر. وأنت على لسان آخر، يعدّها عنوان اللسان: &lt;b&gt;السجل (3)&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;كل سطر يذهب أيضًا إلى &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; بجانب البرنامج (ملف لكل يوم)؛
+و&lt;b&gt;فتح المجلد&lt;/b&gt; يُظهره.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض المعلومات&lt;/b&gt; معطّل: التحذيرات والأخطاء فقط في اللسان (والملف يحفظ كل شيء).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (⁦5 s⁩، والخطأ ⁦8 s⁩) في المساحة الحرة
+بجانب الألسنة (على يمينها، أو على يسارها بالعربية)، حيث لا تغطي شيئًا؛ و&lt;i&gt;عرض في السجل&lt;/i&gt; يفتح اللسان ويغلق النافذة المنبثقة. ولا تحجب
+شيئًا. وحين تضيق النافذة عنها هناك، يعرضها شريط الحالة بدلًا منها.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل ⁦2 s⁩) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
+(بغض النظر عن الأعداد) تنبثق مرة كل ⁦30 s⁩ على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
+البقية التي أتت وهي ظاهرة. كلها في السجل؛ مرّر الفأرة فوق النافذة المنبثقة لنصها الكامل.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
 &lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
 &lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
 The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
@@ -2570,8 +2660,11 @@ the bar at the right); a click on a lane&apos;s ▾ (above its unit name) or on 
 lines and their values, a click on the strip opens it again, and &lt;b&gt;Fold all lanes&lt;/b&gt; / &lt;b&gt;Open all lanes&lt;/b&gt; under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
 equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane&apos;s ⋯ (under its ▾), or a right-click on its values, gives
-Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
-zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
+Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
+zooms it, a double-click sets it to Auto; a lane not in Auto has a &lt;i&gt;Manual&lt;/i&gt; (amber) or &lt;i&gt;Log&lt;/i&gt; tag at the top of
+its values, and a click on the tag sets it back to Auto; a click on a lane&apos;s values makes it the current lane, whose
+range the Y range row shows and sets (&lt;i&gt;Y range (A)&lt;/i&gt;), and &lt;b&gt;All lanes: Auto&lt;/b&gt; under Lanes sets them all back;
+one time axis, the cursors, notes and crosshair across them all;
 &lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; &lt;b&gt;Hover values&lt;/b&gt; (on by default): the box of values beside the mouse, off to see
@@ -2640,7 +2733,7 @@ to arm&lt;/i&gt; ...), and change only when it does, with no number while it run
 crossing, a faint line marks where the data ends.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Short windows lock by themselves&lt;/b&gt;: below a 100 ms window a live chart with the trigger off holds on each
 rising crossing of its first line&apos;s middle (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
-cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 &lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
 &lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
@@ -2732,7 +2825,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ واسحب الخط بين مسارين لتجعل الذي فوقه أطول أو أقصر (والنقر المزدوج عليه:
 تتساوى كلها من جديد؛ والمسارات تملأ الرسم دائمًا، ولا يقل أي منها عن ⁦80 px⁩)؛ ولكل مسار
 مدى Y خاص:
-انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ محور زمن واحد، والمؤشران والملاحظات و
+انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «كل المسارات: تلقائي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ وللمسار غير التلقائي وسم &lt;i&gt;يدوي&lt;/i&gt; (كهرماني) أو &lt;i&gt;لوغاريتمي&lt;/i&gt; أعلى قيمه، والنقر على الوسم يعيده تلقائيًا؛ والنقر على قيم مسار يجعله المسار الحالي، الذي يعرض صف مدى Y مداه ويضبطه (&lt;i&gt;مدى Y (⁦A⁩)&lt;/i&gt;)، و&lt;b&gt;كل المسارات: تلقائي&lt;/b&gt; تحت المسارات يعيدها كلها؛ محور زمن واحد، والمؤشران والملاحظات و
 خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
 بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
 اليمنى ويتمرر دون قفزات؛ &lt;b&gt;قيم التحويم&lt;/b&gt; (مفعّلة افتراضيًا): مربع القيم بجانب الفأرة، عطّلها لترى
@@ -2791,7 +2884,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير، بلا أي رقم ما دام يعمل؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي
 البيانات.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
-لمنتصف خطه الأول (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر)، فتقف الموجة بدل أن
+لمنتصف خطه الأول (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
 تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
 قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
@@ -2849,8 +2942,10 @@ Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
 arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
 it: 50 %&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log), Fold lane ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
+Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
+Manual or Log tag: Auto ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
+values: Auto ·
 &lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
 (&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
@@ -2880,8 +2975,8 @@ Log), Fold lane ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
 &lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
 ⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
 &lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
 (&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
@@ -2889,48 +2984,6 @@ Log), Fold lane ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
 و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
 &lt;/table&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Log &amp;amp; pop-ups&lt;/h2&gt;
-&lt;p&gt;The &lt;b&gt;Log&lt;/b&gt; tab lists what happened, with the time: connecting, connected, lost (and why), the
-device ID, a token refused, every &lt;b&gt;write&lt;/b&gt; (register, value, bytes, address) and its result: written,
-&lt;b&gt;refused&lt;/b&gt; by the device (with its reason), not written (a bad value), cancelled. Also read errors
-of a register (when they start and when it reads again), timeouts, error answers, bad frames, maps
-loaded, CSV recordings, the API server.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Warnings in amber, errors in red. While you are on another tab, the tab title counts them: &lt;b&gt;Log (3)&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;Every line also goes to &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; beside the program (one file a day);
-&lt;b&gt;Open folder&lt;/b&gt; shows it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Show info&lt;/b&gt; off: only warnings and errors in the tab (the file keeps everything).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Pop-ups&lt;/b&gt;: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
-beside the tabs (right of them, or left of them in Arabic), where they cover nothing; &lt;i&gt;Show in Log&lt;/i&gt; opens the tab and closes the pop-up. They do not
-block anything. When the window is too narrow for them there, the status bar shows them instead.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
-(numbers aside) pops up at most every 30 s; one pop-up is shown at a time, the newest, with &lt;i&gt;+N more&lt;/i&gt; for the
-others that came while it was up. All of them are in the Log; hover the pop-up for its full text.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;السجل والنوافذ المنبثقة&lt;/h2&gt;
-&lt;p&gt;لسان &lt;b&gt;السجل&lt;/b&gt; يسرد ما حدث، مع الزمن: الاتصال، والاتصال الناجح، والانقطاع (ولماذا)، و
-معرّف الجهاز، ورمز دخول مرفوض، وكل &lt;b&gt;كتابة&lt;/b&gt; (المسجّل، القيمة، البايتات، العنوان) ونتيجتها: كُتبت،
-أو &lt;b&gt;رفضها&lt;/b&gt; الجهاز (مع سببه)، أو لم تُكتب (قيمة غير صالحة)، أو أُلغيت. وكذلك أخطاء قراءة
-مسجّل (حين تبدأ وحين يُقرأ من جديد)، والمهلات، وأجوبة الخطأ، والإطارات التالفة، والخرائط
-المحمّلة، وتسجيلات CSV، وخادم API.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;التحذيرات بالكهرماني، والأخطاء بالأحمر. وأنت على لسان آخر، يعدّها عنوان اللسان: &lt;b&gt;السجل (3)&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;كل سطر يذهب أيضًا إلى &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; بجانب البرنامج (ملف لكل يوم)؛
-و&lt;b&gt;فتح المجلد&lt;/b&gt; يُظهره.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;عرض المعلومات&lt;/b&gt; معطّل: التحذيرات والأخطاء فقط في اللسان (والملف يحفظ كل شيء).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (⁦5 s⁩، والخطأ ⁦8 s⁩) في المساحة الحرة
-بجانب الألسنة (على يمينها، أو على يسارها بالعربية)، حيث لا تغطي شيئًا؛ و&lt;i&gt;عرض في السجل&lt;/i&gt; يفتح اللسان ويغلق النافذة المنبثقة. ولا تحجب
-شيئًا. وحين تضيق النافذة عنها هناك، يعرضها شريط الحالة بدلًا منها.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل ⁦2 s⁩) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
-(بغض النظر عن الأعداد) تنبثق مرة كل ⁦30 s⁩ على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
-البقية التي أتت وهي ظاهرة. كلها في السجل؛ مرّر الفأرة فوق النافذة المنبثقة لنصها الكامل.&lt;/p&gt;
 </translation>
     </message>
 </context>

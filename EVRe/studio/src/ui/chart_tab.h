@@ -18,7 +18,9 @@
  *  - Lanes (Display): a plot per unit, stacked, scrolling when they do not
  *    fit; each lane's Y range by a right-click on its value labels (Auto,
  *    Manual, Log, Fold lane / Open lane), a ▾ on each lane to fold it,
- *    Fold all / Open all lanes in Display; the folds kept by unit.
+ *    Fold all / Open all lanes in Display; the folds kept by unit. The Y
+ *    range row shows and sets the current lane's (a click on its labels);
+ *    a lane not in Auto has a tag (Manual, Log) whose click sets Auto.
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
@@ -259,6 +261,7 @@ private:
 	/* the axes row */
 	QComboBox *window_, *memory_, *yMode_;
 	QString yModeTip_;
+	QLabel *yRangeLabel_;         /* "Y range", with Lanes the current lane's unit: "Y range (A)" */
 	QLineEdit *yMin_, *yMax_;
 	int registerLimit_ = RegisterModel::MAX_PLOTTED; /* the registers the chart may hold at the rate now */
 	QString drawingFailure_;      /* a card's failure before the window listened: logged by logDrawing */
@@ -272,6 +275,7 @@ private:
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
+	QAction *allAuto_;            /* All lanes: Auto: shown with Lanes on, enabled when a lane is not Auto */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */

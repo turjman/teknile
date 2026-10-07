@@ -414,6 +414,9 @@ public:
 	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
 	QString stateFullText() const { return stateFull_; } /* tests: its whole text (its tooltip) */
 	QRectF stateRect() const { return stateRect_; }      /* tests: its room as last painted; empty: no state */
+	/* the short window's lock in the corner ("Auto (short window)", "Auto · free running"): a badge in the accent colour,
+	 * so the lock reads as the view's state and not as a word among the others; empty: none drawn */
+	QRectF stateBadgeRect() const { return stateBadge_; }
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -422,6 +425,17 @@ public:
 	void setLaneYAuto(int lane);
 	bool setLaneYManual(int lane, double lo, double hi); /* false: not a range (lo <= 0 on the Log scale) */
 	void setLaneYLog(int lane, bool on);
+	bool allLanesYAuto() const;  /* every lane Auto and linear: no range tag on any */
+	void setAllLanesYAuto();     /* All lanes: Auto (linear) */
+	/* A lane's range tag: "Manual" (in the warn colour) or "Log" at the top of its value labels, beside its buttons,
+	 * so a range set long ago (a Ctrl + wheel, kept by unit) is seen; none in Auto. A click: that lane back to Auto */
+	QRectF laneRangeTagRect(int lane) const; /* empty: none (Auto, folded, out of view) */
+	QString laneRangeTagText(int lane) const;
+	int hoveredRangeTag() const { return hoverTag_; } /* tests: the lane whose tag is highlighted; -1: none */
+	/* The current lane: the one the toolbar's Y range shows and sets (its unit name lit). A click on a lane's value
+	 * labels, its ⋯ button or its range tag makes it current; the first lane until then. Kept by unit */
+	int currentLane() const;     /* -1: no lanes */
+	void setCurrentLane(int lane);
 	/* the lanes' ranges for the settings, one text per unit ("unit\tauto\tlog\tlo\thi"), and back */
 	QStringList laneScales() const;
 	void setLaneScales(const QStringList &texts);
@@ -620,6 +634,7 @@ signals:
 	void fastTriggerChanged(); /* armed, stopped or set otherwise: fastTriggerWatch() to be given to the engine */
 	void triggerRunChanged();  /* armed, stopped (Stop, a pan, Single's crossing) or off: Run or Stop on the button */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
+	void currentLaneChanged();               /* another lane current: the toolbar's Y range shows it */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
 
@@ -988,11 +1003,14 @@ private:
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
 	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
 	int hoverMenu_ = -1;              /* the lane whose menu button is under the mouse */
+	int hoverTag_ = -1;               /* the lane whose range tag is under the mouse */
+	QString currentLane_;             /* the current lane's unit (empty: the first lane) */
 	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
 	mutable QString stateFull_;
 	mutable QRectF stateRect_;
+	mutable QRectF stateBadge_;
 	/* the gaps' middles in the plot, and (gaps) each one's number: the lane above it */
 	QVector<double> separatorsY(const QVector<Lane> &plots, QVector<int> *gaps = nullptr) const;
 	QHash<QString, double> laneWeights_; /* the lanes' heights by unit (1 when not there) */
@@ -1020,6 +1038,12 @@ private:
 	void scrollLanesTo(double pixels);
 	static QRectF laneVisible(const QRectF &lane, const QRectF &plot); /* its part in the plot; empty: out of view */
 	static void laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu); /* an open lane's, in its part in view */
+	/* an open lane's range tag in its part in view, right of its buttons (text: "Manual" or "Log"); empty: Auto */
+	QRectF rangeTag(const Lane &lane, const QRectF &shown, QString *text = nullptr) const;
+	int rangeTagAt(const QPointF &pos) const; /* the lane whose tag is there, of the lanes as last painted; -1 */
+	bool pressLaneLabels(const QPointF &pos); /* a press on an open lane's value labels: it current; its tag: Auto */
+	/* the state's width for its text: the lock's badge (its last part) with its padding, no dot before it */
+	double stateWidth(const QString &text) const;
 	int laneMenuButtonAt(const QPointF &pos) const;
 	/* a press on the lanes' own places: the scroll bar, a unit name (fold), a folded strip (open); true if it was */
 	bool pressLanes(const QPointF &pos);
