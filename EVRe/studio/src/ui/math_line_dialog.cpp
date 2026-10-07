@@ -47,6 +47,7 @@ MathLineDialog::MathLineDialog(const MathLine &start, bool editing, const QVecto
 	connect(formula_, &QLineEdit::textChanged, this, &MathLineDialog::validate);
 	connect(name_, &QLineEdit::textChanged, this, &MathLineDialog::validate);
 	validate();
+	noWindowAnimation(this);
 }
 
 MathLine MathLineDialog::result() const {

@@ -2141,7 +2141,10 @@ What the Studio does with a stream on:
 
 - **To the window.** The blocks wait for the window's next frame in a queue of at most 64 MB (at a million samples a
   second of 4 bytes, 16 s). A window that stalls longer loses the oldest: their samples are counted as *not shown* in
-  the rate's tooltip, and their line breaks there.
+  the rate's tooltip, and their line breaks there. A frame takes the blocks into the chart for about 8 ms at most:
+  after the window was held (a title bar's button pressed, a dialog closed with its X) the chart moves on at once,
+  and the blocks that piled up follow over the next frames, in their order; none of them is lost (beyond 64 MB
+  waiting, a frame takes them all).
 
 The chart draws the channels (7.14), and a CSV recording records the streams beside it (12.7). The API does not take
 the samples; the Registers tab lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
@@ -3729,7 +3732,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
@@ -4500,7 +4503,19 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   then `ChartView::appendFast` (`Store::append`: a new start begins an epoch, records lost begin a segment) and
   `markFast` (`Store::mark`, the clock's mark of 13.9, about once a second). A stream's store is made by
   `setFastStream` and shared by its plotted channels (`Series::fast`); the window is the only writer, the chart's
-  threads read it while they bin, between two writes.
+  threads read it while they bin, between two writes. `sync()` appends blocks for `FAST_APPEND_NS` (8 ms) at most,
+  then the frame goes on: after the window's thread was held (Windows holds it while a title bar's button is
+  pressed, a dialog closed with its X) the first frame paid for the whole pile (700 ms of a million records a second,
+  about 2.8 MB: the paint 30 to 70 ms late). `takeFastBlocks` still hands over the whole queue; the blocks not
+  appended wait in the window (`fastRest_`, in their order) and go first at the next sync. The chart paints first,
+  then takes the rest: the first sync after the thread was held (no sync for `FAST_HELD_MS`, 50 ms) appends none,
+  so the frame it asks for shows the view moved on at once; and a sync that comes before the frame asked for at the
+  one before was painted (Qt's paint request waits behind the events posted meanwhile, the frame clock's tick among
+  them) appends none either: 8 ms more there only put that paint off (done 33 ms after the hold, not 25). A sync
+  waits so once, never two in a row (`ChartView::paints`), so a chart that does not paint (hidden, over its
+  `FrameBudget`) still takes the rest. That rest is held to `FAST_QUEUE_BYTES` too: past it a sync appends them all,
+  whatever the time, so nothing is dropped in the window and the counts (taken, lost, not shown) stay the engine's.
+  `fastSyncsLeftOver()` counts the syncs that left some (26.2, *fast speed*).
 - **Times.** A record's time is its epoch's mark before it plus the records since times the mark's period; before
   the first mark, the first's backwards. A new start whose first time falls before the end of the one before is
   shifted after it (`Epoch::shift`): times never go back, so `lowerBound` / `upperBound` (a binary search on the
@@ -4928,7 +4943,12 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   1240: both channels plotted over a 10 s window, the Chart tab shown, the stream on for 20 s. About 20 million
   records taken, none lost, no bad block, none left unshown (the rate's tooltip), the rate 0.95 to 1.04 M samples/s;
   and over the last 10 s the chart's paint (the timing aid's, 26.8) at most 8 ms a frame on average. Then the
-  example map again, connected to the Python fake device.
+  window's thread held 700 ms (`QThread::msleep`, as Windows holds it while a title bar's button is pressed): the
+  chart paints again within two frames, no paint after it over 40 ms, and at least 6 frames in each 200 ms slot
+  after the first; the blocks that piled up were appended over more than one frame (a sync left some for the next,
+  `fastSyncsLeftOver`), none lost and none left unshown (it prints the first paint's delay, the frames and longest
+  paint of five slots, and the syncs that left blocks). Then the example map again, connected to the Python fake
+  device.
 
 Fast lines without a device (`chartFastLines`, after the chart's many-lines steps), a chart of its own fed records
 as the window feeds it:
@@ -4985,6 +5005,10 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   shows, its Cancel ends it and removes the file.
 - **Notes** (`chartNotes`): Add note here answered, its tag at the time clicked, at the bottom of the plot; dragged
   100 px it moves to that time; a double-click edits it; clicked and Delete removes it.
+- **Dialogs without the window animations** (27): the Add note dialog, the lane's Manual… dialog, the export's
+  progress and the Math line dialog are made with `noWindowAnimation` (their `noAnimation` property); *New math
+  line…* from the Math menu opens the dialog, and closed as by its X it goes, the Math button as before
+  (`formulaCompletion`).
 - **Recording windows** (`recordingWindows`, the window connected to the fake device): a recording with the map's
   SUPPLY_V, SUPPLY_I, LED_MODE, MSG_BUFFER and CONFIG and an UNKNOWN column with every tenth cell empty, a note beside
   it and a math line in `recording/math`: titled with its name and span, held on 59.9 s without Hold; five lines
@@ -5130,7 +5154,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 427 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 430 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5430,6 +5454,7 @@ start again. Then: no heap (`nm -u`: the helper calls only `GetCrc16`), its stac
 | **Pitfall:** Qt 6.10 deprecated `invalidateFilter()` | `RegisterFilter` uses `beginFilterChange()` / `endFilterChange()` there, and the old call before 6.10 |
 | **Pitfall:** a painter on a widget takes the application's direction | not the widget's: in Arabic a left to right widget's right-aligned labels went to its left edge; the chart's frame and the analysis plots set `Qt::LayoutDirectionAuto`, as a painter on a picture has it (placed as aligned, an Arabic text still right to left) |
 | **Pitfall:** Qt warnings are invisible on Windows GUI builds | they go to the debugger output; the GUI test counts the thread warnings for that reason |
+| **Pitfall:** a dialog closed with its title bar's X stalls the live chart on Windows | while the X is held, Windows runs a loop of its own on the window's thread (the chart waits; the fast blocks queue, 23.11), and the compositor (DWM) then plays the dialog's close animation. The Chart tab's dialogs are made with `noWindowAnimation` (`ui_helpers`: `DwmSetWindowAttribute(DWMWA_TRANSITIONS_FORCEDISABLED)`, nothing on Linux), which takes the animation away; the held loop cannot be |
 | **Pitfall:** a read that fails keeps the last good value | the table marks the error, but that poll's sample and CSV cell repeat the old value (chapter 29) |
 
 ## 28. Glossary

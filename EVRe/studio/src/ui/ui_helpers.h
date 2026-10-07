@@ -58,6 +58,11 @@ void setButtonMenu(QPushButton *button, QMenu *menu);
 /* a warning with Cancel (the default) and one button that goes ahead: true when that one was clicked */
 bool confirmed(QWidget *parent, const QString &title, const QString &html, const QString &goAhead);
 
+/* a modal dialog over the window without the compositor's (DWM's) open and close animations on Windows: closed with
+ * its title bar's X, a dialog fades out while the window's live chart waits behind it (STUDIO.md 27). It also marks
+ * the dialog (the property "noAnimation", for the tests); nothing else on Linux. Called where the dialog is made. */
+void noWindowAnimation(QWidget *dialog);
+
 /* the style sheet again, after a change of the object name or of a property it selects on */
 void repolish(QWidget *widget);
 

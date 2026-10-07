@@ -82,6 +82,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTest>
+#include <QThread>
 #include <QTimer>
 #include <QToolTip>
 #include <QUndoStack>
@@ -1651,6 +1652,43 @@ private:
 				"no bad block, none left unshown");
 		check(perf.frames > 100 && paint <= 8.0, "fast speed: two fast lines over a 10 s window of a million records a "
 				"second: the chart's paint at most 8 ms a frame on average");
+		/* the window's thread held as Windows holds it while a title bar's button is pressed (a dialog closed with its
+		 * X): the blocks pile up meanwhile, and the chart must not stand still for the frames after paying for them */
+		const double framePeriod = 1000.0 / std::max(60.0, window_.screen() ? window_.screen()->refreshRate() : 60.0);
+		(void) view->takePerfStats();
+		const int paintsBefore = view->paints();
+		const int leftOverBefore = window_.fastSyncsLeftOver();
+		QThread::msleep(700);
+		QElapsedTimer sinceHold;
+		sinceHold.start();
+		while (view->paints() == paintsBefore && !sinceHold.hasExpired(2000)) QCoreApplication::processEvents(QEventLoop::AllEvents, 1);
+		const double firstPaint = double(sinceHold.nsecsElapsed()) / 1e6;
+		QString inSlots;
+		int fewest = 1000;
+		double paintAfter = 0;
+		for (int slot = 0; slot < 5; slot++) {
+			QTest::qWait(200);
+			const ChartView::PerfStats after = view->takePerfStats();
+			inSlots += QStringLiteral("%1%2 (%3 ms)").arg(slot ? QStringLiteral(", ") : QString()).arg(after.frames)
+					.arg(after.paintMax, 0, 'f', 1);
+			if (slot > 0) fewest = std::min(fewest, after.frames); /* the first slot holds the frame that took the pile */
+			paintAfter = std::max(paintAfter, after.paintMax);
+		}
+		/* the pile is appended over several frames (MainWindow::sync, FAST_APPEND_NS), none of it lost */
+		const int backlogSyncs = window_.fastSyncsLeftOver() - leftOverBefore;
+		const QRegularExpressionMatch afterCounts = QRegularExpression(
+				QStringLiteral("(\\d+) samples not shown")).match(sidebar->fastRateTip(0));
+		const qint64 notShownAfter = afterCounts.hasMatch() ? afterCounts.captured(1).toLongLong() : -1;
+		std::printf("  fast speed, after 700 ms held: the first paint %.1f ms after (a frame %.1f ms); frames in 200 ms "
+				"slots: %s; the longest paint %.1f ms; the blocks left for a later frame by %d syncs; %s, %lld not shown\n",
+				firstPaint, framePeriod, qPrintable(inSlots), paintAfter, backlogSyncs,
+				qPrintable(sidebar->fastLostText(0)), (long long) notShownAfter);
+		check(firstPaint <= 2 * framePeriod + 2 && paintAfter <= 40 && fewest >= 6,
+				"fast speed: the window's thread held 700 ms (a title bar's button pressed): the chart paints again within "
+				"two frames, no paint after it over 40 ms, and the frames go on (at least 6 in each 200 ms)");
+		check(backlogSyncs >= 1 && sidebar->fastLostText(0) == QLatin1String("lost 0") && notShownAfter == 0,
+				"fast speed: the blocks piled up in the 700 ms are appended over more than one frame (a sync left some for "
+				"the next), none lost and none left unshown");
 		button->click();
 		view->setWindow(windowBefore);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
@@ -2336,6 +2374,22 @@ private:
 		check(open && closed && completer->shown().isEmpty(),
 				"formula completion: Esc closes the list; a whole name (pi) offers nothing more");
 		dialog.close();
+
+		/* without the compositor's open and close animations (Windows, STUDIO.md 27): the dialog is made so, and from
+		 * the Chart tab's Math menu it opens and closes as the title bar's X closes it, the Math button as before */
+		auto *math = window_.findChild<ChartTab *>() ? window_.findChild<ChartTab *>()->findChild<QPushButton *>(
+				QStringLiteral("math")) : nullptr;
+		QAction *newLine = math && math->menu() ? math->menu()->actions().value(0) : nullptr;
+		const QString mathText = math ? math->text() : QString();
+		bool unanimated = false;
+		const bool opened = newLine && fillDialog([&](QDialog *d) {
+			unanimated = qobject_cast<MathLineDialog *>(d) && d->property("noAnimation").toBool();
+			d->close();
+		}, [&] { newLine->trigger(); });
+		check(dialog.property("noAnimation").toBool() && opened && unanimated && !QApplication::activeModalWidget()
+						&& math->text() == mathText,
+				"Math line dialog: made without the window animations; New math line… opens it, closed as by its X it "
+				"goes and the Math button is as before");
 	}
 
 	/* The Monitor's own requests: READ, the checks of what is typed, WRITE + ack (read back into the table), WRITE
@@ -5779,13 +5833,14 @@ private:
 			return progress && progress->isVisible();
 		}, 3000);
 		const int valueSeen = progress ? progress->value() : -1;
+		const bool unanimated = progress && progress->property("noAnimation").toBool(); /* STUDIO.md 27 */
 		if (QPushButton *cancel = progress ? buttonWithText(*progress, QStringLiteral("Cancel")) : nullptr) cancel->click();
 		const bool ended = done.wait(10000) || done.size() == 1;
 		const QString why = done.isEmpty() ? QString() : done.first().at(2).toString();
 		std::printf("     (6 M samples: the export started in %lld ms, its progress at %d of 1000 when cancelled; %s %s %s %s "
 				"\"%s\" %s)\n", (long long) returnedMs, valueSeen, began ? "began" : "-", running ? "running" : "-",
 				progressShown ? "shown" : "-", ended ? "ended" : "-", qPrintable(why), QFile::exists(file) ? "file left" : "");
-		check(began && running && returnedMs < 2000 && progressShown && ended && why == QLatin1String("cancelled")
+		check(began && running && returnedMs < 2000 && progressShown && unanimated && ended && why == QLatin1String("cancelled")
 						&& !QFile::exists(file) && !big.tab.exporting(),
 				"chart, Export to CSV: a big one runs on a thread (the window answers), a progress dialog with Cancel; "
 				"cancelled, its file is removed");
@@ -5820,11 +5875,15 @@ private:
 		if (QMenu *menu = chart.tab.chartMenu())
 			for (QAction *action : menu->actions())
 				if (action->text() == QLatin1String("Add note here")) add = action;
-		const bool asked = add && fillDialog([](QDialog *d) { typeAndAccept(d, QStringLiteral("valve open")); }, [&] { add->trigger(); });
+		bool unanimated = false; /* made without the window animations (STUDIO.md 27) */
+		const bool asked = add && fillDialog([&](QDialog *d) {
+			unanimated = d->property("noAnimation").toBool();
+			typeAndAccept(d, QStringLiteral("valve open"));
+		}, [&] { add->trigger(); });
 		if (QMenu *menu = chart.tab.chartMenu()) menu->close();
 		(void) chart.view->grab();
 		const QRectF tag = chart.view->noteTag(0);
-		const bool added = asked && chart.view->notes().size() == 1 && std::fabs(chart.view->notes()[0].time - time) < 1e-9
+		const bool added = asked && unanimated && chart.view->notes().size() == 1 && std::fabs(chart.view->notes()[0].time - time) < 1e-9
 				&& chart.view->notes()[0].text == QLatin1String("valve open") && !tag.isEmpty()
 				&& !tag.isEmpty() && tagAtTime(*chart.view, tag, time) && tag.bottom() < chart.view->lastPlot().bottom()
 				&& changed.size() == 1;
@@ -5833,8 +5892,8 @@ private:
 					"%lld changes)\n", add ? "found" : "missing", asked, (long long) chart.view->notes().size(),
 					chart.view->notes().isEmpty() ? 0.0 : chart.view->notes()[0].time, time, tag.left(), tag.bottom(), double(at.x()),
 					chart.view->lastPlot().bottom(), (long long) changed.size());
-		check(added,"chart, notes: Add note here asks its text; a dashed line at that time and a tag at the bottom of the "
-				"plot");
+		check(added,"chart, notes: Add note here asks its text (a dialog without the window animations); a dashed line at "
+				"that time and a tag at the bottom of the plot");
 
 		/* dragged by its tag */
 		const QPoint grab = tag.center().toPoint(), to = grab + QPoint(100, 0);
@@ -5933,7 +5992,9 @@ private:
 						QStringLiteral("Fold lane") }
 				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
 		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
-		const bool typed = manual && fillDialog([](QDialog *d) {
+		bool unanimated = false; /* made without the window animations (STUDIO.md 27) */
+		const bool typed = manual && fillDialog([&](QDialog *d) {
+			unanimated = d->property("noAnimation").toBool();
 			auto *low = d->findChild<QLineEdit *>(QStringLiteral("laneMin"));
 			auto *high = d->findChild<QLineEdit *>(QStringLiteral("laneMax"));
 			auto *buttons = d->findChild<QDialogButtonBox *>();
@@ -5945,7 +6006,7 @@ private:
 		if (menu) menu->close();
 		view->setLaneYLog(2, true);
 		(void) chart.view->grab();
-		const bool manualSet = typed && !view->laneYAuto(1) && view->laneYLo(1) == 0 && view->laneYHi(1) == 5
+		const bool manualSet = typed && unanimated && !view->laneYAuto(1) && view->laneYLo(1) == 0 && view->laneYHi(1) == 5
 				&& view->laneYAuto(0) && view->laneYLog(2) && !view->laneYLog(1)
 				&& std::fabs((view->laneYOfValue(2, 1) - view->laneYOfValue(2, 10)) - (view->laneYOfValue(2, 10) - view->laneYOfValue(2, 100))) < 1e-6;
 		const QStringList kept = QSettings().value(QStringLiteral("chart/laneY")).toStringList();
@@ -5959,8 +6020,8 @@ private:
 					&& otherView->laneYLog(2);
 		}
 		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
-				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed), Log, Fold lane; each lane "
-				"alone; kept (chart/laneY) for the next start");
+				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed; a dialog without the window "
+				"animations), Log, Fold lane; each lane alone; kept (chart/laneY) for the next start");
 
 		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
 		const QPointF inFirst(view->laneRect(0).center());

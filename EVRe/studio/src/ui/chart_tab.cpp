@@ -1425,6 +1425,7 @@ void ChartTab::editLaneRange(int lane) {
 		if (lowOk && highOk && view->setLaneYManual(lane, lo, hi)) dialog.accept();
 		else note->setText(view->laneYLog(lane) ? tr("Two numbers, both above 0 (Log)") : tr("Two numbers, min below max"));
 	});
+	noWindowAnimation(&dialog);
 	dialog.exec();
 }
 
@@ -1491,6 +1492,7 @@ bool ChartTab::exportCsv(const QString &file) {
 	exportProgress_->setMinimumDuration(400); /* a quick one shows nothing */
 	exportProgress_->setAutoClose(false);
 	exportProgress_->setAutoReset(false);
+	noWindowAnimation(exportProgress_);
 	connect(exportProgress_, &QProgressDialog::canceled, this, &ChartTab::cancelExport);
 	const qint64 epoch = view->epochMs();
 	QThreadPool::globalInstance()->start([job, lines = std::move(lines), epoch] {
@@ -1537,19 +1539,25 @@ void ChartTab::exportDone() {
 
 void ChartTab::addNoteAt(double time) {
 	const QDateTime at = QDateTime::fromMSecsSinceEpoch(chart_->view()->epochMs() + qint64(std::llround(time * 1000)));
-	bool ok = false;
-	const QString text = QInputDialog::getText(this, tr("Add note"),
-			tr("A note at %1:").arg(at.toString(QStringLiteral("HH:mm:ss.zzz"))), QLineEdit::Normal, QString(), &ok);
-	if (ok && !text.trimmed().isEmpty()) chart_->view()->addNote(time, text.trimmed());
+	/* QInputDialog::getText's dialog, made here to have no close animation */
+	QInputDialog ask(this);
+	ask.setWindowTitle(tr("Add note"));
+	ask.setLabelText(tr("A note at %1:").arg(at.toString(QStringLiteral("HH:mm:ss.zzz"))));
+	noWindowAnimation(&ask);
+	const QString text = ask.exec() == QDialog::Accepted ? ask.textValue() : QString();
+	if (!text.trimmed().isEmpty()) chart_->view()->addNote(time, text.trimmed());
 }
 
 void ChartTab::editNote(int index) {
 	const QVector<ChartNote> &notes = chart_->view()->notes();
 	if (index < 0 || index >= notes.size()) return;
-	bool ok = false;
-	const QString text = QInputDialog::getText(this, tr("Edit note"), tr("The note's text (empty: removed):"),
-			QLineEdit::Normal, notes[index].text, &ok);
-	if (!ok) return;
+	QInputDialog ask(this); /* as Add note's */
+	ask.setWindowTitle(tr("Edit note"));
+	ask.setLabelText(tr("The note's text (empty: removed):"));
+	ask.setTextValue(notes[index].text);
+	noWindowAnimation(&ask);
+	if (ask.exec() != QDialog::Accepted) return;
+	const QString text = ask.textValue();
 	if (text.trimmed().isEmpty()) chart_->view()->removeNote(index);
 	else chart_->view()->setNoteText(index, text.trimmed());
 }

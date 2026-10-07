@@ -24,6 +24,14 @@
 #include <algorithm>
 #include <cmath>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dwmapi.h>
+#endif
+
 QString secondsText(double seconds) {
 	const auto number = [](double v) { return QString::number(v, 'g', 4); };
 	if (seconds < 1e-3) return QStringLiteral("%1 µs").arg(number(seconds * 1e6));
@@ -109,6 +117,14 @@ bool confirmed(QWidget *parent, const QString &title, const QString &html, const
 	box.setDefaultButton(QMessageBox::Cancel);
 	box.exec();
 	return box.clickedButton() == go;
+}
+
+void noWindowAnimation(QWidget *dialog) {
+	dialog->setProperty("noAnimation", true);
+#ifdef Q_OS_WIN
+	const BOOL disabled = TRUE; /* winId: the dialog's window made now, so the attribute is there before it shows */
+	DwmSetWindowAttribute(HWND(dialog->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &disabled, sizeof disabled);
+#endif
 }
 
 void repolish(QWidget *widget) {
