@@ -2139,48 +2139,6 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
         <translation>السجل والنوافذ المنبثقة</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Log &amp;amp; pop-ups&lt;/h2&gt;
-&lt;p&gt;The &lt;b&gt;Log&lt;/b&gt; tab lists what happened, with the time: connecting, connected, lost (and why), the
-device ID, a token refused, every &lt;b&gt;write&lt;/b&gt; (register, value, bytes, address) and its result: written,
-&lt;b&gt;refused&lt;/b&gt; by the device (with its reason), not written (a bad value), cancelled. Also read errors
-of a register (when they start and when it reads again), timeouts, error answers, bad frames, maps
-loaded, CSV recordings, the API server.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Warnings in amber, errors in red. While you are on another tab, the tab title counts them: &lt;b&gt;Log (3)&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;Every line also goes to &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; beside the program (one file a day);
-&lt;b&gt;Open folder&lt;/b&gt; shows it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Show info&lt;/b&gt; off: only warnings and errors in the tab (the file keeps everything).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Pop-ups&lt;/b&gt;: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
-right of the tabs, where they cover nothing; &lt;i&gt;Show in Log&lt;/i&gt; opens the tab and closes the pop-up. They do not
-block anything. When the window is too narrow for them there, the status bar shows them instead.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
-(numbers aside) pops up at most every 30 s; one pop-up is shown at a time, the newest, with &lt;i&gt;+N more&lt;/i&gt; for the
-others that came while it was up. All of them are in the Log; hover the pop-up for its full text.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;السجل والنوافذ المنبثقة&lt;/h2&gt;
-&lt;p&gt;لسان &lt;b&gt;السجل&lt;/b&gt; يسرد ما حدث، مع الزمن: الاتصال، والاتصال الناجح، والانقطاع (ولماذا)، و
-معرّف الجهاز، ورمز دخول مرفوض، وكل &lt;b&gt;كتابة&lt;/b&gt; (المسجّل، القيمة، البايتات، العنوان) ونتيجتها: كُتبت،
-أو &lt;b&gt;رفضها&lt;/b&gt; الجهاز (مع سببه)، أو لم تُكتب (قيمة غير صالحة)، أو أُلغيت. وكذلك أخطاء قراءة
-مسجّل (حين تبدأ وحين يُقرأ من جديد)، والمهلات، وأجوبة الخطأ، والإطارات التالفة، والخرائط
-المحمّلة، وتسجيلات CSV، وخادم API.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;التحذيرات بالكهرماني، والأخطاء بالأحمر. وأنت على لسان آخر، يعدّها عنوان اللسان: &lt;b&gt;السجل (3)&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;كل سطر يذهب أيضًا إلى &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; بجانب البرنامج (ملف لكل يوم)؛
-و&lt;b&gt;فتح المجلد&lt;/b&gt; يُظهره.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;عرض المعلومات&lt;/b&gt; معطّل: التحذيرات والأخطاء فقط في اللسان (والملف يحفظ كل شيء).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (⁦5 s⁩، والخطأ ⁦8 s⁩) في المساحة الحرة
-بجانب الألسنة، حيث لا تغطي شيئًا؛ و&lt;i&gt;عرض في السجل&lt;/i&gt; يفتح اللسان ويغلق النافذة المنبثقة. ولا تحجب
-شيئًا. وحين تضيق النافذة عنها هناك، يعرضها شريط الحالة بدلًا منها.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل ⁦2 s⁩) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
-(بغض النظر عن الأعداد) تنبثق مرة كل ⁦30 s⁩ على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
-البقية التي أتت وهي ظاهرة. كلها في السجل؛ مرّر الفأرة فوق النافذة المنبثقة لنصها الكامل.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>Command line</source>
         <translation>سطر الأوامر</translation>
     </message>
@@ -2931,6 +2889,48 @@ Log), Fold lane ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
 و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
 &lt;/table&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Log &amp;amp; pop-ups&lt;/h2&gt;
+&lt;p&gt;The &lt;b&gt;Log&lt;/b&gt; tab lists what happened, with the time: connecting, connected, lost (and why), the
+device ID, a token refused, every &lt;b&gt;write&lt;/b&gt; (register, value, bytes, address) and its result: written,
+&lt;b&gt;refused&lt;/b&gt; by the device (with its reason), not written (a bad value), cancelled. Also read errors
+of a register (when they start and when it reads again), timeouts, error answers, bad frames, maps
+loaded, CSV recordings, the API server.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Warnings in amber, errors in red. While you are on another tab, the tab title counts them: &lt;b&gt;Log (3)&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;Every line also goes to &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; beside the program (one file a day);
+&lt;b&gt;Open folder&lt;/b&gt; shows it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Show info&lt;/b&gt; off: only warnings and errors in the tab (the file keeps everything).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Pop-ups&lt;/b&gt;: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
+beside the tabs (right of them, or left of them in Arabic), where they cover nothing; &lt;i&gt;Show in Log&lt;/i&gt; opens the tab and closes the pop-up. They do not
+block anything. When the window is too narrow for them there, the status bar shows them instead.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
+(numbers aside) pops up at most every 30 s; one pop-up is shown at a time, the newest, with &lt;i&gt;+N more&lt;/i&gt; for the
+others that came while it was up. All of them are in the Log; hover the pop-up for its full text.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;السجل والنوافذ المنبثقة&lt;/h2&gt;
+&lt;p&gt;لسان &lt;b&gt;السجل&lt;/b&gt; يسرد ما حدث، مع الزمن: الاتصال، والاتصال الناجح، والانقطاع (ولماذا)، و
+معرّف الجهاز، ورمز دخول مرفوض، وكل &lt;b&gt;كتابة&lt;/b&gt; (المسجّل، القيمة، البايتات، العنوان) ونتيجتها: كُتبت،
+أو &lt;b&gt;رفضها&lt;/b&gt; الجهاز (مع سببه)، أو لم تُكتب (قيمة غير صالحة)، أو أُلغيت. وكذلك أخطاء قراءة
+مسجّل (حين تبدأ وحين يُقرأ من جديد)، والمهلات، وأجوبة الخطأ، والإطارات التالفة، والخرائط
+المحمّلة، وتسجيلات CSV، وخادم API.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;التحذيرات بالكهرماني، والأخطاء بالأحمر. وأنت على لسان آخر، يعدّها عنوان اللسان: &lt;b&gt;السجل (3)&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;كل سطر يذهب أيضًا إلى &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; بجانب البرنامج (ملف لكل يوم)؛
+و&lt;b&gt;فتح المجلد&lt;/b&gt; يُظهره.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض المعلومات&lt;/b&gt; معطّل: التحذيرات والأخطاء فقط في اللسان (والملف يحفظ كل شيء).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (⁦5 s⁩، والخطأ ⁦8 s⁩) في المساحة الحرة
+بجانب الألسنة (على يمينها، أو على يسارها بالعربية)، حيث لا تغطي شيئًا؛ و&lt;i&gt;عرض في السجل&lt;/i&gt; يفتح اللسان ويغلق النافذة المنبثقة. ولا تحجب
+شيئًا. وحين تضيق النافذة عنها هناك، يعرضها شريط الحالة بدلًا منها.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل ⁦2 s⁩) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
+(بغض النظر عن الأعداد) تنبثق مرة كل ⁦30 s⁩ على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
+البقية التي أتت وهي ظاهرة. كلها في السجل؛ مرّر الفأرة فوق النافذة المنبثقة لنصها الكامل.&lt;/p&gt;
 </translation>
     </message>
 </context>

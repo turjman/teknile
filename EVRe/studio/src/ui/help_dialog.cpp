@@ -600,7 +600,7 @@ loaded, CSV recordings, the API server.</p>
 <b>Open folder</b> shows it.</li>
 <li><b>Show info</b> off: only warnings and errors in the tab (the file keeps everything).</li>
 <li><b>Pop-ups</b>: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
-right of the tabs, where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
+beside the tabs (right of them, or left of them in Arabic), where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
 block anything. When the window is too narrow for them there, the status bar shows them instead.</li>
 </ul>
 <p>No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message

@@ -106,6 +106,7 @@
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bus_panel.h"
+#include "ui/event_log.h"
 #include "model/analysis.h"
 #include "ui/analysis_window.h"
 #include "ui/chart_tab.h"
@@ -516,6 +517,7 @@ public:
 		badValueRefused();
 		noticeCoversNothing();
 		showInLogEndsNotice();
+		noticeRightToLeft();
 		eventLog();
 		staleValues();
 		decodedFields();
@@ -823,6 +825,55 @@ private:
 		check(shown && logOpened && notice && !notice->isVisible(),
 				"Show in Log: the Log tab, and the notice stays gone after a resize");
 		if (tabs) tabs->setCurrentIndex(0);
+	}
+
+	/* The notice in right-to-left (O-12): the tabs sit on the right there and the free room of their row is on their
+	 * left; the notice goes there, on Arabic's direction change and at every size, and back right of the tabs in left to
+	 * right. Its rectangle never meets the tab bar, the page or the sidebar, and stays in the window */
+	void noticeRightToLeft() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *notice = window_.findChild<Notice *>(QStringLiteral("notice"));
+		const auto *sidebar = window_.findChild<QScrollArea *>(QStringLiteral("sideScroll"));
+		if (!tabs || !notice) {
+			check(false, "the notice in right-to-left: the tabs and the notice");
+			return;
+		}
+		const QSize was = window_.size();
+		const auto clear = [&](const char *where) {
+			QApplication::processEvents();
+			const QRect n = inWindow(notice);
+			const QTabBar *bar = tabs->tabBar();
+			const QRect barRect(bar->mapTo(&window_, QPoint(0, 0)), bar->size());
+			const bool rtl = tabs->layoutDirection() == Qt::RightToLeft;
+			const bool ok = notice->isVisible() && !n.intersects(barRect) && !n.intersects(inWindow(tabs->currentWidget()))
+					&& !(sidebar && n.intersects(inWindow(sidebar))) && window_.rect().contains(n)
+					&& (rtl ? n.right() < barRect.left() : n.left() > barRect.right());
+			if (!ok)
+				std::printf("     (%s: the notice %d,%d %dx%d shown %d, the tab bar %d,%d %dx%d, the window %dx%d)\n", where, n.x(),
+						n.y(), n.width(), n.height(), int(notice->isVisible()), barRect.x(), barRect.y(), barRect.width(),
+						barRect.height(), window_.width(), window_.height());
+			return ok;
+		};
+		tabs->setCurrentIndex(0);
+		notice->post(LogLevel::Error, QStringLiteral("a notice in right-to-left"));
+		bool ok = clear("left to right");
+		language::apply(*qApp, QStringLiteral("ar"));
+		QTest::qWait(200);
+		ok = clear("right to left") && ok;
+		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
+			window_.resize(size);
+			QTest::qWait(100);
+			ok = clear("right to left, resized") && ok;
+		}
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look: the notice left of the tabs */
+			window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_notice_ar.png"));
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(200);
+		ok = clear("left to right again") && ok;
+		emit notice->linkActivated(QStringLiteral("log")); /* gone, for the steps after */
+		tabs->setCurrentIndex(0);
+		check(ok, "the notice in right-to-left (Arabic): left of the tabs, where their row is free, at every size; right of "
+				"them again in left to right; never over the tab bar, the page or the sidebar");
 	}
 
 	/* a widget's rectangle in the window's coordinates */

@@ -1978,7 +1978,7 @@ A link in trouble can produce the same message many times a second. These rules 
    - **The same message at most every 30 s.** Messages are compared with every digit removed, so *3 request(s) timed out (17 in all)* and *5 request(s) timed out (22 in all)* count as the same message.
    - **One pop-up at a time.** The newest replaces the shown one, and *+N more* counts the others that came while it was up. Once an error is shown, the pop-up stays red for the warnings that follow.
    - **Shown for 5 s** after the latest message, or **8 s** when it is an error.
-   - **It covers nothing.** It sits in the free space right of the tab bar, as one line, shortened to fit. Hover it for the full text. **Show in Log** opens the Log tab and closes the pop-up, and a later resize does not bring it back. When that space is narrower than 260 pixels, the status bar shows the message instead, for the same time.
+   - **It covers nothing.** It sits in the free space right of the tab bar (in Arabic, right to left, the tabs are on the right and it sits left of them), as one line, shortened to fit, its coloured edge where its text begins. It is placed again whenever the tab bar moves or changes size, the direction or the language changes, and the window is resized. Hover it for the full text. **Show in Log** opens the Log tab and closes the pop-up, and a later resize does not bring it back. When that space is narrower than 260 pixels, the status bar shows the message instead, for the same time.
    - **It never blocks.** No pop-up waits for a click.
 
 ### 11.4 The Log tab's counter
@@ -4167,7 +4167,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
-| `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
+| `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
 | `Theme`,&nbsp;`ui_helpers` | look&nbsp;and&nbsp;shared&nbsp;helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look), `studioIcon` | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch, the icon) |
@@ -5235,7 +5235,9 @@ The steps run in order. Each leaves the window and the device as the next step e
 8. the danger confirmation
 9. an out-of-range value refused, with a pop-up
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
-11. "Show in Log" ends the pop-up, even after a resize
+11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
+    sits left of the tabs, at 1200×720, 1600×950 and the window's size, and right of them again in left to right,
+    never over the tab bar, the page or the sidebar (with `EVRE_TEST_SHOT` set: `<prefix>_notice_ar.png`)
 12. the Log tab
 13. stale values grey and back
 14. the ⓘ tooltip and the detail line (with a check for broken UTF-8)
@@ -5684,7 +5686,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 523 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 524 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
