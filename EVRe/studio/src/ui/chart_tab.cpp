@@ -1122,6 +1122,12 @@ bool ChartTab::addMathLine(const MathLine &line) {
 	return true;
 }
 
+void ChartTab::removeMathLine(int line) {
+	if (line < 0 || line >= mathLines_.lines().size()) return;
+	mathLines_.remove(line);
+	rebuildMath();
+}
+
 void ChartTab::fillFastMath() {
 	ChartView *view = chart_->view();
 	const QVector<MathLine> &lines = mathLines_.lines();
@@ -2371,10 +2377,7 @@ void ChartTab::rebuildMathMenu() {
 			rebuildMath();
 		});
 		sub->addAction(tr("Edit…"), this, [this, i] { editMathLine(i); });
-		sub->addAction(tr("Remove"), this, [this, i] {
-			mathLines_.remove(i);
-			rebuildMath();
-		});
+		sub->addAction(tr("Remove"), this, [this, i] { removeMathLine(i); });
 	}
 	const int active = mathLines_.activeCount();
 	mathButton_->setText(active ? tr("ƒ  Math (%1)").arg(active) : tr("ƒ  Math"));
