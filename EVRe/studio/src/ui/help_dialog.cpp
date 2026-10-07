@@ -382,12 +382,12 @@ nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
 <h3>Histogram and spectrum</h3>
-<p><b>Right-click a line's chip</b> in the legend: <b>Histogram</b> (how its values spread, bins by the
+<p><b>Click a line's chip</b> in the legend (its <b>▾</b>) or right-click it: <b>Histogram</b> (how its values spread, bins by the
 Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
 2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
 its own with a readout under the mouse, a picture and CSV.</p>
 <h3>Trigger</h3>
-<p><b>Right-click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
+<p><b>Click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
 line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane with a small handle at its
 right end: a triangle, solid while the picture held crossed this level, and an arrow. Under the mouse the handle shows
 its tag, <i>I_LOAD 1.2 A, rising</i>: <b>drag</b> the line or the handle to move the level; <b>click</b> the handle's
@@ -406,6 +406,10 @@ and its T, no crossing counts; <b>Run</b> arms again in the mode, from now. Drag
 and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Normal · triggered</i>, <i>Stopped · Run
 to arm</i> ...), and change only when it does; while the view still fills after the crossing, a faint line marks
 where the data ends.</p>
+<p><b>Off</b> at the row's end turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
+<b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
+trigger (<i>no line to watch</i>, its name greyed in the row's list); it arms again when the line comes back, never
+on another line by itself.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -616,7 +620,8 @@ all fit</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
-<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum, Trigger on this line</td></tr>
+<tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
+Spectrum, Trigger on this line</td></tr>
 <tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line or handle · <b>click</b> the handle's arrow: rising,
 falling, either · <b>drag</b> the triangle under the chart: where the crossing sits</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,

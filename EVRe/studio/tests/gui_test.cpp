@@ -561,6 +561,7 @@ public:
 		chartTriggerAuto();
 		chartTriggerRunStop();
 		chartTriggerLook();
+		chartTriggerFlow();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -7812,7 +7813,7 @@ private:
 		auto *sinePosition = sine.tab.findChild<QSpinBox *>(QStringLiteral("triggerPosition"));
 		int perWindow = 0, perCycle = 0;
 		if (sineAction && sineLevel && sineMode && sineHoldoff && sinePosition) {
-			sineAction->setChecked(true);
+			sine.tab.triggerOnLine(sine.key()); /* the line saved is the chart before's, not on this one: chosen here */
 			sineLevel->setText(QStringLiteral("0.1"));
 			emit sineLevel->editingFinished();
 			sineMode->setCurrentIndex(sineMode->findData(int(ChartView::TriggerMode::Normal)));
@@ -9189,6 +9190,179 @@ private:
 		clearTriggerSettings();
 		if (savedWindow.isValid()) QSettings().setValue(QStringLiteral("chart/window"), savedWindow);
 		else QSettings().remove(QStringLiteral("chart/window"));
+	}
+
+	/* Trigger v2, the flow (U-4, U-9) and the legend's chips: Off at the row's end and the chip's entry, ticked for the
+	 * line watched, turn the trigger off as Display -> Trigger does; a line watched that leaves the chart stops the
+	 * trigger ("no line to watch", its name kept, greyed) and it arms again on that line when it is back, never on
+	 * another; each chip's "▾": a hand, lit, a tooltip, and a click opens the right-click's menu; in Arabic a number and
+	 * its unit are one left-to-right piece (U+2066 ... U+2069) */
+	void chartTriggerFlow() {
+		clearTriggerSettings();
+		TriggerPair pair;
+		ChartView *view = pair.view;
+		pair.feed(99.95);
+		pair.tab.show();
+		(void) QTest::qWaitForWindowExposed(&pair.tab);
+		(void) view->grab();
+		auto *action = pair.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *row = pair.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+		auto *line = pair.tab.findChild<QComboBox *>(QStringLiteral("triggerLine"));
+		auto *mode = pair.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *off = pair.tab.findChild<QPushButton *>(QStringLiteral("triggerOff"));
+		auto *state = pair.tab.findChild<ElidedLabel *>(QStringLiteral("triggerState"));
+		if (!action || !row || !line || !mode || !off || !state) {
+			check(false, "chart, Trigger's flow: the row's controls found");
+			return;
+		}
+
+		/* Off: at the row's end, after the state, with its tooltip; a click is Display -> Trigger unticked */
+		pair.tab.triggerOnLine(pair.ampsKey());
+		QApplication::processEvents();
+		const bool offShown = off->isVisible() && off->text() == QStringLiteral("Off")
+				&& off->toolTip() == QStringLiteral("Turn the trigger off (as Display → Trigger)")
+				&& off->geometry().left() >= state->geometry().right();
+		QTest::mouseClick(off, Qt::LeftButton);
+		const bool offWorks = !action->isChecked() && !row->isVisible() && !view->triggerOn();
+		check(offShown && offWorks, "chart, Trigger's flow: an Off button at the row's end (tooltip \"Turn the trigger off "
+				"(as Display → Trigger)\") turns the trigger off: Display -> Trigger unticked, the row hidden");
+
+		/* the chip's entry: ticked for the line watched alone; unticked, the trigger is off; ticked on another line, on */
+		const auto entry = [&pair](int key) { /* the menu as a right-click opens it, its entry taken at once */
+			pair.tab.showLineMenu(key, QPoint(0, 0));
+			QMenu *menu = pair.tab.lineMenu();
+			QAction *watch = menu ? menu->findChild<QAction *>(QStringLiteral("triggerOnLine")) : nullptr;
+			if (menu) menu->hide();
+			return watch;
+		};
+		pair.tab.triggerOnLine(pair.ampsKey());
+		QAction *watch = entry(pair.ampsKey());
+		const bool tickedWatched = watch && watch->isCheckable() && watch->isChecked();
+		watch = entry(pair.voltsKey());
+		const bool otherUnticked = watch && watch->isCheckable() && !watch->isChecked();
+		watch = entry(pair.ampsKey());
+		if (watch) watch->trigger(); /* unticked */
+		const bool untickedOff = !action->isChecked() && !row->isVisible() && !view->triggerOn();
+		watch = entry(pair.voltsKey());
+		if (watch) watch->trigger(); /* ticked */
+		const bool tickedOn = action->isChecked() && view->triggerOn() && view->triggerKey() == pair.voltsKey();
+		watch = entry(pair.voltsKey());
+		bool inStep = watch && watch->isChecked();
+		action->setChecked(false); /* the menu's own way: the entry follows */
+		watch = entry(pair.voltsKey());
+		inStep = inStep && watch && !watch->isChecked();
+		check(tickedWatched && otherUnticked && untickedOff && tickedOn && inStep, "chart, Trigger's flow: the chip's "
+				"Trigger on this line is ticked for the line watched only; unticking it turns the trigger off, ticking it on "
+				"another line arms there; it follows Display -> Trigger");
+
+		/* the line watched removed: the trigger stops, never another line, the line saved kept; back: armed on it again */
+		pair.tab.triggerOnLine(pair.ampsKey());
+		const int modeBefore = mode->currentData().toInt();
+		pair.tab.plotRegister(pair.amps, false);
+		pair.tab.refreshStatus();
+		const QString savedLine = QSettings().value(QStringLiteral("chart/triggerLine")).toString();
+		const bool stopped = action->isChecked() && row->isVisible() && !view->triggerOn() && view->triggerKey() == -1
+				&& state->fullText() == QStringLiteral("no line to watch") && line->currentIndex() < 0
+				&& line->placeholderText() == QStringLiteral("AMPS") && savedLine == QStringLiteral("AMPS");
+		pair.tab.plotRegister(pair.amps, true);
+		pair.feed(100.2);
+		pair.tab.refreshStatus();
+		const bool back = view->triggerOn() && view->triggerKey() == pair.ampsKey() && line->currentText() == QStringLiteral("AMPS")
+				&& mode->currentData().toInt() == modeBefore
+				&& QSettings().value(QStringLiteral("chart/triggerLine")).toString() == QStringLiteral("AMPS");
+		if (!stopped || !back)
+			std::printf("     (removed: on %d, key %d, \"%s\", index %d, placeholder \"%s\", saved \"%s\"; back: on %d, \"%s\")\n",
+					int(view->triggerOn()), view->triggerKey(), qPrintable(state->fullText()), line->currentIndex(),
+					qPrintable(line->placeholderText()), qPrintable(savedLine), int(view->triggerOn()),
+					qPrintable(line->currentText()));
+		check(stopped && back, "chart, Trigger's flow: the line watched removed stops the trigger (\"no line to watch\", "
+				"its name greyed in the list, chart/triggerLine kept; not moved to another line); back, it is armed on it again "
+				"in its mode");
+		action->setChecked(false);
+
+		/* each chip's menu button: at its right end; under the mouse a hand, lit, a tooltip; a click opens the menu */
+		(void) view->grab();
+		const int key = pair.voltsKey();
+		QRectF chip;
+		for (const QRectF &rect : view->legendChips())
+			if (view->chipAt(rect.center()) == key) chip = rect;
+		const QRectF button = view->chipButtonRect(key);
+		const bool placed = !button.isEmpty() && chip.contains(button) && chip.right() - button.right() < 6
+				&& button.width() >= 14 && button.height() >= 14;
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(view, &leave);
+		const QImage rest = view->grab().toImage();
+		const QPointF at = chip.center();
+		QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &move);
+		const QImage lit = view->grab().toImage();
+		const qreal dpr = lit.devicePixelRatio(); /* the picture in device pixels (225 % on the owner's screen) */
+		const QRect area = QRectF(button.topLeft() * dpr, button.size() * dpr).toAlignedRect();
+		const bool hover = view->hoveredChip() == key && view->cursor().shape() == Qt::PointingHandCursor
+				&& rest.copy(area) != lit.copy(area);
+		const QString tip = view->toolTipAt(at);
+		view->setRecording(true); /* a recording's window: no trigger to offer */
+		const QString recordingTip = view->toolTipAt(at);
+		view->setRecording(false);
+		const bool tipped = tip == QStringLiteral("Click or right-click: Histogram, Spectrum, Trigger on this line")
+				&& recordingTip == QStringLiteral("Click or right-click: Histogram, Spectrum");
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+		QMenu *menu = pair.tab.lineMenu();
+		const bool opened = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
+				&& menu->actions().value(0) && menu->actions().value(0)->text() == QStringLiteral("Histogram of VOLTS")
+				&& menu->findChild<QAction *>(QStringLiteral("triggerOnLine"))
+				&& menu->geometry().top() >= view->mapToGlobal(chip.bottomLeft().toPoint()).y();
+		if (menu) menu->close();
+		if (!placed || !hover || !tipped || !opened)
+			std::printf("     (the chip's button: placed %d, lit %d (hovered %d), tooltip \"%s\", opened %d)\n", int(placed),
+					int(hover), view->hoveredChip(), qPrintable(tip), int(opened));
+		check(placed && hover && tipped && opened, "chart, the legend: each chip has a \"▾\" at its right end; over the "
+				"chip a pointing hand, the button lit and the tooltip \"Click or right-click: Histogram, Spectrum, Trigger "
+				"on this line\" (a recording: without the trigger); a click opens the right-click's menu under the chip");
+		pair.tab.hide();
+
+		/* Arabic: a number and its unit one left-to-right piece where the formatters join them, and in the texts */
+		language::apply(*qApp, QStringLiteral("ar"));
+		const QChar lri(0x2066), pdi(0x2069);
+		const auto piece = [lri, pdi](const QString &text) { return lri + text + pdi; };
+		bool over = false;
+		const QString need = ChartTab::ramNeedText(qint64(122) * 1024 * 1024, 2048, 30, over);
+		const QString seconds = secondsText(0.5), span = durationText(72.34);
+		QString info;
+		{
+			LoneChart arabic(QStringLiteral("AR"), QStringLiteral("V"));
+			info = arabic.tab.infoText();
+		}
+		static const QRegularExpression fps(QStringLiteral("⁦[0-9]+ fps⁩"));
+		const QString fill = QCoreApplication::translate("ChartView", "held: filling, %1 s to come · Live to follow");
+		const QString delay = QCoreApplication::translate("ChartTab", " · delay %1 ms");
+		QString help;
+		{
+			HelpDialog dialog;
+			auto *topics = dialog.findChild<QListWidget *>(QStringLiteral("helpTopics"));
+			auto *page = dialog.findChild<QTextBrowser *>();
+			for (int i = 0; topics && page && i < topics->count(); i++) {
+				topics->setCurrentRow(i);
+				help += page->toPlainText();
+			}
+		}
+		const bool arabicPieces = seconds == piece(QStringLiteral("500 ms")) && span == piece(QStringLiteral("1 min 12.3 s"))
+				&& need.contains(piece(QStringLiteral("122 MB"))) && !need.startsWith(lri) && parseSeconds(seconds) == 0.5
+				&& fps.match(info).hasMatch() && fill.contains(piece(QStringLiteral("%1 s")))
+				&& delay.contains(piece(QStringLiteral("%1 ms"))) && help.contains(piece(QStringLiteral("10 s")))
+				&& help.contains(piece(QStringLiteral("2 V")));
+		language::apply(*qApp, QStringLiteral("en"));
+		const bool englishPlain = secondsText(0.5) == QStringLiteral("500 ms") && durationText(72.34) == QStringLiteral(
+				"1 min 12.3 s");
+		if (!arabicPieces || !englishPlain)
+			std::printf("     (Arabic: \"%s\" \"%s\" \"%s\", info \"%s\", \"%s\", \"%s\", help 10 s %d, 2 V %d; English plain %d)\n",
+					qPrintable(seconds), qPrintable(span), qPrintable(need), qPrintable(info), qPrintable(fill),
+					qPrintable(delay), int(help.contains(piece(QStringLiteral("10 s")))),
+					int(help.contains(piece(QStringLiteral("2 V")))), int(englishPlain));
+		check(arabicPieces && englishPlain, "chart, Arabic numbers: a number and its unit one left-to-right piece (U+2066 "
+				"... U+2069) in the window's times, durations, sizes, fps and ms, the fill time and the Help (10 s, 2 V); "
+				"English as it was");
+		clearTriggerSettings();
 	}
 
 	/* Recordings in windows of their own: opened from the file (with the map: names matched, a byte array left out, a

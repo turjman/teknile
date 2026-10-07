@@ -312,6 +312,7 @@ private:
 	void showHoldoff();
 	QLineEdit *triggerLevel_ = nullptr;
 	QPushButton *triggerArm_ = nullptr;
+	QPushButton *triggerOff_ = nullptr; /* at the row's end: the trigger off, as Display -> Trigger (the same action) */
 	QLabel *triggerUnit_ = nullptr; /* the line's unit after the level's box */
 	/* the state: cut to its room and whole in its tooltip, so no state's text sets the window's least width */
 	ElidedLabel *triggerState_ = nullptr;

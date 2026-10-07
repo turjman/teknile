@@ -69,19 +69,19 @@
     </message>
     <message>
         <source>%1 samples, resampled to %2 Hz · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8</source>
-        <translation>العينات: %1، أعيد أخذها بمعدل %2 Hz · المقاطع: %3 بطول %4، نافذة هان، تداخل 50 % · التباعد %5 Hz · القمة %6 Hz: %7%8</translation>
+        <translation>العينات: %1، أعيد أخذها بمعدل ⁦%2 Hz⁩ · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: %7%8</translation>
     </message>
     <message>
         <source>%1 … %2%3: %4 samples (%5 %)</source>
-        <translation>%1 … %2%3: العينات %4 (%5 %)</translation>
+        <translation>%1 … %2%3: العينات %4 (⁦%5 %⁩)</translation>
     </message>
     <message>
         <source>%1 Hz: %2%3</source>
-        <translation>%1 Hz: %2%3</translation>
+        <translation>⁦%1 Hz⁩: %2%3</translation>
     </message>
     <message>
         <source>%1 samples at %2 Hz, evenly spaced · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8</source>
-        <translation>العينات: %1 بمعدل %2 Hz، متساوية التباعد · المقاطع: %3 بطول %4، نافذة هان، تداخل 50 % · التباعد %5 Hz · القمة %6 Hz: %7%8</translation>
+        <translation>العينات: %1 بمعدل ⁦%2 Hz⁩، متساوية التباعد · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: %7%8</translation>
     </message>
 </context>
 <context>
@@ -457,7 +457,7 @@ Double-click to edit</source>
     <message>
         <source>View: the time shown. Pick one or type any length: 45, 2.5 s, 500 ms, 3 min, 1 h.
 Mouse wheel on the chart: zoom it (around the mouse when held).</source>
-        <translation>النافذة: الزمن المعروض. اختر واحدة أو اكتب أي طول: 45 أو 2.5 s أو 500 ms أو 3 min أو 1 h.
+        <translation>النافذة: الزمن المعروض. اختر واحدة أو اكتب أي طول: 45 أو ⁦2.5 s⁩ أو ⁦500 ms⁩ أو ⁦3 min⁩ أو ⁦1 h⁩.
 عجلة الفأرة على المخطط: تكبّره وتصغّره (حول الفأرة حين يكون مثبّتًا).</translation>
     </message>
     <message>
@@ -511,8 +511,8 @@ More than RAM: the oldest go sooner, and the memory strip says &quot;memory full
     <message>
         <source>The most memory the chart&apos;s samples take, all the lines together (2 GB by default). Pick one or type any size: 3000, 3000 MB, 3 GB.
 With many fast lines the Memory holds less than asked, and the memory strip says &quot;memory full&quot;. At most three quarters of this computer&apos;s memory (%1 GB).</source>
-        <translation>أقصى ذاكرة تأخذها عينات المخطط، كل الخطوط معًا (2 GB افتراضيًا). اختر واحدة أو اكتب أي حجم: 3000 أو 3000 MB أو 3 GB.
-مع خطوط سريعة كثيرة تحفظ «الذاكرة» أقل مما طُلب، ويقول شريط الذاكرة «الذاكرة ممتلئة». على الأكثر ثلاثة أرباع ذاكرة هذا الحاسوب (%1 GB).</translation>
+        <translation>أقصى ذاكرة تأخذها عينات المخطط، كل الخطوط معًا (⁦2 GB⁩ افتراضيًا). اختر واحدة أو اكتب أي حجم: 3000 أو ⁦3000 MB⁩ أو ⁦3 GB⁩.
+مع خطوط سريعة كثيرة تحفظ «الذاكرة» أقل مما طُلب، ويقول شريط الذاكرة «الذاكرة ممتلئة». على الأكثر ثلاثة أرباع ذاكرة هذا الحاسوب (⁦%1 GB⁩).</translation>
     </message>
     <message>
         <source>Window</source>
@@ -722,7 +722,7 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>The area under the line since the chart&apos;s Clear, in hours (W → Wh, A → Ah), from every sample as it came: what the memory let go is still in it. A gap of more than 1 s between two samples is not bridged.</source>
-        <translation>المساحة تحت الخط منذ «مسح» المخطط، بالساعات (W → Wh، A → Ah)، من كل عينة لحظة وصولها: ما تخلّت عنه الذاكرة ما زال فيها. فجوة أطول من 1 s بين عينتين لا تُجسَر.</translation>
+        <translation>المساحة تحت الخط منذ «مسح» المخطط، بالساعات (W → Wh، A → Ah)، من كل عينة لحظة وصولها: ما تخلّت عنه الذاكرة ما زال فيها. فجوة أطول من ⁦1 s⁩ بين عينتين لا تُجسَر.</translation>
     </message>
     <message>
         <source>chart: the GPU does not draw (%1): the CPU does</source>
@@ -742,15 +742,15 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source> · %1 fps</source>
-        <translation> · %1 fps</translation>
+        <translation> · ⁦%1 fps⁩</translation>
     </message>
     <message>
         <source> · %1 ms</source>
-        <translation> · %1 ms</translation>
+        <translation> · ⁦%1 ms⁩</translation>
     </message>
     <message>
         <source> · delay %1 ms</source>
-        <translation> · تأخير %1 ms</translation>
+        <translation> · تأخير ⁦%1 ms⁩</translation>
     </message>
     <message>
         <source> · GPU</source>
@@ -762,7 +762,7 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     </message>
     <message>
         <source>Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
-        <translation>مرسومة: المسجّلات على المخطط / أقصى ما يحمله بالمعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى 1000 Hz، و32 عند 2000 Hz، و16 عند 4000 Hz)؛ الخطوط الرياضية؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
+        <translation>مرسومة: المسجّلات على المخطط / أقصى ما يحمله بالمعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
     <message>
         <source>Rising</source>
@@ -836,7 +836,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>Measured between the cursors: A → B = %1 s</source>
-        <translation>قيس بين المؤشرين: A → B = %1 s</translation>
+        <translation>قيس بين المؤشرين: A → B = ⁦%1 s⁩</translation>
     </message>
     <message>
         <source> (place cursor %1 on the chart)</source>
@@ -848,7 +848,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>Measured over the view: %1 s%2</source>
-        <translation>قيس على العرض: %1 s%2</translation>
+        <translation>قيس على العرض: ⁦%1 s⁩%2</translation>
     </message>
     <message>
         <source> · totals since %1 (%2)</source>
@@ -1076,11 +1076,11 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>Hold-off: after a crossing, no other counts for this long (0 to 10 s); window: the window&apos;s length, one picture a window. Armed again when it has passed and the view is full</source>
-        <translation>مهلة التجاهل: بعد عبور، لا يُحسب عبور آخر طوال هذه المدة (من 0 إلى 10 s)؛ النافذة: طول النافذة، صورة لكل نافذة. يُجهَّز من جديد حين تنقضي ويمتلئ العرض</translation>
+        <translation>مهلة التجاهل: بعد عبور، لا يُحسب عبور آخر طوال هذه المدة (من 0 إلى ⁦10 s⁩)؛ النافذة: طول النافذة، صورة لكل نافذة. يُجهَّز من جديد حين تنقضي ويمتلئ العرض</translation>
     </message>
     <message>
         <source>Where the crossing sits in the window, from its left (0 to 90 %): the mark under the chart, which can be dragged</source>
-        <translation>موضع العبور في النافذة، من يسارها (من 0 إلى 90 %): العلامة تحت المخطط، ويمكن سحبها</translation>
+        <translation>موضع العبور في النافذة، من يسارها (من 0 إلى ⁦90 %⁩): العلامة تحت المخطط، ويمكن سحبها</translation>
     </message>
     <message>
         <source>hold-off</source>
@@ -1104,15 +1104,15 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the window (or where its mark is set).</source>
-        <translation>ثبّت المخطط حين يعبر خط مستواه، كما في راسم الإشارة: نقطة العبور عند 20 % من النافذة (أو حيث توضع علامتها).</translation>
+        <translation>ثبّت المخطط حين يعبر خط مستواه، كما في راسم الإشارة: نقطة العبور عند ⁦20 %⁩ من النافذة (أو حيث توضع علامتها).</translation>
     </message>
     <message>
         <source>Auto: holds on each crossing; when none comes for a window&apos;s length after the hold-off, it runs live until the next. Normal: holds on each crossing and stays held until the next one, however long. Single: holds on the first crossing and stops; Arm for another.</source>
         <translation>تلقائي: يثبّت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي. عادي: يثبّت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. مرة واحدة: يثبّت عند العبور الأول ويتوقف؛ و«تجهيز» لعبور آخر.</translation>
     </message>
     <message>
-        <source>While it is on, Hold / Live is Run / Stop. Right-click a line&apos;s chip: Trigger on this line.</source>
-        <translation>ما دام مفعّلًا، يصير «تثبيت» / «مباشر» «تشغيل» / «إيقاف». النقر بالزر الأيمن على شارة خط: القدح على هذا الخط.</translation>
+        <source>While it is on, Hold / Live is Run / Stop. A line&apos;s chip (click or right-click): Trigger on this line. Off: the row&apos;s Off, this entry or the chip&apos;s entry unticked.</source>
+        <translation>ما دام مفعّلًا، يصير «تثبيت» / «مباشر» «تشغيل» / «إيقاف». شارة خط (بالنقر أو بالنقر بالزر الأيمن): القدح على هذا الخط. وللإطفاء: «إطفاء» في آخر الصف، أو إلغاء تحديد هذا البند أو بند الشارة.</translation>
     </message>
     <message>
         <source>Wait for one more crossing</source>
@@ -1165,6 +1165,14 @@ Dragging the chart stops it too.</source>
         <source>waiting: level below the line&apos;s range</source>
         <translation>بانتظار: المستوى تحت مدى الخط</translation>
     </message>
+    <message>
+        <source>Off</source>
+        <translation>إطفاء</translation>
+    </message>
+    <message>
+        <source>Turn the trigger off (as Display → Trigger)</source>
+        <translation>إطفاء القدح (كما في العرض ← القدح)</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1210,11 +1218,11 @@ Dragging the chart stops it too.</source>
     </message>
     <message>
         <source>held: -%1 s · Live to follow</source>
-        <translation>مثبّت: ‎-%1 s · «مباشر» للمتابعة</translation>
+        <translation>مثبّت: ‎⁦-%1 s⁩ · «مباشر» للمتابعة</translation>
     </message>
     <message>
         <source>held: filling, %1 s to come · Live to follow</source>
-        <translation>مثبّت: يمتلئ، يأتي بعد %1 s · «مباشر» للمتابعة</translation>
+        <translation>مثبّت: يمتلئ، يأتي بعد ⁦%1 s⁩ · «مباشر» للمتابعة</translation>
     </message>
     <message>
         <source>Y log</source>
@@ -1266,7 +1274,7 @@ Dragging the chart stops it too.</source>
     </message>
     <message>
         <source>held: -%1 s</source>
-        <translation>مثبّت: ‎-%1 s</translation>
+        <translation>مثبّت: ‎⁦-%1 s⁩</translation>
     </message>
     <message>
         <source>held: filling</source>
@@ -1297,7 +1305,7 @@ Dragging the chart stops it too.</source>
     </message>
     <message>
         <source>Drag: where the crossing sits in the window (now %1 %, 0 to 90 %)</source>
-        <translation>السحب: موضع العبور في النافذة (الآن %1 %، من 0 إلى 90 %)</translation>
+        <translation>السحب: موضع العبور في النافذة (الآن ⁦%1 %⁩، من 0 إلى ⁦90 %⁩)</translation>
     </message>
     <message>
         <source>Drag: the trigger&apos;s level · Click its arrow: rising, falling or either</source>
@@ -1385,6 +1393,14 @@ Dragging the chart stops it too.</source>
         <source>▼ %1 (below range)</source>
         <comment>the level&apos;s tag, the level below its lane&apos;s range</comment>
         <translation>▼ %1 (تحت المدى)</translation>
+    </message>
+    <message>
+        <source>Click or right-click: Histogram, Spectrum</source>
+        <translation>النقر أو النقر بالزر الأيمن: المدرّج التكراري، الطيف</translation>
+    </message>
+    <message>
+        <source>Click or right-click: Histogram, Spectrum, Trigger on this line</source>
+        <translation>النقر أو النقر بالزر الأيمن: المدرّج التكراري، الطيف، القدح على هذا الخط</translation>
     </message>
 </context>
 <context>
@@ -1577,9 +1593,9 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
 على الناقل لكل جهاز عنوانه (أدناه).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المهلة&lt;/b&gt;: كم يجوز أن يستغرق الجواب. الوصلات الراديوية البطيئة تحتاج أكثر.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى 0.05 ms؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
+&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى ⁦0.05 ms⁩؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
 اكتبه، أو استخدم الأسهم / العجلة: تخطو بعُشر (10 → 9، 1 → 0.9 → … 0.1 → 0.09).
-0.25 ms تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
+⁦0.25 ms⁩ تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
 و&lt;i&gt;لماذا&lt;/i&gt; حين يكون أبطأ مما طُلب (بالكهرماني).
 تعمل الاستطلاعات على خيطها الخاص: رسم النافذة لا يبطئها أبدًا، وCSV يحصل على كل واحد.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع): كم مرة تتغير الأعداد على الشاشة، في الجدول وفي مفتاح
@@ -1589,10 +1605,10 @@ or this link does not). Not an error.&lt;/li&gt;
 و&lt;b&gt;4&lt;/b&gt; (افتراضي TCP) يتابعها، فيكلّف استطلاع عدة كتل رحلة ذهاب وإياب واحدة
 بدل واحدة لكل كتلة. يُحفظ منفصلًا لـ TCP وللتسلسلي.
 الاستطلاع قراءة واحدة لكل كتلة، فلا &lt;b&gt;تتداخل&lt;/b&gt; الاستطلاعات إلا مع «قيد الإرسال» ≥ 2 × الكتل: مع 3 كتل
-و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند 5 ms عبر Wi-Fi).
-الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند 5 ms.
+و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند ⁦5 ms⁩ عبر Wi-Fi).
+الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند ⁦5 ms⁩.
 المزيد في &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد 0.5 s من الانقطاع، وكل 2 s بعد محاولة
+&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد ⁦0.5 s⁩ من الانقطاع، وكل ⁦2 s⁩ بعد محاولة
 فاشلة).&lt;/li&gt;
 &lt;/ul&gt;
 &lt;h3&gt;عدة أجهزة على وصلة واحدة&lt;/h3&gt;
@@ -1722,11 +1738,11 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 بايت.&lt;/p&gt;
 &lt;h3&gt;ما الذي يحدد المعدّل&lt;/h3&gt;
 &lt;ul&gt;
-&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt;: الاستطلاع الذي تطلبه (10 ms = 100 استطلاع/ث، 1 ms = 1000/ث، &lt;b&gt;أقصى&lt;/b&gt; = بلا فاصل).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;زمن الاستجابة&lt;/b&gt; (شريط الحالة): كم يستغرق الجواب الواحد: أقل بكثير من 1 ms عبر USB أو على هذا الحاسوب، و1–5 ms عبر Wi-Fi.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt;: الاستطلاع الذي تطلبه (⁦10 ms⁩ = 100 استطلاع/ث، ⁦1 ms⁩ = 1000/ث، &lt;b&gt;أقصى&lt;/b&gt; = بلا فاصل).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;زمن الاستجابة&lt;/b&gt; (شريط الحالة): كم يستغرق الجواب الواحد: أقل بكثير من ⁦1 ms⁩ عبر USB أو على هذا الحاسوب، و1–⁦5 ms⁩ عبر Wi-Fi.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: كم طلبًا يجوز أن ينتظر أجوبته معًا. الاستطلاع طلب واحد لكل قراءة، فلا
 تتداخل الاستطلاعات إلا حين يغطي «قيد الإرسال» عدة منها: &lt;i&gt;الاستطلاعات معًا = قيد الإرسال ÷ القراءات&lt;/i&gt;.
-مع 3 قراءات و«قيد الإرسال» 4، استطلاع واحد في كل مرة: المعدّل 1 ÷ زمن الاستجابة (1000/ث عند 1 ms، و200/ث عند 5 ms).
+مع 3 قراءات و«قيد الإرسال» 4، استطلاع واحد في كل مرة: المعدّل 1 ÷ زمن الاستجابة (1000/ث عند ⁦1 ms⁩، و200/ث عند ⁦5 ms⁩).
 «قيد الإرسال» 12 يتيح تداخل 4 استطلاعات: حتى 4× ذلك.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;حين تكون الاستطلاعات أبطأ مما طُلب، يقول شريط الحالة لماذا، بالكهرماني (مرّر الفأرة فوقه للنص كله):&lt;/p&gt;
@@ -1739,7 +1755,7 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 معدّل بود أسرع.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;المقيس: 4000 استطلاع/ث إلى جهاز اختبار سريع على هذا الحاسوب. عبر وصلة بعدة ms لكل جواب يتبع المعدّل
-القاعدة أعلاه، الاستطلاعات معًا ÷ زمن الاستجابة: استطلاع واحد في كل مرة عند 5 ms لكل جواب نحو 200 استطلاع/ث.
+القاعدة أعلاه، الاستطلاعات معًا ÷ زمن الاستجابة: استطلاع واحد في كل مرة عند ⁦5 ms⁩ لكل جواب نحو 200 استطلاع/ث.
 المنفذ &lt;b&gt;التسلسلي&lt;/b&gt; (UART) يأخذ طلبًا واحدًا في كل مرة: أبقِ «قيد الإرسال» على &lt;b&gt;1&lt;/b&gt; هناك. و«قيد الإرسال» يُحفظ
 منفصلًا لـ TCP وللتسلسلي.&lt;/p&gt;
 &lt;p&gt;تعمل الاستطلاعات على خيطها الخاص: النافذة والمخطط والجدول لا تبطئها أبدًا، ويحصل CSV و
@@ -1747,15 +1763,15 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 &lt;h3&gt;الإرسال التلقائي&lt;/h3&gt;
 &lt;p&gt;الجهاز الذي يحمل STATUS فيه &lt;b&gt;CAP_AUTO_SEND&lt;/b&gt; يستطيع إرسال كتلته للقراءة فقط (من 0xD000) من تلقاء نفسه، بلا
 طلب ولا زمن جواب. فعّل &lt;b&gt;الإرسال التلقائي&lt;/b&gt; في بطاقة الاستطلاع واختر معدّلًا: الـ16 التي يصنعها الجهاز
-تمامًا، 8000 Hz ÷ (المقسّم + 1)، من 4000 Hz نزولًا إلى 40 Hz (المقسّم هو قيمة إعادة تحميل مؤقت الجهاز، وليس 0 أبدًا؛
-الافتراضي 100 Hz؛ يُتذكَّر المعدّل، لا التفعيل: إنه يغيّر الجهاز). حين لا يُعرض، تقول القائمة الرمادية لماذا
-(&lt;i&gt;غير متصل&lt;/i&gt;، &lt;i&gt;غير معروض&lt;/i&gt;، &lt;i&gt;ليس على ناقل&lt;/i&gt;). لا إطار خلال 2 s (بوابة لا تمرّرها):
+تمامًا، ⁦8000 Hz⁩ ÷ (المقسّم + 1)، من ⁦4000 Hz⁩ نزولًا إلى ⁦40 Hz⁩ (المقسّم هو قيمة إعادة تحميل مؤقت الجهاز، وليس 0 أبدًا؛
+الافتراضي ⁦100 Hz⁩؛ يُتذكَّر المعدّل، لا التفعيل: إنه يغيّر الجهاز). حين لا يُعرض، تقول القائمة الرمادية لماذا
+(&lt;i&gt;غير متصل&lt;/i&gt;، &lt;i&gt;غير معروض&lt;/i&gt;، &lt;i&gt;ليس على ناقل&lt;/i&gt;). لا إطار خلال ⁦2 s⁩ (بوابة لا تمرّرها):
 يُعطَّل من جديد، ويقول السجل ذلك، وتُستطلع المسجّلات.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;يكتب البرنامج CONFIG: ‏AUTO_SEND (البت 3) والمقسّم، مع إبقاء MSG_ENABLE، وSYS_RESET وDFU على 0.&lt;/li&gt;
 &lt;li&gt;كل إطار يملأ الجدول وهو نقطة على المخطط و&lt;b&gt;صف CSV واحد&lt;/b&gt;؛ والاستطلاعات تقرأ الباقي فقط.
 يعرض الشريط الجانبي كليهما، الإطارات والاستطلاعات في الثانية: &lt;i&gt;الإرسال التلقائي 99.8/s · 10.0 استطلاع/ث&lt;/i&gt;.&lt;/li&gt;
-&lt;li&gt;يُقرأ CONFIG كل 100 ms في الأثناء، حتى مع تعطيل الاستطلاع، فيبقى مراقب المضيف في الجهاز مُغذّى. إن
+&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ في الأثناء، حتى مع تعطيل الاستطلاع، فيبقى مراقب المضيف في الجهاز مُغذّى. إن
 مسحه الجهاز من تلقاء نفسه (إعادة تشغيل)، يقول السجل ذلك مرة ويُلغى تفعيل المربع.&lt;/li&gt;
 &lt;li&gt;على وصلة &lt;b&gt;تسلسلية&lt;/b&gt; لا يجوز أن تأخذ الإطارات أكثر من 70% من الوصلة: يُخفَّض المعدّل الأسرع، ويقول
 السجل ذلك.&lt;/li&gt;
@@ -1957,7 +1973,7 @@ print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pr
        &quot;decoded&quot;:{&quot;STATE&quot;:&quot;MODE=run  READY&quot;}}
 {&quot;cmd&quot;:&quot;set&quot;,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}      -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}  (read back)
 {&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;],&quot;ms&quot;:50}
-   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every 50 ms
+   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every ⁦50 ms⁩
 {&quot;cmd&quot;:&quot;stop&quot;}
 {&quot;cmd&quot;:&quot;read&quot;,&quot;addr&quot;:&quot;0xD000&quot;,&quot;count&quot;:16}  -&gt; {&quot;ok&quot;:true,&quot;hex&quot;:&quot;...&quot;}
 {&quot;cmd&quot;:&quot;write&quot;,&quot;addr&quot;:&quot;0xD085&quot;,&quot;hex&quot;:&quot;02&quot;}
@@ -2051,12 +2067,12 @@ others that came while it was up. All of them are in the Log; hover the pop-up f
 &lt;li&gt;كل سطر يذهب أيضًا إلى &lt;code&gt;logs/studio_&amp;lt;date&amp;gt;.log&lt;/code&gt; بجانب البرنامج (ملف لكل يوم)؛
 و&lt;b&gt;فتح المجلد&lt;/b&gt; يُظهره.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;عرض المعلومات&lt;/b&gt; معطّل: التحذيرات والأخطاء فقط في اللسان (والملف يحفظ كل شيء).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (5 s، والخطأ 8 s) في المساحة الحرة
+&lt;li&gt;&lt;b&gt;النوافذ المنبثقة&lt;/b&gt;: تظهر التحذيرات والأخطاء أيضًا بضع ثوانٍ (⁦5 s⁩، والخطأ ⁦8 s⁩) في المساحة الحرة
 بجانب الألسنة، حيث لا تغطي شيئًا؛ و&lt;i&gt;عرض في السجل&lt;/i&gt; يفتح اللسان ويغلق النافذة المنبثقة. ولا تحجب
 شيئًا. وحين تضيق النافذة عنها هناك، يعرضها شريط الحالة بدلًا منها.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل 2 s) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
-(بغض النظر عن الأعداد) تنبثق مرة كل 30 s على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
+&lt;p&gt;بلا إغراق: السطر نفسه مرة بعد مرة (إعادة اتصال كل ⁦2 s⁩) يُعدّ، لا يُكرَّر؛ والرسالة نفسها
+(بغض النظر عن الأعداد) تنبثق مرة كل ⁦30 s⁩ على الأكثر؛ وتُعرض نافذة منبثقة واحدة في كل مرة، الأحدث، مع &lt;i&gt;+N أخرى&lt;/i&gt; لـ
 البقية التي أتت وهي ظاهرة. كلها في السجل؛ مرّر الفأرة فوق النافذة المنبثقة لنصها الكامل.&lt;/p&gt;
 </translation>
     </message>
@@ -2402,11 +2418,11 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 &lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
 تشغيل.&lt;/li&gt;
 &lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
-(&lt;i&gt;10.0 k عينة/ث (‎+32 ppm)&lt;/i&gt;)، والعينات المفقودة (&lt;i&gt;مفقودة 1 024&lt;/i&gt;، بالكهرماني).&lt;/li&gt;
-&lt;li&gt;يُقرأ CONFIG كل 100 ms ما دام تدفق يعمل، حتى مع إيقاف الاستطلاع، فيبقى مراقب المضيف في الجهاز مطمئنًا.&lt;/li&gt;
+(&lt;i&gt;10.0 k عينة/ث (‎+⁦32 ppm⁩)&lt;/i&gt;)، والعينات المفقودة (&lt;i&gt;مفقودة 1 024&lt;/i&gt;، بالكهرماني).&lt;/li&gt;
+&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ ما دام تدفق يعمل، حتى مع إيقاف الاستطلاع، فيبقى مراقب المضيف في الجهاز مطمئنًا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يوقف كل تدفق على الجهاز أولًا. وبعد فقد الوصلة يُشغَّل من جديد من تلقاء
 نفسه.&lt;/li&gt;
-&lt;li&gt;لا كتلة خلال 2 s: يُوقف من جديد، والسجل يذكر ذلك. الجهاز الذي يوقف تدفقًا من تلقاء نفسه (إعادة تشغيل) يُذكر
+&lt;li&gt;لا كتلة خلال ⁦2 s⁩: يُوقف من جديد، والسجل يذكر ذلك. الجهاز الذي يوقف تدفقًا من تلقاء نفسه (إعادة تشغيل) يُذكر
 مرة واحدة في السجل.&lt;/li&gt;
 &lt;li&gt;جهاز واحد فقط: على ناقل تكون البطاقة رمادية (الجهاز الذي يرسل من تلقاء نفسه سيتصادم مع الآخرين).&lt;/li&gt;
 &lt;li&gt;المراقبة تسمّي الكتلة &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
@@ -2414,7 +2430,7 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 &lt;p&gt;تحت التدفق، لكل قناة مربع &lt;b&gt;رسم&lt;/b&gt; وأحدث قيمة لها. إذا فُعّل صارت القناة خطًا على المخطط،
 &lt;i&gt;ADC.I_LOAD&lt;/i&gt;، كخط المسجّل: له شريحته في المفتاح، ومساره، والتقاطع، والمؤشران. كل عينة تحتفظ بزمنها
 الخاص: عرض ساعة يُظهر أدنى عينة وأعلاها في كل عمود من البكسلات، فلا تختفي أبدًا قمة من عينة واحدة بين
-الملايين، ومع التكبير (حتى 10 µs: بعجلة الفأرة، أو اكتب &lt;code&gt;50 us&lt;/code&gt; في النافذة) تصير كل عينة نقطة
+الملايين، ومع التكبير (حتى ⁦10 µs⁩: بعجلة الفأرة، أو اكتب &lt;code&gt;⁦50 us⁩&lt;/code&gt; في النافذة) تصير كل عينة نقطة
 مستقلة. حيث فُقدت عينات ينقطع الخط؛ والفأرة فوق الفجوة تقول كم فُقد. تُحفظ العينات كما وصلت، ببضعة بايتات
 لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
 &lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
@@ -2519,12 +2535,12 @@ nothing. The line above the table says since when: &lt;i&gt;totals since 14:03:1
 chart and put back keeps its total.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Right-click the table&apos;s header&lt;/b&gt; to show or hide its columns; the choice is kept.&lt;/p&gt;
 &lt;h3&gt;Histogram and spectrum&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Right-click a line&apos;s chip&lt;/b&gt; in the legend: &lt;b&gt;Histogram&lt;/b&gt; (how its values spread, bins by the
+&lt;p&gt;&lt;b&gt;Click a line&apos;s chip&lt;/b&gt; in the legend (its &lt;b&gt;▾&lt;/b&gt;) or right-click it: &lt;b&gt;Histogram&lt;/b&gt; (how its values spread, bins by the
 Freedman–Diaconis rule) or &lt;b&gt;Spectrum&lt;/b&gt; (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
 2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
 its own with a readout under the mouse, a picture and CSV.&lt;/p&gt;
 &lt;h3&gt;Trigger&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Right-click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
+&lt;p&gt;&lt;b&gt;Click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
 line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane with a small handle at its
 right end: a triangle, solid while the picture held crossed this level, and an arrow. Under the mouse the handle shows
 its tag, &lt;i&gt;I_LOAD 1.2 A, rising&lt;/i&gt;: &lt;b&gt;drag&lt;/b&gt; the line or the handle to move the level; &lt;b&gt;click&lt;/b&gt; the handle&apos;s
@@ -2543,6 +2559,10 @@ and its T, no crossing counts; &lt;b&gt;Run&lt;/b&gt; arms again in the mode, fr
 and the chart&apos;s top right say the same state (&lt;i&gt;Normal · waiting&lt;/i&gt;, &lt;i&gt;Normal · triggered&lt;/i&gt;, &lt;i&gt;Stopped · Run
 to arm&lt;/i&gt; ...), and change only when it does; while the view still fills after the crossing, a faint line marks
 where the data ends.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Off&lt;/b&gt; at the row&apos;s end turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
+&lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
+trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
+on another line by itself.&lt;/p&gt;
 &lt;h3&gt;Math lines&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;: a name, a unit and a formula over register names, e.g. &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; in W (the power; its area is the energy). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;, &lt;code&gt;pi&lt;/code&gt;, and abs sqrt
@@ -2589,17 +2609,17 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;h3&gt;الصف الأول: ما يُعرض وما يُحفظ&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;النافذة&lt;/b&gt;: كم من الزمن يُعرض. اختر واحدة، أو اكتب أي طول: &lt;code&gt;45&lt;/code&gt; (ثوانٍ)،
-&lt;code&gt;2.5 s&lt;/code&gt;، &lt;code&gt;500 ms&lt;/code&gt;، &lt;code&gt;3 min&lt;/code&gt;، &lt;code&gt;1 h&lt;/code&gt;. &lt;b&gt;عجلة الفأرة&lt;/b&gt; على المخطط
+&lt;code&gt;⁦2.5 s⁩&lt;/code&gt;، &lt;code&gt;⁦500 ms⁩&lt;/code&gt;، &lt;code&gt;⁦3 min⁩&lt;/code&gt;، &lt;code&gt;⁦1 h⁩&lt;/code&gt;. &lt;b&gt;عجلة الفأرة&lt;/b&gt; على المخطط
 تكبّرها وتصغّرها، حول الفأرة حين يكون مثبّتًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الذاكرة&lt;/b&gt;: كم يُحفظ (كعمق ذاكرة راسم الإشارة)، و&lt;b&gt;النافذة&lt;/b&gt; الجزء المعروض: احفظ 1 min،
-وانظر إلى 10 s. &lt;b&gt;اسحب&lt;/b&gt; المخطط لتنظر إلى الخلف عبر الذاكرة، أو انقر / اسحب على &lt;b&gt;شريط الذاكرة&lt;/b&gt; تحته
+&lt;li&gt;&lt;b&gt;الذاكرة&lt;/b&gt;: كم يُحفظ (كعمق ذاكرة راسم الإشارة)، و&lt;b&gt;النافذة&lt;/b&gt; الجزء المعروض: احفظ ⁦1 min⁩،
+وانظر إلى ⁦10 s⁩. &lt;b&gt;اسحب&lt;/b&gt; المخطط لتنظر إلى الخلف عبر الذاكرة، أو انقر / اسحب على &lt;b&gt;شريط الذاكرة&lt;/b&gt; تحته
 (عمق الذاكرة كله، والعرض معلَّم عليه؛ وهي تمتلئ، تنمو البيانات من اليمين ويقول الشريط كم
 حُفظ).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: أقصى ذاكرة تأخذها عينات الخطوط كلها معًا (2 GB افتراضيًا؛ اختر واحدة أو اكتب أي
-حجم، 3000 أو 3 GB). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط &lt;i&gt;الذاكرة ممتلئة&lt;/i&gt;:
-يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (12 min، 10.5، 12).
-بجانبه، ملاحظة تقول ما تحتاجه الخطوط لـ«الذاكرة» المضبوطة (&lt;i&gt;يحتاج 1.4 GB&lt;/i&gt;)، بالكهرماني مع ما يتسع حين يكون ذلك
-أكثر من RAM (&lt;i&gt;يحتاج 2.8 GB، ويحفظ 22 min&lt;/i&gt;). البرنامج نفسه يأخذ نحو 150 MB أكثر من RAM
+&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: أقصى ذاكرة تأخذها عينات الخطوط كلها معًا (⁦2 GB⁩ افتراضيًا؛ اختر واحدة أو اكتب أي
+حجم، 3000 أو ⁦3 GB⁩). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط &lt;i&gt;الذاكرة ممتلئة&lt;/i&gt;:
+يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (⁦12 min⁩، 10.5، 12).
+بجانبه، ملاحظة تقول ما تحتاجه الخطوط لـ«الذاكرة» المضبوطة (&lt;i&gt;يحتاج ⁦1.4 GB⁩&lt;/i&gt;)، بالكهرماني مع ما يتسع حين يكون ذلك
+أكثر من RAM (&lt;i&gt;يحتاج ⁦2.8 GB⁩، ويحفظ ⁦22 min⁩&lt;/i&gt;). البرنامج نفسه يأخذ نحو ⁦150 MB⁩ أكثر من RAM
 المضبوطة.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;مدى Y&lt;/b&gt;: &lt;b&gt;تلقائي&lt;/b&gt; يتبع ما يُعرض (يكبر فورًا، ويصغر بلطف: بلا قفزات)، أو
 &lt;b&gt;يدوي&lt;/b&gt; بالحدّين الأدنى والأعلى المكتوبين بجانبه (كتابة أحدهما تجعله يدويًا). &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y
@@ -2614,7 +2634,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 يثبّت أيضًا. وما دام القدح مفعّلًا، فالزر نفسه &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;▶ تشغيل&lt;/b&gt; (أدناه).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض القياسات تحت المخطط (أدناه). &lt;b&gt;المؤشران&lt;/b&gt; مفعّلان (يفعّل القياسات): انقر على
 المخطط للمؤشر &lt;b&gt;A&lt;/b&gt;، ومرة أخرى لـ&lt;b&gt;B&lt;/b&gt;، واسحبهما. شريط بين وسميهما في أعلى المخطط يقول
-الزمن بينهما (&lt;i&gt;3.525 ms&lt;/i&gt;، &lt;i&gt;12.35 s&lt;/i&gt;، &lt;i&gt;1 min 23.4 s&lt;/i&gt;)؛ ومع مؤشر خارج العرض ينتهي عند
+الزمن بينهما (&lt;i&gt;⁦3.525 ms⁩&lt;/i&gt;، &lt;i&gt;⁦12.35 s⁩&lt;/i&gt;، &lt;i&gt;⁦1 min 23.4 s⁩&lt;/i&gt;)؛ ومع مؤشر خارج العرض ينتهي عند
 حافة المخطط، وحين يتقارب المؤشران فلا يتسع النص، يقف النص بجانب الوسمين. &lt;b&gt;مسح المؤشرين&lt;/b&gt;
 يزيلهما، وكذلك تعطيل &lt;b&gt;المؤشرين&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;ƒ الرياضيات&lt;/b&gt;: خطوط مصنوعة من صيغة (أدناه).&lt;/li&gt;
@@ -2648,38 +2668,41 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;h3&gt;القياسات&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
 &lt;b&gt;B&lt;/b&gt;، و&lt;b&gt;B − A&lt;/b&gt;، وعلى A → B (أو على العرض بلا مؤشرين) &lt;b&gt;الأدنى&lt;/b&gt;، و&lt;b&gt;الأعلى&lt;/b&gt;، و&lt;b&gt;المتوسط&lt;/b&gt;،
-و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: 12 V مع تموّج 1 mV يُقرأ 0.707 mV)،
+و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: ⁦12 V⁩ مع تموّج ⁦1 mV⁩ يُقرأ ⁦0.707 mV⁩)،
 و&lt;b&gt;قمة–قمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
 &lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. والفاصل فوق
 الجدول يتحرك. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;منذ المسح&lt;/b&gt;: مجموع كل خط منذ &lt;b&gt;مسح&lt;/b&gt; المخطط، بـ Wh أو Ah أو unit·h، مجموعًا من كل عينة
 لحظة وصولها، فيغطي ساعات بينما تحفظ الذاكرة دقائق؛ والفجوة الأطول من ثانية بين عينتين لا تضيف
-شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (1 h 12 min)&lt;/i&gt;. الخط المُزال عن
+شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (⁦1 h 12 min⁩)&lt;/i&gt;. الخط المُزال عن
 المخطط ثم المُعاد يحافظ على مجموعه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على ترويسة الجدول&lt;/b&gt; لتُظهر أعمدته أو تخفيها؛ ويُحفظ الاختيار.&lt;/p&gt;
 &lt;h3&gt;المدرّج التكراري والطيف&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على شارة خط&lt;/b&gt; في المفتاح: &lt;b&gt;المدرّج التكراري&lt;/b&gt; (كيف تتوزع قيمه، فئات بقاعدة
-فريدمان–دياكونيس) أو &lt;b&gt;الطيف&lt;/b&gt; (أي الترددات فيه، سعاتٍ بوحدته: جيب 2 V يُقرأ
-2 V؛ مُعاد أخذه بخطوات متساوية، طريقة ويلش بنافذة هان، حتى نصف المعدّل)، على A → B أو العرض، في نافذة
+&lt;p&gt;&lt;b&gt;انقر شارة خط&lt;/b&gt; في المفتاح (زرّها &lt;b&gt;▾&lt;/b&gt;) أو انقرها بالزر الأيمن: &lt;b&gt;المدرّج التكراري&lt;/b&gt; (كيف تتوزع قيمه، فئات بقاعدة
+فريدمان–دياكونيس) أو &lt;b&gt;الطيف&lt;/b&gt; (أي الترددات فيه، سعاتٍ بوحدته: جيب ⁦2 V⁩ يُقرأ
+⁦2 V⁩؛ مُعاد أخذه بخطوات متساوية، طريقة ويلش بنافذة هان، حتى نصف المعدّل)، على A → B أو العرض، في نافذة
 خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
 &lt;h3&gt;القدح&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
+&lt;p&gt;&lt;b&gt;انقر شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
 الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط، وعند طرفه الأيمن مقبض صغير: مثلث، مصمت ما دامت الصورة المثبّتة
-قد عبرت هذا المستوى، وسهم. وتحت الفأرة يُظهر المقبض وسمه، &lt;i&gt;I_LOAD 1.2 A، صاعد&lt;/i&gt;: &lt;b&gt;اسحب&lt;/b&gt; الخط أو
+قد عبرت هذا المستوى، وسهم. وتحت الفأرة يُظهر المقبض وسمه، &lt;i&gt;I_LOAD ⁦1.2 A⁩، صاعد&lt;/i&gt;: &lt;b&gt;اسحب&lt;/b&gt; الخط أو
 المقبض لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم المقبض (↑ ↓ ↕) لصاعد أو هابط أو أيّهما. والمستوى الخارج عن مدى المسار
 يبقى عند طرف المسار، منقّطًا، مع ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في وسمه. ولكل خط مستواه وحافته.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;تلقائي&lt;/b&gt; يثبت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي.
 &lt;b&gt;عادي&lt;/b&gt; يثبت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. &lt;b&gt;مرة واحدة&lt;/b&gt; يثبت عند العبور الأول
 ويتوقف؛ و&lt;b&gt;تجهيز&lt;/b&gt; لعبور آخر. والعادي والمرة الواحدة ينتظران على صورة ثابتة؛ والتلقائي وحده يجري.
-و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى 10 s) هي المدة بعد عبور التي لا
+و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
 يُحسب فيها عبور آخر. وعلامة T في الأعلى تدل على العبور (يقول تلميحها متى كان وعند أي مستوى)؛ والمثلث تحت محور
-الزمن موضعه في النافذة: اسحبه (من 0 إلى 90 %). وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
+الزمن موضعه في النافذة: اسحبه (من 0 إلى ⁦90 %⁩). وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
 عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
 المثبّت.&lt;/p&gt;
 &lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
 وعلامتها T، ولا يُحسب أي عبور؛ و&lt;b&gt;تشغيل&lt;/b&gt; يجهّزه من جديد بنمطه، من الآن. وسحب المخطط يوقفه أيضًا.
 ويقول الصف وأعلى يمين المخطط الحالة نفسها (&lt;i&gt;عادي · بانتظار عبور&lt;/i&gt;، &lt;i&gt;عادي · قُدح&lt;/i&gt;، &lt;i&gt;متوقف · «تشغيل»
 للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي البيانات.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في آخر الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
+قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
+باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
 &lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
@@ -2725,7 +2748,8 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
 &lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; a line&apos;s chip: its Histogram or Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s dashed line or handle · &lt;b&gt;click&lt;/b&gt; the handle&apos;s arrow: rising,
 falling, either · &lt;b&gt;drag&lt;/b&gt; the triangle under the chart: where the crossing sits&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
@@ -2755,7 +2779,7 @@ Log), Fold lane ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
 &lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط: مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع أو مقبضه · &lt;b&gt;انقر&lt;/b&gt; سهم المقبض: صاعد، هابط، أيّهما ·
 &lt;b&gt;اسحب&lt;/b&gt; المثلث تحت المخطط: موضع العبور&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
@@ -2782,7 +2806,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>auto send at %1 Hz, not %2 Hz: %2 frames of %3 bytes a second would take more than %4% of the serial link at %5 baud</source>
-        <translation>إرسال تلقائي بـ %1 Hz، لا %2 Hz: %2 إطارًا بحجم %3 بايت في الثانية سيأخذ أكثر من %4% من الوصلة التسلسلية عند %5 baud</translation>
+        <translation>إرسال تلقائي بـ ⁦%1 Hz⁩، لا ⁦%2 Hz⁩: %2 إطارًا بحجم %3 بايت في الثانية سيأخذ أكثر من %4% من الوصلة التسلسلية عند %5 baud</translation>
     </message>
     <message>
         <source>CONFIG not read: %1</source>
@@ -2794,7 +2818,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>no frame came in %1 s: something between the Studio and the device (a gateway) does not pass them on; the registers are polled</source>
-        <translation>لم يصل أي إطار خلال %1 s: شيء ما بين البرنامج والجهاز (بوابة) لا يمرّرها؛ المسجّلات تُستطلع</translation>
+        <translation>لم يصل أي إطار خلال ⁦%1 s⁩: شيء ما بين البرنامج والجهاز (بوابة) لا يمرّرها؛ المسجّلات تُستطلع</translation>
     </message>
     <message>
         <source>not connected</source>
@@ -2818,7 +2842,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>no block came in %1 s: the device does not stream, or something between the Studio and it (a gateway) does not pass the blocks on</source>
-        <translation>لم تصل أي كتلة خلال %1 s: الجهاز لا يرسل، أو شيء ما بين البرنامج وبينه (بوابة) لا يمرّر الكتل</translation>
+        <translation>لم تصل أي كتلة خلال ⁦%1 s⁩: الجهاز لا يرسل، أو شيء ما بين البرنامج وبينه (بوابة) لا يمرّر الكتل</translation>
     </message>
     <message>
         <source>fast stream %1 switched off: %2</source>
@@ -2838,7 +2862,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>fast stream %1 recorded: %2 (%3 blocks, %4 MB)</source>
-        <translation>التدفق السريع %1 سُجِّل: %2 (الكتل: %3، %4 MB)</translation>
+        <translation>التدفق السريع %1 سُجِّل: %2 (الكتل: %3، ⁦%4 MB⁩)</translation>
     </message>
 </context>
 <context>
@@ -2924,7 +2948,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>Latency %1 ms</source>
-        <translation>زمن الاستجابة %1 ms</translation>
+        <translation>زمن الاستجابة ⁦%1 ms⁩</translation>
     </message>
     <message>
         <source>TX %1 · RX %2</source>
@@ -3036,7 +3060,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>no answer: offline, left out of the polls and asked again every %1 s</source>
-        <translation>لا جواب: غير متصل، أُخرج من الاستطلاعات ويُسأل من جديد كل %1 s</translation>
+        <translation>لا جواب: غير متصل، أُخرج من الاستطلاعات ويُسأل من جديد كل ⁦%1 s⁩</translation>
     </message>
     <message>
         <source>map not loaded: %1: %2</source>
@@ -4178,7 +4202,7 @@ Log), Fold lane ·
     </message>
     <message>
         <source>timeout (%1 ms)</source>
-        <translation>مهلة (%1 ms)</translation>
+        <translation>مهلة (⁦%1 ms⁩)</translation>
     </message>
 </context>
 <context>
@@ -4306,7 +4330,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
     <message>
         <source>== %1 OK%2  (%3 ms)</source>
-        <translation>== %1 تم%2  (%3 ms)</translation>
+        <translation>== %1 تم%2  (⁦%3 ms⁩)</translation>
     </message>
     <message>
         <source>== %1 OK%2</source>
@@ -4834,7 +4858,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>| Answer timeout | %1 ms |
 </source>
-        <translation>| مهلة الجواب | %1 ms |
+        <translation>| مهلة الجواب | ⁦%1 ms⁩ |
 </translation>
     </message>
     <message>
@@ -5288,7 +5312,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>%1 holds about %2 samples: about %3 MB of memory, more than the chart&apos;s RAM (%4 MB).
 
 Keep the last part: about the last %5 of %6?</source>
-        <translation>يحمل %1 نحو %2 عينة: نحو %3 MB من الذاكرة، أكثر من RAM المخطط (%4 MB).
+        <translation>يحمل %1 نحو %2 عينة: نحو ⁦%3 MB⁩ من الذاكرة، أكثر من RAM المخطط (⁦%4 MB⁩).
 
 أتحتفظ بالجزء الأخير: نحو آخر %5 من %6؟</translation>
     </message>
@@ -5658,11 +5682,11 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
     <message>
         <source>not refreshed: last read %1 s ago</source>
-        <translation>غير محدّث: آخر قراءة قبل %1 s</translation>
+        <translation>غير محدّث: آخر قراءة قبل ⁦%1 s⁩</translation>
     </message>
     <message>
         <source>&lt;br&gt;read %1 s ago</source>
-        <translation>&lt;br&gt;قُرئ قبل %1 s</translation>
+        <translation>&lt;br&gt;قُرئ قبل ⁦%1 s⁩</translation>
     </message>
     <message>
         <source>&lt;br&gt;⚠ writes are confirmed</source>
@@ -6012,7 +6036,7 @@ Over Wi-Fi (several ms per answer) 1000 polls/s needs about (latency ms) x block
 1 -&gt; 0.9 -&gt; ... 0.1 -&gt; 0.09). 0.25 ms = 4000 polls/s; &quot;max&quot; (0) = back to back.
 The device and the link set the real limit: see the poll rate below.</source>
         <translation>الزمن بين الاستطلاعات: اكتبه، أو الأسهم / العجلة (تخطو بعُشر:
-1 -&gt; 0.9 -&gt; ... 0.1 -&gt; 0.09). ‏0.25 ms = 4000 استطلاع/ث؛ &quot;أقصى&quot; (0) = متتالية بلا فاصل.
+1 -&gt; 0.9 -&gt; ... 0.1 -&gt; 0.09). ‏⁦0.25 ms⁩ = 4000 استطلاع/ث؛ &quot;أقصى&quot; (0) = متتالية بلا فاصل.
 الجهاز والوصلة يضعان الحد الحقيقي: انظر معدّل الاستطلاع أدناه.</translation>
     </message>
     <message>
@@ -6029,12 +6053,12 @@ The device and the link set the real limit: see the poll rate below.</source>
     </message>
     <message>
         <source>%1 Hz</source>
-        <translation>%1 Hz</translation>
+        <translation>⁦%1 Hz⁩</translation>
     </message>
     <message>
         <source>The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.
 On a serial link a rate the link cannot carry beside the polls is lowered (the Log says so).</source>
-        <translation>المعدّلات التي يصنعها الجهاز تمامًا: 8000 Hz / (المقسّم + 1)، من 4000 Hz إلى 40 Hz.
+        <translation>المعدّلات التي يصنعها الجهاز تمامًا: ⁦8000 Hz⁩ / (المقسّم + 1)، من ⁦4000 Hz⁩ إلى ⁦40 Hz⁩.
 على وصلة تسلسلية يُخفَّض معدّل لا تحمله الوصلة بجانب الاستطلاعات (ويقول السجل ذلك).</translation>
     </message>
     <message>
@@ -6227,11 +6251,11 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
     <message>
         <source>Slower than asked: a poll is %1 reads, %2 at a time on the serial link, %3 ms per answer: %4 ms per poll.</source>
-        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات، %2 في كل مرة على الوصلة التسلسلية، %3 ms لكل جواب: %4 ms لكل استطلاع.</translation>
+        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات، %2 في كل مرة على الوصلة التسلسلية، ⁦%3 ms⁩ لكل جواب: ⁦%4 ms⁩ لكل استطلاع.</translation>
     </message>
     <message>
         <source>Slower than asked: %1 ms per answer is the link&apos;s limit.</source>
-        <translation>أبطأ مما طُلب: %1 ms لكل جواب هو حد الوصلة.</translation>
+        <translation>أبطأ مما طُلب: ⁦%1 ms⁩ لكل جواب هو حد الوصلة.</translation>
     </message>
     <message>
         <source> (%1 polls at once: the most)</source>
@@ -6239,11 +6263,11 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
     <message>
         <source>Slower than asked: a poll is %1 reads, sent %2 at a time; %3 ms per answer. Set In flight to %4%5 for more.</source>
-        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات، تُرسل %2 في كل مرة؛ %3 ms لكل جواب. اضبط «قيد الإرسال» على %4%5 للمزيد.</translation>
+        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات، تُرسل %2 في كل مرة؛ ⁦%3 ms⁩ لكل جواب. اضبط «قيد الإرسال» على %4%5 للمزيد.</translation>
     </message>
     <message>
         <source>Slower than asked: a poll is %1 reads; In flight %2 runs %3 poll(s) at once; %4 ms per answer. Set In flight to %5%6 for more.</source>
-        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات؛ «قيد الإرسال» %2 يشغّل %3 استطلاعات معًا؛ %4 ms لكل جواب. اضبط «قيد الإرسال» على %5%6 للمزيد.</translation>
+        <translation>أبطأ مما طُلب: الاستطلاع %1 قراءات؛ «قيد الإرسال» %2 يشغّل %3 استطلاعات معًا؛ ⁦%4 ms⁩ لكل جواب. اضبط «قيد الإرسال» على %5%6 للمزيد.</translation>
     </message>
     <message>
         <source>EVRe :%1 · JSON :%2 on %3&lt;br&gt;%4 clients · %5 requests</source>
@@ -6380,7 +6404,7 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
     <message>
         <source>timeout (%1 ms)</source>
-        <translation>مهلة (%1 ms)</translation>
+        <translation>مهلة (⁦%1 ms⁩)</translation>
     </message>
 </context>
 <context>

@@ -20,14 +20,20 @@ class QWidget;
 
 /* --------------------------------------------------------------------- text */
 
-/* a time length as the chart's Window and Memory boxes show it: "50 µs", "500 ms", "30 s", "2 min", "1.5 h" */
+/* a number and its unit as one left-to-right piece in a right-to-left window: between U+2066 and U+2069 (an isolate,
+ * invisible), so the Arabic around it does not split it ("s 0.886", "MB 122"); left to right, the text as it is */
+QString ltrPiece(const QString &text);
+
+/* a time length as the chart's Window and Memory boxes show it: "50 µs", "500 ms", "30 s", "2 min", "1.5 h" (one piece:
+ * ltrPiece) */
 QString secondsText(double seconds);
 
 /* a span of time as read off the chart: "123 µs", "3.525 ms", "12.35 s" (4 significant digits below a minute),
- * "1 min 23.4 s", "2 h 05 min"; the sign is dropped */
+ * "1 min 23.4 s", "2 h 05 min"; the sign is dropped (one piece: ltrPiece) */
 QString durationText(double seconds);
 
-/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "50 us" (or µs), "3 min", "1 h"; <= 0 if it is not one */
+/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "50 us" (or µs), "3 min", "1 h"; <= 0 if it is not one
+ * (ltrPiece's isolates passed over) */
 double parseSeconds(const QString &text);
 
 /* text from the map on a button, a check box or a menu: "&" would mark a

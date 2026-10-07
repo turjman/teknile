@@ -57,6 +57,7 @@ constexpr double FOLDED_ITEM_GAP = 14;     /* between the items of a folded stri
 constexpr double CHIP_GAP = 6;             /* between two chips */
 constexpr double CHIP_TEXT_LEFT = 20;      /* a chip's text starts after its dot */
 constexpr double CHIP_PAD_RIGHT = 8;
+constexpr double CHIP_BUTTON_W = 16;       /* the chip's menu button ("▾") at its right end, after CHIP_PAD_RIGHT */
 constexpr double LEGEND_BAR_Y = 37;        /* the legend's scroll bar, under the chips, inside LEGEND_H */
 constexpr double LEGEND_BAR_H = 4;
 constexpr double LEGEND_BAR_GRIP = 5;      /* the bar takes clicks this far above and below it */
@@ -136,11 +137,11 @@ QString widestChartNumber() {
 	return QStringLiteral("-0.000e+00");
 }
 
-/* a length of time for the memory strip: seconds, minutes or hours */
+/* a length of time for the memory strip: seconds, minutes or hours (one piece in Arabic: ltrPiece) */
 QString formatDuration(double seconds) {
-	if (seconds < 120) return QStringLiteral("%1 s").arg(seconds, 0, 'f', 0);
-	if (seconds < 7200) return QStringLiteral("%1 min").arg(seconds / 60, 0, 'f', 1);
-	return QStringLiteral("%1 h").arg(seconds / 3600, 0, 'f', 1);
+	if (seconds < 120) return ltrPiece(QStringLiteral("%1 s").arg(seconds, 0, 'f', 0));
+	if (seconds < 7200) return ltrPiece(QStringLiteral("%1 min").arg(seconds / 60, 0, 'f', 1));
+	return ltrPiece(QStringLiteral("%1 h").arg(seconds / 3600, 0, 'f', 1));
 }
 
 QDateTime wallClock(qint64 epochMsAtZero, double t) {
@@ -1281,6 +1282,14 @@ int ChartView::chipAt(const QPointF &pos) const {
 	return -1;
 }
 
+QRectF ChartView::chipButtonRect(int key) const {
+	const qsizetype i = series_.keys().indexOf(key);
+	const QVector<QRectF> chips = legendChips();
+	if (i < 0 || i >= chips.size()) return QRectF();
+	const QRectF &chip = chips[i];
+	return QRectF(chip.right() - CHIP_BUTTON_W - 3, chip.center().y() - 8, CHIP_BUTTON_W, 16);
+}
+
 void ChartView::showLastValues() {
 	for (Series &s : series_) {
 		s.shown = s.last;
@@ -1748,6 +1757,7 @@ bool ChartView::event(QEvent *e) {
 		hoverMark_ = false;
 		hoverLevel_ = false;
 		hoverT_ = false;
+		hoverChip_ = -1;
 		refresh();
 	}
 	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
@@ -1765,6 +1775,13 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	const QPointF pos = e->position();
 	pressedLanes_ = false;
 	if (pressLegend(pos)) return;
+	/* a line's chip: its menu, under the chip (the right-click's menu, reached without a right-click) */
+	const int chip = chipAt(pos);
+	if (chip >= 0) {
+		const QRectF rect = legendChips().value(series_.keys().indexOf(chip));
+		emit lineMenuRequested(chip, mapToGlobal(QPoint(int(rect.left()), int(rect.bottom()) + 2)));
+		return;
+	}
 	/* the trigger's level tag: its edge symbol takes the next edge; the rest of it, as the level's line, drags the
 	 * level (held where it was taken: the level does not jump to the mouse) */
 	if (trigger_.on && triggerEdgeButton_.contains(pos)) {
@@ -1958,11 +1975,14 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		hoverLevel_ = onLevelTag || onLevelLine;
 		/* the crossing's T: not a control (an arrow), lit, its tooltip says what it marks */
 		hoverT_ = trigger_.on && triggerTag_.contains(pos) && !onLevelTag;
+		/* a line's chip: a hand, its "▾" lit (a click opens its menu) */
+		hoverChip_ = onLegendBar ? -1 : chipAt(pos);
 		if (hoverSeparator_ >= 0 && !onLevelTag) {
 			setCursor(Qt::SizeVerCursor);
 			break;
 		}
 		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar || onLevelTag || hoverMark_
+						|| hoverChip_ >= 0
 						? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: hoverT_ ? Qt::ArrowCursor
@@ -2168,7 +2188,7 @@ ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
 		for (const Series &s : series_) {
 			const double unit = s.unit.isEmpty() ? 0 : metrics.horizontalAdvance(QLatin1Char(' ') + s.unit);
 			chipWidths_ << CHIP_TEXT_LEFT + metrics.horizontalAdvance(s.name) + nameGap + chipValueRoom_ + unit
-					+ CHIP_PAD_RIGHT;
+					+ CHIP_PAD_RIGHT + CHIP_BUTTON_W;
 		}
 		chipsGeneration_ = seriesGeneration_;
 		chipsFont_ = font.key();
@@ -2978,6 +2998,9 @@ void ChartView::setAllLanesFolded(bool folded) {
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (chipAt(pos) >= 0) /* a recording's window has no trigger (nothing comes after the file) */
+		return recording_ ? tr("Click or right-click: Histogram, Spectrum")
+				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
 	if (trigger_.on && triggerEdgeButton_.contains(pos)) return tr("Click: the next edge (rising, falling, either)");
 	if (trigger_.on && triggerMark_.contains(pos))
 		return tr("Drag: where the crossing sits in the window (now %1 %, 0 to 90 %)")
@@ -4617,8 +4640,8 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 	 * values' pace, not at every frame (drawn at every frame it took 1.3 ms at 4K) */
 	const qreal dpr = p.device()->devicePixelRatioF();
 	const QRectF area(legend.viewport.left(), LEGEND_TOP, legend.viewport.width(), LEGEND_BAR_Y + LEGEND_BAR_H + 1 - LEGEND_TOP);
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
-			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark());
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
+			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark()).arg(hoverChip_);
 	if (key != legendKey_ || legendImage_.isNull()) {
 		legendKey_ = key;
 		legendBuilds_++;
@@ -4634,10 +4657,10 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 		lp.setClipRect(legend.viewport.adjusted(more && offset > 0 ? LEGEND_ARROW_W : 0, 0,
 				more && offset < legend.maxScroll() ? -LEGEND_ARROW_W : 0, 0));
 		qsizetype i = 0;
-		for (const Series &s : series_) {
+		for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
 			const QRectF chip = legend.chips[i++].translated(-offset, 0);
 			if (chip.right() >= legend.viewport.left() && chip.left() <= legend.viewport.right())
-				drawChip(lp, s, chip, legend.valueRoom);
+				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_);
 		}
 		lp.setClipping(false);
 		if (legend.maxScroll() > 0) drawLegendBar(lp, legend, offset);
@@ -4646,16 +4669,24 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 }
 
 /* one chip: the line's dot and name on the left; its value right-aligned in
- * the room every value gets, then the unit, so only the digits change */
-void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom) const {
+ * the room every value gets, then the unit, so only the digits change; at the right end its menu button ("▾", the
+ * lanes' fold button's shape), stronger while the mouse is on the chip: the whole chip opens the menu */
+void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered) const {
 	const ThemeColors &c = Theme::colors();
 	p.setPen(Qt::NoPen);
 	p.setBrush(c.surface2);
 	p.drawRoundedRect(chip, LEGEND_ROW_H / 2, LEGEND_ROW_H / 2);
 	p.setBrush(s.color);
 	p.drawEllipse(QPointF(chip.left() + 11, chip.center().y()), 4, 4);
+	const QRectF button(chip.right() - CHIP_BUTTON_W - 3, chip.center().y() - 8, CHIP_BUTTON_W, 16);
+	const double cx = button.center().x(), cy = button.center().y();
+	const QPointF open[3] = { { cx - 4, cy - 2 }, { cx + 4, cy - 2 }, { cx, cy + 3 } };
+	p.setBrush(hovered ? c.border : c.surface);
+	p.drawRoundedRect(button, 6, 6);
+	p.setBrush(hovered ? c.text : c.muted);
+	p.drawPolygon(open, 3);
 	p.setPen(c.text);
-	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT, 0);
+	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT - CHIP_BUTTON_W, 0);
 	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, s.name);
 	if (!s.hasShown) return;
 	const QString unit = s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit;

@@ -384,6 +384,10 @@ public:
 	double legendScroll() const;
 	void setLegendScroll(double pixels);
 	QString legendValue(int key) const; /* the value a line's chip shows now; empty: none yet */
+	/* a chip's "▾" at its right end (empty: no such line): a click anywhere on the chip opens the line's menu, as a
+	 * right-click does, so the menu is not reached by a right-click alone */
+	QRectF chipButtonRect(int key) const;
+	int hoveredChip() const { return hoverChip_; } /* tests: the chip under the mouse, its button drawn highlighted */
 
 	/* measurements of one line over A..B, or over the view */
 	struct Stats {
@@ -795,7 +799,7 @@ private:
 	void drawMemoryStrip(QPainter &p, const Axes &axes);
 	void drawMemoryLines(QPainter &p, const Axes &strip) const;
 	void drawLegend(QPainter &p, const Axes &axes) const;
-	void drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom) const;
+	void drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered) const;
 	void drawLegendBar(QPainter &p, const LegendLayout &legend, double offset) const;
 	/* the crosshair: its x, a dot on every line read and the box's place (readout_ made again when due) */
 	struct Crosshair {
@@ -1051,6 +1055,7 @@ private:
 	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
 	bool hoverLevel_ = false;         /* the mouse over the handle or the level's line: the tag's whole text */
 	bool hoverT_ = false;             /* the mouse over the crossing's T: drawn highlighted, its tooltip */
+	int hoverChip_ = -1;              /* the key of the legend's chip under the mouse: its button highlighted */
 	mutable int triggerOffScale_ = 0, triggerBeyond_ = 0;
 	QString triggerPointText() const; /* the T's tooltip: "Trigger point: I_LOAD crossed 0 A, rising, at 14:03:12.345" */
 	double triggerPosition_ = TRIGGER_AT;
