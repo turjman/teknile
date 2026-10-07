@@ -46,9 +46,11 @@ constexpr double TRIGGER_TAB_H = 24;       /* about three times the grab area of
 constexpr double TRIGGER_TAB_BUTTON = 18;  /* its edge part, at its right end */
 constexpr double TRIGGER_TAB_TEXT = 14;    /* its text starts after its pointer */
 constexpr double TRIGGER_PAD = TRIGGER_TAB_X + TRIGGER_TAB_W + 3; /* the right pad with the trigger on */
-constexpr double TRIGGER_STRIP_H = 16;     /* the flag's strip, between the legend and the plot */
-constexpr double TRIGGER_FLAG_W = 28;
-constexpr double TRIGGER_FLAG_H = 13;
+constexpr double TRIGGER_STRIP_H = 24;     /* the flag's strip, between the legend and the plot: 1 px, its box, its point, 2 px */
+constexpr double TRIGGER_FLAG_W = 14;      /* its box, the T on the curve's size */
+constexpr double TRIGGER_FLAG_H = 16;
+constexpr double TRIGGER_FLAG_POINT_W = 10; /* its triangle, under the box */
+constexpr double TRIGGER_FLAG_POINT_H = 5;
 constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
 constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
 constexpr double BOTTOM_PAD = 8;
@@ -4487,25 +4489,37 @@ QString ChartView::levelText(double level) {
 	return QString::number(level, 'g', 6);
 }
 
-/* The crossing's place in the window: a "T ▾" flag in the strip above the plot, pointing down at the crossing, right
- * over the T on the curve (its x; with no T in view, the place in the window), drawn as the T (the theme's text on a
- * raised surface, its border in the line's colour); lit under the mouse. A bare triangle between the plot and the time
- * labels was not seen as a control (the owner) */
+/* The crossing's place in the window: a flag in the strip above the plot, right over the T on the curve (its x; with
+ * no T in view, the place in the window): a "T" in a box drawn as the T on the curve (the theme's text on a raised
+ * surface, its border in the line's colour) over a triangle in the line's colour whose point is at that x, on the
+ * plot's top edge. A "T ▾" side by side did not point at its place (the owner: the T over the arrow); a bare triangle
+ * between the plot and the time labels was not seen as a control. The whole takes the mouse and is lit under it */
 void ChartView::drawTriggerMark(QPainter &p, const Axes &axes) const {
 	triggerMark_ = QRectF();
 	if (!triggerMarked()) return;
-	const double x = !triggerTag_.isEmpty() ? triggerTag_.center().x() : axes.rect.left() + triggerPosition_ * axes.rect.width();
-	/* above the card's layer, 2 px around the plot */
-	triggerMark_ = QRectF(std::round(x - TRIGGER_FLAG_W / 2), axes.rect.top() - 3 - TRIGGER_FLAG_H, TRIGGER_FLAG_W, TRIGGER_FLAG_H);
+	const double x = std::round(!triggerTag_.isEmpty() ? triggerTag_.center().x()
+			: axes.rect.left() + triggerPosition_ * axes.rect.width());
+	/* the point on the card's layer's top (2 px around the plot), so the layer never hides a part of it */
+	const double point = axes.rect.top() - 2;
+	triggerMark_ = QRectF(x - TRIGGER_FLAG_W / 2, point - TRIGGER_FLAG_POINT_H - TRIGGER_FLAG_H, TRIGGER_FLAG_W,
+			TRIGGER_FLAG_H + TRIGGER_FLAG_POINT_H);
+	const QRectF box(triggerMark_.topLeft(), QSizeF(TRIGGER_FLAG_W, TRIGGER_FLAG_H));
+	const QColor color = series_.value(trigger_.key).color;
+	const bool lit = hoverMark_ || drag_ == Drag::Position;
 	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setRenderHint(QPainter::Antialiasing);
-	p.setPen(QPen(series_.value(trigger_.key).color, hoverMark_ || drag_ == Drag::Position ? 2 : 1.2));
-	p.setBrush(hoverMark_ || drag_ == Drag::Position ? c.border : c.surface2);
-	p.drawRoundedRect(triggerMark_.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+	const QPointF arrow[3] = { { x - TRIGGER_FLAG_POINT_W / 2, box.bottom() }, { x + TRIGGER_FLAG_POINT_W / 2, box.bottom() },
+			{ x, point } };
+	p.setPen(Qt::NoPen);
+	p.setBrush(color);
+	p.drawPolygon(arrow, 3);
+	p.setPen(QPen(color, lit ? 2 : 1.2));
+	p.setBrush(lit ? c.border : c.surface2);
+	p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
 	p.setPen(c.text);
 	p.setFont(labelFont());
-	p.drawText(triggerMark_, Qt::AlignCenter, QStringLiteral("T ▾"));
+	p.drawText(box, Qt::AlignCenter, QStringLiteral("T"));
 	p.restore();
 }
 

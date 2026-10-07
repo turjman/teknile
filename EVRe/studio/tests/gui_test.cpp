@@ -5107,14 +5107,14 @@ private:
 			if (topics->item(i)->text() == QLatin1String("Chart & recording")) chartPage = page->toPlainText();
 			if (topics->item(i)->text() == QLatin1String("Keys & mouse")) keysPage = page->toPlainText();
 		}
-		for (const QString &piece : { QStringLiteral("T ▾ flag above the chart"), QStringLiteral("runs to its tab right"),
+		for (const QString &piece : { QStringLiteral("T ▼ flag above the chart"), QStringLiteral("runs to its tab right"),
 					 QStringLiteral("T 0.4 A ↑"), QStringLiteral("Short windows lock by themselves"),
 					 QStringLiteral("Display → Lock short windows"), QStringLiteral("the tab's arrow") })
 			if (!chartPage.contains(piece) && !keysPage.contains(piece)) std::printf("     (the Help lacks \"%s\")\n", qPrintable(piece));
 		check(chartPage.contains(QLatin1String("Trigger on this line")) && chartPage.contains(QLatin1String("hold-off"))
 						&& chartPage.contains(QLatin1String("stays held until the next one, however long"))
 						&& chartPage.contains(QLatin1String("Hold / Live is Stop / Run"))
-						&& chartPage.contains(QStringLiteral("T ▾ flag above the chart"))
+						&& chartPage.contains(QStringLiteral("T ▼ flag above the chart"))
 						&& chartPage.contains(QLatin1String("runs to its tab right")) && chartPage.contains(QStringLiteral("T 0.4 A ↑"))
 						&& chartPage.contains(QLatin1String("Short windows lock by themselves"))
 						&& chartPage.contains(QStringLiteral("Display → Lock short windows"))
@@ -5122,7 +5122,7 @@ private:
 						&& chartPage.contains(QLatin1String("Force")) && chartPage.contains(QLatin1String("Find level"))
 						&& chartPage.contains(QLatin1String("double-click it for 50 % again"))
 						&& chartPage.contains(QLatin1String("above range")) && keysPage.contains(QLatin1String("the tab's arrow"))
-						&& keysPage.contains(QStringLiteral("T ▾ flag above the chart")),
+						&& keysPage.contains(QStringLiteral("T ▼ flag above the chart")),
 				"Help: the Chart page's Trigger says how it is armed (Trigger on this line), the level's tab and a level off "
 				"scale, Auto, Normal and Single, Force and Find level, Run and Stop, the hold-off, the T on the level's line and "
 				"its flag (50 %, a double-click), the short windows' lock; Keys & mouse lists the tab and the flag");
@@ -7825,7 +7825,7 @@ private:
 		const QRectF plot = view->lastPlot();
 		const QRectF mark = view->triggerPositionMark();
 		const bool atTwenty = !mark.isEmpty() && std::fabs(mark.center().x() - (plot.left() + 0.2 * plot.width())) < 1
-				&& mark.bottom() < plot.top() - 2 && mark.top() >= plot.top() - 16 && position->value() == 20;
+				&& mark.bottom() < plot.top() - 1.5 && mark.top() >= plot.top() - 24 && position->value() == 20;
 		QMouseEvent hover(QEvent::MouseMove, mark.center(), view->mapToGlobal(mark.center()), Qt::NoButton, Qt::NoButton,
 				Qt::NoModifier);
 		QApplication::sendEvent(view, &hover);
@@ -7872,7 +7872,7 @@ private:
 		if (!atTwenty || !atHalf) std::printf("     (the mark at %.1f, the plot %.1f .. %.1f; dragged to %.3f)\n", mark.center().x(),
 				plot.left(), plot.right(), view->triggerPosition());
 		check(atTwenty && hand && atHalf && clampedHigh && clampedLow && typed, "chart, Trigger: the crossing's place, a "
-				"\"T ▾\" flag above the plot at 20 % (a hand and a tooltip over it); dragged to 50 % the held view moves so the crossing "
+				"\"T ▼\" flag above the plot at 20 % (a hand and a tooltip over it); dragged to 50 % the held view moves so the crossing "
 				"sits there; clamped to 90 % and 0 %; the panel's box and the setting follow, and the box moves the mark");
 		action->setChecked(false);
 		chart.tab.hide();
@@ -9356,7 +9356,7 @@ private:
 		bool positionNamed = false, atGone = true;
 		for (QLabel *label : row->findChildren<QLabel *>()) {
 			if (label->text() == QStringLiteral("position"))
-				positionNamed = label->toolTip() == QStringLiteral("Where the crossing sits in the window; or drag the T ▾ "
+				positionNamed = label->toolTip() == QStringLiteral("Where the crossing sits in the window; or drag the T ▼ "
 						"flag above the chart");
 			if (label->text() == QStringLiteral("at")) atGone = false;
 		}
@@ -9852,7 +9852,7 @@ private:
 	}
 
 	/* Trigger v2, the owner's test of the marks (U-18): the level's tab ("T 0.4 A ↑") in a margin right of the plot and
-	 * the position's flag ("T ▾") in a strip above it, both there only while the trigger is on, neither over the data;
+	 * the position's flag (a T over a ▼) in a strip above it, both there only while the trigger is on, neither over the data;
 	 * the tab dragged and its arrow clicked, the flag dragged, clamped and double-clicked; hands, highlights, tooltips;
 	 * the old triangle under the time axis gone */
 	void chartTriggerMarksOutside() {
@@ -9898,7 +9898,7 @@ private:
 		(void) view->grab();
 		const QRectF plot = view->lastPlot();
 		/* the room: a strip above the plot and a margin right of it, with the trigger on only */
-		const bool room = std::fabs((plot.top() - without.top()) - 16) < 0.5 && without.right() - plot.right() > 55
+		const bool room = std::fabs((plot.top() - without.top()) - 24) < 0.5 && without.right() - plot.right() > 55
 				&& without.right() - plot.right() < 100 && plot.left() == without.left();
 
 		/* the tab: right of the plot (never over its newest samples), at the level's height, labelled */
@@ -9962,7 +9962,23 @@ private:
 					"%.2f)\n", v0, v1, view->window(), int(view->live()), view->triggeredAt(), view->triggerHolds(),
 					int(view->triggerPhase()), view->triggerPosition());
 		}
-		const bool flagAbove = !flag.isEmpty() && flag.bottom() < plot.top() - 2 && flag.top() >= plot.top() - 16
+		/* a T in its box over a triangle whose point touches the plot's top (the card's layer's top, 2 px over it):
+		 * the line's colour at the point, the box's border (the line's colour too) above the triangle */
+		bool flagShape = false;
+		{
+			const QImage shot = view->grab().toImage();
+			const qreal r = shot.devicePixelRatio();
+			const QColor line = view->lines().value(0).color;
+			const auto lineColoured = [&](double x, double y) {
+				const QColor p = shot.pixelColor(int(x * r), int(y * r));
+				return std::abs(p.red() - line.red()) + std::abs(p.green() - line.green()) + std::abs(p.blue() - line.blue()) < 60;
+			};
+			const double pointX = flag.center().x();
+			flagShape = lineColoured(pointX, flag.bottom() - 2) && lineColoured(pointX, flag.bottom() - 4)
+					&& lineColoured(pointX, flag.top() + 0.5) && !lineColoured(pointX + 6, flag.bottom() - 1);
+		}
+		const bool flagAbove = !flag.isEmpty() && std::fabs(flag.bottom() - (plot.top() - 2)) < 0.01
+				&& flag.top() >= plot.top() - 24 && flag.width() == 14 && flagShape
 				&& !tMark.isEmpty() && std::fabs(flag.center().x() - tMark.center().x()) < 1;
 		moveTo(flag.center());
 		const bool flagHover = view->triggerMarkHovered() && view->cursor().shape() == Qt::PointingHandCursor
@@ -10007,7 +10023,7 @@ private:
 				"line-coloured pixels under the plot at the place %d)\n", flag.left(), flag.right(), flag.top(), flag.bottom(),
 				tMark.center().x(), before, moved, int(clampHigh), int(clampLow), int(backToHalf), coloured);
 		check(flagAbove && flagHover && flagDragged && clampHigh && clampLow && backToHalf && coloured == 0, "chart, "
-				"Trigger's marks: the position's flag (\"T ▾\") in a strip above the plot right over the T on the curve; a hand "
+				"Trigger's marks: the position's flag (a T over a ▼) in a strip above the plot, the ▼'s point on the plot's top edge right over the T on the curve; a hand "
 				"and its tooltip over it; dragged from where it was taken (the box follows), clamped to 90 % and 0 %, a "
 				"double-click puts it back to 50 %; no triangle under the time axis any more");
 

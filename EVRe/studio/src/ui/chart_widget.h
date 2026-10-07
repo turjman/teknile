@@ -47,7 +47,7 @@
  *
  * Trigger: a line crossing its level (rising, falling or either; each line
  * keeps its own), as an oscilloscope's: the view holds with the crossing at its
- * place in the window (50 %; a "T ▾" flag in a strip above the plot, dragged)
+ * place in the window (50 %; a flag, a T over a ▼, in a strip above the plot, dragged)
  * and a T on the level at the crossing, the level a dashed line with a tab in
  * a margin right of the plot ("T 0.4 A ↑", dragged); the strip and the margin
  * are there only while the trigger is on, so neither covers a sample. Auto runs live
@@ -291,7 +291,8 @@ public:
 	 * to arm" ...; empty: off */
 	QString triggerStateText() const;
 	int triggerHolds() const { return triggerHolds_; } /* tests: the crossings the view held on so far */
-	/* tests: the position's flag ("T ▾") as last drawn, in the strip above the plot over the crossing's T */
+	/* tests: the position's flag (a T over a ▼) as last drawn, in the strip above the plot over the crossing's T: its
+	 * box and triangle, the triangle's point at the middle of its bottom */
 	QRectF triggerPositionMark() const { return triggerMark_; }
 	bool triggerMarkHovered() const { return hoverMark_; }
 	/* a line's settings: those kept for its name; a line never set, its mid-range in view and Rising */
@@ -1108,7 +1109,7 @@ private:
 	double triggerPosition_ = TRIGGER_AT;
 	double triggerHoldoff_ = -1;
 	int triggerHolds_ = 0;
-	/* the crossing's place in the window: a "T ▾" flag in the strip above the plot, over the crossing's T (outside the
+	/* the crossing's place in the window: a flag (a T over a ▼) in the strip above the plot, over the crossing's T (outside the
 	 * card's layer: the CPU draws it on both paths); dragged along it */
 	void drawTriggerMark(QPainter &p, const Axes &axes) const;
 	mutable QRectF triggerMark_;      /* where it takes the mouse */

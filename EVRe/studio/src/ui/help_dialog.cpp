@@ -402,7 +402,7 @@ capture says when the last one was. <b>Find level</b> puts the level halfway bet
 in view. The
 <b>hold-off</b> (the window's length by default, 0 to
 10 s) is the time after a crossing in which no other counts. The T on the level's line marks the crossing (its
-tooltip says when and at what level); the <b>T ▾</b> flag above the chart, right over it, is its place in the window,
+tooltip says when and at what level); the <b>T ▼</b> flag above the chart (a T over an arrow pointing at it) is its place in the window,
 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
@@ -633,7 +633,7 @@ all fit</td></tr>
 <tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
 Spectrum, Trigger on this line</td></tr>
 <tr><td><b>Trigger</b></td><td><b>Drag</b> its level's tab (right of the chart) or dashed line · <b>click</b> the tab's
-arrow: rising, falling, either · <b>drag</b> the T ▾ flag above the chart: where the crossing sits · <b>double-click</b>
+arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
 it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
 Log), Fold lane ·

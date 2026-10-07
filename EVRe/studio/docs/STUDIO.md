@@ -1230,7 +1230,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Trigger's&nbsp;level&nbsp;tab&nbsp;or&nbsp;line | Drag | Move the level, from where it was taken (7.13); the tab (*T 0.4 A ↑*) lies right of the plot, lit under the mouse, its tooltip the level in words. |
 | Trigger&nbsp;tab's&nbsp;arrow | Click | The next edge: rising, falling, either (7.13). |
 | Trigger's&nbsp;T&nbsp;marker | Hover | On the level's line at the crossing; its tooltip: the line, the level and edge it crossed, and when (7.13). |
-| Trigger's&nbsp;T&nbsp;▾&nbsp;flag&nbsp;above&nbsp;the&nbsp;plot | Drag&nbsp;/&nbsp;double-click | The crossing's place in the window, 0 to 90 %, from where it was taken; a double-click puts it back at 50 %, the default (7.13). |
+| Trigger's&nbsp;T&nbsp;▼&nbsp;flag&nbsp;above&nbsp;the&nbsp;plot | Drag&nbsp;/&nbsp;double-click | The crossing's place in the window, 0 to 90 %, from where it was taken; a double-click puts it back at 50 %, the default (7.13). |
 | Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
 | Note's&nbsp;tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
 | Legend&nbsp;(chips&nbsp;overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
@@ -1399,8 +1399,9 @@ repeating wave held still.
 - **The arrow** at the tab's right end (↑ rising, ↓ falling, ↕ either) is a button: a **click** takes the next edge.
   Over the tab the mouse is a pointing hand, the tab is lit (the arrow more under the mouse), and the tooltip says
   what a drag and a click do: *Drag: the trigger level · Click the arrow: the edge (rising, falling, either)*.
-- **The crossing's place** in the window is a **T ▾** flag in a thin strip above the plot, under the legend, right
-  over the T on the curve and drawn as it is: 50 % from the left by default (the middle, as a scope's; a place you
+- **The crossing's place** in the window is a **T ▼** flag in a thin strip above the plot, under the legend: a T in
+  a box drawn as the T on the curve, over a ▼ in the line's colour whose point touches the plot's top edge right over
+  that T. It is at 50 % from the left by default (the middle, as a scope's; a place you
   set is kept). **Drag** it left or right, 0 to 90 %, from where it was taken, or **double-click** it to put it back
   at 50 % (its tooltip says so); held on a crossing, the view moves with it. Over it the mouse is a pointing hand and
   the flag is lit.
@@ -1418,7 +1419,7 @@ repeating wave held still.
 | Find&nbsp;level | Sets the level halfway between the line's lowest and highest in view: the rule a line watched for the first time starts with. |
 | Auto&nbsp;/&nbsp;Normal&nbsp;/&nbsp;Single | The mode (below). |
 | hold-off | After a crossing, no other counts for this long: *window* (the window's length, the default: a picture per window) or a time typed, 0 to 10 s (`5 ms`, `0`). |
-| position | The crossing's place in the window, 0 to 90 %, 50 % by default: the T ▾ flag above the plot (the label's tooltip says so; a double-click on the flag puts it back at 50 %). |
+| position | The crossing's place in the window, 0 to 90 %, 50 % by default: the T ▼ flag above the plot (the label's tooltip says so; a double-click on the flag puts it back at 50 %). |
 | Arm&nbsp;/&nbsp;Force | In Single: **Arm** waits for one more crossing; the primary button while Single holds its crossing. While Normal or Single waits it reads **Force** (a scope's Force Trigger): a click holds the view now as a crossing would, at the newest sample, its T there; Single is then complete and the button reads Arm again. Hidden in Auto. One button, as wide as either word, so the row keeps its length. |
 | State | *waiting for a crossing* (*waiting: level above the line's range*), *Normal · waiting, last at 14:03:12* (Normal back to waiting after a capture: when the last one was, written once), *Normal · triggered* (*Auto · triggered*: no number while it runs), *Auto · free running*, *Single · complete at 14:03:12.345*, *Stopped · Run to arm* (a finished Single is *complete*; *Stopped* is your Stop alone). It takes the room the row leaves: a longer text is cut ("...") and is whole in its tooltip, so no state widens the window (in Arabic either). |
 | Off | At the row's end: turns the trigger off, as unticking **Display → Trigger** (the same action). |
@@ -1471,8 +1472,8 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   the crossing's time, in the line's lane, drawn as the level's tag (the theme's text on a raised surface, its border
   in the line's colour). A level moved later leaves the T where the line crossed (the handle is hollow until a
   crossing at the new one). The T is a mark, not a control: its tooltip says *Trigger point: I_LOAD crossed 0 A,
-  rising, at 14:03:12.345*, and a press on it does not drag the level. The T ▾ flag above the plot, right over it,
-  is its place in the window, which can be dragged. The part after it fills as the
+  rising, at 14:03:12.345*, and a press on it does not drag the level. The T ▼ flag above the plot, its point right over
+  it, is its place in the window, which can be dragged. The part after it fills as the
   samples come (Single says *capturing after T*), and a faint "now" edge in every lane marks where the data ends, so the empty
   part does not read as missing data. Only crossings after the trigger was armed count, not ones already in the
   memory.
@@ -4707,7 +4708,7 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   the notes', the level's): the CPU draws them before those, the card a layer of its own from the same lines before
   the marks' layer (`nowEdges` for the tests).
 - **The room** (`plotRect`): while `triggerMarked()` (the user's trigger on, not a short window's lock) the plot is
-  `TRIGGER_STRIP_H` (16 px) lower at its top, for the flag's strip under the legend, and its right pad is
+  `TRIGGER_STRIP_H` (24 px) lower at its top, for the flag's strip under the legend, and its right pad is
   `TRIGGER_PAD` (98 px) instead of `RIGHT_PAD`, for the tab: `TRIGGER_TAB_X` (15 px, past the lanes' scroll bar at
   `LANE_BAR_X` + `LANE_BAR_W`) right of the plot, `TRIGGER_TAB_W` x `TRIGGER_TAB_H` (80 x 24 px, about three times
   the 32 x 18 px handle it replaced; a longer level is cut with "..." and whole in its tooltip). Both lie outside the card's layer (the plot and 2 px around it), so the CPU
@@ -4735,9 +4736,12 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   view, for the row's *waiting: level above the line's range*. `levelText` writes a level with 6 significant digits,
   for the tag, the drag and the row's box (`showLineSettings`; `applyTrigger` writes the box back only when it says
   another); `chartNumber` stays for measured values. The crossing's place (`drawTriggerMark`) is a
-  `TRIGGER_FLAG_W` x `TRIGGER_FLAG_H` (28 x 13 px) *T ▾* in the strip, its middle on the T's x (`triggerTag_`; the
-  place in the window when no T is in view), its bottom 3 px over the plot (above the layer): the CPU draws it on
-  both paths. The old triangle on the time labels' row is gone.
+  flag in the strip: a `TRIGGER_FLAG_W` x `TRIGGER_FLAG_H` (14 x 16 px) box with a *T*, drawn as the T on the curve,
+  over a `TRIGGER_FLAG_POINT_W` x `TRIGGER_FLAG_POINT_H` (10 x 5 px) triangle in the line's colour, both centred on
+  the T's x (`triggerTag_`, rounded; the place in the window when no T is in view), the triangle's point on the card's
+  layer's top, 2 px over the plot, so the layer hides none of it; the strip is the flag's 21 px and 1 px under the
+  legend. `triggerMark_` (box and triangle) takes the mouse; the CPU draws it on both paths. The old triangle on the
+  time labels' row is gone.
 - **The mouse.** A press on the tab's arrow takes the next edge; on the tab or within 4 px of the level's line
   (`Drag::Level`) moves the level by `Axes::value`, from where it was taken (`levelGrab_`; normalised: through the
   line's own range); on the flag (`Drag::Position`) the place, 0 to 90 %, from where it was taken (`positionGrab_`).
@@ -5495,11 +5499,12 @@ waits holds at the newest sample (*triggered*, its T there, the button hidden), 
 complete, the button Arm and primary), one width throughout; Run in the warn colour while stopped (at least 30
 pixels of `warn` in the button, light and dark), none while running.
 The marks outside the data (`chartTriggerMarksOutside`, the owner's test of the marks): with the trigger on the plot
-is 16 px lower at its top and 55 to 100 px narrower at its right (80), and gets both back when it is off; the level's tab
+is 24 px lower at its top and 55 to 100 px narrower at its right (80), and gets both back when it is off; the level's tab
 *T 0.4 A ↑* right of the plot, never over it, at the line's height; over it a pointing hand, the tab lit and its
 tooltip *TAB 0.4 A, rising* then *Drag: the trigger level · Click the arrow: ...*; dragged from its lower part the
 level follows the mouse's move (to -0.2, the box too); its arrow clicked takes falling, either, rising; the flag
-*T ▾* in the strip above the plot, its x the T's on the curve, a hand and its tooltip *Drag: where the crossing sits
+(a T over a ▼) in the strip above the plot, its triangle's point on the layer's top 2 px over the plot at the T's x
+on the curve, pixels of the line's colour at the point and of the box's border above it, a hand and its tooltip *Drag: where the crossing sits
 in the window · Double-click: back to 50 %*, dragged 30 % of the plot from 6 px off its middle moves the place by
 0.3 (the box follows, the flag still over the T), clamped to 90 % and 0 %, a double-click back to 50 %; no pixel of
 the line's colour under the plot at the place (the old triangle gone). The state that does not dance

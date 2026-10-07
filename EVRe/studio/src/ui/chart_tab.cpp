@@ -958,7 +958,7 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerUnit_->setObjectName(QStringLiteral("triggerUnit"));
 	/* the place's label named, apart from the hold-off's box: "hold-off [window] at [20 %]" read as one phrase */
 	auto *positionLabel = mutedLabel(tr("position"));
-	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the T ▾ flag above the chart"));
+	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the T ▼ flag above the chart"));
 	auto *row = new QHBoxLayout(triggerRow_);
 	row->setContentsMargins(0, 0, 0, 0);
 	row->setSpacing(6);
