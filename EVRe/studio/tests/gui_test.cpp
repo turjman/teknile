@@ -4107,6 +4107,38 @@ private:
 			check(missed.isEmpty() && store && store->size() == 10000000 && view->pointsKept(iLoad) == 10000000,
 					"chart, fast lines: a spike of one record in 10 million (1000 s at 10 kHz) shows at every zoom, from all "
 					"of it to 1 ms, in its column's max and the Y range");
+			/* the columns kept from frame to frame: a 10 s view moved by 2.5 columns bins the columns at its ends
+			 * only, and its bins are the ones a binning from nothing gives */
+			{
+				view->setWindow(10.0);
+				view->showSpan(at - 5.0, at + 5.0);
+				host.grab(); /* the first frame of this view: binned whole */
+				const qint64 before = view->fastColumnsBinned();
+				const double column = 10.0 / view->lastPlot().width();
+				view->showSpan(at - 5.0 + 2.5 * column, at + 5.0 + 2.5 * column);
+				host.grab();
+				const qint64 binned = view->fastColumnsBinned() - before;
+				const QVector<ChartView::BinInfo> kept = view->lastBins(iLoad), fresh = view->freshBins(iLoad);
+				bool same = kept.size() == fresh.size() && !kept.isEmpty();
+				for (int k = 0; same && k < kept.size(); k++)
+					same = kept[k].t0 == fresh[k].t0 && kept[k].t1 == fresh[k].t1 && kept[k].min == fresh[k].min
+							&& kept[k].max == fresh[k].max && kept[k].count == fresh[k].count && kept[k].gap == fresh[k].gap;
+				if (binned > 12 || !same) {
+					std::printf("  (the moved view binned %lld columns of two lines; %d bins kept, %d fresh, the same: %d)\n",
+							(long long) binned, int(kept.size()), int(fresh.size()), same);
+					for (int k = 0; k < kept.size() && k < fresh.size(); k++)
+						if (kept[k].t0 != fresh[k].t0 || kept[k].t1 != fresh[k].t1 || kept[k].min != fresh[k].min
+								|| kept[k].max != fresh[k].max || kept[k].count != fresh[k].count || kept[k].gap != fresh[k].gap) {
+							std::printf("   bin %d: kept t %.9f..%.9f %g..%g n %d gap %d | fresh t %.9f..%.9f %g..%g n %d gap %d\n", k,
+									kept[k].t0, kept[k].t1, kept[k].min, kept[k].max, kept[k].count, int(kept[k].gap), fresh[k].t0,
+									fresh[k].t1, fresh[k].min, fresh[k].max, fresh[k].count, int(fresh[k].gap));
+							break;
+						}
+				}
+				check(binned > 0 && binned <= 12 && same, "chart, fast lines: a view moved by a few columns keeps the columns it "
+						"shares with the frame before and bins only its ends (at most 12 columns for two lines of 1000), "
+						"and the bins are those of a binning from nothing");
+			}
 			/* single records at their own times: 1 ms holds 10 */
 			view->setWindow(0.001);
 			view->showSpan(at - 0.0005, at + 0.0005);
@@ -7063,7 +7095,8 @@ private:
 				written = lines.size() >= 2;
 				for (const QString &line : lines)
 					for (const char *part : { " perfTest ", " fps ", " paint ", " max ", "| bin ", " lines ", " segments ",
-							 " present ", " marks ", " strip ", " legend ", "| binned ", "| measure ", " threads ", "| polls " })
+							 " present ", " marks ", " strip ", " legend ", " grid ", "| binned ", "| measure ", " threads ",
+							 "| polls ", " fast ", " columns " })
 						written = written && line.contains(QLatin1String(part));
 			}
 			tab.hide();
@@ -7072,7 +7105,7 @@ private:
 		QFile::remove(path);
 		if (!written) std::printf("     (the log: \"%s\")\n", qPrintable(first));
 		check(written, "the timing aid: EVRE_PERF_LOG writes a line every 500 ms (frames, the paint, its stages, the "
-				"binnings, the measurements, the polls)");
+				"binnings, the measurements, the polls, the fast records and columns)");
 	}
 
 	/* The Studio's icon, the teknile mark: the application's, so every window's (the main window, the Help, a recording),

@@ -4287,8 +4287,10 @@ The following choices keep a frame cheap on a high-DPI screen:
   a frame at 225 % on a 6-core laptop CPU (they took 57 ms, growing to 290 ms as the view filled, drawn on one
   thread without the smaller chunks).
 - **The memory strip as an image.** Its lines are drawn into an image (`stripImage_`, on the same device grid),
-  again only when the data has moved a pixel on the strip (`strip.columnSeconds()`), the lines or the memory
-  changed, or the size; between those, the image is drawn. The view's mark on it is drawn at every frame.
+  again only when the data has moved a pixel on the strip (`strip.columnSeconds()`) and at least `STRIP_REDRAW_S`
+  (a second) has passed since the last drawing (its lines bin the whole memory: for a minute's strip that was 15
+  times a second, a frame's worth each), or when the lines or the memory changed, or the size; between those, the
+  image is drawn. The view's mark on it is drawn at every frame.
 - **The legend** draws only the chips in its part of the row, not every chip under a clip, into a picture
   (`legendImage_`) made again only when its key changes: the lines, the values' tick, the scroll, the size,
   the scaling or the theme. Between those the picture is drawn (1.3 ms a frame at 4K drawn each time). The chips'
@@ -4508,6 +4510,16 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   from `Store::minMax`, which reads the large summaries for whole runs of 4096, the small for 256, the records only
   at the two ends. A bin never spans a gap, and one that begins after it has `gap` set. The cost follows the columns,
   not the records: a view of an hour at a million records a second bins as fast as one of 100 µs.
+- **Columns kept from frame to frame.** A column is a whole number of `columnSeconds` from time 0, so a live view,
+  which moves by a column or two a frame, shares most of its columns with the frame before: `binFast` is given the
+  last frame's `BinnedLine` of the same line and keeps its bins of whole columns that lie inside what this frame
+  bins (never a frame's first or last bin, which may be part of a column), binning only the columns at the two
+  ends. The kept bins hold their records' numbers, so they are dropped when a trim took their records, when the
+  column width changed, or when the store's `timeVersion` moved (a clear, a new start, a start's shift: the times
+  of records already kept can change then; a new mark changes only the times after it, so it does not count). On
+  a 4K screen at 225 % with two lines of a million records a second this took the binning from 2.8 ms a frame to
+  0.1 (the timing aid's `columns`: 2 to 3 a frame, 26.8). The memory strip is binned whole (`binSeries`), as its
+  60 px see the whole memory anyway.
 - **Drawing.** `toPolyline` makes the points as for any line and returns where the line breaks (`breaks`: a bin
   with `gap`); `strokePieces` strokes the pieces between them, a lone point as a dot. On a card the segments across
   a break are left out. A fast line is mostly bars (a column of a noisy signal covers its whole range): `fillBands`
@@ -4923,6 +4935,8 @@ as the window feeds it:
 
 - **A spike** of one record in 10 million (1000 s at 10 kHz) shows at every window from all of it to 1 ms, in its
   column's max and in Auto's range.
+- **Columns kept**: a 10 s view moved by 2.5 columns bins only the columns at its ends (at most 12 for two lines
+  of 1000; `fastColumnsBinned`), and its bins equal those of a binning from nothing (`freshBins`).
 - **Single records**: in a view of 1 ms each record is a bin of its own at its own time.
 - **Below a millisecond**: a view of 50 µs (the shortest is 10 µs) labelled in microseconds, the labels different;
   a view of 2 ms: its labels whole, at least their width and 20 px apart.
@@ -5116,7 +5130,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 426 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 427 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5308,18 +5322,21 @@ channel tables list exactly the schema's keys. It needs the `jsonschema` package
 every 500 ms each Chart tab (the live one, and a recording's window) appends one line to the file:
 
 ```
-14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s
+14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 grid 1.10 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
 ```
 
 - `fps`: frames painted a second; `paint`, `max`: the paint's average and longest, ms.
 - The stages, ms a frame on average (`ChartView::takePerfStats`): `bin` the view's binning, `lines` the CPU's lines,
   `segments` the card's segment list, `present` the card's present, `marks` the cursors, notes, trigger, strips and
-  crosshair, `strip` the memory strip, `legend` the legend. What the stages leave of `paint` is the grid, the
-  labels, the Y ranges and the state.
+  crosshair, `strip` the memory strip, `legend` the legend, `grid` the chart's frame, the grid with its labels, the
+  lane bar and the state corner. What the stages leave of `paint` is the Y ranges and the layout.
 - `binned N/M`: frames that binned the view of the frames painted (a held view whose lines are reused bins none).
 - `measure`: the measurement table's updates, the window thread's time in all and their count; `threads`: the
   chart's threads' time on the full measurements (23.8).
-- `polls`: polls a second (the samples of the register with the most).
+- `polls`: polls a second (the samples of the register with the most); `fast`: the fast streams' records a second.
+- `columns`: the columns of fast lines binned a frame on average. A live view moves by a column or two a frame
+  and keeps the columns it shares with the frame before (23.11), so this stays a few, not the view's thousand; a
+  held view that is reused bins none; a zoom, a trim past the kept columns or a new start bin the view whole once.
 
 Unset, nothing is timed into a file. The aid does not change the settings.
 

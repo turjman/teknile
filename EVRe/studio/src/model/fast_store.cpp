@@ -17,6 +17,7 @@ uint32_t le32(const uint8_t *b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | 
 } // namespace
 
 void Store::reset(const StreamDef &def) {
+	timeVersion_++;
 	def_ = def;
 	recordSize_ = def.recordSize();
 	channels_.clear();
@@ -37,6 +38,7 @@ void Store::reset(const StreamDef &def) {
 
 /* Everything let go but the newest time mark: the stream goes on, and its next records still need their times */
 void Store::clear() {
+	timeVersion_++;
 	pieces_.clear();
 	spans_.clear();
 	spanOfChunk_.clear();
@@ -53,7 +55,10 @@ void Store::clear() {
 }
 
 void Store::begin(quint64 first, qsizetype count, bool newStart, quint64 lost) {
-	if (newStart || epochs_.isEmpty()) epochs_.push_back(Epoch());
+	if (newStart || epochs_.isEmpty()) {
+		epochs_.push_back(Epoch());
+		timeVersion_++;
+	}
 	if (recordSize_ <= 0 || count <= 0) return;
 	const int epoch = epochBase_ + int(epochs_.size()) - 1;
 	const qint64 at = dropped_ + size_;
@@ -106,7 +111,10 @@ void Store::mark(quint64 record, double time, double period) {
 	if (k == 0 || segments_[k].begin <= dropped_) return; /* nothing of an earlier start kept */
 	const double before = timeAt(qsizetype(segments_[k].begin - dropped_) - 1);
 	const double firstTime = timeAt(qsizetype(segments_[k].begin - dropped_));
-	if (firstTime <= before) epoch.shift = before + period - firstTime;
+	if (firstTime <= before) {
+		epoch.shift = before + period - firstTime;
+		timeVersion_++;
+	}
 }
 
 bool Store::hasTime() const {
