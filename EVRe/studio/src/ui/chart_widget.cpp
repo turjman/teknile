@@ -87,6 +87,7 @@ constexpr double READOUT_ROW_H = 18;       /* a line of the crosshair's box */
 constexpr double DOT_PICTURE = 9;          /* the crosshair's dot picture: a 3.5 radius dot and its edge */
 constexpr int Y_TICKS = 5;                 /* about this many value grid lines */
 constexpr double TIME_LABEL_SPACING = 140; /* about one time label per this many pixels */
+constexpr qint64 DIVISION_CLOCK_MS = 500;  /* the divisions' readout: its clock time while live, at most this often */
 
 /* the view (the longest: ChartView::MAX_SPAN) */
 constexpr double MIN_WINDOW = 1e-5;   /* seconds: 10 us, a fast line's single records */
@@ -2146,7 +2147,26 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 		zoomY(factor, e->position().y());
 		if (lanes_) emit laneYChanged();
 		else emit yChangedByUser();
+	} else if (divisionsShown() || (timeGrid_ == TimeGrid::Auto && window_ * factor < DIVISIONS_BELOW)) {
+		/* divisions: a notch is the next window of 1, 2 or 5 per division, as a scope's time/div knob, so the readout
+		 * and the labels stay round (a window typed is kept as typed). Part notches (a touchpad's) add up to one; Auto
+		 * leaves the divisions at DIVISIONS_BELOW, and from there the wheel zooms as before */
+		if (wheelNotches_ * notches < 0) wheelNotches_ = 0;
+		wheelNotches_ += notches;
+		const int steps = int(wheelNotches_);
+		wheelNotches_ -= steps;
+		if (steps != 0) {
+			double target = window_;
+			for (int i = 0; i < std::abs(steps); i++) {
+				const bool stepping = timeGrid_ == TimeGrid::Divisions || target < DIVISIONS_BELOW
+						|| (steps > 0 && target * std::pow(ZOOM_STEP, -1) < DIVISIONS_BELOW);
+				target = stepping ? divisionWindow(target, steps > 0) : target * ZOOM_STEP;
+			}
+			zoomTime(target / window_, e->position().x());
+			emit windowChangedByUser(window_);
+		}
 	} else {
+		wheelNotches_ = 0;
 		zoomTime(factor, e->position().x());
 		emit windowChangedByUser(window_);
 	}
@@ -3179,6 +3199,12 @@ void ChartView::setAllLanesFolded(bool folded) {
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (divisionRect_.contains(pos))
+		return (divisionFromT_ ? tr("A division of the grid (10 across the view) and the clock time at 0, the trigger's "
+							 "crossing (T): the labels count from T.")
+							   : tr("A division of the grid (10 across the view) and the clock time at 0, the right "
+							 "edge: the labels count from there."))
+				+ QLatin1Char('\n') + tr("Wheel over the chart: the next window of 1, 2 or 5 per division.");
 	if (chipAt(pos) >= 0) /* a recording's window has no trigger (nothing comes after the file) */
 		return recording_ ? tr("Click or right-click: Histogram, Spectrum")
 				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
@@ -3443,18 +3469,73 @@ void ChartView::drawCard(QPainter &p) const {
 	}
 }
 
-/* The value grid and its labels, then the time grid at fixed wall-clock times,
- * so it moves with the data. Crisp 1 px lines: no antialiasing. */
+bool ChartView::divisionsShown() const {
+	return timeGrid_ == TimeGrid::Divisions || (timeGrid_ == TimeGrid::Auto && window_ < DIVISIONS_BELOW);
+}
+
+void ChartView::setTimeGrid(TimeGrid grid) {
+	timeGrid_ = grid;
+	wheelNotches_ = 0;
+	refresh();
+}
+
+/* the next window of 1, 2 or 5 per division below (in) or above `window` */
+double ChartView::divisionWindow(double window, bool in) {
+	const double magnitude = std::pow(10.0, std::floor(std::log10(window / DIVISIONS)));
+	double best = in ? 0 : INFINITY;
+	for (double decade : { 0.1, 1.0, 10.0 })
+		for (double m : { 1.0, 2.0, 5.0 }) {
+			const double w = m * magnitude * decade * DIVISIONS;
+			if (in && w < window * (1 - 1e-9)) best = std::max(best, w);
+			if (!in && w > window * (1 + 1e-9)) best = std::min(best, w);
+		}
+	return best;
+}
+
+/* the times count from T while the view is held on a trigger's crossing in view (a scope's time 0 at the trigger);
+ * live, held by the user or with the crossing out of view, from the right edge */
+bool ChartView::timesFromT(double t0, double t1) const {
+	return triggerMarked() && !live_ && std::isfinite(trigger_.at) && trigger_.at >= t0 && trigger_.at <= t1;
+}
+
+/* The value grid and its labels, then the time grid: at fixed wall-clock times, so it moves with the data, or
+ * divisions that stand still (divisionsShown). Crisp 1 px lines: no antialiasing. */
 ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 	GridTicks ticks;
-	int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
-	ticks.timeStep = niceTimeStep(window_, target);
-	/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
-	const QFontMetricsF labels(smallFont());
-	while (ticks.timeStep < 1e-3 && target > 2
-			&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
-		ticks.timeStep = niceTimeStep(window_, --target);
-	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
+	if (divisionsShown()) {
+		/* 0 at the right edge or at T, a line every tenth of the plot from there. The places as fractions of the plot
+		 * from 0's, rounded to a millionth of a pixel: the view's times are large numbers of seconds, and their
+		 * rounding would move a line on a pixel's edge by a pixel now and then */
+		ticks.divisions = true;
+		ticks.division = ticks.timeStep = window_ / DIVISIONS;
+		ticks.fromT = timesFromT(axes.t0, axes.t1);
+		ticks.zero = ticks.fromT ? trigger_.at : axes.t1;
+		const auto stable = [](double x) { return std::round(x * 1e6) / 1e6; };
+		const double perDivision = axes.rect.width() / DIVISIONS;
+		const double zeroX = stable(axes.x(ticks.zero));
+		const int first = int(std::ceil((axes.rect.left() - zeroX) / perDivision - 1e-6));
+		const int last = int(std::floor((axes.rect.right() - zeroX) / perDivision + 1e-6));
+		for (int k = first; k <= last; k++) {
+			const double x = stable(zeroX + k * perDivision);
+			ticks.times << ticks.zero + k * ticks.division;
+			ticks.timeX << x;
+			ticks.offsets << k;
+			if (x > axes.rect.left() + 0.5 && x < axes.rect.right() - 0.5) ticks.lineX << x;
+		}
+	} else {
+		int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
+		ticks.timeStep = niceTimeStep(window_, target);
+		/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
+		const QFontMetricsF labels(smallFont());
+		while (ticks.timeStep < 1e-3 && target > 2
+				&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
+			ticks.timeStep = niceTimeStep(window_, --target);
+		for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) {
+			ticks.times << t;
+			ticks.timeX << axes.x(t);
+		}
+		ticks.lineX = ticks.timeX;
+	}
 	if (axes.log) {
 		/* a line at each decade, faint ones at 2..9 of it while a decade is tall enough; over less than two decades
 		 * those are labelled too where they have room */
@@ -3573,10 +3654,10 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			}
 			label(v);
 		}
-		for (double t : ticks.times) {
+		for (double x : ticks.lineX) {
 			if (!lines) break;
 			p.setPen(QPen(c.grid, 1));
-			p.drawLine(QPointF(axes.x(t), shown.top()), QPointF(axes.x(t), shown.bottom()));
+			p.drawLine(QPointF(x, shown.top()), QPointF(x, shown.bottom()));
 		}
 		if (lanes_) { /* its fold button and its menu's, then its unit up the left edge of its labels, in the part in view
 		               * (a click on the unit name folds it too) */
@@ -3605,17 +3686,122 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		p.drawLine(QPointF(LANE_UNIT_W, laneSeparators_[i]), QPointF(plot.right(), laneSeparators_[i]));
 	}
 	timeLabels_.clear();
-	const QFontMetricsF metrics(p.font());
-	for (double t : ticks.times) {
-		const double x = axes.x(t);
-		const QString label = timeLabel(epochMs_, t, ticks.timeStep);
-		const double half = metrics.horizontalAdvance(label) / 2;
-		if (x - half < 0 || x + half > width()) continue; /* never cut at the chart's edge: that one left out */
-		p.setPen(c.muted);
-		timeLabels_ << label;
-		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, label);
+	timeLabelX_.clear();
+	timeGridX_ = ticks.lineX;
+	divisionText_.clear();
+	divisionRect_ = QRectF();
+	if (ticks.divisions) {
+		drawDivisionLabels(p, ticks, axes);
+	} else {
+		const QFontMetricsF metrics(p.font());
+		for (qsizetype i = 0; i < ticks.times.size(); i++) {
+			const double x = ticks.timeX[i];
+			const QString label = timeLabel(epochMs_, ticks.times[i], ticks.timeStep);
+			const double half = metrics.horizontalAdvance(label) / 2;
+			if (x - half < 0 || x + half > width()) continue; /* never cut at the chart's edge: that one left out */
+			p.setPen(c.muted);
+			timeLabels_ << label;
+			timeLabelX_ << x;
+			p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, label);
+		}
 	}
 	p.setRenderHint(QPainter::Antialiasing, true);
+}
+
+namespace {
+
+/* an offset on the divisions' axis, in the unit the window is written in ("-8 ms", "+4 ms", "0"); one piece in
+ * Arabic, its unit beside its number */
+QString offsetText(double seconds, double window) {
+	if (std::fabs(seconds) < window * 1e-9) return QStringLiteral("0");
+	const double scale = window < 1e-3 ? 1e-6 : window < 1 ? 1e-3 : window < 120 ? 1 : window < 7200 ? 60 : 3600;
+	const QString unit = window < 1e-3 ? QStringLiteral("µs") : window < 1 ? QStringLiteral("ms")
+			: window < 120 ? QStringLiteral("s") : window < 7200 ? QStringLiteral("min") : QStringLiteral("h");
+	const double v = std::round(seconds / scale * 1e6) / 1e6; /* no 0.30000000004 from k times a division */
+	return ltrPiece(QStringLiteral("%1%2 %3").arg(v > 0 ? QStringLiteral("+") : QString(), QString::number(v, 'g', 7), unit));
+}
+
+/* a division's length in its own unit ("1 ms", "200 µs", "2.5 s") */
+QString divisionLength(double seconds) {
+	const double scale = seconds < 1e-3 ? 1e-6 : seconds < 1 ? 1e-3 : seconds < 60 ? 1 : seconds < 3600 ? 60 : 3600;
+	const QString unit = seconds < 1e-3 ? QStringLiteral("µs") : seconds < 1 ? QStringLiteral("ms")
+			: seconds < 60 ? QStringLiteral("s") : seconds < 3600 ? QStringLiteral("min") : QStringLiteral("h");
+	return QStringLiteral("%1 %2").arg(QString::number(seconds / scale, 'g', 4), unit);
+}
+
+} // namespace
+
+/* "1 ms/div · 14:03:12.345": the division and the clock time at 0, as precise as the division needs. Live, its clock
+ * time is written again at most every DIVISION_CLOCK_MS: a number rewritten at every frame reads as noise */
+QString ChartView::divisionReadoutText(const GridTicks &ticks) const {
+	const QString key = QStringLiteral("%1|%2").arg(ticks.division, 0, 'g', 17).arg(ticks.fromT);
+	const bool following = live();
+	if (!following || key != divisionClockKey_ || !divisionClockAge_.isValid()
+			|| divisionClockAge_.elapsed() >= DIVISION_CLOCK_MS) {
+		divisionClock_ = timeLabel(epochMs_, ticks.zero, ticks.division);
+		divisionClockKey_ = key;
+		divisionClockAge_.start();
+	}
+	return ltrPiece(QStringLiteral("%1/div · %2").arg(divisionLength(ticks.division), divisionClock_));
+}
+
+/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room), and the
+ * readout in a box of its own just left of the last label, at the axis's right end; labels it would cover are left
+ * out */
+void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Axes &axes) const {
+	const ThemeColors &c = Theme::colors();
+	const QRectF &plot = axes.rect;
+	const QFontMetricsF metrics(p.font());
+	QStringList texts;
+	double widest = 0;
+	for (int k : ticks.offsets) {
+		texts << offsetText(k * ticks.division, window_);
+		widest = std::max(widest, metrics.horizontalAdvance(texts.last()));
+	}
+	const double perDivision = plot.width() / DIVISIONS;
+	int every = 1;
+	for (int step : { 1, 2, 5, 10 }) {
+		every = step;
+		if (step * perDivision >= widest + 16) break;
+	}
+	QVector<qsizetype> shown;
+	for (qsizetype i = 0; i < texts.size(); i++) {
+		const double half = metrics.horizontalAdvance(texts[i]) / 2;
+		if (ticks.offsets[i] % every != 0 || ticks.timeX[i] - half < 0 || ticks.timeX[i] + half > width()) continue;
+		shown << i;
+	}
+	const QString readout = divisionReadoutText(ticks);
+	divisionText_ = readout;
+	divisionFromT_ = ticks.fromT;
+	const double top = plot.bottom() + 6;
+	if (!shown.isEmpty()) {
+		const qsizetype lastLabel = shown.last();
+		const double lastLeft = ticks.timeX[lastLabel] - metrics.horizontalAdvance(texts[lastLabel]) / 2;
+		const double w = std::ceil(metrics.horizontalAdvance(readout)) + 12;
+		const QRectF box(std::round(lastLeft - 10 - w), top - 1, w, 18);
+		if (box.left() >= 2) {
+			divisionRect_ = box;
+			p.save();
+			p.setRenderHint(QPainter::Antialiasing, true);
+			p.setPen(QPen(c.border, 1));
+			p.setBrush(c.surface2);
+			p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+			p.setPen(c.text);
+			p.drawText(box, Qt::AlignCenter, readout);
+			p.restore();
+		}
+	}
+	for (qsizetype i : std::as_const(shown)) {
+		const double x = ticks.timeX[i];
+		const double half = metrics.horizontalAdvance(texts[i]) / 2;
+		if (i != shown.last() && !divisionRect_.isEmpty() && x + half > divisionRect_.left() - 8
+				&& x - half < divisionRect_.right() + 8)
+			continue; /* under the readout */
+		p.setPen(c.muted);
+		timeLabels_ << texts[i];
+		timeLabelX_ << x;
+		p.drawText(QRectF(x - 60, top, 120, 16), Qt::AlignCenter, texts[i]);
+	}
 }
 
 /* the span between the cursors, shaded behind the lines */
@@ -3960,8 +4146,8 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
 			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
 		}
-		for (double t : ticks.times) {
-			const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
+		for (double tx : ticks.lineX) {
+			const float x = float(std::floor(map(QPointF(tx, 0)).x()) + grid.widthPx / 2);
 			grid.segments.push_back({ x, laneTop, x, laneBottom, gridRgba });
 		}
 	}

@@ -459,6 +459,30 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	hoverValues_->setCheckable(true);
 	hoverValues_->setToolTip(tr("The box of every line's value beside the mouse over the chart.\n"
 			"Off: the crosshair's line and its dots only (the box covers the cursors' tags)."));
+	/* the time grid: clock times (moving with the data), a scope's fixed divisions, or each where it reads best */
+	displayMenu->addSeparator();
+	auto *gridTitle = new QWidgetAction(displayMenu);
+	auto *gridLabel = new QLabel(tr("Time grid"));
+	gridLabel->setObjectName(QStringLiteral("menuTitle"));
+	gridTitle->setDefaultWidget(gridLabel);
+	displayMenu->addAction(gridTitle);
+	timeGridChoices_ = new QActionGroup(displayMenu);
+	auto addGrid = [&](const QString &text, const QString &tip, ChartView::TimeGrid grid, const char *name) {
+		QAction *action = displayMenu->addAction(text);
+		action->setObjectName(QLatin1String(name));
+		action->setCheckable(true);
+		action->setData(int(grid));
+		action->setToolTip(tip);
+		timeGridChoices_->addAction(action);
+	};
+	addGrid(tr("Auto (divisions below 1 s)"), tr("Divisions below a 1 s window, clock times from there"),
+			ChartView::TimeGrid::Auto, "chartTimeGridAuto");
+	addGrid(tr("Clock times"), tr("Lines and labels at clock times (14:03:12.345): they move with the data"),
+			ChartView::TimeGrid::Clock, "chartTimeGridClock");
+	addGrid(tr("Divisions"), tr("10 fixed divisions across the view, as an oscilloscope's: the grid stands still, only the "
+			"data moves. Labels count from the right edge (-8 ms ... 0), or from T while the trigger holds the view; "
+			"\"1 ms/div\" and the clock time at 0 at the axis's right end"), ChartView::TimeGrid::Divisions,
+			"chartTimeGridDivisions");
 	/* who draws the lines: the adapters found, by name (none without Direct3D). Under a title of its own: a
 	 * section's text is not drawn by the style (only its line), and "CPU" alone says little */
 	displayMenu->addSeparator();
@@ -567,6 +591,10 @@ void ChartTab::connectControls() {
 	connect(drawingChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
 		QSettings().setValue(settingKey("drawing"), action->data().toInt());
 		applyDrawing(action->data().toInt());
+	});
+	connect(timeGridChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
+		QSettings().setValue(settingKey("timeGrid"), action->data().toInt());
+		chart_->view()->setTimeGrid(ChartView::TimeGrid(action->data().toInt()));
 	});
 	connect(view, &ChartView::drawingFailed, this, [this](const QString &why) {
 		/* a card that fails while the settings are restored fails before the window listens: told then, in
@@ -769,6 +797,12 @@ void ChartTab::restoreSettings() {
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
 	shortLock_->setChecked(settings.value(settingKey("autoShortWindows"), true).toBool());
 	chart_->view()->setShortLock(shortLock_->isChecked());
+	{
+		const int grid = std::clamp(settings.value(settingKey("timeGrid"), int(ChartView::TimeGrid::Auto)).toInt(),
+				int(ChartView::TimeGrid::Auto), int(ChartView::TimeGrid::Divisions));
+		for (QAction *action : timeGridChoices_->actions()) action->setChecked(action->data().toInt() == grid);
+		chart_->view()->setTimeGrid(ChartView::TimeGrid(grid));
+	}
 	chart_->setYLog(settings.value(settingKey("yLog"), false).toBool());
 	if (!settings.value(settingKey("yAuto"), true).toBool()) {
 		chart_->setYManual(settings.value(settingKey("yMin"), 0.0).toDouble(),

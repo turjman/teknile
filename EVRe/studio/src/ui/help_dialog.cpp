@@ -367,8 +367,13 @@ always answers.</li>
 <li><b>Clear</b> empties the lines and the memory and starts the totals again; <b>Remove all</b> takes every register
 off the chart.</li>
 </ul>
-<p>The time labels are the clock time and move with the lines; the crosshair shows the time and how long ago. Long
-windows and fast lines are drawn from min/max summaries, so they cost no more than short ones.</p>
+<p>From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
+oscilloscope's: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
+right edge (<i>-8 ms</i> … <i>0</i>), or from <b>T</b> while the trigger holds the view on a crossing (<i>0</i> under
+it, <i>+4 ms</i>). At the axis's right end <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
+at 0; the wheel steps the window through 1, 2 and 5 per division. <b>Display → Time grid</b>: Auto (divisions below
+1 s), Clock times or Divisions. The crosshair shows the time and how long ago. Long windows and fast lines are drawn
+from min/max summaries, so they cost no more than short ones.</p>
 <h3>Measurements</h3>
 <p><b>Measure</b> (off by default) shows a table under the chart, for every line: the value at cursor <b>A</b> and
 <b>B</b>, <b>B − A</b>, and over A → B (or over the view without cursors) the <b>min</b>, <b>max</b>, <b>mean</b>,
@@ -619,7 +624,7 @@ the ⚠ switch.</li>
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
 cancels · right-click: the menu of the row and the table</td></tr>
-<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
+<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
 <b>click</b> places A, then B, a <b>drag</b> moves the nearer</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
