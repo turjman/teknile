@@ -1193,6 +1193,39 @@ Dragging the chart stops it too.</source>
         <source>Where the crossing sits in the window; or drag the T ▼ flag above the chart</source>
         <translation>موضع العبور في النافذة؛ ويُضبط أيضًا بسحب العلَم ⁦T ▼⁩ فوق المخطط</translation>
     </message>
+    <message>
+        <source>Time grid</source>
+        <translation>شبكة الزمن</translation>
+    </message>
+    <message>
+        <source>Auto (divisions below 1 s)</source>
+        <translation>تلقائي (تقسيمات تحت ⁦1 s⁩)</translation>
+    </message>
+    <message>
+        <source>Divisions below a 1 s window, clock times from there</source>
+        <translation>تقسيمات تحت نافذة ⁦1 s⁩، وأوقات الساعة من هناك فما فوق</translation>
+    </message>
+    <message>
+        <source>Clock times</source>
+        <translation>أوقات الساعة</translation>
+    </message>
+    <message>
+        <source>Lines and labels at clock times (14:03:12.345): they move with the data</source>
+        <translation>خطوط وعناوين عند أوقات الساعة (14:03:12.345): تتحرك مع البيانات</translation>
+    </message>
+    <message>
+        <source>Divisions</source>
+        <translation>تقسيمات</translation>
+    </message>
+    <message>
+        <source>10 fixed divisions across the view, as an oscilloscope&apos;s: the grid stands still, only the data moves. Labels count from the right edge (-8 ms ... 0), or from T while the trigger holds the view; &quot;1 ms/div&quot; and the clock time at 0 at the axis&apos;s right end</source>
+        <translation>10 تقسيمات ثابتة عبر العرض، كما في راسم الذبذبات: الشبكة ثابتة والبيانات وحدها تتحرك. تُعدّ العناوين من الحافة اليمنى (⁦-8 ms⁩ ... 0)، أو من T حين يثبّت القدح العرض؛ و«⁦1 ms/div⁩» ووقت الساعة عند 0 في الطرف الأيمن للمحور</translation>
+    </message>
+    <message>
+        <source> · A: %1 · B: %2</source>
+        <comment>the cursors&apos; times from the trigger&apos;s crossing</comment>
+        <translation> · المؤشر A: %1 · المؤشر B: %2</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1420,6 +1453,26 @@ Dragging the chart stops it too.</source>
     <message>
         <source>Drag: the trigger level · the edge: in the Trigger row</source>
         <translation>السحب: مستوى القدح · الحافة: في صف القدح</translation>
+    </message>
+    <message>
+        <source>A division of the grid (10 across the view) and the clock time at 0, the trigger&apos;s crossing (T): the labels count from T.</source>
+        <translation>طول تقسيمة من الشبكة (10 عبر العرض) ووقت الساعة عند 0، عبور القدح (T): تُعدّ العناوين من T.</translation>
+    </message>
+    <message>
+        <source>A division of the grid (10 across the view) and the clock time at 0, the right edge: the labels count from there.</source>
+        <translation>طول تقسيمة من الشبكة (10 عبر العرض) ووقت الساعة عند 0، الحافة اليمنى: تُعدّ العناوين من هناك.</translation>
+    </message>
+    <message>
+        <source>Wheel over the chart: the next window of 1, 2 or 5 per division.</source>
+        <translation>العجلة فوق المخطط: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة.</translation>
+    </message>
+    <message>
+        <source>Cursor %1 at %2</source>
+        <translation>المؤشر %1 عند %2</translation>
+    </message>
+    <message>
+        <source>Cursor %1 at %2 · %3</source>
+        <translation>المؤشر %1 عند %2 · %3</translation>
     </message>
 </context>
 <context>
@@ -2510,8 +2563,10 @@ holds too. While the trigger is on, the same button is &lt;b&gt;Stop&lt;/b&gt; /
 &lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows the measurements under the chart (below). &lt;b&gt;Cursors&lt;/b&gt; on (turns Measure on): click the
 chart for cursor &lt;b&gt;A&lt;/b&gt;, again for &lt;b&gt;B&lt;/b&gt;, drag them. A bar between their tags at the top of the plot says the
 time between them (&lt;i&gt;3.525 ms&lt;/i&gt;, &lt;i&gt;12.35 s&lt;/i&gt;, &lt;i&gt;1 min 23.4 s&lt;/i&gt;); with a cursor off the view it ends at the
-plot&apos;s edge, and when the cursors are too close for the text, the text stands beside the tags. &lt;b&gt;Clear cursors&lt;/b&gt;
-removes them, and so does turning &lt;b&gt;Cursors&lt;/b&gt; off.&lt;/li&gt;
+plot&apos;s edge, and when the cursors are too close for the text, the text stands beside the tags. A tag&apos;s tooltip gives
+its clock time; while the trigger holds the view on a crossing, how far from &lt;b&gt;T&lt;/b&gt; too (&lt;i&gt;T -0.250 ms&lt;/i&gt;), as an
+oscilloscope&apos;s cursors read, and so does the line over the measurements (&lt;i&gt;A: T -0.250 ms · B: T +1.750 ms&lt;/i&gt;).
+&lt;b&gt;Clear cursors&lt;/b&gt; removes them, and so does turning &lt;b&gt;Cursors&lt;/b&gt; off.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;ƒ Math&lt;/b&gt;: lines made from a formula (below).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Display&lt;/b&gt;, a menu of how the lines are drawn (its tooltip says what is on): &lt;b&gt;Normalise&lt;/b&gt;, every line
 scaled to its own range, to compare shapes of different units; &lt;b&gt;Lanes&lt;/b&gt;, a plot per unit stacked under each other,
@@ -2539,8 +2594,13 @@ always answers.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Clear&lt;/b&gt; empties the lines and the memory and starts the totals again; &lt;b&gt;Remove all&lt;/b&gt; takes every register
 off the chart.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;The time labels are the clock time and move with the lines; the crosshair shows the time and how long ago. Long
-windows and fast lines are drawn from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
+&lt;p&gt;From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
+oscilloscope&apos;s: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
+right edge (&lt;i&gt;-8 ms&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;), or from &lt;b&gt;T&lt;/b&gt; while the trigger holds the view on a crossing (&lt;i&gt;0&lt;/i&gt; under
+it, &lt;i&gt;+4 ms&lt;/i&gt;). At the axis&apos;s right end &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
+at 0; the wheel steps the window through 1, 2 and 5 per division. &lt;b&gt;Display → Time grid&lt;/b&gt;: Auto (divisions below
+1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, &lt;i&gt;T +1.234 ms&lt;/i&gt;). Long windows and fast lines are drawn
+from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
 &lt;h3&gt;Measurements&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;Measure&lt;/b&gt; (off by default) shows a table under the chart, for every line: the value at cursor &lt;b&gt;A&lt;/b&gt; and
 &lt;b&gt;B&lt;/b&gt;, &lt;b&gt;B − A&lt;/b&gt;, and over A → B (or over the view without cursors) the &lt;b&gt;min&lt;/b&gt;, &lt;b&gt;max&lt;/b&gt;, &lt;b&gt;mean&lt;/b&gt;,
@@ -2663,7 +2723,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض القياسات تحت المخطط (أدناه). &lt;b&gt;المؤشران&lt;/b&gt; مفعّلان (يفعّل القياسات): انقر على
 المخطط للمؤشر &lt;b&gt;A&lt;/b&gt;، ومرة أخرى لـ&lt;b&gt;B&lt;/b&gt;، واسحبهما. شريط بين وسميهما في أعلى المخطط يقول
 الزمن بينهما (&lt;i&gt;⁦3.525 ms⁩&lt;/i&gt;، &lt;i&gt;⁦12.35 s⁩&lt;/i&gt;، &lt;i&gt;⁦1 min 23.4 s⁩&lt;/i&gt;)؛ ومع مؤشر خارج العرض ينتهي عند
-حافة المخطط، وحين يتقارب المؤشران فلا يتسع النص، يقف النص بجانب الوسمين. &lt;b&gt;مسح المؤشرين&lt;/b&gt;
+حافة المخطط، وحين يتقارب المؤشران فلا يتسع النص، يقف النص بجانب الوسمين. ويعطي تلميح الوسم وقت الساعة عنده؛ وحين يثبّت القدح العرض على عبور، بُعده عن &lt;b&gt;T&lt;/b&gt; أيضًا (&lt;i&gt;⁦T -0.250 ms⁩&lt;/i&gt;) كما تُقرأ مؤشرات راسم الذبذبات، وكذلك السطر فوق القياسات (&lt;i&gt;⁦A: T -0.250 ms · B: T +1.750 ms⁩&lt;/i&gt;). &lt;b&gt;مسح المؤشرين&lt;/b&gt;
 يزيلهما، وكذلك تعطيل &lt;b&gt;المؤشرين&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;ƒ الرياضيات&lt;/b&gt;: خطوط مصنوعة من صيغة (أدناه).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;العرض&lt;/b&gt;، قائمة بكيفية رسم الخطوط (تلميحها يقول ما هو مفعّل): &lt;b&gt;التطبيع&lt;/b&gt;، كل خط
@@ -2691,7 +2751,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;li&gt;&lt;b&gt;مسح&lt;/b&gt; يفرغ الخطوط والذاكرة ويبدأ المجاميع من جديد؛ و&lt;b&gt;إزالة الكل&lt;/b&gt; تزيل كل مسجّل
 عن المخطط.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط؛ ويعرض خط التصويب الزمن وكم مضى عليه. النوافذ
+&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفي الطرف الأيمن للمحور يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
 الطويلة والخطوط السريعة تُرسم من ملخصات الأدنى/الأعلى، فلا تكلّف أكثر من القصيرة.&lt;/p&gt;
 &lt;h3&gt;القياسات&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
@@ -2772,9 +2832,10 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
 cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
 &lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer&lt;/td&gt;&lt;/tr&gt;
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer; the mouse on a cursor&apos;s tag: its time (from T while
+the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
 all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds&lt;/td&gt;&lt;/tr&gt;
@@ -2804,9 +2865,9 @@ Log), Fold lane ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
 يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
 &lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب&lt;/td&gt;&lt;/tr&gt;
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
 كلها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت&lt;/td&gt;&lt;/tr&gt;

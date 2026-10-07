@@ -338,8 +338,10 @@ holds too. While the trigger is on, the same button is <b>Stop</b> / <b>▶ Run<
 <li><b>Measure</b> shows the measurements under the chart (below). <b>Cursors</b> on (turns Measure on): click the
 chart for cursor <b>A</b>, again for <b>B</b>, drag them. A bar between their tags at the top of the plot says the
 time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a cursor off the view it ends at the
-plot's edge, and when the cursors are too close for the text, the text stands beside the tags. <b>Clear cursors</b>
-removes them, and so does turning <b>Cursors</b> off.</li>
+plot's edge, and when the cursors are too close for the text, the text stands beside the tags. A tag's tooltip gives
+its clock time; while the trigger holds the view on a crossing, how far from <b>T</b> too (<i>T -0.250 ms</i>), as an
+oscilloscope's cursors read, and so does the line over the measurements (<i>A: T -0.250 ms · B: T +1.750 ms</i>).
+<b>Clear cursors</b> removes them, and so does turning <b>Cursors</b> off.</li>
 <li><b>ƒ Math</b>: lines made from a formula (below).</li>
 <li><b>Display</b>, a menu of how the lines are drawn (its tooltip says what is on): <b>Normalise</b>, every line
 scaled to its own range, to compare shapes of different units; <b>Lanes</b>, a plot per unit stacked under each other,
@@ -367,8 +369,13 @@ always answers.</li>
 <li><b>Clear</b> empties the lines and the memory and starts the totals again; <b>Remove all</b> takes every register
 off the chart.</li>
 </ul>
-<p>The time labels are the clock time and move with the lines; the crosshair shows the time and how long ago. Long
-windows and fast lines are drawn from min/max summaries, so they cost no more than short ones.</p>
+<p>From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
+oscilloscope's: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
+right edge (<i>-8 ms</i> … <i>0</i>), or from <b>T</b> while the trigger holds the view on a crossing (<i>0</i> under
+it, <i>+4 ms</i>). At the axis's right end <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
+at 0; the wheel steps the window through 1, 2 and 5 per division. <b>Display → Time grid</b>: Auto (divisions below
+1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, <i>T +1.234 ms</i>). Long windows and fast lines are drawn
+from min/max summaries, so they cost no more than short ones.</p>
 <h3>Measurements</h3>
 <p><b>Measure</b> (off by default) shows a table under the chart, for every line: the value at cursor <b>A</b> and
 <b>B</b>, <b>B − A</b>, and over A → B (or over the view without cursors) the <b>min</b>, <b>max</b>, <b>mean</b>,
@@ -619,9 +626,10 @@ the ⚠ switch.</li>
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
 cancels · right-click: the menu of the row and the table</td></tr>
-<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
+<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
-<b>click</b> places A, then B, a <b>drag</b> moves the nearer</td></tr>
+<b>click</b> places A, then B, a <b>drag</b> moves the nearer; the mouse on a cursor's tag: its time (from T while
+the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>

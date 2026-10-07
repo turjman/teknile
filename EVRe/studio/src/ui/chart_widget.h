@@ -161,6 +161,33 @@ public:
 	qint64 fastColumnsBinned() const { return fastColumnsBinned_; } /* tests: columns of fast lines binned so far */
 	qint64 polledColumnsBinned() const { return polledColumnsBinned_; } /* tests: the same of the polled lines' views */
 	QStringList timeLabels() const { return timeLabels_; }
+	/* The time grid (Display, Time grid; chart/timeGrid). Clock: lines at wall-clock times, so they move with the data.
+	 * Divisions: DIVISIONS fixed divisions across the plot, as a scope's graticule (the owner: at 10 ms the lines and
+	 * labels marched across a live view; a scope keeps its grid and only the wave moves), labelled by their offset
+	 * from the right edge (live, or held by the user) or from T (held on a trigger's crossing), with a "1 ms/div"
+	 * readout and the clock time at 0 at the time axis's right end. Auto: divisions below DIVISIONS_BELOW, clock
+	 * times from there */
+	enum class TimeGrid { Auto, Clock, Divisions };
+	static constexpr int DIVISIONS = 10;
+	static constexpr double DIVISIONS_BELOW = 1.0; /* seconds of window */
+	void setTimeGrid(TimeGrid grid);
+	TimeGrid timeGrid() const { return timeGrid_; }
+	bool divisionsShown() const; /* the grid is divisions at the window now */
+	/* the 1-2-5 window the wheel steps to from `window`, one notch in or out, while divisions are shown: a scope's
+	 * time/div knob, so the readout and the labels stay round */
+	static double divisionWindow(double window, bool in);
+	/* tests: the time grid's vertical lines as last drawn (x; divisions: the lines inside the plot), the time labels'
+	 * centres, and the readout ("1 ms/div · 14:03:12.345"; empty with clock times) and where it was written */
+	QVector<double> timeGridX() const { return timeGridX_; }
+	QVector<double> timeLabelX() const { return timeLabelX_; }
+	QString divisionReadout() const { return divisionText_; }
+	/* U-7: while the view is held on a trigger's crossing in view, times are read from T (the hover box, the cursors'
+	 * readouts), as a scope's cursors measure from its trigger point. T's time then, else NaN */
+	double timeOrigin() const;
+	/* a time as its distance from T ("T -0.250 ms", in the unit the window is written in); empty without T */
+	QString fromTText(double t) const;
+	QString readoutTimeText() const { return readoutTime_; } /* tests: the hover box's time row as last made */
+	QRectF divisionReadoutRect() const { return divisionRect_; }
 
 	/* the time base, seconds (read at every frame), and the wall-clock time of
 	 * its zero (ms since the epoch) for the axis labels */
@@ -786,6 +813,12 @@ private:
 	struct GridTicks {
 		double valueStep = 1, timeStep = 1;
 		QVector<double> values, times;
+		QVector<double> timeX;  /* each time's x (divisions: on places that do not move by a rounding from frame to frame) */
+		QVector<double> lineX;  /* the vertical lines (divisions: those inside the plot; its edges are the plot's own) */
+		/* divisions: each time's offset from 0 in divisions, 0's time (the right edge or T) and a division's length */
+		bool divisions = false, fromT = false;
+		QVector<int> offsets;
+		double zero = 0, division = 0;
 		QVector<double> minor; /* Log: the faint lines at 2..9 of each decade */
 		bool labelMinor = false; /* Log over less than two decades: the faint lines labelled too */
 	};
@@ -989,6 +1022,19 @@ private:
 	mutable Axes lastAxes_;          /* the plot's axes at the last frame painted (tests) */
 	mutable QStringList valueLabels_;
 	mutable QStringList timeLabels_;
+	TimeGrid timeGrid_ = TimeGrid::Auto;
+	mutable QVector<double> timeGridX_, timeLabelX_;
+	mutable QString divisionText_; /* the readout as last drawn, and where */
+	mutable QRectF divisionRect_;
+	mutable bool divisionFromT_ = false; /* its 0 is T (its tooltip) */
+	bool timesFromT(double t0, double t1) const; /* the times shown count from T (held on a crossing in view) */
+	/* its clock time while live: written again at most every DIVISION_CLOCK_MS (a number rewritten at every frame reads
+	 * as noise), at once when the division or what 0 is changes */
+	mutable QString divisionClock_, divisionClockKey_;
+	mutable QElapsedTimer divisionClockAge_;
+	QString divisionReadoutText(const GridTicks &ticks) const;
+	void drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Axes &axes) const;
+	double wheelNotches_ = 0; /* the wheel's notches not stepped yet while it steps 1-2-5 windows (a touchpad's small ones) */
 	mutable QVector<QRectF> valueLabelRects_; /* where they were written */
 	bool stripLog_ = false;          /* the memory strip's image drawn on the Log scale */
 
@@ -1019,6 +1065,7 @@ private:
 	mutable qreal readoutDpr_ = 0;
 	mutable bool readoutDark_ = false;
 	mutable int readoutBuilds_ = 0;
+	mutable QString readoutTime_;
 	mutable QElapsedTimer readoutMade_;
 	mutable ReadoutBase readoutBase_;
 	/* the legend as a picture: made again when its key changes (the lines, the values' tick, the scroll, the size,

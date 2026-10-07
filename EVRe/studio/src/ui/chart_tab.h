@@ -264,6 +264,7 @@ private:
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
+	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
 
 	/* the measurements */

@@ -1108,6 +1108,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
 | -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
+| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
@@ -1211,12 +1212,19 @@ Once both are placed, a bar joins their tags at the top of the plot and says the
 
 Cursors are fixed **times**, not screen positions. In a live view they move left with the data. Once both are placed, the measurements cover A → B instead of the view.
 
+**Their times.** A tag's tooltip gives the cursor's clock time (*Cursor A at 14:03:12.345*). While the trigger holds
+the view on a crossing (7.13), it also says how far the cursor is from **T**, as an oscilloscope's cursors measure from
+the trigger point (*Cursor A at 14:03:12.345 · T -0.250 ms*), and the line above the measurements adds both after the
+span (*A → B = ... · A: T -0.250 ms · B: T +1.750 ms*). B − A is the same either way. The distance from T has three
+decimals in the unit the window is written in (µs below a 1 ms window, ms below 1 s, then s). The tags stay letters,
+so the bar between them keeps its room; live, or without a crossing in view, the tooltip gives the clock time alone.
+
 ### 7.8 Mouse and keyboard
 
 | Where | Action | Effect |
 |---|---|---|
 | Chart | Drag,&nbsp;left&nbsp;button | Pan through the memory, and hold. |
-| Chart | Wheel | Zoom the time by 1.25 per notch. Live, the right edge stays at now. Held, the zoom is around the time under the mouse. |
+| Chart | Wheel | Zoom the time by 1.25 per notch. Live, the right edge stays at now. Held, the zoom is around the time under the mouse. Below a 1 s window (the time grid in divisions, 7.9) a notch is the next window of 1, 2 or 5 per division (10 ms, 5 ms, 2 ms ... in; 20 ms, 50 ms ... out), as a scope's time/div knob; Auto leaves the divisions at 1 s, and from there the notch is 1.25 again. |
 | Chart | Ctrl&nbsp;+&nbsp;wheel | Zoom Y around the mouse (switches to Manual); with Lanes, the lane under the mouse. |
 | Lanes'&nbsp;value&nbsp;labels | Wheel | Scroll the lanes up and down when they do not fit (7.12). |
 | Lanes'&nbsp;scroll&nbsp;bar | Drag&nbsp;/&nbsp;click | Drag the handle; a click above or below it moves one plot height (7.12). |
@@ -1236,7 +1244,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Legend&nbsp;scroll&nbsp;bar | Click&nbsp;/&nbsp;drag | Bring the thumb under the mouse, then drag it. |
 | Legend&nbsp;arrows | Click | Scroll half a row that way. |
 | Chart,&nbsp;cursor&nbsp;mode | Click&nbsp;/&nbsp;drag | Place or move cursor A, then B (7.7). |
-| Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
+| Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`; while the trigger holds the view on a crossing, how far from T instead: `T +1.234 ms`, 7.13) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
 | Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. |
 | Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
 | Anywhere | F1 | Help. |
@@ -1264,7 +1272,20 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   fold and the menu.
 - **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up or below 0.001 are written in exponent form (`1.235e+05`). Zero is `0`.
 - **Value labels.** They use 1-2-5 steps, about five of them.
-- **Time labels.** They show the **clock time**, as precise as the grid step needs (`14:03:12`, `14:03:12.5`, `14:03:12.35`, `14:03:12.345`). The grid lines are fixed to clock times, so they move with the data.
+- **Time labels.** From a 1 s window up they show the **clock time**, as precise as the grid step needs (`14:03:12`, `14:03:12.5`, `14:03:12.35`, `14:03:12.345`). The grid lines are fixed to clock times, so they move with the data.
+- **Divisions below 1 s.** Below a 1 s window the time axis is a scope's graticule: **10 fixed divisions** across the
+  plot, whose lines stand still while the wave moves (clock times at 10 ms marched across the view). The labels are
+  **offsets**, in the unit that fits the window (s, ms, µs): live, or held by you, from the right edge (*-10 ms*,
+  *-9 ms* ... *0*); held by the trigger on a crossing, from **T** (*-2 ms* ... *0* ... *+8 ms*, the *0* under the
+  crossing; the grid is laid from T, so a line always falls on it). Labels stand every 1, 2 or 5 divisions as their
+  width needs, *0* always among them. At the axis's right end, just left of the last label, a readout in a box of its
+  own says the division and the clock time at 0: *1 ms/div · 18:07:34.263* (T's time while held on a crossing). Live,
+  its clock time is written again at most twice a second, so it does not run; its tooltip says what it is. The
+  wheel steps the window through 1, 2 and 5 per division (7.8), so the readout and the labels stay round; a window
+  typed (*30 ms*) is kept, and the readout then says its exact division (*3 ms/div*). In Arabic every offset and the
+  readout are one left-to-right piece, the unit beside its number.
+- **Display → Time grid.** *Auto (divisions below 1 s)*, the default; *Clock times* (as before, at every window);
+  *Divisions* (at every window: a 10 s window reads *1 s/div*, *-10 s* ... *0*). Saved (`chart/timeGrid`, 14.3).
 - **Info line.** It starts with the registers on the chart of the limit at the rate now (*32/64 plotted*) and the math lines, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
@@ -1511,6 +1532,11 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   the row says *no line to watch* and its list shows the line's name greyed. The line saved (`chart/triggerLine`)
   stays, and when the line comes back the trigger arms on it again, in its mode. It never moves to another line
   by itself: the chart would hold on a line nobody chose.
+- **Times from T.** While the view is held on a crossing in view, times are read from T, as a scope's: the time
+  axis below 1 s counts its divisions from T (*-2 ms ... 0 ... +8 ms*, 7.9), the hover box says *T +1.234 ms* beside
+  the clock time (in place of how long ago), and the cursors' tags and the line above the measurements say how far
+  each cursor is from T (*A: T -0.250 ms · B: T +1.750 ms*, 7.7). Live (Auto running free) or with the crossing out of
+  view, clock times as before.
 - The line, each line's level and edge, the mode, the hold-off and the place are kept (`chart/trigger…`, 14.3); the
   trigger itself is off at each start. A recording's window has no trigger (its chips' menus do not offer it):
   nothing comes after its end.
@@ -2367,6 +2393,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/smooth` | `true` | on&nbsp;change | Smooth. |
 | `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
 | `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its first line (7.13). |
+| `chart/timeGrid` | `0` | on&nbsp;change | Time grid: 0 Auto (divisions below a 1 s window), 1 Clock times, 2 Divisions (`ChartView::TimeGrid`, 7.9). |
 | `chart/yAuto` | `true` | on&nbsp;change | Y range Auto. |
 | `chart/yLog` | `false` | on&nbsp;change | Y range Log (7.5); with `chart/yAuto` for its range. |
 | `chart/yMin`,&nbsp;`chart/yMax` | `0`,&nbsp;`1` | on&nbsp;change&nbsp;(Manual) | The Manual Y range. |
@@ -4396,9 +4423,25 @@ The following choices keep a frame cheap on a high-DPI screen:
   a single thin copy.
 - **The card.** A plain fill, then four small corner shapes in the window's colour. One antialiased rounded
   rectangle the size of the chart costs milliseconds at 4K.
-- **The grid** is drawn without antialiasing: crisp 1 px lines, cheaper. Time grid lines sit at multiples of the
-  time step on the time base, so they are fixed to wall-clock times and move with the data. Labels are `HH:mm:ss`,
-  with `.z`, `.zz` or `.zzz` as the step needs.
+- **The grid** is drawn without antialiasing: crisp 1 px lines, cheaper. With clock times, time grid lines sit at
+  multiples of the time step on the time base, so they are fixed to wall-clock times and move with the data. Labels
+  are `HH:mm:ss`, with `.z`, `.zz` or `.zzz` as the step needs.
+- **Divisions** (`divisionsShown`: Time grid on Divisions, or on Auto below `DIVISIONS_BELOW` = 1 s). `gridTicks`
+  puts 0 at the right edge, or at T while `timesFromT` (the user's trigger, the view not live, the last crossing in
+  view), and a line every tenth of the plot from there (`DIVISIONS`), as fractions of the plot's width from 0's x,
+  each rounded to a millionth of a pixel. Not from the times: they are large numbers of seconds, and their rounding
+  moved a line lying on a pixel's edge by a pixel now and then. `GridTicks::lineX` (the lines inside the plot; its
+  edges are the plot's own) is what both paths draw, the CPU in `drawGrid` and the card as grid segments, so the
+  card's lines lie where the CPU's do (a picture check). `drawDivisionLabels` writes the offsets (`offsetText`,
+  each an isolated left-to-right piece) every 1, 2 or 5 divisions as their width needs, and the readout
+  (`divisionReadoutText`: the division and the clock time at 0, its clock written again at most every
+  `DIVISION_CLOCK_MS` = 500 ms while live) in a box just left of the last label; labels under it are left out. The
+  wheel steps the window by `divisionWindow` (the next 1, 2 or 5 per division), part notches of a touchpad adding up
+  to one (`wheelNotches_`).
+- **Times from T** (U-7). `timeOrigin` is T while `timesFromT` holds for the view, else NaN; `fromTText` writes a time
+  as its distance from it (*T -0.250 ms*, three decimals in the window's unit, one left-to-right piece). The
+  crosshair's box puts it in its time row in place of how long ago (the row's width kept for the widest of both, so
+  the box does not move), a cursor's tag gives it in its tooltip, and the Chart tab's measure line after the span.
 - **Only when visible.** `ChartView::frame()` asks for a frame only while the widget is visible. A hidden Chart tab
   costs nothing but the `append` calls.
 - **Paced by the frames.** While frames come (`frame()` called in the last 250 ms, `FRAMES_STOPPED_MS`), a change
@@ -5543,7 +5586,19 @@ on its line's middle (0.2) by itself, *Auto (short window)* in the corner, no ro
 across 30 frames the view's end moves (13 times) by whole periods only; flat for 1.5 s it runs free (*Auto · free
 running*, live) and locks again when the wave returns; Display's *Lock short windows* off (saved false) and on again;
 at 100 ms no lock; Hold ends it (the button Live), Live locks again; the user's trigger takes over (its row and tab)
-and the lock comes back after it.
+and the lock comes back after it. The time grid (`chartTimeGrid`): at 1 s the clock-time labels as before and no
+readout; at a 10 ms live window, 30 frames of a 70 Hz sine: the 9 lines inside the plot at its tenths, the same in
+every frame while the view's end moves 0.5 s; the labels *-10 ms* ... *-8 ms* ... *0*, the *0* at the right edge; the
+readout *1 ms/div · HH:mm:ss.zzz* at the axis's right end, clear of every label, its clock time written at most twice a
+second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from 0.5 s: 1 s, 1.25 s, 1 s, 0.5 s; held by
+the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's;
+Display's Time grid: Clock times at 10 ms, Divisions at 10 s (*1 s/div*, *-5 s*, *0*), saved and taken by a new tab,
+Auto; in Arabic each offset and the readout an isolated left-to-right piece. On a card (`chartBinsAndGpu`) the
+divisions are compared with the CPU's picture block by block. Times from T (`chartTimesFromT`): held by Normal on a
+crossing at 10 ms, the hover box a division after T reads *T +1.000 ms* (to 0.01 ms) beside its clock time; cursors
+0.25 ms before and 1.75 ms after T: their tags' tooltips *Cursor A at HH:mm:ss.zzz · T -0.250 ms* and *... B ... T
++1.750 ms*, the measure line *... · A: T -0.250 ms · B: T +1.750 ms*; live with the trigger off the box says how
+long ago, the tags their clock time alone, the measure line no T.
 
 **Languages** (`languages`, after the Help step): every `.ts` in `translations/` has each message translated, finished
 and not empty, Arabic's numerus messages six forms, and each translation (each form) the English's `%1` placeholders,
@@ -5586,7 +5641,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 504 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 516 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

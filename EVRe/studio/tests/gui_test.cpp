@@ -567,6 +567,8 @@ public:
 		chartTriggerMarksOutside();
 		chartTriggerSteadyState();
 		chartShortLock();
+		chartTimeGrid();
+		chartTimesFromT();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -4406,7 +4408,8 @@ private:
 				own = own && bin.count == 1 && std::fabs(k - std::round(k)) < 1e-6;
 			}
 			check(own, "chart, fast lines: in a view of 1 ms each record is a bin of its own, at its own time");
-			/* the time labels below a millisecond: microseconds */
+			/* the time labels below a millisecond with clock times (Display, Time grid; divisions by default there): microseconds */
+			view->setTimeGrid(ChartView::TimeGrid::Clock);
 			view->setWindow(5e-5);
 			view->showSpan(at - 2.5e-5, at + 2.5e-5);
 			host.grab();
@@ -4704,7 +4707,7 @@ private:
 		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
 		if (adapters.isEmpty()) {
 			for (const char *what : { "opened on a thread", "its frame", "the cursors' tags and bar", "a note's tag",
-					 "the trigger's level and tag", "the trigger's dashed level line", "Log Y", "lanes", "lanes scrolled and folded", "lanes resized", "a picture of the chart",
+					 "the trigger's level and tag", "the trigger's dashed level line", "Log Y", "the time grid's divisions", "lanes", "lanes scrolled and folded", "lanes resized", "a picture of the chart",
 					 "another tab and back",
 					 "the mouse", "the last line off" })
 				check(true, qPrintable(QStringLiteral("chart on a GPU, %1: no adapter on this machine (Direct3D 11 on Windows only): "
@@ -4843,6 +4846,24 @@ private:
 			check(once->yLog() && once->plotOnCard() && logAlike >= 0.93, "chart on a GPU: Log Y drawn by the card as the "
 					"CPU draws it, block by block");
 			once->setYLog(false);
+			/* the time grid's divisions: the card's lines at the CPU's places (each tenth of the plot) */
+			once->setTimeGrid(ChartView::TimeGrid::Divisions);
+			for (int k = 0; k < 3; k++) {
+				once->repaint();
+				QApplication::processEvents();
+			}
+			QRect atGrid;
+			const QImage gpuGrid = once->gpuPicture(&atGrid).convertToFormat(QImage::Format_RGB32);
+			const QImage cpuGrid = onceHost.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(atGrid);
+			const double gridAlike = blocksAlike(gpuGrid, cpuGrid, 24);
+			if (!qEnvironmentVariableIsEmpty("EVRE_TEST_PICTURES")) {
+				gpuGrid.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/divisions_card.png"));
+				cpuGrid.save(qEnvironmentVariable("EVRE_TEST_PICTURES") + QStringLiteral("/divisions_cpu.png"));
+			}
+			std::printf("     (the time grid's divisions: %.2f%% of the blocks like the CPU's)\n", gridAlike * 100);
+			check(once->divisionsShown() && once->timeGridX().size() == 9 && once->plotOnCard() && gridAlike >= 0.93,
+					"chart on a GPU: the time grid's divisions drawn by the card as the CPU draws them, block by block");
+			once->setTimeGrid(ChartView::TimeGrid::Auto);
 			/* lanes: a line in volts beside the lines with no unit, two lanes; the card's segments from each lane's Axes */
 			once->addSeries(LINES, QStringLiteral("volts"), QStringLiteral("V"), QColor(0xE0, 0x80, 0x20));
 			for (int i = 0; i < 60 * HZ; i++) once->append(LINES, 3540.0 + double(i) / HZ, 12.0 + std::sin(i * 0.01));
@@ -4989,7 +5010,8 @@ private:
 		QList<QAction *> choices;
 		if (display && display->menu())
 			for (QAction *action : display->menu()->actions())
-				if (action->actionGroup()) choices << action;
+				if (action->actionGroup() && !action->objectName().startsWith(QLatin1String("chartTimeGrid")))
+					choices << action; /* the Drawing group's, not the Time grid's */
 		const bool listed = chartTab && choices.size() == adapters.size() + 2
 				&& choices.first()->text().startsWith(QLatin1String("Auto")) && choices.last()->text() == QLatin1String("CPU");
 		if (listed) choices.last()->trigger();
@@ -8318,8 +8340,9 @@ private:
 				"20 ms behind the start before), the engine is armed again in its clock's terms and the step 7 ms into it "
 				"holds the view");
 
-		/* the wheel: Normal, no hold-off, held on a crossing; zoomed out a notch (10 to 12.5 ms): the engine's re-arm is
-		 * the new fill (80 % of the window), and the next crossing counts after it */
+		/* the wheel: Normal, no hold-off, held on a crossing; zoomed out a notch (10 to 20 ms, a 1-2-5 step of the
+		 * divisions' time grid): the engine's re-arm is the new fill (after the crossing's place), and the next crossing
+		 * counts after it */
 		wave = [](double t) { return std::fmod(t, 0.001) < 0.0005 ? 0.3 : 0.0; };
 		view->setTriggerHoldoff(0);
 		view->setTrigger(key, ChartView::TriggerMode::Normal);
@@ -8344,7 +8367,7 @@ private:
 		const double gap = view->triggeredAt() - firstAt;
 		std::printf("     (the wheel: the window %.4f s, %d post(s), the engine's re-arm %.4f s; the next crossing %.4f s "
 				"after the one held)\n", view->window(), posts - wheelPosts, zoomed.rearm, gap);
-		check(std::fabs(view->window() - 0.0125) < 1e-9 && posts - wheelPosts >= 1 && std::fabs(zoomed.rearm - newFill) < 1e-12
+		check(std::fabs(view->window() - 0.02) < 1e-9 && posts - wheelPosts >= 1 && std::fabs(zoomed.rearm - newFill) < 1e-12
 						&& view->triggerHolds() == wheelHolds + 2 && gap >= newFill - 1e-9 && gap < newFill + 0.0015,
 				"chart, Trigger on a fast line: the window zoomed by the wheel is given to the engine (its re-arm the new "
 				"window's fill), and the next crossing counts after the new fill");
@@ -10282,6 +10305,379 @@ private:
 				"time), and it stays");
 		action->setChecked(false);
 		chart.tab.hide();
+		clearTriggerSettings();
+	}
+
+	/* U-15, the time grid as a scope's: below a 1 s window ten divisions whose lines stand still while the wave moves,
+	 * labelled by their offset from the right edge ("-8 ms" ... "0"), or from T while a trigger holds the view ("0"
+	 * under the crossing, "+4 ms"); a "1 ms/div" readout with the clock time at 0 at the axis's right end; the wheel
+	 * steps 1-2-5 windows; Display's Time grid (Auto, Clock times, Divisions; chart/timeGrid); clock times from 1 s as
+	 * before; in Arabic each offset and the readout one left-to-right piece, the unit beside its number */
+	void chartTimeGrid() {
+		clearTriggerSettings();
+		QSettings().remove(QStringLiteral("chart/timeGrid"));
+		QSettings().setValue(QStringLiteral("chart/autoShortWindows"), false); /* the plain live view: the wave runs */
+		LoneChart chart(QStringLiteral("GRID"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		qint64 index = 0;
+		const auto sampleTime = [](qint64 i) { return 99.0 + double(i) / 20000; };
+		const auto feedTo = [&](ChartTab &tab, double &now, const RegDef &def, qint64 end) { /* a 70 Hz sine at 20 kHz */
+			MathLines::Samples samples;
+			for (; index < end; index++) {
+				const double t = sampleTime(index);
+				samples[regKey(def)] << QPointF(t, std::sin(2 * M_PI * 70 * t));
+			}
+			now = sampleTime(index - 1);
+			tab.frame(samples);
+		};
+		const auto windowBoxSays = [&chart](const QString &text) {
+			for (QComboBox *box : chart.tab.findChildren<QComboBox *>())
+				if (box->toolTip().startsWith(QLatin1String("View: the time shown"))) box->setEditText(text);
+		};
+		const auto frame = [&] { /* a 60th of a second */
+			feedTo(chart.tab, chart.now, chart.def, index + 333);
+			(void) view->grab();
+		};
+		for (int k = 0; k < 20; k++) frame();
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *autoGrid = chart.tab.findChild<QAction *>(QStringLiteral("chartTimeGridAuto"));
+		auto *clockGrid = chart.tab.findChild<QAction *>(QStringLiteral("chartTimeGridClock"));
+		auto *divisionsGrid = chart.tab.findChild<QAction *>(QStringLiteral("chartTimeGridDivisions"));
+		if (!autoGrid || !clockGrid || !divisionsGrid) {
+			check(false, "chart, time grid: Display's three choices found (Auto, Clock times, Divisions)");
+			return;
+		}
+		const QRegularExpression clockForm(QStringLiteral("^\\d\\d:\\d\\d:\\d\\d(\\.\\d+)?$"));
+		const auto clockLabels = [&clockForm](const QStringList &labels) {
+			bool all = labels.size() >= 3;
+			for (const QString &label : labels) all = all && clockForm.match(label).hasMatch();
+			return all;
+		};
+		frame();
+		const bool clockAtOne = autoGrid->isChecked() && !view->divisionsShown() && clockLabels(view->timeLabels())
+				&& view->divisionReadout().isEmpty() && view->divisionReadoutRect().isEmpty();
+		std::printf("     (at 1 s: %s)\n", qPrintable(view->timeLabels().join(QStringLiteral(", "))));
+		check(clockAtOne, "chart, time grid: at a 1 s window (Auto) the clock-time labels as before, no division readout");
+
+		/* 10 ms live: 30 frames, the lines inside the plot at the same places (each tenth of it) while the view's end
+		 * moves with the data */
+		view->setWindow(0.01);
+		frame();
+		const QRectF plot = view->lastPlot();
+		const QVector<double> lines = view->timeGridX();
+		double t0, firstEnd, lastEnd;
+		view->viewSpan(t0, firstEnd);
+		bool still = lines.size() == 9;
+		for (int k = 0; still && k < lines.size(); k++)
+			still = std::fabs(lines[k] - (plot.left() + (k + 1) * plot.width() / 10)) < 0.01;
+		QSet<QString> readouts;
+		QElapsedTimer age;
+		age.start();
+		int moves = 0;
+		for (int k = 0; k < 30; k++) {
+			frame();
+			if (view->timeGridX() != lines) moves++;
+			readouts << view->divisionReadout();
+		}
+		const qint64 ms = age.elapsed();
+		view->viewSpan(t0, lastEnd);
+		std::printf("     (10 ms, 30 frames: the view's end moved %.3f s, the lines moved in %d frames, %d readouts in %lld ms)\n",
+				lastEnd - firstEnd, moves, int(readouts.size()), (long long) ms);
+		check(still && moves == 0 && lastEnd - firstEnd > 0.4, "chart, time grid: at a 10 ms live window, 30 frames: the 9 "
+				"lines inside the plot stand still at its tenths while the view's end moves with the data");
+		const QStringList labels = view->timeLabels();
+		const QVector<double> labelX = view->timeLabelX();
+		const int zero = int(labels.indexOf(QStringLiteral("0")));
+		const bool offsets = labels.contains(QStringLiteral("-8 ms")) && labels.contains(QStringLiteral("-5 ms"))
+				&& labels.contains(QStringLiteral("-10 ms")) && zero >= 0 && std::fabs(labelX[zero] - plot.right()) < 0.5
+				&& !labels.join(QString()).contains(QLatin1Char('+'));
+		const QString readout = view->divisionReadout();
+		const QRectF readoutRect = view->divisionReadoutRect();
+		const QRegularExpression readoutForm(QStringLiteral("^1 ms/div · \\d\\d:\\d\\d:\\d\\d\\.\\d{3}$"));
+		QFont small = QGuiApplication::font(); /* the chart's labels' */
+		small.setPointSizeF(8.5);
+		const QFontMetricsF metrics(small);
+		bool apart = !readoutRect.isEmpty();
+		for (int k = 0; k < labels.size(); k++) {
+			const double half = metrics.horizontalAdvance(labels[k]) / 2;
+			apart = apart && (labelX[k] + half < readoutRect.left() || labelX[k] - half > readoutRect.right());
+		}
+		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.top() > plot.bottom()
+				&& readoutRect.right() < plot.right() && readoutRect.left() > plot.center().x()
+				&& readouts.size() <= 2 + ms / 500
+				&& view->toolTipAt(readoutRect.center()).contains(QStringLiteral("the clock time at 0, the right edge"));
+		std::printf("     (10 ms: labels %s; the readout \"%s\" at %.0f..%.0f)\n", qPrintable(labels.join(QStringLiteral(", "))),
+				qPrintable(readout), readoutRect.left(), readoutRect.right());
+		check(offsets, "chart, time grid: at 10 ms live the labels are offsets from the right edge (-10 ms, -8 ms, -5 ms "
+				"... 0, the 0 at the right edge)");
+		check(readoutOk && apart, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the clock "
+				"time at 0) at the time axis's right end, clear of the labels, its clock time written at most twice a "
+				"second, its tooltip saying what it is");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				frame();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_timegrid_live_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+
+		/* the wheel: the next window of 1, 2 or 5 per division; Auto leaves the divisions at 1 s */
+		const auto wheel = [view, plot](int notches) {
+			const QPointF inside = plot.center();
+			QWheelEvent e(inside, view->mapToGlobal(inside), QPoint(), QPoint(0, 120 * notches), Qt::NoButton, Qt::NoModifier,
+					Qt::NoScrollPhase, false);
+			QApplication::sendEvent(view, &e);
+			return view->window();
+		};
+		const double in = wheel(1), out = wheel(-1), out2 = wheel(-1);
+		frame();
+		const QString fiveHundred = view->divisionReadout();
+		view->setWindow(0.5);
+		const double up = wheel(-1), beyond = wheel(-1), back = wheel(1), down = wheel(1);
+		std::printf("     (the wheel from 10 ms: %g, %g, %g; from 0.5 s: %g, %g, %g, %g; at 20 ms \"%s\")\n", in, out, out2,
+				up, beyond, back, down, qPrintable(fiveHundred));
+		check(std::fabs(in - 0.005) < 1e-12 && std::fabs(out - 0.01) < 1e-12 && std::fabs(out2 - 0.02) < 1e-12
+						&& fiveHundred.startsWith(QStringLiteral("2 ms/div · ")) && std::fabs(up - 1) < 1e-12
+						&& std::fabs(beyond - 1.25) < 1e-12 && std::fabs(back - 1) < 1e-12 && std::fabs(down - 0.5) < 1e-12,
+				"chart, time grid: below 1 s a wheel notch is the next window of 1, 2 or 5 per division (10 ms -> 5 ms, "
+				"10 ms, 20 ms: \"2 ms/div\"); Auto leaves them at 1 s, where the wheel zooms as before (1.25 s)");
+
+		/* held on a trigger's crossing: the labels count from T, its 0 under the crossing; the readout's clock time is T's */
+		view->setWindow(0.01);
+		view->setTrigger(chart.key(), 0.0, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		for (int k = 0; k < 10; k++) frame();
+		double h0, h1;
+		view->viewSpan(h0, h1);
+		const double crossing = view->triggeredAt();
+		const double crossX = plot.left() + (crossing - h0) / (h1 - h0) * plot.width();
+		const QStringList held = view->timeLabels();
+		const QVector<double> heldX = view->timeLabelX();
+		const int heldZero = int(held.indexOf(QStringLiteral("0")));
+		const QString heldReadout = view->divisionReadout();
+		const QString atT = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(crossing * 1000)))
+									.toString(QStringLiteral("HH:mm:ss.zzz"));
+		const bool fromT = !view->live() && std::isfinite(crossing) && heldZero >= 0 && std::fabs(heldX[heldZero] - crossX) <= 1
+				&& held.contains(QStringLiteral("+4 ms")) && held.contains(QStringLiteral("-2 ms"))
+				&& view->timeGridX().size() == 9 && heldReadout == QStringLiteral("1 ms/div · ") + atT
+				&& view->toolTipAt(view->divisionReadoutRect().center()).contains(QStringLiteral("(T)"));
+		std::printf("     (held on T at %.1f px: labels %s; the readout \"%s\", T at %s)\n", crossX,
+				qPrintable(held.join(QStringLiteral(", "))), qPrintable(heldReadout), qPrintable(atT));
+		check(fromT, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the crossing "
+				"within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) view->grab();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_timegrid_trigger_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		view->stopTrigger();
+		view->setLive(true);
+
+		/* the setting's three choices, saved: Clock times at 10 ms, Divisions at 10 s, Auto at 10 s */
+		clockGrid->trigger();
+		frame();
+		const bool clockChoice = view->timeGrid() == ChartView::TimeGrid::Clock && clockLabels(view->timeLabels())
+				&& view->divisionReadout().isEmpty() && QSettings().value(QStringLiteral("chart/timeGrid")).toInt() == 1;
+		divisionsGrid->trigger();
+		view->setWindow(10);
+		frame();
+		const QStringList longLabels = view->timeLabels();
+		const bool divisionsChoice = view->divisionsShown() && view->divisionReadout().startsWith(QStringLiteral("1 s/div · "))
+				&& longLabels.contains(QStringLiteral("-5 s")) && longLabels.contains(QStringLiteral("0"))
+				&& QSettings().value(QStringLiteral("chart/timeGrid")).toInt() == 2;
+		bool restored = false;
+		{
+			LoneChart other(QStringLiteral("GRID2"), QStringLiteral("V"));
+			restored = other.view->timeGrid() == ChartView::TimeGrid::Divisions;
+		}
+		autoGrid->trigger();
+		frame();
+		const bool autoChoice = !view->divisionsShown() && clockLabels(view->timeLabels()) && view->divisionReadout().isEmpty()
+				&& QSettings().value(QStringLiteral("chart/timeGrid")).toInt() == 0;
+		std::printf("     (Clock times at 10 ms %d, Divisions at 10 s %d (%s), kept by a new tab %d, Auto at 10 s %d)\n",
+				int(clockChoice), int(divisionsChoice), qPrintable(longLabels.join(QStringLiteral(", "))), int(restored),
+				int(autoChoice));
+		check(clockChoice && divisionsChoice && restored && autoChoice, "chart, time grid: Display's Time grid: Clock times "
+				"keeps clock labels at 10 ms, Divisions puts them at 10 s (\"1 s/div\", -5 s ... 0), Auto as by default; "
+				"saved (chart/timeGrid) and taken by a new tab");
+		chart.tab.hide();
+
+		/* Arabic: each offset and the readout one left-to-right piece, the unit beside its number */
+		language::apply(*qApp, QStringLiteral("ar"));
+		bool arabic = false;
+		QString arabicLabels;
+		{
+			LoneChart other(QStringLiteral("GRID3"), QStringLiteral("V"));
+			other.tab.show();
+			(void) QTest::qWaitForWindowExposed(&other.tab);
+			other.view->setSmooth(false);
+			other.view->setWindow(0.01);
+			for (int k = 0; k < 5; k++) {
+				feedTo(other.tab, other.now, other.def, index + 333);
+				(void) other.view->grab();
+			}
+			const QStringList texts = other.view->timeLabels();
+			const QString isolated = other.view->divisionReadout();
+			arabic = texts.size() >= 3 && isolated.startsWith(QChar(0x2066)) && isolated.endsWith(QChar(0x2069))
+					&& isolated.contains(QStringLiteral("1 ms/div"));
+			for (const QString &text : texts)
+				arabic = arabic && (text == QStringLiteral("0") || (text.startsWith(QChar(0x2066)) && text.endsWith(QChar(0x2069))
+						&& text.contains(QStringLiteral(" ms"))));
+			arabicLabels = texts.join(QStringLiteral(", "));
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		std::printf("     (Arabic: %s)\n", qPrintable(arabicLabels));
+		check(arabic, "chart, time grid: in Arabic each offset (\"-8 ms\") and the readout are one left-to-right piece "
+				"(isolates), the unit beside its number");
+		QSettings().remove(QStringLiteral("chart/timeGrid"));
+		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		clearTriggerSettings();
+	}
+
+	/* U-7, times from T: while the view is held on a trigger's crossing, the hover box says "T +1.000 ms" beside the
+	 * clock time, a cursor's tag says how far it is from T in its tooltip and the measure line "A: T -0.250 ms · B: T
+	 * +1.750 ms" (B - A as before), as a scope's cursors read from the trigger point; live, clock times as before */
+	void chartTimesFromT() {
+		clearTriggerSettings();
+		QSettings().setValue(QStringLiteral("chart/autoShortWindows"), false);
+		QSettings().remove(QStringLiteral("chart/measure"));
+		LoneChart chart(QStringLiteral("FROMT"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		qint64 index = 0;
+		const auto frame = [&] { /* a 60th of a second of a 70 Hz sine at 20 kHz */
+			MathLines::Samples samples;
+			for (const qint64 end = index + 333; index < end; index++) {
+				const double t = 99.0 + double(index) / 20000;
+				samples[regKey(chart.def)] << QPointF(t, std::sin(2 * M_PI * 70 * t));
+			}
+			chart.now = 99.0 + double(index - 1) / 20000;
+			chart.tab.frame(samples);
+			(void) view->grab();
+		};
+		for (int k = 0; k < 20; k++) frame();
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		if (!measure || !info) {
+			check(false, "chart, times from T: the Measure button and its line found");
+			return;
+		}
+		view->setWindow(0.01);
+		view->setTrigger(chart.key(), 0.0, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		for (int k = 0; k < 60 && !(std::isfinite(view->triggeredAt()) && !view->live()); k++) frame();
+		std::printf("     (the trigger: on %d, live %d, crossing %.4f, phase %d)\n", int(view->triggerOn()), int(view->live()),
+				view->triggeredAt(), int(view->triggerPhase()));
+		measure->setChecked(true);
+		(void) view->grab();
+		QRectF plot = view->lastPlot();
+		double h0, h1;
+		view->viewSpan(h0, h1);
+		const double crossing = view->triggeredAt();
+		const auto xOf = [&](double t) { return plot.left() + (t - h0) / (h1 - h0) * plot.width(); };
+		const auto clockOf = [view](double t) {
+			return QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(t * 1000))).toString(QStringLiteral("HH:mm:ss.zzz"));
+		};
+		/* the hover box a division after T */
+		const auto hover = [view](QPointF at) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			(void) view->grab();
+			return view->readoutTimeText();
+		};
+		const double hoverX = std::round(xOf(crossing) + plot.width() / 10);
+		const QString heldBox = hover(QPointF(hoverX, plot.center().y()));
+		const QRegularExpression fromTForm(QStringLiteral("^\\d\\d:\\d\\d:\\d\\d\\.\\d{3}   T ([+-]\\d+\\.\\d{3}) ms$"));
+		const QRegularExpressionMatch boxMatch = fromTForm.match(heldBox);
+		const double expectedMs = (hoverX - xOf(crossing)) / plot.width() * (h1 - h0) * 1000;
+		const bool boxFromT = std::isfinite(crossing) && std::isfinite(view->timeOrigin())
+				&& view->timeOrigin() == crossing && boxMatch.hasMatch()
+				&& std::fabs(boxMatch.captured(1).toDouble() - expectedMs) < 0.01;
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) hover(QPointF(hoverX + (dark ? 1 : 0), plot.center().y()));
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fromT_hover_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		std::printf("     (held on T: the box's time \"%s\", %.3f ms expected)\n", qPrintable(heldBox), expectedMs);
+		check(boxFromT, "chart, times from T: held on a trigger's crossing, the hover box says how far from T the mouse is "
+				"(\"T +1.000 ms\") beside its clock time");
+
+		/* the cursors 0.25 ms before T and 1.75 ms after: their tags' tooltips and the measure line from T */
+		{ /* the mouse off the chart: the hover box gone from the cursors' picture */
+			QEvent leave(QEvent::Leave);
+			QApplication::sendEvent(view, &leave);
+		}
+		const double a = crossing - 0.00025, b = crossing + 0.00175;
+		view->setCursors(a, b);
+		(void) view->grab();
+		const QString tipA = view->toolTipAt(QPointF(xOf(a), plot.top() + 6));
+		const QString tipB = view->toolTipAt(QPointF(xOf(b), plot.top() + 6));
+		const bool waited = QTest::qWaitFor([info] {
+			return info->text().contains(QStringLiteral(" · A: T -0.250 ms · B: T +1.750 ms"));
+		}, 3000);
+		const QString heldInfo = info->text();
+		const bool cursorsFromT = tipA == QStringLiteral("Cursor A at %1 · T -0.250 ms").arg(clockOf(a))
+				&& tipB == QStringLiteral("Cursor B at %1 · T +1.750 ms").arg(clockOf(b)) && waited
+				&& heldInfo.startsWith(QStringLiteral("Measured between the cursors: A → B = "));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) view->grab();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fromT_cursors_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		std::printf("     (the tags: \"%s\" | \"%s\"; the measure line \"%s\")\n", qPrintable(tipA), qPrintable(tipB),
+				qPrintable(heldInfo));
+		check(cursorsFromT, "chart, times from T: held on a crossing, a cursor's tag says its clock time and how far from T "
+				"(\"Cursor A at ... · T -0.250 ms\"), the measure line \"A: T -0.250 ms · B: T +1.750 ms\" after A → B");
+
+		/* live, the trigger off: clock times as before */
+		view->stopTrigger();
+		view->setLive(true);
+		for (int k = 0; k < 3; k++) frame();
+		plot = view->lastPlot(); /* the trigger's margins gone */
+		view->viewSpan(h0, h1);
+		const double la = h1 - 0.005, lb = h1 - 0.002;
+		view->setCursors(la, lb);
+		(void) view->grab();
+		const QString liveTip = view->toolTipAt(QPointF(xOf(la), plot.top() + 6));
+		const QString liveBox = hover(QPointF(plot.center().x(), plot.center().y()));
+		(void) QTest::qWaitFor([info] { return !info->text().contains(QStringLiteral("A: T")); }, 3000);
+		const bool liveClock = !std::isfinite(view->timeOrigin()) && liveTip.startsWith(QStringLiteral("Cursor A at "))
+				&& !liveTip.contains(QStringLiteral("T ")) && liveBox.endsWith(QStringLiteral(" s"))
+				&& liveBox.contains(QStringLiteral("   -")) && !info->text().contains(QStringLiteral("A: T"));
+		std::printf("     (live: the tag \"%s\", the box \"%s\", the line \"%s\")\n", qPrintable(liveTip), qPrintable(liveBox),
+				qPrintable(info->text()));
+		check(liveClock, "chart, times from T: live with the trigger off the box says how long ago, the tags their clock "
+				"time alone, the measure line no T");
+		view->setCursors(NAN, NAN);
+		measure->setChecked(false);
+		measured(view);
+		chart.tab.hide();
+		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		QSettings().remove(QStringLiteral("chart/measure"));
 		clearTriggerSettings();
 	}
 
