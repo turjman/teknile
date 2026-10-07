@@ -1806,6 +1806,57 @@ private:
 		check(firstPaint <= 2 * framePeriod + 2 && paintAfter <= 40 && fewest >= 6,
 				"fast speed: the window's thread held 700 ms (a title bar's button pressed): the chart paints again within "
 				"two frames, no paint after it over 40 ms, and the frames go on (at least 6 in each 200 ms)");
+		/* held after a crossing (the trigger on I_LOAD, a 50 Hz sine): at 2.5 s Single holds at once and the records
+		 * after T fill the view's right part, only the columns they reach binned at each frame; at 100 ms Normal holds a
+		 * view once it is full (a window under a second: steady), the next one binned while it fills behind it */
+		const int fastKey0 = ChartView::fastKey(0, 0);
+		const double columnsWide = view->lastPlot().width();
+		struct Held { int frames = 0; double seconds = 0, columns = 0, paint = 0, paintMax = 0, bin = 0; bool held = false; };
+		auto heldFill = [&](double window, ChartView::TriggerMode mode) {
+			Held out;
+			view->setWindow(window);
+			view->setTrigger(fastKey0, 0.0, ChartView::TriggerEdge::Rising, mode);
+			const int holdsBefore = view->triggerHolds();
+			out.held = QTest::qWaitFor([&] { return view->triggerHolds() > holdsBefore; }, 3000);
+			(void) view->takePerfStats();
+			QElapsedTimer held;
+			held.start();
+			if (mode == ChartView::TriggerMode::Single)
+				(void) QTest::qWaitFor([&] { return !view->triggerCapturing(); }, 4000);
+			else
+				QTest::qWait(2000);
+			out.seconds = held.nsecsElapsed() / 1e9;
+			const ChartView::PerfStats filled = view->takePerfStats();
+			out.frames = filled.frames;
+			const int frames = std::max(1, filled.frames);
+			out.columns = double(filled.fastColumns) / frames;
+			out.paint = filled.paintSum / frames;
+			out.paintMax = filled.paintMax;
+			out.bin = filled.bin / frames;
+			view->stopTrigger();
+			view->setLive(true);
+			return out;
+		};
+		const Held slowFill = heldFill(2.5, ChartView::TriggerMode::Single);
+		const Held shortHeld = heldFill(0.1, ChartView::TriggerMode::Normal);
+		for (const auto &[name, h] : { std::pair<const char *, Held>{ "2.5 s, Single, filling", slowFill },
+					 std::pair<const char *, Held>{ "100 ms, Normal", shortHeld } })
+			std::printf("  fast speed, held after a crossing at %s: %.0f frames a second, fast columns %.1f a frame (the "
+					"plot %.0f wide, two lines), paint %.2f ms on average (bin %.2f), at most %.1f ms\n", name,
+					h.frames / std::max(0.001, h.seconds), h.columns, columnsWide, h.paint, h.bin, h.paintMax);
+		/* the columns of two lines: the view's once at its crossing, the new ones as they come (a fifth more for where a
+		 * column's edge falls), the first and the open one of each frame, and the memory strip's whole once a second;
+		 * at 100 ms a view's columns a view (one every 100 ms at most), not a view at each frame. The frames and the paint
+		 * are printed for the owner's run: they follow the PC's load, the columns do not */
+		const auto most = [&](const Held &h, double window) {
+			return 2 * columnsWide * (1 + h.seconds * 1.2 / window + std::ceil(h.seconds)) + 8.0 * h.frames;
+		};
+		check(slowFill.held && shortHeld.held && slowFill.frames > 20 && shortHeld.frames > 20
+						&& slowFill.columns * slowFill.frames <= most(slowFill, 2.5)
+						&& shortHeld.columns * shortHeld.frames <= most(shortHeld, 0.1),
+				"fast speed: held after a crossing, two fast lines of a million records a second: a 2.5 s view filling bins "
+				"only the columns its new records reach, not the filled part again at each frame; a 100 ms view re-triggered "
+				"bins a view's columns a view, not a view at each frame");
 		button->click();
 		view->setWindow(windowBefore);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
@@ -7983,6 +8034,90 @@ private:
 		check(polledNew && fastNew, "chart, Trigger, a short window re-triggered 50 times (no hold-off, the crossing at 90 %): "
 				"only the new columns are binned, a polled line's and a fast line's, not the whole view each time, and at "
 				"least the columns the view moved by");
+
+		/* a held view that fills after its crossing (Single, 2.5 s, the crossing at 20 %): the view stands, the samples
+		 * reach further columns at each frame. The columns already complete are kept, so a frame bins what is new (a
+		 * frame's worth, 1/60 s: 7 columns of about 1 000) and the open column at the data's end, not the filled part again */
+		const int polledKey = 7;
+		fastView->addSeries(polledKey, QStringLiteral("POLLED"), QStringLiteral("V"), QColor(0, 128, 255));
+		double polledAt = now;
+		const auto feedFrame = [&] { /* a frame's worth: 1 667 fast records, 167 polled samples (10 kHz) */
+			feedFast(1667);
+			for (; polledAt < now; polledAt += 0.0001) fastView->append(polledKey, polledAt, std::sin(2 * M_PI * 3 * polledAt));
+		};
+		fastView->setWindow(2.5);
+		fastView->setTriggerPosition(0.2);
+		feedFrame();
+		(void) fastView->grab();
+		fastView->setTrigger(key, 0.1, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Single);
+		const int fillHolds = fastView->triggerHolds();
+		feedFrame();
+		(void) fastView->grab(); /* the view held: binned once, from the start */
+		const bool fillHeld = fastView->triggerHolds() == fillHolds + 1 && fastView->triggerCapturing();
+		const double heldFrom = fastView->triggeredAt();
+		const double dataFrom = now;
+		const qint64 fillFastBefore = fastView->fastColumnsBinned(), fillPolledBefore = fastView->polledColumnsBinned();
+		int fillFrames = 0;
+		while (fillHeld && fastView->triggerCapturing() && fillFrames < 200) {
+			feedFrame();
+			(void) fastView->grab();
+			fillFrames++;
+		}
+		const qint64 fillFast = fastView->fastColumnsBinned() - fillFastBefore;
+		const qint64 fillPolled = fastView->polledColumnsBinned() - fillPolledBefore;
+		const double fillColumns = fastView->lastPlot().width();
+		/* the columns the data reached meanwhile, each binned about once; at most a few more a frame (the first column
+		 * and the open one at the data's end), never the filled part again (a column a frame times the frames) */
+		const double reached = (std::min(now, heldFrom + 0.8 * 2.5) - dataFrom) / 2.5 * fillColumns;
+		const bool fillOnlyNew = fillHeld && fillFrames >= 100 && fillFast <= 1.2 * reached + 4 * fillFrames
+				&& fillFast >= 0.8 * reached && fillPolled <= 1.2 * reached + 4 * fillFrames && fillPolled >= 0.8 * reached;
+		std::printf("     (a held view filling: %d frames, %.0f columns reached; binned %lld of the fast line (%.1f a frame), "
+				"%lld of the polled line (%.1f a frame); the view %.0f columns)\n", fillFrames, reached, (long long) fillFast,
+				double(fillFast) / std::max(1, fillFrames), (long long) fillPolled, double(fillPolled) / std::max(1, fillFrames),
+				fillColumns);
+		check(fillOnlyNew, "chart, Trigger, a held view filling after its crossing (Single, 2.5 s, 120 frames): each frame "
+				"bins only the columns its new samples reach and the open one at the data's end, a fast line's and a polled "
+				"line's, never the part already filled again");
+
+		/* a short window (100 ms, Normal, the hold-off a window): a view is held only once it is full, and the next
+		 * crossing's view fills meanwhile behind the one shown. Its fast lines are binned as their records come, so
+		 * the frame that shows it bins what came since the frame before, not the whole view (all of it at once made
+		 * that frame late), and the work in all stays about a view's columns a view */
+		fastView->stopTrigger();
+		fastView->removeSeries(polledKey);
+		fastView->setWindow(0.1);
+		fastView->setTrigger(key, 0.1, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		fastView->setTriggerHoldoff(-1);
+		feedFrame();
+		(void) fastView->grab();
+		const int shortHolds = fastView->triggerHolds();
+		const qint64 shortBefore = fastView->fastColumnsBinned();
+		qint64 atShowMost = 0;
+		int shortFrames = 0, showFrames = 0;
+		while (fastView->triggerHolds() - shortHolds < 20 && shortFrames < 300) {
+			const int holdsNow = fastView->triggerHolds();
+			feedFrame();
+			const qint64 before = fastView->fastColumnsBinned();
+			(void) fastView->grab();
+			if (fastView->triggerHolds() != holdsNow && fastView->triggerHolds() - shortHolds > 1) { /* a view shown */
+				atShowMost = std::max(atShowMost, fastView->fastColumnsBinned() - before);
+				showFrames++;
+			}
+			shortFrames++;
+		}
+		const qint64 shortColumns = fastView->fastColumnsBinned() - shortBefore;
+		const int shortShown = fastView->triggerHolds() - shortHolds;
+		const double shortWide = fastView->lastPlot().width();
+		/* a frame brings 1/60 s of a 0.1 s view: a sixth of its columns, and the first and the open one */
+		const bool spread = shortShown >= 20 && showFrames >= 15 && atShowMost <= shortWide / 6 * 1.2 + 4
+				&& shortColumns <= 1.2 * shortShown * shortWide + 4 * shortFrames;
+		std::printf("     (a short window re-triggered: %d views in %d frames, %lld columns binned (%.0f a view, %.0f in the "
+				"view); at the frame a view is shown at most %lld)\n", shortShown, shortFrames, (long long) shortColumns,
+				double(shortColumns) / std::max(1, shortShown), shortWide, (long long) atShowMost);
+		check(spread, "chart, Trigger, a short window re-triggered (100 ms, Normal): the next view's fast lines are binned "
+				"while it fills behind the one shown, so the frame that shows it bins only what came since the frame before "
+				"(at most a sixth of the view, not all of it), and about a view's columns a view in all");
+		fastView->stopTrigger();
 		host.hide();
 		clearTriggerSettings();
 	}

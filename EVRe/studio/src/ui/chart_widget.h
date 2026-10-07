@@ -767,6 +767,8 @@ private:
 	QString linesKey(const QVector<Lane> &plots, qreal dpr) const;
 	/* the view binned, or the last binning again when nothing it depends on changed (lineReuse_) */
 	QVector<BinnedLine> viewBins(const Axes &axes);
+	/* a short window's next view, held once it is full (crossed): its fast lines binned as their records come */
+	void binPending(const Axes &axes);
 	/* the card's layer: over the plot and 2 px around it (the lines' antialiasing) */
 	QRect layerRect() const;
 	/* the plot drawn by the card into its layer, all that lies on it; false: the card failed (closed, said) */
@@ -1098,6 +1100,8 @@ private:
 	quint64 binnedVersion_ = 0;           /* a new binning */
 	QVector<BinnedLine> lastBinned_;
 	QVector<double> lastBinKey_;          /* t0, t1, columns, generation, then each line's sample range */
+	QVector<BinnedLine> pendingBinned_;   /* the fast lines of the view a crossing waits for (binPending) */
+	QVector<double> pendingKey_;          /* its t0, t1, columns and generation */
 	QImage linesPicture_;
 	QPointF linesAt_;
 	QString linesPictureKey_, gpuLinesKey_;

@@ -4633,8 +4633,10 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   drawn before, none since (26.2). The binning of a re-trigger needed nothing: the view's bins are kept on absolute
   columns (23.2, 23.11), so a crossing that moves the view bins only the new columns; 50 re-triggers with no hold-off
   and the crossing at 90 % bin 40 columns each of a polled line's 200 in view, and the samples' columns of a fast
-  line (100 a frame of 998 in view) (`polledColumnsBinned`, `fastColumnsBinned`). `pending` is dropped by Live, Stop,
-  Arm, Clear and a change of the level, edge, hold-off or place: else it pulled a live view back to an older crossing.
+  line (100 a frame of 998 in view) (`polledColumnsBinned`, `fastColumnsBinned`). With the hold-off a window, the
+  views do not overlap: the pending view's fast lines are binned while it fills (`binPending`, 23.11). `pending` is
+  dropped by Live, Stop, Arm, Clear and a change of the level, edge, hold-off or place: else it pulled a live view
+  back to an older crossing.
 - **Run and Stop** (`stopRun`, `runTrigger`): Stop clears `armed` (the engine's watch goes off with it), drops
   `pending`, sets `stopped` and holds a live view as shown (`holdAsShown`); `at` and the view stay. Run is
   `armTrigger`: Auto `setLive(true)`, Normal and Single `holdAsShown` when live, so only Auto rolls while it waits.
@@ -4718,6 +4720,20 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   a 4K screen at 225 % with two lines of a million records a second this took the binning from 2.8 ms a frame to
   0.1 (the timing aid's `columns`: 2 to 3 a frame, 26.8). The memory strip is binned whole (`binSeries`), as its
   60 px see the whole memory anyway.
+- **A held view filling, and the view a crossing waits for.** A view held after its crossing (Single, or a window
+  of a second or more) stands while the records after T reach further columns: the frame before's bins of its
+  complete columns are all kept, and a frame bins only the columns its new records reach, the first column and the
+  open one at the data's end (a 2.5 s view filling at 60 frames a second: about 7 columns of 1 000 a line a frame;
+  a polled line keeps its columns the same way, `binViewSeries`). A window under a second (23.10) holds a view only
+  once it is full, so the next crossing's view fills behind the one shown, and the frame that showed it binned all
+  of it (a whole view of each fast line every 100 ms at a 100 ms window: 1 134 columns a frame in the timing aid on
+  a 4K laptop, and those frames came late). `binPending` bins the waiting view's fast lines at each frame while the
+  view shown stands (its lines reused, 23.6), keeping its complete columns the same way, and `viewBins` hands those
+  bins to the frame that shows it: that frame bins what came since the frame before (72 columns at most instead of
+  1 069 in the GUI test). The work in all stays a view's columns a view, spread over the frames the view fills in.
+  A polled line keeps one binning of its own (`Series::viewBins`), the view shown's, and is binned when its view is
+  shown, as before. The timing aid's `columns` counts the memory strip's binning too (its whole width, once a
+  second).
 - **Drawing.** `toPolyline` makes the points as for any line and returns where the line breaks (`breaks`: a bin
   with `gap`); `strokePieces` strokes the pieces between them, a lone point as a dot. On a card the segments across
   a break are left out. A fast line is mostly bars (a column of a noisy signal covers its whole range): `fillBands`
@@ -5401,7 +5417,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 477 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 480 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

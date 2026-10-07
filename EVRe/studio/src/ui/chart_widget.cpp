@@ -2440,13 +2440,53 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 				std::upper_bound(s.times.begin(), s.times.end(), axes.t1) - s.times.begin() + 1);
 		key << double(s.dropped + i0) << double(s.dropped + i1);
 	}
-	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) return lastBinned_;
-	lastBinned_ = binView(axes, lastBinned_);
+	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) {
+		binPending(axes);
+		return lastBinned_;
+	}
+	/* the view a crossing waited for: its fast lines' bins made while it filled (binPending) are kept, all but the
+	 * columns at its ends (binView takes the last bins given of a line) */
+	QVector<BinnedLine> previous = lastBinned_;
+	if (!pendingBinned_.isEmpty()
+			&& pendingKey_ == QVector<double>{ axes.t0, axes.t1, axes.columns, double(seriesGeneration_) })
+		previous += pendingBinned_;
+	pendingBinned_.clear();
+	pendingKey_.clear();
+	lastBinned_ = binView(axes, previous);
 	lastBinKey_ = key;
 	binnings_++;
 	binnedVersion_++;
 	perf_.binnings++;
 	return lastBinned_;
+}
+
+/* A short window holds a view only once it is full (crossed): the next crossing's view fills behind the one shown, and
+ * the frame that showed it binned all of it at once (a whole view of each fast line, every 100 ms at a 100 ms window:
+ * that frame came late). While the view shown stands, the waiting view's fast lines are binned here as their records
+ * come, its complete columns kept from frame to frame as a held view filling keeps them (binFast), so the frame that
+ * shows it bins only what came since. A polled line keeps one binning of its own (Series::viewBins), the view
+ * shown's: binned when shown, as before (a few samples a column). */
+void ChartView::binPending(const Axes &axes) {
+	if (!trigger_.on || std::isnan(trigger_.pending)) return;
+	Axes next = axes;
+	next.t1 = trigger_.pending + (1 - triggerPosition_) * window_; /* as fireTrigger holds it */
+	next.t0 = next.t1 - window_;
+	const QVector<double> key{ next.t0, next.t1, next.columns, double(seriesGeneration_) };
+	QVector<const Series *> lines;
+	for (const Series &s : series_)
+		if (s.fast) lines << &s;
+	/* its bins of the frame before, or the view shown's: a column both views share is the same bin (binFast) */
+	QVector<BinnedLine> previous = lastBinned_;
+	if (key == pendingKey_) previous += pendingBinned_;
+	QVector<BinnedLine> binned(lines.size());
+	inParallel(lines.size(), [&](qsizetype i) {
+		const BinnedLine *before = nullptr;
+		for (const BinnedLine &line : std::as_const(previous))
+			if (line.series == lines[i]) before = &line;
+		binFast(*lines[i], next.t0, next.t1, next.columns, binned[i], before);
+	});
+	pendingBinned_ = binned;
+	pendingKey_ = key;
 }
 
 QString ChartView::linesKey(const QVector<Lane> &plots, qreal dpr) const {
