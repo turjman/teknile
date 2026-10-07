@@ -520,6 +520,7 @@ public:
 		chartManyLines();
 		chartBinsAndGpu();
 		chartFastLines();
+		chartFastMeasure();
 		readoutSteady();
 		displayMenu();
 		helpPages();
@@ -1193,17 +1194,70 @@ private:
 						&& chartTab->infoText().contains(QStringLiteral(" · 1 fast")),
 				"fast streams: a channel's Plot tick in the card (a pointing hand, a tooltip): ADC.I_LOAD on the chart, its "
 				"samples kept, its newest value beside the tick, \"1 fast\" in the chart's info line");
-		/* its legend chip's menu: the histogram and the spectrum greyed, with why (they come with the measuring) */
-		bool greyed = false;
+		/* measured as any line: its row in the Measure table (the device's 50 Hz sine of 6.55 A: RMS 4.63 A); its chip's
+		 * menu offers the histogram and the spectrum, the spectrum of its records as they are (evenly spaced) */
+		QString rms, mean, summary, histogramSummary;
+		double peak = 0, resolution = 0;
+		bool inTrigger = false;
+		bool menuOffered = false;
 		if (plotted) {
+			auto *measure = chartTab->findChild<QPushButton *>(QStringLiteral("measure"));
+			auto *table = chartTab->findChild<QTableWidget *>(QStringLiteral("measures"));
+			auto *tabs = window_.findChild<QTabWidget *>();
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabChart);
+			if (measure && table) {
+				measure->setChecked(true);
+				const auto cellOf = [&](int column) {
+					for (int row = 0; row < table->rowCount(); row++)
+						if (table->item(row, ChartTab::ColLine) && table->item(row, ChartTab::ColLine)->text().contains(QLatin1String("ADC.I_LOAD")))
+							return table->item(row, column) ? table->item(row, column)->text() : QString();
+					return QString();
+				};
+				QTest::qWaitFor([&] { return cellOf(ChartTab::ColRms).startsWith(QLatin1String("4.")); }, 3000);
+				rms = cellOf(ChartTab::ColRms);
+				auto *line = chartTab->findChild<QComboBox *>(QStringLiteral("triggerLine"));
+				auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+				if (line && trigger) {
+					trigger->setChecked(true);
+					inTrigger = QTest::qWaitFor([&] { return line->findText(QStringLiteral("ADC.I_LOAD")) >= 0; }, 2000)
+							&& line->toolTip().contains(QLatin1String("fast line"));
+					trigger->setChecked(false);
+					chartView->setLive(true); /* the trigger may have held it */
+				}
+				mean = cellOf(ChartTab::ColMean);
+				measure->setChecked(false);
+			}
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
 			chartTab->showLineMenu(iLoad, QPoint(0, 0));
 			QMenu *menu = chartTab->lineMenu();
-			greyed = menu && menu->actions().size() == 2;
-			for (QAction *action : menu ? menu->actions() : QList<QAction *>())
-				greyed = greyed && !action->isEnabled() && action->toolTip() == QLatin1String("Not for a fast line in this version");
+			menuOffered = menu && menu->actions().size() == 2;
+			for (QAction *action : menu ? menu->actions() : QList<QAction *>()) menuOffered = menuOffered && action->isEnabled();
 			if (menu) menu->hide();
+			if (AnalysisWindow *spectrum = chartTab->openAnalysis(AnalysisWindow::Kind::Spectrum, iLoad)) {
+				summary = spectrum->summary();
+				const analysis::Spectrum &found = spectrum->spectrum();
+				qsizetype best = 1;
+				for (qsizetype j = 1; j < found.amplitude.size(); j++)
+					if (found.amplitude[j] > found.amplitude[best]) best = j;
+				peak = found.frequency.value(best);
+				resolution = found.resolution();
+				spectrum->close();
+			}
+			if (AnalysisWindow *histogram = chartTab->openAnalysis(AnalysisWindow::Kind::Histogram, iLoad)) {
+				histogramSummary = histogram->summary();
+				histogram->close();
+			}
 		}
-		check(greyed, "fast streams: a fast line's chip menu: Histogram and Spectrum greyed, the tooltip says why");
+		std::printf("  ADC.I_LOAD measured: RMS \"%s\", mean \"%s\"; spectrum \"%s\"; histogram \"%s\"\n", qPrintable(rms),
+				qPrintable(mean), qPrintable(summary), qPrintable(histogramSummary));
+		check(QRegularExpression(QStringLiteral("^4\\.[5-7]\\d* A$")).match(rms).hasMatch() && !mean.isEmpty(),
+				"fast streams: a fast line's row in the Measure table: the device's 50 Hz sine of 6.55 A reads about 4.6 A RMS");
+		check(inTrigger, "fast streams: the trigger's line list offers the fast line (its tooltip names fast lines)");
+		check(menuOffered && summary.contains(QLatin1String("evenly spaced")) && !summary.contains(QLatin1String("e+")) && resolution > 0 && std::fabs(peak - 50) <= resolution
+						&& histogramSummary.contains(QLatin1String("samples")),
+				"fast streams: a fast line's chip menu offers Histogram and Spectrum; the spectrum takes its samples as they "
+				"are (evenly spaced, its rate written whole: 10000 Hz, not 1e+04), its peak at the device's 50 Hz (within one "
+				"step of its frequencies)");
 		if (plotBox) plotBox->setChecked(false);
 		check(!onChart(iLoad), "fast streams: the tick off: the line off the chart");
 
@@ -3459,6 +3513,253 @@ private:
 		return blocks ? double(alike) / blocks : 0;
 	}
 
+
+	/* Fast EVRe 5.3: a fast line measured: the statistics between the cursors from the store's summaries equal a plain
+	 * loop over its records (nothing across a gap), within a frame's time over 10 million; the totals since Clear; the
+	 * trigger on it (never across a gap); its records in the export */
+	void chartFastMeasure() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		def.addr = 0xDC00;
+		def.size = 1024;
+		def.rate = 10000;
+		StreamChannel current;
+		current.name = QStringLiteral("I_LOAD");
+		current.unit = QStringLiteral("A");
+		current.scale = 0.0005;
+		StreamChannel voltage;
+		voltage.name = QStringLiteral("V_BUS");
+		voltage.unit = QStringLiteral("V");
+		voltage.scale = 0.001;
+		def.channels = { current, voltage };
+		const int iLoad = ChartView::fastKey(0, 0), vBus = ChartView::fastKey(0, 1);
+		auto makeView = [&](QWidget &host, double now) {
+			host.resize(1100, 480);
+			auto *view = new ChartView(&host);
+			view->setGeometry(9, 5, 1080, 470);
+			view->setClock([now] { return now; }, 0);
+			view->setSmooth(false);
+			view->setFastStream(0, def);
+			view->addSeries(iLoad, QStringLiteral("ADC.I_LOAD"), QStringLiteral("A"), QColor(255, 0, 0));
+			view->addSeries(vBus, QStringLiteral("ADC.V_BUS"), QStringLiteral("V"), QColor(0, 160, 0));
+			return view;
+		};
+		/* record k at 100 s + k / 10 kHz: I_LOAD 1 A of 50 Hz around 0.2 A, V_BUS 12 V with 3 mV of ripple */
+		const auto rawI = [](qint64 k) { return qint16(std::lround(2000 * std::sin(2 * M_PI * 50 * k / 10000.0)) + 400); };
+		const auto rawV = [](qint64 k) { return qint16(12000 + std::lround(3 * std::sin(2 * M_PI * 50 * k / 10000.0 + 1))); };
+		const auto timeOf = [](qint64 k) { return 100.0 + k / 10000.0; };
+		/* a block of n records from `first`, I_LOAD given by `current` (else the wave), and its time mark */
+		const auto feed = [&](ChartView *view, qint64 first, qint64 n, bool start, quint64 lost,
+								  const std::function<qint16(qint64)> &current = {}) {
+			QByteArray records(int(n * 4), '\0');
+			for (qint64 k = 0; k < n; k++) {
+				const qint16 a = current ? current(first + k) : rawI(first + k), b = rawV(first + k);
+				records[int(4 * k)] = char(a);
+				records[int(4 * k + 1)] = char(a >> 8);
+				records[int(4 * k + 2)] = char(b);
+				records[int(4 * k + 3)] = char(b >> 8);
+			}
+			view->appendFast(0, quint64(first), n, records, start, lost);
+			view->markFast(0, quint64(first + n), timeOf(first + n), 1e-4);
+		};
+		/* the plain loop over the records kept: the trapezoids of each part without a gap */
+		struct Plain {
+			double min = 1e300, max = -1e300, area = 0, squares = 0, span = 0, shifted = 0, shiftedSquares = 0;
+			qint64 n = 0;
+		};
+		const auto plain = [&](const QVector<qint64> &numbers, int channel, double t0, double t1) {
+			Plain out;
+			const auto value = [&](qint64 k) { return channel == 0 ? rawI(k) * 0.0005 : rawV(k) * 0.001; };
+			double shift = NAN;
+			for (qsizetype i = 0; i < numbers.size(); i++) {
+				const qint64 k = numbers[i];
+				const double t = timeOf(k);
+				if (t < t0 || t > t1) continue;
+				const double v = value(k);
+				if (std::isnan(shift)) shift = v;
+				out.min = std::min(out.min, v);
+				out.max = std::max(out.max, v);
+				out.n++;
+				if (i == 0 || numbers[i - 1] != k - 1 || timeOf(k - 1) < t0) continue; /* a gap, or the first */
+				const double p = value(k - 1), dt = t - timeOf(k - 1);
+				out.area += 0.5 * (v + p) * dt;
+				out.squares += 0.5 * (v * v + p * p) * dt;
+				out.shifted += 0.5 * ((v - shift) + (p - shift)) * dt;
+				out.shiftedSquares += 0.5 * ((v - shift) * (v - shift) + (p - shift) * (p - shift)) * dt;
+				out.span += dt;
+			}
+			return out;
+		};
+		const auto near = [](double a, double b, double relative) {
+			return std::fabs(a - b) <= relative * std::max(1.0, std::fabs(b));
+		};
+		/* the statistics between the cursors: 2 s with 0.1 s lost in the middle */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 103.0);
+			QVector<qint64> kept;
+			for (qint64 first = 0; first < 20000; first += 1000) {
+				if (first == 10000) continue; /* lost: the next block says so */
+				feed(view, first, 1000, first == 0, first == 11000 ? 1000 : 0);
+				for (qint64 k = first; k < first + 1000; k++) kept << k;
+			}
+			const double a = timeOf(2500) + 3e-5, b = timeOf(17800) + 6e-5;
+			view->setCursors(a, b);
+			bool right = true;
+			QStringList report;
+			for (int channel = 0; channel < 2; channel++) {
+				const ChartView::Stats s = view->stats(channel == 0 ? iLoad : vBus);
+				const Plain p = plain(kept, channel, a, b);
+				const double mean = p.area / p.span, rms = std::sqrt(p.squares / p.span);
+				const double shiftedMean = p.shifted / p.span;
+				const double sd = std::sqrt(std::max(0.0, p.shiftedSquares / p.span - shiftedMean * shiftedMean));
+				const auto at = [&](double t) {
+					const qint64 k = qint64(std::floor((t - 100.0) * 10000.0));
+					const double f = (t - timeOf(k)) * 10000.0;
+					const double v0 = channel == 0 ? rawI(k) * 0.0005 : rawV(k) * 0.001;
+					const double v1 = channel == 0 ? rawI(k + 1) * 0.0005 : rawV(k + 1) * 0.001;
+					return v0 + (v1 - v0) * f;
+				};
+				right = right && s.ok && s.n == p.n && s.min == p.min && s.max == p.max && near(s.p2p, p.max - p.min, 1e-12)
+						&& near(s.integral, p.area, 1e-6) && near(s.mean, mean, 1e-6) && near(s.rms, rms, 1e-6)
+						&& std::fabs(s.std - sd) <= 1e-3 * sd && near(s.atA, at(a), 1e-6) && near(s.atB, at(b), 1e-6);
+				report << QStringLiteral("%1: n %2/%3 mean %4/%5 rms %6/%7 std %8/%9 area %10/%11 A %12/%13")
+								  .arg(channel).arg(s.n).arg(p.n).arg(s.mean, 0, 'g', 10).arg(mean, 0, 'g', 10)
+								  .arg(s.rms, 0, 'g', 10).arg(rms, 0, 'g', 10).arg(s.std, 0, 'g', 6).arg(sd, 0, 'g', 6)
+								  .arg(s.integral, 0, 'g', 10).arg(p.area, 0, 'g', 10).arg(s.atA, 0, 'g', 8).arg(at(a), 0, 'g', 8);
+			}
+			std::printf("     (%s)\n", qPrintable(report.join(QStringLiteral("; "))));
+			check(right, "chart, fast lines measured: between the cursors min, max, mean, RMS, std (12 V with 3 mV of ripple), "
+					"peak to peak, area and the values at A and B equal a plain loop over the records, nothing across the gap");
+			view->setCursors(timeOf(10500), timeOf(15000));
+			check(std::isnan(view->stats(iLoad).atA) && std::isfinite(view->stats(iLoad).atB),
+					"chart, fast lines measured: a cursor in the gap reads nothing there (no value is made up)");
+		}
+		/* 1000 s at 10 kHz: the statistics over all of it within a frame's time, from the summaries */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 1101.0);
+			view->setMemory(1100);
+			for (qint64 first = 0; first < 10000000; first += 500000) feed(view, first, 500000, first == 0, 0);
+			view->setCursors(timeOf(1), timeOf(9999999));
+			QElapsedTimer clock;
+			clock.start();
+			const QVector<ChartView::Stats> all = view->stats({ iLoad, vBus }, false);
+			const double ms = clock.nsecsElapsed() / 1e6;
+			std::printf("     (10 million records each, two lines: measured in %.3f ms, mean %.6f A)\n", ms,
+					all.value(0).mean);
+			check(all.size() == 2 && all[0].ok && all[0].n == 9999999 && near(all[0].mean, 0.2, 1e-3) && ms < 16,
+					"chart, fast lines measured: 10 million records each, two lines, measured within a frame's time (16 ms)");
+		}
+		/* the totals since Clear: every record summed as it comes, a memory of 1 s trims them away, Clear starts over */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 111.0);
+			view->setMemory(1);
+			QVector<qint64> all;
+			for (qint64 first = 0; first < 100000; first += 1000) {
+				if (first == 50000) continue;
+				feed(view, first, 1000, first == 0, first == 51000 ? 1000 : 0);
+				for (qint64 k = first; k < first + 1000; k++) all << k;
+			}
+			const Plain p = plain(all, 0, 0, 1e9);
+			const double total = view->total(iLoad);
+			std::printf("     (totals: %.9f A·s summed, %.9f by a plain loop; %lld records kept of %lld)\n", total, p.area,
+					(long long) view->pointsKept(iLoad), (long long) all.size());
+			const bool summed = near(total, p.area, 1e-6) && view->pointsKept(iLoad) < all.size() / 2
+					&& std::fabs(view->totalsSince() - timeOf(0)) < 1e-9;
+			view->clearData();
+			feed(view, 100000, 1000, false, 0);
+			const double after = view->total(iLoad);
+			QVector<qint64> again;
+			for (qint64 k = 100000; k < 101000; k++) again << k;
+			check(summed && near(after, plain(again, 0, 0, 1e9).area, 1e-6) && std::isfinite(after),
+					"chart, fast lines measured: the total since Clear sums every record as it comes (the memory's trims lose "
+					"nothing, the gap not bridged); Clear starts it again");
+		}
+		/* the trigger on a fast line: Rising through 0.5 A, after 0 A, 50 records lost, then 1 A: the gap is no crossing;
+		 * the step at record 300 is, its time between records 299 and 300 */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 101.0);
+			const auto step = [](qint64 k) { return qint16(k < 100 ? 0 : k < 250 ? 2000 : k < 300 ? 0 : 2000); };
+			feed(view, 0, 100, true, 0, step);
+			view->setTrigger(iLoad, 0.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Single);
+			feed(view, 150, 100, false, 50, step);   /* after the gap: 1 A, no crossing across it */
+			const bool quietAcrossGap = view->triggerArmed();
+			feed(view, 250, 100, false, 0, step);    /* 0 A from 250, 1 A from 300 */
+			const double at = view->triggeredAt();
+			const double expected = timeOf(299) + 0.5 * 1e-4; /* 0.5 A of 0 -> 1 A: half way */
+			std::printf("     (the trigger: armed across the gap %d, fired at %.7f s, expected %.7f; the record 250 is a fall)\n",
+					int(quietAcrossGap), at, expected);
+			check(quietAcrossGap && std::fabs(at - expected) < 1e-9 && !view->triggerArmed(),
+					"chart, fast lines: the trigger on a fast line fires between the two records around the level, never "
+					"across a gap");
+		}
+		/* the export: each record a row, both channels of the stream in it */
+		{
+			QWidget host;
+			ChartView *view = makeView(host, 101.0);
+			feed(view, 0, 5000, true, 0);
+			const QVector<recording::Line> lines = view->samples(timeOf(1000), timeOf(1999));
+			bool same = lines.size() == 2 && lines[0].times.size() == 1000 && lines[1].times == lines[0].times;
+			for (int k = 0; same && k < 1000; k++)
+				same = std::fabs(lines[0].times[k] - timeOf(1000 + k)) < 1e-9 && lines[0].values[k] == rawI(1000 + k) * 0.0005
+						&& lines[1].values[k] == rawV(1000 + k) * 0.001;
+			QTemporaryDir folder;
+			const QString file = folder.filePath(QStringLiteral("fast.csv"));
+			std::atomic<bool> cancel{ false };
+			qint64 rows = 0;
+			QString error;
+			const bool written = recording::write(file, lines, 0, cancel, [](double) {}, rows, error);
+			std::printf("     (the export: %lld rows for 1000 records of two channels)\n", (long long) rows);
+			check(same && written && rows == 1000, "chart, fast lines: Export to CSV takes the records, each a row with both "
+					"channels of the stream");
+		}
+		/* the spectrum of a fast line with a gap: its longest part without one (even steps), the window's title says so;
+		 * the histogram takes every record */
+		{
+			double now = 103;
+			ChartTab tab{ [&now] { return now; } };
+			tab.resize(1200, 700);
+			tab.setFastStreams({ def });
+			tab.plotFastChannel(0, 0, true);
+			ChartView *view = tab.view();
+			const auto feedTab = [&](qint64 first, qint64 n, bool start, quint64 lost) {
+				QByteArray records(int(n * 4), '\0');
+				for (qint64 k = 0; k < n; k++) {
+					const qint16 a = rawI(first + k), b = rawV(first + k);
+					records[int(4 * k)] = char(a);
+					records[int(4 * k + 1)] = char(a >> 8);
+					records[int(4 * k + 2)] = char(b);
+					records[int(4 * k + 3)] = char(b >> 8);
+				}
+				tab.appendFast(0, quint64(first), int(n), records, start, lost, true, quint64(first + n), timeOf(first + n), 1e-4);
+			};
+			feedTab(0, 5000, true, 0);         /* 0.5 s */
+			feedTab(6000, 14000, false, 1000); /* 0.1 s lost, then 1.4 s */
+			view->setCursors(timeOf(100), timeOf(19900));
+			QString spectrumTitle, histogramTitle;
+			qint64 histogramTotal = 0;
+			int segment = 0;
+			if (AnalysisWindow *spectrum = tab.openAnalysis(AnalysisWindow::Kind::Spectrum, ChartView::fastKey(0, 0))) {
+				spectrumTitle = spectrum->windowTitle();
+				segment = spectrum->spectrum().segment;
+				spectrum->close();
+			}
+			if (AnalysisWindow *histogram = tab.openAnalysis(AnalysisWindow::Kind::Histogram, ChartView::fastKey(0, 0))) {
+				histogramTitle = histogram->windowTitle();
+				histogramTotal = histogram->histogram().total;
+				histogram->close();
+			}
+			std::printf("     (\"%s\", segments of %d; \"%s\", %lld samples)\n", qPrintable(spectrumTitle), segment,
+					qPrintable(histogramTitle), (long long) histogramTotal);
+			check(spectrumTitle.contains(QStringLiteral("1.98 s: 1.39 s of it without a gap")) && segment > 0
+							&& !histogramTitle.contains(QLatin1String("gap")) && histogramTotal == 4900 + 13901,
+					"chart, fast lines: a spectrum over a gap takes the longest part without one, its window's title says "
+					"which; the histogram takes every record");
+		}
+	}
 	/* Fast EVRe, part 5.2: fast lines on the chart from a stream's store, fed here as the window feeds them (records and
 	 * time marks), on charts of their own: a spike of one record in a long run at every zoom, single records at their
 	 * own times, a gap not bridged, the time labels below a millisecond, the RAM shared with the polled lines, the

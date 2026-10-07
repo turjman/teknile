@@ -30,7 +30,10 @@ constexpr double LEFT = 64, TOP = 30, RIGHT = 18, BOTTOM = 30;
 constexpr double MARGIN = 0.08;     /* over the tallest bar or peak */
 constexpr double LOG_DECADES = 6;   /* the spectrum's log scale: this far under its peak */
 
-QString number(double v) { return QString::number(v, 'g', 4); }
+/* four significant digits; whole numbers up to ten million as they are (a fast line's 10000 Hz, not 1e+04) */
+QString number(double v) {
+	return std::fabs(v) >= 1e4 && std::fabs(v) < 1e7 ? QString::number(v, 'f', 0) : QString::number(v, 'g', 4);
+}
 
 /* 1, 2, 5 x 10^n steps, about `target` of them over span */
 double step(double span, int target) {
@@ -190,12 +193,12 @@ private:
 };
 
 AnalysisWindow::AnalysisWindow(Kind kind, const QString &name, const QString &unit, const QColor &color,
-		const QString &span, const QVector<double> &times, const QVector<double> &values, QWidget *parent)
+		const QString &span, const QVector<double> &times, const QVector<double> &values, QWidget *parent, bool even)
 	: QWidget(parent, Qt::Window), kind_(kind), name_(name), unit_(unit), color_(color), samples_(values.size()) {
 	setAttribute(Qt::WA_DeleteOnClose);
 	setObjectName(kind == Kind::Histogram ? QStringLiteral("histogramWindow") : QStringLiteral("spectrumWindow"));
 	if (kind == Kind::Histogram) histogram_ = analysis::histogram(values);
-	else spectrum_ = analysis::spectrum(times, values);
+	else spectrum_ = analysis::spectrum(times, values, even);
 	setWindowTitle((kind == Kind::Histogram ? tr("Histogram of %1 — %2") : tr("Spectrum of %1 — %2")).arg(name, span));
 
 	summary_ = mutedLabel(summary());
@@ -249,7 +252,8 @@ QString AnalysisWindow::summary() const {
 	qsizetype peak = 1;
 	for (qsizetype j = 1; j < spectrum_.amplitude.size(); j++)
 		if (spectrum_.amplitude[j] > spectrum_.amplitude[peak]) peak = j;
-	return tr("%1 samples, resampled to %2 Hz · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8")
+	return (spectrum_.resampled ? tr("%1 samples, resampled to %2 Hz · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8")
+								: tr("%1 samples at %2 Hz, evenly spaced · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8"))
 			.arg(samples_).arg(number(spectrum_.rate)).arg(spectrum_.segments).arg(spectrum_.segment)
 			.arg(number(spectrum_.resolution())).arg(number(spectrum_.frequency.value(peak)))
 			.arg(number(spectrum_.amplitude.value(peak)), u);

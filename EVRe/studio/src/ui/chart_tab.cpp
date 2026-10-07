@@ -836,7 +836,7 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerRow_->setObjectName(QStringLiteral("triggerRow"));
 	triggerLine_ = new QComboBox;
 	triggerLine_->setObjectName(QStringLiteral("triggerLine"));
-	triggerLine_->setToolTip(tr("The line watched: a register or a math line on the chart"));
+	triggerLine_->setToolTip(tr("The line watched: a register, a math line or a fast line on the chart"));
 	triggerLine_->setMinimumWidth(140);
 	triggerEdge_ = new QComboBox;
 	triggerEdge_->setObjectName(QStringLiteral("triggerEdge"));
@@ -1374,11 +1374,6 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
-	if (ChartView::isFastKey(key)) /* its records are not measured yet: the next version */
-		for (QAction *action : { histogram, spectrum }) {
-			action->setEnabled(false);
-			action->setToolTip(tr("Not for a fast line in this version"));
-		}
 	lineMenu_->popup(globalPos);
 }
 
@@ -1391,9 +1386,14 @@ AnalysisWindow *ChartTab::openAnalysis(AnalysisWindow::Kind kind, int key) {
 	bool cursors;
 	view->range(t0, t1, cursors);
 	QVector<double> times, values;
-	view->lineSamples(key, t0, t1, times, values);
-	const QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
-	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window());
+	/* a fast line's spectrum: its longest part without a gap (even steps; nothing measured across a gap) */
+	const bool whole = view->lineSamples(key, t0, t1, times, values, kind == AnalysisWindow::Kind::Spectrum);
+	QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
+	if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
+		span = (kind == AnalysisWindow::Kind::Spectrum ? tr("%1: %2 of it without a gap") : tr("%1: its first %2"))
+					   .arg(span, durationText(times.last() - times.first()));
+	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window(),
+			ChartView::isFastKey(key) && kind == AnalysisWindow::Kind::Spectrum); /* its part without a gap: even */
 	analysis->show();
 	return analysis;
 }

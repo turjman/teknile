@@ -83,20 +83,21 @@ Histogram histogram(const QVector<double> &values) {
 	return out;
 }
 
-Spectrum spectrum(const QVector<double> &times, const QVector<double> &values) {
+Spectrum spectrum(const QVector<double> &times, const QVector<double> &values, bool even) {
 	Spectrum out;
 	const qsizetype n = std::min(times.size(), values.size());
 	if (n < MIN_SAMPLES || !(times[n - 1] > times[0])) return out;
 	/* even steps at the mean rate, straight between the samples around each */
 	const double t0 = times[0], span = times[n - 1] - t0;
 	out.rate = double(n - 1) / span;
-	const qsizetype m = qsizetype(std::floor(span * out.rate)) + 1;
-	QVector<double> even(m);
-	for (qsizetype i = 0, k = 0; i < m; i++) {
+	out.resampled = !even;
+	const qsizetype m = even ? n : qsizetype(std::floor(span * out.rate)) + 1;
+	QVector<double> steps = even ? values.mid(0, n) : QVector<double>(m);
+	for (qsizetype i = 0, k = 0; !even && i < m; i++) {
 		const double t = t0 + double(i) / out.rate;
 		while (k + 1 < n - 1 && times[k + 1] < t) k++;
 		const double ta = times[k], tb = times[k + 1];
-		even[i] = tb > ta ? values[k] + (values[k + 1] - values[k]) * std::clamp((t - ta) / (tb - ta), 0.0, 1.0) : values[k];
+		steps[i] = tb > ta ? values[k] + (values[k + 1] - values[k]) * std::clamp((t - ta) / (tb - ta), 0.0, 1.0) : values[k];
 	}
 	/* segments of a power of two, about 8 of them overlapping by half (a shorter one: finer, but noisier) */
 	const qsizetype length = std::clamp<qsizetype>(powerOfTwoBelow(double(m) / 4.5), 8, MAX_SEGMENT);
@@ -112,7 +113,7 @@ Spectrum spectrum(const QVector<double> &times, const QVector<double> &values) {
 	QVector<std::complex<double>> buffer(segment);
 	int count = 0;
 	for (qsizetype start = 0; start + segment <= m; start += hop) {
-		for (qsizetype k = 0; k < segment; k++) buffer[k] = even[start + k] * window[k];
+		for (qsizetype k = 0; k < segment; k++) buffer[k] = steps[start + k] * window[k];
 		fft(buffer);
 		for (qsizetype j = 0; j <= segment / 2; j++) power[j] += std::norm(buffer[j]);
 		count++;

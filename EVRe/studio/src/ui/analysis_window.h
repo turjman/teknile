@@ -21,9 +21,10 @@ class AnalysisWindow : public QWidget {
 	Q_OBJECT
 public:
 	enum class Kind { Histogram, Spectrum };
-	/* name, unit, colour: the line's; span: what was measured, in words ("A → B, 2.500 s") */
+	/* name, unit, colour: the line's; span: what was measured, in words ("A → B, 2.500 s"); even: the samples are
+	 * evenly spaced (a fast line's), the spectrum takes them as they are */
 	AnalysisWindow(Kind kind, const QString &name, const QString &unit, const QColor &color, const QString &span,
-			const QVector<double> &times, const QVector<double> &values, QWidget *parent = nullptr);
+			const QVector<double> &times, const QVector<double> &values, QWidget *parent = nullptr, bool even = false);
 
 	Kind kind() const { return kind_; }
 	const analysis::Histogram &histogram() const { return histogram_; }

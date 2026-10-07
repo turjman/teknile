@@ -228,8 +228,10 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
-<p>In this version the Measure table, the histogram, the spectrum, the trigger and Export to CSV leave fast lines
-out, and the recordings do not take them yet. <code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
+<p>A fast line is measured as any line: its row in <b>Measure</b> (nothing across a gap; a cursor in a gap reads —),
+its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
+without a gap), the trigger and Export to CSV (a row per sample). The recordings do not take fast lines yet.
+<code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
 Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
 page) or the API's <code>stream</code> command (values at a period for an API client).</p>
 )HTML") },
