@@ -50,6 +50,7 @@
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QGlyphRun>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -75,6 +76,7 @@
 #include <QTextBlock>
 #include <QTextBrowser>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QTemporaryDir>
 #include <QTextDocumentFragment>
 #include <QFile>
@@ -1454,8 +1456,8 @@ private:
 				"fast streams: a bus of devices with streams: the card greyed, not on a bus (they would collide)");
 
 		/* the card's texts fit its width, in English and in Arabic, the widest numbers too */
-		bool fits = true;
-		QString notes;
+		bool fits = true, arabicReads = false;
+		QString notes, arabicNotes;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1486,13 +1488,78 @@ private:
 				fits = false;
 				notes += QStringLiteral(" %1: the button").arg(code);
 			}
-			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look */
-				card.fastCard()->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_%1.png").arg(code));
+			/* Arabic: both number lines are laid out right to left, so they sit at the right like the card's title, and
+			 * in them a number keeps its prefix, its unit and its groups of three left to right: not "k 10.0". Asked of
+			 * the text's layout: where each piece's glyphs come to lie on the line (a cursor position between two
+			 * runs of opposite direction says nothing) */
+			if (code == QLatin1String("ar")) {
+				auto inOrder = [&card](const QString &text, const QStringList &pieces) {
+					QTextLayout layout(text, card.font());
+					QTextOption option;
+					option.setTextDirection(text.isRightToLeft() ? Qt::RightToLeft : Qt::LeftToRight);
+					layout.setTextOption(option);
+					layout.beginLayout();
+					QTextLine line = layout.createLine();
+					line.setLineWidth(100000);
+					layout.endLayout();
+					const QList<QGlyphRun> runs = line.glyphRuns(-1, -1, QTextLayout::RetrieveGlyphIndexes
+							| QTextLayout::RetrieveGlyphPositions | QTextLayout::RetrieveStringIndexes);
+					auto leftOf = [&runs](int at, int size) { /* the leftmost glyph of the text's characters at..at+size */
+						qreal left = -1;
+						for (const QGlyphRun &run : runs) {
+							const QList<qsizetype> indexes = run.stringIndexes();
+							const QList<QPointF> positions = run.positions();
+							for (int g = 0; g < indexes.size() && g < positions.size(); g++)
+								if (indexes[g] >= at && indexes[g] < at + size && (left < 0 || positions[g].x() < left))
+									left = positions[g].x();
+						}
+						return left;
+					};
+					qreal before = -1;
+					int from = 0;
+					for (const QString &piece : pieces) {
+						const int at = int(text.indexOf(piece, from));
+						if (at < 0) return false;
+						const qreal x = leftOf(at, int(piece.size()));
+						if (x < 0 || x <= before) return false;
+						before = x;
+						from = at + int(piece.size());
+					}
+					return true;
+				};
+				const QString running = card.fastRateText(0), lost = card.fastLostText(0);
+				card.setFastOn(0, false);
+				card.showStats(IoEngine::Stats(), true);
+				const QString off = card.fastRateText(0);
+				arabicReads = running.isRightToLeft() && inOrder(running, { QStringLiteral("1.23"), QStringLiteral("M") })
+						&& inOrder(running, { QStringLiteral("("), QStringLiteral("123"), QStringLiteral("ppm"), QStringLiteral(")") })
+						&& lost.isRightToLeft()
+						&& inOrder(lost, { QStringLiteral("123"), QStringLiteral("456"), QStringLiteral("789") })
+						&& off.isRightToLeft() && inOrder(off, { QStringLiteral("10.0"), QStringLiteral("k") });
+				arabicNotes = QStringLiteral("\"%1\" | \"%2\" | \"%3\"").arg(running, lost, off);
+			}
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: running and off, in both themes */
+				for (const bool running : { true, false }) {
+					for (const bool dark : { false, true }) {
+						Theme::apply(*qApp, dark);
+						card.setFastOn(0, running);
+						card.showStats(running ? busy : IoEngine::Stats(), true); /* the lost count's colour is the theme's */
+						QApplication::processEvents();
+						card.fastCard()->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_%1_%2_%3.png")
+								.arg(code, running ? QStringLiteral("on") : QStringLiteral("off"),
+										dark ? QStringLiteral("dark") : QStringLiteral("light")));
+					}
+				}
+			}
 		}
 		language::apply(*qApp, QStringLiteral("en"));
 		if (!fits) std::printf("  %s\n", qPrintable(notes));
 		check(fits, "fast streams: the card's button and numbers fit the sidebar's width in English and Arabic "
 				"(1.23 M samples/s, lost 123 456 789)");
+		if (!arabicReads) std::printf("  %s\n", qPrintable(arabicNotes));
+		check(arabicReads, "fast streams, Arabic: the rate (running and off) and the lost count are laid out right to left, "
+				"like the card's title, and each number keeps its prefix, its unit and its groups left to right "
+				"(1.23 M, (-123 ppm), 123 456 789, 10.0 k)");
 
 		/* the example map and the fake device of the other steps again */
 		MainWindow::Startup example;
@@ -4151,9 +4218,13 @@ private:
 			host.show();
 			(void) QTest::qWaitForWindowExposed(&host);
 			const QRectF plot = view->lastPlot().isEmpty() ? QRectF(80, 60, 900, 300) : view->lastPlot();
-			QTest::mouseMove(view, QPoint(int(plot.center().x()), int(plot.center().y())));
-			view->repaint();
-			QApplication::processEvents();
+			{ /* the mouse over the plot's middle, then a frame painted by the CPU (a grab), which makes the box: on
+			   * Windows the card draws the plot and a repaint of the widget makes no box */
+				const QPointF at = plot.center();
+				QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+				QApplication::sendEvent(view, &move);
+				(void) host.grab();
+			}
 			int voltLane = -1, ampLane = -1;
 			for (int lane = 0; lane < view->laneCount(); lane++) {
 				if (view->laneLabel(lane) == QLatin1String("V")) voltLane = lane;

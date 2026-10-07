@@ -6114,15 +6114,20 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
     <message>
         <source>%1 M samples/s</source>
-        <translation>%1 M عينة/ث</translation>
+        <translation>⁦%1 M⁩ عينة/ث</translation>
     </message>
     <message>
         <source>%1 k samples/s</source>
-        <translation>%1 k عينة/ث</translation>
+        <translation>⁦%1 k⁩ عينة/ث</translation>
     </message>
     <message>
         <source>%1 samples/s</source>
         <translation>%1 عينة/ث</translation>
+    </message>
+    <message>
+        <source>%1 (%2)</source>
+        <comment>a stream&apos;s rate and its correction: 10.0 k samples/s (+32 ppm)</comment>
+        <translation>%1 ⁦(%2)⁩</translation>
     </message>
     <message>
         <source>off · %1</source>

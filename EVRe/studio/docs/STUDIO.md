@@ -4897,7 +4897,9 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   stream is on again by itself and the card counts the samples lost, in amber. A device that takes the enable and
   never sends (the same map without its stream): off again after 2 s (0 written), *no block came in 2 s* in the
   Log. A bus of two such devices: the card greyed, *not on a bus*. The card's button and numbers fit the sidebar in
-  English and Arabic at 1.23 M samples/s and *lost 123 456 789*. The window then loads the example map again (no
+  English and Arabic at 1.23 M samples/s and *lost 123 456 789*; in Arabic both number lines are laid out right to
+  left, like the card's title, and each number keeps its prefix, its unit and its groups left to right (*10.0 k*,
+  not *k 10.0*; asked of the text's layout). The window then loads the example map again (no
   card) and connects back to the Python fake device. With the stream on, the Plot tick of `ADC.I_LOAD` (a pointing
   hand, a tooltip naming it) puts its line on the chart: its records kept, its newest value in amperes beside the
   tick, *· 1 fast* in the chart's info line. Measured: its row in the Measure table reads the device's 50 Hz sine of
@@ -5112,13 +5114,14 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 424 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 425 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
 `<prefix>_fields.png` (CONFIG with its fields) and `<prefix>_bits.png` (with Bits ticked), and one of a chart on the
 Log scale, `<prefix>_log.png`, one of a recording's window, `<prefix>_recording.png`, and the Fast streams card at
-its widest numbers in English and Arabic, `<prefix>_fast_en.png` and `<prefix>_fast_ar.png`, and the window with two
+its widest numbers and off, in English and Arabic and in both themes
+(`<prefix>_fast_<en|ar>_<on|off>_<dark|light>.png`), and the window with two
 fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) and 2 ms
 (`<prefix>_fast_records.png`), a recording opened with its fast stream (`<prefix>_fast_recording.png`), and the Map
 settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`).
