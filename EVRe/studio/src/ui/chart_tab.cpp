@@ -131,6 +131,75 @@ QComboBox *lengthBox(const QList<double> &presets) {
 	return box;
 }
 
+/* The trigger's row: one line while the room holds all its controls and some of the state, else two lines (the line,
+ * edge, level, Find level and mode on the first; the hold-off, position, Arm / Force, Off and the state on the
+ * second), so no control is hidden or squeezed and the main window's narrowest stays 1280 px in every language and
+ * with every font (a single line asked 1332 px on Linux's fonts, 1367 in Arabic). Both parts are nested layouts of
+ * this one widget, so the controls keep one parent whichever line they are on */
+class TriggerRow : public QWidget {
+public:
+	/* the least room the state is given beside the controls before the row takes two lines */
+	static constexpr int STATE_ROOM = 160;
+
+	TriggerRow() {
+		auto *lines = new QVBoxLayout(this);
+		lines->setContentsMargins(0, 0, 0, 0);
+		lines->setSpacing(6);
+		first_ = new QHBoxLayout;
+		second_ = new QHBoxLayout;
+		early_ = new QHBoxLayout;
+		tail_ = new QHBoxLayout;
+		for (QHBoxLayout *line : { first_, second_, early_, tail_ }) {
+			line->setContentsMargins(0, 0, 0, 0);
+			line->setSpacing(6);
+		}
+		lines->addLayout(first_);
+		lines->addLayout(second_); /* empty on one line: no room taken, no spacing */
+		first_->addLayout(early_);
+		first_->insertLayout(1, tail_, 1);
+		first_->addStretch(); /* two lines: the first ends where its controls do */
+	}
+	QHBoxLayout *early() const { return early_; }
+	QHBoxLayout *tail() const { return tail_; }
+	/* as narrow as the wider of the two lines: the window may be that narrow, and the row then takes two */
+	QSize minimumSizeHint() const override {
+		QSize size = QWidget::minimumSizeHint();
+		size.setWidth(std::max(early_->minimumSize().width(), tail_->minimumSize().width()));
+		return size;
+	}
+
+protected:
+	/* a control shown or hidden (Arm / Force by the mode) changes what one line needs */
+	bool event(QEvent *event) override {
+		if (event->type() == QEvent::LayoutRequest) arrange();
+		return QWidget::event(event);
+	}
+	void resizeEvent(QResizeEvent *event) override {
+		arrange();
+		QWidget::resizeEvent(event);
+	}
+
+private:
+	void arrange() {
+		/* the tail's hidden controls counted as shown, so Force / Arm coming and going with the mode's state never moves
+		 * the row between one line and two (the chart's height would jump with it) */
+		int oneLine = early_->sizeHint().width() + first_->spacing() + tail_->sizeHint().width() + STATE_ROOM;
+		for (int i = 0; i < tail_->count(); i++)
+			if (QWidget *control = tail_->itemAt(i)->widget(); control && control->isHidden())
+				oneLine += std::max(control->sizeHint().width(), control->minimumWidth()) + tail_->spacing();
+		const bool two = width() < oneLine;
+		if (two == two_) return;
+		two_ = two;
+		(two ? first_ : second_)->removeItem(tail_);
+		tail_->setParent(nullptr); /* a layout is added to another only without a parent */
+		if (two) second_->addLayout(tail_, 1);
+		else first_->insertLayout(1, tail_, 1);
+	}
+
+	QHBoxLayout *first_, *second_, *early_, *tail_;
+	bool two_ = false;
+};
+
 } // namespace
 
 ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
@@ -882,7 +951,8 @@ QString ChartTab::infoTip() const {
 /* ---------------------------------------------------------------- the trigger */
 
 QWidget *ChartTab::buildTriggerRow() {
-	triggerRow_ = new QWidget;
+	auto *rowWidget = new TriggerRow;
+	triggerRow_ = rowWidget;
 	triggerRow_->setObjectName(QStringLiteral("triggerRow"));
 	triggerLine_ = new QComboBox;
 	triggerLine_->setObjectName(QStringLiteral("triggerLine"));
@@ -959,9 +1029,9 @@ QWidget *ChartTab::buildTriggerRow() {
 	/* the place's label named, apart from the hold-off's box: "hold-off [window] at [20 %]" read as one phrase */
 	auto *positionLabel = mutedLabel(tr("position"));
 	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the T ▼ flag above the chart"));
-	auto *row = new QHBoxLayout(triggerRow_);
-	row->setContentsMargins(0, 0, 0, 0);
-	row->setSpacing(6);
+	/* what is watched and how on the first part, when and the buttons with the state after (TriggerRow: two lines
+	 * when one does not fit) */
+	QHBoxLayout *row = rowWidget->early();
 	row->addWidget(mutedLabel(tr("Trigger")));
 	row->addWidget(triggerLine_);
 	row->addWidget(triggerEdge_);
@@ -970,6 +1040,7 @@ QWidget *ChartTab::buildTriggerRow() {
 	row->addWidget(triggerUnit_);
 	row->addWidget(triggerFind_);
 	row->addWidget(triggerMode_);
+	row = rowWidget->tail();
 	row->addWidget(mutedLabel(tr("hold-off")));
 	row->addWidget(triggerHoldoff_);
 	row->addSpacing(6);

@@ -1430,6 +1430,12 @@ repeating wave held still.
 | State | *waiting for a crossing* (*waiting: level above the line's range*), *Normal · waiting, last at 14:03:12* (Normal back to waiting after a capture: when the last one was, written once), *Normal · triggered* (*Auto · triggered*: no number while it runs), *Auto · free running*, *Single · complete at 14:03:12.345*, *Stopped · Run to arm* (a finished Single is *complete*; *Stopped* is your Stop alone). It takes the room the row leaves: a longer text is cut ("...") and is whole in its tooltip, so no state widens the window (in Arabic either). |
 | Off | After Force / Arm, before the state: turns the trigger off, as unticking **Display → Trigger** (the same action). |
 
+Where one line does not hold all of the row's controls and some room for the state (a narrow window, longer
+words in Arabic, wider fonts), the row takes **two lines**: the line, the edge, the level, Find level and the mode
+on the first; the hold-off, the position, Arm / Force, Off and the state on the second. No control is hidden or
+squeezed, and the main window's narrowest stays 1280 px in each language with the row shown. Force / Arm coming and
+going with the state never moves the row between one line and two.
+
 **The modes**, as a scope's:
 
 - **Auto** holds on each crossing; when none comes for a window's length after the next one could count (the
@@ -5580,7 +5586,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 503 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 504 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
