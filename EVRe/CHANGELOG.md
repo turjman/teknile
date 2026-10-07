@@ -72,6 +72,11 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   screen), the values of every line beside the mouse, and a Display menu: Normalise, Smooth, Hover values, and who
   draws (a card by name, or the CPU).
 - Formula completion in the math line dialog: register names and functions as you type.
+- Fast streams in the API, reading only (no write switch): `list` names the map's streams and their channels
+  (`ADC.I_LOAD`: unit, rate, on or off); `get` of a channel its newest record and that record's time; `stream` of
+  channels a line of each period's min, max and mean (`period_ms`, 10 ms at least) beside the registers' samples; on
+  port 1219 a client that writes a stream's enable register gets its blocks as the device sent them, and while the
+  Studio streams it nothing reaches the device. `--fast NAME` starts streams once connected.
 - Exports: a Markdown specification, a C header, a Python module, CSV; CSV import.
 - The device table: the map as the device side for `lib/EVRe.h` (packed read-only and read-write images, their
   offsets checked at compile time, the defaults as start values, a bind function, a limits check); a map the
@@ -88,3 +93,4 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - `evre record`: a fast stream's blocks into a `.evrs` file, as they came, with time marks.
 - `evre` for Python (`studio/python`): a device by register name with its map, standard library only. An answer is
   matched by its slave, offset and count, so a frame the device sends by itself is never taken for one.
+  `evre.connect_studio()`: EVRe Studio's JSON API, a fast stream's channels as each period's min, max and mean.
