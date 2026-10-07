@@ -5107,25 +5107,27 @@ private:
 			if (topics->item(i)->text() == QLatin1String("Chart & recording")) chartPage = page->toPlainText();
 			if (topics->item(i)->text() == QLatin1String("Keys & mouse")) keysPage = page->toPlainText();
 		}
-		for (const QString &piece : { QStringLiteral("T ▼ flag above the chart"), QStringLiteral("runs to its tab right"),
-					 QStringLiteral("T 0.4 A ↑"), QStringLiteral("Short windows lock by themselves"),
+		for (const QString &piece : { QStringLiteral("T ▼ flag above the chart"), QStringLiteral("to its tab right"),
+					 QStringLiteral("T▸ marker"), QStringLiteral("0.4 A ↑"), QStringLiteral("Short windows lock by themselves"),
 					 QStringLiteral("Display → Lock short windows"), QStringLiteral("the tab's arrow") })
 			if (!chartPage.contains(piece) && !keysPage.contains(piece)) std::printf("     (the Help lacks \"%s\")\n", qPrintable(piece));
 		check(chartPage.contains(QLatin1String("Trigger on this line")) && chartPage.contains(QLatin1String("hold-off"))
 						&& chartPage.contains(QLatin1String("stays held until the next one, however long"))
 						&& chartPage.contains(QLatin1String("Hold / Live is Stop / Run"))
 						&& chartPage.contains(QStringLiteral("T ▼ flag above the chart"))
-						&& chartPage.contains(QLatin1String("runs to its tab right")) && chartPage.contains(QStringLiteral("T 0.4 A ↑"))
+						&& chartPage.contains(QLatin1String("to its tab right")) && chartPage.contains(QStringLiteral("0.4 A ↑"))
+						&& chartPage.contains(QStringLiteral("from its T▸ marker left of the chart"))
 						&& chartPage.contains(QLatin1String("Short windows lock by themselves"))
 						&& chartPage.contains(QStringLiteral("Display → Lock short windows"))
-						&& chartPage.contains(QLatin1String("The T on the level's line marks the crossing"))
+						&& chartPage.contains(QLatin1String("its arrow over the crossing"))
 						&& chartPage.contains(QLatin1String("Force")) && chartPage.contains(QLatin1String("Find level"))
 						&& chartPage.contains(QLatin1String("double-click it for 50 % again"))
 						&& chartPage.contains(QLatin1String("above range")) && keysPage.contains(QLatin1String("the tab's arrow"))
-						&& keysPage.contains(QStringLiteral("T ▼ flag above the chart")),
+						&& keysPage.contains(QStringLiteral("T ▼ flag above the chart"))
+						&& keysPage.contains(QStringLiteral("T▸ marker (left of the chart)")),
 				"Help: the Chart page's Trigger says how it is armed (Trigger on this line), the level's tab and a level off "
-				"scale, Auto, Normal and Single, Force and Find level, Run and Stop, the hold-off, the T on the level's line and "
-				"its flag (50 %, a double-click), the short windows' lock; Keys & mouse lists the tab and the flag");
+				"scale, its T▸ marker, Auto, Normal and Single, Force and Find level, Run and Stop, the hold-off, the flag over the "
+				"crossing (50 %, a double-click), the short windows' lock; Keys & mouse lists the marker, the tab and the flag");
 	}
 
 	/* the measurements of many lines (60, on a Chart tab of its own, 10 s of 500 Hz samples each): a refresh of the
@@ -7825,12 +7827,12 @@ private:
 		const QRectF plot = view->lastPlot();
 		const QRectF mark = view->triggerPositionMark();
 		const bool atTwenty = !mark.isEmpty() && std::fabs(mark.center().x() - (plot.left() + 0.2 * plot.width())) < 1
-				&& mark.bottom() < plot.top() - 1.5 && mark.top() >= plot.top() - 24 && position->value() == 20;
+				&& mark.bottom() < plot.top() - 1.5 && mark.top() >= plot.top() - 26 && position->value() == 20;
 		QMouseEvent hover(QEvent::MouseMove, mark.center(), view->mapToGlobal(mark.center()), Qt::NoButton, Qt::NoButton,
 				Qt::NoModifier);
 		QApplication::sendEvent(view, &hover);
 		const bool hand = view->cursor().shape() == Qt::PointingHandCursor && view->triggerMarkHovered()
-				&& view->toolTipAt(mark.center()).startsWith(QStringLiteral("Drag: where the crossing sits in the window"));
+				&& view->toolTipAt(mark.center()).contains(QStringLiteral("\nDrag: where the crossing sits in the window"));
 		const auto dragTo = [view](double x) { /* from where the mark is now */
 			const QRectF from = view->triggerPositionMark();
 			QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, from.center().toPoint());
@@ -7852,7 +7854,7 @@ private:
 		dragTo(plot.right() + 60);
 		const bool clampedHigh = view->triggerPosition() == ChartView::TRIGGER_AT_MAX && position->value() == 90;
 		/* the crossing at 90 % and the level above what the line shows (its tab at the plot's top): the tab right of
-		 * the plot, never over the crossing's T nor over the newest samples; the flag right over the T */
+		 * the plot, never over the crossing nor over the newest samples; the flag right over the crossing */
 		view->setTriggerLevel(5);
 		(void) view->grab();
 		const QRectF marker = view->triggerTag(), topTag = view->triggerLevelTag(), topSymbol = view->triggerEdgeButton();
@@ -7860,10 +7862,10 @@ private:
 		const bool apart = !marker.isEmpty() && !topTag.isEmpty() && !topTag.intersects(marker)
 				&& topTag.left() > plot.right() + 2 && topSymbol.right() == topTag.right() && topSymbol.top() == topTag.top()
 				&& std::fabs(flag.center().x() - marker.center().x()) < 1;
-		std::printf("     (the T marker %.0f..%.0f, the level's tab %.0f..%.0f (the plot ends at %.0f), the flag at %.1f)\n",
+		std::printf("     (the crossing %.0f..%.0f, the level's tab %.0f..%.0f (the plot ends at %.0f), the flag at %.1f)\n",
 				marker.left(), marker.right(), topTag.left(), topTag.right(), plot.right(), flag.center().x());
-		check(apart, "chart, Trigger: the level's tab right of the plot, never over the crossing's T at 90 % nor over the "
-				"newest samples; the position's flag right over the T");
+		check(apart, "chart, Trigger: the level's tab right of the plot, never over the crossing at 90 % nor over the "
+				"newest samples; the position's flag right over the crossing");
 		view->setTriggerLevel(0.5);
 		dragTo(plot.left() - 60);
 		const bool clampedLow = view->triggerPosition() == 0 && position->value() == 0;
@@ -9150,11 +9152,11 @@ private:
 				"and edge (another line chosen starts at its own, the first one's come back with it), saved by name "
 				"(chart/triggerLevels) and read back by a new tab");
 
-		/* the tab: "T", the level in its unit and the edge's arrow, in the margin right of the plot at the level's
+		/* the tab: the level in its unit and the edge's arrow, in the margin right of the plot at the level's
 		 * height (none of it over the plot); its tooltip the line, the level and the edge in words */
 		(void) view->grab();
 		const QRectF tag = view->triggerLevelTag();
-		const bool tagged = view->triggerTagText() == QStringLiteral("T 0.6 A ↓") && !tag.isEmpty()
+		const bool tagged = view->triggerTagText() == QStringLiteral("0.6 A ↓") && !tag.isEmpty()
 				&& std::fabs(tag.center().y() - view->triggerLineY()) <= 1 && tag.left() > view->lastPlot().right() + 2
 				&& tag.right() <= view->width() && view->triggerEdgeButton().right() == tag.right()
 				&& view->toolTipAt(tag.center()).startsWith(QStringLiteral("AMPS 0.6 A, falling\nDrag: the trigger level"));
@@ -9199,7 +9201,7 @@ private:
 					qPrintable(view->triggerTagText()), tag.x(), tag.y(), tag.width(), tag.height(), view->triggerLineY(), plain,
 					int(inLane), inLaneLevel);
 		check(tagged && draggedPlain && draggedInLane, "chart, Trigger per line: the level's tab right of the plot at its "
-				"line's height (\"T 0.6 A ↓\", the words in its tooltip); dragged by it (taken off its middle), the level "
+				"line's height (\"0.6 A ↓\", the words in its tooltip); dragged by it (taken off its middle), the level "
 				"follows the mouse's move from where it was taken, without lanes and in the line's own lane's band with "
 				"Lanes on; the panel and the setting follow");
 
@@ -9232,8 +9234,17 @@ private:
 				&& QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList().value(0).endsWith(QStringLiteral("\t2"));
 		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, symbol.center().toPoint());
 		const bool cycledOn = view->triggerEdge() == ChartView::TriggerEdge::Rising;
-		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the level's tag in its lane, for a look */
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the level's marks in its lane, for a look, in both themes */
 			pair.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_lane.png"));
+			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10));
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { true, false }) {
+				Theme::apply(*qApp, dark);
+				pair.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_lane_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
 		check(handOnTag && handOnSymbol && cycled && cycledOn, "chart, Trigger per line: over the level's tab a pointing hand, "
 				"the tab lit and its tooltip; its arrow lit under the mouse, a click takes the next edge (either, then rising), "
 				"the panel, the setting and the tab's arrow follow");
@@ -9344,7 +9355,7 @@ private:
 		const bool unitShown = unit->isVisible() && unit->text() == QStringLiteral("A")
 				&& unit->x() > level->x() + level->width() - 1 && unit->x() < level->x() + level->width() + 12;
 		const bool oneWay = ChartView::levelText(0.523456789) == QStringLiteral("0.523457") && level->text() == QStringLiteral("0.523457")
-				&& view->triggerTagText() == QStringLiteral("T 0.523457 A ↑") && view->triggerLevel() == 0.523456789
+				&& view->triggerTagText() == QStringLiteral("0.523457 A ↑") && view->triggerLevel() == 0.523456789
 				&& ChartView::levelText(10) == QStringLiteral("10") && ChartView::levelText(12.34) == QStringLiteral("12.34");
 		if (!unitShown || !oneWay)
 			std::printf("     (the unit \"%s\" at %d, the box \"%s\" ends at %d; the tag \"%s\")\n", qPrintable(unit->text()),
@@ -9396,7 +9407,7 @@ private:
 		const QRectF plot = view->lastPlot();
 		const double dotRun = meanRun(view->triggerLineY());
 		const bool above = view->triggerLevelOffScale() == 1 && std::fabs(view->triggerLineY() - plot.top()) <= 1
-				&& view->triggerTagText() == QStringLiteral("T 10 A ↑")
+				&& view->triggerTagText() == QStringLiteral("10 A ↑")
 				&& view->toolTipAt(view->triggerLevelTag().center()).startsWith(QStringLiteral("▲ LOOK 10 A, rising (above range)\n"))
 				&& std::fabs(view->triggerLevelTag().top() - plot.top()) <= 1
 				&& view->triggerLevelBeyondLine() == 1 && chart.tab.triggerState() == QStringLiteral("waiting: level above the line's range")
@@ -9473,7 +9484,7 @@ private:
 		(void) view->grab();
 		const bool whileDragged = view->triggerTabHovered() && view->triggerLevelTag().size() == rest.size()
 				&& std::fabs(view->triggerLevel() - 0.55) < 0.02
-				&& view->triggerTagText() == QStringLiteral("T %1 A ↑").arg(ChartView::levelText(view->triggerLevel()));
+				&& view->triggerTagText() == QStringLiteral("%1 A ↑").arg(ChartView::levelText(view->triggerLevel()));
 		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
 		moveTo(away);
 		const bool after = !view->triggerTabHovered() && view->triggerLevelTag().size() == rest.size();
@@ -9489,9 +9500,9 @@ private:
 		const auto filled = [view, color] { /* the triangle's middle: the line's colour (solid) or the surface (hollow) */
 			const QImage whole = view->grab().toImage();
 			const qreal dpr = whole.devicePixelRatio();
-			const QRectF r = view->triggerLevelTag(); /* the pointer: at the line's height, 3 .. 11 px into the tab */
-			const double y = std::clamp(view->triggerLineY(), r.top() + 6, r.bottom() - 6);
-			const QColor p = whole.pixelColor(int((r.left() + 8) * dpr), int(y * dpr));
+			const QRectF r = view->triggerLevelTag(); /* the pointer: at the line's height, its tip the tab's left */
+			const double y = std::clamp(view->triggerLineY(), r.top() + 9, r.bottom() - 9);
+			const QColor p = whole.pixelColor(int((r.left() + 3) * dpr), int(y * dpr));
 			return std::abs(p.red() - color.red()) + std::abs(p.green() - color.green()) + std::abs(p.blue() - color.blue()) < 40;
 		};
 		view->setTriggerLevel(0.5);
@@ -9526,32 +9537,26 @@ private:
 				"a crossing, solid on the level the held view crossed, hollow once the level moves, solid again at a crossing "
 				"of the new level");
 
-		/* the T: the theme's raised surface with the line's colour as its border (not a white letter on the line's
-		 * colour), a tooltip saying what it marks, lit under the mouse with an arrow (it is not a control) */
+		/* no T on the curve (the owner: the flag above and the level's marks at the sides show the crossing): over the
+		 * crossing the level's line drags as anywhere on it, and the crossing in words is the flag's tooltip's first line */
 		const QRectF tTag = view->triggerTag();
 		const qint64 ms = view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000));
 		const QString tip = QStringLiteral("Trigger point: LOOK crossed 0.6 A, rising, at %1")
 				.arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
+		moveTo(QPointF(tTag.center().x(), view->triggerLineY()));
+		const bool lineThere = view->triggerTabHovered() && view->cursor().shape() == Qt::SizeVerCursor
+				&& !view->toolTipAt(QPointF(tTag.center().x(), view->triggerLineY())).startsWith(QStringLiteral("Trigger point"));
+		const QRectF flag = view->triggerPositionMark();
+		const bool flagTells = !tTag.isEmpty() && std::fabs(flag.center().x() - tTag.center().x()) < 1
+				&& view->toolTipAt(flag.center()).startsWith(tip + QLatin1Char('\n'));
 		moveTo(away);
-		const QImage plain = view->grab().toImage();
-		const qreal tDpr = plain.devicePixelRatio();
-		const QColor inside = plain.pixelColor(int((tTag.left() + 3) * tDpr), int(tTag.center().y() * tDpr));
-		const QColor surface = Theme::colors().surface2;
-		const bool raised = !tTag.isEmpty() && std::abs(inside.red() - surface.red()) + std::abs(inside.green() - surface.green())
-				+ std::abs(inside.blue() - surface.blue()) < 30;
-		const QImage tRest = plain.copy(QRectF(tTag.topLeft() * tDpr, tTag.size() * tDpr).toAlignedRect());
-		moveTo(tTag.center());
-		const QImage tLit = view->grab().toImage().copy(QRectF(tTag.topLeft() * tDpr, tTag.size() * tDpr).toAlignedRect());
-		const bool tHover = view->triggerTagHovered() && tLit != tRest && view->cursor().shape() == Qt::ArrowCursor
-				&& view->toolTipAt(tTag.center()) == tip;
-		moveTo(away);
-		if (!raised || !tHover)
-			std::printf("     (the T at %.0f,%.0f: inside %s, the surface %s; the tooltip \"%s\", wanted \"%s\")\n", tTag.x(),
-					tTag.y(), qPrintable(inside.name()), qPrintable(surface.name()), qPrintable(view->toolTipAt(tTag.center())),
+		if (!lineThere || !flagTells)
+			std::printf("     (the crossing at %.0f,%.0f; the flag at %.0f; its tooltip \"%s\", wanted it to start \"%s\")\n",
+					tTag.center().x(), tTag.center().y(), flag.center().x(), qPrintable(view->toolTipAt(flag.center())),
 					qPrintable(tip));
-		check(raised && tHover && !view->triggerTagHovered(), "chart, Trigger's look: the T "
-				"drawn as the level's tag (the raised surface, the line's colour its border), its tooltip \"Trigger point: LOOK "
-				"crossed 0.6 A, rising, at hh:mm:ss.zzz\", lit under the mouse with an arrow");
+		check(lineThere && flagTells, "chart, Trigger's look: no T on the curve: over the crossing the level's line drags "
+				"(lit, a vertical arrow), the flag stands over it and its tooltip starts \"Trigger point: LOOK crossed 0.6 A, "
+				"rising, at hh:mm:ss.zzz\"");
 		action->setChecked(false);
 		chart.tab.hide();
 
@@ -9733,7 +9738,8 @@ private:
 				&& std::fabs(tTag.center().y() - view->triggerLineY()) <= 1 && std::fabs(tTag.center().x() - crossX) < 1;
 		view->setTriggerLevel(0.8); /* the level moved: the T stays where the line crossed */
 		(void) view->grab();
-		const bool tStays = view->triggerTag() == tTag && std::fabs(view->triggerLineY() - tTag.center().y()) > 3;
+		const bool tStays = view->triggerTag() == tTag && std::fabs(view->triggerLineY() - tTag.center().y()) > 3
+				&& std::fabs(view->triggerPositionMark().center().x() - tTag.center().x()) < 1;
 		view->setTriggerLevel(0.5);
 		/* with lanes: in the watched line's lane, on its level */
 		bool tInLane = false;
@@ -9756,8 +9762,9 @@ private:
 		std::printf("     (the T at %.1f,%.1f, the level's line at %.1f, the crossing's x %.1f; stays after a move %d, in "
 				"the A lane %d)\n", tTag.center().x(), tTag.center().y(), view->triggerLineY(), crossX, int(tStays),
 				int(tInLane));
-		check(tOnLine && tStays && tInLane, "chart, Trigger: the T sits on the level's line at the crossing (its time on the "
-				"level crossed), in the watched line's lane; a level moved later leaves it where the line crossed");
+		check(tOnLine && tStays && tInLane, "chart, Trigger: the crossing's place (the flag's x; no T drawn on the curve) is "
+				"where the line crossed (its time on the level crossed), in the watched line's lane; a level moved later "
+				"leaves it there, the flag over it");
 
 		/* the signal stops: back to waiting after a window plus the hold-off; the row says when the last capture was, a
 		 * fixed text; the corner "Normal · waiting" */
@@ -9851,7 +9858,7 @@ private:
 		clearTriggerSettings();
 	}
 
-	/* Trigger v2, the owner's test of the marks (U-18): the level's tab ("T 0.4 A ↑") in a margin right of the plot and
+	/* Trigger v2, the owner's test of the marks (U-18): the level's tab ("0.4 A ↑") in a margin right of the plot and
 	 * the position's flag (a T over a ▼) in a strip above it, both there only while the trigger is on, neither over the data;
 	 * the tab dragged and its arrow clicked, the flag dragged, clamped and double-clicked; hands, highlights, tooltips;
 	 * the old triangle under the time axis gone */
@@ -9897,15 +9904,15 @@ private:
 		feed(100.5); /* rising through 0.4 at 100.0655: held, the crossing at 20 % */
 		(void) view->grab();
 		const QRectF plot = view->lastPlot();
-		/* the room: a strip above the plot and a margin right of it, with the trigger on only */
-		const bool room = std::fabs((plot.top() - without.top()) - 24) < 0.5 && without.right() - plot.right() > 55
-				&& without.right() - plot.right() < 100 && plot.left() == without.left();
+		/* the room: a strip above the plot, a column left of it and a margin right of it, with the trigger on only */
+		const bool room = std::fabs((plot.top() - without.top()) - 26) < 0.5 && without.right() - plot.right() > 55
+				&& without.right() - plot.right() < 100 && std::fabs(plot.left() - without.left() - 21) < 0.5;
 
 		/* the tab: right of the plot (never over its newest samples), at the level's height, labelled */
 		const QRectF tab = view->triggerLevelTag();
 		const bool tabOut = !tab.isEmpty() && !tab.intersects(plot) && tab.left() > plot.right() + 2
 				&& tab.top() <= view->triggerLineY() && tab.bottom() >= view->triggerLineY() && tab.right() <= view->width();
-		const bool labelled = view->triggerTagText() == QStringLiteral("T 0.4 A ↑");
+		const bool labelled = view->triggerTagText() == QStringLiteral("0.4 A ↑");
 		/* hover: a hand, the tab lit, its tooltip (the words, then what it does) */
 		const auto moveTo = [view](QPointF at) {
 			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
@@ -9943,11 +9950,83 @@ private:
 				qPrintable(view->triggerTagText()), tab.left(), tab.right(), tab.top(), tab.bottom(), int(room), int(tabOut),
 				int(labelled), int(tabHover), int(dragged), int(edged), int(rising));
 		check(room && tabOut && labelled && tabHover && dragged && edged && rising, "chart, Trigger's marks: the level's tab "
-				"(\"T 0.4 A ↑\") in a margin right of the plot, never over the newest samples (the strip above and the margin "
+				"(\"0.4 A ↑\") in a margin right of the plot, never over the newest samples (the strip above and the margin "
 				"there only while the trigger is on); a hand, a highlight and its tooltip over it; dragged from where it was "
 				"taken; a click on its arrow takes the next edge");
 
-		/* the flag: above the plot, over the T on the curve (the same x); a hand and its tooltip; dragged, clamped,
+		/* the level's marker "T▸": left of the plot in a column of its own (the value labels left of it, none under it),
+		 * its point at the level's height on the card's layer's edge (2 px left of the plot), where the dashed line
+		 * starts; lit with the tab, a hand and its tooltip over it; dragged from where it was taken; with Lanes in its
+		 * lane's band, clear of the labels there too */
+		const auto markerClear = [view] {
+			const QRectF mark = view->triggerLevelMark();
+			bool clear = !mark.isEmpty() && !view->valueLabelRects().isEmpty();
+			for (const QRectF &label : view->valueLabelRects()) clear = clear && label.right() < mark.left();
+			return clear;
+		};
+		const auto markPicture = [view] {
+			const QImage whole = view->grab().toImage();
+			const qreal dpr = whole.devicePixelRatio();
+			const QRectF r = view->triggerLevelMark();
+			return whole.copy(QRectF(r.topLeft() * dpr, r.size() * dpr).toAlignedRect());
+		};
+		moveTo(QPointF(plot.center().x(), plot.top() + 10));
+		const QRectF levelMark = view->triggerLevelMark();
+		const QImage markRest = markPicture();
+		bool markDrawn = false;
+		{
+			const QImage shot = view->grab().toImage();
+			const qreal r = shot.devicePixelRatio();
+			const QColor line = view->lines().value(0).color;
+			const auto lineColoured = [&](double x, double y) {
+				const QColor p = shot.pixelColor(int(x * r), int(y * r));
+				return std::abs(p.red() - line.red()) + std::abs(p.green() - line.green()) + std::abs(p.blue() - line.blue()) < 60;
+			};
+			/* the point's tip just left of the layer, the box's left border */
+			int tip = 0; /* the pointer's outline in the line's colour on the level's row, hollow or solid */
+			for (int x = int((plot.left() - 6) * r); x < int((plot.left() - 2) * r); x++)
+				tip += lineColoured(x / r, view->triggerLineY()) ? 1 : 0;
+			markDrawn = tip >= 2
+					&& lineColoured(levelMark.left() + 0.5, levelMark.center().y()) && !lineColoured(levelMark.left() - 3, levelMark.center().y());
+		}
+		const bool markPlaced = !levelMark.isEmpty() && std::fabs(levelMark.right() - (plot.left() - 2)) < 0.01
+				&& levelMark.width() == 21 && levelMark.top() <= view->triggerLineY() && levelMark.bottom() >= view->triggerLineY()
+				&& std::fabs(levelMark.center().y() - view->triggerLevelTag().center().y()) < 0.01 && markerClear() && markDrawn;
+		moveTo(levelMark.center());
+		const QString markTip = view->toolTipAt(levelMark.center());
+		const bool markHover = view->triggerTabHovered() && view->cursor().shape() == Qt::PointingHandCursor
+				&& markPicture() != markRest && markTip.startsWith(QStringLiteral("TAB "))
+				&& markTip.endsWith(QStringLiteral("\nDrag: the trigger level · the edge: in the Trigger row"));
+		const QPointF markGrip(levelMark.center().x(), levelMark.top() + 4);
+		const double markOffset = markGrip.y() - view->triggerLineY();
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, markGrip.toPoint());
+		const QPointF markTo(markGrip.x(), view->yOfValue(0.3) + markOffset);
+		QMouseEvent markMove(QEvent::MouseMove, markTo, view->mapToGlobal(markTo), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &markMove);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, markTo.toPoint());
+		moveTo(QPointF(plot.center().x(), plot.top() + 10));
+		const bool markDragged = std::fabs(markOffset) >= 4 && std::fabs(view->triggerLevel() - 0.3) < 0.02
+				&& std::fabs(view->triggerLevelMark().center().y() - view->triggerLevelTag().center().y()) < 0.01
+				&& std::fabs(level->text().toDouble() - view->triggerLevel()) < 1e-5;
+		view->setLanes(true);
+		(void) view->grab();
+		const QRectF markLane = view->laneRect(0), inLane = view->triggerLevelMark();
+		const bool markInLane = view->laneCount() == 1 && !inLane.isEmpty() && inLane.top() >= markLane.top()
+				&& inLane.bottom() <= markLane.bottom() && std::fabs(inLane.right() - (view->lastPlot().left() - 2)) < 0.01
+				&& markerClear();
+		view->setLanes(false);
+		(void) view->grab();
+		std::printf("     (the marker %.1f..%.1f x %.1f..%.1f, the plot's left %.0f, the line at %.1f; placed %d, hover %d (\"%s\"), "
+				"dragged %d to %.4g, in its lane %d)\n", levelMark.left(), levelMark.right(), levelMark.top(), levelMark.bottom(),
+				plot.left(), view->triggerLineY(), int(markPlaced), int(markHover), qPrintable(markTip), int(markDragged),
+				view->triggerLevel(), int(markInLane));
+		check(markPlaced && markHover && markDragged && markInLane, "chart, Trigger's marks: the level's marker \"T▸\" left "
+				"of the plot in a column of its own (no value label under it), its point at the level's height 2 px left of "
+				"the plot where the dashed line starts; lit with the tab, a hand and its tooltip (the level in words, then "
+				"\"Drag: the trigger level · the edge: in the Trigger row\"); dragged from where it was taken the level follows; "
+				"with Lanes in its lane, clear of the labels");
+
+		/* the flag: above the plot, over the crossing (the same x); a hand and its tooltip; dragged, clamped,
 		 * double-clicked back to 50 % */
 		level->setText(QStringLiteral("0.4")); /* typed: the row and the tab say the same */
 		emit level->editingFinished();
@@ -9978,12 +10057,13 @@ private:
 					&& lineColoured(pointX, flag.top() + 0.5) && !lineColoured(pointX + 6, flag.bottom() - 1);
 		}
 		const bool flagAbove = !flag.isEmpty() && std::fabs(flag.bottom() - (plot.top() - 2)) < 0.01
-				&& flag.top() >= plot.top() - 24 && flag.width() == 14 && flagShape
+				&& flag.top() >= plot.top() - 26 && flag.width() == 16 && flagShape
 				&& !tMark.isEmpty() && std::fabs(flag.center().x() - tMark.center().x()) < 1;
 		moveTo(flag.center());
 		const bool flagHover = view->triggerMarkHovered() && view->cursor().shape() == Qt::PointingHandCursor
-				&& view->toolTipAt(flag.center()) == QStringLiteral("Drag: where the crossing sits in the window · "
-					"Double-click: back to 50 %");
+				&& view->toolTipAt(flag.center()).startsWith(QStringLiteral("Trigger point: TAB crossed 0.4 A, rising, at "))
+				&& view->toolTipAt(flag.center()).endsWith(QStringLiteral("\nDrag: where the crossing sits in the window · "
+					"Double-click: back to 50 %"));
 		/* taken off its middle: the place moves by the mouse's move */
 		const QPointF flagGrip(flag.center().x() + 6, flag.center().y());
 		const auto dragFlag = [view](QPointF from, double dx) {
@@ -10023,18 +10103,23 @@ private:
 				"line-coloured pixels under the plot at the place %d)\n", flag.left(), flag.right(), flag.top(), flag.bottom(),
 				tMark.center().x(), before, moved, int(clampHigh), int(clampLow), int(backToHalf), coloured);
 		check(flagAbove && flagHover && flagDragged && clampHigh && clampLow && backToHalf && coloured == 0, "chart, "
-				"Trigger's marks: the position's flag (a T over a ▼) in a strip above the plot, the ▼'s point on the plot's top edge right over the T on the curve; a hand "
-				"and its tooltip over it; dragged from where it was taken (the box follows), clamped to 90 % and 0 %, a "
+				"Trigger's marks: the position's flag (a T over a ▼) in a strip above the plot, the ▼'s point on the plot's top edge right over the crossing; a hand "
+				"and its tooltip (the crossing in words, then what it does) over it; dragged from where it was taken (the box follows), clamped to 90 % and 0 %, a "
 				"double-click puts it back to 50 %; no triangle under the time axis any more");
 
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the tab and the flag, in both themes */
 			const bool wasDark = Theme::isDark();
 			view->setTriggerPosition(0.5);
-			for (const bool dark : { true, false }) {
-				Theme::apply(*qApp, dark);
-				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
-						+ QStringLiteral("_trigger_marks_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10)); /* every mark at rest */
+			for (const bool lanes : { false, true }) {
+				view->setLanes(lanes);
+				for (const bool dark : { true, false }) {
+					Theme::apply(*qApp, dark);
+					chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_marks%1_%2.png")
+							.arg(lanes ? QStringLiteral("_lanes") : QString(), dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
 			}
+			view->setLanes(false);
 			Theme::apply(*qApp, wasDark);
 		}
 		action->setChecked(false);

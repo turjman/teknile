@@ -47,10 +47,10 @@
  *
  * Trigger: a line crossing its level (rising, falling or either; each line
  * keeps its own), as an oscilloscope's: the view holds with the crossing at its
- * place in the window (50 %; a flag, a T over a ▼, in a strip above the plot, dragged)
- * and a T on the level at the crossing, the level a dashed line with a tab in
- * a margin right of the plot ("T 0.4 A ↑", dragged); the strip and the margin
- * are there only while the trigger is on, so neither covers a sample. Auto runs live
+ * place in the window (50 %; a flag, a T over a ▼, in a strip above the plot, dragged),
+ * the level a dashed line from a "T▸" marker left of the plot to a tab in a
+ * margin right of it ("0.4 A ↑"; both dragged); the strip, the marker's column
+ * and the margin are there only while the trigger is on, so none covers a sample. Auto runs live
  * between crossings, Normal holds on each, Single on the first; the next counts
  * once the hold-off has passed and the view is full. Normal and Single wait on a
  * still picture; only Auto rolls. Stop (stopRun) disarms and keeps the picture,
@@ -291,8 +291,8 @@ public:
 	 * to arm" ...; empty: off */
 	QString triggerStateText() const;
 	int triggerHolds() const { return triggerHolds_; } /* tests: the crossings the view held on so far */
-	/* tests: the position's flag (a T over a ▼) as last drawn, in the strip above the plot over the crossing's T: its
-	 * box and triangle, the triangle's point at the middle of its bottom */
+	/* tests: the position's flag (a T over a ▼) as last drawn, in the strip above the plot over the crossing: its box
+	 * and pointer, the pointer's tip at the middle of its bottom */
 	QRectF triggerPositionMark() const { return triggerMark_; }
 	bool triggerMarkHovered() const { return hoverMark_; }
 	/* a line's settings: those kept for its name; a line never set, its mid-range in view and Rising */
@@ -301,17 +301,22 @@ public:
 	/* every line's settings for the settings ("name\tlevel\tedge" each), and back */
 	QStringList triggerSettingsTexts() const;
 	void setTriggerSettingsTexts(const QStringList &texts);
-	QRectF triggerTag() const { return triggerTag_; } /* tests: the marker as last drawn; empty: not in view */
+	/* tests: where the line crossed (14 x 16 px around it; not drawn: the flag stands over it); empty: not in view */
+	QRectF triggerTag() const { return triggerTag_; }
 	double triggerLineY() const { return triggerLineY_; } /* tests: the level's line as last drawn; NaN: none */
 	/* The level's tab, in a margin right of the plot (the trigger on: the plot is narrower by it), at the level's
-	 * height in its lane: "T 0.4 A ↑", the level as set in the line's unit and the edge, so it covers none of the
+	 * height in its lane: "0.4 A ↑", the level as set in the line's unit and the edge, so it covers none of the
 	 * newest samples; its edge part (a click cycles Rising, Falling, Either), as last drawn (the part in view of a
 	 * lane scrolled); empty: not in view. Tests: the tab's text; its tooltip the words ("I_LOAD 0.4 A, rising") */
 	QRectF triggerLevelTag() const { return triggerLevelTag_; }
 	QRectF triggerEdgeButton() const { return triggerEdgeButton_; }
 	QString triggerTagText() const { return triggerTagText_; }
+	/* The level's marker "T▸" in a column left of the plot (between the value labels and it), at the level's height
+	 * in its lane, its point where the dashed line starts: dragged as the tab (its grab area, the part in view of a
+	 * lane scrolled; empty: not in view) */
+	QRectF triggerLevelMark() const { return triggerLevelMark_; }
 	bool triggerEdgeHovered() const { return hoverEdge_; } /* tests: the edge part drawn highlighted */
-	bool triggerTabHovered() const { return hoverLevel_ || drag_ == Drag::Level; } /* tests: the tab highlighted */
+	bool triggerTabHovered() const { return hoverLevel_ || drag_ == Drag::Level; } /* tests: the tab and marker lit */
 	/* the tab's pointer is solid while the level is the one the view held crossed, hollow after a change of it until a
 	 * crossing at the new one (and before the first) */
 	bool triggerHandleSolid() const;
@@ -321,7 +326,6 @@ public:
 	/* the level beyond what the line shows in view as last drawn (1 above, -1 below, 0 not): the row's "waiting: level
 	 * above the line's range" */
 	int triggerLevelBeyondLine() const { return triggerBeyond_; }
-	bool triggerTagHovered() const { return hoverT_; } /* tests: the crossing's T drawn highlighted */
 	/* a level as it is set: the row's box, the tag and the drag write it alike (6 significant digits, not chartNumber's
 	 * rounding of a measured value) */
 	static QString levelText(double level);
@@ -1042,7 +1046,7 @@ private:
 		bool holding = false;
 		bool stopped = false;   /* by the user: Stop or a pan */
 		double since = 0;       /* armed last from here: a crossing before it is not "triggered" */
-		double atLevel = NAN;   /* the last crossing's level and edge: the T's tooltip, the handle solid */
+		double atLevel = NAN;   /* the last crossing's level and edge: the flag's tooltip, the pointers solid */
 		TriggerEdge atEdge = TriggerEdge::Rising;
 		bool automatic = false; /* a short window's lock (setShortLock), not the user's: Auto, its own settings */
 	} trigger_;
@@ -1083,35 +1087,37 @@ private:
 	void firePending(double newest);
 	double newestTime(int key) const; /* NaN: no sample */
 	double triggerTime() const;       /* the watched line's newest sample's time (the clock's before the first) */
-	/* the level's line, its tag and the marker at the crossing (the CPU's; the card's in plotOnGpu): where, in the
-	 * frame's plots; false: nothing to draw */
+	/* the level's line, its tab and marker, and where the line crossed (the CPU's; the card's in plotOnGpu): where,
+	 * in the frame's plots; false: nothing to draw */
 	bool triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY, QRectF &lane,
 			QRectF &tag, QRectF &levelTag) const;
 	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const;
-	const QImage &triggerPicture(qreal dpr) const;
 	QString triggerTagLabel() const;                   /* "I_LOAD 1.2 A, rising" */
 	QString edgeSymbol() const;                        /* ↑ rising, ↓ falling, ↕ either */
-	/* the level's tab with its pointer and its edge part (outside the card's layer: the CPU draws it on both paths) */
-	const QImage &levelTagPicture(qreal dpr) const;
+	/* the level's tab with its pointer and its edge part, and its marker left of the plot (outside the card's layer:
+	 * the CPU draws them on both paths); `at`: the pointer's tip, device pixels from the picture's top */
+	const QImage &levelTagPicture(qreal dpr, double at) const;
+	const QImage &levelMarkPicture(qreal dpr, double at) const;
 	void drawTriggerTab(QPainter &p) const;
 	mutable QRectF triggerLevelTag_, triggerEdgeButton_;
 	mutable QRectF triggerTabFull_;   /* the tab whole (triggerLevelTag_: its part in view, a lane scrolled) */
-	QString triggerTabLabel() const;  /* "T 0.4 A": the level as set in the line's unit (the edge is its own part) */
+	mutable QRectF triggerLevelMark_, triggerMarkFull_; /* the marker: its part in view and whole */
+	QString triggerTabLabel() const;  /* "0.4 A": the level as set in the line's unit (the edge is its own part) */
 	mutable QString triggerTagText_;
-	mutable QImage levelTagImage_;
-	mutable QString levelTagKey_;
+	mutable QImage levelTagImage_, levelMarkImage_;
+	mutable QString levelTagKey_, levelMarkKey_;
 	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
-	bool hoverLevel_ = false;         /* the mouse over the tab or the level's line: the tab drawn highlighted */
-	bool hoverT_ = false;             /* the mouse over the crossing's T: drawn highlighted, its tooltip */
+	bool hoverLevel_ = false;         /* the mouse over the tab, the marker or the level's line: both drawn lit */
 	int hoverChip_ = -1;              /* the key of the legend's chip under the mouse: its button highlighted */
 	mutable int triggerOffScale_ = 0, triggerBeyond_ = 0;
-	QString triggerPointText() const; /* the T's tooltip: "Trigger point: I_LOAD crossed 0 A, rising, at 14:03:12.345" */
+	QString triggerPointText() const; /* the flag's tooltip: "Trigger point: I_LOAD crossed 0 A, rising, at 14:03:12.345" */
 	double triggerPosition_ = TRIGGER_AT;
 	double triggerHoldoff_ = -1;
 	int triggerHolds_ = 0;
-	/* the crossing's place in the window: a flag (a T over a ▼) in the strip above the plot, over the crossing's T (outside the
-	 * card's layer: the CPU draws it on both paths); dragged along it */
+	/* the crossing's place in the window: a flag (a T over a ▼) in the strip above the plot, over the crossing (outside
+	 * the card's layer: the CPU draws it on both paths); dragged along it */
 	void drawTriggerMark(QPainter &p, const Axes &axes) const;
+	const QImage &flagPicture(qreal dpr) const;
 	mutable QRectF triggerMark_;      /* where it takes the mouse */
 	bool hoverMark_ = false;
 	double positionGrab_ = 0;         /* Position: the mouse's distance right of the flag's middle when the drag began */
@@ -1120,7 +1126,7 @@ private:
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */
 	mutable Axes triggerAxes_;        /* its axes (the level from the mouse) */
 	mutable double triggerLo_ = 0, triggerHi_ = 1; /* Normalise: the line's own range */
-	mutable QImage triggerImage_;
+	mutable QImage triggerImage_;     /* the flag's picture */
 	mutable QString triggerImageKey_;
 
 	/* the notes, the one clicked last, and their tags as drawn last (and as pictures for the card, by their key) */

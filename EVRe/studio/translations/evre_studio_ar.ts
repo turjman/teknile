@@ -1417,6 +1417,10 @@ Dragging the chart stops it too.</source>
         <source>Drag: the trigger level · Click the arrow: the edge (rising, falling, either)</source>
         <translation>السحب: مستوى القدح · النقر على السهم: الحافة (صاعد، هابط، أيّهما)</translation>
     </message>
+    <message>
+        <source>Drag: the trigger level · the edge: in the Trigger row</source>
+        <translation>السحب: مستوى القدح · الحافة: في صف القدح</translation>
+    </message>
 </context>
 <context>
     <name>EventLog</name>
@@ -2556,12 +2560,12 @@ Freedman–Diaconis rule) or &lt;b&gt;Spectrum&lt;/b&gt; (which frequencies it h
 its own with a readout under the mouse, a picture and CSV.&lt;/p&gt;
 &lt;h3&gt;Trigger&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;Click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
-line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane that runs to its tab right
-of the chart, &lt;i&gt;T 0.4 A ↑&lt;/i&gt; (the level in the line&apos;s unit and the edge), so nothing covers the newest samples; its
-pointer is solid while the picture held crossed this level. &lt;b&gt;Drag&lt;/b&gt; the tab or the line to move the level;
-&lt;b&gt;click&lt;/b&gt; the tab&apos;s arrow (↑ ↓ ↕) for rising, falling or either; its tooltip names the line. A level beyond the
-lane&apos;s range stays on its edge, dotted, the tab&apos;s pointer ▲ or ▼ and &lt;i&gt;(above range)&lt;/i&gt; in its tooltip. Each line
-keeps its own level and edge.&lt;/p&gt;
+line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane from its &lt;b&gt;T▸&lt;/b&gt; marker
+left of the chart to its tab right of it, &lt;i&gt;0.4 A ↑&lt;/i&gt; (the level in the line&apos;s unit and the edge), so nothing
+covers the newest samples; their pointers are solid while the picture held crossed this level. &lt;b&gt;Drag&lt;/b&gt; the
+marker, the tab or the line to move the level; &lt;b&gt;click&lt;/b&gt; the tab&apos;s arrow (↑ ↓ ↕) for rising, falling or either;
+their tooltips name the line. A level beyond the lane&apos;s range stays on its edge, dotted, their pointers ▲ or ▼ and
+&lt;i&gt;(above range)&lt;/i&gt; in their tooltips. Each line keeps its own level and edge.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Auto&lt;/b&gt; holds on each crossing; when none comes for a window&apos;s length after the hold-off, it runs live until
 the next. &lt;b&gt;Normal&lt;/b&gt; holds on each crossing and stays held until the next one, however long. &lt;b&gt;Single&lt;/b&gt; holds on
 the first crossing and stops; &lt;b&gt;Arm&lt;/b&gt; for another. Normal and Single wait on a still picture; only Auto rolls.
@@ -2569,9 +2573,8 @@ While they wait, &lt;b&gt;Force&lt;/b&gt; (in Arm&apos;s place) holds the view n
 capture says when the last one was. &lt;b&gt;Find level&lt;/b&gt; puts the level halfway between the line&apos;s lowest and highest
 in view. The
 &lt;b&gt;hold-off&lt;/b&gt; (the window&apos;s length by default, 0 to
-10 s) is the time after a crossing in which no other counts. The T on the level&apos;s line marks the crossing (its
-tooltip says when and at what level); the &lt;b&gt;T ▼&lt;/b&gt; flag above the chart (a T over an arrow pointing at it) is its place in the window,
-50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+10 s) is the time after a crossing in which no other counts. The &lt;b&gt;T ▼&lt;/b&gt; flag above the chart, its arrow over
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.&lt;/p&gt;
 &lt;p&gt;While the trigger is on, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt; is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;Run&lt;/b&gt;: &lt;b&gt;Stop&lt;/b&gt; holds the picture
@@ -2709,18 +2712,18 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
 &lt;h3&gt;القدح&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;انقر شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
-الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط يمتد إلى لسانه يمين المخطط، &lt;i&gt;⁦T 0.4 A ↑⁩&lt;/i&gt; (المستوى بوحدة الخط والحافة)،
-فلا شيء يغطي أحدث العينات؛ ومؤشّره مصمت ما دامت الصورة المثبّتة قد عبرت هذا المستوى. &lt;b&gt;اسحب&lt;/b&gt; اللسان أو الخط
-لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم اللسان (↑ ↓ ↕) لصاعد أو هابط أو أيّهما؛ ويسمّي تلميحه الخط. والمستوى الخارج عن مدى
-المسار يبقى عند طرف المسار، منقّطًا، ومؤشّر اللسان ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في تلميحه. ولكل خط مستواه وحافته.&lt;/p&gt;
+الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط يمتد من علامته &lt;b&gt;⁦T▸⁩&lt;/b&gt; يسار المخطط إلى لسانه يمينه، &lt;i&gt;⁦0.4 A ↑⁩&lt;/i&gt; (المستوى بوحدة الخط والحافة)،
+فلا شيء يغطي أحدث العينات؛ ومؤشّراهما مصمتان ما دامت الصورة المثبّتة قد عبرت هذا المستوى. &lt;b&gt;اسحب&lt;/b&gt; العلامة أو اللسان أو الخط
+لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم اللسان (↑ ↓ ↕) لصاعد أو هابط أو أيّهما؛ ويسمّي تلميحاهما الخط. والمستوى الخارج عن مدى
+المسار يبقى عند طرف المسار، منقّطًا، ومؤشّراهما ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في تلميحيهما. ولكل خط مستواه وحافته.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;تلقائي&lt;/b&gt; يثبت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي.
 &lt;b&gt;عادي&lt;/b&gt; يثبت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. &lt;b&gt;مرة واحدة&lt;/b&gt; يثبت عند العبور الأول
 ويتوقف؛ و&lt;b&gt;تجهيز&lt;/b&gt; لعبور آخر. والعادي والمرة الواحدة ينتظران على صورة ثابتة؛ والتلقائي وحده يجري.
 وفي أثناء انتظارهما يثبّت &lt;b&gt;فرض&lt;/b&gt; (مكان «تجهيز») العرض الآن كأن الخط عبر؛ والعادي إذ ينتظر بعد التقاطٍ يقول
 متى كان آخره. و&lt;b&gt;إيجاد المستوى&lt;/b&gt; يضع المستوى في منتصف ما بين أدنى الخط وأعلاه في العرض.
 و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
-يُحسب فيها عبور آخر. وعلامة T على خط المستوى تدل على العبور (يقول تلميحها متى كان وعند أي مستوى)؛ والعلَم &lt;b&gt;⁦T ▼⁩&lt;/b&gt; فوق
-المخطط (⁦T⁩ فوق سهم يشير إليها) موضعه في النافذة، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
+يُحسب فيها عبور آخر. والعلَم &lt;b&gt;⁦T ▼⁩&lt;/b&gt; فوق
+المخطط، وسهمه فوق العبور، موضعه في النافذة (يقول تلميحه متى عبر الخط وعند أي مستوى)، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
 عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
 المثبّت.&lt;/p&gt;
 &lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
@@ -2781,7 +2784,7 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
 Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s tab (right of the chart) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
 arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
 it: 50 %&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
@@ -2812,7 +2815,7 @@ Log), Fold lane ·
 &lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; لسان مستواه (يمين المخطط) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
 &lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
 ⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·

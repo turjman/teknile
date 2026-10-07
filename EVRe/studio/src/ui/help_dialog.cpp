@@ -388,12 +388,12 @@ Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amp
 its own with a readout under the mouse, a picture and CSV.</p>
 <h3>Trigger</h3>
 <p><b>Click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
-line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane that runs to its tab right
-of the chart, <i>T 0.4 A ↑</i> (the level in the line's unit and the edge), so nothing covers the newest samples; its
-pointer is solid while the picture held crossed this level. <b>Drag</b> the tab or the line to move the level;
-<b>click</b> the tab's arrow (↑ ↓ ↕) for rising, falling or either; its tooltip names the line. A level beyond the
-lane's range stays on its edge, dotted, the tab's pointer ▲ or ▼ and <i>(above range)</i> in its tooltip. Each line
-keeps its own level and edge.</p>
+line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane from its <b>T▸</b> marker
+left of the chart to its tab right of it, <i>0.4 A ↑</i> (the level in the line's unit and the edge), so nothing
+covers the newest samples; their pointers are solid while the picture held crossed this level. <b>Drag</b> the
+marker, the tab or the line to move the level; <b>click</b> the tab's arrow (↑ ↓ ↕) for rising, falling or either;
+their tooltips name the line. A level beyond the lane's range stays on its edge, dotted, their pointers ▲ or ▼ and
+<i>(above range)</i> in their tooltips. Each line keeps its own level and edge.</p>
 <p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
 the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
 the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls.
@@ -401,9 +401,8 @@ While they wait, <b>Force</b> (in Arm's place) holds the view now, as if the lin
 capture says when the last one was. <b>Find level</b> puts the level halfway between the line's lowest and highest
 in view. The
 <b>hold-off</b> (the window's length by default, 0 to
-10 s) is the time after a crossing in which no other counts. The T on the level's line marks the crossing (its
-tooltip says when and at what level); the <b>T ▼</b> flag above the chart (a T over an arrow pointing at it) is its place in the window,
-50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+10 s) is the time after a crossing in which no other counts. The <b>T ▼</b> flag above the chart, its arrow over
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
 <p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
@@ -632,7 +631,7 @@ all fit</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
 Spectrum, Trigger on this line</td></tr>
-<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's tab (right of the chart) or dashed line · <b>click</b> the tab's
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's T▸ marker (left of the chart), tab (right of it) or dashed line · <b>click</b> the tab's
 arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
 it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
