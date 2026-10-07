@@ -32,7 +32,9 @@
 #include <dwmapi.h>
 #endif
 
-QString secondsText(double seconds) {
+namespace {
+
+QString secondsPlain(double seconds) {
 	const auto number = [](double v) { return QString::number(v, 'g', 4); };
 	if (seconds < 1e-3) return QStringLiteral("%1 µs").arg(number(seconds * 1e6));
 	if (seconds < 1) return QStringLiteral("%1 ms").arg(number(seconds * 1000));
@@ -41,7 +43,7 @@ QString secondsText(double seconds) {
 	return QStringLiteral("%1 h").arg(number(seconds / 3600));
 }
 
-QString durationText(double seconds) {
+QString durationPlain(double seconds) {
 	const double s = std::fabs(seconds);
 	/* 4 significant digits, in the first unit where they stay below 1000 (999.96 ms is "1 s", not "1000 ms") */
 	const auto below = [](double v, double limit) { return QString::number(v, 'g', 4).toDouble() < limit; };
@@ -55,10 +57,23 @@ QString durationText(double seconds) {
 	return QStringLiteral("%1 h %2 min").arg(minutes / 60).arg(minutes % 60, 2, 10, QLatin1Char('0'));
 }
 
+} // namespace
+
+QString ltrPiece(const QString &text) {
+	if (text.isEmpty() || !QGuiApplication::isRightToLeft()) return text;
+	return QChar(0x2066) + text + QChar(0x2069);
+}
+
+QString secondsText(double seconds) { return ltrPiece(secondsPlain(seconds)); }
+
+QString durationText(double seconds) { return ltrPiece(durationPlain(seconds)); }
+
 double parseSeconds(const QString &text) {
 	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(us|µs|ms|s|sec|m|min|h)?\\s*$"),
 			QRegularExpression::CaseInsensitiveOption);
-	const QRegularExpressionMatch match = length.match(text);
+	QString plain = text;
+	plain.remove(QChar(0x2066)).remove(QChar(0x2069)); /* the isolates of a right-to-left window's own texts */
+	const QRegularExpressionMatch match = length.match(plain);
 	if (!match.hasMatch()) return -1;
 	const double value = match.captured(1).replace(QLatin1Char(','), QLatin1Char('.')).toDouble();
 	const QString unit = match.captured(2).toLower();

@@ -12,6 +12,7 @@
  *   FastStream     one stream's running state: the 64-bit numbers, starts, losses and the counts
  *   FastSource     a stream as a device sends it, a wave per channel: for evre-sim and the fake devices
  *   FastSender     a device's streams on one connection, switched by their enable registers, with a host watchdog
+ *   TriggerScan    the chart's trigger on a channel, looked for in each block as it comes (on the engine's thread)
  *
  * "Records" here, as in PROTOCOL.md; the window says "samples" (a record is one instant of all channels).
  */
@@ -20,6 +21,7 @@
 #include <QByteArray>
 #include <QElapsedTimer>
 #include <QVector>
+#include <cmath>
 #include <cstdint>
 #include <functional>
 #include <vector>
@@ -137,6 +139,53 @@ private:
 	bool seen_ = false;        /* a good block came since reset */
 	quint64 next_ = 0;         /* the number the next block should start at, in 64 bits */
 	FastClock clock_;
+};
+
+/* The chart's trigger on one channel of a stream (ui/chart_widget.h), looked for on the engine's thread as each block
+ * comes: the crossing is found in the block that holds it, at its record, not by the window a frame later. The window
+ * says what to watch (TriggerWatch, handed to the engine when it changes); each block's crossings go to the window
+ * with the block (IoEngine::FastBlock), which takes their times from its own store of the records. */
+struct TriggerWatch {
+	bool on = false;
+	int channel = 0;
+	double level = 0;       /* in the channel's shown value (scale and offset applied) */
+	int edge = 0;           /* 0 rising (from below the level to it or above), 1 falling, 2 either */
+	/* crossings after this time count (the arm), on the stream's clock: the window's store shifts a start that would
+	 * begin before the one before ended (fast::Store), so the window takes that shift off */
+	double from = 0;
+	/* after a crossing at t, the next counts after t + rearm (the hold-off, the view's fill); < 0: none (Single: the
+	 * window arms it again) */
+	double rearm = -1;
+	quint64 serial = 0;     /* the window's arm: a crossing found for an older one is not used */
+};
+struct Crossing {
+	int record = 0;         /* the block's record at or past the level; 0: the record before it ended the block before */
+	double fraction = 0;    /* where the level lies between the record before and this one, 0 to 1 */
+	double time = 0;        /* on the stream's clock */
+	quint64 serial = 0;     /* the watch's */
+};
+class TriggerScan {
+public:
+	void set(const TriggerWatch &watch) { watch_ = watch; }
+	const TriggerWatch &watch() const { return watch_; }
+	/* one block's records after FastStream::take, the crossings in it (the times from the clock's mark and period):
+	 * each pair of records in one segment, the block's first with the last of the block before only when nothing was
+	 * lost between them and the stream did not start again */
+	void scan(const StreamDef &def, const BlockTaken &taken, const char *records, const FastClock::Mark &mark,
+			double period, QVector<Crossing> &out);
+	/* the record before the next block scanned, as it came (empty: none to pair with): the blocks still waiting for
+	 * the window are scanned again for a new watch, the first of them paired with the record the window has before it */
+	void pairWith(const StreamDef &def, const QByteArray &record);
+	/* a crossing that went with a block the window never took (the engine's queue overflowed): the window did not
+	 * hold on it, so the scan is armed again from it (Single had stopped there; Normal and Auto waited its re-arm) */
+	void dropped(const Crossing &crossing);
+
+private:
+	TriggerWatch watch_;
+	bool hasLast_ = false;
+	int lastChannel_ = -1;
+	double last_ = 0;       /* the channel's value in the last record of the block before */
+	double counted_ = NAN;  /* the time of the last crossing counted */
 };
 
 /* A stream as a device sends it (evre-sim, the fake devices): blocks when full or BLOCK_AGE_MS old, a wave per

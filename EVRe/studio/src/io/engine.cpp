@@ -143,6 +143,40 @@ QHash<RegKey, QVector<QPointF>> IoEngine::takeSamples() {
 	return out;
 }
 
+void IoEngine::setFastTrigger(int stream, const fast::TriggerWatch &watch) {
+	for (int i = 0; i < fastRuns_.size(); i++) fastRuns_[i].trigger.set(i == stream ? watch : fast::TriggerWatch());
+	if (stream < 0 || stream >= fastRuns_.size()) return;
+	FastRun &run = fastRuns_[stream];
+	QMutexLocker lock(&crossThreadMutex_);
+	rescanWaiting(run.trigger, run.def, stream, fastBlocks_, run.state.clock().mark(), run.state.clock().period());
+}
+
+fast::TriggerWatch IoEngine::fastTriggerWatch(int stream) const {
+	return stream >= 0 && stream < fastRuns_.size() ? fastRuns_[stream].trigger.watch() : fast::TriggerWatch();
+}
+
+/* A frame's blocks wait for the window (more when its thread was held): scanned only for the watch before, a crossing
+ * in them after the window's newest record was lost to the new one. The times come from the clock as it is now: they
+ * only decide which crossings count, and the window takes each one's time from its own store. */
+void IoEngine::rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+		const fast::FastClock::Mark &mark, double period) {
+	bool first = true;
+	for (FastBlock &block : blocks) {
+		if (block.stream != stream) continue;
+		block.crossings.clear();
+		/* a block taken under another layout of the stream (the map loaded again) is not read with this one */
+		if (block.count <= 0 || block.records.size() < qsizetype(block.count) * def.recordSize()) continue;
+		if (first) scan.pairWith(def, block.before); /* the record before it is the window's newest */
+		first = false;
+		fast::BlockTaken taken;
+		taken.first = block.first;
+		taken.count = block.count;
+		taken.newStart = block.newStart;
+		taken.lost = block.lost;
+		scan.scan(def, taken, block.records.constData(), mark, period, block.crossings);
+	}
+}
+
 QVector<IoEngine::FastBlock> IoEngine::takeFastBlocks() {
 	QMutexLocker lock(&crossThreadMutex_);
 	fastQueued_ = 0;
@@ -196,7 +230,13 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 			FastRun run;
 			for (const FastRun &old : std::as_const(fastRuns_))
 				if (old.def.name == def.name) run = old;
-			if (run.def.addr != def.addr || run.def.recordSize() != def.recordSize()) run.state.reset(def);
+			/* another layout: the trigger's watch and the record kept were for the one before (the window watches
+			 * again once it has the new streams) */
+			if (run.def.addr != def.addr || run.def.recordSize() != def.recordSize()) {
+				run.state.reset(def);
+				run.trigger = fast::TriggerScan();
+				run.lastRecord.clear();
+			}
 			run.def = def;
 			const RegDef *enable = map.registerNamed(def.enable), *rate = map.registerNamed(def.rateReg);
 			run.enableReg = enable ? *enable : RegDef();
@@ -210,6 +250,19 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		QByteArray zero;
 		QString why;
 		if (encodeValue(old.enableReg, QStringLiteral("0"), zero, why)) master_->writeTo(oneDevice, old.enableReg.addr, zero);
+	}
+	/* the blocks still waiting for the window go with their stream's number: one whose number is now another stream's,
+	 * or the same stream in another layout, is dropped (its crossings, read by the new run, would be another's) */
+	{
+		QMutexLocker lock(&crossThreadMutex_);
+		const auto stale = [&](const FastBlock &block) {
+			if (block.stream < 0 || block.stream >= runs.size() || block.stream >= fastRuns_.size()) return true;
+			const StreamDef &was = fastRuns_[block.stream].def, &now = runs[block.stream].def;
+			return was.name != now.name || was.addr != now.addr || was.recordSize() != now.recordSize();
+		};
+		for (const FastBlock &block : std::as_const(fastBlocks_))
+			if (stale(block)) fastQueued_ -= block.records.size();
+		fastBlocks_.removeIf(stale);
 	}
 	fastRuns_ = runs;
 	if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
@@ -997,9 +1050,11 @@ void IoEngine::applyFast(int stream) {
 	const quint64 request = ++run.request;
 	const bool on = run.wanted && !isBus();
 	const uint8_t slave = target(0);
-	auto switchOn = [this, stream, request, slave](double rate) {
-		FastRun &run = fastRuns_[stream];
-		if (request != run.request) return;
+	const QString name = run.def.name;
+	auto switchOn = [this, stream, name, request, slave](double rate) {
+		FastRun *asked = fastRunAsked(stream, name, request);
+		if (!asked) return;
+		FastRun &run = *asked;
 		run.state.reset(run.def, rate);
 		run.notShown = 0;
 		run.on = true;
@@ -1017,9 +1072,10 @@ void IoEngine::applyFast(int stream) {
 		QString why;
 		encodeValue(*enable, QStringLiteral("1"), one, why);
 		run.deviceMaySend = true;
-		master_->writeTo(slave, enable->addr, one, [this, stream, request, rate](const evre::Result &w) {
-			FastRun &run = fastRuns_[stream];
-			if (request != run.request) return;
+		master_->writeTo(slave, enable->addr, one, [this, stream, name, request, rate](const evre::Result &w) {
+			FastRun *asked = fastRunAsked(stream, name, request);
+			if (!asked) return;
+			FastRun &run = *asked;
 			if (!w.ok) {
 				fastFailed(stream, true, tr("%1 not written: %2").arg(run.enableReg.name, w.message));
 				return;
@@ -1042,10 +1098,10 @@ void IoEngine::applyFast(int stream) {
 		QByteArray zero;
 		QString why;
 		encodeValue(*enable, QStringLiteral("0"), zero, why);
-		master_->writeTo(slave, enable->addr, zero, [this, stream, request](const evre::Result &w) {
-			FastRun &run = fastRuns_[stream];
-			if (request != run.request) return;
-			if (w.ok) run.deviceMaySend = false; /* the device took the off */
+		master_->writeTo(slave, enable->addr, zero, [this, stream, name, request](const evre::Result &w) {
+			FastRun *asked = fastRunAsked(stream, name, request);
+			if (!asked) return;
+			if (w.ok) asked->deviceMaySend = false; /* the device took the off */
 			emit fastStreamSet(stream, false, 0, w.ok ? QString() : w.message);
 		});
 		return;
@@ -1055,12 +1111,18 @@ void IoEngine::applyFast(int stream) {
 		switchOn(run.def.rate);
 		return;
 	}
-	master_->readFrom(slave, rate->addr, uint16_t(rate->size), [this, stream, request, switchOn](const evre::Result &r) {
-		FastRun &run = fastRuns_[stream];
-		if (request != run.request) return;
-		const double hz = r.ok && r.data.size() == run.rateReg.size ? decodeNumber(run.rateReg, r.data) : 0;
-		switchOn(hz > 0 ? hz : run.def.rate);
+	master_->readFrom(slave, rate->addr, uint16_t(rate->size), [this, stream, name, request, switchOn](const evre::Result &r) {
+		const FastRun *asked = fastRunAsked(stream, name, request);
+		if (!asked) return;
+		const double hz = r.ok && r.data.size() == asked->rateReg.size ? decodeNumber(asked->rateReg, r.data) : 0;
+		switchOn(hz > 0 ? hz : asked->def.rate);
 	});
+}
+
+IoEngine::FastRun *IoEngine::fastRunAsked(int stream, const QString &name, quint64 request) {
+	if (stream < 0 || stream >= fastRuns_.size()) return nullptr;
+	FastRun &run = fastRuns_[stream];
+	return run.def.name == name && run.request == request ? &run : nullptr;
 }
 
 void IoEngine::fastFailed(int stream, bool on, const QString &why) {
@@ -1112,12 +1174,19 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 	block.newStart = taken.newStart;
 	block.lost = taken.lost;
 	block.records = frame.data.mid(fast::HEADER);
+	const int size = run.def.recordSize();
+	if (taken.lost == 0 && !taken.newStart) block.before = run.lastRecord;
+	if (size > 0 && block.records.size() >= qsizetype(taken.count) * size)
+		run.lastRecord = block.records.mid(qsizetype(taken.count - 1) * size, size);
 	if (taken.newMark) {
 		block.marked = true;
 		block.markRecord = run.state.clock().mark().record;
 		block.markTime = run.state.clock().mark().time;
 		block.markPeriod = run.state.clock().period();
 	}
+	/* the chart's trigger: its crossing found here, as the block comes, so the window holds on it at the next frame */
+	run.trigger.scan(run.def, taken, frame.data.constData() + fast::HEADER, run.state.clock().mark(),
+			run.state.clock().period(), block.crossings);
 	{
 		QMutexLocker lock(&crossThreadMutex_);
 		fastQueued_ += block.records.size();
@@ -1130,8 +1199,12 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 			FastBlock &next = fastBlocks_[gone + 1];
 			fastQueued_ -= old.records.size();
 			if (old.stream < fastRuns_.size()) fastRuns_[old.stream].notShown += quint64(old.count);
+			/* its trigger crossing never reaches the window: the scan waits for the next one instead */
+			if (old.stream < fastRuns_.size() && !old.crossings.isEmpty())
+				fastRuns_[old.stream].trigger.dropped(old.crossings.last());
 			if (next.stream == old.stream) {
 				next.newStart = next.newStart || old.newStart;
+				next.before.clear(); /* the window never has the record before it */
 				if (old.marked && !next.marked) {
 					next.marked = true;
 					next.markRecord = old.markRecord;
@@ -1200,10 +1273,12 @@ void IoEngine::watchFast() {
 		if (run.lastBlockMs < 0 || now - run.lastBlockMs < FIRST_FRAME_MS || run.silenceAsked || !run.enable()) continue;
 		run.silenceAsked = true;
 		const quint64 request = run.request;
-		master_->readFrom(target(0), run.enableReg.addr, uint16_t(run.enableReg.size), [this, i, request](const evre::Result &r) {
-			if (i >= fastRuns_.size()) return;
-			FastRun &run = fastRuns_[i];
-			if (request != run.request || !run.on || !r.ok || r.data.size() != run.enableReg.size) return;
+		const QString name = run.def.name;
+		master_->readFrom(target(0), run.enableReg.addr, uint16_t(run.enableReg.size), [this, i, name, request](const evre::Result &r) {
+			FastRun *asked = fastRunAsked(i, name, request);
+			if (!asked) return;
+			FastRun &run = *asked;
+			if (!run.on || !r.ok || r.data.size() != run.enableReg.size) return;
 			if (decodeNumber(run.enableReg, r.data) != 0) return; /* still on: a slow stream, or a pause */
 			run.wanted = run.on = run.deviceMaySend = false;
 			run.request++;

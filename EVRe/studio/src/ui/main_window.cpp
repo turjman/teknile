@@ -214,6 +214,13 @@ bool restartWanted = false;
 
 bool MainWindow::restartAsked() { return restartWanted; }
 
+fast::TriggerWatch MainWindow::engineFastWatch(int stream) const {
+	fast::TriggerWatch watch;
+	QMetaObject::invokeMethod(engine_, [&watch, engine = engine_, stream] { watch = engine->fastTriggerWatch(stream); },
+			Qt::BlockingQueuedConnection);
+	return watch;
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls()) {
 		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
@@ -428,6 +435,10 @@ QWidget *MainWindow::buildChartTab() {
 	connect(chartTab_, &ChartTab::logged, this, &MainWindow::logEvent);
 	connect(chartTab_, &ChartTab::openRecordingRequested, this, &MainWindow::openRecording);
 	connect(chartTab_, &ChartTab::notesChanged, this, &MainWindow::saveRecordingNotes);
+	/* the trigger on a fast line: its crossings looked for by the engine, in each block as it comes */
+	connect(chartTab_, &ChartTab::fastTriggerChanged, this, [this](int stream, const fast::TriggerWatch &watch) {
+		engine_->post([engine = engine_, stream, watch] { engine->setFastTrigger(stream, watch); });
+	});
 	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) { chartTab_->setShown(tab == TabChart); });
 	return chartTab_;
 }
@@ -1103,7 +1114,7 @@ void MainWindow::sync() {
 		const IoEngine::FastBlock &block = fastRest_[taken++];
 		fastRestBytes_ -= block.records.size();
 		chartTab_->appendFast(block.stream, block.first, block.count, block.records, block.newStart, block.lost,
-				block.marked, block.markRecord, block.markTime, block.markPeriod);
+				block.marked, block.markRecord, block.markTime, block.markPeriod, block.crossings);
 		const QVector<StreamDef> &streams = doc_->map().streams;
 		if (block.count <= 0 || block.stream >= streams.size() || isBus()) continue;
 		const StreamDef &def = streams[block.stream];

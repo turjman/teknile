@@ -6,7 +6,7 @@
  *   QLabel #editorEmpty (the Map editor's note when no register is selected),
  *   QLabel [chip="true"] (a small framed tag: the Map editor's address, type, access),
  *   QLabel #liveDot with [state="ok" / "warn" / "none"] (the Map editor's live value),
- *   QPushButton #primary, #danger, #hold[live="false"],
+ *   QPushButton #primary, #danger, #hold[live="false"] (and [stopped="true"]: the trigger stopped, in amber),
  *   QPushButton[menuButton="true"] (a button that opens a menu: room for the chevron, see setButtonMenu),
  *   QPushButton[segment="true"] with [segmentPos="first" / "last"] for segmented choices,
  *   QLabel #pill with [state="idle" / "busy" / "ok" / "error"],

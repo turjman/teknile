@@ -148,6 +148,62 @@ BlockCheck FastStream::take(const QByteArray &data, double arrival, BlockTaken &
 	return check;
 }
 
+/* -------------------------------------------------------------- the trigger */
+
+void TriggerScan::scan(const StreamDef &def, const BlockTaken &taken, const char *records, const FastClock::Mark &mark,
+		double period, QVector<Crossing> &out) {
+	const int channel = watch_.channel;
+	if (channel < 0 || channel >= def.channels.size() || taken.count <= 0) {
+		hasLast_ = false;
+		return;
+	}
+	int offset = 0;
+	for (int c = 0; c < channel; c++) offset += typeSize(def.channels[c].type);
+	const int size = def.recordSize();
+	const StreamChannel &watched = def.channels[channel];
+	const auto valueAt = [&](int k) { return channelValue(watched, records + qsizetype(k) * size + offset); };
+	const auto timeOf = [&](int k) { return mark.time + double(qint64(taken.first + quint64(k) - mark.record)) * period; };
+	/* the first record pairs with the block before's last only across nothing lost, in the same start */
+	const bool paired = hasLast_ && lastChannel_ == channel && taken.lost == 0 && !taken.newStart;
+	double previous = paired ? last_ : valueAt(0);
+	const double level = watch_.level;
+	for (int k = paired ? 0 : 1; watch_.on && k < taken.count; k++) {
+		const double v = valueAt(k), pv = previous;
+		previous = v;
+		const bool up = pv < level && v >= level, down = pv > level && v <= level;
+		if (!((watch_.edge != 1 && up) || (watch_.edge != 0 && down))) continue;
+		const double fraction = v != pv ? (level - pv) / (v - pv) : 1.0;
+		const double time = timeOf(k) - (1 - fraction) * period; /* straight between the two records */
+		if (time <= watch_.from) continue;
+		out.push_back({ k, fraction, time, watch_.serial });
+		counted_ = time;
+		if (watch_.rearm < 0) watch_.on = false; /* Single: until the window arms it again */
+		else watch_.from = time + watch_.rearm;
+	}
+	hasLast_ = true;
+	lastChannel_ = channel;
+	last_ = valueAt(taken.count - 1);
+}
+
+void TriggerScan::pairWith(const StreamDef &def, const QByteArray &record) {
+	const int channel = watch_.channel;
+	hasLast_ = false;
+	if (channel < 0 || channel >= def.channels.size() || record.size() < def.recordSize()) return;
+	int offset = 0;
+	for (int c = 0; c < channel; c++) offset += typeSize(def.channels[c].type);
+	hasLast_ = true;
+	lastChannel_ = channel;
+	last_ = channelValue(def.channels[channel], record.constData() + offset);
+}
+
+/* only the last one counted: a later one the window has (Normal) re-arms as it should, and an older one's re-arm
+ * is long past */
+void TriggerScan::dropped(const Crossing &crossing) {
+	if (crossing.serial != watch_.serial || crossing.time != counted_) return;
+	watch_.on = true;
+	watch_.from = std::min(watch_.from, crossing.time);
+}
+
 /* --------------------------------------------------------------- the source */
 
 double FastSource::rate() const { return options_.rate > 0 ? options_.rate : def_.rate; }

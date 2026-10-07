@@ -22,7 +22,10 @@
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
- *    Single or Normal, Arm; the chart holds on each crossing (ChartView).
+ *    Find level, Auto, Normal or Single, the hold-off, the crossing's place in
+ *    the window, Arm (Single; Force while waiting), its state; the chart holds on a crossing
+ *    (ChartView). While it is on, Hold / Live is Run / Stop. A line's chip
+ *    menu arms it on that line; each line keeps its own level and edge.
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
  *    thread, with progress and Cancel), Add note here, Open recording.
@@ -55,6 +58,7 @@
 
 class ChartView;
 class ChartWidget;
+class ElidedLabel;
 class QAction;
 class QActionGroup;
 class QComboBox;
@@ -64,6 +68,7 @@ class QLineEdit;
 class QMenu;
 class QProgressDialog;
 class QPushButton;
+class QSpinBox;
 class QTableWidget;
 enum class LogLevel;
 
@@ -103,7 +108,8 @@ public:
 	bool fastPlotted(int stream, int channel) const;
 	int fastLines() const; /* fast lines on the chart */
 	void appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
-			bool marked, quint64 markRecord, double markTime, double markPeriod);
+			bool marked, quint64 markRecord, double markTime, double markPeriod,
+			const QVector<fast::Crossing> &crossings = {}); /* the trigger's, found by the engine (setFastTrigger) */
 	/* every line off the chart, and the colours from the first again: for a new map (the math
 	 * lines come back with the next setRegisters) */
 	void clearLines();
@@ -161,12 +167,15 @@ public:
 	void showLaneMenu(int lane, const QPoint &globalPos);
 	QMenu *laneMenu() const { return laneMenu_; }
 	void editLaneRange(int lane); /* Manual…: its min and max asked */
-	/* a line's menu (a right-click on its chip): Histogram, Spectrum; tests: the menu */
+	/* a line's menu (a right-click on its chip): Histogram, Spectrum, Trigger on this line; tests: the menu */
 	void showLineMenu(int key, const QPoint &globalPos);
 	QMenu *lineMenu() const { return lineMenu_; }
 	/* a line's histogram or spectrum over A -> B (or the view), in a window of its own over this one */
 	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
-	/* the trigger row's state in words ("armed", "triggered at 14:03:12.345", ...): tests */
+	/* a line's chip menu, Trigger on this line: the trigger on, armed on that line with its own level and edge */
+	void triggerOnLine(int key);
+	/* the trigger row's state in words ("waiting for a crossing", "Normal · triggered", "Single · complete at
+	 * 14:03:12.345", ...): tests */
 	QString triggerState() const;
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
@@ -186,6 +195,8 @@ signals:
 	/* an export ended: rows written, or error (cancelled: error says so) */
 	void exported(const QString &file, qint64 rows, const QString &error);
 	void notesChanged();
+	/* the trigger watches a fast line now, or no longer (stream -1): the engine looks for its crossings */
+	void fastTriggerChanged(int stream, const fast::TriggerWatch &watch);
 
 private:
 	QString settingKey(const char *name) const { return group_ + QLatin1Char('/') + QLatin1String(name); }
@@ -250,6 +261,7 @@ private:
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
+	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
@@ -283,12 +295,24 @@ private:
 	QWidget *buildTriggerRow();
 	void applyTrigger();          /* the row's choices to the chart, armed again */
 	void fillTriggerLines();      /* the lines it can watch (registers and math lines), the one chosen kept */
-	void showTriggerState();
+	void showLineSettings();      /* the level and edge boxes: the line chosen's own */
+	void saveTriggerSettings();   /* every line's level and edge (chart/triggerLevels) */
+	void showTriggerState();      /* the row's state, Arm (Single only), the toolbar's Run / Stop */
+	/* the toolbar's button: Hold / Live, or Run / Stop while the trigger is on (one control, so the two cannot disagree) */
+	void showHoldButton();
 	QWidget *triggerRow_ = nullptr;
 	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
+	QComboBox *triggerHoldoff_ = nullptr; /* "window" (its length) or a time typed, 0 to 10 s */
+	QSpinBox *triggerPosition_ = nullptr; /* the crossing's place in the window, % */
+	void applyHoldoffText();
+	void showHoldoff();
 	QLineEdit *triggerLevel_ = nullptr;
-	QPushButton *triggerArm_ = nullptr;
-	QLabel *triggerState_ = nullptr;
+	QPushButton *triggerArm_ = nullptr;   /* Arm (Single), Force while Normal or Single waits */
+	QPushButton *triggerFind_ = nullptr;  /* Find level: halfway in what the line shows */
+	QPushButton *triggerOff_ = nullptr; /* at the row's end: the trigger off, as Display -> Trigger (the same action) */
+	QLabel *triggerUnit_ = nullptr; /* the line's unit after the level's box */
+	/* the state: cut to its room and whole in its tooltip, so no state's text sets the window's least width */
+	ElidedLabel *triggerState_ = nullptr;
 	QVector<int> triggerKeys_;    /* the lines in the list, by key */
 	void showLaneActions(); /* Fold all / Open all: shown with Lanes on, each enabled when it has something to do */
 	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */

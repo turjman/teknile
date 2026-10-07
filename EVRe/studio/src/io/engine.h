@@ -33,7 +33,8 @@
  * first); one without an enable is only listened to. While one is on, CONFIG is read every HEARTBEAT_MS as for
  * AUTO_SEND. Disconnect switches every stream off first, the way it clears AUTO_SEND; a lost link keeps the wish,
  * and the stream is switched on again after the reconnect. No block FIRST_FRAME_MS after the enable was taken: off
- * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.)
+ * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.) The chart's trigger on a
+ * channel (setFastTrigger) is looked for in each block as it comes, and its crossings go with the block.
  *
  * Every QObject the engine uses is its child (or is made in its thread), so
  * moveToThread() takes them all along: a timer left in the window's thread
@@ -164,8 +165,15 @@ public:
 		bool marked = false;     /* a time mark came with it: */
 		quint64 markRecord = 0;
 		double markTime = 0, markPeriod = 0;
+		QVector<fast::Crossing> crossings; /* the chart's trigger crossing in it (setFastTrigger) */
+		QByteArray before;       /* the record before it, when it follows that one (nothing lost, the same start) */
 	};
 	QVector<FastBlock> takeFastBlocks();
+	/* the blocks of `stream` still waiting for the window, scanned again for a new watch (their crossings for the
+	 * one before are of no use): the window armed from its newest record, which comes before them. Public for the
+	 * tests. */
+	static void rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+			const fast::FastClock::Mark &mark, double period);
 	/* the monitor's lines since the last call (when monitoring), and how many
 	 * were dropped: at thousands of frames a second only the newest are kept */
 	QStringList takeFrames(int &dropped);
@@ -184,6 +192,9 @@ public:
 	/* AUTO_SEND on or off at 8000 / (prescaler + 1) Hz, on the one device (never on a bus). Kept: switched on
 	 * again after a reconnect, once the device's STATUS says it can. Answered by autoSendSet. */
 	void setAutoSend(bool on, int prescaler);
+	/* Fast EVRe: the chart's trigger on a channel of a stream (-1: on none), looked for in each block as it comes */
+	void setFastTrigger(int stream, const fast::TriggerWatch &watch);
+	fast::TriggerWatch fastTriggerWatch(int stream) const; /* what it watches on a stream now (the tests) */
 	/* Fast EVRe: the map's stream (its index in DeviceMap::streams) on or off, on the one device (never on a bus).
 	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
 	void setFastStream(int stream, bool on);
@@ -289,6 +300,8 @@ private:
 		const RegDef *rate() const { return rateReg.name.isEmpty() ? nullptr : &rateReg; }
 		RegDef enableReg, rateReg;  /* the map's registers it names; no name: none */
 		fast::FastStream state;
+		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
+		QByteArray lastRecord;      /* the last block's last record (FastBlock::before) */
 		bool wanted = false;
 		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
 		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */
@@ -308,6 +321,9 @@ private:
 	void recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data);
 	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
 	void fastFailed(int stream, bool on, const QString &why);
+	/* the run an answer is for, when it is still there and at the same switch; nullptr: the map was loaded again
+	 * meanwhile (fewer streams, or another at its place), or it was switched since */
+	FastRun *fastRunAsked(int stream, const QString &name, quint64 request);
 	bool anyFastOn() const;
 	int fastStreamOf(const evre::Frame &frame) const; /* the stream whose block this is; -1: none */
 	int fastStreamOfRaw(const QByteArray &raw) const; /* the same from a frame's bytes (the Monitor) */

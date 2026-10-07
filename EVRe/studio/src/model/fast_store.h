@@ -65,6 +65,8 @@ public:
 	/* counts up whenever the times of records already kept can change (a clear, a new start, a start's shift):
 	 * bins made from them before are stale then. A new mark changes only the times after it, so it does not count */
 	int timeVersion() const { return timeVersion_; }
+	/* what the newest start's times are shifted by (Epoch::shift): the stream's clock gives them without it */
+	double newestShift() const { return epochs_.isEmpty() ? 0 : epochs_.last().shift; }
 	qint64 bytes() const;                 /* the memory held now: pieces, summaries, the lists */
 	double bytesPerRecord() const;        /* a record's share: its bytes (not when mapped) and its summaries' */
 	bool hasTime() const;                 /* a mark has come: the records have times */

@@ -334,7 +334,7 @@ each other: choosing one turns the other off.</li>
 <h3>The second row: what to do</h3>
 <ul>
 <li><b>Hold</b> stops the view where it is (the memory keeps filling); <b>▶ Live</b> follows now again. Dragging
-holds too.</li>
+holds too. While the trigger is on, the same button is <b>Stop</b> / <b>▶ Run</b> (below).</li>
 <li><b>Measure</b> shows the measurements under the chart (below). <b>Cursors</b> on (turns Measure on): click the
 chart for cursor <b>A</b>, again for <b>B</b>, drag them. A bar between their tags at the top of the plot says the
 time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a cursor off the view it ends at the
@@ -381,15 +381,44 @@ as it comes, so it covers hours while the memory keeps minutes; a gap of more th
 nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
-<h3>Histogram, spectrum, trigger</h3>
-<p><b>Right-click a line's chip</b> in the legend: <b>Histogram</b> (how its values spread, bins by the
+<h3>Histogram and spectrum</h3>
+<p><b>Click a line's chip</b> in the legend (its <b>▾</b>) or right-click it: <b>Histogram</b> (how its values spread, bins by the
 Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
 2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
 its own with a readout under the mouse, a picture and CSV.</p>
-<p><b>Display → Trigger</b>: a row to pick a line, Rising / Falling / Either, a level (a dashed line on the chart you
-can drag) and <b>Normal</b> (holds on each crossing, armed again once the view is full) or <b>Single</b> (the first;
-<b>Arm</b> for the next). The chart holds with the crossing at 20 % of the window and a <b>T</b> over it; the
-measurements, export and pictures take that view. <b>Live</b> follows now again.</p>
+<h3>Trigger</h3>
+<p><b>Click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
+line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane from its <b>T▸</b> marker
+left of the chart to its tab right of it, <i>0.4 A ↑</i> (the level in the line's unit and the edge), so nothing
+covers the newest samples; their pointers are solid while the picture held crossed this level. <b>Drag</b> the
+marker, the tab or the line to move the level; <b>click</b> the tab's arrow (↑ ↓ ↕) for rising, falling or either;
+their tooltips name the line. A level beyond the lane's range stays on its edge, dotted, their pointers ▲ or ▼ and
+<i>(above range)</i> in their tooltips. Each line keeps its own level and edge.</p>
+<p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
+the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
+the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls.
+While they wait, <b>Force</b> (in Arm's place) holds the view now, as if the line crossed; Normal waiting after a
+capture says when the last one was. <b>Find level</b> puts the level halfway between the line's lowest and highest
+in view. The
+<b>hold-off</b> (the window's length by default, 0 to
+10 s) is the time after a crossing in which no other counts. The <b>T ▼</b> flag above the chart, its arrow over
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
+The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
+<p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
+and its T, no crossing counts (the button's <b>Run</b> is amber while stopped); <b>Run</b> arms again in the mode,
+from now. Dragging the chart stops it too. The row
+and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Normal · triggered</i>, <i>Stopped · Run
+to arm</i> ...), and change only when it does, with no number while it runs; while the view still fills after the
+crossing, a faint line marks where the data ends.</p>
+<p><b>Short windows lock by themselves</b>: below a 100 ms window a live chart with the trigger off holds on each
+rising crossing of its first line's middle (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
+cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+<b>Display → Lock short windows</b> turns it off.</p>
+<p><b>Off</b> at the row's end turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
+<b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
+trigger (<i>no line to watch</i>, its name greyed in the row's list); it arms again when the line comes back, never
+on another line by itself.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -600,8 +629,11 @@ all fit</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
-<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
-<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
+<tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
+Spectrum, Trigger on this line</td></tr>
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's T▸ marker (left of the chart), tab (right of it) or dashed line · <b>click</b> the tab's
+arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
+it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
 Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·

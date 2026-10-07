@@ -54,6 +54,7 @@ class RegisterModel;
 class RegistersTab;
 class Sidebar;
 struct RegValue;
+namespace fast { struct TriggerWatch; }
 enum class LogLevel;
 
 class MainWindow : public QMainWindow {
@@ -88,6 +89,8 @@ public:
 	void openRecording(const QString &file);
 	/* Restart now (the language): true when the window closed for it; main() then starts the program again */
 	static bool restartAsked();
+	/* tests: what the engine's fast trigger watches on a stream now, asked on its thread after what was posted to it */
+	fast::TriggerWatch engineFastWatch(int stream) const;
 	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
 	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
 
