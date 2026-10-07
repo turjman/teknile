@@ -7555,7 +7555,7 @@ private:
 		};
 		const bool current = view->currentLane() == 1 && rangeLabel->text() == QStringLiteral("Y range (A)")
 				&& mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94") && high->text() == QStringLiteral("17.14")
-				&& accentIn(1) > 20 && accentIn(0) * 4 < accentIn(1); /* lit: its name in the accent, the other's not */
+				&& accentIn(1) > 3 && accentIn(0) * 4 < accentIn(1); /* lit: its name in the accent, the other's not */
 		/* the toolbar sets it: 1 .. 20 typed, then Auto chosen; the first lane untouched */
 		low->setText(QStringLiteral("1"));
 		high->setText(QStringLiteral("20"));
