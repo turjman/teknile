@@ -1136,10 +1136,22 @@ private:
 		window_.applyStartup(mapOnly);
 		QPushButton *button = sidebar->fastButton(0);
 		check(!sidebar->fastCard()->isHidden() && sidebar->fastStreamCount() == 1 && button
-						&& button->text() == QStringLiteral("▶  Start ADC") && !button->isEnabled()
+						&& button->text() == QStringLiteral("▶  Start stream") && !button->isEnabled()
 						&& sidebar->fastRateText(0) == QLatin1String("not connected")
 						&& button->toolTip() == QLatin1String("Offered once connected."),
 				"fast streams: a map with a stream: the card shows a row for it, greyed while not connected, saying why");
+		{ /* the row is headed by the stream's name, the map's description its tooltip; the card before Polling & recording */
+			QLabel *title = sidebar->fastCard()->findChild<QLabel *>(QStringLiteral("fastStreamName"));
+			QCheckBox *poll = nullptr;
+			for (QCheckBox *box : sidebar->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Poll")) poll = box;
+			const int cardY = sidebar->fastCard()->mapTo(sidebar, QPoint(0, 0)).y();
+			const int pollY = poll ? poll->mapTo(sidebar, QPoint(0, 0)).y() : -1;
+			check(title && title->text().contains(QLatin1String("ADC")) && title->toolTip().contains(QLatin1String("sampled together"))
+							&& poll && cardY < pollY,
+					"fast streams: the row is headed by the stream's name (the map's description its tooltip), the button says "
+					"only Start stream; the card sits before Polling & recording");
+		}
 		if (!button) return;
 
 		/* connected: offered, off, the map's rate (a lost link comes back by itself below) */
@@ -1167,7 +1179,7 @@ private:
 		const QRegularExpression rate(QStringLiteral("^(9\\.9|10\\.0|10\\.1) k samples/s \\([+-][0-9]+ ppm\\)$"));
 		const bool counted = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 6000);
 		if (!counted) std::printf("  the rate: \"%s\"\n", qPrintable(sidebar->fastRateText(0)));
-		check(on && button->text() == QStringLiteral("■  Stop ADC") && button->objectName() == QLatin1String("danger")
+		check(on && button->text() == QStringLiteral("■  Stop stream") && button->objectName() == QLatin1String("danger")
 						&& counted && sidebar->fastLostText(0) == QLatin1String("lost 0")
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
@@ -1387,7 +1399,7 @@ private:
 		if (!QTest::qWaitFor([&] { return sidebar->fastRateText(0) == QStringLiteral("off · 10.0 k samples/s"); }, 3000))
 			std::printf("  stopped: %d, the button \"%s\", the rate \"%s\"\n", stopped, qPrintable(button->text()),
 					qPrintable(sidebar->fastRateText(0)));
-		check(stopped && button->text() == QStringLiteral("▶  Start ADC")
+		check(stopped && button->text() == QStringLiteral("▶  Start stream")
 						&& QTest::qWaitFor([&] { return sidebar->fastRateText(0) == QStringLiteral("off · 10.0 k samples/s"); }, 3000)
 						&& logText().contains(QLatin1String("fast stream ADC off")),
 				"fast streams: Stop writes 0 to ADC_STREAM; the button is Start again, the card says off");
@@ -1397,7 +1409,7 @@ private:
 		const bool onAgain = enableBecomes(1);
 		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
 		if (disconnectButton) disconnectButton->click();
-		check(onAgain && disconnectButton && enableBecomes(0) && button->text() == QStringLiteral("▶  Start ADC")
+		check(onAgain && disconnectButton && enableBecomes(0) && button->text() == QStringLiteral("▶  Start stream")
 						&& !button->isEnabled() && sidebar->fastRateText(0) == QLatin1String("not connected"),
 				"fast streams, then Disconnect: ADC_STREAM 0 on the device first; the button Start, greyed, not connected");
 
@@ -1409,7 +1421,7 @@ private:
 		const bool onBeforeLoss = enableBecomes(1);
 		stopFake();
 		const bool back = startFake(fastMapFile, { QStringLiteral("--fast-lose"), QStringLiteral("5") }) && openDevice();
-		const bool again = back && enableBecomes(1, 10000) && button->text() == QStringLiteral("■  Stop ADC");
+		const bool again = back && enableBecomes(1, 10000) && button->text() == QStringLiteral("■  Stop stream");
 		const bool lostShown = QTest::qWaitFor([&] {
 			const QString text = sidebar->fastLostText(0);
 			return text.startsWith(QLatin1String("lost ")) && text != QLatin1String("lost 0");
@@ -1433,7 +1445,7 @@ private:
 		(void) QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
 		button->click();
 		const bool tookIt = enableBecomes(1);
-		const bool backOff = QTest::qWaitFor([&] { return button->text() == QStringLiteral("▶  Start ADC"); }, 5000);
+		const bool backOff = QTest::qWaitFor([&] { return button->text() == QStringLiteral("▶  Start stream"); }, 5000);
 		check(quietUp && tookIt && backOff && enableBecomes(0)
 						&& logText().contains(QLatin1String("fast stream ADC switched off: no block came in 2 s")),
 				"fast streams: a device that takes the enable and sends no block: switched off again after 2 s (0 "

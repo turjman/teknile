@@ -273,10 +273,12 @@ QWidget *MapSettingsDialog::buildStreams() {
 			tr("Description") });
 	channels_->horizontalHeader()->setStretchLastSection(true);
 	channels_->verticalHeader()->hide();
-	for (const auto &[column, width] : { std::pair{ ChName, 100 }, { ChType, 76 }, { ChUnit, 54 }, { ChScale, 72 },
-				 { ChOffset, 60 }, { ChDecimals, 70 } })
+	/* the other columns as wide as their header or a short value, Description the rest: the table fits its page
+	 * (a last header cut behind a scroll bar read as "Descripti") */
+	for (const auto &[column, width] : { std::pair{ ChName, 84 }, { ChType, 76 }, { ChUnit, 48 }, { ChScale, 64 },
+				 { ChOffset, 56 }, { ChDecimals, 62 } })
 		channels_->setColumnWidth(column, std::max(width, channels_->horizontalHeader()->fontMetrics().horizontalAdvance(
-				channels_->horizontalHeaderItem(column)->text()) + 24)); /* a header never cut (Arabic is longer) */
+				channels_->horizontalHeaderItem(column)->text()) + 20)); /* a header never cut (Arabic is longer) */
 	channels_->setMinimumHeight(channels_->horizontalHeader()->sizeHint().height() + 4 * 34 + 20); /* four channels whole */
 	channels_->setToolTip(tr("The channels of one sample, in the order the device packs them: shown value = raw x scale "
 			"+ offset"));

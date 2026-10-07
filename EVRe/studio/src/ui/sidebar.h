@@ -239,6 +239,7 @@ private:
 	/* the fast streams card */
 	struct FastRow {
 		StreamDef def;
+		QLabel *title = nullptr;  /* the stream's name, heading its row */
 		QPushButton *button = nullptr;
 		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
 		QLabel *lost = nullptr;   /* the samples lost */

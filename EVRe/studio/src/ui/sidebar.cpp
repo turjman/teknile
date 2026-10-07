@@ -50,8 +50,8 @@ Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 	layout->addWidget(buildConnectionCard());
 	layout->addWidget(buildBusCard());
 	layout->addWidget(buildMapCard());
+	layout->addWidget(buildFastCard()); /* the map's streams, right under the map; before the fold of a laptop screen */
 	layout->addWidget(buildPollingCard());
-	layout->addWidget(buildFastCard());
 	layout->addWidget(buildApiCard());
 	layout->addStretch();
 	addFooter(layout);
@@ -694,6 +694,11 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 	for (int i = 0; i < streams.size(); i++) {
 		FastRow row;
 		row.def = streams[i];
+		/* the stream's name heads its row, so the button says only Start or Stop: with the name on it, "Start ADC"
+		 * read as a thing of the example's ADC, not of any stream */
+		row.title = new QLabel(QStringLiteral("<b>%1</b>").arg(streams[i].name.toHtmlEscaped()));
+		row.title->setObjectName(QStringLiteral("fastStreamName"));
+		row.title->setToolTip(streams[i].desc.isEmpty() ? tr("A fast stream of the map") : streams[i].desc);
 		row.button = new QPushButton;
 		row.button->setObjectName(QStringLiteral("fastStream"));
 		row.button->setCursor(Qt::PointingHandCursor);
@@ -709,6 +714,7 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		numbers->setSpacing(2);
 		numbers->addWidget(row.rate);
 		numbers->addWidget(row.lost);
+		fastRowsLayout_->addWidget(row.title);
 		fastRowsLayout_->addWidget(row.button);
 		fastRowsLayout_->addLayout(numbers);
 		/* each channel: its Plot tick (a line on the chart, as a register's) and its newest value */
@@ -814,7 +820,7 @@ void Sidebar::setFastOn(int stream, bool on) {
 /* Start: the device is told to send (its enable register written 1); Stop: red, as Stop recording */
 void Sidebar::showFastButton(int stream) {
 	const FastRow &row = fastRows_[stream];
-	row.button->setText(row.on ? tr("■  Stop %1").arg(row.def.name) : tr("▶  Start %1").arg(row.def.name));
+	row.button->setText(row.on ? tr("■  Stop stream") : tr("▶  Start stream"));
 	row.button->setObjectName(row.on ? QStringLiteral("danger") : QStringLiteral("fastStream"));
 	repolish(row.button);
 	QStringList channels;
