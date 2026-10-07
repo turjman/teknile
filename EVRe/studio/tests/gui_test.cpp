@@ -541,6 +541,7 @@ public:
 		chartInfoLine();
 		chartOneCap();
 		chartRamCut();
+		chartRamFree();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -6055,6 +6056,136 @@ private:
 						&& perf.frames >= 50,
 				"chart, the RAM budget cut with a filled fast store (2 GB to 256 MB): the store at its new share from the next "
 				"block on; no append, frame or paint over 20 ms (the memory let go a slice a frame)");
+	}
+
+	/* The RAM against the free memory (O-13): the budget is a cap, not a reservation. With less free than it, the chart
+	 * keeps within what it holds and the free memory less a reserve (a free memory given, which comes back as the chart
+	 * lets go, as a computer's does): a fast line filled to its share of 512 MB, then 256 MB left to it by the free
+	 * memory: the store down to that at the next block, no append, frame or paint over 20 ms (P7's cut); the note "only
+	 * ... free: keeps about ..." in the warn colour, the RAM box's tooltip and the memory strip's say why. The free
+	 * memory back: the RAM set again, nothing more trimmed */
+	void chartRamFree() {
+		/* the effective budget: what is held and free less the reserve, within the floor and the RAM set */
+		const qint64 reserve = ChartTab::ramReserveMB();
+		const bool formula = ChartTab::effectiveRamMB(16384, 1000, 2048 + reserve) == 3048
+				&& ChartTab::effectiveRamMB(2048, 1000, 8192 + reserve) == 2048
+				&& ChartTab::effectiveRamMB(2048, 0, 10) == ChartTab::RAM_FLOOR_MB
+				&& ChartTab::effectiveRamMB(2048, 0, -1) == 2048 && reserve >= 1024;
+		bool over = false;
+		/* 3 GB needed for 2 min, 1 GB left by the free memory: about 40 s */
+		const QString only = ChartTab::ramNeedText(qint64(3) * 1024 * 1024 * 1024, 2048, 120, over, 1024, 2150);
+		std::printf("     (the reserve %lld MB; \"%s\")\n", (long long) reserve, qPrintable(only));
+		check(formula && over && only == QLatin1String("only 2.1 GB free: keeps about 40 s"),
+				"chart, the RAM against the free memory: what the chart holds and the free memory less a reserve (1 GB, "
+				"a tenth of the memory when more), 64 MB at least, the RAM set at most; the note \"only 2.1 GB free: "
+				"keeps about 40 s\"");
+
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		double now = 100;
+		ChartTab tab{ [&now] { return now; } };
+		tab.resize(1100, 560); /* the chart about as large as the RAM cut's (a paint's time follows its pixels) */
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		tab.setShown(true);
+		ChartView *view = tab.view();
+		view->setMemory(3600);
+		view->setRamBudget(512);
+		view->setFastStream(0, def);
+		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
+		quint64 first = 0;
+		const auto block = [&] {
+			view->appendFast(0, first, BLOCK, records, first == 0, 0);
+			first += BLOCK;
+			now = 100.0 + first * 1e-6;
+			view->markFast(0, first, now, 1e-6);
+		};
+		QElapsedTimer filling;
+		filling.start();
+		const fast::Store *store = view->fastStore(0);
+		while (!view->memoryFull() && filling.elapsed() < 20000) block();
+		const qint64 filled = store->bytes();
+		(void) view->grab();
+		(void) view->takePerfStats();
+
+		/* 256 MB left to the chart: the free memory given so that what it holds and the free less the reserve is that */
+		constexpr qint64 MiB = 1024 * 1024;
+		constexpr int LEFT = 256;
+		const qint64 heldMB = (view->bytesHeld() + view->bytesReleasing()) / MiB;
+		tab.setTestFreeMemory(LEFT + reserve - heldMB);
+		const bool limited = std::abs(view->ramInUse() - LEFT) <= 2 && view->ramLimit() > 0 && view->ramBudget() == 512;
+		double appendMax = 0, frameMax = 0;
+		bool down = false;
+		for (int b = 0; b < 60; b++) {
+			QElapsedTimer one;
+			one.start();
+			block();
+			appendMax = std::max(appendMax, one.nsecsElapsed() / 1e6);
+			if (b == 0) down = store->bytes() <= qint64(view->ramInUse()) * MiB;
+			one.restart();
+			view->frame();
+			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+			(void) view->grab();
+			if (b % 20 == 19) tab.watchFreeMemory(); /* the readings go on: what was let go came back as free */
+		}
+		const ChartView::PerfStats perf = view->takePerfStats();
+		const bool stillLimited = std::abs(view->ramInUse() - LEFT) <= 4;
+		tab.refreshStatus();
+		auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+		auto *ram = tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+		const QString noteText = note ? note->text() : QString();
+		const bool warned = note && noteText.startsWith(QLatin1String("only "))
+				&& noteText.contains(QLatin1String(" free: keeps about ")) && note->property("warn").toBool()
+				&& note->palette().color(note->foregroundRole()) == Theme::colors().warn;
+		const QString tip = ram ? ram->toolTip() : QString();
+		const bool ramTip = tip.contains(QLatin1String("Free now: ")) && tip.contains(QLatin1String("of the 512 MB set"));
+		const bool stripTip = view->memoryStripTip().contains(QLatin1String("The free memory limits the budget now"));
+		std::printf("     (the free memory, a chart of %d x %d: %lld MB filled, %d MB left to it: %lld MB kept; the longest "
+				"append %.1f ms, frame() %.1f ms, paint %.1f ms of %d; \"%s\")\n", view->width(), view->height(),
+				(long long) (filled >> 20), view->ramInUse(),
+				(long long) (store->bytes() >> 20), appendMax, frameMax, perf.paintMax, perf.frames, qPrintable(noteText));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the note in its warn state, in both themes */
+			if (ram) ram->setEditText(QStringLiteral("512 MB")); /* the budget set on the view, shown as the box would */
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				tab.refreshStatus();
+				tab.grab(QRect(0, 0, tab.width(), 120)).save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_ram_free_dark.png") : QStringLiteral("_ram_free_light.png")));
+			}
+		}
+		check(filled >= 256 * MiB && limited && down && stillLimited && appendMax < 20 && frameMax < 20 && perf.paintMax < 20
+						&& perf.frames >= 50 && warned && ramTip && stripTip,
+				"chart, less memory free than the RAM set: the chart keeps within what it holds and the free less the "
+				"reserve (512 MB set, 256 MB left), trimmed at the next block with no append, frame or paint over 20 ms; "
+				"the note \"only ... free: keeps about ...\" in the warn colour, the RAM box's and the memory strip's "
+				"tooltips say so");
+
+		/* the free memory back: the RAM set again, and nothing more let go while the line grows to it */
+		tab.setTestFreeMemory(16384 + reserve);
+		const qint64 dropped = store->dropped();
+		for (int b = 0; b < 20; b++) {
+			block();
+			view->frame();
+		}
+		tab.refreshStatus();
+		const QString back = note ? note->text() : QString();
+		const QString backTip = ram ? ram->toolTip() : QString();
+		check(view->ramLimit() == 0 && view->ramInUse() == 512 && store->dropped() == dropped
+						&& back.startsWith(QLatin1String("needs ")) && backTip.contains(QLatin1String("Free now: "))
+						&& backTip.contains(QLatin1String("With less free")),
+				"chart, the free memory back: the RAM set again (512 MB), nothing more let go as the line grows; the note "
+				"\"needs ...\" again, the RAM box's tooltip the free memory without a limit");
+		tab.setTestFreeMemory(-1);
+		tab.hide();
 	}
 
 	void chartInfoLine() {

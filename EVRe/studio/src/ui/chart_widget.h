@@ -513,6 +513,14 @@ public:
 	static constexpr int MIN_RAM_MB = 256;
 	void setRamBudget(int megabytes);
 	int ramBudget() const { return ramMB_; }
+	/* The free memory's limit on the budget, MB (0: none; the Chart tab watches the free memory): the samples are
+	 * kept within the lower of the two, trimmed as for a budget lowered, so the chart lets its oldest go before the
+	 * computer pages to disk */
+	void setRamLimit(int megabytes);
+	int ramLimit() const { return limitMB_; }
+	int ramInUse() const { return limitMB_ > 0 ? std::min(ramMB_, limitMB_) : ramMB_; }
+	/* what the trims let go and is not freed yet (releaseSome), bytes: still taken, so counted as the chart's */
+	qint64 bytesReleasing() const;
 	/* the most samples a line keeps now: the RAM shared by the lines, at least 16 of the largest chunks, at most
 	 * MAX_POINTS */
 	qsizetype pointsPerLine() const;
@@ -967,6 +975,7 @@ private:
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
 	fast::Store::Released released_;       /* what the fast stores' trims let go, freed a slice a frame (releaseSome) */
 	int ramMB_ = DEFAULT_RAM_MB;
+	int limitMB_ = 0;                      /* the free memory's limit on ramMB_ (setRamLimit); 0: none */
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */
 	Drawing drawing_ = Drawing::Cpu;
 	std::unique_ptr<GpuLines> gpu_;        /* drawing the plot; null: the CPU does */

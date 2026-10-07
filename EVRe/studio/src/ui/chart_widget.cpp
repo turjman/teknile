@@ -486,6 +486,23 @@ void ChartView::setRamBudget(int megabytes) {
 	refresh();
 }
 
+void ChartView::setRamLimit(int megabytes) {
+	megabytes = std::max(megabytes, 0);
+	if (limitMB_ == megabytes) return;
+	const int before = ramInUse();
+	limitMB_ = megabytes;
+	if (ramInUse() == before) return;
+	capped_ = false; /* as for a budget changed: the lines past their new share say so again at their next sample */
+	refresh();
+}
+
+qint64 ChartView::bytesReleasing() const {
+	qint64 bytes = 0;
+	for (const QByteArray &piece : released_.pieces) bytes += piece.capacity();
+	for (const QVector<double> &summary : released_.summaries) bytes += qint64(summary.capacity()) * qint64(sizeof(double));
+	return bytes;
+}
+
 void ChartView::setRecordingOn(bool on) {
 	if (recordingOn_ == on) return;
 	recordingOn_ = on;
@@ -502,6 +519,14 @@ QString ChartView::memoryStripTip() const {
 	tip += QStringLiteral("\n\n") + tr("RAM budget reached: the chart keeps its samples within the RAM set on the first "
 			"row, so it keeps the last %1 of the Memory's %2 and lets the oldest go.")
 			.arg(formatDuration(std::max(0.0, k1 - k0)), formatDuration(memory_));
+	if (ramInUse() < ramMB_) { /* one piece each: "MB 512" in Arabic without it */
+		const auto size = [](int megabytes) {
+			return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(megabytes)
+							 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
+		};
+		tip += QLatin1Char('\n') + tr("The free memory limits the budget now: the chart keeps within %1 of the %2 set, so "
+				"the computer does not page to disk.").arg(size(ramInUse()), size(ramMB_));
+	}
 	tip += QLatin1Char('\n') + (recordingOn_ ? tr("The recording running keeps every sample: its file holds them all.")
 			: tr("A recording keeps every sample: its file holds what the chart lets go."));
 	return tip;
@@ -509,7 +534,7 @@ QString ChartView::memoryStripTip() const {
 
 qsizetype ChartView::pointsPerLine() const {
 	const qsizetype lines = std::max<qsizetype>(1, series_.size());
-	const qsizetype total = qsizetype(ramMB_) * 1024 * 1024 / BYTES_PER_SAMPLE;
+	const qsizetype total = qsizetype(ramInUse()) * 1024 * 1024 / BYTES_PER_SAMPLE;
 	return std::clamp<qsizetype>(total / lines, qsizetype(CHUNK_SIZE[LEVELS - 1]) * 16, MAX_POINTS);
 }
 
@@ -834,7 +859,7 @@ void ChartView::trimFast(fast::Store &store, int lines) {
 	fast::Store::Released gone;
 	const double newest = store.timeAt(store.size() - 1);
 	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_), &gone);
-	const double share = double(ramMB_) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
+	const double share = double(ramInUse()) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
 	const qsizetype most = qsizetype(share / store.bytesPerRecord());
 	if (store.size() >= most - most / 16) {
 		store.dropFront(store.size() - most + most / 8, &gone);

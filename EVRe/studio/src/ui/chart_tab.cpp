@@ -99,6 +99,31 @@ qint64 physicalMemoryMB() {
 #endif
 }
 
+/* the memory free now, MB (what can be taken without paging others' to disk); -1: not known */
+qint64 availableMemoryMB() {
+#ifdef Q_OS_WIN
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	return GlobalMemoryStatusEx(&status) ? qint64(status.ullAvailPhys / (1024 * 1024)) : -1;
+#else
+	QFile file(QStringLiteral("/proc/meminfo"));
+	if (!file.open(QIODevice::ReadOnly)) return -1;
+	for (QByteArray line = file.readLine(); !line.isEmpty(); line = file.readLine())
+		if (line.startsWith("MemAvailable:")) { /* "MemAvailable:   12345678 kB" */
+			bool ok = false;
+			const qint64 kilobytes = line.mid(13).trimmed().split(' ').value(0).toLongLong(&ok);
+			return ok ? kilobytes / 1024 : -1;
+		}
+	return -1;
+#endif
+}
+
+/* "512 MB", "2.1 GB": one piece ("MB 512" in Arabic without it) */
+QString megabytesText(qint64 megabytes) {
+	return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(std::max<qint64>(megabytes, 0))
+					 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
+}
+
 /* the most the chart's samples may take: three quarters of this computer's memory (16 GB when not known) */
 int maxRamMB() {
 	const qint64 physical = physicalMemoryMB();
@@ -231,6 +256,15 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	restoreSettings();
 	mathLines_.load(settingKey("math")); /* compiled and drawn once the map's registers come (setRegisters) */
 
+	/* the free memory: a cheap reading, often enough for the chart to let its oldest go before the computer pages */
+	freeWatch_.setInterval(FREE_WATCH_MS);
+	connect(&freeWatch_, &QTimer::timeout, this, &ChartTab::watchFreeMemory);
+	freeWatch_.start();
+	bool testFree = false;
+	const int testFreeMB = qEnvironmentVariableIntValue("EVRE_TEST_FREE_MB", &testFree);
+	if (testFree) setTestFreeMemory(testFreeMB);
+	else watchFreeMemory();
+
 	perfLogPath_ = qEnvironmentVariable("EVRE_PERF_LOG");
 	if (!perfLogPath_.isEmpty()) {
 		auto *perfTimer = new QTimer(this);
@@ -338,12 +372,9 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	ramNeed_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
 			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
-			"recording's file keeps every sample, whatever the chart keeps."));
-	ram_->setToolTip(tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
-			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
-			"memory strip says \"RAM budget reached\": the chart lets the oldest go, a recording's file keeps every "
-			"sample. At most three quarters of this computer's memory (%1 GB).")
-			.arg(maxRamMB() / 1024.0, 0, 'f', 1));
+			"recording's file keeps every sample, whatever the chart keeps.\nLess memory free than the RAM set: the "
+			"chart keeps within what is free, and this says \"only ... free\" in orange."));
+	/* the RAM box's tooltip: once the chart is made, with the free memory (watchFreeMemory) */
 
 	/* the first row: what is shown and kept (Window, Memory, RAM and what the lines need), the Y range */
 	auto *row = new QHBoxLayout;
@@ -1375,7 +1406,7 @@ void ChartTab::refreshStatus() {
 	}
 	bool over = false;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
@@ -1384,7 +1415,8 @@ void ChartTab::refreshStatus() {
 	}
 }
 
-QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over) {
+QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
+		qint64 freeMB) {
 	over = false;
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
@@ -1393,10 +1425,68 @@ QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySecond
 	const QString size = ltrPiece(megabytes < 1024
 					? QStringLiteral("%1 MB").arg(std::max(1.0, std::round(megabytes)), 0, 'f', 0)
 					: QStringLiteral("%1 GB").arg(megabytes / 1024, 0, 'f', 1));
+	/* in whole minutes from 2 min, else whole seconds */
+	const auto keptText = [](double kept) {
+		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
+	};
+	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
+		over = true;
+		return tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
+				keptText(memorySeconds * std::min(1.0, limitMB / megabytes)));
+	}
 	over = megabytes > ramMB;
 	if (!over) return tr("needs %1").arg(size);
-	const double kept = memorySeconds * ramMB / megabytes; /* in whole minutes from 2 min, else whole seconds */
-	return tr("needs %1, keeps %2").arg(size, secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept)));
+	return tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes));
+}
+
+qint64 ChartTab::ramReserveMB() {
+	return std::max<qint64>(1024, physicalMemoryMB() / 10);
+}
+
+int ChartTab::effectiveRamMB(int chosenMB, qint64 heldMB, qint64 freeMB) {
+	if (freeMB < 0) return chosenMB;
+	return int(std::clamp<qint64>(heldMB + freeMB - ramReserveMB(), RAM_FLOOR_MB, std::max(chosenMB, RAM_FLOOR_MB)));
+}
+
+/* The free memory against the RAM set. What the chart holds counts as its own (what its trims let go and is not freed
+ * yet too: else every reading before the frees would lower the limit again). The free memory moves all the time: a
+ * new limit only for a step worth a trim (a twentieth, 64 MB at least), or on and off, so the lines are not trimmed
+ * a little at every reading */
+void ChartTab::watchFreeMemory() {
+	ChartView *view = chart_->view();
+	constexpr qint64 MiB = 1024 * 1024;
+	const qint64 held = view->bytesHeld() + view->bytesReleasing();
+	freeMB_ = testFreeMB_ >= 0 ? std::max<qint64>(0, testFreeMB_ + (testHeldAt_ - held) / MiB) : availableMemoryMB();
+	const int effective = effectiveRamMB(view->ramBudget(), held / MiB, freeMB_);
+	const int limit = effective < view->ramBudget() ? effective : 0, now = view->ramLimit();
+	if ((limit == 0) != (now == 0) || std::abs(limit - now) >= std::max(64, now / 20)) view->setRamLimit(limit);
+	const QString tip = ramTip();
+	if (ram_->toolTip() != tip) ram_->setToolTip(tip);
+}
+
+void ChartTab::setTestFreeMemory(qint64 megabytes) {
+	testFreeMB_ = megabytes;
+	testHeldAt_ = chart_->view()->bytesHeld() + chart_->view()->bytesReleasing();
+	watchFreeMemory();
+}
+
+QString ChartTab::ramTip() const {
+	QString tip = tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
+			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
+			"memory strip says \"RAM budget reached\": the chart lets the oldest go, a recording's file keeps every "
+			"sample. At most three quarters of this computer's memory (%1 GB).")
+			.arg(maxRamMB() / 1024.0, 0, 'f', 1);
+	if (freeMB_ < 0) return tip;
+	const ChartView *view = chart_->view();
+	tip += QStringLiteral("\n\n");
+	if (view->ramLimit() > 0)
+		tip += tr("Free now: %1, so the chart keeps within %2 of the %3 set: its oldest go before the computer pages "
+				"to disk (which slows everything).").arg(megabytesText(freeMB_), megabytesText(view->ramInUse()),
+				megabytesText(view->ramBudget()));
+	else
+		tip += tr("Free now: %1. With less free than the RAM set, the chart keeps within what is free.")
+				.arg(megabytesText(freeMB_));
+	return tip;
 }
 
 void ChartTab::themeChanged() {
@@ -1474,6 +1564,7 @@ void ChartTab::applyRamText() {
 	if (typed > 0) {
 		chart_->view()->setRamBudget(std::clamp(typed, int(ChartView::MIN_RAM_MB), maxRamMB()));
 		QSettings().setValue(settingKey("ramMB"), chart_->view()->ramBudget());
+		watchFreeMemory(); /* the limit against the new RAM at once */
 	}
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
 }

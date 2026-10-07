@@ -85,8 +85,24 @@ public:
 	ChartView *view() const;
 
 	/* the note right of RAM: the memory the lines need for the Memory set ("needs 1.4 GB"); over the RAM, what fits
-	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. */
-	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over);
+	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. The free memory limiting the
+	 * RAM to limitMB (0: no limit; freeMB the free memory): "only 2.1 GB free: keeps about 40 s", over = true */
+	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB = 0,
+			qint64 freeMB = -1);
+	/* The RAM against the free memory: the budget is a cap, not a reservation, so with less free than it the chart
+	 * keeps within what it holds now and the free memory, less a reserve (ramReserveMB: 1 GB, or a tenth of this
+	 * computer's memory when more), never under RAM_FLOOR_MB; the RAM set when that is more. freeMB < 0: not known */
+	static int effectiveRamMB(int chosenMB, qint64 heldMB, qint64 freeMB);
+	static qint64 ramReserveMB();
+	static constexpr int RAM_FLOOR_MB = 64;
+	static constexpr int FREE_WATCH_MS = 3000; /* the free memory read this often */
+	/* the free memory read and the chart's RAM limited by it (the timer's; tests call it at once); the free memory as
+	 * last read, MB (-1: not known) */
+	void watchFreeMemory();
+	qint64 freeMemoryMB() const { return freeMB_; }
+	/* tests (and EVRE_TEST_FREE_MB=<MB>): the free memory as if it were `megabytes` now, what the chart lets go
+	 * coming back to it as a computer's would; < 0: the real one again */
+	void setTestFreeMemory(qint64 megabytes);
 	/* a Y box's text: Manual six digits; Auto four, but never fewer than the whole part (17420, not 1.742e+04) */
 	static QString yFieldText(double value, bool manual);
 	/* the measurement table's columns; every one but the line's can be hidden (a right-click on the header) */
@@ -279,6 +295,10 @@ private:
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
+	QTimer freeWatch_;            /* the free memory read every FREE_WATCH_MS (watchFreeMemory) */
+	qint64 freeMB_ = -1;          /* the free memory as last read, MB; -1: not known */
+	qint64 testFreeMB_ = -1, testHeldAt_ = 0; /* setTestFreeMemory: the free memory given, and the chart's bytes then */
+	QString ramTip() const;       /* the RAM box's tooltip, with the free memory and what the chart keeps within */
 
 	/* the measurements */
 	QWidget *measurePanel_;

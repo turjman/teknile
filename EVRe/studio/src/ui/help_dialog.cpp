@@ -327,8 +327,10 @@ size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and 
 keeps everything</i> (the chart lets the oldest go, the recording's file keeps every sample). The oldest eighth goes
 at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
 Beside it, a note says what the lines need for the Memory set (<i>needs 1.4 GB</i>), in amber with what fits when that
-is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The Studio itself takes about 150 MB more than the RAM
-set.</li>
+is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The RAM is a cap, not a reservation: with less memory free
+than it, the chart keeps within what is free (leaving 1 GB, or a tenth of the computer's memory), so its oldest go
+before the computer pages to disk, and the note says so in amber (<i>only 2.1 GB free: keeps about 40 s</i>). The
+Studio itself takes about 150 MB more than the RAM set.</li>
 <li><b>Y range</b>: <b>Auto</b> follows what is shown (grows at once, shrinks gently: no jumping), or
 <b>Manual</b> with the min and max typed beside it (typing one sets Manual). <b>Ctrl + wheel</b> zooms Y
 around the mouse; a <b>double-click</b> goes back to Auto. <b>Log</b>: a logarithmic scale, a line at each decade
