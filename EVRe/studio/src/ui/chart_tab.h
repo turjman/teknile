@@ -174,7 +174,7 @@ public:
 	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
 	/* a line's chip menu, Trigger on this line: the trigger on, armed on that line with its own level and edge */
 	void triggerOnLine(int key);
-	/* the trigger row's state in words ("waiting for a crossing", "triggered · 48 /s", "Single · complete at
+	/* the trigger row's state in words ("waiting for a crossing", "Normal · triggered", "Single · complete at
 	 * 14:03:12.345", ...): tests */
 	QString triggerState() const;
 
@@ -261,6 +261,7 @@ private:
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
+	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
@@ -299,11 +300,6 @@ private:
 	void showTriggerState();      /* the row's state, Arm (Single only), the toolbar's Run / Stop */
 	/* the toolbar's button: Hold / Live, or Run / Stop while the trigger is on (one control, so the two cannot disagree) */
 	void showHoldButton();
-	/* the row's "triggered · 48 /s": the rate taken again twice a second at most, so the text does not change at each
-	 * crossing */
-	mutable QElapsedTimer rateClock_;
-	mutable QString rateText_;
-	mutable bool rateKept_ = false;
 	QWidget *triggerRow_ = nullptr;
 	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
 	QComboBox *triggerHoldoff_ = nullptr; /* "window" (its length) or a time typed, 0 to 10 s */

@@ -47,14 +47,18 @@
  *
  * Trigger: a line crossing its level (rising, falling or either; each line
  * keeps its own), as an oscilloscope's: the view holds with the crossing at its
- * place in the window (50 %; a triangle under the plot, dragged) and a T on
- * the level at the crossing, the level a dashed line with a handle, dragged. Auto runs live
+ * place in the window (50 %; a "T ▾" flag in a strip above the plot, dragged)
+ * and a T on the level at the crossing, the level a dashed line with a tab in
+ * a margin right of the plot ("T 0.4 A ↑", dragged); the strip and the margin
+ * are there only while the trigger is on, so neither covers a sample. Auto runs live
  * between crossings, Normal holds on each, Single on the first; the next counts
  * once the hold-off has passed and the view is full. Normal and Single wait on a
  * still picture; only Auto rolls. Stop (stopRun) disarms and keeps the picture,
  * Run (runTrigger) arms again; a pan while it runs is a Stop. A short window
  * shows each picture whole. A fast line's crossings are found by the engine as
- * its blocks come (fast::TriggerScan).
+ * its blocks come (fast::TriggerScan). Below SHORT_LOCK_WINDOW a live view
+ * with the trigger off locks by itself (Auto on the first line, its middle,
+ * rising: setShortLock), with no row, tab or flag: not the user's trigger.
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
@@ -171,8 +175,11 @@ public:
 	double window() const { return window_; }
 	void setMemory(double seconds);     /* how much is kept */
 	double memory() const { return memory_; }
-	void setLive(bool on);              /* follow now, or hold the view where it is */
-	bool live() const { return live_; }
+	/* follow now, or hold the view where it is; Hold also ends a short window's lock (it stays off until Live) */
+	void setLive(bool on);
+	/* following now: a short window's lock holds the view on its crossings, yet for the user it is live (Hold, not
+	 * Live, on the toolbar's button) */
+	bool live() const { return live_ || trigger_.automatic; }
 	/* held on t0..t1 (a recording: its whole span), the memory grown to hold it */
 	void showSpan(double t0, double t1);
 	void showLastValues(); /* the legend's values now (no frames come: a recording's chart) */
@@ -241,23 +248,35 @@ public:
 	/* Force (a scope's Force Trigger): while Normal or Single waits, the view holds now as a crossing would, its T at
 	 * the newest sample, so what the line does is seen without a level it reaches; nothing while it does not wait */
 	void forceTrigger();
-	bool triggerRunning() const { return trigger_.on && trigger_.armed; } /* Stop would stop it */
+	bool triggerRunning() const { return triggerOn() && trigger_.armed; } /* Stop would stop it */
 	TriggerPhase triggerPhase() const;
-	/* held on a crossing whose view is not full yet: the samples after it still come ("capturing after T") */
+	/* "triggered" stays while crossings keep coming: back to waiting (Auto: to free running) only when none has come
+	 * for a window plus the hold-off, and never sooner than this, so a wave that keeps crossing never flips the state
+	 * at its crossings (seconds, by the samples' time) */
+	static constexpr double TRIGGERED_AT_LEAST = 1.0;
+	/* held on a crossing whose view is not full yet: the samples after it still come (the now edges; Single's
+	 * "capturing after T") */
 	bool triggerCapturing() const;
-	/* crossings a second, from the last ones held (NaN: fewer than two): the row's "triggered · 48 /s" */
-	double triggerRate() const;
+	/* Short windows lock by themselves: below SHORT_LOCK_WINDOW a live view with the trigger off runs Auto on its first
+	 * line (the level at that line's middle in view, rising), as the eye blended the frames of an untriggered wave into
+	 * ghosts. Not the user's trigger: no row, tab or flag, triggerOn() stays false; the corner says "Auto (short window)"
+	 * while it locks. The user's trigger takes over when on; Hold, a pan or a window of SHORT_LOCK_WINDOW or more ends
+	 * it. setShortLock: Display's "Lock short windows" (on by default) */
+	static constexpr double SHORT_LOCK_WINDOW = 0.1;
+	void setShortLock(bool on);
+	bool shortLock() const { return shortLockOn_; }
+	bool shortLocked() const { return trigger_.on && trigger_.automatic; } /* the lock in effect now */
 	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
 	QVector<QLineF> nowEdges() const { return nowEdges_; }
 	void setTriggerLevel(double level);  /* of the line watched */
 	void setTriggerEdge(TriggerEdge edge);
-	bool triggerOn() const { return trigger_.on; }
+	bool triggerOn() const { return trigger_.on && !trigger_.automatic; } /* the user's (not a short window's lock) */
 	bool triggerArmed() const; /* a crossing now would count: armed, the hold-off and the view's fill passed */
 	double triggeredAt() const { return trigger_.at; } /* the last crossing; NaN: none since armed first */
 	double triggerPending() const { return trigger_.pending; } /* tests: a crossing waiting for its view (crossed) */
 	double triggerLevel() const { return watchedSettings().level; }
 	TriggerEdge triggerEdge() const { return watchedSettings().edge; }
-	int triggerKey() const { return trigger_.on ? trigger_.key : -1; }
+	int triggerKey() const { return triggerOn() ? trigger_.key : -1; }
 	TriggerMode triggerMode() const { return trigger_.mode; }
 	/* where the crossing sits in the window, 0 to TRIGGER_AT_MAX of it from its left (the mark under the plot, dragged):
 	 * held on a crossing, the view moves with it */
@@ -272,7 +291,8 @@ public:
 	 * to arm" ...; empty: off */
 	QString triggerStateText() const;
 	int triggerHolds() const { return triggerHolds_; } /* tests: the crossings the view held on so far */
-	QRectF triggerPositionMark() const { return triggerMark_; } /* tests: the mark under the plot as last drawn */
+	/* tests: the position's flag ("T ▾") as last drawn, in the strip above the plot over the crossing's T */
+	QRectF triggerPositionMark() const { return triggerMark_; }
 	bool triggerMarkHovered() const { return hoverMark_; }
 	/* a line's settings: those kept for its name; a line never set, its mid-range in view and Rising */
 	TriggerSettings triggerSettings(int key) const;
@@ -282,17 +302,17 @@ public:
 	void setTriggerSettingsTexts(const QStringList &texts);
 	QRectF triggerTag() const { return triggerTag_; } /* tests: the marker as last drawn; empty: not in view */
 	double triggerLineY() const { return triggerLineY_; } /* tests: the level's line as last drawn; NaN: none */
-	/* the level's tag at the right edge of its plot ("I_LOAD 1.20 A, rising"), and its edge symbol (a click cycles
-	 * Rising, Falling, Either), as last drawn; empty: not in view. Tests: the tag's text */
+	/* The level's tab, in a margin right of the plot (the trigger on: the plot is narrower by it), at the level's
+	 * height in its lane: "T 0.4 A ↑", the level as set in the line's unit and the edge, so it covers none of the
+	 * newest samples; its edge part (a click cycles Rising, Falling, Either), as last drawn (the part in view of a
+	 * lane scrolled); empty: not in view. Tests: the tab's text; its tooltip the words ("I_LOAD 0.4 A, rising") */
 	QRectF triggerLevelTag() const { return triggerLevelTag_; }
 	QRectF triggerEdgeButton() const { return triggerEdgeButton_; }
 	QString triggerTagText() const { return triggerTagText_; }
-	bool triggerEdgeHovered() const { return hoverEdge_; } /* tests: the edge symbol drawn highlighted */
-	/* The level's tag is a small handle at rest (a triangle pointing at the level and the edge symbol), so it covers
-	 * none of the newest samples; its whole text shows under the mouse and while the level is dragged */
-	bool triggerTagOpen() const { return hoverLevel_ || drag_ == Drag::Level; }
-	/* the handle's triangle is solid while the level is the one the view held crossed, hollow after a change of it
-	 * until a crossing at the new one (and before the first) */
+	bool triggerEdgeHovered() const { return hoverEdge_; } /* tests: the edge part drawn highlighted */
+	bool triggerTabHovered() const { return hoverLevel_ || drag_ == Drag::Level; } /* tests: the tab highlighted */
+	/* the tab's pointer is solid while the level is the one the view held crossed, hollow after a change of it until a
+	 * crossing at the new one (and before the first) */
 	bool triggerHandleSolid() const;
 	/* the level beyond its lane's range as last drawn: 1 above, -1 below (its line pinned to the lane's edge, dotted,
 	 * ▲ or ▼ in its tag), 0 in it. The lane's Auto range is not widened for it */
@@ -1023,8 +1043,20 @@ private:
 		double since = 0;       /* armed last from here: a crossing before it is not "triggered" */
 		double atLevel = NAN;   /* the last crossing's level and edge: the T's tooltip, the handle solid */
 		TriggerEdge atEdge = TriggerEdge::Rising;
+		bool automatic = false; /* a short window's lock (setShortLock), not the user's: Auto, its own settings */
 	} trigger_;
-	QVector<double> recentHolds_; /* the last crossings held, for triggerRate */
+	/* the user's trigger, with its marks: the tab's margin and the flag's strip are there only then (plotRect) */
+	bool triggerMarked() const { return trigger_.on && !trigger_.automatic; }
+	/* the last crossing counted (held, or waiting for its view); NaN: none */
+	double lastCrossing() const;
+	/* how long "triggered" stays after the last crossing: a window plus the hold-off, TRIGGERED_AT_LEAST at least */
+	double triggeredSpan() const;
+	/* the short window's lock: started, moved to another first line or ended at each frame as its rule says */
+	bool shortLockOn_ = true;
+	TriggerSettings lockSettings_; /* its level (the first line's middle when it began) and edge (rising) */
+	double lockTakenAt_ = 0;       /* its level taken last (by the samples' time) */
+	void updateShortLock();
+	void endShortLock(); /* the lock off; the view as it is */
 	void holdAsShown();           /* the view stays as it is shown now (Normal and Single armed, Stop) */
 	/* the faint "now" edges: where the data ends in a view still filling after its crossing, in every lane in view */
 	QVector<QLineF> nowEdgeLines(const QVector<Lane> &plots) const;
@@ -1058,13 +1090,17 @@ private:
 	const QImage &triggerPicture(qreal dpr) const;
 	QString triggerTagLabel() const;                   /* "I_LOAD 1.2 A, rising" */
 	QString edgeSymbol() const;                        /* ↑ rising, ↓ falling, ↕ either */
-	const QImage &levelTagPicture(qreal dpr) const;    /* the level's tag with its edge symbol, both paths */
+	/* the level's tab with its pointer and its edge part (outside the card's layer: the CPU draws it on both paths) */
+	const QImage &levelTagPicture(qreal dpr) const;
+	void drawTriggerTab(QPainter &p) const;
 	mutable QRectF triggerLevelTag_, triggerEdgeButton_;
+	mutable QRectF triggerTabFull_;   /* the tab whole (triggerLevelTag_: its part in view, a lane scrolled) */
+	QString triggerTabLabel() const;  /* "T 0.4 A": the level as set in the line's unit (the edge is its own part) */
 	mutable QString triggerTagText_;
 	mutable QImage levelTagImage_;
 	mutable QString levelTagKey_;
 	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
-	bool hoverLevel_ = false;         /* the mouse over the handle or the level's line: the tag's whole text */
+	bool hoverLevel_ = false;         /* the mouse over the tab or the level's line: the tab drawn highlighted */
 	bool hoverT_ = false;             /* the mouse over the crossing's T: drawn highlighted, its tooltip */
 	int hoverChip_ = -1;              /* the key of the legend's chip under the mouse: its button highlighted */
 	mutable int triggerOffScale_ = 0, triggerBeyond_ = 0;
@@ -1072,11 +1108,12 @@ private:
 	double triggerPosition_ = TRIGGER_AT;
 	double triggerHoldoff_ = -1;
 	int triggerHolds_ = 0;
-	/* the crossing's place in the window: a triangle under the plot, on the time labels' row (outside the card's layer:
-	 * the CPU draws it on both paths); dragged along it */
+	/* the crossing's place in the window: a "T ▾" flag in the strip above the plot, over the crossing's T (outside the
+	 * card's layer: the CPU draws it on both paths); dragged along it */
 	void drawTriggerMark(QPainter &p, const Axes &axes) const;
 	mutable QRectF triggerMark_;      /* where it takes the mouse */
 	bool hoverMark_ = false;
+	double positionGrab_ = 0;         /* Position: the mouse's distance right of the flag's middle when the drag began */
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */

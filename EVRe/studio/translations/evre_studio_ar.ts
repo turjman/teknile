@@ -1127,15 +1127,6 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <translation>بانتظار عبور</translation>
     </message>
     <message>
-        <source>triggered</source>
-        <translation>قُدح</translation>
-    </message>
-    <message>
-        <source>triggered · %1 /s</source>
-        <comment>crossings a second</comment>
-        <translation>قُدح · ⁦%1 /s⁩</translation>
-    </message>
-    <message>
         <source>Single · complete at %1</source>
         <translation>مرة واحدة · مكتمل عند %1</translation>
     </message>
@@ -1148,10 +1139,6 @@ Dragging the chart stops it too.</source>
     <message>
         <source>position</source>
         <translation>الموضع</translation>
-    </message>
-    <message>
-        <source>Where the crossing sits in the window; or drag the triangle under the time axis</source>
-        <translation>موضع العبور في النافذة؛ ويُضبط أيضًا بسحب المثلث تحت محور الزمن</translation>
     </message>
     <message>
         <source>waiting: level above the line&apos;s range</source>
@@ -1193,6 +1180,18 @@ Dragging the chart stops it too.</source>
     <message>
         <source>Hold the view now, as if the line crossed</source>
         <translation>تثبيت العرض الآن، كأن الخط عبر</translation>
+    </message>
+    <message>
+        <source>Lock short windows</source>
+        <translation>قفل النوافذ القصيرة</translation>
+    </message>
+    <message>
+        <source>Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of the first line&apos;s middle, so a wave stands still instead of blurring (&quot;Auto (short window)&quot;; &quot;Auto · free running&quot; while it does not cross). Your own trigger takes over when it is on; Hold ends it.</source>
+        <translation>تحت نافذة ⁦100 ms⁩، يُقفَل المخطط الحي والقدح مطفأ على كل عبور صاعد لمنتصف الخط الأول، فتقف الموجة بدل أن تتشوّش («تلقائي (نافذة قصيرة)»؛ «تلقائي · جريان حر» ما دام لا يعبر). قدحك أنت يحلّ محله حين يعمل؛ والتثبيت ينهيه.</translation>
+    </message>
+    <message>
+        <source>Where the crossing sits in the window; or drag the T ▾ flag above the chart</source>
+        <translation>موضع العبور في النافذة؛ ويُضبط أيضًا بسحب العلَم ⁦T ▾⁩ فوق المخطط</translation>
     </message>
 </context>
 <context>
@@ -1321,14 +1320,6 @@ Dragging the chart stops it too.</source>
         </translation>
     </message>
     <message>
-        <source>Click: the next edge (rising, falling, either)</source>
-        <translation>النقر: الحافة التالية (صاعد، هابط، أيّهما)</translation>
-    </message>
-    <message>
-        <source>Drag: the trigger&apos;s level · Click its arrow: rising, falling or either</source>
-        <translation>السحب: مستوى القدح · النقر على سهمه: صاعد أو هابط أو أيّهما</translation>
-    </message>
-    <message>
         <source>rising</source>
         <translation>صاعد</translation>
     </message>
@@ -1369,11 +1360,6 @@ Dragging the chart stops it too.</source>
         <source>%1 · waiting</source>
         <comment>the trigger&apos;s mode, waiting for a crossing</comment>
         <translation>%1 · بانتظار عبور</translation>
-    </message>
-    <message>
-        <source>%1 · triggered, capturing after T</source>
-        <comment>the trigger&apos;s mode; the view still fills after the crossing</comment>
-        <translation>%1 · قُدح، يلتقط ما بعد T</translation>
     </message>
     <message>
         <source>%1 · triggered</source>
@@ -1420,8 +1406,16 @@ Dragging the chart stops it too.</source>
         <translation>النقر أو النقر بالزر الأيمن: المدرّج التكراري، الطيف، القدح على هذا الخط</translation>
     </message>
     <message>
-        <source>Drag: where the crossing sits in the window (now %1 %, 0 to 90 %) · Double-click: back to %2 %</source>
-        <translation>السحب: موضع العبور في النافذة (الآن ⁦%1 %⁩، من 0 إلى ⁦90 %⁩) · النقر المزدوج: العودة إلى ⁦%2 %⁩</translation>
+        <source>Auto (short window)</source>
+        <translation>تلقائي (نافذة قصيرة)</translation>
+    </message>
+    <message>
+        <source>Drag: where the crossing sits in the window · Double-click: back to %1 %</source>
+        <translation>السحب: موضع العبور في النافذة · النقر المزدوج: العودة إلى ⁦%1 %⁩</translation>
+    </message>
+    <message>
+        <source>Drag: the trigger level · Click the arrow: the edge (rising, falling, either)</source>
+        <translation>السحب: مستوى القدح · النقر على السهم: الحافة (صاعد، هابط، أيّهما)</translation>
     </message>
 </context>
 <context>
@@ -2562,11 +2556,12 @@ Freedman–Diaconis rule) or &lt;b&gt;Spectrum&lt;/b&gt; (which frequencies it h
 its own with a readout under the mouse, a picture and CSV.&lt;/p&gt;
 &lt;h3&gt;Trigger&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;Click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
-line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane with a small handle at its
-right end: a triangle, solid while the picture held crossed this level, and an arrow. Under the mouse the handle shows
-its tag, &lt;i&gt;I_LOAD 1.2 A, rising&lt;/i&gt;: &lt;b&gt;drag&lt;/b&gt; the line or the handle to move the level; &lt;b&gt;click&lt;/b&gt; the handle&apos;s
-arrow (↑ ↓ ↕) for rising, falling or either. A level beyond the lane&apos;s range stays on its edge, dotted, with ▲ or ▼
-and &lt;i&gt;(above range)&lt;/i&gt; in its tag. Each line keeps its own level and edge.&lt;/p&gt;
+line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane that runs to its tab right
+of the chart, &lt;i&gt;T 0.4 A ↑&lt;/i&gt; (the level in the line&apos;s unit and the edge), so nothing covers the newest samples; its
+pointer is solid while the picture held crossed this level. &lt;b&gt;Drag&lt;/b&gt; the tab or the line to move the level;
+&lt;b&gt;click&lt;/b&gt; the tab&apos;s arrow (↑ ↓ ↕) for rising, falling or either; its tooltip names the line. A level beyond the
+lane&apos;s range stays on its edge, dotted, the tab&apos;s pointer ▲ or ▼ and &lt;i&gt;(above range)&lt;/i&gt; in its tooltip. Each line
+keeps its own level and edge.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Auto&lt;/b&gt; holds on each crossing; when none comes for a window&apos;s length after the hold-off, it runs live until
 the next. &lt;b&gt;Normal&lt;/b&gt; holds on each crossing and stays held until the next one, however long. &lt;b&gt;Single&lt;/b&gt; holds on
 the first crossing and stops; &lt;b&gt;Arm&lt;/b&gt; for another. Normal and Single wait on a still picture; only Auto rolls.
@@ -2575,16 +2570,20 @@ capture says when the last one was. &lt;b&gt;Find level&lt;/b&gt; puts the level
 in view. The
 &lt;b&gt;hold-off&lt;/b&gt; (the window&apos;s length by default, 0 to
 10 s) is the time after a crossing in which no other counts. The T on the level&apos;s line marks the crossing (its
-tooltip says when and at what level); the triangle under the time axis is its place in the window, 50 % by default:
-drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+tooltip says when and at what level); the &lt;b&gt;T ▾&lt;/b&gt; flag above the chart, right over it, is its place in the window,
+50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.&lt;/p&gt;
 &lt;p&gt;While the trigger is on, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt; is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;Run&lt;/b&gt;: &lt;b&gt;Stop&lt;/b&gt; holds the picture
 and its T, no crossing counts (the button&apos;s &lt;b&gt;Run&lt;/b&gt; is amber while stopped); &lt;b&gt;Run&lt;/b&gt; arms again in the mode,
 from now. Dragging the chart stops it too. The row
 and the chart&apos;s top right say the same state (&lt;i&gt;Normal · waiting&lt;/i&gt;, &lt;i&gt;Normal · triggered&lt;/i&gt;, &lt;i&gt;Stopped · Run
-to arm&lt;/i&gt; ...), and change only when it does; while the view still fills after the crossing, a faint line marks
-where the data ends.&lt;/p&gt;
+to arm&lt;/i&gt; ...), and change only when it does, with no number while it runs; while the view still fills after the
+crossing, a faint line marks where the data ends.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Short windows lock by themselves&lt;/b&gt;: below a 100 ms window a live chart with the trigger off holds on each
+rising crossing of its first line&apos;s middle (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
+cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+&lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Off&lt;/b&gt; at the row&apos;s end turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
 &lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
 trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
@@ -2710,24 +2709,28 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
 &lt;h3&gt;القدح&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;انقر شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
-الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط، وعند طرفه الأيمن مقبض صغير: مثلث، مصمت ما دامت الصورة المثبّتة
-قد عبرت هذا المستوى، وسهم. وتحت الفأرة يُظهر المقبض وسمه، &lt;i&gt;I_LOAD ⁦1.2 A⁩، صاعد&lt;/i&gt;: &lt;b&gt;اسحب&lt;/b&gt; الخط أو
-المقبض لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم المقبض (↑ ↓ ↕) لصاعد أو هابط أو أيّهما. والمستوى الخارج عن مدى المسار
-يبقى عند طرف المسار، منقّطًا، مع ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في وسمه. ولكل خط مستواه وحافته.&lt;/p&gt;
+الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط يمتد إلى لسانه يمين المخطط، &lt;i&gt;⁦T 0.4 A ↑⁩&lt;/i&gt; (المستوى بوحدة الخط والحافة)،
+فلا شيء يغطي أحدث العينات؛ ومؤشّره مصمت ما دامت الصورة المثبّتة قد عبرت هذا المستوى. &lt;b&gt;اسحب&lt;/b&gt; اللسان أو الخط
+لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم اللسان (↑ ↓ ↕) لصاعد أو هابط أو أيّهما؛ ويسمّي تلميحه الخط. والمستوى الخارج عن مدى
+المسار يبقى عند طرف المسار، منقّطًا، ومؤشّر اللسان ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في تلميحه. ولكل خط مستواه وحافته.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;تلقائي&lt;/b&gt; يثبت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي.
 &lt;b&gt;عادي&lt;/b&gt; يثبت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. &lt;b&gt;مرة واحدة&lt;/b&gt; يثبت عند العبور الأول
 ويتوقف؛ و&lt;b&gt;تجهيز&lt;/b&gt; لعبور آخر. والعادي والمرة الواحدة ينتظران على صورة ثابتة؛ والتلقائي وحده يجري.
 وفي أثناء انتظارهما يثبّت &lt;b&gt;فرض&lt;/b&gt; (مكان «تجهيز») العرض الآن كأن الخط عبر؛ والعادي إذ ينتظر بعد التقاطٍ يقول
 متى كان آخره. و&lt;b&gt;إيجاد المستوى&lt;/b&gt; يضع المستوى في منتصف ما بين أدنى الخط وأعلاه في العرض.
 و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
-يُحسب فيها عبور آخر. وعلامة T على خط المستوى تدل على العبور (يقول تلميحها متى كان وعند أي مستوى)؛ والمثلث تحت محور
-الزمن موضعه في النافذة، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
+يُحسب فيها عبور آخر. وعلامة T على خط المستوى تدل على العبور (يقول تلميحها متى كان وعند أي مستوى)؛ والعلَم &lt;b&gt;⁦T ▾⁩&lt;/b&gt; فوق
+المخطط، فوقها تمامًا، موضعه في النافذة، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
 عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
 المثبّت.&lt;/p&gt;
 &lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
 وعلامتها T، ولا يُحسب أي عبور (و&lt;b&gt;تشغيل&lt;/b&gt; على الزر كهرماني ما دام متوقفًا)؛ و&lt;b&gt;تشغيل&lt;/b&gt; يجهّزه من جديد بنمطه، من الآن. وسحب المخطط يوقفه أيضًا.
 ويقول الصف وأعلى يمين المخطط الحالة نفسها (&lt;i&gt;عادي · بانتظار عبور&lt;/i&gt;، &lt;i&gt;عادي · قُدح&lt;/i&gt;، &lt;i&gt;متوقف · «تشغيل»
-للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي البيانات.&lt;/p&gt;
+للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير، بلا أي رقم ما دام يعمل؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي
+البيانات.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
+لمنتصف خطه الأول (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر)، فتقف الموجة بدل أن
+تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في آخر الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
 قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
 باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
@@ -2778,9 +2781,9 @@ all fit&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
 Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s dashed line or handle · &lt;b&gt;click&lt;/b&gt; the handle&apos;s arrow: rising,
-falling, either · &lt;b&gt;drag&lt;/b&gt; the triangle under the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt; it:
-50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s tab (right of the chart) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▾ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
 Log), Fold lane ·
 &lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
@@ -2809,8 +2812,8 @@ Log), Fold lane ·
 &lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; خط مستواه المتقطع أو مقبضه · &lt;b&gt;انقر&lt;/b&gt; سهم المقبض: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; المثلث تحت المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; لسان مستواه (يمين المخطط) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▾⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
 ⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
 &lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·

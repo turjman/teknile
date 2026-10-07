@@ -36,6 +36,19 @@ namespace {
 constexpr double AXIS_W = 64;              /* the value labels, left of the plot */
 constexpr double LEGEND_H = 44;            /* the legend chips and the state, above the plot */
 constexpr double RIGHT_PAD = 18;
+/* The trigger on (the user's): a margin right of the plot for the level's tab and a strip above it, under the legend,
+ * for the position's flag, so neither lies over the data (the owner: a handle over the newest samples and a mark
+ * between the plot and the time labels read badly). The tab starts past the lanes' scroll bar (LANE_BAR_X +
+ * LANE_BAR_W), so the two never meet; both lie outside the card's layer (2 px around the plot) */
+constexpr double TRIGGER_TAB_X = 15;       /* the tab's left, right of the plot */
+constexpr double TRIGGER_TAB_W = 80;       /* "T 0.4 A", "T -2.5 V", "T 100 mA" whole beside the arrow (at 72 px, 2 px spare) */
+constexpr double TRIGGER_TAB_H = 24;       /* about three times the grab area of the handle it replaced */
+constexpr double TRIGGER_TAB_BUTTON = 18;  /* its edge part, at its right end */
+constexpr double TRIGGER_TAB_TEXT = 14;    /* its text starts after its pointer */
+constexpr double TRIGGER_PAD = TRIGGER_TAB_X + TRIGGER_TAB_W + 3; /* the right pad with the trigger on */
+constexpr double TRIGGER_STRIP_H = 16;     /* the flag's strip, between the legend and the plot */
+constexpr double TRIGGER_FLAG_W = 28;
+constexpr double TRIGGER_FLAG_H = 13;
 constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
 constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
 constexpr double BOTTOM_PAD = 8;
@@ -98,9 +111,6 @@ constexpr double NOTE_TAG_H = 16;
 constexpr double NOTE_TAG_BOTTOM = 4;          /* above the plot's bottom edge */
 constexpr double NOTE_TEXT_MAX = 180;
 constexpr double NOTE_PAD = 6;
-constexpr double LEVEL_TAG_H = 18;             /* the trigger's level tag, its edge symbol as wide */
-constexpr double LEVEL_HANDLE_W = 12;          /* the level handle's triangle, left of its edge symbol */
-constexpr qsizetype RATE_HOLDS = 64;           /* the last crossings held that the trigger's rate is taken from */
 
 /* 1, 2, 5 x 10^n steps giving about `target` ticks over span */
 double niceStep(double span, int target) {
@@ -516,7 +526,7 @@ void ChartView::appendNow(int key, double t, double v) {
 	}
 	/* the trigger: this line crossing the level since it was armed, at the time straight between the two samples */
 	if (trigger_.armed && key == trigger_.key && !s.times.isEmpty() && t > trigger_.armedFrom && t > s.times.back()) {
-		const TriggerSettings watched = triggerSettings_.value(s.name);
+		const TriggerSettings watched = watchedSettings(); /* a short window's lock: its own */
 		const double pt = s.times.back(), pv = s.values.back(), level = watched.level;
 		const bool up = pv < level && v >= level, down = pv > level && v <= level;
 		const TriggerEdge edge = watched.edge;
@@ -834,12 +844,13 @@ void ChartView::frame() {
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
 	if (watchDue_) postWatch(); /* a drag's change to the engine, once a frame */
+	updateShortLock();
 	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
-	/* Auto: held by a crossing, and no other for a window's length since it was armed again, by the samples' time as
+	/* Auto: held by a crossing, and no other for as long as "triggered" lasts (triggeredSpan), by the samples' time as
 	 * the arm (a fast line's records come a block late: by the clock, a short window ran live at every other frame):
-	 * the view runs live. A view the user held or moved stays where it is */
+	 * the view runs live, as the state says "free running" from then on. A view the user held or moved stays */
 	if (trigger_.on && trigger_.mode == TriggerMode::Auto && trigger_.armed && !live_ && trigger_.holding
-			&& triggerTime() >= trigger_.armedFrom + window_)
+			&& triggerTime() >= std::max(trigger_.armedFrom + window_, lastCrossing() + triggeredSpan()))
 		setLive(true);
 	if (valuePacer_.due(valueClock_.elapsed())) {
 		for (Series &s : series_) {
@@ -915,6 +926,14 @@ void ChartView::setMemory(double seconds) {
 }
 
 void ChartView::setLive(bool on) {
+	/* Hold over a short window's lock: the lock ends and the view stays as it is shown, held, until Live */
+	if (!on && trigger_.automatic) {
+		endShortLock();
+		holdAsShown();
+		emit liveChanged(false);
+		refresh();
+		return;
+	}
 	if (on == live_) return;
 	if (!on) viewEnd_ = lastViewEnd_; /* hold what is shown */
 	/* Live: a crossing waiting for its view must not pull the view back to it; held: by the user, not the trigger */
@@ -929,10 +948,12 @@ void ChartView::showSpan(double t0, double t1) {
 	const double span = std::clamp(t1 - t0, MIN_WINDOW, MAX_SPAN);
 	if (span > memory_) setMemory(span);
 	putWindow(std::min(span, memory_));
-	if (trigger_.on && trigger_.armed) stopRun(); /* the user's view: a trigger that runs stops (as a pan) */
+	const bool unlocked = trigger_.automatic; /* the user's view: a short window's lock ends, a trigger that runs stops */
+	if (unlocked) endShortLock();
+	else if (trigger_.on && trigger_.armed) stopRun();
 	viewEnd_ = t1;
 	trigger_.holding = false;
-	if (live_) {
+	if (live_ || unlocked) {
 		live_ = false;
 		emit liveChanged(false);
 	}
@@ -945,10 +966,7 @@ void ChartView::setTrigger(int key, TriggerMode mode) {
 	/* stopped: the row's line, edge or mode change what Run arms, not the picture, which stays until Run (as the edge
 	 * symbol on the chart leaves it); only another line's T goes, as it marked a crossing of the line no longer watched */
 	if (trigger_.on && trigger_.stopped) {
-		if (key != trigger_.key) {
-			trigger_.at = NAN;
-			recentHolds_.clear();
-		}
+		if (key != trigger_.key) trigger_.at = NAN;
 		trigger_.key = key;
 		trigger_.mode = mode;
 		postWatch();
@@ -957,10 +975,10 @@ void ChartView::setTrigger(int key, TriggerMode mode) {
 		return;
 	}
 	trigger_.on = true;
+	trigger_.automatic = false; /* the user's trigger takes over from a short window's lock */
 	trigger_.key = key;
 	trigger_.mode = mode;
 	trigger_.at = trigger_.pending = NAN;
-	recentHolds_.clear();
 	armTrigger();
 }
 
@@ -995,10 +1013,13 @@ void ChartView::setTriggerSettings(int key, const TriggerSettings &settings) {
 }
 
 ChartView::TriggerSettings ChartView::watchedSettings() const {
+	if (trigger_.automatic) return lockSettings_; /* a short window's lock: not the line's own, which stay the user's */
 	return trigger_.on ? triggerSettings_.value(lineName(trigger_.key)) : TriggerSettings();
 }
 
-ChartView::TriggerSettings &ChartView::watchedSettingsRef() { return triggerSettings_[lineName(trigger_.key)]; }
+ChartView::TriggerSettings &ChartView::watchedSettingsRef() {
+	return trigger_.automatic ? lockSettings_ : triggerSettings_[lineName(trigger_.key)];
+}
 
 QString ChartView::lineName(int key) const {
 	const auto it = series_.constFind(key);
@@ -1028,9 +1049,8 @@ void ChartView::setTriggerSettingsTexts(const QStringList &texts) {
 }
 
 void ChartView::stopTrigger() {
-	trigger_.on = trigger_.armed = trigger_.stopped = false;
+	trigger_.on = trigger_.armed = trigger_.stopped = trigger_.automatic = false;
 	trigger_.at = trigger_.pending = NAN;
-	recentHolds_.clear();
 	postWatch();
 	emit triggerRunChanged();
 	refresh();
@@ -1075,14 +1095,12 @@ void ChartView::holdAsShown() {
 }
 
 /* Stop: no crossing counts any more, the one waiting for its view is dropped (it would move the view later), and the
- * picture stays with its T, live or held, until Run. The crossings' rate starts again: after Run it would otherwise
- * count the stopped time as a long gap between two crossings */
+ * picture stays with its T, live or held, until Run */
 void ChartView::stopRun() {
 	if (!trigger_.on) return;
 	trigger_.armed = false;
 	trigger_.stopped = true;
 	trigger_.pending = NAN;
-	recentHolds_.clear();
 	if (live_) holdAsShown();
 	postWatch();
 	emit triggerRunChanged();
@@ -1105,24 +1123,74 @@ ChartView::TriggerPhase ChartView::triggerPhase() const {
 	if (trigger_.stopped) return TriggerPhase::Stopped;
 	if (!trigger_.armed) return TriggerPhase::Done;
 	if (trigger_.mode == TriggerMode::Auto && live_) return TriggerPhase::FreeRunning;
-	/* "triggered" until no crossing has come for a window plus the hold-off: not "waiting" for the moment between a
-	 * crossing's hold-off and the next, which flickered at every crossing */
-	const double fill = (1 - triggerPosition_) * window_;
-	if (std::isfinite(trigger_.at) && trigger_.at > trigger_.since
-			&& triggerTime() < trigger_.at + std::max(holdoffSeconds(), fill) + window_)
-		return TriggerPhase::Triggered;
+	/* "triggered" until no crossing has come for triggeredSpan: not "waiting" for the moment between a crossing's
+	 * hold-off and the next, which flipped the state at every crossing of a short window */
+	const double last = lastCrossing();
+	if (std::isfinite(last) && last > trigger_.since && triggerTime() < last + triggeredSpan()) return TriggerPhase::Triggered;
 	return TriggerPhase::Waiting;
 }
 
-bool ChartView::triggerCapturing() const {
-	return trigger_.on && trigger_.holding && !live_ && std::isfinite(trigger_.at) && triggerTime() < viewEnd_;
+double ChartView::lastCrossing() const {
+	if (std::isnan(trigger_.pending)) return trigger_.at;
+	return std::isnan(trigger_.at) ? trigger_.pending : std::max(trigger_.at, trigger_.pending);
 }
 
-/* by the crossings' own times: a steady signal gives a steady rate, whatever the frames and the polls do */
-double ChartView::triggerRate() const {
-	if (recentHolds_.size() < 2) return NAN;
-	const double span = recentHolds_.back() - recentHolds_.front();
-	return span > 0 ? double(recentHolds_.size() - 1) / span : NAN;
+/* the next crossing counts after the hold-off and the view's fill; one window more without any and it has stopped
+ * coming. At a short window that is a few ms, less than a polled line's gaps: a second at least */
+double ChartView::triggeredSpan() const {
+	return std::max(TRIGGERED_AT_LEAST, std::max(holdoffSeconds(), (1 - triggerPosition_) * window_) + window_);
+}
+
+/* the user's trigger only: a short window's lock shows no fill (nothing of the trigger is drawn for it) */
+bool ChartView::triggerCapturing() const {
+	return triggerMarked() && trigger_.holding && !live_ && std::isfinite(trigger_.at) && triggerTime() < viewEnd_;
+}
+
+void ChartView::setShortLock(bool on) {
+	shortLockOn_ = on;
+	updateShortLock();
+	refresh();
+}
+
+/* The lock wanted: on, a live view (or one the lock holds), shorter than SHORT_LOCK_WINDOW, the user's trigger off and a
+ * line to watch: the first. It is Auto's own work on a line (the crossings as samples come), nothing binned of its own.
+ * Its level is taken again once a second while it runs free, as a line drifting away from it would never lock again */
+void ChartView::updateShortLock() {
+	if (trigger_.on && !trigger_.automatic) return; /* the user's trigger */
+	const bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
+			&& !series_.isEmpty();
+	if (!wanted) {
+		if (!trigger_.automatic) return;
+		endShortLock();
+		if (!live_) setLive(true); /* a longer window, the setting off, no line: live, as before the lock */
+		return;
+	}
+	const int first = series_.firstKey();
+	if (trigger_.automatic && trigger_.key == first) {
+		if (live_ && triggerTime() >= lockTakenAt_ + TRIGGERED_AT_LEAST) {
+			lockTakenAt_ = triggerTime();
+			const double level = midRange(first);
+			if (level != lockSettings_.level) {
+				lockSettings_.level = level;
+				postWatch();
+			}
+		}
+		return;
+	}
+	trigger_ = Trigger(); /* on, or on another first line (the one before removed, another added before it) */
+	trigger_.on = trigger_.automatic = true;
+	trigger_.key = first;
+	trigger_.mode = TriggerMode::Auto;
+	lockSettings_ = { midRange(first), TriggerEdge::Rising };
+	lockTakenAt_ = triggerTime();
+	armTrigger(false);
+}
+
+void ChartView::endShortLock() {
+	if (!trigger_.automatic) return;
+	trigger_ = Trigger();
+	postWatch();
+	emit triggerRunChanged();
 }
 
 void ChartView::setTriggerLevel(double level) {
@@ -1204,17 +1272,21 @@ bool ChartView::placeTrigger(double fraction) {
 
 /* One state in the words of the row: no time held, no countdown, nothing that changes at each crossing or frame */
 QString ChartView::triggerStateText() const {
+	/* a short window's lock: an aid, not the user's trigger, so neither its mode's words nor a state to act on */
+	if (trigger_.automatic)
+		return !trigger_.on ? QString() : triggerPhase() == TriggerPhase::Triggered ? tr("Auto (short window)")
+				: tr("Auto · free running");
 	const QString mode = trigger_.mode == TriggerMode::Auto ? tr("Auto") : trigger_.mode == TriggerMode::Normal
 			? tr("Normal") : tr("Single");
+	/* Normal and Auto keep re-arming: "capturing after T" came and went at every crossing of a short window, so the
+	 * text danced; the now edge shows the fill. Single captures once: its "capturing after T" stays until it is full */
 	const bool capturing = triggerCapturing();
 	switch (triggerPhase()) {
 	case TriggerPhase::Off: return QString();
 	case TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case TriggerPhase::FreeRunning: return tr("Auto · free running");
 	case TriggerPhase::Waiting: return tr("%1 · waiting", "the trigger's mode, waiting for a crossing").arg(mode);
-	case TriggerPhase::Triggered:
-		return capturing ? tr("%1 · triggered, capturing after T", "the trigger's mode; the view still fills after the "
-				"crossing").arg(mode) : tr("%1 · triggered", "the trigger's mode").arg(mode);
+	case TriggerPhase::Triggered: return tr("%1 · triggered", "the trigger's mode").arg(mode);
 	case TriggerPhase::Done:
 		return capturing ? tr("Single · complete, capturing after T") : live_ ? tr("Single · complete · Arm to wait")
 				: tr("Single · complete");
@@ -1237,8 +1309,6 @@ void ChartView::fireTrigger(double time) {
 	trigger_.atLevel = watchedSettings().level;
 	trigger_.atEdge = watchedSettings().edge;
 	triggerHolds_++;
-	recentHolds_.push_back(time);
-	if (recentHolds_.size() > RATE_HOLDS) recentHolds_.removeFirst();
 	const double fill = (1 - triggerPosition_) * window_;
 	if (trigger_.mode == TriggerMode::Single) trigger_.armed = false;
 	else trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
@@ -1407,14 +1477,16 @@ void ChartView::holdAt(double end, bool user) {
 	end = std::clamp(end, std::min(m0 + window_, liveEdge), liveEdge);
 	/* the user moved the view: a trigger that runs would move it back at its next crossing, so it stops (a scope's
 	 * Stop); a press that does not move it stops nothing */
-	if (user && trigger_.on && trigger_.armed && moved) stopRun();
+	const bool unlocked = user && trigger_.automatic && moved; /* a short window's lock ends (as Hold) */
+	if (unlocked) endShortLock();
+	else if (user && trigger_.on && trigger_.armed && moved) stopRun();
 	if (end >= liveEdge - window_ * LIVE_SNAP) { /* back at now: live again */
 		setLive(true);
 		return;
 	}
 	viewEnd_ = end;
 	trigger_.holding = false; /* the user's: Auto leaves it */
-	if (live_) {
+	if (live_ || unlocked) {
 		live_ = false;
 		emit liveChanged(false);
 	}
@@ -1473,7 +1545,9 @@ void ChartView::setCursors(double a, double b) {
 }
 
 QRectF ChartView::plotRect() const {
-	return QRectF(rect()).adjusted(AXIS_W, LEGEND_H, -RIGHT_PAD, -(TIME_AXIS_H + OVERVIEW_H + BOTTOM_PAD));
+	const bool marked = triggerMarked(); /* the trigger's tab and flag: room of their own, beside the data */
+	return QRectF(rect()).adjusted(AXIS_W, LEGEND_H + (marked ? TRIGGER_STRIP_H : 0), -(marked ? TRIGGER_PAD : RIGHT_PAD),
+			-(TIME_AXIS_H + OVERVIEW_H + BOTTOM_PAD));
 }
 
 QRectF ChartView::overviewRect() const {
@@ -1846,6 +1920,7 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	/* the trigger's place in the window: its mark dragged along the time labels */
 	if (trigger_.on && triggerMark_.contains(pos)) {
 		drag_ = Drag::Position;
+		positionGrab_ = pos.x() - triggerMark_.center().x(); /* moved from where it was taken: no jump to the mouse */
 		return;
 	}
 	/* on (or just by) the memory strip: the view goes there */
@@ -1960,7 +2035,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		break;
 	}
 	case Drag::Position:
-		if (placeTrigger((pos.x() - plot.left()) / plot.width())) watchDue_ = true;
+		if (placeTrigger((pos.x() - positionGrab_ - plot.left()) / plot.width())) watchDue_ = true;
 		break;
 	case Drag::Note:
 		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
@@ -2003,11 +2078,11 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		hoverLane_ = onLanes && hoverMenu_ < 0 ? lane : -1; /* its button drawn highlighted */
 		hoverBar_ = onLaneBar;
 		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
-		/* the trigger's level tag: a hand, its edge symbol lit */
+		/* the trigger's level tab: a hand, the tab lit, its edge part lit more */
 		const bool onLevelTag = trigger_.on && triggerLevelTag_.contains(pos);
 		hoverEdge_ = trigger_.on && triggerEdgeButton_.contains(pos);
 		hoverMark_ = trigger_.on && triggerMark_.contains(pos);
-		/* the level's handle opens to its whole text over it and over the level's line */
+		/* the tab lit over it and over the level's line (the line drags as the tab does) */
 		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
 		/* the crossing's T, on the level's line: not a control (an arrow), lit, its tooltip says what it marks */
@@ -2441,10 +2516,11 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
 	}
 	stage.restart();
-	drawLaneBar(p); /* in the right pad, outside the card's layer */
+	drawTriggerTab(p); /* in the right pad, outside the card's layer, under the lanes' bar */
+	drawLaneBar(p);
 	perf_.grid += stage.nsecsElapsed() / 1e6;
 	stage.restart();
-	drawTriggerMark(p, axes); /* under the plot, outside it too */
+	drawTriggerMark(p, axes); /* the flag, in the strip above the plot, outside the layer too */
 	perf_.marks += stage.nsecsElapsed() / 1e6;
 	stage.restart();
 	drawMemoryStrip(p, axes);
@@ -3105,12 +3181,13 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (chipAt(pos) >= 0) /* a recording's window has no trigger (nothing comes after the file) */
 		return recording_ ? tr("Click or right-click: Histogram, Spectrum")
 				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
-	if (trigger_.on && triggerEdgeButton_.contains(pos)) return tr("Click: the next edge (rising, falling, either)");
 	if (trigger_.on && triggerMark_.contains(pos))
-		return tr("Drag: where the crossing sits in the window (now %1 %, 0 to 90 %) · Double-click: back to %2 %")
-				.arg(int(std::lround(triggerPosition_ * 100))).arg(int(std::lround(TRIGGER_AT * 100)));
+		return tr("Drag: where the crossing sits in the window · Double-click: back to %1 %")
+				.arg(int(std::lround(TRIGGER_AT * 100)));
+	/* the tab: its words first ("I_LOAD 0.4 A, rising", "(above range)" off scale), then what it does */
 	if (trigger_.on && triggerLevelTag_.contains(pos))
-		return tr("Drag: the trigger's level · Click its arrow: rising, falling or either");
+		return triggerTagLabel() + QLatin1Char('\n')
+				+ tr("Drag: the trigger level · Click the arrow: the edge (rising, falling, either)");
 	if (trigger_.on && triggerTag_.contains(pos)) return triggerPointText();
 	const QRectF plot = plotRect();
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
@@ -4025,7 +4102,7 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)),
 				(dotted ? 1.2 : 4.8) * dpr, 2.4 * dpr, gpuColor(color));
 		if (!tag.isEmpty()) frame.sprites.push_back({ triggerPicture(dpr), whole(tag.topLeft()) });
-		if (!levelTag.isEmpty()) frame.sprites.push_back({ levelTagPicture(dpr), whole(levelTag.topLeft()) });
+		/* its tab lies outside the layer: the CPU draws it (drawTriggerTab), as the flag */
 	}
 	frame.layers << marks;
 	spanBar_ = spanBar(axes);
@@ -4254,16 +4331,16 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes, Marks part) const {
 }
 
 /* The trigger's level line in its line's plot (kept within it, so it can be dragged when the range does not reach it),
- * its tag at the plot's right end on the line, and its T at the crossing, on the level crossed (the owner: the T
- * belongs against the level's line, not at the plot's top), when the crossing is in view */
+ * its tab in the margin right of the plot at the line's height, and its T at the crossing, on the level crossed (the
+ * owner: the T belongs against the level's line, not at the plot's top), when the crossing is in view */
 bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY,
 		QRectF &lane, QRectF &tag, QRectF &levelTag) const {
 	triggerLineY_ = NAN;
-	triggerTag_ = triggerLevelTag_ = triggerEdgeButton_ = QRectF();
+	triggerTag_ = triggerLevelTag_ = triggerEdgeButton_ = triggerTabFull_ = QRectF();
 	triggerTagText_.clear();
 	tag = levelTag = QRectF();
 	triggerOffScale_ = triggerBeyond_ = 0;
-	if (!trigger_.on) return false;
+	if (!triggerMarked()) return false; /* off, or a short window's lock: nothing of it drawn */
 	int index = 0;
 	for (auto it = series_.constBegin(); it != series_.constEnd() && it.key() != trigger_.key; ++it) index++;
 	if (index >= lines.size()) return false;
@@ -4298,27 +4375,18 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 			tag = QRectF(a.x(trigger_.at) - 7, top, 14, 16);
 			triggerTag_ = tag;
 		}
-		/* the level's handle on its line at the plot's right end, kept inside the part in view; none where it has no
-		 * room. It opens to the left for its text (under the mouse, while dragged), its right end where it was, so the
-		 * edge symbol stays under the mouse */
-		if (shown.height() >= LEVEL_TAG_H) {
-			triggerTagText_ = triggerTagLabel();
-			const double handle = 2 + LEVEL_HANDLE_W + LEVEL_TAG_H;
-			/* on whole pixels: the CPU and the card put its picture on the same ones */
-			const double top = std::round(std::clamp(levelY - LEVEL_TAG_H / 2, shown.top(), shown.bottom() - LEVEL_TAG_H));
-			levelTag = QRectF(std::round(shown.right() - 4 - handle), top, handle, LEVEL_TAG_H);
-			/* the crossing's T on the same line near the right end (90 %, a narrow plot): the handle goes left of its
-			 * column, else under it (no room on the left), never over it */
-			if (!tag.isEmpty() && levelTag.intersects(tag.adjusted(-2, 0, 2, 2))) {
-				if (tag.left() - 2 - handle >= shown.left()) levelTag.moveRight(std::round(tag.left() - 2));
-				else levelTag.moveTop(std::round(std::min(tag.bottom() + 2, shown.bottom() - LEVEL_TAG_H)));
-			}
-			if (triggerTagOpen()) {
-				const double text = std::min(QFontMetricsF(labelFont()).horizontalAdvance(triggerTagText_), shown.width() * 0.6);
-				levelTag.setLeft(std::max(shown.left(), levelTag.right() - std::ceil(text) - NOTE_PAD - handle));
-			}
+		/* the level's tab in the margin right of the plot, at the line's height within its lane: cut as the lane is
+		 * where the lane is scrolled partly out of view (levelTag: the part in view, which takes the mouse). On whole
+		 * pixels, as every picture */
+		const double top = std::round(std::clamp(levelY - TRIGGER_TAB_H / 2, a.rect.top(), a.rect.bottom() - TRIGGER_TAB_H));
+		triggerTabFull_ = QRectF(std::round(all.right() + TRIGGER_TAB_X), top, TRIGGER_TAB_W, TRIGGER_TAB_H);
+		const QRectF band(triggerTabFull_.left(), shown.top(), TRIGGER_TAB_W, shown.height());
+		levelTag = triggerTabFull_.intersected(band);
+		if (!levelTag.isEmpty()) {
+			triggerTagText_ = triggerTabLabel() + QLatin1Char(' ') + edgeSymbol();
 			triggerLevelTag_ = levelTag;
-			triggerEdgeButton_ = QRectF(levelTag.right() - LEVEL_TAG_H, levelTag.top(), LEVEL_TAG_H, LEVEL_TAG_H);
+			triggerEdgeButton_ = QRectF(triggerTabFull_.right() - TRIGGER_TAB_BUTTON, triggerTabFull_.top(), TRIGGER_TAB_BUTTON,
+					TRIGGER_TAB_H).intersected(band);
 		}
 		return true;
 	}
@@ -4356,10 +4424,22 @@ void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVect
 	if (part == Marks::Lines) {
 		p.drawLine(QPointF(lane.left(), levelY), QPointF(lane.right(), levelY));
 	} else {
-		const qreal dpr = p.device()->devicePixelRatioF();
-		if (!tag.isEmpty()) p.drawImage(tag.topLeft(), triggerPicture(dpr));
-		if (!levelTag.isEmpty()) p.drawImage(levelTag.topLeft(), levelTagPicture(dpr));
+		if (!tag.isEmpty()) p.drawImage(tag.topLeft(), triggerPicture(p.device()->devicePixelRatioF()));
 	}
+	p.restore();
+}
+
+/* The level's tab right of the plot (outside the card's layer: the CPU draws it on both paths, from the rects the
+ * frame's geometry gave), the level's dashed line carried on to it across the gap, under the lanes' scroll bar */
+void ChartView::drawTriggerTab(QPainter &p) const {
+	if (triggerLevelTag_.isEmpty() || !std::isfinite(triggerLineY_)) return;
+	p.save();
+	QPen pen(series_.value(trigger_.key).color, 1.2, triggerOffScale_ != 0 ? Qt::DotLine : Qt::DashLine);
+	if (triggerOffScale_ != 0) pen.setCapStyle(Qt::FlatCap);
+	p.setPen(pen);
+	p.drawLine(QPointF(triggerLane_.right(), triggerLineY_), QPointF(triggerTabFull_.left(), triggerLineY_));
+	p.setClipRect(triggerLevelTag_); /* a lane scrolled: the tab cut as the lane is */
+	p.drawImage(triggerTabFull_.topLeft(), levelTagPicture(p.device()->devicePixelRatioF()));
 	p.restore();
 }
 
@@ -4407,24 +4487,29 @@ QString ChartView::levelText(double level) {
 	return QString::number(level, 'g', 6);
 }
 
-/* A triangle pointing up at the plot from under its bottom edge, at the crossing's place in the window (as a scope's
- * trigger mark), in the line's colour; lit under the mouse. Above the time labels' text, so neither covers the other */
+/* The crossing's place in the window: a "T ▾" flag in the strip above the plot, pointing down at the crossing, right
+ * over the T on the curve (its x; with no T in view, the place in the window), drawn as the T (the theme's text on a
+ * raised surface, its border in the line's colour); lit under the mouse. A bare triangle between the plot and the time
+ * labels was not seen as a control (the owner) */
 void ChartView::drawTriggerMark(QPainter &p, const Axes &axes) const {
 	triggerMark_ = QRectF();
-	if (!trigger_.on) return;
-	const double x = axes.rect.left() + triggerPosition_ * axes.rect.width(), y = axes.rect.bottom() + 3;
-	triggerMark_ = QRectF(x - 7, axes.rect.bottom() + 1, 14, 10);
-	const QPointF tip[3] = { { x, y }, { x - 5, y + 5.5 }, { x + 5, y + 5.5 } };
+	if (!triggerMarked()) return;
+	const double x = !triggerTag_.isEmpty() ? triggerTag_.center().x() : axes.rect.left() + triggerPosition_ * axes.rect.width();
+	/* above the card's layer, 2 px around the plot */
+	triggerMark_ = QRectF(std::round(x - TRIGGER_FLAG_W / 2), axes.rect.top() - 3 - TRIGGER_FLAG_H, TRIGGER_FLAG_W, TRIGGER_FLAG_H);
+	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setRenderHint(QPainter::Antialiasing);
-	p.setPen(hoverMark_ ? QPen(Theme::colors().text, 1.2) : Qt::NoPen);
-	p.setBrush(series_.value(trigger_.key).color);
-	p.drawPolygon(tip, 3);
+	p.setPen(QPen(series_.value(trigger_.key).color, hoverMark_ || drag_ == Drag::Position ? 2 : 1.2));
+	p.setBrush(hoverMark_ || drag_ == Drag::Position ? c.border : c.surface2);
+	p.drawRoundedRect(triggerMark_.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+	p.setPen(c.text);
+	p.setFont(labelFont());
+	p.drawText(triggerMark_, Qt::AlignCenter, QStringLiteral("T ▾"));
 	p.restore();
 }
 
-/* the level's tag: the line, the level in its unit and the edge in words, as a note's tag is drawn (the theme's
- * text on a raised surface: readable whatever the line's colour, which is its border) */
+/* the level in words, the tab's tooltip: the line, the level in its unit and the edge ("(above range)" off scale) */
 QString ChartView::triggerTagLabel() const {
 	const auto it = series_.constFind(trigger_.key);
 	if (it == series_.constEnd()) return QString();
@@ -4439,23 +4524,35 @@ QString ChartView::triggerTagLabel() const {
 			: label;
 }
 
+/* the level as one helper writes it (levelText: as set) in the line's unit: a symbol and a number, not words */
+QString ChartView::triggerTabLabel() const {
+	const auto it = series_.constFind(trigger_.key);
+	if (it == series_.constEnd()) return QString();
+	const QString value = levelText(watchedSettings().level);
+	return QStringLiteral("T ") + (it->unit.isEmpty() ? value : value + QLatin1Char(' ') + it->unit);
+}
+
 QString ChartView::edgeSymbol() const {
 	const TriggerEdge edge = watchedSettings().edge;
 	return edge == TriggerEdge::Rising ? QStringLiteral("↑") : edge == TriggerEdge::Falling ? QStringLiteral("↓")
 			: QStringLiteral("↕");
 }
 
-/* The level's handle: a triangle pointing at the level (▲ or ▼ when the level is beyond the lane's range), in the
- * line's colour, solid while the view holds a crossing of this level and hollow after a change of it (as a scope's
- * level mark), and the edge symbol at its right end, a button of its own (lit under the mouse). Open, the tag's text
- * left of them. The same picture for the CPU and the card */
+/* The level's tab: "T 0.4 A" and the edge (↑ ↓ ↕) as a button of its own at its right end (lit under the mouse), drawn
+ * as the T (the theme's text on a raised surface, its border in the line's colour; the whole lit under the mouse and
+ * while dragged). Its pointer at the line's height points at the plot (▲ or ▼ when the level is beyond the lane's
+ * range), solid while the view holds a crossing of this level and hollow after a change of it (as a scope's level
+ * mark). The same picture whichever draws the plot */
 const QImage &ChartView::levelTagPicture(qreal dpr) const {
 	const ThemeColors &c = Theme::colors();
 	const QColor color = series_.value(trigger_.key).color;
-	const QSizeF size = triggerLevelTag_.size();
-	const bool solid = triggerHandleSolid();
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(dpr).arg(color.name()).arg(triggerTagText_, edgeSymbol())
-			.arg(hoverEdge_).arg(Theme::isDark()).arg(size.width()).arg(solid).arg(triggerOffScale_);
+	const QSizeF size = triggerTabFull_.size();
+	const bool solid = triggerHandleSolid(), lit = hoverLevel_ || drag_ == Drag::Level;
+	const double pointY = std::clamp(triggerLineY_ - triggerTabFull_.top(), 6.0, size.height() - 6);
+	const QString label = triggerTabLabel();
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(dpr).arg(color.name()).arg(label, edgeSymbol())
+			.arg(hoverEdge_).arg(Theme::isDark()).arg(lit).arg(solid).arg(triggerOffScale_)
+			+ QStringLiteral("|%1|%2").arg(pointY).arg(size.width());
 	if (key == levelTagKey_) return levelTagImage_;
 	levelTagKey_ = key;
 	levelTagImage_ = QImage((size * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
@@ -4464,25 +4561,24 @@ const QImage &ChartView::levelTagPicture(qreal dpr) const {
 	QPainter p(&levelTagImage_);
 	p.setRenderHint(QPainter::Antialiasing);
 	const QRectF box(QPointF(0, 0), size);
+	const double border = lit ? 2 : 1.2;
+	p.setPen(QPen(color, border));
+	p.setBrush(lit ? c.border : c.surface2);
+	p.drawRoundedRect(box.adjusted(border / 2, border / 2, -border / 2, -border / 2), 4, 4);
+	const double x = 3, y = pointY;
+	const QPointF left[3] = { { x, y }, { x + 8, y - 4.5 }, { x + 8, y + 4.5 } };
+	const QPointF up[3] = { { x + 4, y - 5 }, { x - 0.5, y + 4 }, { x + 8.5, y + 4 } };
+	const QPointF down[3] = { { x + 4, y + 5 }, { x - 0.5, y - 4 }, { x + 8.5, y - 4 } };
 	p.setPen(QPen(color, 1.2));
-	p.setBrush(c.surface2);
-	p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+	p.setBrush(solid ? QBrush(color) : QBrush(lit ? c.border : c.surface2));
+	p.drawPolygon(triggerOffScale_ > 0 ? up : triggerOffScale_ < 0 ? down : left, 3);
 	p.setPen(c.text);
 	p.setFont(labelFont());
-	const double handle = 2 + LEVEL_HANDLE_W + LEVEL_TAG_H;
-	const QRectF text = box.adjusted(NOTE_PAD, 0, -handle, 0);
-	if (text.width() > 4)
-		p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, QFontMetricsF(labelFont()).elidedText(triggerTagText_,
-				Qt::ElideRight, text.width() + 1));
-	const double x = box.right() - LEVEL_TAG_H - LEVEL_HANDLE_W, mid = LEVEL_TAG_H / 2;
-	const QPointF left[3] = { { x + 2, mid }, { x + 10, mid - 4.5 }, { x + 10, mid + 4.5 } };
-	const QPointF up[3] = { { x + 6, mid - 5 }, { x + 1.5, mid + 4 }, { x + 10.5, mid + 4 } };
-	const QPointF down[3] = { { x + 6, mid + 5 }, { x + 1.5, mid - 4 }, { x + 10.5, mid - 4 } };
-	p.setPen(QPen(color, 1.2));
-	p.setBrush(solid ? QBrush(color) : QBrush(c.surface2));
-	p.drawPolygon(triggerOffScale_ > 0 ? up : triggerOffScale_ < 0 ? down : left, 3);
-	/* the edge symbol: a button's shape at rest, a stronger one under the mouse (as the lanes' buttons) */
-	const QRectF button(box.right() - LEVEL_TAG_H + 2, 2, LEVEL_TAG_H - 4, LEVEL_TAG_H - 4);
+	const QRectF text = box.adjusted(TRIGGER_TAB_TEXT, 0, -(TRIGGER_TAB_BUTTON + 2), 0);
+	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, QFontMetricsF(labelFont()).elidedText(label, Qt::ElideRight,
+			text.width() + 1));
+	/* the edge: a button's shape at rest, a stronger one under the mouse (as the lanes' buttons) */
+	const QRectF button(box.right() - TRIGGER_TAB_BUTTON, 3, TRIGGER_TAB_BUTTON - 3, box.height() - 6);
 	p.setPen(QPen(c.control, 1));
 	p.setBrush(hoverEdge_ ? c.border : c.surface);
 	p.drawRoundedRect(button, 3, 3);
@@ -5057,8 +5153,9 @@ QStringList ChartView::stateVariants(bool measuring) const {
 	QString held[2], y[2], cursors[2], trigger;
 	/* the trigger on: its state alone (a held time, "filling" or "Live to follow" read as a hold of the user's while the
 	 * trigger holds the view, and the time held rewrote itself at every frame) */
-	if (trigger_.on) return QStringList(4, triggerStateText());
-	if (!live_ && !recording_) { /* a trigger holds a view that ends after now: it fills as the samples come */
+	if (triggerMarked()) return QStringList(4, triggerStateText());
+	/* a short window's lock holds the view on its crossings, yet follows now: no "held" (its words come last) */
+	if (!live_ && !recording_ && !trigger_.automatic) { /* a trigger holds a view that ends after now: it fills as the samples come */
 		const double behind = clockNow() - viewEnd();
 		const QString number = measuring ? QStringLiteral("0.000e+00") : chartNumber(std::fabs(behind));
 		held[0] = behind >= 0 ? tr("held: -%1 s · Live to follow").arg(number)

@@ -64,7 +64,6 @@ constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF
 constexpr double MIN_TYPED_WINDOW = 1e-5; /* 10 us: a fast line's single records */
 /* the measurements while the cursors move: at most this often (ChartTab::measureSoon) */
 constexpr int MEASURE_FOLLOW_MS = 100;
-constexpr qint64 RATE_EVERY_MS = 500; /* the trigger row's rate of crossings taken again at most this often */
 
 /* a measurement as the table shows it: a few significant digits, "—" for none */
 QString measureText(double value) {
@@ -379,6 +378,13 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"holds on the first crossing and stops; Arm for another.")
 			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. A line's chip (click or right-click): Trigger "
 			"on this line. Off: the row's Off, this entry or the chip's entry unticked."));
+	/* a live view under 100 ms with the trigger off locks on its first line by itself (ChartView::setShortLock) */
+	shortLock_ = displayMenu->addAction(tr("Lock short windows"));
+	shortLock_->setObjectName(QStringLiteral("chartShortLock"));
+	shortLock_->setCheckable(true);
+	shortLock_->setToolTip(tr("Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of "
+			"the first line's middle, so a wave stands still instead of blurring (\"Auto (short window)\"; \"Auto · free "
+			"running\" while it does not cross). Your own trigger takes over when it is on; Hold ends it."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -593,6 +599,10 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("smooth"), on);
 		showDisplayState();
 	});
+	connect(shortLock_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setShortLock(on);
+		QSettings().setValue(settingKey("autoShortWindows"), on);
+	});
 	connect(hoverValues_, &QAction::toggled, this, [this](bool on) {
 		chart_->view()->setHoverValues(on);
 		QSettings().setValue(settingKey("hoverValues"), on);
@@ -688,6 +698,8 @@ void ChartTab::restoreSettings() {
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
+	shortLock_->setChecked(settings.value(settingKey("autoShortWindows"), true).toBool());
+	chart_->view()->setShortLock(shortLock_->isChecked());
 	chart_->setYLog(settings.value(settingKey("yLog"), false).toBool());
 	if (!settings.value(settingKey("yAuto"), true).toBool()) {
 		chart_->setYManual(settings.value(settingKey("yMin"), 0.0).toDouble(),
@@ -946,7 +958,7 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerUnit_->setObjectName(QStringLiteral("triggerUnit"));
 	/* the place's label named, apart from the hold-off's box: "hold-off [window] at [20 %]" read as one phrase */
 	auto *positionLabel = mutedLabel(tr("position"));
-	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the triangle under the time axis"));
+	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the T ▾ flag above the chart"));
 	auto *row = new QHBoxLayout(triggerRow_);
 	row->setContentsMargins(0, 0, 0, 0);
 	row->setSpacing(6);
@@ -1111,15 +1123,13 @@ void ChartTab::applyTrigger() {
 	showTriggerState();
 }
 
-/* The same state as the chart's corner (ChartView::triggerPhase), changing only when it does: no crossing's time while
- * crossings keep coming (it was rewritten at each), their rate instead, taken twice a second at most. Single's crossing
- * is one: its time stays */
+/* The same state as the chart's corner (ChartView::triggerPhase), in its words, changing only when it does: no
+ * crossing's time and no number while crossings keep coming (a time rewritten at each, then a rate of them changing
+ * its digits, made the text dance; neither reference scope shows a rate). Single's crossing is one: its time stays */
 QString ChartTab::triggerState() const {
 	const ChartView *view = chart_->view();
 	if (!view->triggerOn()) return trigger_->isChecked() ? tr("no line to watch") : QString();
-	const ChartView::TriggerPhase phase = view->triggerPhase();
-	if (phase != ChartView::TriggerPhase::Triggered) rateKept_ = false;
-	switch (phase) {
+	switch (view->triggerPhase()) {
 	case ChartView::TriggerPhase::Off: return QString();
 	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
@@ -1132,15 +1142,7 @@ QString ChartTab::triggerState() const {
 				? tr("Normal · waiting, last at %1", "the time of the last crossing held").arg(QDateTime::fromMSecsSinceEpoch(
 						view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000))).toString(QStringLiteral("HH:mm:ss")))
 				: tr("waiting for a crossing");
-	case ChartView::TriggerPhase::Triggered:
-		if (!rateKept_ || rateClock_.elapsed() >= RATE_EVERY_MS) {
-			const double rate = view->triggerRate();
-			rateText_ = !std::isfinite(rate) ? QString() : rate >= 10 ? QString::number(std::llround(rate))
-					: QString::number(rate, 'g', 2);
-			rateClock_.restart();
-			rateKept_ = true;
-		}
-		return rateText_.isEmpty() ? tr("triggered") : tr("triggered · %1 /s", "crossings a second").arg(rateText_);
+	case ChartView::TriggerPhase::Triggered: return view->triggerStateText(); /* "Normal · triggered", as the corner */
 	case ChartView::TriggerPhase::Done: {
 		const qint64 ms = view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000));
 		return tr("Single · complete at %1").arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
