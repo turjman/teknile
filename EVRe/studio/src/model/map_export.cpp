@@ -237,6 +237,37 @@ QByteArray exportMarkdown(const DeviceMap &map, const ExportOptions &options) {
 		if (map.groupNotes.contains(group.first)) md += map.groupNotes.value(group.first).trimmed() + QStringLiteral("\n\n");
 		for (const RegDef *def : group.second) markdownRegister(md, *def);
 	}
+
+	/* the fast streams: where their blocks come from, how fast, what a record holds (byte by byte) */
+	if (!map.streams.isEmpty()) {
+		md += QObject::tr("## Fast streams") + QStringLiteral("\n\n");
+		md += QObject::tr("Fast EVRe (PROTOCOL.md, \"Fast EVRe\"): the device sends each stream's samples by itself, in "
+				"numbered blocks: READ_RESP frames nobody asked for, at the first address of the stream's window. A block "
+				"is an 8-byte header (the first record's number u32, the records' count u16, flags u8: START 0x01, LOST "
+				"0x02, a spare byte 0) and its records, all channels of one instant together, little endian.")
+				+ QStringLiteral("\n\n");
+		for (const StreamDef &stream : map.streams) {
+			md += QStringLiteral("### %1\n\n").arg(stream.name);
+			if (!stream.desc.isEmpty()) md += stream.desc + QStringLiteral("\n\n");
+			md += QStringLiteral("| | |\n|---|---|\n");
+			md += QObject::tr("| Window | `%1`, %2 bytes |\n").arg(addrText(stream.addr)).arg(stream.size);
+			md += QObject::tr("| Rate | %1 records a second |\n").arg(number(stream.rate));
+			md += QObject::tr("| Record | %1 bytes; at most %2 records a block |\n").arg(stream.recordSize()).arg(stream.recordsPerBlock());
+			if (!stream.enable.isEmpty()) md += QObject::tr("| Enable | `%1`: 1 starts the stream, 0 stops it |\n").arg(stream.enable);
+			if (!stream.rateReg.isEmpty()) md += QObject::tr("| Rate register | `%1`: the rate now |\n").arg(stream.rateReg);
+			if (!stream.group.isEmpty()) md += QObject::tr("| Group | %1 |\n").arg(cell(stream.group));
+			md += QLatin1Char('\n');
+			md += QObject::tr("| Byte | Channel | Type | Unit | Scale | Offset | Description |") + QStringLiteral("\n|---|---|---|---|---|---|---|\n");
+			int offset = 0;
+			for (const StreamChannel &channel : stream.channels) {
+				md += QStringLiteral("| %1 | %2 | %3 | %4 | %5 | %6 | %7 |\n").arg(offset).arg(cell(channel.name), typeName(channel.type),
+						cell(channel.unit), number(channel.scale), number(channel.offset), cell(channel.desc));
+				offset += typeSize(channel.type);
+			}
+			md += QLatin1Char('\n');
+			if (!stream.notes.isEmpty()) md += stream.notes.trimmed() + QStringLiteral("\n\n");
+		}
+	}
 	return md.toUtf8();
 }
 
@@ -345,6 +376,28 @@ QByteArray exportCHeader(const DeviceMap &map, const ExportOptions &options) {
 			}
 		}
 	}
+	/* the fast streams: the window, the rate, a record's size and each channel's byte in it */
+	for (const StreamDef &stream : map.streams) {
+		const QString base = prefix + identifier(stream.name) + QStringLiteral("_FAST"); /* not _STREAM: its enable register's name */
+		h += QStringLiteral("\n/* ---- fast stream %1: %2 (Fast EVRe: blocks of an 8-byte header, then records) */\n")
+				.arg(cComment(stream.name), cComment(stream.desc.isEmpty() ? QStringLiteral("-") : stream.desc));
+		h += QStringLiteral("#define %1 0x%2u\n").arg(names.take(base + QStringLiteral("_ADDR"))).arg(stream.addr, 4, 16, QLatin1Char('0'));
+		h += QStringLiteral("#define %1 %2u\n").arg(names.take(base + QStringLiteral("_SIZE"))).arg(stream.size);
+		h += QStringLiteral("#define %1 %2u /* records a second */\n").arg(names.take(base + QStringLiteral("_RATE")))
+				.arg(qint64(std::llround(stream.rate)));
+		h += QStringLiteral("#define %1 %2u\n").arg(names.take(base + QStringLiteral("_RECORD_SIZE"))).arg(stream.recordSize());
+		h += QStringLiteral("#define %1 %2u\n").arg(names.take(base + QStringLiteral("_RECORDS_PER_BLOCK"))).arg(stream.recordsPerBlock());
+		int offset = 0;
+		for (const StreamChannel &channel : stream.channels) {
+			QStringList facts{ typeName(channel.type) };
+			if (!channel.unit.isEmpty()) facts << channel.unit;
+			if (channel.scale != 1.0 || channel.offset != 0.0)
+				facts << QStringLiteral("x%1 %2").arg(number(channel.scale), number(channel.offset));
+			h += QStringLiteral("#define %1 %2u /* %3 */\n").arg(names.take(prefix + identifier(stream.name) + QLatin1Char('_')
+					+ identifier(channel.name) + QStringLiteral("_OFFSET"))).arg(offset).arg(cComment(facts.join(QStringLiteral(", "))));
+			offset += typeSize(channel.type);
+		}
+	}
 	h += QStringLiteral("\n#endif /* %1 */\n").arg(guard);
 	return h.toUtf8();
 }
@@ -401,6 +454,30 @@ QByteArray exportPython(const DeviceMap &map, const ExportOptions &options) {
 			items << QStringLiteral("\"fields\": [%1]").arg(fields.join(QStringLiteral(", ")));
 		}
 		s += QStringLiteral("    %1: {%2},\n").arg(py(def.name), items.join(QStringLiteral(", ")));
+	}
+	s += QStringLiteral("}\n");
+	/* the fast streams, as the map gives them; record_size and each channel's byte ("at") in a record */
+	s += QStringLiteral("\n# every fast stream (Fast EVRe): its window, rate and the channels of one record\nSTREAMS = {\n");
+	for (const StreamDef &stream : map.streams) {
+		QStringList items{ QStringLiteral("\"addr\": 0x%1").arg(stream.addr, 4, 16, QLatin1Char('0')),
+			QStringLiteral("\"size\": %1").arg(stream.size), QStringLiteral("\"rate\": %1").arg(number(stream.rate)),
+			QStringLiteral("\"record_size\": %1").arg(stream.recordSize()) };
+		if (!stream.enable.isEmpty()) items << QStringLiteral("\"enable\": %1").arg(py(stream.enable));
+		if (!stream.rateReg.isEmpty()) items << QStringLiteral("\"rate_reg\": %1").arg(py(stream.rateReg));
+		if (!stream.desc.isEmpty()) items << QStringLiteral("\"desc\": %1").arg(py(stream.desc));
+		QStringList channels;
+		int offset = 0;
+		for (const StreamChannel &channel : stream.channels) {
+			QStringList c{ QStringLiteral("\"name\": %1").arg(py(channel.name)), QStringLiteral("\"type\": %1").arg(py(typeName(channel.type))),
+				QStringLiteral("\"at\": %1").arg(offset) };
+			if (!channel.unit.isEmpty()) c << QStringLiteral("\"unit\": %1").arg(py(channel.unit));
+			if (channel.scale != 1.0) c << QStringLiteral("\"scale\": %1").arg(number(channel.scale));
+			if (channel.offset != 0.0) c << QStringLiteral("\"offset\": %1").arg(number(channel.offset));
+			channels << QStringLiteral("{%1}").arg(c.join(QStringLiteral(", ")));
+			offset += typeSize(channel.type);
+		}
+		items << QStringLiteral("\"channels\": [%1]").arg(channels.join(QStringLiteral(", ")));
+		s += QStringLiteral("    %1: {%2},\n").arg(py(stream.name), items.join(QStringLiteral(", ")));
 	}
 	s += QStringLiteral("}\n");
 	return s.toUtf8();

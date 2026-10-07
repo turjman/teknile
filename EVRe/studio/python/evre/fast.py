@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
-"""A fast stream's recording (Fast EVRe), a .evrs file as EVRe Studio and `evre record` write it.
+"""Fast EVRe: a device's fast stream live (Device.stream) and its recording (a .evrs file of EVRe Studio or
+`evre record`).
+
+    for block in dev.stream('ADC', seconds=2):   # switched on, its blocks as they come, switched off at the end
+        print(block.first, block.lost, block.values['I_LOAD'][:5])
 
     rec = evre.read_recording('run.ADC.evrs')
     print(rec.stream['name'], len(rec.times), 'samples,', rec.lost, 'lost')
@@ -18,6 +22,9 @@ the next of the same start. Standard library only.
 """
 import json
 import struct
+import time
+
+from . import frame as f
 
 FORMAT = 'evre-fast-rec/1'
 FLAG_START, FLAG_LOST = 0x01, 0x02
@@ -140,3 +147,71 @@ def read_recording(path):
                 m += 1
             rec.times.append(marks[m][1] + (number - marks[m][0]) * periods[m])
     return rec
+
+
+class Block:
+    """one block of a live stream: first (its first record's number, 64 bits from the stream's start), count, lost
+    (records missing before it), new_start, values {channel: [value, ...]} in the map's units, arrival (seconds,
+    time.monotonic())"""
+
+    def __init__(self, first, count, lost, new_start, values, arrival):
+        self.first, self.count, self.lost, self.new_start = first, count, lost, new_start
+        self.values, self.arrival = values, arrival
+
+
+def _stream_of(device_map, name):
+    for s in (device_map.doc.get('streams') or []) if device_map else []:
+        if s.get('name', '').lower() == name.lower():
+            return s
+    raise KeyError('no stream %s in the map' % name)
+
+
+def stream(dev, name, seconds=None, heartbeat=0.1):
+    """The stream switched on (its enable register written 1, if the map names one), its blocks yielded as they come
+    for `seconds` (None: until the loop stops), then switched off (0 written), also when the loop breaks. CONFIG is
+    read every `heartbeat` seconds meanwhile, without waiting for the answers (the device's host watchdog)."""
+    s = _stream_of(dev.map, name)
+    window = int(s['addr'], 16) if isinstance(s['addr'], str) else int(s['addr'])
+    channels = s.get('channels', [])
+    layout = '<' + ''.join(_TYPES[c.get('type', 'i16')] for c in channels)
+    size = struct.calcsize(layout)
+    scales = [(float(c.get('scale', 1)), float(c.get('offset', 0))) for c in channels]
+    names = [c.get('name', str(i)) for i, c in enumerate(channels)]
+    master, link = dev.master, dev.link
+    enable = dev.map[s['enable']] if s.get('enable') else None
+    if enable is not None:  # sent, not waited for: the first block may come before the answer
+        link.send(f.build(master.slave, f.WRITE_ACK, enable.addr, enable.size, enable.encode(1)))
+    end = None if seconds is None else time.monotonic() + seconds
+    beat = time.monotonic() + heartbeat
+    end32 = end64 = None
+    try:
+        while end is None or time.monotonic() < end:
+            now = time.monotonic()
+            if now >= beat:
+                link.send(f.build(master.slave, f.READ, f.CONFIG, 2))
+                beat = now + heartbeat
+            frame = master.parser.next()
+            if frame is None:
+                master.parser.feed(link.receive(min(heartbeat, 0.05)))
+                continue
+            if frame.slave != master.slave or frame.fn != f.READ_RESP or frame.addr != window or len(frame.data) < 8:
+                continue  # an answer to the heartbeat or the enable, or not this stream's
+            first, count, flags, spare = struct.unpack_from('<IHBB', frame.data, 0)
+            if len(frame.data) != 8 + count * size or flags & ~(FLAG_START | FLAG_LOST) or spare:
+                continue  # a bad block, or a newer kind: none of its records used
+            new_start = end32 is None or bool(flags & FLAG_START)
+            lost = 0
+            if not new_start:
+                ahead = (first - end32) & 0xFFFFFFFF
+                new_start = ahead >= 0x80000000
+                lost = 0 if new_start else ahead
+            number = first if new_start else end64 + lost
+            values = {n: [] for n in names}
+            for record in struct.iter_unpack(layout, frame.data[8:]):
+                for c, v in enumerate(record):
+                    values[names[c]].append(v * scales[c][0] + scales[c][1])
+            end32, end64 = (first + count) & 0xFFFFFFFF, number + count
+            yield Block(number, count, lost, new_start, values, time.monotonic())
+    finally:
+        if enable is not None:
+            master.write(enable.addr, enable.encode(0))

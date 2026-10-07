@@ -605,6 +605,52 @@ private slots:
 		}
 	}
 
+	/* a map's fast streams in the exports: the window, the rate, each channel's byte in a record; the C compiled and the
+	 * Python imported as above */
+	void exportStreams() {
+		DeviceMap map;
+		QString err;
+		QVERIFY2(map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), err), qPrintable(err));
+		ExportOptions options;
+		options.prefix = QStringLiteral("ex");
+		const QString md = QString::fromUtf8(exportMarkdown(map, options));
+		QVERIFY(md.contains(QLatin1String("## Fast streams")) && md.contains(QLatin1String("### ADC")));
+		QVERIFY(md.contains(QLatin1String("| Window | `0xDC00`, 1024 bytes |")));
+		QVERIFY(md.contains(QLatin1String("| Record | 4 bytes; at most 254 records a block |")));
+		QVERIFY(md.contains(QLatin1String("| 0 | I_LOAD | i16 | A | 5e-04 |"))); /* number(): the shortest, as for a register's scale */
+		QVERIFY(md.contains(QLatin1String("| 2 | V_BUS | i16 | V | 0.001 |")));
+		const QByteArray header = exportCHeader(map, options);
+		QVERIFY(header.contains("#define EX_ADC_FAST_ADDR 0xdc00u"));
+		QVERIFY(header.contains("#define EX_ADC_FAST_RATE 10000u"));
+		QVERIFY(header.contains("#define EX_ADC_FAST_RECORD_SIZE 4u"));
+		QVERIFY(header.contains("#define EX_ADC_V_BUS_OFFSET 2u"));
+		const QString gcc = QStandardPaths::findExecutable(QStringLiteral("gcc"));
+		if (!gcc.isEmpty()) {
+			writeFile(path(QStringLiteral("exf.h")), header);
+			writeFile(path(QStringLiteral("exf.c")), "#include \"exf.h\"\nint main(void) { return (int)(EX_ADC_FAST_ADDR"
+					" + EX_ADC_FAST_RECORDS_PER_BLOCK + EX_ADC_V_BUS_OFFSET); }\n");
+			QProcess cc;
+			cc.setWorkingDirectory(tmp_.path());
+			cc.start(gcc, { QStringLiteral("-Wall"), QStringLiteral("-Wextra"), QStringLiteral("-Werror"), QStringLiteral("-fsyntax-only"),
+					QStringLiteral("exf.c") });
+			QVERIFY(cc.waitForFinished(30000));
+			QVERIFY2(cc.exitCode() == 0, cc.readAllStandardError().constData());
+		}
+		const QString python = QStandardPaths::findExecutable(QStringLiteral("python3")).isEmpty()
+				? QStandardPaths::findExecutable(QStringLiteral("python")) : QStandardPaths::findExecutable(QStringLiteral("python3"));
+		if (!python.isEmpty()) {
+			writeFile(path(QStringLiteral("exf_map.py")), exportPython(map, options));
+			QProcess run;
+			run.setWorkingDirectory(tmp_.path());
+			run.start(python, { QStringLiteral("-c"), QStringLiteral("import exf_map as m; s = m.STREAMS['ADC']; "
+					"assert s['addr'] == 0xDC00 and s['record_size'] == 4 and s['enable'] == 'ADC_STREAM', s; "
+					"assert s['channels'][1]['name'] == 'V_BUS' and s['channels'][1]['at'] == 2, s; print(len(m.STREAMS))") });
+			QVERIFY(run.waitForFinished(30000));
+			QVERIFY2(run.exitCode() == 0, run.readAllStandardError().constData());
+			QCOMPARE(run.readAllStandardOutput().trimmed(), QByteArray("1"));
+		}
+	}
+
 	/* CSV out and back in: the same registers (every key the CSV has a column for) */
 	void csvRoundTrip() {
 		DeviceMap map = loadText(QStringLiteral("csv.json"), CSV_MAP);

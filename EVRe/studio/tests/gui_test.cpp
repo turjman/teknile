@@ -76,6 +76,7 @@
 #include <QTextBrowser>
 #include <QTextDocument>
 #include <QTemporaryDir>
+#include <QTextDocumentFragment>
 #include <QFile>
 #include <QFileInfo>
 #include <QTest>
@@ -97,6 +98,7 @@
 #include "model/bus_file.h"
 #include "model/device_map.h"
 #include "model/map_document.h"
+#include "ui/map_settings_dialog.h"
 #include "model/recording_file.h"
 #include "model/register_model.h"
 #include "ui/bit_view.h"
@@ -553,6 +555,7 @@ public:
 		plotShownWithoutQuestion();
 		recordingWindows();
 		mapEditor();
+		mapStreamsPage();
 		limitsAndFields();
 		pollingSurvivesEdits();
 		uiAudit();
@@ -1213,7 +1216,7 @@ private:
 							return table->item(row, column) ? table->item(row, column)->text() : QString();
 					return QString();
 				};
-				QTest::qWaitFor([&] { return cellOf(ChartTab::ColRms).startsWith(QLatin1String("4.")); }, 3000);
+				(void) QTest::qWaitFor([&] { return cellOf(ChartTab::ColRms).startsWith(QLatin1String("4.")); }, 3000);
 				rms = cellOf(ChartTab::ColRms);
 				auto *line = chartTab->findChild<QComboBox *>(QStringLiteral("triggerLine"));
 				auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
@@ -3590,6 +3593,122 @@ private:
 		return blocks ? double(alike) / blocks : 0;
 	}
 
+
+	/* Fast EVRe 5.5: the Map settings' Streams page: the map's streams with their window, rate and channels; a stream
+	 * and a channel added; the checks live under them; OK one undo step */
+	void mapStreamsPage() {
+		DeviceMap map;
+		QString err;
+		const bool loaded = map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), err);
+		MapDocument doc;
+		doc.reset(map);
+		MapSettingsDialog dialog(&doc);
+		dialog.resize(760, 660);
+		dialog.show();
+		(void) QTest::qWaitForWindowExposed(&dialog);
+		auto *list = dialog.findChild<QListWidget *>(QStringLiteral("fastStreamList"));
+		auto *addr = dialog.findChild<QLineEdit *>(QStringLiteral("streamAddr"));
+		auto *channels = dialog.findChild<QTableWidget *>(QStringLiteral("streamChannels"));
+		auto *record = dialog.findChild<QLabel *>(QStringLiteral("streamRecord"));
+		auto *add = dialog.findChild<QPushButton *>(QStringLiteral("addStream"));
+		const bool shown = loaded && list && addr && channels && record && list->count() == 1
+				&& list->item(0)->text() == QLatin1String("ADC") && addr->text() == QLatin1String("0xDC00")
+				&& channels->rowCount() == 2 && channels->item(1, 0)->text() == QLatin1String("V_BUS")
+				&& record->text() == QStringLiteral("A sample: 4 bytes · at most 254 samples a block") && dialog.streamChecks().isEmpty()
+				&& add && add->cursor().shape() == Qt::PointingHandCursor && !add->toolTip().isEmpty();
+		std::printf("  Streams page: %d stream(s), \"%s\", %d channel(s), \"%s\"\n", list ? list->count() : -1,
+				addr ? qPrintable(addr->text()) : "", channels ? channels->rowCount() : -1, record ? qPrintable(record->text()) : "");
+		check(shown, "map settings, Streams: the map's stream ADC, its window 0xDC00, its 2 channels, a sample's bytes and "
+				"samples a block; no check fails; its buttons look clickable, with tooltips");
+		if (!shown) return;
+		/* in English and Arabic: every label and button of the page whole at the dialog's least size */
+		bool fits = true;
+		QString notes;
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			MapSettingsDialog other(&doc);
+			other.resize(other.minimumSize());
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			if (auto *pages = other.findChild<QTabWidget *>()) pages->setCurrentWidget(other.streamsPage());
+			QApplication::processEvents();
+			for (QLabel *label : other.streamsPage()->findChildren<QLabel *>()) {
+				if (label->wordWrap() || label->text().isEmpty() || !label->isVisible()) continue;
+				if (label->fontMetrics().horizontalAdvance(label->text()) > label->width()) {
+					fits = false;
+					notes += QStringLiteral(" %1: \"%2\"").arg(code, label->text());
+				}
+			}
+			if (auto *table = other.findChild<QTableWidget *>(QStringLiteral("streamChannels")))
+				for (int c = 0; c + 1 < table->columnCount(); c++) /* the headers whole (the last stretches) */
+					if (table->horizontalHeader()->fontMetrics().horizontalAdvance(table->horizontalHeaderItem(c)->text())
+							> table->columnWidth(c) - 8) {
+						fits = false;
+						notes += QStringLiteral(" %1: the column \"%2\"").arg(code, table->horizontalHeaderItem(c)->text());
+					}
+			for (QPushButton *button : other.streamsPage()->findChildren<QPushButton *>())
+				if (button->fontMetrics().horizontalAdvance(button->text()) > button->width() - 12) {
+					fits = false;
+					notes += QStringLiteral(" %1: the button \"%2\"").arg(code, button->text());
+				}
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look */
+				other.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_map_streams_%1.png").arg(code));
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		check(fits, qPrintable(QStringLiteral("map settings, Streams: its labels, buttons and column headers whole in English and Arabic at "
+				"the dialog's least size%1").arg(notes)));
+		/* a stream added: free window, no channel yet (said); a channel added; a window over a register (said) */
+		dialog.addStream();
+		const QString empty = dialog.streamChecks();
+		dialog.addChannel();
+		const QString withChannel = dialog.streamChecks();
+		addr->setText(QStringLiteral("0xD000"));
+		emit addr->textEdited(addr->text());
+		const QString over = dialog.streamChecks();
+		addr->setText(QStringLiteral("0xDB00"));
+		emit addr->textEdited(addr->text());
+		const QString fine = dialog.streamChecks();
+		std::printf("  added: \"%s\" | with a channel: \"%s\" | over UPTIME: \"%s\" | moved: \"%s\"\n", qPrintable(empty),
+				qPrintable(withChannel), qPrintable(over), qPrintable(fine));
+		check(list->count() == 2 && empty.contains(QLatin1String("S2: it has no channel")) && !withChannel.contains(QLatin1String("no channel"))
+						&& over.contains(QLatin1String("shares bytes with the register UPTIME")) && fine.isEmpty(),
+				"map settings, Streams: a stream added (a free window, \"no channel\" said), a channel added, a window over a "
+				"register said at once");
+		const int steps = doc.undoStack()->count();
+		dialog.accept();
+		const bool applied = doc.map().streams.size() == 2 && doc.map().streams[1].addr == 0xDB00
+				&& doc.map().streams[1].channels.size() == 1 && doc.undoStack()->count() == steps + 1;
+		doc.undoStack()->undo();
+		check(applied && doc.map().streams.size() == 1, "map settings, Streams: OK puts the streams into the map as one undo "
+				"step; undone, the map has its one stream again");
+
+		/* a math line naming a fast channel: told why it cannot (F-16: math over fast channels comes later) */
+		RegDef volts;
+		volts.addr = 0xD004;
+		volts.name = QStringLiteral("SUPPLY_V");
+		volts.type = RegType::F32;
+		volts.size = 4;
+		MathLine start;
+		start.name = QStringLiteral("P");
+		MathLineDialog math(start, false, { volts });
+		math.setFastChannels({ QStringLiteral("ADC.I_LOAD"), QStringLiteral("ADC.V_BUS") });
+		auto *formula = math.findChild<QLineEdit *>(QStringLiteral("formula"));
+		auto *state = math.findChild<QLabel *>(QStringLiteral("mathState"));
+		auto *okButton = math.findChild<QDialogButtonBox *>() ? math.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok) : nullptr;
+		QString told, accepted;
+		bool refused = false;
+		if (formula && state && okButton) {
+			formula->setText(QStringLiteral("SUPPLY_V * adc.i_load"));
+			told = state->text();
+			refused = !okButton->isEnabled();
+			formula->setText(QStringLiteral("SUPPLY_V * 2"));
+			accepted = state->text();
+		}
+		std::printf("  a math line over ADC.I_LOAD: \"%s\"\n", qPrintable(QTextDocumentFragment::fromHtml(told).toPlainText()));
+		check(refused && QTextDocumentFragment::fromHtml(told).toPlainText().contains(QLatin1String("adc.i_load is a fast stream's channel"))
+						&& accepted.contains(QLatin1String("OK: reads SUPPLY_V")),
+				"math lines: a formula naming a fast channel is refused, and the editor says it is a fast stream's channel");
+	}
 
 	/* Fast EVRe 5.3: a fast line measured: the statistics between the cursors from the store's summaries equal a plain
 	 * loop over its records (nothing across a gap), within a frame's time over 10 million; the totals since Clear; the

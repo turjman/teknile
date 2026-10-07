@@ -81,6 +81,11 @@ class Device:
     def __setitem__(self, name, value):
         self.write(name, value)
 
+    def stream(self, name, seconds=None, heartbeat=0.1):
+        """a fast stream (Fast EVRe) of the map: its blocks as they come (evre.fast.stream)"""
+        from .fast import stream
+        return stream(self, name, seconds, heartbeat)
+
     def read_all(self):
         """{name: shown value} of every readable register (byte arrays up to 32 bytes), read in blocks"""
         return self._read_registers([r for r in self.map if r.readable and (r.is_number or r.size <= 32)])

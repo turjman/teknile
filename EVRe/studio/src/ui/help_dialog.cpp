@@ -207,6 +207,9 @@ how fast, the register that switches the stream, and what one sample holds (its 
     "rate_reg": "ADC_RATE", "enable": "ADC_STREAM",
     "channels": [ { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },
                   { "name": "V_BUS", "type": "i16", "unit": "V", "scale": 0.001 } ] } ]</pre>
+<p>In the Map editor they are on <b>Map settings…</b>, the <b>Streams</b> page: each stream's window, rate and
+channels, the map's checks under them. <code>evre check --writes</code> switches each on for 2 s and checks its START,
+its numbers and its rate; Python reads one live with <code>dev.stream('ADC')</code>.</p>
 <p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
 <ul>
 <li><b>▶ Start ADC</b> writes 1 to the stream's enable register (after reading its rate register, if the map names
@@ -474,7 +477,7 @@ a bytes or f32 register, <i>Values</i> with several selected) has a warning sign
 page, for why.</li>
 <li><b>Checks</b> under the table: names used twice, registers sharing bytes, fields past the bits, min above
 max… Click one to go there.</li>
-<li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups.</li>
+<li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the <i>Streams</i> page).</li>
 <li><b>Export</b>: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
 the device, and the <i>device table</i> for firmware on the EVRe library (the images, their addresses checked, a
 bind function; the library needs every read-only register below the writable ones). <b>Import CSV…</b> reads a

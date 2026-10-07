@@ -1608,6 +1608,10 @@ void ChartTab::editMathLine(int line) {
 	start.unit = QStringLiteral("W");
 	if (line >= 0) start = mathLines_.lines()[line];
 	MathLineDialog dialog(start, line >= 0, registers_, window()); /* over the window, as its other dialogs */
+	QStringList channels;
+	for (const StreamDef &stream : std::as_const(fastStreams_))
+		for (const StreamChannel &channel : stream.channels) channels << stream.name + QLatin1Char('.') + channel.name;
+	dialog.setFastChannels(channels);
 	if (dialog.exec() != QDialog::Accepted) return;
 	const MathLine edited = dialog.result();
 	if (line >= 0) mathLines_.replace(line, edited);
