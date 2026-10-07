@@ -128,6 +128,11 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
 - Built for many fast lines: binning and drawing on several threads, a RAM budget the samples keep to, and the
   plot drawn by a dedicated graphics card when there is one (Windows, Direct3D 11): 64 lines of 1000 Hz at
   60 frames a second on a 4K screen.
+- Fast streams (Fast EVRe): a device sends samples taken on its own clock, up to a million a second, in numbered
+  blocks nobody asked for; the Studio starts and stops them from a card, plots every record at its own time (an
+  hour down to 10 us in one view, a spike of one record in millions still visible), measures and triggers on them,
+  and records them beside the CSV as they came (`.evrs`). The device side is `lib/fast`, a header beside the
+  library; the protocol itself is unchanged.
 
 **Record and replay**
 
