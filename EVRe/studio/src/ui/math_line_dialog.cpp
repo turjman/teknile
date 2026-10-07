@@ -2,7 +2,6 @@
 /* The dialog for a math line: see math_line_dialog.h. */
 #include "ui/math_line_dialog.h"
 
-#include <QRegularExpression>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QLabel>
@@ -23,13 +22,16 @@ MathLineDialog::MathLineDialog(const MathLine &start, bool editing, const QVecto
 	formula_->setObjectName(QStringLiteral("formula"));
 	formula_->setPlaceholderText(tr("e.g. SUPPLY_V * SUPPLY_I"));
 	formula_->setMinimumWidth(380);
-	new FormulaCompleter(formula_, registers, this); /* a list of the registers and functions while a name is typed */
+	/* a list of the registers and functions while a name is typed (the fast channels too, setFastStreams) */
+	completer_ = new FormulaCompleter(formula_, registers, this);
 	state_ = new QLabel;
 	state_->setObjectName(QStringLiteral("mathState"));
 	state_->setWordWrap(true);
 	auto *help = mutedLabel(tr("Type a name and a list offers the registers and functions (Enter or Tab takes one).\n"
 			"Register names, numbers, + − * / ^, ( ), pi, and abs sqrt exp log log10 sin cos tan "
 			"asin acos atan atan2(y,x) min(a,b) max(a,b) pow(a,b) floor ceil round sign clamp(x,lo,hi).\n"
+			"A fast stream's channels (ADC.I_LOAD), all of one stream: computed for every record of it, a register held "
+			"at its last polled value.\n"
 			"Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5) + 32 · sqrt(X^2 + Y^2)"));
 	help->setWordWrap(true);
 	buttons_ = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -59,29 +61,23 @@ MathLine MathLineDialog::result() const {
 	return line;
 }
 
-void MathLineDialog::setFastChannels(const QStringList &names) {
-	fastChannels_ = names;
+void MathLineDialog::setFastStreams(const QVector<StreamDef> &streams) {
+	streams_ = streams;
+	completer_->addStreams(streams);
 	validate();
 }
 
 void MathLineDialog::validate() {
 	MathLine trial;
 	trial.formula = formula_->text();
-	const bool ok = trial.compile(registers_);
+	const bool ok = trial.compile(registers_, streams_);
 	const ThemeColors &colors = Theme::colors();
 	const QStringList names = trial.expr.names();
 	const QString reads = names.isEmpty() ? tr("no register") : names.join(QStringLiteral(", "));
-	QString error = trial.error;
-	if (!ok) { /* a fast stream's channel named: why it is no register (Fast EVRe: math over fast channels comes later) */
-		static const QRegularExpression word(QStringLiteral("[A-Za-z_][A-Za-z0-9_.]*"));
-		for (auto it = word.globalMatch(formula_->text()); it.hasNext();) {
-			const QString name = it.next().captured();
-			if (!fastChannels_.contains(name, Qt::CaseInsensitive)) continue;
-			error = tr("%1 is a fast stream's channel: a math line reads registers, not fast channels, in this version")
-					.arg(name);
-			break;
-		}
-	}
-	state_->setText(ok ? coloredSpan(tr("OK: reads %1").arg(reads), colors.good) : coloredSpan(error.toHtmlEscaped(), colors.bad));
+	/* a fast math line: said, with the stream it follows */
+	const QString said = ok && trial.fast()
+			? tr("OK: reads %1 · computed for every record of stream %2").arg(reads, streams_[trial.stream].name)
+			: tr("OK: reads %1").arg(reads);
+	state_->setText(ok ? coloredSpan(said.toHtmlEscaped(), colors.good) : coloredSpan(trial.error.toHtmlEscaped(), colors.bad));
 	buttons_->button(QDialogButtonBox::Ok)->setEnabled(ok && !name_->text().trimmed().isEmpty());
 }

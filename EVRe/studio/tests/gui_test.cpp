@@ -528,6 +528,7 @@ public:
 		chartBinsAndGpu();
 		chartFastLines();
 		chartFastMeasure();
+		chartFastMath();
 		readoutSteady();
 		displayMenu();
 		helpPages();
@@ -4089,7 +4090,8 @@ private:
 		check(applied && doc.map().streams.size() == 1, "map settings, Streams: OK puts the streams into the map as one undo "
 				"step; undone, the map has its one stream again");
 
-		/* a math line naming a fast channel: told why it cannot (F-16: math over fast channels comes later) */
+		/* a math line naming a fast channel: a fast math line (F-M), computed for every record of its stream; two
+		 * streams refused with the reason; the completion offers the channels */
 		RegDef volts;
 		volts.addr = 0xD004;
 		volts.name = QStringLiteral("SUPPLY_V");
@@ -4097,24 +4099,262 @@ private:
 		volts.size = 4;
 		MathLine start;
 		start.name = QStringLiteral("P");
+		StreamDef adc;
+		adc.name = QStringLiteral("ADC");
+		StreamChannel iLoad, vBus, pIn;
+		iLoad.name = QStringLiteral("I_LOAD");
+		iLoad.unit = QStringLiteral("A");
+		vBus.name = QStringLiteral("V_BUS");
+		adc.channels = { iLoad, vBus };
+		StreamDef pwr;
+		pwr.name = QStringLiteral("PWR");
+		pIn.name = QStringLiteral("P_IN");
+		pwr.channels = { pIn };
 		MathLineDialog math(start, false, { volts });
-		math.setFastChannels({ QStringLiteral("ADC.I_LOAD"), QStringLiteral("ADC.V_BUS") });
+		math.setFastStreams({ adc, pwr });
+		math.show();
 		auto *formula = math.findChild<QLineEdit *>(QStringLiteral("formula"));
 		auto *state = math.findChild<QLabel *>(QStringLiteral("mathState"));
+		auto *completer = math.findChild<FormulaCompleter *>();
 		auto *okButton = math.findChild<QDialogButtonBox *>() ? math.findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Ok) : nullptr;
-		QString told, accepted;
-		bool refused = false;
-		if (formula && state && okButton) {
+		QString told, twoStreams, accepted;
+		QStringList offered;
+		bool fastOk = false, refused = false;
+		if (formula && state && okButton && completer) {
 			formula->setText(QStringLiteral("SUPPLY_V * adc.i_load"));
-			told = state->text();
+			told = QTextDocumentFragment::fromHtml(state->text()).toPlainText();
+			fastOk = okButton->isEnabled();
+			formula->setText(QStringLiteral("ADC.I_LOAD * PWR.P_IN"));
+			twoStreams = QTextDocumentFragment::fromHtml(state->text()).toPlainText();
 			refused = !okButton->isEnabled();
 			formula->setText(QStringLiteral("SUPPLY_V * 2"));
 			accepted = state->text();
+			formula->clear();
+			QTest::keyClicks(formula, QStringLiteral("I_LO"));
+			offered = completer->shown();
+			formula->clear();
 		}
-		std::printf("  a math line over ADC.I_LOAD: \"%s\"\n", qPrintable(QTextDocumentFragment::fromHtml(told).toPlainText()));
-		check(refused && QTextDocumentFragment::fromHtml(told).toPlainText().contains(QLatin1String("adc.i_load is a fast stream's channel"))
-						&& accepted.contains(QLatin1String("OK: reads SUPPLY_V")),
-				"math lines: a formula naming a fast channel is refused, and the editor says it is a fast stream's channel");
+		math.hide();
+		std::printf("  a math line over ADC.I_LOAD: \"%s\"; over two streams: \"%s\"; I_LO offers %s\n", qPrintable(told),
+				qPrintable(twoStreams), qPrintable(offered.join(QStringLiteral(", "))));
+		check(fastOk && told.contains(QStringLiteral("OK: reads SUPPLY_V, adc.i_load · computed for every record of stream ADC"))
+						&& refused && twoStreams.contains(QLatin1String("two streams, two clocks: not in this version"))
+						&& accepted.contains(QLatin1String("OK: reads SUPPLY_V")) && offered.contains(QLatin1String("ADC.I_LOAD")),
+				"math lines: a formula over a stream's channels is taken, the editor says it is computed for every record of "
+				"that stream; channels of two streams are refused with the reason; the completion offers the channels");
+	}
+
+	/* F-M: a fast math line, a formula over the channels of one stream, computed for every record of it as its blocks
+	 * come (ChartTab::appendFast), at the record's own time, into a store of its own; a register in it held at its last
+	 * polled value; channels of two streams refused; a record whose result is no number left out; drawn from its own
+	 * summaries; its RAM in the budget; the one cap of 64 lines. Its own settings group: the live chart's math lines stay */
+	void chartFastMath() {
+		const QString group = QStringLiteral("fastMathTest");
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		def.addr = 0xDC00;
+		def.size = 1024;
+		def.rate = 10000;
+		StreamChannel current;
+		current.name = QStringLiteral("I_LOAD");
+		current.unit = QStringLiteral("A");
+		current.scale = 0.0005;
+		StreamChannel voltage;
+		voltage.name = QStringLiteral("V_BUS");
+		voltage.unit = QStringLiteral("V");
+		voltage.scale = 0.001;
+		def.channels = { current, voltage };
+		StreamDef other;
+		other.name = QStringLiteral("PWR");
+		other.addr = 0xDB00;
+		other.size = 256;
+		other.rate = 1000;
+		StreamChannel power;
+		power.name = QStringLiteral("P_IN");
+		power.unit = QStringLiteral("W");
+		other.channels = { power };
+		RegDef volts;
+		volts.addr = 0xD004;
+		volts.name = QStringLiteral("SUPPLY_V");
+		volts.unit = QStringLiteral("V");
+		volts.type = RegType::F32;
+		volts.size = 4;
+		const RegKey voltsKey = regKey(volts);
+		/* the parser: one stream's channels make a fast line, a register among them is read as held; two streams no */
+		{
+			MathLine product, held, plain, two;
+			product.formula = QStringLiteral("ADC.I_LOAD * ADC.V_BUS");
+			held.formula = QStringLiteral("adc.i_load * SUPPLY_V");
+			plain.formula = QStringLiteral("SUPPLY_V * 2");
+			two.formula = QStringLiteral("ADC.I_LOAD * PWR.P_IN");
+			const bool p = product.compile({ volts }, { def, other }) && product.fast() && product.stream == 0
+					&& product.channels == QVector<int>({ 0, 1 });
+			const bool h = held.compile({ volts }, { def, other }) && held.fast() && held.channels == QVector<int>({ 0, -1 })
+					&& held.inputs.value(1) == voltsKey;
+			const bool r = plain.compile({ volts }, { def, other }) && !plain.fast();
+			const bool refused = !two.compile({ volts }, { def, other }) && !two.fast()
+					&& two.error.contains(QLatin1String("two streams, two clocks: not in this version"))
+					&& two.error.contains(QLatin1String("PWR.P_IN"));
+			std::printf("     (two streams: \"%s\")\n", qPrintable(two.error));
+			check(p && h && r && refused, "math lines, fast: a formula over one stream's channels is a fast math line (a "
+					"register in it read as held), one over registers only is not; channels of two streams are refused: "
+					"\"two streams, two clocks: not in this version\"");
+		}
+		/* record k at 100 s + k / 10 kHz: I_LOAD 1 A of 50 Hz around 0.2 A (below 0 for a part of each period), V_BUS 12 V */
+		const auto rawI = [](qint64 k) { return qint16(std::lround(2000 * std::sin(2 * M_PI * 50 * k / 10000.0)) + 400); };
+		const auto rawV = [](qint64 k) { return qint16(12000 + std::lround(3 * std::sin(2 * M_PI * 50 * k / 10000.0 + 1))); };
+		const auto timeOf = [](qint64 k) { return 100.0 + k / 10000.0; };
+		const auto blockOf = [&](qint64 first, qint64 n) {
+			QByteArray records(int(n * 4), '\0');
+			for (qint64 k = 0; k < n; k++) {
+				const qint16 a = rawI(first + k), b = rawV(first + k);
+				records[int(4 * k)] = char(a);
+				records[int(4 * k + 1)] = char(a >> 8);
+				records[int(4 * k + 2)] = char(b);
+				records[int(4 * k + 3)] = char(b >> 8);
+			}
+			return records;
+		};
+		const auto feedTab = [&](ChartTab &tab, qint64 first, qint64 n, bool start) {
+			tab.appendFast(0, quint64(first), int(n), blockOf(first, n), start, 0, true, quint64(first + n), timeOf(first + n),
+					1e-4);
+		};
+		const auto mathLine = [](const char *name, const char *unit, const char *formula) {
+			MathLine line;
+			line.name = QString::fromUtf8(name);
+			line.unit = QString::fromUtf8(unit);
+			line.formula = QString::fromUtf8(formula);
+			return line;
+		};
+		/* the product record by record, a register held, a record that is no number left out, drawn */
+		{
+			QSettings().remove(group); /* no math lines of the chart before */
+			double now = 100.4;
+			ChartTab tab{ [&now] { return now; }, nullptr, group };
+			tab.resize(1200, 700);
+			tab.setRegisters({ volts });
+			tab.setFastStreams({ def });
+			tab.plotFastChannel(0, 0, true);
+			tab.plotFastChannel(0, 1, true);
+			const bool added = tab.addMathLine(mathLine("P", "W", "ADC.I_LOAD * ADC.V_BUS"))
+					&& tab.addMathLine(mathLine("Q", "W", "ADC.I_LOAD * SUPPLY_V"))
+					&& tab.addMathLine(mathLine("R", "", "sqrt(ADC.I_LOAD)"));
+			feedTab(tab, 0, 1000, true); /* SUPPLY_V not polled yet: Q has nothing to hold */
+			tab.frame({ { voltsKey, { QPointF(100.05, 12.5) } } });
+			feedTab(tab, 1000, 1000, false);
+			tab.frame({ { voltsKey, { QPointF(100.15, 13.0) } } });
+			feedTab(tab, 2000, 1000, false);
+			ChartView *view = tab.view();
+			const fast::Store *stream = view->fastStore(0);
+			const fast::Store *ps = view->fastStore(MathLines::fastStream(0)), *qs = view->fastStore(MathLines::fastStream(1)),
+							  *rs = view->fastStore(MathLines::fastStream(2));
+			bool product = added && stream && ps && stream->size() == 3000 && ps->size() == 3000;
+			int compared = 0;
+			for (qsizetype i = 0; product && i < 3000; i += 7, compared++)
+				product = ps->timeAt(i) == stream->timeAt(i)
+						&& ps->value(0, i) == double(float(stream->value(0, i) * stream->value(1, i)));
+			std::printf("     (P = ADC.I_LOAD * ADC.V_BUS: %lld records of %lld, %d compared; Q: %lld; R: %lld, %lld gaps)\n",
+					(long long) (ps ? ps->size() : -1), (long long) (stream ? stream->size() : -1), compared,
+					(long long) (qs ? qs->size() : -1), (long long) (rs ? rs->size() : -1), (long long) (rs ? rs->gaps() : -1));
+			check(product && compared > 400 && tab.mathLines().lines().value(0).fast() && tab.mathLinesShown() == 3
+							&& tab.fastLines() == 2,
+					"math lines, fast: ADC.I_LOAD * ADC.V_BUS is computed for every record of the stream, at the record's own "
+					"time, equal to the product of its two channels record by record");
+			bool heldRight = qs && qs->size() == 2000;
+			for (qsizetype i = 0; heldRight && i < 2000; i++)
+				heldRight = std::fabs(qs->timeAt(i) - stream->timeAt(1000 + i)) < 1e-9
+						&& qs->value(0, i) == double(float(stream->value(0, 1000 + i) * (i < 1000 ? 12.5 : 13.0)));
+			check(heldRight, "math lines, fast: a register in a fast math line (ADC.I_LOAD * SUPPLY_V) is held at its last "
+					"polled value for each record; before its first poll there is nothing to hold and no record is made");
+			qsizetype positive = 0;
+			for (qint64 k = 0; k < 3000; k++) positive += rawI(k) >= 0;
+			bool roots = rs && rs->size() == positive && rs->gaps() > 0;
+			for (qsizetype i = 0; roots && i < rs->size(); i++) {
+				const qsizetype at = stream->lowerBound(rs->timeAt(i) - 5e-5);
+				roots = at < stream->size() && std::fabs(stream->timeAt(at) - rs->timeAt(i)) < 1e-9
+						&& rs->value(0, i) == double(float(std::sqrt(stream->value(0, at))));
+			}
+			check(roots, "math lines, fast: a record whose result is no number (sqrt of a negative current) is left out, the "
+					"line broken there as over lost records; the others at their own times");
+			view->showSpan(timeOf(0), timeOf(2999));
+			tab.grab();
+			double lo = 1e300, hi = -1e300, binLo = 1e300, binHi = -1e300;
+			for (qsizetype i = 0; ps && i < ps->size(); i++) {
+				lo = std::min(lo, ps->value(0, i));
+				hi = std::max(hi, ps->value(0, i));
+			}
+			const QVector<ChartView::BinInfo> bins = view->lastBins(ChartTab::fastMathKey(0));
+			for (const ChartView::BinInfo &bin : bins) {
+				binLo = std::min(binLo, bin.min);
+				binHi = std::max(binHi, bin.max);
+			}
+			QString name;
+			for (const ChartView::Info &line : view->lines())
+				if (line.key == ChartTab::fastMathKey(0)) name = line.name;
+			std::printf("     (drawn: %lld bins, %.6f .. %.6f W; the records %.6f .. %.6f W; \"%s\")\n", (long long) bins.size(),
+					binLo, binHi, lo, hi, qPrintable(name));
+			check(bins.size() > 100 && binLo == lo && binHi == hi && name == QStringLiteral("ƒ P"),
+					"math lines, fast: the line ƒ P is drawn as a fast line, binned from its own records' summaries (its "
+					"columns' min and max are its records')");
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: a fast math line beside its channels */
+				const bool wasDark = Theme::isDark();
+				tab.show();
+				view->showLastValues(); /* the legend's values now, not at their pace */
+				for (const bool dark : { true, false }) {
+					Theme::apply(*qApp, dark);
+					tab.themeChanged();
+					view->showSpan(timeOf(0), timeOf(2999));
+					QTest::qWait(200);
+					tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + (dark ? QStringLiteral("_fast_math_dark.png")
+																					: QStringLiteral("_fast_math_light.png")));
+				}
+				Theme::apply(*qApp, wasDark);
+				tab.hide();
+			}
+		}
+		/* its RAM: the records in the chart's budget as a fast line's, trimmed to its share (16 lines: a sixteenth); the
+		 * stream's own store keeps none while none of its channels is on the chart */
+		{
+			QSettings().remove(group); /* no math lines of the chart before */
+			ChartTab tab{ [] { return 1000.0; }, nullptr, group };
+			tab.resize(1200, 700);
+			tab.setFastStreams({ def });
+			ChartView *view = tab.view();
+			view->setMemory(3600);
+			view->setRamBudget(256);
+			for (int k = 1; k <= 15; k++) view->addSeries(k, QStringLiteral("POLLED%1").arg(k), QStringLiteral("V"), Qt::blue);
+			tab.addMathLine(mathLine("P", "W", "ADC.I_LOAD * ADC.V_BUS"));
+			for (qint64 first = 0; first < 100 * 65536; first += 65536) feedTab(tab, first, 65536, first == 0);
+			const fast::Store *store = view->fastStore(MathLines::fastStream(0));
+			const qint64 share = 256ll * 1024 * 1024 / 16;
+			std::printf("     (the fast math line's store: %.1f MB of its %lld MB share, %lld records of %d; the stream's %lld; "
+					"computed in %.0f ms)\n", store ? store->bytes() / 1048576.0 : -1.0, (long long) (share >> 20),
+					(long long) (store ? store->size() : -1), 100 * 65536,
+					(long long) (view->fastStore(0) ? view->fastStore(0)->size() : -1), tab.fastMathNs() / 1e6);
+			check(store && store->bytes() <= share + 65536 * 4 && store->bytes() >= share / 2 && store->size() < 100 * 65536
+							&& view->bytesHeld() >= store->bytes() && view->bytesNeeded() > 0 && view->fastStore(0)
+							&& view->fastStore(0)->size() == 0,
+					"math lines, fast: its records count in the chart's RAM budget as a fast line's (one line of 16: trimmed to "
+					"a sixteenth); the stream's store keeps none while none of its channels is plotted");
+		}
+		/* the one cap: a fast math line is one of the 64 lines; the 65th of any kind is refused */
+		{
+			QSettings().remove(group); /* no math lines of the chart before */
+			ChartTab tab{ [] { return 1000.0; }, nullptr, group };
+			tab.setFastStreams({ def });
+			for (int k = 1; k <= 63; k++)
+				tab.view()->addSeries(k, QStringLiteral("POLLED%1").arg(k), QStringLiteral("V"), Qt::blue);
+			const bool first = tab.addMathLine(mathLine("P", "W", "ADC.I_LOAD * ADC.V_BUS"));
+			const int lines = tab.lineCount();
+			const bool second = tab.addMathLine(mathLine("Q", "W", "ADC.I_LOAD * 2"));
+			std::printf("     (the cap: the first fast math line %d, %d lines; the second %d, %d lines; \"%s\")\n", int(first),
+					lines, int(second), tab.lineCount(), qPrintable(tab.infoText()));
+			check(first && lines == 64 && !second && tab.lineCount() == 64 && tab.mathLinesShown() == 1 && tab.fastLines() == 0
+							&& tab.infoText().contains(QStringLiteral(" · 1 math")),
+					"math lines, fast: the cap counts a fast math line (one of 64 lines, a math line in the info line); a 65th "
+					"line is refused");
+		}
+		QSettings().remove(group);
 	}
 
 	/* Fast EVRe 5.3: a fast line measured: the statistics between the cursors from the store's summaries equal a plain

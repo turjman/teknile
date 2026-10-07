@@ -33,7 +33,10 @@
  *    thread, with progress and Cancel), Add note here, Open recording.
  *
  * Fast lines (Fast EVRe): the map's streams (setFastStreams), a channel's line on or off (plotFastChannel, named
- * STREAM.CHANNEL), and each block's records as they come (appendFast) into the chart's store of the stream.
+ * STREAM.CHANNEL), and each block's records as they come (appendFast) into the chart's store of the stream. A fast
+ * math line (model/math_lines.h: channels of one stream) is computed here from each block as it comes, on the window's
+ * thread with the blocks, into a store of its own (the chart's stream MathLines::fastStream(i)); its registers held at
+ * their last polled value; the trigger on it looked for here as its records are made (the engine has no such stream).
  *
  * The window says which registers are plotted (plotRegister) and hands over
  * the samples of every display frame (frame()); the tab adds the math lines'
@@ -124,8 +127,20 @@ public:
 	void setFastStreams(const QVector<StreamDef> &streams);
 	void plotFastChannel(int stream, int channel, bool on);
 	bool fastPlotted(int stream, int channel) const;
-	int fastLines() const; /* fast lines on the chart */
-	int mathLinesShown() const; /* math lines on the chart */
+	int fastLines() const; /* fast lines on the chart (a fast math line is a math line here) */
+	int mathLinesShown() const; /* math lines on the chart, fast ones too */
+	/* a fast math line's key on the chart (line i of the math lines); and whether a key is one */
+	static int fastMathKey(int line) { return ChartView::fastKey(MathLines::fastStream(line), 0); }
+	static bool isFastMathKey(int key) {
+		return ChartView::isFastKey(key) && (key - ChartView::FIRST_FAST_KEY) / 256 >= MathLines::FAST_STREAM;
+	}
+	/* the math lines as kept, and one added as New math line... adds it (false: refused by the cap); tests */
+	const MathLines &mathLines() const { return mathLines_; }
+	bool addMathLine(const MathLine &line);
+	/* a recording's chart: its fast math lines computed from its streams' records (the file's), each register held at
+	 * the value polled at or before each record (before the first: the first), after the samples came (frame) */
+	void fillFastMath();
+	qint64 fastMathNs() const { return fastMathNs_; } /* the window thread's time computing fast math lines (tests) */
 	/* every line on the chart: registers, math and fast lines together, at most RegisterModel::MAX_PLOTTED (one cap
 	 * for every kind: a line past it is refused, whatever its kind) */
 	int lineCount() const;
@@ -259,6 +274,12 @@ private:
 
 	/* the math lines */
 	void rebuildMath();           /* formulas -> registers, chart lines, the menu */
+	StreamDef fastMathDef(int line) const; /* its store's stream: one f32 channel, named for the formula and stream */
+	/* a block of a stream into the fast math lines over it (appendFast) */
+	void appendFastMath(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
+			bool marked);
+	QStringList fastChannelNames() const; /* STREAM.CHANNEL of every stream: the math lines compile against them */
+	bool fastMathDrawn(int line) const;   /* its line is on the chart */
 	void drawMathLines();         /* the chart's lines for them */
 	void rebuildMathMenu();       /* the ƒ Math button's menu and label */
 	void editMathLine(int line);  /* -1: a new one */
@@ -271,6 +292,21 @@ private:
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
 	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */
+	/* the fast math lines: each stream's starts seen (counted from 1) and its newest time mark; each line's store and
+	 * the start it has records of (a new store, or a start it has not seen: its records begin a new start, given the
+	 * stream's mark); the registers they read, held (live: the last polled value; a recording: every sample) */
+	QHash<int, quint64> streamStarts_;
+	QHash<int, fast::Store::Mark> streamMarks_;
+	struct FastMathState {
+		const fast::Store *store = nullptr;
+		quint64 start = 0;
+	};
+	QHash<int, FastMathState> fastMath_;  /* by line */
+	QHash<RegKey, QVector<QPointF>> held_;
+	fast::TriggerScan mathScan_;          /* the trigger on a fast math line: its crossings looked for here */
+	int mathScanStream_ = -1;             /* the chart's stream of the line it watches; -1: none */
+	qint64 fastMathNs_ = 0;
+	double fastMathMs_ = 0;               /* the timing aid: since its last line */
 	MathLines mathLines_;
 	QVector<RegDef> registers_;   /* the map's, for the math lines */
 

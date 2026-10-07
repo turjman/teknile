@@ -285,7 +285,7 @@ void ChartTab::writePerfLine() {
 	const double frames = std::max(1, p.frames);
 	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
 			"marks %10 strip %11 legend %12 grid %21 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s "
-			"fast %19/s columns %20\n")
+			"fast %19/s columns %20 | math %22 ms\n")
 			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
 			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
 			.arg(p.bin / frames, 0, 'f', 2).arg(p.lines / frames, 0, 'f', 2).arg(p.segments / frames, 0, 'f', 2)
@@ -293,8 +293,9 @@ void ChartTab::writePerfLine() {
 			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
 			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0)
 			.arg(double(fastSince_) / seconds, 0, 'f', 0).arg(double(p.fastColumns) / frames, 0, 'f', 1)
-			.arg(p.grid / frames, 0, 'f', 2);
+			.arg(p.grid / frames, 0, 'f', 2).arg(fastMathMs_, 0, 'f', 2);
 	fastSince_ = 0;
+	fastMathMs_ = 0;
 	measureThreadMs_ = 0;
 	measureMs_ = 0;
 	measuresTimed_ = 0;
@@ -720,7 +721,24 @@ void ChartTab::connectControls() {
 	connect(view, &ChartView::fastTriggerChanged, this, [this] {
 		int stream = -1;
 		const fast::TriggerWatch watch = chart_->view()->fastTriggerWatch(stream);
-		emit fastTriggerChanged(stream, watch);
+		if (stream < MathLines::FAST_STREAM) {
+			mathScanStream_ = -1;
+			mathScan_.set(fast::TriggerWatch());
+			emit fastTriggerChanged(stream, watch);
+			return;
+		}
+		/* a fast math line: its records are made here, so its crossings are looked for here, the first paired with its
+		 * newest record (as the engine pairs a stream's waiting blocks with the window's newest) */
+		mathScanStream_ = stream;
+		mathScan_.set(watch);
+		const fast::Store *store = chart_->view()->fastStore(stream);
+		QByteArray newest;
+		if (store && store->size() > 0) {
+			const float value = float(store->value(0, store->size() - 1));
+			newest = QByteArray(reinterpret_cast<const char *>(&value), sizeof value);
+		}
+		mathScan_.pairWith(fastMathDef(stream - MathLines::FAST_STREAM), newest);
+		emit fastTriggerChanged(-1, fast::TriggerWatch());
 	});
 	connect(view, &ChartView::triggerPositionChanged, this, [this](double fraction) { /* its mark dragged */
 		const QSignalBlocker quiet(triggerPosition_);
@@ -939,8 +957,18 @@ void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
 		for (int c = 0; c < fastStreams_[i].channels.size(); c++) view->removeSeries(ChartView::fastKey(i, c));
 		if (i >= streams.size()) view->removeFastStream(i);
 	}
+	const QStringList channelsBefore = fastChannelNames();
 	fastStreams_ = streams;
 	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
+	if (fastChannelNames() != channelsBefore) rebuildMath(); /* a formula over a channel compiles now, or no longer */
+}
+
+QStringList ChartTab::fastChannelNames() const {
+	QStringList names;
+	for (const StreamDef &stream : fastStreams_)
+		for (const StreamChannel &channel : stream.channels)
+			names << stream.name + QLatin1Char('.') + channel.name + QLatin1Char(' ') + typeName(channel.type);
+	return names;
 }
 
 void ChartTab::plotFastChannel(int stream, int channel, bool on) {
@@ -965,14 +993,14 @@ bool ChartTab::fastPlotted(int stream, int channel) const {
 
 int ChartTab::fastLines() const {
 	int n = 0;
-	for (const ChartView::Info &line : chart_->view()->lines()) n += ChartView::isFastKey(line.key);
+	for (const ChartView::Info &line : chart_->view()->lines()) n += ChartView::isFastKey(line.key) && !isFastMathKey(line.key);
 	return n;
 }
 
 int ChartTab::mathLinesShown() const {
 	int n = 0;
 	for (const ChartView::Info &line : chart_->view()->lines())
-		n += !ChartView::isFastKey(line.key) && line.key >= MathLines::FIRST_CHART_KEY;
+		n += isFastMathKey(line.key) || (!ChartView::isFastKey(line.key) && line.key >= MathLines::FIRST_CHART_KEY);
 	return n;
 }
 
@@ -996,6 +1024,146 @@ void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray
 	if (marked) view->markFast(stream, markRecord, markTime, markPeriod);
 	if (!crossings.isEmpty()) view->fastCrossings(stream, at, crossings); /* their times from the mark */
 	fastSince_ += quint64(std::max(0, count));
+	if (newStart || !streamStarts_.contains(stream)) streamStarts_[stream]++;
+	if (marked) streamMarks_[stream] = { markRecord, markTime, markPeriod };
+	if (mathLines_.activeCount() > 0) appendFastMath(stream, first, count, records, newStart, lost, marked);
+}
+
+/* Each fast math line over this stream: its values for the block's records, at their numbers (so at their times), into
+ * its store; a record whose result is no number is left out (the line breaks there, as over lost records). A line
+ * whose registers have not all been polled yet has nothing to hold: the block is not computed for it */
+void ChartTab::appendFastMath(int stream, quint64 first, int count, const QByteArray &records, bool newStart,
+		quint64 lost, bool marked) {
+	if (stream < 0 || stream >= fastStreams_.size() || count <= 0) return;
+	const StreamDef &def = fastStreams_[stream];
+	if (records.size() < qsizetype(count) * def.recordSize()) return;
+	ChartView *view = chart_->view();
+	const QVector<MathLine> &lines = mathLines_.lines();
+	QElapsedTimer timed;
+	timed.start();
+	QVector<float> values;
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const MathLine &line = lines[i];
+		const int chartStream = MathLines::fastStream(i);
+		const fast::Store *store = view->fastStore(chartStream);
+		if (!line.active() || line.stream != stream || !store) continue;
+		QVarLengthArray<double, 16> held(line.inputs.size());
+		bool known = true;
+		for (int k = 0; k < line.inputs.size() && known; k++) {
+			if (line.channels[k] >= 0) continue;
+			const auto it = held_.constFind(line.inputs[k]);
+			known = it != held_.constEnd() && !it->isEmpty();
+			if (known) held[k] = it->constLast().y();
+		}
+		if (!known) continue;
+		FastMathState &state = fastMath_[i];
+		if (state.store != store) state = { store, 0 };
+		/* its first records, or the first of a start it has not seen: a start of its own, laid on the stream's mark */
+		const bool newEpoch = state.start != streamStarts_.value(stream);
+		state.start = streamStarts_.value(stream);
+		values.resize(count);
+		line.evaluateRecords(def, records.constData(), count, held.data(), values.data());
+		const fast::Store::Mark mark = streamMarks_.value(stream);
+		const StreamDef mathDef = mathScanStream_ == chartStream ? fastMathDef(i) : StreamDef();
+		bool firstRun = true;
+		for (int k = 0; k < count;) {
+			if (std::isnan(values[k])) {
+				k++;
+				continue;
+			}
+			int end = k;
+			while (end < count && !std::isnan(values[end])) end++;
+			const QByteArray run(reinterpret_cast<const char *>(values.constData() + k), qsizetype(end - k) * 4);
+			const bool start = firstRun && (newStart || newEpoch);
+			const quint64 runLost = k == 0 ? lost : 0;
+			const qint64 at = view->appendFast(chartStream, first + quint64(k), end - k, run, start, runLost);
+			if (firstRun && (newEpoch || marked) && streamMarks_.contains(stream))
+				view->markFast(chartStream, mark.record, mark.time, mark.period);
+			firstRun = false;
+			if (!mathDef.channels.isEmpty() && at >= 0) {
+				fast::BlockTaken taken;
+				taken.first = first + quint64(k);
+				taken.count = end - k;
+				taken.newStart = start;
+				taken.lost = k == 0 ? lost : 1; /* after a record left out: not paired across it */
+				QVector<fast::Crossing> crossings;
+				mathScan_.scan(mathDef, taken, run.constData(), { mark.record, mark.time }, mark.period, crossings);
+				if (!crossings.isEmpty()) view->fastCrossings(chartStream, at, crossings);
+			}
+			k = end;
+		}
+	}
+	const qint64 ns = timed.nsecsElapsed();
+	fastMathNs_ += ns;
+	fastMathMs_ += double(ns) / 1e6;
+}
+
+StreamDef ChartTab::fastMathDef(int line) const {
+	StreamDef def;
+	if (line < 0 || line >= mathLines_.lines().size()) return def;
+	const MathLine &math = mathLines_.lines()[line];
+	const StreamDef source = math.stream >= 0 && math.stream < fastStreams_.size() ? fastStreams_[math.stream] : StreamDef();
+	/* named for what it is computed from: another formula, name or stream is another store (its records start afresh) */
+	def.name = QStringLiteral("%1\t%2\t%3\t%4").arg(math.name, math.unit, math.formula, source.name);
+	def.rate = source.rate;
+	StreamChannel channel;
+	channel.name = math.name;
+	channel.type = RegType::F32;
+	channel.unit = math.unit;
+	def.channels = { channel };
+	def.size = fast::HEADER + 4;
+	return def;
+}
+
+bool ChartTab::addMathLine(const MathLine &line) {
+	if (!roomForLine()) return false;
+	mathLines_.add(line);
+	rebuildMath();
+	return true;
+}
+
+void ChartTab::fillFastMath() {
+	ChartView *view = chart_->view();
+	const QVector<MathLine> &lines = mathLines_.lines();
+	QElapsedTimer timed;
+	timed.start();
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const MathLine &line = lines[i];
+		const fast::Store *source = line.fast() ? view->fastStore(line.stream) : nullptr;
+		if (!line.active() || !source || !view->fastStore(MathLines::fastStream(i))) continue;
+		/* each register's samples, and the one at or before the record now (records come in time order) */
+		QVector<const QVector<QPointF> *> samples(line.inputs.size(), nullptr);
+		QVector<qsizetype> at(line.inputs.size(), 0);
+		bool known = true;
+		for (int k = 0; k < line.inputs.size(); k++) {
+			if (line.channels[k] >= 0) continue;
+			const auto it = held_.constFind(line.inputs[k]);
+			known = known && it != held_.constEnd() && !it->isEmpty();
+			if (known) samples[k] = &*it;
+		}
+		if (!known) continue;
+		QVarLengthArray<double, 16> values(line.inputs.size());
+		auto store = std::make_shared<fast::Store>(fastMathDef(i));
+		store->fillFrom(*source, [&](qsizetype r, char *record) {
+			const double t = source->timeAt(r);
+			for (int k = 0; k < line.inputs.size(); k++) {
+				if (line.channels[k] >= 0) {
+					values[k] = source->value(line.channels[k], r);
+					continue;
+				}
+				const QVector<QPointF> &points = *samples[k];
+				while (at[k] + 1 < points.size() && points[at[k] + 1].x() <= t) at[k]++;
+				values[k] = points[at[k]].y();
+			}
+			const float value = float(line.expr.eval(values.data()));
+			std::memcpy(record, &value, sizeof value);
+			return std::isfinite(value);
+		});
+		view->setFastStore(MathLines::fastStream(i), store);
+		fastMath_[i] = { store.get(), streamStarts_.value(line.stream) };
+	}
+	held_.clear(); /* the next feed brings them again */
+	fastMathNs_ += timed.nsecsElapsed();
 }
 
 void ChartTab::clearLines() {
@@ -1013,6 +1181,17 @@ void ChartTab::frame(const MathLines::Samples &samples) {
 		polls = std::max(polls, it.value().size());
 	}
 	pollsSince_ += polls;
+	/* the registers a fast math line reads, held for its records: the last polled value (a recording: every sample) */
+	for (const MathLine &line : mathLines_.lines()) {
+		if (!line.active() || !line.fast()) continue;
+		for (int k = 0; k < line.inputs.size(); k++) {
+			const auto it = samples.constFind(line.inputs[k]);
+			if (line.channels[k] >= 0 || it == samples.constEnd() || it->isEmpty()) continue;
+			QVector<QPointF> &kept = held_[line.inputs[k]];
+			if (recording_) kept += *it;
+			else kept = { it->constLast() };
+		}
+	}
 	if (!mathLines_.isEmpty())
 		mathLines_.evaluate(samples, [this](int key, double time, double value) { chart_->append(key, time, value); });
 	chart_->frame();
@@ -1029,7 +1208,8 @@ void ChartTab::setShown(bool shown) {
 QString ChartTab::infoText(int width) const {
 	int registers = 0, math = 0, fast = 0;
 	for (const ChartView::Info &line : chart_->view()->lines())
-		(ChartView::isFastKey(line.key) ? fast : line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
+		(isFastMathKey(line.key) ? math : ChartView::isFastKey(line.key) ? fast
+				: line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
 	/* the parts in their places, and the order they go in when the line is narrow: a part cut in the middle ("32/64
 	 * plotted · 60 fp…") said less than the parts left whole */
 	enum Part { Count, Plotted, Math, Fast, Fps, PaintTime, Delay, Drawer, PARTS };
@@ -2117,24 +2297,51 @@ void ChartTab::editNote(int index) {
 /* ----------------------------------------------------------- the math lines */
 
 void ChartTab::rebuildMath() {
-	mathLines_.compile(registers_);
+	mathLines_.compile(registers_, fastStreams_);
 	drawMathLines();
 	rebuildMathMenu();
 	emit mathRegistersChanged(); /* the registers the formulas read are sampled too */
 }
 
 void ChartTab::drawMathLines() {
-	for (int i = 0; i < MathLines::MAX_DRAWN; i++) chart_->removeSeries(MathLines::chartKey(i));
+	ChartView *view = chart_->view();
 	const QVector<MathLine> &lines = mathLines_.lines();
+	/* a fast math line drawn as it is stays as it is: its records (its store) and the trigger's watch on it go on */
+	QVector<bool> kept(MathLines::MAX_DRAWN, false);
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const fast::Store *store = view->fastStore(MathLines::fastStream(i));
+		kept[i] = lines[i].active() && lines[i].fast() && store && store->def().name == fastMathDef(i).name
+				&& fastMathDrawn(i);
+	}
+	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		chart_->removeSeries(MathLines::chartKey(i));
+		if (kept[i]) continue;
+		chart_->removeSeries(fastMathKey(i));
+		view->removeFastStream(MathLines::fastStream(i));
+		fastMath_.remove(i);
+	}
 	const QVector<QColor> &palette = Theme::colors().series;
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
 		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
 		 * another map), the registers already on it stay */
-		if (!lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
+		if (kept[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
-		chart_->addSeries(MathLines::chartKey(i), QStringLiteral("ƒ %1").arg(lines[i].name), lines[i].unit, color);
+		const QString name = QStringLiteral("ƒ %1").arg(lines[i].name);
+		if (lines[i].fast()) { /* its records in a store of their own, made as its stream's blocks come */
+			view->setFastStream(MathLines::fastStream(i), fastMathDef(i));
+			chart_->addSeries(fastMathKey(i), name, lines[i].unit, color);
+		} else {
+			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
+		}
 	}
+}
+
+bool ChartTab::fastMathDrawn(int line) const {
+	const int key = fastMathKey(line);
+	for (const ChartView::Info &info : chart_->view()->lines())
+		if (info.key == key) return true;
+	return false;
 }
 
 void ChartTab::rebuildMathMenu() {
@@ -2179,10 +2386,7 @@ void ChartTab::editMathLine(int line) {
 	start.unit = QStringLiteral("W");
 	if (line >= 0) start = mathLines_.lines()[line];
 	MathLineDialog dialog(start, line >= 0, registers_, window()); /* over the window, as its other dialogs */
-	QStringList channels;
-	for (const StreamDef &stream : std::as_const(fastStreams_))
-		for (const StreamChannel &channel : stream.channels) channels << stream.name + QLatin1Char('.') + channel.name;
-	dialog.setFastChannels(channels);
+	dialog.setFastStreams(fastStreams_); /* a formula over one stream's channels is a fast math line */
 	if (dialog.exec() != QDialog::Accepted) return;
 	MathLine edited = dialog.result();
 	/* an edit that would draw a line more (it was off or did not compile) past the cap: kept, but not shown */

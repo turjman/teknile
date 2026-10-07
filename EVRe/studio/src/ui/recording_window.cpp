@@ -358,6 +358,7 @@ void RecordingWindow::feed() {
 		}
 		tab_->frame(samples);
 	}
+	tab_->fillFastMath(); /* a fast math line: from its stream's records, its registers held from the samples above */
 	tab_->view()->showLastValues();
 	feeding_ = false;
 }
