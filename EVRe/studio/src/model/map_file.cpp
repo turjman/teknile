@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
 #include <QObject>
@@ -185,6 +186,57 @@ bool parseLogin(const QJsonObject &json, uint16_t &addr, int &size, QString &err
 	return true;
 }
 
+/* "streams": [ { "name", "addr", "size", "rate", "rate_reg", "enable", "group", "desc", "notes", "channels" } ].
+ * What makes a stream unreadable stops the load (an address or a type that is no number or type, a key missing);
+ * what makes it unusable is the checker's (map_check.cpp). */
+bool parseStreams(const QJsonValue &json, QVector<StreamDef> &streams, QString &err) {
+	streams.clear();
+	const QJsonArray list = json.toArray();
+	for (int i = 0; i < list.size(); i++) {
+		const QJsonObject object = list[i].toObject();
+		StreamDef stream;
+		stream.name = object.value(QLatin1String("name")).toString();
+		const QString label = stream.name.isEmpty() ? QString::number(i + 1) : stream.name;
+		for (const char *key : { "name", "addr", "size", "rate", "channels" })
+			if (!object.contains(QLatin1String(key))) {
+				err = QObject::tr("stream %1: \"%2\" is missing").arg(label, QLatin1String(key));
+				return false;
+			}
+		bool ok;
+		stream.addr = parseUint16(object.value(QLatin1String("addr")), ok);
+		if (!ok) {
+			err = QObject::tr("stream %1: bad address").arg(label);
+			return false;
+		}
+		stream.size = object.value(QLatin1String("size")).toInt(0);
+		stream.rate = object.value(QLatin1String("rate")).toDouble(0);
+		stream.rateReg = object.value(QLatin1String("rate_reg")).toString();
+		stream.enable = object.value(QLatin1String("enable")).toString();
+		stream.group = object.value(QLatin1String("group")).toString();
+		stream.desc = object.value(QLatin1String("desc")).toString();
+		stream.notes = object.value(QLatin1String("notes")).toString();
+		const QJsonArray channels = object.value(QLatin1String("channels")).toArray();
+		for (const QJsonValue &value : channels) {
+			const QJsonObject c = value.toObject();
+			StreamChannel channel;
+			channel.name = c.value(QLatin1String("name")).toString();
+			const QString type = c.value(QLatin1String("type")).toString(QStringLiteral("i16"));
+			if (!parseType(type, channel.type)) {
+				err = QObject::tr("stream %1, channel %2: unknown type \"%3\"").arg(label, channel.name, type);
+				return false;
+			}
+			channel.unit = c.value(QLatin1String("unit")).toString();
+			channel.scale = c.value(QLatin1String("scale")).toDouble(1.0);
+			channel.offset = c.value(QLatin1String("offset")).toDouble(0.0);
+			channel.decimals = std::clamp(c.value(QLatin1String("decimals")).toInt(-1), -1, 15);
+			channel.desc = c.value(QLatin1String("desc")).toString();
+			stream.channels.push_back(channel);
+		}
+		streams.push_back(stream);
+	}
+	return true;
+}
+
 /* the map's own settings (all but the registers) */
 bool parseSettings(const QJsonObject &root, DeviceMap &map, QString &err) {
 	map.format = root.value(QLatin1String("format")).toString(QStringLiteral("evre-map/1"));
@@ -224,7 +276,7 @@ bool parseSettings(const QJsonObject &root, DeviceMap &map, QString &err) {
 	map.loginSize = 16;
 	const QJsonValue login = root.value(QLatin1String("login"));
 	if (login.isObject() && !parseLogin(login.toObject(), map.loginAddr, map.loginSize, err)) return false;
-	return true;
+	return parseStreams(root.value(QLatin1String("streams")), map.streams, err);
 }
 
 } // namespace
@@ -391,7 +443,7 @@ const QStringList REGISTER_KEYS{ "addr", "name", "type", "size", "unit", "access
 	"enum", "fields" };
 const QStringList FIELD_KEYS{ "name", "bits", "access", "desc", "values" };
 const QStringList SETTINGS_KEYS{ "format", "device", "desc", "notes", "device_id", "slave", "usb", "login",
-	"protocol", "groups", "extends", "registers" };
+	"protocol", "groups", "extends", "registers", "streams" };
 
 Value str(const QString &text) { return Value::makeString(text); }
 Value num(double number) { return Value::makeNumber(number); }
@@ -472,6 +524,38 @@ Value registerJson(const RegDef &def) {
 	return json;
 }
 
+/* the streams the Studio's way: every key that is not at its default */
+Value streamsJson(const QVector<StreamDef> &streams) {
+	Value list = Value::makeArray();
+	for (const StreamDef &stream : streams) {
+		Value json = Value::makeObject();
+		add(json, QStringLiteral("name"), str(stream.name));
+		add(json, QStringLiteral("addr"), str(addrText(stream.addr)));
+		add(json, QStringLiteral("size"), num(stream.size));
+		add(json, QStringLiteral("rate"), num(stream.rate));
+		if (!stream.rateReg.isEmpty()) add(json, QStringLiteral("rate_reg"), str(stream.rateReg));
+		if (!stream.enable.isEmpty()) add(json, QStringLiteral("enable"), str(stream.enable));
+		if (!stream.group.isEmpty()) add(json, QStringLiteral("group"), str(stream.group));
+		if (!stream.desc.isEmpty()) add(json, QStringLiteral("desc"), str(stream.desc));
+		if (!stream.notes.isEmpty()) add(json, QStringLiteral("notes"), str(stream.notes));
+		Value channels = Value::makeArray();
+		for (const StreamChannel &channel : stream.channels) {
+			Value c = Value::makeObject();
+			add(c, QStringLiteral("name"), str(channel.name));
+			add(c, QStringLiteral("type"), str(typeName(channel.type)));
+			if (!channel.unit.isEmpty()) add(c, QStringLiteral("unit"), str(channel.unit));
+			if (channel.scale != 1.0) add(c, QStringLiteral("scale"), num(channel.scale));
+			if (channel.offset != 0.0) add(c, QStringLiteral("offset"), num(channel.offset));
+			if (channel.decimals >= 0) add(c, QStringLiteral("decimals"), num(channel.decimals));
+			if (!channel.desc.isEmpty()) add(c, QStringLiteral("desc"), str(channel.desc));
+			channels.items.push_back(c);
+		}
+		add(json, QStringLiteral("channels"), channels);
+		list.items.push_back(json);
+	}
+	return list;
+}
+
 /* the map's settings the Studio's way (no "extends", no registers) */
 Value settingsJson(const DeviceMap &map) {
 	Value json = Value::makeObject();
@@ -512,6 +596,7 @@ Value settingsJson(const DeviceMap &map) {
 		}
 		add(json, QStringLiteral("groups"), groups);
 	}
+	if (!map.streams.isEmpty()) add(json, QStringLiteral("streams"), streamsJson(map.streams));
 	return json;
 }
 
@@ -763,6 +848,12 @@ QByteArray DeviceMap::toJson(const QString &file, bool flatten) const {
 		Value list = Value::makeArray();
 		for (int i = 0; i < regs.size(); i++) list.items.push_back(registerOf(i));
 		root.set(QStringLiteral("registers"), list);
+		/* the streams after the registers they name, where a new map has them */
+		if (const Value *streams = root.find(QStringLiteral("streams")); streams && !src) {
+			const Value kept = *streams;
+			root.remove(QStringLiteral("streams"));
+			root.set(QStringLiteral("streams"), kept);
+		}
 		jsondoc::forgetSource(root);
 		return jsondoc::render(root, fresh, 0) + "\n";
 	}
@@ -870,8 +961,35 @@ bool DeviceMap::save(const QString &file, QString &err, bool flatten) const {
 	return true;
 }
 
+const RegDef *DeviceMap::registerNamed(const QString &name) const {
+	for (const RegDef &def : regs)
+		if (def.name == name) return &def;
+	return nullptr;
+}
+
 void DeviceMap::sort() {
 	std::stable_sort(regs.begin(), regs.end(), [](const RegDef &a, const RegDef &b) { return a.addr < b.addr; });
+}
+
+/* ------------------------------------------------------------- the streams */
+
+QByteArray streamToJson(const StreamDef &stream) {
+	Value list = streamsJson({ stream });
+	jsondoc::forgetSource(list);
+	return jsondoc::render(list.items.front(), jsondoc::Style{ false, QByteArray(" "), 1 << 30 }, 0);
+}
+
+bool streamFromJson(const QByteArray &json, StreamDef &stream, QString &err) {
+	QJsonParseError parseError;
+	const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
+	if (!doc.isObject()) {
+		err = parseError.errorString();
+		return false;
+	}
+	QVector<StreamDef> streams;
+	if (!parseStreams(QJsonArray{ doc.object() }, streams, err)) return false;
+	stream = streams.front();
+	return true;
 }
 
 /* ------------------------------------------------------------ the clipboard */

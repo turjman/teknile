@@ -93,10 +93,20 @@ and one pull request into `main`; a later PR says "after #N". Finish a phase com
 check per behaviour, STUDIO.md, Help, the check count, every Linux test) before starting the next.
 If the session has to stop, push what is done and say in that phase's PR where it stopped.
 
-Phases 1-4 and 8 are merged into `main`. **Phase 9 is open** (branch `phase9-lanes-fit`, PR #7).
-**Then, in this order: phase 0, phase 7, phase 10**, each on its own branch made from the one
-before (phase 0's from `phase9-lanes-fit`) and its own PR ("after #7", ...). Phases 5 (fast streams)
-and 6 (macOS) are kept for later: do not start them.
+Phases 1-4, 8, 9, 0, 7 and 10 are merged into `main`; their texts below are kept as a record (the
+code and STUDIO.md are the truth now). **Two lines of work are open, each for a session of its own**
+(their texts are at the end of this plan):
+
+- **Phase 5, Fast EVRe**, on the line of `main`: parts 5.1 to 5.5 in order. 5.1 is on the branch
+  `phase5a-fast-wire` (it exists, made from `main`, with this plan); each later part on a branch made
+  from the one before; pull requests into `main`.
+- **Phase G, EVRe Guard part 2**, on the line of the branch `evre-1.1` (library 1.1 and Guard part 1,
+  not in `main` yet): parts G.0 to G.6 in order, each on a branch made from the one before (G.0's
+  from `evre-1.1`); pull requests into **`evre-1.1`, never into `main`**.
+
+A session works on the one line its command names and leaves the other alone. Do not change this
+work plan: say in the pull requests how far a line is. Phase 6 (macOS) is kept for later: do not
+start it.
 
 Keep token use lean: read the parts of files you need (grep, then read the lines), not whole
 files; STUDIO.md is long, read the chapters a phase touches. Build once per change set, not per
@@ -106,7 +116,8 @@ merges; never merge yourself.
 Decisions already taken: a recording opens in a window of its own; Log Y and Normalise exclude
 each other (choosing one turns the other off); the measurement table gets a column chooser;
 running totals reset only with the chart's Clear; notes are saved beside a recording in
-`<recording>.notes.json`; Arabic uses Western digits and a decimal point.
+`<recording>.notes.json`; Arabic uses Western digits and a decimal point. For phases 5 and G every
+decision of their plans (F-1 to F-19, G-1 to G-25) is taken as recommended there.
 
 ### Phase 1: readouts and two fixes (branch `phase1-readouts`)
 
@@ -397,3 +408,55 @@ The owner's Windows run measures; this phase gives it the tool and fixes the kno
      the state's rect and the legend's rect (arrow included) do not overlap; the parts dropped in
      that order; the tooltip holds the full text; with room, nothing is dropped. Docs (7.x where the
      state corner is described, 23), Arabic (the texts change: Arabic is longer, check it there too).
+
+### Phase 5: Fast EVRe, parts 5.1 to 5.5 (first branch `phase5a-fast-wire`, pull requests into `main`)
+
+Sample streams: a device sends its samples in numbered blocks, as `READ_RESP` frames nobody asked
+for, at an address span of the device bank that the map gives the stream. **The design, the
+decisions and the checks are in `EVRe/docs/FAST_PLAN.md`.** Read its sections 1 to 8 once; then,
+for each part, its row in section 14, the checks of section 10 that belong to it, and what section
+16 fixes for the build (names, the example map, the fake devices' test aids, the `.evrs` pieces,
+what is checked on Linux and what is left for Windows).
+
+- The protocol and `EVRe/lib/EVRe.h`, `EVRe.cpp` do not change. The owner's OK is given for the new
+  folder `EVRe/lib/fast/` (the device helper, in 5.1) and for a "Fast EVRe" section in
+  `EVRe/docs/PROTOCOL.md`.
+- The parts and their branches: 5.1 the wire and the map (`phase5a-fast-wire`); 5.2 the store and
+  the chart (`phase5b-fast-chart`); 5.3 measuring (`phase5c-fast-measure`); 5.4 recording
+  (`phase5d-fast-recording`); 5.5 the rest (`phase5e-fast-rest`).
+- 5.2 is the largest and the riskiest: fast lines come into `chart_widget.cpp` beside what works,
+  and nothing around them is reshaped. Its pull request lists every place that reads a line's
+  `times` or `values`, and what was done there.
+- Every part: a GUI check for each behaviour, the check count, STUDIO.md, the Help, the Arabic of
+  every new text (listed in the pull request, English beside Arabic), and the human-eye rules for
+  the new card, rows and pages.
+- Before a pull request is opened, merge `origin/main` into the branch: other pull requests land
+  there meanwhile (#12, the Python client's answer matching, is one).
+
+### Phase G: EVRe Guard part 2, parts G.0 to G.6 (the line of `evre-1.1`, pull requests into `evre-1.1`)
+
+The branch `evre-1.1` holds library 1.1 and EVRe Guard part 1 as the owner's dev copy had them:
+`EVRe/lib` (1.1, with `lib/guard`), the library's own suite in `EVRe/tests`, PROTOCOL.md in its 1.1
+text, and `EVRe/REVIEW.md`, the record of the 1.1 review (decisions D-1 to D-25). `main` stays on
+library 1.0 until the owner merges 1.1 himself: **no pull request of this phase goes into `main`.**
+
+**The design, the decisions, the tests and the build rules R1 to R9 are in
+`EVRe/docs/GUARD_PLAN.md`** (on this line only). Read its sections 0 to 6 and 12 once; then, for
+each part, its row in section 13, the tests of section 9 that belong to it, and what section 15
+fixes for the build (where the dev copy's files are in the repo, G.0's list, the D-numbers).
+
+- The parts and their branches: G.0 the dev copy made at home in the repo (`guard0-in-the-repo`);
+  G.1 the check, P1 (`guard1-check`); G.2 the proof, P2 (`guard2-proof`); G.3 the map's keys, the
+  hosts and the generator, P3a and P3b (`guard3-map-tools`); G.4 the additions A1 and A2 and the
+  device's own frames, P4 and G-25 (`guard4-additions`); G.5 the table for library 1.1, P5
+  (`guard5-table-11`); G.6 the review, P6 (`guard6-review`). The firmware's steps (F1 to F6) are
+  not part of this phase.
+- The owner's OK for `EVRe/lib` is given for what GUARD_PLAN.md says and no more: the new files
+  `lib/guard/evre_guard_desc.*`, the one line `VALUE_REFUSED = 15` in `lib/EVRe.h` with its comment,
+  and the rule of G-25 in part 1's comments. Nothing else in `lib/EVRe.*`.
+- The library's own suite, beside the tests of "Build and test on Linux":
+  `(cd $R/EVRe && python3 tests/run_lib_tests.py)`. It must end with 0 failed. G.0 puts it into
+  `ci.yml`.
+- Before a pull request is opened, merge `origin/evre-1.1` into the branch. Before G.3 also merge
+  `origin/main` into it: Fast EVRe's changes to the map, the checker and the Map editor may have
+  landed there, and both are kept.

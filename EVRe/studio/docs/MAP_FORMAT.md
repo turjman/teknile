@@ -44,6 +44,7 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `groups` | object | none | notes per group: `{ "Power": { "notes": "…" } }` |
 | `extends` | string | none | an overlay: the path of the map this one changes, relative to this file (section 7) |
 | `registers` | array | `[]` | the registers (section 4) |
+| `streams` | array | none | the device's sample streams, Fast EVRe (section 9) |
 
 ## 4. A register
 
@@ -167,3 +168,54 @@ A status register with fields and a command register:
 ```
 
 `maps/example_device.json` in EVRe Studio is a complete map of the fake test device.
+
+## 9. Streams (Fast EVRe)
+
+A device that takes samples on its own clock may send them in numbered blocks: Fast EVRe, a layer above the
+protocol (PROTOCOL.md, "Fast EVRe"). Each block is a `READ_RESP` nobody asked for, at the first address of the
+stream's *window*: a span of the device bank that the map gives to the stream and that no register uses. The map
+says where the blocks come from, how fast, and what a record holds:
+
+```json
+"streams": [
+  { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000, "enable": "ADC_STREAM",
+    "group": "Power", "desc": "load current and bus voltage, sampled together",
+    "channels": [
+      { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },
+      { "name": "V_BUS",  "type": "i16", "unit": "V", "scale": 0.001 }
+    ] }
+]
+```
+
+A stream:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `name` | string | **required** | unique among the map's streams and registers |
+| `addr` | 16-bit&nbsp;number | **required** | the window's first address, in the device bank `0xD000`..`0xDFFF` |
+| `size` | integer | **required** | the window's bytes: the largest block, its 8-byte header included |
+| `rate` | number | **required** | records a second, as the device is built |
+| `rate_reg` | string | none | a register whose shown value is the rate now, read at the start and after a write to it |
+| `enable` | string | none | a writable register: a host writes 1 to start the stream and 0 to stop it. Without it the stream is the device's own business: a host only listens |
+| `group`,&nbsp;`desc`,&nbsp;`notes` | strings | as&nbsp;a&nbsp;register's | for people |
+| `channels` | array | **required** | what one record holds, in order, packed, little endian |
+
+A channel:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `name` | string | **required** | unique in its stream. Tools name the line `STREAM.CHANNEL`, as they name a register's field |
+| `type` | string | `"i16"` | a number type of section 5.1: `u8` to `f32`. Never `bytes` |
+| `unit`,&nbsp;`scale`,&nbsp;`offset`,&nbsp;`decimals`,&nbsp;`desc` | as&nbsp;a&nbsp;register's | | shown = raw × scale + offset |
+
+A record is one instant of all the stream's channels; its size is the sum of its channels' sizes. A block holds
+up to (`size` − 8) / record size records.
+
+A map is wrong (a checker refuses it) when a stream has: a window outside `0xD000`..`0xDFFF`; a window that shares
+a byte with a register or another stream's window; a window smaller than the header and one record; no channel; a
+`bytes` channel; a rate that is not above 0; an `enable` or `rate_reg` that names no register, or an `enable` that
+names one a host cannot write; a name used twice.
+
+No register is declared over a window: a tool that polled it would read the whole window at every poll.
+
+`maps/example_fast.json` in EVRe Studio is a map with a stream: the fast fake test device.

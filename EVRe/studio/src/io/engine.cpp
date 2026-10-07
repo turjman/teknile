@@ -101,8 +101,13 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 		if (monitorOn_) monitorLine("TX", raw, QString());
 	});
 	connect(master_, &evre::Master::frameReceived, this, [this](const QByteArray &raw, const QString &what) {
-		if (monitorOn_) monitorLine("RX", raw, what);
+		if (!monitorOn_) return;
+		const int stream = fastStreamOfRaw(raw);
+		monitorLine("RX", raw, stream >= 0 ? tr("READ_RESP (fast stream %1)").arg(fastRuns_[stream].def.name) : what);
 	});
+	fastWatch_ = new QTimer(this);
+	fastWatch_->setInterval(500);
+	connect(fastWatch_, &QTimer::timeout, this, &IoEngine::watchFast);
 	clock_.start();
 	rateClock_.start();
 #ifdef Q_OS_WIN
@@ -175,6 +180,32 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		stopStream();
 		if (connected_ && canAutoSend_ && oneDevice != 0) applyAutoSend(oneDevice);
 	}
+	/* Fast EVRe: the one device's streams, each wish and state kept by name; a stream gone from the map is switched
+	 * off on the device first (on a bus there are none: the window switched them off before) */
+	QVector<FastRun> runs;
+	if (!isBus() && !devices_.isEmpty() && devices_[0].map) {
+		const DeviceMap &map = *devices_[0].map;
+		for (const StreamDef &def : map.streams) {
+			FastRun run;
+			for (const FastRun &old : std::as_const(fastRuns_))
+				if (old.def.name == def.name) run = old;
+			if (run.def.addr != def.addr || run.def.recordSize() != def.recordSize()) run.state.reset(def);
+			run.def = def;
+			const RegDef *enable = map.registerNamed(def.enable), *rate = map.registerNamed(def.rateReg);
+			run.enableReg = enable ? *enable : RegDef();
+			run.rateReg = rate ? *rate : RegDef();
+			runs.push_back(run);
+		}
+	}
+	for (const FastRun &old : std::as_const(fastRuns_)) {
+		const bool kept = std::any_of(runs.begin(), runs.end(), [&](const FastRun &r) { return r.def.name == old.def.name; });
+		if (kept || !connected_ || !old.deviceMaySend || !old.enable() || oneDevice == 0) continue;
+		QByteArray zero;
+		QString why;
+		if (encodeValue(old.enableReg, QStringLiteral("0"), zero, why)) master_->writeTo(oneDevice, old.enableReg.addr, zero);
+	}
+	fastRuns_ = runs;
+	if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
 	QStringList names;
 	if (isBus())
 		for (const EngineDevice &device : devices_) names << device.name;
@@ -282,6 +313,7 @@ void IoEngine::disconnectLink() {
 			link_->drain(100); /* its last frames read: closed with bytes unread, TCP dropped the off on the way */
 			deviceMaySend_ = false;
 		}
+		if (link_->isOpen()) sendFastOffs();
 		if (link_->isOpen()) link_->close();
 		link_.release()->deleteLater();
 	}
@@ -295,6 +327,13 @@ void IoEngine::disconnectLink() {
 	retryPending_ = false; /* cancelled with the link */
 	streamAddr_ = streamCount_ = 0;
 	streamRows_.clear();
+	/* the fast streams' wishes stay too: switched on again at the next connect */
+	for (FastRun &run : fastRuns_) {
+		run.on = run.deviceMaySend = false;
+		run.request++;
+		run.takenMs = -1;
+	}
+	fastWatch_->stop();
 	updateStats();
 }
 
@@ -312,6 +351,9 @@ void IoEngine::onOpened() {
 	emit opened(link_->describe());
 	sendLogin();
 	readDeviceInfo();
+	/* the fast streams wanted (a reconnect): on again, after the login */
+	for (int i = 0; i < fastRuns_.size(); i++)
+		if (fastRuns_[i].wanted) applyFast(i);
 	resumePolling();
 	updateStats();
 }
@@ -686,6 +728,10 @@ void IoEngine::updateStats() {
 		pollHz = pollsSinceRate_ / elapsed;
 		framesHz = framesSinceRate_ / elapsed;
 		pollsSinceRate_ = framesSinceRate_ = 0;
+		for (FastRun &run : fastRuns_) {
+			run.recordsHz = connected_ && run.on ? double(run.recordsSinceRate) / elapsed : 0;
+			run.recordsSinceRate = 0;
+		}
 		rateClock_.restart();
 	}
 	if (csvFile_->isOpen()) csvStream_.flush();
@@ -706,6 +752,23 @@ void IoEngine::updateStats() {
 	stats_.jsonPort = api_->jsonPort();
 	stats_.apiClients = api_->clientCount();
 	stats_.apiRequests = api_->requests();
+	stats_.fast.resize(fastRuns_.size());
+	for (int i = 0; i < fastRuns_.size(); i++) {
+		const FastRun &run = fastRuns_[i];
+		Stats::Fast &f = stats_.fast[i];
+		f.name = run.def.name;
+		f.wanted = run.wanted;
+		f.on = connected_ && run.on;
+		f.rate = run.state.clock().started() ? run.state.clock().rate() : 0;
+		f.ppm = run.state.clock().started() ? run.state.clock().ppm() : 0;
+		f.recordsHz = run.recordsHz;
+		f.records = run.state.records;
+		f.blocks = run.state.blocks;
+		f.lost = run.state.lost;
+		f.badBlocks = run.state.badBlocks;
+		f.newerBlocks = run.state.newerBlocks;
+		f.starts = run.state.starts;
+	}
 }
 
 /* ---------------------------------------------------------------- AUTO_SEND */
@@ -825,7 +888,7 @@ void IoEngine::noFrames() {
 
 void IoEngine::stopStream() {
 	autoSendOn_ = false;
-	heartbeatTimer_->stop();
+	if (!anyFastOn()) heartbeatTimer_->stop(); /* a fast stream still needs it */
 	firstFrameTimer_->stop();
 	if (streamCount_ == 0) return;
 	streamAddr_ = streamCount_ = 0;
@@ -837,6 +900,12 @@ void IoEngine::stopStream() {
  * table and it is a sample tick (chart points, a CSV row). Anything else (a late answer) is ignored. When it covers
  * other registers than the last one, the polls are laid out again without them. */
 void IoEngine::onUnsolicited(const evre::Frame &frame) {
+	/* a fast stream's block, recognised first: by its slave and its window */
+	const int stream = fastStreamOf(frame);
+	if (stream >= 0) {
+		takeBlock(stream, frame);
+		return;
+	}
 	if (!autoSendOn_ || isBus() || frame.fn != evre::READ_RESP || frame.slave != target(0)
 			|| frame.addr != evre::READ_ONLY_BLOCK || frame.cnt == 0 || frame.data.size() != frame.cnt)
 		return;
@@ -857,11 +926,11 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 	writeCsvRow(t);
 }
 
-/* Every HEARTBEAT_MS while AUTO_SEND is on: CONFIG read, whatever the polling is (Poll off, or every register in the
- * frames), so the device's host watchdog sees a request. AUTO_SEND found cleared (the device reset, or someone wrote
- * CONFIG): said once, and not switched on again by itself. */
+/* Every HEARTBEAT_MS while AUTO_SEND or a fast stream is on: CONFIG read, whatever the polling is (Poll off, or every
+ * register in the frames), so the device's host watchdog sees a request. AUTO_SEND found cleared (the device reset,
+ * or someone wrote CONFIG): said once, and not switched on again by itself. */
 void IoEngine::heartbeat() {
-	if (!connected_ || !autoSendOn_ || heartbeatPending_) return;
+	if (!connected_ || (!autoSendOn_ && !anyFastOn()) || heartbeatPending_) return;
 	heartbeatPending_ = true;
 	const quint64 request = autoSendRequest_;
 	master_->readFrom(target(0), evre::CONFIG, 2, [this, request](const evre::Result &r) {
@@ -888,6 +957,197 @@ int IoEngine::streamBytes() const {
 		if (v.def.slave == 0 && !v.def.rw && v.def.addr >= evre::READ_ONLY_BLOCK && v.def.addr < firstWritable)
 			end = std::max(end, int(v.def.addr) + v.def.size);
 	return end - evre::READ_ONLY_BLOCK;
+}
+
+/* ---------------------------------------------------------------- Fast EVRe */
+
+/* the wish is kept whatever the link: connected, it goes to the device at once */
+void IoEngine::setFastStream(int stream, bool on) {
+	if (stream < 0 || stream >= fastRuns_.size()) return;
+	FastRun &run = fastRuns_[stream];
+	run.wanted = on;
+	if (!connected_) return;
+	if (on && isBus()) {
+		fastFailed(stream, true, tr("not with several devices on the link: their blocks would collide"));
+		return;
+	}
+	applyFast(stream);
+}
+
+bool IoEngine::anyFastOn() const {
+	return std::any_of(fastRuns_.begin(), fastRuns_.end(), [](const FastRun &run) { return run.on; });
+}
+
+/* On: its rate register read (the rate the device was set to; else the map's), then its enable written 1 with
+ * WRITE_ACK. The blocks are taken from just before the write: the first may come ahead of its answer. A stream
+ * without an enable is the device's own business: it is listened to at once. Off: the blocks ignored at once, the
+ * enable written 0. */
+void IoEngine::applyFast(int stream) {
+	FastRun &run = fastRuns_[stream];
+	const quint64 request = ++run.request;
+	const bool on = run.wanted && !isBus();
+	const uint8_t slave = target(0);
+	auto switchOn = [this, stream, request, slave](double rate) {
+		FastRun &run = fastRuns_[stream];
+		if (request != run.request) return;
+		run.state.reset(run.def, rate);
+		run.on = true;
+		run.newerSaid = run.silenceAsked = false;
+		run.lastBlockMs = run.takenMs = -1;
+		heartbeatTimer_->start();
+		fastWatch_->start();
+		const RegDef *enable = run.enable();
+		if (!enable) {
+			run.takenMs = clock_.elapsed();
+			emit fastStreamSet(stream, true, rate, QString());
+			return;
+		}
+		QByteArray one;
+		QString why;
+		encodeValue(*enable, QStringLiteral("1"), one, why);
+		run.deviceMaySend = true;
+		master_->writeTo(slave, enable->addr, one, [this, stream, request, rate](const evre::Result &w) {
+			FastRun &run = fastRuns_[stream];
+			if (request != run.request) return;
+			if (!w.ok) {
+				fastFailed(stream, true, tr("%1 not written: %2").arg(run.enableReg.name, w.message));
+				return;
+			}
+			run.takenMs = clock_.elapsed(); /* the first block must come FIRST_FRAME_MS from now */
+			emit fastStreamSet(stream, true, rate, QString());
+		});
+	};
+	if (!on) {
+		const bool wasOn = run.on;
+		run.on = false;
+		run.takenMs = -1;
+		if (!anyFastOn()) fastWatch_->stop();
+		if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+		const RegDef *enable = run.enable();
+		if (!enable || !(run.deviceMaySend || wasOn)) {
+			emit fastStreamSet(stream, false, 0, QString());
+			return;
+		}
+		QByteArray zero;
+		QString why;
+		encodeValue(*enable, QStringLiteral("0"), zero, why);
+		master_->writeTo(slave, enable->addr, zero, [this, stream, request](const evre::Result &w) {
+			FastRun &run = fastRuns_[stream];
+			if (request != run.request) return;
+			if (w.ok) run.deviceMaySend = false; /* the device took the off */
+			emit fastStreamSet(stream, false, 0, w.ok ? QString() : w.message);
+		});
+		return;
+	}
+	const RegDef *rate = run.rate();
+	if (!rate) {
+		switchOn(run.def.rate);
+		return;
+	}
+	master_->readFrom(slave, rate->addr, uint16_t(rate->size), [this, stream, request, switchOn](const evre::Result &r) {
+		FastRun &run = fastRuns_[stream];
+		if (request != run.request) return;
+		const double hz = r.ok && r.data.size() == run.rateReg.size ? decodeNumber(run.rateReg, r.data) : 0;
+		switchOn(hz > 0 ? hz : run.def.rate);
+	});
+}
+
+void IoEngine::fastFailed(int stream, bool on, const QString &why) {
+	FastRun &run = fastRuns_[stream];
+	if (on) {
+		run.wanted = run.on = false;
+		run.takenMs = -1;
+		run.request++;
+		if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+	}
+	emit fastStreamSet(stream, on, 0, why);
+}
+
+/* an unasked READ_RESP from the one device at a stream's window */
+int IoEngine::fastStreamOf(const evre::Frame &frame) const {
+	if (fastRuns_.isEmpty() || isBus() || frame.fn != evre::READ_RESP || frame.slave != target(0)) return -1;
+	for (int i = 0; i < fastRuns_.size(); i++)
+		if (fastRuns_[i].def.addr == frame.addr) return i;
+	return -1;
+}
+
+int IoEngine::fastStreamOfRaw(const QByteArray &raw) const {
+	if (raw.size() < 7) return -1;
+	evre::Frame frame;
+	frame.slave = uint8_t(raw[1]);
+	frame.fn = uint8_t(raw[2]);
+	frame.addr = evre::littleEndian16(raw, 3);
+	return fastStreamOf(frame);
+}
+
+/* A block, by the block's rules: counted, laid on the clock (now()'s seconds). A stream not on (switched off, its
+ * last blocks still coming) takes none. */
+void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
+	FastRun &run = fastRuns_[stream];
+	if (!connected_ || !run.on || frame.data.size() != frame.cnt) return;
+	fast::BlockTaken taken;
+	const fast::BlockCheck check = run.state.take(frame.data, now(), taken);
+	if (check == fast::BlockCheck::NewerKind && !run.newerSaid) {
+		run.newerSaid = true;
+		emit fastStreamNote(stream, tr("fast stream %1: blocks of a newer kind (a flag or a spare byte this Studio does "
+				"not know): none of their samples is used").arg(run.def.name), false);
+	}
+	if (check != fast::BlockCheck::Ok) return;
+	run.lastBlockMs = clock_.elapsed();
+	run.silenceAsked = false;
+	run.recordsSinceRate += quint64(taken.count);
+}
+
+/* Every 500 ms while a stream is on. No block FIRST_FRAME_MS after the device took the enable: something between does
+ * not pass them on, or the device does not stream; off again, and said. A stream that sent and went silent as long:
+ * its enable read once; 0 (a reset, another host) stops it here too, not switched on again by itself. */
+void IoEngine::watchFast() {
+	if (!connected_) return;
+	const qint64 now = clock_.elapsed();
+	for (int i = 0; i < fastRuns_.size(); i++) {
+		FastRun &run = fastRuns_[i];
+		if (!run.on || run.takenMs < 0) continue;
+		if (run.lastBlockMs < 0 && now - run.takenMs >= FIRST_FRAME_MS) {
+			const QString why = tr("no block came in %1 s: the device does not stream, or something between the Studio "
+					"and it (a gateway) does not pass the blocks on").arg(FIRST_FRAME_MS / 1000);
+			run.wanted = false;
+			applyFast(i); /* the off to the device */
+			emit fastStreamNote(i, tr("fast stream %1 switched off: %2").arg(run.def.name, why), true);
+			continue;
+		}
+		if (run.lastBlockMs < 0 || now - run.lastBlockMs < FIRST_FRAME_MS || run.silenceAsked || !run.enable()) continue;
+		run.silenceAsked = true;
+		const quint64 request = run.request;
+		master_->readFrom(target(0), run.enableReg.addr, uint16_t(run.enableReg.size), [this, i, request](const evre::Result &r) {
+			if (i >= fastRuns_.size()) return;
+			FastRun &run = fastRuns_[i];
+			if (request != run.request || !run.on || !r.ok || r.data.size() != run.enableReg.size) return;
+			if (decodeNumber(run.enableReg, r.data) != 0) return; /* still on: a slow stream, or a pause */
+			run.wanted = run.on = run.deviceMaySend = false;
+			run.request++;
+			if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+			emit fastStreamNote(i, tr("the device stopped fast stream %1 (%2 reads 0: a reset?)").arg(run.def.name,
+					run.enableReg.name), true);
+		});
+	}
+}
+
+/* Before the link closes: every stream that may be sending told 0, in a WRITE sent straight on the link and flushed,
+ * the link drained, as AUTO_SEND's off */
+void IoEngine::sendFastOffs() {
+	bool sent = false;
+	for (FastRun &run : fastRuns_) {
+		if (!run.deviceMaySend || !run.enable()) continue;
+		QByteArray zero;
+		QString why;
+		if (!encodeValue(run.enableReg, QStringLiteral("0"), zero, why)) continue;
+		link_->send(evre::build(target(0), evre::WRITE, run.enableReg.addr, uint16_t(zero.size()), zero));
+		run.deviceMaySend = false;
+		sent = true;
+	}
+	if (!sent) return;
+	link_->flush(200);
+	link_->drain(100);
 }
 
 /* ---------------------------------------------------------------------- CSV */

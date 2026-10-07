@@ -26,6 +26,15 @@
  * every HEARTBEAT_MS keeps the device's host watchdog fed whatever the polling
  * is, and tells when the device stopped sending (a reset).
  *
+ * Fast EVRe (one device only, setFastStream): the map's "streams" are sample streams the device sends in numbered
+ * blocks, READ_RESP frames nobody asked for at each stream's window (io/fast_stream.h). A block is recognised by its
+ * slave and its window before the AUTO_SEND test, checked by the block's rules and counted; the clock's fit lays
+ * it on now()'s time. A stream is switched by its map's enable register (1 on, 0 off, WRITE_ACK; its rate_reg read
+ * first); one without an enable is only listened to. While one is on, CONFIG is read every HEARTBEAT_MS as for
+ * AUTO_SEND. Disconnect switches every stream off first, the way it clears AUTO_SEND; a lost link keeps the wish,
+ * and the stream is switched on again after the reconnect. No block FIRST_FRAME_MS after the enable was taken: off
+ * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.)
+ *
  * Every QObject the engine uses is its child (or is made in its thread), so
  * moveToThread() takes them all along: a timer left in the window's thread
  * could not be started from the engine's.
@@ -50,6 +59,7 @@
 
 #include "evre/master.h"
 #include "evre/registers.h"
+#include "io/fast_stream.h"
 #include "io/reg_table.h"
 
 class ApiServer;
@@ -121,6 +131,17 @@ public:
 		quint64 apiRequests = 0;
 		bool autoSend = false;   /* the device sends by itself: pollHz is then the polls of the rest */
 		double autoSendHz = 0;   /* its frames a second, measured as pollHz is */
+		/* Fast EVRe: each stream of the map, in its order (none on a bus) */
+		struct Fast {
+			QString name;
+			bool wanted = false;  /* asked for: switched on at every connect */
+			bool on = false;      /* switched on in the device (or listened to): its blocks are taken */
+			double rate = 0;      /* records a second as the clock's fit has it; 0 before the first block */
+			double ppm = 0;       /* the fit's correction against the rate the device was set to */
+			double recordsHz = 0; /* records that came a second, measured as pollHz is */
+			quint64 records = 0, blocks = 0, lost = 0, badBlocks = 0, newerBlocks = 0, starts = 0;
+		};
+		QVector<Fast> fast;
 	};
 	Stats stats() const;
 	/* the samples of the plotted registers since the last call, every poll, by register key */
@@ -143,6 +164,9 @@ public:
 	/* AUTO_SEND on or off at 8000 / (prescaler + 1) Hz, on the one device (never on a bus). Kept: switched on
 	 * again after a reconnect, once the device's STATUS says it can. Answered by autoSendSet. */
 	void setAutoSend(bool on, int prescaler);
+	/* Fast EVRe: the map's stream (its index in DeviceMap::streams) on or off, on the one device (never on a bus).
+	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
+	void setFastStream(int stream, bool on);
 	void setPlotted(const QVector<RegKey> &keys);
 	void startRecord(const QString &file, const QVector<RegKey> &cols);
 	void stopRecord();
@@ -175,6 +199,11 @@ signals:
 	void autoSendSet(bool on, int hz, const QString &err);
 	void autoSendSlowed(const QString &why); /* a serial link: a slower rate than asked, and why */
 	void autoSendStopped();                  /* CONFIG shows AUTO_SEND cleared (the device reset?): not wanted any more */
+	/* Fast EVRe: a stream switched on (the device took its enable; rate: the records a second it was set to) or off;
+	 * err not empty: it was not, and is no longer wanted */
+	void fastStreamSet(int stream, bool on, double rate, const QString &err);
+	/* something to say of a stream: blocks of a newer kind (once), the device stopped it (no longer wanted) */
+	void fastStreamNote(int stream, const QString &text, bool stopped);
 
 private:
 	/* one read of a poll: registers of one device close together, read at once */
@@ -230,6 +259,33 @@ private:
 	void noFrames(); /* FIRST_FRAME_MS after AUTO_SEND was taken, and no frame came */
 	int streamBytes() const;                      /* the data bytes of a frame: the last one's, else the map's block */
 	QByteArray configBytes(bool on, int prescaler) const;
+
+	/* Fast EVRe */
+	struct FastRun {
+		StreamDef def;
+		const RegDef *enable() const { return enableReg.name.isEmpty() ? nullptr : &enableReg; }
+		const RegDef *rate() const { return rateReg.name.isEmpty() ? nullptr : &rateReg; }
+		RegDef enableReg, rateReg;  /* the map's registers it names; no name: none */
+		fast::FastStream state;
+		bool wanted = false;
+		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
+		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */
+		quint64 request = 0;        /* +1 at every switch: answers to an older one are ignored */
+		qint64 takenMs = -1;        /* when the device took the enable (clock_); -1: not yet */
+		qint64 lastBlockMs = -1;    /* when the last good block came */
+		bool newerSaid = false;     /* blocks of a newer kind: said once */
+		bool silenceAsked = false;  /* no block for a while: its enable read once */
+		quint64 recordsSinceRate = 0;
+		double recordsHz = 0;
+	};
+	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
+	void fastFailed(int stream, bool on, const QString &why);
+	bool anyFastOn() const;
+	int fastStreamOf(const evre::Frame &frame) const; /* the stream whose block this is; -1: none */
+	int fastStreamOfRaw(const QByteArray &raw) const; /* the same from a frame's bytes (the Monitor) */
+	void takeBlock(int stream, const evre::Frame &frame);
+	void watchFast();                              /* every 500 ms: the first block, and a stream gone silent */
+	void sendFastOffs();                           /* Disconnect: each stream that may send told 0, straight */
 
 	/* the poll clock: a thread that sleeps to each deadline and wakes the
 	 * engine. Qt's timers tick at ~15.6 ms on Windows outside the GUI thread;
@@ -305,6 +361,10 @@ private:
 	QTimer *heartbeatTimer_;
 	QTimer *firstFrameTimer_;
 	bool heartbeatPending_ = false;              /* one CONFIG read under way at most */
+
+	/* Fast EVRe: the map's streams (none on a bus) */
+	QVector<FastRun> fastRuns_;
+	QTimer *fastWatch_;
 
 	/* CSV recording */
 	QFile *csvFile_;

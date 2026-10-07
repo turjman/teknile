@@ -15,6 +15,8 @@
  *    sends its read-only block by itself; one device only); Show values (how
  *    often the numbers on screen change, value_pace.h); Record CSV, and Open
  *    recording beside it (a file, or one of the last ones).
+ *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Start / Stop button, its samples a second
+ *    as the clock's fit has them with the correction, and the samples lost. One device only, as Auto send.
  *  - API server: Serve API, Network, Allow API writes (and the ⚠ registers).
  *  - Help and the theme, then the version.
  *
@@ -24,8 +26,8 @@
  * what to show (the show... functions). The link, the polling and the API
  * switches are kept in the settings ("link/...", "poll/interval", "api/on",
  * "api/network"), Show values and the auto send rate too ("ui/valueRate",
- * "poll/autoSendHz", on every change); the token, the API write switches and
- * Auto send itself (it changes the device) never are. */
+ * "poll/autoSendHz", on every change); the token, the API write switches,
+ * Auto send itself and the fast streams (they change the device) never are. */
 #pragma once
 
 #include <QScrollArea>
@@ -112,6 +114,18 @@ public:
 	/* offered or not; why: the box's tooltip when not; shortWhy: a word or two the greyed rate list shows instead of a
 	 * rate ("not offered") */
 	void setAutoSendOffered(bool offered, const QString &why, const QString &shortWhy = QString());
+	/* Fast EVRe: a row for each of the map's streams (the card hidden when it has none) */
+	void setFastStreams(const QVector<StreamDef> &streams);
+	int fastStreamCount() const { return int(fastRows_.size()); }
+	bool fastOn(int stream) const;
+	void setFastOn(int stream, bool on);  /* the button's state, without fastStreamToggled: the device's, not a choice */
+	/* offered or not; why: the buttons' tooltip when not; shortWhy: a word or two shown in place of the rate */
+	void setFastOffered(bool offered, const QString &why, const QString &shortWhy);
+	/* for the tests: the card, a stream's button and its two numbers */
+	QWidget *fastCard() const { return fastCard_; }
+	QPushButton *fastButton(int stream) const;
+	QString fastRateText(int stream) const;
+	QString fastLostText(int stream) const;
 	void setRecording(bool recording);   /* the record button: start or stop */
 	void showRecordSaved(const QString &file, quint64 rows);
 	bool apiNetwork() const;
@@ -137,6 +151,7 @@ signals:
 	void timingChanged();          /* the interval or the timeout: how old a value may get before it is greyed */
 	void valuePaceChanged();       /* Show values: how often the numbers on screen change */
 	void autoSendChanged();        /* Auto send ticked or not, or its rate changed */
+	void fastStreamToggled(int stream, bool on); /* a fast stream's Start or Stop pressed */
 	void openMapClicked();
 	void newMapClicked();
 	void saveMapClicked(bool saveAs);
@@ -158,6 +173,9 @@ private:
 	QWidget *buildBusCard();
 	QWidget *buildMapCard();
 	QWidget *buildPollingCard();
+	QWidget *buildFastCard();
+	void showFastStats(const IoEngine::Stats &stats, bool connected);
+	void showFastButton(int stream);    /* its text, look and tooltip for its state */
 	QWidget *buildApiCard();
 	void addFooter(QVBoxLayout *layout);
 
@@ -204,6 +222,20 @@ private:
 	QPushButton *recordButton_;
 	QPushButton *openRecording_;  /* its menu: Open a file…, the last recordings */
 	QLabel *recordInfo_;
+
+	/* the fast streams card */
+	struct FastRow {
+		StreamDef def;
+		QPushButton *button = nullptr;
+		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
+		QLabel *lost = nullptr;   /* the samples lost */
+		bool on = false;
+	};
+	QWidget *fastCard_;
+	QVBoxLayout *fastRowsLayout_;
+	QVector<FastRow> fastRows_;
+	bool fastOffered_ = false;
+	QString fastWhy_, fastShortWhy_;
 
 	/* the API card */
 	QCheckBox *apiServe_, *apiNetwork_, *apiWrites_, *apiDanger_;

@@ -195,6 +195,38 @@ on again by itself.</li>
 that switches AUTO_SEND on is refused.</li>
 </ul>
 )HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Fast streams"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
+<h2>Fast streams</h2>
+<p>A device that takes samples on its own clock (a current at 100 000 samples a second, say) can send them in
+numbered <b>blocks</b>, with no request and no answer time: <b>Fast EVRe</b>, a layer above the protocol. Each block
+says the number of its first sample, so every sample lost on the way is counted, never filled in.</p>
+<p>The map describes the streams, in <code>"streams"</code>: where the blocks come from (a window of the device bank),
+how fast, the register that switches the stream, and what one sample holds (its channels):</p>
+%CODE%"streams": [
+  { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000,
+    "rate_reg": "ADC_RATE", "enable": "ADC_STREAM",
+    "channels": [ { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },
+                  { "name": "V_BUS", "type": "i16", "unit": "V", "scale": 0.001 } ] } ]</pre>
+<p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
+<ul>
+<li><b>▶ Start ADC</b> writes 1 to the stream's enable register (after reading its rate register, if the map names
+one); the button turns red, <b>■ Stop ADC</b>, which writes 0. A stream without an enable register is only
+listened to. Not remembered: every stream is off at every start.</li>
+<li>Under it: the samples a second as the Studio's clock measures them, with the correction in parts in a million
+(<i>10.0 k samples/s (+32 ppm)</i>), and the samples lost (<i>lost 1 024</i>, in amber).</li>
+<li>CONFIG is read every 100 ms while a stream runs, even with Poll off, so the device's host watchdog stays fed.</li>
+<li><b>Disconnect</b> (and closing the Studio) switches every stream off on the device first. After a lost link it
+is switched on again by itself.</li>
+<li>No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
+is told once in the Log.</li>
+<li>One device only: on a bus the card is greyed (a device sending by itself would collide with the others).</li>
+<li>The Monitor names a block <i>READ_RESP (fast stream ADC)</i>.</li>
+</ul>
+<p>This version counts the blocks; the chart and the recordings take the samples in a later one.
+<code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
+Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
+page) or the API's <code>stream</code> command (values at a period for an API client).</p>
+)HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Registers & writes"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Registers &amp; writes</h2>
 <p>One row per register: address, name, <b>value</b> (bold), unit, <b>decoded</b> bit fields or enum name,
@@ -403,6 +435,8 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 <li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms),
 <b>groups</b> (notes per group), and on a field <b>access</b> and <b>desc</b>.</li>
 <li><b>extends</b>: <code>"base.json"</code> makes the map an overlay that changes another one.</li>
+<li><b>streams</b> (top level, optional): a device's fast streams, each its window, rate, switches and channels
+(the <i>Fast streams</i> page).</li>
 <li>Keys the Studio does not know are kept. <code>docs/evre-map-1.schema.json</code> describes the format.</li>
 </ul>
 <p>Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).

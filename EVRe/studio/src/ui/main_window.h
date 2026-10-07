@@ -131,6 +131,11 @@ private:
 	void pushAutoSend();
 	void updateAutoSendOffer();
 	void onAutoSendSet(bool on, int hz, const QString &err);
+	/* Fast EVRe: the map's streams in the sidebar's card, offered with one device connected */
+	void showFastStreams();
+	void updateFastOffer();
+	void onFastStreamSet(int stream, bool on, double rate, const QString &err);
+	void stopFastStreams(); /* Disconnect asked for: no stream switched on again at the next connect */
 	void refreshPorts();          /* the sidebar's serial ports, the map's device named among them */
 
 	/* the map */

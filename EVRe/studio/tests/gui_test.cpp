@@ -129,6 +129,7 @@ namespace {
 constexpr quint16 FAKE_DEVICE_PORT = 1210;
 constexpr quint16 FAKE_BUS_PORT = 1226; /* evre_fake_fast as several devices on one link, started by the bus step */
 constexpr quint16 FAKE_AUTO_SEND_PORT = 1236; /* evre_fake_fast as one device that can AUTO_SEND, the auto send step */
+constexpr quint16 FAKE_FAST_PORT = 1240;      /* evre_fake_fast with maps/example_fast.json: the fast streams step */
 constexpr uint16_t PROTOCOL_CONFIG = 0xA004;  /* the EVRe protocol's CONFIG register */
 constexpr int MSG_ENABLE_MASK = 0x4;           /* its MSG_ENABLE flag, bit 2 */
 constexpr int DIALOG_WAIT_MS = 10000;         /* how long a step waits for the dialog it brings */
@@ -558,6 +559,7 @@ public:
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
+		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
@@ -1070,6 +1072,261 @@ private:
 				"auto send: done, the window polls the fake device of the other steps again");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* Fast EVRe, part 5.1: the sidebar's Fast streams card for a map with streams (maps/example_fast.json), against
+	 * evre_fake_fast on a port of its own. Start writes 1 to the stream's enable register, the blocks are counted (the
+	 * rate as fitted, the samples lost), CONFIG is read every 100 ms while it runs (so the device's 2 s watchdog never
+	 * stops it, even with Poll off), Stop and Disconnect write 0 (Disconnect first, before the link closes), a lost
+	 * link keeps it wanted, a device that takes the enable and sends nothing is switched off again after 2 s, a bus
+	 * greys the card, the Monitor names a block, and the card's texts fit its width in English and Arabic. */
+	void fastStreams() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		const QString fastMapFile = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		DeviceMap fastMap;
+		QString error;
+		const bool loaded = fastMap.load(fastMapFile, error) && fastMap.streams.size() == 1;
+		const RegDef *enable = loaded ? fastMap.registerNamed(fastMap.streams[0].enable) : nullptr;
+		check(sidebar && sidebar->fastCard() && sidebar->fastCard()->isHidden() && loaded && enable,
+				"fast streams: no card for a map without streams; the fast example map has a stream and its enable register");
+		if (!sidebar || !loaded || !enable) return;
+		QTemporaryDir folder;
+		/* the same device without its stream: it takes the enable and never sends a block */
+		DeviceMap quietMap = fastMap;
+		quietMap.streams.clear();
+		const QString quietFile = folder.filePath(QStringLiteral("quiet.json"));
+		/* the example map at another path: loaded again at the end (the window's own path counts as loaded) */
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		const bool written = quietMap.save(quietFile, error) && QFile::copy(map_.path, exampleFile);
+
+		QProcess fake;
+		auto startFake = [&](const QString &mapFile, const QStringList &aids) {
+			fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+					QStringList{ QString::number(FAKE_FAST_PORT), mapFile, QString::fromLatin1(fakeDeviceToken) } + aids);
+			return fake.waitForStarted(3000);
+		};
+		auto stopFake = [&] {
+			fake.kill();
+			fake.waitForFinished(3000);
+		};
+		auto device = std::make_unique<OtherClient>();
+		auto openDevice = [&] {
+			device = std::make_unique<OtherClient>();
+			return QTest::qWaitFor([&] { return device->open(FAKE_FAST_PORT, fastMap.slave); }, 5000);
+		};
+		auto enableBecomes = [&](int value, int ms = 3000) {
+			return QTest::qWaitFor([&] { return device->readU8(enable->addr) == value; }, ms);
+		};
+		const bool started = written && startFake(fastMapFile, {}) && openDevice();
+		check(started, "fast streams: the fake device (evre_fake_fast with the fast example map) started");
+		if (!started) return;
+
+		/* the map loaded, not connected: one row, greyed, saying why */
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup mapOnly;
+		mapOnly.map = fastMapFile;
+		window_.applyStartup(mapOnly);
+		QPushButton *button = sidebar->fastButton(0);
+		check(!sidebar->fastCard()->isHidden() && sidebar->fastStreamCount() == 1 && button
+						&& button->text() == QStringLiteral("▶  Start ADC") && !button->isEnabled()
+						&& sidebar->fastRateText(0) == QLatin1String("not connected")
+						&& button->toolTip() == QLatin1String("Offered once connected."),
+				"fast streams: a map with a stream: the card shows a row for it, greyed while not connected, saying why");
+		if (!button) return;
+
+		/* connected: offered, off, the map's rate (a lost link comes back by itself below) */
+		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
+			if (b->text() == QLatin1String("Reconnect by itself")) b->setChecked(true);
+		MainWindow::Startup connectFast;
+		connectFast.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_FAST_PORT);
+		connectFast.connect = true;
+		window_.applyStartup(connectFast);
+		const bool offered = QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		const bool offShown = QTest::qWaitFor([&] {
+			return sidebar->fastRateText(0) == QStringLiteral("off · 10.0 k samples/s");
+		}, 3000);
+		if (!offShown || !button->toolTip().contains(QLatin1String("Start writes 1 to ADC_STREAM")))
+			std::printf("  the rate: \"%s\", the tooltip: \"%s\"\n", qPrintable(sidebar->fastRateText(0)),
+					qPrintable(button->toolTip()));
+		check(offered && offShown && button->cursor().shape() == Qt::PointingHandCursor
+						&& button->toolTip().contains(QLatin1String("Start writes 1 to ADC_STREAM")),
+				"fast streams: connected, the button is offered (a pointing hand, a tooltip that says what it writes); "
+				"off, the map's 10.0 k samples/s");
+
+		/* Start: the enable written 1, the blocks counted, the rate as fitted, nothing lost */
+		button->click();
+		const bool on = enableBecomes(1);
+		const QRegularExpression rate(QStringLiteral("^(9\\.9|10\\.0|10\\.1) k samples/s \\([+-][0-9]+ ppm\\)$"));
+		const bool counted = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 6000);
+		if (!counted) std::printf("  the rate: \"%s\"\n", qPrintable(sidebar->fastRateText(0)));
+		check(on && button->text() == QStringLiteral("■  Stop ADC") && button->objectName() == QLatin1String("danger")
+						&& counted && sidebar->fastLostText(0) == QLatin1String("lost 0")
+						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
+				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
+				"samples/s with its correction in ppm and lost 0; the Log says so");
+
+		/* Poll off: CONFIG still read every 100 ms; the device's 2 s watchdog never stops the stream */
+		auto *traffic = [&]() -> QLabel * {
+			for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("TX "))) return label;
+			return nullptr;
+		}();
+		auto sent = [&] { return traffic ? traffic->text().section(QLatin1Char(' '), 1, 1).toLongLong() : 0; };
+		poll_->setChecked(false);
+		QTest::qWait(600);
+		const qint64 txBefore = sent();
+		QTest::qWait(3000);
+		const qint64 heartbeats = sent() - txBefore;
+		std::printf("  Poll off for 3 s, a fast stream on: %lld requests sent\n", heartbeats);
+		check(traffic && heartbeats >= 24 && heartbeats <= 45 && device->readU8(enable->addr) == 1
+						&& rate.match(sidebar->fastRateText(0)).hasMatch(),
+				"fast streams, Poll off: CONFIG read every 100 ms; after 3 s the stream still runs (the device's 2 s "
+				"host watchdog sees the Studio)");
+		poll_->setChecked(true);
+
+		/* the Monitor names a block */
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		QCheckBox *logFrames = nullptr;
+		for (QCheckBox *box : monitor ? monitor->findChildren<QCheckBox *>() : QList<QCheckBox *>())
+			if (box->text() == QLatin1String("Log frames")) logFrames = box;
+		bool named = false;
+		if (frames && logFrames) {
+			const bool was = logFrames->isChecked();
+			logFrames->setChecked(true);
+			named = QTest::qWaitFor([&] {
+				return frames->toPlainText().contains(QLatin1String("7B 01 AB 00 DC"))
+						&& frames->toPlainText().contains(QLatin1String("READ_RESP (fast stream ADC)"));
+			}, 3000);
+			logFrames->setChecked(was);
+			frames->clear();
+		}
+		check(named, "fast streams: the Monitor names a block \"READ_RESP (fast stream ADC)\"");
+
+		/* Stop: the enable written 0, off again */
+		button->click();
+		const bool stopped = enableBecomes(0);
+		if (!QTest::qWaitFor([&] { return sidebar->fastRateText(0) == QStringLiteral("off · 10.0 k samples/s"); }, 3000))
+			std::printf("  stopped: %d, the button \"%s\", the rate \"%s\"\n", stopped, qPrintable(button->text()),
+					qPrintable(sidebar->fastRateText(0)));
+		check(stopped && button->text() == QStringLiteral("▶  Start ADC")
+						&& QTest::qWaitFor([&] { return sidebar->fastRateText(0) == QStringLiteral("off · 10.0 k samples/s"); }, 3000)
+						&& logText().contains(QLatin1String("fast stream ADC off")),
+				"fast streams: Stop writes 0 to ADC_STREAM; the button is Start again, the card says off");
+
+		/* on again, then Disconnect: 0 written before the link closes; the button off and greyed */
+		button->click();
+		const bool onAgain = enableBecomes(1);
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		check(onAgain && disconnectButton && enableBecomes(0) && button->text() == QStringLiteral("▶  Start ADC")
+						&& !button->isEnabled() && sidebar->fastRateText(0) == QLatin1String("not connected"),
+				"fast streams, then Disconnect: ADC_STREAM 0 on the device first; the button Start, greyed, not connected");
+
+		/* a lost link keeps it: the device comes back (losing every 5th block now), the stream goes on again by itself,
+		 * and the samples lost are counted and shown */
+		window_.applyStartup(connectFast);
+		(void) QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		button->click();
+		const bool onBeforeLoss = enableBecomes(1);
+		stopFake();
+		const bool back = startFake(fastMapFile, { QStringLiteral("--fast-lose"), QStringLiteral("5") }) && openDevice();
+		const bool again = back && enableBecomes(1, 10000) && button->text() == QStringLiteral("■  Stop ADC");
+		const bool lostShown = QTest::qWaitFor([&] {
+			const QString text = sidebar->fastLostText(0);
+			return text.startsWith(QLatin1String("lost ")) && text != QLatin1String("lost 0");
+		}, 5000);
+		QLabel *lostLabel = nullptr;
+		for (QLabel *label : sidebar->fastCard()->findChildren<QLabel *>())
+			if (label->text().startsWith(QLatin1String("lost "))) lostLabel = label;
+		if (!again || !lostShown || !lostLabel)
+			std::printf("  on before: %d, back: %d, again: %d, the button \"%s\", lost: \"%s\"\n", onBeforeLoss, back,
+					again, qPrintable(button->text()), qPrintable(sidebar->fastLostText(0)));
+		check(onBeforeLoss && again && lostShown && lostLabel && lostLabel->styleSheet().contains(QLatin1String("font-weight:600")),
+				"fast streams: after a lost link and a reconnect, switched on again by itself; every 5th block lost: "
+				"the card counts the samples lost, highlighted");
+		button->click();
+		(void) enableBecomes(0);
+
+		/* a device that takes the enable and never sends: off again after 2 s, said in the Log */
+		stopFake();
+		const bool quietUp = startFake(quietFile, {}) && openDevice();
+		window_.applyStartup(connectFast);
+		(void) QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		button->click();
+		const bool tookIt = enableBecomes(1);
+		const bool backOff = QTest::qWaitFor([&] { return button->text() == QStringLiteral("▶  Start ADC"); }, 5000);
+		check(quietUp && tookIt && backOff && enableBecomes(0)
+						&& logText().contains(QLatin1String("fast stream ADC switched off: no block came in 2 s")),
+				"fast streams: a device that takes the enable and sends no block: switched off again after 2 s (0 "
+				"written), said in the Log");
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		stopFake();
+
+		/* a bus: greyed, not on a bus */
+		const QString busFile = folder.filePath(QStringLiteral("fast_bus.json"));
+		QFile bus(busFile);
+		if (bus.open(QIODevice::WriteOnly))
+			bus.write(QStringLiteral("{ \"format\": \"evre-bus/1\", \"devices\": [ { \"name\": \"D1\", \"slave\": 1, \"map\": "
+					"\"%1\" }, { \"name\": \"D2\", \"slave\": 2, \"map\": \"%1\" } ] }").arg(fastMapFile).toUtf8());
+		bus.close();
+		MainWindow::Startup onBus;
+		onBus.bus = busFile;
+		window_.applyStartup(onBus);
+		check(!sidebar->fastCard()->isHidden() && !button->isEnabled() && sidebar->fastRateText(0) == QLatin1String("not on a bus")
+						&& sidebar->fastButton(0)->toolTip().contains(QLatin1String("several devices")),
+				"fast streams: a bus of devices with streams: the card greyed, not on a bus (they would collide)");
+
+		/* the card's texts fit its width, in English and in Arabic, the widest numbers too */
+		bool fits = true;
+		QString notes;
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			Sidebar card;
+			card.setFastStreams(fastMap.streams);
+			card.show();
+			card.setFastOffered(true, QString(), QString());
+			IoEngine::Stats busy;
+			IoEngine::Stats::Fast f;
+			f.on = true;
+			f.rate = 1234567.8;
+			f.ppm = -123;
+			f.lost = 123456789;
+			busy.fast = { f };
+			card.showStats(busy, true);
+			card.setFastOn(0, true);
+			QApplication::processEvents();
+			QPushButton *b = card.fastButton(0);
+			const auto labels = card.fastCard()->findChildren<QLabel *>();
+			for (QLabel *label : labels) {
+				if (label->text().isEmpty() || label->objectName() == QLatin1String("cardTitle")) continue;
+				if (label->fontMetrics().horizontalAdvance(label->text()) > label->width()) {
+					fits = false;
+					notes += QStringLiteral(" %1: \"%2\" %3 px in %4").arg(code, label->text())
+							.arg(label->fontMetrics().horizontalAdvance(label->text())).arg(label->width());
+				}
+			}
+			if (!b || b->fontMetrics().horizontalAdvance(b->text()) > b->width() - 16) {
+				fits = false;
+				notes += QStringLiteral(" %1: the button").arg(code);
+			}
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look */
+				card.fastCard()->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fast_%1.png").arg(code));
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		if (!fits) std::printf("  %s\n", qPrintable(notes));
+		check(fits, "fast streams: the card's button and numbers fit the sidebar's width in English and Arabic "
+				"(1.23 M samples/s, lost 123 456 789)");
+
+		/* the example map and the fake device of the other steps again */
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(sidebar->fastCard()->isHidden()
+						&& cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"fast streams: done; the example map again (no card), the window polls the fake device of the other steps");
 	}
 
 	/* the I/O thread's table, given the map again (a device picked, a map edited): a register keeps its value only

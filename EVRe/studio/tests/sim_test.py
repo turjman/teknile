@@ -9,12 +9,14 @@ Writes a map with every behaviour into a temporary folder, starts
 and checks: defaults, moving read-only values inside min..max, write-only,
 read-only, action, write-1-to-clear (register and field), a read-only field,
 --strict limits, --require-login, --state (persist across a restart), --slave (another slave gets no answer, a
-broadcast WRITE is taken, an address outside 1..255 refused).
+broadcast WRITE is taken, an address outside 1..255 refused), a fast stream (Fast EVRe: switched by its enable
+register, its rate register, its blocks recorded with evre record, its host watchdog).
 Exit code: 0 all passed, 1 a check failed, 2 a program is missing."""
 import argparse
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -36,7 +38,81 @@ MAP = {
          "fields": [{"name": "MODE", "bits": "1:0"}, {"name": "BUSY", "bits": "4", "access": "ro"},
                     {"name": "LATCH", "bits": "7", "access": "w1c"}]},
         {"addr": "0xD00C", "name": "SERIAL", "type": "u32"},
+        {"addr": "0xD010", "name": "S_ON", "type": "u8", "access": "rw"},
+        {"addr": "0xD014", "name": "S_RATE", "type": "u32", "unit": "Hz"},
+    ],
+    "streams": [
+        {"name": "S", "addr": "0xD800", "size": 64, "rate": 2000, "rate_reg": "S_RATE", "enable": "S_ON",
+         "channels": [{"name": "A", "type": "u16"}, {"name": "B", "type": "f32"}]},
     ]}
+
+
+def crc16(data):
+    """CRC-16/X-25, as EVRe frames carry it"""
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
+    return crc ^ 0xFFFF
+
+
+def frame(slave, fn, addr, count, data=b''):
+    body = bytes([0x7B, slave, fn]) + struct.pack('<HH', addr, count) + data
+    return body + struct.pack('<H', crc16(body)) + b'\x7D'
+
+
+def stream_checks(start, evre, link, value):
+    """a fast stream: evre record, the rate register, a READ of its window, the host watchdog"""
+    sim = start()
+    try:
+        check(value('S_RATE') == 2000 and value('S_ON') == 0, 'stream: its rate register holds the map\'s rate, off')
+        rc, _, err = evre('read', link[0], link[1], '--addr', '0xD800', '--count', '8')
+        check(rc == 1 and 'out of range' in err, 'stream: a READ of its window is refused (4)')
+        out_file = os.path.join(tempfile.mkdtemp(), 's.evrs')
+        rc, out, err = evre('record', *link, '--stream', 'S', '-o', out_file, '--seconds', '1.5', '--json')
+        summary = json.loads(out.splitlines()[0]) if rc == 0 and out.strip() else {}
+        check(rc == 0 and 2500 <= summary.get('records', 0) <= 3600 and summary.get('lost') == 0
+              and summary.get('bad_blocks') == 0, 'stream: evre record, 1.5 s at 2000 a second: %s %s'
+              % (summary.get('records'), err.strip()))
+        check(value('S_ON') == 0, 'stream: off again after the recording')
+        # the host watchdog: switched on over a connection that then says nothing; the blocks stop after 2 s
+        s = socket.create_connection(('127.0.0.1', int(link[1].split(':')[1])), 2)
+        s.sendall(frame(1, 0xEB, 0xD010, 1, b'\x01'))
+        s.settimeout(0.2)
+        began, arrivals, buf = time.time(), [], b''
+        while time.time() - began < 3.5:
+            try:
+                chunk = s.recv(65536)
+            except socket.timeout:
+                continue
+            if not chunk:
+                break
+            buf += chunk
+            while b'\x7b\x01\xab\x00\xd8' in buf:
+                arrivals.append(time.time() - began)
+                buf = buf[buf.index(b'\x7b\x01\xab\x00\xd8') + 5:]
+        s.close()
+        last = max(arrivals) if arrivals else 0
+        check(len(arrivals) > 50 and 1.8 <= last <= 2.6, 'stream: a silent host: the blocks stop after 2 s (the last '
+              'at %.2f s, %d blocks)' % (last, len(arrivals)))
+        check(value('S_ON') == 0, 'stream: ... and its enable register reads 0 again')
+    finally:
+        sim.kill()
+        sim.wait()
+    sim = start('--fast-rate', '5000', '--fast-lose', '4')
+    try:
+        check(value('S_RATE') == 5000, 'stream: --fast-rate 5000: its rate register says so')
+        out_file = os.path.join(tempfile.mkdtemp(), 's.evrs')
+        rc, out, _ = evre('record', *link, '--stream', 'S', '-o', out_file, '--seconds', '1.5', '--json')
+        summary = json.loads(out.splitlines()[0]) if rc == 0 and out.strip() else {}
+        total = summary.get('records', 0) + summary.get('lost', 0)
+        check(rc == 0 and 6500 <= total <= 8500 and 0.15 <= summary.get('lost', 0) / max(1, total) <= 0.3,
+              'stream: --fast-lose 4: a quarter of the records lost and counted (%s of %s)'
+              % (summary.get('lost'), total))
+    finally:
+        sim.kill()
+        sim.wait()
 
 
 def check(ok, what):
@@ -88,6 +164,7 @@ def main():
         rows = [json.loads(l) for l in out.splitlines() if l.strip()]
         return rows[0].get('value') if rc == 0 and rows else None
 
+    stream_checks(start, evre, link, value)
     sim = start('--state', state)
     try:
         rc, out, _ = evre('info', *link, '--json')

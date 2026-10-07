@@ -1698,88 +1698,6 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>خرائط الأجهزة</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Device maps (JSON)&lt;/h2&gt;
-&lt;p&gt;A map lists a device&apos;s registers. &lt;b&gt;Open…&lt;/b&gt; / &lt;b&gt;Save&lt;/b&gt; / &lt;b&gt;Save as…&lt;/b&gt; / &lt;b&gt;New&lt;/b&gt;; it is made and
-changed on the &lt;b&gt;Map editor&lt;/b&gt; tab (its own help page). The file is plain JSON, and a save changes it only where
-it was edited:&lt;/p&gt;
-%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
-  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
-  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
-  &quot;registers&quot;: [
-    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
-      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
-    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
-      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
-                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
-    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
-      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
-    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
-  ] }&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;, or &lt;code&gt;bytes&lt;/code&gt; with &lt;code&gt;&quot;size&quot;&lt;/code&gt;. Little
-endian.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: shown = raw × scale + offset (writes are converted back).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; shows the value in hex.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = confirm every write, and API clients need the ⚠ switch.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = a fixed value (an ID, a command): no Plot box, left out by Plot shown.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (top level): the device&apos;s USB VID/PID, to mark and pick its port.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (top level, optional): the register the token box is written to after connecting, and its size in
-bytes (the token is cut or padded with zeros to it). Without it, no token is sent.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt;, &lt;code&gt;rw&lt;/code&gt;, or &lt;code&gt;wo&lt;/code&gt; (written only, never polled);
-&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
-&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
-&lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
-&lt;li&gt;Keys the Studio does not know are kept. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; describes the format.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
-A block the device refuses is split; an address it refuses is dropped.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;خرائط الأجهزة (JSON)&lt;/h2&gt;
-&lt;p&gt;الخريطة تسرد مسجّلات الجهاز. &lt;b&gt;فتح…&lt;/b&gt; / &lt;b&gt;حفظ&lt;/b&gt; / &lt;b&gt;حفظ باسم…&lt;/b&gt; / &lt;b&gt;جديد&lt;/b&gt;؛ وتُصنع
-وتُغيَّر في لسان &lt;b&gt;محرر الخريطة&lt;/b&gt; (له صفحة مساعدة خاصة). الملف JSON عادي، والحفظ لا يغيّره إلا حيث
-حُرّر:&lt;/p&gt;
-%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
-  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
-  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
-  &quot;registers&quot;: [
-    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
-      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
-    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
-      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
-                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
-    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
-      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
-    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
-  ] }&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;، أو &lt;code&gt;bytes&lt;/code&gt; مع &lt;code&gt;&quot;size&quot;&lt;/code&gt;. ترتيب
-little endian.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: المعروض = الخام × scale + offset (وتُحوَّل الكتابات بالعكس).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; يعرض القيمة بالست عشري.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = أكّد كل كتابة، وعملاء API يحتاجون مفتاح ⚠.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «رسم المعروض».&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (في المستوى الأعلى): VID/PID الخاصان بـ USB للجهاز، لتعليم منفذه واختياره.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (في المستوى الأعلى، اختياري): المسجّل الذي يُكتب فيه مربع رمز الدخول بعد الاتصال، وحجمه
-بالبايت (يُقصّ الرمز أو يُكمَّل بالأصفار إليه). بدونه لا يُرسل رمز دخول.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt; أو &lt;code&gt;rw&lt;/code&gt; أو &lt;code&gt;wo&lt;/code&gt; (يُكتب فقط، لا يُستطلع أبدًا)؛
-&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
-&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
-و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
-&lt;li&gt;المفاتيح التي لا يعرفها البرنامج تُحفظ. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; يصف الصيغة.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;المسجّلات المتقاربة تُقرأ في طلب واحد (الصفحة نفسها من 256 بايت، فجوات حتى 8 بايت).
-الكتلة التي يرفضها الجهاز تُقسم؛ والعنوان الذي يرفضه يُسقط.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>Map editor</source>
         <translation>محرر الخريطة</translation>
     </message>
@@ -2447,6 +2365,162 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>Fast streams</source>
+        <translation>التدفقات السريعة</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Fast streams&lt;/h2&gt;
+&lt;p&gt;A device that takes samples on its own clock (a current at 100 000 samples a second, say) can send them in
+numbered &lt;b&gt;blocks&lt;/b&gt;, with no request and no answer time: &lt;b&gt;Fast EVRe&lt;/b&gt;, a layer above the protocol. Each block
+says the number of its first sample, so every sample lost on the way is counted, never filled in.&lt;/p&gt;
+&lt;p&gt;The map describes the streams, in &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: where the blocks come from (a window of the device bank),
+how fast, the register that switches the stream, and what one sample holds (its channels):&lt;/p&gt;
+%CODE%&quot;streams&quot;: [
+  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
+    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
+    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
+                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;▶ Start ADC&lt;/b&gt; writes 1 to the stream&apos;s enable register (after reading its rate register, if the map names
+one); the button turns red, &lt;b&gt;■ Stop ADC&lt;/b&gt;, which writes 0. A stream without an enable register is only
+listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
+&lt;li&gt;Under it: the samples a second as the Studio&apos;s clock measures them, with the correction in parts in a million
+(&lt;i&gt;10.0 k samples/s (+32 ppm)&lt;/i&gt;), and the samples lost (&lt;i&gt;lost 1 024&lt;/i&gt;, in amber).&lt;/li&gt;
+&lt;li&gt;CONFIG is read every 100 ms while a stream runs, even with Poll off, so the device&apos;s host watchdog stays fed.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Disconnect&lt;/b&gt; (and closing the Studio) switches every stream off on the device first. After a lost link it
+is switched on again by itself.&lt;/li&gt;
+&lt;li&gt;No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
+is told once in the Log.&lt;/li&gt;
+&lt;li&gt;One device only: on a bus the card is greyed (a device sending by itself would collide with the others).&lt;/li&gt;
+&lt;li&gt;The Monitor names a block &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;This version counts the blocks; the chart and the recordings take the samples in a later one.
+&lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
+Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
+page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;التدفقات السريعة&lt;/h2&gt;
+&lt;p&gt;الجهاز الذي يأخذ العينات على ساعته الخاصة (تيار بمعدل 100 000 عينة في الثانية مثلًا) يستطيع إرسالها في
+&lt;b&gt;كتل&lt;/b&gt; مرقّمة، بلا طلب ولا زمن انتظار للرد: &lt;b&gt;Fast EVRe&lt;/b&gt;، طبقة فوق البروتوكول. كل كتلة تذكر رقم أول عينة
+فيها، فكل عينة تُفقد في الطريق تُعدّ، ولا تُملأ أبدًا.&lt;/p&gt;
+&lt;p&gt;الخريطة تصف التدفقات في &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: من أين تأتي الكتل (نافذة في بنك الجهاز)، وبأي سرعة، والمسجّل الذي
+يشغّل التدفق، وما تحمله العينة الواحدة (قنواتها):&lt;/p&gt;
+%CODE%&quot;streams&quot;: [
+  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
+    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
+    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
+                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;▶ بدء ADC&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
+&lt;b&gt;■ إيقاف ADC&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
+تشغيل.&lt;/li&gt;
+&lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
+(&lt;i&gt;10.0 k عينة/ث (‎+32 ppm)&lt;/i&gt;)، والعينات المفقودة (&lt;i&gt;مفقودة 1 024&lt;/i&gt;، بالكهرماني).&lt;/li&gt;
+&lt;li&gt;يُقرأ CONFIG كل 100 ms ما دام تدفق يعمل، حتى مع إيقاف الاستطلاع، فيبقى مراقب المضيف في الجهاز مطمئنًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يوقف كل تدفق على الجهاز أولًا. وبعد فقد الوصلة يُشغَّل من جديد من تلقاء
+نفسه.&lt;/li&gt;
+&lt;li&gt;لا كتلة خلال 2 s: يُوقف من جديد، والسجل يذكر ذلك. الجهاز الذي يوقف تدفقًا من تلقاء نفسه (إعادة تشغيل) يُذكر
+مرة واحدة في السجل.&lt;/li&gt;
+&lt;li&gt;جهاز واحد فقط: على ناقل تكون البطاقة رمادية (الجهاز الذي يرسل من تلقاء نفسه سيتصادم مع الآخرين).&lt;/li&gt;
+&lt;li&gt;المراقبة تسمّي الكتلة &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;هذا الإصدار يعدّ الكتل؛ والمخطط والتسجيلات تأخذ العينات في إصدار لاحق.
+&lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
+لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
+ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Device maps (JSON)&lt;/h2&gt;
+&lt;p&gt;A map lists a device&apos;s registers. &lt;b&gt;Open…&lt;/b&gt; / &lt;b&gt;Save&lt;/b&gt; / &lt;b&gt;Save as…&lt;/b&gt; / &lt;b&gt;New&lt;/b&gt;; it is made and
+changed on the &lt;b&gt;Map editor&lt;/b&gt; tab (its own help page). The file is plain JSON, and a save changes it only where
+it was edited:&lt;/p&gt;
+%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
+  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
+  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
+  &quot;registers&quot;: [
+    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
+      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
+    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
+      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
+                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
+    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
+      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
+    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
+  ] }&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;, or &lt;code&gt;bytes&lt;/code&gt; with &lt;code&gt;&quot;size&quot;&lt;/code&gt;. Little
+endian.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: shown = raw × scale + offset (writes are converted back).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; shows the value in hex.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = confirm every write, and API clients need the ⚠ switch.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = a fixed value (an ID, a command): no Plot box, left out by Plot shown.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (top level): the device&apos;s USB VID/PID, to mark and pick its port.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (top level, optional): the register the token box is written to after connecting, and its size in
+bytes (the token is cut or padded with zeros to it). Without it, no token is sent.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt;, &lt;code&gt;rw&lt;/code&gt;, or &lt;code&gt;wo&lt;/code&gt; (written only, never polled);
+&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
+&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
+&lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (top level, optional): a device&apos;s fast streams, each its window, rate, switches and channels
+(the &lt;i&gt;Fast streams&lt;/i&gt; page).&lt;/li&gt;
+&lt;li&gt;Keys the Studio does not know are kept. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; describes the format.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
+A block the device refuses is split; an address it refuses is dropped.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;خرائط الأجهزة (JSON)&lt;/h2&gt;
+&lt;p&gt;الخريطة تسرد مسجّلات الجهاز. &lt;b&gt;فتح…&lt;/b&gt; / &lt;b&gt;حفظ&lt;/b&gt; / &lt;b&gt;حفظ باسم…&lt;/b&gt; / &lt;b&gt;جديد&lt;/b&gt;؛ وتُصنع
+وتُغيَّر في لسان &lt;b&gt;محرر الخريطة&lt;/b&gt; (له صفحة مساعدة خاصة). الملف JSON عادي، والحفظ لا يغيّره إلا حيث
+حُرّر:&lt;/p&gt;
+%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
+  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
+  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
+  &quot;registers&quot;: [
+    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
+      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
+    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
+      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
+                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
+    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
+      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
+    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
+  ] }&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;، أو &lt;code&gt;bytes&lt;/code&gt; مع &lt;code&gt;&quot;size&quot;&lt;/code&gt;. ترتيب
+little endian.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: المعروض = الخام × scale + offset (وتُحوَّل الكتابات بالعكس).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; يعرض القيمة بالست عشري.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = أكّد كل كتابة، وعملاء API يحتاجون مفتاح ⚠.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «رسم المعروض».&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (في المستوى الأعلى): VID/PID الخاصان بـ USB للجهاز، لتعليم منفذه واختياره.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (في المستوى الأعلى، اختياري): المسجّل الذي يُكتب فيه مربع رمز الدخول بعد الاتصال، وحجمه
+بالبايت (يُقصّ الرمز أو يُكمَّل بالأصفار إليه). بدونه لا يُرسل رمز دخول.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt; أو &lt;code&gt;rw&lt;/code&gt; أو &lt;code&gt;wo&lt;/code&gt; (يُكتب فقط، لا يُستطلع أبدًا)؛
+&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
+&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
+و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (المستوى الأعلى، اختياري): التدفقات السريعة للجهاز، لكل منها نافذته ومعدّله ومفاتيحه
+وقنواته (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;المفاتيح التي لا يعرفها البرنامج تُحفظ. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; يصف الصيغة.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;المسجّلات المتقاربة تُقرأ في طلب واحد (الصفحة نفسها من 256 بايت، فجوات حتى 8 بايت).
+الكتلة التي يرفضها الجهاز تُقسم؛ والعنوان الذي يرفضه يُسقط.&lt;/p&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -2477,6 +2551,34 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>not connected</source>
         <translation>غير متصل</translation>
+    </message>
+    <message>
+        <source>READ_RESP (fast stream %1)</source>
+        <translation>READ_RESP (تدفق سريع %1)</translation>
+    </message>
+    <message>
+        <source>not with several devices on the link: their blocks would collide</source>
+        <translation>ليس مع عدة أجهزة على الوصلة: ستتصادم كتلها</translation>
+    </message>
+    <message>
+        <source>%1 not written: %2</source>
+        <translation>لم يُكتب %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1: blocks of a newer kind (a flag or a spare byte this Studio does not know): none of their samples is used</source>
+        <translation>التدفق السريع %1: كتل من نوع أحدث (علَم أو بايت احتياطي لا يعرفه هذا البرنامج): لا تُستعمل أي عينة منها</translation>
+    </message>
+    <message>
+        <source>no block came in %1 s: the device does not stream, or something between the Studio and it (a gateway) does not pass the blocks on</source>
+        <translation>لم تصل أي كتلة خلال %1 s: الجهاز لا يرسل، أو شيء ما بين البرنامج وبينه (بوابة) لا يمرّر الكتل</translation>
+    </message>
+    <message>
+        <source>fast stream %1 switched off: %2</source>
+        <translation>أُوقف التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>the device stopped fast stream %1 (%2 reads 0: a reset?)</source>
+        <translation>أوقف الجهاز التدفق السريع %1 (‏%2 يُقرأ 0: إعادة تشغيل؟)</translation>
     </message>
 </context>
 <context>
@@ -3050,6 +3152,30 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>%1: not every device took it: %2</source>
         <translation>%1: لم يقبله كل جهاز: %2</translation>
+    </message>
+    <message>
+        <source>Not with several devices on the link: a device sending by itself would collide with the others.</source>
+        <translation>ليس مع عدة أجهزة على الوصلة: الجهاز الذي يرسل من تلقاء نفسه سيتصادم مع الآخرين.</translation>
+    </message>
+    <message>
+        <source>Offered once connected.</source>
+        <translation>يُعرض بعد الاتصال.</translation>
+    </message>
+    <message>
+        <source>fast stream %1 on: %2 samples a second</source>
+        <translation>التدفق السريع %1 مفعّل: %2 عينة في الثانية</translation>
+    </message>
+    <message>
+        <source>fast stream %1 off</source>
+        <translation>التدفق السريع %1 معطّل</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched off: %2</source>
+        <translation>لم يُوقف التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not switched on: %2</source>
+        <translation>لم يُشغَّل التدفق السريع %1: %2</translation>
     </message>
 </context>
 <context>
@@ -4546,6 +4672,90 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source> · slave %1</source>
         <translation> · التابع %1</translation>
     </message>
+    <message>
+        <source>stream %1: &quot;%2&quot; is missing</source>
+        <translation>التدفق %1: ينقصه &quot;%2&quot;</translation>
+    </message>
+    <message>
+        <source>stream %1: bad address</source>
+        <translation>التدفق %1: عنوان غير صالح</translation>
+    </message>
+    <message>
+        <source>stream %1, channel %2: unknown type &quot;%3&quot;</source>
+        <translation>التدفق %1، القناة %2: نوع غير معروف &quot;%3&quot;</translation>
+    </message>
+    <message>
+        <source>stream %1</source>
+        <translation>التدفق %1</translation>
+    </message>
+    <message>
+        <source>stream %1: %2</source>
+        <translation>التدفق %1: %2</translation>
+    </message>
+    <message>
+        <source>it has no name</source>
+        <translation>بلا اسم</translation>
+    </message>
+    <message>
+        <source>the name is also a register&apos;s or another stream&apos;s</source>
+        <translation>الاسم هو أيضًا اسم مسجّل أو تدفق آخر</translation>
+    </message>
+    <message>
+        <source>its window %1, %2 bytes, is not inside the device bank 0xD000..0xDFFF</source>
+        <translation>نافذته %1، بطول %2 بايت، ليست داخل بنك الجهاز 0xD000..0xDFFF</translation>
+    </message>
+    <message>
+        <source>it has no channel</source>
+        <translation>لا قناة له</translation>
+    </message>
+    <message>
+        <source>its window of %1 bytes holds no block: the header&apos;s 8 bytes and one record of %2</source>
+        <translation>نافذته البالغة %1 بايت لا تتسع لكتلة: بايتات الترويسة الثمانية وسجلّ واحد من %2</translation>
+    </message>
+    <message>
+        <source>a rate above 0 records a second is needed</source>
+        <translation>يلزم معدّل أعلى من 0 سجلّ في الثانية</translation>
+    </message>
+    <message>
+        <source>a channel has no name</source>
+        <translation>قناة بلا اسم</translation>
+    </message>
+    <message>
+        <source>the channel name %1 is used twice</source>
+        <translation>اسم القناة %1 مستعمل مرتين</translation>
+    </message>
+    <message>
+        <source>channel %1: a channel is a number, never bytes</source>
+        <translation>القناة %1: القناة رقم، وليست بايتات أبدًا</translation>
+    </message>
+    <message>
+        <source>channel %1: a scale of 0 shows every value as 0</source>
+        <translation>القناة %1: معامل تحجيم 0 يعرض كل قيمة 0</translation>
+    </message>
+    <message>
+        <source>enable names no register: %1</source>
+        <translation>enable لا يسمّي أي مسجّل: %1</translation>
+    </message>
+    <message>
+        <source>enable names %1, which a host cannot write as a number</source>
+        <translation>enable يسمّي %1، الذي لا يستطيع المضيف كتابته رقمًا</translation>
+    </message>
+    <message>
+        <source>rate_reg names no register: %1</source>
+        <translation>rate_reg لا يسمّي أي مسجّل: %1</translation>
+    </message>
+    <message>
+        <source>rate_reg names %1, which is not a number that can be read</source>
+        <translation>rate_reg يسمّي %1، وهو ليس رقمًا يمكن قراءته</translation>
+    </message>
+    <message>
+        <source>its window shares bytes with the register %1 (%2)</source>
+        <translation>نافذته تشترك في بايتات مع المسجّل %1 (%2)</translation>
+    </message>
+    <message>
+        <source>its window shares bytes with the stream %1</source>
+        <translation>نافذته تشترك في بايتات مع التدفق %1</translation>
+    </message>
 </context>
 <context>
     <name>QuickWritePanel</name>
@@ -5598,6 +5808,72 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>☾  Dark theme</source>
         <translation>☾  سمة داكنة</translation>
+    </message>
+    <message>
+        <source>Fast streams</source>
+        <translation>التدفقات السريعة</translation>
+    </message>
+    <message>
+        <source>■  Stop %1</source>
+        <translation>■  إيقاف %1</translation>
+    </message>
+    <message>
+        <source>▶  Start %1</source>
+        <translation>▶  بدء %1</translation>
+    </message>
+    <message>
+        <source>%1: %2 samples a second of %3.</source>
+        <translation>%1: %2 عينة في الثانية من %3.</translation>
+    </message>
+    <message>
+        <source>The device sends it by its own choice: Start listens for its blocks, Stop no longer takes them.</source>
+        <translation>يرسله الجهاز باختياره: البدء يستمع إلى كتله، والإيقاف يكفّ عن أخذها.</translation>
+    </message>
+    <message>
+        <source>Start writes 1 to %1, Stop writes 0: the device sends its samples in numbered blocks, and every sample lost on the way is counted.</source>
+        <translation>البدء يكتب 1 في %1، والإيقاف يكتب 0: يرسل الجهاز عيناته في كتل مرقّمة، وكل عينة تُفقد في الطريق تُعدّ.</translation>
+    </message>
+    <message>
+        <source>Not remembered: it changes the device, so it is off at every start.</source>
+        <translation>لا يُتذكَّر: إنه يغيّر الجهاز، فهو معطّل عند كل تشغيل.</translation>
+    </message>
+    <message>
+        <source>%1 M samples/s</source>
+        <translation>%1 M عينة/ث</translation>
+    </message>
+    <message>
+        <source>%1 k samples/s</source>
+        <translation>%1 k عينة/ث</translation>
+    </message>
+    <message>
+        <source>%1 samples/s</source>
+        <translation>%1 عينة/ث</translation>
+    </message>
+    <message>
+        <source>off · %1</source>
+        <translation>معطّل · %1</translation>
+    </message>
+    <message>
+        <source>The rate the map gives the stream</source>
+        <translation>المعدّل الذي تعطيه الخريطة للتدفق</translation>
+    </message>
+    <message>
+        <source>waiting for the first block</source>
+        <translation>في انتظار أول كتلة</translation>
+    </message>
+    <message>
+        <source>The samples a second as the Studio&apos;s clock measures the device&apos;s: the rate the device was set to, corrected by %1 parts in a million.
+%2 samples in %3 blocks since Start; %4 bad blocks.</source>
+        <translation>العينات في الثانية كما تقيس ساعة البرنامج ساعة الجهاز: المعدّل الذي ضُبط عليه الجهاز، مصحَّحًا بـ %1 جزء من المليون.
+العينات: %2 في %3 كتلة منذ البدء؛ الكتل التالفة: %4.</translation>
+    </message>
+    <message>
+        <source>lost %1</source>
+        <translation>مفقودة %1</translation>
+    </message>
+    <message>
+        <source>Samples the device numbered but the Studio did not get: a gap, never filled in</source>
+        <translation>عينات رقّمها الجهاز ولم تصل إلى البرنامج: فجوة لا تُملأ أبدًا</translation>
     </message>
 </context>
 <context>

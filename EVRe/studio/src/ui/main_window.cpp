@@ -273,6 +273,11 @@ void MainWindow::startEngine() {
 	connect(engine_, &IoEngine::recordStopped, this, &MainWindow::onRecordStopped);
 	connect(engine_, &IoEngine::apiStarted, this, &MainWindow::onApiStarted);
 	connect(engine_, &IoEngine::autoSendSet, this, &MainWindow::onAutoSendSet);
+	connect(engine_, &IoEngine::fastStreamSet, this, &MainWindow::onFastStreamSet);
+	connect(engine_, &IoEngine::fastStreamNote, this, [this](int stream, const QString &text, bool stopped) {
+		if (stopped) sidebar_->setFastOn(stream, false);
+		logEvent(LogLevel::Warning, text);
+	});
 	connect(engine_, &IoEngine::autoSendSlowed, this, [this](const QString &why) { logEvent(LogLevel::Warning, why); });
 	/* the device cleared it by itself (a reset, or another client): said once, not switched on again */
 	connect(engine_, &IoEngine::autoSendStopped, this, [this] {
@@ -323,6 +328,9 @@ void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::timingChanged, this, &MainWindow::updateStaleAfter);
 	connect(sidebar_, &Sidebar::valuePaceChanged, this, &MainWindow::applyValuePace);
 	connect(sidebar_, &Sidebar::autoSendChanged, this, &MainWindow::pushAutoSend);
+	connect(sidebar_, &Sidebar::fastStreamToggled, this, [this](int stream, bool on) {
+		engine_->post([engine = engine_, stream, on] { engine->setFastStream(stream, on); });
+	});
 	connect(sidebar_, &Sidebar::openMapClicked, this, &MainWindow::openMap);
 	connect(sidebar_, &Sidebar::newMapClicked, this, &MainWindow::newMap);
 	connect(sidebar_, &Sidebar::saveMapClicked, this, &MainWindow::saveMap);
@@ -537,10 +545,11 @@ void MainWindow::toggleConnect() {
 	if (wantConnected_) {
 		wantConnected_ = false;
 		reconnectTimer_.stop();
-		disconnectLink(); /* the engine clears AUTO_SEND on the device before it closes the link */
+		disconnectLink(); /* the engine clears AUTO_SEND and the fast streams on the device before it closes the link */
 		/* Disconnect asked for: auto send is not switched on again at the next connect (a lost link keeps it) */
 		sidebar_->setAutoSendOn(false);
 		pushAutoSend();
+		stopFastStreams();
 	} else {
 		wantConnected_ = true;
 		connectLink();
@@ -589,7 +598,7 @@ void MainWindow::disconnectLink() {
 	sidebar_->showDisconnected();
 	showBus();
 	autoSendCap_ = -1;
-	updateAutoSendOffer();
+	updateAutoSendOffer();	updateFastOffer();
 }
 
 void MainWindow::onOpened(const QString &link) {
@@ -602,7 +611,7 @@ void MainWindow::onOpened(const QString &link) {
 	sidebar_->showConnected(link);
 	showBus();
 	autoSendCap_ = -1; /* until STATUS is read */
-	updateAutoSendOffer();
+	updateAutoSendOffer();	updateFastOffer();
 }
 
 void MainWindow::onClosed(const QString &why) {
@@ -618,6 +627,7 @@ void MainWindow::onClosed(const QString &why) {
 	showBus();
 	autoSendCap_ = -1; /* a lost link keeps Auto send ticked: the engine switches it on again after a reconnect */
 	updateAutoSendOffer();
+	updateFastOffer(); /* and the fast streams wanted: their buttons keep their state */
 	registersTab_->setConnected(false);
 	if (why.isEmpty()) sidebar_->showDisconnected();
 	else sidebar_->showLinkError(why);
@@ -721,6 +731,49 @@ void MainWindow::onAutoSendSet(bool on, int hz, const QString &err) {
 	autoSendAsked_ = false;
 	sidebar_->setAutoSendOn(false);
 	logEvent(LogLevel::Error, tr("auto send not switched on: %1").arg(err));
+}
+
+/* ---------------------------------------------------------------- Fast EVRe */
+
+/* the card's rows: the map's streams (the one device's; on a bus the selected device's map, greyed) */
+void MainWindow::showFastStreams() {
+	sidebar_->setFastStreams(doc_->map().streams);
+	updateFastOffer();
+}
+
+void MainWindow::updateFastOffer() {
+	QString why, shortWhy;
+	if (isBus()) {
+		why = tr("Not with several devices on the link: a device sending by itself would collide with the others.");
+		shortWhy = tr("not on a bus");
+	} else if (!connected_) {
+		why = tr("Offered once connected.");
+		shortWhy = tr("not connected");
+	}
+	sidebar_->setFastOffered(why.isEmpty(), why, shortWhy);
+}
+
+void MainWindow::stopFastStreams() {
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++) {
+		if (!sidebar_->fastOn(i)) continue;
+		sidebar_->setFastOn(i, false);
+		engine_->post([engine = engine_, i] { engine->setFastStream(i, false); });
+	}
+}
+
+void MainWindow::onFastStreamSet(int stream, bool on, double rate, const QString &err) {
+	const QString name = stream < doc_->map().streams.size() ? doc_->map().streams[stream].name : QString::number(stream);
+	if (err.isEmpty()) {
+		logEvent(LogLevel::Info, on ? tr("fast stream %1 on: %2 samples a second").arg(name).arg(rate)
+									: tr("fast stream %1 off").arg(name));
+		return;
+	}
+	if (!on) {
+		logEvent(LogLevel::Warning, tr("fast stream %1 not switched off: %2").arg(name, err));
+		return;
+	}
+	sidebar_->setFastOn(stream, false);
+	logEvent(LogLevel::Error, tr("fast stream %1 not switched on: %2").arg(name, err));
 }
 
 void MainWindow::onDeviceOnline(int slave, bool online) {
@@ -850,6 +903,7 @@ void MainWindow::showMapSettings() {
 void MainWindow::updateMapInfo() {
 	const int registers = isBus() ? int(doc_->map().regs.size()) : int(model_->rows().size());
 	sidebar_->showMap(doc_->map(), registers, doc_->isModified());
+	showFastStreams();
 }
 
 /* the map edited gives way to another (a device selected, a bus opened): its unsaved changes saved or dropped */

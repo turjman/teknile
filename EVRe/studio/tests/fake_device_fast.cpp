@@ -4,6 +4,7 @@
  * request in ~100 us and becomes the bottleneck).
  *
  *   evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]...
+ *                  [--fast-lose N] [--fast-ppm P] [--fast-first K] [--fast-rate R]
  *                     default 1210, maps/example_device.json, example-token
  *
  * Serves a map's registers from 64 KiB: DEVICE_ID from the map, read-only
@@ -34,6 +35,14 @@
  * 15..8 (0 taken as 1, 4000 Hz, as some devices do: it is their timer's reload), unasked; a write with bit 3 clear
  * stops them. STATUS has
  * CAP_AUTO_SEND (bit 11).
+ *
+ * Fast EVRe, per connection: a map's "streams" are served as their map says. A write of a stream's enable
+ * register with a value that is not 0 starts it (a wave per channel, at the map's rate, in blocks sent when full
+ * or 10 ms old), a 0 stops it; so does a host silent for 2 s (the device's host watchdog, which then clears the
+ * enable register) and the connection's end. The test aids: --fast-lose N (every N-th block is not sent; the next
+ * says LOST), --fast-ppm P (the sample clock P parts in a million fast; negative: slow), --fast-first K (the first
+ * block starts at record K: just below 2^32 walks a host across the wrap), --fast-rate R (R records a second in
+ * place of the map's rate). See src/io/fast_stream.h.
  */
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -50,7 +59,11 @@
 
 #include "evre/frame.h"
 #include "evre/registers.h"
+#include "io/fast_stream.h"
 #include "model/device_map.h"
+
+using fast::FastSender;
+using fast::FastSource;
 
 namespace {
 
@@ -63,7 +76,8 @@ const char *const DEFAULT_TOKEN = "example-token"; /* the token accepted, unless
 
 class FakeDevice {
 public:
-	FakeDevice(const DeviceMap &map, uint8_t slave, const QString &token) : map_(map), slave_(slave) {
+	FakeDevice(const DeviceMap &map, uint8_t slave, const QString &token, double rateOverride)
+		: map_(map), slave_(slave) {
 		for (const RegDef &r : map.regs)
 			for (int i = 0; i < r.size && r.addr + i < MEMORY_SIZE; i++) covered_[r.addr + i] = true;
 		if (map.loginAddr != 0) {
@@ -74,6 +88,14 @@ public:
 		}
 		memory_[evre::DEVICE_ID] = uint8_t(map.deviceId);
 		memory_[evre::DEVICE_ID + 1] = uint8_t(map.deviceId >> 8);
+		/* a stream's rate register holds the rate it runs at (the map's, or --fast-rate) */
+		for (const StreamDef &stream : map.streams)
+			if (const RegDef *rate = map.registerNamed(stream.rateReg)) {
+				QByteArray bytes;
+				QString why;
+				if (encodeValue(*rate, QString::number(rateOverride > 0 ? rateOverride : stream.rate, 'g', 12), bytes, why))
+					std::memcpy(&memory_[rate->addr], bytes.constData(), size_t(bytes.size()));
+			}
 		memory_[evre::STATUS] = 0x01;            /* STATUS: protocol revision 1, capability bits */
 		memory_[evre::STATUS + 1] = 0x3F;
 		/* the block AUTO_SEND sends: up to the first writable register at or above 0xD000 */
@@ -87,6 +109,12 @@ public:
 	}
 
 	uint8_t slave() const { return slave_; }
+	const DeviceMap &map() const { return map_; }
+	/* a register's shown value now, and set back to 0 */
+	double value(const RegDef &r) const {
+		return decodeNumber(r, QByteArray(reinterpret_cast<const char *>(&memory_[r.addr]), r.size));
+	}
+	void clear(const RegDef &r) { std::fill_n(memory_.begin() + r.addr, r.size, uint8_t(0)); }
 	uint16_t config() const { return uint16_t(memory_[CONFIG] | (memory_[CONFIG + 1] << 8)); }
 
 	/* one AUTO_SEND frame: the read-only block now, as a READ_RESP nobody asked for; empty when the map has none */
@@ -153,7 +181,7 @@ private:
 		for (int i = 0; i < map_.regs.size(); i++) {
 			const RegDef &r = map_.regs[i];
 			if (r.rw) continue;
-			if (r.type == RegType::U32 && r.unit == QLatin1String("ms")) {
+			if (r.type == RegType::U32 && r.unit == QLatin1String("ms")) { /* a uptime, not a stream's rate (Hz) */
 				const uint32_t ms = uint32_t(t * 1000.0);
 				std::memcpy(&memory_[r.addr], &ms, 4);
 			} else if (r.type == RegType::F32) {
@@ -228,22 +256,49 @@ bool writesConfig(const evre::Frame &request, const FakeDevice &device) {
 	return write && reaches && request.addr <= CONFIG && int(request.addr) + request.cnt > CONFIG;
 }
 
-/* each connection has its own parser and its own AUTO_SEND streams; all answers to one read of the socket go out in
- * one send */
+/* the request was written to this device (or to every device, a broadcast) and covers the register r */
+bool writesRegister(const evre::Frame &request, const FakeDevice &device, const RegDef &r) {
+	const bool write = request.fn == evre::WRITE || request.fn == evre::WRITE_ACK;
+	const bool reaches = request.slave == device.slave() || request.slave == evre::BROADCAST;
+	return write && reaches && int(request.addr) < r.addr + r.size && int(r.addr) < int(request.addr) + request.cnt;
+}
+
+FastSource::Options fastOptions; /* --fast-...: the same for every stream */
+
+/* each connection has its own parser, its own AUTO_SEND streams and its own fast streams; all answers to one read
+ * of the socket go out in one send */
 void serve(QTcpSocket *socket, Devices &devices) {
 	socket->setSocketOption(QAbstractSocket::LowDelayOption, 1);
 	auto parser = std::make_shared<evre::Parser>();
 	auto streams = std::make_shared<QHash<FakeDevice *, std::shared_ptr<Stream>>>();
-	QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser, streams, &devices] {
+	auto senders = std::make_shared<std::vector<std::shared_ptr<FastSender>>>();
+	for (auto &device : devices) {
+		FakeDevice *d = device.get();
+		senders->push_back(d->map().streams.isEmpty() ? nullptr : std::make_shared<FastSender>(socket,
+				d->map().streams, d->slave(), fastOptions, [socket](const QByteArray &bytes) { socket->write(bytes); },
+				[d](int stream) {
+					if (const RegDef *enable = d->map().registerNamed(d->map().streams[stream].enable)) d->clear(*enable);
+				}));
+	}
+	QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser, streams, senders, &devices] {
 		parser->feed(socket->readAll());
 		evre::Frame request;
 		QByteArray out;
 		while (parser->next(request)) {
 			out += answerOnBus(devices, request);
-			for (auto &device : devices) {
+			for (size_t i = 0; i < devices.size(); i++) {
+				FakeDevice *device = devices[i].get();
+				if (const auto &sender = (*senders)[i]) {
+					if (request.slave == device->slave()) sender->heard();
+					const QVector<StreamDef> &defs = device->map().streams;
+					for (int s = 0; s < defs.size(); s++) {
+						const RegDef *enable = device->map().registerNamed(defs[s].enable);
+						if (enable && writesRegister(request, *device, *enable)) sender->enable(s, device->value(*enable) != 0);
+					}
+				}
 				if (!writesConfig(request, *device)) continue;
-				std::shared_ptr<Stream> &stream = (*streams)[device.get()];
-				if (!stream) stream = std::make_shared<Stream>(socket, device.get());
+				std::shared_ptr<Stream> &stream = (*streams)[device];
+				if (!stream) stream = std::make_shared<Stream>(socket, device);
 				stream->follow(device->config());
 			}
 		}
@@ -266,6 +321,18 @@ int main(int argc, char **argv) {
 		const QString value = i + 1 < args.size() ? args[i + 1] : QString();
 		if (a == QLatin1String("--slave")) {
 			slave = value.toInt();
+			i++;
+		} else if (a == QLatin1String("--fast-lose")) {
+			fastOptions.loseEvery = value.toInt();
+			i++;
+		} else if (a == QLatin1String("--fast-ppm")) {
+			fastOptions.ppm = value.toDouble();
+			i++;
+		} else if (a == QLatin1String("--fast-first")) {
+			fastOptions.first = quint32(value.toULongLong());
+			i++;
+		} else if (a == QLatin1String("--fast-rate")) {
+			fastOptions.rate = value.toDouble();
 			i++;
 		} else if (a == QLatin1String("--node")) {
 			const int eq = int(value.indexOf(QLatin1Char('=')));
@@ -297,10 +364,11 @@ int main(int argc, char **argv) {
 			std::printf("slave %d: a device address is 1 to 255 (0 is the broadcast)\n", address);
 			return 2;
 		}
-		devices.push_back(std::make_unique<FakeDevice>(map, uint8_t(address), token));
+		devices.push_back(std::make_unique<FakeDevice>(map, uint8_t(address), token, fastOptions.rate));
 		const QString login = map.loginAddr != 0 ? QStringLiteral(", login at %1").arg(addrText(map.loginAddr)) : QString();
-		std::printf("%s slave %d: %s (%d registers%s)\n", devices.size() == 1 ? "device" : "  and", address,
-				qPrintable(map.device), int(map.regs.size()), qPrintable(login));
+		const QString streams = map.streams.isEmpty() ? QString() : QStringLiteral(", %1 fast streams").arg(map.streams.size());
+		std::printf("%s slave %d: %s (%d registers%s%s)\n", devices.size() == 1 ? "device" : "  and", address,
+				qPrintable(map.device), int(map.regs.size()), qPrintable(login), qPrintable(streams));
 	}
 
 	QTcpServer server;

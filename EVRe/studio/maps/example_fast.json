@@ -1,0 +1,33 @@
+{
+  "format": "evre-map/1",
+  "device": "Example fast device",
+  "desc": "a device with a fast stream (Fast EVRe): the fast fake test device",
+  "device_id": "0x1002",
+  "slave": 1,
+  "registers": [
+    { "addr": "0xA000", "name": "DEVICE_ID", "type": "u16", "access": "ro", "group": "Protocol", "format": "hex",
+      "plot": false, "desc": "which device this is" },
+    { "addr": "0xA002", "name": "STATUS", "type": "u16", "access": "ro", "group": "Protocol",
+      "desc": "protocol revision and capabilities" },
+    { "addr": "0xA004", "name": "CONFIG", "type": "u16", "access": "rw", "group": "Protocol", "danger": true },
+
+    { "addr": "0xD000", "name": "UPTIME", "type": "u32", "unit": "ms", "access": "ro", "group": "System",
+      "desc": "time since the device started" },
+    { "addr": "0xD004", "name": "SUPPLY_V", "type": "f32", "unit": "V", "access": "ro", "group": "Power" },
+    { "addr": "0xD008", "name": "TEMPERATURE", "type": "f32", "unit": "°C", "access": "ro", "group": "Sensors" },
+    { "addr": "0xD00C", "name": "ADC_RATE", "type": "u32", "unit": "Hz", "access": "ro", "group": "Power", "plot": false,
+      "desc": "the ADC stream's samples a second" },
+
+    { "addr": "0xD080", "name": "ADC_STREAM", "type": "u8", "access": "rw", "group": "Power",
+      "desc": "the ADC stream: 1 starts it, 0 stops it", "enum": { "0": "off", "1": "on" } }
+  ],
+  "streams": [
+    { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000, "rate_reg": "ADC_RATE",
+      "enable": "ADC_STREAM",
+      "group": "Power", "desc": "load current and bus voltage, sampled together",
+      "channels": [
+        { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },
+        { "name": "V_BUS", "type": "i16", "unit": "V", "scale": 0.001 }
+      ] }
+  ]
+}

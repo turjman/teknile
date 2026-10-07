@@ -41,11 +41,12 @@ host                                   device
 13. [Device API](#device-api)
 14. [Adding a device](#adding-a-device)
 15. [Host implementation](#host-implementation)
-16. [Patterns](#patterns)
-17. [Pitfalls](#pitfalls)
-18. [Conformance checklist](#conformance-checklist)
-19. [Build options](#build-options)
-20. [Roadmap — v2](#roadmap--v2)
+16. [Fast EVRe](#fast-evre)
+17. [Patterns](#patterns)
+18. [Pitfalls](#pitfalls)
+19. [Conformance checklist](#conformance-checklist)
+20. [Build options](#build-options)
+21. [Roadmap — v2](#roadmap--v2)
 
 ---
 
@@ -633,6 +634,109 @@ dev.write(0xD0CC, struct.pack("<f", 12.5))   # a set point, acknowledged
 Reading the 7-byte header first and then exactly `REG_CNT + 3` more bytes is
 the length-based framing from above — it never scans for `0x7D`, so payload
 bytes that happen to equal a delimiter cannot confuse it.
+
+---
+
+## Fast EVRe
+
+Not part of the protocol: a layer above it, optional, for a device that takes
+samples on its own clock (a current at 100 000 samples a second, say) and sends
+them in numbered blocks. The protocol gains no function code, no bank and no
+`STATUS` bit, and `EVRe.h` / `EVRe.cpp` do not change. A host that does not know
+it skips the blocks: they are answers nobody asked for.
+
+**The wire.** A stream owns a *window*: a span of addresses in the device bank
+(`0xD000`..`0xDFFF`) that the device's map gives it, and that no register
+uses. The device sends each block as a `READ_RESP` at the window's first
+address, unasked, as `AUTO_SEND` sends its frames:
+
+```
+ 7B  slave  AB  off_lo off_hi  cnt_lo cnt_hi  the block: 8 B header, the records  crc_lo crc_hi  7D
+            ^   ^              ^
+            |   |              the block's bytes: 8 + records x record size
+            |   the window's first address
+            READ_RESP
+```
+
+A block is at most as large as its window, so a window of up to 4096 bytes
+fits, and one of 3840 or less stays inside the span over which the CRC
+catches every error of up to three bits.
+
+**The block**, little endian:
+
+| Offset | Member | Type | Meaning |
+|---|---|---|---|
+| 0 | `first` | u32 | the number of the block's first record. The device counts every record it takes from the stream's start, also those it has to drop. It wraps at 2^32 |
+| 4 | `count` | u16 | the records in this block |
+| 6 | `flags` | u8 | bit 0 `START`: the first block since the stream started. Bit 1 `LOST`: records were dropped just before this block. The other bits are 0 |
+| 7 | `spare` | u8 | 0 |
+| 8 | records | | `count` records. A record is one instant of all the stream's channels, packed in the map's order |
+
+The rules, for a host:
+
+- The frame's count is exactly 8 + `count` x record size. Any other count is
+  a bad block: none of its records is used.
+- `first` is the truth about losses; `LOST` only tells a person who reads a
+  dump. Keep the number in 64 bits. With d = (`first` - expected) mod 2^32: d
+  below 2^31 is d records lost (0: none); anything else, or `START`, is a new
+  start (a reset of the device, a stop and a start).
+- A host that joins a running stream begins at the first block it sees.
+- A flag bit the host does not know, or a `spare` that is not 0: a block of a
+  newer kind. Use none of its records.
+- A block of 0 records is allowed and carries only its header.
+
+**Time.** A record's time is its number: record k was taken k / rate seconds
+after record 0. A host lays a stream on its own clock from the first block's
+arrival and the rate, and corrects the rate slowly from the blocks' arrival
+times (a block can arrive late, never early).
+
+**Starting and stopping** use ordinary registers of the device bank that the
+map names: `enable` (1 starts the stream, 0 stops it, written with
+`WRITE_ACK`) and, where the rate can change, `rate_reg`. A device stops its
+streams when `enable` is written 0, when its host watchdog runs out, and at a
+reset. A device with a login sends no block while no session is open: the
+decoder is never asked about the device's own frames, so only the device can
+hold them. One device a link: a device that sends by itself would collide with
+the others on a bus.
+
+**The device's side**, `lib/fast/evre_fast.h` (with the library's public names
+only, so it builds with any library version): the device's DMA writes the
+records at `EVRE_FAST_BEFORE` in its buffer, `evre_fast_frame()` writes the
+two headers and the CRC around them, and the buffer goes out whole. Blocks and
+the decoder's answers share the one transmitter, so they share one queue: no
+frame may start inside another.
+
+```cpp
+static const evre_fast_config_t cfg = { 0xDC00, 1024, 4 }; /* window, its size, a record */
+static evre_fast_t adc;
+
+evre_fast_init(&adc, &cfg);      /* PERMISSION_DENIED for a window outside 0xD000..0xDFFF */
+evre_fast_start(&adc);           /* enable written 1: record 0 next, START */
+/* buffer full (n records at buf + EVRE_FAST_BEFORE): */
+uint16_t len = evre_fast_frame(&adc, SLAVE_ID_OF_THIS_DEVICE, buf, n);
+/* transmitter still busy with the block before: drop this one, count it */
+evre_fast_lost(&adc, n);
+```
+
+**An example**: slave 1, window `0xDC00`, the stream's first block, three
+records of two `i16` channels (2400, 12010), (2410, 12005), (2398, 11998):
+
+<!-- fast-example -->
+```
+7B 01 AB 00 DC 14 00 00 00 00 00 03 00 01 00 60 09 EA 2E 6A 09 E5 2E 5E 09 DE 2E A4 90 7D
+
+7B                       start
+01 AB 00 DC 14 00        slave 1, READ_RESP, window 0xDC00, 20 bytes: 8 + 3 x 4
+00 00 00 00 03 00 01 00  first 0, count 3, flags START, spare 0
+60 09 EA 2E              record 0: 2400, 12010
+6A 09 E5 2E              record 1: 2410, 12005
+5E 09 DE 2E              record 2: 2398, 11998
+A4 90 7D                 CRC, end
+```
+
+The map describes a stream (its window, rate, switches and channels) in its
+`streams` list: see EVRe Studio's `docs/MAP_FORMAT.md`. EVRe Studio shows the
+channels as lines, `evre record` writes the blocks to a file.
 
 ---
 
