@@ -21,6 +21,7 @@
 #include <QByteArray>
 #include <QVector>
 #include <cstdint>
+#include <memory>
 
 #include "model/device_map.h"
 
@@ -48,6 +49,11 @@ public:
 	/* Records in: count records (count x recordSize() bytes) numbered from `first` in their start; newStart: a new
 	 * start (the first block, a restart: a new epoch), lost: records missing before them (a new segment). */
 	void append(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost);
+	/* the same, the records left where they are (a recording's file mapped into memory, which must outlive the store):
+	 * only the summaries and the lists are made. A store is filled one way or the other; it is not trimmed. */
+	void appendMapped(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost);
+	bool mapped() const { return !spans_.isEmpty(); }
+	void keep(std::shared_ptr<void> owner) { owner_ = std::move(owner); } /* mapped: what holds the records' memory */
 	/* a time mark of the current start (FastClock::mark and its period) */
 	void mark(quint64 record, double time, double period);
 	void clear();
@@ -57,7 +63,7 @@ public:
 	qsizetype size() const { return size_; }
 	qint64 dropped() const { return dropped_; }
 	qint64 bytes() const;                 /* the memory held now: pieces, summaries, the lists */
-	double bytesPerRecord() const;        /* a record's share: its bytes and its summaries' */
+	double bytesPerRecord() const;        /* a record's share: its bytes (not when mapped) and its summaries' */
 	bool hasTime() const;                 /* a mark has come: the records have times */
 
 	/* a record's time; its channel's shown value (raw x scale + offset); i in 0 .. size() - 1 */
@@ -101,6 +107,7 @@ private:
 	};
 
 	const char *recordAt(qsizetype i) const;
+	void begin(quint64 first, qsizetype count, bool newStart, quint64 lost); /* the lists for records coming in */
 	double decode(const Channel &c, const char *record) const;
 	int segmentOf(qint64 absolute) const;
 	qsizetype bound(double t, bool strict) const;
@@ -111,6 +118,13 @@ private:
 	int recordSize_ = 0;
 	QVector<Channel> channels_;
 	QVector<QByteArray> pieces_;          /* each PIECE records (the last filling) */
+	struct Span {
+		const char *data = nullptr;
+		qsizetype begin = 0, count = 0;   /* its first record's index, its records */
+	};
+	QVector<Span> spans_;                 /* mapped: where each block's records lie */
+	QVector<int> spanOfChunk_;            /* mapped: the span of each SMALL records' first, so finding one is short */
+	std::shared_ptr<void> owner_;
 	qint64 dropped_ = 0;
 	qsizetype size_ = 0;
 	QVector<Segment> segments_;

@@ -58,5 +58,23 @@ with evre.connect_bus_tcp('127.0.0.1', 1231, 'maps/example_bus.json', token='exa
 | `bus['D1_NAME']`, `bus.read(*names)`, `bus.write(name, value, force=False)` | registers by their names on the bus |
 | `bus.broadcast(name, value, force=False)`, `bus.broadcast_refusal(addr, count)` | one frame to every device (slave 0), then each read back; the rule: the reserved bank's writable registers always, elsewhere only when every device has the same map; never CONFIG with AUTO_SEND (bit 3) on, which would make every device send by itself at once |
 
+A fast stream's recording (Fast EVRe: a `.evrs` file EVRe Studio writes beside its CSV, or `evre record` writes):
+
+```python
+rec = evre.read_recording('run.ADC.evrs')
+print(rec.stream['name'], len(rec.times), 'samples,', rec.lost, 'lost')   # ADC 1517000 samples, 1024 lost
+current = rec.values['I_LOAD']   # in the map's units, one per sample
+t = rec.times                    # seconds on the writer's clock (EVRe Studio: the CSV's time_s)
+```
+
+| Attribute | What it holds |
+|---|---|
+| `numbers`,&nbsp;`times` | each sample's record number (64 bits, from its start) and time |
+| `values` | `{channel: [value, ...]}`, raw x scale + offset |
+| `gaps`,&nbsp;`lost`,&nbsp;`starts` | `[(index after the gap, records lost)]`, their sum, the index of each start's first sample |
+| `head`,&nbsp;`stream`,&nbsp;`device`,&nbsp;`start`,&nbsp;`start_s` | the file's head: the stream as the map writes it, the wall-clock start, the writer's clock then |
+| `blocks`,&nbsp;`bad_blocks`,&nbsp;`cut` | blocks read and refused; `cut`: the file ends inside a piece (read up to the last whole one) |
+
 Tests: `python -m unittest discover -s python/tests`, with `EVRE_BUILD=<build folder>` to include a session
-against `evre-sim` serving the example map, and a bus of two devices on `evre_fake_fast`.
+against `evre-sim` serving the example map, a bus of two devices on `evre_fake_fast`, and a recording `evre record`
+writes from it.

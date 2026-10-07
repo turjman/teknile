@@ -230,7 +230,11 @@ each sample is a point of its own. Where samples were lost the line breaks; the 
 The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
 <p>A fast line is measured as any line: its row in <b>Measure</b> (nothing across a gap; a cursor in a gap reads —),
 its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
-without a gap), the trigger and Export to CSV (a row per sample). The recordings do not take fast lines yet.
+without a gap), the trigger and Export to CSV (a row per sample).</p>
+<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends is written beside the CSV as it came,
+<code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
+<code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
+cut off opens up to its last whole piece. Python reads one with <code>evre.read_recording</code>.
 <code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
 Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
 page) or the API's <code>stream</code> command (values at a period for an API client).</p>

@@ -323,6 +323,12 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 		s.channel = (key - FIRST_FAST_KEY) % 256;
 		if (!s.fast || s.channel >= s.fast->channels()) return;
 		s.totalTo = s.fast->dropped() + s.fast->size(); /* its total from the records that come now */
+		if (s.fast->mapped()) { /* a recording's: its total over all of it */
+			s.total = 0;
+			s.totalT = NAN;
+			s.totalTo = 0;
+			sumFast(s);
+		}
 	}
 	series_.insert(key, s);
 	seriesGeneration_++;
@@ -360,8 +366,12 @@ void ChartView::clearData() {
 		s.total = 0;
 		s.totalT = NAN;
 	}
-	for (const auto &store : std::as_const(fastStores_)) store->clear();
-	for (Series &s : series_) s.totalTo = 0;
+	for (const auto &store : std::as_const(fastStores_))
+		if (!store->mapped()) store->clear(); /* a recording's stays: nothing comes after the file */
+	for (Series &s : series_) {
+		s.totalTo = 0;
+		if (s.fast && s.fast->mapped()) sumFast(s);
+	}
 	keptTotals_.clear();
 	totalsSince_ = NAN; /* the first sample from now on */
 	seriesGeneration_++;
@@ -556,6 +566,21 @@ void ChartView::clearFastStreams() {
 }
 
 const fast::Store *ChartView::fastStore(int stream) const { return fastStores_.value(stream).get(); }
+
+void ChartView::setFastStore(int stream, std::shared_ptr<fast::Store> store) {
+	fastStores_.insert(stream, store);
+	for (auto it = series_.begin(); it != series_.end(); ++it) {
+		if (!isFastKey(it.key()) || (it.key() - FIRST_FAST_KEY) / 256 != stream) continue;
+		it->fast = store;
+		it->total = 0;
+		it->totalT = NAN;
+		it->totalTo = 0;
+		sumFast(*it);
+	}
+	seriesGeneration_++;
+	forgetRanges();
+	refresh();
+}
 
 QVector<ChartView::BinInfo> ChartView::lastBins(int key) const {
 	QVector<BinInfo> out;

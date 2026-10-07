@@ -2524,7 +2524,11 @@ each sample is a point of its own. Where samples were lost the line breaks; the 
 The samples are kept as they came, a few bytes each, within the chart&apos;s RAM, where a fast line counts as one line.&lt;/p&gt;
 &lt;p&gt;A fast line is measured as any line: its row in &lt;b&gt;Measure&lt;/b&gt; (nothing across a gap; a cursor in a gap reads —),
 its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
-without a gap), the trigger and Export to CSV (a row per sample). The recordings do not take fast lines yet.
+without a gap), the trigger and Export to CSV (a row per sample).&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends is written beside the CSV as it came,
+&lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
+&lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
+cut off opens up to its last whole piece. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
 &lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
 Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
 page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
@@ -2564,7 +2568,12 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
 &lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
 ومجموعه منذ المسح، ومدرّجه التكراري وطيفه (الطيف يأخذ العينات كما هي، على أطول جزء بلا فجوة)، والقدح والتصدير
-إلى CSV (صف لكل عينة). التسجيلات لا تأخذ الخطوط السريعة بعد. &lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
+إلى CSV (صف لكل عينة).&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل بجانب ملف CSV كما وصل،
+&lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
+ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
+يُفتح حتى آخر قطعة كاملة فيه. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
+&lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
 لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
 ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
 </translation>
@@ -2627,6 +2636,18 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
     <message>
         <source>the device stopped fast stream %1 (%2 reads 0: a reset?)</source>
         <translation>أوقف الجهاز التدفق السريع %1 (‏%2 يُقرأ 0: إعادة تشغيل؟)</translation>
+    </message>
+    <message>
+        <source>fast stream %1 not recorded: %2: %3</source>
+        <translation>التدفق السريع %1 لم يُسجَّل: %2: %3</translation>
+    </message>
+    <message>
+        <source>fast stream %1: its recording stopped: %2</source>
+        <translation>التدفق السريع %1: توقف تسجيله: %2</translation>
+    </message>
+    <message>
+        <source>fast stream %1 recorded: %2 (%3 blocks, %4 MB)</source>
+        <translation>التدفق السريع %1 سُجِّل: %2 (الكتل: %3، %4 MB)</translation>
     </message>
 </context>
 <context>
@@ -4909,10 +4930,6 @@ Keep the last part: about the last %5 of %6?</source>
         <translation>إلغاء</translation>
     </message>
     <message>
-        <source>Recordings (*.csv);;All files (*)</source>
-        <translation>التسجيلات (*.csv);;كل الملفات (*)</translation>
-    </message>
-    <message>
         <source>No recordings opened yet</source>
         <translation>لم يُفتح أي تسجيل بعد</translation>
     </message>
@@ -4951,6 +4968,22 @@ Keep the last part: about the last %5 of %6?</source>
     <message>
         <source>notes not saved beside %1: %2</source>
         <translation>لم تُحفظ الملاحظات بجانب %1: %2</translation>
+    </message>
+    <message>
+        <source>Recordings (*.csv *.evrs);;All files (*)</source>
+        <translation>التسجيلات (*.csv *.evrs);;كل الملفات (*)</translation>
+    </message>
+    <message>
+        <source> · %1: %2 samples, %3 lost</source>
+        <translation> · %1: العينات %2، المفقودة %3</translation>
+    </message>
+    <message>
+        <source> · %1: %2 samples</source>
+        <translation> · %1: العينات %2</translation>
+    </message>
+    <message>
+        <source> (the file ends cut off: read up to its last whole piece)</source>
+        <translation> (الملف ينتهي مقطوعًا: قُرئ حتى آخر قطعة كاملة فيه)</translation>
     </message>
 </context>
 <context>
@@ -5971,6 +6004,25 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>closed by %1</source>
         <translation>أغلقه %1</translation>
+    </message>
+</context>
+<context>
+    <name>fast::Recording</name>
+    <message>
+        <source>the file is empty</source>
+        <translation>الملف فارغ</translation>
+    </message>
+    <message>
+        <source>not a fast stream&apos;s recording: it does not begin with its head (EVRS)</source>
+        <translation>ليس تسجيل تدفق سريع: لا يبدأ برأسه (EVRS)</translation>
+    </message>
+    <message>
+        <source>not a recording of the format %1</source>
+        <translation>ليس تسجيلًا بالصيغة %1</translation>
+    </message>
+    <message>
+        <source>its stream cannot be read: %1</source>
+        <translation>لا يمكن قراءة تدفقه: %1</translation>
     </message>
 </context>
 <context>

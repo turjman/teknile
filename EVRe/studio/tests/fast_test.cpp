@@ -11,6 +11,7 @@
 #include "evre/frame.h"
 #include "io/fast_stream.h"
 #include "model/device_map.h"
+#include "model/fast_recording.h"
 #include "model/fast_store.h"
 
 using namespace fast;
@@ -470,6 +471,98 @@ private slots:
 		QVERIFY(store.startsAfterGap(100));
 		QCOMPARE(store.lostBefore(100), qint64(-1)); /* a new start: not counted */
 		QVERIFY(std::fabs(store.timeAt(100) - (store.timeAt(99) + 0.001)) < 1e-9);
+	}
+
+	/* A recording written as the Studio writes it (a block lost now and then, a restart) and read back: the records,
+	 * their values and times as a store fed live holds them, the gaps counted; a file cut off reads up to its last
+	 * whole piece; a file of another kind is refused */
+	void recordingReadBack() {
+		const StreamDef def = exampleStream();
+		QTemporaryDir folder;
+		const QString path = folder.filePath(QStringLiteral("run.ADC.evrs"));
+		RecordingWriter writer;
+		QString err;
+		QVERIFY(writer.open(path, QStringLiteral("example"), def, QDateTime::currentDateTime(), err, 12.5));
+		FastSource source(def, 1);
+		FastSource::Options lose;
+		lose.loseEvery = 7;
+		source.start(lose, 0);
+		FastStream state;
+		state.reset(def);
+		Store live(def);
+		evre::Parser parser;
+		quint64 lost = 0;
+		const auto run = [&](qint64 fromNs, qint64 toNs) {
+			for (qint64 ns = fromNs; ns <= toNs; ns += 10000000) {
+				parser.feed(source.due(ns));
+				evre::Frame frame;
+				while (parser.next(frame)) {
+					BlockTaken taken;
+					if (state.take(frame.data, 12.5 + ns / 1e9, taken) != BlockCheck::Ok) continue;
+					if (taken.newMark) QVERIFY(writer.mark(state.clock().mark().record, state.clock().mark().time));
+					QVERIFY(writer.block(frame.data));
+					live.append(taken.first, taken.count, frame.data.constData() + HEADER, taken.newStart, taken.lost);
+					if (taken.newMark) live.mark(state.clock().mark().record, state.clock().mark().time, state.clock().period());
+					lost += taken.lost;
+				}
+			}
+		};
+		run(0, 3000000000LL);
+		source.start({}, 3010000000LL); /* the device started again: START, numbers from 0 */
+		run(3010000000LL, 5000000000LL);
+		writer.close();
+
+		Recording read;
+		QString error;
+		const std::atomic<bool> cancel{ false };
+		QVERIFY2(readRecording(path, cancel, {}, read, error), qPrintable(error));
+		QVERIFY(read.store && !read.cut && read.store->mapped());
+		QCOMPARE(read.store->size(), live.size());
+		QCOMPARE(read.lost, lost);
+		QVERIFY(lost > 0);
+		QCOMPARE(read.store->gaps(), live.gaps());
+		QCOMPARE(read.startClock, 12.5);
+		QCOMPARE(read.stream.name, def.name);
+		double worst = 0;
+		int differ = 0;
+		for (qsizetype i = 0; i < live.size(); i++) {
+			worst = std::max(worst, std::fabs(read.store->timeAt(i) - live.timeAt(i)));
+			if (read.store->value(0, i) != live.value(0, i) || read.store->value(1, i) != live.value(1, i)) differ++;
+		}
+		qInfo("recording read back: %lld records, %lld lost, times within %.3g s of the live store's", (long long) live.size(),
+				(long long) lost, worst);
+		QCOMPARE(differ, 0);
+		QVERIFY(worst < 1e-4);
+		double lo, hi, liveLo, liveHi;
+		read.store->minMax(0, 0, read.store->size(), lo, hi);
+		live.minMax(0, 0, live.size(), liveLo, liveHi);
+		QCOMPARE(lo, liveLo);
+		QCOMPARE(hi, liveHi);
+
+		/* cut off inside its last piece */
+		const QString cutPath = folder.filePath(QStringLiteral("cut.ADC.evrs"));
+		QVERIFY(QFile::copy(path, cutPath));
+		{
+			QFile cut(cutPath);
+			QVERIFY(cut.open(QIODevice::ReadWrite));
+			QVERIFY(cut.resize(cut.size() - 5));
+		}
+		Recording cutRead;
+		QVERIFY(readRecording(cutPath, cancel, {}, cutRead, error));
+		QVERIFY(cutRead.cut && cutRead.bytesRead < cutRead.bytes);
+		QCOMPARE(cutRead.blocks, read.blocks - 1);
+		/* not a recording */
+		const QString other = folder.filePath(QStringLiteral("run.csv"));
+		{
+			QFile csv(other);
+			QVERIFY(csv.open(QIODevice::WriteOnly));
+			csv.write("time_s,datetime\n");
+		}
+		Recording none;
+		QVERIFY(!readRecording(other, cancel, {}, none, error) && !error.isEmpty());
+		/* beside a CSV */
+		QFile(folder.filePath(QStringLiteral("run.csv"))).open(QIODevice::WriteOnly);
+		QCOMPARE(recordingsBeside(folder.filePath(QStringLiteral("run.csv"))), QStringList{ path });
 	}
 
 	/* trims drop whole pieces; what stays reads the same; the bytes it says it holds are what its arrays hold */

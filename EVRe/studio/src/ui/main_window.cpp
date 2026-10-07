@@ -212,7 +212,8 @@ bool MainWindow::restartAsked() { return restartWanted; }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls()) {
-		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)) {
+		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
+					|| url.toLocalFile().endsWith(QLatin1String(".evrs"), Qt::CaseInsensitive))) {
 			event->acceptProposedAction();
 			return;
 		}
@@ -221,7 +222,8 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 
 void MainWindow::dropEvent(QDropEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls())
-		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive))
+		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
+					|| url.toLocalFile().endsWith(QLatin1String(".evrs"), Qt::CaseInsensitive)))
 			openRecording(url.toLocalFile());
 	event->acceptProposedAction();
 }
@@ -278,6 +280,7 @@ void MainWindow::startEngine() {
 		if (stopped) sidebar_->setFastOn(stream, false);
 		logEvent(LogLevel::Warning, text);
 	});
+	connect(engine_, &IoEngine::fastRecorded, this, [this](const QString &text) { logEvent(LogLevel::Info, text); });
 	connect(engine_, &IoEngine::autoSendSlowed, this, [this](const QString &why) { logEvent(LogLevel::Warning, why); });
 	/* the device cleared it by itself (a reset, or another client): said once, not switched on again */
 	connect(engine_, &IoEngine::autoSendStopped, this, [this] {

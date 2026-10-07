@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The evre package (unittest): frames, the map, and a device - evre-sim serving the example map.
+"""The evre package (unittest): frames, the map, a device - evre-sim serving the example map - and a fast stream's
+recording (one made here, and one `evre record` writes from evre_fake_fast).
 
     python -m unittest discover -s python/tests          (from EVRe Studio's folder)
     EVRE_BUILD=<build folder>: where evre-sim is; without it the device tests are skipped
 """
 import json
+import math
 import os
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -298,3 +301,105 @@ class BusOverTcp(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _piece(name, body):
+    return name + struct.pack('<I', len(body)) + body
+
+
+def _block(first, values, flags=0):
+    """a block of the example fast stream: records of two i16"""
+    return struct.pack('<IHBB', first, len(values), flags, 0) + b''.join(struct.pack('<hh', a, b) for a, b in values)
+
+
+class Recordings(unittest.TestCase):
+    """a .evrs made here: the head, the numbers across a gap and the 32-bit wrap, a new start, the times, a cut"""
+
+    def make(self, path, cut=0):
+        stream = {'name': 'ADC', 'addr': '0xDC00', 'size': 1024, 'rate': 1000,
+                  'channels': [{'name': 'I_LOAD', 'type': 'i16', 'unit': 'A', 'scale': 0.5},
+                               {'name': 'V_BUS', 'type': 'i16', 'unit': 'V'}]}
+        head = json.dumps({'format': 'evre-fast-rec/1', 'device': 'example', 'stream': stream,
+                           'start': '2026-10-05T12:00:00.000', 'start_s': 3.0}).encode()
+        data = _piece(b'EVRS', head)
+        first = 0xFFFFFFFE  # two before the wrap
+        data += _piece(b'TIME', struct.pack('<Qd', first, 10.0))
+        data += _piece(b'BLK ', _block(first, [(2, 20), (4, 40), (6, 60)], 0x01))   # 3 records over the wrap
+        data += _piece(b'XTRA', b'skipped')
+        data += _piece(b'BLK ', _block(4, [(8, 80)], 0x02))                        # records 2, 3 lost (LOST)
+        data += _piece(b'TIME', struct.pack('<Qd', 0x100000004, 10.006))
+        data += _piece(b'BLK ', _block(5, [(10, 100)], 0x00))
+        data += _piece(b'TIME', struct.pack('<Qd', 0, 20.0))
+        data += _piece(b'BLK ', _block(0, [(12, 120), (14, 140)], 0x01))          # a new start
+        data += _piece(b'BLK ', _block(7, [(1, 1)])[:-1])                          # a bad block (one byte short)
+        with open(path, 'wb') as fh:
+            fh.write(data[:len(data) - cut] if cut else data)
+
+    def test_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'run.ADC.evrs')
+            self.make(path)
+            rec = evre.read_recording(path)
+            self.assertEqual((rec.device, rec.stream['name'], rec.start_s), ('example', 'ADC', 3.0))
+            self.assertEqual(rec.numbers, [0xFFFFFFFE, 0xFFFFFFFF, 0x100000000, 0x100000004, 0x100000005, 0, 1])
+            self.assertEqual(rec.values['I_LOAD'], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+            self.assertEqual(rec.values['V_BUS'], [20, 40, 60, 80, 100, 120, 140])
+            self.assertEqual((rec.gaps, rec.lost, rec.starts), ([(3, 3)], 3, [0, 5]))
+            self.assertEqual((rec.blocks, rec.bad_blocks, rec.cut), (4, 1, False))
+            # 6 ms between the marks over 6 records: 1 ms a record; the new start from its own mark at the map's rate
+            for got, want in zip(rec.times, [10.0, 10.001, 10.002, 10.006, 10.007, 20.0, 20.001]):
+                self.assertAlmostEqual(got, want, places=9)
+
+    def test_cut_and_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'cut.evrs')
+            self.make(path, cut=3)  # inside the last piece
+            rec = evre.read_recording(path)
+            self.assertTrue(rec.cut)
+            self.assertEqual(rec.blocks, 4)
+            other = os.path.join(tmp, 'run.csv')
+            with open(other, 'w') as fh:
+                fh.write('time_s,datetime\n')
+            with self.assertRaises(ValueError):
+                evre.read_recording(other)
+
+
+EVRE = os.path.join(BUILD or '', 'evre.exe' if os.name == 'nt' else 'evre')
+FAST_MAP = os.path.join(HERE, '..', '..', 'maps', 'example_fast.json')
+FAST_PORT = 1216
+
+
+@unittest.skipUnless(BUILD and os.path.exists(FAST) and os.path.exists(EVRE),
+                     'EVRE_BUILD does not name a build folder with evre and evre_fake_fast')
+class RecordedStream(unittest.TestCase):
+    """evre record from evre_fake_fast (every 5th block lost), read back: the device's waves, the gaps counted"""
+
+    def test_record_and_read(self):
+        fake = subprocess.Popen([FAST, str(FAST_PORT), FAST_MAP, 'example-token', '--fast-lose', '5'],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            for _ in range(50):
+                try:
+                    socket.create_connection(('127.0.0.1', FAST_PORT), 0.2).close()
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            with tempfile.TemporaryDirectory() as tmp:
+                path = os.path.join(tmp, 'adc.evrs')
+                done = subprocess.run([EVRE, 'record', '--tcp', '127.0.0.1:%d' % FAST_PORT, '--map', FAST_MAP,
+                                       '--stream', 'ADC', '-o', path, '--seconds', '1'], capture_output=True, timeout=30)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                rec = evre.read_recording(path)
+        finally:
+            fake.kill()
+            fake.wait()
+        self.assertGreater(len(rec.numbers), 5000)
+        self.assertEqual(len(rec.times), len(rec.numbers))
+        self.assertGreater(rec.lost, 0)
+        self.assertEqual(rec.lost, sum(n for _, n in rec.gaps))
+        rate = rec.stream['rate']
+        for i in range(0, len(rec.numbers), 97):  # the fake device's waves (FastSource::wave): 50 and 100 Hz
+            t = rec.numbers[i] / rate
+            self.assertAlmostEqual(rec.values['I_LOAD'][i], round(13000 * math.sin(2 * math.pi * 50 * t)) * 0.0005)
+            self.assertAlmostEqual(rec.values['V_BUS'][i], round(13000 * math.sin(2 * math.pi * 100 * t + 1)) * 0.001)
+        self.assertTrue(all(b > a for a, b in zip(rec.times, rec.times[1:])))

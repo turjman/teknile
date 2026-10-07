@@ -13,6 +13,9 @@
  *    (value names, fields: the Lines menu plots a field), a byte array's column
  *    is left out. The window keeps the file's values: a math line or a field
  *    added later is computed from them.
+ *  - Fast streams' recordings (.evrs, model/fast_recording.h): opened alone, or with the CSV they were recorded
+ *    beside (run.csv with run.ADC.evrs): the file mapped into memory, only the summaries made, on the same thread;
+ *    a fast line per channel, on the CSV's clock (the TIME pieces are the Studio's time_s, as the CSV's rows).
  *  - Notes: "<file>.notes.json" read at the start and saved at every change.
  *  - The last 8 recordings opened or exported (Recent recordings), and every
  *    window, closed with the main window (closeAll). */
@@ -23,6 +26,7 @@
 #include <functional>
 
 #include "model/device_map.h"
+#include "model/fast_recording.h"
 #include "model/recording_file.h"
 
 class ChartTab;
@@ -52,7 +56,9 @@ public:
 	static QList<RecordingWindow *> windows(); /* open now */
 	static void closeAll();
 
-	RecordingWindow(const QString &file, recording::Data data, const QVector<RegDef> &map, int ramMB);
+	/* fast: the streams' recordings (the CSV's beside it, or a .evrs alone: data then empty) */
+	RecordingWindow(const QString &file, recording::Data data, const QVector<RegDef> &map, int ramMB,
+			QVector<fast::Recording> fast = {});
 	~RecordingWindow() override;
 
 	ChartTab *chartTab() const { return tab_; }
@@ -61,6 +67,7 @@ public:
 	double firstTime() const { return t0_; }
 	double lastTime() const { return t1_; }
 	int skipped() const { return skipped_; } /* columns left out: not numbers, or a byte array of the map */
+	const QVector<fast::Recording> &fastRecordings() const { return fast_; }
 
 signals:
 	void logged(int level, const QString &text); /* LogLevel; the main window's Log */
@@ -78,6 +85,7 @@ private:
 	QVector<bool> plotted_;
 	int ramMB_ = 0;
 	int skipped_ = 0;
+	QVector<fast::Recording> fast_;
 	double t0_ = 0, t1_ = 0;
 	ChartTab *tab_ = nullptr;
 	QLabel *info_ = nullptr;
