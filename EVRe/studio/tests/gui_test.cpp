@@ -8595,7 +8595,8 @@ private:
 		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
 		auto *arm = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerArm"));
 		auto *hold = chart.tab.findChild<QPushButton *>(QStringLiteral("hold"));
-		auto *state = chart.tab.findChild<QLabel *>(QStringLiteral("triggerState"));
+		/* its whole text (fullText): a narrower row, as with Linux's fonts, shows it cut by the policy, whole in the tooltip */
+		auto *state = chart.tab.findChild<ElidedLabel *>(QStringLiteral("triggerState"));
 		if (!action || !row || !level || !mode || !arm || !hold || !state) {
 			check(false, "chart, Trigger, Run and Stop: the row's controls and the toolbar's button found");
 			return;
@@ -8619,7 +8620,7 @@ private:
 		bool textsOk = true;
 		const auto texts = [&](const QString &rowText, const QString &cornerText, const char *what) {
 			(void) view->grab();
-			const QString shownRow = state->text(), shownCorner = view->stateFullText();
+			const QString shownRow = state->fullText(), shownCorner = view->stateFullText();
 			const bool same = shownRow == rowText && shownCorner == cornerText;
 			if (!same)
 				std::printf("     (%s: the row \"%s\", the corner \"%s\")\n", what, qPrintable(shownRow), qPrintable(shownCorner));
@@ -8820,7 +8821,7 @@ private:
 		feedSine(20000);
 		sine.tab.show();
 		(void) QTest::qWaitForWindowExposed(&sine.tab);
-		auto *sineState = sine.tab.findChild<QLabel *>(QStringLiteral("triggerState"));
+		auto *sineState = sine.tab.findChild<ElidedLabel *>(QStringLiteral("triggerState"));
 		sine.tab.triggerOnLine(sine.key());
 		sine.view->setTriggerLevel(0.1);
 		sine.view->setTriggerHoldoff(0);
@@ -8829,12 +8830,12 @@ private:
 		while (sine.view->triggerHolds() < 10 && frames++ < 300) feedSine(20);
 		const int warm = sine.view->triggerHolds();
 		while (sine.view->triggerHolds() == warm && frames++ < 400) feedSine(20);
-		const QString rowBefore = sineState ? sineState->text() : QString(), cornerBefore = sine.view->stateFullText();
+		const QString rowBefore = sineState ? sineState->fullText() : QString(), cornerBefore = sine.view->stateFullText();
 		const int start = sine.view->triggerHolds();
 		int rewrites = 0;
 		while (sine.view->triggerHolds() - start < 50 && frames++ < 1200) {
 			feedSine(20);
-			if (sineState && sineState->text() != rowBefore) rewrites++;
+			if (sineState && sineState->fullText() != rowBefore) rewrites++;
 			if (sine.view->stateFullText() != cornerBefore) rewrites++;
 		}
 		const int retriggers = sine.view->triggerHolds() - start;
@@ -9234,6 +9235,38 @@ private:
 				&& QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList().value(0).endsWith(QStringLiteral("\t2"));
 		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, symbol.center().toPoint());
 		const bool cycledOn = view->triggerEdge() == ChartView::TriggerEdge::Rising;
+		/* the edge's arrow in the middle of its part (the owner saw the font's ↕ right of the centre): the text's colour
+		 * across the part, its ink's middle within a device pixel and a half of the part's middle, for each edge */
+		{
+			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10)); /* the part not lit */
+			bool centred = true;
+			QString seen;
+			for (int k = 0; k < 3; k++) {
+				(void) view->grab(); /* the tab drawn with this edge */
+				const QRectF part = view->triggerEdgeButton();
+				const QImage whole = view->grab().toImage();
+				const qreal dpr = whole.devicePixelRatio();
+				const QRect area = QRectF(part.topLeft() * dpr, part.size() * dpr).toAlignedRect().adjusted(int(3 * dpr), 2, -2, -2);
+				const QColor text = Theme::colors().text;
+				int left = 1 << 30, right = -1, top = 1 << 30, bottom = -1;
+				for (int y = area.top(); y <= area.bottom(); y++)
+					for (int x = area.left(); x <= area.right(); x++) {
+						const QColor px = whole.pixelColor(x, y);
+						if (std::abs(px.red() - text.red()) + std::abs(px.green() - text.green()) + std::abs(px.blue() - text.blue()) > 120)
+							continue;
+						left = std::min(left, x), right = std::max(right, x), top = std::min(top, y), bottom = std::max(bottom, y);
+					}
+				const double inkX = (left + right) / 2.0, inkY = (top + bottom) / 2.0;
+				const double midX = part.center().x() * dpr, midY = part.center().y() * dpr;
+				centred = centred && right >= 0 && std::fabs(inkX - midX) <= 1.5 + dpr / 2 && std::fabs(inkY - midY) <= 1.5 + dpr / 2;
+				seen += QStringLiteral(" %1,%2").arg(inkX - midX, 0, 'f', 1).arg(inkY - midY, 0, 'f', 1);
+				QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, part.center().toPoint());
+				moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10));
+			}
+			if (!centred) std::printf("     (the arrow's ink off the part's middle, device px, rising falling either:%s)\n", qPrintable(seen));
+			check(centred && view->triggerEdge() == ChartView::TriggerEdge::Rising, "chart, Trigger per line: the edge's arrow "
+					"(↑ ↓ ↕, drawn as lines) in the middle of its part of the level's tab, for each edge");
+		}
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the level's marks in its lane, for a look, in both themes */
 			pair.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_lane.png"));
 			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10));
@@ -9982,12 +10015,31 @@ private:
 				const QColor p = shot.pixelColor(int(x * r), int(y * r));
 				return std::abs(p.red() - line.red()) + std::abs(p.green() - line.green()) + std::abs(p.blue() - line.blue()) < 60;
 			};
-			/* the point's tip just left of the layer, the box's left border */
-			int tip = 0; /* the pointer's outline in the line's colour on the level's row, hollow or solid */
-			for (int x = int((plot.left() - 6) * r); x < int((plot.left() - 2) * r); x++)
-				tip += lineColoured(x / r, view->triggerLineY()) ? 1 : 0;
-			markDrawn = tip >= 2
+			/* the point's tip just left of the layer, on the level's row and the device pixel above and below it: at 100 %
+			 * (Linux's virtual screen) the anti-aliased 1 px outline of a hollow pointer and the dashed line share those
+			 * rows and none of their pixels is the line's colour itself, so a pixel nearer the line's colour than the box's
+			 * fill and the ground beside the marker counts, hollow or solid; the rightmost such pixel at the layer's edge */
+			const auto distance = [](const QColor &a, const QColor &b) {
+				return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+			};
+			const QColor fill = shot.pixelColor(int((levelMark.left() + 3) * r), int((levelMark.center().y() + 4) * r));
+			const QColor ground = shot.pixelColor(int((levelMark.left() - 3) * r), int(levelMark.center().y() * r));
+			int tip = 0, tipRight = -1;
+			const int row = int(view->triggerLineY() * r);
+			for (int y = row - 1; y <= row + 1; y++)
+				for (int x = int((plot.left() - 6) * r); x < int((plot.left() - 2) * r); x++) {
+					const QColor p = shot.pixelColor(x, y);
+					if (distance(p, line) < std::min(distance(p, fill), distance(p, ground))) {
+						tip++;
+						tipRight = std::max(tipRight, x);
+					}
+				}
+			markDrawn = tip >= 2 && tipRight >= (plot.left() - 3) * r - 1
 					&& lineColoured(levelMark.left() + 0.5, levelMark.center().y()) && !lineColoured(levelMark.left() - 3, levelMark.center().y());
+			if (!markDrawn)
+				std::printf("     (the marker's tip: %d pixels nearer the line's colour, the rightmost at %d (device px), the "
+						"border %d, the ground %d)\n", tip, tipRight, int(lineColoured(levelMark.left() + 0.5, levelMark.center().y())),
+						int(!lineColoured(levelMark.left() - 3, levelMark.center().y())));
 		}
 		const bool markPlaced = !levelMark.isEmpty() && std::fabs(levelMark.right() - (plot.left() - 2)) < 0.01
 				&& levelMark.width() == 21 && levelMark.top() <= view->triggerLineY() && levelMark.bottom() >= view->triggerLineY()
@@ -10376,15 +10428,53 @@ private:
 			return;
 		}
 
-		/* Off: at the row's end, after the state, with its tooltip; a click is Display -> Trigger unticked */
+		/* Off: beside the row's other buttons, before the state (not at the row's far end), with its tooltip; a click is
+		 * Display -> Trigger unticked */
 		pair.tab.triggerOnLine(pair.ampsKey());
 		QApplication::processEvents();
 		const bool offShown = off->isVisible() && off->text() == QStringLiteral("Off")
 				&& off->toolTip() == QStringLiteral("Turn the trigger off (as Display → Trigger)")
-				&& off->geometry().left() >= state->geometry().right();
+				&& off->geometry().right() <= state->geometry().left() && state->geometry().left() - off->geometry().right() <= 24;
+		/* the row in two lines where one does not hold its controls and some of the state (the main window's narrowest
+		 * stays 1280 px with Linux's fonts and in Arabic): the line to the mode on the first, the hold-off to Off and the
+		 * state on the second; every control shown, as wide as it asks, none over another, inside the row; one line
+		 * where the tab is wide */
+		bool twoLines = false, oneLine = false, whole = true;
+		QString rowNotes;
+		for (const bool narrow : { true, false }) {
+			const int width = narrow ? pair.tab.minimumSizeHint().width() : 1900;
+			pair.tab.resize(width, 700);
+			QApplication::processEvents();
+			QApplication::processEvents();
+			QList<QWidget *> controls;
+			for (QWidget *child : row->findChildren<QWidget *>(Qt::FindDirectChildrenOnly))
+				if (child->isVisible()) controls << child;
+			for (int i = 0; i < controls.size(); i++) {
+				const QRect at = controls[i]->geometry();
+				bool fits = row->rect().contains(at) && (controls[i] == state || at.width() >= controls[i]->minimumSizeHint().width());
+				for (int j = i + 1; j < controls.size(); j++) fits = fits && !at.intersects(controls[j]->geometry());
+				if (!fits) rowNotes += QStringLiteral(" %1 at %2,%3 %4x%5;").arg(controls[i]->objectName(), QString::number(at.x()),
+						QString::number(at.y()), QString::number(at.width()), QString::number(at.height()));
+				whole = whole && fits;
+			}
+			const bool below = off->geometry().top() >= mode->geometry().bottom() && state->geometry().top() >= mode->geometry().bottom();
+			const bool level = std::abs(off->geometry().center().y() - mode->geometry().center().y()) <= 2;
+			if (narrow) twoLines = below;
+			else oneLine = level;
+			rowNotes += QStringLiteral(" the tab %1 px: the row %2 px high, %3 controls, the narrowest %4 px;").arg(width)
+					.arg(row->height()).arg(controls.size()).arg(row->minimumSizeHint().width());
+		}
+		pair.tab.resize(1200, 700);
+		QApplication::processEvents();
+		std::printf("     (the trigger's row:%s two lines %d, one line %d, whole %d)\n", qPrintable(rowNotes), int(twoLines),
+				int(oneLine), int(whole));
+		check(twoLines && oneLine && whole, "chart, Trigger's row: in two lines where one does not hold its controls and some "
+				"of the state (the line to the mode on the first, the hold-off to Off and the state on the second), one line "
+				"where there is room; every control shown, as wide as it asks, none over another");
+
 		QTest::mouseClick(off, Qt::LeftButton);
 		const bool offWorks = !action->isChecked() && !row->isVisible() && !view->triggerOn();
-		check(offShown && offWorks, "chart, Trigger's flow: an Off button at the row's end (tooltip \"Turn the trigger off "
+		check(offShown && offWorks, "chart, Trigger's flow: an Off button beside the row's other buttons, before the state (tooltip \"Turn the trigger off "
 				"(as Display → Trigger)\") turns the trigger off: Display -> Trigger unticked, the row hidden");
 
 		/* the chip's entry: ticked for the line watched alone; unticked, the trigger is off; ticked on another line, on */

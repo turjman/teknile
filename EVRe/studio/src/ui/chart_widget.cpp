@@ -4686,7 +4686,27 @@ const QImage &ChartView::levelTagPicture(qreal dpr, double at) const {
 	p.setFont(labelFont());
 	const QRectF text(box.left() + (off ? 14 : 4), box.top(), divider - box.left() - (off ? 14 : 4) - 4, box.height());
 	p.drawText(text, Qt::AlignCenter, QFontMetricsF(labelFont()).elidedText(label, Qt::ElideRight, text.width() + 1));
-	p.drawText(button, Qt::AlignCenter, edgeSymbol());
+	/* the edge drawn as lines, not as the font's arrow: a font's ↑ ↓ ↕ sits off the middle of its own box (the owner
+	 * saw it right of the centre), so the stem and the heads are placed on the button's centre */
+	const QPointF mid = button.center();
+	const double half = std::min(button.height() / 2 - pen - 3, 6.5), head = 3;
+	const TriggerEdge edge = watchedSettings().edge;
+	QPainterPath arrow;
+	arrow.moveTo(mid.x(), mid.y() - half);
+	arrow.lineTo(mid.x(), mid.y() + half);
+	if (edge != TriggerEdge::Falling) {
+		arrow.moveTo(mid.x() - head, mid.y() - half + head);
+		arrow.lineTo(mid.x(), mid.y() - half);
+		arrow.lineTo(mid.x() + head, mid.y() - half + head);
+	}
+	if (edge != TriggerEdge::Rising) {
+		arrow.moveTo(mid.x() - head, mid.y() + half - head);
+		arrow.lineTo(mid.x(), mid.y() + half);
+		arrow.lineTo(mid.x() + head, mid.y() + half - head);
+	}
+	p.setPen(QPen(c.text, 1.3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+	p.setBrush(Qt::NoBrush);
+	p.drawPath(arrow);
 	return levelTagImage_;
 }
 

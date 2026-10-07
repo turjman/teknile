@@ -415,7 +415,7 @@ crossing, a faint line marks where the data ends.</p>
 rising crossing of its first line's middle (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
 cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 <b>Display → Lock short windows</b> turns it off.</p>
-<p><b>Off</b> at the row's end turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
+<p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
 <b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
 trigger (<i>no line to watch</i>, its name greyed in the row's list); it arms again when the line comes back, never
 on another line by itself.</p>
