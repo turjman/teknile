@@ -301,12 +301,12 @@ virtual display and checks that it draws before anything is published.
 ```
 EVRe/
   docs/        the protocol and the assets
-  lib/         the device library (C++): EVRe.h, EVRe.cpp, ports/
+  lib/         the device library (C++): EVRe.h, EVRe.cpp, ports/; fast/ for Fast EVRe streams
   studio/      EVRe Studio
     src/         the Studio's sources
     cli/         evre and evre-sim
     python/      the evre package for Python
-    maps/        example_device.json, example_bus.json
+    maps/        example_device.json, example_bus.json, example_fast.json
     examples/    MATLAB, LabVIEW and Python through the API
     packaging/   the Windows installer and the Linux AppImage
     translations/ Arabic
