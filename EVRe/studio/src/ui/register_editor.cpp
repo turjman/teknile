@@ -372,13 +372,20 @@ QWidget *RegisterEditor::buildGeneral() {
 	form->addRow(tr("Decimals"), decimals_);
 	form->addRow(tr("Min"), min_);
 	form->addRow(tr("Max"), max_);
+	form->addRow(tr("Default"), default_);
+	/* EVRe Guard's three rows close the form under a heading of their own: without it nothing said what they are
+	 * (theme: #guardHeading, the line under it in the border colour) */
+	auto *guardHeading = new QLabel(tr("EVRe Guard"));
+	guardHeading->setObjectName(QStringLiteral("guardHeading"));
+	guardHeading->setToolTip(tr("The device-side checks of EVRe Guard (library 1.1): what a device does with a value "
+			"past the limits, a closed set of values, and reserved bits"));
+	form->addRow(guardHeading);
 	form->addRow(tr("Past limits"), pastLimits_);
 	form->addRow(QString(), closed_);
 	form->addRow(QString(), reservedZero_);
-	form->addRow(tr("Default"), default_);
 	auto *page = new QWidget;
 	page->setLayout(form);
-	/* in a scroll area: its 21 rows would make the window taller than a 768-line screen (theme: #formScroll) */
+	/* in a scroll area: its 23 rows would make the window taller than a 768-line screen (theme: #formScroll) */
 	auto *scroll = new QScrollArea;
 	scroll->setObjectName(QStringLiteral("formScroll"));
 	scroll->setWidget(page);
