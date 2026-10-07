@@ -121,25 +121,35 @@ bool Store::hasTime() const {
 	return !segments_.isEmpty() && std::any_of(epochs_.begin(), epochs_.end(), [](const Epoch &e) { return !e.marks.isEmpty(); });
 }
 
-void Store::dropFront(qsizetype records) {
+void Store::dropFront(qsizetype records, Released *gone) {
 	if (!spans_.isEmpty()) return; /* mapped: the file holds them */
 	const qsizetype pieces = std::min(records / PIECE, size_ / PIECE);
 	if (pieces <= 0) return;
 	const qsizetype n = pieces * PIECE;
+	if (gone)
+		for (qsizetype i = 0; i < pieces; i++) gone->pieces << std::move(pieces_[i]);
 	pieces_.remove(0, pieces);
 	dropped_ += n;
 	size_ -= n;
 	for (Channel &c : channels_) {
 		for (Summary *s : { &c.small, &c.large }) {
 			const qsizetype chunk = s == &c.small ? SMALL : LARGE;
-			const qsizetype gone = std::min<qsizetype>(s->min.size(), dropped_ / chunk - s->first);
-			if (gone <= 0) continue;
+			const qsizetype chunks = std::min<qsizetype>(s->min.size(), dropped_ / chunk - s->first);
+			if (chunks <= 0) continue;
 			for (QVector<double> *v : { &s->min, &s->max, &s->sum, &s->squares }) {
-				v->remove(0, gone);
-				/* the room freed at the front let go: Qt's vectors keep it */
-				if (v->capacity() > 2 * v->size() + 1024) v->squeeze();
+				v->remove(0, chunks);
+				/* the room freed at the front let go: Qt's vectors keep it. Handed on, the old array goes as a whole and
+				 * what stays is copied into one of its size (what squeeze does) */
+				if (v->capacity() <= 2 * v->size() + 1024) continue;
+				if (!gone) {
+					v->squeeze();
+					continue;
+				}
+				QVector<double> fitted(v->cbegin(), v->cend());
+				gone->summaries << std::move(*v);
+				*v = std::move(fitted);
 			}
-			s->first += gone;
+			s->first += chunks;
 		}
 	}
 	while (segments_.size() > 1 && segments_[1].begin <= dropped_) segments_.removeFirst();

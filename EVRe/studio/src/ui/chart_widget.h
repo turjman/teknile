@@ -804,6 +804,7 @@ private:
 	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
 	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
+	void releaseSome(); /* a frame's slice of what the trims let go */
 	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
 	/* a fast line's records over t0..t1 into arrays, at most `most`; withoutGap: the longest part without a gap */
 	static bool fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
@@ -949,6 +950,7 @@ private:
 	QString stripText_;                    /* the strip's words as last drawn, and their colour (tests) */
 	QColor stripTextColor_;
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
+	fast::Store::Released released_;       /* what the fast stores' trims let go, freed a slice a frame (releaseSome) */
 	int ramMB_ = DEFAULT_RAM_MB;
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */
 	Drawing drawing_ = Drawing::Cpu;

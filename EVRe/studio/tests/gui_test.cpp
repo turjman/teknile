@@ -538,6 +538,7 @@ public:
 		chartLogScale();
 		chartInfoLine();
 		chartOneCap();
+		chartRamCut();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -5935,6 +5936,73 @@ private:
 				"chart, the memory strip at a 10 ms window: a handle 12 px wide on the view (the mouse over it a pointing hand, "
 				"lit, a tooltip); dragged it moves the view by as much as the mouse, no jump when taken; a click elsewhere "
 				"takes the view there; the wheel over the strip a window later or earlier");
+	}
+
+	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of
+	 * 2 GB (as many as this machine fills in 20 s), then RAM set to 256 MB: at the next block the store is down to its
+	 * new share, and no block's append (its trim with it) and no paint takes over 20 ms. Letting gigabytes go took the
+	 * window's thread 2 s; now it hands them to a thread of its own */
+	static void chartRamCut() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		QWidget host;
+		host.resize(1100, 480);
+		auto *view = new ChartView(&host);
+		view->setGeometry(9, 5, 1080, 470);
+		double now = 100;
+		view->setClock([&now] { return now; }, 0);
+		view->setMemory(3600);
+		view->setRamBudget(2048);
+		view->setFastStream(0, def);
+		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
+		quint64 first = 0;
+		const auto block = [&] {
+			view->appendFast(0, first, BLOCK, records, first == 0, 0);
+			first += BLOCK;
+			now = 100.0 + first * 1e-6;
+			view->markFast(0, first, now, 1e-6);
+		};
+		QElapsedTimer filling;
+		filling.start();
+		const fast::Store *store = view->fastStore(0);
+		while (!view->memoryFull() && filling.elapsed() < 20000) block();
+		const double fillS = filling.elapsed() / 1000.0;
+		const qint64 filled = store->bytes();
+		(void) host.grab();
+		(void) view->takePerfStats();
+		view->setRamBudget(256);
+		/* as the window does: blocks, then a frame (the slice of the memory let go), then its paint */
+		double appendMax = 0, frameMax = 0;
+		const qint64 share = 256ll * 1024 * 1024;
+		bool down = false;
+		for (int b = 0; b < 60; b++) {
+			QElapsedTimer one;
+			one.start();
+			block();
+			appendMax = std::max(appendMax, one.nsecsElapsed() / 1e6);
+			if (b == 0) down = store->bytes() <= share && store->bytes() >= share / 8 * 7 - BLOCK * 4 * 2;
+			one.restart();
+			view->frame();
+			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+			(void) host.grab();
+		}
+		const ChartView::PerfStats perf = view->takePerfStats();
+		std::printf("     (the RAM cut: %lld MB filled in %.1f s, cut to 256 MB: %lld MB kept; the longest append %.1f ms, "
+				"frame() %.1f ms, paint %.1f ms of %d)\n", (long long) (filled >> 20), fillS, (long long) (store->bytes() >> 20),
+				appendMax, frameMax, perf.paintMax, perf.frames);
+		check(filled >= 512ll * 1024 * 1024 && down && appendMax < 20 && frameMax < 20 && perf.paintMax < 20
+						&& perf.frames >= 50,
+				"chart, the RAM budget cut with a filled fast store (2 GB to 256 MB): the store at its new share from the next "
+				"block on; no append, frame or paint over 20 ms (the memory let go a slice a frame)");
 	}
 
 	void chartInfoLine() {

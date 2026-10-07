@@ -104,6 +104,7 @@ constexpr double LINE_WIDTH = 1.5;   /* logical pixels */
 constexpr double Y_MARGIN = 0.08;    /* free space above and below the lines, of the range */
 constexpr double FLAT_RANGE = 1e-12; /* a line's own range narrower than this: it is flat */
 constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little faded */
+constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
@@ -813,17 +814,37 @@ void ChartView::sumFast(Series &s) {
 }
 
 /* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
- * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces */
+ * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces. What they held is not freed
+ * here but a slice at each frame (releaseSome): the RAM cut from 4 GB to 512 MB with a fast line filled let 3.5 GB
+ * go, and freeing it in one go held the window's thread about 2 s. Freed on another thread instead, the frees held
+ * the heap and the memory's pages while the chart's threads binned, and a paint took 30 to 50 ms. The store itself
+ * is at its new size at once, the same for every frame after: only the freeing waits, of memory nothing reads */
 void ChartView::trimFast(fast::Store &store, int lines) {
 	if (store.size() == 0 || !store.hasTime()) return;
+	fast::Store::Released gone;
 	const double newest = store.timeAt(store.size() - 1);
-	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_));
+	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_), &gone);
 	const double share = double(ramMB_) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
 	const qsizetype most = qsizetype(share / store.bytesPerRecord());
 	if (store.size() >= most - most / 16) {
-		store.dropFront(store.size() - most + most / 8);
+		store.dropFront(store.size() - most + most / 8, &gone);
 		capped_ = true;
 	}
+	released_.pieces += std::move(gone.pieces);
+	released_.summaries += std::move(gone.summaries);
+}
+
+/* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary of up to tens of MB at a
+ * time), before the frame is painted: gigabytes go over a second or so, never a frame over budget */
+void ChartView::releaseSome() {
+	if (released_.isEmpty()) return;
+	QElapsedTimer clock;
+	clock.start();
+	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.summaries.removeLast();
+	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.pieces.removeLast();
+	/* emptied: their own arrays let go too (a list of thousands of pieces) */
+	if (released_.pieces.isEmpty()) released_.pieces = {};
+	if (released_.summaries.isEmpty()) released_.summaries = {};
 }
 
 /* The memory: what is older than `memory` goes, about a twentieth at a time (it
@@ -871,6 +892,7 @@ void ChartView::frame() {
 	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
+	releaseSome();
 	if (watchDue_) postWatch(); /* a drag's change to the engine, once a frame */
 	updateShortLock();
 	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
