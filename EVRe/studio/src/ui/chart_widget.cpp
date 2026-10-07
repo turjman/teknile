@@ -1091,6 +1091,15 @@ void ChartView::stopRun() {
 
 void ChartView::runTrigger() { armTrigger(false); } /* from now: the hold-off went with the Stop */
 
+/* at the trigger's now (the watched line's newest sample), as fireTrigger holds on a crossing: Normal counts the next
+ * after it as after a crossing, Single is complete. A fast line's engine is armed again from there */
+void ChartView::forceTrigger() {
+	if (triggerPhase() != TriggerPhase::Waiting || trigger_.mode == TriggerMode::Auto) return;
+	trigger_.pending = NAN;
+	fireTrigger(triggerTime());
+	postWatch();
+}
+
 ChartView::TriggerPhase ChartView::triggerPhase() const {
 	if (!trigger_.on) return TriggerPhase::Off;
 	if (trigger_.stopped) return TriggerPhase::Stopped;
@@ -1814,8 +1823,9 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		refresh();
 		return;
 	}
+	/* the T on the level's line is not part of it: a mark, not a control (as its arrow says) */
 	if (trigger_.on && std::isfinite(triggerLineY_) && (triggerLevelTag_.contains(pos) || (std::fabs(pos.y() - triggerLineY_) <= 4
-			&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right()))) {
+			&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right() && !triggerTag_.contains(pos)))) {
 		drag_ = Drag::Level;
 		levelGrab_ = pos.y() - triggerLineY_;
 		/* an off-scale level is drawn on the lane's edge, whose value is not the level: it keeps its value until the
@@ -2000,9 +2010,9 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		/* the level's handle opens to its whole text over it and over the level's line */
 		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
-		hoverLevel_ = onLevelTag || onLevelLine;
-		/* the crossing's T: not a control (an arrow), lit, its tooltip says what it marks */
+		/* the crossing's T, on the level's line: not a control (an arrow), lit, its tooltip says what it marks */
 		hoverT_ = trigger_.on && triggerTag_.contains(pos) && !onLevelTag;
+		hoverLevel_ = onLevelTag || (onLevelLine && !hoverT_);
 		/* a line's chip: a hand, its "▾" lit (a click opens its menu) */
 		hoverChip_ = onLegendBar ? -1 : chipAt(pos);
 		if (hoverSeparator_ >= 0 && !onLevelTag) {
@@ -2117,6 +2127,12 @@ void ChartView::zoomY(double factor, double mouseY) {
 }
 
 void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
+	/* the crossing's place back to the default, as a scope's position knob pressed (the row's box is the other way) */
+	if (trigger_.on && triggerMark_.contains(e->position())) {
+		setTriggerPosition(TRIGGER_AT);
+		emit triggerPositionChanged(triggerPosition_);
+		return;
+	}
 	const int note = noteAtPoint(e->position());
 	if (note >= 0) { /* a note's tag: its text edited (the Chart tab asks) */
 		emit noteEditRequested(note);
@@ -3083,8 +3099,8 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
 	if (trigger_.on && triggerEdgeButton_.contains(pos)) return tr("Click: the next edge (rising, falling, either)");
 	if (trigger_.on && triggerMark_.contains(pos))
-		return tr("Drag: where the crossing sits in the window (now %1 %, 0 to 90 %)")
-				.arg(int(std::lround(triggerPosition_ * 100)));
+		return tr("Drag: where the crossing sits in the window (now %1 %, 0 to 90 %) · Double-click: back to %2 %")
+				.arg(int(std::lround(triggerPosition_ * 100))).arg(int(std::lround(TRIGGER_AT * 100)));
 	if (trigger_.on && triggerLevelTag_.contains(pos))
 		return tr("Drag: the trigger's level · Click its arrow: rising, falling or either");
 	if (trigger_.on && triggerTag_.contains(pos)) return triggerPointText();
@@ -4230,8 +4246,8 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes, Marks part) const {
 }
 
 /* The trigger's level line in its line's plot (kept within it, so it can be dragged when the range does not reach it),
- * its tag at the plot's right end on the line, and its marker at the crossing, at the top of the plot, when the
- * crossing is in view */
+ * its tag at the plot's right end on the line, and its T at the crossing, on the level crossed (the owner: the T
+ * belongs against the level's line, not at the plot's top), when the crossing is in view */
 bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY,
 		QRectF &lane, QRectF &tag, QRectF &levelTag) const {
 	triggerLineY_ = NAN;
@@ -4266,8 +4282,12 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 		triggerAxes_ = a;
 		triggerLo_ = lo;
 		triggerHi_ = hi;
-		if (std::isfinite(trigger_.at) && trigger_.at >= a.t0 && trigger_.at <= a.t1) {
-			tag = QRectF(a.x(trigger_.at) - 7, all.top() - 2, 14, 16);
+		/* the T where the line crossed: at the crossing's time on the level it crossed (a level moved since keeps its
+		 * T where the crossing was), kept inside the lane's part in view */
+		if (std::isfinite(trigger_.at) && trigger_.at >= a.t0 && trigger_.at <= a.t1 && shown.height() >= 16) {
+			const double at = normalized_ ? a.y((trigger_.atLevel - lo) / (hi - lo)) : a.y(trigger_.atLevel);
+			const double top = std::round(std::clamp(at - 8, shown.top(), shown.bottom() - 16));
+			tag = QRectF(a.x(trigger_.at) - 7, top, 14, 16);
 			triggerTag_ = tag;
 		}
 		/* the level's handle on its line at the plot's right end, kept inside the part in view; none where it has no
@@ -4279,8 +4299,8 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 			/* on whole pixels: the CPU and the card put its picture on the same ones */
 			const double top = std::round(std::clamp(levelY - LEVEL_TAG_H / 2, shown.top(), shown.bottom() - LEVEL_TAG_H));
 			levelTag = QRectF(std::round(shown.right() - 4 - handle), top, handle, LEVEL_TAG_H);
-			/* the crossing's marker at the plot's top: the handle goes left of its column, else under it (no room on
-			 * the left), never over it */
+			/* the crossing's T on the same line near the right end (90 %, a narrow plot): the handle goes left of its
+			 * column, else under it (no room on the left), never over it */
 			if (!tag.isEmpty() && levelTag.intersects(tag.adjusted(-2, 0, 2, 2))) {
 				if (tag.left() - 2 - handle >= shown.left()) levelTag.moveRight(std::round(tag.left() - 2));
 				else levelTag.moveTop(std::round(std::min(tag.bottom() + 2, shown.bottom() - LEVEL_TAG_H)));

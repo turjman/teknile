@@ -47,8 +47,8 @@
  *
  * Trigger: a line crossing its level (rising, falling or either; each line
  * keeps its own), as an oscilloscope's: the view holds with the crossing at its
- * place in the window (20 %; a triangle under the plot, dragged) and a marker
- * there, the level a dashed line with a tag, both dragged. Auto runs live
+ * place in the window (50 %; a triangle under the plot, dragged) and a T on
+ * the level at the crossing, the level a dashed line with a handle, dragged. Auto runs live
  * between crossings, Normal holds on each, Single on the first; the next counts
  * once the hold-off has passed and the view is full. Normal and Single wait on a
  * still picture; only Auto rolls. Stop (stopRun) disarms and keeps the picture,
@@ -218,7 +218,9 @@ public:
 		double level = 0;
 		TriggerEdge edge = TriggerEdge::Rising;
 	};
-	static constexpr double TRIGGER_AT = 0.2;     /* the crossing's place in the window by default, from its left */
+	/* the crossing's place in the window by default, from its left: the middle, as a scope's (what comes after the
+	 * crossing fills half a window, not most of it) */
+	static constexpr double TRIGGER_AT = 0.5;
 	static constexpr double TRIGGER_AT_MAX = 0.9; /* the place set at most */
 	static constexpr double MAX_HOLDOFF = 10;     /* seconds */
 	/* a window shorter than this, held on a crossing, shows the next crossing's view once it is full (a steady picture) */
@@ -236,6 +238,9 @@ public:
 	 * the line, edge or mode (setTrigger) stays stopped */
 	void stopRun();
 	void runTrigger();
+	/* Force (a scope's Force Trigger): while Normal or Single waits, the view holds now as a crossing would, its T at
+	 * the newest sample, so what the line does is seen without a level it reaches; nothing while it does not wait */
+	void forceTrigger();
 	bool triggerRunning() const { return trigger_.on && trigger_.armed; } /* Stop would stop it */
 	TriggerPhase triggerPhase() const;
 	/* held on a crossing whose view is not full yet: the samples after it still come ("capturing after T") */
@@ -299,6 +304,9 @@ public:
 	/* a level as it is set: the row's box, the tag and the drag write it alike (6 significant digits, not chartNumber's
 	 * rounding of a measured value) */
 	static QString levelText(double level);
+	/* halfway between the line's lowest and highest in view (its range as last binned), else its newest value: a line
+	 * watched for the first time starts there, and the row's Find level sets it */
+	double midRange(int key) const;
 
 	/* Lanes: a plot per unit, stacked, on one time axis; the cursors, the A-B bar and the notes across them, one
 	 * crosshair box. Every unit has a lane of its own, however many: an open lane is at least LANE_MIN_H high (room
@@ -1023,7 +1031,6 @@ private:
 	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
 	TriggerSettings watchedSettings() const;           /* the line watched's */
 	TriggerSettings &watchedSettingsRef();             /* the same, to change (made when there is none) */
-	double midRange(int key) const;                    /* the line's middle in view (a level never set) */
 	/* a fast line's trigger is the engine's: each change to what it watches is a new arm (its crossings found before
 	 * are not used), handed over by fastTriggerChanged */
 	quint64 watchSerial_ = 0;

@@ -22,8 +22,8 @@
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
- *    Auto, Normal or Single, the hold-off, the crossing's place in the
- *    window, Arm (Single only), its state; the chart holds on a crossing
+ *    Find level, Auto, Normal or Single, the hold-off, the crossing's place in
+ *    the window, Arm (Single; Force while waiting), its state; the chart holds on a crossing
  *    (ChartView). While it is on, Hold / Live is Run / Stop. A line's chip
  *    menu arms it on that line; each line keeps its own level and edge.
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
@@ -311,7 +311,8 @@ private:
 	void applyHoldoffText();
 	void showHoldoff();
 	QLineEdit *triggerLevel_ = nullptr;
-	QPushButton *triggerArm_ = nullptr;
+	QPushButton *triggerArm_ = nullptr;   /* Arm (Single), Force while Normal or Single waits */
+	QPushButton *triggerFind_ = nullptr;  /* Find level: halfway in what the line shows */
 	QPushButton *triggerOff_ = nullptr; /* at the row's end: the trigger off, as Display -> Trigger (the same action) */
 	QLabel *triggerUnit_ = nullptr; /* the line's unit after the level's box */
 	/* the state: cut to its room and whole in its tooltip, so no state's text sets the window's least width */

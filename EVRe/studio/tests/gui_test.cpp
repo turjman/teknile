@@ -563,6 +563,7 @@ public:
 		chartTriggerReview();
 		chartTriggerLook();
 		chartTriggerFlow();
+		chartTriggerScopes();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -5089,11 +5090,13 @@ private:
 		check(chartPage.contains(QLatin1String("Trigger on this line")) && chartPage.contains(QLatin1String("hold-off"))
 						&& chartPage.contains(QLatin1String("stays held until the next one, however long"))
 						&& chartPage.contains(QLatin1String("Hold / Live is Stop / Run")) && chartPage.contains(QLatin1String("triangle"))
-						&& chartPage.contains(QLatin1String("The T at the top marks the crossing"))
+						&& chartPage.contains(QLatin1String("The T on the level's line marks the crossing"))
+						&& chartPage.contains(QLatin1String("Force")) && chartPage.contains(QLatin1String("Find level"))
+						&& chartPage.contains(QLatin1String("double-click it for 50 % again"))
 						&& chartPage.contains(QLatin1String("above range")) && keysPage.contains(QLatin1String("the handle's arrow")),
 				"Help: the Chart page's Trigger says how it is armed (Trigger on this line), the level's handle and a level off "
-				"scale, Auto, Normal and Single, Run and Stop, the hold-off, the T and the triangle; Keys & mouse lists the "
-				"handle and the triangle");
+				"scale, Auto, Normal and Single, Force and Find level, Run and Stop, the hold-off, the T on the level's line and "
+				"the triangle (50 %, a double-click); Keys & mouse lists the handle and the triangle");
 	}
 
 	/* the measurements of many lines (60, on a Chart tab of its own, 10 s of 500 Hz samples each): a refresh of the
@@ -7582,6 +7585,7 @@ private:
 		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
 					 "chart/triggerLevels" })
 			QSettings().remove(QLatin1String(key)); /* the defaults: Rising, Normal */
+		QSettings().setValue(QStringLiteral("chart/triggerPosition"), 0.2); /* saved: the place the times below are for */
 		LoneChart chart(QStringLiteral("TRIG"), QStringLiteral("V"));
 		chart.view->setWindow(1);
 		chart.view->setSmooth(false);
@@ -7718,6 +7722,8 @@ private:
 		for (const char *key : { "chart/triggerLevel", "chart/triggerMode", "chart/triggerEdge", "chart/triggerLine",
 					 "chart/triggerLevels", "chart/triggerPosition", "chart/triggerHoldoff", "chart/lanes" })
 			QSettings().remove(QLatin1String(key));
+		/* the place these checks' times were worked out for, saved (the default is 50 %: chartTriggerScopes checks it) */
+		QSettings().setValue(QStringLiteral("chart/triggerPosition"), 0.2);
 	}
 
 	/* Trigger v2, the modes, the hold-off and the crossing's place: Auto runs live while no crossing comes, holds on one,
@@ -8595,7 +8601,8 @@ private:
 		setMode(ChartView::TriggerMode::Normal);
 		setLevel("2");
 		view->setTriggerHoldoff(0.5);
-		armOnlySingle = armOnlySingle && !arm->isVisibleTo(row);
+		/* waiting in Normal: the button is Force (Arm does nothing there) */
+		armOnlySingle = armOnlySingle && arm->isVisibleTo(row) && arm->text() == QStringLiteral("Force");
 		const double stillEnd = viewEnd();
 		bool still = !view->live();
 		for (double until = 100.0; until <= 101.5 + 1e-9; until += 0.1) {
@@ -8681,7 +8688,10 @@ private:
 		runStop = runStop && hold->text() == QStringLiteral("Run") && view->triggerHolds() == holds && viewEnd() == stoppedEnd
 				&& view->triggeredAt() == heldOn && !view->triggerTag().isEmpty();
 		stopRun(); /* Run */
-		texts(QStringLiteral("waiting for a crossing"), QStringLiteral("Normal · waiting"), "Normal, run again");
+		/* waiting again after a capture: when the last one was, in the row alone */
+		texts(QStringLiteral("Normal · waiting, last at %1").arg(QDateTime::fromMSecsSinceEpoch(view->epochMs()
+				+ qint64(std::llround(heldOn * 1000))).toString(QStringLiteral("HH:mm:ss"))), QStringLiteral("Normal · waiting"),
+				"Normal, run again");
 		runStop = runStop && hold->text() == QStringLiteral("Stop") && !view->live() && viewEnd() == stoppedEnd;
 		feed(105.2);
 		runStop = runStop && view->triggerHolds() == holds + 1 && std::fabs(view->triggeredAt() - (105 + 1.0 / 12)) < 1e-6;
@@ -8751,10 +8761,11 @@ private:
 				"Stop while the trigger is on, in each mode: Stop keeps the view and its T through crossings, Run arms from "
 				"now (Auto runs live, Normal and Single wait on a still view); a pan is a Stop; Single's crossing stops it");
 		check(textsOk, "chart, Trigger: the row and the corner say one state in the review's words (waiting for a "
-				"crossing / Normal · waiting, triggered / Normal · triggered, capturing after T, Stopped · Run to arm, Auto · "
-				"free running, Single · complete at the time / Single · complete, Single · complete · Arm to wait)");
-		check(armOnlySingle && armInSingle, "chart, Trigger: Arm only in Single (hidden in Auto and Normal), the primary "
-				"button while Single holds its crossing");
+				"crossing / Normal · waiting, triggered / Normal · triggered, capturing after T, Stopped · Run to arm, Normal · "
+				"waiting, last at the time / Normal · waiting, Auto · free running, Single · complete at the time / Single · "
+				"complete, Single · complete · Arm to wait)");
+		check(armOnlySingle && armInSingle, "chart, Trigger: the Arm button in Single (Force while Normal waits, hidden in "
+				"Auto), the primary button while Single holds its crossing");
 		action->setChecked(false);
 		const bool backToHold = hold->text() == QStringLiteral("Live") || hold->text() == QStringLiteral("Hold");
 		chart.tab.hide();
@@ -9554,12 +9565,249 @@ private:
 			otherAction->setChecked(false);
 		}
 		language::apply(*qApp, QStringLiteral("en"));
-		std::printf("     (the tab's least width waiting, off scale, Single stopped:%s)\n", qPrintable(widths));
+		std::printf("     (the tab's least width waiting, off scale, Single complete:%s)\n", qPrintable(widths));
 		check(steady && tipped, "chart, Trigger's look: the row's state never sets the window's least width (waiting, off "
-				"scale and Single's stop alike, in English and Arabic): cut to its room, its whole text in its tooltip");
+				"scale and Single complete alike, in English and Arabic): cut to its room, its whole text in its tooltip");
 		clearTriggerSettings();
 		if (savedWindow.isValid()) QSettings().setValue(QStringLiteral("chart/window"), savedWindow);
 		else QSettings().remove(QStringLiteral("chart/window"));
+	}
+
+	/* Trigger v2, what the reference scopes add: the crossing's place at 50 % by default (a saved one kept) and back
+	 * there by a double-click on its triangle; the row's list shows each line's colour dot; Find level; Normal waiting
+	 * after a capture says when the last was (a fixed text); Force while Normal or Single waits, one button with Arm;
+	 * the T on the level's line at the crossing (in its lane); Run in the warn colour while stopped, both themes */
+	void chartTriggerScopes() {
+		clearTriggerSettings();
+		QSettings().remove(QStringLiteral("chart/triggerPosition")); /* none saved: the default */
+		LoneChart chart(QStringLiteral("SCOPE"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		double fed = 99.0, last = NAN;
+		bool flat = false; /* the signal stopped: 0 from then on */
+		const auto feed = [&](double until) { /* 1 kHz of a 1 Hz sine (rising through 0.5 at k + 1/12), 0.1 s a frame */
+			while (fed < until - 1e-9) {
+				MathLines::Samples samples;
+				const double to = std::min(until, fed + 0.1);
+				for (; fed < to - 1e-9; fed += 0.001) {
+					samples[regKey(chart.def)] << QPointF(fed, flat ? 0.0 : std::sin(2 * M_PI * fed));
+					last = fed;
+				}
+				chart.now = fed;
+				chart.tab.frame(samples);
+			}
+		};
+		feed(99.95);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		view->setFocus();
+		QApplication::processEvents();
+		view->setWindow(1);
+		auto *action = chart.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *row = chart.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+		auto *line = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerLine"));
+		auto *level = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *position = chart.tab.findChild<QSpinBox *>(QStringLiteral("triggerPosition"));
+		auto *arm = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerArm"));
+		auto *find = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerFindLevel"));
+		auto *hold = chart.tab.findChild<QPushButton *>(QStringLiteral("hold"));
+		auto *state = chart.tab.findChild<ElidedLabel *>(QStringLiteral("triggerState"));
+		if (!action || !row || !line || !level || !mode || !position || !arm || !find || !hold || !state) {
+			check(false, "chart, Trigger, the scopes' additions: the row's controls and the toolbar's button found");
+			return;
+		}
+		action->setChecked(true);
+		const auto setLevel = [level](const char *text) {
+			level->setText(QLatin1String(text));
+			emit level->editingFinished();
+		};
+		const auto setMode = [mode](ChartView::TriggerMode m) {
+			mode->setCurrentIndex(mode->findData(int(m)));
+			emit mode->activated(mode->currentIndex());
+		};
+		const auto near = [](const QColor &a, const QColor &b, int most) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < most;
+		};
+
+		/* the place: 50 % with none saved, a saved one kept; a double-click on the triangle puts it back (its tooltip
+		 * says so), and the box and the setting follow */
+		(void) view->grab();
+		const QRectF plot = view->lastPlot();
+		const bool atHalf = view->triggerPosition() == 0.5 && position->value() == 50 && std::fabs(
+				view->triggerPositionMark().center().x() - (plot.left() + 0.5 * plot.width())) < 1;
+		QSettings().setValue(QStringLiteral("chart/triggerPosition"), 0.35);
+		bool savedKept = false;
+		{
+			LoneChart saved(QStringLiteral("SAVED"), QStringLiteral("V"));
+			savedKept = saved.view->triggerPosition() == 0.35;
+		}
+		position->setValue(30);
+		(void) view->grab();
+		const QRectF mark = view->triggerPositionMark();
+		const QString markTip = view->toolTipAt(mark.center());
+		QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, mark.center().toPoint());
+		(void) view->grab();
+		const bool reset = view->triggerPosition() == ChartView::TRIGGER_AT && position->value() == 50
+				&& QSettings().value(QStringLiteral("chart/triggerPosition")).toDouble() == 0.5
+				&& markTip.endsWith(QStringLiteral("· Double-click: back to 50 %"));
+		std::printf("     (the place by default 0.5: %d, a saved 0.35 kept %d; the triangle's tooltip \"%s\", after a "
+				"double-click %.2f)\n", int(atHalf), int(savedKept), qPrintable(markTip), view->triggerPosition());
+		check(atHalf && savedKept && reset, "chart, Trigger: the crossing's place is 50 % by default (a saved place kept); "
+				"a double-click on its triangle puts it back to 50 % (its tooltip says so), the box and the setting follow");
+
+		/* the row's list: the line's colour dot before its name, as on its chip */
+		const QIcon icon = line->itemIcon(line->findData(chart.key()));
+		const QImage dot = icon.pixmap(line->iconSize()).toImage();
+		const QColor lineColor = view->lines().value(0).color;
+		const bool dotted = !icon.isNull() && line->iconSize() == QSize(10, 10) && !dot.isNull()
+				&& near(dot.pixelColor(dot.width() / 2, dot.height() / 2), lineColor, 30);
+		check(dotted, "chart, Trigger: the row's Line list shows each line's colour dot before its name");
+
+		/* Find level: halfway between the line's lowest and highest in view (a sine of +-1: about 0), the same helper as
+		 * a line's start; the box shows it */
+		setLevel("2");
+		find->click();
+		const double found = view->triggerLevel();
+		const bool findOk = std::fabs(found) < 0.05 && found == view->midRange(chart.key())
+				&& level->text() == ChartView::levelText(found)
+				&& find->toolTip() == QStringLiteral("Set the level halfway between the line's lowest and highest in view");
+		std::printf("     (Find level: %g, the box \"%s\")\n", found, qPrintable(level->text()));
+		check(findOk, "chart, Trigger: Find level sets the level halfway between the line's lowest and highest in view "
+				"(the rule a line watched first starts with), the box shows it, the button says so in its tooltip");
+
+		/* Normal: held at 100 + 1/12; the T on the level's line at the crossing */
+		setMode(ChartView::TriggerMode::Normal);
+		setLevel("0.5");
+		feed(100.5);
+		(void) view->grab();
+		const double crossing = view->triggeredAt();
+		const QRectF tTag = view->triggerTag();
+		double t0, t1;
+		bool cursors;
+		view->range(t0, t1, cursors);
+		const double crossX = plot.left() + (crossing - t0) / (t1 - t0) * plot.width();
+		const bool tOnLine = std::fabs(crossing - (100 + 1.0 / 12)) < 1e-6 && !tTag.isEmpty()
+				&& std::fabs(tTag.center().y() - view->triggerLineY()) <= 1 && std::fabs(tTag.center().x() - crossX) < 1;
+		view->setTriggerLevel(0.8); /* the level moved: the T stays where the line crossed */
+		(void) view->grab();
+		const bool tStays = view->triggerTag() == tTag && std::fabs(view->triggerLineY() - tTag.center().y()) > 3;
+		view->setTriggerLevel(0.5);
+		/* with lanes: in the watched line's lane, on its level */
+		bool tInLane = false;
+		{
+			TriggerPair pair;
+			pair.feed(99.95);
+			pair.view->setLanes(true);
+			pair.tab.show();
+			(void) QTest::qWaitForWindowExposed(&pair.tab);
+			pair.view->setTrigger(pair.ampsKey(), 0.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+			pair.feed(101.0);
+			(void) pair.view->grab();
+			const QRectF tag = pair.view->triggerTag();
+			const int lane = pair.view->laneAtY(tag.center().y());
+			tInLane = !tag.isEmpty() && lane >= 0 && pair.view->laneLabel(lane) == QStringLiteral("A")
+					&& std::fabs(tag.center().y() - pair.view->triggerLineY()) <= 1;
+			pair.view->stopTrigger();
+			pair.tab.hide();
+		}
+		std::printf("     (the T at %.1f,%.1f, the level's line at %.1f, the crossing's x %.1f; stays after a move %d, in "
+				"the A lane %d)\n", tTag.center().x(), tTag.center().y(), view->triggerLineY(), crossX, int(tStays),
+				int(tInLane));
+		check(tOnLine && tStays && tInLane, "chart, Trigger: the T sits on the level's line at the crossing (its time on the "
+				"level crossed), in the watched line's lane; a level moved later leaves it where the line crossed");
+
+		/* the signal stops: back to waiting after a window plus the hold-off; the row says when the last capture was, a
+		 * fixed text; the corner "Normal · waiting" */
+		flat = true;
+		feed(103.5);
+		chart.tab.refreshStatus(); /* the row as its timer writes it */
+		const QString lastAt = QStringLiteral("Normal · waiting, last at %1").arg(QDateTime::fromMSecsSinceEpoch(
+				view->epochMs() + qint64(std::llround(crossing * 1000))).toString(QStringLiteral("HH:mm:ss")));
+		(void) view->grab();
+		const QString rowFirst = state->fullText(), cornerFirst = view->stateFullText();
+		feed(104.7);
+		chart.tab.refreshStatus();
+		(void) view->grab();
+		const bool lastShown = rowFirst == lastAt && state->fullText() == lastAt && cornerFirst == QStringLiteral(
+				"Normal · waiting") && view->stateFullText() == cornerFirst;
+		std::printf("     (Normal waiting after a capture: the row \"%s\", the corner \"%s\")\n", qPrintable(rowFirst),
+				qPrintable(cornerFirst));
+		check(lastShown, "chart, Trigger: Normal back to waiting after a capture says \"Normal · waiting, last at hh:mm:ss\" "
+				"in the row, a fixed text (no counter), and \"Normal · waiting\" in the corner");
+
+		/* Force: while Normal waits, the button reads Force; a click holds the view at the newest sample as a crossing
+		 * would (its T there); Single waiting the same, then Arm (primary) once complete; one width throughout */
+		const int armWidth = arm->width();
+		const bool forceShown = arm->isVisibleTo(row) && arm->text() == QStringLiteral("Force")
+				&& arm->toolTip() == QStringLiteral("Hold the view now, as if the line crossed");
+		const int holds = view->triggerHolds();
+		arm->click();
+		(void) view->grab();
+		const bool forcedNormal = view->triggeredAt() == last && view->triggerHolds() == holds + 1 && !view->live()
+				&& view->triggerPhase() == ChartView::TriggerPhase::Triggered && !view->triggerTag().isEmpty()
+				&& !arm->isVisibleTo(row);
+		setMode(ChartView::TriggerMode::Single);
+		feed(105.0);
+		chart.tab.refreshStatus();
+		const bool singleForce = view->triggerPhase() == ChartView::TriggerPhase::Waiting && arm->text() == QStringLiteral(
+				"Force") && arm->width() == armWidth;
+		arm->click();
+		(void) view->grab();
+		const bool forcedSingle = view->triggeredAt() == last && view->triggerPhase() == ChartView::TriggerPhase::Done
+				&& arm->text() == QStringLiteral("Arm") && arm->property("primary").toBool() && arm->width() == armWidth
+				&& arm->toolTip() == QStringLiteral("Wait for one more crossing");
+		std::printf("     (Force: shown %d, Normal held at the newest %d, Single waiting %d, complete %d; width %d)\n",
+				int(forceShown), int(forcedNormal), int(singleForce), int(forcedSingle), arm->width());
+		check(forceShown && forcedNormal && singleForce && forcedSingle, "chart, Trigger: while Normal or Single waits, the "
+				"Arm button reads Force (its tooltip says what it does); a click holds the view at the newest sample, its T "
+				"there; Single then reads Arm again; the button keeps one width");
+
+		/* Run in the warn colour while stopped (the corner's amber), in both themes; not after Single's crossing */
+		const auto warnPixels = [hold] {
+			QApplication::processEvents();
+			const QImage picture = hold->grab().toImage();
+			const QColor warn = Theme::colors().warn;
+			int n = 0;
+			for (int y = 0; y < picture.height(); y++)
+				for (int x = 0; x < picture.width(); x++) {
+					const QColor p = picture.pixelColor(x, y);
+					if (std::abs(p.red() - warn.red()) + std::abs(p.green() - warn.green()) + std::abs(p.blue() - warn.blue()) < 40)
+						n++;
+				}
+			return n;
+		};
+		const bool runPlain = hold->text() == QStringLiteral("Run") && !hold->property("stopped").toBool();
+		hold->click(); /* Run */
+		hold->click(); /* Stop */
+		const bool wasDark = Theme::isDark();
+		int stoppedPixels[2] = { 0, 0 }, runningPixels[2] = { 0, 0 };
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			chart.tab.themeChanged();
+			stoppedPixels[dark] = warnPixels();
+		}
+		const bool stoppedWarn = view->triggerPhase() == ChartView::TriggerPhase::Stopped && hold->text() == QStringLiteral(
+				"Run") && hold->property("stopped").toBool();
+		hold->click(); /* Run */
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			chart.tab.themeChanged();
+			runningPixels[dark] = warnPixels();
+		}
+		Theme::apply(*qApp, wasDark);
+		chart.tab.themeChanged();
+		const bool runningPlain = !hold->property("stopped").toBool() && hold->text() == QStringLiteral("Stop");
+		std::printf("     (the toolbar's button in the warn colour: stopped %d / %d px (light / dark), running %d / %d)\n",
+				stoppedPixels[0], stoppedPixels[1], runningPixels[0], runningPixels[1]);
+		check(runPlain && stoppedWarn && runningPlain && stoppedPixels[0] >= 30 && stoppedPixels[1] >= 30
+				&& runningPixels[0] < 5 && runningPixels[1] < 5, "chart, Trigger: Run on the toolbar's button is drawn in the "
+				"warn colour while stopped (as the corner's \"Stopped · Run to arm\"), in both themes; plain after Single's "
+				"crossing and while running");
+		action->setChecked(false);
+		chart.tab.hide();
+		clearTriggerSettings();
 	}
 
 	/* Trigger v2, the flow (U-4, U-9) and the legend's chips: Off at the row's end and the chip's entry, ticked for the

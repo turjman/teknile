@@ -395,14 +395,19 @@ arrow (↑ ↓ ↕) for rising, falling or either. A level beyond the lane's ran
 and <i>(above range)</i> in its tag. Each line keeps its own level and edge.</p>
 <p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
 the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
-the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls. The
+the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls.
+While they wait, <b>Force</b> (in Arm's place) holds the view now, as if the line crossed; Normal waiting after a
+capture says when the last one was. <b>Find level</b> puts the level halfway between the line's lowest and highest
+in view. The
 <b>hold-off</b> (the window's length by default, 0 to
-10 s) is the time after a crossing in which no other counts. The T at the top marks the crossing (its tooltip says
-when and at what level); the triangle under the time axis is its place in the window: drag it (0 to 90 %). In a window under a second the next
+10 s) is the time after a crossing in which no other counts. The T on the level's line marks the crossing (its
+tooltip says when and at what level); the triangle under the time axis is its place in the window, 50 % by default:
+drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
 <p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
-and its T, no crossing counts; <b>Run</b> arms again in the mode, from now. Dragging the chart stops it too. The row
+and its T, no crossing counts (the button's <b>Run</b> is amber while stopped); <b>Run</b> arms again in the mode,
+from now. Dragging the chart stops it too. The row
 and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Normal · triggered</i>, <i>Stopped · Run
 to arm</i> ...), and change only when it does; while the view still fills after the crossing, a faint line marks
 where the data ends.</p>
@@ -623,7 +628,8 @@ all fit</td></tr>
 <tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
 Spectrum, Trigger on this line</td></tr>
 <tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line or handle · <b>click</b> the handle's arrow: rising,
-falling, either · <b>drag</b> the triangle under the chart: where the crossing sits</td></tr>
+falling, either · <b>drag</b> the triangle under the chart: where the crossing sits · <b>double-click</b> it:
+50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
 Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·

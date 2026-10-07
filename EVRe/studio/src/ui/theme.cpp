@@ -216,6 +216,7 @@ QPushButton#primary { background: %AFILL%; border: 1px solid %AFILL%; color: whi
   padding: 7px 11px; }
 QPushButton#primary:hover { background: %AFILLH%; border-color: %AFILLH%; }
 QPushButton#hold[live="false"] { background: %AFILL%; border-color: %AFILL%; color: white; }
+QPushButton#hold[stopped="true"] { background: %WARNA%; border-color: %WARN%; color: %WARN%; }
 QPushButton#triggerArm[primary="true"] { background: %AFILL%; border-color: %AFILL%; color: white; font-weight: 600; }
 QPushButton#triggerArm[primary="true"]:hover { background: %AFILLH%; border-color: %AFILLH%; }
 QPushButton#danger { background: %BFILL%; border: 1px solid %BFILL%; color: white; font-weight: 600;
