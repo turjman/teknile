@@ -1166,10 +1166,6 @@ Dragging the chart stops it too.</source>
         <translation>قفل النوافذ القصيرة</translation>
     </message>
     <message>
-        <source>Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of the first line&apos;s middle, so a wave stands still instead of blurring (&quot;Auto (short window)&quot;; &quot;Auto · free running&quot; while it does not cross). Your own trigger takes over when it is on; Hold ends it.</source>
-        <translation>تحت نافذة ⁦100 ms⁩، يُقفَل المخطط الحي والقدح مطفأ على كل عبور صاعد لمنتصف الخط الأول، فتقف الموجة بدل أن تتشوّش («تلقائي (نافذة قصيرة)»؛ «تلقائي · جريان حر» ما دام لا يعبر). قدحك أنت يحلّ محله حين يعمل؛ والتثبيت ينهيه.</translation>
-    </message>
-    <message>
         <source>Where the crossing sits in the window; or drag the T ▼ flag above the chart</source>
         <translation>موضع العبور في النافذة؛ ويُضبط أيضًا بسحب العلَم ⁦T ▼⁩ فوق المخطط</translation>
     </message>
@@ -1255,6 +1251,10 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
     <message>
         <source>Free now: %1. With less free than the RAM set, the chart keeps within what is free.</source>
         <translation>الحرّ الآن: %1. حين يكون الحرّ أقل من RAM المضبوطة، يبقى المخطط ضمن الحرّ منها.</translation>
+    </message>
+    <message>
+        <source>Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of the busiest line&apos;s middle (a fast line first, else the one with the most samples in the window), so a wave stands still instead of blurring (&quot;Auto (short window)&quot;; &quot;Auto · free running&quot; while it does not cross). Your own trigger takes over when it is on; Hold ends it.</source>
+        <translation>تحت نافذة ⁦100 ms⁩، يُقفَل المخطط الحي والقدح مطفأ على كل عبور صاعد لمنتصف أنشط خط (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة)، فتقف الموجة بدل أن تتشوّش («تلقائي (نافذة قصيرة)»؛ «تلقائي · جريان حر» ما دام لا يعبر). قدحك أنت يحلّ محله حين يعمل؛ والتثبيت ينهيه.</translation>
     </message>
 </context>
 <context>
@@ -1541,10 +1541,6 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
         <translation>يدوي</translation>
     </message>
     <message>
-        <source>The view locks on the first line&apos;s crossings at windows under 100 ms · Display → Lock short windows turns it off</source>
-        <translation>يُقفَل العرض على عبورات الخط الأول في النوافذ الأقصر من ⁦100 ms⁩ · العرض ← قفل النوافذ القصيرة يُطفئه</translation>
-    </message>
-    <message>
         <source>%1 to %2</source>
         <translation>%1 إلى %2</translation>
     </message>
@@ -1571,6 +1567,10 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
     <message>
         <source>The free memory limits the budget now: the chart keeps within %1 of the %2 set, so the computer does not page to disk.</source>
         <translation>الذاكرة الحرة تحدّ الميزانية الآن: يبقى المخطط ضمن %1 من %2 المضبوطة، فلا ينقل الحاسوب الذاكرة إلى القرص.</translation>
+    </message>
+    <message>
+        <source>The view locks on the busiest line&apos;s crossings at windows under 100 ms · Display → Lock short windows turns it off</source>
+        <translation>يُقفَل العرض على عبورات أنشط خط في النوافذ الأقصر من ⁦100 ms⁩ · العرض ← قفل النوافذ القصيرة يُطفئه</translation>
     </message>
 </context>
 <context>
@@ -2821,7 +2821,8 @@ and the chart&apos;s top right say the same state (&lt;i&gt;Normal · waiting&lt
 to arm&lt;/i&gt; ...), and change only when it does, with no number while it runs; while the view still fills after the
 crossing, a faint line marks where the data ends.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Short windows lock by themselves&lt;/b&gt;: below a 100 ms window a live chart with the trigger off holds on each
-rising crossing of its first line&apos;s middle (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
+rising crossing of its busiest line&apos;s middle (a fast line first, else the one with the most samples in the window; a
+line with fewer than 20 there is not watched) (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
 cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 &lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
@@ -2973,7 +2974,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير، بلا أي رقم ما دام يعمل؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي
 البيانات.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
-لمنتصف خطه الأول (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
+لمنتصف أنشط خطوطه (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة؛ والخط الذي فيه أقل من 20 عينة هناك لا يُراقَب) (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
 تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
 قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه

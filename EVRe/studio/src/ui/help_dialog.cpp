@@ -429,7 +429,8 @@ and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Norma
 to arm</i> ...), and change only when it does, with no number while it runs; while the view still fills after the
 crossing, a faint line marks where the data ends.</p>
 <p><b>Short windows lock by themselves</b>: below a 100 ms window a live chart with the trigger off holds on each
-rising crossing of its first line's middle (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
+rising crossing of its busiest line's middle (a fast line first, else the one with the most samples in the window; a
+line with fewer than 20 there is not watched) (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
 cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 <b>Display → Lock short windows</b> turns it off.</p>
 <p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's

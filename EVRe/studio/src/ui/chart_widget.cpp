@@ -1237,20 +1237,57 @@ void ChartView::setShortLock(bool on) {
 	refresh();
 }
 
+qsizetype ChartView::samplesInWindow(const Series &s) const {
+	if (s.fast) {
+		const fast::Store &store = *s.fast;
+		if (store.size() == 0 || !store.hasTime()) return 0;
+		return store.size() - store.lowerBound(store.timeAt(store.size() - 1) - window_);
+	}
+	if (s.times.isEmpty()) return 0;
+	return s.times.end() - std::lower_bound(s.times.begin(), s.times.end(), s.times.back() - window_);
+}
+
+/* the first fast line with SHORT_LOCK_SAMPLES in the window (the keys put fast lines after the others), else the line
+ * with the most there; -1: none has that many */
+int ChartView::busiestLine() const {
+	int busiest = -1;
+	qsizetype most = SHORT_LOCK_SAMPLES - 1;
+	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		const qsizetype n = samplesInWindow(*it);
+		if (it->fast && n >= SHORT_LOCK_SAMPLES) return it.key();
+		if (n > most) {
+			most = n;
+			busiest = it.key();
+		}
+	}
+	return busiest;
+}
+
 /* The lock wanted: on, a live view (or one the lock holds), shorter than SHORT_LOCK_WINDOW, the user's trigger off and a
- * line to watch: the first. It is Auto's own work on a line (the crossings as samples come), nothing binned of its own.
- * Its level is taken again once a second while it runs free, as a line drifting away from it would never lock again */
+ * line to watch: the busiest (busiestLine), chosen again only when the lines change or the one watched has too few
+ * samples in the window, so the lock does not move from line to line at each frame. It is Auto's own work on a line
+ * (the crossings as samples come), nothing binned of its own. Its level is taken again once a second while it runs
+ * free, as a line drifting away from it would never lock again */
 void ChartView::updateShortLock() {
 	if (trigger_.on && !trigger_.automatic) return; /* the user's trigger */
-	const bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
+	bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
 			&& !series_.isEmpty();
+	if (wanted) {
+		const auto watched = series_.constFind(lockKey_);
+		if (lockGeneration_ != seriesGeneration_ || watched == series_.constEnd()
+				|| samplesInWindow(*watched) < SHORT_LOCK_SAMPLES) {
+			lockKey_ = busiestLine();
+			lockGeneration_ = seriesGeneration_;
+		}
+		wanted = lockKey_ >= 0;
+	}
 	if (!wanted) {
 		if (!trigger_.automatic) return;
 		endShortLock();
-		if (!live_) setLive(true); /* a longer window, the setting off, no line: live, as before the lock */
+		if (!live_) setLive(true); /* a longer window, the setting off, no line busy enough: live, as before the lock */
 		return;
 	}
-	const int first = series_.firstKey();
+	const int first = lockKey_;
 	if (trigger_.automatic && trigger_.key == first) {
 		if (live_ && triggerTime() >= lockTakenAt_ + TRIGGERED_AT_LEAST) {
 			lockTakenAt_ = triggerTime();
@@ -1262,7 +1299,7 @@ void ChartView::updateShortLock() {
 		}
 		return;
 	}
-	trigger_ = Trigger(); /* on, or on another first line (the one before removed, another added before it) */
+	trigger_ = Trigger(); /* on, or on another line (the one before removed, a busier one added) */
 	trigger_.on = trigger_.automatic = true;
 	trigger_.key = first;
 	trigger_.mode = TriggerMode::Auto;
@@ -3404,8 +3441,8 @@ void ChartView::setAllLanesFolded(bool folded) {
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (stateBadge_.contains(pos)) /* the short window's lock: what it is and where it is turned off */
-		return tr("The view locks on the first line's crossings at windows under 100 ms · Display → Lock short windows "
-				"turns it off");
+		return tr("The view locks on the busiest line's crossings at windows under 100 ms · Display → Lock short "
+				"windows turns it off");
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
 	if (memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos))
 		return tr("The view: drag it along the memory · Wheel: a window earlier or later");

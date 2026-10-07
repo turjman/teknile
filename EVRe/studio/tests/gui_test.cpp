@@ -574,6 +574,7 @@ public:
 		chartTriggerMarksOutside();
 		chartTriggerSteadyState();
 		chartShortLock();
+		chartShortLockBusiest();
 		chartTimeGrid();
 		chartTimesFromT();
 		frameBudget();
@@ -11482,6 +11483,89 @@ private:
 		clearTriggerSettings();
 	}
 
+	/* O-14: the short window's lock watches the busiest line, not the first. A polled line of 10 polls a second plotted
+	 * first and a fast line of 50 000 records a second (a 50 Hz sine, its crossings found as the engine finds them)
+	 * second, at a 20 ms window: the lock watches the fast line and says "Auto (short window)" at each of 100 frames
+	 * (on the polled line it flipped between free running and locked); the polled line alone has under
+	 * SHORT_LOCK_SAMPLES in the window: no lock, nothing in the corner */
+	void chartShortLockBusiest() {
+		clearTriggerSettings();
+		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		StreamChannel channel;
+		channel.name = QStringLiteral("I");
+		channel.type = RegType::I16;
+		def.channels << channel;
+		constexpr double RATE = 50000;
+		const auto runPair = [&](bool withFast, int frames, int &lockedFrames, int &watchedFast, QString &corner) {
+			LoneChart chart(QStringLiteral("SLOW"), QStringLiteral("V"));
+			ChartView *view = chart.view;
+			view->setSmooth(false);
+			const int fastKey = ChartView::fastKey(0, 0);
+			if (withFast) {
+				view->setFastStream(0, def);
+				view->addSeries(fastKey, QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+			}
+			view->setWindow(0.02);
+			fast::TriggerScan scan;
+			qint64 record = 0, polls = 0;
+			double now = 99;
+			lockedFrames = watchedFast = 0;
+			for (int k = 0; k < frames; k++) {
+				now += 1.0 / 60;
+				MathLines::Samples samples; /* the polled line: a slow sine, 10 polls a second */
+				for (; 99.0 + polls * 0.1 <= now; polls++) {
+					const double t = 99.0 + polls * 0.1;
+					samples[regKey(chart.def)] << QPointF(t, 5 + std::sin(2 * M_PI * 0.3 * t));
+				}
+				if (withFast) { /* the fast line's records up to now, and the engine's part: its crossings */
+					const qint64 end = qint64((now - 99.0) * RATE);
+					const qint64 n = end - record;
+					QByteArray records(int(n * 2), '\0');
+					for (qint64 i = 0; i < n; i++) {
+						const qint16 v = qint16(std::lround(1000 * std::sin(2 * M_PI * 50 * (record + i) / RATE)));
+						records[int(2 * i)] = char(v);
+						records[int(2 * i + 1)] = char(v >> 8);
+					}
+					const qint64 at = view->appendFast(0, quint64(record), int(n), records, record == 0, 0);
+					const double markTime = 99.0 + double(end) / RATE;
+					view->markFast(0, quint64(end), markTime, 1 / RATE);
+					int stream = -1;
+					const fast::TriggerWatch watch = view->fastTriggerWatch(stream);
+					if (watch.serial != scan.watch().serial) scan.set(watch);
+					fast::BlockTaken taken;
+					taken.first = quint64(record);
+					taken.count = int(n);
+					taken.newStart = record == 0;
+					QVector<fast::Crossing> crossings;
+					scan.scan(def, taken, records.constData(), { quint64(end), markTime }, 1 / RATE, crossings);
+					view->fastCrossings(0, at, crossings);
+					record = end;
+				}
+				chart.now = now;
+				chart.tab.frame(samples);
+				(void) view->grab();
+				if (k >= 20) { /* the first frames fill the window */
+					if (view->stateFullText() == QStringLiteral("Auto (short window)")) lockedFrames++;
+					if (view->shortLockKey() == fastKey) watchedFast++;
+				}
+			}
+			corner = view->stateFullText();
+		};
+		int locked = 0, watched = 0, aloneLocked = 0, aloneWatched = 0;
+		QString corner, aloneCorner;
+		runPair(true, 120, locked, watched, corner);
+		runPair(false, 60, aloneLocked, aloneWatched, aloneCorner);
+		std::printf("     (a polled line first, a fast one second, 20 ms: %d of 100 frames locked, %d on the fast line, the "
+				"corner \"%s\"; the polled line alone: %d locked, the corner \"%s\")\n", locked, watched, qPrintable(corner),
+				aloneLocked, qPrintable(aloneCorner));
+		check(locked == 100 && watched == 100 && aloneLocked == 0 && aloneCorner.isEmpty(),
+				"chart, short windows lock on the busiest line: a polled line plotted first and a fast line second at a "
+				"20 ms window: the lock watches the fast line, \"Auto (short window)\" over 100 frames; a polled line of 10 "
+				"polls a second alone (under 20 samples in the window): no lock, nothing in the corner");
+	}
+
 	/* U-17: below 100 ms a live view with the trigger off locks on its first line by itself (Auto, the line's middle,
 	 * rising): a 50 Hz sine in a 20 ms window stands still (the view's end moves by whole periods), the corner says
 	 * "Auto (short window)", the row stays hidden and the button says Hold; "Auto · free running" while it does not
@@ -11527,7 +11611,7 @@ private:
 				&& std::fabs(view->triggerLevel() - 0.2) < 0.05 && view->triggerLevelTag().isEmpty()
 				&& view->triggerPositionMark().isEmpty() && view->triggerTag().isEmpty();
 		/* the lock's words as a badge: the accent colour (not the warn amber of Stopped) on a tint of it, a tooltip */
-		const QString badgeTip = QStringLiteral("The view locks on the first line's crossings at windows under 100 ms · "
+		const QString badgeTip = QStringLiteral("The view locks on the busiest line's crossings at windows under 100 ms · "
 				"Display → Lock short windows turns it off");
 		const auto badgeSeen = [&](QString &why) {
 			const QImage picture = view->grab().toImage();

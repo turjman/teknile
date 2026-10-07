@@ -57,7 +57,7 @@
  * Run (runTrigger) arms again; a pan while it runs is a Stop. A short window
  * shows each picture whole. A fast line's crossings are found by the engine as
  * its blocks come (fast::TriggerScan). Below SHORT_LOCK_WINDOW a live view
- * with the trigger off locks by itself (Auto on the first line, its middle,
+ * with the trigger off locks by itself (Auto on the busiest line, its middle,
  * rising: setShortLock), with no row, tab or flag: not the user's trigger.
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
@@ -284,15 +284,20 @@ public:
 	/* held on a crossing whose view is not full yet: the samples after it still come (the now edges; Single's
 	 * "capturing after T") */
 	bool triggerCapturing() const;
-	/* Short windows lock by themselves: below SHORT_LOCK_WINDOW a live view with the trigger off runs Auto on its first
-	 * line (the level at that line's middle in view, rising), as the eye blended the frames of an untriggered wave into
-	 * ghosts. Not the user's trigger: no row, tab or flag, triggerOn() stays false; the corner says "Auto (short window)"
+	/* Short windows lock by themselves: below SHORT_LOCK_WINDOW a live view with the trigger off runs Auto on its
+	 * busiest line (the level at that line's middle in view, rising), as the eye blended the frames of an untriggered
+	 * wave into ghosts. The busiest: a fast line before any polled one (the first), else the line with the most samples
+	 * in the window; none with SHORT_LOCK_SAMPLES there, no lock (a slow polled line watched first crossed now and then,
+	 * so the lock flipped between free running and locked). Chosen again when the lines change or the one watched has
+	 * too few, not at each frame. Not the user's trigger: no row, tab or flag, triggerOn() stays false; the corner says "Auto (short window)"
 	 * while it locks. The user's trigger takes over when on; Hold, a pan or a window of SHORT_LOCK_WINDOW or more ends
 	 * it. setShortLock: Display's "Lock short windows" (on by default) */
 	static constexpr double SHORT_LOCK_WINDOW = 0.1;
+	static constexpr int SHORT_LOCK_SAMPLES = 20;
 	void setShortLock(bool on);
 	bool shortLock() const { return shortLockOn_; }
 	bool shortLocked() const { return trigger_.on && trigger_.automatic; } /* the lock in effect now */
+	int shortLockKey() const { return shortLocked() ? trigger_.key : -1; } /* the line it watches (tests) */
 	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
 	QVector<QLineF> nowEdges() const { return nowEdges_; }
 	void setTriggerLevel(double level);  /* of the line watched */
@@ -1152,9 +1157,13 @@ private:
 	double lastCrossing() const;
 	/* how long "triggered" stays after the last crossing: a window plus the hold-off, TRIGGERED_AT_LEAST at least */
 	double triggeredSpan() const;
-	/* the short window's lock: started, moved to another first line or ended at each frame as its rule says */
+	/* the short window's lock: started, moved to another line or ended at each frame as its rule says */
 	bool shortLockOn_ = true;
-	TriggerSettings lockSettings_; /* its level (the first line's middle when it began) and edge (rising) */
+	int lockKey_ = -1;              /* the line it watches (busiestLine), chosen at lockGeneration_; -1: none */
+	quint64 lockGeneration_ = 0;
+	qsizetype samplesInWindow(const Series &s) const; /* a line's samples in the window before its newest */
+	int busiestLine() const;
+	TriggerSettings lockSettings_; /* its level (the line's middle when it began) and edge (rising) */
 	double lockTakenAt_ = 0;       /* its level taken last (by the samples' time) */
 	void updateShortLock();
 	void endShortLock(); /* the lock off; the view as it is */

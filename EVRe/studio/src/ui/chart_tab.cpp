@@ -486,13 +486,14 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"holds on the first crossing and stops; Arm for another.")
 			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. A line's chip (click or right-click): Trigger "
 			"on this line. Off: the row's Off, this entry or the chip's entry unticked."));
-	/* a live view under 100 ms with the trigger off locks on its first line by itself (ChartView::setShortLock) */
+	/* a live view under 100 ms with the trigger off locks on its busiest line by itself (ChartView::setShortLock) */
 	shortLock_ = displayMenu->addAction(tr("Lock short windows"));
 	shortLock_->setObjectName(QStringLiteral("chartShortLock"));
 	shortLock_->setCheckable(true);
 	shortLock_->setToolTip(tr("Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of "
-			"the first line's middle, so a wave stands still instead of blurring (\"Auto (short window)\"; \"Auto · free "
-			"running\" while it does not cross). Your own trigger takes over when it is on; Hold ends it."));
+			"the busiest line's middle (a fast line first, else the one with the most samples in the window), so a wave "
+			"stands still instead of blurring (\"Auto (short window)\"; \"Auto · free running\" while it does not cross). "
+			"Your own trigger takes over when it is on; Hold ends it."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);

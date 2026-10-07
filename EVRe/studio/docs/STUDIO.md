@@ -1549,8 +1549,12 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   it is full: a repeating wave stands still, a whole picture each time. The first crossing, Single, and a window of a
   second or more hold at once and fill as the samples come.
 - **Short windows lock by themselves.** Below a 100 ms window a live chart with the trigger off runs Auto on its
-  first line: the level at that line's middle in view (Find level's rule, taken again each second while it runs
-  free), rising. An untriggered wave at 20 ms left ghosts and labels over each other, as the eye blended frames that
+  busiest line: a fast line before any polled one (the first of them), else the line with the most samples in the
+  window; the level at that line's middle in view (Find level's rule, taken again each second while it runs free),
+  rising. A line with fewer than 20 samples in the window is not watched, and with none busier the lock does not run
+  (the corner shows nothing for it): a slow polled line plotted first crosses now and then, and the lock flipped
+  between free running and locked. The line is chosen again when the lines change or the one watched has too few
+  samples, not at each frame. An untriggered wave at 20 ms left ghosts and labels over each other, as the eye blended frames that
   each showed the wave elsewhere; locked, it stands still whenever it crosses. The corner says *Auto (short window)*
   while it locks and *Auto · free running* while the line does not cross (after a second without a crossing), as a
   **badge**: the accent colour (the Live button's blue, not the amber of Stopped) on a tint of it, rounded, so the
@@ -2434,7 +2438,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/ramMB` | `2048` | on&nbsp;change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
 | `chart/smooth` | `true` | on&nbsp;change | Smooth. |
 | `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
-| `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its first line (7.13). |
+| `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its busiest line (7.13). |
 | `chart/timeGrid` | `0` | on&nbsp;change | Time grid: 0 Auto (divisions below a 1 s window), 1 Clock times, 2 Divisions (`ChartView::TimeGrid`, 7.9). |
 | `chart/yAuto` | `true` | on&nbsp;change | Y range Auto. |
 | `chart/yLog` | `false` | on&nbsp;change | Y range Log (7.5); with `chart/yAuto` for its range. |
@@ -4880,10 +4884,14 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   least width: the window grew by 6 px in English and 32 in Arabic once a state was written.
 - **A short window's lock** (`updateShortLock`, at each `frame()`): with `shortLockOn_` (Display's *Lock short
   windows*, `chart/autoShortWindows`), no user's trigger, a live view (`live_`, or one the lock holds), a window under
-  `SHORT_LOCK_WINDOW` (100 ms), not a recording and a line, the trigger is Auto on `series_.firstKey()` with
+  `SHORT_LOCK_WINDOW` (100 ms), not a recording and a line busy enough, the trigger is Auto on `lockKey_` with
   `Trigger::automatic` set and its own `lockSettings_` (the line's `midRange`, Rising; the level taken again each
   `TRIGGERED_AT_LEAST` while it runs free), so the user's levels kept by name stay as they are; `watchedSettings`
-  gives the lock's, and the polled line's check in `append` reads it. Everything else is Auto's own work (the
+  gives the lock's, and the polled line's check in `append` reads it. `lockKey_` is `busiestLine()`: the first fast
+  line with `SHORT_LOCK_SAMPLES` (20) in the window (`samplesInWindow`: the samples after the line's newest less the
+  window, a binary search), else the line with the most there, at least that many; -1: none, and the lock ends as
+  for no line. It is chosen again only when `seriesGeneration_` moved (the lines changed) or the line watched has too
+  few, so it does not move from line to line at each frame (`shortLockKey()`, tests). Everything else is Auto's own work (the
   crossings, `pending`, `binPending`): nothing binned of its own. `triggerOn()`, `triggerKey()` and `triggerMarked()`
   leave the lock out (no row, Run / Stop, tab, flag, room or now edge), and `live()` counts it as live, so the
   toolbar's button stays Hold: Hold (`setLive(false)`), a pan (`holdAt`) or a span shown (`showSpan`) call
@@ -5709,6 +5717,11 @@ made up for the check:
   Auto again is linear. With `EVRE_TEST_SHOT` set it saves `<prefix>_log.png`.
 - **The info line** (`chartInfoLine`): narrowed pixel by pixel, the paint time goes first, then *plotted*, then the
   delay; no width gives a part cut in the middle or an ellipsis; the tooltip starts with the whole text.
+- **The short window's lock on the busiest line** (`chartShortLockBusiest`, charts of their own): a polled line of
+  10 polls a second plotted first and a fast line of 50 000 records a second (a 50 Hz sine, its crossings found by a
+  `fast::TriggerScan` as the engine finds them) at a 20 ms window: the lock watches the fast line and the corner says
+  *Auto (short window)* at each of 100 frames; the polled line alone (2 samples in the window): no lock, nothing in
+  the corner.
 - **One cap of 64 lines** (`chartOneCap`): the chart filled with math lines (fields of SUPPLY_V): the info line
   *64/64 plotted · N math*; a register's Plot, a 65th field and *New math line…* (no dialog) refused with the same
   words in the status bar (a fast channel's tick: in the fast streams step, where the map has a stream); a math line's *Shown* off makes room for a register, on again it is
@@ -5742,7 +5755,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 534 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 535 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
