@@ -1108,7 +1108,7 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
     </message>
     <message>
         <source>While it is on, Hold / Live is Run / Stop. A line&apos;s chip (click or right-click): Trigger on this line. Off: the row&apos;s Off, this entry or the chip&apos;s entry unticked.</source>
-        <translation>ما دام مفعّلًا، يصير «تثبيت» / «مباشر» «تشغيل» / «إيقاف». شارة خط (بالنقر أو بالنقر بالزر الأيمن): القدح على هذا الخط. وللإطفاء: «إطفاء» في آخر الصف، أو إلغاء تحديد هذا البند أو بند الشارة.</translation>
+        <translation>ما دام مفعّلًا، يصير «تثبيت» / «مباشر» «تشغيل» / «إيقاف». شارة خط (بالنقر أو بالنقر بالزر الأيمن): القدح على هذا الخط. وللإطفاء: «إطفاء» في الصف، أو إلغاء تحديد هذا البند أو بند الشارة.</translation>
     </message>
     <message>
         <source>Wait for one more crossing</source>
@@ -2587,7 +2587,7 @@ crossing, a faint line marks where the data ends.&lt;/p&gt;
 rising crossing of its first line&apos;s middle (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
 cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 &lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Off&lt;/b&gt; at the row&apos;s end turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
+&lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
 &lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
 trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
 on another line by itself.&lt;/p&gt;
@@ -2734,7 +2734,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
 لمنتصف خطه الأول (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر)، فتقف الموجة بدل أن
 تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في آخر الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
+&lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
 قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
 باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
 &lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;

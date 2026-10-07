@@ -1428,7 +1428,7 @@ repeating wave held still.
 | position | The crossing's place in the window, 0 to 90 %, 50 % by default: the T ▼ flag above the plot (the label's tooltip says so; a double-click on the flag puts it back at 50 %). |
 | Arm&nbsp;/&nbsp;Force | In Single: **Arm** waits for one more crossing; the primary button while Single holds its crossing. While Normal or Single waits it reads **Force** (a scope's Force Trigger): a click holds the view now as a crossing would, at the newest sample, its flag there; Single is then complete and the button reads Arm again. Hidden in Auto. One button, as wide as either word, so the row keeps its length. |
 | State | *waiting for a crossing* (*waiting: level above the line's range*), *Normal · waiting, last at 14:03:12* (Normal back to waiting after a capture: when the last one was, written once), *Normal · triggered* (*Auto · triggered*: no number while it runs), *Auto · free running*, *Single · complete at 14:03:12.345*, *Stopped · Run to arm* (a finished Single is *complete*; *Stopped* is your Stop alone). It takes the room the row leaves: a longer text is cut ("...") and is whole in its tooltip, so no state widens the window (in Arabic either). |
-| Off | At the row's end: turns the trigger off, as unticking **Display → Trigger** (the same action). |
+| Off | After Force / Arm, before the state: turns the trigger off, as unticking **Display → Trigger** (the same action). |
 
 **The modes**, as a scope's:
 
@@ -1499,7 +1499,7 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   and the spectrum all take it. **Stop** keeps it (a crossing waiting for its view, a steady picture's, is dropped);
   **Run** arms again. **Clear** keeps the trigger armed; a change of the window's
   length (typed, the wheel) counts the next crossing after the new view's fill.
-- **Turning it off.** **Off** at the row's end, **Display → Trigger** unticked, or the chip menu's **Trigger on this
+- **Turning it off.** **Off** beside Force / Arm in the row, **Display → Trigger** unticked, or the chip menu's **Trigger on this
   line** unticked (it is ticked for the line watched, and only for it): one switch, the three always in step.
 - **A line watched that leaves the chart** (its Plot unticked, its math line or its stream gone) stops the trigger:
   the row says *no line to watch* and its list shows the line's name greyed. The line saved (`chart/triggerLine`)
@@ -5580,7 +5580,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 502 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 503 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

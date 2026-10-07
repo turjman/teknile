@@ -976,14 +976,15 @@ QWidget *ChartTab::buildTriggerRow() {
 	row->addWidget(positionLabel);
 	row->addWidget(triggerPosition_);
 	row->addWidget(triggerArm_);
-	row->addSpacing(8);
-	row->addWidget(triggerState_, 1);
-	/* the row can end what it shows: Off unticks Display -> Trigger, so the menu, the chip's entry and the row agree */
+	/* the row can end what it shows: Off unticks Display -> Trigger, so the menu, the chip's entry and the row agree.
+	 * Beside the other buttons, not at the row's far end where the state's room pushed it (the owner: too far away) */
 	triggerOff_ = new QPushButton(tr("Off"));
 	triggerOff_->setObjectName(QStringLiteral("triggerOff"));
 	triggerOff_->setToolTip(tr("Turn the trigger off (as Display → Trigger)"));
 	triggerOff_->setCursor(Qt::PointingHandCursor);
 	row->addWidget(triggerOff_);
+	row->addSpacing(8);
+	row->addWidget(triggerState_, 1);
 	triggerRow_->hide();
 
 	const QSettings settings;

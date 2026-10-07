@@ -9234,6 +9234,38 @@ private:
 				&& QSettings().value(QStringLiteral("chart/triggerLevels")).toStringList().value(0).endsWith(QStringLiteral("\t2"));
 		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, symbol.center().toPoint());
 		const bool cycledOn = view->triggerEdge() == ChartView::TriggerEdge::Rising;
+		/* the edge's arrow in the middle of its part (the owner saw the font's ↕ right of the centre): the text's colour
+		 * across the part, its ink's middle within a device pixel and a half of the part's middle, for each edge */
+		{
+			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10)); /* the part not lit */
+			bool centred = true;
+			QString seen;
+			for (int k = 0; k < 3; k++) {
+				(void) view->grab(); /* the tab drawn with this edge */
+				const QRectF part = view->triggerEdgeButton();
+				const QImage whole = view->grab().toImage();
+				const qreal dpr = whole.devicePixelRatio();
+				const QRect area = QRectF(part.topLeft() * dpr, part.size() * dpr).toAlignedRect().adjusted(int(3 * dpr), 2, -2, -2);
+				const QColor text = Theme::colors().text;
+				int left = 1 << 30, right = -1, top = 1 << 30, bottom = -1;
+				for (int y = area.top(); y <= area.bottom(); y++)
+					for (int x = area.left(); x <= area.right(); x++) {
+						const QColor px = whole.pixelColor(x, y);
+						if (std::abs(px.red() - text.red()) + std::abs(px.green() - text.green()) + std::abs(px.blue() - text.blue()) > 120)
+							continue;
+						left = std::min(left, x), right = std::max(right, x), top = std::min(top, y), bottom = std::max(bottom, y);
+					}
+				const double inkX = (left + right) / 2.0, inkY = (top + bottom) / 2.0;
+				const double midX = part.center().x() * dpr, midY = part.center().y() * dpr;
+				centred = centred && right >= 0 && std::fabs(inkX - midX) <= 1.5 + dpr / 2 && std::fabs(inkY - midY) <= 1.5 + dpr / 2;
+				seen += QStringLiteral(" %1,%2").arg(inkX - midX, 0, 'f', 1).arg(inkY - midY, 0, 'f', 1);
+				QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, part.center().toPoint());
+				moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10));
+			}
+			if (!centred) std::printf("     (the arrow's ink off the part's middle, device px, rising falling either:%s)\n", qPrintable(seen));
+			check(centred && view->triggerEdge() == ChartView::TriggerEdge::Rising, "chart, Trigger per line: the edge's arrow "
+					"(↑ ↓ ↕, drawn as lines) in the middle of its part of the level's tab, for each edge");
+		}
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the level's marks in its lane, for a look, in both themes */
 			pair.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_lane.png"));
 			moveTo(QPointF(view->lastPlot().center().x(), view->lastPlot().top() + 10));
@@ -10376,15 +10408,16 @@ private:
 			return;
 		}
 
-		/* Off: at the row's end, after the state, with its tooltip; a click is Display -> Trigger unticked */
+		/* Off: beside the row's other buttons, before the state (not at the row's far end), with its tooltip; a click is
+		 * Display -> Trigger unticked */
 		pair.tab.triggerOnLine(pair.ampsKey());
 		QApplication::processEvents();
 		const bool offShown = off->isVisible() && off->text() == QStringLiteral("Off")
 				&& off->toolTip() == QStringLiteral("Turn the trigger off (as Display → Trigger)")
-				&& off->geometry().left() >= state->geometry().right();
+				&& off->geometry().right() <= state->geometry().left() && state->geometry().left() - off->geometry().right() <= 24;
 		QTest::mouseClick(off, Qt::LeftButton);
 		const bool offWorks = !action->isChecked() && !row->isVisible() && !view->triggerOn();
-		check(offShown && offWorks, "chart, Trigger's flow: an Off button at the row's end (tooltip \"Turn the trigger off "
+		check(offShown && offWorks, "chart, Trigger's flow: an Off button beside the row's other buttons, before the state (tooltip \"Turn the trigger off "
 				"(as Display → Trigger)\") turns the trigger off: Display -> Trigger unticked, the row hidden");
 
 		/* the chip's entry: ticked for the line watched alone; unticked, the trigger is off; ticked on another line, on */
