@@ -126,6 +126,7 @@ public:
 	static int fastKey(int stream, int channel) { return FIRST_FAST_KEY + 256 * stream + channel; }
 	static bool isFastKey(int key) { return key >= FIRST_FAST_KEY; }
 	void setFastStream(int stream, const StreamDef &def); /* kept when it is the same stream again */
+	void removeFastStream(int stream); /* gone from the map: its store too (its lines went before) */
 	/* a recording's store (fast::readRecording: its records in the mapped file) for the stream, its lines' too: not
 	 * cleared by Clear, its lines' totals over all of it */
 	void setFastStore(int stream, std::shared_ptr<fast::Store> store);

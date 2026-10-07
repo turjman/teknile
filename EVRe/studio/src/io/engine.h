@@ -194,6 +194,7 @@ public:
 	void setAutoSend(bool on, int prescaler);
 	/* Fast EVRe: the chart's trigger on a channel of a stream (-1: on none), looked for in each block as it comes */
 	void setFastTrigger(int stream, const fast::TriggerWatch &watch);
+	fast::TriggerWatch fastTriggerWatch(int stream) const; /* what it watches on a stream now (the tests) */
 	/* Fast EVRe: the map's stream (its index in DeviceMap::streams) on or off, on the one device (never on a bus).
 	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
 	void setFastStream(int stream, bool on);
@@ -320,6 +321,9 @@ private:
 	void recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data);
 	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
 	void fastFailed(int stream, bool on, const QString &why);
+	/* the run an answer is for, when it is still there and at the same switch; nullptr: the map was loaded again
+	 * meanwhile (fewer streams, or another at its place), or it was switched since */
+	FastRun *fastRunAsked(int stream, const QString &name, quint64 request);
 	bool anyFastOn() const;
 	int fastStreamOf(const evre::Frame &frame) const; /* the stream whose block this is; -1: none */
 	int fastStreamOfRaw(const QByteArray &raw) const; /* the same from a frame's bytes (the Monitor) */

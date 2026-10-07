@@ -753,6 +753,7 @@ void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
 				&& streams[i].addr == fastStreams_[i].addr && streams[i].recordSize() == fastStreams_[i].recordSize();
 		if (same) continue;
 		for (int c = 0; c < fastStreams_[i].channels.size(); c++) view->removeSeries(ChartView::fastKey(i, c));
+		if (i >= streams.size()) view->removeFastStream(i);
 	}
 	fastStreams_ = streams;
 	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);

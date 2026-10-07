@@ -343,12 +343,16 @@ void ChartView::removeSeries(int key) {
 	if (it != series_.constEnd()) keptTotals_.insert(key, { it->name, it->unit, it->total, it->totalT, it->totalV });
 	series_.remove(key);
 	seriesGeneration_++;
+	/* the engine stops looking for the crossings of a fast line that is gone (fastTriggerWatch: none) */
+	if (trigger_.on && key == trigger_.key) postWatch();
 	forgetRanges();
 	refresh();
 }
 
 void ChartView::clearSeries() {
+	const bool watched = trigger_.on && series_.contains(trigger_.key);
 	series_.clear();
+	if (watched) postWatch();
 	keptTotals_.clear(); /* another set of lines: the totals from 0 */
 	totalsSince_ = NAN;
 	seriesGeneration_++;
@@ -560,16 +564,31 @@ void ChartView::setFastStream(int stream, const StreamDef &def) {
 	fastStores_.insert(stream, store);
 	for (auto it = series_.begin(); it != series_.end(); ++it)
 		if (isFastKey(it.key()) && (it.key() - FIRST_FAST_KEY) / 256 == stream) it->fast = store;
+	/* a watched line's records start again in the new store: the engine is armed again from them */
+	if (trigger_.on && isFastKey(trigger_.key) && (trigger_.key - FIRST_FAST_KEY) / 256 == stream) {
+		trigger_.pending = NAN;
+		postWatch();
+	}
+	seriesGeneration_++;
+	refresh();
+}
+
+/* A stream gone from the map leaves no store behind: the same stream in a map loaded later starts afresh, not on the
+ * records and times of a link that has long gone */
+void ChartView::removeFastStream(int stream) {
+	if (!fastStores_.remove(stream)) return;
 	seriesGeneration_++;
 	refresh();
 }
 
 void ChartView::clearFastStreams() {
+	const bool watched = trigger_.on && isFastKey(trigger_.key) && series_.contains(trigger_.key);
 	for (auto it = series_.begin(); it != series_.end();) {
 		if (it->fast) it = series_.erase(it);
 		else ++it;
 	}
 	fastStores_.clear();
+	if (watched) postWatch();
 	seriesGeneration_++;
 	refresh();
 }

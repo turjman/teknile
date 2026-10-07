@@ -1399,6 +1399,71 @@ private:
 					"fast streams recorded: a .evrs cut off opens up to its last whole piece, and its window says so");
 			RecordingWindow::closeAll();
 		}
+		/* the trigger armed on the fast line (from its chip's menu) while its stream comes and goes: Disconnect, Connect
+		 * again, Arm, the stream stopped, the line removed. Each time the engine watches what the window asks (the same
+		 * line, the same arm) or, the line gone, nothing; no watch, crossing or rescan reaches a stream, a run or a line
+		 * that is gone (the test crashed once in this Disconnect). Normal: the engine keeps watching after a crossing,
+		 * and Arm, after the stream came back, takes the next one. */
+		bool watchArmed = false, watchKept = false, watchBack = false, armedAgain = false, stoppedKept = false,
+				watchGone = false;
+		if (plotted) {
+			auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+			auto *mode = chartTab->findChild<QComboBox *>(QStringLiteral("triggerMode"));
+			auto *level = chartTab->findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+			const auto watched = [&] { /* the engine's watch, the window's arm */
+				int stream = -1;
+				const fast::TriggerWatch asked = chartView->fastTriggerWatch(stream);
+				const fast::TriggerWatch engine = window_.engineFastWatch(0);
+				return stream == 0 && asked.on && engine.on && engine.channel == asked.channel && engine.serial == asked.serial;
+			};
+			const auto inStep = [&] { return QTest::qWaitFor(watched, 3000); };
+			const auto holdsAgain = [&] {
+				const int before = chartView->triggerHolds();
+				return QTest::qWaitFor([&] { return chartView->triggerHolds() > before; }, 6000);
+			};
+			const int modeWas = mode ? mode->currentIndex() : -1;
+			if (mode) mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Normal)));
+			chartTab->triggerOnLine(iLoad);
+			if (level) {
+				level->setText(QStringLiteral("0"));
+				emit level->editingFinished();
+			}
+			watchArmed = inStep() && holdsAgain();
+			if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+			watchKept = QTest::qWaitFor([&] { return !button->isEnabled(); }, 3000) && enableBecomes(0) && inStep();
+			window_.applyStartup(connectFast);
+			if (QTest::qWaitFor([&] { return button->isEnabled(); }, 5000) && button->text() == QStringLiteral("▶  Start stream"))
+				button->click();
+			/* the watch as it was: the same arm, waiting out its re-arm (a window's length); Arm takes the next crossing */
+			watchBack = enableBecomes(1) && inStep();
+			chartView->armTrigger();
+			armedAgain = inStep() && holdsAgain();
+			button->click(); /* Stop, armed */
+			stoppedKept = enableBecomes(0);
+			QTest::qWait(300); /* blocks of the stopped stream may still come */
+			stoppedKept = stoppedKept && inStep();
+			button->click();
+			stoppedKept = stoppedKept && enableBecomes(1) && inStep();
+			chartView->armTrigger();
+			stoppedKept = stoppedKept && inStep() && holdsAgain();
+			if (plotBox) plotBox->setChecked(false); /* the line removed, armed */
+			watchGone = !onChart(iLoad) && QTest::qWaitFor([&] {
+				int stream = -1;
+				(void) chartView->fastTriggerWatch(stream);
+				return stream == -1 && !window_.engineFastWatch(0).on;
+			}, 3000);
+			QTest::qWait(300); /* blocks with crossings for the arm before may still come: none is used */
+			if (trigger) trigger->setChecked(false);
+			if (mode) mode->setCurrentIndex(modeWas);
+			chartView->setLive(true);
+			if (plotBox) plotBox->setChecked(true);
+		}
+		std::printf("  the trigger on ADC.I_LOAD, armed: in step %d; Disconnect: kept %d; Connect: back %d; Arm: held %d; "
+				"the stream stopped and started, Arm: held %d; the line removed: no watch %d\n", int(watchArmed), int(watchKept),
+				int(watchBack), int(armedAgain), int(stoppedKept), int(watchGone));
+		check(watchArmed && watchKept && watchBack && armedAgain && stoppedKept && watchGone,
+				"fast streams, the trigger armed on a fast line: through Disconnect, Connect, Arm and the stream stopped the "
+				"engine watches what the window asks and holds again; the line removed, the engine watches nothing; no crash");
 		if (plotBox) plotBox->setChecked(false);
 		check(!onChart(iLoad), "fast streams: the tick off: the line off the chart");
 
@@ -1629,6 +1694,10 @@ private:
 		check(sidebar->fastCard()->isHidden()
 						&& cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
 				"fast streams: done; the example map again (no card), the window polls the fake device of the other steps");
+		/* run twice, the step held on records with the times of the link before (a view 20 s off its crossing) */
+		check(chartView && !chartView->fastStore(0),
+				"fast streams: a map without the stream leaves no store of it in the chart: the same stream in a map loaded "
+				"later starts afresh");
 	}
 
 	/* Fast EVRe's speed on this machine (FAST_PLAN.md section 16): evre_fake_fast sending a million records a second of

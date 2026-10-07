@@ -210,6 +210,13 @@ bool restartWanted = false;
 
 bool MainWindow::restartAsked() { return restartWanted; }
 
+fast::TriggerWatch MainWindow::engineFastWatch(int stream) const {
+	fast::TriggerWatch watch;
+	QMetaObject::invokeMethod(engine_, [&watch, engine = engine_, stream] { watch = engine->fastTriggerWatch(stream); },
+			Qt::BlockingQueuedConnection);
+	return watch;
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls()) {
 		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
