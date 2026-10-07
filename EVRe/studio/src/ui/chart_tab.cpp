@@ -337,10 +337,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	ramNeed_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 	ramNeed_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
-			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"memory full\"."));
+			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
+			"recording's file keeps every sample, whatever the chart keeps."));
 	ram_->setToolTip(tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
 			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
-			"memory strip says \"memory full\". At most three quarters of this computer's memory (%1 GB).")
+			"memory strip says \"RAM budget reached\": the chart lets the oldest go, a recording's file keeps every "
+			"sample. At most three quarters of this computer's memory (%1 GB).")
 			.arg(maxRamMB() / 1024.0, 0, 'f', 1));
 
 	/* the first row: what is shown and kept (Window, Memory, RAM and what the lines need), the Y range */
@@ -856,10 +858,12 @@ void ChartTab::plotField(const RegDef &def, const BitField &field) {
 	const QVector<MathLine> &lines = mathLines_.lines();
 	for (int i = 0; i < lines.size(); i++) {
 		if (lines[i].name != name) continue;
+		if (!lines[i].active() && !roomForLine()) return;
 		mathLines_.setOn(i, true);
 		rebuildMath();
 		return;
 	}
+	if (!roomForLine()) return;
 	MathLine line;
 	line.name = name;
 	line.formula = QStringLiteral("bits(%1, %2, %3)").arg(def.name).arg(field.lsb).arg(field.width);
@@ -908,6 +912,26 @@ int ChartTab::fastLines() const {
 	return n;
 }
 
+int ChartTab::mathLinesShown() const {
+	int n = 0;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		n += !ChartView::isFastKey(line.key) && line.key >= MathLines::FIRST_CHART_KEY;
+	return n;
+}
+
+int ChartTab::lineCount() const { return int(chart_->view()->lines().size()); }
+
+QString ChartTab::lineCapText() {
+	return tr("At most %1 lines on the chart, registers, math and fast lines together: untick one first")
+			.arg(RegisterModel::MAX_PLOTTED);
+}
+
+bool ChartTab::roomForLine() {
+	if (lineCount() < RegisterModel::MAX_PLOTTED) return true;
+	emit statusMessage(lineCapText(), 6000);
+	return false;
+}
+
 void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
 		bool marked, quint64 markRecord, double markTime, double markPeriod, const QVector<fast::Crossing> &crossings) {
 	ChartView *view = chart_->view();
@@ -953,7 +977,9 @@ QString ChartTab::infoText(int width) const {
 	 * plotted · 60 fp…") said less than the parts left whole */
 	enum Part { Count, Plotted, Math, Fast, Fps, PaintTime, Delay, Drawer, PARTS };
 	QString parts[PARTS];
-	parts[Count] = QStringLiteral("%1/%2").arg(registers).arg(registerLimit_);
+	/* every line of every kind against what the chart may hold now: the registers' limit is what the rate and the
+	 * other lines leave of the one cap */
+	parts[Count] = QStringLiteral("%1/%2").arg(registers + math + fast).arg(registerLimit_ + math + fast);
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
@@ -976,9 +1002,10 @@ QString ChartTab::infoText(int width) const {
 }
 
 QString ChartTab::infoTip() const {
-	return tr("Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples "
-			"a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to "
-			"draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
+			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
+			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time "
+			"to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
 			"draw, the word \"plotted\" and the delay go first.");
 }
 
@@ -1953,7 +1980,9 @@ void ChartTab::drawMathLines() {
 	const QVector<MathLine> &lines = mathLines_.lines();
 	const QVector<QColor> &palette = Theme::colors().series;
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
-		if (!lines[i].active()) continue;
+		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
+		 * another map), the registers already on it stay */
+		if (!lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
 		chart_->addSeries(MathLines::chartKey(i), QStringLiteral("ƒ %1").arg(lines[i].name), lines[i].unit, color);
@@ -1963,7 +1992,9 @@ void ChartTab::drawMathLines() {
 void ChartTab::rebuildMathMenu() {
 	QMenu *menu = mathButton_->menu();
 	menu->clear();
-	menu->addAction(tr("New math line…"), this, [this] { editMathLine(-1); });
+	menu->addAction(tr("New math line…"), this, [this] {
+		if (roomForLine()) editMathLine(-1); /* refused before its formula is typed */
+	});
 	const QVector<MathLine> &lines = mathLines_.lines();
 	if (!lines.isEmpty()) menu->addSeparator();
 	for (int i = 0; i < lines.size(); i++) {
@@ -1975,7 +2006,12 @@ void ChartTab::rebuildMathMenu() {
 		shown->setCheckable(true);
 		shown->setChecked(line.on);
 		shown->setEnabled(line.error.isEmpty());
-		connect(shown, &QAction::toggled, this, [this, i](bool on) {
+		connect(shown, &QAction::toggled, this, [this, i, shown](bool on) {
+			if (on && !roomForLine()) {
+				const QSignalBlocker blocker(shown);
+				shown->setChecked(false);
+				return;
+			}
 			mathLines_.setOn(i, on);
 			rebuildMath();
 		});
@@ -2000,7 +2036,9 @@ void ChartTab::editMathLine(int line) {
 		for (const StreamChannel &channel : stream.channels) channels << stream.name + QLatin1Char('.') + channel.name;
 	dialog.setFastChannels(channels);
 	if (dialog.exec() != QDialog::Accepted) return;
-	const MathLine edited = dialog.result();
+	MathLine edited = dialog.result();
+	/* an edit that would draw a line more (it was off or did not compile) past the cap: kept, but not shown */
+	if (line >= 0 && edited.active() && !mathLines_.lines()[line].active() && !roomForLine()) edited.on = false;
 	if (line >= 0) mathLines_.replace(line, edited);
 	else mathLines_.add(edited);
 	rebuildMath();

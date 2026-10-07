@@ -30,6 +30,7 @@
 #include "model/recording_file.h"
 
 class ChartTab;
+class QAction;
 class QLabel;
 class QMenu;
 class QPushButton;
@@ -77,6 +78,7 @@ private:
 	void feedColumn(int column);         /* one column's samples onto its line */
 	void rebuildLinesMenu();
 	void saveNotes();
+	bool roomForLine(QAction *tick);     /* under the chart's cap of lines; if not, the tick taken back */
 
 	QString file_;
 	recording::Data data_;

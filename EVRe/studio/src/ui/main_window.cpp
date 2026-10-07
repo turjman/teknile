@@ -411,7 +411,9 @@ QWidget *MainWindow::buildRegistersTab() {
 	});
 	connect(model_, &RegisterModel::plotLimitReached, this, [this] {
 		const long rate = std::lround(sampleRateHz()); /* 0: not polling, no rate to name */
-		const QString text = rate > 0
+		/* the chart full of lines of every kind, or the registers at what the rate allows */
+		const QString text = chartTab_->lineCount() >= RegisterModel::MAX_PLOTTED ? ChartTab::lineCapText()
+				: rate > 0
 				? tr("At most %1 registers on the chart at %2 samples a second: untick one first").arg(model_->plotLimit())
 						.arg(rate)
 				: tr("At most %1 registers on the chart: untick one first").arg(model_->plotLimit());
@@ -431,6 +433,13 @@ QWidget *MainWindow::buildRegistersTab() {
 QWidget *MainWindow::buildChartTab() {
 	chartTab_ = new ChartTab([engine = engine_] { return engine->now(); }); /* the samples' time base */
 	connect(chartTab_, &ChartTab::mathRegistersChanged, this, &MainWindow::pushPlotted);
+	/* a math line shown or gone: the registers get what is left of the one cap */
+	connect(chartTab_, &ChartTab::mathRegistersChanged, this, [this] {
+		if (sidebar_) updatePlotLimit();
+	});
+	connect(chartTab_, &ChartTab::statusMessage, this, [this](const QString &text, int ms) {
+		statusBar()->showMessage(text, ms);
+	});
 	connect(chartTab_, &ChartTab::unplotAllRequested, this, &MainWindow::unplotAll);
 	connect(chartTab_, &ChartTab::logged, this, &MainWindow::logEvent);
 	connect(chartTab_, &ChartTab::openRecordingRequested, this, &MainWindow::openRecording);
@@ -765,11 +774,12 @@ void MainWindow::showFastStreams() {
 	updateFastOffer();
 }
 
-/* a fast line counts as one of the chart's lines (RegisterModel::MAX_PLOTTED), not in the polled samples' rate */
+/* a fast line counts as one of the chart's lines (RegisterModel::MAX_PLOTTED, with the registers and the math lines),
+ * not in the polled samples' rate */
 void MainWindow::onFastPlotToggled(int stream, int channel, bool on) {
-	if (on && model_->plottedCount() + chartTab_->fastLines() >= RegisterModel::MAX_PLOTTED) {
+	if (on && !chartTab_->fastPlotted(stream, channel) && chartTab_->lineCount() >= RegisterModel::MAX_PLOTTED) {
 		sidebar_->setFastPlot(stream, channel, false);
-		statusBar()->showMessage(tr("At most %1 lines on the chart: untick one first").arg(RegisterModel::MAX_PLOTTED), 6000);
+		statusBar()->showMessage(ChartTab::lineCapText(), 6000);
 		return;
 	}
 	chartTab_->plotFastChannel(stream, channel, on);
@@ -1002,9 +1012,9 @@ double MainWindow::sampleRateHz() const {
 }
 
 void MainWindow::updatePlotLimit() {
-	/* the fast lines are lines too: the registers get what is left of MAX_PLOTTED */
+	/* the fast and math lines are lines too: the registers get what is left of MAX_PLOTTED */
 	model_->setPlotLimit(std::min(RegisterModel::plotLimitFor(sampleRateHz()),
-			std::max(1, RegisterModel::MAX_PLOTTED - chartTab_->fastLines())));
+			std::max(0, RegisterModel::MAX_PLOTTED - chartTab_->fastLines() - chartTab_->mathLinesShown())));
 	chartTab_->setRegisterLimit(model_->plotLimit());
 }
 
@@ -1318,6 +1328,7 @@ void MainWindow::onRecordStarted(bool ok, const QString &err) {
 	recording_ = true;
 	recordFrom_ = engine_->now();
 	sidebar_->setRecording(true);
+	chartTab_->view()->setRecordingOn(true); /* the memory strip: the file keeps what the chart lets go */
 	RecordingWindow::remember(recordFile_);
 }
 
@@ -1335,6 +1346,7 @@ void MainWindow::onRecordStopped(const QString &file, quint64 rows) {
 	saveRecordingNotes(); /* the last time, with the notes as they are now */
 	recording_ = false;
 	sidebar_->setRecording(false);
+	chartTab_->view()->setRecordingOn(false);
 	sidebar_->showRecordSaved(file, rows);
 	logEvent(LogLevel::Info, tr("CSV recording stopped: %1 rows in %2").arg(rows).arg(QDir::toNativeSeparators(file)));
 }

@@ -537,6 +537,7 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
+		chartOneCap();
 		recordingFiles();
 		chartMenuAndPictures();
 		chartExport();
@@ -1227,6 +1228,37 @@ private:
 						&& chartTab->infoText().contains(QStringLiteral(" · 1 fast")),
 				"fast streams: a channel's Plot tick in the card (a pointing hand, a tooltip): ADC.I_LOAD on the chart, its "
 				"samples kept, its newest value beside the tick, \"1 fast\" in the chart's info line");
+		/* one cap of 64 lines for every kind (chartOneCap): the chart filled with math lines, a second channel's tick is
+		 * taken back with the same words in the status bar; the lines removed, it is taken */
+		{
+			auto *math = chartTab ? chartTab->findChild<QPushButton *>(QStringLiteral("math")) : nullptr;
+			QCheckBox *second = sidebar->fastPlotBox(0, 1);
+			bool refused = false, takenAfter = false;
+			int fields = 0;
+			QVector<int> plotted;
+			if (math && second && chartTab) {
+				const bool wasOn = second->isChecked(); /* ADC.V_BUS, off for the check, as it was after */
+				second->setChecked(false);
+				fields = fillWithFields(chartTab, *enable, plotted);
+				window_.statusBar()->clearMessage();
+				second->setChecked(true);
+				QApplication::processEvents();
+				refused = chartTab->lineCount() == RegisterModel::MAX_PLOTTED && !second->isChecked()
+						&& !chartTab->fastPlotted(0, 1) && window_.statusBar()->currentMessage() == ChartTab::lineCapText()
+						&& chartTab->infoText().startsWith(QStringLiteral("64/64 plotted · %1 math · 1 fast")
+								.arg(chartTab->mathLinesShown()));
+				if (!refused) std::printf("     (the 64th line: %d lines, the tick %d, said \"%s\", info \"%s\")\n",
+						chartTab->lineCount(), int(second->isChecked()), qPrintable(window_.statusBar()->currentMessage()),
+						qPrintable(chartTab->infoText()));
+				removeFields(math, *enable, fields, plotted);
+				second->setChecked(true);
+				takenAfter = chartTab->fastPlotted(0, 1);
+				second->setChecked(wasOn);
+				window_.statusBar()->clearMessage();
+			}
+			check(refused && takenAfter, "fast streams: one cap of 64 lines with the math lines and the registers: with the "
+					"chart full a channel's tick is taken back with the same words in the status bar; with room, it is taken");
+		}
 		/* measured as any line: its row in the Measure table (the device's 50 Hz sine of 6.55 A: RMS 4.63 A); its chip's
 		 * menu offers the histogram and the spectrum, the spectrum of its records as they are (evenly spaced) */
 		QString rms, mean, summary, histogramSummary;
@@ -4506,6 +4538,52 @@ private:
 							&& view->bytesHeld() >= store->bytes(),
 					"chart, fast lines: the RAM shared: a fast line is one of the lines the budget is divided by, its store "
 					"trimmed to its share (memory full), the polled line's share the other half");
+			/* the budget reached in words that say what it is, in the warn colour (both themes): not "memory full",
+			 * which read as data lost while a recording ran on; with a recording, that its file keeps everything */
+			const bool wasDark = Theme::isDark();
+			bool words = true;
+			for (const bool dark : { true, false }) {
+				Theme::apply(*qApp, dark);
+				for (const bool recording : { false, true }) {
+					view->setRecordingOn(recording);
+					const QImage shot = host.grab().toImage();
+					const QString text = view->memoryStripText();
+					const QString tip = view->memoryStripTip();
+					const QColor warn = Theme::colors().warn;
+					/* the words drawn: pixels near the warn colour on the strip's empty part (the picture's scale applied) */
+					const qreal dpr = shot.devicePixelRatio();
+					const QRect strip = QRectF(QPointF(view->mapTo(&host, QPoint(0, 0))) + QPointF(80, view->height() - 38),
+							QSizeF(400, 30)).toRect();
+					int near = 0;
+					for (int y = int(strip.top() * dpr); y < int(strip.bottom() * dpr) && y < shot.height(); y++)
+						for (int x = int(strip.left() * dpr); x < int(strip.right() * dpr) && x < shot.width(); x++) {
+							const QColor c = shot.pixelColor(x, y);
+							near += std::abs(c.red() - warn.red()) + std::abs(c.green() - warn.green())
+											+ std::abs(c.blue() - warn.blue()) < 60;
+						}
+					const bool ok = text.startsWith(QStringLiteral("RAM budget reached: keeping the last "))
+							&& text.contains(QStringLiteral(" of 60.0 min"))
+							&& text.endsWith(QStringLiteral(" · the recording keeps everything")) == recording
+							&& view->memoryStripTextColor() == warn && near >= 20
+							&& tip.contains(QStringLiteral("RAM budget reached: the chart keeps its samples within the RAM"))
+							&& tip.contains(recording ? QStringLiteral("The recording running keeps every sample")
+													  : QStringLiteral("A recording keeps every sample"));
+					if (!ok || (dark && recording))
+						std::printf("     (%s, %s: the strip says \"%s\" in %s, %d warn pixels)\n", dark ? "dark" : "light",
+								recording ? "recording" : "not recording", qPrintable(text),
+								qPrintable(view->memoryStripTextColor().name()), near);
+					words = words && ok;
+					if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look */
+						shot.save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_ram_budget_%1_%2.png")
+										  .arg(dark ? QStringLiteral("dark") : QStringLiteral("light"),
+												  recording ? QStringLiteral("recording") : QStringLiteral("idle")));
+				}
+			}
+			view->setRecordingOn(false);
+			Theme::apply(*qApp, wasDark);
+			check(words, "chart, the RAM budget reached: the strip says \"RAM budget reached: keeping the last X of Y\" "
+					"(\"· the recording keeps everything\" while a recording runs) in the warn colour, dark and light; its "
+					"tooltip says what the budget does and that a recording's file keeps every sample");
 		}
 		/* lanes, the legend and the crosshair: a polled line in V, I_LOAD and V_BUS */
 		{
@@ -5660,6 +5738,123 @@ private:
 
 	/* The info line: when it does not fit, whole parts go (the paint time, then "plotted", then the delay), never
 	 * letters cut; all of it in the tooltip */
+	/* the chart filled up to the cap: the registers free (but keepFree) plotted, up to 60 lines (their rows in
+	 * `plotted`), then math lines, a register's bits taken as fields ("REG.capN"; a math line past the 64th kept is
+	 * not drawn, MathLines::MAX_DRAWN, so they alone may not reach it); how many fields added */
+	static BitField capField(int i) {
+		BitField f;
+		f.name = QStringLiteral("cap%1").arg(i);
+		f.lsb = i % 8;
+		return f;
+	}
+	int fillWithFields(ChartTab *chartTab, const RegDef &def, QVector<int> &plotted, int keepFree = -1) {
+		for (int r = 0; r < model_->rows().size() && chartTab->lineCount() < 60; r++) {
+			const RegisterModel::Row &row = model_->rows()[r];
+			if (r == keepFree || row.plot || !row.def.canPlot() || row.unavailable) continue;
+			if (model_->setPlot(r, true)) plotted << r;
+		}
+		int fields = 0;
+		while (chartTab->lineCount() < RegisterModel::MAX_PLOTTED && fields < 80) chartTab->plotField(def, capField(fields++));
+		QApplication::processEvents();
+		return fields;
+	}
+	/* a math line's action in the Math button's menu (Shown, Remove), by the line's name */
+	static QAction *mathAction(QPushButton *math, const QString &line, const QString &text) {
+		for (QAction *action : math->menu()->actions()) {
+			if (!action->menu() || !action->text().startsWith(line + QStringLiteral(" = "))) continue;
+			for (QAction *sub : action->menu()->actions())
+				if (sub->text() == text) return sub;
+		}
+		return nullptr;
+	}
+	void removeFields(QPushButton *math, const RegDef &def, int fields, const QVector<int> &plotted) {
+		for (int r : plotted) model_->setPlot(r, false);
+		for (int i = 0; i <= fields; i++)
+			if (QAction *remove = mathAction(math, QStringLiteral("%1.cap%2").arg(def.name).arg(i), QStringLiteral("Remove")))
+				remove->trigger();
+		QApplication::processEvents();
+	}
+
+	/* One cap of 64 for every line (O-5): registers, math and fast lines together (a fast channel's tick: in
+	 * fastStreams, where a map has a stream). The chart filled with math lines: a register's Plot, a 65th math line (a
+	 * field, New math line..., Shown) are each refused with the same words in the status bar; the info line counts
+	 * them together ("64/64 plotted · N math"); a line off makes room for one of any kind */
+	void chartOneCap() {
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *math = chartTab ? chartTab->findChild<QPushButton *>(QStringLiteral("math")) : nullptr;
+		int freeRow = -1; /* a register to tick, not on the chart */
+		for (int r = 0; r < model_->rows().size() && freeRow < 0; r++)
+			if (model_->rows()[r].def.canPlot() && !model_->rows()[r].plot && !model_->rows()[r].unavailable) freeRow = r;
+		if (!chartTab || !math || freeRow < 0 || regs_.volts.name.isEmpty()) {
+			std::printf("     (chart tab %d, Math button %d, a free register %d, %s)\n", chartTab != nullptr, math != nullptr,
+					freeRow, qPrintable(regs_.volts.name));
+			check(false, "chart, one cap of 64 lines: the chart tab, the Math button and a free register");
+			return;
+		}
+		const int before = chartTab->lineCount(), limitBefore = model_->plotLimit();
+		const QString cap = ChartTab::lineCapText();
+		const auto said = [&] { return window_.statusBar()->currentMessage(); };
+		QVector<int> plotted;
+		const int fields = fillWithFields(chartTab, regs_.volts, plotted, freeRow);
+		const bool full = chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		const QString info = chartTab->infoText();
+		const bool counted = info.startsWith(QStringLiteral("64/64 plotted · %1 math").arg(chartTab->mathLinesShown()))
+				&& chartTab->mathLinesShown() > 0
+				&& model_->plotLimit() == model_->plottedCount();
+		/* a register's Plot */
+		window_.statusBar()->clearMessage();
+		const bool registerRefused = !model_->setPlot(freeRow, true) && !model_->rows()[freeRow].plot && said() == cap;
+		/* a 65th math line: a field, New math line... (refused before its dialog) */
+		window_.statusBar()->clearMessage();
+		chartTab->plotField(regs_.volts, capField(fields));
+		const bool fieldRefused = chartTab->lineCount() == RegisterModel::MAX_PLOTTED && said() == cap
+				&& lineKey(chartTab->view(), QStringLiteral("ƒ %1.cap%2").arg(regs_.volts.name).arg(fields)) < 0;
+		window_.statusBar()->clearMessage();
+		bool asked = false;
+		QTimer::singleShot(300, [&] {
+			if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) {
+				asked = true;
+				dialog->reject();
+			}
+		});
+		QAction *newLine = nullptr;
+		for (QAction *action : math->menu()->actions())
+			if (action->text().startsWith(QStringLiteral("New math line"))) newLine = action;
+		if (newLine) newLine->trigger();
+		QTest::qWait(400);
+		const bool newRefused = newLine && !asked && said() == cap && chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		/* a math line's Shown: one off makes room (a register takes it), on again it is refused */
+		const QString first = QStringLiteral("%1.cap0").arg(regs_.volts.name);
+		QAction *shown = mathAction(math, first, QStringLiteral("Shown"));
+		if (shown) shown->trigger(); /* off */
+		QApplication::processEvents();
+		const bool roomMade = chartTab->lineCount() == RegisterModel::MAX_PLOTTED - 1 && model_->setPlot(freeRow, true)
+				&& chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		window_.statusBar()->clearMessage();
+		shown = mathAction(math, first, QStringLiteral("Shown"));
+		if (shown) shown->trigger(); /* on: refused, the tick taken back */
+		QApplication::processEvents();
+		shown = mathAction(math, first, QStringLiteral("Shown"));
+		const bool shownRefused = shown && !shown->isChecked() && said() == cap
+				&& chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		model_->setPlot(freeRow, false);
+		/* the cap's math lines removed: the chart and the registers' limit as before */
+		removeFields(math, regs_.volts, fields, plotted);
+		window_.statusBar()->clearMessage();
+		const bool back = chartTab->lineCount() == before && model_->plotLimit() == limitBefore;
+		if (!(full && counted && registerRefused && fieldRefused && newRefused && roomMade && shownRefused && back))
+			std::printf("     (one cap: full %d (%d fields), info \"%s\" %d (limit %d, plotted %d), register %d, field %d, new %d "
+					"(asked %d), room %d, shown %d, back %d (%d of %d lines, limit %d of %d))\n", full, fields, qPrintable(info),
+					counted, model_->plotLimit(), model_->plottedCount(), registerRefused, fieldRefused, newRefused, asked,
+					roomMade, shownRefused, back, chartTab->lineCount(), before, model_->plotLimit(), limitBefore);
+		check(full && counted && registerRefused && fieldRefused && newRefused,
+				"chart, one cap of 64 lines for every kind: with the chart full of math lines a register's Plot, a field and "
+				"New math line are refused with the same words; the info line counts every line (\"64/64 plotted · N math\")");
+		check(roomMade && shownRefused && back,
+				"chart, one cap of 64 lines: a math line hidden makes room for a register; shown again past the cap it is "
+				"refused (its tick taken back); the lines removed, the registers' limit as before");
+	}
+
 	void chartInfoLine() {
 		LoneChart chart(QStringLiteral("INFO"), QStringLiteral("V"));
 		auto *label = chart.tab.findChild<QLabel *>(QStringLiteral("chartInfo"));

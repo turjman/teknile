@@ -306,9 +306,11 @@ says what holds the view or changes its reading (held, Y log or manual, cursors,
 it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.</p>
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
-the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
-of how many it may hold: <i>32/64 plotted</i>. A fast stream's channel (the <i>Fast streams</i> page) is one of
-the 64 lines, not of the samples a second.</p>
+the lines plotted last come off; the status bar and the Log say which. <b>One cap of 64 lines</b> holds for every
+kind: registers, math lines and fast stream channels (the <i>Fast streams</i> page) count together, and a 65th of
+any kind (a Plot, a channel's tick, a field, <i>New math line…</i>, a math line's <i>Shown</i>) is refused with the
+same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
+shows how many lines are on the chart of how many it may hold: <i>32/64 plotted</i>.</p>
 <h3>The first row: what is shown and kept</h3>
 <ul>
 <li><b>Window</b>: how much time is shown. Pick one, or type any length: <code>45</code> (seconds),
@@ -319,8 +321,10 @@ look at 10 s. <b>Drag</b> the chart to look back through the memory, or click / 
 (the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
 much is kept).</li>
 <li><b>RAM</b>: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
-size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says <i>memory full</i>:
-the oldest eighth goes at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
+size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
+<i>RAM budget reached: keeping the last 4.0 min of 30.0 min</i>, and while a recording runs <i>· the recording
+keeps everything</i> (the chart lets the oldest go, the recording's file keeps every sample). The oldest eighth goes
+at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
 Beside it, a note says what the lines need for the Memory set (<i>needs 1.4 GB</i>), in amber with what fits when that
 is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The Studio itself takes about 150 MB more than the RAM
 set.</li>

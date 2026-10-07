@@ -474,6 +474,27 @@ void ChartView::setRamBudget(int megabytes) {
 	refresh();
 }
 
+void ChartView::setRecordingOn(bool on) {
+	if (recordingOn_ == on) return;
+	recordingOn_ = on;
+	refresh();
+}
+
+/* the memory strip's tooltip: what it is and does, and with the RAM budget reached what that means */
+QString ChartView::memoryStripTip() const {
+	QString tip = tr("The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view "
+			"goes there");
+	if (!capped_) return tip;
+	double k0, k1;
+	memorySpan(k0, k1);
+	tip += QStringLiteral("\n\n") + tr("RAM budget reached: the chart keeps its samples within the RAM set on the first "
+			"row, so it keeps the last %1 of the Memory's %2 and lets the oldest go.")
+			.arg(formatDuration(std::max(0.0, k1 - k0)), formatDuration(memory_));
+	tip += QLatin1Char('\n') + (recordingOn_ ? tr("The recording running keeps every sample: its file holds them all.")
+			: tr("A recording keeps every sample: its file holds what the chart lets go."));
+	return tip;
+}
+
 qsizetype ChartView::pointsPerLine() const {
 	const qsizetype lines = std::max<qsizetype>(1, series_.size());
 	const qsizetype total = qsizetype(ramMB_) * 1024 * 1024 / BYTES_PER_SAMPLE;
@@ -3199,6 +3220,7 @@ void ChartView::setAllLanesFolded(bool folded) {
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (overviewRect().contains(pos)) return memoryStripTip();
 	if (divisionRect_.contains(pos))
 		return (divisionFromT_ ? tr("A division of the grid (10 across the view) and the clock time at 0, the trigger's "
 							 "crossing (T): the labels count from T.")
@@ -5120,17 +5142,35 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 		p.setPen(QPen(c.accent, 1.2));
 		p.setBrush(fill);
 		p.drawRoundedRect(QRectF(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2), 3, 3);
-		/* still filling: how much is kept, in the empty part when there is room */
+		/* still filling: how much is kept, in the empty part when there is room. The RAM budget reached: in the warn
+		 * colour and in words that say what it is, the chart letting the oldest go while a recording's file keeps them
+		 * all ("memory full" while recording read as data lost); the longest words that fit, whole */
 		double k0, k1;
 		memorySpan(k0, k1);
 		const double emptyW = strip.x(k0) - box.left();
+		stripText_.clear();
 		if (k1 - k0 < memory_ * 0.98 && emptyW > 150) {
+			const QString kept = formatDuration(k1 - k0), memory = formatDuration(memory_);
+			QStringList texts;
+			if (!capped_) {
+				texts << tr("filling: %1 of %2 kept").arg(kept, memory);
+			} else {
+				if (recordingOn_)
+					texts << tr("RAM budget reached: keeping the last %1 of %2 · the recording keeps everything")
+									 .arg(kept, memory);
+				texts << tr("RAM budget reached: keeping the last %1 of %2").arg(kept, memory) << tr("RAM budget reached");
+			}
 			p.setFont(smallFont());
-			p.setPen(c.muted);
+			const QFontMetricsF metrics(p.font());
+			for (const QString &text : std::as_const(texts)) {
+				if (metrics.horizontalAdvance(text) > emptyW - 16) continue;
+				stripText_ = text;
+				break;
+			}
+			stripTextColor_ = capped_ ? c.warn : c.muted;
+			p.setPen(stripTextColor_);
 			p.drawText(QRectF(box.left() + 8, box.top(), emptyW - 16, box.height()), Qt::AlignLeft | Qt::AlignVCenter,
-					capped_ ? tr("memory full: %1 of %2 kept (%3 lines)")
-									.arg(formatDuration(k1 - k0), formatDuration(memory_)).arg(series_.size())
-							: tr("filling: %1 of %2 kept").arg(formatDuration(k1 - k0), formatDuration(memory_)));
+					stripText_);
 		}
 	}
 	p.setFont(smallFont());

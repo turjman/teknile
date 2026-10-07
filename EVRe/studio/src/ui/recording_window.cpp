@@ -2,6 +2,7 @@
 /* A recording opened: see recording_window.h. */
 #include "ui/recording_window.h"
 
+#include <QCursor>
 #include <QDateTime>
 #include <QDir>
 #include <QFileDialog>
@@ -13,6 +14,8 @@
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSettings>
+#include <QSignalBlocker>
+#include <QToolTip>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -314,6 +317,8 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 		if (!feeding_) feed();
 	});
 	connect(tab_, &ChartTab::notesChanged, this, &RecordingWindow::saveNotes);
+	connect(tab_, &ChartTab::statusMessage, this,
+			[this](const QString &text, int) { QToolTip::showText(QCursor::pos(), text, this); });
 	connect(tab_, &ChartTab::logged, this, [this](LogLevel level, const QString &text) { emit logged(int(level), text); });
 	connect(tab_, &ChartTab::openRecordingRequested, this, [this](const QString &other) {
 		if (other.isEmpty()) choose(this, map_, ramMB_);
@@ -372,7 +377,8 @@ void RecordingWindow::rebuildLinesMenu() {
 		QAction *shown = menu->addAction(noMnemonic(recording::title(def.name, def.unit)));
 		shown->setCheckable(true);
 		shown->setChecked(plotted_[c]);
-		connect(shown, &QAction::toggled, this, [this, c](bool on) {
+		connect(shown, &QAction::toggled, this, [this, c, shown](bool on) {
+			if (on && !roomForLine(shown)) return;
 			plotted_[c] = on;
 			tab_->plotRegister(defs_[c], on);
 			if (on) feedColumn(c);
@@ -387,7 +393,10 @@ void RecordingWindow::rebuildLinesMenu() {
 					channel.unit)));
 			shown->setCheckable(true);
 			shown->setChecked(tab_->fastPlotted(i, c));
-			connect(shown, &QAction::toggled, this, [this, i, c](bool on) { tab_->plotFastChannel(i, c, on); });
+			connect(shown, &QAction::toggled, this, [this, i, c, shown](bool on) {
+				if (on && !roomForLine(shown)) return;
+				tab_->plotFastChannel(i, c, on);
+			});
 		}
 	}
 	/* the fields of a register matched in the map, as on the Registers tab (not of a scaled one: no raw bits) */
@@ -402,6 +411,16 @@ void RecordingWindow::rebuildLinesMenu() {
 		for (const BitField &field : def.fields)
 			fields->addAction(noMnemonic(field.name), this, [this, def, field] { tab_->plotField(def, field); });
 	}
+}
+
+/* one cap for every line, as on the live chart: a line past it is refused, the menu's tick taken back, and why said
+ * beside the mouse (this window has no status bar) */
+bool RecordingWindow::roomForLine(QAction *tick) {
+	if (tab_->lineCount() < RegisterModel::MAX_PLOTTED) return true;
+	const QSignalBlocker blocker(tick);
+	tick->setChecked(false);
+	QToolTip::showText(QCursor::pos(), ChartTab::lineCapText(), this);
+	return false;
 }
 
 void RecordingWindow::saveNotes() {

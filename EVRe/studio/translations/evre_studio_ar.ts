@@ -503,18 +503,6 @@ Log: a logarithmic scale, a line at each decade: Auto spans the positive values 
         <translation>الأعلى</translation>
     </message>
     <message>
-        <source>The memory the chart&apos;s samples need to keep the Memory set, at the rates the lines come now.
-More than RAM: the oldest go sooner, and the memory strip says &quot;memory full&quot;.</source>
-        <translation>الذاكرة التي تحتاجها عينات المخطط لتحفظ «الذاكرة» المضبوطة، بالمعدّلات التي تأتي بها الخطوط الآن.
-أكثر من RAM: تذهب الأقدم أبكر، ويقول شريط الذاكرة «الذاكرة ممتلئة».</translation>
-    </message>
-    <message>
-        <source>The most memory the chart&apos;s samples take, all the lines together (2 GB by default). Pick one or type any size: 3000, 3000 MB, 3 GB.
-With many fast lines the Memory holds less than asked, and the memory strip says &quot;memory full&quot;. At most three quarters of this computer&apos;s memory (%1 GB).</source>
-        <translation>أقصى ذاكرة تأخذها عينات المخطط، كل الخطوط معًا (⁦2 GB⁩ افتراضيًا). اختر واحدة أو اكتب أي حجم: 3000 أو ⁦3000 MB⁩ أو ⁦3 GB⁩.
-مع خطوط سريعة كثيرة تحفظ «الذاكرة» أقل مما طُلب، ويقول شريط الذاكرة «الذاكرة ممتلئة». على الأكثر ثلاثة أرباع ذاكرة هذا الحاسوب (⁦%1 GB⁩).</translation>
-    </message>
-    <message>
         <source>Window</source>
         <translation>النافذة</translation>
     </message>
@@ -759,10 +747,6 @@ Off: the crosshair&apos;s line and its dots only (the box covers the cursors&apo
     <message>
         <source> · CPU</source>
         <translation> · CPU</translation>
-    </message>
-    <message>
-        <source>Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
-        <translation>مرسومة: المسجّلات على المخطط / أقصى ما يحمله بالمعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
     <message>
         <source>Rising</source>
@@ -1226,6 +1210,26 @@ Dragging the chart stops it too.</source>
         <comment>the cursors&apos; times from the trigger&apos;s crossing</comment>
         <translation> · المؤشر A: %1 · المؤشر B: %2</translation>
     </message>
+    <message>
+        <source>The memory the chart&apos;s samples need to keep the Memory set, at the rates the lines come now.
+More than RAM: the oldest go sooner, and the memory strip says &quot;RAM budget reached&quot; in orange. A recording&apos;s file keeps every sample, whatever the chart keeps.</source>
+        <translation>الذاكرة التي تحتاجها عينات المخطط لتحفظ «الذاكرة» المضبوطة، بالمعدّلات التي تأتي بها الخطوط الآن.
+أكثر من RAM: تذهب الأقدم أبكر، ويقول شريط الذاكرة «بلغت ميزانية RAM» بالبرتقالي. ملف التسجيل يحفظ كل عينة، أيًا كان ما يحفظه المخطط.</translation>
+    </message>
+    <message>
+        <source>The most memory the chart&apos;s samples take, all the lines together (2 GB by default). Pick one or type any size: 3000, 3000 MB, 3 GB.
+With many fast lines the Memory holds less than asked, and the memory strip says &quot;RAM budget reached&quot;: the chart lets the oldest go, a recording&apos;s file keeps every sample. At most three quarters of this computer&apos;s memory (%1 GB).</source>
+        <translation>أقصى ذاكرة تأخذها عينات المخطط، كل الخطوط معًا (⁦2 GB⁩ افتراضيًا). اختر واحدة أو اكتب أي حجم: 3000 أو ⁦3000 MB⁩ أو ⁦3 GB⁩.
+مع خطوط سريعة كثيرة تحفظ «الذاكرة» أقل مما طُلب، ويقول شريط الذاكرة «بلغت ميزانية RAM»: يترك المخطط الأقدم، وملف التسجيل يحفظ كل عينة. على الأكثر ثلاثة أرباع ذاكرة هذا الحاسوب (⁦%1 GB⁩).</translation>
+    </message>
+    <message>
+        <source>At most %1 lines on the chart, registers, math and fast lines together: untick one first</source>
+        <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا: ألغِ واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
+        <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1252,10 +1256,6 @@ Dragging the chart stops it too.</source>
     <message>
         <source>CPU</source>
         <translation>CPU</translation>
-    </message>
-    <message>
-        <source>memory full: %1 of %2 kept (%3 lines)</source>
-        <translation>الذاكرة ممتلئة: حُفظ %1 من %2 (الخطوط: %3)</translation>
     </message>
     <message>
         <source>filling: %1 of %2 kept</source>
@@ -1473,6 +1473,34 @@ Dragging the chart stops it too.</source>
     <message>
         <source>Cursor %1 at %2 · %3</source>
         <translation>المؤشر %1 عند %2 · %3</translation>
+    </message>
+    <message>
+        <source>RAM budget reached: the chart keeps its samples within the RAM set on the first row, so it keeps the last %1 of the Memory&apos;s %2 and lets the oldest go.</source>
+        <translation>بلغت ميزانية RAM: يحفظ المخطط عيناته ضمن RAM المضبوطة في الصف الأول، فيحفظ آخر %1 من %2 «الذاكرة» ويترك الأقدم.</translation>
+    </message>
+    <message>
+        <source>The recording running keeps every sample: its file holds them all.</source>
+        <translation>التسجيل الجاري يحفظ كل عينة: ملفه يحملها كلها.</translation>
+    </message>
+    <message>
+        <source>A recording keeps every sample: its file holds what the chart lets go.</source>
+        <translation>التسجيل يحفظ كل عينة: ملفه يحمل ما يتركه المخطط.</translation>
+    </message>
+    <message>
+        <source>RAM budget reached: keeping the last %1 of %2 · the recording keeps everything</source>
+        <translation>بلغت ميزانية RAM: يُحفظ آخر %1 من %2 · التسجيل يحفظ كل شيء</translation>
+    </message>
+    <message>
+        <source>RAM budget reached: keeping the last %1 of %2</source>
+        <translation>بلغت ميزانية RAM: يُحفظ آخر %1 من %2</translation>
+    </message>
+    <message>
+        <source>RAM budget reached</source>
+        <translation>بلغت ميزانية RAM</translation>
+    </message>
+    <message>
+        <source>The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view goes there</source>
+        <translation>الذاكرة: كل الزمن الذي يحفظه المخطط («الذاكرة»)، والعرض مربع عليها. النقر أو السحب: ينتقل العرض إلى هناك</translation>
     </message>
 </context>
 <context>
@@ -2519,6 +2547,71 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
     </message>
     <message>
         <source>
+&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
+cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer; the mouse on a cursor&apos;s tag: its time (from T while
+the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
+all fit&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
+&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log), Fold lane ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
+(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
+&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</source>
+        <translation>
+&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
+يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
+كلها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
+&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
+(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
+و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</translation>
+    </message>
+    <message>
+        <source>
 &lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
 &lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
 The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
@@ -2531,9 +2624,11 @@ says what holds the view or changes its reading (held, Y log or manual, cursors,
 it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;How many lines&lt;/b&gt;: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with &lt;i&gt;Auto send&lt;/i&gt;, at its rate). Past that a Plot tick is refused, and when the rate goes up
-the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
-of how many it may hold: &lt;i&gt;32/64 plotted&lt;/i&gt;. A fast stream&apos;s channel (the &lt;i&gt;Fast streams&lt;/i&gt; page) is one of
-the 64 lines, not of the samples a second.&lt;/p&gt;
+the lines plotted last come off; the status bar and the Log say which. &lt;b&gt;One cap of 64 lines&lt;/b&gt; holds for every
+kind: registers, math lines and fast stream channels (the &lt;i&gt;Fast streams&lt;/i&gt; page) count together, and a 65th of
+any kind (a Plot, a channel&apos;s tick, a field, &lt;i&gt;New math line…&lt;/i&gt;, a math line&apos;s &lt;i&gt;Shown&lt;/i&gt;) is refused with the
+same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
+shows how many lines are on the chart of how many it may hold: &lt;i&gt;32/64 plotted&lt;/i&gt;.&lt;/p&gt;
 &lt;h3&gt;The first row: what is shown and kept&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;Window&lt;/b&gt;: how much time is shown. Pick one, or type any length: &lt;code&gt;45&lt;/code&gt; (seconds),
@@ -2544,8 +2639,10 @@ look at 10 s. &lt;b&gt;Drag&lt;/b&gt; the chart to look back through the memory,
 (the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
 much is kept).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
-size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says &lt;i&gt;memory full&lt;/i&gt;:
-the oldest eighth goes at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
+size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
+&lt;i&gt;RAM budget reached: keeping the last 4.0 min of 30.0 min&lt;/i&gt;, and while a recording runs &lt;i&gt;· the recording
+keeps everything&lt;/i&gt; (the chart lets the oldest go, the recording&apos;s file keeps every sample). The oldest eighth goes
+at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
 Beside it, a note says what the lines need for the Memory set (&lt;i&gt;needs 1.4 GB&lt;/i&gt;), in amber with what fits when that
 is more than the RAM (&lt;i&gt;needs 2.8 GB, keeps 22 min&lt;/i&gt;). The Studio itself takes about 150 MB more than the RAM
 set.&lt;/li&gt;
@@ -2691,9 +2788,11 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 وتلميحه يحمله كاملًا.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;كم خطًا&lt;/b&gt;: يأخذ المخطط 64,000 عينة في الثانية، أي 64 مسجّلًا عند 1000 استطلاع في الثانية، و32 عند
 2000، و16 عند 4000 (مع &lt;i&gt;الإرسال التلقائي&lt;/i&gt;، بمعدّله). بعد ذلك يُرفض تفعيل «رسم»، وحين يرتفع المعدّل
-تُزال الخطوط المرسومة أخيرًا؛ ويقول شريط الحالة والسجل أيها. يعرض سطر المعلومات كم على المخطط
-من كم يمكنه أن يحمل: &lt;i&gt;32/64 مرسومة&lt;/i&gt;. قناة التدفق السريع (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;) خط من الخطوط
-الـ64، لا من العينات في الثانية.&lt;/p&gt;
+تُزال الخطوط المرسومة أخيرًا؛ ويقول شريط الحالة والسجل أيها. &lt;b&gt;حدّ واحد من 64 خطًا&lt;/b&gt; يسري على كل
+الأنواع: المسجّلات والخطوط الرياضية وقنوات التدفقات السريعة (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;) تُعدّ معًا، ويُرفض
+الخط الخامس والستون من أي نوع (تفعيل «رسم»، أو تفعيل قناة، أو حقل، أو &lt;i&gt;خط رياضي جديد…&lt;/i&gt;، أو &lt;i&gt;المعروض&lt;/i&gt;
+لخط رياضي) بالكلمات نفسها في شريط الحالة. القناة السريعة خط من الخطوط الـ64، لا من العينات في الثانية. يعرض
+سطر المعلومات كم خطًا على المخطط من كم يمكنه أن يحمل: &lt;i&gt;32/64 مرسومة&lt;/i&gt;.&lt;/p&gt;
 &lt;h3&gt;الصف الأول: ما يُعرض وما يُحفظ&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;النافذة&lt;/b&gt;: كم من الزمن يُعرض. اختر واحدة، أو اكتب أي طول: &lt;code&gt;45&lt;/code&gt; (ثوانٍ)،
@@ -2704,8 +2803,9 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 (عمق الذاكرة كله، والعرض معلَّم عليه؛ وهي تمتلئ، تنمو البيانات من اليمين ويقول الشريط كم
 حُفظ).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: أقصى ذاكرة تأخذها عينات الخطوط كلها معًا (⁦2 GB⁩ افتراضيًا؛ اختر واحدة أو اكتب أي
-حجم، 3000 أو ⁦3 GB⁩). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط &lt;i&gt;الذاكرة ممتلئة&lt;/i&gt;:
-يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (⁦12 min⁩، 10.5، 12).
+حجم، 3000 أو ⁦3 GB⁩). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط ذلك بالكهرماني:
+&lt;i&gt;بلغت ميزانية RAM: يُحفظ آخر ⁦4.0 min⁩ من ⁦30.0 min⁩&lt;/i&gt;، وأثناء تشغيل تسجيل &lt;i&gt;· التسجيل يحفظ
+كل شيء&lt;/i&gt; (يترك المخطط الأقدم، وملف التسجيل يحفظ كل عينة). يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (⁦12 min⁩، 10.5، 12).
 بجانبه، ملاحظة تقول ما تحتاجه الخطوط لـ«الذاكرة» المضبوطة (&lt;i&gt;يحتاج ⁦1.4 GB⁩&lt;/i&gt;)، بالكهرماني مع ما يتسع حين يكون ذلك
 أكثر من RAM (&lt;i&gt;يحتاج ⁦2.8 GB⁩، ويحفظ ⁦22 min⁩&lt;/i&gt;). البرنامج نفسه يأخذ نحو ⁦150 MB⁩ أكثر من RAM
 المضبوطة.&lt;/li&gt;
@@ -2823,71 +2923,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
 أسماء قيم مسجّلاتها وحقولها بالاسم: &lt;b&gt;الخطوط&lt;/b&gt; ترسم حقل مسجّل.&lt;/li&gt;
 &lt;/ul&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
-cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
-&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer; the mouse on a cursor&apos;s tag: its time (from T while
-the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
-all fit&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
-&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
-Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
-arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
-it: 50 %&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log), Fold lane ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it: Auto ·
-&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
-(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
-&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</source>
-        <translation>
-&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
-يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
-كلها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
-&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
-⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي)، وطيّ المسار ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
-(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
-و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
 </translation>
     </message>
 </context>
@@ -3557,10 +3592,6 @@ Log), Fold lane ·
     <message>
         <source>fast stream %1 not switched on: %2</source>
         <translation>لم يُشغَّل التدفق السريع %1: %2</translation>
-    </message>
-    <message>
-        <source>At most %1 lines on the chart: untick one first</source>
-        <translation>على الأكثر %1 خطًا على المخطط: ألغِ واحدًا أولًا</translation>
     </message>
 </context>
 <context>

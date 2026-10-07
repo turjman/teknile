@@ -507,6 +507,12 @@ public:
 	 * samples yet) */
 	qint64 bytesNeeded() const;
 	bool memoryFull() const { return capped_; } /* the budget, not the memory, limits what is kept */
+	/* a recording runs: the strip's words for the budget reached say the file keeps every sample */
+	void setRecordingOn(bool on);
+	/* tests: the strip's words and their colour as last drawn (empty: none), and its tooltip */
+	QString memoryStripText() const { return stripText_; }
+	QColor memoryStripTextColor() const { return stripTextColor_; }
+	QString memoryStripTip() const;
 	/* tests: the memory the lines' arrays hold now, bytes (their room, not only the samples in it) */
 	qint64 bytesHeld() const;
 	void setDrawThreads(int threads) { drawThreads_ = threads; } /* for tests: 1 = this thread alone; 0 = all */
@@ -934,6 +940,9 @@ private:
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
+	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */
+	QString stripText_;                    /* the strip's words as last drawn, and their colour (tests) */
+	QColor stripTextColor_;
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
 	int ramMB_ = DEFAULT_RAM_MB;
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */
