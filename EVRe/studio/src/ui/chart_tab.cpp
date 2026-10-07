@@ -63,6 +63,7 @@ constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF
 constexpr double MIN_TYPED_WINDOW = 1e-5; /* 10 us: a fast line's single records */
 /* the measurements while the cursors move: at most this often (ChartTab::measureSoon) */
 constexpr int MEASURE_FOLLOW_MS = 100;
+constexpr qint64 RATE_EVERY_MS = 500; /* the trigger row's rate of crossings taken again at most this often */
 
 /* a measurement as the table shows it: a few significant digits, "—" for none */
 QString measureText(double value) {
@@ -305,12 +306,13 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	holdButton_->setIconSize(QSize(14, 14));
 	holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
 	{
-		/* as wide as the longer of its two labels, whatever the state */
-		holdButton_->setText(tr("Live"));
-		const QSize live = holdButton_->sizeHint();
-		holdButton_->setText(tr("Hold"));
-		const QSize hold = holdButton_->sizeHint();
-		holdButton_->setFixedSize(std::max(live.width(), hold.width()) + 8, std::max(live.height(), hold.height()));
+		/* as wide as the longest of its labels (Run and Stop while the trigger is on), whatever the state */
+		QSize most;
+		for (const QString &label : { tr("Live"), tr("Run"), tr("Stop"), tr("Hold") }) {
+			holdButton_->setText(label);
+			most = most.expandedTo(holdButton_->sizeHint());
+		}
+		holdButton_->setFixedSize(most.width() + 8, most.height());
 	}
 	holdButton_->setToolTip(tr("Hold the view where it is (the memory keeps filling). Live: follow now again.\n"
 			"Dragging the chart holds it too."));
@@ -369,8 +371,12 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	trigger_->setObjectName(QStringLiteral("chartTrigger"));
 	trigger_->setCheckable(true);
 	trigger_->setToolTip(tr("Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the "
-			"window (or where its mark is set).\nAuto: runs live between crossings; Normal: holds on each; Single: on the "
-			"first. Right-click a line's chip: Trigger on this line."));
+			"window (or where its mark is set).") + QLatin1Char('\n')
+			+ tr("Auto: holds on each crossing; when none comes for a window's length after the hold-off, it runs live "
+			"until the next. Normal: holds on each crossing and stays held until the next one, however long. Single: "
+			"holds on the first crossing and stops; Arm for another.")
+			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. Right-click a line's chip: Trigger on this "
+			"line."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -553,6 +559,7 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
+	connect(view, &ChartView::triggerRunChanged, this, &ChartTab::showTriggerState);
 	connect(view, &ChartView::fastTriggerChanged, this, [this] {
 		int stream = -1;
 		const fast::TriggerWatch watch = chart_->view()->fastTriggerWatch(stream);
@@ -590,16 +597,15 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 
-	/* Hold and Live: the same button, the same size; only its text and colour change */
-	connect(holdButton_, &QPushButton::clicked, this, [this] { chart_->setLive(!chart_->live()); });
-	connect(view, &ChartView::liveChanged, this, [this](bool live) {
-		/* the icons: the same size, drawn (the font's pause and play glyphs are not) */
-		holdButton_->setText(live ? tr("Hold") : tr("Live"));
-		holdButton_->setIcon(live ? mediaIcon(MediaIcon::Pause, Theme::colors().text)
-				: mediaIcon(MediaIcon::Play, QColor(Qt::white)));
-		holdButton_->setProperty("live", live);
-		repolish(holdButton_);
+	/* Hold and Live, Run and Stop while the trigger is on: the same button, the same size; only its text and colour
+	 * change. A Hold that the next crossing undid was no Hold: with the trigger on, Stop disarms it */
+	connect(holdButton_, &QPushButton::clicked, this, [this] {
+		ChartView *view = chart_->view();
+		if (!view->triggerOn()) chart_->setLive(!chart_->live());
+		else if (view->triggerRunning()) view->stopRun();
+		else view->runTrigger();
 	});
+	connect(view, &ChartView::liveChanged, this, &ChartTab::showHoldButton);
 
 	/* the measurements are optional: off by default, remembered. The cursors are for
 	 * measuring: ticking them shows the measurements, hiding those takes the cursors away. */
@@ -887,8 +893,9 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerMode_->addItem(tr("Auto"), int(ChartView::TriggerMode::Auto));
 	triggerMode_->addItem(tr("Normal"), int(ChartView::TriggerMode::Normal));
 	triggerMode_->addItem(tr("Single"), int(ChartView::TriggerMode::Single));
-	triggerMode_->setToolTip(tr("Auto: runs live, holds on a crossing and runs again when none comes; Normal: holds on "
-			"each crossing and waits for the next; Single: holds on the first, Arm for the next"));
+	triggerMode_->setToolTip(tr("Auto: holds on each crossing; when none comes for a window's length after the hold-off, "
+			"it runs live until the next. Normal: holds on each crossing and stays held until the next one, however long. "
+			"Single: holds on the first crossing and stops; Arm for another."));
 	/* the hold-off: the window's length by default (a picture per window), or a time typed */
 	triggerHoldoff_ = new QComboBox;
 	triggerHoldoff_->setObjectName(QStringLiteral("triggerHoldoff"));
@@ -908,7 +915,8 @@ QWidget *ChartTab::buildTriggerRow() {
 			"chart, which can be dragged"));
 	triggerArm_ = new QPushButton(tr("Arm"));
 	triggerArm_->setObjectName(QStringLiteral("triggerArm"));
-	triggerArm_->setToolTip(tr("Wait for the next crossing"));
+	triggerArm_->setToolTip(tr("Wait for one more crossing"));
+	triggerArm_->setVisible(false); /* Single only (showTriggerState) */
 	triggerState_ = mutedLabel(QString());
 	triggerState_->setObjectName(QStringLiteral("triggerState"));
 	auto *row = new QHBoxLayout(triggerRow_);
@@ -1045,20 +1053,66 @@ void ChartTab::applyTrigger() {
 	showTriggerState();
 }
 
+/* The same state as the chart's corner (ChartView::triggerPhase), changing only when it does: no crossing's time while
+ * crossings keep coming (it was rewritten at each), their rate instead, taken twice a second at most. Single's crossing
+ * is one: its time stays */
 QString ChartTab::triggerState() const {
 	const ChartView *view = chart_->view();
 	if (!view->triggerOn()) return trigger_->isChecked() ? tr("no line to watch") : QString();
-	if (view->triggerArmed())
-		return view->triggerMode() == ChartView::TriggerMode::Auto && view->live()
-				? tr("auto: free running, waiting for a crossing") : tr("armed: waiting for a crossing");
-	const double at = view->triggeredAt();
-	const QString when = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(at * 1000)))
-			.toString(QStringLiteral("HH:mm:ss.zzz"));
-	return view->triggerMode() == ChartView::TriggerMode::Single ? tr("triggered at %1 · Arm for the next").arg(when)
-			: tr("triggered at %1").arg(when);
+	const ChartView::TriggerPhase phase = view->triggerPhase();
+	if (phase != ChartView::TriggerPhase::Triggered) rateKept_ = false;
+	switch (phase) {
+	case ChartView::TriggerPhase::Off: return QString();
+	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
+	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
+	case ChartView::TriggerPhase::Waiting: return tr("waiting for a crossing");
+	case ChartView::TriggerPhase::Triggered:
+		if (!rateKept_ || rateClock_.elapsed() >= RATE_EVERY_MS) {
+			const double rate = view->triggerRate();
+			rateText_ = !std::isfinite(rate) ? QString() : rate >= 10 ? QString::number(std::llround(rate))
+					: QString::number(rate, 'g', 2);
+			rateClock_.restart();
+			rateKept_ = true;
+		}
+		return rateText_.isEmpty() ? tr("triggered") : tr("triggered · %1 /s", "crossings a second").arg(rateText_);
+	case ChartView::TriggerPhase::Done: {
+		const qint64 ms = view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000));
+		return tr("Single · stopped at %1").arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
+	}
+	}
+	return QString();
 }
 
-void ChartTab::showTriggerState() { triggerState_->setText(triggerState()); }
+void ChartTab::showTriggerState() {
+	const QString text = triggerState();
+	if (triggerState_->text() != text) triggerState_->setText(text);
+	/* Arm only where it does something: Single, the primary button while Single holds its crossing */
+	triggerArm_->setVisible(triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single));
+	const bool primary = chart_->view()->triggerPhase() == ChartView::TriggerPhase::Done;
+	if (triggerArm_->property("primary").toBool() != primary) {
+		triggerArm_->setProperty("primary", primary);
+		repolish(triggerArm_);
+	}
+	showHoldButton();
+}
+
+void ChartTab::showHoldButton() {
+	const ChartView *view = chart_->view();
+	const bool trigger = view->triggerOn();
+	const bool running = trigger ? view->triggerRunning() : chart_->live();
+	const QString text = trigger ? (running ? tr("Stop") : tr("Run")) : running ? tr("Hold") : tr("Live");
+	if (holdButton_->text() == text && holdButton_->property("live").toBool() == running) return;
+	holdButton_->setText(text);
+	/* the icons: the same size, drawn (the font's pause and play glyphs are not) */
+	holdButton_->setIcon(running ? mediaIcon(MediaIcon::Pause, Theme::colors().text)
+			: mediaIcon(MediaIcon::Play, QColor(Qt::white)));
+	holdButton_->setToolTip(trigger ? tr("The trigger is on. Stop: no crossing counts, the picture and its T stay. Run: "
+			"armed again in its mode, from now.\nDragging the chart stops it too.")
+			: tr("Hold the view where it is (the memory keeps filling). Live: follow now again.\n"
+				"Dragging the chart holds it too."));
+	holdButton_->setProperty("live", running);
+	repolish(holdButton_);
+}
 
 void ChartTab::refreshStatus() {
 	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
@@ -1104,7 +1158,7 @@ void ChartTab::themeChanged() {
 	chart_->update();
 	showYRange(false); /* the Auto boxes' grey */
 	/* the pause icon is drawn in the theme's text colour */
-	if (chart_->live()) holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
+	if (holdButton_->property("live").toBool()) holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
 }
 
 /* ----------------------------------------------------------------- the axes */

@@ -97,6 +97,7 @@ constexpr double NOTE_TAG_BOTTOM = 4;          /* above the plot's bottom edge *
 constexpr double NOTE_TEXT_MAX = 180;
 constexpr double NOTE_PAD = 6;
 constexpr double LEVEL_TAG_H = 18;             /* the trigger's level tag, its edge symbol as wide */
+constexpr qsizetype RATE_HOLDS = 64;           /* the last crossings held that the trigger's rate is taken from */
 
 /* 1, 2, 5 x 10^n steps giving about `target` ticks over span */
 double niceStep(double span, int target) {
@@ -180,6 +181,13 @@ QColor faintGrid() {
 	QColor faint = Theme::colors().grid;
 	faint.setAlphaF(faint.alphaF() * 0.45);
 	return faint;
+}
+
+/* the trigger's "now" edge: muted text, half seen, so it reads over the grid and under the lines in both themes */
+QColor nowEdgeColor() {
+	QColor edge = Theme::colors().muted;
+	edge.setAlphaF(0.55);
+	return edge;
 }
 
 /* a range too narrow to scale into: one unit around it */
@@ -918,6 +926,7 @@ void ChartView::showSpan(double t0, double t1) {
 	const double span = std::clamp(t1 - t0, MIN_WINDOW, MAX_SPAN);
 	if (span > memory_) setMemory(span);
 	putWindow(std::min(span, memory_));
+	if (trigger_.on && trigger_.armed) stopRun(); /* the user's view: a trigger that runs stops (as a pan) */
 	viewEnd_ = t1;
 	trigger_.holding = false;
 	if (live_) {
@@ -934,6 +943,7 @@ void ChartView::setTrigger(int key, TriggerMode mode) {
 	trigger_.key = key;
 	trigger_.mode = mode;
 	trigger_.at = trigger_.pending = NAN;
+	recentHolds_.clear();
 	armTrigger();
 }
 
@@ -1001,23 +1011,89 @@ void ChartView::setTriggerSettingsTexts(const QStringList &texts) {
 }
 
 void ChartView::stopTrigger() {
-	trigger_.on = trigger_.armed = false;
+	trigger_.on = trigger_.armed = trigger_.stopped = false;
 	trigger_.at = trigger_.pending = NAN;
+	recentHolds_.clear();
 	postWatch();
+	emit triggerRunChanged();
 	refresh();
 }
 
-/* from the line's newest sample on: a crossing already in the memory does not count */
+/* From the line's newest sample on: a crossing already in the memory does not count. Normal and Auto keep the last
+ * crossing's hold-off (an Arm reset it to now and took a crossing inside it). Only Auto rolls while it waits: Normal
+ * and Single hold the picture they have (the last capture, or the view as it is), as a scope waiting in Normal shows
+ * its last trace, so the chart says it waits instead of rolling as Auto does */
 void ChartView::armTrigger() {
 	if (!trigger_.on) return;
 	trigger_.armed = true;
+	trigger_.stopped = false;
 	trigger_.pending = NAN;
 	const auto it = series_.constFind(trigger_.key);
 	trigger_.armedFrom = it != series_.constEnd() && !it->times.isEmpty() ? it->times.back()
 			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
 				? it->fast->timeAt(it->fast->size() - 1) : -std::numeric_limits<double>::infinity();
+	trigger_.since = trigger_.armedFrom;
+	if (trigger_.mode != TriggerMode::Single && std::isfinite(trigger_.at))
+		trigger_.armedFrom = std::max(trigger_.armedFrom,
+				trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_));
+	if (trigger_.mode == TriggerMode::Auto) {
+		if (!live_) setLive(true);
+	} else if (live_) {
+		holdAsShown();
+	}
 	postWatch();
+	emit triggerRunChanged();
 	refresh();
+}
+
+/* the view held as it is shown (the smoothed end the last frame drew), not by a crossing */
+void ChartView::holdAsShown() {
+	viewEnd_ = isVisible() && lastViewEnd_ > 0 ? lastViewEnd_ : liveEnd();
+	trigger_.holding = false;
+	if (live_) {
+		live_ = false;
+		emit liveChanged(false);
+	}
+}
+
+/* Stop: no crossing counts any more, the one waiting for its view is dropped (it would move the view later), and the
+ * picture stays with its T, live or held, until Run */
+void ChartView::stopRun() {
+	if (!trigger_.on) return;
+	trigger_.armed = false;
+	trigger_.stopped = true;
+	trigger_.pending = NAN;
+	if (live_) holdAsShown();
+	postWatch();
+	emit triggerRunChanged();
+	refresh();
+}
+
+void ChartView::runTrigger() { armTrigger(); }
+
+ChartView::TriggerPhase ChartView::triggerPhase() const {
+	if (!trigger_.on) return TriggerPhase::Off;
+	if (trigger_.stopped) return TriggerPhase::Stopped;
+	if (!trigger_.armed) return TriggerPhase::Done;
+	if (trigger_.mode == TriggerMode::Auto && live_) return TriggerPhase::FreeRunning;
+	/* "triggered" until no crossing has come for a window plus the hold-off: not "waiting" for the moment between a
+	 * crossing's hold-off and the next, which flickered at every crossing */
+	const double fill = (1 - triggerPosition_) * window_;
+	if (std::isfinite(trigger_.at) && trigger_.at > trigger_.since
+			&& triggerTime() < trigger_.at + std::max(holdoffSeconds(), fill) + window_)
+		return TriggerPhase::Triggered;
+	return TriggerPhase::Waiting;
+}
+
+bool ChartView::triggerCapturing() const {
+	return trigger_.on && trigger_.holding && !live_ && std::isfinite(trigger_.at) && triggerTime() < viewEnd_;
+}
+
+/* by the crossings' own times: a steady signal gives a steady rate, whatever the frames and the polls do */
+double ChartView::triggerRate() const {
+	if (recentHolds_.size() < 2) return NAN;
+	const double span = recentHolds_.back() - recentHolds_.front();
+	return span > 0 ? double(recentHolds_.size() - 1) / span : NAN;
 }
 
 void ChartView::setTriggerLevel(double level) {
@@ -1097,11 +1173,24 @@ bool ChartView::placeTrigger(double fraction) {
 	return true;
 }
 
+/* One state in the words of the row: no time held, no countdown, nothing that changes at each crossing or frame */
 QString ChartView::triggerStateText() const {
-	if (!trigger_.on) return QString();
-	const bool ready = trigger_.armed && triggerTime() >= trigger_.armedFrom;
-	if (ready && trigger_.mode == TriggerMode::Auto && live_) return tr("auto: free running");
-	return ready ? tr("trigger: waiting") : tr("triggered");
+	const QString mode = trigger_.mode == TriggerMode::Auto ? tr("Auto") : trigger_.mode == TriggerMode::Normal
+			? tr("Normal") : tr("Single");
+	const bool capturing = triggerCapturing();
+	switch (triggerPhase()) {
+	case TriggerPhase::Off: return QString();
+	case TriggerPhase::Stopped: return tr("Stopped · Run to arm");
+	case TriggerPhase::FreeRunning: return tr("Auto · free running");
+	case TriggerPhase::Waiting: return tr("%1 · waiting", "the trigger's mode, waiting for a crossing").arg(mode);
+	case TriggerPhase::Triggered:
+		return capturing ? tr("%1 · triggered, capturing after T", "the trigger's mode; the view still fills after the "
+				"crossing").arg(mode) : tr("%1 · triggered", "the trigger's mode").arg(mode);
+	case TriggerPhase::Done:
+		return capturing ? tr("Single · stopped, capturing after T") : live_ ? tr("Single · stopped · Arm to wait")
+				: tr("Single · stopped");
+	}
+	return QString();
 }
 
 void ChartView::setTriggerEdge(TriggerEdge edge) {
@@ -1117,6 +1206,8 @@ void ChartView::setTriggerEdge(TriggerEdge edge) {
 void ChartView::fireTrigger(double time) {
 	trigger_.at = time;
 	triggerHolds_++;
+	recentHolds_.push_back(time);
+	if (recentHolds_.size() > RATE_HOLDS) recentHolds_.removeFirst();
 	const double fill = (1 - triggerPosition_) * window_;
 	if (trigger_.mode == TriggerMode::Single) trigger_.armed = false;
 	else trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
@@ -1127,6 +1218,7 @@ void ChartView::fireTrigger(double time) {
 	}
 	trigger_.holding = true;
 	emit triggered(time);
+	if (trigger_.mode == TriggerMode::Single) emit triggerRunChanged(); /* stopped by its crossing: Run */
 	refresh();
 }
 
@@ -1266,11 +1358,14 @@ void ChartView::setSmooth(bool on) {
 	refresh();
 }
 
-void ChartView::holdAt(double end) {
+void ChartView::holdAt(double end, bool user) {
 	double m0, m1;
 	memorySpan(m0, m1);
 	const double liveEdge = liveEnd();
 	end = std::clamp(end, std::min(m0 + window_, liveEdge), liveEdge);
+	/* the user moved the view: a trigger that runs would move it back at its next crossing, so it stops (a scope's
+	 * Stop); a press that does not move it stops nothing */
+	if (user && trigger_.on && trigger_.armed && end != viewEnd()) stopRun();
 	if (end >= liveEdge - window_ * LIVE_SNAP) { /* back at now: live again */
 		setLive(true);
 		return;
@@ -1925,7 +2020,7 @@ void ChartView::zoomTime(double factor, double mouseX) {
 	const double fraction = (at - (viewEnd_ - window_)) / window_;
 	const bool holding = trigger_.holding;
 	putWindow(newWindow);
-	holdAt(at + (1 - fraction) * newWindow);
+	holdAt(at + (1 - fraction) * newWindow, false);
 	trigger_.holding = holding && !live_;
 }
 
@@ -2237,6 +2332,13 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		stage.restart();
 		/* the marks' lines, the folded strips over them, then the marks' tags (as the card: its pictures over all) */
 		drawNotes(p, axes, Marks::Lines);
+		nowEdges_ = nowEdgeLines(plots);
+		if (!nowEdges_.isEmpty()) {
+			p.save();
+			p.setPen(QPen(nowEdgeColor(), 1));
+			p.drawLines(nowEdges_);
+			p.restore();
+		}
 		drawTrigger(p, plots, binned, Marks::Lines);
 		drawCursors(p, axes, Marks::Lines);
 		drawFolded(p, plots);
@@ -3773,6 +3875,16 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (!levelTag.isEmpty()) frame.sprites.push_back({ levelTagPicture(dpr), whole(levelTag.topLeft()) });
 	}
 	frame.layers << marks;
+	nowEdges_ = nowEdgeLines(plots);
+	if (!nowEdges_.isEmpty()) {
+		GpuLines::Layer edges;
+		edges.widthPx = float(dpr);
+		for (const QLineF &edge : std::as_const(nowEdges_)) {
+			const QPointF a = map(edge.p1()), b = map(edge.p2());
+			edges.segments.push_back({ float(a.x()), float(a.y()), float(b.x()), float(b.y()), gpuColor(nowEdgeColor()) });
+		}
+		frame.layers << edges;
+	}
 	spanBar_ = spanBar(axes);
 	if (!spanBar_.text.isEmpty()) {
 		const QRectF area = spanBar_.bar.isEmpty() ? spanBar_.textRect : spanBar_.bar.united(spanBar_.textRect);
@@ -4053,6 +4165,25 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 		return true;
 	}
 	return false;
+}
+
+/* A view held on a crossing fills as the samples come: its right part is empty until they do, which read as missing
+ * data. A faint edge at the newest sample's time in every lane in view says where the data ends now (both paths draw
+ * these lines) */
+QVector<QLineF> ChartView::nowEdgeLines(const QVector<Lane> &plots) const {
+	QVector<QLineF> edges;
+	if (!triggerCapturing()) return edges;
+	const double now = triggerTime();
+	const QRectF all = plotRect();
+	for (const Lane &plot : plots) {
+		const Axes &a = plot.axes;
+		if (plot.folded || now < a.t0 || now > a.t1) continue;
+		const QRectF shown = lanes_ ? laneVisible(a.rect, all) : a.rect;
+		if (shown.isEmpty()) continue;
+		const double x = a.x(now);
+		edges << QLineF(x, shown.top(), x, shown.bottom());
+	}
+	return edges;
 }
 
 void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const {
@@ -4715,6 +4846,9 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
  * (the legend's end would follow them). */
 QStringList ChartView::stateVariants(bool measuring) const {
 	QString held[2], y[2], cursors[2], trigger;
+	/* the trigger on: its state alone (a held time, "filling" or "Live to follow" read as a hold of the user's while the
+	 * trigger holds the view, and the time held rewrote itself at every frame) */
+	if (trigger_.on) return QStringList(4, triggerStateText());
 	if (!live_ && !recording_) { /* a trigger holds a view that ends after now: it fills as the samples come */
 		const double behind = clockNow() - viewEnd();
 		const QString number = measuring ? QStringLiteral("0.000e+00") : chartNumber(std::fabs(behind));
@@ -4781,7 +4915,7 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setFont(labelFont());
-	p.setPen(!live_ ? c.warn : c.muted);
+	p.setPen((trigger_.on ? trigger_.stopped : !live_) ? c.warn : c.muted); /* the trigger on: amber for Stopped only */
 	/* words, not the chart's time: read in the language's direction (Arabic from the right, its first part rightmost),
 	 * still at the chart's right end; right to left, a mark either side of each dot keeps a part's Latin end ("s") and
 	 * the next part's Latin start ("Y") from running together into one left-to-right run */

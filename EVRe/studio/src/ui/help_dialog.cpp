@@ -334,7 +334,7 @@ each other: choosing one turns the other off.</li>
 <h3>The second row: what to do</h3>
 <ul>
 <li><b>Hold</b> stops the view where it is (the memory keeps filling); <b>▶ Live</b> follows now again. Dragging
-holds too.</li>
+holds too. While the trigger is on, the same button is <b>Stop</b> / <b>▶ Run</b> (below).</li>
 <li><b>Measure</b> shows the measurements under the chart (below). <b>Cursors</b> on (turns Measure on): click the
 chart for cursor <b>A</b>, again for <b>B</b>, drag them. A bar between their tags at the top of the plot says the
 time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a cursor off the view it ends at the
@@ -391,13 +391,19 @@ its own with a readout under the mouse, a picture and CSV.</p>
 line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane with a tag at its right end,
 <i>I_LOAD 1.20 A, rising</i>: <b>drag</b> the line or the tag to move the level; <b>click</b> the tag's arrow (↑ ↓ ↕)
 for rising, falling or either. Each line keeps its own level and edge.</p>
-<p><b>Auto</b> runs live and holds on each crossing; <b>Normal</b> holds on each crossing and waits for the next;
-<b>Single</b> holds on the first (<b>Arm</b> for the next). The <b>hold-off</b> (the window's length by default, 0 to
+<p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
+the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
+the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls. The
+<b>hold-off</b> (the window's length by default, 0 to
 10 s) is the time after a crossing in which no other counts. The crossing sits at 20 % of the window with a <b>T</b>
 over it: <b>drag</b> the small triangle under the chart to move it (0 to 90 %). In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
-The row under the actions sets the same; the measurements, export and pictures take the view held; <b>Live</b>
-follows now again. In Auto a view you hold or drag stays where you put it.</p>
+The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
+<p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
+and its T, no crossing counts; <b>Run</b> arms again in the mode, from now. Dragging the chart stops it too. The row
+and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Normal · triggered</i>, <i>Stopped · Run
+to arm</i> ...), and change only when it does; while the view still fills after the crossing, a faint line marks
+where the data ends.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt

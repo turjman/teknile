@@ -50,9 +50,11 @@
  * place in the window (20 %; a triangle under the plot, dragged) and a marker
  * there, the level a dashed line with a tag, both dragged. Auto runs live
  * between crossings, Normal holds on each, Single on the first; the next counts
- * once the hold-off has passed and the view is full. A short window shows each
- * picture whole. A fast line's crossings are found by the engine as its blocks
- * come (fast::TriggerScan).
+ * once the hold-off has passed and the view is full. Normal and Single wait on a
+ * still picture; only Auto rolls. Stop (stopRun) disarms and keeps the picture,
+ * Run (runTrigger) arms again; a pan while it runs is a Stop. A short window
+ * shows each picture whole. A fast line's crossings are found by the engine as
+ * its blocks come (fast::TriggerScan).
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
  * cosmetic polylines side by side (Qt's fast path) instead of one wide
@@ -205,8 +207,13 @@ public:
 	 * watched keeps the others'. */
 	enum class TriggerEdge { Rising, Falling, Either };
 	/* Auto: the view runs live, holds on a crossing and runs again when none comes for a window's length after the
-	 * hold-off; Normal: holds on each crossing and waits for the next; Single: the first crossing holds until Arm */
+	 * hold-off; Normal: holds on each crossing and stays held until the next, however long; Single: the first crossing
+	 * holds until Arm. Normal and Single wait on a still picture (the last capture, or the view at arming) */
 	enum class TriggerMode { Single, Normal, Auto };
+	/* the trigger's state, one for the row and the state corner: they change only when it does. Stopped: by the user
+	 * (Stop, a pan); Done: Single after its crossing; Triggered: a crossing came, and others keep coming (until none
+	 * has for a window plus the hold-off) */
+	enum class TriggerPhase { Off, Stopped, FreeRunning, Waiting, Triggered, Done };
 	struct TriggerSettings {
 		double level = 0;
 		TriggerEdge edge = TriggerEdge::Rising;
@@ -221,7 +228,21 @@ public:
 	void setTrigger(int key, TriggerMode mode);
 	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode); /* the line's settings set first */
 	void stopTrigger();
-	void armTrigger();                   /* waits for the next crossing (Single: once more) */
+	/* waits for the next crossing (Single: once more), from now; Normal and Auto: not before the last crossing's hold-off
+	 * has passed. Auto runs live; Normal and Single hold the view as it is */
+	void armTrigger();
+	/* Run and Stop (the toolbar's button while the trigger is on): Stop disarms, drops a crossing waiting for its view
+	 * and keeps the view and its T; Run arms again in the mode, from now */
+	void stopRun();
+	void runTrigger();
+	bool triggerRunning() const { return trigger_.on && trigger_.armed; } /* Stop would stop it */
+	TriggerPhase triggerPhase() const;
+	/* held on a crossing whose view is not full yet: the samples after it still come ("capturing after T") */
+	bool triggerCapturing() const;
+	/* crossings a second, from the last ones held (NaN: fewer than two): the row's "triggered · 48 /s" */
+	double triggerRate() const;
+	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
+	QVector<QLineF> nowEdges() const { return nowEdges_; }
 	void setTriggerLevel(double level);  /* of the line watched */
 	void setTriggerEdge(TriggerEdge edge);
 	bool triggerOn() const { return trigger_.on; }
@@ -241,7 +262,8 @@ public:
 	void setTriggerHoldoff(double seconds);
 	double triggerHoldoff() const { return triggerHoldoff_; } /* as set (< 0: the window's length) */
 	double holdoffSeconds() const;                            /* in effect */
-	/* the trigger in the state corner: "trigger: waiting", "triggered", "auto: free running"; empty: off */
+	/* the trigger in the state corner: "Normal · waiting", "Normal · triggered", "Auto · free running", "Stopped · Run
+	 * to arm" ...; empty: off */
 	QString triggerStateText() const;
 	int triggerHolds() const { return triggerHolds_; } /* tests: the crossings the view held on so far */
 	QRectF triggerPositionMark() const { return triggerMark_; } /* tests: the mark under the plot as last drawn */
@@ -503,6 +525,7 @@ signals:
 	void triggerSettingsChanged();
 	void triggerPositionChanged(double fraction); /* the mark under the plot dragged and let go: to be saved */
 	void fastTriggerChanged(); /* armed, stopped or set otherwise: fastTriggerWatch() to be given to the engine */
+	void triggerRunChanged();  /* armed, stopped (Stop, a pan, Single's crossing) or off: Run or Stop on the button */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
@@ -649,7 +672,9 @@ private:
 	double liveEnd() const { return clockNow() - (smooth_ ? delay_ : 0); }
 	double viewEnd() const { return live_ ? liveEnd() : viewEnd_; }
 	void memorySpan(double &m0, double &m1) const; /* what is kept, as times */
-	void holdAt(double end);                       /* not live: the view ends at `end` */
+	/* not live: the view ends at `end`. The user's (a pan, the memory strip) stops a trigger that runs; the wheel's
+	 * zoom is not */
+	void holdAt(double end, bool user = true);
 	void updateDelay(double frameDt);
 	QRectF plotRect() const;
 	QRectF overviewRect() const;
@@ -962,7 +987,14 @@ private:
 		/* the view was held by a crossing, not by the user (Hold, a pan, the memory strip): only then does Auto run
 		 * live again by itself */
 		bool holding = false;
+		bool stopped = false;   /* by the user: Stop or a pan */
+		double since = 0;       /* armed last from here: a crossing before it is not "triggered" */
 	} trigger_;
+	QVector<double> recentHolds_; /* the last crossings held, for triggerRate */
+	void holdAsShown();           /* the view stays as it is shown now (Normal and Single armed, Stop) */
+	/* the faint "now" edges: where the data ends in a view still filling after its crossing, in every lane in view */
+	QVector<QLineF> nowEdgeLines(const QVector<Lane> &plots) const;
+	mutable QVector<QLineF> nowEdges_;
 	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
 	TriggerSettings watchedSettings() const;           /* the line watched's */
 	TriggerSettings &watchedSettingsRef();             /* the same, to change (made when there is none) */

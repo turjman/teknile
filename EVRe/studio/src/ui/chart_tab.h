@@ -23,7 +23,8 @@
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
  *    Auto, Normal or Single, the hold-off, the crossing's place in the
- *    window, Arm; the chart holds on a crossing (ChartView). A line's chip
+ *    window, Arm (Single only), its state; the chart holds on a crossing
+ *    (ChartView). While it is on, Hold / Live is Run / Stop. A line's chip
  *    menu arms it on that line; each line keeps its own level and edge.
  *  - a right-click on the chart: Copy picture, Save picture (painted by the
  *    CPU, the card's plot too), Export to CSV (the view, or A -> B; on a
@@ -172,7 +173,8 @@ public:
 	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
 	/* a line's chip menu, Trigger on this line: the trigger on, armed on that line with its own level and edge */
 	void triggerOnLine(int key);
-	/* the trigger row's state in words ("armed", "triggered at 14:03:12.345", ...): tests */
+	/* the trigger row's state in words ("waiting for a crossing", "triggered · 48 /s", "Single · stopped at
+	 * 14:03:12.345", ...): tests */
 	QString triggerState() const;
 
 	int measureUpdates() const { return measureUpdates_; } /* tests: the measurements made again so far */
@@ -293,7 +295,14 @@ private:
 	void fillTriggerLines();      /* the lines it can watch (registers and math lines), the one chosen kept */
 	void showLineSettings();      /* the level and edge boxes: the line chosen's own */
 	void saveTriggerSettings();   /* every line's level and edge (chart/triggerLevels) */
-	void showTriggerState();
+	void showTriggerState();      /* the row's state, Arm (Single only), the toolbar's Run / Stop */
+	/* the toolbar's button: Hold / Live, or Run / Stop while the trigger is on (one control, so the two cannot disagree) */
+	void showHoldButton();
+	/* the row's "triggered · 48 /s": the rate taken again twice a second at most, so the text does not change at each
+	 * crossing */
+	mutable QElapsedTimer rateClock_;
+	mutable QString rateText_;
+	mutable bool rateKept_ = false;
 	QWidget *triggerRow_ = nullptr;
 	QComboBox *triggerLine_ = nullptr, *triggerEdge_ = nullptr, *triggerMode_ = nullptr;
 	QComboBox *triggerHoldoff_ = nullptr; /* "window" (its length) or a time typed, 0 to 10 s */

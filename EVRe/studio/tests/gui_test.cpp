@@ -559,6 +559,7 @@ public:
 		chartTriggerSteady();
 		chartTriggerFast();
 		chartTriggerAuto();
+		chartTriggerRunStop();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -1402,8 +1403,9 @@ private:
 		/* the trigger armed on the fast line (from its chip's menu) while its stream comes and goes: Disconnect, Connect
 		 * again, Arm, the stream stopped, the line removed. Each time the engine watches what the window asks (the same
 		 * line, the same arm) or, the line gone, nothing; no watch, crossing or rescan reaches a stream, a run or a line
-		 * that is gone (the test crashed once in this Disconnect). Normal: the engine keeps watching after a crossing,
-		 * and Arm, after the stream came back, takes the next one. */
+		 * that is gone (the test crashed once in this Disconnect). Normal: the engine keeps watching after a crossing;
+		 * after the stream came back, Single armed takes the next one (Arm is Single's: in Normal it keeps the last
+		 * crossing's hold-off, the 30 s window here). */
 		bool watchArmed = false, watchKept = false, watchBack = false, armedAgain = false, stoppedKept = false,
 				watchGone = false;
 		if (plotted) {
@@ -1434,18 +1436,27 @@ private:
 			window_.applyStartup(connectFast);
 			if (QTest::qWaitFor([&] { return button->isEnabled(); }, 5000) && button->text() == QStringLiteral("▶  Start stream"))
 				button->click();
-			/* the watch as it was: the same arm, waiting out its re-arm (a window's length); Arm takes the next crossing */
+			/* the watch as it was: the same arm, waiting out its re-arm (a window's length); Single armed takes the next
+			 * crossing; Normal armed again stays armed through the stream's stop */
 			watchBack = enableBecomes(1) && inStep();
-			chartView->armTrigger();
-			armedAgain = inStep() && holdsAgain();
+			const auto setMode = [mode](ChartView::TriggerMode m) {
+				if (!mode) return;
+				mode->setCurrentIndex(mode->findData(int(m)));
+				emit mode->activated(mode->currentIndex());
+			};
+			setMode(ChartView::TriggerMode::Single);
+			armedAgain = holdsAgain();
+			setMode(ChartView::TriggerMode::Normal);
+			armedAgain = armedAgain && inStep();
 			button->click(); /* Stop, armed */
 			stoppedKept = enableBecomes(0);
 			QTest::qWait(300); /* blocks of the stopped stream may still come */
 			stoppedKept = stoppedKept && inStep();
 			button->click();
 			stoppedKept = stoppedKept && enableBecomes(1) && inStep();
-			chartView->armTrigger();
-			stoppedKept = stoppedKept && inStep() && holdsAgain();
+			setMode(ChartView::TriggerMode::Single);
+			stoppedKept = stoppedKept && holdsAgain();
+			setMode(ChartView::TriggerMode::Normal);
 			if (plotBox) plotBox->setChecked(false); /* the line removed, armed */
 			watchGone = !onChart(iLoad) && QTest::qWaitFor([&] {
 				int stream = -1;
@@ -1458,12 +1469,12 @@ private:
 			chartView->setLive(true);
 			if (plotBox) plotBox->setChecked(true);
 		}
-		std::printf("  the trigger on ADC.I_LOAD, armed: in step %d; Disconnect: kept %d; Connect: back %d; Arm: held %d; "
-				"the stream stopped and started, Arm: held %d; the line removed: no watch %d\n", int(watchArmed), int(watchKept),
-				int(watchBack), int(armedAgain), int(stoppedKept), int(watchGone));
+		std::printf("  the trigger on ADC.I_LOAD, armed: in step %d; Disconnect: kept %d; Connect: back %d; Single armed: "
+				"held %d; the stream stopped and started, Single armed: held %d; the line removed: no watch %d\n",
+				int(watchArmed), int(watchKept), int(watchBack), int(armedAgain), int(stoppedKept), int(watchGone));
 		check(watchArmed && watchKept && watchBack && armedAgain && stoppedKept && watchGone,
-				"fast streams, the trigger armed on a fast line: through Disconnect, Connect, Arm and the stream stopped the "
-				"engine watches what the window asks and holds again; the line removed, the engine watches nothing; no crash");
+				"fast streams, the trigger armed on a fast line: through Disconnect, Connect, Single armed and the stream stopped "
+				"the engine watches what the window asks and holds again; the line removed, the engine watches nothing; no crash");
 		if (plotBox) plotBox->setChecked(false);
 		check(!onChart(iLoad), "fast streams: the tick off: the line off the chart");
 
@@ -4738,6 +4749,7 @@ private:
 			check(once->plotOnCard() && lineAlike >= 0.93, "chart on a GPU: the trigger's dashed level line drawn by the card "
 					"as the CPU draws it, the strip along it compared");
 			once->stopTrigger();
+			once->setLive(true); /* Normal held the view when it was armed */
 			/* Log Y: the card's segments and grid from the same Axes as the CPU's lines (decades, the faint 2..9) */
 			once->setYLog(true);
 			for (int k = 0; k < 3; k++) {
@@ -5021,10 +5033,11 @@ private:
 			if (topics->item(i)->text() == QLatin1String("Keys & mouse")) keysPage = page->toPlainText();
 		}
 		check(chartPage.contains(QLatin1String("Trigger on this line")) && chartPage.contains(QLatin1String("hold-off"))
-						&& chartPage.contains(QLatin1String("Auto runs live")) && chartPage.contains(QLatin1String("triangle"))
+						&& chartPage.contains(QLatin1String("stays held until the next one, however long"))
+						&& chartPage.contains(QLatin1String("Hold / Live is Stop / Run")) && chartPage.contains(QLatin1String("triangle"))
 						&& keysPage.contains(QLatin1String("the tag's arrow")),
 				"Help: the Chart page's Trigger says how it is armed (Trigger on this line), the level's tag, Auto, Normal and "
-				"Single, the hold-off and the triangle; Keys & mouse lists the tag and the triangle");
+				"Single, Run and Stop, the hold-off and the triangle; Keys & mouse lists the tag and the triangle");
 	}
 
 	/* the measurements of many lines (60, on a Chart tab of its own, 10 s of 500 Hz samples each): a refresh of the
@@ -6857,7 +6870,6 @@ private:
 			view->setYLog(true);
 			view->setYManual(0.5, 20);
 			view->setCursorMode(true);
-			view->setTrigger(chart.key(), 1.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Single);
 			(void) view->grab();
 			view->setLive(false);
 			const int margin = chart.tab.width() - view->width();
@@ -6870,12 +6882,11 @@ private:
 					after = heldWhole.section(QLatin1String("%1"), 1);
 			const QString number = held.startsWith(before) && held.endsWith(after)
 					? held.mid(before.size(), held.size() - before.size() - after.size()) : QString();
-			const QString trigger = full.section(sep, -1);
 			const QStringList stages{
-				QStringList{ heldWhole.arg(number), inChart("Y log, manual"), inChart("cursors: click / drag"), trigger }.join(sep),
-				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors: click / drag"), trigger }.join(sep),
-				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors"), trigger }.join(sep),
-				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log"), inChart("cursors"), trigger }.join(sep) };
+				QStringList{ heldWhole.arg(number), inChart("Y log, manual"), inChart("cursors: click / drag") }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors: click / drag") }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log, manual"), inChart("cursors") }.join(sep),
+				QStringList{ inChart("held: -%1 s").arg(number), inChart("Y log"), inChart("cursors") }.join(sep) };
 			int last = 0;
 			const int narrowest = std::min(narrow, 760); /* narrower still, so every part has to go in turn */
 			for (int width = 1700; width >= narrowest; width -= 10) {
@@ -6899,7 +6910,9 @@ private:
 					out.roomy = text == full && full == stages[0];
 					out.tip = view->toolTipAt(state.center()) == full;
 				}
-				if (width - 10 < narrowest) out.shortened = stage == 3 && view->toolTipAt(state.center()) == full;
+				/* without the trigger's part (alone in the corner while the trigger is on) the text needs no more than
+				 * the cursors' "click / drag" dropped at the narrowest */
+				if (width - 10 < narrowest) out.shortened = stage >= 2 && view->toolTipAt(state.center()) == full;
 			}
 			if (!out.ordered || !out.roomy || !out.shortened)
 				std::printf("     (%s, %d px at the narrowest: the whole \"%s\"; seen: \"%s\")\n", qPrintable(code), narrow,
@@ -6920,9 +6933,9 @@ private:
 		std::printf("     (the chart %d px wide at the main window's narrowest; English: \"%s\")\n", narrow,
 				qPrintable(english.seen.join(QStringLiteral("\" | \""))));
 		check(english.apart, "chart, state corner: from 1700 px down to the main window's narrowest, with the view held, Y "
-				"log manual, cursors and a trigger, its text never lies over the legend (the arrows included)");
+				"log manual and cursors, its text never lies over the legend (the arrows included)");
 		check(english.ordered && english.roomy && english.shortened, "chart, state corner: shortened by whole parts in "
-				"turn (Live to follow, click / drag, manual), the time held and the trigger kept; nothing dropped with room");
+				"turn (Live to follow, click / drag, manual), the time held kept; nothing dropped with room");
 		check(english.tip, "chart, state corner: its tooltip is the whole text, also when shortened");
 		const Run arabic = run(QStringLiteral("ar"));
 		std::printf("     (Arabic: \"%s\")\n", qPrintable(arabic.seen.join(QStringLiteral("\" | \""))));
@@ -7576,7 +7589,7 @@ private:
 		const bool single = std::fabs(chart.view->triggeredAt() - falling) < 1e-6 && !chart.view->triggerArmed();
 		feed(104.0);
 		const bool stays = std::fabs(chart.view->triggeredAt() - falling) < 1e-6
-				&& chart.tab.triggerState().contains(QLatin1String("Arm for the next"));
+				&& chart.tab.triggerState().startsWith(QStringLiteral("Single · stopped at "));
 		arm->click();
 		edge->setCurrentIndex(edge->findData(int(ChartView::TriggerEdge::Either)));
 		emit edge->activated(edge->currentIndex());
@@ -7692,26 +7705,28 @@ private:
 			return view->stateFullText().section(QStringLiteral("  ·  "), -1);
 		};
 		const QString first = corner();
-		const bool freeAtFirst = view->live() && first == QStringLiteral("auto: free running")
+		const bool freeAtFirst = view->live() && first == QStringLiteral("Auto · free running")
 				&& holdoff->currentText() == QStringLiteral("window") && view->holdoffSeconds() == 1;
 		feed(100.5, steps); /* up at 100.3: held, the crossing at 20 % */
 		const double at = view->triggeredAt();
 		const QString second = corner();
-		const bool held = !view->live() && std::fabs(at - 100.2995) < 1e-6 && second == QStringLiteral("triggered");
-		feed(101.4, steps); /* the hold-off (the window's 1 s) over at 101.2995: ready, still held */
+		const bool held = !view->live() && std::fabs(at - 100.2995) < 1e-6
+				&& second == QStringLiteral("Auto · triggered, capturing after T");
+		feed(101.4, steps); /* the hold-off (the window's 1 s) over at 101.2995: ready, still held, still "triggered" */
 		const QString third = corner();
-		const bool waiting = !view->live() && view->triggerArmed() && third == QStringLiteral("trigger: waiting")
+		const bool waiting = !view->live() && view->triggerArmed() && third == QStringLiteral("Auto · triggered")
 				&& view->triggeredAt() == at;
 		feed(102.4, steps); /* no crossing for a window's length after that: live again */
 		const QString fourth = corner();
-		const bool runsAgain = view->live() && fourth == QStringLiteral("auto: free running");
+		const bool runsAgain = view->live() && fourth == QStringLiteral("Auto · free running");
 		feed(103.0, steps); /* down at 102.5 (rising only), up at 102.8: held again */
 		const bool heldAgain = !view->live() && std::fabs(view->triggeredAt() - 102.7995) < 1e-6 && view->triggerHolds() == 2;
 		std::printf("     (Auto: \"%s\", \"%s\" at %.4f, \"%s\", \"%s\"; held again at %.4f, %d holds)\n", qPrintable(first),
 				qPrintable(second), at, qPrintable(third), qPrintable(fourth), view->triggeredAt(), view->triggerHolds());
 		check(freeAtFirst && held && waiting && runsAgain && heldAgain, "chart, Trigger, Auto: runs live while no crossing "
-				"comes (\"auto: free running\"), holds on one (\"triggered\"), ready again after the hold-off (\"trigger: "
-				"waiting\", still held), runs live again when none comes for a window's length, and holds on the next");
+				"comes (\"Auto · free running\"), holds on one (\"Auto · triggered, capturing after T\"), ready again after "
+				"the hold-off (still held, still \"Auto · triggered\"), runs live again when none comes for a window's length, "
+				"and holds on the next");
 
 		/* the crossing's place: its mark under the plot at 20 %, a hand and a tooltip over it; dragged to 50 % the held
 		 * view moves so the crossing sits there; clamped to 90 % and 0 %; the panel and the setting follow */
@@ -8266,24 +8281,41 @@ private:
 		check(view->triggerHolds() - holds >= 20 && liveFrames == 0, "chart, Trigger, Auto: crossings coming all along keep "
 				"the view held, its window of no crossing by the samples' time (they come 50 ms late), not by the clock");
 
-		/* Live while a crossing waits for its view (Normal, no hold-off): the view stays live, the next hold after it */
+		/* Stop while a crossing waits for its view (Normal, no hold-off): the crossing dropped, the view and its T stay,
+		 * no crossing holds while stopped; Run: the next hold is on a crossing after it */
 		view->setTriggerHoldoff(0);
 		view->setTrigger(late.key(), ChartView::TriggerMode::Normal);
 		int frames = 0;
 		while (!std::isfinite(view->triggerPending()) && frames++ < 300) feed(20, 0);
 		const bool waited = std::isfinite(view->triggerPending());
 		auto *hold = late.tab.findChild<QPushButton *>(QStringLiteral("hold"));
-		const double liveAt = fed - 0.00005;
-		if (hold) hold->click(); /* held: Live */
-		const bool dropped = view->live() && std::isnan(view->triggerPending());
-		const int liveHolds = view->triggerHolds();
+		const bool stopOffered = hold && hold->text() == QStringLiteral("Stop");
+		const double heldOn = view->triggeredAt();
+		if (hold) hold->click(); /* Stop */
+		(void) view->grab();
+		double s0, s1;
+		bool spanned;
+		view->range(s0, s1, spanned);
+		const int stoppedHolds = view->triggerHolds();
+		for (int i = 0; i < 30; i++) feed(20, 0); /* 30 crossings */
+		(void) view->grab();
+		double e0, e1;
+		view->range(e0, e1, spanned);
+		const int whileStopped = view->triggerHolds() - stoppedHolds;
+		const bool dropped = !view->live() && std::isnan(view->triggerPending()) && whileStopped == 0
+				&& e1 == s1 && view->triggeredAt() == heldOn && !view->triggerTag().isEmpty()
+				&& view->triggerPhase() == ChartView::TriggerPhase::Stopped && hold && hold->text() == QStringLiteral("Run");
+		const double runAt = fed - 0.00005;
+		if (hold) hold->click(); /* Run */
+		const int runHolds = view->triggerHolds();
 		frames = 0;
-		while (view->triggerHolds() == liveHolds && frames++ < 100) feed(20, 0);
-		std::printf("     (a crossing waiting for its view at Live: %d; the next hold %.5f s after Live)\n", int(waited),
-				view->triggeredAt() - liveAt);
-		check(hold && waited && dropped && view->triggerHolds() == liveHolds + 1 && view->triggeredAt() > liveAt,
-				"chart, Trigger: Live drops a crossing waiting for its view (a short window): the next hold is on a crossing "
-				"after Live, not on the one before it");
+		while (view->triggerHolds() == runHolds && frames++ < 100) feed(20, 0);
+		std::printf("     (a crossing waiting for its view at Stop: %d; stopped: %d holds over 30 crossings, the view's end "
+				"moved %.6f s; the next hold %.5f s after Run)\n", int(waited), whileStopped, e1 - s1,
+				view->triggeredAt() - runAt);
+		check(stopOffered && waited && dropped && view->triggerHolds() == runHolds + 1 && view->triggeredAt() > runAt,
+				"chart, Trigger: Stop drops a crossing waiting for its view (a short window) and keeps the view and its T, no "
+				"crossing holds while stopped; Run: the next hold is on a crossing after it, not on the one before");
 		view->stopTrigger();
 		late.tab.hide();
 
@@ -8310,10 +8342,10 @@ private:
 		still->setTrigger(quiet.key(), 0.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Auto);
 		auto *quietHold = quiet.tab.findChild<QPushButton *>(QStringLiteral("hold"));
 		const bool freeRunning = still->live();
-		if (quietHold) quietHold->click();
+		if (quietHold) quietHold->click(); /* Stop */
 		for (double until = 100.1; until <= 103.0; until += 0.1) feedStep(until, 1e9);
-		const bool holdKept = !still->live();
-		if (quietHold) quietHold->click(); /* Live */
+		const bool holdKept = !still->live() && still->triggerPhase() == ChartView::TriggerPhase::Stopped;
+		if (quietHold) quietHold->click(); /* Run: Auto runs live */
 		feedStep(103.5, 103.2); /* up at 103.2: held by the trigger */
 		const bool heldByCrossing = !still->live() && std::fabs(still->triggeredAt() - 103.2) < 0.002;
 		(void) still->grab();
@@ -8336,15 +8368,299 @@ private:
 		(void) still->grab();
 		double u0, u1;
 		still->range(u0, u1, cursors);
-		const bool panKept = pannedHeld && !still->live() && u1 == t1 && t1 < 103.4;
+		const bool panKept = pannedHeld && !still->live() && u1 == t1 && t1 < 103.4
+				&& still->triggerPhase() == ChartView::TriggerPhase::Stopped;
 		std::printf("     (Auto and the user: free running %d, held by Hold after 3 s %d; held by a crossing %d, after a pan "
 				"and 3 s %d: the view's end %.4f after the pan, %.4f 3 s later, live %d; the press at %.0f, the level's line at %.0f)\n",
 				int(freeRunning), int(holdKept), int(heldByCrossing), int(panKept), t1, u1, int(still->live()), grip.y(),
 				still->triggerLineY());
-		check(quietHold && freeRunning && holdKept && heldByCrossing && panKept, "chart, Trigger, Auto: a view the user held "
-				"(Hold) or moved (a pan) stays where it is; Auto runs live by itself only from a view a crossing held");
+		check(quietHold && freeRunning && holdKept && heldByCrossing && panKept, "chart, Trigger, Auto: Stop or a pan stops "
+				"the trigger and the view stays where it is; Run runs live again; Auto runs live by itself only from a view a "
+				"crossing held");
 		still->stopTrigger();
 		quiet.tab.hide();
+		clearTriggerSettings();
+	}
+
+	/* Trigger v2, Run and Stop, one state in one voice: while the trigger is on the toolbar's Hold / Live is Run / Stop,
+	 * in each mode (Stop disarms and keeps the view and its T, no crossing moves it; Run arms in the mode from now: Auto
+	 * runs live, Normal and Single wait on a still view); a pan is a Stop; the row's and the corner's texts per state as
+	 * the review's table; a faint "now" edge at the data's end in every lane while a view fills after its crossing; Arm
+	 * only in Single; and the texts not rewritten while crossings keep coming in the same state */
+	void chartTriggerRunStop() {
+		clearTriggerSettings();
+		LoneChart chart(QStringLiteral("RUN"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		double fed = 99.0;
+		const auto feed = [&](double until) { /* 1 kHz of a 1 Hz sine (rising through 0.5 at k + 1/12), 0.1 s a frame */
+			while (fed < until - 1e-9) {
+				MathLines::Samples samples;
+				const double to = std::min(until, fed + 0.1);
+				for (; fed < to - 1e-9; fed += 0.001) samples[regKey(chart.def)] << QPointF(fed, std::sin(2 * M_PI * fed));
+				chart.now = fed;
+				chart.tab.frame(samples);
+			}
+		};
+		feed(99.95);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		/* the chart takes the focus first: the window's box, losing it to the pan's press, applies its own 30 s */
+		view->setFocus();
+		QApplication::processEvents();
+		view->setWindow(1);
+		auto *action = chart.tab.findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *row = chart.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+		auto *level = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		auto *arm = chart.tab.findChild<QPushButton *>(QStringLiteral("triggerArm"));
+		auto *hold = chart.tab.findChild<QPushButton *>(QStringLiteral("hold"));
+		auto *state = chart.tab.findChild<QLabel *>(QStringLiteral("triggerState"));
+		if (!action || !row || !level || !mode || !arm || !hold || !state) {
+			check(false, "chart, Trigger, Run and Stop: the row's controls and the toolbar's button found");
+			return;
+		}
+		action->setChecked(true);
+		const auto setLevel = [level](const char *text) {
+			level->setText(QLatin1String(text));
+			emit level->editingFinished();
+		};
+		const auto setMode = [mode](ChartView::TriggerMode m) {
+			mode->setCurrentIndex(mode->findData(int(m)));
+			emit mode->activated(mode->currentIndex());
+		};
+		const auto viewEnd = [view] { /* as painted */
+			(void) view->grab();
+			double t0, t1;
+			bool cursors;
+			view->range(t0, t1, cursors);
+			return t1;
+		};
+		bool textsOk = true;
+		const auto texts = [&](const QString &rowText, const QString &cornerText, const char *what) {
+			(void) view->grab();
+			const QString shownRow = state->text(), shownCorner = view->stateFullText();
+			const bool same = shownRow == rowText && shownCorner == cornerText;
+			if (!same)
+				std::printf("     (%s: the row \"%s\", the corner \"%s\")\n", what, qPrintable(shownRow), qPrintable(shownCorner));
+			textsOk = textsOk && same;
+		};
+		const auto stopRun = [hold] { hold->click(); };
+		using Phase = ChartView::TriggerPhase;
+		bool armOnlySingle = true;
+
+		/* Normal, a level the sine never reaches: a still view, "waiting" */
+		setMode(ChartView::TriggerMode::Normal);
+		setLevel("2");
+		view->setTriggerHoldoff(0.5);
+		armOnlySingle = armOnlySingle && !arm->isVisibleTo(row);
+		const double stillEnd = viewEnd();
+		bool still = !view->live();
+		for (double until = 100.0; until <= 101.5 + 1e-9; until += 0.1) {
+			feed(until);
+			still = still && !view->live() && viewEnd() == stillEnd;
+		}
+		texts(QStringLiteral("waiting for a crossing"), QStringLiteral("Normal · waiting"), "Normal, waiting");
+		const bool normalRuns = hold->text() == QStringLiteral("Stop") && view->triggerPhase() == Phase::Waiting;
+		check(still && normalRuns, "chart, Trigger, Normal waiting for a crossing: the view stands still (it does not roll "
+				"as Auto does), the button says Stop");
+
+		/* the level reached: held, the view filling after its T, the "now" edge at the data's end; then full */
+		setLevel("0.5");
+		feed(102.2); /* rising through 0.5 at 102.0833 */
+		texts(QStringLiteral("triggered"), QStringLiteral("Normal · triggered, capturing after T"), "Normal, capturing");
+		const QRectF plot = view->lastPlot();
+		const QVector<QLineF> edges = view->nowEdges();
+		double t0, t1;
+		bool cursors;
+		view->range(t0, t1, cursors);
+		const double newest = fed - 0.001;
+		const double wantX = plot.left() + (newest - t0) / (t1 - t0) * plot.width();
+		bool edgeAt = edges.size() == 1 && std::fabs(edges[0].x1() - wantX) < 1 && edges[0].x1() == edges[0].x2()
+				&& edges[0].y1() >= plot.top() - 0.5 && edges[0].y2() <= plot.bottom() + 0.5;
+		/* drawn, in both themes: the edge's column differs from the empty one a few pixels right of it */
+		const bool wasDark = Theme::isDark();
+		int seenIn[2] = { 0, 0 };
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			const QImage picture = view->grab().toImage();
+			const double dpr = picture.devicePixelRatio();
+			const int x = int(std::lround(wantX * dpr - 0.5)), right = x + int(std::lround(5 * dpr));
+			int rows = 0, differ = 0;
+			for (int y = int((plot.top() + 6) * dpr); y < int((plot.bottom() - 6) * dpr); y++, rows++) {
+				const QColor a = picture.pixelColor(x, y), b = picture.pixelColor(right, y), c = picture.pixelColor(x + 1, y);
+				if (a != b || c != b) differ++;
+			}
+			seenIn[dark] = rows > 0 ? 100 * differ / rows : 0;
+		}
+		Theme::apply(*qApp, wasDark);
+		feed(102.95); /* the view full at 102.8833 */
+		texts(QStringLiteral("triggered"), QStringLiteral("Normal · triggered"), "Normal, triggered");
+		(void) view->grab();
+		const bool edgeGone = view->nowEdges().isEmpty();
+
+		/* with lanes, one lane per unit: an edge in each */
+		bool laneEdges = false;
+		{
+			TriggerPair pair;
+			pair.feed(99.95);
+			pair.view->setLanes(true);
+			pair.tab.show();
+			(void) QTest::qWaitForWindowExposed(&pair.tab);
+			pair.view->setTrigger(pair.voltsKey(), 5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+			pair.feed(100.3); /* rising through 5 at 100 */
+			(void) pair.view->grab();
+			const QVector<QLineF> laneLines = pair.view->nowEdges();
+			laneEdges = pair.view->laneCount() == 2 && laneLines.size() == 2;
+			for (int i = 0; laneEdges && i < 2; i++) {
+				const QRectF lane = pair.view->laneRect(i);
+				laneEdges = laneLines[i].x1() == laneLines[0].x1() && laneLines[i].y1() >= lane.top() - 0.5
+						&& laneLines[i].y2() <= lane.bottom() + 0.5 && laneLines[i].length() > 0.5 * lane.height();
+			}
+			pair.view->stopTrigger();
+			pair.tab.hide();
+		}
+		std::printf("     (the now edge at x %.1f, wanted %.1f; its column seen in %d %% (light) and %d %% (dark) of the "
+				"plot's rows; with lanes: %s)\n", edges.isEmpty() ? -1.0 : edges[0].x1(), wantX, seenIn[0], seenIn[1],
+				laneEdges ? "an edge in each lane" : "not in each lane");
+		check(edgeAt && seenIn[0] >= 80 && seenIn[1] >= 80 && edgeGone && laneEdges, "chart, Trigger: a view filling after "
+				"its crossing has a faint \"now\" edge at the newest sample, drawn in both themes, one in every lane with "
+				"Lanes on; none once the view is full");
+
+		/* Stop and Run in Normal: the picture and its T stay through crossings; Run waits on the same picture */
+		bool runStop = true;
+		const double heldOn = view->triggeredAt();
+		runStop = runStop && hold->text() == QStringLiteral("Stop");
+		stopRun();
+		texts(QStringLiteral("Stopped · Run to arm"), QStringLiteral("Stopped · Run to arm"), "Normal, stopped");
+		const double stoppedEnd = viewEnd();
+		int holds = view->triggerHolds();
+		feed(104.5); /* crossings at 103.08 and 104.08 */
+		runStop = runStop && hold->text() == QStringLiteral("Run") && view->triggerHolds() == holds && viewEnd() == stoppedEnd
+				&& view->triggeredAt() == heldOn && !view->triggerTag().isEmpty();
+		stopRun(); /* Run */
+		texts(QStringLiteral("waiting for a crossing"), QStringLiteral("Normal · waiting"), "Normal, run again");
+		runStop = runStop && hold->text() == QStringLiteral("Stop") && !view->live() && viewEnd() == stoppedEnd;
+		feed(105.2);
+		runStop = runStop && view->triggerHolds() == holds + 1 && std::fabs(view->triggeredAt() - (105 + 1.0 / 12)) < 1e-6;
+		const bool normalRunStop = runStop;
+		/* a pan while it runs: a Stop */
+		(void) view->grab();
+		const QRectF area = view->lastPlot();
+		const double offLevel = view->triggerLineY() < area.center().y() ? area.bottom() - 15 : area.top() + 15;
+		const QPointF grip(area.left() + 0.3 * area.width(), offLevel), to(area.left() + 0.6 * area.width(), offLevel);
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, grip.toPoint());
+		QMouseEvent pan(QEvent::MouseMove, to, view->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &pan);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+		const bool panStops = view->triggerPhase() == Phase::Stopped && hold->text() == QStringLiteral("Run");
+
+		/* Auto: Run runs live; Stop holds through crossings */
+		setMode(ChartView::TriggerMode::Auto);
+		armOnlySingle = armOnlySingle && !arm->isVisibleTo(row);
+		texts(QStringLiteral("Auto · free running"), QStringLiteral("Auto · free running"), "Auto, free running");
+		bool autoRunStop = view->live() && hold->text() == QStringLiteral("Stop");
+		holds = view->triggerHolds();
+		feed(106.3); /* 106.0833: held */
+		autoRunStop = autoRunStop && view->triggerHolds() == holds + 1 && !view->live();
+		stopRun();
+		const double autoStopped = viewEnd();
+		feed(107.5);
+		autoRunStop = autoRunStop && view->triggerPhase() == Phase::Stopped && view->triggerHolds() == holds + 1
+				&& viewEnd() == autoStopped && hold->text() == QStringLiteral("Run");
+		stopRun(); /* Run */
+		autoRunStop = autoRunStop && view->live() && view->triggerPhase() == Phase::FreeRunning;
+		feed(108.3);
+		autoRunStop = autoRunStop && view->triggerHolds() == holds + 2;
+
+		/* Single: Run waits on a still view, the crossing stops it (its time in the row, Arm the primary button) */
+		setMode(ChartView::TriggerMode::Single);
+		const bool armInSingle = arm->isVisibleTo(row);
+		texts(QStringLiteral("waiting for a crossing"), QStringLiteral("Single · waiting"), "Single, waiting");
+		const double singleStill = viewEnd();
+		bool singleRunStop = !view->live() && hold->text() == QStringLiteral("Stop");
+		holds = view->triggerHolds();
+		feed(109.3); /* 109.0833 */
+		singleRunStop = singleRunStop && view->triggerHolds() == holds + 1 && view->triggerPhase() == Phase::Done
+				&& hold->text() == QStringLiteral("Run") && arm->property("primary").toBool() && singleStill < viewEnd();
+		const QString when = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000)))
+				.toString(QStringLiteral("HH:mm:ss.zzz"));
+		texts(QStringLiteral("Single · stopped at %1").arg(when), QStringLiteral("Single · stopped, capturing after T"),
+				"Single, capturing");
+		feed(110.5); /* full at 109.8833; 110.0833 does not count */
+		texts(QStringLiteral("Single · stopped at %1").arg(when), QStringLiteral("Single · stopped"), "Single, stopped");
+		singleRunStop = singleRunStop && view->triggerHolds() == holds + 1;
+		view->setLive(true); /* back at now, as a pan to the right end */
+		texts(QStringLiteral("Single · stopped at %1").arg(when), QStringLiteral("Single · stopped · Arm to wait"),
+				"Single, live");
+		stopRun(); /* Run: as Arm */
+		singleRunStop = singleRunStop && view->triggerPhase() == Phase::Waiting && !view->live()
+				&& hold->text() == QStringLiteral("Stop") && !arm->property("primary").toBool();
+		stopRun(); /* Stop */
+		singleRunStop = singleRunStop && view->triggerPhase() == Phase::Stopped;
+		stopRun(); /* Run */
+		feed(111.3); /* 111.0833 */
+		singleRunStop = singleRunStop && view->triggerHolds() == holds + 2 && view->triggerPhase() == Phase::Done;
+		std::printf("     (Run and Stop: Normal %d, a pan stops %d, Auto %d, Single %d)\n", int(normalRunStop), int(panStops),
+				int(autoRunStop), int(singleRunStop));
+		check(normalRunStop && panStops && autoRunStop && singleRunStop, "chart, Trigger: the toolbar's button is Run / "
+				"Stop while the trigger is on, in each mode: Stop keeps the view and its T through crossings, Run arms from "
+				"now (Auto runs live, Normal and Single wait on a still view); a pan is a Stop; Single's crossing stops it");
+		check(textsOk, "chart, Trigger: the row and the corner say one state in the review's words (waiting for a "
+				"crossing / Normal · waiting, triggered / Normal · triggered, capturing after T, Stopped · Run to arm, Auto · "
+				"free running, Single · stopped at the time / Single · stopped, Single · stopped · Arm to wait)");
+		check(armOnlySingle && armInSingle, "chart, Trigger: Arm only in Single (hidden in Auto and Normal), the primary "
+				"button while Single holds its crossing");
+		action->setChecked(false);
+		const bool backToHold = hold->text() == QStringLiteral("Live") || hold->text() == QStringLiteral("Hold");
+		chart.tab.hide();
+
+		/* crossings coming all along (a 1 kHz sine in a 10 ms window, no hold-off, the crossing at 75 %: one counts
+		 * every 3 ms): 50 re-triggers in one state rewrite neither the row nor the corner */
+		clearTriggerSettings(); /* the row of the next tab reads the mode saved: Normal again */
+		LoneChart sine(QStringLiteral("RATE"), QStringLiteral("V"));
+		sine.view->setWindow(0.01);
+		sine.view->setSmooth(false);
+		double sineFed = 99.0;
+		const auto feedSine = [&](int samples) { /* 20 kHz */
+			MathLines::Samples batch;
+			for (int i = 0; i < samples; i++, sineFed += 0.00005)
+				batch[regKey(sine.def)] << QPointF(sineFed, std::sin(2 * M_PI * 1000 * sineFed));
+			sine.now = sineFed;
+			sine.tab.frame(batch);
+			(void) sine.view->grab();
+		};
+		feedSine(20000);
+		sine.tab.show();
+		(void) QTest::qWaitForWindowExposed(&sine.tab);
+		auto *sineState = sine.tab.findChild<QLabel *>(QStringLiteral("triggerState"));
+		sine.tab.triggerOnLine(sine.key());
+		sine.view->setTriggerLevel(0.1);
+		sine.view->setTriggerHoldoff(0);
+		sine.view->setTriggerPosition(0.75);
+		int frames = 0;
+		while (sine.view->triggerHolds() < 10 && frames++ < 300) feedSine(20);
+		QTest::qWait(600); /* the rate is taken again after half a second */
+		const int warm = sine.view->triggerHolds();
+		while (sine.view->triggerHolds() == warm && frames++ < 400) feedSine(20);
+		const QString rowBefore = sineState ? sineState->text() : QString(), cornerBefore = sine.view->stateFullText();
+		const int start = sine.view->triggerHolds();
+		int rewrites = 0;
+		while (sine.view->triggerHolds() - start < 50 && frames++ < 1200) {
+			feedSine(20);
+			if (sineState && sineState->text() != rowBefore) rewrites++;
+			if (sine.view->stateFullText() != cornerBefore) rewrites++;
+		}
+		const int retriggers = sine.view->triggerHolds() - start;
+		std::printf("     (%d re-triggers: the row \"%s\", the corner \"%s\", %d rewrites; then the trigger off: the button "
+				"%s)\n", retriggers, qPrintable(rowBefore), qPrintable(cornerBefore), rewrites, backToHold ? "Hold / Live" : "?");
+		check(retriggers >= 50 && rewrites == 0 && rowBefore == QStringLiteral("triggered · 333 /s")
+						&& cornerBefore == QStringLiteral("Normal · triggered") && backToHold,
+				"chart, Trigger: 50 re-triggers in one state rewrite neither the row (\"triggered · 333 /s\", the rate twice "
+				"a second) nor the corner (\"Normal · triggered\"); the button is Hold / Live again with the trigger off");
+		sine.view->stopTrigger();
+		sine.tab.hide();
 		clearTriggerSettings();
 	}
 
