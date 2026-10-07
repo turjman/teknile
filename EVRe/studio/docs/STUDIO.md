@@ -2338,6 +2338,12 @@ What the Studio does with a stream on:
 
 - **The trigger** (7.13) on a fast line: the engine looks for the crossing in each block as it comes, at its record,
   and hands it to the chart with the block, which holds on it at the next frame.
+- **Polls beside a stream.** A poll's answer comes on the same link after the blocks the device sent before it.
+  Measured with `evre_fake_fast` at a million records a second (4 MB/s) and SUPPLY_V polled every 100 ms (and at
+  *max*): no timeout in 60 s, the answers in about 0.6 ms, also with every core of the PC busy and with the window
+  held: the stream itself does not make the polls time out in the Studio. A real device whose stream fills most of
+  its link, or that answers only between its blocks, makes the answers late: when the Log reports timeouts while a
+  stream runs, raise **Timeout** (3.3) or lower the stream's rate.
 - **To the window.** The blocks wait for the window's next frame in a queue of at most 64 MB (at a million samples a
   second of 4 bytes, 16 s). A window that stalls longer loses the oldest: their samples are counted as *not shown* in
   the rate's tooltip, and their line breaks there. A frame takes the blocks into the chart for about 8 ms at most:
