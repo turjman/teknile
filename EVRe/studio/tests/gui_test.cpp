@@ -538,6 +538,7 @@ public:
 		chartLogScale();
 		chartInfoLine();
 		chartOneCap();
+		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
 		chartExport();
@@ -5855,6 +5856,87 @@ private:
 				"refused (its tick taken back); the lines removed, the registers' limit as before");
 	}
 
+	/* The memory strip's box at a short window (O-6): 10 ms of a minute is a sliver no mouse can take, so a handle
+	 * 12 px wide is drawn on the view; the mouse over it a pointing hand, the handle lit, a tooltip; taken and dragged
+	 * it moves the view by as much as the mouse (no jump when taken); a click elsewhere on the strip still takes the
+	 * view there; the wheel over the strip moves it a window earlier or later */
+	static void memoryStripHandle() {
+		QWidget host;
+		host.resize(1100, 480);
+		auto *view = new ChartView(&host);
+		view->setGeometry(9, 5, 1080, 470);
+		double now = 100;
+		view->setClock([&now] { return now; }, 0);
+		view->setMemory(60);
+		view->addSeries(1, QStringLiteral("R"), QStringLiteral("V"), Qt::blue);
+		for (int i = 0; i <= 60000; i++) view->append(1, 40 + i * 0.001, std::sin(i * 0.01));
+		view->frame();
+		view->showSpan(70, 70.01);
+		host.show();
+		(void) QTest::qWaitForWindowExposed(&host);
+		(void) host.grab();
+		double t0, t1;
+		const auto end = [&] {
+			(void) host.grab();
+			view->viewSpan(t0, t1);
+			return t1;
+		};
+		const QRectF handle = view->memoryHandleRect();
+		/* the strip spans the plot: its width from the time under two x (the view a minute ago on 60 s of memory) */
+		const double plotW = view->window() * 100 / (view->timeAt(100) - view->timeAt(0));
+		const double secondsPerPx = view->memory() / plotW;
+		const double viewX = handle.center().x();
+		const bool wide = std::fabs(handle.width() - ChartView::MEMORY_HANDLE_W) < 0.01;
+		/* the mouse over it */
+		const auto moveTo = [view](QPointF at, Qt::MouseButtons buttons) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, buttons, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		};
+		moveTo(handle.center(), Qt::NoButton);
+		const QString tip = view->toolTipAt(handle.center());
+		const bool hover = view->memoryHandleHovered() && view->cursor().shape() == Qt::PointingHandCursor
+				&& tip.startsWith(QStringLiteral("The view: drag it along the memory"));
+		/* taken (no jump) and dragged 100 px right: 100 px of the strip later */
+		const double before = end();
+		const QPoint at = handle.center().toPoint();
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, at);
+		const double taken = end();
+		moveTo(QPointF(at.x() + 100, at.y()), Qt::LeftButton);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(at.x() + 100, at.y()));
+		const double dragged = end();
+		const bool drags = std::fabs(taken - before) < secondsPerPx && std::fabs(dragged - before - 100 * secondsPerPx) < 2 * secondsPerPx;
+		/* a click 300 px left of it: the view there */
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(at.x() - 200, at.y()));
+		const double jumped = end();
+		const bool jumps = std::fabs(jumped - (dragged - 300 * secondsPerPx)) < 2 * secondsPerPx;
+		/* the wheel over the strip: down a window later, up a window earlier */
+		const auto wheel = [view](QPointF where, int notches) {
+			QWheelEvent e(where, view->mapToGlobal(where), QPoint(), QPoint(0, 120 * notches), Qt::NoButton, Qt::NoModifier,
+					Qt::NoScrollPhase, false);
+			QApplication::sendEvent(view, &e);
+		};
+		const QPointF onStrip(view->memoryHandleRect().center().x() - 150, view->memoryHandleRect().center().y());
+		wheel(onStrip, -1);
+		const double later = end();
+		wheel(onStrip, 2);
+		const double earlier = end();
+		const bool wheels = std::fabs(later - jumped - 0.01) < 1e-6 && std::fabs(earlier - later + 0.02) < 1e-6
+				&& std::fabs(view->window() - 0.01) < 1e-9 && !view->live();
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the handle lit at 10 ms */
+			moveTo(view->memoryHandleRect().center(), Qt::NoButton);
+			host.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_strip_handle.png"));
+		}
+		if (!wide || !hover || !drags || !jumps || !wheels)
+			std::printf("     (the handle %g px at x %g (%d), hover %d tip \"%s\"; %g s a px: taken %+g, dragged %+g; jumped %+g; "
+					"wheel %+g, %+g; window %.17g, live %d)\n", handle.width(), viewX, int(wide), int(hover), qPrintable(tip),
+					secondsPerPx, taken - before, dragged - before, jumped - dragged, later - jumped, earlier - later,
+					view->window(), int(view->live()));
+		check(wide && hover && drags && jumps && wheels,
+				"chart, the memory strip at a 10 ms window: a handle 12 px wide on the view (the mouse over it a pointing hand, "
+				"lit, a tooltip); dragged it moves the view by as much as the mouse, no jump when taken; a click elsewhere "
+				"takes the view there; the wheel over the strip a window later or earlier");
+	}
+
 	void chartInfoLine() {
 		LoneChart chart(QStringLiteral("INFO"), QStringLiteral("V"));
 		auto *label = chart.tab.findChild<QLabel *>(QStringLiteral("chartInfo"));
@@ -7325,6 +7407,47 @@ private:
 					movedH0, view->laneRect(1).height(), view->laneRect(0).height(), qPrintable(saved.join(QStringLiteral(", "))));
 		check(moved && heldBelow && heldAbove && saved.size() == 2, "chart, a lane's border dragged: the lane above "
 				"taller by as much as the one below is lower, the others as they were; neither under 80 px; saved by unit");
+
+		/* weights that would run past the plot (O-11): the first lane twenty times the others, whose share is then under
+		 * 80 px: they are held at 80 and the first takes the rest, every lane in the plot, nothing to scroll (a lane held
+		 * at the minimum on top of the shares ran the last one below the plot). Lanes that do not fit at 80 px each:
+		 * all at 80, scrolled, as before */
+		{
+			const QStringList kept = view->laneHeights();
+			QStringList weights;
+			for (int i = 0; i < view->laneCount(); i++)
+				weights << view->laneLabel(i) + QLatin1Char('\t') + (i == 0 ? QStringLiteral("6") : QStringLiteral("0.3"));
+			view->setLaneHeights(weights);
+			(void) view->grab();
+			const auto lowest = [view] {
+				double h = 1e9;
+				for (int i = 0; i < view->laneCount(); i++) h = std::min(h, view->laneRect(i).height());
+				return h;
+			};
+			const double plotH = view->laneRect(3).bottom() - view->laneRect(0).top();
+			const bool fit = view->laneScrollBarRect().isEmpty() && view->laneScroll() == 0 && lowest() > ChartView::LANE_MIN_H - 0.01
+					&& std::fabs(view->laneRect(1).height() - ChartView::LANE_MIN_H) < 0.01
+					&& view->laneRect(0).height() > 2 * ChartView::LANE_MIN_H
+					&& std::fabs(view->laneContentHeight() - plotH) < 0.01 && view->laneRect(0).top() >= 0;
+			const QSize size = tab.size();
+			tab.resize(size.width(), 420);
+			QApplication::processEvents();
+			(void) view->grab();
+			const bool scrolls = !view->laneScrollBarRect().isEmpty() && std::fabs(lowest() - ChartView::LANE_MIN_H) < 0.01
+					&& std::fabs(view->laneRect(0).height() - ChartView::LANE_MIN_H) < 0.01;
+			if (!fit || !scrolls)
+				std::printf("     (weights 6 0.3 0.3 0.3: lanes %g %g %g %g in %g px, scroll bar %d; short: the first %g, the "
+						"lowest %g, scroll bar %d)\n", view->laneRect(0).height(), view->laneRect(1).height(),
+						view->laneRect(2).height(), view->laneRect(3).height(), plotH, int(!view->laneScrollBarRect().isEmpty()),
+						view->laneRect(0).height(), lowest(), int(!view->laneScrollBarRect().isEmpty()));
+			tab.resize(size);
+			QApplication::processEvents();
+			view->setLaneHeights(kept);
+			(void) view->grab();
+			check(fit && scrolls, "chart, lane heights that fit: weights whose shares would put lanes under 80 px hold those "
+					"at 80 and give the rest to the others, every lane in the plot, no scroll bar; too short for 80 px each, "
+					"all at 80 and scrolled");
+		}
 
 		/* kept: a new tab of the same settings has the same heights; a double-click on a separator: all equal, saved */
 		const double kept0 = view->laneRect(0).height();

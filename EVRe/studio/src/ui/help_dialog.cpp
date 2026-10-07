@@ -319,7 +319,8 @@ zooms it, around the mouse when held.</li>
 <li><b>Memory</b>: how much is kept (as an oscilloscope's memory depth), <b>Window</b> the part shown: keep 1 min,
 look at 10 s. <b>Drag</b> the chart to look back through the memory, or click / drag on the <b>memory strip</b> under it
 (the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
-much is kept).</li>
+much is kept). Drag its box, or at a short window the handle drawn on it; the <b>wheel</b> over it moves the view a
+window earlier or later.</li>
 <li><b>RAM</b>: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
 size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
 <i>RAM budget reached: keeping the last 4.0 min of 30.0 min</i>, and while a recording runs <i>· the recording
@@ -353,7 +354,7 @@ a line between two lanes, each at least 80 px high: when they do not fit they sc
 the bar at the right); a click on a lane's ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
+equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
 Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
@@ -636,7 +637,8 @@ cancels · right-click: the menu of the row and the table</td></tr>
 the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
-<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
+<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or
+handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
 <tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>

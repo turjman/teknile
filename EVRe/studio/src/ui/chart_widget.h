@@ -513,6 +513,11 @@ public:
 	QString memoryStripText() const { return stripText_; }
 	QColor memoryStripTextColor() const { return stripTextColor_; }
 	QString memoryStripTip() const;
+	/* the view's box on the memory strip as last drawn, or its handle (MEMORY_HANDLE_W wide, centred on the view) where
+	 * the box is narrower: what a press drags (tests); the mouse over it */
+	QRectF memoryHandleRect() const { return memoryHandle_; }
+	bool memoryHandleHovered() const { return hoverMemoryHandle_; }
+	static constexpr double MEMORY_HANDLE_W = 12;
 	/* tests: the memory the lines' arrays hold now, bytes (their room, not only the samples in it) */
 	qint64 bytesHeld() const;
 	void setDrawThreads(int threads) { drawThreads_ = threads; } /* for tests: 1 = this thread alone; 0 = all */
@@ -1177,6 +1182,10 @@ private:
 	mutable QRectF triggerMark_;      /* where it takes the mouse */
 	bool hoverMark_ = false;
 	double positionGrab_ = 0;         /* Position: the mouse's distance right of the flag's middle when the drag began */
+	QRectF memoryHandle_;             /* the view's box on the memory strip, or its handle, as last drawn */
+	double memoryViewX_ = 0;          /* the view's middle on the strip, as last drawn */
+	double overviewGrab_ = 0;         /* Overview: the mouse's distance right of the view's middle (0: a jump) */
+	bool hoverMemoryHandle_ = false;
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */

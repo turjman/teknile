@@ -57,6 +57,7 @@ constexpr double TRIGGER_STRIP_H = 26;     /* the flag's strip: 1 px under the l
 constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
 constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
 constexpr double BOTTOM_PAD = 8;
+constexpr double LANE_FIT_SLACK = 0.01;   /* px: lanes that fill the plot fit, their sum's rounding past it ignored */
 constexpr double CARD_RADIUS = 10;
 constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
 constexpr double LEGEND_ROW_H = 22;
@@ -483,7 +484,7 @@ void ChartView::setRecordingOn(bool on) {
 /* the memory strip's tooltip: what it is and does, and with the RAM budget reached what that means */
 QString ChartView::memoryStripTip() const {
 	QString tip = tr("The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view "
-			"goes there");
+			"goes there · Wheel: a window earlier or later");
 	if (!capped_) return tip;
 	double k0, k1;
 	memorySpan(k0, k1);
@@ -1886,6 +1887,7 @@ bool ChartView::event(QEvent *e) {
 		hoverSeparator_ = -1;
 		hoverEdge_ = false;
 		hoverMark_ = false;
+		hoverMemoryHandle_ = false;
 		hoverLevel_ = false;
 		hoverChip_ = -1;
 		refresh();
@@ -1949,9 +1951,11 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		positionGrab_ = pos.x() - triggerMark_.center().x(); /* moved from where it was taken: no jump to the mouse */
 		return;
 	}
-	/* on (or just by) the memory strip: the view goes there */
+	/* on (or just by) the memory strip: the view goes there; taken by its box or handle, it follows the mouse from
+	 * where it was, no jump */
 	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
 		drag_ = Drag::Overview;
+		overviewGrab_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos) ? pos.x() - memoryViewX_ : 0;
 		mouseMoveEvent(e);
 		return;
 	}
@@ -2037,7 +2041,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		/* the strip spans the whole memory depth, filled or not */
 		const double m1 = liveEnd(), m0 = m1 - memory_;
 		const QRectF strip = overviewRect();
-		const double t = m0 + std::clamp((pos.x() - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
+		const double t = m0 + std::clamp((pos.x() - overviewGrab_ - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
 		holdAt(t + window_ / 2); /* the view centred where the mouse is */
 		break;
 	}
@@ -2108,6 +2112,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLevelTag = trigger_.on && (triggerLevelTag_.contains(pos) || triggerLevelMark_.contains(pos));
 		hoverEdge_ = trigger_.on && triggerEdgeButton_.contains(pos);
 		hoverMark_ = trigger_.on && triggerMark_.contains(pos);
+		hoverMemoryHandle_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos);
 		/* both lit over them and over the level's line (the line drags as they do) */
 		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
@@ -2154,9 +2159,15 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 	if (wheelLegend(e)) return;
 	const double notches = e->angleDelta().y() / 120.0;
 	if (notches == 0) return;
+	/* over the memory strip: the view a window earlier (up) or later (down), held, as a pan by the whole view */
+	const QPointF pos = e->position();
+	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
+		holdAt(viewEnd() - notches * window_);
+		e->accept();
+		return;
+	}
 	/* lanes: over their value labels (or the scroll bar), the wheel scrolls them; with Ctrl, it stays the lane's zoom */
 	const QRectF plot = plotRect();
-	const QPointF pos = e->position();
 	if (lanes_ && !(e->modifiers() & Qt::ControlModifier) && pos.y() >= plot.top() && pos.y() <= plot.bottom()
 			&& (pos.x() < plot.left() || pos.x() > plot.right())) {
 		scrollLanesTo(laneScroll() - notches * LANE_WHEEL_STEP);
@@ -3007,22 +3018,36 @@ QVector<ChartView::Lane> ChartView::plotLayout() const {
 }
 
 /* The open lanes share what the folded ones and the gaps leave by their weights (a lane dragged taller has a weight
- * over 1, the one below it under), as equal shares do when all are 1; when that is under LANE_MIN_H each, the equal
- * share is LANE_MIN_H and the lanes go on below the plot (scrolled) */
+ * over 1, the one below it under), as equal shares do when all are 1. A lane whose share would be under LANE_MIN_H is
+ * held there and the others share what is left, again by their weights, so the lanes still fill the plot exactly: a
+ * lane held at the minimum took its 80 px on top of the shares, and the last lane ran below the plot, cut and scrolled.
+ * Only when even LANE_MIN_H each does not fit are they all LANE_MIN_H, going on below the plot (scrolled). unit: the
+ * pixels of a weight of 1 for the lanes not held (the drag of a border turns heights into weights by it) */
 void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, QVector<double> &heights, double &unit) const {
 	int folded = 0;
-	double weights = 0;
-	for (const Lane &lane : lanes) {
-		if (lane.folded) folded++;
-		else weights += laneWeights_.value(lane.key, 1.0);
-	}
+	for (const Lane &lane : lanes) folded += lane.folded;
 	const int open = int(lanes.size()) - folded;
 	const double gaps = LANE_GAP * std::max<qsizetype>(0, lanes.size() - 1);
-	const double share = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
-	unit = open > 0 && weights > 0 ? share * open / weights : share;
+	const double room = plotHeight - gaps - folded * LANE_FOLDED_H; /* what the open lanes share */
+	const bool scrolled = open > 0 && room <= open * LANE_MIN_H;
+	QVector<bool> held(lanes.size(), scrolled);
+	unit = LANE_MIN_H;
+	for (bool more = !scrolled && open > 0; more;) {
+		double weights = 0, left = room;
+		for (qsizetype k = 0; k < lanes.size(); k++) {
+			if (lanes[k].folded) continue;
+			if (held[k]) left -= LANE_MIN_H;
+			else weights += laneWeights_.value(lanes[k].key, 1.0);
+		}
+		if (weights <= 0) break;
+		unit = left / weights;
+		more = false;
+		for (qsizetype k = 0; k < lanes.size(); k++)
+			if (!lanes[k].folded && !held[k] && unit * laneWeights_.value(lanes[k].key, 1.0) < LANE_MIN_H) held[k] = more = true;
+	}
 	heights.resize(lanes.size());
 	for (qsizetype k = 0; k < lanes.size(); k++)
-		heights[k] = lanes[k].folded ? LANE_FOLDED_H : std::max(LANE_MIN_H, unit * laneWeights_.value(lanes[k].key, 1.0));
+		heights[k] = lanes[k].folded ? LANE_FOLDED_H : held[k] ? LANE_MIN_H : unit * laneWeights_.value(lanes[k].key, 1.0);
 }
 
 QStringList ChartView::laneHeights() const {
@@ -3074,7 +3099,11 @@ double ChartView::laneContentHeight() const {
 	return plots.last().axes.rect.bottom() - plots.first().axes.rect.top();
 }
 
-double ChartView::maxLaneScroll() const { return std::max(0.0, laneContentHeight() - plotRect().height()); }
+/* the shares add up to the plot's height but for the rounding of their sum: under LANE_FIT_SLACK past it they fit */
+double ChartView::maxLaneScroll() const {
+	const double over = laneContentHeight() - plotRect().height();
+	return over > LANE_FIT_SLACK ? over : 0.0;
+}
 
 double ChartView::laneScroll() const { return std::clamp(laneScroll_, 0.0, maxLaneScroll()); }
 
@@ -3103,7 +3132,7 @@ void ChartView::laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu) {
 /* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
 QRectF ChartView::laneScrollBarRect() const {
 	const QRectF plot = plotRect();
-	if (!lanes_ || laneContentHeight() <= plot.height()) return QRectF();
+	if (!lanes_ || laneContentHeight() <= plot.height() + LANE_FIT_SLACK) return QRectF();
 	return QRectF(plot.right() + LANE_BAR_X, plot.top(), LANE_BAR_W, plot.height());
 }
 
@@ -3220,6 +3249,8 @@ void ChartView::setAllLanesFolded(bool folded) {
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos))
+		return tr("The view: drag it along the memory · Wheel: a window earlier or later");
 	if (overviewRect().contains(pos)) return memoryStripTip();
 	if (divisionRect_.contains(pos))
 		return (divisionFromT_ ? tr("A division of the grid (10 across the view) and the clock time at 0, the trigger's "
@@ -5135,13 +5166,29 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			stripGeneration_ = seriesGeneration_;
 		}
 		p.drawImage(stripAt_, stripImage_);
-		/* the view on it */
+		/* the view on it; at a short window (10 ms of an hour) the box is a sliver no mouse can take, so a handle
+		 * MEMORY_HANDLE_W wide is drawn over it, centred on the view, with two grip lines: it drags as the box does.
+		 * The mouse over either lights it */
 		const double va = std::max(strip.x(axes.t0), box.left()), vb = std::min(strip.x(axes.t1), box.right());
+		const QRectF view(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2);
+		memoryViewX_ = strip.x((axes.t0 + axes.t1) / 2);
 		QColor fill = c.accent;
-		fill.setAlpha(45);
+		fill.setAlpha(hoverMemoryHandle_ ? 90 : 45);
 		p.setPen(QPen(c.accent, 1.2));
 		p.setBrush(fill);
-		p.drawRoundedRect(QRectF(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2), 3, 3);
+		p.drawRoundedRect(view, 3, 3);
+		memoryHandle_ = view;
+		if (view.width() < MEMORY_HANDLE_W) {
+			const double left = std::clamp(memoryViewX_ - MEMORY_HANDLE_W / 2, box.left(), box.right() - MEMORY_HANDLE_W);
+			memoryHandle_ = QRectF(left, view.top(), MEMORY_HANDLE_W, view.height());
+			fill.setAlpha(hoverMemoryHandle_ ? 150 : 90);
+			p.setBrush(fill);
+			p.drawRoundedRect(memoryHandle_, 3, 3);
+			p.setPen(QPen(hoverMemoryHandle_ ? c.text : c.surface2, 1));
+			const double mid = memoryHandle_.center().x(), y0 = memoryHandle_.center().y() - 5, y1 = y0 + 10;
+			p.drawLine(QPointF(mid - 1.5, y0), QPointF(mid - 1.5, y1));
+			p.drawLine(QPointF(mid + 1.5, y0), QPointF(mid + 1.5, y1));
+		}
 		/* still filling: how much is kept, in the empty part when there is room. The RAM budget reached: in the warn
 		 * colour and in words that say what it is, the chart letting the oldest go while a recording's file keeps them
 		 * all ("memory full" while recording read as data lost); the longest words that fit, whole */
