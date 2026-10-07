@@ -628,7 +628,8 @@ the ⚠ switch.</li>
 cancels · right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
-<b>click</b> places A, then B, a <b>drag</b> moves the nearer</td></tr>
+<b>click</b> places A, then B, a <b>drag</b> moves the nearer; the mouse on a cursor's tag: its time (from T while
+the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
