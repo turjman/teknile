@@ -282,6 +282,22 @@ public:
 	QRectF triggerEdgeButton() const { return triggerEdgeButton_; }
 	QString triggerTagText() const { return triggerTagText_; }
 	bool triggerEdgeHovered() const { return hoverEdge_; } /* tests: the edge symbol drawn highlighted */
+	/* The level's tag is a small handle at rest (a triangle pointing at the level and the edge symbol), so it covers
+	 * none of the newest samples; its whole text shows under the mouse and while the level is dragged */
+	bool triggerTagOpen() const { return hoverLevel_ || drag_ == Drag::Level; }
+	/* the handle's triangle is solid while the level is the one the view held crossed, hollow after a change of it
+	 * until a crossing at the new one (and before the first) */
+	bool triggerHandleSolid() const;
+	/* the level beyond its lane's range as last drawn: 1 above, -1 below (its line pinned to the lane's edge, dotted,
+	 * ▲ or ▼ in its tag), 0 in it. The lane's Auto range is not widened for it */
+	int triggerLevelOffScale() const { return triggerOffScale_; }
+	/* the level beyond what the line shows in view as last drawn (1 above, -1 below, 0 not): the row's "waiting: level
+	 * above the line's range" */
+	int triggerLevelBeyondLine() const { return triggerBeyond_; }
+	bool triggerTagHovered() const { return hoverT_; } /* tests: the crossing's T drawn highlighted */
+	/* a level as it is set: the row's box, the tag and the drag write it alike (6 significant digits, not chartNumber's
+	 * rounding of a measured value) */
+	static QString levelText(double level);
 
 	/* Lanes: a plot per unit, stacked, on one time axis; the cursors, the A-B bar and the notes across them, one
 	 * crosshair box. Every unit has a lane of its own, however many: an open lane is at least LANE_MIN_H high (room
@@ -989,6 +1005,8 @@ private:
 		bool holding = false;
 		bool stopped = false;   /* by the user: Stop or a pan */
 		double since = 0;       /* armed last from here: a crossing before it is not "triggered" */
+		double atLevel = NAN;   /* the last crossing's level and edge: the T's tooltip, the handle solid */
+		TriggerEdge atEdge = TriggerEdge::Rising;
 	} trigger_;
 	QVector<double> recentHolds_; /* the last crossings held, for triggerRate */
 	void holdAsShown();           /* the view stays as it is shown now (Normal and Single armed, Stop) */
@@ -1023,7 +1041,7 @@ private:
 			QRectF &tag, QRectF &levelTag) const;
 	void drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const;
 	const QImage &triggerPicture(qreal dpr) const;
-	QString triggerTagLabel() const;                   /* "I_LOAD 1.20 A, rising" */
+	QString triggerTagLabel() const;                   /* "I_LOAD 1.2 A, rising" */
 	QString edgeSymbol() const;                        /* ↑ rising, ↓ falling, ↕ either */
 	const QImage &levelTagPicture(qreal dpr) const;    /* the level's tag with its edge symbol, both paths */
 	mutable QRectF triggerLevelTag_, triggerEdgeButton_;
@@ -1031,6 +1049,10 @@ private:
 	mutable QImage levelTagImage_;
 	mutable QString levelTagKey_;
 	bool hoverEdge_ = false;          /* the mouse over the tag's edge symbol: drawn highlighted */
+	bool hoverLevel_ = false;         /* the mouse over the handle or the level's line: the tag's whole text */
+	bool hoverT_ = false;             /* the mouse over the crossing's T: drawn highlighted, its tooltip */
+	mutable int triggerOffScale_ = 0, triggerBeyond_ = 0;
+	QString triggerPointText() const; /* the T's tooltip: "Trigger point: I_LOAD crossed 0 A, rising, at 14:03:12.345" */
 	double triggerPosition_ = TRIGGER_AT;
 	double triggerHoldoff_ = -1;
 	int triggerHolds_ = 0;

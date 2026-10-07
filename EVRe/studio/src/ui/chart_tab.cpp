@@ -49,6 +49,7 @@
 #endif
 
 #include "ui/chart_widget.h"
+#include "ui/elided_label.h"
 #include "ui/event_log.h"
 #include "ui/math_line_dialog.h"
 #include "ui/recording_window.h"
@@ -917,8 +918,13 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerArm_->setObjectName(QStringLiteral("triggerArm"));
 	triggerArm_->setToolTip(tr("Wait for one more crossing"));
 	triggerArm_->setVisible(false); /* Single only (showTriggerState) */
-	triggerState_ = mutedLabel(QString());
+	triggerState_ = new ElidedLabel;
 	triggerState_->setObjectName(QStringLiteral("triggerState"));
+	triggerUnit_ = new QLabel;
+	triggerUnit_->setObjectName(QStringLiteral("triggerUnit"));
+	/* the place's label named, apart from the hold-off's box: "hold-off [window] at [20 %]" read as one phrase */
+	auto *positionLabel = mutedLabel(tr("position"));
+	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the triangle under the time axis"));
 	auto *row = new QHBoxLayout(triggerRow_);
 	row->setContentsMargins(0, 0, 0, 0);
 	row->setSpacing(6);
@@ -927,10 +933,12 @@ QWidget *ChartTab::buildTriggerRow() {
 	row->addWidget(triggerEdge_);
 	row->addWidget(mutedLabel(tr("level")));
 	row->addWidget(triggerLevel_);
+	row->addWidget(triggerUnit_);
 	row->addWidget(triggerMode_);
 	row->addWidget(mutedLabel(tr("hold-off")));
 	row->addWidget(triggerHoldoff_);
-	row->addWidget(mutedLabel(tr("at")));
+	row->addSpacing(6);
+	row->addWidget(positionLabel);
 	row->addWidget(triggerPosition_);
 	row->addWidget(triggerArm_);
 	row->addSpacing(8);
@@ -992,7 +1000,13 @@ void ChartTab::fillTriggerLines() {
 void ChartTab::showLineSettings() {
 	if (triggerLine_->currentIndex() < 0) return;
 	const ChartView::TriggerSettings settings = chart_->view()->triggerSettings(triggerLine_->currentData().toInt());
-	triggerLevel_->setText(QString::number(settings.level, 'g', 6));
+	triggerLevel_->setText(ChartView::levelText(settings.level));
+	/* the unit beside the box: the level is in it, as the tag on the chart writes it */
+	QString unit;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		if (line.key == triggerLine_->currentData().toInt()) unit = line.unit;
+	triggerUnit_->setText(unit);
+	triggerUnit_->setVisible(!unit.isEmpty());
 	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(int(settings.edge))));
 }
 
@@ -1042,7 +1056,7 @@ void ChartTab::applyTrigger() {
 		 * dragged to 0.1234567 stays as it is through a change of the mode or an Arm */
 		const int key = triggerLine_->currentData().toInt();
 		const double kept = chart_->view()->triggerSettings(key).level;
-		const bool typed = ok && triggerLevel_->text().trimmed() != QString::number(kept, 'g', 6);
+		const bool typed = ok && triggerLevel_->text().trimmed() != ChartView::levelText(kept);
 		chart_->view()->setTrigger(key, typed ? level : kept, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
 				ChartView::TriggerMode(triggerMode_->currentData().toInt()));
 		QSettings settings;
@@ -1065,7 +1079,10 @@ QString ChartTab::triggerState() const {
 	case ChartView::TriggerPhase::Off: return QString();
 	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
-	case ChartView::TriggerPhase::Waiting: return tr("waiting for a crossing");
+	case ChartView::TriggerPhase::Waiting: /* a level the line does not reach says so: it would wait for ever */
+		return view->triggerLevelBeyondLine() > 0 ? tr("waiting: level above the line's range")
+				: view->triggerLevelBeyondLine() < 0 ? tr("waiting: level below the line's range")
+				: tr("waiting for a crossing");
 	case ChartView::TriggerPhase::Triggered:
 		if (!rateKept_ || rateClock_.elapsed() >= RATE_EVERY_MS) {
 			const double rate = view->triggerRate();
@@ -1085,7 +1102,7 @@ QString ChartTab::triggerState() const {
 
 void ChartTab::showTriggerState() {
 	const QString text = triggerState();
-	if (triggerState_->text() != text) triggerState_->setText(text);
+	if (triggerState_->fullText() != text) triggerState_->setFullText(text);
 	/* Arm only where it does something: Single, the primary button while Single holds its crossing */
 	triggerArm_->setVisible(triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single));
 	const bool primary = chart_->view()->triggerPhase() == ChartView::TriggerPhase::Done;

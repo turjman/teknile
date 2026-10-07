@@ -58,6 +58,7 @@
 
 class ChartView;
 class ChartWidget;
+class ElidedLabel;
 class QAction;
 class QActionGroup;
 class QComboBox;
@@ -311,7 +312,9 @@ private:
 	void showHoldoff();
 	QLineEdit *triggerLevel_ = nullptr;
 	QPushButton *triggerArm_ = nullptr;
-	QLabel *triggerState_ = nullptr;
+	QLabel *triggerUnit_ = nullptr; /* the line's unit after the level's box */
+	/* the state: cut to its room and whole in its tooltip, so no state's text sets the window's least width */
+	ElidedLabel *triggerState_ = nullptr;
 	QVector<int> triggerKeys_;    /* the lines in the list, by key */
 	void showLaneActions(); /* Fold all / Open all: shown with Lanes on, each enabled when it has something to do */
 	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */

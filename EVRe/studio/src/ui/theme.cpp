@@ -172,7 +172,7 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 #appSub { color: %MUTED%; font-size: 9pt; }
 #card { background: %S2%; border: 1px solid %BORDER%; border-radius: 10px; }
 #cardTitle { color: %MUTED%; font-size: 8pt; font-weight: 700; letter-spacing: 1px; }
-#muted, #chartInfo, #measureInfo { color: %MUTED%; }
+#muted, #chartInfo, #measureInfo, #triggerUnit { color: %MUTED%; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;

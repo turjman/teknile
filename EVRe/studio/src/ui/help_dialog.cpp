@@ -388,15 +388,17 @@ Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amp
 its own with a readout under the mouse, a picture and CSV.</p>
 <h3>Trigger</h3>
 <p><b>Right-click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
-line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane with a tag at its right end,
-<i>I_LOAD 1.20 A, rising</i>: <b>drag</b> the line or the tag to move the level; <b>click</b> the tag's arrow (↑ ↓ ↕)
-for rising, falling or either. Each line keeps its own level and edge.</p>
+line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane with a small handle at its
+right end: a triangle, solid while the picture held crossed this level, and an arrow. Under the mouse the handle shows
+its tag, <i>I_LOAD 1.2 A, rising</i>: <b>drag</b> the line or the handle to move the level; <b>click</b> the handle's
+arrow (↑ ↓ ↕) for rising, falling or either. A level beyond the lane's range stays on its edge, dotted, with ▲ or ▼
+and <i>(above range)</i> in its tag. Each line keeps its own level and edge.</p>
 <p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
 the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
 the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls. The
 <b>hold-off</b> (the window's length by default, 0 to
-10 s) is the time after a crossing in which no other counts. The crossing sits at 20 % of the window with a <b>T</b>
-over it: <b>drag</b> the small triangle under the chart to move it (0 to 90 %). In a window under a second the next
+10 s) is the time after a crossing in which no other counts. The T at the top marks the crossing (its tooltip says
+when and at what level); the triangle under the time axis is its place in the window: drag it (0 to 90 %). In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
 <p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
@@ -615,8 +617,8 @@ all fit</td></tr>
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum, Trigger on this line</td></tr>
-<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line or tag · <b>click</b> the tag's arrow: rising, falling,
-either · <b>drag</b> the triangle under the chart: where the crossing sits</td></tr>
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line or handle · <b>click</b> the handle's arrow: rising,
+falling, either · <b>drag</b> the triangle under the chart: where the crossing sits</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
 Log), Fold lane ·
 <b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·

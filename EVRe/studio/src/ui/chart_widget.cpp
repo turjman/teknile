@@ -97,6 +97,7 @@ constexpr double NOTE_TAG_BOTTOM = 4;          /* above the plot's bottom edge *
 constexpr double NOTE_TEXT_MAX = 180;
 constexpr double NOTE_PAD = 6;
 constexpr double LEVEL_TAG_H = 18;             /* the trigger's level tag, its edge symbol as wide */
+constexpr double LEVEL_HANDLE_W = 12;          /* the level handle's triangle, left of its edge symbol */
 constexpr qsizetype RATE_HOLDS = 64;           /* the last crossings held that the trigger's rate is taken from */
 
 /* 1, 2, 5 x 10^n steps giving about `target` ticks over span */
@@ -1205,6 +1206,8 @@ void ChartView::setTriggerEdge(TriggerEdge edge) {
  * Single waits for Arm; Normal and Auto count the next crossing once the hold-off has passed and the view is full */
 void ChartView::fireTrigger(double time) {
 	trigger_.at = time;
+	trigger_.atLevel = watchedSettings().level;
+	trigger_.atEdge = watchedSettings().edge;
 	triggerHolds_++;
 	recentHolds_.push_back(time);
 	if (recentHolds_.size() > RATE_HOLDS) recentHolds_.removeFirst();
@@ -1743,6 +1746,8 @@ bool ChartView::event(QEvent *e) {
 		hoverSeparator_ = -1;
 		hoverEdge_ = false;
 		hoverMark_ = false;
+		hoverLevel_ = false;
+		hoverT_ = false;
 		refresh();
 	}
 	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
@@ -1947,6 +1952,12 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLevelTag = trigger_.on && triggerLevelTag_.contains(pos);
 		hoverEdge_ = trigger_.on && triggerEdgeButton_.contains(pos);
 		hoverMark_ = trigger_.on && triggerMark_.contains(pos);
+		/* the level's handle opens to its whole text over it and over the level's line */
+		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
+				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
+		hoverLevel_ = onLevelTag || onLevelLine;
+		/* the crossing's T: not a control (an arrow), lit, its tooltip says what it marks */
+		hoverT_ = trigger_.on && triggerTag_.contains(pos) && !onLevelTag;
 		if (hoverSeparator_ >= 0 && !onLevelTag) {
 			setCursor(Qt::SizeVerCursor);
 			break;
@@ -1954,6 +1965,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar || onLevelTag || hoverMark_
 						? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
+				: hoverT_ ? Qt::ArrowCursor
 				: trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 						&& plot.contains(pos) ? Qt::SizeVerCursor
 				: plot.contains(pos) ? (cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor) : Qt::ArrowCursor);
@@ -2972,6 +2984,7 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 				.arg(int(std::lround(triggerPosition_ * 100)));
 	if (trigger_.on && triggerLevelTag_.contains(pos))
 		return tr("Drag: the trigger's level · Click its arrow: rising, falling or either");
+	if (trigger_.on && triggerTag_.contains(pos)) return triggerPointText();
 	const QRectF plot = plotRect();
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
 		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
@@ -3868,9 +3881,11 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	QRectF levelLane, tag, levelTag;
 	if (triggerGeometry(plots, lines, levelY, levelLane, tag, levelTag)) {
 		const QColor color = series_.value(trigger_.key).color;
-		/* as the CPU's pen (1.2 px, Qt::DashLine: dashes of 4.8, gaps of 2.4), the cursors and the notes */
-		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)), 4.8 * dpr,
-				2.4 * dpr, gpuColor(color));
+		/* as the CPU's pen (1.2 px, Qt::DashLine: dashes of 4.8, gaps of 2.4), the cursors and the notes; off scale its
+		 * Qt::DotLine with flat ends (dots of 1.2, gaps of 2.4) */
+		const bool dotted = triggerOffScale_ != 0;
+		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)),
+				(dotted ? 1.2 : 4.8) * dpr, 2.4 * dpr, gpuColor(color));
 		if (!tag.isEmpty()) frame.sprites.push_back({ triggerPicture(dpr), whole(tag.topLeft()) });
 		if (!levelTag.isEmpty()) frame.sprites.push_back({ levelTagPicture(dpr), whole(levelTag.topLeft()) });
 	}
@@ -4119,12 +4134,15 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 	triggerTag_ = triggerLevelTag_ = triggerEdgeButton_ = QRectF();
 	triggerTagText_.clear();
 	tag = levelTag = QRectF();
+	triggerOffScale_ = triggerBeyond_ = 0;
 	if (!trigger_.on) return false;
 	int index = 0;
 	for (auto it = series_.constBegin(); it != series_.constEnd() && it.key() != trigger_.key; ++it) index++;
 	if (index >= lines.size()) return false;
 	const QRectF all = plotRect();
 	const double level = watchedSettings().level;
+	/* a level the line does not reach in view: Normal waits for ever, and the row says why */
+	if (lines[index].lo <= lines[index].hi) triggerBeyond_ = level > lines[index].hi ? 1 : level < lines[index].lo ? -1 : 0;
 	for (const Lane &plot : plots) {
 		if (!plot.lines.contains(index)) continue;
 		const Axes &a = plot.axes;
@@ -4133,7 +4151,11 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 		if (plot.folded || shown.isEmpty()) return false;
 		double lo = lines[index].lo, hi = lines[index].hi;
 		if (normalized_) widenFlatRange(lo, hi);
-		levelY = std::clamp(normalized_ ? a.y((level - lo) / (hi - lo)) : a.y(level), shown.top(), shown.bottom());
+		/* beyond the lane's range the line is pinned to its edge, so it can be dragged back, but drawn otherwise (dotted,
+		 * ▲ or ▼): read as in range it hid why Normal never fired. The range is not widened for it */
+		const double y = normalized_ ? a.y((level - lo) / (hi - lo)) : a.y(level);
+		triggerOffScale_ = y < a.rect.top() - 0.5 ? 1 : y > a.rect.bottom() + 0.5 ? -1 : 0;
+		levelY = std::clamp(y, shown.top(), shown.bottom());
 		lane = shown;
 		triggerLineY_ = levelY;
 		triggerLane_ = lane;
@@ -4144,20 +4166,24 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 			tag = QRectF(a.x(trigger_.at) - 7, all.top() - 2, 14, 16);
 			triggerTag_ = tag;
 		}
-		/* the level's tag on its line at the plot's right end, kept inside the part in view; none where it has no room */
+		/* the level's handle on its line at the plot's right end, kept inside the part in view; none where it has no
+		 * room. It opens to the left for its text (under the mouse, while dragged), its right end where it was, so the
+		 * edge symbol stays under the mouse */
 		if (shown.height() >= LEVEL_TAG_H) {
 			triggerTagText_ = triggerTagLabel();
-			const QFontMetricsF metrics(labelFont());
-			const double text = std::min(metrics.horizontalAdvance(triggerTagText_), shown.width() * 0.6);
-			const double width = std::ceil(text) + 2 * NOTE_PAD + LEVEL_TAG_H;
+			const double handle = 2 + LEVEL_HANDLE_W + LEVEL_TAG_H;
 			/* on whole pixels: the CPU and the card put its picture on the same ones */
 			const double top = std::round(std::clamp(levelY - LEVEL_TAG_H / 2, shown.top(), shown.bottom() - LEVEL_TAG_H));
-			levelTag = QRectF(std::round(shown.right() - 4 - width), top, width, LEVEL_TAG_H);
-			/* the crossing's marker at the plot's top: the tag goes left of its column, else under it (no room on
+			levelTag = QRectF(std::round(shown.right() - 4 - handle), top, handle, LEVEL_TAG_H);
+			/* the crossing's marker at the plot's top: the handle goes left of its column, else under it (no room on
 			 * the left), never over it */
 			if (!tag.isEmpty() && levelTag.intersects(tag.adjusted(-2, 0, 2, 2))) {
-				if (tag.left() - 2 - width >= shown.left()) levelTag.moveRight(std::round(tag.left() - 2));
+				if (tag.left() - 2 - handle >= shown.left()) levelTag.moveRight(std::round(tag.left() - 2));
 				else levelTag.moveTop(std::round(std::min(tag.bottom() + 2, shown.bottom() - LEVEL_TAG_H)));
+			}
+			if (triggerTagOpen()) {
+				const double text = std::min(QFontMetricsF(labelFont()).horizontalAdvance(triggerTagText_), shown.width() * 0.6);
+				levelTag.setLeft(std::max(shown.left(), levelTag.right() - std::ceil(text) - NOTE_PAD - handle));
 			}
 			triggerLevelTag_ = levelTag;
 			triggerEdgeButton_ = QRectF(levelTag.right() - LEVEL_TAG_H, levelTag.top(), LEVEL_TAG_H, LEVEL_TAG_H);
@@ -4191,7 +4217,10 @@ void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVect
 	QRectF lane, tag, levelTag;
 	if (!triggerGeometry(plots, lines, levelY, lane, tag, levelTag)) return;
 	p.save();
-	p.setPen(QPen(series_.value(trigger_.key).color, 1.2, Qt::DashLine));
+	/* off scale dotted (flat ends: the card's dots are as long as the CPU's), else dashed */
+	QPen pen(series_.value(trigger_.key).color, 1.2, triggerOffScale_ != 0 ? Qt::DotLine : Qt::DashLine);
+	if (triggerOffScale_ != 0) pen.setCapStyle(Qt::FlatCap);
+	p.setPen(pen);
 	if (part == Marks::Lines) {
 		p.drawLine(QPointF(lane.left(), levelY), QPointF(lane.right(), levelY));
 	} else {
@@ -4202,10 +4231,13 @@ void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVect
 	p.restore();
 }
 
-/* the marker: a "T" in a tag of the line's colour */
+/* the marker: a "T" drawn as the level's tag is (the theme's text on a raised surface, its border in the line's colour):
+ * a white letter on the line's colour could not be read on a light green or yellow line. Lit under the mouse, where
+ * its tooltip says what it marks */
 const QImage &ChartView::triggerPicture(qreal dpr) const {
+	const ThemeColors &c = Theme::colors();
 	const QColor color = series_.value(trigger_.key).color;
-	const QString key = QStringLiteral("%1|%2").arg(dpr).arg(color.name());
+	const QString key = QStringLiteral("%1|%2|%3|%4").arg(dpr).arg(color.name()).arg(Theme::isDark()).arg(hoverT_);
 	if (key == triggerImageKey_) return triggerImage_;
 	triggerImageKey_ = key;
 	triggerImage_ = QImage((QSizeF(14, 16) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
@@ -4213,13 +4245,34 @@ const QImage &ChartView::triggerPicture(qreal dpr) const {
 	triggerImage_.fill(Qt::transparent);
 	QPainter p(&triggerImage_);
 	p.setRenderHint(QPainter::Antialiasing);
-	p.setPen(Qt::NoPen);
-	p.setBrush(color);
-	p.drawRoundedRect(QRectF(0, 0, 14, 16), 4, 4);
-	p.setPen(Qt::white);
+	p.setPen(QPen(color, hoverT_ ? 2 : 1.2));
+	p.setBrush(hoverT_ ? c.border : c.surface2);
+	p.drawRoundedRect(QRectF(0, 0, 14, 16).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+	p.setPen(c.text);
 	p.setFont(labelFont());
 	p.drawText(QRectF(0, 0, 14, 16), Qt::AlignCenter, QStringLiteral("T"));
 	return triggerImage_;
+}
+
+QString ChartView::triggerPointText() const {
+	const auto it = series_.constFind(trigger_.key);
+	if (it == series_.constEnd() || !std::isfinite(trigger_.at)) return QString();
+	const QString value = it->unit.isEmpty() ? levelText(trigger_.atLevel)
+			: levelText(trigger_.atLevel) + QLatin1Char(' ') + it->unit;
+	const QString edge = trigger_.atEdge == TriggerEdge::Rising ? tr("rising")
+			: trigger_.atEdge == TriggerEdge::Falling ? tr("falling") : tr("rising or falling");
+	const QString time = QDateTime::fromMSecsSinceEpoch(epochMs_ + qint64(std::llround(trigger_.at * 1000)))
+			.toString(QStringLiteral("HH:mm:ss.zzz"));
+	return tr("Trigger point: %1 crossed %2, %3, at %4", "the T's tooltip: the line, the level with its unit, the edge, "
+			"the time").arg(it->name, value, edge, time);
+}
+
+bool ChartView::triggerHandleSolid() const {
+	return trigger_.on && std::isfinite(trigger_.at) && watchedSettings().level == trigger_.atLevel;
+}
+
+QString ChartView::levelText(double level) {
+	return QString::number(level, 'g', 6);
 }
 
 /* A triangle pointing up at the plot from under its bottom edge, at the crossing's place in the window (as a scope's
@@ -4244,10 +4297,14 @@ QString ChartView::triggerTagLabel() const {
 	const auto it = series_.constFind(trigger_.key);
 	if (it == series_.constEnd()) return QString();
 	const TriggerSettings watched = watchedSettings();
-	const QString value = it->unit.isEmpty() ? chartNumber(watched.level) : chartNumber(watched.level) + QLatin1Char(' ') + it->unit;
+	const QString value = it->unit.isEmpty() ? levelText(watched.level) : levelText(watched.level) + QLatin1Char(' ') + it->unit;
 	const QString edge = watched.edge == TriggerEdge::Rising ? tr("rising")
 			: watched.edge == TriggerEdge::Falling ? tr("falling") : tr("either");
-	return tr("%1 %2, %3", "the trigger's level tag: the line, its level with its unit, the edge").arg(it->name, value, edge);
+	const QString label = tr("%1 %2, %3", "the trigger's level tag: the line, its level with its unit, the edge")
+			.arg(it->name, value, edge);
+	return triggerOffScale_ > 0 ? tr("▲ %1 (above range)", "the level's tag, the level above its lane's range").arg(label)
+			: triggerOffScale_ < 0 ? tr("▼ %1 (below range)", "the level's tag, the level below its lane's range").arg(label)
+			: label;
 }
 
 QString ChartView::edgeSymbol() const {
@@ -4256,14 +4313,17 @@ QString ChartView::edgeSymbol() const {
 			: QStringLiteral("↕");
 }
 
-/* the tag with its edge symbol at its right end, a button of its own (lit under the mouse): the same picture for the
- * CPU and the card */
+/* The level's handle: a triangle pointing at the level (▲ or ▼ when the level is beyond the lane's range), in the
+ * line's colour, solid while the view holds a crossing of this level and hollow after a change of it (as a scope's
+ * level mark), and the edge symbol at its right end, a button of its own (lit under the mouse). Open, the tag's text
+ * left of them. The same picture for the CPU and the card */
 const QImage &ChartView::levelTagPicture(qreal dpr) const {
 	const ThemeColors &c = Theme::colors();
 	const QColor color = series_.value(trigger_.key).color;
 	const QSizeF size = triggerLevelTag_.size();
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(dpr).arg(color.name()).arg(triggerTagText_, edgeSymbol())
-			.arg(hoverEdge_).arg(Theme::isDark()).arg(size.width());
+	const bool solid = triggerHandleSolid();
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(dpr).arg(color.name()).arg(triggerTagText_, edgeSymbol())
+			.arg(hoverEdge_).arg(Theme::isDark()).arg(size.width()).arg(solid).arg(triggerOffScale_);
 	if (key == levelTagKey_) return levelTagImage_;
 	levelTagKey_ = key;
 	levelTagImage_ = QImage((size * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
@@ -4277,9 +4337,18 @@ const QImage &ChartView::levelTagPicture(qreal dpr) const {
 	p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
 	p.setPen(c.text);
 	p.setFont(labelFont());
-	const QRectF text = box.adjusted(NOTE_PAD, 0, -NOTE_PAD - LEVEL_TAG_H, 0);
-	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, QFontMetricsF(labelFont()).elidedText(triggerTagText_,
-			Qt::ElideRight, text.width() + 1));
+	const double handle = 2 + LEVEL_HANDLE_W + LEVEL_TAG_H;
+	const QRectF text = box.adjusted(NOTE_PAD, 0, -handle, 0);
+	if (text.width() > 4)
+		p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, QFontMetricsF(labelFont()).elidedText(triggerTagText_,
+				Qt::ElideRight, text.width() + 1));
+	const double x = box.right() - LEVEL_TAG_H - LEVEL_HANDLE_W, mid = LEVEL_TAG_H / 2;
+	const QPointF left[3] = { { x + 2, mid }, { x + 10, mid - 4.5 }, { x + 10, mid + 4.5 } };
+	const QPointF up[3] = { { x + 6, mid - 5 }, { x + 1.5, mid + 4 }, { x + 10.5, mid + 4 } };
+	const QPointF down[3] = { { x + 6, mid + 5 }, { x + 1.5, mid - 4 }, { x + 10.5, mid - 4 } };
+	p.setPen(QPen(color, 1.2));
+	p.setBrush(solid ? QBrush(color) : QBrush(c.surface2));
+	p.drawPolygon(triggerOffScale_ > 0 ? up : triggerOffScale_ < 0 ? down : left, 3);
 	/* the edge symbol: a button's shape at rest, a stronger one under the mouse (as the lanes' buttons) */
 	const QRectF button(box.right() - LEVEL_TAG_H + 2, 2, LEVEL_TAG_H - 4, LEVEL_TAG_H - 4);
 	p.setPen(QPen(c.control, 1));
