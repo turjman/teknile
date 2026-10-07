@@ -547,7 +547,7 @@ register is edited, as long as it is read the same way.</p>
 the Studio's one queue, so clients and the Studio never collide on the port.</p>
 <table cellpadding="4">
 <tr><td><b>1219</b></td><td>EVRe pass-through: the same frames as the device. Existing EVRe clients work
-unchanged.</td></tr>
+unchanged, a fast stream's blocks included (below).</td></tr>
 <tr><td><b>1220</b></td><td>JSON lines by register name: send one JSON object per line, get one back.</td></tr>
 </table>
 <p>Only this PC can connect, unless <b>Network</b> is ticked.
@@ -570,6 +570,17 @@ to the slave it names.</p>
 {"cmd":"broadcast","name":"D1_SPEED","value":0}  every device at once, then each read back</pre>
 <p>Add <code>"id"</code> to any request: it comes back in the answer. Errors: <code>{"ok":false,"error":"..."}</code>.
 Names are the map's (any case), or an address such as <code>"0xD00C"</code>.</p>
+<h3>Fast streams</h3>
+<p><code>list</code> also names the map's fast streams (<code>"streams"</code>: each one's rate, on or off, and
+channels). A channel is named <code>STREAM.CHANNEL</code>: <code>get</code> gives its newest record's value, and that
+record's time in <code>"times"</code>; <code>stream</code> sends a line of its min, max and mean every
+<code>period_ms</code> (10 at least; else <code>ms</code>), a line of its own kind beside the registers' samples. The
+stream must be on in the Studio (<b>Fast streams</b>, or <code>--fast</code>); none of it needs a write switch.</p>
+%CODE%{"cmd":"stream","names":["ADC.I_LOAD"],"period_ms":100}
+   -> {"t":1790170000.2,"fast":{"ADC.I_LOAD":{"n":1000,"min":-6.5,"max":6.5,"mean":0.01,"first":53000}}}</pre>
+<p>The raw records: on port 1219, write 1 to the stream's enable register, as to the device, and its blocks come as the
+device sends them; 0 ends them. While the Studio streams it, nothing is written to the device. A recording's
+<code>.evrs</code> file holds them too (<code>evre.read_recording</code> in Python).</p>
 <h3>MATLAB</h3>
 %CODE%c = tcpclient("127.0.0.1", 1220);
 configureTerminator(c, "LF");
@@ -581,6 +592,8 @@ r.values.SUPPLY_V</pre>
 s = socket.create_connection(("127.0.0.1", 1220)); f = s.makefile("rw")
 f.write(json.dumps({"cmd": "get", "names": ["SUPPLY_V"]}) + "\n"); f.flush()
 print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
+<p>The <code>evre</code> package beside the Studio's source has a client for it: <code>evre.connect_studio()</code>
+(<code>get</code>, <code>stream</code>, <code>fast_stream</code>).</p>
 <h3>LabVIEW</h3>
 <p><i>TCP Open Connection</i> (127.0.0.1, 1220) → <i>TCP Write</i> the JSON text plus <code>\n</code> →
 <i>TCP Read</i> in <b>CRLF</b> mode → <i>Unflatten From JSON</i> into a cluster
@@ -623,7 +636,7 @@ others that came while it was up. All of them are in the Log; hover the pop-up f
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Command line"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Command line</h2>
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]</pre>
 <ul>
 <li>A server token comes from the environment variable <code>EVRE_TOKEN</code>, never from the command line.</li>
@@ -634,6 +647,8 @@ poll rate, is left off, and the Log says which.</li>
 <li><code>--inflight n</code> sets <b>In flight</b> (requests sent before their answers come), as typing it in
 the box does.</li>
 <li><code>--record</code> starts a CSV recording at once: every poll, as with the button.</li>
+<li><code>--fast</code> starts those fast streams once connected, as their <b>Start stream</b> does: for a script that
+reads them through the API. A name the map has no stream of is left, and the Log says which.</li>
 <li><code>--api-writes</code> is the same as ticking <i>Allow API writes</i>; <code>--api-writes-danger</code> also
 the ⚠ switch.</li>
 </ul>

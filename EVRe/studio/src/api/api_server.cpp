@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "evre/master.h"
+#include "io/fast_stream.h"
 #include "io/reg_table.h"
 #include "model/bus_file.h"
 
@@ -21,6 +22,10 @@ namespace {
 
 constexpr int MIN_STREAM_MS = 5;
 constexpr int DEFAULT_STREAM_MS = 100;
+constexpr int MIN_FAST_PERIOD_MS = 10;   /* a fast channel's period: its min, max and mean */
+/* a pass-through client that does not read its blocks: past this many bytes waiting, the next blocks are not sent to
+ * it (their numbers tell it what it missed), so it cannot fill the Studio's memory */
+constexpr qint64 MAX_BLOCK_BACKLOG = 8 * 1024 * 1024;
 constexpr int MAX_LINE = 64 * 1024;      /* a JSON line longer than this: the client is dropped */
 constexpr uint8_t ERROR_PERMISSION_DENIED = 3; /* the EVRe error code of a refused write */
 
@@ -83,6 +88,36 @@ QJsonObject registerJson(const RegDef &def) {
 		entry.insert(QStringLiteral("special"), special);
 	}
 	return entry;
+}
+
+/* one entry of the "list" answer's "streams": the stream, its rate and state, its channels by the names the other
+ * commands take (STREAM.CHANNEL) */
+QJsonObject streamJson(const ApiServer::FastState &stream) {
+	QJsonArray channels;
+	for (const StreamChannel &channel : stream.def.channels) {
+		QJsonObject entry{
+			{ QStringLiteral("name"), stream.def.name + QLatin1Char('.') + channel.name },
+			{ QStringLiteral("type"), typeName(channel.type) },
+		};
+		if (!channel.unit.isEmpty()) entry.insert(QStringLiteral("unit"), channel.unit);
+		if (!channel.desc.isEmpty()) entry.insert(QStringLiteral("desc"), channel.desc);
+		channels.append(entry);
+	}
+	QJsonObject entry{
+		{ QStringLiteral("name"), stream.def.name },
+		{ QStringLiteral("rate"), stream.rate },
+		{ QStringLiteral("on"), stream.on },
+		{ QStringLiteral("channels"), channels },
+	};
+	if (!stream.def.desc.isEmpty()) entry.insert(QStringLiteral("desc"), stream.def.desc);
+	return entry;
+}
+
+/* where channel c lies in a record of the stream: the sizes of the channels before it */
+int channelOffset(const StreamDef &def, int channel) {
+	int offset = 0;
+	for (int c = 0; c < channel && c < def.channels.size(); c++) offset += typeSize(def.channels[c].type);
+	return offset;
 }
 
 /* A value of a set, as the text a user would type into the table (what
@@ -178,6 +213,7 @@ void ApiServer::stop() {
 	 * iterate over copies */
 	for (QTcpSocket *socket : evreClients_.keys()) socket->abort();
 	evreClients_.clear();
+	blockWatches_.clear();
 	const auto jsonClients = std::exchange(jsonClients_, {});
 	for (const ClientPtr &client : jsonClients) {
 		stopStream(*client);
@@ -244,20 +280,45 @@ uint8_t ApiServer::target(uint8_t tableSlave) const { return requestSlave(tableS
 /* raw requests (no register named) go to the master's slave: the device selected in the Studio */
 uint8_t ApiServer::rawTableSlave() const { return bus_ ? master_->slave() : 0; }
 
-bool ApiServer::namedKeys(const QJsonObject &request, QVector<RegKey> &keys, QString &error) const {
+bool ApiServer::namedKeys(const QJsonObject &request, QVector<RegKey> &keys, QString &error, QVector<FastRef> *fast,
+		const QVector<FastState> *streams) const {
 	/* "names": [..], "name": "..", or both */
 	QStringList names;
 	for (const QJsonValue &name : request.value(QStringLiteral("names")).toArray()) names << name.toString();
 	if (request.contains(QStringLiteral("name"))) names << request.value(QStringLiteral("name")).toString();
 	for (const QString &name : names) {
 		const int row = rowByName(name);
-		if (row < 0) {
-			error = tr("no register \"%1\" in the map").arg(name);
-			return false;
+		if (row >= 0) {
+			keys << regKey(table_->rows()[row].def);
+			continue;
 		}
-		keys << regKey(table_->rows()[row].def);
+		/* a fast channel by its line's name, STREAM.CHANNEL in any case */
+		bool found = false;
+		for (int s = 0; fast && streams && !found && s < streams->size(); s++) {
+			const StreamDef &def = (*streams)[s].def;
+			for (int c = 0; !found && c < def.channels.size(); c++) {
+				if ((def.name + QLatin1Char('.') + def.channels[c].name).compare(name.trimmed(), Qt::CaseInsensitive) != 0)
+					continue;
+				*fast << FastRef{ s, c };
+				found = true;
+			}
+		}
+		if (found) continue;
+		error = fast && name.contains(QLatin1Char('.'))
+				? tr("no register or fast channel \"%1\" in the map (a fast channel is STREAM.CHANNEL, as \"list\" "
+					 "names it)").arg(name)
+				: tr("no register \"%1\" in the map").arg(name);
+		return false;
 	}
 	return true;
+}
+
+QString ApiServer::fastRefusal(const FastState &stream, bool needRecord) const {
+	if (!stream.on)
+		return tr("fast stream %1 is off: start it in EVRe Studio (Fast streams), or start the Studio with --fast %1")
+				.arg(stream.def.name);
+	if (needRecord && !stream.hasRecord) return tr("fast stream %1 is on, but no record has come yet").arg(stream.def.name);
+	return {};
 }
 
 /* {"NAME": value, ...}, names as in the map */
@@ -334,6 +395,7 @@ void ApiServer::acceptEvreClients() {
 		connect(socket, &QTcpSocket::readyRead, this, [this, socket] { readEvreFrames(socket); });
 		connect(socket, &QTcpSocket::disconnected, this, [this, socket] {
 			evreClients_.remove(socket);
+			blockWatches_.remove(socket);
 			socket->deleteLater();
 		});
 	}
@@ -378,6 +440,20 @@ void ApiServer::passWrite(QTcpSocket *socket, const evre::Frame &request) {
 		if (allowed) master_->writeNoAckTo(evre::BROADCAST, request.addr, request.data);
 		return;
 	}
+	/* exactly a fast stream's enable register (one device): the client asks for the stream's blocks */
+	QString watched;
+	bool watchOn = false;
+	if (!bus_) {
+		for (const FastState &stream : fastStreams()) {
+			if (stream.enable.name.isEmpty() || stream.enable.addr != request.addr || stream.enable.size != request.cnt
+					|| request.data.size() != request.cnt)
+				continue;
+			if (takeEnableWrite(socket, request, stream, wantsAck)) return;
+			watched = stream.def.name;
+			watchOn = decodeNumber(stream.enable, request.data) != 0;
+			break;
+		}
+	}
 	const uint8_t to = bus_ ? request.slave : master_->slave();
 	if (!writeRefusal(bus_ ? to : 0, request.addr, request.cnt).isEmpty()) {
 		if (wantsAck) answer.sendError(ERROR_PERMISSION_DENIED);
@@ -386,11 +462,54 @@ void ApiServer::passWrite(QTcpSocket *socket, const evre::Frame &request) {
 	if (!isConnected()) return;
 	/* the device always acknowledges (the queue waits for it); the client
 	 * hears of it only if it asked */
-	master_->writeTo(to, request.addr, request.data, [answer, wantsAck](const evre::Result &r) {
+	QPointer<QTcpSocket> client(socket);
+	master_->writeTo(to, request.addr, request.data,
+			[this, answer, wantsAck, client, watched, watchOn, slave = request.slave](const evre::Result &r) {
+		/* the device took the client's own switch of a stream: its blocks follow it */
+		if (r.ok && client && !watched.isEmpty()) watchBlocks(client, watched, slave, watchOn, true);
 		if (!wantsAck) return;
 		if (r.ok) answer.send(evre::WRITE_ACK_RESP);
 		else if (r.error) answer.sendError(r.error);
 	});
+}
+
+/* While the Studio streams it, a stream's enable is the Studio's: a client's 1 starts its blocks and its 0 ends them,
+ * acknowledged here and never sent, so no client switches the Studio's stream off, and no write switch is needed (the
+ * device is not written). While the Studio does not, the write is the client's own and goes to the device as any write;
+ * only a 0 from a client whose blocks the Studio started is taken here (the device was never switched by it). */
+bool ApiServer::takeEnableWrite(QTcpSocket *socket, const evre::Frame &request, const FastState &stream, bool wantsAck) {
+	const bool on = decodeNumber(stream.enable, request.data) != 0;
+	const auto watches = blockWatches_.constFind(socket);
+	const bool own = watches != blockWatches_.cend() && watches->value(stream.def.name).own;
+	const bool watching = watches != blockWatches_.cend() && watches->contains(stream.def.name);
+	if (!stream.on && (on || !watching || own)) return false;
+	watchBlocks(socket, stream.def.name, request.slave, on, false);
+	if (wantsAck) EvreAnswer(socket, request).send(evre::WRITE_ACK_RESP);
+	return true;
+}
+
+void ApiServer::watchBlocks(QTcpSocket *socket, const QString &stream, uint8_t slave, bool on, bool own) {
+	if (!evreClients_.contains(socket)) return; /* it left meanwhile */
+	if (!on) {
+		auto watches = blockWatches_.find(socket);
+		if (watches == blockWatches_.end()) return;
+		watches->remove(stream);
+		if (watches->isEmpty()) blockWatches_.erase(watches);
+		return;
+	}
+	blockWatches_[socket].insert(stream, BlockWatch{ slave, own });
+}
+
+/* a frame at a stream's window, to each client that asked for the stream: as the device sent it, with the slave the
+ * client named, as an answer would carry */
+void ApiServer::passBlock(const QString &stream, const evre::Frame &frame) {
+	for (auto it = blockWatches_.cbegin(); it != blockWatches_.cend(); ++it) {
+		const auto watch = it->constFind(stream);
+		if (watch == it->cend()) continue;
+		QTcpSocket *socket = it.key();
+		if (socket->bytesToWrite() > MAX_BLOCK_BACKLOG) continue;
+		socket->write(evre::build(watch->slave, frame.fn, frame.addr, frame.cnt, frame.data));
+	}
 }
 
 /* ----------------------------------------------------------------- JSON API */
@@ -484,11 +603,13 @@ void ApiServer::cmdInfo(JsonClient &client, const QJsonValue &id) {
 	});
 }
 
-/* {"cmd":"list"}: every register of the map */
+/* {"cmd":"list"}: every register of the map, and its fast streams with their channels */
 void ApiServer::cmdList(JsonClient &client, const QJsonValue &id) {
 	QJsonArray registers;
 	for (const RegValue &row : table_->rows()) registers.append(registerJson(row.def));
-	replyOk(client, id, { { QStringLiteral("registers"), registers } });
+	QJsonArray streams;
+	for (const FastState &stream : fastStreams()) streams.append(streamJson(stream));
+	replyOk(client, id, { { QStringLiteral("registers"), registers }, { QStringLiteral("streams"), streams } });
 }
 
 /* {"cmd":"stop"}: ends the stream, if there is one */
@@ -497,45 +618,79 @@ void ApiServer::cmdStop(JsonClient &client, const QJsonValue &id) {
 	replyOk(client, id);
 }
 
-/* {"cmd":"get","names":["SUPPLY_V","STATE"]}: fresh values, and the bit fields decoded */
+/* {"cmd":"get","names":["SUPPLY_V","STATE"]}: fresh values, and the bit fields decoded. A fast channel
+ * ("ADC.I_LOAD"): its newest record's value, and that record's time in "times". */
 void ApiServer::cmdGet(const ClientPtr &client, const QJsonObject &request, const QJsonValue &id) {
 	QVector<RegKey> keys;
+	QVector<FastRef> fast;
+	const QVector<FastState> streams = fastStreams();
 	QString error;
-	if (!namedKeys(request, keys, error)) {
+	if (!namedKeys(request, keys, error, &fast, &streams)) {
 		fail(*client, error, id);
 		return;
 	}
-	if (keys.isEmpty()) {
+	if (keys.isEmpty() && fast.isEmpty()) {
 		fail(*client, tr("\"names\" is empty"), id);
 		return;
 	}
-	readRegisters(keys, [this, weak = WeakClient(client), id](const ReadResult &read) {
+	/* the fast channels now, from the records that came: nothing is read for them */
+	QJsonObject fastValues, times;
+	for (const FastRef &ref : fast) {
+		const FastState &stream = streams[ref.stream];
+		const QString refusal = fastRefusal(stream, true);
+		if (!refusal.isEmpty()) {
+			fail(*client, refusal, id);
+			return;
+		}
+		const StreamDef &def = stream.def;
+		const QString name = def.name + QLatin1Char('.') + def.channels[ref.channel].name;
+		const int offset = channelOffset(def, ref.channel);
+		if (stream.newest.size() < offset + typeSize(def.channels[ref.channel].type)) continue;
+		const double value = fast::channelValue(def.channels[ref.channel], stream.newest.constData() + offset);
+		fastValues.insert(name, std::isfinite(value) ? QJsonValue(value) : QJsonValue(QJsonValue::Null));
+		times.insert(name, stream.newestTime);
+	}
+	readRegisters(keys, [this, weak = WeakClient(client), id, fastValues, times](const ReadResult &read) {
 		const ClientPtr asker = stillThere(weak);
 		if (!asker) return;
 		if (!read.ok) {
 			fail(*asker, read.error, id);
 			return;
 		}
-		QJsonObject answer{ { QStringLiteral("values"), valuesJson(read.raw) } };
+		QJsonObject values = valuesJson(read.raw);
+		for (auto it = fastValues.begin(); it != fastValues.end(); ++it) values.insert(it.key(), it.value());
+		QJsonObject answer{ { QStringLiteral("values"), values } };
 		const QJsonObject decoded = decodedJson(read.raw);
 		if (!decoded.isEmpty()) answer.insert(QStringLiteral("decoded"), decoded);
+		if (!times.isEmpty()) answer.insert(QStringLiteral("times"), times);
 		replyOk(*asker, id, answer);
 	});
 }
 
-/* {"cmd":"stream","names":["SUPPLY_V","SUPPLY_I"],"ms":50}: a sample line every 50 ms */
+/* {"cmd":"stream","names":["SUPPLY_V","SUPPLY_I"],"ms":50}: a sample line every 50 ms. Fast channels
+ * ("ADC.I_LOAD"): a line of each one's min, max and mean every "period_ms" (else "ms", else 100), beside. */
 void ApiServer::cmdStream(const ClientPtr &client, const QJsonObject &request, const QJsonValue &id) {
 	QVector<RegKey> keys;
+	QVector<FastRef> fast;
+	const QVector<FastState> streams = fastStreams();
 	QString error;
-	if (!namedKeys(request, keys, error)) {
+	if (!namedKeys(request, keys, error, &fast, &streams)) {
 		fail(*client, error, id);
 		return;
 	}
-	if (keys.isEmpty()) { /* a stream of nothing: the same as stop */
+	if (keys.isEmpty() && fast.isEmpty()) { /* a stream of nothing: the same as stop */
 		cmdStop(*client, id);
 		return;
 	}
-	startStream(client, keys, request.value(QStringLiteral("ms")).toInt(DEFAULT_STREAM_MS), id);
+	for (const FastRef &ref : fast) {
+		const QString refusal = fastRefusal(streams[ref.stream], false);
+		if (!refusal.isEmpty()) {
+			fail(*client, refusal, id);
+			return;
+		}
+	}
+	const int ms = request.value(QStringLiteral("ms")).toInt(DEFAULT_STREAM_MS);
+	startStream(client, keys, ms, fast, request.value(QStringLiteral("period_ms")).toInt(ms), id);
 }
 
 /* {"cmd":"set","values":{"LED_MODE":2}}: writes, then the values read back */
@@ -681,20 +836,94 @@ void ApiServer::cmdBroadcast(const ClientPtr &client, const QJsonObject &request
 
 /* ------------------------------------------------------------------ streams */
 
-void ApiServer::startStream(const ClientPtr &client, const QVector<RegKey> &keys, int ms, const QJsonValue &id) {
+void ApiServer::startStream(const ClientPtr &client, const QVector<RegKey> &keys, int ms, const QVector<FastRef> &fast,
+		int periodMs, const QJsonValue &id) {
 	stopStream(*client);
 	client->streamKeys = keys;
 	client->streamTag = id.isString() ? id.toString() : id.isDouble() ? QString::number(id.toDouble()) : QString();
-	/* made here, in the I/O thread, and a child of the server */
-	client->streamTimer = new QTimer(this);
-	client->streamTimer->setInterval(std::max(ms, MIN_STREAM_MS));
-	client->streamTimer->setTimerType(Qt::PreciseTimer); /* coarse timers drift ~20 % on Windows */
-	connect(client->streamTimer, &QTimer::timeout, this, [this, weak = WeakClient(client)] { streamTick(weak); });
-	client->streamTimer->start();
-	replyOk(*client, id, {
-		{ QStringLiteral("streaming"), int(keys.size()) },
-		{ QStringLiteral("ms"), client->streamTimer->interval() },
-	});
+	QJsonObject answer{ { QStringLiteral("streaming"), int(keys.size() + fast.size()) } };
+	/* made here, in the I/O thread, and children of the server */
+	if (!keys.isEmpty()) {
+		client->streamTimer = new QTimer(this);
+		client->streamTimer->setInterval(std::max(ms, MIN_STREAM_MS));
+		client->streamTimer->setTimerType(Qt::PreciseTimer); /* coarse timers drift ~20 % on Windows */
+		connect(client->streamTimer, &QTimer::timeout, this, [this, weak = WeakClient(client)] { streamTick(weak); });
+		client->streamTimer->start();
+		answer.insert(QStringLiteral("ms"), client->streamTimer->interval());
+	}
+	if (!fast.isEmpty()) {
+		const QVector<FastState> streams = fastStreams();
+		for (const FastRef &ref : fast) {
+			JsonClient::FastWatch watch;
+			watch.stream = streams[ref.stream].def.name;
+			watch.channel = ref.channel;
+			watch.name = watch.stream + QLatin1Char('.') + streams[ref.stream].def.channels[ref.channel].name;
+			client->fastWatches << watch;
+		}
+		client->fastTimer = new QTimer(this);
+		client->fastTimer->setInterval(std::max(periodMs, MIN_FAST_PERIOD_MS));
+		client->fastTimer->setTimerType(Qt::PreciseTimer);
+		connect(client->fastTimer, &QTimer::timeout, this, [this, weak = WeakClient(client)] { fastTick(weak); });
+		client->fastTimer->start();
+		answer.insert(QStringLiteral("fast"), int(fast.size()));
+		answer.insert(QStringLiteral("period_ms"), client->fastTimer->interval());
+	}
+	replyOk(*client, id, answer);
+}
+
+/* A good block's records, into the period of every JSON stream that watches one of the stream's channels. The period
+ * holds the records that came in it: a block comes a little after its records were taken. */
+void ApiServer::fastRecords(const StreamDef &def, quint64 first, int count, const char *records) {
+	const int size = def.recordSize();
+	if (count <= 0 || size <= 0) return;
+	for (const ClientPtr &client : std::as_const(jsonClients_)) {
+		for (JsonClient::FastWatch &watch : client->fastWatches) {
+			/* the map loaded again meanwhile: a channel of another layout is not read */
+			if (watch.stream != def.name || watch.channel >= def.channels.size()
+					|| watch.name != def.name + QLatin1Char('.') + def.channels[watch.channel].name)
+				continue;
+			const StreamChannel &channel = def.channels[watch.channel];
+			const char *at = records + channelOffset(def, watch.channel);
+			for (int k = 0; k < count; k++, at += size) {
+				const double value = fast::channelValue(channel, at);
+				if (!std::isfinite(value)) continue;
+				if (watch.count == 0) {
+					watch.first = first + quint64(k);
+					watch.min = watch.max = value;
+				}
+				watch.min = std::min(watch.min, value);
+				watch.max = std::max(watch.max, value);
+				watch.sum += value;
+				watch.count++;
+			}
+		}
+	}
+}
+
+/* {"t": seconds since 1970, "fast": {"ADC.I_LOAD": {"n":..,"min":..,"max":..,"mean":..,"first":..}}, "stream": the
+ * tag}: each channel's records of the period that ended now; a channel without one has "n": 0 and nulls */
+void ApiServer::fastTick(const WeakClient &weak) {
+	const ClientPtr client = stillThere(weak);
+	if (!client) return;
+	QJsonObject channels;
+	for (JsonClient::FastWatch &watch : client->fastWatches) {
+		QJsonObject numbers{ { QStringLiteral("n"), qint64(watch.count) } };
+		const bool any = watch.count > 0;
+		numbers.insert(QStringLiteral("min"), any ? QJsonValue(watch.min) : QJsonValue(QJsonValue::Null));
+		numbers.insert(QStringLiteral("max"), any ? QJsonValue(watch.max) : QJsonValue(QJsonValue::Null));
+		numbers.insert(QStringLiteral("mean"), any ? QJsonValue(watch.sum / double(watch.count)) : QJsonValue(QJsonValue::Null));
+		if (any) numbers.insert(QStringLiteral("first"), qint64(watch.first));
+		channels.insert(watch.name, numbers);
+		watch.count = 0;
+		watch.sum = 0;
+	}
+	if (!isConnected()) return; /* as the samples: none while the Studio has no link */
+	QJsonObject line{
+		{ QStringLiteral("t"), double(QDateTime::currentMSecsSinceEpoch()) / 1000.0 },
+		{ QStringLiteral("fast"), channels },
+	};
+	if (!client->streamTag.isEmpty()) line.insert(QStringLiteral("stream"), client->streamTag);
+	reply(*client, line, {});
 }
 
 void ApiServer::streamTick(const WeakClient &weak) {
@@ -724,11 +953,13 @@ void ApiServer::sendSample(JsonClient &client, const ReadResult &read) {
 }
 
 void ApiServer::stopStream(JsonClient &client) {
-	if (client.streamTimer) {
-		client.streamTimer->stop();
-		client.streamTimer->deleteLater();
-		client.streamTimer = nullptr;
+	for (QTimer **timer : { &client.streamTimer, &client.fastTimer }) {
+		if (!*timer) continue;
+		(*timer)->stop();
+		(*timer)->deleteLater();
+		*timer = nullptr;
 	}
 	client.streamKeys.clear();
+	client.fastWatches.clear();
 	client.streamBusy = false;
 }

@@ -1652,6 +1652,23 @@ private:
 						&& !button->isEnabled() && sidebar->fastRateText(0) == QLatin1String("not connected"),
 				"fast streams, then Disconnect: ADC_STREAM 0 on the device first; the button Start, greyed, not connected");
 
+		/* --fast (the command line, for an API client's script): as Start, the stream wanted at once and switched on once
+		 * connected; a name the map has no stream of is said in the Log. Stopped and disconnected again after. */
+		{
+			MainWindow::Startup fastAtStart = connectFast;
+			fastAtStart.fast = QStringList{ QStringLiteral("adc"), QStringLiteral("NOPE") };
+			window_.applyStartup(fastAtStart);
+			const bool started = enableBecomes(1, 5000) && QTest::qWaitFor([&] { return button->isEnabled(); }, 3000);
+			check(started && button->text() == QStringLiteral("■  Stop stream")
+							&& logText().contains(QLatin1String("--fast: no such fast stream in the map: NOPE")),
+					"fast streams: --fast adc,NOPE: the stream switched on once connected (ADC_STREAM 1, the button Stop); "
+					"the name the map has no stream of said in the Log");
+			button->click();
+			(void) enableBecomes(0);
+			if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+			(void) QTest::qWaitFor([&] { return !button->isEnabled(); }, 3000);
+		}
+
 		/* a lost link keeps it: the device comes back (losing every 5th block now), the stream goes on again by itself,
 		 * and the samples lost are counted and shown */
 		window_.applyStartup(connectFast);

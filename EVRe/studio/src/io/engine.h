@@ -302,6 +302,7 @@ private:
 		fast::FastStream state;
 		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
 		QByteArray lastRecord;      /* the last block's last record (FastBlock::before) */
+		double lastRecordTime = 0;  /* its time on the stream's clock (now()'s seconds): the API's newest record */
 		bool wanted = false;
 		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
 		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */
@@ -409,6 +410,7 @@ private:
 	/* Fast EVRe: the map's streams (none on a bus) */
 	QVector<FastRun> fastRuns_;
 	QTimer *fastWatch_;
+	qint64 clockEpochMs_ = 0;  /* the wall clock when clock_ started: the API gives times in seconds since 1970 */
 
 	/* CSV recording */
 	QFile *csvFile_;
