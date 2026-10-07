@@ -61,7 +61,9 @@ EVRe is a protocol of **teknile**.
   point and one CSV row.
 - **Fast streams** (Fast EVRe): a device that samples on its own clock sends numbered blocks; the sidebar starts
   and stops a map's streams, shows the samples a second fitted to the Studio's clock and counts every sample lost.
-  `evre record` writes a stream's blocks to a `.evrs` file.
+  Their channels are lines on the chart, from an hour down to single samples 10 µs apart, a spike of one sample
+  in millions never hidden, the line broken where samples were lost. `evre record` writes a stream's blocks to a
+  `.evrs` file.
 - **CSV recording:** one row per poll of the registers you choose (one row per frame with auto send).
 - **Monitor:** every frame sent and received, raw reads and writes, to any slave address or as a broadcast.
 - **Log:** every event in a tab and a daily file; pop-ups for warnings and errors that never block, and that hold
@@ -163,10 +165,10 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (391 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (407 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
 | `evre_map_test` | the map files without a window (24 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
-| `evre_fast_test` | Fast EVRe without a window (17 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source |
+| `evre_fast_test` | Fast EVRe without a window (21 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the EVRe library as C++11 to 20 at -O0 to -Os and run, no heap, its stack, its frames through the Studio's parser, PROTOCOL.md's example block (44 checks; needs `g++` and the library) |
 | `tests/cli_test.py` | the `evre` command line end to end (48 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes, a fast stream included (29 checks) |

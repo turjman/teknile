@@ -38,6 +38,7 @@ qt_add_library(evre_protocol STATIC
     src/model/bus_file.h        src/model/bus_file.cpp
     src/io/fast_stream.h        src/io/fast_stream.cpp
     src/model/fast_recording.h  src/model/fast_recording.cpp
+    src/model/fast_store.h      src/model/fast_store.cpp
 )
 target_include_directories(evre_protocol PUBLIC src)
 target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPort)

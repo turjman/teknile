@@ -26,6 +26,7 @@
 
 QString secondsText(double seconds) {
 	const auto number = [](double v) { return QString::number(v, 'g', 4); };
+	if (seconds < 1e-3) return QStringLiteral("%1 µs").arg(number(seconds * 1e6));
 	if (seconds < 1) return QStringLiteral("%1 ms").arg(number(seconds * 1000));
 	if (seconds < 60 || std::fmod(seconds, 60) != 0) return QStringLiteral("%1 s").arg(number(seconds));
 	if (seconds < 3600 || std::fmod(seconds, 3600) != 0) return QStringLiteral("%1 min").arg(number(seconds / 60));
@@ -47,12 +48,13 @@ QString durationText(double seconds) {
 }
 
 double parseSeconds(const QString &text) {
-	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(ms|s|sec|m|min|h)?\\s*$"),
+	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(us|µs|ms|s|sec|m|min|h)?\\s*$"),
 			QRegularExpression::CaseInsensitiveOption);
 	const QRegularExpressionMatch match = length.match(text);
 	if (!match.hasMatch()) return -1;
 	const double value = match.captured(1).replace(QLatin1Char(','), QLatin1Char('.')).toDouble();
 	const QString unit = match.captured(2).toLower();
+	if (unit == QLatin1String("us") || unit == QStringLiteral("µs")) return value / 1e6;
 	if (unit == QLatin1String("ms")) return value / 1000;
 	if (unit == QLatin1String("m") || unit == QLatin1String("min")) return value * 60;
 	if (unit == QLatin1String("h")) return value * 3600;

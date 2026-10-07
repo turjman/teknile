@@ -69,7 +69,7 @@ constexpr int Y_TICKS = 5;                 /* about this many value grid lines *
 constexpr double TIME_LABEL_SPACING = 140; /* about one time label per this many pixels */
 
 /* the view (the longest: ChartView::MAX_SPAN) */
-constexpr double MIN_WINDOW = 0.001;  /* seconds */
+constexpr double MIN_WINDOW = 1e-5;   /* seconds: 10 us, a fast line's single records */
 constexpr double MIN_MEMORY = 1;      /* seconds */
 constexpr double ZOOM_STEP = 1.25;    /* per wheel notch */
 constexpr double LIVE_SNAP = 0.002;   /* a held view this close to now (of the view) is live again */
@@ -144,8 +144,16 @@ QDateTime wallClock(qint64 epochMsAtZero, double t) {
 	return QDateTime::fromMSecsSinceEpoch(epochMsAtZero + qint64(std::llround(t * 1000)));
 }
 
-/* a time grid label, as precise as the grid step needs */
+/* a time grid label, as precise as the grid step needs: below a millisecond (a fast line's records) the microseconds
+ * after the milliseconds, "14:03:12.345678" */
 QString timeLabel(qint64 epochMsAtZero, double t, double step) {
+	if (step < 1e-3) {
+		const qint64 micro = epochMsAtZero * 1000 + qint64(std::llround(t * 1e6));
+		const qint64 ms = micro >= 0 ? micro / 1000 : (micro - 999) / 1000;
+		const QString label = QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"))
+				+ QStringLiteral("%1").arg(micro - ms * 1000, 3, 10, QLatin1Char('0'));
+		return step >= 1e-5 ? label.chopped(1) : label; /* tens of microseconds: five decimals */
+	}
 	const QDateTime at = wallClock(epochMsAtZero, t);
 	if (step >= 1) return at.toString(QStringLiteral("HH:mm:ss"));
 	if (step >= 0.1) return at.toString(QStringLiteral("HH:mm:ss.z"));
@@ -309,6 +317,12 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 		s.totalV = kept->v;
 	}
 	keptTotals_.remove(key);
+	if (isFastKey(key)) { /* a fast stream's channel: its records are its stream's */
+		const int stream = (key - FIRST_FAST_KEY) / 256;
+		s.fast = fastStores_.value(stream);
+		s.channel = (key - FIRST_FAST_KEY) % 256;
+		if (!s.fast || s.channel >= s.fast->channels()) return;
+	}
 	series_.insert(key, s);
 	seriesGeneration_++;
 	capped_ = false;
@@ -345,6 +359,7 @@ void ChartView::clearData() {
 		s.total = 0;
 		s.totalT = NAN;
 	}
+	for (const auto &store : std::as_const(fastStores_)) store->clear();
 	keptTotals_.clear();
 	totalsSince_ = NAN; /* the first sample from now on */
 	seriesGeneration_++;
@@ -368,14 +383,23 @@ void ChartView::prepareTile(const QPainter &p, const QRect &device, QImage &imag
 }
 
 qint64 ChartView::bytesNeeded() const {
-	double samples = 0;
+	double samples = 0, fastBytes = 0;
+	QSet<const fast::Store *> counted;
 	for (const Series &s : series_) {
+		if (s.fast) { /* a fast stream once, all its channels in its records */
+			const fast::Store &store = *s.fast;
+			if (counted.contains(&store) || store.size() < 2 || !store.hasTime()) continue;
+			counted.insert(&store);
+			const double rate = double(store.size() - 1) / std::max(1e-9, store.timeAt(store.size() - 1) - store.timeAt(0));
+			fastBytes += rate * memory_ * store.bytesPerRecord();
+			continue;
+		}
 		const qsizetype n = s.times.size();
 		if (n < 2 || s.times.back() <= s.times.front()) continue;
 		const double rate = double(n - 1) / (s.times.back() - s.times.front());
 		samples += std::min(rate * memory_, double(MAX_POINTS));
 	}
-	return qint64(samples * BYTES_PER_SAMPLE);
+	return qint64(samples * BYTES_PER_SAMPLE + fastBytes);
 }
 
 qint64 ChartView::bytesHeld() const {
@@ -384,11 +408,13 @@ qint64 ChartView::bytesHeld() const {
 		bytes += qint64(s.times.capacity() + s.values.capacity()) * qint64(sizeof(double));
 		for (const QVector<Chunk> &level : s.chunks) bytes += qint64(level.capacity()) * qint64(sizeof(Chunk));
 	}
+	for (const auto &store : fastStores_) bytes += store->bytes();
 	return bytes;
 }
 
 qsizetype ChartView::pointsKept(int key) const {
 	const auto it = series_.find(key);
+	if (it != series_.end() && it->fast) return it->fast->size();
 	return it == series_.end() ? 0 : it->times.size();
 }
 
@@ -499,6 +525,81 @@ void ChartView::addChunks(Series &s, qsizetype limit) {
 		}
 		roomForOne(s.chunks[level], limit / CHUNK_SIZE[level] + 1, s.spread);
 		s.chunks[level].push_back(chunk);
+	}
+}
+
+/* ----------------------------------------------------------- the fast lines */
+
+void ChartView::setFastStream(int stream, const StreamDef &def) {
+	const std::shared_ptr<fast::Store> kept = fastStores_.value(stream);
+	if (kept && kept->def().name == def.name && kept->def().addr == def.addr && kept->recordSize() == def.recordSize()
+			&& kept->channels() == def.channels.size())
+		return;
+	auto store = std::make_shared<fast::Store>(def);
+	fastStores_.insert(stream, store);
+	for (auto it = series_.begin(); it != series_.end(); ++it)
+		if (isFastKey(it.key()) && (it.key() - FIRST_FAST_KEY) / 256 == stream) it->fast = store;
+	seriesGeneration_++;
+	refresh();
+}
+
+void ChartView::clearFastStreams() {
+	for (auto it = series_.begin(); it != series_.end();) {
+		if (it->fast) it = series_.erase(it);
+		else ++it;
+	}
+	fastStores_.clear();
+	seriesGeneration_++;
+	refresh();
+}
+
+const fast::Store *ChartView::fastStore(int stream) const { return fastStores_.value(stream).get(); }
+
+QVector<ChartView::BinInfo> ChartView::lastBins(int key) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return out;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &*it) continue;
+		for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap });
+	}
+	return out;
+}
+
+/* A block's records into its stream's store, kept while one of its lines is on the chart; the legend's values from
+ * the newest record */
+void ChartView::appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart,
+		quint64 lost) {
+	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
+	if (!store || count <= 0 || records.size() < count * store->recordSize()) return;
+	int lines = 0;
+	for (const Series &s : std::as_const(series_)) lines += s.fast == store;
+	if (lines == 0) return;
+	store->append(first, count, records.constData(), newStart, lost);
+	trimFast(*store, lines);
+	const qsizetype newest = store->size() - 1;
+	for (Series &s : series_) {
+		if (s.fast != store || newest < 0) continue;
+		s.last = store->value(s.channel, newest);
+		s.hasLast = true;
+	}
+}
+
+void ChartView::markFast(int stream, quint64 record, double time, double period) {
+	if (const std::shared_ptr<fast::Store> store = fastStores_.value(stream)) store->mark(record, time, period);
+}
+
+/* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
+ * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces */
+void ChartView::trimFast(fast::Store &store, int lines) {
+	if (store.size() == 0 || !store.hasTime()) return;
+	const double newest = store.timeAt(store.size() - 1);
+	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_));
+	const double share = double(ramMB_) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
+	const qsizetype most = qsizetype(share / store.bytesPerRecord());
+	if (store.size() >= most - most / 16) {
+		store.dropFront(store.size() - most + most / 8);
+		capped_ = true;
 	}
 }
 
@@ -656,7 +757,8 @@ void ChartView::armTrigger() {
 	trigger_.armed = true;
 	const auto it = series_.constFind(trigger_.key);
 	trigger_.armedFrom = it != series_.constEnd() && !it->times.isEmpty() ? it->times.back()
-			: -std::numeric_limits<double>::infinity();
+			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
+				? it->fast->timeAt(it->fast->size() - 1) : -std::numeric_limits<double>::infinity();
 	refresh();
 }
 
@@ -795,8 +897,10 @@ void ChartView::holdAt(double end) {
 void ChartView::memorySpan(double &m0, double &m1) const {
 	m1 = liveEnd();
 	m0 = m1;
-	for (const Series &s : series_)
+	for (const Series &s : series_) {
 		if (!s.times.isEmpty()) m0 = std::min(m0, s.times.front());
+		if (s.fast && s.fast->size() > 0 && s.fast->hasTime()) m0 = std::min(m0, s.fast->timeAt(0));
+	}
 	m0 = std::max(m0, m1 - memory_);
 }
 
@@ -873,8 +977,10 @@ void ChartView::updateDelay(double frameDt) {
 	constexpr double NONE = -std::numeric_limits<double>::max();
 	if (!smooth_) return;
 	double newest = NONE;
-	for (const Series &s : series_)
+	for (const Series &s : series_) {
 		if (!s.times.isEmpty()) newest = std::max(newest, s.times.back());
+		if (s.fast && s.fast->size() > 0 && s.fast->hasTime()) newest = std::max(newest, s.fast->timeAt(s.fast->size() - 1));
+	}
 	if (newest == NONE) return; /* no samples yet */
 	const double gap = clockNow() - newest;
 	if (gap < 0 || gap > MAX_GAP) return;
@@ -1696,6 +1802,13 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 	QVector<double> key{ axes.t0, axes.t1, axes.columns, double(seriesGeneration_) };
 	key.reserve(4 + 2 * series_.size());
 	for (const Series &s : series_) {
+		if (s.fast) { /* a fast line: its records in view, numbered since its store began */
+			const fast::Store &store = *s.fast;
+			const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(axes.t0) - 1);
+			const qsizetype i1 = std::min(store.size(), store.upperBound(axes.t1) + 1);
+			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			continue;
+		}
 		if (s.times.isEmpty()) {
 			key << -1 << -1;
 			continue;
@@ -1762,6 +1875,10 @@ void ChartView::drawLinesPicture(QPainter &p, const QVector<Lane> &plots, const 
  * of samples costs what a short one does. */
 void ChartView::binSeries(const Series &s, double t0, double t1, double columns, bool overview,
 		BinnedLine &out) const {
+	if (s.fast) {
+		binFast(s, t0, t1, columns, out);
+		return;
+	}
 	out.series = &s;
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
@@ -1829,6 +1946,10 @@ void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double col
  * (held, dragged back). Chunks start on fixed sample numbers, so the bins come out as binned at once, give or take
  * where a chunk at a column's edge falls (less than half a column). */
 void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
+	if (s.fast) { /* from its summaries at every frame: what a column costs does not grow with its records */
+		binFast(s, t0, t1, columns, out);
+		return;
+	}
 	out.series = &s;
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
@@ -1875,6 +1996,50 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 		out.lo = std::min(out.lo, bin.min);
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
+	}
+}
+
+/* A fast line's bins: for each column on absolute time its records, found by their times (the store inverts its
+ * clock), their first, last, min and max (the min and max from the summaries: the work follows the columns, not the
+ * records, and a spike of one record is in every column's max that holds it). A column where few records lie keeps
+ * each at its own time (toPolyline: one or two in a bin). A gap ends a column's bin early, and the bin after it says
+ * so: the line is not drawn across. */
+void ChartView::binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
+	out.series = &s;
+	out.bins.clear();
+	out.lo = std::numeric_limits<double>::max();
+	out.hi = -out.lo;
+	out.posLo = std::numeric_limits<double>::infinity();
+	const fast::Store &store = *s.fast;
+	if (store.size() == 0 || !store.hasTime() || t1 <= t0) return;
+	const double columnSeconds = (t1 - t0) / columns;
+	const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(t0) - 1);
+	const qsizetype i1 = std::min(store.size(), store.upperBound(t1) + 1);
+	if (i1 <= i0) return;
+	out.bins.reserve(int(std::min<qsizetype>(i1 - i0, qsizetype(columns) * 2 + 4)));
+	for (qsizetype i = i0; i < i1;) {
+		const double ti = store.timeAt(i);
+		const qint64 column = qint64(std::floor(ti / columnSeconds));
+		qsizetype j = std::min(store.segmentEnd(i), i1);
+		j = std::min(j, store.lowerBound(double(column + 1) * columnSeconds));
+		if (j <= i) j = i + 1;
+		Bin bin;
+		bin.column = column;
+		bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
+		bin.firstSample = qsizetype(store.dropped()) + i;
+		bin.t0 = ti;
+		bin.t1 = j - 1 == i ? ti : store.timeAt(j - 1);
+		bin.first = store.value(s.channel, i);
+		bin.last = store.value(s.channel, j - 1);
+		store.minMax(s.channel, i, j, bin.min, bin.max);
+		bin.gap = i > i0 && store.startsAfterGap(i);
+		out.bins.push_back(bin);
+		if (bin.t1 >= t0 && bin.t0 <= t1) { /* the range of what lies inside the span */
+			out.lo = std::min(out.lo, bin.min);
+			out.hi = std::max(out.hi, bin.max);
+			out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
+		}
+		i = j;
 	}
 }
 
@@ -2165,6 +2330,8 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
 		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
 	if (separatorAt(pos) >= 0) return tr("Drag: this lane's height · Double-click: equal heights");
+	const QString gap = fastGapAt(pos);
+	if (!gap.isEmpty()) return gap;
 	if (!lanes_ || pos.y() < plot.top() || pos.y() > plot.bottom() || pos.x() > plot.right()) return QString();
 	const int lane = laneAtY(pos.y());
 	if (lane < 0) return QString();
@@ -2178,6 +2345,36 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
 	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
 	return parts.join(QStringLiteral(" · "));
+}
+
+/* a fast line's gap under the mouse (3 px either side): how many records were lost there, or that the stream
+ * started again; lanes: the lines of the lane under the mouse */
+QString ChartView::fastGapAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!plot.contains(pos) || lanesShown_.isEmpty()) return QString();
+	QString unit;
+	bool anyUnit = !lanes_;
+	if (lanes_) {
+		const int lane = laneAtY(pos.y());
+		if (lane < 0 || lanesShown_[lane].folded) return QString();
+		unit = lanesShown_[lane].key;
+	}
+	const Axes &axes = lastAxes_;
+	const double perPixel = axes.span / std::max(1.0, axes.rect.width());
+	const double t = axes.t0 + (pos.x() - axes.rect.left()) * perPixel, reach = 3 * perPixel;
+	QStringList parts;
+	for (const Series &s : series_) {
+		if (!s.fast || (!anyUnit && s.unit != unit) || s.fast->size() < 2) continue;
+		const fast::Store &store = *s.fast;
+		const qsizetype j = store.lowerBound(t - reach);
+		if (j >= store.size()) continue;
+		const qsizetype k = j > 0 && store.startsAfterGap(j) ? j : store.segmentEnd(j);
+		if (k <= 0 || k >= store.size() || store.timeAt(k - 1) > t + reach || store.timeAt(k) < t - reach) continue;
+		const qint64 lost = store.lostBefore(k);
+		parts << (lost < 0 ? tr("%1: the stream started again here").arg(s.name)
+						   : tr("%1: %n sample(s) lost here", nullptr, int(std::min<qint64>(lost, INT_MAX))).arg(s.name));
+	}
+	return parts.join(QLatin1Char('\n'));
 }
 
 /* a line in the middle of each gap between two lanes, where it lies in the plot: the lanes read as plots of their own */
@@ -2380,7 +2577,13 @@ void ChartView::drawCard(QPainter &p) const {
  * so it moves with the data. Crisp 1 px lines: no antialiasing. */
 ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 	GridTicks ticks;
-	ticks.timeStep = niceTimeStep(window_, std::max(2, int(axes.columns / TIME_LABEL_SPACING)));
+	int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
+	ticks.timeStep = niceTimeStep(window_, target);
+	/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
+	const QFontMetricsF labels(smallFont());
+	while (ticks.timeStep < 1e-3 && target > 2
+			&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
+		ticks.timeStep = niceTimeStep(window_, --target);
 	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
 	if (axes.log) {
 		/* a line at each decade, faint ones at 2..9 of it while a decade is tall enough; over less than two decades
@@ -2529,10 +2732,16 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		p.setPen(QPen(gaps[i] == hoverSeparator_ ? c.accent : c.control, 1));
 		p.drawLine(QPointF(LANE_UNIT_W, laneSeparators_[i]), QPointF(plot.right(), laneSeparators_[i]));
 	}
+	timeLabels_.clear();
+	const QFontMetricsF metrics(p.font());
 	for (double t : ticks.times) {
 		const double x = axes.x(t);
+		const QString label = timeLabel(epochMs_, t, ticks.timeStep);
+		const double half = metrics.horizontalAdvance(label) / 2;
+		if (x - half < 0 || x + half > width()) continue; /* never cut at the chart's edge: that one left out */
 		p.setPen(c.muted);
-		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, timeLabel(epochMs_, t, ticks.timeStep));
+		timeLabels_ << label;
+		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, label);
 	}
 	p.setRenderHint(QPainter::Antialiasing, true);
 }
@@ -2570,6 +2779,27 @@ void ChartView::strokePolyline(QPainter &p, const QPolygonF &poly, const QColor 
 		if (std::fabs(j - middle) >= 0.51) drawShifted(0, (j - middle) * devicePixel); /* the row covers the middle */
 }
 
+/* the pieces of a polyline between its breaks, each a stroke; a piece of one point (a lone record between two gaps) a
+ * dot */
+void ChartView::strokePieces(QPainter &p, const QPolygonF &poly, const QVector<qsizetype> &breaks, qsizetype from,
+		qsizetype to, const QColor &color, bool thin, qreal dpr) {
+	if (breaks.isEmpty()) {
+		if (to - from >= 1) strokePolyline(p, from == 0 && to == poly.size() ? poly : QPolygonF(poly.mid(from, to - from)), color,
+				thin, dpr);
+		return;
+	}
+	qsizetype start = from;
+	auto next = std::upper_bound(breaks.begin(), breaks.end(), from);
+	while (start < to) {
+		const qsizetype end = next == breaks.end() ? to : std::min(to, *next);
+		QPolygonF piece = poly.mid(start, end - start);
+		if (piece.size() == 1) piece << piece.first() + QPointF(0.01, 0); /* a dot: a stroke of no length draws nothing */
+		strokePolyline(p, piece, color, thin, dpr);
+		start = end;
+		if (next != breaks.end()) ++next;
+	}
+}
+
 /* A line's bins as a polyline. A column with one or two samples keeps them at
  * their exact times (smooth at slow polls); a fuller one becomes a vertical
  * stroke at the column's centre: its first value, the min and the max (the
@@ -2585,15 +2815,20 @@ void ChartView::strokePolyline(QPainter &p, const QPolygonF &poly, const QColor 
  * column, not four. */
 template <typename MapX, typename MapY>
 QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, MapX x, MapY y,
-		QVector<QRectF> *bands, double bandWidth, double pixel) {
+		QVector<QRectF> *bands, double bandWidth, double pixel, QVector<qsizetype> *breaks) {
 	QPolygonF poly;
 	poly.reserve(bins.size() * 4);
-	const auto put = [&poly](const QPointF &point) {
+	qsizetype piece = 0; /* where the piece being drawn began: a level run or a point is never merged across a break */
+	const auto put = [&poly, &piece](const QPointF &point) {
 		const qsizetype n = poly.size();
-		if (n >= 2 && poly[n - 1].y() == point.y() && poly[n - 2].y() == point.y()) poly[n - 1] = point;
-		else if (n == 0 || poly[n - 1] != point) poly << point;
+		if (n - piece >= 2 && poly[n - 1].y() == point.y() && poly[n - 2].y() == point.y()) poly[n - 1] = point;
+		else if (n == piece || poly[n - 1] != point) poly << point;
 	};
 	for (const Bin &b : bins) {
+		if (b.gap && breaks && !poly.isEmpty()) { /* a fast line's gap: the next point begins a new piece */
+			piece = poly.size();
+			breaks->push_back(piece);
+		}
 		if (b.count <= 2) {
 			put(QPointF(x(b.t0), y(b.first)));
 			if (b.count == 2) put(QPointF(x(b.t1), y(b.last)));
@@ -2621,9 +2856,30 @@ QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, 
 }
 
 /* a line's bars, plain fills, antialiased: an edge on half a pixel is the same partly covered pixel whether it is
- * drawn here or on a stripe (without, the two rounded it to different sides) */
-void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color) {
+ * drawn here or on a stripe (without, the two rounded it to different sides). crisp (a fast line, a bar in nearly
+ * every column): each bar snapped to whole device pixels and filled without antialiasing, the same pixels here and on
+ * a stripe (a stripe lies on whole device pixels), at a fraction of the cost (two such lines took 9 ms antialiased;
+ * fillRect without antialiasing is the raster engine's fastest path, drawRects went through its general one) */
+void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp) {
 	if (count <= 0) return;
+	if (crisp) {
+		/* snapped in the device's pixels, then back into p's coordinates: whole device pixels each way (the device's
+		 * transform holds the widget's place in the window too, which drawing in it would count twice) */
+		const QTransform toDevice = p.deviceTransform(), back = toDevice.inverted();
+		QVector<QRectF> rects;
+		rects.reserve(count);
+		for (qsizetype k = 0; k < count; k++) {
+			const QRectF d = toDevice.mapRect(bands[k]);
+			const double x0 = std::round(d.left()), x1 = std::max(x0 + 1, std::round(d.right()));
+			const double y0 = std::round(d.top()), y1 = std::max(y0 + 1, std::round(d.bottom()));
+			rects.push_back(back.mapRect(QRectF(QPointF(x0, y0), QPointF(x1, y1))));
+		}
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, false);
+		for (const QRectF &r : std::as_const(rects)) p.fillRect(r, color);
+		p.restore();
+		return;
+	}
 	p.save();
 	p.setPen(Qt::NoPen);
 	p.setBrush(color);
@@ -2659,6 +2915,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
 	QVector<QPolygonF> polys(lines.size());
 	QVector<QVector<QRectF>> bands(lines.size());
+	QVector<QVector<qsizetype>> breaks(lines.size()); /* a fast line's gaps */
 	inParallel(lines.size(), [&](qsizetype i) {
 		const BinnedLine &line = lines[i];
 		if (line.bins.isEmpty() || !axesOf[i]) return;
@@ -2667,7 +2924,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
-		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr);
+		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr, &breaks[i]);
 	});
 	/* a line that is mostly bars (fast and noisy): its polyline only joins them, one stroke is enough; five over the
 	 * whole height of each column cost the most of a frame */
@@ -2684,8 +2941,8 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		for (qsizetype i = 0; i < lines.size(); i++) {
 			if (!axesOf[i]) continue;
 			p.setClipRect(clipOf(i));
-			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color);
-			if (!polys[i].isEmpty()) strokePolyline(p, polys[i], lines[i].series->color, thin[i], dpr);
+			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color, lines[i].series->fast != nullptr);
+			if (!polys[i].isEmpty()) strokePieces(p, polys[i], breaks[i], 0, polys[i].size(), lines[i].series->color, thin[i], dpr);
 		}
 		p.restore();
 		return;
@@ -2722,13 +2979,13 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 			const QVector<QRectF> &bars = bands[i]; /* in x order too: the ones that reach the stripe */
 			const qsizetype first = std::lower_bound(bars.begin(), bars.end(), rect.left(), bandBefore) - bars.begin();
 			const qsizetype last = std::upper_bound(bars.begin(), bars.end(), rect.right(), bandAfter) - bars.begin();
-			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color);
+			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color, lines[i].series->fast != nullptr);
 			const QPolygonF &poly = polys[i]; /* its x never falls: the part in the stripe, a point either side */
 			const qsizetype from = std::max<qsizetype>(
 					0, std::lower_bound(poly.begin(), poly.end(), rect.left() - REACH, beforeX) - poly.begin() - 1);
 			const qsizetype to = std::min<qsizetype>(
 					poly.size(), std::upper_bound(poly.begin(), poly.end(), rect.right() + REACH, afterX) - poly.begin() + 1);
-			if (to - from >= 1) strokePolyline(ip, poly.mid(from, to - from), lines[i].series->color, thin[i], dpr);
+			if (to - from >= 1) strokePieces(ip, poly, breaks[i], from, to, lines[i].series->color, thin[i], dpr);
 		}
 		ip.end();
 		image.setDevicePixelRatio(dpr);
@@ -2887,19 +3144,29 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
-		const QPolygonF poly = toPolyline(line.bins, axes.columnSeconds(), x, y, nullptr, 0, 1 / dpr);
+		QVector<qsizetype> breaks; /* a fast line's gaps: no segment across them */
+		const QPolygonF poly = toPolyline(line.bins, axes.columnSeconds(), x, y, nullptr, 0, 1 / dpr, &breaks);
 		const quint32 rgba = gpuColor(line.series->color);
 		QVector<GpuLines::Segment> &segments = parts[i];
 		segments.resize(std::max<qsizetype>(1, poly.size() - 1));
 		/* scale and shift as arithmetic, not a transform per point */
 		float x0 = float(poly[0].x() * dpr + dx), y0 = float(poly[0].y() * dpr + dy);
 		if (poly.size() == 1) segments[0] = { x0, y0, x0, y0, rgba };
+		qsizetype made = 0, nextBreak = 0;
 		for (qsizetype k = 1; k < poly.size(); k++) {
 			const float x1 = float(poly[k].x() * dpr + dx), y1 = float(poly[k].y() * dpr + dy);
-			segments[k - 1] = { x0, y0, x1, y1, rgba };
+			if (nextBreak < breaks.size() && breaks[nextBreak] == k) {
+				nextBreak++;
+				/* a lone point between two gaps: a dot, as the CPU's */
+				if (k + 1 >= poly.size() || (nextBreak < breaks.size() && breaks[nextBreak] == k + 1))
+					segments[made++] = { x1, y1, x1 + 0.01f, y1, rgba };
+			} else {
+				segments[made++] = { x0, y0, x1, y1, rgba };
+			}
 			x0 = x1;
 			y0 = y1;
 		}
+		if (poly.size() > 1) segments.resize(made);
 		if (!lanes_) return; /* the layer's edge cuts the one plot */
 		const float top = float(shownOf[i].top() * dpr + dy) - lineWidth, bottom = float(shownOf[i].bottom() * dpr + dy) + lineWidth;
 		qsizetype kept = 0;
@@ -3053,6 +3320,9 @@ QVector<ChartView::FoldedItem> ChartView::foldedItems(const Lane &lane, double t
 		QString value;
 		if (live_) {
 			if (s.hasShown) value = chartNumber(s.shown);
+		} else if (s.fast) { /* the latest record in view */
+			const qsizetype k = s.fast->upperBound(t1) - 1;
+			if (k >= 0 && s.fast->timeAt(k) >= t0) value = chartNumber(s.fast->value(s.channel, k));
 		} else {
 			const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
 			if (k >= 0 && s.times[k] >= t0) value = chartNumber(s.values[k]);
@@ -3484,7 +3754,9 @@ void ChartView::drawMemoryLines(QPainter &p, const Axes &strip) const {
 		color.setAlpha(STRIP_ALPHA);
 		const auto x = [&line](double t) { return line.x(t); };
 		const auto y = [&line](double v) { return line.y(v); };
-		strokePolyline(p, toPolyline(binned.bins, strip.columnSeconds(), x, y), color, true, 1);
+		QVector<qsizetype> breaks; /* a fast line's gaps */
+		const QPolygonF poly = toPolyline(binned.bins, strip.columnSeconds(), x, y, nullptr, 0, 0, &breaks);
+		strokePieces(p, poly, breaks, 0, poly.size(), color, true, 1);
 	}
 }
 
@@ -3602,20 +3874,32 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (!axesOf[i]) continue;
 		const Axes &lineAxes = *axesOf[i];
 		const Series &s = *line.series;
-		if (s.times.isEmpty()) continue;
-		const qsizetype k = nearestIndex(s.times, t);
-		if (std::fabs(s.times[k] - t) > window_ / READOUT_REACH) continue;
-		const double v = s.values[k];
+		double sampleTime, v;
+		if (s.fast) { /* a fast line: the record nearest the mouse */
+			const fast::Store &store = *s.fast;
+			if (store.size() == 0 || !store.hasTime()) continue;
+			qsizetype k = std::min(store.lowerBound(t), store.size() - 1);
+			if (k > 0 && std::fabs(store.timeAt(k - 1) - t) < std::fabs(store.timeAt(k) - t)) k--;
+			sampleTime = store.timeAt(k);
+			v = store.value(s.channel, k);
+		} else {
+			if (s.times.isEmpty()) continue;
+			const qsizetype k = nearestIndex(s.times, t);
+			sampleTime = s.times[k];
+			v = s.values[k];
+		}
+		if (std::fabs(sampleTime - t) > window_ / READOUT_REACH) continue;
 		if (remake && hoverValues_) rows.push_back({ s.name, chartNumber(v), s.unit, s.color });
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
 		widenFlatRange(lo, hi);
 		const double y = normalized_ ? lineAxes.y((v - lo) / (hi - lo)) : lineAxes.y(v);
 		if (lanes_ && (y < plot.top() - 1 || y > plot.bottom() + 1)) continue; /* scrolled away: in the box, no dot */
-		out.dots.push_back({ QPointF(axes.x(s.times[k]), y), s.color });
+		out.dots.push_back({ QPointF(axes.x(sampleTime), y), s.color });
 	}
 	if (remake) {
+		/* a view under 10 ms (fast lines): the microseconds too */
 		const QString timeText = QStringLiteral("%1   -%2 s").arg(
-				wallClock(epochMs_, t).toString(QStringLiteral("HH:mm:ss.zzz")), chartNumber(clockNow() - t));
+				timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3), chartNumber(clockNow() - t));
 		readout_ = rows.isEmpty() ? QImage() : readoutPicture(plot.height(), timeText, rows, dpr);
 		readoutTick_ = valuesTick_;
 		readoutMouseX_ = mouseX_;

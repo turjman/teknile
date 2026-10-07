@@ -136,6 +136,7 @@ bool MainWindow::loadBus(const QString &file, bool remember) {
 		return false;
 	}
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({}); /* another set of devices: nothing of the one before stays plotted or kept */
 	bus_ = loaded;
 	busModified_ = false;

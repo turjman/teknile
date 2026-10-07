@@ -20,14 +20,14 @@ class QWidget;
 
 /* --------------------------------------------------------------------- text */
 
-/* a time length as the chart's Window and Memory boxes show it: "500 ms", "30 s", "2 min", "1.5 h" */
+/* a time length as the chart's Window and Memory boxes show it: "50 µs", "500 ms", "30 s", "2 min", "1.5 h" */
 QString secondsText(double seconds);
 
 /* a span of time as read off the chart: "123 µs", "3.525 ms", "12.35 s" (4 significant digits below a minute),
  * "1 min 23.4 s", "2 h 05 min"; the sign is dropped */
 QString durationText(double seconds);
 
-/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "3 min", "1 h"; <= 0 if it is not one */
+/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "50 us" (or µs), "3 min", "1 h"; <= 0 if it is not one */
 double parseSeconds(const QString &text);
 
 /* text from the map on a button, a check box or a menu: "&" would mark a

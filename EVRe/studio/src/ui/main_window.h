@@ -136,6 +136,8 @@ private:
 	void updateFastOffer();
 	void onFastStreamSet(int stream, bool on, double rate, const QString &err);
 	void stopFastStreams(); /* Disconnect asked for: no stream switched on again at the next connect */
+	void onFastPlotToggled(int stream, int channel, bool on); /* a channel's Plot tick: its line, within the lines' limit */
+	QHash<int, QVector<double>> fastValues_; /* each stream's newest record, its channels' values */
 	void refreshPorts();          /* the sidebar's serial ports, the map's device named among them */
 
 	/* the map */
