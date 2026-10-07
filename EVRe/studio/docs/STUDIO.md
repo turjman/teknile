@@ -1212,6 +1212,13 @@ Once both are placed, a bar joins their tags at the top of the plot and says the
 
 Cursors are fixed **times**, not screen positions. In a live view they move left with the data. Once both are placed, the measurements cover A → B instead of the view.
 
+**Their times.** A tag's tooltip gives the cursor's clock time (*Cursor A at 14:03:12.345*). While the trigger holds
+the view on a crossing (7.13), it also says how far the cursor is from **T**, as an oscilloscope's cursors measure from
+the trigger point (*Cursor A at 14:03:12.345 · T -0.250 ms*), and the line above the measurements adds both after the
+span (*A → B = ... · A: T -0.250 ms · B: T +1.750 ms*). B − A is the same either way. The distance from T has three
+decimals in the unit the window is written in (µs below a 1 ms window, ms below 1 s, then s). The tags stay letters,
+so the bar between them keeps its room; live, or without a crossing in view, the tooltip gives the clock time alone.
+
 ### 7.8 Mouse and keyboard
 
 | Where | Action | Effect |
@@ -1237,7 +1244,7 @@ Cursors are fixed **times**, not screen positions. In a live view they move left
 | Legend&nbsp;scroll&nbsp;bar | Click&nbsp;/&nbsp;drag | Bring the thumb under the mouse, then drag it. |
 | Legend&nbsp;arrows | Click | Scroll half a row that way. |
 | Chart,&nbsp;cursor&nbsp;mode | Click&nbsp;/&nbsp;drag | Place or move cursor A, then B (7.7). |
-| Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
+| Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`; while the trigger holds the view on a crossing, how far from T instead: `T +1.234 ms`, 7.13) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
 | Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. |
 | Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
 | Anywhere | F1 | Help. |
@@ -1525,6 +1532,11 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   the row says *no line to watch* and its list shows the line's name greyed. The line saved (`chart/triggerLine`)
   stays, and when the line comes back the trigger arms on it again, in its mode. It never moves to another line
   by itself: the chart would hold on a line nobody chose.
+- **Times from T.** While the view is held on a crossing in view, times are read from T, as a scope's: the time
+  axis below 1 s counts its divisions from T (*-2 ms ... 0 ... +8 ms*, 7.9), the hover box says *T +1.234 ms* beside
+  the clock time (in place of how long ago), and the cursors' tags and the line above the measurements say how far
+  each cursor is from T (*A: T -0.250 ms · B: T +1.750 ms*, 7.7). Live (Auto running free) or with the crossing out of
+  view, clock times as before.
 - The line, each line's level and edge, the mode, the hold-off and the place are kept (`chart/trigger…`, 14.3); the
   trigger itself is off at each start. A recording's window has no trigger (its chips' menus do not offer it):
   nothing comes after its end.
@@ -4426,6 +4438,10 @@ The following choices keep a frame cheap on a high-DPI screen:
   `DIVISION_CLOCK_MS` = 500 ms while live) in a box just left of the last label; labels under it are left out. The
   wheel steps the window by `divisionWindow` (the next 1, 2 or 5 per division), part notches of a touchpad adding up
   to one (`wheelNotches_`).
+- **Times from T** (U-7). `timeOrigin` is T while `timesFromT` holds for the view, else NaN; `fromTText` writes a time
+  as its distance from it (*T -0.250 ms*, three decimals in the window's unit, one left-to-right piece). The
+  crosshair's box puts it in its time row in place of how long ago (the row's width kept for the widest of both, so
+  the box does not move), a cursor's tag gives it in its tooltip, and the Chart tab's measure line after the span.
 - **Only when visible.** `ChartView::frame()` asks for a frame only while the widget is visible. A hidden Chart tab
   costs nothing but the `append` calls.
 - **Paced by the frames.** While frames come (`frame()` called in the last 250 ms, `FRAMES_STOPPED_MS`), a change
@@ -5578,7 +5594,11 @@ second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from
 the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's;
 Display's Time grid: Clock times at 10 ms, Divisions at 10 s (*1 s/div*, *-5 s*, *0*), saved and taken by a new tab,
 Auto; in Arabic each offset and the readout an isolated left-to-right piece. On a card (`chartBinsAndGpu`) the
-divisions are compared with the CPU's picture block by block.
+divisions are compared with the CPU's picture block by block. Times from T (`chartTimesFromT`): held by Normal on a
+crossing at 10 ms, the hover box a division after T reads *T +1.000 ms* (to 0.01 ms) beside its clock time; cursors
+0.25 ms before and 1.75 ms after T: their tags' tooltips *Cursor A at HH:mm:ss.zzz · T -0.250 ms* and *... B ... T
++1.750 ms*, the measure line *... · A: T -0.250 ms · B: T +1.750 ms*; live with the trigger off the box says how
+long ago, the tags their clock time alone, the measure line no T.
 
 **Languages** (`languages`, after the Help step): every `.ts` in `translations/` has each message translated, finished
 and not empty, Arabic's numerus messages six forms, and each translation (each form) the English's `%1` placeholders,
@@ -5621,7 +5641,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 513 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 516 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

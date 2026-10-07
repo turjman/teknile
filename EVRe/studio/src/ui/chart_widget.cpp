@@ -3205,6 +3205,18 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 							   : tr("A division of the grid (10 across the view) and the clock time at 0, the right "
 							 "edge: the labels count from there."))
 				+ QLatin1Char('\n') + tr("Wheel over the chart: the next window of 1, 2 or 5 per division.");
+	/* a cursor's tag: its time, and while the view is held on a trigger's crossing how far from T (U-7, as a scope's
+	 * cursors read); the tag itself stays a letter, so the bar between the two keeps its room */
+	for (int k = 0; k < 2; k++) {
+		const double t = k == 0 ? cursorA_ : cursorB_;
+		if (!std::isfinite(t) || t < lastAxes_.t0 || t > lastAxes_.t1) continue;
+		const double x = lastAxes_.x(t);
+		if (!QRectF(x - 9, lastAxes_.rect.top() - 2, 18, 16).contains(pos)) continue;
+		const QString name = k == 0 ? QStringLiteral("A") : QStringLiteral("B");
+		const QString at = timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3);
+		const QString fromT = fromTText(t);
+		return fromT.isEmpty() ? tr("Cursor %1 at %2").arg(name, at) : tr("Cursor %1 at %2 · %3").arg(name, at, fromT);
+	}
 	if (chipAt(pos) >= 0) /* a recording's window has no trigger (nothing comes after the file) */
 		return recording_ ? tr("Click or right-click: Histogram, Spectrum")
 				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
@@ -3712,11 +3724,17 @@ namespace {
 
 /* an offset on the divisions' axis, in the unit the window is written in ("-8 ms", "+4 ms", "0"); one piece in
  * Arabic, its unit beside its number */
+/* the unit a window's offsets are written in: µs below 1 ms, ms below 1 s, s below 2 min, then min and h */
+QString windowUnit(double window, double &scale) {
+	scale = window < 1e-3 ? 1e-6 : window < 1 ? 1e-3 : window < 120 ? 1 : window < 7200 ? 60 : 3600;
+	return window < 1e-3 ? QStringLiteral("µs") : window < 1 ? QStringLiteral("ms")
+			: window < 120 ? QStringLiteral("s") : window < 7200 ? QStringLiteral("min") : QStringLiteral("h");
+}
+
 QString offsetText(double seconds, double window) {
 	if (std::fabs(seconds) < window * 1e-9) return QStringLiteral("0");
-	const double scale = window < 1e-3 ? 1e-6 : window < 1 ? 1e-3 : window < 120 ? 1 : window < 7200 ? 60 : 3600;
-	const QString unit = window < 1e-3 ? QStringLiteral("µs") : window < 1 ? QStringLiteral("ms")
-			: window < 120 ? QStringLiteral("s") : window < 7200 ? QStringLiteral("min") : QStringLiteral("h");
+	double scale;
+	const QString unit = windowUnit(window, scale);
 	const double v = std::round(seconds / scale * 1e6) / 1e6; /* no 0.30000000004 from k times a division */
 	return ltrPiece(QStringLiteral("%1%2 %3").arg(v > 0 ? QStringLiteral("+") : QString(), QString::number(v, 'g', 7), unit));
 }
@@ -3730,6 +3748,21 @@ QString divisionLength(double seconds) {
 }
 
 } // namespace
+
+double ChartView::timeOrigin() const {
+	const double t1 = viewEnd();
+	return timesFromT(t1 - window_, t1) ? trigger_.at : NAN;
+}
+
+/* three decimals in the window's unit: a cursor or the mouse a pixel apart reads apart at any width up to 4K */
+QString ChartView::fromTText(double t) const {
+	const double origin = timeOrigin();
+	if (!std::isfinite(origin) || !std::isfinite(t)) return QString();
+	double scale;
+	const QString unit = windowUnit(window_, scale);
+	const double v = (t - origin) / scale;
+	return ltrPiece(QStringLiteral("T %1%2 %3").arg(v >= 0 ? QStringLiteral("+") : QString(), QString::number(v, 'f', 3), unit));
+}
 
 /* "1 ms/div · 14:03:12.345": the division and the clock time at 0, as precise as the division needs. Live, its clock
  * time is written again at most every DIVISION_CLOCK_MS: a number rewritten at every frame reads as noise */
@@ -5282,9 +5315,13 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 		out.dots.push_back({ QPointF(axes.x(sampleTime), y), s.color });
 	}
 	if (remake) {
-		/* a view under 10 ms (fast lines): the microseconds too */
-		const QString timeText = QStringLiteral("%1   -%2 s").arg(
-				timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3), chartNumber(clockNow() - t));
+		/* a view under 10 ms (fast lines): the microseconds too. Held on a trigger's crossing, beside the clock time how
+		 * far it is from T (U-7: a scope reads times from its trigger point), not how long ago */
+		const QString clock = timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3);
+		const QString fromT = fromTText(t);
+		const QString timeText = fromT.isEmpty() ? QStringLiteral("%1   -%2 s").arg(clock, chartNumber(clockNow() - t))
+												 : QStringLiteral("%1   %2").arg(clock, fromT);
+		readoutTime_ = timeText;
 		readout_ = rows.isEmpty() ? QImage() : readoutPicture(plot.height(), timeText, rows, dpr);
 		readoutTick_ = valuesTick_;
 		readoutMouseX_ = mouseX_;
@@ -5371,8 +5408,10 @@ const ChartView::ReadoutBase &ChartView::readoutBase(double plotHeight, const QV
 	base.gap = metrics.horizontalAdvance(QStringLiteral("  "));
 	base.valueRoom = metrics.horizontalAdvance(widestChartNumber());
 	base.columnW = 20 + base.nameW + base.gap + base.valueRoom + base.unitW + 10;
-	/* the time row as wide as it can get, so it does not move the box either */
-	const double timeW = metrics.horizontalAdvance(QStringLiteral("00:00:00.000   -%1 s").arg(widestChartNumber()));
+	/* the time row as wide as it can get, so it does not move the box either: how long ago, or from T (to the
+	 * microsecond, three decimals in the window's unit) */
+	const double timeW = std::max(metrics.horizontalAdvance(QStringLiteral("00:00:00.000   -%1 s").arg(widestChartNumber())),
+			metrics.horizontalAdvance(QStringLiteral("00:00:00.000000   T -000.000 µs")));
 	base.width = std::max(timeW + 30, columns * base.columnW + 4);
 	const double h = (rowsShown + 1) * READOUT_ROW_H + 10;
 

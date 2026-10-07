@@ -1637,6 +1637,9 @@ QString ChartTab::measuredRangeText() const {
 	QString text;
 	if (cursors) {
 		text = tr("Measured between the cursors: A → B = %1 s").arg(measureText(std::fabs(view->cursorB() - view->cursorA())));
+		/* held on a trigger's crossing: each cursor from T as well (U-7, as a scope's cursors read) */
+		const QString a = view->fromTText(view->cursorA()), b = view->fromTText(view->cursorB());
+		if (!a.isEmpty()) text += tr(" · A: %1 · B: %2", "the cursors' times from the trigger's crossing").arg(a, b);
 	} else {
 		const QString hint = cursorsButton_->isChecked()
 				? tr(" (place cursor %1 on the chart)")

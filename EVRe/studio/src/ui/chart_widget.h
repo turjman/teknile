@@ -181,6 +181,12 @@ public:
 	QVector<double> timeGridX() const { return timeGridX_; }
 	QVector<double> timeLabelX() const { return timeLabelX_; }
 	QString divisionReadout() const { return divisionText_; }
+	/* U-7: while the view is held on a trigger's crossing in view, times are read from T (the hover box, the cursors'
+	 * readouts), as a scope's cursors measure from its trigger point. T's time then, else NaN */
+	double timeOrigin() const;
+	/* a time as its distance from T ("T -0.250 ms", in the unit the window is written in); empty without T */
+	QString fromTText(double t) const;
+	QString readoutTimeText() const { return readoutTime_; } /* tests: the hover box's time row as last made */
 	QRectF divisionReadoutRect() const { return divisionRect_; }
 
 	/* the time base, seconds (read at every frame), and the wall-clock time of
@@ -1059,6 +1065,7 @@ private:
 	mutable qreal readoutDpr_ = 0;
 	mutable bool readoutDark_ = false;
 	mutable int readoutBuilds_ = 0;
+	mutable QString readoutTime_;
 	mutable QElapsedTimer readoutMade_;
 	mutable ReadoutBase readoutBase_;
 	/* the legend as a picture: made again when its key changes (the lines, the values' tick, the scroll, the size,

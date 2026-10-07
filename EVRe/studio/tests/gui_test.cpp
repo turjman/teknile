@@ -568,6 +568,7 @@ public:
 		chartTriggerSteadyState();
 		chartShortLock();
 		chartTimeGrid();
+		chartTimesFromT();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -10542,6 +10543,141 @@ private:
 				"(isolates), the unit beside its number");
 		QSettings().remove(QStringLiteral("chart/timeGrid"));
 		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		clearTriggerSettings();
+	}
+
+	/* U-7, times from T: while the view is held on a trigger's crossing, the hover box says "T +1.000 ms" beside the
+	 * clock time, a cursor's tag says how far it is from T in its tooltip and the measure line "A: T -0.250 ms · B: T
+	 * +1.750 ms" (B - A as before), as a scope's cursors read from the trigger point; live, clock times as before */
+	void chartTimesFromT() {
+		clearTriggerSettings();
+		QSettings().setValue(QStringLiteral("chart/autoShortWindows"), false);
+		QSettings().remove(QStringLiteral("chart/measure"));
+		LoneChart chart(QStringLiteral("FROMT"), QStringLiteral("V"));
+		ChartView *view = chart.view;
+		view->setWindow(1);
+		view->setSmooth(false);
+		qint64 index = 0;
+		const auto frame = [&] { /* a 60th of a second of a 70 Hz sine at 20 kHz */
+			MathLines::Samples samples;
+			for (const qint64 end = index + 333; index < end; index++) {
+				const double t = 99.0 + double(index) / 20000;
+				samples[regKey(chart.def)] << QPointF(t, std::sin(2 * M_PI * 70 * t));
+			}
+			chart.now = 99.0 + double(index - 1) / 20000;
+			chart.tab.frame(samples);
+			(void) view->grab();
+		};
+		for (int k = 0; k < 20; k++) frame();
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		if (!measure || !info) {
+			check(false, "chart, times from T: the Measure button and its line found");
+			return;
+		}
+		view->setWindow(0.01);
+		view->setTrigger(chart.key(), 0.0, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		for (int k = 0; k < 60 && !(std::isfinite(view->triggeredAt()) && !view->live()); k++) frame();
+		std::printf("     (the trigger: on %d, live %d, crossing %.4f, phase %d)\n", int(view->triggerOn()), int(view->live()),
+				view->triggeredAt(), int(view->triggerPhase()));
+		measure->setChecked(true);
+		(void) view->grab();
+		QRectF plot = view->lastPlot();
+		double h0, h1;
+		view->viewSpan(h0, h1);
+		const double crossing = view->triggeredAt();
+		const auto xOf = [&](double t) { return plot.left() + (t - h0) / (h1 - h0) * plot.width(); };
+		const auto clockOf = [view](double t) {
+			return QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(t * 1000))).toString(QStringLiteral("HH:mm:ss.zzz"));
+		};
+		/* the hover box a division after T */
+		const auto hover = [view](QPointF at) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+			(void) view->grab();
+			return view->readoutTimeText();
+		};
+		const double hoverX = std::round(xOf(crossing) + plot.width() / 10);
+		const QString heldBox = hover(QPointF(hoverX, plot.center().y()));
+		const QRegularExpression fromTForm(QStringLiteral("^\\d\\d:\\d\\d:\\d\\d\\.\\d{3}   T ([+-]\\d+\\.\\d{3}) ms$"));
+		const QRegularExpressionMatch boxMatch = fromTForm.match(heldBox);
+		const double expectedMs = (hoverX - xOf(crossing)) / plot.width() * (h1 - h0) * 1000;
+		const bool boxFromT = std::isfinite(crossing) && std::isfinite(view->timeOrigin())
+				&& view->timeOrigin() == crossing && boxMatch.hasMatch()
+				&& std::fabs(boxMatch.captured(1).toDouble() - expectedMs) < 0.01;
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) hover(QPointF(hoverX + (dark ? 1 : 0), plot.center().y()));
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fromT_hover_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		std::printf("     (held on T: the box's time \"%s\", %.3f ms expected)\n", qPrintable(heldBox), expectedMs);
+		check(boxFromT, "chart, times from T: held on a trigger's crossing, the hover box says how far from T the mouse is "
+				"(\"T +1.000 ms\") beside its clock time");
+
+		/* the cursors 0.25 ms before T and 1.75 ms after: their tags' tooltips and the measure line from T */
+		{ /* the mouse off the chart: the hover box gone from the cursors' picture */
+			QEvent leave(QEvent::Leave);
+			QApplication::sendEvent(view, &leave);
+		}
+		const double a = crossing - 0.00025, b = crossing + 0.00175;
+		view->setCursors(a, b);
+		(void) view->grab();
+		const QString tipA = view->toolTipAt(QPointF(xOf(a), plot.top() + 6));
+		const QString tipB = view->toolTipAt(QPointF(xOf(b), plot.top() + 6));
+		const bool waited = QTest::qWaitFor([info] {
+			return info->text().contains(QStringLiteral(" · A: T -0.250 ms · B: T +1.750 ms"));
+		}, 3000);
+		const QString heldInfo = info->text();
+		const bool cursorsFromT = tipA == QStringLiteral("Cursor A at %1 · T -0.250 ms").arg(clockOf(a))
+				&& tipB == QStringLiteral("Cursor B at %1 · T +1.750 ms").arg(clockOf(b)) && waited
+				&& heldInfo.startsWith(QStringLiteral("Measured between the cursors: A → B = "));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) view->grab();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fromT_cursors_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		std::printf("     (the tags: \"%s\" | \"%s\"; the measure line \"%s\")\n", qPrintable(tipA), qPrintable(tipB),
+				qPrintable(heldInfo));
+		check(cursorsFromT, "chart, times from T: held on a crossing, a cursor's tag says its clock time and how far from T "
+				"(\"Cursor A at ... · T -0.250 ms\"), the measure line \"A: T -0.250 ms · B: T +1.750 ms\" after A → B");
+
+		/* live, the trigger off: clock times as before */
+		view->stopTrigger();
+		view->setLive(true);
+		for (int k = 0; k < 3; k++) frame();
+		plot = view->lastPlot(); /* the trigger's margins gone */
+		view->viewSpan(h0, h1);
+		const double la = h1 - 0.005, lb = h1 - 0.002;
+		view->setCursors(la, lb);
+		(void) view->grab();
+		const QString liveTip = view->toolTipAt(QPointF(xOf(la), plot.top() + 6));
+		const QString liveBox = hover(QPointF(plot.center().x(), plot.center().y()));
+		(void) QTest::qWaitFor([info] { return !info->text().contains(QStringLiteral("A: T")); }, 3000);
+		const bool liveClock = !std::isfinite(view->timeOrigin()) && liveTip.startsWith(QStringLiteral("Cursor A at "))
+				&& !liveTip.contains(QStringLiteral("T ")) && liveBox.endsWith(QStringLiteral(" s"))
+				&& liveBox.contains(QStringLiteral("   -")) && !info->text().contains(QStringLiteral("A: T"));
+		std::printf("     (live: the tag \"%s\", the box \"%s\", the line \"%s\")\n", qPrintable(liveTip), qPrintable(liveBox),
+				qPrintable(info->text()));
+		check(liveClock, "chart, times from T: live with the trigger off the box says how long ago, the tags their clock "
+				"time alone, the measure line no T");
+		view->setCursors(NAN, NAN);
+		measure->setChecked(false);
+		measured(view);
+		chart.tab.hide();
+		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		QSettings().remove(QStringLiteral("chart/measure"));
 		clearTriggerSettings();
 	}
 
