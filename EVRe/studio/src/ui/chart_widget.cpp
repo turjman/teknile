@@ -14,6 +14,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QStackedWidget>
+#include <QStyleHints>
 #include <QThread>
 #include <QToolTip>
 #include <QTimer>
@@ -941,6 +942,20 @@ void ChartView::showSpan(double t0, double t1) {
 void ChartView::setTrigger(int key, TriggerMode mode) {
 	const QString name = lineName(key);
 	if (!triggerSettings_.contains(name)) triggerSettings_.insert(name, triggerSettings(key)); /* its mid-range, kept */
+	/* stopped: the row's line, edge or mode change what Run arms, not the picture, which stays until Run (as the edge
+	 * symbol on the chart leaves it); only another line's T goes, as it marked a crossing of the line no longer watched */
+	if (trigger_.on && trigger_.stopped) {
+		if (key != trigger_.key) {
+			trigger_.at = NAN;
+			recentHolds_.clear();
+		}
+		trigger_.key = key;
+		trigger_.mode = mode;
+		postWatch();
+		emit triggerRunChanged();
+		refresh();
+		return;
+	}
 	trigger_.on = true;
 	trigger_.key = key;
 	trigger_.mode = mode;
@@ -1022,10 +1037,11 @@ void ChartView::stopTrigger() {
 }
 
 /* From the line's newest sample on: a crossing already in the memory does not count. Normal and Auto keep the last
- * crossing's hold-off (an Arm reset it to now and took a crossing inside it). Only Auto rolls while it waits: Normal
- * and Single hold the picture they have (the last capture, or the view as it is), as a scope waiting in Normal shows
- * its last trace, so the chart says it waits instead of rolling as Auto does */
-void ChartView::armTrigger() {
+ * crossing's hold-off (an Arm reset it to now and took a crossing inside it), except after a Stop: a scope's Stop
+ * clears its hold-off, so Run counts the first crossing at once. Only Auto rolls while it waits: Normal and Single
+ * hold the picture they have (the last capture, or the view as it is), as a scope waiting in Normal shows its last
+ * trace, so the chart says it waits instead of rolling as Auto does */
+void ChartView::armTrigger(bool keepHoldoff) {
 	if (!trigger_.on) return;
 	trigger_.armed = true;
 	trigger_.stopped = false;
@@ -1035,7 +1051,7 @@ void ChartView::armTrigger() {
 			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
 				? it->fast->timeAt(it->fast->size() - 1) : -std::numeric_limits<double>::infinity();
 	trigger_.since = trigger_.armedFrom;
-	if (trigger_.mode != TriggerMode::Single && std::isfinite(trigger_.at))
+	if (keepHoldoff && trigger_.mode != TriggerMode::Single && std::isfinite(trigger_.at))
 		trigger_.armedFrom = std::max(trigger_.armedFrom,
 				trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_));
 	if (trigger_.mode == TriggerMode::Auto) {
@@ -1059,19 +1075,21 @@ void ChartView::holdAsShown() {
 }
 
 /* Stop: no crossing counts any more, the one waiting for its view is dropped (it would move the view later), and the
- * picture stays with its T, live or held, until Run */
+ * picture stays with its T, live or held, until Run. The crossings' rate starts again: after Run it would otherwise
+ * count the stopped time as a long gap between two crossings */
 void ChartView::stopRun() {
 	if (!trigger_.on) return;
 	trigger_.armed = false;
 	trigger_.stopped = true;
 	trigger_.pending = NAN;
+	recentHolds_.clear();
 	if (live_) holdAsShown();
 	postWatch();
 	emit triggerRunChanged();
 	refresh();
 }
 
-void ChartView::runTrigger() { armTrigger(); }
+void ChartView::runTrigger() { armTrigger(false); } /* from now: the hold-off went with the Stop */
 
 ChartView::TriggerPhase ChartView::triggerPhase() const {
 	if (!trigger_.on) return TriggerPhase::Off;
@@ -1189,8 +1207,8 @@ QString ChartView::triggerStateText() const {
 		return capturing ? tr("%1 · triggered, capturing after T", "the trigger's mode; the view still fills after the "
 				"crossing").arg(mode) : tr("%1 · triggered", "the trigger's mode").arg(mode);
 	case TriggerPhase::Done:
-		return capturing ? tr("Single · stopped, capturing after T") : live_ ? tr("Single · stopped · Arm to wait")
-				: tr("Single · stopped");
+		return capturing ? tr("Single · complete, capturing after T") : live_ ? tr("Single · complete · Arm to wait")
+				: tr("Single · complete");
 	}
 	return QString();
 }
@@ -1374,10 +1392,13 @@ void ChartView::holdAt(double end, bool user) {
 	double m0, m1;
 	memorySpan(m0, m1);
 	const double liveEdge = liveEnd();
+	/* asked before the clamp: a view still capturing after T ends past now, and its clamp to now is not the user's */
+	const bool moved = end != viewEnd();
+	if (user && !moved && !live_) return; /* a press that does not move the view changes nothing */
 	end = std::clamp(end, std::min(m0 + window_, liveEdge), liveEdge);
 	/* the user moved the view: a trigger that runs would move it back at its next crossing, so it stops (a scope's
 	 * Stop); a press that does not move it stops nothing */
-	if (user && trigger_.on && trigger_.armed && end != viewEnd()) stopRun();
+	if (user && trigger_.on && trigger_.armed && moved) stopRun();
 	if (end >= liveEdge - window_ * LIVE_SNAP) { /* back at now: live again */
 		setLive(true);
 		return;
@@ -1797,6 +1818,9 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 			&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right()))) {
 		drag_ = Drag::Level;
 		levelGrab_ = pos.y() - triggerLineY_;
+		/* an off-scale level is drawn on the lane's edge, whose value is not the level: it keeps its value until the
+		 * mouse has moved a drag's distance up or down (a press to read its tag, a sideways jitter, changes nothing) */
+		dragStartY_ = triggerOffScale_ != 0 ? pos.y() : NAN;
 		return;
 	}
 	/* a note's tag: chosen (Delete removes it) and dragged */
@@ -1912,6 +1936,10 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		emit cursorsChanged();
 		break;
 	case Drag::Level: { /* the engine watches the new level from the next frame on, not after the release */
+		if (std::isfinite(dragStartY_)) {
+			if (std::fabs(pos.y() - dragStartY_) < QGuiApplication::styleHints()->startDragDistance()) break;
+			dragStartY_ = NAN;
+		}
 		const double at = triggerAxes_.value(std::clamp(pos.y() - levelGrab_, triggerLane_.top(), triggerLane_.bottom()));
 		const double level = normalized_ ? triggerLo_ + at * (triggerHi_ - triggerLo_) : at;
 		if (level != watchedSettingsRef().level) {
@@ -2052,6 +2080,17 @@ void ChartView::zoomTime(double factor, double mouseX) {
 	const double fraction = (at - (viewEnd_ - window_)) / window_;
 	const bool holding = trigger_.holding;
 	putWindow(newWindow);
+	if (holding && std::isfinite(trigger_.at)) {
+		/* the trigger's view stays its own: a view still capturing after T ends past now, and holdAt's clamp to now
+		 * would take it live (Normal rolling while armed, Single's capture gone). It may end as far past now as the
+		 * crossing's own view at this window */
+		double m0, m1;
+		memorySpan(m0, m1);
+		const double top = std::max(liveEnd(), trigger_.at + (1 - triggerPosition_) * newWindow);
+		viewEnd_ = std::clamp(at + (1 - fraction) * newWindow, std::min(m0 + newWindow, top), top);
+		refresh();
+		return;
+	}
 	holdAt(at + (1 - fraction) * newWindow, false);
 	trigger_.holding = holding && !live_;
 }
@@ -2362,8 +2401,8 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		}
 		perf_.lines += stage.nsecsElapsed() / 1e6;
 		stage.restart();
-		/* the marks' lines, the folded strips over them, then the marks' tags (as the card: its pictures over all) */
-		drawNotes(p, axes, Marks::Lines);
+		/* the now edges, the marks' lines over them (the card: the edges' layer before the marks'), the folded strips
+		 * over those, then the marks' tags (as the card: its pictures over all) */
 		nowEdges_ = nowEdgeLines(plots);
 		if (!nowEdges_.isEmpty()) {
 			p.save();
@@ -2371,6 +2410,7 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 			p.drawLines(nowEdges_);
 			p.restore();
 		}
+		drawNotes(p, axes, Marks::Lines);
 		drawTrigger(p, plots, binned, Marks::Lines);
 		drawCursors(p, axes, Marks::Lines);
 		drawFolded(p, plots);
@@ -3917,6 +3957,17 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (plot.folded && !shown.isEmpty())
 			frame.sprites.push_back({ foldedPicture(plot, shown, axes.t0, axes.t1, dpr), whole(shown.topLeft()) });
 	}
+	/* the now edges: a layer under the marks' (the cursors', the notes', the level's), as the CPU draws them */
+	nowEdges_ = nowEdgeLines(plots);
+	if (!nowEdges_.isEmpty()) {
+		GpuLines::Layer edges;
+		edges.widthPx = float(dpr);
+		for (const QLineF &edge : std::as_const(nowEdges_)) {
+			const QPointF a = map(edge.p1()), b = map(edge.p2());
+			edges.segments.push_back({ float(a.x()), float(a.y()), float(b.x()), float(b.y()), gpuColor(nowEdgeColor()) });
+		}
+		frame.layers << edges;
+	}
 	/* the cursors: dashed as the CPU's pen (1.2 px: dashes of 4.8, gaps of 2.4), a tag each */
 	GpuLines::Layer marks;
 	marks.widthPx = float(1.2 * dpr);
@@ -3953,16 +4004,6 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (!levelTag.isEmpty()) frame.sprites.push_back({ levelTagPicture(dpr), whole(levelTag.topLeft()) });
 	}
 	frame.layers << marks;
-	nowEdges_ = nowEdgeLines(plots);
-	if (!nowEdges_.isEmpty()) {
-		GpuLines::Layer edges;
-		edges.widthPx = float(dpr);
-		for (const QLineF &edge : std::as_const(nowEdges_)) {
-			const QPointF a = map(edge.p1()), b = map(edge.p2());
-			edges.segments.push_back({ float(a.x()), float(a.y()), float(b.x()), float(b.y()), gpuColor(nowEdgeColor()) });
-		}
-		frame.layers << edges;
-	}
 	spanBar_ = spanBar(axes);
 	if (!spanBar_.text.isEmpty()) {
 		const QRectF area = spanBar_.bar.isEmpty() ? spanBar_.textRect : spanBar_.bar.united(spanBar_.textRect);

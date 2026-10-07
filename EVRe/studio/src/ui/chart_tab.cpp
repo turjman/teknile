@@ -1104,7 +1104,7 @@ QString ChartTab::triggerState() const {
 		return rateText_.isEmpty() ? tr("triggered") : tr("triggered · %1 /s", "crossings a second").arg(rateText_);
 	case ChartView::TriggerPhase::Done: {
 		const qint64 ms = view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000));
-		return tr("Single · stopped at %1").arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
+		return tr("Single · complete at %1").arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
 	}
 	}
 	return QString();

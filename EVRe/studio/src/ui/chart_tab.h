@@ -174,7 +174,7 @@ public:
 	AnalysisWindow *openAnalysis(AnalysisWindow::Kind kind, int key);
 	/* a line's chip menu, Trigger on this line: the trigger on, armed on that line with its own level and edge */
 	void triggerOnLine(int key);
-	/* the trigger row's state in words ("waiting for a crossing", "triggered · 48 /s", "Single · stopped at
+	/* the trigger row's state in words ("waiting for a crossing", "triggered · 48 /s", "Single · complete at
 	 * 14:03:12.345", ...): tests */
 	QString triggerState() const;
 

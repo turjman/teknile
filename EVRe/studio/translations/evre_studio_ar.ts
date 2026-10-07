@@ -1140,8 +1140,8 @@ Drawing: Auto takes a dedicated graphics card when there is one, else the CPU (t
         <translation>قُدح · ⁦%1 /s⁩</translation>
     </message>
     <message>
-        <source>Single · stopped at %1</source>
-        <translation>مرة واحدة · متوقف عند %1</translation>
+        <source>Single · complete at %1</source>
+        <translation>مرة واحدة · مكتمل عند %1</translation>
     </message>
     <message>
         <source>The trigger is on. Stop: no crossing counts, the picture and its T stay. Run: armed again in its mode, from now.
@@ -1364,16 +1364,16 @@ Dragging the chart stops it too.</source>
         <translation>%1 · قُدح</translation>
     </message>
     <message>
-        <source>Single · stopped, capturing after T</source>
-        <translation>مرة واحدة · متوقف، يلتقط ما بعد T</translation>
+        <source>Single · complete, capturing after T</source>
+        <translation>مرة واحدة · مكتمل، يلتقط ما بعد T</translation>
     </message>
     <message>
-        <source>Single · stopped · Arm to wait</source>
-        <translation>مرة واحدة · متوقف · «تجهيز» للانتظار</translation>
+        <source>Single · complete · Arm to wait</source>
+        <translation>مرة واحدة · مكتمل · «تجهيز» للانتظار</translation>
     </message>
     <message>
-        <source>Single · stopped</source>
-        <translation>مرة واحدة · متوقف</translation>
+        <source>Single · complete</source>
+        <translation>مرة واحدة · مكتمل</translation>
     </message>
     <message>
         <source>rising or falling</source>

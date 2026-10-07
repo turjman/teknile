@@ -229,10 +229,11 @@ public:
 	void setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode); /* the line's settings set first */
 	void stopTrigger();
 	/* waits for the next crossing (Single: once more), from now; Normal and Auto: not before the last crossing's hold-off
-	 * has passed. Auto runs live; Normal and Single hold the view as it is */
-	void armTrigger();
+	 * has passed (keepHoldoff false: from now, as Run). Auto runs live; Normal and Single hold the view as it is */
+	void armTrigger(bool keepHoldoff = true);
 	/* Run and Stop (the toolbar's button while the trigger is on): Stop disarms, drops a crossing waiting for its view
-	 * and keeps the view and its T; Run arms again in the mode, from now */
+	 * and the hold-off, and keeps the view and its T; Run arms again in the mode, from now. While stopped, a change of
+	 * the line, edge or mode (setTrigger) stays stopped */
 	void stopRun();
 	void runTrigger();
 	bool triggerRunning() const { return trigger_.on && trigger_.armed; } /* Stop would stop it */
@@ -917,7 +918,7 @@ private:
 	double dragHeights_[2] = { 0, 0 }; /* LaneBorder: the heights of the lanes above and below it when it began */
 	double dragUnit_ = 1;             /* LaneBorder: the height of a weight of 1 then */
 	bool pressedLanes_ = false;       /* the last press was the lanes' own (pressLanes): its double-click is not a lane's */
-	double dragStartY_ = 0;           /* LaneBar: where the drag began */
+	double dragStartY_ = 0;           /* LaneBar: where the drag began; Level: an off-scale level's press (NaN: moving) */
 	double levelGrab_ = 0;            /* Level: the mouse's height over the level's line when the drag began */
 	mutable QHash<QString, QImage> foldedImages_; /* the folded strips' pictures, by unit, at foldedKeys_ */
 	mutable QHash<QString, QString> foldedKeys_;
