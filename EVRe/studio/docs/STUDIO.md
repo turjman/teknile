@@ -809,7 +809,8 @@ The button shows the names of the groups ticked. When they do not fit, it shorte
 - **Log** ticks choose the CSV columns (see chapter 12).
 - **Plot shown** ticks Plot on every numeric register the table shows now, after the search and the groups. When all of them are plotted already, or the chart is full (more shown than it may hold), the button reads **Unplot shown** and takes the shown ones off; with the chart full of others, Plot shown says to untick some first.
 - **How many on the chart** depends on the rate the samples come at: **64,000 samples a second** for all the lines together, at most 64 lines (more cannot be followed by eye). Up to 1000 Hz: 64; 1500 Hz: 42; 2000 Hz: 32; 4000 Hz: 16. The rate is Auto send's while it is on, otherwise the polling interval's (2 ms: 500 Hz), or the polls measured when the interval is 0 (rounded up to 100 Hz). So the chart keeps its frame rate whatever the speed (23.6).
-- Plot shown charts as many as there is room for, in the table's order, without a question; the status bar says how many were left off: *64 registers added to the chart, 34 left off: 64 at most at this rate*. A Plot ticked past the limit (or picked from the right-click menu) stays unticked, and the status bar says *At most 32 registers on the chart at 2000 samples a second: untick one first*. When the rate goes up (a shorter interval, Auto send on or faster), the newest lines come off the chart, and the Log names them. `--plot` past the limit says so in the Log. Math lines do not count (they have their own 64).
+- Plot shown charts as many as there is room for, in the table's order, without a question; the status bar says how many were left off: *64 registers added to the chart, 34 left off: 64 at most at this rate*. A Plot ticked past the limit (or picked from the right-click menu) stays unticked, and the status bar says *At most 32 registers on the chart at 2000 samples a second: untick one first*. When the rate goes up (a shorter interval, Auto send on or faster), the newest lines come off the chart, and the Log names them. `--plot` past the limit says so in the Log.
+- **One cap of 64 lines for every kind.** Registers, math lines (9) and fast lines (7.14) count together: the chart holds 64 lines at most, and the registers get what the rate and the other lines leave. With the chart full, a 65th line of any kind is refused the same way: a register's Plot, a fast channel's tick, a field plotted, *New math line…* (before its dialog) and a math line's *Shown* stay off, and the status bar says *At most 64 lines on the chart, registers, math and fast lines together: untick one first*. A math line edited so that it would be drawn again past the cap is kept, not shown. A recording's window keeps the same cap for its *Lines* menu, the words beside the mouse.
 - A register the map marks `"plot": false` (a fixed value: an ID, a version, a setting; the Map editor's *plot* box) has no Plot box, only a dash whose tooltip says why; Plot shown passes it by, and `--plot` names it in the Log. A math line may still use it.
 - The status bar confirms: *N registers added to the chart*.
 
@@ -1070,9 +1071,9 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 |---|---|
 | **Window** | The time the view shows. Pick a preset or type a length (see below). Default 30 s. |
 | **Memory** | How much is kept, like an oscilloscope's memory depth. Pick a preset or type a length. Default 60 s. |
-| **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). |
-| Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
-| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). |
+| **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). A cap, not a reservation: with less memory free than it, the chart keeps within what is free (7.4). Its tooltip says the memory free now and, when that limits it, what the chart keeps within. |
+| Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Less memory free than the RAM, in amber: *only 2.1 GB free: keeps about 40 s* (7.4). Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
+| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). With Lanes on, the row is the **current lane's**, chosen by its unit in the list after the label (*Y&nbsp;range&nbsp;[A&nbsp;▾]*, 7.12). |
 | **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
@@ -1108,9 +1109,9 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
 | -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
-| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout (7.9). Saved. |
+| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
-| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: the registers on the chart of as many as it may hold at the rate now (4.8), the math lines when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
+| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
@@ -1134,8 +1135,23 @@ Data older than the memory is dropped in whole blocks, a little behind the memor
 Under the time labels, a thin strip shows the **whole memory depth**. Every line is drawn there thin and faded, each in its own range. The part the view shows is marked on it.
 
 - While the memory fills up, the data grows in from the right. Where there is room, the strip says how much is kept so far, for example *filling: 20 s of 60 s kept* with the default memory. Lengths below 120 s are written in seconds, from 120 s in minutes with one decimal (*2.5 min*), and from 7200 s in hours (*2.0 h*).
-- The samples kept have a budget for all the lines together: **RAM** on the Chart tab's first row, beside Memory, 2 GB by default (a sample takes about 23 bytes: its time and value, and its share of the min/max summaries). Pick 512 MB to 16 GB, or type any size (*3000*, *3000 MB*, *3 GB*); it is kept within 256 MB and three quarters of the computer's memory, and saved. Many fast lines can need more than the memory asked for: with 2 GB, 98 lines at 500 Hz fill it in about 32 minutes, at 4000 Hz in about 4. The oldest samples then go, an eighth of each line at a time, and the strip says so: *memory full: 4.0 min of 30.0 min kept (98 lines)*; so the time kept goes down by an eighth and fills up again (with 12 min that fit: 12, then 10.5, then 12). A line keeps at most 16 million samples whatever the RAM. RAM is what the samples take: the Studio itself needs about 150 MB more (the window, its pictures, the graphics card's buffers), so with RAM 1 GB Task Manager shows it at about 1.14 GB once the memory is full.
-- Click or drag on the strip: the view centres at that time and holds.
+- The samples kept have a budget for all the lines together: **RAM** on the Chart tab's first row, beside Memory, 2 GB by default (a sample takes about 23 bytes: its time and value, and its share of the min/max summaries). Pick 512 MB to 16 GB, or type any size (*3000*, *3000 MB*, *3 GB*); it is kept within 256 MB and three quarters of the computer's memory, and saved. Many fast lines can need more than the memory asked for: with 2 GB, 98 lines at 500 Hz fill it in about 32 minutes, at 4000 Hz in about 4. The oldest samples then go, an eighth of each line at a time, and the strip says so in the warn colour (amber): *RAM budget reached: keeping the last 4.0 min of 30.0 min*, and while a recording runs *… · the recording keeps everything* (its file keeps every sample, whatever the chart lets go). The longest words that fit are shown, whole (then *RAM budget reached* alone); the strip's tooltip says what the budget does and that a recording keeps every sample, and so do the RAM box's. So the time kept goes down by an eighth and fills up again (with 12 min that fit: 12, then 10.5, then 12). A line keeps at most 16 million samples whatever the RAM. RAM is what the samples take: the Studio itself needs about 150 MB more (the window, its pictures, the graphics card's buffers), so with RAM 1 GB Task Manager shows it at about 1.14 GB once the memory is full.
+- **The RAM is a cap, not a reservation.** With 16 GB set and 2 GB free, filling on would make Windows page to disk:
+  the whole computer slows, the chart stutters, and an allocation can fail. So every 3 s the chart reads the memory
+  free (Windows: the available physical memory; Linux: `MemAvailable`), and keeps within the lower of the RAM set and
+  what it holds now plus the free memory, less a reserve of 1 GB (a tenth of the computer's memory when that is more),
+  64 MB at least. Its oldest go as for a RAM lowered (no freeze), before the computer pages. The note beside RAM says
+  so in amber, *only 2.1 GB free: keeps about 40 s* (the time from what is left and the rates now), the RAM box's
+  tooltip says the memory free and what the chart keeps within, and the strip's *RAM budget reached* tooltip adds
+  that the free memory limits the budget now. Memory free again: the RAM set holds again, and nothing more is let go.
+  The RAM list stays as it is: 16 GB can still be picked, and the free memory protects it.
+- Click or drag on the strip: the view centres at that time and holds. Taken by its box, the view follows the mouse
+  from where it was (no jump). At a short window (10 ms of a minute) the box is a sliver no mouse can take: a
+  **handle** 12 px wide is drawn over it, centred on the view, with two grip lines, and it drags as the box does. Over
+  the box or its handle the mouse is a pointing hand, the box is lit and a tooltip says *The view: drag it along the
+  memory · Wheel: a window earlier or later*.
+- The **wheel** over the strip moves the view a whole window earlier (up) or later (down), and holds; down at now it
+  is live again.
 
 ### 7.5 Y range: Auto, Manual and Log
 
@@ -1172,6 +1188,13 @@ so a current of 1 µA and one of 1 A can be read on the same chart.
 - **The memory strip** draws each line on a Log scale too, in its own range of positive values.
 - **Log and Normalise exclude each other.** Picking Log turns Normalise off, and Normalise turns Log off (the range
   mode, Auto or Manual, stays). Auto or Manual in the list are linear again.
+
+**With Lanes** (7.12) each lane has a range of its own. The row then shows and sets the **current lane's** range, chosen
+in the list right after the label (*Y range [A ▾] [Auto ▾]*): every lane by its unit, in the chart's order, a folded
+one marked *(folded)*. Choosing one there, or a click on a lane's value labels, makes it current, and the list
+follows the chart's click (its tooltip: *The lane these Y settings apply to · or click a lane's values on the
+chart*). Without Lanes the list is hidden and the row is the plot's. A lane not in Auto says so with a
+tag at the top of its value labels, *Manual* in amber or *Log*; a click on the tag sets it back to Auto.
 
 ### 7.6 Normalise and Smooth
 
@@ -1233,7 +1256,9 @@ so the bar between them keeps its room; live, or without a crossing in view, the
 | Folded&nbsp;strip&nbsp;or&nbsp;its&nbsp;▸ | Click | Open the lane again (7.12). |
 | Separator&nbsp;between&nbsp;lanes | Drag&nbsp;/&nbsp;double-click | The lane above taller or lower, the one below giving or taking / every lane its equal share again (7.12). |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
-| Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log; Fold lane / Open lane (7.12). |
+| Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log, All lanes: Auto; Fold lane / Open lane (7.12). |
+| Lane's&nbsp;value&nbsp;labels | Click&nbsp;/&nbsp;double-click | Make it the current lane: the toolbar's Y range shows and sets its range / that lane back to Auto (7.12). |
+| Lane's&nbsp;range&nbsp;tag | Click | That lane back to Auto, linear (*Manual* or *Log* at the top of its value labels, 7.12). |
 | Legend&nbsp;chip | Click&nbsp;/&nbsp;right-click | The line's menu, under the chip: its Histogram or Spectrum (8.6), and Trigger on this line, ticked for the line watched (7.13). The chip's ▾ says so; over it the mouse is a pointing hand, the ▾ is lit and the tooltip names the entries. |
 | Trigger's&nbsp;level&nbsp;marker,&nbsp;tab&nbsp;or&nbsp;line | Drag | Move the level, from where it was taken (7.13); the marker (*T▸*) lies left of the plot, the tab (*0.4 A ↑*) right of it, both lit under the mouse, their tooltips the level in words. |
 | Trigger&nbsp;tab's&nbsp;arrow | Click | The next edge: rising, falling, either (7.13). |
@@ -1245,7 +1270,8 @@ so the bar between them keeps its room; live, or without a crossing in view, the
 | Legend&nbsp;arrows | Click | Scroll half a row that way. |
 | Chart,&nbsp;cursor&nbsp;mode | Click&nbsp;/&nbsp;drag | Place or move cursor A, then B (7.7). |
 | Chart | Hover | Crosshair: a dashed line at the mouse, a dot on each line that has a sample within 1/20 of the window, and a box with the clock time (`14:03:12.345`), how long ago (`-2.40 s`; while the trigger holds the view on a crossing, how far from T instead: `T +1.234 ms`, 7.13) and every line's value, in the short number format of 7.9. With many lines the values stand in as many columns as the plot's height needs (64 lines: two in a 700 px plot); the box stays inside the plot. The values change at the **Show values** pace, as the legend's, and at once when the mouse moves; the dots follow the lines at every frame. Each column has room for the longest name, the widest number (right-aligned) and the longest unit, so the box keeps its size and place while the digits change. |
-| Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. |
+| Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. Taken by its box (or the 12 px handle at a short window), the view follows the mouse from where it was. |
+| Memory&nbsp;strip | Wheel | The view a window earlier (up) or later (down), held (7.4). |
 | Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
 | Anywhere | F1 | Help. |
 | Register&nbsp;table | Enter&nbsp;/&nbsp;Esc&nbsp;/&nbsp;F2 | Write the edited value / cancel the edit / start an edit. |
@@ -1267,7 +1293,8 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   row's end is cut before the arrow. Its room is at most 40 % of the plot (more for its shortest form rather than
   cut, always leaving the legend its first chip and both arrows). When the text is longer, whole parts are dropped
   in turn: *Live to follow*, then *click / drag* (*cursors* stays), then *manual* (*Y log* stays); the time held
-  always stays. The whole text is its
+  always stays. Below a 1 s window the time/div readout sits in this row just left of the state, inside the same
+  room; it keeps its place (the state's parts go first), and the chips end before it. The whole text is its
   tooltip. In Arabic it reads from the right. With Lanes it says nothing about them: the lanes' ▾ and ⋯ show the
   fold and the menu.
 - **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up or below 0.001 are written in exponent form (`1.235e+05`). Zero is `0`.
@@ -1278,15 +1305,16 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   **offsets**, in the unit that fits the window (s, ms, µs): live, or held by you, from the right edge (*-10 ms*,
   *-9 ms* ... *0*); held by the trigger on a crossing, from **T** (*-2 ms* ... *0* ... *+8 ms*, the *0* under the
   crossing; the grid is laid from T, so a line always falls on it). Labels stand every 1, 2 or 5 divisions as their
-  width needs, *0* always among them. At the axis's right end, just left of the last label, a readout in a box of its
-  own says the division and the clock time at 0: *1 ms/div · 18:07:34.263* (T's time while held on a crossing). Live,
+  width needs, *0* always among them. Above the plot, in the state's row at its right end (just left of the state when
+  there is one), a readout in a box of its own says the division and the clock time at 0: *1 ms/div · 18:07:34.263*
+  (T's time while held on a crossing); being off the time axis, it hides none of its labels. Live,
   its clock time is written again at most twice a second, so it does not run; its tooltip says what it is. The
   wheel steps the window through 1, 2 and 5 per division (7.8), so the readout and the labels stay round; a window
   typed (*30 ms*) is kept, and the readout then says its exact division (*3 ms/div*). In Arabic every offset and the
   readout are one left-to-right piece, the unit beside its number.
 - **Display → Time grid.** *Auto (divisions below 1 s)*, the default; *Clock times* (as before, at every window);
   *Divisions* (at every window: a 10 s window reads *1 s/div*, *-10 s* ... *0*). Saved (`chart/timeGrid`, 14.3).
-- **Info line.** It starts with the registers on the chart of the limit at the rate now (*32/64 plotted*) and the math lines, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
+- **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second, and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
 
@@ -1362,16 +1390,30 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   lights up, and a tooltip says *Fold lane* or
   *Open lane* (*Y range and lane options* over the ⋯ button). **Display → Fold all lanes** and **Open all lanes** (shown
   with Lanes on) fold or open them all, a way back when everything is folded. The value labels' tooltip names what
-  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a
-  right-click has its Y range and Fold lane. Folds are kept by
+  the mouse does there: the wheel scrolls the lanes (while they do not fit), Ctrl + wheel zooms the lane, a click
+  makes it the current lane, a double-click sets it to Auto, a right-click has its Y range and Fold lane. Folds are kept by
   unit and saved, so a unit folded stays folded when it comes back, at the next start too; a recording's window
   keeps its own.
 - **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
   a **click on its ⋯ button**, under its ▾, opens the lane's menu under the button: **Auto**, **Manual…** (its min
-  and max asked), **Log** (7.5) and **Fold lane**; a right-click on its value labels opens the same menu. The ⋯
-  shows on every open lane with room for it and a short unit name (not on a lane cut to a sliver by the plot's edge). **Ctrl + wheel**
-  over a lane zooms that lane (Manual); a **double-click** in it sets it to Auto. The Y range row above the chart is
-  the plot's without lanes, and is disabled meanwhile.
+  and max asked), **Log** (7.5), **All lanes: Auto** and **Fold lane**; a right-click on its value labels opens the
+  same menu. The ⋯ shows on every open lane with room for it and a short unit name (not on a lane cut to a sliver by
+  the plot's edge). **Ctrl + wheel** over a lane zooms that lane (Manual); a **double-click** in it or on its value
+  labels sets it to Auto.
+- **A range is never hidden:** a lane whose range is not Auto has a **tag** at the top of its value labels, beside
+  its buttons: *Manual* in amber (the warn colour: its range does not follow the lines) or *Log* in the accent
+  colour; no value label is drawn under it. Its tooltip gives the range (*This lane's Y range is manual: 4.94 to 17.1
+  A · Click: back to Auto*); over it the mouse is a pointing hand and the tag lights up; a **click** sets the lane to
+  Auto (linear). A range set long ago (a Ctrl + wheel, saved by unit) comes back tagged at the next start.
+- **The current lane drives the toolbar:** with Lanes on, the Y range row (7.1) shows and sets the range of the
+  **current lane**, chosen in the **lane list** right after *Y range* (*Y range [A ▾] [Auto ▾] min max*: every lane
+  by its unit as the chart orders them, a folded one marked *(folded)*), and its unit name is lit in the accent colour
+  (with more than one lane). The first lane is current until another is chosen in that list or by a **click on its
+  value labels**, its ⋯ or its tag; the list and the row follow at once, and the list follows the lanes as units come
+  and go. Auto, Manual, Log, min and max there act on that lane alone. Without lanes
+  the row is the plot's again.
+- **Display → All lanes: Auto** (shown with Lanes on, enabled while a lane is not in Auto) sets every lane back to
+  Auto, linear.
 - **A line between two lanes**, in the middle of the gap, from the value labels across the plot, in the colour of a
   control's edge (3:1 to the chart in both themes; the border colour, 1.3:1, was too faint): the lanes read as plots
   of their own, and the value labels of one do not run on into the next. Only between lanes in view.
@@ -1379,7 +1421,9 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   cursor, the line lights up in the accent colour, and a tooltip says *Drag: this lane's height · Double-click: equal
   heights*. Dragging it makes the lane above taller or lower, the one below giving or taking as much; neither goes
   under 80 px. The heights are kept by unit as shares of the room, so a resized window keeps their proportions, and
-  they are saved (a recording's window keeps its own). A **double-click** on a separator gives every lane its equal
+  they are saved (a recording's window keeps its own). The lanes always fill the plot: a lane whose share would be
+  under 80 px (the window made smaller, the others dragged tall) is held at 80 and the others share what is left by
+  their weights, so the last lane never runs below the plot; they scroll only when every open lane is at 80 px. A **double-click** on a separator gives every lane its equal
   share again.
 - **One time axis** under the plot; the grid's times run through every open lane.
 - **Across the whole plot,** however the lanes are scrolled: cursors A and B, their span and the A-B bar (at the
@@ -1512,10 +1556,16 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   it is full: a repeating wave stands still, a whole picture each time. The first crossing, Single, and a window of a
   second or more hold at once and fill as the samples come.
 - **Short windows lock by themselves.** Below a 100 ms window a live chart with the trigger off runs Auto on its
-  first line: the level at that line's middle in view (Find level's rule, taken again each second while it runs
-  free), rising. An untriggered wave at 20 ms left ghosts and labels over each other, as the eye blended frames that
+  busiest line: a fast line before any polled one (the first of them), else the line with the most samples in the
+  window; the level at that line's middle in view (Find level's rule, taken again each second while it runs free),
+  rising. A line with fewer than 20 samples in the window is not watched, and with none busier the lock does not run
+  (the corner shows nothing for it): a slow polled line plotted first crosses now and then, and the lock flipped
+  between free running and locked. The line is chosen again when the lines change or the one watched has too few
+  samples, not at each frame. An untriggered wave at 20 ms left ghosts and labels over each other, as the eye blended frames that
   each showed the wave elsewhere; locked, it stands still whenever it crosses. The corner says *Auto (short window)*
-  while it locks and *Auto · free running* while the line does not cross (after a second without a crossing). It is
+  while it locks and *Auto · free running* while the line does not cross (after a second without a crossing), as a
+  **badge**: the accent colour (the Live button's blue, not the amber of Stopped) on a tint of it, rounded, so the
+  view's state is seen at a glance; its tooltip says what locks and that Display → Lock short windows turns it off. It is
   an aid, not your trigger: no row, no tab, no flag, and the toolbar's button stays Hold. Your trigger takes over
   when you turn it on; **Hold**, a pan, or a window of 100 ms or more ends it (Live brings it back).
   **Display → Lock short windows** (on by default, `chart/autoShortWindows`, 14.3) turns it off. It costs no
@@ -1564,9 +1614,12 @@ and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
 - **The memory.** The records are kept as they came, a few bytes each (two `i16` channels: 4 bytes a record, and
   a quarter of a byte for the summaries the chart draws from, 23.11), once for all the plotted channels of a stream.
   In the RAM budget each fast line counts as one line, as a polled one (7.3): two fast lines and two polled ones share
-  it in quarters. Past the Memory, or past its share, a stream's oldest records go in whole pieces of 65 536.
-- **At most 64 lines** on the chart, fast and polled together: a tick past that is taken back, and the status bar
-  says *At most 64 lines on the chart: untick one first*.
+  it in quarters. Past the Memory, or past its share, a stream's oldest records go in whole pieces of 65 536. A RAM
+  cut (4 GB filled to 512 MB) takes effect at the next block without a pause: the memory let go is freed a little
+  at each frame (23.11).
+- **At most 64 lines** on the chart, fast, polled and math lines together (one cap, 4.8): a tick past that is taken
+  back, and the status bar says *At most 64 lines on the chart, registers, math and fast lines together: untick one
+  first*.
 - **On a bus** the card is greyed (13.9), its Plot ticks too.
 
 **Measured as any line.** A fast line has its row in the Measure table (chapter 8), its total since Clear (8.4), its
@@ -1965,7 +2018,7 @@ A link in trouble can produce the same message many times a second. These rules 
    - **The same message at most every 30 s.** Messages are compared with every digit removed, so *3 request(s) timed out (17 in all)* and *5 request(s) timed out (22 in all)* count as the same message.
    - **One pop-up at a time.** The newest replaces the shown one, and *+N more* counts the others that came while it was up. Once an error is shown, the pop-up stays red for the warnings that follow.
    - **Shown for 5 s** after the latest message, or **8 s** when it is an error.
-   - **It covers nothing.** It sits in the free space right of the tab bar, as one line, shortened to fit. Hover it for the full text. **Show in Log** opens the Log tab and closes the pop-up, and a later resize does not bring it back. When that space is narrower than 260 pixels, the status bar shows the message instead, for the same time.
+   - **It covers nothing.** It sits in the free space right of the tab bar (in Arabic, right to left, the tabs are on the right and it sits left of them), as one line, shortened to fit, its coloured edge where its text begins. It is placed again whenever the tab bar moves or changes size, the direction or the language changes, and the window is resized. Hover it for the full text. **Show in Log** opens the Log tab and closes the pop-up, and a later resize does not bring it back. When that space is narrower than 260 pixels, the status bar shows the message instead, for the same time.
    - **It never blocks.** No pop-up waits for a click.
 
 ### 11.4 The Log tab's counter
@@ -2292,6 +2345,12 @@ What the Studio does with a stream on:
 
 - **The trigger** (7.13) on a fast line: the engine looks for the crossing in each block as it comes, at its record,
   and hands it to the chart with the block, which holds on it at the next frame.
+- **Polls beside a stream.** A poll's answer comes on the same link after the blocks the device sent before it.
+  Measured with `evre_fake_fast` at a million records a second (4 MB/s) and SUPPLY_V polled every 100 ms (and at
+  *max*): no timeout in 60 s, the answers in about 0.6 ms, also with every core of the PC busy and with the window
+  held: the stream itself does not make the polls time out in the Studio. A real device whose stream fills most of
+  its link, or that answers only between its blocks, makes the answers late: when the Log reports timeouts while a
+  stream runs, raise **Timeout** (3.3) or lower the stream's rate.
 - **To the window.** The blocks wait for the window's next frame in a queue of at most 64 MB (at a million samples a
   second of 4 bytes, 16 s). A window that stalls longer loses the oldest: their samples are counted as *not shown* in
   the rate's tooltip, and their line breaks there. A frame takes the blocks into the chart for about 8 ms at most:
@@ -2392,7 +2451,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/ramMB` | `2048` | on&nbsp;change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
 | `chart/smooth` | `true` | on&nbsp;change | Smooth. |
 | `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
-| `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its first line (7.13). |
+| `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its busiest line (7.13). |
 | `chart/timeGrid` | `0` | on&nbsp;change | Time grid: 0 Auto (divisions below a 1 s window), 1 Clock times, 2 Divisions (`ChartView::TimeGrid`, 7.9). |
 | `chart/yAuto` | `true` | on&nbsp;change | Y range Auto. |
 | `chart/yLog` | `false` | on&nbsp;change | Y range Log (7.5); with `chart/yAuto` for its range. |
@@ -3855,7 +3914,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
 | `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
 | `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
-| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records), 23.11 |
+| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame), 23.11 |
 | `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record` and the engine beside a CSV; `fast::readRecording` / `Recording`: one read, the file mapped, into a mapped store (12.7); `recordingFileFor` (`run.csv` -> `run.ADC.evrs`), `recordingsBeside` |
 | `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
@@ -4063,7 +4122,7 @@ names, kept in the same table as the functions) and constants, for the formula b
   point for it (9.6).
 - `registersRead()` lists the registers the active lines read.
 - `evaluate(samples, sink)` computes the points for one frame.
-- Line i is keyed `FIRST_CHART_KEY + i` (1 << 24) on the chart, clear of every register key (`regKey`). At most 64 lines are drawn.
+- Line i is keyed `FIRST_CHART_KEY + i` (1 << 24) on the chart, clear of every register key (`regKey`). At most 64 lines are drawn, and they count in the chart's one cap of 64 lines (4.8): `ChartTab::drawMathLines` draws a line only while the chart has room, and *New math line…*, a field and *Shown* are refused past it (`roomForLine`, signal `statusMessage` for the status bar).
 
 **`analysis` (`analysis.*`).** Nothing of the chart; no library.
 
@@ -4145,8 +4204,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
-| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `removeFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `stopRun` / `runTrigger` / `triggerRunning` (Run and Stop) / `forceTrigger` (Force) / `triggerPhase` / `triggerCapturing` / `triggerRate` (the state, 7.13) / `nowEdges` (tests: the now edges as last drawn) / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` / `TriggerSettings` / `triggerPosition` / `triggerHoldoff` / `triggerMarkHovered` / `triggerEdgeHovered` / `triggerTagOpen` / `triggerHandleSolid` / `triggerLevelOffScale` / `triggerLevelBeyondLine` / `triggerTagHovered` / `levelText` (a level as set, 6 digits) / `midRange` (Find level, a line's first level) / `triggerPending` (tests: a crossing waiting for its view) / `fastColumnsBinned` (tests) (`TRIGGER_AT`, `TRIGGER_AT_MAX`, `MAX_HOLDOFF`, `STEADY_WINDOW`; 23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`, `triggerRunChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` / `chipButtonRect` / `hoveredChip` (a chip's ▾ and the chip under the mouse; signal `lineMenuRequested`, a click or a right-click on a chip), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), `watchFreeMemory` / `effectiveRamMB` / `setTestFreeMemory` (the RAM against the free memory, 23.3), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `fastLines` / `mathLinesShown` / `lineCount` / `lineCapText` (one cap of 64 lines for every kind, 4.8; signal `statusMessage`, a math line refused), `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `removeFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `stopRun` / `runTrigger` / `triggerRunning` (Run and Stop) / `forceTrigger` (Force) / `triggerPhase` / `triggerCapturing` / `triggerRate` (the state, 7.13) / `nowEdges` (tests: the now edges as last drawn) / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` / `TriggerSettings` / `triggerPosition` / `triggerHoldoff` / `triggerMarkHovered` / `triggerEdgeHovered` / `triggerTagOpen` / `triggerHandleSolid` / `triggerLevelOffScale` / `triggerLevelBeyondLine` / `triggerTagHovered` / `levelText` (a level as set, 6 digits) / `midRange` (Find level, a line's first level) / `triggerPending` (tests: a crossing waiting for its view) / `fastColumnsBinned` (tests) (`TRIGGER_AT`, `TRIGGER_AT_MAX`, `MAX_HOLDOFF`, `STEADY_WINDOW`; 23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`, `triggerRunChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` / `chipButtonRect` / `hoveredChip` (a chip's ▾ and the chip under the mouse; signal `lineMenuRequested`, a click or a right-click on a chip), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` (the weights; a lane whose share is under `LANE_MIN_H` held there, the others sharing the rest, so they fill the plot) / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `setRecordingOn` / `memoryStripText` / `memoryStripTextColor` / `memoryStripTip` (the strip's words for the RAM budget reached, 7.4), `releaseSome` (a frame's slice of what the fast stores' trims let go, `RELEASE_NS`, 23.11), `memoryHandleRect` / `memoryHandleHovered` (`MEMORY_HANDLE_W`: the view's box on the strip, or its handle at a short window, 7.4), `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastChannels` (a fast channel named: why it cannot be read, 9.5) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
@@ -4154,7 +4213,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
-| `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place`; signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log) |
+| `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
 | `Theme`,&nbsp;`ui_helpers` | look&nbsp;and&nbsp;shared&nbsp;helpers | `Theme::apply`, `colors`, `isDark`, `switched` (a widget's colours after a switch of the look), `studioIcon` | GUI test (contrast of both looks, focus ring, hover edges, check marks, colours after a switch, the icon) |
@@ -4294,7 +4353,18 @@ Memory is trimmed in two places:
   the other lines waiting their turn between the sixteenth short and the share, which they never pass. A line further past its share (the RAM lowered, lines added) drops all of the excess and
   the eighth at once, and lets its room go with one copy of what stays (`dropFront`): an eighth at each sample,
   each moving the whole line, held the window 3 s when 1 GB full of 65 lines was set to 512 MB. A line trimmed by the budget sets `memoryFull()`, and the memory
-  strip says *memory full* (7.4) until the samples are cleared or the lines change.
+  strip says *RAM budget reached* in the warn colour (7.4; `memoryStripText` / `memoryStripTextColor` /
+  `memoryStripTip`, with `setRecordingOn` from the window while a recording runs) until the samples are cleared or
+  the lines change.
+- **The free memory limits the budget** (`ChartTab::watchFreeMemory`, every `FREE_WATCH_MS` = 3 s on the window's
+  thread): `effectiveRamMB` = min(the RAM set, held + free - `ramReserveMB()`), at least `RAM_FLOOR_MB` (64), with
+  *held* = `bytesHeld()` + `bytesReleasing()` (what the trims let go and `releaseSome` has not freed yet: still taken,
+  so it counts as the chart's, else every reading before the frees would lower the limit again) and the reserve
+  max(1 GB, a tenth of the computer's memory). Below the RAM set it is the view's `setRamLimit`, and `ramInUse()` (the
+  lower of the two) is what `pointsPerLine` and `trimFast` share: the same trims as a budget lowered. The free memory
+  moves all the time: a new limit is set only for a step of a twentieth (64 MB at least), or on and off, so the lines
+  are not trimmed a little at every reading. `setTestFreeMemory` (tests; `EVRE_TEST_FREE_MB` for a look) gives a free
+  memory that what the chart lets go comes back to, as a computer's does.
 - **The arrays keep to the budget.** What is dropped moves the rest of a line's arrays to their front
   (`dropFront`), and they grow by about doubling only up to the line's share (`roomForOne`), each line by its own
   step, 2 to 2.44 times (`spread`, by the order the lines came), so lines that fill together grow at different
@@ -4357,7 +4427,15 @@ Smooth off sets the delay to 0. The chart info line shows the delay (`delay N ms
   `followData` run per plot over its lines, folded or out of view too (its range is ready when it shows); the
   binning is the same for all (one time axis). The frame keeps its plots (`lanesShown_`) for the mouse: `laneAtY`
   finds the lane in view under it (a lane out of view is nowhere) for Ctrl + wheel, the double-click and the
-  right-click on its labels or its strip (`laneMenuRequested`). `pressLanes` takes the lanes' own clicks before the
+  right-click on its labels or its strip (`laneMenuRequested`). A press on an open lane's value labels
+  (`pressLaneLabels`, before `pressLanes`, and not one of the lanes' own presses, so its double-click still sets
+  Auto) makes it the current lane (`currentLane_`, its unit; the first lane when none: `currentLane`,
+  `setCurrentLane`, signal `currentLaneChanged`), whose range the Chart tab's Y range row shows and sets
+  (`showYRange`, `applyYFields`, `showYControls`). A lane whose `YScale` is not Auto and linear gets a range tag
+  (`rangeTag`: in the value labels' column at the top of its part in view, `tagFont`, `RANGE_TAG_H`); `drawGrid`
+  draws it on the CPU (outside the card's layer, as the lanes' buttons) and leaves out the value labels under it; a
+  press on it sets the lane to Auto, linear (`rangeTagAt`, `hoverTag_`). `setAllLanesYAuto` / `allLanesYAuto` are
+  All lanes: Auto. `pressLanes` takes the lanes' own clicks before the
   cursors and the pan: the scroll bar (`laneScrollBarRect`, painted in `RIGHT_PAD` outside the card's layer by
   `drawLaneBar`, not a `QScrollBar`: nothing goes over the layer; its handle `Drag::LaneBar`), a unit name
   (`LANE_UNIT_W`, folds) and a folded strip (opens); the wheel over the value labels scrolls by `LANE_WHEEL_STEP`
@@ -4435,7 +4513,10 @@ The following choices keep a frame cheap on a high-DPI screen:
   card's lines lie where the CPU's do (a picture check). `drawDivisionLabels` writes the offsets (`offsetText`,
   each an isolated left-to-right piece) every 1, 2 or 5 divisions as their width needs, and the readout
   (`divisionReadoutText`: the division and the clock time at 0, its clock written again at most every
-  `DIVISION_CLOCK_MS` = 500 ms while live) in a box just left of the last label; labels under it are left out. The
+  `DIVISION_CLOCK_MS` = 500 ms while live). `drawState` draws the readout in the state's row above the plot, left of
+  the state (alone at the row's right end without one), so no time label is left out for it (one hid *-2 ms*); its
+  box is `divisionReadoutWidth` wide, its text measured with every digit a 0, so the legend's end does not follow the
+  clock's digits, and `fitState` keeps that room inside `STATE_SHARE`, dropping the state's parts first. The
   wheel steps the window by `divisionWindow` (the next 1, 2 or 5 per division), part notches of a touchpad adding up
   to one (`wheelNotches_`).
 - **Times from T** (U-7). `timeOrigin` is T while `timesFromT` holds for the view, else NaN; `fromTText` writes a time
@@ -4478,7 +4559,8 @@ The following choices keep a frame cheap on a high-DPI screen:
   outside the card's layer, so this one picture serves both drawing paths. Between those the picture is drawn (1.3 ms a frame at 4K drawn each time). The chips'
   widths (`legendLayout`, also used at every mouse move for the pointer's shape) are measured once while the lines
   and the font stay (`chipWidths_`): 64 names measured at every frame and every mouse move held the chart near 52
-  frames a second with the mouse moving. The row ends `STATE_GAP` (16 px) before the state's text: `fitState` takes
+  frames a second with the mouse moving. The row ends `STATE_GAP` (16 px) before the corner (the time/div
+  readout, else the state's text): `fitState` takes
   the first of `stateVariants` (the whole, then *Live to follow*, *click / drag* and *manual* dropped in turn) that
   fits `STATE_SHARE` (40 %) of the plot, or the shortest whole while the legend keeps its first chip and arrows,
   else the shortest ending in … . It measures the time held as the widest number, so the row's end does not follow
@@ -4819,17 +4901,24 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   least width: the window grew by 6 px in English and 32 in Arabic once a state was written.
 - **A short window's lock** (`updateShortLock`, at each `frame()`): with `shortLockOn_` (Display's *Lock short
   windows*, `chart/autoShortWindows`), no user's trigger, a live view (`live_`, or one the lock holds), a window under
-  `SHORT_LOCK_WINDOW` (100 ms), not a recording and a line, the trigger is Auto on `series_.firstKey()` with
+  `SHORT_LOCK_WINDOW` (100 ms), not a recording and a line busy enough, the trigger is Auto on `lockKey_` with
   `Trigger::automatic` set and its own `lockSettings_` (the line's `midRange`, Rising; the level taken again each
   `TRIGGERED_AT_LEAST` while it runs free), so the user's levels kept by name stay as they are; `watchedSettings`
-  gives the lock's, and the polled line's check in `append` reads it. Everything else is Auto's own work (the
+  gives the lock's, and the polled line's check in `append` reads it. `lockKey_` is `busiestLine()`: the first fast
+  line with `SHORT_LOCK_SAMPLES` (20) in the window (`samplesInWindow`: the samples after the line's newest less the
+  window, a binary search), else the line with the most there, at least that many; -1: none, and the lock ends as
+  for no line. It is chosen again only when `seriesGeneration_` moved (the lines changed) or the line watched has too
+  few, so it does not move from line to line at each frame (`shortLockKey()`, tests). Everything else is Auto's own work (the
   crossings, `pending`, `binPending`): nothing binned of its own. `triggerOn()`, `triggerKey()` and `triggerMarked()`
   leave the lock out (no row, Run / Stop, tab, flag, room or now edge), and `live()` counts it as live, so the
   toolbar's button stays Hold: Hold (`setLive(false)`), a pan (`holdAt`) or a span shown (`showSpan`) call
   `endShortLock` and hold the view as shown (no lock until Live); a longer window, the setting off or no line end it
   and go live; `setTrigger` (the user's) clears `automatic` and takes over. The corner says *Auto (short window)*
   while Triggered and *Auto · free running* otherwise (`triggerStateText`), with the other parts of the state
-  (`stateVariants` leaves out *held*).
+  (`stateVariants` leaves out *held*). `drawState` draws that last part as a badge (`stateBadge_`: the accent on a
+  tint of it, `BADGE_PAD` either side, `BADGE_GAP` from the other words, at the end the words are read to); its width
+  counts in the state's room (`stateWidth` in `fitState`), and a state too narrow even for its shortest text is
+  written plain, cut.
 
 ### 23.11 Fast lines
 
@@ -4862,6 +4951,15 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   too: past it a sync appends them all, whatever the time, so nothing is dropped in the window and the counts
   (taken, lost, not shown) stay the engine's. `fastSyncsLeftOver()` counts the syncs that left some (26.2, *fast
   speed*).
+- **Trims.** `ChartView::trimFast`, after each block: past the Memory, or from a sixteenth short of the stream's
+  share of the RAM down to seven eighths of it, `Store::dropFront` drops whole pieces from the front, and the
+  summaries' arrays are copied to their new size. The store is at its new size at once, for every frame after. What
+  it let go (the pieces, the summaries' old arrays: `Store::Released`) is not freed there but kept in `released_` and
+  freed by `releaseSome` at each `frame()`, for at most `RELEASE_NS` (3 ms) a frame. Freed in one go, a RAM cut from
+  4 GB filled to 512 MB held the window's thread about 2 s (3.5 GB let go; on the test machine 1 GB to 256 MB took 74 ms
+  in one append); freed on another thread, the frees held the heap and the memory's pages while the chart's threads
+  binned the memory strip, and the next paint took 30 to 50 ms. Now, 2 GB filled cut to 256 MB: the longest append
+  4.6 ms, `frame()` 10.8 ms (one summary's array freed), the paint 10.8 ms (26.2, *the RAM cut*).
 - **Times.** A record's time is its epoch's mark before it plus the records since times the mark's period; before
   the first mark, the first's backwards. A new start whose first time falls before the end of the one before is
   shifted after it (`Epoch::shift`): times never go back, so `lowerBound` / `upperBound` (a binary search on the
@@ -5211,7 +5309,9 @@ The steps run in order. Each leaves the window and the device as the next step e
 8. the danger confirmation
 9. an out-of-range value refused, with a pop-up
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
-11. "Show in Log" ends the pop-up, even after a resize
+11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
+    sits left of the tabs, at 1200×720, 1600×950 and the window's size, and right of them again in left to right,
+    never over the tab bar, the page or the sidebar (with `EVRE_TEST_SHOT` set: `<prefix>_notice_ar.png`)
 12. the Log tab
 13. stale values grey and back
 14. the ⓘ tooltip and the detail line (with a check for broken UTF-8)
@@ -5291,7 +5391,9 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   card) and connects back to the Python fake device; the chart keeps no store of the stream (`fastStore(0)`: none), so
   the same stream loaded again starts afresh. With the stream on, the Plot tick of `ADC.I_LOAD` (a pointing
   hand, a tooltip naming it) puts its line on the chart: its records kept, its newest value in amperes beside the
-  tick, *· 1 fast* in the chart's info line. Measured: its row in the Measure table reads the device's 50 Hz sine of
+  tick, *· 1 fast* in the chart's info line. One cap of 64 lines (`chartOneCap`): the chart filled with math lines
+  (fields of ADC_STREAM), the tick of `ADC.V_BUS` is taken back with the same words in the status bar and the info
+  line reads *64/64 plotted · N math · 1 fast*; the math lines removed, the tick is taken. Measured: its row in the Measure table reads the device's 50 Hz sine of
   6.55 A at about 4.6 A RMS; the trigger's line list offers it (its tooltip names fast lines); armed from its chip's
   menu at 0 A rising, the engine finds a crossing as the blocks come and the view holds at its time, between its two
   records (the test says how long after the crossing it held); its chip's menu offers
@@ -5328,7 +5430,10 @@ as the window feeds it:
 - **A gap**: 500 records lost in the middle of 200 ms: the bin after them says so, no pixel of the line in the gap,
   and the mouse over it reads *ADC.I_LOAD: 500 sample(s) lost here* (nothing beside it).
 - **The RAM shared**: 256 MB for a polled line and a fast one of 32 `i32` channels: the fast line's store trimmed to
-  its half (the memory full), the polled line's share the other half.
+  its half (the memory full), the polled line's share the other half. The strip then says *RAM budget reached:
+  keeping the last … of 1.0 h* in the warn colour (pixels of it on the picture), dark and light, with *· the recording
+  keeps everything* while a recording runs; its tooltip says what the budget does. With `EVRE_TEST_SHOT` set it saves
+  `<prefix>_ram_budget_<dark|light>_<idle|recording>.png`.
 - **With the rest**: lanes by unit beside a polled line, the legend with the newest values, the crosshair.
 - **On a card** (Windows): the card's picture of two fast lines like the CPU's (93 % of its 24 px blocks alike; skipped
   where there is none).
@@ -5433,7 +5538,9 @@ half above the plot writes nothing (`foldedText` empty), whole it writes its lin
 **A lane's border** (`chartLaneBorders`, settings `laneBorders`, four lanes that fit): over the first separator the
 resize cursor, the hovered separator, the line in the accent colour beside the mouse, the tooltip; off it none of
 them; dragged 30 px down the first lane 30 px taller and the second 30 px lower, the others the same, nothing to scroll,
-the two weights saved; dragged far down the second held at 80 px, far up the first at 80 px; a new tab of the same
+the two weights saved; dragged far down the second held at 80 px, far up the first at 80 px; weights of 6, 0.3, 0.3 and 0.3 (the
+shares of the last three under 80 px) hold those at 80 and give the first the rest, every lane in the plot, no scroll
+bar, and a tab too short for 80 px each puts all at 80 with the scroll bar; a new tab of the same
 settings finds the first lane's height; a double-click on a separator makes every lane equal and the setting empty.
 On Windows the card's picture is compared with the CPU's with two lanes resized.
 
@@ -5589,9 +5696,10 @@ at 100 ms no lock; Hold ends it (the button Live), Live locks again; the user's 
 and the lock comes back after it. The time grid (`chartTimeGrid`): at 1 s the clock-time labels as before and no
 readout; at a 10 ms live window, 30 frames of a 70 Hz sine: the 9 lines inside the plot at its tenths, the same in
 every frame while the view's end moves 0.5 s; the labels *-10 ms* ... *-8 ms* ... *0*, the *0* at the right edge; the
-readout *1 ms/div · HH:mm:ss.zzz* at the axis's right end, clear of every label, its clock time written at most twice a
-second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from 0.5 s: 1 s, 1.25 s, 1 s, 0.5 s; held by
-the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's;
+readout *1 ms/div · HH:mm:ss.zzz* in the state's row above the plot, at its right end, clear of the legend, all 11 labels
+drawn, its clock time written at most twice a second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from 0.5 s: 1 s, 1.25 s, 1 s, 0.5 s; held by
+the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's,
+the readout left of the trigger's state, over neither it nor the legend;
 Display's Time grid: Clock times at 10 ms, Divisions at 10 s (*1 s/div*, *-5 s*, *0*), saved and taken by a new tab,
 Auto; in Arabic each offset and the readout an isolated left-to-right piece. On a card (`chartBinsAndGpu`) the
 divisions are compared with the CPU's picture block by block. Times from T (`chartTimesFromT`): held by Normal on a
@@ -5627,6 +5735,30 @@ made up for the check:
   Auto again is linear. With `EVRE_TEST_SHOT` set it saves `<prefix>_log.png`.
 - **The info line** (`chartInfoLine`): narrowed pixel by pixel, the paint time goes first, then *plotted*, then the
   delay; no width gives a part cut in the middle or an ellipsis; the tooltip starts with the whole text.
+- **The short window's lock on the busiest line** (`chartShortLockBusiest`, charts of their own): a polled line of
+  10 polls a second plotted first and a fast line of 50 000 records a second (a 50 Hz sine, its crossings found by a
+  `fast::TriggerScan` as the engine finds them) at a 20 ms window: the lock watches the fast line and the corner says
+  *Auto (short window)* at each of 100 frames; the polled line alone (2 samples in the window): no lock, nothing in
+  the corner.
+- **One cap of 64 lines** (`chartOneCap`): the chart filled with math lines (fields of SUPPLY_V): the info line
+  *64/64 plotted · N math*; a register's Plot, a 65th field and *New math line…* (no dialog) refused with the same
+  words in the status bar (a fast channel's tick: in the fast streams step, where the map has a stream); a math line's *Shown* off makes room for a register, on again it is
+  refused, its tick taken back; the lines removed, the registers' limit as before.
+- **The RAM cut** (`chartRamCut`, a chart of its own): a fast line of two `i16` channels filled to its share of
+  2 GB (as much as the machine fills in 20 s; about 1.8 GB in 4 s here), then RAM 256 MB: at the next block the store
+  is at its new share; over 60 blocks, each with its `frame()` and a paint, no append, frame or paint over 20 ms. It
+  prints the times (here: the longest append 4.6 ms, frame 10.8 ms, paint 10.8 ms).
+- **The free memory** (`chartRamFree`): `effectiveRamMB` (held and free less the reserve, the floor, the RAM set at
+  most) and the note *only 2.1 GB free: keeps about 40 s*; then a Chart tab of its own, a fast line filled to its
+  share of 512 MB and a free memory given that leaves the chart 256 MB: the store down to it at the next block, no
+  append, frame or paint over 20 ms over 60 blocks, the note *only ... free: keeps about ...* in the warn colour, the
+  RAM box's tooltip (*Free now: ...*) and the strip's (*The free memory limits the budget now*); the free memory back:
+  the RAM set again, nothing more let go over 20 blocks, the note *needs ...*. With `EVRE_TEST_SHOT` set it saves
+  `<prefix>_ram_free_light.png` and `_dark.png`.
+- **The memory strip's handle** (`memoryStripHandle`, a chart of its own, 10 ms of a minute held): a handle 12 px
+  wide; the mouse over it a pointing hand, lit, the tooltip; taken, no jump, dragged 100 px the view 100 px of the
+  strip later; a click 300 px left of it takes the view there; the wheel over the strip a window later, two notches up
+  two windows earlier. With `EVRE_TEST_SHOT` set it saves `<prefix>_strip_handle.png`.
 
 The last check counts Qt's warnings about objects used across threads. It installs a message handler at start and
 looks for messages that contain one of these phrases:
@@ -5641,7 +5773,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 516 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 536 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

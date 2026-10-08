@@ -57,6 +57,7 @@ constexpr double TRIGGER_STRIP_H = 26;     /* the flag's strip: 1 px under the l
 constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
 constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
 constexpr double BOTTOM_PAD = 8;
+constexpr double LANE_FIT_SLACK = 0.01;   /* px: lanes that fill the plot fit, their sum's rounding past it ignored */
 constexpr double CARD_RADIUS = 10;
 constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
 constexpr double LEGEND_ROW_H = 22;
@@ -67,6 +68,11 @@ constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left 
 constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
 constexpr double LANE_BUTTON_GAP = 2;      /* between the fold button and the lane's menu button under it */
 constexpr double LANE_NAME_MIN = 24;       /* the menu button only with room left for a short unit name ("°C") */
+constexpr double RANGE_TAG_H = 14;         /* a lane's range tag ("Manual", "Log") at the top of its value labels */
+constexpr double BADGE_PAD = 6;            /* the short window's lock badge: its text's margin either side */
+constexpr double BADGE_GAP = 8;            /* between the state's other words and the badge */
+constexpr double DIVISION_PAD = 6;         /* the time/div readout's box: its text's margin either side */
+constexpr double DIVISION_GAP = 10;        /* between the time/div readout and the state's text */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -103,6 +109,7 @@ constexpr double LINE_WIDTH = 1.5;   /* logical pixels */
 constexpr double Y_MARGIN = 0.08;    /* free space above and below the lines, of the range */
 constexpr double FLAT_RANGE = 1e-12; /* a line's own range narrower than this: it is flat */
 constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little faded */
+constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
@@ -192,6 +199,13 @@ QFont smallFont() {
 QFont labelFont() {
 	QFont font = QGuiApplication::font();
 	font.setPointSizeF(9);
+	return font;
+}
+
+/* a lane's range tag: smaller than the value labels, so "Manual" fits their column beside the lane's buttons */
+QFont tagFont() {
+	QFont font = QGuiApplication::font();
+	font.setPointSizeF(7.5);
 	return font;
 }
 
@@ -474,9 +488,55 @@ void ChartView::setRamBudget(int megabytes) {
 	refresh();
 }
 
+void ChartView::setRamLimit(int megabytes) {
+	megabytes = std::max(megabytes, 0);
+	if (limitMB_ == megabytes) return;
+	const int before = ramInUse();
+	limitMB_ = megabytes;
+	if (ramInUse() == before) return;
+	capped_ = false; /* as for a budget changed: the lines past their new share say so again at their next sample */
+	refresh();
+}
+
+qint64 ChartView::bytesReleasing() const {
+	qint64 bytes = 0;
+	for (const QByteArray &piece : released_.pieces) bytes += piece.capacity();
+	for (const QVector<double> &summary : released_.summaries) bytes += qint64(summary.capacity()) * qint64(sizeof(double));
+	return bytes;
+}
+
+void ChartView::setRecordingOn(bool on) {
+	if (recordingOn_ == on) return;
+	recordingOn_ = on;
+	refresh();
+}
+
+/* the memory strip's tooltip: what it is and does, and with the RAM budget reached what that means */
+QString ChartView::memoryStripTip() const {
+	QString tip = tr("The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view "
+			"goes there · Wheel: a window earlier or later");
+	if (!capped_) return tip;
+	double k0, k1;
+	memorySpan(k0, k1);
+	tip += QStringLiteral("\n\n") + tr("RAM budget reached: the chart keeps its samples within the RAM set on the first "
+			"row, so it keeps the last %1 of the Memory's %2 and lets the oldest go.")
+			.arg(formatDuration(std::max(0.0, k1 - k0)), formatDuration(memory_));
+	if (ramInUse() < ramMB_) { /* one piece each: "MB 512" in Arabic without it */
+		const auto size = [](int megabytes) {
+			return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(megabytes)
+							 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
+		};
+		tip += QLatin1Char('\n') + tr("The free memory limits the budget now: the chart keeps within %1 of the %2 set, so "
+				"the computer does not page to disk.").arg(size(ramInUse()), size(ramMB_));
+	}
+	tip += QLatin1Char('\n') + (recordingOn_ ? tr("The recording running keeps every sample: its file holds them all.")
+			: tr("A recording keeps every sample: its file holds what the chart lets go."));
+	return tip;
+}
+
 qsizetype ChartView::pointsPerLine() const {
 	const qsizetype lines = std::max<qsizetype>(1, series_.size());
-	const qsizetype total = qsizetype(ramMB_) * 1024 * 1024 / BYTES_PER_SAMPLE;
+	const qsizetype total = qsizetype(ramInUse()) * 1024 * 1024 / BYTES_PER_SAMPLE;
 	return std::clamp<qsizetype>(total / lines, qsizetype(CHUNK_SIZE[LEVELS - 1]) * 16, MAX_POINTS);
 }
 
@@ -791,17 +851,37 @@ void ChartView::sumFast(Series &s) {
 }
 
 /* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
- * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces */
+ * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces. What they held is not freed
+ * here but a slice at each frame (releaseSome): the RAM cut from 4 GB to 512 MB with a fast line filled let 3.5 GB
+ * go, and freeing it in one go held the window's thread about 2 s. Freed on another thread instead, the frees held
+ * the heap and the memory's pages while the chart's threads binned, and a paint took 30 to 50 ms. The store itself
+ * is at its new size at once, the same for every frame after: only the freeing waits, of memory nothing reads */
 void ChartView::trimFast(fast::Store &store, int lines) {
 	if (store.size() == 0 || !store.hasTime()) return;
+	fast::Store::Released gone;
 	const double newest = store.timeAt(store.size() - 1);
-	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_));
-	const double share = double(ramMB_) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
+	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_), &gone);
+	const double share = double(ramInUse()) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
 	const qsizetype most = qsizetype(share / store.bytesPerRecord());
 	if (store.size() >= most - most / 16) {
-		store.dropFront(store.size() - most + most / 8);
+		store.dropFront(store.size() - most + most / 8, &gone);
 		capped_ = true;
 	}
+	released_.pieces += std::move(gone.pieces);
+	released_.summaries += std::move(gone.summaries);
+}
+
+/* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary of up to tens of MB at a
+ * time), before the frame is painted: gigabytes go over a second or so, never a frame over budget */
+void ChartView::releaseSome() {
+	if (released_.isEmpty()) return;
+	QElapsedTimer clock;
+	clock.start();
+	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.summaries.removeLast();
+	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.pieces.removeLast();
+	/* emptied: their own arrays let go too (a list of thousands of pieces) */
+	if (released_.pieces.isEmpty()) released_.pieces = {};
+	if (released_.summaries.isEmpty()) released_.summaries = {};
 }
 
 /* The memory: what is older than `memory` goes, about a twentieth at a time (it
@@ -849,6 +929,7 @@ void ChartView::frame() {
 	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
+	releaseSome();
 	if (watchDue_) postWatch(); /* a drag's change to the engine, once a frame */
 	updateShortLock();
 	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
@@ -1158,20 +1239,57 @@ void ChartView::setShortLock(bool on) {
 	refresh();
 }
 
+qsizetype ChartView::samplesInWindow(const Series &s) const {
+	if (s.fast) {
+		const fast::Store &store = *s.fast;
+		if (store.size() == 0 || !store.hasTime()) return 0;
+		return store.size() - store.lowerBound(store.timeAt(store.size() - 1) - window_);
+	}
+	if (s.times.isEmpty()) return 0;
+	return s.times.end() - std::lower_bound(s.times.begin(), s.times.end(), s.times.back() - window_);
+}
+
+/* the first fast line with SHORT_LOCK_SAMPLES in the window (the keys put fast lines after the others), else the line
+ * with the most there; -1: none has that many */
+int ChartView::busiestLine() const {
+	int busiest = -1;
+	qsizetype most = SHORT_LOCK_SAMPLES - 1;
+	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		const qsizetype n = samplesInWindow(*it);
+		if (it->fast && n >= SHORT_LOCK_SAMPLES) return it.key();
+		if (n > most) {
+			most = n;
+			busiest = it.key();
+		}
+	}
+	return busiest;
+}
+
 /* The lock wanted: on, a live view (or one the lock holds), shorter than SHORT_LOCK_WINDOW, the user's trigger off and a
- * line to watch: the first. It is Auto's own work on a line (the crossings as samples come), nothing binned of its own.
- * Its level is taken again once a second while it runs free, as a line drifting away from it would never lock again */
+ * line to watch: the busiest (busiestLine), chosen again only when the lines change or the one watched has too few
+ * samples in the window, so the lock does not move from line to line at each frame. It is Auto's own work on a line
+ * (the crossings as samples come), nothing binned of its own. Its level is taken again once a second while it runs
+ * free, as a line drifting away from it would never lock again */
 void ChartView::updateShortLock() {
 	if (trigger_.on && !trigger_.automatic) return; /* the user's trigger */
-	const bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
+	bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
 			&& !series_.isEmpty();
+	if (wanted) {
+		const auto watched = series_.constFind(lockKey_);
+		if (lockGeneration_ != seriesGeneration_ || watched == series_.constEnd()
+				|| samplesInWindow(*watched) < SHORT_LOCK_SAMPLES) {
+			lockKey_ = busiestLine();
+			lockGeneration_ = seriesGeneration_;
+		}
+		wanted = lockKey_ >= 0;
+	}
 	if (!wanted) {
 		if (!trigger_.automatic) return;
 		endShortLock();
-		if (!live_) setLive(true); /* a longer window, the setting off, no line: live, as before the lock */
+		if (!live_) setLive(true); /* a longer window, the setting off, no line busy enough: live, as before the lock */
 		return;
 	}
-	const int first = series_.firstKey();
+	const int first = lockKey_;
 	if (trigger_.automatic && trigger_.key == first) {
 		if (live_ && triggerTime() >= lockTakenAt_ + TRIGGERED_AT_LEAST) {
 			lockTakenAt_ = triggerTime();
@@ -1183,7 +1301,7 @@ void ChartView::updateShortLock() {
 		}
 		return;
 	}
-	trigger_ = Trigger(); /* on, or on another first line (the one before removed, another added before it) */
+	trigger_ = Trigger(); /* on, or on another line (the one before removed, a busier one added) */
 	trigger_.on = trigger_.automatic = true;
 	trigger_.key = first;
 	trigger_.mode = TriggerMode::Auto;
@@ -1861,10 +1979,12 @@ bool ChartView::event(QEvent *e) {
 		mouseX_ = -1;
 		hoverLane_ = -1;
 		hoverMenu_ = -1;
+		hoverTag_ = -1;
 		hoverBar_ = false;
 		hoverSeparator_ = -1;
 		hoverEdge_ = false;
 		hoverMark_ = false;
+		hoverMemoryHandle_ = false;
 		hoverLevel_ = false;
 		hoverChip_ = -1;
 		refresh();
@@ -1928,12 +2048,15 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		positionGrab_ = pos.x() - triggerMark_.center().x(); /* moved from where it was taken: no jump to the mouse */
 		return;
 	}
-	/* on (or just by) the memory strip: the view goes there */
+	/* on (or just by) the memory strip: the view goes there; taken by its box or handle, it follows the mouse from
+	 * where it was, no jump */
 	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
 		drag_ = Drag::Overview;
+		overviewGrab_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos) ? pos.x() - memoryViewX_ : 0;
 		mouseMoveEvent(e);
 		return;
 	}
+	if (pressLaneLabels(pos)) return; /* not the lanes' own press: a double-click on the labels sets Auto */
 	if (pressLanes(pos)) { /* the lanes' scroll bar, a unit name, a folded strip: no cursor, no pan */
 		pressedLanes_ = true;
 		return;
@@ -1984,12 +2107,32 @@ bool ChartView::pressLanes(const QPointF &pos) {
 	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
 	const bool folded = lanesShown_[lane].folded;
 	if (!folded && pos.x() >= LANE_UNIT_W) return false;
-	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button */
+	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button; the lane current */
+		setCurrentLane(lane);
 		const QRectF menu = laneMenuButtonRect(lane);
 		emit laneMenuRequested(lane, mapToGlobal(QPoint(int(menu.left()), int(menu.bottom()) + 1)));
 		return true;
 	}
 	setLaneFolded(lane, !folded);
+	return true;
+}
+
+/* Lanes: a press on an open lane's value labels makes it the current lane (the toolbar's Y range shows and sets it);
+ * one on its range tag sets it back to Auto too */
+bool ChartView::pressLaneLabels(const QPointF &pos) {
+	if (!lanes_) return false;
+	const QRectF plot = plotRect();
+	if (pos.x() < LANE_UNIT_W || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return false;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0 || lanesShown_[lane].folded) return false;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
+	setCurrentLane(lane);
+	if (rangeTagAt(pos) == lane) {
+		laneScales_[lanesShown_[lane].key].log = false; /* the tag gone: Auto on the linear scale */
+		hoverTag_ = -1;
+		setLaneYAuto(lane);
+	}
 	return true;
 }
 
@@ -2016,7 +2159,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		/* the strip spans the whole memory depth, filled or not */
 		const double m1 = liveEnd(), m0 = m1 - memory_;
 		const QRectF strip = overviewRect();
-		const double t = m0 + std::clamp((pos.x() - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
+		const double t = m0 + std::clamp((pos.x() - overviewGrab_ - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
 		holdAt(t + window_ / 2); /* the view centred where the mouse is */
 		break;
 	}
@@ -2081,12 +2224,17 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
 		hoverMenu_ = onLanes ? laneMenuButtonAt(pos) : -1; /* the menu button highlighted, not the fold's */
 		hoverLane_ = onLanes && hoverMenu_ < 0 ? lane : -1; /* its button drawn highlighted */
+		/* an open lane's value labels take a click (the lane current, its tag: Auto): a hand, the tag lit */
+		const bool onLabels = lane >= 0 && !onLanes && !lanesShown_[lane].folded && pos.x() >= LANE_UNIT_W
+				&& pos.x() < plot.left() && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()));
+		hoverTag_ = onLabels ? rangeTagAt(pos) : -1;
 		hoverBar_ = onLaneBar;
 		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
 		/* the trigger's level tab and marker: a hand, both lit, the tab's edge part lit more */
 		const bool onLevelTag = trigger_.on && (triggerLevelTag_.contains(pos) || triggerLevelMark_.contains(pos));
 		hoverEdge_ = trigger_.on && triggerEdgeButton_.contains(pos);
 		hoverMark_ = trigger_.on && triggerMark_.contains(pos);
+		hoverMemoryHandle_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos);
 		/* both lit over them and over the level's line (the line drags as they do) */
 		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
@@ -2097,7 +2245,7 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 			setCursor(Qt::SizeVerCursor);
 			break;
 		}
-		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar || onLevelTag || hoverMark_
+		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLabels || onLaneBar || onLevelTag || hoverMark_
 						|| hoverChip_ >= 0
 						? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
@@ -2133,9 +2281,15 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 	if (wheelLegend(e)) return;
 	const double notches = e->angleDelta().y() / 120.0;
 	if (notches == 0) return;
+	/* over the memory strip: the view a window earlier (up) or later (down), held, as a pan by the whole view */
+	const QPointF pos = e->position();
+	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
+		holdAt(viewEnd() - notches * window_);
+		e->accept();
+		return;
+	}
 	/* lanes: over their value labels (or the scroll bar), the wheel scrolls them; with Ctrl, it stays the lane's zoom */
 	const QRectF plot = plotRect();
-	const QPointF pos = e->position();
 	if (lanes_ && !(e->modifiers() & Qt::ControlModifier) && pos.y() >= plot.top() && pos.y() <= plot.bottom()
 			&& (pos.x() < plot.left() || pos.x() > plot.right())) {
 		scrollLanesTo(laneScroll() - notches * LANE_WHEEL_STEP);
@@ -2345,13 +2499,16 @@ ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
 		chipsFont_ = font.key();
 		chipMeasures_++;
 	}
-	/* the chips end where the state's text begins, so neither lies under the other */
+	/* the chips end where the corner begins (the time/div readout, else the state's text), so none lies under another */
 	int variant = -1;
 	double stateWidth = 0;
 	fitState(plot.width(), variant, stateWidth);
+	const double readout = divisionReadoutWidth();
+	double corner = variant >= 0 ? stateWidth : 0;
+	if (readout > 0) corner += readout + (variant >= 0 ? DIVISION_GAP : 0);
 	LegendLayout legend;
-	legend.viewport = QRectF(plot.left(), LEGEND_TOP,
-			std::max(0.0, plot.width() - (variant >= 0 ? stateWidth + STATE_GAP : 0)), LEGEND_ROW_H);
+	legend.viewport = QRectF(plot.left(), LEGEND_TOP, std::max(0.0, plot.width() - (corner > 0 ? corner + STATE_GAP : 0)),
+			LEGEND_ROW_H);
 	legend.valueRoom = chipValueRoom_;
 	double x = legend.viewport.left();
 	for (const double w : std::as_const(chipWidths_)) {
@@ -2986,22 +3143,36 @@ QVector<ChartView::Lane> ChartView::plotLayout() const {
 }
 
 /* The open lanes share what the folded ones and the gaps leave by their weights (a lane dragged taller has a weight
- * over 1, the one below it under), as equal shares do when all are 1; when that is under LANE_MIN_H each, the equal
- * share is LANE_MIN_H and the lanes go on below the plot (scrolled) */
+ * over 1, the one below it under), as equal shares do when all are 1. A lane whose share would be under LANE_MIN_H is
+ * held there and the others share what is left, again by their weights, so the lanes still fill the plot exactly: a
+ * lane held at the minimum took its 80 px on top of the shares, and the last lane ran below the plot, cut and scrolled.
+ * Only when even LANE_MIN_H each does not fit are they all LANE_MIN_H, going on below the plot (scrolled). unit: the
+ * pixels of a weight of 1 for the lanes not held (the drag of a border turns heights into weights by it) */
 void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, QVector<double> &heights, double &unit) const {
 	int folded = 0;
-	double weights = 0;
-	for (const Lane &lane : lanes) {
-		if (lane.folded) folded++;
-		else weights += laneWeights_.value(lane.key, 1.0);
-	}
+	for (const Lane &lane : lanes) folded += lane.folded;
 	const int open = int(lanes.size()) - folded;
 	const double gaps = LANE_GAP * std::max<qsizetype>(0, lanes.size() - 1);
-	const double share = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
-	unit = open > 0 && weights > 0 ? share * open / weights : share;
+	const double room = plotHeight - gaps - folded * LANE_FOLDED_H; /* what the open lanes share */
+	const bool scrolled = open > 0 && room <= open * LANE_MIN_H;
+	QVector<bool> held(lanes.size(), scrolled);
+	unit = LANE_MIN_H;
+	for (bool more = !scrolled && open > 0; more;) {
+		double weights = 0, left = room;
+		for (qsizetype k = 0; k < lanes.size(); k++) {
+			if (lanes[k].folded) continue;
+			if (held[k]) left -= LANE_MIN_H;
+			else weights += laneWeights_.value(lanes[k].key, 1.0);
+		}
+		if (weights <= 0) break;
+		unit = left / weights;
+		more = false;
+		for (qsizetype k = 0; k < lanes.size(); k++)
+			if (!lanes[k].folded && !held[k] && unit * laneWeights_.value(lanes[k].key, 1.0) < LANE_MIN_H) held[k] = more = true;
+	}
 	heights.resize(lanes.size());
 	for (qsizetype k = 0; k < lanes.size(); k++)
-		heights[k] = lanes[k].folded ? LANE_FOLDED_H : std::max(LANE_MIN_H, unit * laneWeights_.value(lanes[k].key, 1.0));
+		heights[k] = lanes[k].folded ? LANE_FOLDED_H : held[k] ? LANE_MIN_H : unit * laneWeights_.value(lanes[k].key, 1.0);
 }
 
 QStringList ChartView::laneHeights() const {
@@ -3053,7 +3224,11 @@ double ChartView::laneContentHeight() const {
 	return plots.last().axes.rect.bottom() - plots.first().axes.rect.top();
 }
 
-double ChartView::maxLaneScroll() const { return std::max(0.0, laneContentHeight() - plotRect().height()); }
+/* the shares add up to the plot's height but for the rounding of their sum: under LANE_FIT_SLACK past it they fit */
+double ChartView::maxLaneScroll() const {
+	const double over = laneContentHeight() - plotRect().height();
+	return over > LANE_FIT_SLACK ? over : 0.0;
+}
 
 double ChartView::laneScroll() const { return std::clamp(laneScroll_, 0.0, maxLaneScroll()); }
 
@@ -3079,10 +3254,82 @@ void ChartView::laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu) {
 	*menu = shown.bottom() - top >= LANE_BUTTON_H + LANE_NAME_MIN ? QRectF(0, top, LANE_UNIT_W, LANE_BUTTON_H) : QRectF();
 }
 
+QRectF ChartView::rangeTag(const Lane &lane, const QRectF &shown, QString *text) const {
+	const YScale scale = laneScales_.value(lane.key);
+	if (lane.folded || (scale.autoRange && !scale.log) || shown.height() < RANGE_TAG_H + 6) return QRectF();
+	const QString words = scale.log ? tr("Log") : tr("Manual");
+	if (text) *text = words;
+	/* in the value labels' column (the trigger's marker keeps its own right of it), its text whole when it fits */
+	const double left = LANE_UNIT_W + 1, right = plotRect().left() - 2 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+	const double width = std::min(right - left, std::ceil(QFontMetricsF(tagFont()).horizontalAdvance(words)) + 6);
+	return QRectF(left, shown.top() + 1, width, RANGE_TAG_H);
+}
+
+QRectF ChartView::laneRangeTagRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return shown.isEmpty() ? QRectF() : rangeTag(plots[lane], shown);
+}
+
+QString ChartView::laneRangeTagText(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QString();
+	QString text;
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return !shown.isEmpty() && !rangeTag(plots[lane], shown, &text).isEmpty() ? text : QString();
+}
+
+int ChartView::rangeTagAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return -1;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return -1;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	return !shown.isEmpty() && rangeTag(lanesShown_[lane], shown).adjusted(-1, -1, 1, 1).contains(pos) ? lane : -1;
+}
+
+bool ChartView::allLanesYAuto() const {
+	if (!lanes_) return true;
+	for (const Lane &lane : plotLayout()) {
+		const YScale scale = laneScales_.value(lane.key);
+		if (!scale.autoRange || scale.log) return false;
+	}
+	return true;
+}
+
+void ChartView::setAllLanesYAuto() {
+	if (!lanes_ || allLanesYAuto()) return;
+	for (const Lane &lane : plotLayout()) {
+		YScale &scale = laneScales_[lane.key];
+		scale.autoRange = true;
+		scale.log = false;
+		scale.initialized = false;
+	}
+	emit laneYChanged();
+	refresh();
+}
+
+int ChartView::currentLane() const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || plots.isEmpty()) return -1;
+	for (int k = 0; k < plots.size(); k++)
+		if (plots[k].key == currentLane_) return k;
+	return 0; /* none chosen, or its unit gone: the first */
+}
+
+void ChartView::setCurrentLane(int lane) {
+	const QString key = laneKey(lane);
+	if (!lanes_ || lane < 0 || lane >= laneCount() || lane == currentLane()) return;
+	currentLane_ = key;
+	emit currentLaneChanged();
+	refresh();
+}
+
 /* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
 QRectF ChartView::laneScrollBarRect() const {
 	const QRectF plot = plotRect();
-	if (!lanes_ || laneContentHeight() <= plot.height()) return QRectF();
+	if (!lanes_ || laneContentHeight() <= plot.height() + LANE_FIT_SLACK) return QRectF();
 	return QRectF(plot.right() + LANE_BAR_X, plot.top(), LANE_BAR_W, plot.height());
 }
 
@@ -3198,7 +3445,13 @@ void ChartView::setAllLanesFolded(bool folded) {
 /* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
+	if (stateBadge_.contains(pos)) /* the short window's lock: what it is and where it is turned off */
+		return tr("The view locks on the busiest line's crossings at windows under 100 ms · Display → Lock short "
+				"windows turns it off");
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos))
+		return tr("The view: drag it along the memory · Wheel: a window earlier or later");
+	if (overviewRect().contains(pos)) return memoryStripTip();
 	if (divisionRect_.contains(pos))
 		return (divisionFromT_ ? tr("A division of the grid (10 across the view) and the clock time at 0, the trigger's "
 							 "crossing (T): the labels count from T.")
@@ -3249,9 +3502,19 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (laneMenuButtonAt(pos) == lane) return tr("Y range and lane options");
 	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
 	if (pos.x() >= plot.left()) return QString();
+	if (rangeTagAt(pos) == lane) { /* its range in words, and what the click does */
+		const YScale scale = laneScales_.value(lanesShown_[lane].key);
+		const QString unit = lanesShown_[lane].label;
+		const QString range = tr("%1 to %2").arg(chartNumber(laneYLo(lane)), chartNumber(laneYHi(lane)))
+				+ (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit);
+		return scale.log ? (scale.autoRange ? tr("This lane's Y scale is logarithmic · Click: back to Auto")
+						: tr("This lane's Y scale is logarithmic, manual: %1 · Click: back to Auto").arg(range))
+				: tr("This lane's Y range is manual: %1 · Click: back to Auto").arg(range);
+	}
 	QStringList parts;
 	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
-	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
+	parts << tr("Ctrl + wheel: zoom this lane") << tr("Click: its Y range in the toolbar") << tr("Double-click: Auto")
+			<< tr("Right-click: its Y range and Fold lane");
 	return parts.join(QStringLiteral(" · "));
 }
 
@@ -3619,6 +3882,7 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		for (double dx : { -4.0, 0.0, 4.0 }) p.drawEllipse(QPointF(cx + dx, cy), 1.5, 1.5);
 		p.restore();
 	};
+	const int current = lanes_ && plots.size() > 1 ? currentLane() : -1; /* lit: one lane of several */
 	for (int index = 0; index < plots.size(); index++) {
 		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
@@ -3630,6 +3894,8 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			continue;
 		}
 		const GridTicks values = gridTicks(a);
+		QString tagText;
+		const QRectF tag = lanes_ ? rangeTag(lane, shown, &tagText) : QRectF();
 		p.save();
 		const auto label = [&](double v) {
 			const QString text = a.log ? chartLogLabel(v) : chartAxisLabel(v, values.valueStep, normalized_);
@@ -3640,11 +3906,15 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 				if (shown.height() < 16) return;
 				top = std::clamp(top, shown.top(), shown.bottom() - 16);
 			}
-			valueLabels_ << text;
-			p.setPen(c.muted);
 			const double left = lanes_ ? LANE_UNIT_W : 2; /* lanes: their units up the left edge */
 			/* the trigger on: right of them its level's marker has a column of its own, so it covers none */
 			const double right = plot.left() - 6 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+			/* none under the lane's range tag: a label there would be half covered */
+			if (!tag.isEmpty() && top < tag.bottom() + 1
+					&& right - QFontMetricsF(p.font()).horizontalAdvance(text) < tag.right() + 2)
+				return;
+			valueLabels_ << text;
+			p.setPen(c.muted);
 			valueLabelRects_ << QRectF(left, top, right - left, 16);
 			p.drawText(valueLabelRects_.last(), Qt::AlignRight | Qt::AlignVCenter, text);
 		};
@@ -3679,7 +3949,26 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			if (!menu.isEmpty()) menuButton(index, menu);
 			const double nameTop = menu.isEmpty() ? button.bottom() : menu.bottom();
 			const QRectF name(0, nameTop, LANE_UNIT_W, shown.bottom() - nameTop);
-			p.setPen(c.text);
+			if (!tag.isEmpty()) { /* Manual in the warn colour (a range that does not follow), Log in the accent */
+				const QColor ink = laneScales_.value(lane.key).log ? c.accent : c.warn;
+				QColor fill = ink;
+				fill.setAlphaF(index == hoverTag_ ? 0.32 : 0.16);
+				p.save();
+				p.setRenderHint(QPainter::Antialiasing, true);
+				p.setPen(Qt::NoPen);
+				p.setBrush(fill);
+				p.drawRoundedRect(tag, 4, 4);
+				/* a longer word (Arabic's "Log") a little smaller rather than cut; cut only below 6 pt */
+				QFont font = tagFont();
+				while (font.pointSizeF() > 6 && QFontMetricsF(font).horizontalAdvance(tagText) > tag.width() - 4)
+					font.setPointSizeF(font.pointSizeF() - 0.5);
+				p.setFont(font);
+				p.setPen(ink);
+				p.drawText(tag, Qt::AlignCenter, QFontMetricsF(font).elidedText(tagText, Qt::ElideRight, tag.width() - 2));
+				p.restore();
+			}
+			/* the current lane's unit lit: the one the toolbar's Y range shows (only with more than one lane) */
+			p.setPen(index == current ? c.accent : c.text);
 			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);
 			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
@@ -3778,9 +4067,20 @@ QString ChartView::divisionReadoutText(const GridTicks &ticks) const {
 	return ltrPiece(QStringLiteral("%1/div · %2").arg(divisionLength(ticks.division), divisionClock_));
 }
 
-/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room), and the
- * readout in a box of its own just left of the last label, at the axis's right end; labels it would cover are left
- * out */
+/* the readout's box in the state corner: as wide as its text with every digit a 0, so the legend's end does not move
+ * when the clock time's digits change; 0 without divisions */
+double ChartView::divisionReadoutWidth() const {
+	if (!divisionsShown()) return 0;
+	const double division = window_ / DIVISIONS;
+	QString text = QStringLiteral("%1/div · %2").arg(divisionLength(division), timeLabel(epochMs_, viewEnd(), division));
+	for (QChar &ch : text)
+		if (ch.isDigit()) ch = QLatin1Char('0');
+	return std::ceil(QFontMetricsF(labelFont()).horizontalAdvance(text)) + 2 * DIVISION_PAD;
+}
+
+/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room). The
+ * readout is only made here: drawState draws it in the row above the plot, so no label is left out for it (the owner:
+ * it hid the "-2 ms" label) */
 void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Axes &axes) const {
 	const ThemeColors &c = Theme::colors();
 	const QRectF &plot = axes.rect;
@@ -3803,33 +4103,11 @@ void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Ax
 		if (ticks.offsets[i] % every != 0 || ticks.timeX[i] - half < 0 || ticks.timeX[i] + half > width()) continue;
 		shown << i;
 	}
-	const QString readout = divisionReadoutText(ticks);
-	divisionText_ = readout;
+	divisionText_ = divisionReadoutText(ticks);
 	divisionFromT_ = ticks.fromT;
 	const double top = plot.bottom() + 6;
-	if (!shown.isEmpty()) {
-		const qsizetype lastLabel = shown.last();
-		const double lastLeft = ticks.timeX[lastLabel] - metrics.horizontalAdvance(texts[lastLabel]) / 2;
-		const double w = std::ceil(metrics.horizontalAdvance(readout)) + 12;
-		const QRectF box(std::round(lastLeft - 10 - w), top - 1, w, 18);
-		if (box.left() >= 2) {
-			divisionRect_ = box;
-			p.save();
-			p.setRenderHint(QPainter::Antialiasing, true);
-			p.setPen(QPen(c.border, 1));
-			p.setBrush(c.surface2);
-			p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-			p.setPen(c.text);
-			p.drawText(box, Qt::AlignCenter, readout);
-			p.restore();
-		}
-	}
 	for (qsizetype i : std::as_const(shown)) {
 		const double x = ticks.timeX[i];
-		const double half = metrics.horizontalAdvance(texts[i]) / 2;
-		if (i != shown.last() && !divisionRect_.isEmpty() && x + half > divisionRect_.left() - 8
-				&& x - half < divisionRect_.right() + 8)
-			continue; /* under the readout */
 		p.setPen(c.muted);
 		timeLabels_ << texts[i];
 		timeLabelX_ << x;
@@ -5113,24 +5391,58 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			stripGeneration_ = seriesGeneration_;
 		}
 		p.drawImage(stripAt_, stripImage_);
-		/* the view on it */
+		/* the view on it; at a short window (10 ms of an hour) the box is a sliver no mouse can take, so a handle
+		 * MEMORY_HANDLE_W wide is drawn over it, centred on the view, with two grip lines: it drags as the box does.
+		 * The mouse over either lights it */
 		const double va = std::max(strip.x(axes.t0), box.left()), vb = std::min(strip.x(axes.t1), box.right());
+		const QRectF view(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2);
+		memoryViewX_ = strip.x((axes.t0 + axes.t1) / 2);
 		QColor fill = c.accent;
-		fill.setAlpha(45);
+		fill.setAlpha(hoverMemoryHandle_ ? 90 : 45);
 		p.setPen(QPen(c.accent, 1.2));
 		p.setBrush(fill);
-		p.drawRoundedRect(QRectF(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2), 3, 3);
-		/* still filling: how much is kept, in the empty part when there is room */
+		p.drawRoundedRect(view, 3, 3);
+		memoryHandle_ = view;
+		if (view.width() < MEMORY_HANDLE_W) {
+			const double left = std::clamp(memoryViewX_ - MEMORY_HANDLE_W / 2, box.left(), box.right() - MEMORY_HANDLE_W);
+			memoryHandle_ = QRectF(left, view.top(), MEMORY_HANDLE_W, view.height());
+			fill.setAlpha(hoverMemoryHandle_ ? 150 : 90);
+			p.setBrush(fill);
+			p.drawRoundedRect(memoryHandle_, 3, 3);
+			p.setPen(QPen(hoverMemoryHandle_ ? c.text : c.surface2, 1));
+			const double mid = memoryHandle_.center().x(), y0 = memoryHandle_.center().y() - 5, y1 = y0 + 10;
+			p.drawLine(QPointF(mid - 1.5, y0), QPointF(mid - 1.5, y1));
+			p.drawLine(QPointF(mid + 1.5, y0), QPointF(mid + 1.5, y1));
+		}
+		/* still filling: how much is kept, in the empty part when there is room. The RAM budget reached: in the warn
+		 * colour and in words that say what it is, the chart letting the oldest go while a recording's file keeps them
+		 * all ("memory full" while recording read as data lost); the longest words that fit, whole */
 		double k0, k1;
 		memorySpan(k0, k1);
 		const double emptyW = strip.x(k0) - box.left();
+		stripText_.clear();
 		if (k1 - k0 < memory_ * 0.98 && emptyW > 150) {
+			const QString kept = formatDuration(k1 - k0), memory = formatDuration(memory_);
+			QStringList texts;
+			if (!capped_) {
+				texts << tr("filling: %1 of %2 kept").arg(kept, memory);
+			} else {
+				if (recordingOn_)
+					texts << tr("RAM budget reached: keeping the last %1 of %2 · the recording keeps everything")
+									 .arg(kept, memory);
+				texts << tr("RAM budget reached: keeping the last %1 of %2").arg(kept, memory) << tr("RAM budget reached");
+			}
 			p.setFont(smallFont());
-			p.setPen(c.muted);
+			const QFontMetricsF metrics(p.font());
+			for (const QString &text : std::as_const(texts)) {
+				if (metrics.horizontalAdvance(text) > emptyW - 16) continue;
+				stripText_ = text;
+				break;
+			}
+			stripTextColor_ = capped_ ? c.warn : c.muted;
+			p.setPen(stripTextColor_);
 			p.drawText(QRectF(box.left() + 8, box.top(), emptyW - 16, box.height()), Qt::AlignLeft | Qt::AlignVCenter,
-					capped_ ? tr("memory full: %1 of %2 kept (%3 lines)")
-									.arg(formatDuration(k1 - k0), formatDuration(memory_)).arg(series_.size())
-							: tr("filling: %1 of %2 kept").arg(formatDuration(k1 - k0), formatDuration(memory_)));
+					stripText_);
 		}
 	}
 	p.setFont(smallFont());
@@ -5540,16 +5852,29 @@ void ChartView::fitState(double plotWidth, int &variant, double &width) const {
 	const QStringList variants = stateVariants(true);
 	if (variants.first().isEmpty()) return;
 	const QFontMetricsF metrics(labelFont());
+	/* the time/div readout keeps its place left of the state, inside the same share: the state's parts go first */
+	const double readout = divisionReadoutWidth();
+	const double readoutRoom = readout > 0 ? readout + DIVISION_GAP : 0;
 	const double legendMin = (chipWidths_.isEmpty() ? 0 : chipWidths_.first()) + 2 * LEGEND_ARROW_W + STATE_GAP;
-	const double most = std::max(0.0, plotWidth - legendMin);
-	const double room = std::min(plotWidth * STATE_SHARE, most);
+	const double most = std::max(0.0, plotWidth - legendMin - readoutRoom);
+	const double room = std::min(plotWidth * STATE_SHARE - readoutRoom, most);
 	for (qsizetype i = 0; i < variants.size(); i++) {
-		width = std::ceil(metrics.horizontalAdvance(variants[i]));
+		width = std::ceil(stateWidth(variants[i]));
 		variant = int(i);
 		if (width <= room) return;
 	}
 	if (width <= most) return; /* the shortest, whole, past its share */
 	width = most;              /* a chart too narrow even for that: it ends with "…" (drawState) */
+}
+
+double ChartView::stateWidth(const QString &text) const {
+	const QFontMetricsF metrics(labelFont());
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	if (badge.isEmpty() || !text.endsWith(badge)) return metrics.horizontalAdvance(text);
+	QString rest = text.chopped(badge.size());
+	if (rest.endsWith(QStringLiteral("  ·  "))) rest.chop(5);
+	return (rest.isEmpty() ? 0 : metrics.horizontalAdvance(rest) + BADGE_GAP) + metrics.horizontalAdvance(badge)
+			+ 2 * BADGE_PAD;
 }
 
 /* the state, top right: held, manual Y, cursor mode, the trigger; as much of it as fits, the whole in its tooltip */
@@ -5561,23 +5886,71 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	stateFull_ = texts.first();
 	stateText_.clear();
 	stateRect_ = QRectF();
+	stateBadge_ = QRectF();
+	const ThemeColors &c = Theme::colors();
+	/* the time/div readout (made with the time labels): in this row, left of the state, alone at the right end without
+	 * one; one left-to-right piece in Arabic too */
+	const double readout = divisionReadoutWidth();
+	divisionRect_ = QRectF();
+	if (readout > 0 && !divisionText_.isEmpty()) {
+		const double right = variant >= 0 ? axes.rect.right() - width - DIVISION_GAP : axes.rect.right();
+		divisionRect_ = QRectF(std::round(right - readout), LEGEND_TOP + 2, readout, LEGEND_ROW_H - 4);
+		p.save();
+		p.setFont(labelFont());
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(QPen(c.border, 1));
+		p.setBrush(c.surface2);
+		p.drawRoundedRect(divisionRect_.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+		p.setPen(c.text);
+		p.drawText(divisionRect_, Qt::AlignCenter, divisionText_);
+		p.restore();
+	}
 	if (variant < 0) return;
 	const QFontMetricsF metrics(labelFont());
 	stateText_ = texts[variant];
+	const bool whole = stateWidth(stateText_) <= width + 0.5;
 	if (metrics.horizontalAdvance(stateText_) > width) stateText_ = metrics.elidedText(stateText_, Qt::ElideRight, width);
 	stateRect_ = QRectF(axes.rect.right() - width, LEGEND_TOP, width, LEGEND_ROW_H);
-	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setFont(labelFont());
+	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
+	/* the short window's lock: the view's state, not the user's trigger nor a stop; a badge in the accent colour (the
+	 * Live button's), on a tint of it, at the end the words are read to (the right; in Arabic the left) */
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	QRectF textRoom = stateRect_;
+	if (!badge.isEmpty() && whole && stateText_.endsWith(badge)) {
+		const double badgeWidth = metrics.horizontalAdvance(badge) + 2 * BADGE_PAD;
+		stateBadge_ = QRectF(rightToLeft ? stateRect_.left() : stateRect_.right() - badgeWidth, stateRect_.top() + 2,
+				badgeWidth, stateRect_.height() - 4);
+		QColor tint = c.accent;
+		tint.setAlphaF(Theme::isDark() ? 0.22 : 0.14);
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(Qt::NoPen);
+		p.setBrush(tint);
+		p.drawRoundedRect(stateBadge_, 4, 4);
+		p.setPen(c.accent);
+		p.drawText(stateBadge_, Qt::AlignCenter, badge);
+		p.restore();
+		stateText_.chop(badge.size());
+		if (stateText_.endsWith(QStringLiteral("  ·  "))) stateText_.chop(5);
+		textRoom = rightToLeft ? stateRect_.adjusted(badgeWidth + BADGE_GAP, 0, 0, 0)
+				: stateRect_.adjusted(0, 0, -(badgeWidth + BADGE_GAP), 0);
+		if (stateText_.isEmpty()) {
+			stateText_ = badge;
+			p.restore();
+			return;
+		}
+	}
 	p.setPen((trigger_.on ? trigger_.stopped : !live_) ? c.warn : c.muted); /* the trigger on: amber for Stopped only */
 	/* words, not the chart's time: read in the language's direction (Arabic from the right, its first part rightmost),
 	 * still at the chart's right end; right to left, a mark either side of each dot keeps a part's Latin end ("s") and
 	 * the next part's Latin start ("Y") from running together into one left-to-right run */
-	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
 	p.setLayoutDirection(QGuiApplication::layoutDirection());
 	const QString dot = QStringLiteral("  ·  ");
-	p.drawText(stateRect_, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
+	p.drawText(textRoom, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
 			rightToLeft ? QString(stateText_).replace(dot, QChar(0x200F) + dot + QChar(0x200F)) : stateText_);
+	if (!stateBadge_.isEmpty()) stateText_ += dot + badge; /* tests read the words, the badge's too */
 	p.restore();
 }
 

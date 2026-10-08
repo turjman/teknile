@@ -158,7 +158,7 @@ int RegisterModel::plotLimitFor(double samplesPerSecond) {
 }
 
 void RegisterModel::setPlotLimit(int limit) {
-	plotLimit_ = std::clamp(limit, 1, MAX_PLOTTED);
+	plotLimit_ = std::clamp(limit, 0, MAX_PLOTTED); /* 0: the other lines hold every place of MAX_PLOTTED */
 	QStringList off;
 	while (plottedCount() > plotLimit_) {
 		int newest = -1;

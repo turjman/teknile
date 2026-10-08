@@ -106,6 +106,7 @@
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bus_panel.h"
+#include "ui/event_log.h"
 #include "model/analysis.h"
 #include "ui/analysis_window.h"
 #include "ui/chart_tab.h"
@@ -516,6 +517,7 @@ public:
 		badValueRefused();
 		noticeCoversNothing();
 		showInLogEndsNotice();
+		noticeRightToLeft();
 		eventLog();
 		staleValues();
 		decodedFields();
@@ -537,6 +539,10 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
+		chartOneCap();
+		chartRamCut();
+		chartRamFree();
+		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
 		chartExport();
@@ -546,6 +552,7 @@ public:
 		chartLanesFoldButton();
 		chartLanesSeparators();
 		chartLaneBorders();
+		chartLaneRanges();
 		chartStateFits();
 		heldViewReuse();
 		measureTableRepaints();
@@ -567,6 +574,7 @@ public:
 		chartTriggerMarksOutside();
 		chartTriggerSteadyState();
 		chartShortLock();
+		chartShortLockBusiest();
 		chartTimeGrid();
 		chartTimesFromT();
 		frameBudget();
@@ -820,6 +828,55 @@ private:
 		check(shown && logOpened && notice && !notice->isVisible(),
 				"Show in Log: the Log tab, and the notice stays gone after a resize");
 		if (tabs) tabs->setCurrentIndex(0);
+	}
+
+	/* The notice in right-to-left (O-12): the tabs sit on the right there and the free room of their row is on their
+	 * left; the notice goes there, on Arabic's direction change and at every size, and back right of the tabs in left to
+	 * right. Its rectangle never meets the tab bar, the page or the sidebar, and stays in the window */
+	void noticeRightToLeft() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *notice = window_.findChild<Notice *>(QStringLiteral("notice"));
+		const auto *sidebar = window_.findChild<QScrollArea *>(QStringLiteral("sideScroll"));
+		if (!tabs || !notice) {
+			check(false, "the notice in right-to-left: the tabs and the notice");
+			return;
+		}
+		const QSize was = window_.size();
+		const auto clear = [&](const char *where) {
+			QApplication::processEvents();
+			const QRect n = inWindow(notice);
+			const QTabBar *bar = tabs->tabBar();
+			const QRect barRect(bar->mapTo(&window_, QPoint(0, 0)), bar->size());
+			const bool rtl = tabs->layoutDirection() == Qt::RightToLeft;
+			const bool ok = notice->isVisible() && !n.intersects(barRect) && !n.intersects(inWindow(tabs->currentWidget()))
+					&& !(sidebar && n.intersects(inWindow(sidebar))) && window_.rect().contains(n)
+					&& (rtl ? n.right() < barRect.left() : n.left() > barRect.right());
+			if (!ok)
+				std::printf("     (%s: the notice %d,%d %dx%d shown %d, the tab bar %d,%d %dx%d, the window %dx%d)\n", where, n.x(),
+						n.y(), n.width(), n.height(), int(notice->isVisible()), barRect.x(), barRect.y(), barRect.width(),
+						barRect.height(), window_.width(), window_.height());
+			return ok;
+		};
+		tabs->setCurrentIndex(0);
+		notice->post(LogLevel::Error, QStringLiteral("a notice in right-to-left"));
+		bool ok = clear("left to right");
+		language::apply(*qApp, QStringLiteral("ar"));
+		QTest::qWait(200);
+		ok = clear("right to left") && ok;
+		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
+			window_.resize(size);
+			QTest::qWait(100);
+			ok = clear("right to left, resized") && ok;
+		}
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look: the notice left of the tabs */
+			window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_notice_ar.png"));
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(200);
+		ok = clear("left to right again") && ok;
+		emit notice->linkActivated(QStringLiteral("log")); /* gone, for the steps after */
+		tabs->setCurrentIndex(0);
+		check(ok, "the notice in right-to-left (Arabic): left of the tabs, where their row is free, at every size; right of "
+				"them again in left to right; never over the tab bar, the page or the sidebar");
 	}
 
 	/* a widget's rectangle in the window's coordinates */
@@ -1227,6 +1284,37 @@ private:
 						&& chartTab->infoText().contains(QStringLiteral(" · 1 fast")),
 				"fast streams: a channel's Plot tick in the card (a pointing hand, a tooltip): ADC.I_LOAD on the chart, its "
 				"samples kept, its newest value beside the tick, \"1 fast\" in the chart's info line");
+		/* one cap of 64 lines for every kind (chartOneCap): the chart filled with math lines, a second channel's tick is
+		 * taken back with the same words in the status bar; the lines removed, it is taken */
+		{
+			auto *math = chartTab ? chartTab->findChild<QPushButton *>(QStringLiteral("math")) : nullptr;
+			QCheckBox *second = sidebar->fastPlotBox(0, 1);
+			bool refused = false, takenAfter = false;
+			int fields = 0;
+			QVector<int> plotted;
+			if (math && second && chartTab) {
+				const bool wasOn = second->isChecked(); /* ADC.V_BUS, off for the check, as it was after */
+				second->setChecked(false);
+				fields = fillWithFields(chartTab, *enable, plotted);
+				window_.statusBar()->clearMessage();
+				second->setChecked(true);
+				QApplication::processEvents();
+				refused = chartTab->lineCount() == RegisterModel::MAX_PLOTTED && !second->isChecked()
+						&& !chartTab->fastPlotted(0, 1) && window_.statusBar()->currentMessage() == ChartTab::lineCapText()
+						&& chartTab->infoText().startsWith(QStringLiteral("64/64 plotted · %1 math · 1 fast")
+								.arg(chartTab->mathLinesShown()));
+				if (!refused) std::printf("     (the 64th line: %d lines, the tick %d, said \"%s\", info \"%s\")\n",
+						chartTab->lineCount(), int(second->isChecked()), qPrintable(window_.statusBar()->currentMessage()),
+						qPrintable(chartTab->infoText()));
+				removeFields(math, *enable, fields, plotted);
+				second->setChecked(true);
+				takenAfter = chartTab->fastPlotted(0, 1);
+				second->setChecked(wasOn);
+				window_.statusBar()->clearMessage();
+			}
+			check(refused && takenAfter, "fast streams: one cap of 64 lines with the math lines and the registers: with the "
+					"chart full a channel's tick is taken back with the same words in the status bar; with room, it is taken");
+		}
 		/* measured as any line: its row in the Measure table (the device's 50 Hz sine of 6.55 A: RMS 4.63 A); its chip's
 		 * menu offers the histogram and the spectrum, the spectrum of its records as they are (evenly spaced) */
 		QString rms, mean, summary, histogramSummary;
@@ -4506,6 +4594,52 @@ private:
 							&& view->bytesHeld() >= store->bytes(),
 					"chart, fast lines: the RAM shared: a fast line is one of the lines the budget is divided by, its store "
 					"trimmed to its share (memory full), the polled line's share the other half");
+			/* the budget reached in words that say what it is, in the warn colour (both themes): not "memory full",
+			 * which read as data lost while a recording ran on; with a recording, that its file keeps everything */
+			const bool wasDark = Theme::isDark();
+			bool words = true;
+			for (const bool dark : { true, false }) {
+				Theme::apply(*qApp, dark);
+				for (const bool recording : { false, true }) {
+					view->setRecordingOn(recording);
+					const QImage shot = host.grab().toImage();
+					const QString text = view->memoryStripText();
+					const QString tip = view->memoryStripTip();
+					const QColor warn = Theme::colors().warn;
+					/* the words drawn: pixels near the warn colour on the strip's empty part (the picture's scale applied) */
+					const qreal dpr = shot.devicePixelRatio();
+					const QRect strip = QRectF(QPointF(view->mapTo(&host, QPoint(0, 0))) + QPointF(80, view->height() - 38),
+							QSizeF(400, 30)).toRect();
+					int near = 0;
+					for (int y = int(strip.top() * dpr); y < int(strip.bottom() * dpr) && y < shot.height(); y++)
+						for (int x = int(strip.left() * dpr); x < int(strip.right() * dpr) && x < shot.width(); x++) {
+							const QColor c = shot.pixelColor(x, y);
+							near += std::abs(c.red() - warn.red()) + std::abs(c.green() - warn.green())
+											+ std::abs(c.blue() - warn.blue()) < 60;
+						}
+					const bool ok = text.startsWith(QStringLiteral("RAM budget reached: keeping the last "))
+							&& text.contains(QStringLiteral(" of 60.0 min"))
+							&& text.endsWith(QStringLiteral(" · the recording keeps everything")) == recording
+							&& view->memoryStripTextColor() == warn && near >= 20
+							&& tip.contains(QStringLiteral("RAM budget reached: the chart keeps its samples within the RAM"))
+							&& tip.contains(recording ? QStringLiteral("The recording running keeps every sample")
+													  : QStringLiteral("A recording keeps every sample"));
+					if (!ok || (dark && recording))
+						std::printf("     (%s, %s: the strip says \"%s\" in %s, %d warn pixels)\n", dark ? "dark" : "light",
+								recording ? "recording" : "not recording", qPrintable(text),
+								qPrintable(view->memoryStripTextColor().name()), near);
+					words = words && ok;
+					if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look */
+						shot.save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_ram_budget_%1_%2.png")
+										  .arg(dark ? QStringLiteral("dark") : QStringLiteral("light"),
+												  recording ? QStringLiteral("recording") : QStringLiteral("idle")));
+				}
+			}
+			view->setRecordingOn(false);
+			Theme::apply(*qApp, wasDark);
+			check(words, "chart, the RAM budget reached: the strip says \"RAM budget reached: keeping the last X of Y\" "
+					"(\"· the recording keeps everything\" while a recording runs) in the warn colour, dark and light; its "
+					"tooltip says what the budget does and that a recording's file keeps every sample");
 		}
 		/* lanes, the legend and the crosshair: a polled line in V, I_LOAD and V_BUS */
 		{
@@ -5660,6 +5794,401 @@ private:
 
 	/* The info line: when it does not fit, whole parts go (the paint time, then "plotted", then the delay), never
 	 * letters cut; all of it in the tooltip */
+	/* the chart filled up to the cap: the registers free (but keepFree) plotted, up to 60 lines (their rows in
+	 * `plotted`), then math lines, a register's bits taken as fields ("REG.capN"; a math line past the 64th kept is
+	 * not drawn, MathLines::MAX_DRAWN, so they alone may not reach it); how many fields added */
+	static BitField capField(int i) {
+		BitField f;
+		f.name = QStringLiteral("cap%1").arg(i);
+		f.lsb = i % 8;
+		return f;
+	}
+	int fillWithFields(ChartTab *chartTab, const RegDef &def, QVector<int> &plotted, int keepFree = -1) {
+		for (int r = 0; r < model_->rows().size() && chartTab->lineCount() < 60; r++) {
+			const RegisterModel::Row &row = model_->rows()[r];
+			if (r == keepFree || row.plot || !row.def.canPlot() || row.unavailable) continue;
+			if (model_->setPlot(r, true)) plotted << r;
+		}
+		int fields = 0;
+		while (chartTab->lineCount() < RegisterModel::MAX_PLOTTED && fields < 80) chartTab->plotField(def, capField(fields++));
+		QApplication::processEvents();
+		return fields;
+	}
+	/* a math line's action in the Math button's menu (Shown, Remove), by the line's name */
+	static QAction *mathAction(QPushButton *math, const QString &line, const QString &text) {
+		for (QAction *action : math->menu()->actions()) {
+			if (!action->menu() || !action->text().startsWith(line + QStringLiteral(" = "))) continue;
+			for (QAction *sub : action->menu()->actions())
+				if (sub->text() == text) return sub;
+		}
+		return nullptr;
+	}
+	void removeFields(QPushButton *math, const RegDef &def, int fields, const QVector<int> &plotted) {
+		for (int r : plotted) model_->setPlot(r, false);
+		for (int i = 0; i <= fields; i++)
+			if (QAction *remove = mathAction(math, QStringLiteral("%1.cap%2").arg(def.name).arg(i), QStringLiteral("Remove")))
+				remove->trigger();
+		QApplication::processEvents();
+	}
+
+	/* One cap of 64 for every line (O-5): registers, math and fast lines together (a fast channel's tick: in
+	 * fastStreams, where a map has a stream). The chart filled with math lines: a register's Plot, a 65th math line (a
+	 * field, New math line..., Shown) are each refused with the same words in the status bar; the info line counts
+	 * them together ("64/64 plotted · N math"); a line off makes room for one of any kind */
+	void chartOneCap() {
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *math = chartTab ? chartTab->findChild<QPushButton *>(QStringLiteral("math")) : nullptr;
+		int freeRow = -1; /* a register to tick, not on the chart */
+		for (int r = 0; r < model_->rows().size() && freeRow < 0; r++)
+			if (model_->rows()[r].def.canPlot() && !model_->rows()[r].plot && !model_->rows()[r].unavailable) freeRow = r;
+		if (!chartTab || !math || freeRow < 0 || regs_.volts.name.isEmpty()) {
+			std::printf("     (chart tab %d, Math button %d, a free register %d, %s)\n", chartTab != nullptr, math != nullptr,
+					freeRow, qPrintable(regs_.volts.name));
+			check(false, "chart, one cap of 64 lines: the chart tab, the Math button and a free register");
+			return;
+		}
+		const int before = chartTab->lineCount(), limitBefore = model_->plotLimit();
+		const QString cap = ChartTab::lineCapText();
+		const auto said = [&] { return window_.statusBar()->currentMessage(); };
+		QVector<int> plotted;
+		const int fields = fillWithFields(chartTab, regs_.volts, plotted, freeRow);
+		const bool full = chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		const QString info = chartTab->infoText();
+		const bool counted = info.startsWith(QStringLiteral("64/64 plotted · %1 math").arg(chartTab->mathLinesShown()))
+				&& chartTab->mathLinesShown() > 0
+				&& model_->plotLimit() == model_->plottedCount();
+		/* a register's Plot */
+		window_.statusBar()->clearMessage();
+		const bool registerRefused = !model_->setPlot(freeRow, true) && !model_->rows()[freeRow].plot && said() == cap;
+		/* a 65th math line: a field, New math line... (refused before its dialog) */
+		window_.statusBar()->clearMessage();
+		chartTab->plotField(regs_.volts, capField(fields));
+		const bool fieldRefused = chartTab->lineCount() == RegisterModel::MAX_PLOTTED && said() == cap
+				&& lineKey(chartTab->view(), QStringLiteral("ƒ %1.cap%2").arg(regs_.volts.name).arg(fields)) < 0;
+		window_.statusBar()->clearMessage();
+		bool asked = false;
+		QTimer::singleShot(300, [&] {
+			if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) {
+				asked = true;
+				dialog->reject();
+			}
+		});
+		QAction *newLine = nullptr;
+		for (QAction *action : math->menu()->actions())
+			if (action->text().startsWith(QStringLiteral("New math line"))) newLine = action;
+		if (newLine) newLine->trigger();
+		QTest::qWait(400);
+		const bool newRefused = newLine && !asked && said() == cap && chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		/* a math line's Shown: one off makes room (a register takes it), on again it is refused */
+		const QString first = QStringLiteral("%1.cap0").arg(regs_.volts.name);
+		QAction *shown = mathAction(math, first, QStringLiteral("Shown"));
+		if (shown) shown->trigger(); /* off */
+		QApplication::processEvents();
+		const bool roomMade = chartTab->lineCount() == RegisterModel::MAX_PLOTTED - 1 && model_->setPlot(freeRow, true)
+				&& chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		window_.statusBar()->clearMessage();
+		shown = mathAction(math, first, QStringLiteral("Shown"));
+		if (shown) shown->trigger(); /* on: refused, the tick taken back */
+		QApplication::processEvents();
+		shown = mathAction(math, first, QStringLiteral("Shown"));
+		const bool shownRefused = shown && !shown->isChecked() && said() == cap
+				&& chartTab->lineCount() == RegisterModel::MAX_PLOTTED;
+		model_->setPlot(freeRow, false);
+		/* the cap's math lines removed: the chart and the registers' limit as before */
+		removeFields(math, regs_.volts, fields, plotted);
+		window_.statusBar()->clearMessage();
+		const bool back = chartTab->lineCount() == before && model_->plotLimit() == limitBefore;
+		if (!(full && counted && registerRefused && fieldRefused && newRefused && roomMade && shownRefused && back))
+			std::printf("     (one cap: full %d (%d fields), info \"%s\" %d (limit %d, plotted %d), register %d, field %d, new %d "
+					"(asked %d), room %d, shown %d, back %d (%d of %d lines, limit %d of %d))\n", full, fields, qPrintable(info),
+					counted, model_->plotLimit(), model_->plottedCount(), registerRefused, fieldRefused, newRefused, asked,
+					roomMade, shownRefused, back, chartTab->lineCount(), before, model_->plotLimit(), limitBefore);
+		check(full && counted && registerRefused && fieldRefused && newRefused,
+				"chart, one cap of 64 lines for every kind: with the chart full of math lines a register's Plot, a field and "
+				"New math line are refused with the same words; the info line counts every line (\"64/64 plotted · N math\")");
+		check(roomMade && shownRefused && back,
+				"chart, one cap of 64 lines: a math line hidden makes room for a register; shown again past the cap it is "
+				"refused (its tick taken back); the lines removed, the registers' limit as before");
+	}
+
+	/* The memory strip's box at a short window (O-6): 10 ms of a minute is a sliver no mouse can take, so a handle
+	 * 12 px wide is drawn on the view; the mouse over it a pointing hand, the handle lit, a tooltip; taken and dragged
+	 * it moves the view by as much as the mouse (no jump when taken); a click elsewhere on the strip still takes the
+	 * view there; the wheel over the strip moves it a window earlier or later */
+	static void memoryStripHandle() {
+		QWidget host;
+		host.resize(1100, 480);
+		auto *view = new ChartView(&host);
+		view->setGeometry(9, 5, 1080, 470);
+		double now = 100;
+		view->setClock([&now] { return now; }, 0);
+		view->setMemory(60);
+		view->addSeries(1, QStringLiteral("R"), QStringLiteral("V"), Qt::blue);
+		for (int i = 0; i <= 60000; i++) view->append(1, 40 + i * 0.001, std::sin(i * 0.01));
+		view->frame();
+		view->showSpan(70, 70.01);
+		host.show();
+		(void) QTest::qWaitForWindowExposed(&host);
+		(void) host.grab();
+		double t0, t1;
+		const auto end = [&] {
+			(void) host.grab();
+			view->viewSpan(t0, t1);
+			return t1;
+		};
+		const QRectF handle = view->memoryHandleRect();
+		/* the strip spans the plot: its width from the time under two x (the view a minute ago on 60 s of memory) */
+		const double plotW = view->window() * 100 / (view->timeAt(100) - view->timeAt(0));
+		const double secondsPerPx = view->memory() / plotW;
+		const double viewX = handle.center().x();
+		const bool wide = std::fabs(handle.width() - ChartView::MEMORY_HANDLE_W) < 0.01;
+		/* the mouse over it */
+		const auto moveTo = [view](QPointF at, Qt::MouseButtons buttons) {
+			QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, buttons, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		};
+		moveTo(handle.center(), Qt::NoButton);
+		const QString tip = view->toolTipAt(handle.center());
+		const bool hover = view->memoryHandleHovered() && view->cursor().shape() == Qt::PointingHandCursor
+				&& tip.startsWith(QStringLiteral("The view: drag it along the memory"));
+		/* taken (no jump) and dragged 100 px right: 100 px of the strip later */
+		const double before = end();
+		const QPoint at = handle.center().toPoint();
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, at);
+		const double taken = end();
+		moveTo(QPointF(at.x() + 100, at.y()), Qt::LeftButton);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, QPoint(at.x() + 100, at.y()));
+		const double dragged = end();
+		const bool drags = std::fabs(taken - before) < secondsPerPx && std::fabs(dragged - before - 100 * secondsPerPx) < 2 * secondsPerPx;
+		/* a click 300 px left of it: the view there */
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(at.x() - 200, at.y()));
+		const double jumped = end();
+		const bool jumps = std::fabs(jumped - (dragged - 300 * secondsPerPx)) < 2 * secondsPerPx;
+		/* the wheel over the strip: down a window later, up a window earlier */
+		const auto wheel = [view](QPointF where, int notches) {
+			QWheelEvent e(where, view->mapToGlobal(where), QPoint(), QPoint(0, 120 * notches), Qt::NoButton, Qt::NoModifier,
+					Qt::NoScrollPhase, false);
+			QApplication::sendEvent(view, &e);
+		};
+		const QPointF onStrip(view->memoryHandleRect().center().x() - 150, view->memoryHandleRect().center().y());
+		wheel(onStrip, -1);
+		const double later = end();
+		wheel(onStrip, 2);
+		const double earlier = end();
+		const bool wheels = std::fabs(later - jumped - 0.01) < 1e-6 && std::fabs(earlier - later + 0.02) < 1e-6
+				&& std::fabs(view->window() - 0.01) < 1e-9 && !view->live();
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the handle lit at 10 ms */
+			moveTo(view->memoryHandleRect().center(), Qt::NoButton);
+			host.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_strip_handle.png"));
+		}
+		if (!wide || !hover || !drags || !jumps || !wheels)
+			std::printf("     (the handle %g px at x %g (%d), hover %d tip \"%s\"; %g s a px: taken %+g, dragged %+g; jumped %+g; "
+					"wheel %+g, %+g; window %.17g, live %d)\n", handle.width(), viewX, int(wide), int(hover), qPrintable(tip),
+					secondsPerPx, taken - before, dragged - before, jumped - dragged, later - jumped, earlier - later,
+					view->window(), int(view->live()));
+		check(wide && hover && drags && jumps && wheels,
+				"chart, the memory strip at a 10 ms window: a handle 12 px wide on the view (the mouse over it a pointing hand, "
+				"lit, a tooltip); dragged it moves the view by as much as the mouse, no jump when taken; a click elsewhere "
+				"takes the view there; the wheel over the strip a window later or earlier");
+	}
+
+	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of
+	 * 2 GB (as many as this machine fills in 20 s), then RAM set to 256 MB: at the next block the store is down to its
+	 * new share, and no block's append (its trim with it) and no paint takes over 20 ms. Letting gigabytes go took the
+	 * window's thread 2 s; now it hands them to a thread of its own */
+	static void chartRamCut() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		QWidget host;
+		host.resize(1100, 480);
+		auto *view = new ChartView(&host);
+		view->setGeometry(9, 5, 1080, 470);
+		double now = 100;
+		view->setClock([&now] { return now; }, 0);
+		view->setMemory(3600);
+		view->setRamBudget(2048);
+		view->setFastStream(0, def);
+		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
+		quint64 first = 0;
+		const auto block = [&] {
+			view->appendFast(0, first, BLOCK, records, first == 0, 0);
+			first += BLOCK;
+			now = 100.0 + first * 1e-6;
+			view->markFast(0, first, now, 1e-6);
+		};
+		QElapsedTimer filling;
+		filling.start();
+		const fast::Store *store = view->fastStore(0);
+		while (!view->memoryFull() && filling.elapsed() < 20000) block();
+		const double fillS = filling.elapsed() / 1000.0;
+		const qint64 filled = store->bytes();
+		(void) host.grab();
+		(void) view->takePerfStats();
+		view->setRamBudget(256);
+		/* as the window does: blocks, then a frame (the slice of the memory let go), then its paint */
+		double appendMax = 0, frameMax = 0;
+		const qint64 share = 256ll * 1024 * 1024;
+		bool down = false;
+		for (int b = 0; b < 60; b++) {
+			QElapsedTimer one;
+			one.start();
+			block();
+			appendMax = std::max(appendMax, one.nsecsElapsed() / 1e6);
+			if (b == 0) down = store->bytes() <= share && store->bytes() >= share / 8 * 7 - BLOCK * 4 * 2;
+			one.restart();
+			view->frame();
+			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+			(void) host.grab();
+		}
+		const ChartView::PerfStats perf = view->takePerfStats();
+		std::printf("     (the RAM cut: %lld MB filled in %.1f s, cut to 256 MB: %lld MB kept; the longest append %.1f ms, "
+				"frame() %.1f ms, paint %.1f ms of %d)\n", (long long) (filled >> 20), fillS, (long long) (store->bytes() >> 20),
+				appendMax, frameMax, perf.paintMax, perf.frames);
+		check(filled >= 512ll * 1024 * 1024 && down && appendMax < 20 && frameMax < 20 && perf.paintMax < 20
+						&& perf.frames >= 50,
+				"chart, the RAM budget cut with a filled fast store (2 GB to 256 MB): the store at its new share from the next "
+				"block on; no append, frame or paint over 20 ms (the memory let go a slice a frame)");
+	}
+
+	/* The RAM against the free memory (O-13): the budget is a cap, not a reservation. With less free than it, the chart
+	 * keeps within what it holds and the free memory less a reserve (a free memory given, which comes back as the chart
+	 * lets go, as a computer's does): a fast line filled to its share of 512 MB, then 256 MB left to it by the free
+	 * memory: the store down to that at the next block, no append, frame or paint over 20 ms (P7's cut); the note "only
+	 * ... free: keeps about ..." in the warn colour, the RAM box's tooltip and the memory strip's say why. The free
+	 * memory back: the RAM set again, nothing more trimmed */
+	void chartRamFree() {
+		/* the effective budget: what is held and free less the reserve, within the floor and the RAM set */
+		const qint64 reserve = ChartTab::ramReserveMB();
+		const bool formula = ChartTab::effectiveRamMB(16384, 1000, 2048 + reserve) == 3048
+				&& ChartTab::effectiveRamMB(2048, 1000, 8192 + reserve) == 2048
+				&& ChartTab::effectiveRamMB(2048, 0, 10) == ChartTab::RAM_FLOOR_MB
+				&& ChartTab::effectiveRamMB(2048, 0, -1) == 2048 && reserve >= 1024;
+		bool over = false;
+		/* 3 GB needed for 2 min, 1 GB left by the free memory: about 40 s */
+		const QString only = ChartTab::ramNeedText(qint64(3) * 1024 * 1024 * 1024, 2048, 120, over, 1024, 2150);
+		std::printf("     (the reserve %lld MB; \"%s\")\n", (long long) reserve, qPrintable(only));
+		check(formula && over && only == QLatin1String("only 2.1 GB free: keeps about 40 s"),
+				"chart, the RAM against the free memory: what the chart holds and the free memory less a reserve (1 GB, "
+				"a tenth of the memory when more), 64 MB at least, the RAM set at most; the note \"only 2.1 GB free: "
+				"keeps about 40 s\"");
+
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		double now = 100;
+		ChartTab tab{ [&now] { return now; } };
+		tab.resize(1100, 560); /* the chart about as large as the RAM cut's (a paint's time follows its pixels) */
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		tab.setShown(true);
+		ChartView *view = tab.view();
+		view->setMemory(3600);
+		view->setRamBudget(512);
+		view->setFastStream(0, def);
+		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
+		quint64 first = 0;
+		const auto block = [&] {
+			view->appendFast(0, first, BLOCK, records, first == 0, 0);
+			first += BLOCK;
+			now = 100.0 + first * 1e-6;
+			view->markFast(0, first, now, 1e-6);
+		};
+		QElapsedTimer filling;
+		filling.start();
+		const fast::Store *store = view->fastStore(0);
+		while (!view->memoryFull() && filling.elapsed() < 20000) block();
+		const qint64 filled = store->bytes();
+		(void) view->grab();
+		(void) view->takePerfStats();
+
+		/* 256 MB left to the chart: the free memory given so that what it holds and the free less the reserve is that */
+		constexpr qint64 MiB = 1024 * 1024;
+		constexpr int LEFT = 256;
+		const qint64 heldMB = (view->bytesHeld() + view->bytesReleasing()) / MiB;
+		tab.setTestFreeMemory(LEFT + reserve - heldMB);
+		const bool limited = std::abs(view->ramInUse() - LEFT) <= 2 && view->ramLimit() > 0 && view->ramBudget() == 512;
+		double appendMax = 0, frameMax = 0;
+		bool down = false;
+		for (int b = 0; b < 60; b++) {
+			QElapsedTimer one;
+			one.start();
+			block();
+			appendMax = std::max(appendMax, one.nsecsElapsed() / 1e6);
+			if (b == 0) down = store->bytes() <= qint64(view->ramInUse()) * MiB;
+			one.restart();
+			view->frame();
+			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+			(void) view->grab();
+			if (b % 20 == 19) tab.watchFreeMemory(); /* the readings go on: what was let go came back as free */
+		}
+		const ChartView::PerfStats perf = view->takePerfStats();
+		const bool stillLimited = std::abs(view->ramInUse() - LEFT) <= 4;
+		tab.refreshStatus();
+		auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+		auto *ram = tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+		const QString noteText = note ? note->text() : QString();
+		const bool warned = note && noteText.startsWith(QLatin1String("only "))
+				&& noteText.contains(QLatin1String(" free: keeps about ")) && note->property("warn").toBool()
+				&& note->palette().color(note->foregroundRole()) == Theme::colors().warn;
+		const QString tip = ram ? ram->toolTip() : QString();
+		const bool ramTip = tip.contains(QLatin1String("Free now: ")) && tip.contains(QLatin1String("of the 512 MB set"));
+		const bool stripTip = view->memoryStripTip().contains(QLatin1String("The free memory limits the budget now"));
+		std::printf("     (the free memory, a chart of %d x %d: %lld MB filled, %d MB left to it: %lld MB kept; the longest "
+				"append %.1f ms, frame() %.1f ms, paint %.1f ms of %d; \"%s\")\n", view->width(), view->height(),
+				(long long) (filled >> 20), view->ramInUse(),
+				(long long) (store->bytes() >> 20), appendMax, frameMax, perf.paintMax, perf.frames, qPrintable(noteText));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the note in its warn state, in both themes */
+			if (ram) ram->setEditText(QStringLiteral("512 MB")); /* the budget set on the view, shown as the box would */
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				tab.refreshStatus();
+				tab.grab(QRect(0, 0, tab.width(), 120)).save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_ram_free_dark.png") : QStringLiteral("_ram_free_light.png")));
+			}
+		}
+		check(filled >= 256 * MiB && limited && down && stillLimited && appendMax < 20 && frameMax < 20 && perf.paintMax < 20
+						&& perf.frames >= 50 && warned && ramTip && stripTip,
+				"chart, less memory free than the RAM set: the chart keeps within what it holds and the free less the "
+				"reserve (512 MB set, 256 MB left), trimmed at the next block with no append, frame or paint over 20 ms; "
+				"the note \"only ... free: keeps about ...\" in the warn colour, the RAM box's and the memory strip's "
+				"tooltips say so");
+
+		/* the free memory back: the RAM set again, and nothing more let go while the line grows to it */
+		tab.setTestFreeMemory(16384 + reserve);
+		const qint64 dropped = store->dropped();
+		for (int b = 0; b < 20; b++) {
+			block();
+			view->frame();
+		}
+		tab.refreshStatus();
+		const QString back = note ? note->text() : QString();
+		const QString backTip = ram ? ram->toolTip() : QString();
+		check(view->ramLimit() == 0 && view->ramInUse() == 512 && store->dropped() == dropped
+						&& back.startsWith(QLatin1String("needs ")) && backTip.contains(QLatin1String("Free now: "))
+						&& backTip.contains(QLatin1String("With less free")),
+				"chart, the free memory back: the RAM set again (512 MB), nothing more let go as the line grows; the note "
+				"\"needs ...\" again, the RAM box's tooltip the free memory without a limit");
+		tab.setTestFreeMemory(-1);
+		tab.hide();
+	}
+
 	void chartInfoLine() {
 		LoneChart chart(QStringLiteral("INFO"), QStringLiteral("V"));
 		auto *label = chart.tab.findChild<QLabel *>(QStringLiteral("chartInfo"));
@@ -6275,7 +6804,7 @@ private:
 					&& view->laneLines(k).size() == 2;
 			if (k > 0) stacked = stacked && view->laneRect(k).top() > view->laneRect(k - 1).bottom();
 		}
-		const bool saved = QSettings().value(QStringLiteral("chart/lanes")).toBool() && !mode->isEnabled();
+		const bool saved = QSettings().value(QStringLiteral("chart/lanes")).toBool() && mode->isEnabled(); /* the current lane's */
 		/* each its own Auto range: 12 V in the first, 0.5 A in the second */
 		const bool ranges = view->laneYLo(0) < 11.5 && view->laneYHi(0) > 12.5 && view->laneYHi(0) < 15
 				&& view->laneYLo(1) < 0.4 && view->laneYHi(1) < 1.0 && view->laneYOfValue(0, 12) > view->laneRect(0).top()
@@ -6285,7 +6814,7 @@ private:
 			std::printf("     (%d lanes; V %.3g .. %.3g, A %.3g .. %.3g)\n", view->laneCount(), view->laneYLo(0),
 					view->laneYHi(0), view->laneYLo(1), view->laneYHi(1));
 		check(stacked && saved && ranges, "chart, Lanes: a plot per unit in the order they came (V, A, W, none), stacked, "
-				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row disabled");
+				"of equal height, each with its own Auto range; saved (chart/lanes), the Y range row the current lane's");
 
 		/* the second lane's Y range from its labels: Manual 0 .. 5; the third's Log */
 		(void) chart.view->grab();
@@ -6303,7 +6832,7 @@ private:
 			}
 		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
 				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
-						QStringLiteral("Fold lane") }
+						QStringLiteral("All lanes: Auto"), QStringLiteral("Fold lane") }
 				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
 		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
 		bool unanimated = false; /* made without the window animations (STUDIO.md 27) */
@@ -6335,7 +6864,7 @@ private:
 		}
 		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
 				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed; a dialog without the window "
-				"animations), Log, Fold lane; each lane alone; kept (chart/laneY) for the next start");
+				"animations), Log, All lanes: Auto, Fold lane; each lane alone; kept (chart/laneY) for the next start");
 
 		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
 		const QPointF inFirst(view->laneRect(0).center());
@@ -6723,7 +7252,7 @@ private:
 			}
 		const bool shown = laneMenu && laneMenu->isVisible() && !view->laneFolded(1)
 				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
-						QStringLiteral("Fold lane") }
+						QStringLiteral("All lanes: Auto"), QStringLiteral("Fold lane") }
 				&& std::abs(laneMenu->pos().y() - view->mapToGlobal(menu1.bottomLeft().toPoint()).y()) <= 2;
 		if (foldItem) foldItem->trigger();
 		if (laneMenu) laneMenu->close();
@@ -6737,7 +7266,7 @@ private:
 					view->mapToGlobal(menu1.bottomLeft().toPoint()).y(), qPrintable(items.join(QStringLiteral(", "))),
 					int(menuFolds));
 		check(shown && menuFolds, "chart, Lanes: a click on a lane's ⋯ shows its menu under the button: Auto, Manual…, "
-				"Log, Fold lane (no fold by the click itself)");
+				"Log, All lanes: Auto, Fold lane (no fold by the click itself)");
 
 		/* the mouse over it: the pointing hand, it highlighted (not the fold button), the tooltip */
 		const QRectF menu2 = view->laneMenuButtonRect(2);
@@ -6836,11 +7365,12 @@ private:
 		(void) view->grab();
 		const QString fitting = view->toolTipAt(QPointF(40, view->laneRect(0).center().y()));
 		const bool labelsTip = scrolling == QStringLiteral("Wheel: scroll the lanes · Ctrl + wheel: zoom this lane · "
-				"Right-click: its Y range and Fold lane")
-				&& fitting == QStringLiteral("Ctrl + wheel: zoom this lane · Right-click: its Y range and Fold lane");
+				"Click: its Y range in the toolbar · Double-click: Auto · Right-click: its Y range and Fold lane")
+				&& fitting == QStringLiteral("Ctrl + wheel: zoom this lane · Click: its Y range in the toolbar · "
+						"Double-click: Auto · Right-click: its Y range and Fold lane");
 		if (!labelsTip) std::printf("     (scrolling: \"%s\"; fitting: \"%s\")\n", qPrintable(scrolling), qPrintable(fitting));
-		check(labelsTip, "chart, Lanes: the value labels' tooltip names the wheel (while the lanes scroll), Ctrl + wheel "
-				"and the right-click");
+		check(labelsTip, "chart, Lanes: the value labels' tooltip names the wheel (while the lanes scroll), Ctrl + wheel, "
+				"the click, the double-click and the right-click");
 		tab.hide();
 		QSettings().remove(group);
 	}
@@ -7056,6 +7586,293 @@ private:
 	}
 
 
+	/* P7b: every lane's Y range seen and set on its own. A lane not in Auto has a tag at the top of its value labels
+	 * ("Manual" in the warn colour, "Log"); a click on it: Auto. A click on a lane's value labels (its ⋯, its tag)
+	 * makes it the current lane, whose range the toolbar's Y range shows and sets (its list: "A"); Display and each
+	 * lane's ⋯ have All lanes: Auto; a double-click on the labels: Auto; a manual lane comes back tagged */
+	void chartLaneRanges() {
+		const QString group = QStringLiteral("laneRanges");
+		QSettings().remove(group);
+		QSettings().setValue(group + QStringLiteral("/lanes"), true);
+		QVector<RegDef> defs;
+		MathLines::Samples samples;
+		for (int k = 0; k < 2; k++) { /* a line in V around 12 and one in A, a sine from 3 to 17 */
+			RegDef def;
+			def.addr = uint16_t(0xD100 + 2 * k);
+			def.name = k == 0 ? QStringLiteral("BUS_V") : QStringLiteral("LOAD_I");
+			def.unit = k == 0 ? QStringLiteral("V") : QStringLiteral("A");
+			defs << def;
+			for (int i = 0; i < 4000; i++)
+				samples[regKey(def)] << QPointF(90.0 + i * 0.0025, k == 0 ? 12 + std::sin(i * 0.01) : 10 + 7 * std::sin(i * 0.01));
+		}
+		const auto plot = [&](ChartTab &tab) {
+			for (const RegDef &def : std::as_const(defs)) tab.plotRegister(def, true);
+			tab.frame(samples);
+		};
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		tab.resize(1200, 700);
+		plot(tab);
+		ChartView *view = tab.findChild<ChartView *>();
+		view->setWindow(10);
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		auto *mode = tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *low = tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *high = tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		auto *allAuto = tab.findChild<QAction *>(QStringLiteral("chartAllLanesAuto"));
+		auto *lanes = tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+		QLabel *rangeLabel = nullptr;
+		for (QLabel *label : tab.findChildren<QLabel *>())
+			if (label->text().startsWith(QStringLiteral("Y range"))) rangeLabel = label;
+		(void) view->grab();
+		if (!mode || !low || !high || !allAuto || !lanes || !rangeLabel || view->laneCount() != 2) {
+			check(false, "chart, a lane's Y range: two lanes, the toolbar's Y range and All lanes: Auto found");
+			return;
+		}
+		const QRectF plotArea(view->laneRect(0).left(), view->laneRect(0).top(), view->laneRect(0).width(),
+				view->laneRect(1).bottom() - view->laneRect(0).top());
+
+		/* the tag: none in Auto; "Manual" for a manual lane, in the warn colour, in its value labels' column at its top,
+		 * no value label under it, a tooltip with its range */
+		const bool noTag = view->laneRangeTagRect(0).isEmpty() && view->laneRangeTagRect(1).isEmpty()
+				&& view->laneRangeTagText(1).isEmpty();
+		view->setLaneYManual(1, 4.94, 17.14);
+		QImage picture = view->grab().toImage();
+		qreal dpr = picture.devicePixelRatio();
+		const QRectF tag = view->laneRangeTagRect(1);
+		const QColor warn = Theme::colors().warn;
+		const auto near = [](QColor a, QColor b, int most) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue()) < most;
+		};
+		int warnPixels = 0;
+		for (int y = int(tag.top() * dpr); y < int(tag.bottom() * dpr); y++)
+			for (int x = int(tag.left() * dpr); x < int(tag.right() * dpr); x++)
+				if (near(picture.pixelColor(x, y), warn, 90)) warnPixels++;
+		bool clear = true; /* the labels are right-aligned in the column: none at the tag's height */
+		for (const QRectF &label : view->valueLabelRects())
+			if (label.top() < tag.bottom() && label.bottom() > tag.top()) clear = false;
+		const QString tip = view->toolTipAt(tag.center());
+		const bool tagged = noTag && view->laneRangeTagText(1) == QStringLiteral("Manual") && view->laneRangeTagRect(0).isEmpty()
+				&& tag.left() >= 18 && tag.right() <= plotArea.left() && std::fabs(tag.top() - view->laneRect(1).top() - 1) < 0.01
+				&& warnPixels > 4 && clear
+				&& tip == QStringLiteral("This lane's Y range is manual: 4.94 to 17.1 A · Click: back to Auto");
+		if (!tagged)
+			std::printf("     (no tag in Auto %d; the tag \"%s\" at %g,%g %gx%g, %d warn pixels, labels clear %d; tooltip \"%s\")\n",
+					int(noTag), qPrintable(view->laneRangeTagText(1)), tag.x(), tag.y(), tag.width(), tag.height(), warnPixels,
+					int(clear), qPrintable(tip));
+		check(tagged, "chart, a lane's Y range: a manual lane has a \"Manual\" tag in the warn colour at the top of its value "
+				"labels (none under it), its tooltip its range and \"Click: back to Auto\"; none in Auto");
+
+		/* the current lane: the first by default, the toolbar's Y range its own with its unit; a click on the other's value
+		 * labels: that one, its unit name lit, the toolbar its range at once */
+		/* the label follows the lanes with the info line (the window's status, twice a second): the lines came after
+		 * Lanes was on */
+		tab.refreshStatus();
+		auto *unitBox = tab.findChild<QComboBox *>(QStringLiteral("yLane"));
+		const bool first = rangeLabel->text() == QStringLiteral("Y range") && unitBox && unitBox->currentText() == QStringLiteral("V")
+				&& view->currentLane() == 0
+				&& mode->isEnabled() && mode->currentIndex() == 0;
+		if (!first)
+			std::printf("     (at first: lane %d, \"%s\", mode %d %s)\n", view->currentLane(), qPrintable(rangeLabel->text()),
+					mode->currentIndex(), mode->isEnabled() ? "enabled" : "disabled");
+		const QPoint labels1(40, int(view->laneRect(1).bottom() - 20));
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, labels1);
+		picture = view->grab().toImage();
+		const QColor accent = Theme::colors().accent;
+		const auto accentIn = [&](int lane) { /* the unit name's column under the lane's buttons */
+			const QRectF r = view->laneRect(lane);
+			int n = 0;
+			for (int y = int((r.top() + 40) * dpr); y < int(r.bottom() * dpr); y++)
+				for (int x = 0; x < int(18 * dpr); x++)
+					if (near(picture.pixelColor(x, y), accent, 90)) n++;
+			return n;
+		};
+		const bool current = view->currentLane() == 1 && unitBox->currentText() == QStringLiteral("A")
+				&& mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94") && high->text() == QStringLiteral("17.14")
+				&& accentIn(1) > 3 && accentIn(0) * 4 < accentIn(1); /* lit: its name in the accent, the other's not */
+		/* the toolbar sets it: 1 .. 20 typed, then Auto chosen; the first lane untouched */
+		low->setText(QStringLiteral("1"));
+		high->setText(QStringLiteral("20"));
+		emit high->editingFinished();
+		const bool typed = !view->laneYAuto(1) && view->laneYLo(1) == 1 && view->laneYHi(1) == 20 && view->laneYAuto(0);
+		mode->setCurrentIndex(0);
+		emit mode->activated(0);
+		(void) view->grab();
+		const bool toAuto = view->laneYAuto(1) && view->laneRangeTagRect(1).isEmpty() && view->laneYAuto(0);
+		/* the ⋯ button makes its lane current too */
+		const QRectF menu0 = view->laneMenuButtonRect(0);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, menu0.center().toPoint());
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		const bool byMenu = view->currentLane() == 0 && unitBox->currentText() == QStringLiteral("V");
+		if (!first || !current || !typed || !toAuto || !byMenu)
+			std::printf("     (first %d; after the click: lane %d, \"%s\", mode %d, %s .. %s, lit %d/%d; typed %d; Auto %d; by ⋯ %d)\n",
+					int(first), view->currentLane(), qPrintable(rangeLabel->text()), mode->currentIndex(), qPrintable(low->text()),
+					qPrintable(high->text()), accentIn(1), accentIn(0), int(typed), int(toAuto), int(byMenu));
+		check(first && current && typed && toAuto && byMenu, "chart, a lane's Y range: the current lane (the first by "
+				"default) drives the toolbar's Y range, its unit chosen in the list; a click on another lane's value labels (or "
+				"its ⋯) makes it current, its unit name lit, the toolbar its range at once; typing and Auto there set that "
+				"lane alone");
+
+		/* the tag's click: Auto (and linear); over it the pointing hand and the tag lit */
+		view->setLaneYManual(1, 4.94, 17.14);
+		(void) view->grab();
+		const QRectF tag1 = view->laneRangeTagRect(1);
+		const auto tagPicture = [&] {
+			const QImage whole = view->grab().toImage();
+			return whole.copy(QRectF(tag1.topLeft() * dpr, tag1.size() * dpr).toAlignedRect());
+		};
+		const QImage rest = tagPicture();
+		QMouseEvent move(QEvent::MouseMove, tag1.center(), view->mapToGlobal(tag1.center()), Qt::NoButton, Qt::NoButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(view, &move);
+		const bool hover = view->hoveredRangeTag() == 1 && view->cursor().shape() == Qt::PointingHandCursor && tagPicture() != rest;
+		view->setLaneYLog(0, true); /* the first lane Log: its tag "Log" */
+		(void) view->grab();
+		const bool logTag = view->laneRangeTagText(0) == QStringLiteral("Log");
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, tag1.center().toPoint());
+		(void) view->grab();
+		const bool clicked = view->laneYAuto(1) && !view->laneYLog(1) && view->laneRangeTagRect(1).isEmpty()
+				&& view->currentLane() == 1 && mode->currentIndex() == 0;
+		if (!hover || !logTag || !clicked)
+			std::printf("     (hovered %d, cursor %d, lit %d; the Log tag \"%s\"; after the click: auto %d, tag %s, current %d, mode %d)\n",
+					view->hoveredRangeTag(), int(view->cursor().shape()), int(tagPicture() != rest),
+					qPrintable(view->laneRangeTagText(0)), int(view->laneYAuto(1)),
+					view->laneRangeTagRect(1).isEmpty() ? "gone" : "shown", view->currentLane(), mode->currentIndex());
+		check(hover && logTag && clicked, "chart, a lane's Y range: over the tag the pointing hand and the tag lit; a Log "
+				"lane's tag says \"Log\"; a click on the tag sets that lane to Auto (linear) and makes it current");
+
+		/* All lanes: Auto, in Display (shown with Lanes, enabled while a lane is not Auto) and in each lane's ⋯ */
+		view->setLaneYManual(1, 0, 5);
+		const bool enabled = allAuto->isVisible() && allAuto->isEnabled();
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, view->laneMenuButtonRect(1).center().toPoint());
+		QAction *menuAll = nullptr;
+		if (tab.laneMenu())
+			for (QAction *action : tab.laneMenu()->actions())
+				if (action->text() == QStringLiteral("All lanes: Auto")) menuAll = action;
+		const bool inMenu = menuAll && menuAll->isEnabled();
+		if (tab.laneMenu()) tab.laneMenu()->close();
+		allAuto->trigger();
+		(void) view->grab();
+		const bool allDone = view->allLanesYAuto() && view->laneYAuto(0) && !view->laneYLog(0) && view->laneYAuto(1)
+				&& !allAuto->isEnabled() && view->laneRangeTagRect(0).isEmpty() && view->laneRangeTagRect(1).isEmpty();
+		lanes->setChecked(false);
+		const bool hidden = !allAuto->isVisible() && rangeLabel->text() == QStringLiteral("Y range") && !unitBox->isVisible();
+		lanes->setChecked(true);
+		(void) view->grab();
+		if (!enabled || !inMenu || !allDone || !hidden)
+			std::printf("     (Display's entry %s %s; the ⋯ menu's %s; all Auto %d, then %s; without Lanes hidden %d, \"%s\")\n",
+					allAuto->isVisible() ? "shown" : "hidden", enabled ? "enabled" : "disabled",
+					menuAll ? (menuAll->isEnabled() ? "enabled" : "disabled") : "missing", int(allDone),
+					allAuto->isEnabled() ? "enabled" : "disabled", int(hidden), qPrintable(rangeLabel->text()));
+		check(enabled && inMenu && allDone && hidden, "chart, a lane's Y range: All lanes: Auto in Display (with Lanes, "
+				"enabled while a lane is not Auto) and in each lane's ⋯ menu sets every lane to Auto");
+
+		/* a double-click on a lane's value labels: Auto; their tooltip says so */
+		view->setLaneYManual(0, 11, 13);
+		(void) view->grab();
+		const QPoint labels0(40, int(view->laneRect(0).bottom() - 20));
+		const QString labelsTip = view->toolTipAt(labels0);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, labels0); /* a double-click's first click (QTest sends */
+		QTest::mouseDClick(view, Qt::LeftButton, Qt::NoModifier, labels0); /* the second alone) */
+		const bool doubled = view->laneYAuto(0) && labelsTip.contains(QStringLiteral("Double-click: Auto"))
+				&& labelsTip.contains(QStringLiteral("Click: its Y range in the toolbar"));
+		if (!doubled) std::printf("     (after the double-click auto %d; the tooltip \"%s\")\n", int(view->laneYAuto(0)),
+				qPrintable(labelsTip));
+		check(doubled, "chart, a lane's Y range: a double-click on a lane's value labels sets it to Auto; their tooltip "
+				"names the click (the toolbar) and the double-click");
+
+		/* the lane list beside "Y range": hidden without Lanes; with them every lane by its unit as on the chart, the
+		 * current one chosen; choosing another makes it current (its unit lit, the toolbar its range), a click on the
+		 * chart's lane moves the list; a folded lane marked, a lane gone leaves it */
+		QComboBox *laneBox = unitBox;
+		const auto listed = [&] {
+			QStringList items;
+			for (int k = 0; laneBox && k < laneBox->count(); k++) items << laneBox->itemText(k);
+			return items;
+		};
+		lanes->setChecked(false);
+		const bool boxHidden = laneBox && !laneBox->isVisible() && rangeLabel->text() == QStringLiteral("Y range");
+		lanes->setChecked(true);
+		view->setLaneYManual(1, 4.94, 17.14);
+		(void) view->grab();
+		tab.refreshStatus();
+		const bool both = laneBox && laneBox->isVisible() && listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A") })
+				&& laneBox->currentIndex() == view->currentLane() && view->currentLane() == 0
+				&& laneBox->toolTip() == QStringLiteral("The lane these Y settings apply to · or click a lane's values on the chart");
+		if (laneBox) {
+			laneBox->setCurrentIndex(1);
+			emit laneBox->activated(1);
+		}
+		picture = view->grab().toImage();
+		const bool chosen = view->currentLane() == 1 && mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94")
+				&& high->text() == QStringLiteral("17.14") && accentIn(1) > 3 && accentIn(0) * 4 < accentIn(1);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(40, int(view->laneRect(0).bottom() - 20)));
+		const bool follows = view->currentLane() == 0 && laneBox && laneBox->currentIndex() == 0 && mode->currentIndex() == 0;
+		view->setLaneFolded(1, true);
+		const bool marked = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A (folded)") });
+		view->setLaneFolded(1, false);
+		RegDef power; /* a third unit comes and goes */
+		power.addr = 0xD104;
+		power.name = QStringLiteral("LOAD_P");
+		power.unit = QStringLiteral("W");
+		MathLines::Samples powered;
+		for (int i = 0; i < 4000; i++) powered[regKey(power)] << QPointF(90.0 + i * 0.0025, 120 + 80 * std::sin(i * 0.01));
+		tab.plotRegister(power, true);
+		tab.frame(powered);
+		tab.refreshStatus();
+		const bool added = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A"), QStringLiteral("W") });
+		tab.plotRegister(power, false);
+		tab.refreshStatus();
+		const bool removed = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A") });
+		if (!boxHidden || !both || !chosen || !follows || !marked || !added || !removed)
+			std::printf("     (hidden without Lanes %d; listed \"%s\", current %d of the list, %d of the chart; chosen: lane %d, "
+					"mode %d, %s .. %s, lit %d/%d; a chart click %d; folded %d; added %d; removed %d)\n", int(boxHidden),
+					qPrintable(listed().join(QLatin1Char('|'))), laneBox ? laneBox->currentIndex() : -1, view->currentLane(),
+					view->currentLane(), mode->currentIndex(), qPrintable(low->text()), qPrintable(high->text()), accentIn(1),
+					accentIn(0), int(follows), int(marked), int(added), int(removed));
+		check(boxHidden && both && chosen && follows && marked && added && removed, "chart, a lane's Y range: the lane list "
+				"beside \"Y range\" (hidden without Lanes) lists every lane by its unit, the current one chosen, a folded one "
+				"marked; choosing one makes it current (its unit lit, the toolbar its range); a click on the chart's lane moves "
+				"it; a lane gone leaves it; its tooltip");
+
+		/* kept: a manual lane is tagged again in a new tab (the next start) */
+		view->setLaneYManual(1, 4.94, 17.14);
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the tag, the current lane, the toolbar's unit, both themes */
+			QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(40, int(view->laneRect(1).bottom() - 20)));
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_lane_range_dark.png") : QStringLiteral("_lane_range_light.png")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		tab.hide();
+		bool again = false;
+		{
+			ChartTab other([] { return 100.0; }, nullptr, group);
+			other.resize(1200, 700);
+			plot(other);
+			other.show(); /* laid out: the lanes their heights */
+			(void) QTest::qWaitForWindowExposed(&other);
+			auto *otherView = other.findChild<ChartView *>();
+			if (otherView) {
+				otherView->setWindow(10);
+				(void) otherView->grab();
+				again = otherView->lanes() && otherView->laneRangeTagText(1) == QStringLiteral("Manual")
+						&& otherView->laneRangeTagText(0).isEmpty() && otherView->laneYHi(1) == 17.14;
+				if (!again)
+					std::printf("     (the new tab: lanes %d, %d of them, tags \"%s\" \"%s\", the second %g .. %g)\n",
+							int(otherView->lanes()), otherView->laneCount(), qPrintable(otherView->laneRangeTagText(0)),
+							qPrintable(otherView->laneRangeTagText(1)), otherView->laneYLo(1), otherView->laneYHi(1));
+			}
+			other.hide();
+		}
+		check(again, "chart, a lane's Y range: a manual lane kept (laneY) comes back tagged in a new tab");
+		QSettings().remove(group);
+	}
+
 	/* A lane's border dragged: over a separator the resize cursor, the line lit, a tooltip; a drag gives the lane above
 	 * what the one below gives up, neither under LANE_MIN_H; the heights kept by unit (laneHeights), a new tab finds
 	 * them; a double-click on a separator: all equal again */
@@ -7130,6 +7947,47 @@ private:
 					movedH0, view->laneRect(1).height(), view->laneRect(0).height(), qPrintable(saved.join(QStringLiteral(", "))));
 		check(moved && heldBelow && heldAbove && saved.size() == 2, "chart, a lane's border dragged: the lane above "
 				"taller by as much as the one below is lower, the others as they were; neither under 80 px; saved by unit");
+
+		/* weights that would run past the plot (O-11): the first lane twenty times the others, whose share is then under
+		 * 80 px: they are held at 80 and the first takes the rest, every lane in the plot, nothing to scroll (a lane held
+		 * at the minimum on top of the shares ran the last one below the plot). Lanes that do not fit at 80 px each:
+		 * all at 80, scrolled, as before */
+		{
+			const QStringList kept = view->laneHeights();
+			QStringList weights;
+			for (int i = 0; i < view->laneCount(); i++)
+				weights << view->laneLabel(i) + QLatin1Char('\t') + (i == 0 ? QStringLiteral("6") : QStringLiteral("0.3"));
+			view->setLaneHeights(weights);
+			(void) view->grab();
+			const auto lowest = [view] {
+				double h = 1e9;
+				for (int i = 0; i < view->laneCount(); i++) h = std::min(h, view->laneRect(i).height());
+				return h;
+			};
+			const double plotH = view->laneRect(3).bottom() - view->laneRect(0).top();
+			const bool fit = view->laneScrollBarRect().isEmpty() && view->laneScroll() == 0 && lowest() > ChartView::LANE_MIN_H - 0.01
+					&& std::fabs(view->laneRect(1).height() - ChartView::LANE_MIN_H) < 0.01
+					&& view->laneRect(0).height() > 2 * ChartView::LANE_MIN_H
+					&& std::fabs(view->laneContentHeight() - plotH) < 0.01 && view->laneRect(0).top() >= 0;
+			const QSize size = tab.size();
+			tab.resize(size.width(), 420);
+			QApplication::processEvents();
+			(void) view->grab();
+			const bool scrolls = !view->laneScrollBarRect().isEmpty() && std::fabs(lowest() - ChartView::LANE_MIN_H) < 0.01
+					&& std::fabs(view->laneRect(0).height() - ChartView::LANE_MIN_H) < 0.01;
+			if (!fit || !scrolls)
+				std::printf("     (weights 6 0.3 0.3 0.3: lanes %g %g %g %g in %g px, scroll bar %d; short: the first %g, the "
+						"lowest %g, scroll bar %d)\n", view->laneRect(0).height(), view->laneRect(1).height(),
+						view->laneRect(2).height(), view->laneRect(3).height(), plotH, int(!view->laneScrollBarRect().isEmpty()),
+						view->laneRect(0).height(), lowest(), int(!view->laneScrollBarRect().isEmpty()));
+			tab.resize(size);
+			QApplication::processEvents();
+			view->setLaneHeights(kept);
+			(void) view->grab();
+			check(fit && scrolls, "chart, lane heights that fit: weights whose shares would put lanes under 80 px hold those "
+					"at 80 and give the rest to the others, every lane in the plot, no scroll bar; too short for 80 px each, "
+					"all at 80 and scrolled");
+		}
 
 		/* kept: a new tab of the same settings has the same heights; a double-click on a separator: all equal, saved */
 		const double kept0 = view->laneRect(0).height();
@@ -10397,25 +11255,22 @@ private:
 		const QString readout = view->divisionReadout();
 		const QRectF readoutRect = view->divisionReadoutRect();
 		const QRegularExpression readoutForm(QStringLiteral("^1 ms/div · \\d\\d:\\d\\d:\\d\\d\\.\\d{3}$"));
-		QFont small = QGuiApplication::font(); /* the chart's labels' */
-		small.setPointSizeF(8.5);
-		const QFontMetricsF metrics(small);
-		bool apart = !readoutRect.isEmpty();
-		for (int k = 0; k < labels.size(); k++) {
-			const double half = metrics.horizontalAdvance(labels[k]) / 2;
-			apart = apart && (labelX[k] + half < readoutRect.left() || labelX[k] - half > readoutRect.right());
-		}
-		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.top() > plot.bottom()
-				&& readoutRect.right() < plot.right() && readoutRect.left() > plot.center().x()
-				&& readouts.size() <= 2 + ms / 500
+		/* the readout in the state corner's row above the plot (alone there live: at its right end), so every one of
+		 * the 11 labels is drawn (the owner: it hid "-2 ms"); never over the legend */
+		const QRectF legendRow = view->legendViewport();
+		const bool everyLabel = labels.size() == 11;
+		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.bottom() < plot.top()
+				&& readoutRect.top() >= 0 && view->stateRect().isEmpty() && std::fabs(readoutRect.right() - plot.right()) <= 1
+				&& !readoutRect.intersects(legendRow) && readouts.size() <= 2 + ms / 500
 				&& view->toolTipAt(readoutRect.center()).contains(QStringLiteral("the clock time at 0, the right edge"));
-		std::printf("     (10 ms: labels %s; the readout \"%s\" at %.0f..%.0f)\n", qPrintable(labels.join(QStringLiteral(", "))),
-				qPrintable(readout), readoutRect.left(), readoutRect.right());
+		std::printf("     (10 ms: %d labels %s; the readout \"%s\" at %.0f..%.0f x %.0f..%.0f, the legend to %.0f)\n",
+				int(labels.size()), qPrintable(labels.join(QStringLiteral(", "))), qPrintable(readout), readoutRect.left(),
+				readoutRect.right(), readoutRect.top(), readoutRect.bottom(), legendRow.right());
 		check(offsets, "chart, time grid: at 10 ms live the labels are offsets from the right edge (-10 ms, -8 ms, -5 ms "
 				"... 0, the 0 at the right edge)");
-		check(readoutOk && apart, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the clock "
-				"time at 0) at the time axis's right end, clear of the labels, its clock time written at most twice a "
-				"second, its tooltip saying what it is");
+		check(readoutOk && everyLabel, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the "
+				"clock time at 0) in the state corner's row above the plot, at its right end and clear of the legend; all 11 "
+				"time labels drawn; its clock time written at most twice a second, its tooltip saying what it is");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
@@ -10467,10 +11322,17 @@ private:
 				&& held.contains(QStringLiteral("+4 ms")) && held.contains(QStringLiteral("-2 ms"))
 				&& view->timeGridX().size() == 9 && heldReadout == QStringLiteral("1 ms/div · ") + atT
 				&& view->toolTipAt(view->divisionReadoutRect().center()).contains(QStringLiteral("(T)"));
-		std::printf("     (held on T at %.1f px: labels %s; the readout \"%s\", T at %s)\n", crossX,
-				qPrintable(held.join(QStringLiteral(", "))), qPrintable(heldReadout), qPrintable(atT));
-		check(fromT, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the crossing "
-				"within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so");
+		/* with the trigger's state in the corner the readout sits left of it, neither over the other nor over the legend */
+		const QRectF heldRect = view->divisionReadoutRect(), heldState = view->stateRect();
+		const bool beside = !heldState.isEmpty() && heldRect.right() <= heldState.left()
+				&& heldRect.bottom() < plot.top() && !heldRect.intersects(view->legendViewport());
+		std::printf("     (held on T at %.1f px: %d labels %s; the readout \"%s\" at %.0f..%.0f, the state from %.0f, the legend "
+				"to %.0f; T at %s)\n", crossX, int(held.size()), qPrintable(held.join(QStringLiteral(", "))),
+				qPrintable(heldReadout), heldRect.left(), heldRect.right(), heldState.left(), view->legendViewport().right(),
+				qPrintable(atT));
+		check(fromT && beside, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the "
+				"crossing within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so; "
+				"the readout left of the trigger's state, over neither it nor the legend");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
@@ -10681,6 +11543,89 @@ private:
 		clearTriggerSettings();
 	}
 
+	/* O-14: the short window's lock watches the busiest line, not the first. A polled line of 10 polls a second plotted
+	 * first and a fast line of 50 000 records a second (a 50 Hz sine, its crossings found as the engine finds them)
+	 * second, at a 20 ms window: the lock watches the fast line and says "Auto (short window)" at each of 100 frames
+	 * (on the polled line it flipped between free running and locked); the polled line alone has under
+	 * SHORT_LOCK_SAMPLES in the window: no lock, nothing in the corner */
+	void chartShortLockBusiest() {
+		clearTriggerSettings();
+		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		StreamChannel channel;
+		channel.name = QStringLiteral("I");
+		channel.type = RegType::I16;
+		def.channels << channel;
+		constexpr double RATE = 50000;
+		const auto runPair = [&](bool withFast, int frames, int &lockedFrames, int &watchedFast, QString &corner) {
+			LoneChart chart(QStringLiteral("SLOW"), QStringLiteral("V"));
+			ChartView *view = chart.view;
+			view->setSmooth(false);
+			const int fastKey = ChartView::fastKey(0, 0);
+			if (withFast) {
+				view->setFastStream(0, def);
+				view->addSeries(fastKey, QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+			}
+			view->setWindow(0.02);
+			fast::TriggerScan scan;
+			qint64 record = 0, polls = 0;
+			double now = 99;
+			lockedFrames = watchedFast = 0;
+			for (int k = 0; k < frames; k++) {
+				now += 1.0 / 60;
+				MathLines::Samples samples; /* the polled line: a slow sine, 10 polls a second */
+				for (; 99.0 + polls * 0.1 <= now; polls++) {
+					const double t = 99.0 + polls * 0.1;
+					samples[regKey(chart.def)] << QPointF(t, 5 + std::sin(2 * M_PI * 0.3 * t));
+				}
+				if (withFast) { /* the fast line's records up to now, and the engine's part: its crossings */
+					const qint64 end = qint64((now - 99.0) * RATE);
+					const qint64 n = end - record;
+					QByteArray records(int(n * 2), '\0');
+					for (qint64 i = 0; i < n; i++) {
+						const qint16 v = qint16(std::lround(1000 * std::sin(2 * M_PI * 50 * (record + i) / RATE)));
+						records[int(2 * i)] = char(v);
+						records[int(2 * i + 1)] = char(v >> 8);
+					}
+					const qint64 at = view->appendFast(0, quint64(record), int(n), records, record == 0, 0);
+					const double markTime = 99.0 + double(end) / RATE;
+					view->markFast(0, quint64(end), markTime, 1 / RATE);
+					int stream = -1;
+					const fast::TriggerWatch watch = view->fastTriggerWatch(stream);
+					if (watch.serial != scan.watch().serial) scan.set(watch);
+					fast::BlockTaken taken;
+					taken.first = quint64(record);
+					taken.count = int(n);
+					taken.newStart = record == 0;
+					QVector<fast::Crossing> crossings;
+					scan.scan(def, taken, records.constData(), { quint64(end), markTime }, 1 / RATE, crossings);
+					view->fastCrossings(0, at, crossings);
+					record = end;
+				}
+				chart.now = now;
+				chart.tab.frame(samples);
+				(void) view->grab();
+				if (k >= 20) { /* the first frames fill the window */
+					if (view->stateFullText() == QStringLiteral("Auto (short window)")) lockedFrames++;
+					if (view->shortLockKey() == fastKey) watchedFast++;
+				}
+			}
+			corner = view->stateFullText();
+		};
+		int locked = 0, watched = 0, aloneLocked = 0, aloneWatched = 0;
+		QString corner, aloneCorner;
+		runPair(true, 120, locked, watched, corner);
+		runPair(false, 60, aloneLocked, aloneWatched, aloneCorner);
+		std::printf("     (a polled line first, a fast one second, 20 ms: %d of 100 frames locked, %d on the fast line, the "
+				"corner \"%s\"; the polled line alone: %d locked, the corner \"%s\")\n", locked, watched, qPrintable(corner),
+				aloneLocked, qPrintable(aloneCorner));
+		check(locked == 100 && watched == 100 && aloneLocked == 0 && aloneCorner.isEmpty(),
+				"chart, short windows lock on the busiest line: a polled line plotted first and a fast line second at a "
+				"20 ms window: the lock watches the fast line, \"Auto (short window)\" over 100 frames; a polled line of 10 "
+				"polls a second alone (under 20 samples in the window): no lock, nothing in the corner");
+	}
+
 	/* U-17: below 100 ms a live view with the trigger off locks on its first line by itself (Auto, the line's middle,
 	 * rising): a 50 Hz sine in a 20 ms window stands still (the view's end moves by whole periods), the corner says
 	 * "Auto (short window)", the row stays hidden and the button says Hold; "Auto · free running" while it does not
@@ -10725,6 +11670,44 @@ private:
 				&& !row->isVisible() && hold->text() == QStringLiteral("Hold") && view->stateFullText() == QStringLiteral("Auto (short window)")
 				&& std::fabs(view->triggerLevel() - 0.2) < 0.05 && view->triggerLevelTag().isEmpty()
 				&& view->triggerPositionMark().isEmpty() && view->triggerTag().isEmpty();
+		/* the lock's words as a badge: the accent colour (not the warn amber of Stopped) on a tint of it, a tooltip */
+		const QString badgeTip = QStringLiteral("The view locks on the busiest line's crossings at windows under 100 ms · "
+				"Display → Lock short windows turns it off");
+		const auto badgeSeen = [&](QString &why) {
+			const QImage picture = view->grab().toImage();
+			const qreal dpr = picture.devicePixelRatio();
+			const QRectF badge = view->stateBadgeRect();
+			if (badge.isEmpty() || !view->stateRect().adjusted(-0.5, -0.5, 0.5, 0.5).contains(badge)) {
+				why = QStringLiteral("no badge");
+				return false;
+			}
+			const QColor accent = Theme::colors().accent;
+			const auto distance = [](QColor a, QColor b) {
+				return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+			};
+			int ink = 0;
+			for (int y = int(badge.top() * dpr); y < int(badge.bottom() * dpr); y++)
+				for (int x = int(badge.left() * dpr); x < int(badge.right() * dpr); x++)
+					if (distance(picture.pixelColor(x, y), accent) < 90) ink++;
+			const QColor tint = picture.pixelColor((QPointF(badge.left() + 2, badge.center().y()) * dpr).toPoint());
+			const QColor ground = picture.pixelColor((QPointF(badge.left() - 3, badge.center().y()) * dpr).toPoint());
+			const QString tip = view->toolTipAt(badge.center());
+			why = QStringLiteral("%1 accent pixels, tint %2 ground %3, tooltip \"%4\"").arg(ink).arg(tint.name(), ground.name(), tip);
+			return ink > 4 && distance(tint, accent) < distance(ground, accent) && tip == badgeTip;
+		};
+		QString badgeWhy;
+		const bool badgeLocked = badgeSeen(badgeWhy);
+		std::printf("     (the badge, locked: %s)\n", qPrintable(badgeWhy));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the badge in both themes, for a look */
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				view->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ (dark ? QStringLiteral("_lock_badge_dark.png") : QStringLiteral("_lock_badge_light.png")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
 		/* 30 frames: the view's end moves by whole periods of 20 ms, so the wave stands still */
 		double first = NAN, worst = 0;
 		int moves = 0, texts = 0;
@@ -10753,6 +11736,8 @@ private:
 		flat = true;
 		for (int k = 0; k < 90; k++) frame();
 		const bool free = view->shortLocked() && view->live() && view->stateFullText() == QStringLiteral("Auto · free running");
+		const bool badgeFree = badgeSeen(badgeWhy);
+		std::printf("     (the badge, free running: %s)\n", qPrintable(badgeWhy));
 		flat = false;
 		for (int k = 0; k < 10; k++) frame();
 		const bool lockedAgain = view->stateFullText() == QStringLiteral("Auto (short window)");
@@ -10761,6 +11746,7 @@ private:
 		for (int k = 0; k < 5; k++) frame();
 		const bool entryOff = !view->shortLocked() && view->live() && view->stateFullText().isEmpty()
 				&& !QSettings().value(QStringLiteral("chart/autoShortWindows"), true).toBool();
+		const bool badgeGone = view->stateBadgeRect().isEmpty();
 		lock->setChecked(true);
 		for (int k = 0; k < 10; k++) frame();
 		const bool entryOn = view->shortLocked() && QSettings().value(QStringLiteral("chart/autoShortWindows")).toBool();
@@ -10795,6 +11781,9 @@ private:
 				"chart, short windows lock: \"Auto · free running\" while the line does not cross, locked again when it does; "
 				"off with Display's \"Lock short windows\" (saved as chart/autoShortWindows), at a 100 ms window and with "
 				"Hold (until Live); the user's trigger takes over and the lock comes back after it");
+		check(badgeLocked && badgeFree && badgeGone, "chart, short windows lock: \"Auto (short window)\" and \"Auto · free "
+				"running\" as a badge, the accent colour on a tint of it, its tooltip what the lock does and where it is "
+				"turned off; none without the lock");
 		chart.tab.hide();
 		view->setWindow(1);
 		clearTriggerSettings();

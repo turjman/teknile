@@ -99,6 +99,31 @@ qint64 physicalMemoryMB() {
 #endif
 }
 
+/* the memory free now, MB (what can be taken without paging others' to disk); -1: not known */
+qint64 availableMemoryMB() {
+#ifdef Q_OS_WIN
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	return GlobalMemoryStatusEx(&status) ? qint64(status.ullAvailPhys / (1024 * 1024)) : -1;
+#else
+	QFile file(QStringLiteral("/proc/meminfo"));
+	if (!file.open(QIODevice::ReadOnly)) return -1;
+	for (QByteArray line = file.readLine(); !line.isEmpty(); line = file.readLine())
+		if (line.startsWith("MemAvailable:")) { /* "MemAvailable:   12345678 kB" */
+			bool ok = false;
+			const qint64 kilobytes = line.mid(13).trimmed().split(' ').value(0).toLongLong(&ok);
+			return ok ? kilobytes / 1024 : -1;
+		}
+	return -1;
+#endif
+}
+
+/* "512 MB", "2.1 GB": one piece ("MB 512" in Arabic without it) */
+QString megabytesText(qint64 megabytes) {
+	return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(std::max<qint64>(megabytes, 0))
+					 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
+}
+
 /* the most the chart's samples may take: three quarters of this computer's memory (16 GB when not known) */
 int maxRamMB() {
 	const qint64 physical = physicalMemoryMB();
@@ -231,6 +256,15 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	restoreSettings();
 	mathLines_.load(settingKey("math")); /* compiled and drawn once the map's registers come (setRegisters) */
 
+	/* the free memory: a cheap reading, often enough for the chart to let its oldest go before the computer pages */
+	freeWatch_.setInterval(FREE_WATCH_MS);
+	connect(&freeWatch_, &QTimer::timeout, this, &ChartTab::watchFreeMemory);
+	freeWatch_.start();
+	bool testFree = false;
+	const int testFreeMB = qEnvironmentVariableIntValue("EVRE_TEST_FREE_MB", &testFree);
+	if (testFree) setTestFreeMemory(testFreeMB);
+	else watchFreeMemory();
+
 	perfLogPath_ = qEnvironmentVariable("EVRE_PERF_LOG");
 	if (!perfLogPath_.isEmpty()) {
 		auto *perfTimer = new QTimer(this);
@@ -300,6 +334,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 			"most), or the min and max typed (both above 0); values of 0 or less sit on the bottom edge. Log and "
 			"Normalise exclude each other.");
 	yMode_->setToolTip(yModeTip_);
+	/* Lanes: the lane the Y range row applies to, chosen here as well as by a click on the chart (hidden without) */
+	yLane_ = new QComboBox;
+	yLane_->setObjectName(QStringLiteral("yLane"));
+	yLane_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+	yLane_->setToolTip(tr("The lane these Y settings apply to · or click a lane's values on the chart"));
+	yLane_->hide();
 	yMin_ = new QLineEdit;
 	yMax_ = new QLineEdit;
 	yMin_->setObjectName(QStringLiteral("yMin"));
@@ -337,11 +377,10 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	ramNeed_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 	ramNeed_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
-			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"memory full\"."));
-	ram_->setToolTip(tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
-			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
-			"memory strip says \"memory full\". At most three quarters of this computer's memory (%1 GB).")
-			.arg(maxRamMB() / 1024.0, 0, 'f', 1));
+			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
+			"recording's file keeps every sample, whatever the chart keeps.\nLess memory free than the RAM set: the "
+			"chart keeps within what is free, and this says \"only ... free\" in orange."));
+	/* the RAM box's tooltip: once the chart is made, with the free memory (watchFreeMemory) */
 
 	/* the first row: what is shown and kept (Window, Memory, RAM and what the lines need), the Y range */
 	auto *row = new QHBoxLayout;
@@ -359,7 +398,9 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addSpacing(6);
 	row->addWidget(ramNeed_, 1);
 	row->addSpacing(12);
-	row->addWidget(mutedLabel(tr("Y range")));
+	yRangeLabel_ = mutedLabel(tr("Y range"));
+	row->addWidget(yRangeLabel_);
+	row->addWidget(yLane_);
 	row->addWidget(yMode_);
 	row->addSpacing(4);
 	row->addWidget(mutedLabel(tr("min")));
@@ -434,8 +475,13 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	foldAll_->setObjectName(QStringLiteral("chartFoldAll"));
 	openAll_ = displayMenu->addAction(tr("Open all lanes"));
 	openAll_->setObjectName(QStringLiteral("chartOpenAll"));
+	/* every lane back to Auto at once: a lane's range set long ago is easy to miss among many */
+	allAuto_ = displayMenu->addAction(tr("All lanes: Auto"));
+	allAuto_->setObjectName(QStringLiteral("chartAllLanesAuto"));
+	allAuto_->setToolTip(tr("Every lane's Y range back to Auto (linear): the lanes tagged Manual or Log"));
 	foldAll_->setVisible(false); /* until Lanes is on (showLaneActions) */
 	openAll_->setVisible(false);
+	allAuto_->setVisible(false);
 	connect(displayMenu, &QMenu::aboutToShow, this, &ChartTab::showLaneActions);
 	trigger_ = displayMenu->addAction(tr("Trigger"));
 	trigger_->setObjectName(QStringLiteral("chartTrigger"));
@@ -447,13 +493,14 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"holds on the first crossing and stops; Arm for another.")
 			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. A line's chip (click or right-click): Trigger "
 			"on this line. Off: the row's Off, this entry or the chip's entry unticked."));
-	/* a live view under 100 ms with the trigger off locks on its first line by itself (ChartView::setShortLock) */
+	/* a live view under 100 ms with the trigger off locks on its busiest line by itself (ChartView::setShortLock) */
 	shortLock_ = displayMenu->addAction(tr("Lock short windows"));
 	shortLock_->setObjectName(QStringLiteral("chartShortLock"));
 	shortLock_->setCheckable(true);
 	shortLock_->setToolTip(tr("Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of "
-			"the first line's middle, so a wave stands still instead of blurring (\"Auto (short window)\"; \"Auto · free "
-			"running\" while it does not cross). Your own trigger takes over when it is on; Hold ends it."));
+			"the busiest line's middle (a fast line first, else the one with the most samples in the window), so a wave "
+			"stands still instead of blurring (\"Auto (short window)\"; \"Auto · free running\" while it does not cross). "
+			"Your own trigger takes over when it is on; Hold ends it."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
@@ -619,6 +666,17 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
+		ChartView *view = chart_->view();
+		const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+		if (lane >= 0) { /* Lanes: the current lane's range, as its menu sets it */
+			const double lo = view->laneYLo(lane), hi = view->laneYHi(lane);
+			if (mode == YLog) normalize_->setChecked(false); /* Log and Normalise exclude each other */
+			view->setLaneYLog(lane, mode == YLog);
+			if (mode == YAuto) view->setLaneYAuto(lane);
+			else if (mode == YManual) view->setLaneYManual(lane, lo, hi); /* from what is shown now */
+			showYRange(false);
+			return;
+		}
 		if (mode == YLog) {
 			normalize_->setChecked(false); /* Log and Normalise exclude each other */
 			chart_->setYLog(true);         /* a Manual range kept when it is above 0, else Auto */
@@ -648,6 +706,7 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("lanes"), on);
 		showLaneActions();
 		showYControls();
+		showYRange(false); /* the current lane's range, or the plot's again */
 		showDisplayState();
 	});
 	connect(view, &ChartView::laneMenuRequested, this, &ChartTab::showLaneMenu);
@@ -681,16 +740,25 @@ void ChartTab::connectControls() {
 	});
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
+		showYRange(false);
+		showLaneActions(); /* All lanes: Auto enabled while a lane is not */
+	});
+	connect(yLane_, &QComboBox::activated, view, &ChartView::setCurrentLane); /* as a click on its value labels */
+	connect(view, &ChartView::currentLaneChanged, this, [this] { /* the toolbar's Y range: that lane's at once */
+		showYControls();
+		showYRange(false);
 	});
 	connect(view, &ChartView::laneFoldsChanged, this, [this] {
 		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
 		showLaneActions();
+		showYControls(); /* the lane list marks the folded */
 	});
 	connect(view, &ChartView::laneHeightsChanged, this, [this] {
 		QSettings().setValue(settingKey("laneHeights"), chart_->view()->laneHeights());
 	});
 	connect(foldAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(true); });
 	connect(openAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(false); });
+	connect(allAuto_, &QAction::triggered, this, [view] { view->setAllLanesYAuto(); });
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
 		QSettings().setValue(settingKey("smooth"), on);
@@ -856,10 +924,12 @@ void ChartTab::plotField(const RegDef &def, const BitField &field) {
 	const QVector<MathLine> &lines = mathLines_.lines();
 	for (int i = 0; i < lines.size(); i++) {
 		if (lines[i].name != name) continue;
+		if (!lines[i].active() && !roomForLine()) return;
 		mathLines_.setOn(i, true);
 		rebuildMath();
 		return;
 	}
+	if (!roomForLine()) return;
 	MathLine line;
 	line.name = name;
 	line.formula = QStringLiteral("bits(%1, %2, %3)").arg(def.name).arg(field.lsb).arg(field.width);
@@ -908,6 +978,26 @@ int ChartTab::fastLines() const {
 	return n;
 }
 
+int ChartTab::mathLinesShown() const {
+	int n = 0;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		n += !ChartView::isFastKey(line.key) && line.key >= MathLines::FIRST_CHART_KEY;
+	return n;
+}
+
+int ChartTab::lineCount() const { return int(chart_->view()->lines().size()); }
+
+QString ChartTab::lineCapText() {
+	return tr("At most %1 lines on the chart, registers, math and fast lines together: untick one first")
+			.arg(RegisterModel::MAX_PLOTTED);
+}
+
+bool ChartTab::roomForLine() {
+	if (lineCount() < RegisterModel::MAX_PLOTTED) return true;
+	emit statusMessage(lineCapText(), 6000);
+	return false;
+}
+
 void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
 		bool marked, quint64 markRecord, double markTime, double markPeriod, const QVector<fast::Crossing> &crossings) {
 	ChartView *view = chart_->view();
@@ -953,7 +1043,9 @@ QString ChartTab::infoText(int width) const {
 	 * plotted · 60 fp…") said less than the parts left whole */
 	enum Part { Count, Plotted, Math, Fast, Fps, PaintTime, Delay, Drawer, PARTS };
 	QString parts[PARTS];
-	parts[Count] = QStringLiteral("%1/%2").arg(registers).arg(registerLimit_);
+	/* every line of every kind against what the chart may hold now: the registers' limit is what the rate and the
+	 * other lines leave of the one cap */
+	parts[Count] = QStringLiteral("%1/%2").arg(registers + math + fast).arg(registerLimit_ + math + fast);
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
@@ -976,9 +1068,10 @@ QString ChartTab::infoText(int width) const {
 }
 
 QString ChartTab::infoTip() const {
-	return tr("Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples "
-			"a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to "
-			"draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
+			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
+			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time "
+			"to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
 			"draw, the word \"plotted\" and the delay go first.");
 }
 
@@ -1309,7 +1402,8 @@ void ChartTab::refreshStatus() {
 	chartInfo_->setText(info);
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
-	if (chart_->yAuto()) showYRange(false);
+	if (lanes_->isChecked()) showYControls(); /* the current lane's unit: its lines may have gone */
+	if (lanes_->isChecked() || chart_->yAuto()) showYRange(false); /* Auto (a lane's too) follows what is shown */
 	if (trigger_->isChecked()) { /* the lines may have changed; the state moves on (Normal armed again) */
 		QVector<int> keys;
 		for (const ChartView::Info &line : chart_->view()->lines()) keys << line.key;
@@ -1322,7 +1416,7 @@ void ChartTab::refreshStatus() {
 	}
 	bool over = false;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
@@ -1331,7 +1425,8 @@ void ChartTab::refreshStatus() {
 	}
 }
 
-QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over) {
+QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
+		qint64 freeMB) {
 	over = false;
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
@@ -1340,10 +1435,68 @@ QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySecond
 	const QString size = ltrPiece(megabytes < 1024
 					? QStringLiteral("%1 MB").arg(std::max(1.0, std::round(megabytes)), 0, 'f', 0)
 					: QStringLiteral("%1 GB").arg(megabytes / 1024, 0, 'f', 1));
+	/* in whole minutes from 2 min, else whole seconds */
+	const auto keptText = [](double kept) {
+		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
+	};
+	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
+		over = true;
+		return tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
+				keptText(memorySeconds * std::min(1.0, limitMB / megabytes)));
+	}
 	over = megabytes > ramMB;
 	if (!over) return tr("needs %1").arg(size);
-	const double kept = memorySeconds * ramMB / megabytes; /* in whole minutes from 2 min, else whole seconds */
-	return tr("needs %1, keeps %2").arg(size, secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept)));
+	return tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes));
+}
+
+qint64 ChartTab::ramReserveMB() {
+	return std::max<qint64>(1024, physicalMemoryMB() / 10);
+}
+
+int ChartTab::effectiveRamMB(int chosenMB, qint64 heldMB, qint64 freeMB) {
+	if (freeMB < 0) return chosenMB;
+	return int(std::clamp<qint64>(heldMB + freeMB - ramReserveMB(), RAM_FLOOR_MB, std::max(chosenMB, RAM_FLOOR_MB)));
+}
+
+/* The free memory against the RAM set. What the chart holds counts as its own (what its trims let go and is not freed
+ * yet too: else every reading before the frees would lower the limit again). The free memory moves all the time: a
+ * new limit only for a step worth a trim (a twentieth, 64 MB at least), or on and off, so the lines are not trimmed
+ * a little at every reading */
+void ChartTab::watchFreeMemory() {
+	ChartView *view = chart_->view();
+	constexpr qint64 MiB = 1024 * 1024;
+	const qint64 held = view->bytesHeld() + view->bytesReleasing();
+	freeMB_ = testFreeMB_ >= 0 ? std::max<qint64>(0, testFreeMB_ + (testHeldAt_ - held) / MiB) : availableMemoryMB();
+	const int effective = effectiveRamMB(view->ramBudget(), held / MiB, freeMB_);
+	const int limit = effective < view->ramBudget() ? effective : 0, now = view->ramLimit();
+	if ((limit == 0) != (now == 0) || std::abs(limit - now) >= std::max(64, now / 20)) view->setRamLimit(limit);
+	const QString tip = ramTip();
+	if (ram_->toolTip() != tip) ram_->setToolTip(tip);
+}
+
+void ChartTab::setTestFreeMemory(qint64 megabytes) {
+	testFreeMB_ = megabytes;
+	testHeldAt_ = chart_->view()->bytesHeld() + chart_->view()->bytesReleasing();
+	watchFreeMemory();
+}
+
+QString ChartTab::ramTip() const {
+	QString tip = tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
+			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
+			"memory strip says \"RAM budget reached\": the chart lets the oldest go, a recording's file keeps every "
+			"sample. At most three quarters of this computer's memory (%1 GB).")
+			.arg(maxRamMB() / 1024.0, 0, 'f', 1);
+	if (freeMB_ < 0) return tip;
+	const ChartView *view = chart_->view();
+	tip += QStringLiteral("\n\n");
+	if (view->ramLimit() > 0)
+		tip += tr("Free now: %1, so the chart keeps within %2 of the %3 set: its oldest go before the computer pages "
+				"to disk (which slows everything).").arg(megabytesText(freeMB_), megabytesText(view->ramInUse()),
+				megabytesText(view->ramBudget()));
+	else
+		tip += tr("Free now: %1. With less free than the RAM set, the chart keeps within what is free.")
+				.arg(megabytesText(freeMB_));
+	return tip;
 }
 
 void ChartTab::themeChanged() {
@@ -1421,6 +1574,7 @@ void ChartTab::applyRamText() {
 	if (typed > 0) {
 		chart_->view()->setRamBudget(std::clamp(typed, int(ChartView::MIN_RAM_MB), maxRamMB()));
 		QSettings().setValue(settingKey("ramMB"), chart_->view()->ramBudget());
+		watchFreeMemory(); /* the limit against the new RAM at once */
 	}
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
 }
@@ -1439,18 +1593,22 @@ void ChartTab::applyMemoryText() {
 }
 
 void ChartTab::showYRange(bool save) {
-	const bool manual = !chart_->yAuto();
-	const int mode = chart_->yLog() ? YLog : manual ? YManual : YAuto;
+	/* Lanes: the current lane's range (saved with the lanes' ranges, chart/laneY); without, the plot's */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	const bool manual = lane >= 0 ? !view->laneYAuto(lane) : !chart_->yAuto();
+	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
+	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(chart_->yHi(), manual));
+	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
 		yMin_->setStyleSheet(look);
 		yMax_->setStyleSheet(look);
 	}
-	if (!save) return;
+	if (!save || lane >= 0) return;
 	QSettings settings;
 	settings.setValue(settingKey("yAuto"), !manual);
 	settings.setValue(settingKey("yLog"), chart_->yLog());
@@ -1466,6 +1624,19 @@ void ChartTab::applyYFields() {
 	double high = QLocale::c().toDouble(yMax_->text().trimmed(), &highOk);
 	if (!lowOk || !highOk) {
 		showYRange();
+		return;
+	}
+	ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	if (lane >= 0) { /* Lanes: the current lane's range */
+		const bool laneManual = !view->laneYAuto(lane);
+		if (yMin_->text().trimmed() == yFieldText(view->laneYLo(lane), laneManual)
+				&& yMax_->text().trimmed() == yFieldText(view->laneYHi(lane), laneManual))
+			return; /* no change */
+		if (low > high) std::swap(low, high);
+		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
+		view->setLaneYManual(lane, low, high); /* refused on the Log scale at 0 or below: the fields back */
+		showYRange(false);
 		return;
 	}
 	const bool manual = !chart_->yAuto();
@@ -1673,14 +1844,35 @@ void ChartTab::showSpan(double t0, double t1) {
 }
 
 void ChartTab::showYControls() {
-	/* lanes: each its own range (its menu); normalised: the min and max mean nothing, the list offers Log */
-	const bool lanes = lanes_->isChecked();
-	yMode_->setEnabled(!lanes);
-	yMin_->setEnabled(!lanes && !normalize_->isChecked());
-	yMax_->setEnabled(!lanes && !normalize_->isChecked());
-	const QString why = tr("Lanes: each lane has its own Y range: right-click its values");
-	if (lanes) yMode_->setToolTip(why);
-	else if (yMode_->toolTip() == why) yMode_->setToolTip(yModeTip_);
+	/* lanes: the current lane's range, chosen in the list beside "Y range" (every lane by its unit, in the chart's
+	 * order, a folded one marked); normalised: the min and max mean nothing, the list offers Log */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	yMin_->setEnabled(!normalize_->isChecked());
+	yMax_->setEnabled(!normalize_->isChecked());
+	/* set only when they change: the info line's refresh calls this twice a second with Lanes on */
+	QStringList units;
+	for (int k = 0; lane >= 0 && k < view->laneCount(); k++) {
+		const QString unit = view->laneLabel(k).isEmpty() ? tr("no unit") : view->laneLabel(k);
+		units << (view->laneFolded(k) ? tr("%1 (folded)").arg(unit) : unit);
+	}
+	QStringList listed;
+	for (int k = 0; k < yLane_->count(); k++) listed << yLane_->itemText(k);
+	{
+		const QSignalBlocker quiet(yLane_);
+		if (listed != units) {
+			yLane_->clear();
+			yLane_->addItems(units);
+		}
+		if (lane >= 0 && yLane_->currentIndex() != lane) yLane_->setCurrentIndex(lane);
+	}
+	if (yLane_->isHidden() != (lane < 0)) yLane_->setHidden(lane < 0);
+	QString tip = yModeTip_;
+	if (lane >= 0)
+		tip = tr("Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane's value labels "
+				"chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.").arg(units.value(lane))
+				+ QStringLiteral("\n\n") + yModeTip_;
+	if (yMode_->toolTip() != tip) yMode_->setToolTip(tip);
 }
 
 void ChartTab::showLaneActions() {
@@ -1689,8 +1881,10 @@ void ChartTab::showLaneActions() {
 	const int folded = view->foldedLaneCount();
 	foldAll_->setVisible(on);
 	openAll_->setVisible(on);
+	allAuto_->setVisible(on);
 	foldAll_->setEnabled(on && folded < view->laneCount());
 	openAll_->setEnabled(on && folded > 0);
+	allAuto_->setEnabled(on && !view->allLanesYAuto());
 }
 
 void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
@@ -1713,6 +1907,8 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	});
 	log->setCheckable(true);
 	log->setChecked(view->laneYLog(lane));
+	QAction *allAuto = laneMenu_->addAction(tr("All lanes: Auto"), this, [view] { view->setAllLanesYAuto(); });
+	allAuto->setEnabled(!view->allLanesYAuto());
 	laneMenu_->addSeparator();
 	const bool folded = view->laneFolded(lane);
 	laneMenu_->addAction(folded ? tr("Open lane") : tr("Fold lane"), this, [view, lane, folded] {
@@ -1953,7 +2149,9 @@ void ChartTab::drawMathLines() {
 	const QVector<MathLine> &lines = mathLines_.lines();
 	const QVector<QColor> &palette = Theme::colors().series;
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
-		if (!lines[i].active()) continue;
+		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
+		 * another map), the registers already on it stay */
+		if (!lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
 		chart_->addSeries(MathLines::chartKey(i), QStringLiteral("ƒ %1").arg(lines[i].name), lines[i].unit, color);
@@ -1963,7 +2161,9 @@ void ChartTab::drawMathLines() {
 void ChartTab::rebuildMathMenu() {
 	QMenu *menu = mathButton_->menu();
 	menu->clear();
-	menu->addAction(tr("New math line…"), this, [this] { editMathLine(-1); });
+	menu->addAction(tr("New math line…"), this, [this] {
+		if (roomForLine()) editMathLine(-1); /* refused before its formula is typed */
+	});
 	const QVector<MathLine> &lines = mathLines_.lines();
 	if (!lines.isEmpty()) menu->addSeparator();
 	for (int i = 0; i < lines.size(); i++) {
@@ -1975,7 +2175,12 @@ void ChartTab::rebuildMathMenu() {
 		shown->setCheckable(true);
 		shown->setChecked(line.on);
 		shown->setEnabled(line.error.isEmpty());
-		connect(shown, &QAction::toggled, this, [this, i](bool on) {
+		connect(shown, &QAction::toggled, this, [this, i, shown](bool on) {
+			if (on && !roomForLine()) {
+				const QSignalBlocker blocker(shown);
+				shown->setChecked(false);
+				return;
+			}
 			mathLines_.setOn(i, on);
 			rebuildMath();
 		});
@@ -2000,7 +2205,9 @@ void ChartTab::editMathLine(int line) {
 		for (const StreamChannel &channel : stream.channels) channels << stream.name + QLatin1Char('.') + channel.name;
 	dialog.setFastChannels(channels);
 	if (dialog.exec() != QDialog::Accepted) return;
-	const MathLine edited = dialog.result();
+	MathLine edited = dialog.result();
+	/* an edit that would draw a line more (it was off or did not compile) past the cap: kept, but not shown */
+	if (line >= 0 && edited.active() && !mathLines_.lines()[line].active() && !roomForLine()) edited.on = false;
 	if (line >= 0) mathLines_.replace(line, edited);
 	else mathLines_.add(edited);
 	rebuildMath();

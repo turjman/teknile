@@ -57,7 +57,7 @@
  * Run (runTrigger) arms again; a pan while it runs is a Stop. A short window
  * shows each picture whole. A fast line's crossings are found by the engine as
  * its blocks come (fast::TriggerScan). Below SHORT_LOCK_WINDOW a live view
- * with the trigger off locks by itself (Auto on the first line, its middle,
+ * with the trigger off locks by itself (Auto on the busiest line, its middle,
  * rising: setShortLock), with no row, tab or flag: not the user's trigger.
  *
  * Fast on a 4K screen: a line is drawn as a few 1-device-pixel antialiased
@@ -165,8 +165,8 @@ public:
 	 * Divisions: DIVISIONS fixed divisions across the plot, as a scope's graticule (the owner: at 10 ms the lines and
 	 * labels marched across a live view; a scope keeps its grid and only the wave moves), labelled by their offset
 	 * from the right edge (live, or held by the user) or from T (held on a trigger's crossing), with a "1 ms/div"
-	 * readout and the clock time at 0 at the time axis's right end. Auto: divisions below DIVISIONS_BELOW, clock
-	 * times from there */
+	 * readout and the clock time at 0 in the state corner's row above the plot (so no time label is left out for it).
+	 * Auto: divisions below DIVISIONS_BELOW, clock times from there */
 	enum class TimeGrid { Auto, Clock, Divisions };
 	static constexpr int DIVISIONS = 10;
 	static constexpr double DIVISIONS_BELOW = 1.0; /* seconds of window */
@@ -284,15 +284,20 @@ public:
 	/* held on a crossing whose view is not full yet: the samples after it still come (the now edges; Single's
 	 * "capturing after T") */
 	bool triggerCapturing() const;
-	/* Short windows lock by themselves: below SHORT_LOCK_WINDOW a live view with the trigger off runs Auto on its first
-	 * line (the level at that line's middle in view, rising), as the eye blended the frames of an untriggered wave into
-	 * ghosts. Not the user's trigger: no row, tab or flag, triggerOn() stays false; the corner says "Auto (short window)"
+	/* Short windows lock by themselves: below SHORT_LOCK_WINDOW a live view with the trigger off runs Auto on its
+	 * busiest line (the level at that line's middle in view, rising), as the eye blended the frames of an untriggered
+	 * wave into ghosts. The busiest: a fast line before any polled one (the first), else the line with the most samples
+	 * in the window; none with SHORT_LOCK_SAMPLES there, no lock (a slow polled line watched first crossed now and then,
+	 * so the lock flipped between free running and locked). Chosen again when the lines change or the one watched has
+	 * too few, not at each frame. Not the user's trigger: no row, tab or flag, triggerOn() stays false; the corner says "Auto (short window)"
 	 * while it locks. The user's trigger takes over when on; Hold, a pan or a window of SHORT_LOCK_WINDOW or more ends
 	 * it. setShortLock: Display's "Lock short windows" (on by default) */
 	static constexpr double SHORT_LOCK_WINDOW = 0.1;
+	static constexpr int SHORT_LOCK_SAMPLES = 20;
 	void setShortLock(bool on);
 	bool shortLock() const { return shortLockOn_; }
 	bool shortLocked() const { return trigger_.on && trigger_.automatic; } /* the lock in effect now */
+	int shortLockKey() const { return shortLocked() ? trigger_.key : -1; } /* the line it watches (tests) */
 	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
 	QVector<QLineF> nowEdges() const { return nowEdges_; }
 	void setTriggerLevel(double level);  /* of the line watched */
@@ -414,6 +419,9 @@ public:
 	QString stateText() const { return stateText_; } /* tests: the state corner's text as last painted */
 	QString stateFullText() const { return stateFull_; } /* tests: its whole text (its tooltip) */
 	QRectF stateRect() const { return stateRect_; }      /* tests: its room as last painted; empty: no state */
+	/* the short window's lock in the corner ("Auto (short window)", "Auto · free running"): a badge in the accent colour,
+	 * so the lock reads as the view's state and not as a word among the others; empty: none drawn */
+	QRectF stateBadgeRect() const { return stateBadge_; }
 	QVector<int> laneLines(int lane) const; /* the keys of its lines */
 	bool laneYAuto(int lane) const;
 	bool laneYLog(int lane) const;
@@ -422,6 +430,17 @@ public:
 	void setLaneYAuto(int lane);
 	bool setLaneYManual(int lane, double lo, double hi); /* false: not a range (lo <= 0 on the Log scale) */
 	void setLaneYLog(int lane, bool on);
+	bool allLanesYAuto() const;  /* every lane Auto and linear: no range tag on any */
+	void setAllLanesYAuto();     /* All lanes: Auto (linear) */
+	/* A lane's range tag: "Manual" (in the warn colour) or "Log" at the top of its value labels, beside its buttons,
+	 * so a range set long ago (a Ctrl + wheel, kept by unit) is seen; none in Auto. A click: that lane back to Auto */
+	QRectF laneRangeTagRect(int lane) const; /* empty: none (Auto, folded, out of view) */
+	QString laneRangeTagText(int lane) const;
+	int hoveredRangeTag() const { return hoverTag_; } /* tests: the lane whose tag is highlighted; -1: none */
+	/* The current lane: the one the toolbar's Y range shows and sets (its unit name lit). A click on a lane's value
+	 * labels, its ⋯ button or its range tag makes it current; the first lane until then. Kept by unit */
+	int currentLane() const;     /* -1: no lanes */
+	void setCurrentLane(int lane);
 	/* the lanes' ranges for the settings, one text per unit ("unit\tauto\tlog\tlo\thi"), and back */
 	QStringList laneScales() const;
 	void setLaneScales(const QStringList &texts);
@@ -499,6 +518,14 @@ public:
 	static constexpr int MIN_RAM_MB = 256;
 	void setRamBudget(int megabytes);
 	int ramBudget() const { return ramMB_; }
+	/* The free memory's limit on the budget, MB (0: none; the Chart tab watches the free memory): the samples are
+	 * kept within the lower of the two, trimmed as for a budget lowered, so the chart lets its oldest go before the
+	 * computer pages to disk */
+	void setRamLimit(int megabytes);
+	int ramLimit() const { return limitMB_; }
+	int ramInUse() const { return limitMB_ > 0 ? std::min(ramMB_, limitMB_) : ramMB_; }
+	/* what the trims let go and is not freed yet (releaseSome), bytes: still taken, so counted as the chart's */
+	qint64 bytesReleasing() const;
 	/* the most samples a line keeps now: the RAM shared by the lines, at least 16 of the largest chunks, at most
 	 * MAX_POINTS */
 	qsizetype pointsPerLine() const;
@@ -507,6 +534,17 @@ public:
 	 * samples yet) */
 	qint64 bytesNeeded() const;
 	bool memoryFull() const { return capped_; } /* the budget, not the memory, limits what is kept */
+	/* a recording runs: the strip's words for the budget reached say the file keeps every sample */
+	void setRecordingOn(bool on);
+	/* tests: the strip's words and their colour as last drawn (empty: none), and its tooltip */
+	QString memoryStripText() const { return stripText_; }
+	QColor memoryStripTextColor() const { return stripTextColor_; }
+	QString memoryStripTip() const;
+	/* the view's box on the memory strip as last drawn, or its handle (MEMORY_HANDLE_W wide, centred on the view) where
+	 * the box is narrower: what a press drags (tests); the mouse over it */
+	QRectF memoryHandleRect() const { return memoryHandle_; }
+	bool memoryHandleHovered() const { return hoverMemoryHandle_; }
+	static constexpr double MEMORY_HANDLE_W = 12;
 	/* tests: the memory the lines' arrays hold now, bytes (their room, not only the samples in it) */
 	qint64 bytesHeld() const;
 	void setDrawThreads(int threads) { drawThreads_ = threads; } /* for tests: 1 = this thread alone; 0 = all */
@@ -609,6 +647,7 @@ signals:
 	void fastTriggerChanged(); /* armed, stopped or set otherwise: fastTriggerWatch() to be given to the engine */
 	void triggerRunChanged();  /* armed, stopped (Stop, a pan, Single's crossing) or off: Run or Stop on the button */
 	void laneYChanged();                     /* a lane's Y range changed (the mouse, or its menu): to be saved */
+	void currentLaneChanged();               /* another lane current: the toolbar's Y range shows it */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
 
@@ -793,6 +832,7 @@ private:
 	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
 	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
+	void releaseSome(); /* a frame's slice of what the trims let go */
 	void sumFast(Series &s);                      /* its total since Clear, up to its newest record with a time */
 	/* a fast line's records over t0..t1 into arrays, at most `most`; withoutGap: the longest part without a gap */
 	static bool fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
@@ -903,6 +943,7 @@ private:
 	void drawState(QPainter &p, const Axes &axes) const;
 	QStringList stateVariants(bool measuring) const;
 	void fitState(double plotWidth, int &variant, double &width) const;
+	double divisionReadoutWidth() const; /* the time/div readout's box in the state corner; 0: none */
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
 	static void strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr);
 	static void prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at);
@@ -934,8 +975,13 @@ private:
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
+	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */
+	QString stripText_;                    /* the strip's words as last drawn, and their colour (tests) */
+	QColor stripTextColor_;
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
+	fast::Store::Released released_;       /* what the fast stores' trims let go, freed a slice a frame (releaseSome) */
 	int ramMB_ = DEFAULT_RAM_MB;
+	int limitMB_ = 0;                      /* the free memory's limit on ramMB_ (setRamLimit); 0: none */
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */
 	Drawing drawing_ = Drawing::Cpu;
 	std::unique_ptr<GpuLines> gpu_;        /* drawing the plot; null: the CPU does */
@@ -972,11 +1018,14 @@ private:
 	QSet<QString> lanesFolded_;       /* the folded lanes' units */
 	int hoverLane_ = -1;              /* the lane whose button, unit name or strip is under the mouse */
 	int hoverMenu_ = -1;              /* the lane whose menu button is under the mouse */
+	int hoverTag_ = -1;               /* the lane whose range tag is under the mouse */
+	QString currentLane_;             /* the current lane's unit (empty: the first lane) */
 	bool hoverBar_ = false;           /* the mouse over the lanes' scroll bar: its handle drawn brighter */
 	mutable QVector<double> laneSeparators_;
 	mutable QString stateText_;
 	mutable QString stateFull_;
 	mutable QRectF stateRect_;
+	mutable QRectF stateBadge_;
 	/* the gaps' middles in the plot, and (gaps) each one's number: the lane above it */
 	QVector<double> separatorsY(const QVector<Lane> &plots, QVector<int> *gaps = nullptr) const;
 	QHash<QString, double> laneWeights_; /* the lanes' heights by unit (1 when not there) */
@@ -1004,6 +1053,12 @@ private:
 	void scrollLanesTo(double pixels);
 	static QRectF laneVisible(const QRectF &lane, const QRectF &plot); /* its part in the plot; empty: out of view */
 	static void laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu); /* an open lane's, in its part in view */
+	/* an open lane's range tag in its part in view, right of its buttons (text: "Manual" or "Log"); empty: Auto */
+	QRectF rangeTag(const Lane &lane, const QRectF &shown, QString *text = nullptr) const;
+	int rangeTagAt(const QPointF &pos) const; /* the lane whose tag is there, of the lanes as last painted; -1 */
+	bool pressLaneLabels(const QPointF &pos); /* a press on an open lane's value labels: it current; its tag: Auto */
+	/* the state's width for its text: the lock's badge (its last part) with its padding, no dot before it */
+	double stateWidth(const QString &text) const;
 	int laneMenuButtonAt(const QPointF &pos) const;
 	/* a press on the lanes' own places: the scroll bar, a unit name (fold), a folded strip (open); true if it was */
 	bool pressLanes(const QPointF &pos);
@@ -1103,9 +1158,13 @@ private:
 	double lastCrossing() const;
 	/* how long "triggered" stays after the last crossing: a window plus the hold-off, TRIGGERED_AT_LEAST at least */
 	double triggeredSpan() const;
-	/* the short window's lock: started, moved to another first line or ended at each frame as its rule says */
+	/* the short window's lock: started, moved to another line or ended at each frame as its rule says */
 	bool shortLockOn_ = true;
-	TriggerSettings lockSettings_; /* its level (the first line's middle when it began) and edge (rising) */
+	int lockKey_ = -1;              /* the line it watches (busiestLine), chosen at lockGeneration_; -1: none */
+	quint64 lockGeneration_ = 0;
+	qsizetype samplesInWindow(const Series &s) const; /* a line's samples in the window before its newest */
+	int busiestLine() const;
+	TriggerSettings lockSettings_; /* its level (the line's middle when it began) and edge (rising) */
 	double lockTakenAt_ = 0;       /* its level taken last (by the samples' time) */
 	void updateShortLock();
 	void endShortLock(); /* the lock off; the view as it is */
@@ -1168,6 +1227,10 @@ private:
 	mutable QRectF triggerMark_;      /* where it takes the mouse */
 	bool hoverMark_ = false;
 	double positionGrab_ = 0;         /* Position: the mouse's distance right of the flag's middle when the drag began */
+	QRectF memoryHandle_;             /* the view's box on the memory strip, or its handle, as last drawn */
+	double memoryViewX_ = 0;          /* the view's middle on the strip, as last drawn */
+	double overviewGrab_ = 0;         /* Overview: the mouse's distance right of the view's middle (0: a jump) */
+	bool hoverMemoryHandle_ = false;
 	mutable QRectF triggerTag_;
 	mutable double triggerLineY_ = NAN;
 	mutable QRectF triggerLane_;      /* the plot the level's line is in, for the drag */

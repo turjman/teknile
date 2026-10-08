@@ -18,7 +18,9 @@
  *  - Lanes (Display): a plot per unit, stacked, scrolling when they do not
  *    fit; each lane's Y range by a right-click on its value labels (Auto,
  *    Manual, Log, Fold lane / Open lane), a ▾ on each lane to fold it,
- *    Fold all / Open all lanes in Display; the folds kept by unit.
+ *    Fold all / Open all lanes in Display; the folds kept by unit. The Y
+ *    range row shows and sets the current lane's (a click on its labels);
+ *    a lane not in Auto has a tag (Manual, Log) whose click sets Auto.
  *  - a right-click on a line's chip in the legend: its Histogram or Spectrum
  *    over A -> B (or the view), in a small window (analysis_window.h).
  *  - Trigger (Display): a row under the actions: a line, its edge, the level,
@@ -83,8 +85,24 @@ public:
 	ChartView *view() const;
 
 	/* the note right of RAM: the memory the lines need for the Memory set ("needs 1.4 GB"); over the RAM, what fits
-	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. */
-	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over);
+	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. The free memory limiting the
+	 * RAM to limitMB (0: no limit; freeMB the free memory): "only 2.1 GB free: keeps about 40 s", over = true */
+	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB = 0,
+			qint64 freeMB = -1);
+	/* The RAM against the free memory: the budget is a cap, not a reservation, so with less free than it the chart
+	 * keeps within what it holds now and the free memory, less a reserve (ramReserveMB: 1 GB, or a tenth of this
+	 * computer's memory when more), never under RAM_FLOOR_MB; the RAM set when that is more. freeMB < 0: not known */
+	static int effectiveRamMB(int chosenMB, qint64 heldMB, qint64 freeMB);
+	static qint64 ramReserveMB();
+	static constexpr int RAM_FLOOR_MB = 64;
+	static constexpr int FREE_WATCH_MS = 3000; /* the free memory read this often */
+	/* the free memory read and the chart's RAM limited by it (the timer's; tests call it at once); the free memory as
+	 * last read, MB (-1: not known) */
+	void watchFreeMemory();
+	qint64 freeMemoryMB() const { return freeMB_; }
+	/* tests (and EVRE_TEST_FREE_MB=<MB>): the free memory as if it were `megabytes` now, what the chart lets go
+	 * coming back to it as a computer's would; < 0: the real one again */
+	void setTestFreeMemory(qint64 megabytes);
 	/* a Y box's text: Manual six digits; Auto four, but never fewer than the whole part (17420, not 1.742e+04) */
 	static QString yFieldText(double value, bool manual);
 	/* the measurement table's columns; every one but the line's can be hidden (a right-click on the header) */
@@ -107,6 +125,11 @@ public:
 	void plotFastChannel(int stream, int channel, bool on);
 	bool fastPlotted(int stream, int channel) const;
 	int fastLines() const; /* fast lines on the chart */
+	int mathLinesShown() const; /* math lines on the chart */
+	/* every line on the chart: registers, math and fast lines together, at most RegisterModel::MAX_PLOTTED (one cap
+	 * for every kind: a line past it is refused, whatever its kind) */
+	int lineCount() const;
+	static QString lineCapText(); /* the refusal's words, for the status bar */
 	void appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
 			bool marked, quint64 markRecord, double markTime, double markPeriod,
 			const QVector<fast::Crossing> &crossings = {}); /* the trigger's, found by the engine (setFastTrigger) */
@@ -121,7 +144,8 @@ public:
 	void frame(const MathLines::Samples &samples);
 	/* how often the legend's values change (value_pace.h); the lines move at every frame */
 	void setValuesPerSecond(int perSecond);
-	/* the registers the chart may hold now (RegisterModel::plotLimit): the info line says "N/LIMIT plotted" */
+	/* the registers the chart may hold now (RegisterModel::plotLimit, what the rate and the other lines leave): the
+	 * info line says "N/LIMIT plotted" of every line, this and the math and fast lines on the chart together */
 	void setRegisterLimit(int limit) { registerLimit_ = limit; }
 	void logDrawing(); /* the Log: who draws the lines (at start, once the window listens, and at each change) */
 	/* the info line's text: the lines on the chart, then frames, paint time, delay (for tests too). width >= 0: what
@@ -197,6 +221,8 @@ signals:
 	void notesChanged();
 	/* the trigger watches a fast line now, or no longer (stream -1): the engine looks for its crossings */
 	void fastTriggerChanged(int stream, const fast::TriggerWatch &watch);
+	/* for the status bar: a math line refused (the chart holds MAX_PLOTTED lines) */
+	void statusMessage(const QString &text, int ms);
 
 private:
 	QString settingKey(const char *name) const { return group_ + QLatin1Char('/') + QLatin1String(name); }
@@ -236,6 +262,7 @@ private:
 	void drawMathLines();         /* the chart's lines for them */
 	void rebuildMathMenu();       /* the ƒ Math button's menu and label */
 	void editMathLine(int line);  /* -1: a new one */
+	bool roomForLine();           /* a line more fits under the cap; if not, the status bar says so */
 
 	QString group_;               /* the settings' group: "chart", or a recording's */
 	std::function<double()> clock_;
@@ -250,6 +277,8 @@ private:
 	/* the axes row */
 	QComboBox *window_, *memory_, *yMode_;
 	QString yModeTip_;
+	QLabel *yRangeLabel_;         /* "Y range" */
+	QComboBox *yLane_;            /* Lanes: the current lane, listed by unit as on the chart; hidden without */
 	QLineEdit *yMin_, *yMax_;
 	int registerLimit_ = RegisterModel::MAX_PLOTTED; /* the registers the chart may hold at the rate now */
 	QString drawingFailure_;      /* a card's failure before the window listened: logged by logDrawing */
@@ -263,9 +292,14 @@ private:
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
+	QAction *allAuto_;            /* All lanes: Auto: shown with Lanes on, enabled when a lane is not Auto */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
+	QTimer freeWatch_;            /* the free memory read every FREE_WATCH_MS (watchFreeMemory) */
+	qint64 freeMB_ = -1;          /* the free memory as last read, MB; -1: not known */
+	qint64 testFreeMB_ = -1, testHeldAt_ = 0; /* setTestFreeMemory: the free memory given, and the chart's bytes then */
+	QString ramTip() const;       /* the RAM box's tooltip, with the free memory and what the chart keeps within */
 
 	/* the measurements */
 	QWidget *measurePanel_;
@@ -316,7 +350,7 @@ private:
 	ElidedLabel *triggerState_ = nullptr;
 	QVector<int> triggerKeys_;    /* the lines in the list, by key */
 	void showLaneActions(); /* Fold all / Open all: shown with Lanes on, each enabled when it has something to do */
-	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */
+	void showYControls(); /* the Y range row: the plot's, or (lanes) the current lane's, chosen in its list */
 	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
 	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */
 	struct ExportJob {

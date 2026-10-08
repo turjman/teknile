@@ -57,8 +57,16 @@ public:
 	/* a time mark of the current start (FastClock::mark and its period) */
 	void mark(quint64 record, double time, double period);
 	void clear();
-	/* the oldest whole pieces, as many as fit in `records` (none of the records after the last whole piece) */
-	void dropFront(qsizetype records);
+	/* the memory a trim lets go, when the caller frees it elsewhere (Released) */
+	struct Released {
+		QVector<QByteArray> pieces;
+		QVector<QVector<double>> summaries;
+		bool isEmpty() const { return pieces.isEmpty() && summaries.isEmpty(); }
+	};
+	/* the oldest whole pieces, as many as fit in `records` (none of the records after the last whole piece). gone: the
+	 * pieces and the summaries' old arrays handed there instead of freed here, so the caller frees them a slice at a
+	 * time (a RAM budget cut let 3.5 GB go and held the window's thread 2 s); the store is the same either way */
+	void dropFront(qsizetype records, Released *gone = nullptr);
 
 	qsizetype size() const { return size_; }
 	qint64 dropped() const { return dropped_; }

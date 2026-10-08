@@ -306,9 +306,11 @@ says what holds the view or changes its reading (held, Y log or manual, cursors,
 it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.</p>
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
-the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
-of how many it may hold: <i>32/64 plotted</i>. A fast stream's channel (the <i>Fast streams</i> page) is one of
-the 64 lines, not of the samples a second.</p>
+the lines plotted last come off; the status bar and the Log say which. <b>One cap of 64 lines</b> holds for every
+kind: registers, math lines and fast stream channels (the <i>Fast streams</i> page) count together, and a 65th of
+any kind (a Plot, a channel's tick, a field, <i>New math line…</i>, a math line's <i>Shown</i>) is refused with the
+same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
+shows how many lines are on the chart of how many it may hold: <i>32/64 plotted</i>.</p>
 <h3>The first row: what is shown and kept</h3>
 <ul>
 <li><b>Window</b>: how much time is shown. Pick one, or type any length: <code>45</code> (seconds),
@@ -317,13 +319,18 @@ zooms it, around the mouse when held.</li>
 <li><b>Memory</b>: how much is kept (as an oscilloscope's memory depth), <b>Window</b> the part shown: keep 1 min,
 look at 10 s. <b>Drag</b> the chart to look back through the memory, or click / drag on the <b>memory strip</b> under it
 (the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
-much is kept).</li>
+much is kept). Drag its box, or at a short window the handle drawn on it; the <b>wheel</b> over it moves the view a
+window earlier or later.</li>
 <li><b>RAM</b>: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
-size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says <i>memory full</i>:
-the oldest eighth goes at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
+size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
+<i>RAM budget reached: keeping the last 4.0 min of 30.0 min</i>, and while a recording runs <i>· the recording
+keeps everything</i> (the chart lets the oldest go, the recording's file keeps every sample). The oldest eighth goes
+at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
 Beside it, a note says what the lines need for the Memory set (<i>needs 1.4 GB</i>), in amber with what fits when that
-is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The Studio itself takes about 150 MB more than the RAM
-set.</li>
+is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The RAM is a cap, not a reservation: with less memory free
+than it, the chart keeps within what is free (leaving 1 GB, or a tenth of the computer's memory), so its oldest go
+before the computer pages to disk, and the note says so in amber (<i>only 2.1 GB free: keeps about 40 s</i>). The
+Studio itself takes about 150 MB more than the RAM set.</li>
 <li><b>Y range</b>: <b>Auto</b> follows what is shown (grows at once, shrinks gently: no jumping), or
 <b>Manual</b> with the min and max typed beside it (typing one sets Manual). <b>Ctrl + wheel</b> zooms Y
 around the mouse; a <b>double-click</b> goes back to Auto. <b>Log</b>: a logarithmic scale, a line at each decade
@@ -349,9 +356,12 @@ a line between two lanes, each at least 80 px high: when they do not fit they sc
 the bar at the right); a click on a lane's ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
-Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
-zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
+equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
+zooms it, a double-click sets it to Auto; a lane not in Auto has a <i>Manual</i> (amber) or <i>Log</i> tag at the top of
+its values, and a click on the tag sets it back to Auto; a click on a lane's values makes it the current lane, whose
+range the Y range row shows and sets (the list after <i>Y range</i> chooses it too: <i>Y range [A ▾]</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
+one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; <b>Hover values</b> (on by default): the box of values beside the mouse, off to see
@@ -372,7 +382,7 @@ off the chart.</li>
 <p>From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
 oscilloscope's: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
 right edge (<i>-8 ms</i> … <i>0</i>), or from <b>T</b> while the trigger holds the view on a crossing (<i>0</i> under
-it, <i>+4 ms</i>). At the axis's right end <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
+it, <i>+4 ms</i>). Above the plot, at the right of the legend's row, <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
 at 0; the wheel steps the window through 1, 2 and 5 per division. <b>Display → Time grid</b>: Auto (divisions below
 1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, <i>T +1.234 ms</i>). Long windows and fast lines are drawn
 from min/max summaries, so they cost no more than short ones.</p>
@@ -419,8 +429,9 @@ and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Norma
 to arm</i> ...), and change only when it does, with no number while it runs; while the view still fills after the
 crossing, a faint line marks where the data ends.</p>
 <p><b>Short windows lock by themselves</b>: below a 100 ms window a live chart with the trigger off holds on each
-rising crossing of its first line's middle (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
-cross), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+rising crossing of its busiest line's middle (a fast line first, else the one with the most samples in the window; a
+line with fewer than 20 there is not watched) (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
+cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
 <b>Display → Lock short windows</b> turns it off.</p>
 <p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
 <b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
@@ -595,7 +606,7 @@ loaded, CSV recordings, the API server.</p>
 <b>Open folder</b> shows it.</li>
 <li><b>Show info</b> off: only warnings and errors in the tab (the file keeps everything).</li>
 <li><b>Pop-ups</b>: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
-right of the tabs, where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
+beside the tabs (right of them, or left of them in Arabic), where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
 block anything. When the window is too narrow for them there, the status bar shows them instead.</li>
 </ul>
 <p>No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
@@ -632,7 +643,8 @@ cancels · right-click: the menu of the row and the table</td></tr>
 the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
-<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
+<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or
+handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
 <tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
@@ -643,8 +655,10 @@ Spectrum, Trigger on this line</td></tr>
 arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
 it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
-Log), Fold lane ·
-<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·
+Log, All lanes: Auto), Fold lane · <b>click</b> its values: the current lane (the Y range row) · <b>click</b> its
+Manual or Log tag: Auto ·
+<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it or its
+values: Auto ·
 <b>click</b> its ▾ or unit name: fold it, the strip: open it · <b>drag</b> the line between two lanes: their heights
 (<b>double-click</b> it: equal)</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /
