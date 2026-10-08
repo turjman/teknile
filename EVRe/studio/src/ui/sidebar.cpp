@@ -34,6 +34,8 @@
 #include "ui/ui_helpers.h"
 #include "ui/value_pace.h"
 
+static const QString NOT_LOGGED_KEY = QStringLiteral("fast/notLogged"); /* the streams whose Log is off, by name */
+
 Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 	setObjectName(QStringLiteral("sideScroll"));
 	auto *content = new QFrame;
@@ -699,6 +701,21 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		row.title = new QLabel(QStringLiteral("<b>%1</b>").arg(streams[i].name.toHtmlEscaped()));
 		row.title->setObjectName(QStringLiteral("fastStreamName"));
 		row.title->setToolTip(streams[i].desc.isEmpty() ? tr("A fast stream of the map") : streams[i].desc);
+		/* Log, as a register's Log column: whether a CSV recording writes the stream beside it. A whole stream or
+		 * none: a block holds every channel of its instants, and the file keeps the blocks as they came */
+		row.log = new QCheckBox(tr("Log"));
+		row.log->setObjectName(QStringLiteral("fastLog"));
+		row.log->setCursor(Qt::PointingHandCursor);
+		row.log->setChecked(!QSettings().value(NOT_LOGGED_KEY).toStringList().contains(streams[i].name));
+		row.log->setToolTip(tr("Log %1 beside the CSV while Record CSV runs (run.%1.evrs): its blocks as the device sent "
+				"them. A stream is logged whole or not at all: each block carries every channel. Off: not written; its "
+				"lines still plot. Taken when a recording starts; kept for the map's stream %1.").arg(streams[i].name));
+		connect(row.log, &QCheckBox::toggled, this, [name = streams[i].name](bool on) {
+			QStringList off = QSettings().value(NOT_LOGGED_KEY).toStringList();
+			off.removeAll(name);
+			if (!on) off << name;
+			QSettings().setValue(NOT_LOGGED_KEY, off);
+		});
 		row.button = new QPushButton;
 		row.button->setObjectName(QStringLiteral("fastStream"));
 		row.button->setCursor(Qt::PointingHandCursor);
@@ -714,7 +731,10 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		numbers->setSpacing(2);
 		numbers->addWidget(row.rate);
 		numbers->addWidget(row.lost);
-		fastRowsLayout_->addWidget(row.title);
+		auto *head = new QHBoxLayout;
+		head->addWidget(row.title, 1);
+		head->addWidget(row.log);
+		fastRowsLayout_->addLayout(head);
 		fastRowsLayout_->addWidget(row.button);
 		fastRowsLayout_->addLayout(numbers);
 		/* each channel: its Plot tick (a line on the chart, as a register's) and its newest value */
@@ -743,6 +763,17 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 	}
 	fastCard_->setVisible(!fastRows_.isEmpty());
 	setFastOffered(fastOffered_, fastWhy_, fastShortWhy_);
+}
+
+QCheckBox *Sidebar::fastLogBox(int stream) const {
+	return stream >= 0 && stream < fastRows_.size() ? fastRows_[stream].log : nullptr;
+}
+
+QStringList Sidebar::fastNotLogged() const {
+	QStringList off;
+	for (const FastRow &row : fastRows_)
+		if (row.log && !row.log->isChecked()) off << row.def.name;
+	return off;
 }
 
 QPushButton *Sidebar::fastButton(int stream) const {

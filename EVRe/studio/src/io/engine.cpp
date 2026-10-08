@@ -1185,7 +1185,7 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 				"not know): none of their samples is used").arg(run.def.name), false);
 	}
 	if (check != fast::BlockCheck::Ok) return;
-	if (csvFile_->isOpen()) recordBlock(stream, taken, frame.data);
+	if (csvFile_->isOpen() && !fastNotLogged_.contains(run.def.name)) recordBlock(stream, taken, frame.data);
 	FastBlock block;
 	block.stream = stream;
 	block.first = taken.first;
@@ -1333,8 +1333,9 @@ void IoEngine::sendFastOffs() {
 /* ---------------------------------------------------------------------- CSV */
 
 /* the columns: time_s, datetime, then each register asked for that the map has */
-void IoEngine::startRecord(const QString &file, const QVector<RegKey> &cols) {
+void IoEngine::startRecord(const QString &file, const QVector<RegKey> &cols, const QStringList &notLogged) {
 	stopRecord();
+	fastNotLogged_ = notLogged;
 	csvFile_->setFileName(file);
 	if (!csvFile_->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
 		emit recordStarted(false, csvFile_->errorString());

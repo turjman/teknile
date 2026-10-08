@@ -240,7 +240,8 @@ computed for every sample of that stream at its own time (<b>ƒ Math → New mat
 for every record of stream ADC</i>). A register in it is held at its last polled value. It is drawn, measured,
 triggered and exported as a fast line, and one of the chart's lines. Channels of two streams are refused: two
 streams, two clocks.</p>
-<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends is written beside the CSV as it came,
+<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends and has its <b>Log</b> ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
 <code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
 <code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
 cut off opens up to its last whole piece. The CSV's rows and a stream's samples end a few milliseconds apart

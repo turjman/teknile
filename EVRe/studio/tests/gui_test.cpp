@@ -1517,6 +1517,49 @@ private:
 							&& cut->fastRecordings()[0].store->size() > 0,
 					"fast streams recorded: a .evrs cut off opens up to its last whole piece, and its window says so");
 			RecordingWindow::closeAll();
+			/* Log off in the card: the next recording has no .evrs of the stream, its line still plotted; the tick kept
+			 * by the stream's name (a card made again shows it off); on again, the next one has it */
+			QCheckBox *log = sidebar->fastLogBox(0);
+			bool tipped = false, notWritten = false, keptOff = false, writtenAgain = false;
+			const auto recordFor = [&](const QString &name) {
+				MainWindow::Startup again;
+				again.record = folder.filePath(name);
+				window_.applyStartup(again);
+				QPushButton *stopIt = nullptr;
+				(void) QTest::qWaitFor([&] { return (stopIt = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; },
+						3000);
+				QTest::qWait(800);
+				if (stopIt) stopIt->click();
+				(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+			};
+			if (log) {
+				tipped = log->isChecked() && log->cursor().shape() == Qt::PointingHandCursor
+						&& log->toolTip().contains(QLatin1String("logged whole or not at all"))
+						&& log->toolTip().contains(QLatin1String("run.ADC.evrs"));
+				log->setChecked(false);
+				recordFor(QStringLiteral("nolog.csv"));
+				notWritten = QFileInfo::exists(folder.filePath(QStringLiteral("nolog.csv")))
+						&& !QFileInfo::exists(folder.filePath(QStringLiteral("nolog.ADC.evrs"))) && chartTab->fastPlotted(0, 0);
+				{
+					Sidebar card;
+					card.setFastStreams(fastMap.streams);
+					keptOff = QSettings().value(QStringLiteral("fast/notLogged")).toStringList() == QStringList{ QStringLiteral("ADC") }
+							&& card.fastLogBox(0) && !card.fastLogBox(0)->isChecked();
+				}
+				log->setChecked(true);
+				recordFor(QStringLiteral("logged.csv"));
+				writtenAgain = QFileInfo::exists(folder.filePath(QStringLiteral("logged.ADC.evrs")))
+						&& QSettings().value(QStringLiteral("fast/notLogged")).toStringList().isEmpty();
+			}
+			std::printf("  Log off: the CSV %d, no .evrs %d, the line still on the chart %d; kept off %d; on again: written %d\n",
+					int(QFileInfo::exists(folder.filePath(QStringLiteral("nolog.csv")))), int(notWritten),
+					int(chartTab->fastPlotted(0, 0)), int(keptOff), int(writtenAgain));
+			check(tipped, "fast streams, Log: a tick per stream in the card, on by default, a pointing hand; its tooltip says "
+					"it writes run.ADC.evrs beside the CSV and that a stream is logged whole or not at all (each block "
+					"carries every channel)");
+			check(notWritten && keptOff && writtenAgain, "fast streams, Log off: a recording writes its CSV and no .evrs of the "
+					"stream, whose line still plots; the choice kept by the stream's name (fast/notLogged); on again, the "
+					"next recording has its .evrs");
 		}
 		/* the trigger armed on the fast line (from its chip's menu) while its stream comes and goes: Disconnect, Connect
 		 * again, Arm, the stream stopped, the line removed. Each time the engine watches what the window asks (the same

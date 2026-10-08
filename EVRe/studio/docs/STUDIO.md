@@ -2177,7 +2177,8 @@ recordings can be open.
 ### 12.7 Fast streams' recordings (.evrs)
 
 A fast stream (13.9) cannot go into the CSV: a row per sample would be about 60 MB of text a second at a million
-samples a second. While **● Record CSV** runs, each stream that sends is recorded **beside the CSV, as it came**:
+samples a second. While **● Record CSV** runs, each stream that sends and has its **Log** ticked (13.9, on by
+default) is recorded **beside the CSV, as it came**:
 `run.csv` gets `run.ADC.evrs`, one file a stream. Nothing is converted and nothing is lost: gaps stay gaps.
 
 - **Written by the I/O thread**, the blocks as they arrive, from the first block after the recording starts to
@@ -2372,6 +2373,7 @@ without one), headed by the stream's name (its description in the tooltip):
 | **▶&nbsp;Start&nbsp;stream** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;ADC**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
 | The&nbsp;rate | *off · 10.0 k samples/s* (the map's rate) while off; *waiting for the first block*; then *10.0 k samples/s (+32 ppm)*: the samples a second as the Studio's clock measures the device's, and the correction against the rate the device was set to (below). Its tooltip counts the samples and blocks since Start, the bad blocks, and the samples not shown (below). |
 | Lost | *lost 0*, or *lost 1 024* in amber: samples the device numbered that never arrived, counted from the blocks' numbers (a gap, never filled in). |
+| **Log** | Beside the stream's name, on by default: while **● Record CSV** runs the stream is written beside the CSV (`run.ADC.evrs`, 12.7), as a register's **Log** column puts it into the CSV. A whole stream or none: each block carries every channel of its instants and the file keeps the blocks as the device sent them, so there is no tick per channel (the tooltip says so). Off: not written, its lines still plot. Taken when a recording starts; kept by the stream's name (`fast/notLogged`). |
 | Channels | Under the stream's row, each channel: its **Plot** tick (its line on the chart, 7.14) and its newest value with its unit, at the pace of *Show values*. The tick's tooltip says what it draws and gives the channel's `desc`. |
 | Greyed | With no link (*not connected*) or a bus (*not on a bus*: a device sending by itself would collide with the others on a shared line). The button's tooltip says why. |
 
@@ -2531,6 +2533,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/math` | empty | on&nbsp;change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
 | `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
 | `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first. |
+| `fast/notLogged` | empty | at&nbsp;each&nbsp;tick | The fast streams whose **Log** is off in the Fast streams card, by the map's stream name: not written beside a CSV recording (13.9). |
 | `recording/linesHidden` | empty | at&nbsp;each&nbsp;tick | The lines unticked in a recording window's **Lines** list, by name (`SUPPLY_V`, `ADC.I_LOAD`): a recording opened later comes without them (12.6). |
 
 **Never saved, by design:**
@@ -4152,7 +4155,7 @@ pass-through checks compare frames byte for byte (chapter 26).
 **`IoEngine`** (see chapters 19 – 21 for the flows).
 
 - Called through `post()`: `setMap`, `connectTcp`, `connectSerial`, `disconnectLink`, `setLinkOptions`,
-  `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord`, `stopRecord`, `write`, `read`,
+  `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord` (with the streams not logged), `stopRecord`, `write`, `read`,
   `setMonitor`, `apiStart`, `apiStop`, `apiSetWrites`.
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
   (19.3), so the window waits until the engine has stopped.
@@ -4331,7 +4334,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox` / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
 | `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`; signals `writeRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
@@ -5575,7 +5578,10 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   the group's title, None takes only the 5 off (*Lines 9/14*), and opened again it comes without them
   (`recording/linesHidden`). With `EVRE_TEST_SHOT` it saves `<prefix>_lines_dark.png` and `_light.png`, the list open.
   The `.evrs` alone opens on the same wall clock (within 50 ms)
-  and says its samples; a copy cut 3 bytes into its last piece opens and says it was cut off. The trigger armed on
+  and says its samples; a copy cut 3 bytes into its last piece opens and says it was cut off. **Log** (the stream's
+  tick in the card, a pointing hand, its tooltip naming `run.ADC.evrs` and saying a stream is logged whole): off, a
+  recording writes its CSV and no `.evrs`, the line still plots, the choice kept (`fast/notLogged`, a card made again
+  shows it off); on again, the next recording has its `.evrs`. The trigger armed on
   the line in Normal (from its chip's menu, 0 A rising) through Disconnect, Connect, Arm and the stream stopped and
   started: the engine watches what the window asks (the same channel and arm, asked on its thread with
   `MainWindow::engineFastWatch`) and, after an Arm, the view holds again; the line removed while armed, the engine watches
@@ -5990,7 +5996,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 567 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 569 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

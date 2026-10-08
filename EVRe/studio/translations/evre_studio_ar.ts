@@ -2525,7 +2525,8 @@ computed for every sample of that stream at its own time (&lt;b&gt;ƒ Math → N
 for every record of stream ADC&lt;/i&gt;). A register in it is held at its last polled value. It is drawn, measured,
 triggered and exported as a fast line, and one of the chart&apos;s lines. Channels of two streams are refused: two
 streams, two clocks.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends is written beside the CSV as it came,
+&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends and has its &lt;b&gt;Log&lt;/b&gt; ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
 &lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
 &lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
 cut off opens up to its last whole piece. The CSV&apos;s rows and a stream&apos;s samples end a few milliseconds apart
@@ -2578,7 +2579,8 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 عينة من ذلك التدفق في وقتها (&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;؛ والنافذة تقول &lt;i&gt;تُحسب لكل سجلّ من التدفق
 ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة استُطلعت. تُرسم وتُقاس ويُقدح عليها وتُصدَّر كخط سريع، وهي أحد خطوط
 المخطط. وقنوات تدفقين تُرفض: تدفقان، وساعتان.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل بجانب ملف CSV كما وصل،
+&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل ومربع &lt;b&gt;تسجيل&lt;/b&gt; فيه مفعّل (بجانب اسمه، مفعّل افتراضيًا؛ تدفق كامل أو لا شيء: كل كتلة
+تحمل كل قنواته) بجانب ملف CSV كما وصل،
 &lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
 ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
 يُفتح حتى آخر قطعة كاملة فيه. وصفوف CSV وعينات التدفق تنتهي بفارق بضعة أجزاء من الألف من الثانية (كلٌّ يُكتب
@@ -6736,6 +6738,14 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>▶  Start stream</source>
         <translation>▶  بدء التدفق</translation>
+    </message>
+    <message>
+        <source>Log</source>
+        <translation>تسجيل</translation>
+    </message>
+    <message>
+        <source>Log %1 beside the CSV while Record CSV runs (run.%1.evrs): its blocks as the device sent them. A stream is logged whole or not at all: each block carries every channel. Off: not written; its lines still plot. Taken when a recording starts; kept for the map&apos;s stream %1.</source>
+        <translation>تسجيل %1 بجانب ملف CSV ما دام تسجيل CSV يعمل (⁦run.%1.evrs⁩): كتله كما أرسلها الجهاز. التدفق يُسجَّل كاملًا أو لا يُسجَّل: كل كتلة تحمل كل القنوات. ملغى: لا يُكتب؛ وخطوطه تبقى مرسومة. يؤخذ حين يبدأ التسجيل؛ ويُحفظ لتدفق الخريطة %1.</translation>
     </message>
 </context>
 <context>

@@ -1327,7 +1327,8 @@ void MainWindow::startRecord(const QString &file) {
 		columns << regKey(row.def);
 	}
 	recordFile_ = file;
-	engine_->post([engine = engine_, file, columns] { engine->startRecord(file, columns); });
+	const QStringList notLogged = sidebar_->fastNotLogged(); /* each stream's Log in the Fast streams card */
+	engine_->post([engine = engine_, file, columns, notLogged] { engine->startRecord(file, columns, notLogged); });
 }
 
 void MainWindow::stopRecord() {
