@@ -3063,8 +3063,8 @@ channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/
 its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
-rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
+&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 1 MS/s&lt;/i&gt; (the rate
+measured while it runs; while off the rate set, &lt;i&gt;10 kS/s set&lt;/i&gt;), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
 reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
@@ -3129,7 +3129,7 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
+&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦1 MS/s⁩&lt;/i&gt; (المعدّل المقيس أثناء عمله؛ وفي الإيقاف المعدّل المضبوط، &lt;i&gt;⁦10 kS/s⁩ ضبط&lt;/i&gt;)، ومربع
 &lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
 &lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
 تشغيل.&lt;/li&gt;
@@ -6874,6 +6874,27 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>Channels: %1</source>
         <translation>القنوات: %1</translation>
+    </message>
+    <message>
+        <source>%1 set</source>
+        <comment>a stream&apos;s rate as set, not measured: 10 kS/s set</comment>
+        <translation>%1 ضبط</translation>
+    </message>
+    <message>
+        <source>The rate measured now; the line under the button has it to the ppm</source>
+        <translation>المعدّل المقيس الآن؛ السطر تحت الزر يذكره بدقة جزء في المليون</translation>
+    </message>
+    <message>
+        <source>The rate the device&apos;s %1 said when last read; the device may stream at another</source>
+        <translation>المعدّل الذي ذكره %1 في الجهاز عند آخر قراءة؛ قد يبث الجهاز بمعدّل آخر</translation>
+    </message>
+    <message>
+        <source>The rate the map gives; the device may stream at another</source>
+        <translation>المعدّل الذي تعطيه الخريطة؛ قد يبث الجهاز بمعدّل آخر</translation>
+    </message>
+    <message>
+        <source>The rate the device&apos;s %1 said when last read</source>
+        <translation>المعدّل الذي ذكره %1 في الجهاز عند آخر قراءة</translation>
     </message>
 </context>
 <context>

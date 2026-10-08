@@ -2399,14 +2399,17 @@ command (17) sends values at a period to an API client; a **fast stream** is one
 
 The **Fast streams** card, under *Device map*, shows a row for each stream of the map (it is hidden for a map
 without one), headed by one line: the stream's name in the weight the Device map card gives the map's name, then
-in the muted colour what the stream is, *· 2 channels · 10 kS/s* (the rate the map gives it, one left-to-right piece
-in Arabic too; its unit as it is), cut with "…" when the sidebar is narrow, and at the line's end its **Log** tick
-(below). The tooltip holds all of it, the channels' names and the map's description:
+in the muted colour what the stream is, *· 2 channels · 1 MS/s* while the stream runs (the rate measured, to three
+digits and renewed at most once a second, so the header never says another rate than the line under the button and
+does not flicker), *· 2 channels · 10 kS/s set* while it is off (the rate set: what the stream's `rate_reg` said when
+last read, else the map's; the tooltip says which, and that the device may stream at another); the rate one
+left-to-right piece in Arabic too, its unit as it is; cut with "…" when the sidebar is narrow, and at the line's end
+its **Log** tick (below). The tooltip holds all of it, the channels' names and the map's description:
 
 | Part | Behaviour |
 |---|---|
 | **▶&nbsp;Start&nbsp;stream** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;ADC**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
-| The&nbsp;rate | *off · 10.0 k samples/s* (the map's rate) while off; *waiting for the first block*; then *10.0 k samples/s (+32 ppm)*: the samples a second as the Studio's clock measures the device's, and the correction against the rate the device was set to (below). Its tooltip counts the samples and blocks since Start, the bad blocks, and the samples not shown (below). |
+| The&nbsp;rate | *off · 10.0 k samples/s* (the rate set, as in the header) while off; *waiting for the first block*; then *10.0 k samples/s (+32 ppm)*: the samples a second as the Studio's clock measures the device's, and the correction against the rate the device was set to (below). Its tooltip counts the samples and blocks since Start, the bad blocks, and the samples not shown (below). |
 | Lost | *lost 0*, or *lost 1 024* in amber: samples the device numbered that never arrived, counted from the blocks' numbers (a gap, never filled in). |
 | **Log** | At the end of the stream's header, on by default: while **● Record CSV** runs the stream is written beside the CSV (`run.ADC.evrs`, 12.7), as a register's **Log** column puts it into the CSV. A whole stream or none: each block carries every channel of its instants and the file keeps the blocks as the device sent them, so there is no tick per channel (the tooltip says so). Off: not written, its lines still plot. Taken when a recording starts; kept by the stream's name (`fast/notLogged`). |
 | Channels | Under the stream's row, each channel: its **Plot** tick (its line on the chart, 7.14) and its newest value with its unit, at the pace of *Show values*. The tick's tooltip says what it draws and gives the channel's `desc`. |
@@ -5613,9 +5616,11 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   stream is on again by itself and the card counts the samples lost, in amber. A device that takes the enable and
   never sends (the same map without its stream): off again after 2 s (0 written), *no block came in 2 s* in the
   Log. A bus of two such devices: the card greyed, *not on a bus*. Each row's header is one line, in English and
-  Arabic: the name *ADC* (bold), then muted *· 2 channels · 10 kS/s* (the rate one left-to-right piece), not cut, on
-  the same line above the button, the name first in the reading direction, its tooltip the channels and the map's
-  description (`fastStreamName`, `fastStreamAbout`). The card's button and numbers fit the sidebar in
+  Arabic: the name *ADC* (bold), then muted *· 2 channels · 1.23 MS/s* (the rate one left-to-right piece), not cut,
+  on the same line above the button, the name first in the reading direction, its tooltip the channels and the map's
+  description (`fastStreamName`, `fastStreamAbout`). The header's rate, against the map's 10 kS/s: running at
+  1 000 034 samples/s it says *1 MS/s*, and a rate of 2 M within the same second leaves it so (no flicker); off it says
+  *10 kS/s set*, its tooltip *the device may stream at another*, in English and Arabic. The card's button and numbers fit the sidebar in
   English and Arabic at 1.23 M samples/s and *lost 123 456 789*; in Arabic both number lines are laid out right to
   left, like the card's title, and each number keeps its prefix, its unit and its groups left to right (*10.0 k*,
   not *k 10.0*; asked of the text's layout). The window then loads the example map again (no
@@ -6079,7 +6084,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 584 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 585 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

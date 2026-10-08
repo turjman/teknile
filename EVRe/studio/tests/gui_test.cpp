@@ -1777,6 +1777,8 @@ private:
 		QString notes, arabicNotes;
 		bool header = true; /* the row's header: the name, then muted what the stream is, one line, both languages */
 		QString headerNotes;
+		bool rateHeader = true; /* its rate: the measured one while running, the rate set while off */
+		QString rateHeaderNotes;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1797,7 +1799,8 @@ private:
 			{
 				QLabel *name = card.fastCard()->findChild<QLabel *>(QStringLiteral("fastStreamName"));
 				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
-				const QString rate = QChar(0x2066) + QStringLiteral("10 kS/s") + QChar(0x2069);
+				/* running: the measured rate (busy's 1 234 567.8 a second), not the map's 10 kS/s */
+				const QString rate = QChar(0x2066) + QStringLiteral("1.23 MS/s") + QChar(0x2069);
 				const QString expected = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ") + rate
 						: QStringLiteral("· قناتان · ") + rate;
 				const int line = name ? name->fontMetrics().height() : 0;
@@ -1814,6 +1817,41 @@ private:
 							.arg(about ? int(about->isCut()) : -1).arg(name ? name->height() : -1).arg(about ? about->height() : -1)
 							.arg(line).arg(name ? name->x() : -1).arg(about ? about->x() : -1);
 				header = header && one;
+			}
+			{
+				/* the header never says another rate than the line under the button: at 1 MS/s measured against a map
+				 * of 10 kS/s it says "1 MS/s" (3 digits, at most once a second), off "10 kS/s set" */
+				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
+				auto isolated = [](const QString &text) { return QChar(0x2066) + text + QChar(0x2069); };
+				const QString lead = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ")
+						: QStringLiteral("· قناتان · ");
+				IoEngine::Stats fast1M;
+				IoEngine::Stats::Fast f1;
+				f1.on = true;
+				f1.rate = 1000034;
+				f1.ppm = 34;
+				fast1M.fast = { f1 };
+				card.showStats(IoEngine::Stats(), true);
+				const QString offText = about ? about->fullText() : QString(), offTip = about ? about->toolTip() : QString();
+				const bool offWhole = about && !about->isCut(); /* "set" is not cut at the sidebar's width */
+				const int offNeeds = about ? about->fontMetrics().horizontalAdvance(offText) : -1;
+				card.showStats(fast1M, true);
+				const QString onText = about ? about->fullText() : QString(), onLine = card.fastRateText(0);
+				fast1M.fast[0].rate = 2000000; /* within the second: kept, no flicker */
+				card.showStats(fast1M, true);
+				const QString soonText = about ? about->fullText() : QString();
+				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" ضبط");
+				const bool ok = offText == lead + isolated(QStringLiteral("10 kS/s")) + setWord && offWhole
+						&& offTip.contains(code == QLatin1String("en") ? QStringLiteral("the device may stream at another")
+								: QStringLiteral("قد يبث الجهاز بمعدّل آخر"))
+						&& onText == lead + isolated(QStringLiteral("1 MS/s")) && soonText == onText
+						&& onLine.contains(code == QLatin1String("en") ? QStringLiteral("1.00 M samples/s")
+								: QStringLiteral("1.00"));
+				if (!ok)
+					rateHeaderNotes += QStringLiteral(" %1: off \"%2\" (%6 px in %7) on \"%3\" soon \"%4\" line \"%5\";")
+							.arg(code, offText, onText, soonText, onLine).arg(offNeeds).arg(about ? about->width() : -1);
+				rateHeader = rateHeader && ok;
+				card.showStats(busy, true); /* as before, for the checks below */
 			}
 			const auto labels = card.fastCard()->findChildren<QLabel *>();
 			for (QLabel *label : labels) {
@@ -1898,8 +1936,12 @@ private:
 				"(1.23 M samples/s, lost 123 456 789)");
 		if (!arabicReads) std::printf("  %s\n", qPrintable(arabicNotes));
 		if (!header) std::printf("  the header:%s\n", qPrintable(headerNotes));
+		if (!rateHeader) std::printf("  the header's rate:%s\n", qPrintable(rateHeaderNotes));
+		check(rateHeader, "fast streams: the header's rate is the measured one while the stream runs (1 MS/s, 3 digits, "
+				"kept within the second: no flicker) against a map of 10 kS/s, and while off the rate set, \"10 kS/s set\" (not cut) "
+				"with the tooltip \"the device may stream at another\", English and Arabic");
 		check(header, "fast streams: each stream's row has a one-line header: its name in the card's name weight (ADC), then "
-				"muted \"· 2 channels · 10 kS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
+				"muted \"· 2 channels · 1.23 MS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
 				"width, both on one line above the button, the name first in the reading direction; the tooltip the "
 				"channels and the map's description");
 		check(arabicReads, "fast streams, Arabic: the rate (running and off) and the lost count are laid out right to left, "

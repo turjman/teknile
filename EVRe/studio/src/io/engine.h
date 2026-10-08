@@ -142,6 +142,7 @@ public:
 			bool on = false;      /* switched on in the device (or listened to): its blocks are taken */
 			double rate = 0;      /* records a second as the clock's fit has it; 0 before the first block */
 			double ppm = 0;       /* the fit's correction against the rate the device was set to */
+			double setRate = 0;   /* the rate its rate_reg gave when last read (0: none read; the map's holds) */
 			double recordsHz = 0; /* records that came a second, measured as pollHz is */
 			quint64 records = 0, blocks = 0, lost = 0, badBlocks = 0, newerBlocks = 0, starts = 0;
 			quint64 notShown = 0; /* records the window did not take in time (FAST_QUEUE_BYTES) */
@@ -304,6 +305,7 @@ private:
 		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
 		QByteArray lastRecord;      /* the last block's last record (FastBlock::before) */
 		double lastRecordTime = 0;  /* its time on the stream's clock (now()'s seconds): the API's newest record */
+		double setRate = 0;         /* its rate_reg's value when last read at a Start; 0: none read */
 		bool wanted = false;
 		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
 		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */

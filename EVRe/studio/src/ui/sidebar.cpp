@@ -5,6 +5,7 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDateTime>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileInfo>
@@ -703,18 +704,12 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		 * and the map's description in the tooltip */
 		QStringList channelNames;
 		for (const StreamChannel &channel : streams[i].channels) channelNames << channel.name;
-		const int channels = int(streams[i].channels.size());
-		const QString about = (channels == 1 ? tr("· 1 channel · %1") : tr("· %n channels · %1", nullptr, channels))
-				.arg(streamRateText(streams[i].rate));
-		const QString headTip = QStringLiteral("%1 %2\n%3\n%4").arg(streams[i].name, about,
-				tr("Channels: %1").arg(channelNames.join(QStringLiteral(", "))),
+		row.channelsTip = QStringLiteral("%1\n%2").arg(tr("Channels: %1").arg(channelNames.join(QStringLiteral(", "))),
 				streams[i].desc.isEmpty() ? tr("A fast stream of the map") : streams[i].desc);
 		row.title = new QLabel(streams[i].name);
 		row.title->setObjectName(QStringLiteral("fastStreamName"));
-		row.title->setToolTip(headTip);
 		row.about = new ElidedLabel;
 		row.about->setObjectName(QStringLiteral("fastStreamAbout"));
-		row.about->setFullText(about, headTip);
 		/* Log, as a register's Log column: whether a CSV recording writes the stream beside it. A whole stream or
 		 * none: a block holds every channel of its instants, and the file keeps the blocks as they came */
 		row.log = new QCheckBox(tr("Log"));
@@ -776,15 +771,41 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 			row.values << value;
 		}
 		fastRows_.push_back(row);
+		showFastAbout(i, streams[i].rate, false);
 	}
 	fastCard_->setVisible(!fastRows_.isEmpty());
 	setFastOffered(fastOffered_, fastWhy_, fastShortWhy_);
 }
 
-QString Sidebar::streamRateText(double hz) {
-	const QString text = hz >= 1e6 ? QStringLiteral("%1 MS/s").arg(hz / 1e6, 0, 'g', 4)
-			: hz >= 1e3 ? QStringLiteral("%1 kS/s").arg(hz / 1e3, 0, 'g', 4) : QStringLiteral("%1 S/s").arg(hz, 0, 'g', 4);
+QString Sidebar::streamRateText(double hz, int digits) {
+	const QString text = hz >= 1e6 ? QStringLiteral("%1 MS/s").arg(hz / 1e6, 0, 'g', digits)
+			: hz >= 1e3 ? QStringLiteral("%1 kS/s").arg(hz / 1e3, 0, 'g', digits)
+			: QStringLiteral("%1 S/s").arg(hz, 0, 'g', digits);
 	return QChar(0x2066) + text + QChar(0x2069); /* one piece in a right-to-left line too */
+}
+
+/* The header must not say another rate than the line under the button: the map's rate is what the device was built
+ * for, yet a device may stream at another (the fake at 1 MS/s against a map's 10 kS/s). While the stream runs it says
+ * the measured rate, rounded so it does not flicker, and at most once a second; while off the rate set, marked so */
+void Sidebar::showFastAbout(int stream, double hz, bool measured, bool fromDevice) {
+	if (stream < 0 || stream >= fastRows_.size()) return;
+	FastRow &row = fastRows_[stream];
+	const qint64 now = QDateTime::currentMSecsSinceEpoch();
+	if (measured && row.aboutMeasured && row.aboutMs >= 0 && now - row.aboutMs < 1000) return;
+	row.aboutMeasured = measured;
+	row.aboutMs = measured ? now : -1;
+	const int channels = int(row.def.channels.size());
+	const QString rate = measured ? streamRateText(hz, 3)
+			: tr("%1 set", "a stream's rate as set, not measured: 10 kS/s set").arg(streamRateText(hz));
+	const QString about = (channels == 1 ? tr("· 1 channel · %1") : tr("· %n channels · %1", nullptr, channels))
+			.arg(rate);
+	const QString rateTip = measured ? tr("The rate measured now; the line under the button has it to the ppm")
+			: fromDevice ? tr("The rate the device's %1 said when last read; the device may stream at another")
+					.arg(row.def.rateReg)
+			: tr("The rate the map gives; the device may stream at another");
+	const QString headTip = QStringLiteral("%1 %2\n%3\n%4").arg(row.def.name, about, rateTip, row.channelsTip);
+	row.title->setToolTip(headTip);
+	row.about->setFullText(about, headTip);
 }
 
 QCheckBox *Sidebar::fastLogBox(int stream) const {
@@ -906,6 +927,12 @@ void Sidebar::setFastOffered(bool offered, const QString &why, const QString &sh
 
 /* "10.0 k samples/s (+32 ppm)" and "lost 1 024", or the map's rate while off */
 void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
+	for (int i = 0; i < fastRows_.size(); i++) {
+		const IoEngine::Stats::Fast *f = i < stats.fast.size() ? &stats.fast[i] : nullptr;
+		if (fastOffered_ && connected && f && f->on && f->rate > 0) showFastAbout(i, f->rate, true);
+		else if (f && f->setRate > 0) showFastAbout(i, f->setRate, false, true);
+		else showFastAbout(i, fastRows_[i].def.rate, false);
+	}
 	if (!fastOffered_ || !connected) return;
 	auto samples = [](double hz) {
 		return hz >= 1e6 ? tr("%1 M samples/s").arg(hz / 1e6, 0, 'f', 2)
@@ -915,8 +942,9 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 		FastRow &row = fastRows_[i];
 		const IoEngine::Stats::Fast *f = i < stats.fast.size() ? &stats.fast[i] : nullptr;
 		if (!f || !f->on) {
-			row.rate->setText(tr("off · %1").arg(samples(row.def.rate)));
-			row.rate->setToolTip(tr("The rate the map gives the stream"));
+			row.rate->setText(tr("off · %1").arg(samples(f && f->setRate > 0 ? f->setRate : row.def.rate)));
+			row.rate->setToolTip(f && f->setRate > 0 ? tr("The rate the device's %1 said when last read")
+					.arg(row.def.rateReg) : tr("The rate the map gives the stream"));
 		} else if (f->rate <= 0) {
 			row.rate->setText(tr("waiting for the first block"));
 			row.rate->setToolTip(QString());
