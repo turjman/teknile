@@ -360,7 +360,7 @@ equal again; the lanes always fill the plot, none lower than 80 px); each lane h
 Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; a lane not in Auto has a <i>Manual</i> (amber) or <i>Log</i> tag at the top of
 its values, and a click on the tag sets it back to Auto; a click on a lane's values makes it the current lane, whose
-range the Y range row shows and sets (<i>Y range (A)</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
+range the Y range row shows and sets (the list after <i>Y range</i> chooses it too: <i>Y range [A ▾]</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
 one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right

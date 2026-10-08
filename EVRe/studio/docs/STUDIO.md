@@ -1073,7 +1073,7 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 | **Memory** | How much is kept, like an oscilloscope's memory depth. Pick a preset or type a length. Default 60 s. |
 | **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). A cap, not a reservation: with less memory free than it, the chart keeps within what is free (7.4). Its tooltip says the memory free now and, when that limits it, what the chart keeps within. |
 | Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Less memory free than the RAM, in amber: *only 2.1 GB free: keeps about 40 s* (7.4). Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
-| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). With Lanes on, the row is the **current lane's**, labelled with its unit (*Y range (A)*, 7.12). |
+| **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). With Lanes on, the row is the **current lane's**, chosen by its unit in the list after the label (*Y&nbsp;range&nbsp;[A&nbsp;▾]*, 7.12). |
 | **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
@@ -1189,8 +1189,11 @@ so a current of 1 µA and one of 1 A can be read on the same chart.
 - **Log and Normalise exclude each other.** Picking Log turns Normalise off, and Normalise turns Log off (the range
   mode, Auto or Manual, stays). Auto or Manual in the list are linear again.
 
-**With Lanes** (7.12) each lane has a range of its own. The row then shows and sets the **current lane's** range, its
-unit in the label (*Y range (A)*): a click on a lane's value labels makes it current. A lane not in Auto says so with a
+**With Lanes** (7.12) each lane has a range of its own. The row then shows and sets the **current lane's** range, chosen
+in the list right after the label (*Y range [A ▾] [Auto ▾]*): every lane by its unit, in the chart's order, a folded
+one marked *(folded)*. Choosing one there, or a click on a lane's value labels, makes it current, and the list
+follows the chart's click (its tooltip: *The lane these Y settings apply to · or click a lane's values on the
+chart*). Without Lanes the list is hidden and the row is the plot's. A lane not in Auto says so with a
 tag at the top of its value labels, *Manual* in amber or *Log*; a click on the tag sets it back to Auto.
 
 ### 7.6 Normalise and Smooth
@@ -1401,9 +1404,11 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   A · Click: back to Auto*); over it the mouse is a pointing hand and the tag lights up; a **click** sets the lane to
   Auto (linear). A range set long ago (a Ctrl + wheel, saved by unit) comes back tagged at the next start.
 - **The current lane drives the toolbar:** with Lanes on, the Y range row (7.1) shows and sets the range of the
-  **current lane**, its unit in the label (*Y range (A)*), and its unit name is lit in the accent colour (with more
-  than one lane). The first lane is current until a **click on another lane's value labels**, its ⋯ or its tag
-  chooses it; the row follows at once. Auto, Manual, Log, min and max there act on that lane alone. Without lanes
+  **current lane**, chosen in the **lane list** right after *Y range* (*Y range [A ▾] [Auto ▾] min max*: every lane
+  by its unit as the chart orders them, a folded one marked *(folded)*), and its unit name is lit in the accent colour
+  (with more than one lane). The first lane is current until another is chosen in that list or by a **click on its
+  value labels**, its ⋯ or its tag; the list and the row follow at once, and the list follows the lanes as units come
+  and go. Auto, Manual, Log, min and max there act on that lane alone. Without lanes
   the row is the plot's again.
 - **Display → All lanes: Auto** (shown with Lanes on, enabled while a lane is not in Auto) sets every lane back to
   Auto, linear.
@@ -5761,7 +5766,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 535 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 536 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

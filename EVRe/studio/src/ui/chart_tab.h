@@ -277,7 +277,8 @@ private:
 	/* the axes row */
 	QComboBox *window_, *memory_, *yMode_;
 	QString yModeTip_;
-	QLabel *yRangeLabel_;         /* "Y range", with Lanes the current lane's unit: "Y range (A)" */
+	QLabel *yRangeLabel_;         /* "Y range" */
+	QComboBox *yLane_;            /* Lanes: the current lane, listed by unit as on the chart; hidden without */
 	QLineEdit *yMin_, *yMax_;
 	int registerLimit_ = RegisterModel::MAX_PLOTTED; /* the registers the chart may hold at the rate now */
 	QString drawingFailure_;      /* a card's failure before the window listened: logged by logDrawing */
@@ -349,7 +350,7 @@ private:
 	ElidedLabel *triggerState_ = nullptr;
 	QVector<int> triggerKeys_;    /* the lines in the list, by key */
 	void showLaneActions(); /* Fold all / Open all: shown with Lanes on, each enabled when it has something to do */
-	void showYControls(); /* the Y range row: the plot's, or (lanes) disabled: each lane has its own */
+	void showYControls(); /* the Y range row: the plot's, or (lanes) the current lane's, chosen in its list */
 	QLabel *memoryLabel_ = nullptr, *ramLabel_ = nullptr;
 	/* an export on a thread: its progress (per mille), cancel, and whether it is done; shared with the thread */
 	struct ExportJob {
