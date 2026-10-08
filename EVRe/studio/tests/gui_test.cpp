@@ -598,6 +598,7 @@ public:
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
+		fastStopped(); /* the same */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
@@ -1962,6 +1963,169 @@ private:
 		check(chartView && !chartView->fastStore(0),
 				"fast streams: a map without the stream leaves no store of it in the chart: the same stream in a map loaded "
 				"later starts afresh");
+	}
+
+	/* The owner's finding: a stopped stream must not look live. evre_fake_fast at the map's 10 000 records a second,
+	 * ADC.I_LOAD and a fast math line over it on the chart, a 50 ms live window, the short window's lock on. Stop:
+	 * within a second the corner says "ADC stopped · last record ..." with its newest record's time, both lines'
+	 * legend values are greyed with "ADC stopped at ..." in their tooltip, the lock's badge is gone; over 30 frames the
+	 * live view follows the clock (its end advances with it), the lines' newest record moves left and the plot's right
+	 * half has none. The user's Normal trigger on the stopped line waits: "Normal · waiting (ADC stopped)". Start
+	 * again: the words and the grey go at once, the lock comes back */
+	void fastStopped() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		const QString fastMapFile = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		QTemporaryDir folder;
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_FAST_PORT), fastMapFile, QString::fromLatin1(fakeDeviceToken) });
+		OtherClient device;
+		const bool started = sidebar && chartTab && tabs && QFile::copy(map_.path, exampleFile) && fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device.open(FAKE_FAST_PORT, 1); }, 5000);
+		check(started, "fast stopped: evre_fake_fast at the map's 10 000 records a second started");
+		if (!started) return;
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup connectFast;
+		connectFast.map = fastMapFile;
+		connectFast.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_FAST_PORT);
+		connectFast.connect = true;
+		window_.applyStartup(connectFast);
+		QPushButton *button = sidebar->fastButton(0);
+		const bool offered = button && QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		ChartView *view = chartTab->view();
+		const double windowBefore = view->window();
+		const int iLoad = ChartView::fastKey(0, 0);
+		const int mathIndex = int(chartTab->mathLines().lines().size());
+		const int mathKey = ChartTab::fastMathKey(mathIndex);
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		sidebar->fastPlotBox(0, 0)->setChecked(true);
+		MathLine product;
+		product.name = QStringLiteral("P_STOP");
+		product.unit = QStringLiteral("W");
+		product.formula = QStringLiteral("ADC.I_LOAD * ADC.V_BUS");
+		const bool added = chartTab->addMathLine(product);
+		view->setShortLock(true);
+		view->setLive(true);
+		view->setWindow(0.05);
+		if (offered) button->click();
+		const bool locked = offered && QTest::qWaitFor([&] {
+			return view->shortLocked() && view->fastStore(0) && view->fastStore(0)->size() > 20000;
+		}, 8000);
+		const QString runningCorner = view->stateFullText();
+
+		/* Stop: said on the chart, greyed, the lock resting */
+		button->click();
+		QElapsedTimer sinceStop;
+		sinceStop.start();
+		const bool said = QTest::qWaitFor([&] {
+			return view->stateFullText().startsWith(QStringLiteral("ADC stopped · last record "));
+		}, 1000);
+		const double saidMs = double(sinceStop.elapsed());
+		QTest::qWait(400); /* the blocks still on their way */
+		(void) view->grab();
+		const fast::Store *store = view->fastStore(0);
+		const double newest = store && store->size() > 0 ? store->timeAt(store->size() - 1) : NAN;
+		const QString at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(newest * 1000)))
+				.toString(QStringLiteral("HH:mm:ss.zzz"));
+		const QString corner = view->stateFullText();
+		const bool rightTime = corner.startsWith(QStringLiteral("ADC stopped · last record %1").arg(at));
+		const QString chipTip = view->toolTipAt(view->chipButtonRect(iLoad).center());
+		const QString mathTip = view->stoppedTip(mathKey); /* its chip may lie past the legend's scroll */
+		const bool greyed = view->lineStopped(iLoad) && view->lineStopped(mathKey)
+				&& chipTip.startsWith(QStringLiteral("ADC stopped at %1").arg(at)) && mathTip.startsWith(QLatin1String("ADC stopped at "));
+		const bool badgeGone = !view->shortLocked() && !corner.contains(QLatin1String("Auto (short window)"))
+				&& !corner.contains(QLatin1String("free running")) && view->live();
+		/* run mode: the view follows the clock, the lines move out to the left, the right half holds nothing */
+		QVector<double> ends, lastX;
+		QElapsedTimer frames;
+		frames.start();
+		for (int k = 0; k < 30; k++) {
+			QTest::qWait(17);
+			(void) view->grab();
+			ends << view->lastViewEnd();
+			lastX << (newest - (view->lastViewEnd() - view->window())) / view->window();
+		}
+		const double advanced = ends.last() - ends.first(), clockRan = frames.elapsed() / 1000.0 * 29.0 / 30.0;
+		bool ascending = true, leftward = true;
+		for (int k = 1; k < ends.size(); k++) {
+			ascending = ascending && ends[k] > ends[k - 1];
+			leftward = leftward && lastX[k] < lastX[k - 1];
+		}
+		const bool follows = ascending && leftward && advanced > 0.7 * clockRan && advanced < 1.3 * clockRan
+				&& lastX.last() < 0.5;
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the stopped stream on the chart, live, in both themes */
+			const bool wasDark = Theme::isDark();
+			/* its last records on the left, the time since on the right with nothing: however slow the frames were */
+			view->setWindow(std::max(4.0, std::ceil((view->lastViewEnd() - newest) * 2.5)));
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QTest::qWait(200);
+				window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ QStringLiteral("_stopped_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+			view->setWindow(0.05);
+		}
+		std::printf("  fast stopped: running, the corner \"%s\" (locked %d); stopped, within %.0f ms the corner \"%s\" "
+				"(the newest record %s); the chips' tooltips \"%s\" | \"%s\"; over 30 frames the view's end moved %.3f s as "
+				"the clock ran %.3f s, the newest record at %.2f of the plot from %.2f\n", qPrintable(runningCorner),
+				int(locked), saidMs, qPrintable(corner), qPrintable(at), qPrintable(chipTip.section(QLatin1Char('\n'), 0, 0)),
+				qPrintable(mathTip.section(QLatin1Char('\n'), 0, 0)), advanced, clockRan, lastX.last(), lastX.first());
+		check(locked && added && said && rightTime, "fast stopped: the stream stopped at a 50 ms live window with the lock "
+				"on: within a second the state corner says \"ADC stopped · last record ...\" with the time of its newest "
+				"record");
+		check(greyed, "fast stopped: ADC.I_LOAD's legend value and that of the fast math line over the stream greyed, "
+				"their tooltip \"ADC stopped at ...: the value is its last record's\"");
+		check(badgeGone && follows, "fast stopped: the short window's lock rests (no badge, the view live) and the view "
+				"follows the clock: over 30 frames its end advances with it, the lines' newest record moves left, the "
+				"plot's right half holds none");
+
+		/* the user's Normal trigger on the stopped line: waiting, never "triggered" on the old records */
+		auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *mode = chartTab->findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		const int modeWas = mode ? mode->currentIndex() : -1;
+		if (mode) mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Normal)));
+		chartTab->triggerOnLine(iLoad);
+		QTest::qWait(300);
+		(void) view->grab();
+		const QString triggerCorner = view->stateFullText(), triggerRow = chartTab->triggerState();
+		std::printf("  fast stopped, the user's trigger: the corner \"%s\", the row \"%s\"\n", qPrintable(triggerCorner),
+				qPrintable(triggerRow));
+		check(triggerRow == QStringLiteral("Normal · waiting (ADC stopped)")
+						&& triggerCorner.endsWith(QStringLiteral("Normal · waiting (ADC stopped)")),
+				"fast stopped: the user's Normal trigger on a stopped stream's line says \"Normal · waiting (ADC stopped)\" "
+				"in its row and the corner, not \"triggered\" on the old records");
+		if (trigger) trigger->setChecked(false);
+		if (mode) mode->setCurrentIndex(modeWas);
+		view->setLive(true);
+
+		/* Start again: the words and the grey go at once, the lock comes back */
+		button->click();
+		const bool cleared = QTest::qWaitFor([&] {
+			return !view->lineStopped(iLoad) && !view->lineStopped(mathKey)
+					&& !view->stateFullText().contains(QLatin1String("stopped"));
+		}, 1000);
+		const bool lockedAgain = QTest::qWaitFor([&] { return view->shortLocked(); }, 5000);
+		check(cleared && lockedAgain, "fast stopped: Start again: the corner's words and the grey go at once, the short "
+				"window's lock comes back");
+
+		button->click();
+		chartTab->removeMathLine(mathIndex);
+		sidebar->fastPlotBox(0, 0)->setChecked(false);
+		view->setWindow(windowBefore);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"fast stopped: done; the example map again, the window polls the fake device of the other steps");
+		fake.kill();
+		fake.waitForFinished(3000);
 	}
 
 	/* Fast EVRe's speed on this machine (FAST_PLAN.md section 16): evre_fake_fast sending a million records a second of

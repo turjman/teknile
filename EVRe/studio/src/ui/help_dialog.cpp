@@ -233,6 +233,11 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
+<p><b>A stopped stream</b> keeps its samples on the chart (zoom, measure, export), but nothing of it looks live: the
+chart's top right says <i>ADC stopped · last record 14:03:12.345</i>, its lines' values in the legend are greyed
+(their tooltip says when it stopped), and a live view goes on with the clock, so its lines move out to the left; a
+short window's lock rests, and your trigger on it waits, <i>Normal · waiting (ADC stopped)</i>. <b>▶ Start
+stream</b> takes all of it away at once.</p>
 <p><b>Long memory</b>: <b>Older samples</b>, beside RAM on the Chart tab (with fast streams only). <i>summaries</i>
 (the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
 highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels

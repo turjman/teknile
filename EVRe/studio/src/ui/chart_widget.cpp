@@ -733,6 +733,71 @@ void ChartView::setFastStream(int stream, const StreamDef &def) {
 
 /* A stream gone from the map leaves no store behind: the same stream in a map loaded later starts afresh, not on the
  * records and times of a link that has long gone */
+void ChartView::setFastStopped(int stream, bool stopped, const QString &name) {
+	if (stopped ? fastStopped_.value(stream, QStringLiteral("\n")) == name : !fastStopped_.contains(stream)) return;
+	if (stopped) fastStopped_.insert(stream, name);
+	else fastStopped_.remove(stream);
+	fastStoppedGen_++;
+	refresh();
+}
+
+bool ChartView::lineStopped(int key) const {
+	return !recording_ && isFastKey(key) && fastStopped_.contains(streamOf(key));
+}
+
+bool ChartView::lineResting(int key) const {
+	if (!isFastKey(key)) return false;
+	if (lineStopped(key)) return true;
+	const double newest = newestTime(key);
+	return std::isfinite(newest) && clockNow() - newest > std::max(REST_AFTER, 2 * window_);
+}
+
+double ChartView::fastNewest(int stream) const {
+	const auto it = fastStores_.constFind(stream);
+	if (it == fastStores_.constEnd() || !*it || (*it)->size() == 0 || !(*it)->hasTime()) return NAN;
+	return (*it)->timeAt((*it)->size() - 1);
+}
+
+QString ChartView::triggerStoppedName() const {
+	if (!trigger_.on || trigger_.automatic || !lineStopped(trigger_.key)) return QString();
+	return fastStopped_.value(streamOf(trigger_.key));
+}
+
+QString ChartView::stoppedTip(int key) const {
+	if (!lineStopped(key)) return QString();
+	const double newest = fastNewest(streamOf(key));
+	const QString name = fastStopped_.value(streamOf(key));
+	if (!std::isfinite(newest)) return tr("%1 stopped: no record yet").arg(name);
+	return tr("%1 stopped at %2: the value is its last record's").arg(name, ltrPiece(timeLabel(epochMs_, newest, 1e-3)));
+}
+
+/* one part per stream (a fast math line's stream says its source's name, once), with the time of its newest record
+ * kept; a stream none of whose lines is on the chart, or with no record, says nothing */
+QStringList ChartView::stoppedParts(bool whole) const {
+	QStringList names;
+	QVector<double> newest;
+	for (auto it = series_.constBegin(); it != series_.constEnd() && !recording_; ++it) {
+		if (!lineStopped(it.key())) continue;
+		const int stream = streamOf(it.key());
+		const double t = fastNewest(stream);
+		if (!std::isfinite(t)) continue;
+		const QString name = fastStopped_.value(stream);
+		const qsizetype at = names.indexOf(name);
+		if (at < 0) {
+			names << name;
+			newest << t;
+		} else {
+			newest[at] = std::max(newest[at], t);
+		}
+	}
+	QStringList parts;
+	for (qsizetype i = 0; i < names.size(); i++)
+		parts << (whole ? tr("%1 stopped · last record %2", "a fast stream's name; the time of its newest record")
+								  .arg(names[i], ltrPiece(timeLabel(epochMs_, newest[i], 1e-3)))
+						: tr("%1 stopped", "a fast stream's name").arg(names[i]));
+	return parts;
+}
+
 void ChartView::removeFastStream(int stream) {
 	if (!fastStores_.remove(stream)) return;
 	seriesGeneration_++;
@@ -1315,6 +1380,8 @@ ChartView::TriggerPhase ChartView::triggerPhase() const {
 	if (!trigger_.on) return TriggerPhase::Off;
 	if (trigger_.stopped) return TriggerPhase::Stopped;
 	if (!trigger_.armed) return TriggerPhase::Done;
+	/* its line's stream stopped: no crossing comes, and one on the old records is not "triggered" */
+	if (!triggerStoppedName().isEmpty()) return TriggerPhase::Waiting;
 	if (trigger_.mode == TriggerMode::Auto && live_) return TriggerPhase::FreeRunning;
 	/* "triggered" until no crossing has come for triggeredSpan: not "waiting" for the moment between a crossing's
 	 * hold-off and the next, which flipped the state at every crossing of a short window */
@@ -1361,6 +1428,7 @@ int ChartView::busiestLine() const {
 	int busiest = -1;
 	qsizetype most = SHORT_LOCK_SAMPLES - 1;
 	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		if (lineResting(it.key())) continue; /* its records stopped: crossings of old ones would hold the view */
 		const qsizetype n = samplesInWindow(*it);
 		if (it->fast && n >= SHORT_LOCK_SAMPLES) return it.key();
 		if (n > most) {
@@ -1373,7 +1441,8 @@ int ChartView::busiestLine() const {
 
 /* The lock wanted: on, a live view (or one the lock holds), shorter than SHORT_LOCK_WINDOW, the user's trigger off and a
  * line to watch: the busiest (busiestLine), chosen again only when the lines change or the one watched has too few
- * samples in the window, so the lock does not move from line to line at each frame. It is Auto's own work on a line
+ * samples in the window, so the lock does not move from line to line at each frame. A line at rest (lineResting: its
+ * stream stopped) is not watched: the lock ends, the view runs live, and it locks again once records come. It is Auto's own work on a line
  * (the crossings as samples come), nothing binned of its own. Its level is taken again once a second while it runs
  * free, as a line drifting away from it would never lock again */
 void ChartView::updateShortLock() {
@@ -1383,7 +1452,7 @@ void ChartView::updateShortLock() {
 	if (wanted) {
 		const auto watched = series_.constFind(lockKey_);
 		if (lockGeneration_ != seriesGeneration_ || watched == series_.constEnd()
-				|| samplesInWindow(*watched) < SHORT_LOCK_SAMPLES) {
+				|| samplesInWindow(*watched) < SHORT_LOCK_SAMPLES || lineResting(lockKey_)) {
 			lockKey_ = busiestLine();
 			lockGeneration_ = seriesGeneration_;
 		}
@@ -1515,7 +1584,10 @@ QString ChartView::triggerStateText() const {
 	case TriggerPhase::Off: return QString();
 	case TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case TriggerPhase::FreeRunning: return tr("Auto · free running");
-	case TriggerPhase::Waiting: return tr("%1 · waiting", "the trigger's mode, waiting for a crossing").arg(mode);
+	case TriggerPhase::Waiting:
+		if (const QString stopped = triggerStoppedName(); !stopped.isEmpty())
+			return tr("%1 · waiting (%2 stopped)", "the trigger's mode; the fast stream of its line").arg(mode, stopped);
+		return tr("%1 · waiting", "the trigger's mode, waiting for a crossing").arg(mode);
 	case TriggerPhase::Triggered: return tr("%1 · triggered", "the trigger's mode").arg(mode);
 	case TriggerPhase::Done:
 		return capturing ? tr("Single · complete, capturing after T") : live_ ? tr("Single · complete · Arm to wait")
@@ -1809,9 +1881,14 @@ void ChartView::updateDelay(double frameDt) {
 	constexpr double NONE = -std::numeric_limits<double>::max();
 	if (!smooth_) return;
 	double newest = NONE;
-	for (const Series &s : series_) {
+	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		const Series &s = *it;
 		if (!s.times.isEmpty()) newest = std::max(newest, s.times.back());
-		if (s.fast && s.fast->size() > 0 && s.fast->hasTime()) newest = std::max(newest, s.fast->timeAt(s.fast->size() - 1));
+		/* a stream stopped (or silent): the view follows the clock from where it was, at its pace, and the lines move
+		 * out to the left, as polled lines after Disconnect; following its newest record (the blocks' delay hidden)
+		 * held a stopped stream's last records in view as if they were live */
+		if (s.fast && s.fast->size() > 0 && s.fast->hasTime() && !lineResting(it.key()))
+			newest = std::max(newest, s.fast->timeAt(s.fast->size() - 1));
 	}
 	if (newest == NONE) return; /* no samples yet */
 	const double gap = clockNow() - newest;
@@ -3672,9 +3749,12 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 		const QString fromT = fromTText(t);
 		return fromT.isEmpty() ? tr("Cursor %1 at %2").arg(name, at) : tr("Cursor %1 at %2 · %3").arg(name, at, fromT);
 	}
-	if (chipAt(pos) >= 0) /* a recording's window has no trigger (nothing comes after the file) */
-		return recording_ ? tr("Click or right-click: Histogram, Spectrum")
-				: tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
+	if (const int chip = chipAt(pos); chip >= 0) { /* a recording's window has no trigger (nothing comes after the file) */
+		const QString click = recording_ ? tr("Click or right-click: Histogram, Spectrum")
+										 : tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
+		const QString stopped = stoppedTip(chip); /* its value greyed: why */
+		return stopped.isEmpty() ? click : stopped + QLatin1Char('\n') + click;
+	}
 	/* the flag: the crossing it stands over in words, when there is one, then what it does */
 	if (trigger_.on && triggerMark_.contains(pos)) {
 		const QString point = triggerPointText();
@@ -5771,8 +5851,8 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 	 * values' pace, not at every frame (drawn at every frame it took 1.3 ms at 4K) */
 	const qreal dpr = p.device()->devicePixelRatioF();
 	const QRectF area(legend.viewport.left(), LEGEND_TOP, legend.viewport.width(), LEGEND_BAR_Y + LEGEND_BAR_H + 1 - LEGEND_TOP);
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
-			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark()).arg(hoverChip_);
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
+			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark()).arg(hoverChip_).arg(fastStoppedGen_);
 	if (key != legendKey_ || legendImage_.isNull()) {
 		legendKey_ = key;
 		legendBuilds_++;
@@ -5791,7 +5871,7 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 		for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
 			const QRectF chip = legend.chips[i++].translated(-offset, 0);
 			if (chip.right() >= legend.viewport.left() && chip.left() <= legend.viewport.right())
-				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_);
+				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_, lineStopped(it.key()));
 		}
 		lp.setClipping(false);
 		if (legend.maxScroll() > 0) drawLegendBar(lp, legend, offset);
@@ -5801,8 +5881,10 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 
 /* one chip: the line's dot and name on the left; its value right-aligned in
  * the room every value gets, then the unit, so only the digits change; at the right end its menu button ("▾", the
- * lanes' fold button's shape), stronger while the mouse is on the chip: the whole chip opens the menu */
-void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered) const {
+ * lanes' fold button's shape), stronger while the mouse is on the chip: the whole chip opens the menu. A stopped
+ * stream's line: its value (the last record's) greyed, as nothing comes after it */
+void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered,
+		bool stopped) const {
 	const ThemeColors &c = Theme::colors();
 	p.setPen(Qt::NoPen);
 	p.setBrush(c.surface2);
@@ -5820,6 +5902,7 @@ void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, doubl
 	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT - CHIP_BUTTON_W, 0);
 	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, s.name);
 	if (!s.hasShown) return;
+	if (stopped) p.setPen(c.muted);
 	const QString unit = s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit;
 	const double unitW = QFontMetricsF(p.font()).horizontalAdvance(unit);
 	const QRectF value(text.right() - unitW - valueRoom, chip.top(), valueRoom, chip.height());
@@ -6087,14 +6170,22 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 /* The state corner's texts: the whole, then shortened in turn until one fits (fitState): "Live to follow" goes, then
  * the cursors' "click / drag", then "manual" of a manual Log Y, then the summaries' span ("summaries: samples for the
  * newest 79 s", a view reaching back into a fast line's records kept as summaries only, drawn as bars when zoomed
- * in); the time held and the trigger's state stay. With
+ * in), then a stopped stream's last record ("ADC stopped · last record 14:03:12.345" to "ADC stopped"); the time held,
+ * the stopped streams' names and the trigger's state stay. With
  * measuring, the time held is written as the widest number, so the room kept for it does not change with its digits
  * (the legend's end would follow them). */
 QStringList ChartView::stateVariants(bool measuring) const {
 	QString held[2], summaries[2], y[2], cursors[2], trigger;
+	const QString dot = QStringLiteral("  ·  ");
+	/* a stopped stream's lines look live no longer: said first, muted */
+	const QString stopped[2] = { stoppedParts(true).join(dot), stoppedParts(false).join(dot) };
 	/* the trigger on: its state alone (a held time, "filling" or "Live to follow" read as a hold of the user's while the
-	 * trigger holds the view, and the time held rewrote itself at every frame) */
-	if (triggerMarked()) return QStringList(4, triggerStateText());
+	 * trigger holds the view, and the time held rewrote itself at every frame), after the streams stopped */
+	if (triggerMarked()) {
+		const QString state = triggerStateText();
+		if (stopped[0].isEmpty()) return QStringList(4, state);
+		return { stopped[0] + dot + state, stopped[1] + dot + state, stopped[1] + dot + state, stopped[1] + dot + state };
+	}
 	/* a short window's lock holds the view on its crossings, yet follows now: no "held" (its words come last) */
 	if (!live_ && !recording_ && !trigger_.automatic) { /* a trigger holds a view that ends after now: it fills as the samples come */
 		const double behind = clockNow() - viewEnd();
@@ -6122,10 +6213,11 @@ QStringList ChartView::stateVariants(bool measuring) const {
 	}
 	trigger = triggerStateText();
 	QStringList variants;
-	for (int stage = 0; stage < 5; stage++) {
-		QStringList parts{ held[stage >= 1], summaries[stage >= 4], y[stage >= 3], cursors[stage >= 2], trigger };
+	for (int stage = 0; stage < 6; stage++) {
+		QStringList parts{ held[stage >= 1], stopped[stage >= 5], summaries[stage >= 4], y[stage >= 3], cursors[stage >= 2],
+			trigger };
 		parts.removeAll(QString());
-		variants << parts.join(QStringLiteral("  ·  "));
+		variants << parts.join(dot);
 	}
 	return variants;
 }

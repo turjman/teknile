@@ -46,6 +46,7 @@
 #pragma once
 
 #include <QElapsedTimer>
+#include <QSet>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -129,6 +130,9 @@ public:
 	/* Fast EVRe: the map's streams; a channel's line on or off; a block's records (the stream's rules applied) with the
 	 * time mark it brought (marked), once a frame before frame() */
 	void setFastStreams(const QVector<StreamDef> &streams);
+	/* whether a stream is fed now (on and the link up; the window's, at each frame): a stream not fed has its lines,
+	 * and the fast math lines over it, said stopped on the chart (ChartView::setFastStopped). Fed by default */
+	void setFastFed(int stream, bool fed);
 	void plotFastChannel(int stream, int channel, bool on);
 	bool fastPlotted(int stream, int channel) const;
 	int fastLines() const; /* fast lines on the chart (a fast math line is a math line here) */
@@ -307,6 +311,8 @@ private:
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
 	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */
+	QSet<int> fastUnfed_;            /* the streams not fed now (setFastFed) */
+	void applyFastFed();             /* to the chart: each stream's lines and the fast math lines over it */
 	/* the fast math lines: each stream's starts seen (counted from 1) and its newest time mark; each line's store and
 	 * the start it has records of (a new store, or a start it has not seen: its records begin a new start, given the
 	 * stream's mark); the registers they read, held (live: the last polled value; a recording: every sample) */

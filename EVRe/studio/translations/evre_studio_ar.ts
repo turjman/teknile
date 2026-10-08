@@ -1670,6 +1670,29 @@ A recording&apos;s file keeps every sample either way.</source>
         <source>summaries</source>
         <translation>ملخصات</translation>
     </message>
+    <message>
+        <source>%1 stopped: no record yet</source>
+        <translation>%1 متوقف: لا سجلّ بعد</translation>
+    </message>
+    <message>
+        <source>%1 stopped at %2: the value is its last record&apos;s</source>
+        <translation>%1 متوقف عند %2: القيمة قيمة آخر سجلّ</translation>
+    </message>
+    <message>
+        <source>%1 stopped · last record %2</source>
+        <comment>a fast stream&apos;s name; the time of its newest record</comment>
+        <translation>%1 متوقف · آخر سجلّ %2</translation>
+    </message>
+    <message>
+        <source>%1 stopped</source>
+        <comment>a fast stream&apos;s name</comment>
+        <translation>%1 متوقف</translation>
+    </message>
+    <message>
+        <source>%1 · waiting (%2 stopped)</source>
+        <comment>the trigger&apos;s mode; the fast stream of its line</comment>
+        <translation>%1 · بانتظار عبور (%2 متوقف)</translation>
+    </message>
 </context>
 <context>
     <name>EventLog</name>
@@ -3092,6 +3115,11 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type &lt;code&gt;50 us&lt;/code&gt; in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart&apos;s RAM, where a fast line counts as one line.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;A stopped stream&lt;/b&gt; keeps its samples on the chart (zoom, measure, export), but nothing of it looks live: the
+chart&apos;s top right says &lt;i&gt;ADC stopped · last record 14:03:12.345&lt;/i&gt;, its lines&apos; values in the legend are greyed
+(their tooltip says when it stopped), and a live view goes on with the clock, so its lines move out to the left; a
+short window&apos;s lock rests, and your trigger on it waits, &lt;i&gt;Normal · waiting (ADC stopped)&lt;/i&gt;. &lt;b&gt;▶ Start
+stream&lt;/b&gt; takes all of it away at once.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Long memory&lt;/b&gt;: &lt;b&gt;Older samples&lt;/b&gt;, beside RAM on the Chart tab (with fast streams only). &lt;i&gt;summaries&lt;/i&gt;
 (the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
 highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels
@@ -3157,6 +3185,7 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 الملايين، ومع التكبير (حتى ⁦10 µs⁩: بعجلة الفأرة، أو اكتب &lt;code&gt;⁦50 us⁩&lt;/code&gt; في النافذة) تصير كل عينة نقطة
 مستقلة. حيث فُقدت عينات ينقطع الخط؛ والفأرة فوق الفجوة تقول كم فُقد. تُحفظ العينات كما وصلت، ببضعة بايتات
 لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;التدفق المتوقف&lt;/b&gt; يُبقي عيناته على المخطط (التكبير والقياس والتصدير)، لكن لا يبدو منه شيء حيًّا: يقول أعلى يمين المخطط &lt;i&gt;ADC متوقف · آخر سجلّ 14:03:12.345&lt;/i&gt;، وتُرسم قيم خطوطه في المفتاح رمادية (يقول تلميحها متى توقف)، ويمضي العرض الحي مع الساعة فتخرج خطوطه إلى اليسار؛ ويستريح قفل النافذة القصيرة، وينتظر القدح الذي وضعته عليه: &lt;i&gt;عادي · بانتظار عبور (ADC متوقف)&lt;/i&gt;. و&lt;b&gt;▶ بدء التدفق&lt;/b&gt; يزيل ذلك كله دفعة واحدة.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;ذاكرة طويلة&lt;/b&gt;: &lt;b&gt;العينات الأقدم&lt;/b&gt;، بجانب RAM في تبويب المخطط (مع التدفقات السريعة فقط). &lt;i&gt;ملخصات&lt;/i&gt; (الافتراضي): بعد ما تتسع له حصته من RAM، لا يحفظ الخط السريع من عيناته الأقدم إلا أدنى قيمة وأعلاها لكل 256 منها (1/128 من المساحة)، والأحدث كاملة، فتُحفظ الذاكرة أطول بكثير: ⁦100 min⁩ لقناتين بمليون عينة في الثانية في ⁦512 MB⁩، مع عينات لآخر ⁦79 s⁩. عند التصغير يُرسم ذلك الجزء كما كان؛ وعند التكبير يصبح كل ملخص عمودًا من أدناه إلى أعلاه، ويقول أعلى يمين المخطط &lt;i&gt;ملخصات: عينات لآخر ⁦79 s⁩&lt;/i&gt;، ويظلّل شريط الذاكرة ذلك الجزء. هناك تعطي &lt;b&gt;القياسات&lt;/b&gt; الأدنى والأعلى وقمة–قمة، و— للمتوسط وRMS والانحراف المعياري والمساحة (يقول التلميح السبب)؛ ويأخذ المدرّج التكراري والطيف العينات المحفوظة كاملة؛ ويراقب القدح العينات كما تصل، لا الملخصات أبدًا. &lt;i&gt;محفوظة&lt;/i&gt;: كل عينة كاملة، وتذهب الأقدم حين تمتلئ RAM. ويحفظ التسجيل كل عينة في الحالتين.&lt;/p&gt;
 &lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
 ومجموعه منذ المسح، ومدرّجه التكراري وطيفه (الطيف يأخذ العينات كما هي، على أطول جزء بلا فجوة)، والقدح والتصدير

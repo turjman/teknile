@@ -1160,6 +1160,9 @@ void MainWindow::sync() {
 	}
 	fastRest_.remove(0, taken);
 	if (!fastRest_.isEmpty()) fastSyncsLeftOver_++;
+	/* a stream stopped, or the link down: its lines on the chart say so, and look live no longer */
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++)
+		chartTab_->setFastFed(i, connected_ && !isBus() && sidebar_->fastOn(i));
 	if (copyValues)
 		for (auto it = fastValues_.constBegin(); it != fastValues_.constEnd(); ++it) sidebar_->showFastValues(it.key(), it.value());
 	/* samples, and the chart moves on */

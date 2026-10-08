@@ -1019,6 +1019,27 @@ void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
 	arrangeRamNote(); /* Older samples takes room from the note, and its texts are longer */
 	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
 	if (fastChannelNames() != channelsBefore) rebuildMath(); /* a formula over a channel compiles now, or no longer */
+	applyFastFed();
+}
+
+void ChartTab::setFastFed(int stream, bool fed) {
+	if (fed != fastUnfed_.contains(stream)) return;
+	if (fed) fastUnfed_.remove(stream);
+	else fastUnfed_.insert(stream);
+	applyFastFed();
+}
+
+/* A stream's lines and the fast math lines computed from it stop together: the math line's records are the stream's */
+void ChartTab::applyFastFed() {
+	ChartView *view = chart_->view();
+	for (int i = 0; i < fastStreams_.size(); i++)
+		view->setFastStopped(i, !recording_ && fastUnfed_.contains(i), fastStreams_[i].name);
+	const QVector<MathLine> &lines = mathLines_.lines();
+	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		const int stream = i < lines.size() && lines[i].fast() ? lines[i].stream : -1;
+		const bool stopped = !recording_ && stream >= 0 && stream < fastStreams_.size() && fastUnfed_.contains(stream);
+		view->setFastStopped(MathLines::fastStream(i), stopped, stopped ? fastStreams_[stream].name : QString());
+	}
 }
 
 QStringList ChartTab::fastChannelNames() const {
@@ -1571,6 +1592,7 @@ QString ChartTab::triggerState() const {
 	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
 	case ChartView::TriggerPhase::Waiting: /* a level the line does not reach says so: it would wait for ever */
+		if (!view->triggerStoppedName().isEmpty()) return view->triggerStateText(); /* "Normal · waiting (ADC stopped)" */
 		return view->triggerLevelBeyondLine() > 0 ? tr("waiting: level above the line's range")
 				: view->triggerLevelBeyondLine() < 0 ? tr("waiting: level below the line's range")
 				/* Normal back to waiting after a capture: when it was, a fixed time (a counter would run all the
@@ -2493,6 +2515,7 @@ void ChartTab::drawMathLines() {
 			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
 		}
 	}
+	applyFastFed(); /* a fast math line over a stopped stream: stopped with it */
 }
 
 bool ChartTab::fastMathDrawn(int line) const {
