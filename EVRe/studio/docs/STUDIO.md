@@ -2139,6 +2139,12 @@ recordings can be open.
 - **Open it:** **Open** beside **● Record CSV** (*Open recording…*, or one of the last 8 recordings), **Open
   recording…** or **Recent recordings** on the chart's right-click menu, or drop a `.csv` (or a fast stream's `.evrs`,
   12.7) on the window.
+- **The recent list** is checked each time it opens. A recording whose file was deleted or moved is listed greyed,
+  *run.csv (not found)*, its tooltip says so, and it still takes a click (an entry that did nothing was taken for a
+  fault): the click takes it off the list at once and the status bar says *…run.csv taken off the recent recordings:
+  the file is not there any more*. No question is asked: nothing is lost, the entry could not open anything. **Clear
+  the list**, last after a line, empties it (the files stay where they are). The same in the chart's **Recent
+  recordings** menu.
 - **Read on a thread.** A progress dialog shows while a big file is read, with **Cancel**. A file that is not a
   recording (its first line is not `time_s,datetime,…`) says so.
 - **The RAM applies.** A recording takes about 39 bytes a sample: the chart's 23 (7.4) and the window's own copy of
@@ -2532,7 +2538,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/measureColumns` | empty | on&nbsp;change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
 | `chart/math` | empty | on&nbsp;change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
 | `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
-| `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first. |
+| `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first; one whose file is gone is taken off with a click on it, and **Clear the list** empties it (12.6). |
 | `fast/notLogged` | empty | at&nbsp;each&nbsp;tick | The fast streams whose **Log** is off in the Fast streams card, by the map's stream name: not written beside a CSV recording (13.9). |
 | `recording/linesHidden` | empty | at&nbsp;each&nbsp;tick | The lines unticked in a recording window's **Lines** list, by name (`SUPPLY_V`, `ADC.I_LOAD`): a recording opened later comes without them (12.6). |
 
@@ -4349,7 +4355,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastStreams` (their channels offered and read; one stream's: a fast math line, said, 9.9) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
-| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
+| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `forget` / `fillRecentMenu` (a file not found greyed, `recentMissing`; `recentClear`), `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
@@ -5703,6 +5709,11 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   (nothing), Cancel opens nothing; the recent list holds the last 8; **Open** beside Record CSV; a note added while
   recording is written beside the recording at once and shown when it is opened. With `EVRE_TEST_SHOT` set it saves
   `<prefix>_recording.png`.
+- **A recent recording not found** (`recentMissing`): of two recent recordings one is deleted; the sidebar's **Open**
+  lists it greyed, *gone.csv (not found)*, its tooltip saying so, a pointing hand and a highlight under the mouse (the
+  theme's rule), the other as before, and **Clear the list** last after a line; the chart's **Recent recordings**
+  lists it too; a click takes it off (the list saved with the other alone) and the status bar says so; Clear the list
+  empties it, the files left. With `EVRE_TEST_SHOT` it saves `<prefix>_recent_missing_dark.png` and `_light.png`.
 - **The recording's window revisited** (`recordingViewer`, in the recording windows' step): opened with Measure on,
   the file's 600 samples on the chart and the legend's value at once, and the Y boxes showing its first frame's range
   under 500 ms (not 0 and 1); a change right after a feed's frames painted though no frame follows; the Y row packed
@@ -5996,7 +6007,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 569 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 572 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

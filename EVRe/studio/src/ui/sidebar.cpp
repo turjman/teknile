@@ -333,7 +333,8 @@ QWidget *Sidebar::buildPollingCard() {
 			"measurements and notes. The live chart goes on. A .csv dropped on the window opens too."));
 	auto *recordings = new QMenu(openRecording_);
 	connect(recordings, &QMenu::aboutToShow, this, [this, recordings] {
-		RecordingWindow::fillRecentMenu(recordings, [this](const QString &file) { emit openRecordingClicked(file); });
+		RecordingWindow::fillRecentMenu(recordings, [this](const QString &file) { emit openRecordingClicked(file); },
+				[this](const QString &text) { emit statusMessage(text, 5000); });
 		QAction *choose = new QAction(tr("Open recording…"), recordings);
 		connect(choose, &QAction::triggered, this, [this] { emit openRecordingClicked(QString()); });
 		recordings->insertAction(recordings->actions().value(0), choose);

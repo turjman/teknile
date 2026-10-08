@@ -2232,7 +2232,8 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 	chartMenu_->addSeparator();
 	chartMenu_->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); });
 	RecordingWindow::fillRecentMenu(chartMenu_->addMenu(tr("Recent recordings")),
-			[this](const QString &file) { emit openRecordingRequested(file); });
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
 	chartMenu_->popup(globalPos);
 }
 

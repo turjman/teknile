@@ -2763,7 +2763,9 @@ window): a recording or an export in a window of its own, with its chart, measur
 own; the live chart goes on. A file bigger than the chart&apos;s RAM asks to keep its last part. With a map loaded, its
 registers&apos; value names and fields are matched by name. &lt;b&gt;Lines&lt;/b&gt; (top right, &lt;i&gt;Lines 8/11&lt;/i&gt;) ticks each
 line on or off: the file&apos;s columns, each fast channel and the math lines, grouped, with All, None and a search when
-they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields.&lt;/li&gt;
+they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields. A recent
+recording whose file is gone is greyed, &lt;i&gt;(not found)&lt;/i&gt;: a click takes it off the list; &lt;b&gt;Clear the list&lt;/b&gt; empties
+it.&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -2917,7 +2919,8 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
 أسماء قيم مسجّلاتها وحقولها بالاسم. &lt;b&gt;الخطوط&lt;/b&gt; (أعلى اليمين، &lt;i&gt;الخطوط ⁦8/11⁩&lt;/i&gt;) تُفعّل كل خط أو
 تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
-ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل.&lt;/li&gt;
+ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
+&lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -5746,6 +5749,30 @@ Keep the last part: about the last %5 of %6?</source>
     <message>
         <source>Lines %1/%2</source>
         <translation>الخطوط ⁦%1/%2⁩</translation>
+    </message>
+    <message>
+        <source>%1 (not found)   %2</source>
+        <translation>%1 (غير موجود)   %2</translation>
+    </message>
+    <message>
+        <source>%1 is not there any more (deleted or moved): a click takes it off this list</source>
+        <translation>%1 لم يعد موجودًا (حُذف أو نُقل): النقر يزيله من هذه القائمة</translation>
+    </message>
+    <message>
+        <source>%1 taken off the recent recordings: the file is not there any more</source>
+        <translation>أُزيل %1 من التسجيلات الأخيرة: الملف لم يعد موجودًا</translation>
+    </message>
+    <message>
+        <source>Clear the list</source>
+        <translation>مسح القائمة</translation>
+    </message>
+    <message>
+        <source>Every recording off this list; the files stay where they are</source>
+        <translation>إزالة كل تسجيل من هذه القائمة؛ والملفات تبقى في أماكنها</translation>
+    </message>
+    <message>
+        <source>The recent recordings list cleared</source>
+        <translation>مُسحت قائمة التسجيلات الأخيرة</translation>
     </message>
 </context>
 <context>

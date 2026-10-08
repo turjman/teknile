@@ -20,8 +20,10 @@
  *    each with its colour dot and unit, All and None, a search above LINES_SEARCH_FROM lines; the lines unticked kept
  *    by name ("recording/linesHidden"), so the next recording opens without them; the fields of a matched register.
  *  - Notes: "<file>.notes.json" read at the start and saved at every change.
- *  - The last 8 recordings opened or exported (Recent recordings), and every
- *    window, closed with the main window (closeAll). */
+ *  - The last 8 recordings opened or exported (Recent recordings): checked each time the menu opens, a file no longer
+ *    there greyed, "(not found)", a click takes it off the list at once (said in the status bar: nothing is lost, a
+ *    question would only ask about a dead entry); Clear the list at the end. Every window is closed with the main
+ *    window (closeAll). */
 #pragma once
 
 #include <QPointer>
@@ -56,10 +58,13 @@ public:
 	/* the same, the file chosen in a dialog first */
 	static void choose(QWidget *dialogParent, const QVector<RegDef> &map, int ramMB,
 			const std::function<void(RecordingWindow *)> &done = {});
-	/* the recordings opened or exported last, newest first ("recording/recent"), and the menu of them */
+	/* the recordings opened or exported last, newest first ("recording/recent"), and the menu of them: openFile opens
+	 * one; said(text) tells the status bar that one was taken off the list, or the list cleared */
 	static QStringList recentFiles();
 	static void remember(const QString &file);
-	static void fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile);
+	static void forget(const QString &file);
+	static void fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile,
+			const std::function<void(const QString &)> &said = {});
 	static QList<RecordingWindow *> windows(); /* open now */
 	static void closeAll();
 

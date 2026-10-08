@@ -473,7 +473,9 @@ window): a recording or an export in a window of its own, with its chart, measur
 own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
 registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
 line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
-they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields.</li>
+they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields. A recent
+recording whose file is gone is greyed, <i>(not found)</i>: a click takes it off the list; <b>Clear the list</b> empties
+it.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(

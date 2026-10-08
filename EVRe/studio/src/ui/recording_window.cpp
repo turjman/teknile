@@ -204,17 +204,54 @@ void RecordingWindow::remember(const QString &file) {
 	QSettings().setValue(RECENT_KEY, recent);
 }
 
-void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile) {
+void RecordingWindow::forget(const QString &file) {
+	QStringList recent = recentFiles();
+	recent.removeAll(file);
+	QSettings().setValue(RECENT_KEY, recent);
+}
+
+/* each entry checked as the menu opens: a file deleted or moved since is greyed with "(not found)" but still takes a
+ * click (a disabled entry did nothing, and said nothing), which takes it off the list */
+void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile,
+		const std::function<void(const QString &)> &said) {
 	menu->clear();
 	const QStringList recent = recentFiles();
 	if (recent.isEmpty()) menu->addAction(tr("No recordings opened yet"))->setEnabled(false);
 	for (const QString &path : recent) {
 		const QFileInfo info(path);
-		QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(info.fileName(),
-				QDir::toNativeSeparators(info.absolutePath()))));
-		action->setToolTip(QDir::toNativeSeparators(path));
-		action->setEnabled(info.exists());
-		QObject::connect(action, &QAction::triggered, menu, [openFile, path] { openFile(path); });
+		const QString where = QDir::toNativeSeparators(info.absolutePath());
+		if (info.exists()) {
+			QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(info.fileName(), where)));
+			action->setToolTip(QDir::toNativeSeparators(path));
+			QObject::connect(action, &QAction::triggered, menu, [openFile, path] { openFile(path); });
+			continue;
+		}
+		/* a button in the menu's item shape, in the muted colour, lit under the mouse (theme.cpp) */
+		auto *missing = new QPushButton(noMnemonic(tr("%1 (not found)   %2").arg(info.fileName(), where)));
+		missing->setObjectName(QStringLiteral("recentMissing"));
+		missing->setProperty("path", path);
+		missing->setCursor(Qt::PointingHandCursor);
+		missing->setToolTip(tr("%1 is not there any more (deleted or moved): a click takes it off this list")
+				.arg(QDir::toNativeSeparators(path)));
+		auto *action = new QWidgetAction(menu);
+		action->setDefaultWidget(missing);
+		menu->addAction(action);
+		QObject::connect(missing, &QPushButton::clicked, menu, [menu, path, said] {
+			forget(path);
+			menu->close();
+			if (said) said(tr("%1 taken off the recent recordings: the file is not there any more")
+					.arg(QDir::toNativeSeparators(path)));
+		});
+	}
+	if (!recent.isEmpty()) {
+		menu->addSeparator();
+		QAction *clear = menu->addAction(tr("Clear the list"));
+		clear->setObjectName(QStringLiteral("recentClear"));
+		clear->setToolTip(tr("Every recording off this list; the files stay where they are"));
+		QObject::connect(clear, &QAction::triggered, menu, [said] {
+			QSettings().remove(RECENT_KEY);
+			if (said) said(tr("The recent recordings list cleared"));
+		});
 	}
 	menu->setToolTipsVisible(true);
 }

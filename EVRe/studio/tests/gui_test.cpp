@@ -581,6 +581,7 @@ public:
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
+		recentMissing();
 		mapEditor();
 		mapStreamsPage();
 		limitsAndFields();
@@ -2107,6 +2108,102 @@ private:
 				"fast speed: done; the example map again, the window polls the fake device of the other steps");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* A recent recording whose file was deleted: in every recent list (the sidebar's Open, the chart's Recent recordings)
+	 * greyed with "(not found)" and a tooltip that says so; a click takes it off the list at once and the status bar
+	 * says so (a disabled entry did nothing); Clear the list at the end empties it */
+	void recentMissing() {
+		const QVariant before = QSettings().value(QStringLiteral("recording/recent"));
+		QTemporaryDir folder;
+		const auto makeFile = [&](const QString &name) {
+			QFile file(folder.filePath(name));
+			if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+				file.write("time_s,datetime,V [V]\n0,2026-10-08T12:00:00.000,1\n1,2026-10-08T12:00:01.000,2\n");
+			return QFileInfo(file).absoluteFilePath();
+		};
+		const QString kept = makeFile(QStringLiteral("kept.csv")), gone = makeFile(QStringLiteral("gone.csv"));
+		QSettings().remove(QStringLiteral("recording/recent"));
+		RecordingWindow::remember(gone);
+		RecordingWindow::remember(kept);
+		QFile::remove(gone);
+		const auto missingIn = [](QMenu *menu) {
+			return menu ? menu->findChild<QPushButton *>(QStringLiteral("recentMissing")) : nullptr;
+		};
+		/* the sidebar's Open */
+		auto *open = window_.findChild<QPushButton *>(QStringLiteral("openRecording"));
+		QMenu *menu = open ? open->menu() : nullptr;
+		bool shown = false, keptEntry = false, clearLast = false;
+		QPushButton *missing = nullptr;
+		if (menu) {
+			menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+			QApplication::processEvents();
+			missing = missingIn(menu);
+			for (QAction *action : menu->actions()) keptEntry = keptEntry || action->text().startsWith(QLatin1String("kept.csv"));
+			const QList<QAction *> actions = menu->actions();
+			clearLast = actions.size() >= 2 && actions.last()->objectName() == QLatin1String("recentClear")
+					&& actions[actions.size() - 2]->isSeparator() && actions.last()->isEnabled();
+			shown = missing && missing->text().startsWith(QStringLiteral("gone.csv (not found)"))
+					&& missing->toolTip().contains(QLatin1String("not there any more")) && missing->isEnabled()
+					&& missing->cursor().shape() == Qt::PointingHandCursor
+					&& qApp->styleSheet().contains(QLatin1String("QMenu QPushButton#recentMissing { color: "))
+					&& qApp->styleSheet().contains(QLatin1String("QMenu QPushButton#recentMissing:hover"));
+			std::printf("  a recent recording deleted: \"%s\", tooltip \"%s\"; the one kept listed %d; Clear the list last %d\n",
+					missing ? qPrintable(missing->text()) : "(none)", missing ? qPrintable(missing->toolTip()) : "",
+					int(keptEntry), int(clearLast));
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look: the menu with the entry not found */
+				for (const bool dark : { true, false }) {
+					menu->hide();
+					Theme::apply(*qApp, dark);
+					menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+					QTest::qWait(300);
+					menu->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_recent_missing_%1.png")
+							.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+			Theme::apply(*qApp, true);
+			missing = missingIn(menu);
+		}
+		check(shown && keptEntry && clearLast, "recent recordings: a file deleted since is listed greyed with \"(not found)\" "
+				"after its name, its tooltip says it is not there any more, a pointing hand and a highlight under the mouse; "
+				"the file still there is listed as before; Clear the list last, after a line");
+		/* the chart's Recent recordings: the same */
+		auto *chartTab = window_.findChild<ChartTab *>();
+		bool inChartMenu = false;
+		if (chartTab) {
+			chartTab->showChartMenu(QPoint(100, 100), 0);
+			QApplication::processEvents();
+			for (QMenu *sub : chartTab->chartMenu() ? chartTab->chartMenu()->findChildren<QMenu *>() : QList<QMenu *>())
+				inChartMenu = inChartMenu || missingIn(sub) != nullptr;
+			if (chartTab->chartMenu()) chartTab->chartMenu()->hide();
+		}
+		/* a click: off the list at once, said in the status bar */
+		bool removed = false;
+		if (missing) {
+			window_.statusBar()->clearMessage();
+			missing->click();
+			QApplication::processEvents();
+			removed = RecordingWindow::recentFiles() == QStringList{ kept } && !menu->isVisible()
+					&& window_.statusBar()->currentMessage().contains(QLatin1String("gone.csv taken off the recent recordings"));
+			std::printf("  clicked: the list \"%s\", the status bar \"%s\"\n",
+					qPrintable(RecordingWindow::recentFiles().join(QStringLiteral(", "))),
+					qPrintable(window_.statusBar()->currentMessage()));
+		}
+		check(inChartMenu && removed, "recent recordings: the chart's Recent recordings lists it the same way; a click takes "
+				"it off the list at once (saved without it) and the status bar says so");
+		/* Clear the list */
+		bool cleared = false;
+		if (menu) {
+			menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+			QApplication::processEvents();
+			for (QAction *action : menu->actions())
+				if (action->objectName() == QLatin1String("recentClear")) action->trigger();
+			menu->hide();
+			cleared = RecordingWindow::recentFiles().isEmpty()
+					&& window_.statusBar()->currentMessage().contains(QLatin1String("list cleared")) && QFileInfo::exists(kept);
+		}
+		check(cleared, "recent recordings: Clear the list empties it (the files stay), the status bar says so");
+		if (before.isValid()) QSettings().setValue(QStringLiteral("recording/recent"), before);
+		else QSettings().remove(QStringLiteral("recording/recent"));
 	}
 
 	/* The recording window's Lines: a checklist of every line it offers, grouped (Registers, Fast: ADC, Math), each

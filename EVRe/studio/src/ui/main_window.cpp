@@ -425,6 +425,9 @@ QWidget *MainWindow::buildRegistersTab() {
 	connect(registersTab_, &RegistersTab::statusMessage, this, [this](const QString &text, int ms) {
 		statusBar()->showMessage(text, ms);
 	});
+	connect(sidebar_, &Sidebar::statusMessage, this, [this](const QString &text, int ms) {
+		statusBar()->showMessage(text, ms);
+	});
 	connect(model_, &RegisterModel::plotLimitReached, this, [this] {
 		const long rate = std::lround(sampleRateHz()); /* 0: not polling, no rate to name */
 		/* the chart full of lines of every kind, or the registers at what the rate allows */

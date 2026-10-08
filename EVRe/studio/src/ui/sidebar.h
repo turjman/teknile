@@ -174,6 +174,7 @@ signals:
 	void saveMapClicked(bool saveAs);
 	void recordClicked();
 	void openRecordingClicked(const QString &file); /* empty: choose one */
+	void statusMessage(const QString &text, int ms); /* for the status bar (a recent recording taken off its list) */
 	void apiServeChanged(bool on); /* Serve API; Network switched while serving: on again, with it */
 	void apiWritesChanged();       /* Allow API writes, or including ⚠ registers */
 	void helpClicked();
