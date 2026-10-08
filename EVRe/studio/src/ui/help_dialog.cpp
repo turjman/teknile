@@ -365,7 +365,7 @@ equal again; the lanes always fill the plot, none lower than 80 px); each lane h
 Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; a lane not in Auto has a <i>Manual</i> (amber) or <i>Log</i> tag at the top of
 its values, and a click on the tag sets it back to Auto; a click on a lane's values makes it the current lane, whose
-range the Y range row shows and sets (<i>Y range (A)</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
+range the Y range row shows and sets (the list after <i>Y range</i> chooses it too: <i>Y range [A ▾]</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
 one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -387,7 +387,7 @@ off the chart.</li>
 <p>From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
 oscilloscope's: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
 right edge (<i>-8 ms</i> … <i>0</i>), or from <b>T</b> while the trigger holds the view on a crossing (<i>0</i> under
-it, <i>+4 ms</i>). At the axis's right end <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
+it, <i>+4 ms</i>). Above the plot, at the right of the legend's row, <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
 at 0; the wheel steps the window through 1, 2 and 5 per division. <b>Display → Time grid</b>: Auto (divisions below
 1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, <i>T +1.234 ms</i>). Long windows and fast lines are drawn
 from min/max summaries, so they cost no more than short ones.</p>

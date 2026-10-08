@@ -165,8 +165,8 @@ public:
 	 * Divisions: DIVISIONS fixed divisions across the plot, as a scope's graticule (the owner: at 10 ms the lines and
 	 * labels marched across a live view; a scope keeps its grid and only the wave moves), labelled by their offset
 	 * from the right edge (live, or held by the user) or from T (held on a trigger's crossing), with a "1 ms/div"
-	 * readout and the clock time at 0 at the time axis's right end. Auto: divisions below DIVISIONS_BELOW, clock
-	 * times from there */
+	 * readout and the clock time at 0 in the state corner's row above the plot (so no time label is left out for it).
+	 * Auto: divisions below DIVISIONS_BELOW, clock times from there */
 	enum class TimeGrid { Auto, Clock, Divisions };
 	static constexpr int DIVISIONS = 10;
 	static constexpr double DIVISIONS_BELOW = 1.0; /* seconds of window */
@@ -943,6 +943,7 @@ private:
 	void drawState(QPainter &p, const Axes &axes) const;
 	QStringList stateVariants(bool measuring) const;
 	void fitState(double plotWidth, int &variant, double &width) const;
+	double divisionReadoutWidth() const; /* the time/div readout's box in the state corner; 0: none */
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
 	static void strokePolyline(QPainter &p, const QPolygonF &poly, const QColor &color, bool thin, qreal dpr);
 	static void prepareTile(const QPainter &p, const QRect &device, QImage &image, QTransform &world, QPointF &at);
