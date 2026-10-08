@@ -2,10 +2,15 @@
 /* The chart's math lines: see math_lines.h. */
 #include "model/math_lines.h"
 
+#include <QCoreApplication>
 #include <QSettings>
 #include <QStringList>
 #include <QVarLengthArray>
 #include <algorithm>
+#include <cmath>
+#include <limits>
+
+#include "io/fast_stream.h"
 
 namespace {
 
@@ -43,23 +48,70 @@ void evaluateLine(const MathLine &line, int key, const MathLines::Samples &sampl
 
 /* ----------------------------------------------------------------- one line */
 
-bool MathLine::compile(const QVector<RegDef> &registers) {
+bool MathLine::compile(const QVector<RegDef> &registers, const QVector<StreamDef> &streams) {
 	inputs.clear();
+	channels.clear();
+	stream = -1;
 	error.clear();
-	/* each register named becomes an input, numbered in the order it is first named */
+	QString firstChannel, otherStream; /* a channel of the stream taken, and one of another stream named after it */
+	/* each register or fast channel named becomes an input, numbered in the order it is first named; a register's name
+	 * wins over a channel's (STREAM.CHANNEL), as before there were fast lines */
+	const auto input = [&](RegKey key, int channel) {
+		for (int i = 0; i < inputs.size(); i++)
+			if (channels[i] == channel && (channel >= 0 || inputs[i] == key)) return i;
+		inputs << key;
+		channels << channel;
+		return int(inputs.size()) - 1;
+	};
 	const auto resolve = [&](const QString &name) {
-		const RegDef *def = numericRegister(registers, name);
-		if (!def) return -1;
-		int input = int(inputs.indexOf(regKey(*def)));
-		if (input < 0) {
-			input = int(inputs.size());
-			inputs << regKey(*def);
+		if (const RegDef *def = numericRegister(registers, name)) return input(regKey(*def), -1);
+		for (int s = 0; s < streams.size(); s++) {
+			for (int c = 0; c < streams[s].channels.size(); c++) {
+				const StreamChannel &channel = streams[s].channels[c];
+				if (channel.type == RegType::Bytes
+						|| (streams[s].name + QLatin1Char('.') + channel.name).compare(name, Qt::CaseInsensitive) != 0)
+					continue;
+				/* one stream's records hold all its channels at one instant; another stream's are of another clock */
+				if (stream >= 0 && stream != s) {
+					otherStream = name;
+					return -1;
+				}
+				if (stream < 0) firstChannel = name;
+				stream = s;
+				return input(0, c);
+			}
 		}
-		return input;
+		return -1;
 	};
 	if (expr.parse(formula, resolve, error)) return true;
+	if (!otherStream.isEmpty())
+		error = QCoreApplication::translate("MathLine", "%1 and %2: two streams, two clocks: not in this version")
+						.arg(firstChannel, otherStream);
 	inputs.clear();
+	channels.clear();
+	stream = -1;
 	return false;
+}
+
+void MathLine::evaluateRecords(const StreamDef &def, const char *records, qsizetype count, const double *held,
+		float *out) const {
+	const int inputCount = int(inputs.size());
+	const int size = def.recordSize();
+	/* each channel input's place in a record, found once a block */
+	QVarLengthArray<int, 16> offsets(inputCount);
+	for (int i = 0; i < inputCount; i++) {
+		offsets[i] = 0;
+		for (int c = 0; c < channels[i]; c++) offsets[i] += typeSize(def.channels[c].type);
+	}
+	QVarLengthArray<double, 16> values(inputCount);
+	for (int i = 0; i < inputCount; i++) values[i] = channels[i] < 0 ? held[i] : 0.0;
+	for (qsizetype k = 0; k < count; k++) {
+		const char *record = records + k * size;
+		for (int i = 0; i < inputCount; i++)
+			if (channels[i] >= 0) values[i] = fast::channelValue(def.channels[channels[i]], record + offsets[i]);
+		const float value = float(expr.eval(values.data()));
+		out[k] = std::isfinite(value) ? value : std::numeric_limits<float>::quiet_NaN();
+	}
 }
 
 /* ------------------------------------------------------------- the settings */
@@ -116,16 +168,16 @@ int MathLines::activeCount() const {
 	return int(std::count_if(lines_.begin(), lines_.end(), [](const MathLine &line) { return line.active(); }));
 }
 
-void MathLines::compile(const QVector<RegDef> &registers) {
-	for (MathLine &line : lines_) line.compile(registers);
+void MathLines::compile(const QVector<RegDef> &registers, const QVector<StreamDef> &streams) {
+	for (MathLine &line : lines_) line.compile(registers, streams);
 }
 
 QVector<RegKey> MathLines::registersRead() const {
 	QVector<RegKey> registers;
 	for (const MathLine &line : lines_) {
 		if (!line.active()) continue;
-		for (RegKey key : line.inputs)
-			if (!registers.contains(key)) registers << key;
+		for (int i = 0; i < line.inputs.size(); i++)
+			if (line.channels[i] < 0 && !registers.contains(line.inputs[i])) registers << line.inputs[i];
 	}
 	return registers;
 }
@@ -133,6 +185,6 @@ QVector<RegKey> MathLines::registersRead() const {
 void MathLines::evaluate(const Samples &samples, const PointSink &out) const {
 	for (int i = 0; i < lines_.size() && i < MAX_DRAWN; i++) {
 		const MathLine &line = lines_[i];
-		if (line.active() && !line.inputs.isEmpty()) evaluateLine(line, chartKey(i), samples, out);
+		if (line.active() && !line.fast() && !line.inputs.isEmpty()) evaluateLine(line, chartKey(i), samples, out);
 	}
 }

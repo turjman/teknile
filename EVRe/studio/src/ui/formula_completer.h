@@ -2,7 +2,7 @@
 /* Completion while a formula is typed (the Math line dialog): a list under the
  * box of what the word at the cursor may become. The registers a formula may
  * read (the numeric ones, as MathLine::compile takes them), each with its unit
- * and description, and the functions and constants of the formula language
+ * and description, the fast streams' channels (addStreams), and the functions and constants of the formula language
  * (Expr::builtins, the parser's own table), each function with its parameters.
  *
  * The best first: names that start with the word, then names with a part
@@ -33,6 +33,8 @@ public:
 	};
 
 	FormulaCompleter(QLineEdit *box, const QVector<RegDef> &registers, QObject *parent = nullptr);
+	/* the fast streams' channels offered too, as STREAM.CHANNEL, each with its unit and stream */
+	void addStreams(const QVector<StreamDef> &streams);
 
 	/* where the name being typed at `cursor` starts (letters, digits, _ and ., not a number): cursor if none */
 	static int wordStart(const QString &text, int cursor);

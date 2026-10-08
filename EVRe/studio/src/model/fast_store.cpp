@@ -80,7 +80,13 @@ void Store::appendMapped(quint64 first, qsizetype count, const char *records, bo
 void Store::append(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost) {
 	begin(first, count, newStart, lost);
 	if (recordSize_ <= 0 || count <= 0) return;
-	/* into the pieces, a piece's room taken at once */
+	put(records, count);
+	nextRecord_ = first + quint64(count);
+	summarize();
+}
+
+/* into the pieces, a piece's room taken at once */
+void Store::put(const char *records, qsizetype count) {
 	qsizetype done = 0;
 	while (done < count) {
 		if (pieces_.isEmpty() || pieces_.last().size() == PIECE * recordSize_) {
@@ -94,7 +100,45 @@ void Store::append(quint64 first, qsizetype count, const char *records, bool new
 		done += n;
 	}
 	size_ += count;
-	nextRecord_ = first + quint64(count);
+}
+
+/* The source's starts and marks as they are; its segments as they are too, but where a record is left out the one
+ * after it begins a segment of its own (at the same record number, so the records left out read as a gap) */
+void Store::fillFrom(const Store &source, const std::function<bool(qsizetype i, char *record)> &compute) {
+	clear();
+	epochs_ = source.epochs_;
+	epochBase_ = source.epochBase_;
+	timeVersion_++;
+	if (recordSize_ <= 0) return;
+	constexpr qsizetype BATCH = 4096; /* records put at once */
+	QByteArray batch(BATCH * recordSize_, '\0'), one(recordSize_, '\0');
+	qsizetype inBatch = 0;
+	const auto flush = [&] {
+		put(batch.constData(), inBatch);
+		inBatch = 0;
+	};
+	for (int k = 0; k < source.segments_.size(); k++) {
+		const Segment &s = source.segments_[k];
+		const qsizetype i0 = std::max<qsizetype>(0, qsizetype(s.begin - source.dropped_));
+		const qsizetype i1 = k + 1 < source.segments_.size() ? qsizetype(source.segments_[k + 1].begin - source.dropped_)
+															 : source.size_;
+		bool open = false; /* a segment begun here for the records of this one */
+		for (qsizetype i = i0; i < i1; i++) {
+			if (!compute(i, one.data())) {
+				open = false;
+				continue;
+			}
+			if (!open) {
+				flush();
+				segments_.push_back({ dropped_ + size_, s.record + quint64(source.dropped_ + i - s.begin), s.epoch });
+				open = true;
+			}
+			std::memcpy(batch.data() + inBatch * recordSize_, one.constData(), size_t(recordSize_));
+			if (++inBatch == BATCH) flush();
+		}
+		flush();
+	}
+	nextRecord_ = source.nextRecord_;
 	summarize();
 }
 

@@ -235,6 +235,11 @@ The samples are kept as they came, a few bytes each, within the chart's RAM, whe
 <p>A fast line is measured as any line: its row in <b>Measure</b> (nothing across a gap; a cursor in a gap reads —),
 its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
 without a gap), the trigger and Export to CSV (a row per sample).</p>
+<p><b>Fast math lines</b>: a formula over the channels of one stream, <code>ADC.I_LOAD * ADC.V_BUS</code> in W, is
+computed for every sample of that stream at its own time (<b>ƒ Math → New math line…</b>; the dialog says <i>computed
+for every record of stream ADC</i>). A register in it is held at its last polled value. It is drawn, measured,
+triggered and exported as a fast line, and one of the chart's lines. Channels of two streams are refused: two
+streams, two clocks.</p>
 <p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends is written beside the CSV as it came,
 <code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
 <code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
@@ -446,6 +451,8 @@ a list offers the registers (with their units) and functions: Up and Down pick, 
 a function goes in as <code>name()</code>, the cursor inside. It is drawn and measured like
 a register, from the same polls; the registers it reads are sampled for it even when they are not plotted. Kept for
 the next start; the menu shows, edits and removes them.</p>
+<p>A formula over the channels of one fast stream (<code>ADC.I_LOAD * ADC.V_BUS</code>) is computed for every sample
+of that stream, a register in it held at its last polled value: see <i>Fast streams</i>.</p>
 <h3>CSV</h3>
 <p><b>● Record CSV</b> asks for a file, then writes one row per poll (one per frame with <i>Auto send</i>):
 <code>time_s</code> (since start), <code>datetime</code>, then every register ticked <b>Log</b> (all by default), as

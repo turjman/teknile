@@ -21,6 +21,7 @@
 #include <QByteArray>
 #include <QVector>
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include "model/device_map.h"
@@ -54,6 +55,10 @@ public:
 	void appendMapped(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost);
 	bool mapped() const { return !spans_.isEmpty(); }
 	void keep(std::shared_ptr<void> owner) { owner_ = std::move(owner); } /* mapped: what holds the records' memory */
+	/* values computed from another store's records (a fast math line over a recording): this store emptied, then for
+	 * each record i of `source` compute(i, record) writes recordSize() bytes, laid at that record's place and time
+	 * (its gaps and starts too); false leaves record i out (a result that is no number), so the line breaks there */
+	void fillFrom(const Store &source, const std::function<bool(qsizetype i, char *record)> &compute);
 	/* a time mark of the current start (FastClock::mark and its period) */
 	void mark(quint64 record, double time, double period);
 	void clear();
@@ -121,6 +126,7 @@ private:
 
 	const char *recordAt(qsizetype i) const;
 	void begin(quint64 first, qsizetype count, bool newStart, quint64 lost); /* the lists for records coming in */
+	void put(const char *records, qsizetype count); /* records into the pieces (not mapped) */
 	double decode(const Channel &c, const char *record) const;
 	int segmentOf(qint64 absolute) const;
 	qsizetype bound(double t, bool strict) const;

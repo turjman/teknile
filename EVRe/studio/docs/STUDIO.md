@@ -99,6 +99,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [9.6 How inputs are matched](#96-how-inputs-are-matched)
     - [9.7 The chart key](#97-the-chart-key)
     - [9.8 Examples](#98-examples)
+    - [9.9 Fast math lines](#99-fast-math-lines)
   - [10. The Monitor tab](#10-the-monitor-tab)
     - [10.1 The request row](#101-the-request-row)
     - [10.2 The frame lines](#102-the-frame-lines)
@@ -1611,6 +1612,9 @@ and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
   in a view shorter than 10 ms.
 - **The rest, as for any line:** its legend chip with its newest value, its lane by its unit (7.12), the crosshair's
   value, the cursors, notes, pictures, the memory strip, Hold and Live.
+- **In a math line.** A formula over the channels of one stream (`ADC.I_LOAD * ADC.V_BUS`) is a *fast math line*,
+  computed for every record of the stream and kept as a fast line's records (9.9): drawn, measured, triggered and
+  exported like the channels themselves. Channels of two streams are refused (two streams, two clocks).
 - **The memory.** The records are kept as they came, a few bytes each (two `i16` channels: 4 bytes a record, and
   a quarter of a byte for the summaries the chart draws from, 23.11), once for all the plotted channels of a stream.
   In the RAM budget each fast line counts as one line, as a polled one (7.3): two fast lines and two polled ones share
@@ -1738,7 +1742,7 @@ window keeps what it was given. Its title says what: *Spectrum of SUPPLY_I — A
 
 ## 9. Math lines
 
-A math line is a formula over registers, drawn and measured like a register's own line. For example, a power: `P [W] = SUPPLY_V * SUPPLY_I`.
+A math line is a formula over registers, drawn and measured like a register's own line. For example, a power: `P [W] = SUPPLY_V * SUPPLY_I`. A formula over the channels of one fast stream, `P [W] = ADC.I_LOAD * ADC.V_BUS`, is a fast math line, computed for every record of that stream (9.9).
 
 ### 9.1 Making and managing them
 
@@ -1749,15 +1753,16 @@ A math line is a formula over registers, drawn and measured like a register's ow
 - **Formula**
 
 **Completion.** While a name is typed in the formula, a list under the box offers what it may become: the map's
-numeric registers (the ones a formula can read), each with its unit and description, and the functions and
-constants, each function with its parameters (`atan2(y, x)`). The best first: names that start with what is typed,
+numeric registers (the ones a formula can read), each with its unit and description, the fast streams' channels
+(`ADC.I_LOAD`, with its unit and *fast, every record of ADC*), and the functions and constants, each function with
+its parameters (`atan2(y, x)`). The best first: names that start with what is typed,
 then names with a part after `_` or `.` that does (`I` finds SUPPLY_**I**), then names that contain it, in any
 case. Up and Down pick one, **Enter** or **Tab** takes it, **Esc** closes the list. A register goes in as its name, a
 function as `name()` with the cursor inside the brackets. Only the word at the cursor is replaced: the rest of the
 formula stays. The functions and constants come from the parser's own table (`Expr::builtins`), so the list never
 offers one the formula would refuse.
 
-The formula is checked against the map as you type. The dialog shows either *OK: reads SUPPLY_V, SUPPLY_I* in green, or what is wrong in red. **OK** needs a valid formula and a name. The Log records *math line P = SUPPLY_V * SUPPLY_I*.
+The formula is checked against the map as you type. The dialog shows either *OK: reads SUPPLY_V, SUPPLY_I* in green (a fast math line: *OK: reads ADC.I_LOAD, ADC.V_BUS · computed for every record of stream ADC*), or what is wrong in red. **OK** needs a valid formula and a name. The Log records *math line P = SUPPLY_V * SUPPLY_I*.
 
 The **ƒ Math** menu lists every line as `P = SUPPLY_V * SUPPLY_I`. A line whose formula does not compile against the current map shows its error: `X = FOO * 2  (no register "FOO" in the map)`. Each line has a submenu:
 
@@ -1832,7 +1837,7 @@ Function names match in any case.
 |---|---|
 | `empty` | No formula. |
 | `no register "X" in the map` | An unknown name, or a register that is not numeric (a byte array). |
-| `X is a fast stream's channel: …` | A fast line (`ADC.I_LOAD`, 7.14): a math line reads registers, not fast channels, in this version. |
+| `X and Y: two streams, two clocks: not in this version` | The formula names channels of two fast streams (`ADC.I_LOAD * PWR.P_IN`). A fast math line follows the records of one stream (9.9); two streams have two clocks, and their records do not fall at the same times. |
 | `no function "X"` | An unknown name before `(`. |
 | `X takes N values` | The wrong number of arguments. |
 | `a ) is missing` | An unclosed parenthesis. |
@@ -1850,12 +1855,16 @@ This keeps inputs from different moments from being mixed. Otherwise, for exampl
 
 The registers an active math line reads are sampled for the chart even when their own Plot is not ticked. A formula that names no register at all (a constant such as `2 * pi`) compiles, but it has no poll to follow and draws nothing.
 
+A fast math line is not matched by poll times: it follows its stream's records, and a register in it is held (9.9).
+
 ### 9.7 The chart key
 
 Inside the chart, each line has a numeric key:
 
 - a register's line uses `regKey(slave, address)`: the slave in bits 16 to 23, the address in bits 0 to 15
 - math line *i* uses `FIRST_CHART_KEY + i` (`FIRST_CHART_KEY` = 1 << 24), clear of every register key
+- a fast math line *i* is a fast line of the chart's stream `MathLines::fastStream(i)` (`FAST_STREAM` = 1024 + *i*,
+  clear of the map's streams): its key is `ChartView::fastKey(1024 + i, 0)` (`ChartTab::fastMathKey`)
 
 This keeps the two kinds apart even in a map that uses every address.
 
@@ -1870,6 +1879,34 @@ This keeps the two kinds apart even in a map that uses every address.
 | p_psi | psi | `PRESSURE * 14.5038` | PRESSURE (already scaled to bar by the map) in psi. |
 | fan | % | `clamp(FAN_SPEED, 0, 100)` | Limited to 0 – 100. |
 | speed | rpm | `abs(MOTOR_SPEED)` | Speed without direction. |
+| P_load | W | `ADC.I_LOAD * ADC.V_BUS` | The load's power at every record of the stream ADC: a fast math line (9.9). |
+| I_cal | A | `ADC.I_LOAD * CAL_GAIN` | A fast channel times a polled calibration factor, held at its last polled value. |
+
+### 9.9 Fast math lines
+
+A formula whose names include channels of a fast stream (7.14, `STREAM.CHANNEL`), all of **one** stream, is a fast
+math line. The dialog says so: *OK: reads ADC.I_LOAD, ADC.V_BUS · computed for every record of stream ADC*.
+
+- **Every record, at its own time.** A stream's record holds all its channels at one instant, so the line has a value
+  for each record, at the record's time, from the channels of that record: at a million records a second, a million
+  values a second. Lost records break it as they break the channels' lines.
+- **A register is held.** A register in the formula (a calibration factor, `ADC.I_LOAD * CAL_GAIN`) is held at its
+  last polled value for each record. Until the register's first poll there is nothing to hold, and no record is
+  computed: the line begins at the first block after it. In a recording's window the value polled at or before each
+  record is taken (before the file's first poll, the first).
+- **No number, no record.** A record whose result is not a finite number (`sqrt` of a negative value, a division by
+  zero) is left out: the line breaks there, as over lost records.
+- **Like a fast line.** Its records are kept as a fast line's (a 32-bit float each, about seven digits, and the
+  summaries the chart draws from): drawn, binned from its own summaries, measured (chapter 8), triggered (7.13: its
+  crossing is found as its records are made), exported (a row per record, 7.10), its histogram and spectrum. Its
+  records count in the RAM budget as one fast line (7.14), and it is one of the 64 lines (4.8). It is named *ƒ P*
+  and counted with the math lines in the info line.
+- **From the next block.** A fast math line made, shown again or edited starts with the stream's next block; the
+  stream must be on (13.9), its channels need not be plotted.
+- **Recorded.** Record CSV writes the stream's records beside the CSV (`run.ADC.evrs`, 13.9); a recording's window
+  computes its own fast math lines (`recording/math`, 12.6) from them, record by record.
+- **Two streams, two clocks.** Channels of two streams are refused: *ADC.I_LOAD and PWR.P_IN: two streams, two
+  clocks: not in this version* (9.5).
 
 ## 10. The Monitor tab
 
@@ -3912,9 +3949,9 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/map_document.h`,&nbsp;`.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
 | `src/model/bus_file.h`,&nbsp;`.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
-| `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame |
+| `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame; a fast math line's per record (`evaluateRecords`, 9.9) |
 | `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
-| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame), 23.11 |
+| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame; `fillFrom`: a fast math line's values over a recording's records), 23.11 |
 | `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record` and the engine beside a CSV; `fast::readRecording` / `Recording`: one read, the file mapped, into a mapped store (12.7); `recordingFileFor` (`run.csv` -> `run.ADC.evrs`), `recordingsBeside` |
 | `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
@@ -4204,14 +4241,14 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
 | `BitView` | the register drawn bit by bit, 16 bits a line (a number register only, 64 bits at most) | `setRegister`, `setValue`, `bitCell`, `fieldCell`; signal `writeField(lsb, width, value)` | GUI test |
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
-| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), `watchFreeMemory` / `effectiveRamMB` / `setTestFreeMemory` (the RAM against the free memory, 23.3), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `fastLines` / `mathLinesShown` / `lineCount` / `lineCapText` (one cap of 64 lines for every kind, 4.8; signal `statusMessage`, a math line refused), `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
+| `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), `watchFreeMemory` / `effectiveRamMB` / `setTestFreeMemory` (the RAM against the free memory, 23.3), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, fast math lines (9.9): `fastMathKey` / `isFastMathKey`, `mathLines` / `addMathLine` / `removeMathLine`, `fillFastMath` (a recording's), `fastMathNs` (tests), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text), `setRegisterLimit`, `fastLines` / `mathLinesShown` / `lineCount` / `lineCapText` (one cap of 64 lines for every kind, 4.8; signal `statusMessage`, a math line refused), `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
 | `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `removeFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `stopRun` / `runTrigger` / `triggerRunning` (Run and Stop) / `forceTrigger` (Force) / `triggerPhase` / `triggerCapturing` / `triggerRate` (the state, 7.13) / `nowEdges` (tests: the now edges as last drawn) / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` / `TriggerSettings` / `triggerPosition` / `triggerHoldoff` / `triggerMarkHovered` / `triggerEdgeHovered` / `triggerTagOpen` / `triggerHandleSolid` / `triggerLevelOffScale` / `triggerLevelBeyondLine` / `triggerTagHovered` / `levelText` (a level as set, 6 digits) / `midRange` (Find level, a line's first level) / `triggerPending` (tests: a crossing waiting for its view) / `fastColumnsBinned` (tests) (`TRIGGER_AT`, `TRIGGER_AT_MAX`, `MAX_HOLDOFF`, `STEADY_WINDOW`; 23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`, `triggerRunChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` / `chipButtonRect` / `hoveredChip` (a chip's ▾ and the chip under the mouse; signal `lineMenuRequested`, a click or a right-click on a chip), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` (the weights; a lane whose share is under `LANE_MIN_H` held there, the others sharing the rest, so they fill the plot) / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` (since Clear), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `setRecordingOn` / `memoryStripText` / `memoryStripTextColor` / `memoryStripTip` (the strip's words for the RAM budget reached, 7.4), `releaseSome` (a frame's slice of what the fast stores' trims let go, `RELEASE_NS`, 23.11), `memoryHandleRect` / `memoryHandleHovered` (`MEMORY_HANDLE_W`: the view's box on the strip, or its handle at a short window, 7.4), `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7); signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
-| `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastChannels` (a fast channel named: why it cannot be read, 9.5) | GUI test (with its completion) |
+| `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastStreams` (their channels offered and read; one stream's: a fast math line, said, 9.9) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
-| `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown` | GUI test |
+| `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
@@ -4719,6 +4756,22 @@ each sample of the line's first input register. The other inputs are matched by 
 because a poll gives all its registers the same time (20.8). A poll that lacks one of the inputs gives no point.
 Example: the line `P [W] = SUPPLY_V * SUPPLY_I` needs both registers plotted or sampled. `pushPlotted()` makes sure
 they are sampled even when they are not plotted.
+
+A fast math line (9.9; `MathLine::stream` >= 0, `channels[i]` the stream's channel of input *i*, -1 for a register)
+is computed in `ChartTab::appendFast`, on the window's thread, from each block as the window appends it, so it
+shares `sync()`'s `FAST_APPEND_NS` budget (23.11): `MathLine::evaluateRecords` decodes the channels of each record and
+runs the formula, the registers' held values (`held_`, the last sample `frame()` brought) as constants. The values go
+as 4-byte floats, run by run between the records that give no number, through `ChartView::appendFast` and `markFast`
+into a store of their own (`fast::Store` of the chart's stream `MathLines::fastStream(i)`, one f32 channel, made by
+`setFastStream` with a name of the line's name, unit, formula and stream, so an edit starts a new store), with the
+block's record numbers and the stream's time marks: its times are the stream's. A store that has not seen the
+stream's current start gets one of its own and the stream's newest mark (`streamStarts_`, `streamMarks_`). The
+trigger on it is looked for there too, by a `fast::TriggerScan` of its own (`mathScan_`) over each run, the engine
+told to watch nothing (`fastTriggerChanged(-1)`). At a million records a second one such line (`ADC.I_LOAD *
+ADC.V_BUS`) took 30 to 35 ms a second of the window's thread on the test machine (the timing aid's `math`, 26.8),
+and the chart kept its 55 frames a second. A recording's window computes its fast math lines at the end of its
+feed (`ChartTab::fillFastMath`), from the stream's mapped store, with `fast::Store::fillFrom`: the source's starts
+and marks, its segments, and a new segment after each record left out.
 
 ### 23.9 Frame budget
 
@@ -5400,7 +5453,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   Histogram and Spectrum, and the spectrum takes its samples as they are (*evenly spaced*, the rate written whole, no
   *e+*), its peak within one step of 50 Hz. Recorded (12.7): **Record CSV** for 1.5 s writes `fast.ADC.evrs` beside
   `fast.csv` and the Log says so; the recording opens with it, a fast line of its samples (about 15 000, none lost)
-  equal to those the live chart took at the same times; the `.evrs` alone opens on the same wall clock (within 50 ms)
+  equal to those the live chart took at the same times, and its window's own fast math line (`recording/math`,
+  `ADC.I_LOAD * ADC.V_BUS`) computed from them record by record; the `.evrs` alone opens on the same wall clock (within 50 ms)
   and says its samples; a copy cut 3 bytes into its last piece opens and says it was cut off. The trigger armed on
   the line in Normal (from its chip's menu, 0 A rising) through Disconnect, Connect, Arm and the stream stopped and
   started: the engine watches what the window asks (the same channel and arm, asked on its thread with
@@ -5414,8 +5468,10 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   chart paints again within two frames, no paint after it over 40 ms, and at least 6 frames in each 200 ms slot
   after the first; the blocks that piled up were appended over more than one frame (a sync left some for the next,
   `fastSyncsLeftOver`), none lost and none left unshown (it prints the first paint's delay, the frames and longest
-  paint of five slots, and the syncs that left blocks). Then the example map again, connected to the Python fake
-  device.
+  paint of five slots, and the syncs that left blocks). Then a fast math line `ADC.I_LOAD * ADC.V_BUS` for 10 s:
+  every record of the stream computed, the paint at most 8 ms a frame on average, its cost (`fastMathNs`) under a
+  quarter of the window's thread (it prints the ms a second, 9.9). Then the example map again, connected to the
+  Python fake device.
 
 Fast lines without a device (`chartFastLines`, after the chart's many-lines steps), a chart of its own fed records
 as the window feeds it:
@@ -5443,8 +5499,10 @@ example: the stream ADC listed with its window `0xDC00`, its 2 channels, *A samp
 block*, no check failing, its buttons with a pointing hand and a tooltip; in English and Arabic at the dialog's least
 size every label, button and column header whole; **+ Stream** gives `S2` and *stream S2: it has no channel*, **+
 Channel** takes that away, its window over `0xD000` is told at once (*shares bytes with the register UPTIME*);
-OK puts two streams into the map as one undo step, undone one again. A math line `SUPPLY_V * adc.i_load` is refused
-with *adc.i_load is a fast stream's channel: …* (9.5), `SUPPLY_V * 2` reads `OK`.
+OK puts two streams into the map as one undo step, undone one again. A math line `SUPPLY_V * adc.i_load` reads *OK:
+reads SUPPLY_V, adc.i_load · computed for every record of stream ADC* (9.9), `ADC.I_LOAD * PWR.P_IN` is refused with
+*… two streams, two clocks: not in this version* (9.5), `SUPPLY_V * 2` reads `OK`, and `I_LO` typed offers
+`ADC.I_LOAD`.
 
 Fast lines measured (`chartFastMeasure`, after `chartFastLines`), records of 10 kHz fed as the window feeds them:
 
@@ -5460,6 +5518,28 @@ Fast lines measured (`chartFastMeasure`, after `chartFastLines`), records of 10 
 - **The export**: 1000 records of two channels are 1000 rows, the values the records'.
 - **Spectrum and histogram** in a chart tab: over a range with a gap the spectrum takes its longest part without one
   and the window's title says *1.98 s: 1.39 s of it without a gap*; the histogram counts every record.
+
+Fast math lines (`chartFastMath`, after `chartFastMeasure`, 9.9), chart tabs of their own (settings group
+`fastMathTest`) fed blocks as the window feeds them:
+
+- **The parser**: `ADC.I_LOAD * ADC.V_BUS` is a fast line of stream 0, `adc.i_load * SUPPLY_V` too with the register
+  as an input, `SUPPLY_V * 2` is not; `ADC.I_LOAD * PWR.P_IN` is refused with *two streams, two clocks: not in this
+  version*.
+- **The product**: 3000 records, the line's record by record (every 7th, 429) at the stream's times and equal to the
+  product of the two channels.
+- **A register held**: `ADC.I_LOAD * SUPPLY_V`, no record before SUPPLY_V's first poll, then each record times the
+  last polled value (12.5, then 13.0).
+- **No number**: `sqrt(ADC.I_LOAD)` leaves out the records of a negative current, gaps there.
+- **Drawn**: its bins' min and max are its records'; named *ƒ P*.
+- **Measured**: Measure's min, max and mean between the cursors equal a plain loop over its records.
+- **Exported**: 1000 records are 1000 rows at the channels' times.
+- **Triggered**: Rising through 6 W on a step from 0 to 12 W fires between records 299 and 300, found as its records
+  are made; the engine is told to watch no stream.
+- **A recording's chart**: `fillFastMath` from a stream's store, SUPPLY_V held by time (before the first sample: the
+  first).
+- **Its RAM**: 16 lines on a 256 MB budget, 6.5 million records: its store trimmed to its sixteenth; the stream's
+  store keeps none while none of its channels is plotted.
+- **The cap**: with 63 lines a fast math line is the 64th (a math line in the info line), a second is refused.
 
 Phase-two steps, before the Map editor's: the recording format and a recording window.
 
@@ -5773,7 +5853,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 536 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 549 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5965,7 +6045,7 @@ channel tables list exactly the schema's keys. It needs the `jsonschema` package
 every 500 ms each Chart tab (the live one, and a recording's window) appends one line to the file:
 
 ```
-14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 grid 1.10 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3
+14:03:12.500 chart fps 58.0 paint 6.12 max 14.30 ms | bin 0.50 lines 2.10 segments 0.00 present 0.00 marks 0.40 strip 0.30 legend 0.20 grid 1.10 ms | binned 3/29 | measure 1.20 ms x 5 threads 9.80 ms | polls 1000/s fast 1000000/s columns 2.3 | math 17.50 ms
 ```
 
 - `fps`: frames painted a second; `paint`, `max`: the paint's average and longest, ms.
@@ -5977,6 +6057,7 @@ every 500 ms each Chart tab (the live one, and a recording's window) appends one
 - `measure`: the measurement table's updates, the window thread's time in all and their count; `threads`: the
   chart's threads' time on the full measurements (23.8).
 - `polls`: polls a second (the samples of the register with the most); `fast`: the fast streams' records a second.
+- `math`: the window thread's time computing fast math lines (9.9) in the 500 ms, ms.
 - `columns`: the columns of fast lines binned a frame on average. A live view moves by a column or two a frame
   and keeps the columns it shares with the frame before (23.11), so this stays a few, not the view's thousand; a
   held view that is reused bins none; a zoom, a trim past the kept columns or a new start bin the view whole once.
