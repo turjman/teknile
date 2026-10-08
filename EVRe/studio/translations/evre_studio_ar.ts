@@ -2778,7 +2778,7 @@ off the chart.&lt;/li&gt;
 &lt;p&gt;From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
 oscilloscope&apos;s: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
 right edge (&lt;i&gt;-8 ms&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;), or from &lt;b&gt;T&lt;/b&gt; while the trigger holds the view on a crossing (&lt;i&gt;0&lt;/i&gt; under
-it, &lt;i&gt;+4 ms&lt;/i&gt;). At the axis&apos;s right end &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
+it, &lt;i&gt;+4 ms&lt;/i&gt;). Above the plot, at the right of the legend&apos;s row, &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
 at 0; the wheel steps the window through 1, 2 and 5 per division. &lt;b&gt;Display → Time grid&lt;/b&gt;: Auto (divisions below
 1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, &lt;i&gt;T +1.234 ms&lt;/i&gt;). Long windows and fast lines are drawn
 from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
@@ -2937,7 +2937,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;li&gt;&lt;b&gt;مسح&lt;/b&gt; يفرغ الخطوط والذاكرة ويبدأ المجاميع من جديد؛ و&lt;b&gt;إزالة الكل&lt;/b&gt; تزيل كل مسجّل
 عن المخطط.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفي الطرف الأيمن للمحور يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
+&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفوق المخطط، في يمين صف المفتاح، يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
 الطويلة والخطوط السريعة تُرسم من ملخصات الأدنى/الأعلى، فلا تكلّف أكثر من القصيرة.&lt;/p&gt;
 &lt;h3&gt;القياسات&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و

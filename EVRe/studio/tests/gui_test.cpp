@@ -11255,25 +11255,22 @@ private:
 		const QString readout = view->divisionReadout();
 		const QRectF readoutRect = view->divisionReadoutRect();
 		const QRegularExpression readoutForm(QStringLiteral("^1 ms/div · \\d\\d:\\d\\d:\\d\\d\\.\\d{3}$"));
-		QFont small = QGuiApplication::font(); /* the chart's labels' */
-		small.setPointSizeF(8.5);
-		const QFontMetricsF metrics(small);
-		bool apart = !readoutRect.isEmpty();
-		for (int k = 0; k < labels.size(); k++) {
-			const double half = metrics.horizontalAdvance(labels[k]) / 2;
-			apart = apart && (labelX[k] + half < readoutRect.left() || labelX[k] - half > readoutRect.right());
-		}
-		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.top() > plot.bottom()
-				&& readoutRect.right() < plot.right() && readoutRect.left() > plot.center().x()
-				&& readouts.size() <= 2 + ms / 500
+		/* the readout in the state corner's row above the plot (alone there live: at its right end), so every one of
+		 * the 11 labels is drawn (the owner: it hid "-2 ms"); never over the legend */
+		const QRectF legendRow = view->legendViewport();
+		const bool everyLabel = labels.size() == 11;
+		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.bottom() < plot.top()
+				&& readoutRect.top() >= 0 && view->stateRect().isEmpty() && std::fabs(readoutRect.right() - plot.right()) <= 1
+				&& !readoutRect.intersects(legendRow) && readouts.size() <= 2 + ms / 500
 				&& view->toolTipAt(readoutRect.center()).contains(QStringLiteral("the clock time at 0, the right edge"));
-		std::printf("     (10 ms: labels %s; the readout \"%s\" at %.0f..%.0f)\n", qPrintable(labels.join(QStringLiteral(", "))),
-				qPrintable(readout), readoutRect.left(), readoutRect.right());
+		std::printf("     (10 ms: %d labels %s; the readout \"%s\" at %.0f..%.0f x %.0f..%.0f, the legend to %.0f)\n",
+				int(labels.size()), qPrintable(labels.join(QStringLiteral(", "))), qPrintable(readout), readoutRect.left(),
+				readoutRect.right(), readoutRect.top(), readoutRect.bottom(), legendRow.right());
 		check(offsets, "chart, time grid: at 10 ms live the labels are offsets from the right edge (-10 ms, -8 ms, -5 ms "
 				"... 0, the 0 at the right edge)");
-		check(readoutOk && apart, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the clock "
-				"time at 0) at the time axis's right end, clear of the labels, its clock time written at most twice a "
-				"second, its tooltip saying what it is");
+		check(readoutOk && everyLabel, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the "
+				"clock time at 0) in the state corner's row above the plot, at its right end and clear of the legend; all 11 "
+				"time labels drawn; its clock time written at most twice a second, its tooltip saying what it is");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
@@ -11325,10 +11322,17 @@ private:
 				&& held.contains(QStringLiteral("+4 ms")) && held.contains(QStringLiteral("-2 ms"))
 				&& view->timeGridX().size() == 9 && heldReadout == QStringLiteral("1 ms/div · ") + atT
 				&& view->toolTipAt(view->divisionReadoutRect().center()).contains(QStringLiteral("(T)"));
-		std::printf("     (held on T at %.1f px: labels %s; the readout \"%s\", T at %s)\n", crossX,
-				qPrintable(held.join(QStringLiteral(", "))), qPrintable(heldReadout), qPrintable(atT));
-		check(fromT, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the crossing "
-				"within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so");
+		/* with the trigger's state in the corner the readout sits left of it, neither over the other nor over the legend */
+		const QRectF heldRect = view->divisionReadoutRect(), heldState = view->stateRect();
+		const bool beside = !heldState.isEmpty() && heldRect.right() <= heldState.left()
+				&& heldRect.bottom() < plot.top() && !heldRect.intersects(view->legendViewport());
+		std::printf("     (held on T at %.1f px: %d labels %s; the readout \"%s\" at %.0f..%.0f, the state from %.0f, the legend "
+				"to %.0f; T at %s)\n", crossX, int(held.size()), qPrintable(held.join(QStringLiteral(", "))),
+				qPrintable(heldReadout), heldRect.left(), heldRect.right(), heldState.left(), view->legendViewport().right(),
+				qPrintable(atT));
+		check(fromT && beside, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the "
+				"crossing within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so; "
+				"the readout left of the trigger's state, over neither it nor the legend");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */

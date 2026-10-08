@@ -1109,7 +1109,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
 | -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
-| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout (7.9). Saved. |
+| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn per second, the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
@@ -1293,7 +1293,8 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   row's end is cut before the arrow. Its room is at most 40 % of the plot (more for its shortest form rather than
   cut, always leaving the legend its first chip and both arrows). When the text is longer, whole parts are dropped
   in turn: *Live to follow*, then *click / drag* (*cursors* stays), then *manual* (*Y log* stays); the time held
-  always stays. The whole text is its
+  always stays. Below a 1 s window the time/div readout sits in this row just left of the state, inside the same
+  room; it keeps its place (the state's parts go first), and the chips end before it. The whole text is its
   tooltip. In Arabic it reads from the right. With Lanes it says nothing about them: the lanes' ▾ and ⋯ show the
   fold and the menu.
 - **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up or below 0.001 are written in exponent form (`1.235e+05`). Zero is `0`.
@@ -1304,8 +1305,9 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   **offsets**, in the unit that fits the window (s, ms, µs): live, or held by you, from the right edge (*-10 ms*,
   *-9 ms* ... *0*); held by the trigger on a crossing, from **T** (*-2 ms* ... *0* ... *+8 ms*, the *0* under the
   crossing; the grid is laid from T, so a line always falls on it). Labels stand every 1, 2 or 5 divisions as their
-  width needs, *0* always among them. At the axis's right end, just left of the last label, a readout in a box of its
-  own says the division and the clock time at 0: *1 ms/div · 18:07:34.263* (T's time while held on a crossing). Live,
+  width needs, *0* always among them. Above the plot, in the state's row at its right end (just left of the state when
+  there is one), a readout in a box of its own says the division and the clock time at 0: *1 ms/div · 18:07:34.263*
+  (T's time while held on a crossing); being off the time axis, it hides none of its labels. Live,
   its clock time is written again at most twice a second, so it does not run; its tooltip says what it is. The
   wheel steps the window through 1, 2 and 5 per division (7.8), so the readout and the labels stay round; a window
   typed (*30 ms*) is kept, and the readout then says its exact division (*3 ms/div*). In Arabic every offset and the
@@ -4511,7 +4513,10 @@ The following choices keep a frame cheap on a high-DPI screen:
   card's lines lie where the CPU's do (a picture check). `drawDivisionLabels` writes the offsets (`offsetText`,
   each an isolated left-to-right piece) every 1, 2 or 5 divisions as their width needs, and the readout
   (`divisionReadoutText`: the division and the clock time at 0, its clock written again at most every
-  `DIVISION_CLOCK_MS` = 500 ms while live) in a box just left of the last label; labels under it are left out. The
+  `DIVISION_CLOCK_MS` = 500 ms while live). `drawState` draws the readout in the state's row above the plot, left of
+  the state (alone at the row's right end without one), so no time label is left out for it (one hid *-2 ms*); its
+  box is `divisionReadoutWidth` wide, its text measured with every digit a 0, so the legend's end does not follow the
+  clock's digits, and `fitState` keeps that room inside `STATE_SHARE`, dropping the state's parts first. The
   wheel steps the window by `divisionWindow` (the next 1, 2 or 5 per division), part notches of a touchpad adding up
   to one (`wheelNotches_`).
 - **Times from T** (U-7). `timeOrigin` is T while `timesFromT` holds for the view, else NaN; `fromTText` writes a time
@@ -4554,7 +4559,8 @@ The following choices keep a frame cheap on a high-DPI screen:
   outside the card's layer, so this one picture serves both drawing paths. Between those the picture is drawn (1.3 ms a frame at 4K drawn each time). The chips'
   widths (`legendLayout`, also used at every mouse move for the pointer's shape) are measured once while the lines
   and the font stay (`chipWidths_`): 64 names measured at every frame and every mouse move held the chart near 52
-  frames a second with the mouse moving. The row ends `STATE_GAP` (16 px) before the state's text: `fitState` takes
+  frames a second with the mouse moving. The row ends `STATE_GAP` (16 px) before the corner (the time/div
+  readout, else the state's text): `fitState` takes
   the first of `stateVariants` (the whole, then *Live to follow*, *click / drag* and *manual* dropped in turn) that
   fits `STATE_SHARE` (40 %) of the plot, or the shortest whole while the legend keeps its first chip and arrows,
   else the shortest ending in … . It measures the time held as the widest number, so the row's end does not follow
@@ -5690,9 +5696,10 @@ at 100 ms no lock; Hold ends it (the button Live), Live locks again; the user's 
 and the lock comes back after it. The time grid (`chartTimeGrid`): at 1 s the clock-time labels as before and no
 readout; at a 10 ms live window, 30 frames of a 70 Hz sine: the 9 lines inside the plot at its tenths, the same in
 every frame while the view's end moves 0.5 s; the labels *-10 ms* ... *-8 ms* ... *0*, the *0* at the right edge; the
-readout *1 ms/div · HH:mm:ss.zzz* at the axis's right end, clear of every label, its clock time written at most twice a
-second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from 0.5 s: 1 s, 1.25 s, 1 s, 0.5 s; held by
-the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's;
+readout *1 ms/div · HH:mm:ss.zzz* in the state's row above the plot, at its right end, clear of the legend, all 11 labels
+drawn, its clock time written at most twice a second, its tooltip; the wheel from 10 ms: 5 ms, 10 ms, 20 ms (*2 ms/div*), from 0.5 s: 1 s, 1.25 s, 1 s, 0.5 s; held by
+the trigger (Normal, 20 %): *0* within a pixel of the crossing, *-2 ms* and *+4 ms*, the readout's clock time T's,
+the readout left of the trigger's state, over neither it nor the legend;
 Display's Time grid: Clock times at 10 ms, Divisions at 10 s (*1 s/div*, *-5 s*, *0*), saved and taken by a new tab,
 Auto; in Arabic each offset and the readout an isolated left-to-right piece. On a card (`chartBinsAndGpu`) the
 divisions are compared with the CPU's picture block by block. Times from T (`chartTimesFromT`): held by Normal on a
