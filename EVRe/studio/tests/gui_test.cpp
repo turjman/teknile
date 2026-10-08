@@ -1480,6 +1480,7 @@ private:
 				if (mathBefore.isValid()) QSettings().setValue(QStringLiteral("recording/math"), mathBefore);
 				else QSettings().remove(QStringLiteral("recording/math"));
 			}
+			recordingWindowPictures(csv, QStringLiteral("fast"));
 			if (opened && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the recording with its fast lines */
 				opened->resize(1400, 800);
 				QTest::qWait(300);
@@ -12354,6 +12355,183 @@ private:
 	/* Recordings in windows of their own: opened from the file (with the map: names matched, a byte array left out, a
 	 * math line computed from the file), held, titled with the name and span, notes read and saved; the RAM question;
 	 * dropped on the window; several at once while the live chart goes on; a recording's notes written while it runs */
+	/* EVRE_TEST_SHOT: pictures of a recording's window for a look (the viewer's review), in each theme and language,
+	 * Lanes off and on, at its first size, smaller and bigger, and measured between two cursors */
+	void recordingWindowPictures(const QString &file, const QString &tag) {
+		if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_viewer_") + tag;
+		const QVariant lanesBefore = QSettings().value(QStringLiteral("recording/lanes"));
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		const auto picture = [&](const QString &name, bool lanes, const QSize &size, bool measure = false) {
+			QSettings().setValue(QStringLiteral("recording/lanes"), lanes);
+			QSettings().setValue(QStringLiteral("recording/measure"), measure);
+			RecordingWindow *shown = nullptr;
+			RecordingWindow::open(nullptr, file, map_.regs, 2048, [&](RecordingWindow *w) { shown = w; });
+			(void) QTest::qWaitFor([&] { return shown != nullptr; }, 5000);
+			if (!shown) return;
+			(void) QTest::qWaitForWindowExposed(shown);
+			if (size.isValid()) shown->resize(size);
+			if (measure) {
+				shown->chartTab()->view()->setCursors(shown->firstTime() + (shown->lastTime() - shown->firstTime()) * 0.3,
+						shown->firstTime() + (shown->lastTime() - shown->firstTime()) * 0.6);
+			}
+			QTest::qWait(measure ? 1200 : 600);
+			shown->grab().save(prefix + QLatin1Char('_') + name + QStringLiteral(".png"));
+			delete shown;
+		};
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+			picture(theme, false, QSize());
+			picture(theme + QStringLiteral("_lanes"), true, QSize());
+			picture(theme + QStringLiteral("_measure"), false, QSize(), true);
+		}
+		Theme::apply(*qApp, true);
+		picture(QStringLiteral("small"), false, QSize(900, 600));
+		picture(QStringLiteral("big"), false, QSize(1600, 900));
+		picture(QStringLiteral("big_lanes"), true, QSize(1600, 900));
+		language::apply(*qApp, QStringLiteral("ar"));
+		picture(QStringLiteral("ar_dark"), false, QSize());
+		picture(QStringLiteral("ar_dark_lanes"), true, QSize());
+		Theme::apply(*qApp, false);
+		picture(QStringLiteral("ar_light_measure"), false, QSize(), true);
+		Theme::apply(*qApp, true);
+		language::apply(*qApp, QStringLiteral("en"));
+		for (const auto &[key, before] : { std::pair{ QStringLiteral("recording/lanes"), lanesBefore },
+					 std::pair{ QStringLiteral("recording/measure"), measureBefore } }) {
+			if (before.isValid()) QSettings().setValue(key, before);
+			else QSettings().remove(key);
+		}
+	}
+
+	/* The recording's window revisited (P5): opened with Measure on, it showed an empty chart at 0..1 (the file's
+	 * samples held back by the opening's measurement, and the change after the feed never painted: no frames come to
+	 * it), the Y boxes "0" and "1" in Auto's grey; made bigger on the card, a frame the system let go left the layer at
+	 * its old size beside a blank bar; its Y row spread over the window; a theme switch passed it by. */
+	void recordingViewer(const QString &path) {
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		const QVariant lanesBefore = QSettings().value(QStringLiteral("recording/lanes"));
+		QSettings().setValue(QStringLiteral("recording/measure"), true);
+		QSettings().setValue(QStringLiteral("recording/lanes"), false);
+		QSettings().setValue(QStringLiteral("recording/yAuto"), true);
+		RecordingWindow::closeAll();
+		RecordingWindow *opened = nullptr;
+		QElapsedTimer since;
+		since.start();
+		RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { opened = w; });
+		(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+		if (!opened) {
+			check(false, "recording's window revisited: opened");
+			return;
+		}
+		ChartView *view = opened->chartTab()->view();
+		const int volts = int(regKey(opened->definitions().value(0)));
+		const qint64 keptAtOnce = view->pointsKept(volts);
+		const QString valueAtOnce = view->legendValue(volts);
+		(void) QTest::qWaitForWindowExposed(opened);
+		QTest::qWait(150); /* its first frame, under the status's 500 ms */
+		auto *low = opened->findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *high = opened->findChild<QLineEdit *>(QStringLiteral("yMax"));
+		const qint64 openedMs = since.elapsed();
+		const bool boxes = low && high && low->text() == ChartTab::yFieldText(view->yLo(), false)
+				&& high->text() == ChartTab::yFieldText(view->yHi(), false) && view->yLo() < 12 && view->yHi() > 17.9;
+		std::printf("  opened with Measure on: %lld samples and \"%s\" at once; Y %g..%g, the boxes \"%s\" \"%s\" after %lld ms\n",
+				(long long) keptAtOnce, qPrintable(valueAtOnce), view->yLo(), view->yHi(), low ? qPrintable(low->text()) : "",
+				high ? qPrintable(high->text()) : "", (long long) openedMs);
+		check(keptAtOnce == 600 && !valueAtOnce.isEmpty(), "recording's window, Measure on: the file's samples on the chart "
+				"at once and the legend's values shown (none held back by the opening's measurement)");
+		check(boxes && openedMs < 500, "recording's window: the Y boxes show the range of its first frame at once (Auto), "
+				"not 0 and 1 until the status's next turn");
+
+		/* a change just after a feed's frames (no frames come after them): painted all the same */
+		opened->chartTab()->frame({});
+		QApplication::processEvents(); /* the frame's own paint */
+		const int paintsBefore = view->paints();
+		view->showLastValues();
+		const bool painted = QTest::qWaitFor([&] { return view->paints() > paintsBefore; }, 600);
+		check(painted, "recording's window: a change just after a feed's frames is painted though no frame follows");
+
+		/* the Y row: its groups packed, as in the live chart's (the room of the hidden Memory and RAM a stretch) */
+		QLabel *minLabel = nullptr, *rangeLabel = nullptr;
+		for (QLabel *label : opened->findChildren<QLabel *>()) {
+			if (label->text() == QLatin1String("min")) minLabel = label;
+			if (label->text() == QLatin1String("Y range")) rangeLabel = label;
+		}
+		auto *mode = opened->findChild<QComboBox *>(QStringLiteral("yMode"));
+		/* each label and list as wide as it needs: the text of "min" beside its box, not across a stretched label */
+		int spread = minLabel && rangeLabel && mode ? 0 : 1000;
+		for (QWidget *w : std::initializer_list<QWidget *>{ minLabel, rangeLabel, mode })
+			if (w) spread = std::max(spread, w->width() - w->sizeHint().width());
+		std::printf("  the Y row: its label and list at most %d px wider than they need\n", spread);
+		check(spread <= 4, "recording's window: the Y row packed, \"Y range\" beside its list and \"min\" beside its box "
+				"(the room of the hidden Memory and RAM not spread over the labels)");
+
+		/* made bigger on the CPU: the window's own pixels are the chart's picture at once */
+		opened->resize(1000, 620);
+		view->setDrawing(ChartView::Drawing::Cpu);
+		QTest::qWait(300);
+		opened->resize(1300, 800);
+		QApplication::processEvents();
+		const QImage own = opened->screen()->grabWindow(opened->winId()).toImage().convertToFormat(QImage::Format_RGB32);
+		const QImage picture = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const double cpuAlike = own.size() == picture.size() ? blocksAlike(own, picture, 24) : 0;
+		std::printf("  made bigger on the CPU: the window's pixels %.2f%% like its picture\n", cpuAlike * 100);
+		check(cpuAlike >= 0.97, "recording's window made bigger on the CPU: all of it painted at once, the new part too");
+
+		/* on the card: a frame the system lets go (busy) as the window grows is followed by another, the layer at the
+		 * new size; on the screen the plot is the CPU's picture */
+		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
+		if (adapters.isEmpty()) {
+			check(true, "recording's window made bigger on a GPU: no adapter on this machine (Direct3D 11 on Windows "
+					"only): the CPU draws, skipped");
+		} else {
+			opened->resize(1000, 620);
+			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			(void) QTest::qWaitFor([&] { return !view->openingGpu(); }, 10000);
+			for (int k = 0; k < 3; k++) {
+				view->repaint();
+				QApplication::processEvents();
+			}
+			QTest::qWait(200);
+			const int dropped = view->gpuDropped();
+			view->dropNextGpuFrame();
+			opened->resize(1300, 800);
+			QApplication::processEvents();
+			QRect at;
+			(void) view->gpuPicture(&at);
+			const bool again = QTest::qWaitFor([&] { return view->gpuPresentedSize() == at.size(); }, 500);
+			QTest::qWait(100);
+			const QRect g = opened->geometry();
+			const QImage screen = opened->screen()->grabWindow(0, g.x(), g.y(), g.width(), g.height()).toImage()
+					.convertToFormat(QImage::Format_RGB32);
+			const QImage cpu = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
+			const double alike = screen.size() == cpu.size() ? blocksAlike(screen.copy(at), cpu.copy(at), 24) : 0;
+			std::printf("  made bigger on %s: a frame let go (%d), the layer %dx%d for the plot's %dx%d; on the screen "
+					"%.2f%% like the CPU's picture\n", qPrintable(view->drawingName()), view->gpuDropped() - dropped,
+					view->gpuPresentedSize().width(), view->gpuPresentedSize().height(), at.width(), at.height(), alike * 100);
+			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again && alike >= 0.97,
+					"recording's window made bigger on a GPU: a frame the system let go is followed by another, the card's "
+					"layer at the new size (no blank bar over the new part), its plot the CPU's picture");
+			view->setDrawing(ChartView::Drawing::Cpu);
+		}
+
+		/* the theme switched: its boxes in the new theme at once */
+		auto *sidebarCard = window_.findChild<Sidebar *>();
+		if (sidebarCard) emit sidebarCard->themeClicked();
+		const bool themed = low && low->styleSheet() == QStringLiteral("color:%1").arg(Theme::colors().muted.name());
+		if (sidebarCard) emit sidebarCard->themeClicked();
+		check(sidebarCard && themed && Theme::isDark(), "recording's window: the theme switched reaches it too (its Y "
+				"boxes in the new theme's grey at once)");
+
+		RecordingWindow::closeAll();
+		for (const auto &[key, before] : { std::pair{ QStringLiteral("recording/measure"), measureBefore },
+					 std::pair{ QStringLiteral("recording/lanes"), lanesBefore } }) {
+			if (before.isValid()) QSettings().setValue(key, before);
+			else QSettings().remove(key);
+		}
+		QSettings().remove(QStringLiteral("recording/drawing"));
+	}
+
 	void recordingWindows() {
 		QTemporaryDir folder;
 		const QString path = folder.filePath(QStringLiteral("bench.csv"));
@@ -12412,6 +12590,15 @@ private:
 				"with its value names), a byte array left out, an empty cell no sample");
 		check(math && notes, "recording window: a math line of its own (recording/math) computed from the file; the notes "
 				"beside it shown");
+		recordingViewer(path);
+		recordingWindowPictures(path, QStringLiteral("regs"));
+		/* (closed by the revisit's checks: opened again for the rest) */
+		opened = nullptr;
+		window_.openRecording(path);
+		(void) QTest::qWaitFor([&] { return !(RecordingWindow::windows().isEmpty() || !(opened = RecordingWindow::windows().first())); }, 5000);
+		if (!opened) return;
+		(void) QTest::qWaitForWindowExposed(opened);
+		view = opened->chartTab()->view();
 		/* held on a file, nothing comes after its end: no trigger, in a chip's menu or the Display menu */
 		opened->chartTab()->showLineMenu(keyOf(volts), QPoint(0, 0));
 		QMenu *chipMenu = opened->chartTab()->lineMenu();

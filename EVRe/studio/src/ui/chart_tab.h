@@ -290,6 +290,7 @@ private:
 	std::function<double()> clock_;
 	bool recording_ = false;
 	ChartWidget *chart_;
+	QHBoxLayout *axesRow_ = nullptr; /* Window, Memory, RAM, the Y range (buildAxesRow) */
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
 	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */

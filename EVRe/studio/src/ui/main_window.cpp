@@ -1453,6 +1453,7 @@ void MainWindow::toggleTheme() {
 	showBus(); /* the devices' dots in the new look */
 	showDeviceInfo(); /* its amber too */
 	chartTab_->themeChanged();
+	for (RecordingWindow *window : RecordingWindow::windows()) window->chartTab()->themeChanged(); /* theirs too */
 }
 
 void MainWindow::showHelp() {

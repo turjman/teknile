@@ -102,6 +102,7 @@
 #include "ui/value_pace.h"
 
 class QPainter;
+class QTimer;
 class QPolygonF;
 
 /* a value axis label: every label of the axis with the decimals its step needs (14, 12 … 6; 0.2, 0.4), a
@@ -625,6 +626,12 @@ public:
 	/* the card's layer is over the window (the plot is the card's then); tests: the card's last frame read back, with
 	 * where it lies in the window's pixels */
 	bool plotOnCard() const { return gpu_ && gpu_->shown(); }
+	/* tests: the card's frames let go (the system busy), the size of its last frame on the layer, the next let go */
+	int gpuDropped() const { return gpu_ ? gpu_->droppedFrames() : 0; }
+	QSize gpuPresentedSize() const { return gpu_ ? gpu_->presentedSize() : QSize(); }
+	void dropNextGpuFrame() {
+		if (gpu_) gpu_->dropNextFrame();
+	}
 	QImage gpuPicture(QRect *inWindow = nullptr) const;
 
 signals:
@@ -650,6 +657,9 @@ signals:
 	void currentLaneChanged();               /* another lane current: the toolbar's Y range shows it */
 	void laneFoldsChanged();                 /* a lane folded or opened: foldedLanes() to be saved */
 	void laneHeightsChanged();               /* a separator dragged or double-clicked: laneHeights() to be saved */
+	/* a held view painted with other Y ranges than its frame before (Auto follows what is shown): the toolbar's boxes
+	 * follow it at once, no frames come to a recording's window */
+	void yRangesShown();
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -1292,7 +1302,10 @@ private:
 
 	FrameBudget budget_;
 	QElapsedTimer framesCome_; /* since frame() was called last: a change waits for the next frame (refresh()) */
+	QTimer *framesStopped_ = nullptr; /* a change that waited: painted if no frame came after all (refresh()) */
 	void paintSoon();          /* update(), not of the plot while the card shows it */
+	int droppedSeen_ = 0;      /* the card's frames let go, as last seen (plotOnGpu) */
+	QVector<double> rangesShown_; /* the Y ranges of the last frame of a held view (yRangesShown) */
 };
 
 /* ChartWidget: the chart as the window uses it, a ChartView and its API */

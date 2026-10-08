@@ -401,6 +401,7 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addWidget(yMin_);
 	row->addWidget(mutedLabel(tr("max")));
 	row->addWidget(yMax_);
+	axesRow_ = row;
 	return row;
 }
 
@@ -684,6 +685,11 @@ void ChartTab::connectControls() {
 	for (QLineEdit *field : { yMin_, yMax_ })
 		connect(field, &QLineEdit::editingFinished, this, &ChartTab::applyYFields);
 	connect(chart_, &ChartWidget::yChangedByUser, this, [this] { showYRange(); });
+	/* a held view's frame: Auto's boxes show its range at once (a recording's window opened showed "0" and "1", the
+	 * range before its first frame, until the status's next turn) */
+	connect(view, &ChartView::yRangesShown, this, [this] {
+		if (lanes_->isChecked() || chart_->yAuto()) showYRange(false);
+	});
 	connect(normalize_, &QAction::toggled, this, [this](bool on) {
 		if (on && chart_->yLog()) { /* Log and Normalise exclude each other: the scale linear, its range kept */
 			chart_->setYLog(false);
@@ -902,6 +908,9 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, ramNeed_,
 				clearButton_, removeAllButton_ })
 		w->hide();
+	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
+	 * from its box, as if it were the list's) */
+	axesRow_->insertStretch(axesRow_->indexOf(ramNeed_), 1);
 	{
 		const QSignalBlocker quiet(smooth_);
 		smooth_->setChecked(false);
