@@ -91,9 +91,11 @@ public:
 	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. The free memory limiting the
 	 * RAM to limitMB (0: no limit; freeMB the free memory): "only 2.1 GB free: keeps about 40 s", over = true. Fast
 	 * lines keeping older samples as summaries (ChartView::fastTiers; -1: none): what is kept and the newest part kept
-	 * whole, "needs 23 GB, keeps 100 min (samples for the newest 79 s)" */
+	 * whole, short so that it shows whole in the row at the main window's narrowest, "keeps 100 min · 79 s in full";
+	 * full (when given) the whole sentence for the tooltip, "needs 23.0 GB for every sample; keeps 100 min, the newest
+	 * 79 s with every sample and the rest as summaries" (without tiers the same as the text) */
 	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB = 0,
-			qint64 freeMB = -1, double tieredKept = -1, double tieredSamples = -1);
+			qint64 freeMB = -1, double tieredKept = -1, double tieredSamples = -1, QString *full = nullptr);
 	/* The RAM against the free memory: the budget is a cap, not a reservation, so with less free than it the chart
 	 * keeps within what it holds now and the free memory, less a reserve (ramReserveMB: 1 GB, or a tenth of this
 	 * computer's memory when more), never under RAM_FLOOR_MB; the RAM set when that is more. freeMB < 0: not known */
@@ -226,6 +228,9 @@ public:
 	int measureInfoChanges() const { return measureInfoChanges_; } /* tests: the line over the table written anew */
 	int measureFills() const { return measureFills_; } /* tests: the table filled with all of it (from the threads) */
 
+protected:
+	void resizeEvent(QResizeEvent *event) override; /* the note beside RAM on the first row or under it */
+
 signals:
 	/* the math lines read other registers now (shown, hidden, edited, removed, or the map changed) */
 	void mathRegistersChanged();
@@ -294,6 +299,11 @@ private:
 	bool recording_ = false;
 	ChartWidget *chart_;
 	QHBoxLayout *axesRow_ = nullptr; /* Window, Memory, RAM, the Y range (buildAxesRow) */
+	QHBoxLayout *noteRow_ = nullptr; /* under it: the note beside RAM when the row has no room for it */
+	int ramNoteAt_ = -1;             /* the note's place in the first row */
+	bool ramNoteBelow_ = false;      /* the note on noteRow_ */
+	void arrangeRamNote();
+	int ramNoteRoom() const;
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
 	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */
@@ -337,6 +347,7 @@ private:
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
+	QString ramNeedTip_;          /* its tooltip's part that stays; the note's whole sentence goes before it */
 	/* Older samples (chart/fastOlder): a fast line's records past what the RAM holds whole kept as summaries, or not
 	 * (ChartView::setFastSummaries); shown with fast streams only, never in a recording's window */
 	QComboBox *older_ = nullptr;

@@ -546,6 +546,7 @@ public:
 		chartFastTiers();
 		chartFastSummariesShown();
 		chartOlderSetting();
+		chartRamNoteFits();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -7295,6 +7296,22 @@ private:
 						&& words.startsWith(QLatin1String("keeps ")) && words.contains(QLatin1String("samples for the newest")),
 				"chart, long memory: the memory strip shades the part kept as summaries and says \"keeps ... (samples for "
 				"the newest ...)\"; its tooltip says what the shaded part holds");
+		/* the note beside RAM short ("keeps 100 h · 4 s in full"), its whole sentence first in its tooltip; a Memory of
+		 * 100 h needs more than the RAM */
+		view->setMemory(360000);
+		tab.refreshStatus();
+		auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+		const QString noteText = note ? note->text() : QString(), noteTip = note ? note->toolTip() : QString();
+		std::printf("     (the note: \"%s\"; its tooltip: \"%s\")\n", qPrintable(noteText),
+				qPrintable(noteTip.section(QLatin1Char('\n'), 0, 0)));
+		check(noteText.startsWith(QLatin1String("keeps ")) && noteText.contains(QStringLiteral(" · "))
+						&& noteText.endsWith(QLatin1String(" in full")) && noteTip.startsWith(QLatin1String("needs "))
+						&& noteTip.section(QLatin1Char('\n'), 0, 0).endsWith(
+								QLatin1String(" with every sample and the rest as summaries"))
+						&& noteTip.contains(QLatin1String("The memory the chart's samples need")),
+				"chart, long memory: the note beside RAM says \"keeps ... · ... in full\", the whole sentence (\"needs ... "
+				"for every sample; keeps ..., the newest ... with every sample and the rest as summaries\") first in its "
+				"tooltip");
 		tab.hide();
 		QSettings().remove(group);
 	}
@@ -8843,6 +8860,88 @@ private:
 				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
 		tab.hide();
 		QSettings().remove(group);
+	}
+
+	/* The note beside RAM shows whole, Older samples shown (fast streams), in English and in Arabic: on the first row
+	 * where it has room (a wide tab), on a line of its own under it at the main window's narrowest (the row left it
+	 * 24 px); its texts ("keeps 90 min · 79 s in full", "needs 47.3 GB, keeps ...", "only ... free: keeps ...") not
+	 * elided at either width; the whole sentence for the tooltip */
+	void chartRamNoteFits() {
+		const QSize before = window_.size();
+		window_.resize(window_.minimumSizeHint().width(), window_.height());
+		QApplication::processEvents();
+		ChartTab *mainTab = window_.findChild<ChartTab *>();
+		const int narrow = mainTab && mainTab->width() > 300 ? mainTab->width() : 1000;
+		window_.resize(before);
+		QApplication::processEvents();
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		StreamChannel channel;
+		channel.name = QStringLiteral("I");
+		channel.type = RegType::I16;
+		def.channels << channel;
+		constexpr qint64 GB = qint64(1024) * 1024 * 1024;
+		bool whole = true, sentences = true, placed = true;
+		QString notes;
+		const bool wasDark = Theme::isDark();
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			const QString group = QStringLiteral("ramNoteTest");
+			QSettings().remove(group);
+			ChartTab tab{ [] { return 100.0; }, nullptr, group };
+			tab.setFastStreams({ def });
+			tab.show();
+			(void) QTest::qWaitForWindowExposed(&tab);
+			auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+			auto *older = tab.findChild<QComboBox *>(QStringLiteral("chartOlder"));
+			auto *ram = tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+			bool over = false;
+			QString tiered, freed, kept;
+			const QString tieredText = ChartTab::ramNeedText(qint64(47.3 * GB), 512, 5400, over, 0, -1, 5400, 79, &tiered);
+			const QString freedText = ChartTab::ramNeedText(qint64(47.3 * GB), 2048, 5400, over, 1024, 2150, 5400, 79, &freed);
+			const QString keptText = ChartTab::ramNeedText(qint64(47.3 * GB), 512, 5400, over, 0, -1, -1, -1, &kept);
+			for (const int width : { std::max(narrow, tab.minimumSizeHint().width()), 1900 }) {
+				tab.resize(width, 700);
+				QApplication::processEvents();
+				QApplication::processEvents();
+				const int room = note ? note->contentsRect().width() : 0;
+				const bool below = note && ram && note->geometry().top() >= ram->geometry().bottom();
+				const bool onRow = note && ram && std::abs(note->geometry().center().y() - ram->geometry().center().y()) <= 2;
+				placed = placed && (width == 1900 ? onRow : below);
+				notes += QStringLiteral(" %1 at %2 px, %3:").arg(code).arg(width).arg(below ? QStringLiteral("below")
+								: onRow ? QStringLiteral("on the row") : QStringLiteral("?"));
+				for (const QString &text : { tieredText, freedText, keptText }) {
+					const bool fits = note && note->fontMetrics().elidedText(text, Qt::ElideRight, room) == text;
+					notes += QStringLiteral(" \"%1\" %2 of %3 px;").arg(text)
+							.arg(note ? note->fontMetrics().horizontalAdvance(text) : -1).arg(room);
+					whole = whole && fits;
+				}
+				if (width != 1900 && note && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the note under the row */
+					for (const bool dark : { false, true }) {
+						Theme::apply(*qApp, dark);
+						tab.refreshStatus();
+						note->setText(tieredText);
+						tab.grab(QRect(0, 0, tab.width(), 150)).save(qEnvironmentVariable("EVRE_TEST_SHOT")
+								+ QStringLiteral("_ramnote_%1_%2.png").arg(code, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+					}
+			}
+			Theme::apply(*qApp, wasDark);
+			const bool english = code == QLatin1String("en");
+			sentences = sentences && note && older && older->isVisible() && tiered != tieredText && freed != freedText
+					&& kept == keptText
+					&& (!english || (tieredText == QStringLiteral("keeps 90 min · 79 s in full")
+							&& tiered == QStringLiteral("needs 47.3 GB for every sample; keeps 90 min, the newest 79 s with every "
+									"sample and the rest as summaries")
+							&& keptText == QStringLiteral("needs 47.3 GB, keeps 57 s")));
+			tab.hide();
+			QSettings().remove(group);
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		std::printf("     (the note:%s)\n", qPrintable(notes));
+		check(whole && sentences && placed, "chart, the note beside RAM shows whole with Older samples shown, in English and "
+				"Arabic: on the first row where it has room, on a line of its own under it at the main window's narrowest; "
+				"\"keeps 90 min · 79 s in full\" (summaries), \"needs 47.3 GB, keeps ...\" (kept), \"only ... free: keeps "
+				"...\" never elided; the whole sentence for its tooltip");
 	}
 
 	/* The state corner fits its room: with the view held, Y log manual, cursors and a trigger on, its text is shortened

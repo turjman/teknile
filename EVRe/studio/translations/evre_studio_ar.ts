@@ -1277,10 +1277,6 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
         <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية الأخيرة (ساكن: لا إطار، لم يتغير شيء: العرض المثبَّت لا يُرسم إلا حين يتغير فيه شيء)، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
     <message>
-        <source>Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this says how much keeps its samples whole: &quot;keeps 100 min (samples for the newest 79 s)&quot;.</source>
-        <translation>الخطوط السريعة مع «العينات الأقدم: ملخصات»: تُحفظ الذاكرة كلها ما دامت ملخصاتها تتسع، وتقول هذه كم يبقى منها بعيناته كاملة: «يحفظ ⁦100 min⁩ (عينات لآخر ⁦79 s⁩)».</translation>
-    </message>
-    <message>
         <source>summaries</source>
         <translation>ملخصات</translation>
     </message>
@@ -1303,14 +1299,6 @@ A recording&apos;s file keeps every sample either way.</source>
         <translation>العينات الأقدم</translation>
     </message>
     <message>
-        <source>only %1 free: keeps about %2 (samples for the newest %3)</source>
-        <translation>الحرّ %1 فقط: يحفظ نحو %2 (عينات لآخر %3)</translation>
-    </message>
-    <message>
-        <source>needs %1, keeps %2 (samples for the newest %3)</source>
-        <translation>يحتاج %1، ويحفظ %2 (عينات لآخر %3)</translation>
-    </message>
-    <message>
         <source>Needs samples: in this range the fast line keeps only summaries, the lowest and highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs</source>
         <translation>يحتاج إلى عينات: لا يحفظ الخط السريع في هذا المدى إلا ملخصات، أدنى قيمة وأعلاها لكل 256 عينة («العينات الأقدم»، بجانب RAM): الأدنى والأعلى وقمة–قمة منها</translation>
     </message>
@@ -1321,6 +1309,26 @@ A recording&apos;s file keeps every sample either way.</source>
     <message>
         <source>%1: its newest %2, older kept as summaries</source>
         <translation>%1: أحدث %2 منه، والأقدم محفوظ ملخصاتٍ</translation>
+    </message>
+    <message>
+        <source>Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this says how much keeps its samples whole: &quot;keeps 100 min · 79 s in full&quot;.</source>
+        <translation>الخطوط السريعة مع «العينات الأقدم: ملخصات»: تُحفظ الذاكرة كلها ما دامت ملخصاتها تتسع، وتقول هذه كم يبقى منها بعيناته كاملة: «يحفظ ⁦100 min⁩ · ⁦79 s⁩ كاملة».</translation>
+    </message>
+    <message>
+        <source>only %1 free: keeps %2 · %3 in full</source>
+        <translation>الحرّ %1 فقط: يحفظ %2 · %3 كاملة</translation>
+    </message>
+    <message>
+        <source>only %1 free: keeps about %2, the newest %3 with every sample and the rest as summaries</source>
+        <translation>الحرّ %1 فقط: يحفظ نحو %2، آخر %3 منها بكل عيناتها والباقي ملخصات</translation>
+    </message>
+    <message>
+        <source>keeps %1 · %2 in full</source>
+        <translation>يحفظ %1 · %2 كاملة</translation>
+    </message>
+    <message>
+        <source>needs %1 for every sample; keeps %2, the newest %3 with every sample and the rest as summaries</source>
+        <translation>يحتاج %1 لكل العينات؛ ويحفظ %2، آخر %3 منها بكل عيناتها والباقي ملخصات</translation>
     </message>
 </context>
 <context>
