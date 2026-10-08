@@ -1772,6 +1772,8 @@ private:
 		/* the card's texts fit its width, in English and in Arabic, the widest numbers too */
 		bool fits = true, arabicReads = false;
 		QString notes, arabicNotes;
+		bool header = true; /* the row's header: the name, then muted what the stream is, one line, both languages */
+		QString headerNotes;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1789,6 +1791,27 @@ private:
 			card.setFastOn(0, true);
 			QApplication::processEvents();
 			QPushButton *b = card.fastButton(0);
+			{
+				QLabel *name = card.fastCard()->findChild<QLabel *>(QStringLiteral("fastStreamName"));
+				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
+				const QString rate = QChar(0x2066) + QStringLiteral("10 kS/s") + QChar(0x2069);
+				const QString expected = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ") + rate
+						: QStringLiteral("· قناتان · ") + rate;
+				const int line = name ? name->fontMetrics().height() : 0;
+				const bool one = name && about && b && name->text() == QLatin1String("ADC") && about->fullText() == expected
+						&& !about->isCut() && name->height() <= line + 8 && about->height() <= line + 8
+						&& std::abs(name->geometry().center().y() - about->geometry().center().y()) <= 2
+						&& name->geometry().bottom() < b->geometry().top() && name->font().bold()
+						&& about->toolTip().contains(QLatin1String("I_LOAD, V_BUS"))
+						&& about->toolTip().contains(QLatin1String("sampled together"))
+						&& (code == QLatin1String("en") ? name->x() < about->x() : name->x() > about->x());
+				if (!one)
+					headerNotes += QStringLiteral(" %1: \"%2\" \"%3\" cut %4, heights %5 %6 (a line %7), x %8 %9;").arg(code,
+							name ? name->text() : QString(), about ? about->fullText() : QString())
+							.arg(about ? int(about->isCut()) : -1).arg(name ? name->height() : -1).arg(about ? about->height() : -1)
+							.arg(line).arg(name ? name->x() : -1).arg(about ? about->x() : -1);
+				header = header && one;
+			}
 			const auto labels = card.fastCard()->findChildren<QLabel *>();
 			for (QLabel *label : labels) {
 				if (label->text().isEmpty() || label->objectName() == QLatin1String("cardTitle")) continue;
@@ -1871,6 +1894,11 @@ private:
 		check(fits, "fast streams: the card's button and numbers fit the sidebar's width in English and Arabic "
 				"(1.23 M samples/s, lost 123 456 789)");
 		if (!arabicReads) std::printf("  %s\n", qPrintable(arabicNotes));
+		if (!header) std::printf("  the header:%s\n", qPrintable(headerNotes));
+		check(header, "fast streams: each stream's row has a one-line header: its name in the card's name weight (ADC), then "
+				"muted \"· 2 channels · 10 kS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
+				"width, both on one line above the button, the name first in the reading direction; the tooltip the "
+				"channels and the map's description");
 		check(arabicReads, "fast streams, Arabic: the rate (running and off) and the lost count are laid out right to left, "
 				"like the card's title, and each number keeps its prefix, its unit and its groups left to right "
 				"(1.23 M, (-123 ppm), 123 456 789, 10.0 k)");

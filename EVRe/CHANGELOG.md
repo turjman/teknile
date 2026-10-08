@@ -74,6 +74,13 @@ The first public version of EVRe and the tools around it, under the Apache Licen
 - The recording's window: it opens with its lines, their values and its Y range at once (with Measure on too), a
   change is painted when no more frames come, made bigger it is painted whole (on a card, a frame the system let go
   is drawn again: no black bar over the new part), its Window and Y range row packed, and the theme switch reaches it.
+- A recording with fast streams: the window says when a stream's samples end before the CSV's last row (each file is
+  written as it comes), Normalise ranges a line with its values at the view's edges too (one sample in a short view
+  no longer jumps off the plot), and the info line says *idle* when a held view paints nothing. Its **Lines** is a
+  checklist of every line, grouped (registers, each stream's channels, math), with All, None, a search and the
+  count on the button; the lines unticked are kept for the next recording. A stream's **Log** tick chooses whether
+  a CSV recording writes it beside it; each stream's row is headed by its name, channels and rate on one line. A
+  recent recording whose file is gone is greyed, *(not found)*, and a click takes it off; **Clear the list**.
 - Formula completion in the math line dialog: register names and functions as you type.
 - Fast streams in the API, reading only (no write switch): `list` names the map's streams and their channels
   (`ADC.I_LOAD`: unit, rate, on or off); `get` of a channel its newest record and that record's time; `stream` of

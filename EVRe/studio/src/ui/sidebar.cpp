@@ -698,10 +698,23 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		FastRow row;
 		row.def = streams[i];
 		/* the stream's name heads its row, so the button says only Start or Stop: with the name on it, "Start ADC"
-		 * read as a thing of the example's ADC, not of any stream */
-		row.title = new QLabel(QStringLiteral("<b>%1</b>").arg(streams[i].name.toHtmlEscaped()));
+		 * read as a thing of the example's ADC, not of any stream. The header is one line, as the map card's: the name
+		 * in the card's name weight, then muted what the stream is, cut ("...") when the sidebar is narrow; all of it
+		 * and the map's description in the tooltip */
+		QStringList channelNames;
+		for (const StreamChannel &channel : streams[i].channels) channelNames << channel.name;
+		const int channels = int(streams[i].channels.size());
+		const QString about = (channels == 1 ? tr("· 1 channel · %1") : tr("· %n channels · %1", nullptr, channels))
+				.arg(streamRateText(streams[i].rate));
+		const QString headTip = QStringLiteral("%1 %2\n%3\n%4").arg(streams[i].name, about,
+				tr("Channels: %1").arg(channelNames.join(QStringLiteral(", "))),
+				streams[i].desc.isEmpty() ? tr("A fast stream of the map") : streams[i].desc);
+		row.title = new QLabel(streams[i].name);
 		row.title->setObjectName(QStringLiteral("fastStreamName"));
-		row.title->setToolTip(streams[i].desc.isEmpty() ? tr("A fast stream of the map") : streams[i].desc);
+		row.title->setToolTip(headTip);
+		row.about = new ElidedLabel;
+		row.about->setObjectName(QStringLiteral("fastStreamAbout"));
+		row.about->setFullText(about, headTip);
 		/* Log, as a register's Log column: whether a CSV recording writes the stream beside it. A whole stream or
 		 * none: a block holds every channel of its instants, and the file keeps the blocks as they came */
 		row.log = new QCheckBox(tr("Log"));
@@ -733,7 +746,9 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 		numbers->addWidget(row.rate);
 		numbers->addWidget(row.lost);
 		auto *head = new QHBoxLayout;
-		head->addWidget(row.title, 1);
+		head->setSpacing(6);
+		head->addWidget(row.title);
+		head->addWidget(row.about, 1);
 		head->addWidget(row.log);
 		fastRowsLayout_->addLayout(head);
 		fastRowsLayout_->addWidget(row.button);
@@ -764,6 +779,12 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 	}
 	fastCard_->setVisible(!fastRows_.isEmpty());
 	setFastOffered(fastOffered_, fastWhy_, fastShortWhy_);
+}
+
+QString Sidebar::streamRateText(double hz) {
+	const QString text = hz >= 1e6 ? QStringLiteral("%1 MS/s").arg(hz / 1e6, 0, 'g', 4)
+			: hz >= 1e3 ? QStringLiteral("%1 kS/s").arg(hz / 1e3, 0, 'g', 4) : QStringLiteral("%1 S/s").arg(hz, 0, 'g', 4);
+	return QChar(0x2066) + text + QChar(0x2069); /* one piece in a right-to-left line too */
 }
 
 QCheckBox *Sidebar::fastLogBox(int stream) const {

@@ -2497,7 +2497,8 @@ channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/
 its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Each stream&apos;s row is headed by its name. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
+&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
+rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
 reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
@@ -2553,7 +2554,8 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;كل صف تدفق يحمل اسمه في رأسه. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
+&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
+&lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
 &lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
 تشغيل.&lt;/li&gt;
 &lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
@@ -6773,6 +6775,25 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>Log %1 beside the CSV while Record CSV runs (run.%1.evrs): its blocks as the device sent them. A stream is logged whole or not at all: each block carries every channel. Off: not written; its lines still plot. Taken when a recording starts; kept for the map&apos;s stream %1.</source>
         <translation>تسجيل %1 بجانب ملف CSV ما دام تسجيل CSV يعمل (⁦run.%1.evrs⁩): كتله كما أرسلها الجهاز. التدفق يُسجَّل كاملًا أو لا يُسجَّل: كل كتلة تحمل كل القنوات. ملغى: لا يُكتب؛ وخطوطه تبقى مرسومة. يؤخذ حين يبدأ التسجيل؛ ويُحفظ لتدفق الخريطة %1.</translation>
+    </message>
+    <message>
+        <source>· 1 channel · %1</source>
+        <translation>· قناة واحدة · %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>· %n channels · %1</source>
+        <translation>
+            <numerusform>· لا قنوات · %1</numerusform>
+            <numerusform>· قناة واحدة · %1</numerusform>
+            <numerusform>· قناتان · %1</numerusform>
+            <numerusform>· %n قنوات · %1</numerusform>
+            <numerusform>· %n قناة · %1</numerusform>
+            <numerusform>· %n قناة · %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Channels: %1</source>
+        <translation>القنوات: %1</translation>
     </message>
 </context>
 <context>

@@ -136,6 +136,8 @@ public:
 	void clearFastPlots();
 	void setFastPlotsEnabled(bool enabled, const QString &why = QString()); /* a bus: no fast line (why: the tooltip) */
 	QCheckBox *fastPlotBox(int stream, int channel) const; /* tests */
+	/* a stream's rate as the map gives it, one left-to-right piece: "1 MS/s", "10 kS/s", "500 S/s" (units as they are) */
+	static QString streamRateText(double hz);
 	/* a stream's Log tick: recorded beside the CSV or not (on by default); the streams with it off, by name */
 	QCheckBox *fastLogBox(int stream) const;
 	QStringList fastNotLogged() const;
@@ -245,6 +247,7 @@ private:
 	struct FastRow {
 		StreamDef def;
 		QLabel *title = nullptr;  /* the stream's name, heading its row */
+		ElidedLabel *about = nullptr; /* beside it, muted: "· 2 channels · 1 MS/s" */
 		QCheckBox *log = nullptr; /* recorded beside the CSV or not */
 		QPushButton *button = nullptr;
 		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
