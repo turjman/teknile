@@ -154,6 +154,18 @@
         <source>sent, but the read-back failed: %1</source>
         <translation>أُرسل، لكن قراءة التحقق فشلت: %1</translation>
     </message>
+    <message>
+        <source>no register or fast channel &quot;%1&quot; in the map (a fast channel is STREAM.CHANNEL, as &quot;list&quot; names it)</source>
+        <translation>لا مسجّل ولا قناة سريعة باسم &quot;%1&quot; في الخريطة (القناة السريعة هي STREAM.CHANNEL، كما يسمّيها &quot;list&quot;)</translation>
+    </message>
+    <message>
+        <source>fast stream %1 is off: start it in EVRe Studio (Fast streams), or start the Studio with --fast %1</source>
+        <translation>التدفق السريع %1 متوقف: شغّله في EVRe Studio (التدفقات السريعة)، أو شغّل البرنامج مع --fast %1</translation>
+    </message>
+    <message>
+        <source>fast stream %1 is on, but no record has come yet</source>
+        <translation>التدفق السريع %1 مشغّل، لكن لم يصل أي سجلّ بعد</translation>
+    </message>
 </context>
 <context>
     <name>BitView</name>
@@ -2083,100 +2095,6 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>API (MATLAB وLabVIEW وPython)</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;API: other programs through the Studio&lt;/h2&gt;
-&lt;p&gt;Tick &lt;b&gt;Serve API&lt;/b&gt;. The Studio then shares the device it is connected to: every request goes through
-the Studio&apos;s one queue, so clients and the Studio never collide on the port.&lt;/p&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;1219&lt;/b&gt;&lt;/td&gt;&lt;td&gt;EVRe pass-through: the same frames as the device. Existing EVRe clients work
-unchanged.&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;1220&lt;/b&gt;&lt;/td&gt;&lt;td&gt;JSON lines by register name: send one JSON object per line, get one back.&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-&lt;p&gt;Only this PC can connect, unless &lt;b&gt;Network&lt;/b&gt; is ticked.
-&lt;b&gt;Writes&lt;/b&gt; are refused until &lt;b&gt;Allow API writes&lt;/b&gt; is ticked; ⚠ registers also need
-&lt;b&gt;including ⚠ registers&lt;/b&gt;. Neither is remembered.&lt;/p&gt;
-&lt;p&gt;Several devices on the link: the JSON names carry the device&apos;s (&lt;code&gt;D2_SUPPLY_V&lt;/code&gt;); port 1219 sends a frame
-to the slave it names.&lt;/p&gt;
-&lt;h3&gt;JSON commands&lt;/h3&gt;
-%CODE%{&quot;cmd&quot;:&quot;info&quot;}
-{&quot;cmd&quot;:&quot;list&quot;}
-{&quot;cmd&quot;:&quot;get&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;STATE&quot;]}
-   -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.05,&quot;STATE&quot;:5},
-       &quot;decoded&quot;:{&quot;STATE&quot;:&quot;MODE=run  READY&quot;}}
-{&quot;cmd&quot;:&quot;set&quot;,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}      -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}  (read back)
-{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;],&quot;ms&quot;:50}
-   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every 50 ms
-{&quot;cmd&quot;:&quot;stop&quot;}
-{&quot;cmd&quot;:&quot;read&quot;,&quot;addr&quot;:&quot;0xD000&quot;,&quot;count&quot;:16}  -&gt; {&quot;ok&quot;:true,&quot;hex&quot;:&quot;...&quot;}
-{&quot;cmd&quot;:&quot;write&quot;,&quot;addr&quot;:&quot;0xD085&quot;,&quot;hex&quot;:&quot;02&quot;}
-{&quot;cmd&quot;:&quot;broadcast&quot;,&quot;name&quot;:&quot;D1_SPEED&quot;,&quot;value&quot;:0}  every device at once, then each read back&lt;/pre&gt;
-&lt;p&gt;Add &lt;code&gt;&quot;id&quot;&lt;/code&gt; to any request: it comes back in the answer. Errors: &lt;code&gt;{&quot;ok&quot;:false,&quot;error&quot;:&quot;...&quot;}&lt;/code&gt;.
-Names are the map&apos;s (any case), or an address such as &lt;code&gt;&quot;0xD00C&quot;&lt;/code&gt;.&lt;/p&gt;
-&lt;h3&gt;MATLAB&lt;/h3&gt;
-%CODE%c = tcpclient(&quot;127.0.0.1&quot;, 1220);
-configureTerminator(c, &quot;LF&quot;);
-writeline(c, jsonencode(struct(&quot;cmd&quot;,&quot;get&quot;,&quot;names&quot;,{{&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;}})));
-r = jsondecode(readline(c));
-r.values.SUPPLY_V&lt;/pre&gt;
-&lt;h3&gt;Python&lt;/h3&gt;
-%CODE%import json, socket
-s = socket.create_connection((&quot;127.0.0.1&quot;, 1220)); f = s.makefile(&quot;rw&quot;)
-f.write(json.dumps({&quot;cmd&quot;: &quot;get&quot;, &quot;names&quot;: [&quot;SUPPLY_V&quot;]}) + &quot;\n&quot;); f.flush()
-print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pre&gt;
-&lt;h3&gt;LabVIEW&lt;/h3&gt;
-&lt;p&gt;&lt;i&gt;TCP Open Connection&lt;/i&gt; (127.0.0.1, 1220) → &lt;i&gt;TCP Write&lt;/i&gt; the JSON text plus &lt;code&gt;\n&lt;/code&gt; →
-&lt;i&gt;TCP Read&lt;/i&gt; in &lt;b&gt;CRLF&lt;/b&gt; mode → &lt;i&gt;Unflatten From JSON&lt;/i&gt; into a cluster
-(e.g. &lt;code&gt;ok&lt;/code&gt; boolean, &lt;code&gt;values&lt;/code&gt; cluster with a &lt;code&gt;SUPPLY_V&lt;/code&gt; double).&lt;/p&gt;
-&lt;p&gt;Full examples: &lt;code&gt;examples/&lt;/code&gt; next to the program&apos;s source.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;API: برامج أخرى عبر البرنامج&lt;/h2&gt;
-&lt;p&gt;فعّل &lt;b&gt;تقديم API&lt;/b&gt;. عندها يشارك البرنامج الجهاز المتصل به: كل طلب يمر عبر
-طابور البرنامج الوحيد، فلا يتصادم العملاء والبرنامج على المنفذ أبدًا.&lt;/p&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;1219&lt;/b&gt;&lt;/td&gt;&lt;td&gt;تمرير EVRe: الإطارات نفسها التي للجهاز. عملاء EVRe الموجودون يعملون
-دون تغيير.&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;1220&lt;/b&gt;&lt;/td&gt;&lt;td&gt;أسطر JSON بأسماء المسجّلات: أرسل كائن JSON واحدًا في كل سطر، وتحصل على واحد بالمقابل.&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-&lt;p&gt;لا يستطيع الاتصال إلا هذا الحاسوب، ما لم تُفعَّل &lt;b&gt;الشبكة&lt;/b&gt;.
-&lt;b&gt;الكتابات&lt;/b&gt; مرفوضة حتى يُفعَّل &lt;b&gt;السماح بكتابات API&lt;/b&gt;؛ ومسجّلات ⚠ تحتاج أيضًا
-&lt;b&gt;بما فيها مسجّلات ⚠&lt;/b&gt;. لا يُتذكَّر أي منهما.&lt;/p&gt;
-&lt;p&gt;عدة أجهزة على الوصلة: أسماء JSON تحمل اسم الجهاز (&lt;code&gt;D2_SUPPLY_V&lt;/code&gt;)؛ والمنفذ 1219 يرسل الإطار
-إلى التابع الذي يسمّيه.&lt;/p&gt;
-&lt;h3&gt;أوامر JSON&lt;/h3&gt;
-%CODE%{&quot;cmd&quot;:&quot;info&quot;}
-{&quot;cmd&quot;:&quot;list&quot;}
-{&quot;cmd&quot;:&quot;get&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;STATE&quot;]}
-   -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.05,&quot;STATE&quot;:5},
-       &quot;decoded&quot;:{&quot;STATE&quot;:&quot;MODE=run  READY&quot;}}
-{&quot;cmd&quot;:&quot;set&quot;,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}      -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}  (read back)
-{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;],&quot;ms&quot;:50}
-   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every ⁦50 ms⁩
-{&quot;cmd&quot;:&quot;stop&quot;}
-{&quot;cmd&quot;:&quot;read&quot;,&quot;addr&quot;:&quot;0xD000&quot;,&quot;count&quot;:16}  -&gt; {&quot;ok&quot;:true,&quot;hex&quot;:&quot;...&quot;}
-{&quot;cmd&quot;:&quot;write&quot;,&quot;addr&quot;:&quot;0xD085&quot;,&quot;hex&quot;:&quot;02&quot;}
-{&quot;cmd&quot;:&quot;broadcast&quot;,&quot;name&quot;:&quot;D1_SPEED&quot;,&quot;value&quot;:0}  every device at once, then each read back&lt;/pre&gt;
-&lt;p&gt;أضف &lt;code&gt;&quot;id&quot;&lt;/code&gt; إلى أي طلب: يعود في الجواب. الأخطاء: &lt;code&gt;{&quot;ok&quot;:false,&quot;error&quot;:&quot;...&quot;}&lt;/code&gt;.
-الأسماء هي أسماء الخريطة (بأي حالة حروف)، أو عنوان مثل &lt;code&gt;&quot;0xD00C&quot;&lt;/code&gt;.&lt;/p&gt;
-&lt;h3&gt;MATLAB&lt;/h3&gt;
-%CODE%c = tcpclient(&quot;127.0.0.1&quot;, 1220);
-configureTerminator(c, &quot;LF&quot;);
-writeline(c, jsonencode(struct(&quot;cmd&quot;,&quot;get&quot;,&quot;names&quot;,{{&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;}})));
-r = jsondecode(readline(c));
-r.values.SUPPLY_V&lt;/pre&gt;
-&lt;h3&gt;Python&lt;/h3&gt;
-%CODE%import json, socket
-s = socket.create_connection((&quot;127.0.0.1&quot;, 1220)); f = s.makefile(&quot;rw&quot;)
-f.write(json.dumps({&quot;cmd&quot;: &quot;get&quot;, &quot;names&quot;: [&quot;SUPPLY_V&quot;]}) + &quot;\n&quot;); f.flush()
-print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pre&gt;
-&lt;h3&gt;LabVIEW&lt;/h3&gt;
-&lt;p&gt;&lt;i&gt;TCP Open Connection&lt;/i&gt; (127.0.0.1، 1220) ← &lt;i&gt;TCP Write&lt;/i&gt; نص JSON مع &lt;code&gt;\n&lt;/code&gt; ←
-&lt;i&gt;TCP Read&lt;/i&gt; بنمط &lt;b&gt;CRLF&lt;/b&gt; ← &lt;i&gt;Unflatten From JSON&lt;/i&gt; إلى عنقود
-(مثل &lt;code&gt;ok&lt;/code&gt; منطقي، وعنقود &lt;code&gt;values&lt;/code&gt; فيه &lt;code&gt;SUPPLY_V&lt;/code&gt; مزدوج).&lt;/p&gt;
-&lt;p&gt;أمثلة كاملة: &lt;code&gt;examples/&lt;/code&gt; بجانب مصدر البرنامج.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>Monitor</source>
         <translation>المراقبة</translation>
     </message>
@@ -2215,44 +2133,6 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
     <message>
         <source>Command line</source>
         <translation>سطر الأوامر</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Command line&lt;/h2&gt;
-%CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
-           [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;A server token comes from the environment variable &lt;code&gt;EVRE_TOKEN&lt;/code&gt;, never from the command line.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--map&lt;/code&gt; or &lt;code&gt;--bus&lt;/code&gt; (several devices on the link) is for that run only: the next plain start
-opens the one chosen last.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--plot&lt;/code&gt; ticks Plot on those registers. One the map marks fixed, or past what the chart holds at the
-poll rate, is left off, and the Log says which.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--inflight n&lt;/code&gt; sets &lt;b&gt;In flight&lt;/b&gt; (requests sent before their answers come), as typing it in
-the box does.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--record&lt;/code&gt; starts a CSV recording at once: every poll, as with the button.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; is the same as ticking &lt;i&gt;Allow API writes&lt;/i&gt;; &lt;code&gt;--api-writes-danger&lt;/code&gt; also
-the ⚠ switch.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;سطر الأوامر&lt;/h2&gt;
-%CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
-           [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;رمز دخول الخادم يأتي من متغير البيئة &lt;code&gt;EVRE_TOKEN&lt;/code&gt;، لا من سطر الأوامر أبدًا.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--map&lt;/code&gt; أو &lt;code&gt;--bus&lt;/code&gt; (عدة أجهزة على الوصلة) لذلك التشغيل فقط: التشغيل العادي التالي
-يفتح الذي اختير أخيرًا.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--plot&lt;/code&gt; يفعّل «رسم» على تلك المسجّلات. ما تعلّمه الخريطة ثابتًا، أو ما يتجاوز ما يحمله المخطط بـ
-معدّل الاستطلاع، يُترك، ويقول السجل أيها.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--inflight n&lt;/code&gt; يضبط &lt;b&gt;قيد الإرسال&lt;/b&gt; (طلبات تُرسل قبل وصول أجوبتها)، كما تفعل كتابته في
-المربع.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--record&lt;/code&gt; يبدأ تسجيل CSV فورًا: كل استطلاع، كما مع الزر.&lt;/li&gt;
-&lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; مثل تفعيل &lt;i&gt;السماح بكتابات API&lt;/i&gt;؛ و&lt;code&gt;--api-writes-danger&lt;/code&gt; مع
-مفتاح ⚠ أيضًا.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
     </message>
     <message>
         <source>Keys &amp; mouse</source>
@@ -3028,6 +2908,168 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>
+&lt;h2&gt;API: other programs through the Studio&lt;/h2&gt;
+&lt;p&gt;Tick &lt;b&gt;Serve API&lt;/b&gt;. The Studio then shares the device it is connected to: every request goes through
+the Studio&apos;s one queue, so clients and the Studio never collide on the port.&lt;/p&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;1219&lt;/b&gt;&lt;/td&gt;&lt;td&gt;EVRe pass-through: the same frames as the device. Existing EVRe clients work
+unchanged, a fast stream&apos;s blocks included (below).&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;1220&lt;/b&gt;&lt;/td&gt;&lt;td&gt;JSON lines by register name: send one JSON object per line, get one back.&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+&lt;p&gt;Only this PC can connect, unless &lt;b&gt;Network&lt;/b&gt; is ticked.
+&lt;b&gt;Writes&lt;/b&gt; are refused until &lt;b&gt;Allow API writes&lt;/b&gt; is ticked; ⚠ registers also need
+&lt;b&gt;including ⚠ registers&lt;/b&gt;. Neither is remembered.&lt;/p&gt;
+&lt;p&gt;Several devices on the link: the JSON names carry the device&apos;s (&lt;code&gt;D2_SUPPLY_V&lt;/code&gt;); port 1219 sends a frame
+to the slave it names.&lt;/p&gt;
+&lt;h3&gt;JSON commands&lt;/h3&gt;
+%CODE%{&quot;cmd&quot;:&quot;info&quot;}
+{&quot;cmd&quot;:&quot;list&quot;}
+{&quot;cmd&quot;:&quot;get&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;STATE&quot;]}
+   -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.05,&quot;STATE&quot;:5},
+       &quot;decoded&quot;:{&quot;STATE&quot;:&quot;MODE=run  READY&quot;}}
+{&quot;cmd&quot;:&quot;set&quot;,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}      -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}  (read back)
+{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;],&quot;ms&quot;:50}
+   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every 50 ms
+{&quot;cmd&quot;:&quot;stop&quot;}
+{&quot;cmd&quot;:&quot;read&quot;,&quot;addr&quot;:&quot;0xD000&quot;,&quot;count&quot;:16}  -&gt; {&quot;ok&quot;:true,&quot;hex&quot;:&quot;...&quot;}
+{&quot;cmd&quot;:&quot;write&quot;,&quot;addr&quot;:&quot;0xD085&quot;,&quot;hex&quot;:&quot;02&quot;}
+{&quot;cmd&quot;:&quot;broadcast&quot;,&quot;name&quot;:&quot;D1_SPEED&quot;,&quot;value&quot;:0}  every device at once, then each read back&lt;/pre&gt;
+&lt;p&gt;Add &lt;code&gt;&quot;id&quot;&lt;/code&gt; to any request: it comes back in the answer. Errors: &lt;code&gt;{&quot;ok&quot;:false,&quot;error&quot;:&quot;...&quot;}&lt;/code&gt;.
+Names are the map&apos;s (any case), or an address such as &lt;code&gt;&quot;0xD00C&quot;&lt;/code&gt;.&lt;/p&gt;
+&lt;h3&gt;Fast streams&lt;/h3&gt;
+&lt;p&gt;&lt;code&gt;list&lt;/code&gt; also names the map&apos;s fast streams (&lt;code&gt;&quot;streams&quot;&lt;/code&gt;: each one&apos;s rate, on or off, and
+channels). A channel is named &lt;code&gt;STREAM.CHANNEL&lt;/code&gt;: &lt;code&gt;get&lt;/code&gt; gives its newest record&apos;s value, and that
+record&apos;s time in &lt;code&gt;&quot;times&quot;&lt;/code&gt;; &lt;code&gt;stream&lt;/code&gt; sends a line of its min, max and mean every
+&lt;code&gt;period_ms&lt;/code&gt; (10 at least; else &lt;code&gt;ms&lt;/code&gt;), a line of its own kind beside the registers&apos; samples. The
+stream must be on in the Studio (&lt;b&gt;Fast streams&lt;/b&gt;, or &lt;code&gt;--fast&lt;/code&gt;); none of it needs a write switch.&lt;/p&gt;
+%CODE%{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;ADC.I_LOAD&quot;],&quot;period_ms&quot;:100}
+   -&gt; {&quot;t&quot;:1790170000.2,&quot;fast&quot;:{&quot;ADC.I_LOAD&quot;:{&quot;n&quot;:1000,&quot;min&quot;:-6.5,&quot;max&quot;:6.5,&quot;mean&quot;:0.01,&quot;first&quot;:53000}}}&lt;/pre&gt;
+&lt;p&gt;The raw records: on port 1219, write 1 to the stream&apos;s enable register, as to the device, and its blocks come as the
+device sends them; 0 ends them. While the Studio streams it, nothing is written to the device. A recording&apos;s
+&lt;code&gt;.evrs&lt;/code&gt; file holds them too (&lt;code&gt;evre.read_recording&lt;/code&gt; in Python).&lt;/p&gt;
+&lt;h3&gt;MATLAB&lt;/h3&gt;
+%CODE%c = tcpclient(&quot;127.0.0.1&quot;, 1220);
+configureTerminator(c, &quot;LF&quot;);
+writeline(c, jsonencode(struct(&quot;cmd&quot;,&quot;get&quot;,&quot;names&quot;,{{&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;}})));
+r = jsondecode(readline(c));
+r.values.SUPPLY_V&lt;/pre&gt;
+&lt;h3&gt;Python&lt;/h3&gt;
+%CODE%import json, socket
+s = socket.create_connection((&quot;127.0.0.1&quot;, 1220)); f = s.makefile(&quot;rw&quot;)
+f.write(json.dumps({&quot;cmd&quot;: &quot;get&quot;, &quot;names&quot;: [&quot;SUPPLY_V&quot;]}) + &quot;\n&quot;); f.flush()
+print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pre&gt;
+&lt;p&gt;The &lt;code&gt;evre&lt;/code&gt; package beside the Studio&apos;s source has a client for it: &lt;code&gt;evre.connect_studio()&lt;/code&gt;
+(&lt;code&gt;get&lt;/code&gt;, &lt;code&gt;stream&lt;/code&gt;, &lt;code&gt;fast_stream&lt;/code&gt;).&lt;/p&gt;
+&lt;h3&gt;LabVIEW&lt;/h3&gt;
+&lt;p&gt;&lt;i&gt;TCP Open Connection&lt;/i&gt; (127.0.0.1, 1220) → &lt;i&gt;TCP Write&lt;/i&gt; the JSON text plus &lt;code&gt;\n&lt;/code&gt; →
+&lt;i&gt;TCP Read&lt;/i&gt; in &lt;b&gt;CRLF&lt;/b&gt; mode → &lt;i&gt;Unflatten From JSON&lt;/i&gt; into a cluster
+(e.g. &lt;code&gt;ok&lt;/code&gt; boolean, &lt;code&gt;values&lt;/code&gt; cluster with a &lt;code&gt;SUPPLY_V&lt;/code&gt; double).&lt;/p&gt;
+&lt;p&gt;Full examples: &lt;code&gt;examples/&lt;/code&gt; next to the program&apos;s source.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;API: برامج أخرى عبر البرنامج&lt;/h2&gt;
+&lt;p&gt;فعّل &lt;b&gt;تقديم API&lt;/b&gt;. عندها يشارك البرنامج الجهاز المتصل به: كل طلب يمر عبر
+طابور البرنامج الوحيد، فلا يتصادم العملاء والبرنامج على المنفذ أبدًا.&lt;/p&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;1219&lt;/b&gt;&lt;/td&gt;&lt;td&gt;تمرير EVRe: الإطارات نفسها التي للجهاز. عملاء EVRe الموجودون يعملون
+دون تغيير، وكتل التدفق السريع معها (أدناه).&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;1220&lt;/b&gt;&lt;/td&gt;&lt;td&gt;أسطر JSON بأسماء المسجّلات: أرسل كائن JSON واحدًا في كل سطر، وتحصل على واحد بالمقابل.&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+&lt;p&gt;لا يستطيع الاتصال إلا هذا الحاسوب، ما لم تُفعَّل &lt;b&gt;الشبكة&lt;/b&gt;.
+&lt;b&gt;الكتابات&lt;/b&gt; مرفوضة حتى يُفعَّل &lt;b&gt;السماح بكتابات API&lt;/b&gt;؛ ومسجّلات ⚠ تحتاج أيضًا
+&lt;b&gt;بما فيها مسجّلات ⚠&lt;/b&gt;. لا يُتذكَّر أي منهما.&lt;/p&gt;
+&lt;p&gt;عدة أجهزة على الوصلة: أسماء JSON تحمل اسم الجهاز (&lt;code&gt;D2_SUPPLY_V&lt;/code&gt;)؛ والمنفذ 1219 يرسل الإطار
+إلى التابع الذي يسمّيه.&lt;/p&gt;
+&lt;h3&gt;أوامر JSON&lt;/h3&gt;
+%CODE%{&quot;cmd&quot;:&quot;info&quot;}
+{&quot;cmd&quot;:&quot;list&quot;}
+{&quot;cmd&quot;:&quot;get&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;STATE&quot;]}
+   -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.05,&quot;STATE&quot;:5},
+       &quot;decoded&quot;:{&quot;STATE&quot;:&quot;MODE=run  READY&quot;}}
+{&quot;cmd&quot;:&quot;set&quot;,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}      -&gt; {&quot;ok&quot;:true,&quot;values&quot;:{&quot;LED_MODE&quot;:2}}  (read back)
+{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;],&quot;ms&quot;:50}
+   -&gt; {&quot;t&quot;:1790170000.12,&quot;values&quot;:{&quot;SUPPLY_V&quot;:12.0,&quot;SUPPLY_I&quot;:0.8}}  every ⁦50 ms⁩
+{&quot;cmd&quot;:&quot;stop&quot;}
+{&quot;cmd&quot;:&quot;read&quot;,&quot;addr&quot;:&quot;0xD000&quot;,&quot;count&quot;:16}  -&gt; {&quot;ok&quot;:true,&quot;hex&quot;:&quot;...&quot;}
+{&quot;cmd&quot;:&quot;write&quot;,&quot;addr&quot;:&quot;0xD085&quot;,&quot;hex&quot;:&quot;02&quot;}
+{&quot;cmd&quot;:&quot;broadcast&quot;,&quot;name&quot;:&quot;D1_SPEED&quot;,&quot;value&quot;:0}  every device at once, then each read back&lt;/pre&gt;
+&lt;p&gt;أضف &lt;code&gt;&quot;id&quot;&lt;/code&gt; إلى أي طلب: يعود في الجواب. الأخطاء: &lt;code&gt;{&quot;ok&quot;:false,&quot;error&quot;:&quot;...&quot;}&lt;/code&gt;.
+الأسماء هي أسماء الخريطة (بأي حالة حروف)، أو عنوان مثل &lt;code&gt;&quot;0xD00C&quot;&lt;/code&gt;.&lt;/p&gt;
+&lt;h3&gt;التدفقات السريعة&lt;/h3&gt;
+&lt;p&gt;يسمّي &lt;code&gt;list&lt;/code&gt; أيضًا التدفقات السريعة للخريطة (&lt;code&gt;&quot;streams&quot;&lt;/code&gt;: معدّل كل منها، وهل هو مشغّل،
+وقنواته). تُسمّى القناة &lt;code&gt;STREAM.CHANNEL&lt;/code&gt;: يعطي &lt;code&gt;get&lt;/code&gt; قيمة أحدث سجلّ لها، وزمن ذلك السجلّ في
+&lt;code&gt;&quot;times&quot;&lt;/code&gt;؛ ويرسل &lt;code&gt;stream&lt;/code&gt; سطرًا بأدنى قيمها وأعلاها ومتوسطها كل &lt;code&gt;period_ms&lt;/code&gt;
+(10 على الأقل؛ وإلا &lt;code&gt;ms&lt;/code&gt;)، سطرًا من نوعه الخاص بجانب عينات المسجّلات. يجب أن يكون التدفق مشغّلًا في
+البرنامج (&lt;b&gt;التدفقات السريعة&lt;/b&gt;، أو &lt;code&gt;--fast&lt;/code&gt;)؛ ولا يحتاج شيء من ذلك مفتاح كتابة.&lt;/p&gt;
+%CODE%{&quot;cmd&quot;:&quot;stream&quot;,&quot;names&quot;:[&quot;ADC.I_LOAD&quot;],&quot;period_ms&quot;:100}
+   -&gt; {&quot;t&quot;:1790170000.2,&quot;fast&quot;:{&quot;ADC.I_LOAD&quot;:{&quot;n&quot;:1000,&quot;min&quot;:-6.5,&quot;max&quot;:6.5,&quot;mean&quot;:0.01,&quot;first&quot;:53000}}}&lt;/pre&gt;
+&lt;p&gt;السجلّات الخام: على المنفذ 1219، اكتب 1 في مسجّل تمكين التدفق، كما للجهاز، فتأتي كتله كما يرسلها الجهاز؛ و0
+ينهيها. وما دام البرنامج يشغّل التدفق، لا يُكتب شيء إلى الجهاز. ويحملها أيضًا ملف &lt;code&gt;.evrs&lt;/code&gt; للتسجيل
+(&lt;code&gt;evre.read_recording&lt;/code&gt; في Python).&lt;/p&gt;
+&lt;h3&gt;MATLAB&lt;/h3&gt;
+%CODE%c = tcpclient(&quot;127.0.0.1&quot;, 1220);
+configureTerminator(c, &quot;LF&quot;);
+writeline(c, jsonencode(struct(&quot;cmd&quot;,&quot;get&quot;,&quot;names&quot;,{{&quot;SUPPLY_V&quot;,&quot;SUPPLY_I&quot;}})));
+r = jsondecode(readline(c));
+r.values.SUPPLY_V&lt;/pre&gt;
+&lt;h3&gt;Python&lt;/h3&gt;
+%CODE%import json, socket
+s = socket.create_connection((&quot;127.0.0.1&quot;, 1220)); f = s.makefile(&quot;rw&quot;)
+f.write(json.dumps({&quot;cmd&quot;: &quot;get&quot;, &quot;names&quot;: [&quot;SUPPLY_V&quot;]}) + &quot;\n&quot;); f.flush()
+print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pre&gt;
+&lt;p&gt;للحزمة &lt;code&gt;evre&lt;/code&gt; بجانب مصدر البرنامج عميلٌ له: &lt;code&gt;evre.connect_studio()&lt;/code&gt;
+(&lt;code&gt;get&lt;/code&gt;، &lt;code&gt;stream&lt;/code&gt;، &lt;code&gt;fast_stream&lt;/code&gt;).&lt;/p&gt;
+&lt;h3&gt;LabVIEW&lt;/h3&gt;
+&lt;p&gt;&lt;i&gt;TCP Open Connection&lt;/i&gt; (127.0.0.1، 1220) ← &lt;i&gt;TCP Write&lt;/i&gt; نص JSON مع &lt;code&gt;\n&lt;/code&gt; ←
+&lt;i&gt;TCP Read&lt;/i&gt; بنمط &lt;b&gt;CRLF&lt;/b&gt; ← &lt;i&gt;Unflatten From JSON&lt;/i&gt; إلى عنقود
+(مثل &lt;code&gt;ok&lt;/code&gt; منطقي، وعنقود &lt;code&gt;values&lt;/code&gt; فيه &lt;code&gt;SUPPLY_V&lt;/code&gt; مزدوج).&lt;/p&gt;
+&lt;p&gt;أمثلة كاملة: &lt;code&gt;examples/&lt;/code&gt; بجانب مصدر البرنامج.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Command line&lt;/h2&gt;
+%CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
+           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;A server token comes from the environment variable &lt;code&gt;EVRE_TOKEN&lt;/code&gt;, never from the command line.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--map&lt;/code&gt; or &lt;code&gt;--bus&lt;/code&gt; (several devices on the link) is for that run only: the next plain start
+opens the one chosen last.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--plot&lt;/code&gt; ticks Plot on those registers. One the map marks fixed, or past what the chart holds at the
+poll rate, is left off, and the Log says which.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--inflight n&lt;/code&gt; sets &lt;b&gt;In flight&lt;/b&gt; (requests sent before their answers come), as typing it in
+the box does.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--record&lt;/code&gt; starts a CSV recording at once: every poll, as with the button.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--fast&lt;/code&gt; starts those fast streams once connected, as their &lt;b&gt;Start stream&lt;/b&gt; does: for a script that
+reads them through the API. A name the map has no stream of is left, and the Log says which.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; is the same as ticking &lt;i&gt;Allow API writes&lt;/i&gt;; &lt;code&gt;--api-writes-danger&lt;/code&gt; also
+the ⚠ switch.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;سطر الأوامر&lt;/h2&gt;
+%CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
+           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;رمز دخول الخادم يأتي من متغير البيئة &lt;code&gt;EVRE_TOKEN&lt;/code&gt;، لا من سطر الأوامر أبدًا.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--map&lt;/code&gt; أو &lt;code&gt;--bus&lt;/code&gt; (عدة أجهزة على الوصلة) لذلك التشغيل فقط: التشغيل العادي التالي
+يفتح الذي اختير أخيرًا.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--plot&lt;/code&gt; يفعّل «رسم» على تلك المسجّلات. ما تعلّمه الخريطة ثابتًا، أو ما يتجاوز ما يحمله المخطط بـ
+معدّل الاستطلاع، يُترك، ويقول السجل أيها.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--inflight n&lt;/code&gt; يضبط &lt;b&gt;قيد الإرسال&lt;/b&gt; (طلبات تُرسل قبل وصول أجوبتها)، كما تفعل كتابته في
+المربع.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--record&lt;/code&gt; يبدأ تسجيل CSV فورًا: كل استطلاع، كما مع الزر.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--fast&lt;/code&gt; يبدأ تلك التدفقات السريعة فور الاتصال، كما يفعل زرّها &lt;b&gt;بدء التدفق&lt;/b&gt;: لبرنامج نصي يقرؤها
+عبر API. والاسم الذي لا تدفق له في الخريطة يُترك، ويقول السجل أيها.&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; مثل تفعيل &lt;i&gt;السماح بكتابات API&lt;/i&gt;؛ و&lt;code&gt;--api-writes-danger&lt;/code&gt; مع
+مفتاح ⚠ أيضًا.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -3695,6 +3737,10 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>fast stream %1 not switched on: %2</source>
         <translation>لم يُشغَّل التدفق السريع %1: %2</translation>
+    </message>
+    <message>
+        <source>--fast: no such fast stream in the map: %1</source>
+        <translation>--fast: لا تدفق سريع بهذا الاسم في الخريطة: %1</translation>
     </message>
 </context>
 <context>

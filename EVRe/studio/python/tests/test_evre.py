@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The evre package (unittest): frames, the map, a device - evre-sim serving the example map - and a fast stream's
-recording (one made here, and one `evre record` writes from evre_fake_fast).
+"""The evre package (unittest): frames, the map, a device - evre-sim serving the example map - a fast stream's
+recording (one made here, and one `evre record` writes from evre_fake_fast), and EVRe Studio's JSON API (a canned
+one here; the Studio's own in tests/api_test.py fast).
 
     python -m unittest discover -s python/tests          (from EVRe Studio's folder)
     EVRE_BUILD=<build folder>: where evre-sim is; without it the device tests are skipped
@@ -14,6 +15,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -177,6 +179,85 @@ class Answers(unittest.TestCase):
         with self.assertRaises(evre.EvreError) as refused:  # its own refusal still raises, with the code
             evre.Master(_CannedLink(own), slave=1, timeout=0.5).write(0xD084, b'\x01')
         self.assertEqual(refused.exception.code, 3)
+
+
+class _FakeStudio(threading.Thread):
+    """EVRe Studio's JSON port as the Studio answers, canned: one client, the answers of STUDIO.md 17.3"""
+    STREAMS = [{'name': 'ADC', 'rate': 10000, 'on': True, 'channels': [
+        {'name': 'ADC.I_LOAD', 'type': 'i16', 'unit': 'A'}, {'name': 'ADC.V_BUS', 'type': 'i16', 'unit': 'V'}]}]
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.server = socket.socket()
+        self.server.bind(('127.0.0.1', 0))
+        self.server.listen(1)
+        self.port = self.server.getsockname()[1]
+
+    def run(self):
+        conn, _ = self.server.accept()
+        f = conn.makefile('rw', encoding='utf-8', newline='\n')
+
+        def send(obj):
+            f.write(json.dumps(obj) + '\n')
+            f.flush()
+        for text in f:
+            q = json.loads(text)
+            if q['cmd'] == 'list':
+                send({'ok': True, 'registers': [{'name': 'SUPPLY_V'}], 'streams': self.STREAMS})
+            elif q['cmd'] == 'get' and 'OFF.X' in q['names']:
+                send({'ok': False, 'error': 'fast stream OFF is off'})
+            elif q['cmd'] == 'get':
+                send({'ok': True, 'values': {n: 0.5 for n in q['names']},
+                      'times': {n: 1790000000.25 for n in q['names'] if '.' in n}})
+            elif q['cmd'] == 'stream':
+                send({'ok': True, 'streaming': len(q['names']), 'fast': 1, 'period_ms': q.get('period_ms', q['ms'])})
+                send({'t': 1.0, 'values': {'SUPPLY_V': 12.0}})
+                send({'t': 1.1, 'fast': {'ADC.I_LOAD': {'n': 2, 'min': -1.0, 'max': 1.0, 'mean': 0.0, 'first': 10}}})
+                send({'t': 1.2, 'fast': {'ADC.I_LOAD': {'n': 0, 'min': None, 'max': None, 'mean': None}}})
+            elif q['cmd'] == 'stop':
+                send({'t': 1.3, 'values': {'SUPPLY_V': 12.1}})  # a sample read before the stop, sent after it
+                send({'ok': True})
+        conn.close()
+
+
+class StudioApi(unittest.TestCase):
+    """evre.studio against a canned JSON port: the calls, the fast channels' lines, a refusal"""
+
+    def setUp(self):
+        fake = _FakeStudio()
+        fake.start()
+        self.studio = evre.connect_studio('127.0.0.1', fake.port)
+
+    def tearDown(self):
+        self.studio.close()
+
+    def test_streams_and_values(self):
+        streams = self.studio.streams()
+        self.assertEqual([c['name'] for c in streams[0]['channels']], ['ADC.I_LOAD', 'ADC.V_BUS'])
+        self.assertEqual(self.studio.get('SUPPLY_V', 'ADC.I_LOAD'), {'SUPPLY_V': 0.5, 'ADC.I_LOAD': 0.5})
+        self.assertEqual(self.studio.fast_value('ADC.I_LOAD'), (0.5, 1790000000.25))
+        with self.assertRaises(evre.EvreError) as off:
+            self.studio.get('OFF.X')
+        self.assertIn('is off', str(off.exception))
+
+    def test_stream_lines(self):
+        lines = []
+        for line in self.studio.stream(['SUPPLY_V', 'ADC.I_LOAD'], ms=50, period_ms=100):
+            lines.append(line)
+            if len(lines) == 3:
+                break
+        self.assertEqual(lines[0], evre.Line(1.0, {'SUPPLY_V': 12.0}, None))
+        self.assertEqual(lines[1].fast['ADC.I_LOAD'], evre.Summary(2, -1.0, 1.0, 0.0, 10))
+        self.assertEqual(lines[2].fast['ADC.I_LOAD'], evre.Summary(0, None, None, None, None))
+        self.assertEqual(self.studio.get('SUPPLY_V'), {'SUPPLY_V': 0.5})  # the stop's late sample was dropped
+
+    def test_fast_stream(self):
+        got = []
+        for t, summary in self.studio.fast_stream(['ADC.I_LOAD'], period_ms=100):
+            got.append((t, summary['ADC.I_LOAD'].n))
+            if len(got) == 2:
+                break
+        self.assertEqual(got, [(1.1, 2), (1.2, 0)])
 
 
 BUILD = os.environ.get('EVRE_BUILD')

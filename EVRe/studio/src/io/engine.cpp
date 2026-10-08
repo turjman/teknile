@@ -81,6 +81,23 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 	api_->linkName = [this] { return link_ ? link_->describe() : QString(); };
 	api_->deviceName = [this] { return deviceName_; };
 	api_->broadcastRefusal = [this](uint16_t addr, const QByteArray &bytes) { return broadcastRefusal(addr, bytes); };
+	/* the streams for the API: asked on this thread, so the runs are read where they are written */
+	api_->fastStreams = [this] {
+		QVector<ApiServer::FastState> states;
+		for (const FastRun &run : std::as_const(fastRuns_)) {
+			ApiServer::FastState state;
+			state.def = run.def;
+			state.enable = run.enableReg;
+			state.on = run.on;
+			const fast::FastClock &clock = run.state.clock();
+			state.rate = run.on && clock.started() && clock.nominalRate() > 0 ? clock.nominalRate() : run.def.rate;
+			state.hasRecord = run.on && run.state.records > 0 && !run.lastRecord.isEmpty();
+			state.newest = run.lastRecord;
+			state.newestTime = double(clockEpochMs_) / 1000.0 + run.lastRecordTime;
+			states.push_back(state);
+		}
+		return states;
+	};
 	statsTimer_ = new QTimer(this);
 	statsTimer_->setInterval(250);
 	connect(statsTimer_, &QTimer::timeout, this, &IoEngine::updateStats);
@@ -110,6 +127,7 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 	fastWatch_->setInterval(500);
 	connect(fastWatch_, &QTimer::timeout, this, &IoEngine::watchFast);
 	clock_.start();
+	clockEpochMs_ = QDateTime::currentMSecsSinceEpoch();
 	rateClock_.start();
 #ifdef Q_OS_WIN
 	/* Windows ticks timers every 15.6 ms unless a program asks for better; a
@@ -966,6 +984,7 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 	/* a fast stream's block, recognised first: by its slave and its window */
 	const int stream = fastStreamOf(frame);
 	if (stream >= 0) {
+		api_->passBlock(fastRuns_[stream].def.name, frame); /* to the pass-through clients that asked, as it came */
 		takeBlock(stream, frame);
 		return;
 	}
@@ -1184,6 +1203,10 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 		block.markTime = run.state.clock().mark().time;
 		block.markPeriod = run.state.clock().period();
 	}
+	/* the API: its newest record, and its JSON streams' periods */
+	if (taken.count > 0) run.lastRecordTime = run.state.clock().timeOf(taken.first + quint64(taken.count) - 1);
+	if (size > 0 && block.records.size() >= qsizetype(taken.count) * size)
+		api_->fastRecords(run.def, taken.first, taken.count, block.records.constData());
 	/* the chart's trigger: its crossing found here, as the block comes, so the window holds on it at the next frame */
 	run.trigger.scan(run.def, taken, frame.data.constData() + fast::HEADER, run.state.clock().mark(),
 			run.state.clock().period(), block.crossings);

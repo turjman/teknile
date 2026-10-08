@@ -28,6 +28,20 @@ The examples use the registers of `maps/example_device.json` (`SUPPLY_V`,
 {"cmd":"broadcast","name":"D1_SPEED","value":0}           every device on the link at once, then each read back
 ```
 
+Fast streams (a map's `streams`, started in the Studio's Fast streams card or with `--fast ADC`), by their channels'
+names `STREAM.CHANNEL`. Reading only: no write switch needed.
+
+```
+{"cmd":"list"}                                            also "streams": name, rate, on, channels
+{"cmd":"get","names":["ADC.I_LOAD"]}                      the newest record: "values", and its time in "times"
+{"cmd":"stream","names":["ADC.I_LOAD"],"period_ms":100}   a line every 100 ms (10 at least):
+    {"t":..,"fast":{"ADC.I_LOAD":{"n":1000,"min":..,"max":..,"mean":..,"first":..}}}
+```
+
+Registers and channels may be named in one `stream`: the registers' samples every `ms`, the channels' lines every
+`period_ms`, two kinds of line (`values` or `fast`). Every record as it came: on port 1219, write 1 to the stream's
+enable register as to the device, and its blocks come as the device sent them (0 ends them).
+
 Several devices on one link (a bus in the Studio): every register is named after its device, `D1_SPEED`,
 `D2_SPEED`, so the commands above reach any device's register by name.
 
@@ -37,13 +51,16 @@ map's, in any case, or an address such as `"0xD00C"`.
 
 ## Python
 
-`python/evre_studio_client.py`: a small class (`get`, `set`, `stream`) and a
-demo. Standard library only.
+`python/evre_studio_client.py`: a small class (`get`, `set`, `stream`, `streams`,
+`fast_stream`) and a demo. Standard library only. The `evre` package (`../python`)
+has the same client, `evre.connect_studio()`.
 
 ## MATLAB
 
 `matlab/evre_studio_demo.m`: info, values, a write, a 5 s stream plotted.
-Needs R2020b or newer (`tcpclient`, `writeline`, `readline`).
+Needs R2020b or newer (`tcpclient`, `writeline`, `readline`). A fast channel reads the
+same way: `get` with `"ADC.I_LOAD"` gives its newest record, and a `stream` of it
+lines whose `fast` field holds each period's `n`, `min`, `max` and `mean`.
 
 ## LabVIEW
 
@@ -59,6 +76,8 @@ No toolkit needed:
 5. For a stream, send `{"cmd":"stream","names":["SUPPLY_V"],"ms":20}` once, then
    keep reading lines in a loop; send `{"cmd":"stop"}` or close the connection
    to end it.
+6. A fast channel (`"ADC.I_LOAD"`) streams the same way, with `"period_ms"`: each
+   line's `fast` cluster holds the channel's cluster of `n`, `min`, `max`, `mean`.
 
 ## Existing EVRe code
 

@@ -72,6 +72,32 @@ number, 64 bits from the stream's start), `count`, `lost` (records missing befor
 seconds meanwhile (the device's host watchdog), the answers not waited for. A bad block, or one of a newer kind, is
 skipped.
 
+Through EVRe Studio, which shares the device it is connected to (STUDIO.md, chapter 17): its JSON port by register
+name, and a fast stream's channels as each period's min, max and mean. The stream must be on in the Studio (its
+**Start stream**, or `--fast ADC`); reading needs no API write switch.
+
+```python
+with evre.connect_studio() as studio:              # 127.0.0.1:1220, "Serve API" ticked
+    print(studio.streams()[0]['channels'])           # [{'name': 'ADC.I_LOAD', 'type': 'i16', 'unit': 'A'}, ...]
+    print(studio.get('SUPPLY_V', 'ADC.I_LOAD'))      # registers read now, a channel's newest record
+    print(studio.fast_value('ADC.I_LOAD'))           # (0.8145, 1790170000.412): the value and its time
+    for t, summary in studio.fast_stream(['ADC.I_LOAD'], period_ms=100):
+        print(t, summary['ADC.I_LOAD'])              # Summary(n=1000, min=-6.5, max=6.5, mean=0.002, first=4120000)
+        break                                        # leaving the loop sends {"cmd":"stop"}
+```
+
+| Call | What it does |
+|---|---|
+| `connect_studio(host='127.0.0.1', port=1220, timeout=3.0)` | a `Studio`; a refusal raises `EvreError` with the Studio's reason (a stream that is off, an unknown name) |
+| `studio.info()`, `studio.registers()`, `studio.streams()` | the Studio and its link; the map's registers; its fast streams (`name`, `rate`, `on`, `channels`) |
+| `studio.get(*names)`, `studio.fast_value(name)`, `studio.set(**values)` | `{name: value}` (registers read now, channels' newest record); a channel's `(value, time)`; a write (needs Allow API writes), read back |
+| `studio.stream(names, ms=100, period_ms=None)` | yields a `Line(t, values, fast)` per line: a sample of the registers every `ms`, or `fast` = `{channel: Summary}` every `period_ms` (`ms` when None) |
+| `studio.fast_stream(channels, period_ms=100)` | yields `(t, {channel: Summary(n, min, max, mean, first)})`: each channel's records of the period (`n` 0 and `None`s when none came) |
+
+Every record as it came: `evre.connect_tcp('127.0.0.1', 1219, 'maps/example_fast.json').stream('ADC')` reaches the
+stream through the Studio's EVRe pass-through, as from the device (its enable written there, without API writes while
+the Studio streams it), or a recording, below.
+
 A fast stream's recording (a `.evrs` file EVRe Studio writes beside its CSV, or `evre record` writes):
 
 ```python
@@ -91,4 +117,5 @@ t = rec.times                    # seconds on the writer's clock (EVRe Studio: t
 
 Tests: `python -m unittest discover -s python/tests`, with `EVRE_BUILD=<build folder>` to include a session
 against `evre-sim` serving the example map, a bus of two devices on `evre_fake_fast`, and a recording `evre record`
-writes from it, and the stream live with `dev.stream`.
+writes from it, and the stream live with `dev.stream`. The Studio's client is tested against a canned JSON port here,
+and against EVRe Studio itself in `tests/api_test.py fast`.

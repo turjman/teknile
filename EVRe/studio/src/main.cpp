@@ -58,13 +58,15 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	const QCommandLineOption record(QStringLiteral("record"), QStringLiteral("Record every poll to this CSV file."),
 			QStringLiteral("file.csv"));
 	const QCommandLineOption connectAtStart(QStringLiteral("connect"), QStringLiteral("Connect at start."));
+	const QCommandLineOption fastAtStart(QStringLiteral("fast"), QStringLiteral("Fast streams to start once connected."),
+			QStringLiteral("NAME,NAME"));
 	const QCommandLineOption api(QStringLiteral("api"), QStringLiteral("Serve the API (EVRe :1219, JSON :1220)."));
 	const QCommandLineOption apiWrites(QStringLiteral("api-writes"),
 			QStringLiteral("Allow API clients to write (not the danger registers)."));
 	const QCommandLineOption apiWritesDanger(QStringLiteral("api-writes-danger"),
 			QStringLiteral("Allow API clients to write the danger registers too."));
-	parser.addOptions({ tcp, serial, map, bus, plot, tab, interval, inFlight, record, connectAtStart, api, apiWrites,
-			apiWritesDanger });
+	parser.addOptions({ tcp, serial, map, bus, plot, tab, interval, inFlight, record, connectAtStart, fastAtStart, api,
+			apiWrites, apiWritesDanger });
 	parser.process(app);
 
 	MainWindow::Startup startup;
@@ -75,6 +77,7 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	startup.tab = parser.value(tab);
 	startup.plot = parser.value(plot).split(QLatin1Char(','), Qt::SkipEmptyParts);
 	startup.connect = parser.isSet(connectAtStart);
+	startup.fast = parser.value(fastAtStart).split(QLatin1Char(','), Qt::SkipEmptyParts);
 	startup.interval = parser.isSet(interval) ? parser.value(interval).toDouble() : -1; /* 0.25 = 4000/s, 0 = max */
 	startup.record = parser.value(record);
 	startup.inFlight = parser.value(inFlight).toInt();

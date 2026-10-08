@@ -72,6 +72,7 @@ public:
 		QString tab;             /* registers, chart, monitor or map */
 		QStringList plot;        /* register names to chart */
 		bool connect = false;
+		QStringList fast;        /* fast streams to start (their names), as Start does: on once connected */
 		double interval = -1;    /* poll interval, ms (0 = as fast as possible); < 0 = as saved */
 		QString record;          /* CSV file to record into from the start */
 		int inFlight = 0;        /* requests in flight; 0 = as saved */

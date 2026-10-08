@@ -165,6 +165,22 @@ void MainWindow::applyStartup(const Startup &startup) {
 	if (startup.inFlight > 0) sidebar_->setInFlight(startup.inFlight);
 	if (!startup.record.isEmpty()) startRecord(startup.record);
 	sidebar_->tickApiSwitches(startup.api, startup.apiWrites, startup.apiDanger);
+	/* as Start in the Fast streams card: wanted now, switched on once connected (an API client's data, from a script) */
+	QStringList noStream;
+	for (const QString &name : startup.fast) {
+		const QVector<StreamDef> &streams = doc_->map().streams;
+		int stream = -1;
+		for (int i = 0; i < streams.size() && !isBus(); i++)
+			if (streams[i].name.compare(name.trimmed(), Qt::CaseInsensitive) == 0) stream = i;
+		if (stream < 0) {
+			noStream << name.trimmed();
+			continue;
+		}
+		sidebar_->setFastOn(stream, true);
+		engine_->post([engine = engine_, stream] { engine->setFastStream(stream, true); });
+	}
+	if (!noStream.isEmpty())
+		logEvent(LogLevel::Warning, tr("--fast: no such fast stream in the map: %1").arg(noStream.join(QStringLiteral(", "))));
 	if (startup.connect) {
 		wantConnected_ = true;
 		connectLink();

@@ -2395,8 +2395,9 @@ What the Studio does with a stream on:
   and the blocks that piled up follow over the next frames, in their order; none of them is lost (beyond 64 MB
   waiting, a frame takes them all).
 
-The chart draws the channels (7.14), and a CSV recording records the streams beside it (12.7). The API does not take
-the samples; the Registers tab lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
+The chart draws the channels (7.14), and a CSV recording records the streams beside it (12.7). The API gives them to
+other programs (17.3, *Fast streams*: a channel's newest record and each period's min, max and mean; 17.4: the blocks
+as they came); the Registers tab lists only the registers. `evre record` (34.x) writes a stream's blocks to a file (`.evrs`) and `evre info` lists a map's streams.
 
 ## 14. Command line, environment variables, settings
 
@@ -2404,7 +2405,7 @@ the samples; the Registers tab lists only the registers. `evre record` (34.x) wr
 
 ```
 EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv]
            [--api] [--api-writes] [--api-writes-danger]
 ```
@@ -2418,6 +2419,7 @@ EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus
 | `--plot NAME,NAME` | Ticks Plot on these registers (names in any case). One the map marks fixed (`"plot": false`), or past what the chart holds at the poll rate (4.8), is left off, and the Log says which. |
 | `--tab registers\|chart\|monitor\|map` | The tab shown at start (`map`: the Map editor). Any other value is ignored. |
 | `--connect` | Connects at start, as if you clicked Connect. |
+| `--fast NAME,NAME` | Starts these fast streams (13.9; names in any case) once connected, as their **Start stream** does: for a script that reads them through the API (17.3). A name the map has no stream of is left, and the Log says which. Like Start, it is not remembered. |
 | `--interval ms` | The poll interval. `0` is *max*, `0.25` is 4000 polls/s. |
 | `--inflight n` | In flight, for the link type chosen, as if you typed it: it is saved like a typed value. |
 | `--record file.csv` | Starts a CSV recording at once. Rows come as polls complete. |
@@ -2437,7 +2439,8 @@ A bad option ends the program with a message. Options are applied in this order,
 7. In flight
 8. recording
 9. API switches
-10. connect
+10. fast streams
+11. connect
 
 The link fields, the interval and the other sidebar values set by options are saved on close like typed values. An option therefore also changes what the next plain start uses.
 
@@ -2998,6 +3001,8 @@ The server keeps running while the Studio has no link. In that state `info`, `li
 
 Both are off at every start, and neither is ever saved. They can be set at start with `--api-writes` and `--api-writes-danger`.
 
+Reading a fast stream (17.3, *Fast streams*; the blocks of 17.4) needs neither switch: nothing is written to the device.
+
 The reason: a Studio started later, perhaps unattended or by a script, must not let a client move or switch something unless a person decided so for this session. API writes do not show the window's confirmation dialogs: the danger switch takes the dialog's place. The window's own *Allow writes* has no effect on the API.
 
 A write is checked against the danger registers by its byte span. A raw write that **overlaps** any byte of a danger register needs the danger switch.
@@ -3019,7 +3024,7 @@ The refusal texts:
 
 **`id`.** Any request may carry `"id"`, which can be any JSON value except null. It comes back unchanged in the answer. Use it to match answers when a client sends several requests without waiting. Answers usually come in request order, since the Studio's queue answers reads in order, but `id` is the reliable way.
 
-**Names.** Wherever a request names registers, a name is the map's name in any case, or an address as text (`"0xD00C"`) that is exactly the start of a map register. Answers use the map's names. On a bus (3.9) the names carry their device's: `"D2_SUPPLY_V"` reads that register of D2, whatever its slave address; `list` gives each register's `"slave"`; an address as text, and `read` / `write` by address, are the selected device's. JSON objects in answers list their keys in alphabetical order.
+**Names.** Wherever a request names registers, a name is the map's name in any case, or an address as text (`"0xD00C"`) that is exactly the start of a map register. Answers use the map's names. On a bus (3.9) the names carry their device's: `"D2_SUPPLY_V"` reads that register of D2, whatever its slave address; `list` gives each register's `"slave"`; an address as text, and `read` / `write` by address, are the selected device's. A fast stream's channel is named `STREAM.CHANNEL` (`"ADC.I_LOAD"`, any case), as its line on the chart. JSON objects in answers list their keys in alphabetical order.
 
 **Values.**
 
@@ -3055,14 +3060,15 @@ The Studio, the device, the link and the write switches.
 
 #### `list`
 
-Every register of the map, including those that are not polled.
+Every register of the map, including those that are not polled, and the map's fast streams (`"streams"`, an empty
+list for a map without them; see *Fast streams* below).
 
 ```
 {"cmd":"list"}
 {"ok":true,"registers":[{"access":"ro","addr":"0xA000","desc":"which device this is","group":"Protocol",
  "name":"DEVICE_ID","plot":false,"size":2,"type":"u16"}, ...,
  {"access":"rw","addr":"0xD086","danger":true,"desc":"moves the motor: confirmed on every write","group":"Settings",
- "name":"MOTOR_SPEED","size":2,"type":"i16","unit":"rpm"}]}
+ "name":"MOTOR_SPEED","size":2,"type":"i16","unit":"rpm"}],"streams":[]}
 ```
 
 Each entry has `name`, `addr`, `type`, `size`, `access` (`ro` / `rw`) and `group`. It also has `unit`, `desc` and `danger: true` when the map sets them, and `plot: false` for a register the map marks not plottable (16.3).
@@ -3080,8 +3086,10 @@ Fresh values, read from the device now. They are not the table's cached values.
 - **Reading:** the registers are merged into block reads by the same rules as the poller (13.3).
 - **`decoded`:** present when at least one of the registers has bit fields or an enum. It holds their Decoded text.
 - **The table:** the values read go into the Studio's table too.
+- **A fast channel** (`"ADC.I_LOAD"`): its newest record's value, without reading anything; see *Fast streams* below.
 - **Errors:**
-  - `no register "X" in the map`
+  - `no register "X" in the map`, or for a name with a dot `no register or fast channel "X.Y" in the map (a fast
+    channel is STREAM.CHANNEL, as "list" names it)`
   - `"names" is empty`
   - the first block that failed, for example `0xD000: timeout (500 ms)`
 
@@ -3133,6 +3141,8 @@ A sample line at a fixed period, until `stop`, a new `stream`, or the end of the
   A failed read gives `{"t":…,"ok":false,"error":"<why>"}`, with `stream` as well.
 - **One read at a time.** The next sample is skipped while the previous read is still under way, so a slow device lowers the rate instead of piling up requests. No samples are sent while the Studio has no link.
 - **One stream per client.** A new `stream` replaces the old one. The client can send other commands meanwhile, and their answers are mixed with the samples.
+- **Fast channels** in the names: a line of their min, max and mean every `period_ms`, a line of its own kind beside
+  the samples; see *Fast streams* below.
 
 #### `stop`
 
@@ -3179,6 +3189,40 @@ the same map), and the write switches of 17.2 for each device's register there.
   `set`.
 - Errors: the rule's refusal (3.10), the write refusals, or `sent, but the read-back failed: ...`.
 
+#### Fast streams
+
+A map's fast streams (13.9) are read through the same commands, by their channels' names (`STREAM.CHANNEL`). Only
+while the stream is on in the Studio (its **Start stream**, or `--fast` at start, 14.1): the API does not switch it,
+and needs no write switch for it.
+
+| Command | For&nbsp;fast&nbsp;streams |
+|---|---|
+| `list` | `"streams"`: each stream's `name`, `rate` (records a second: as the device was set to once a block came, else the map's), `on` (the Studio takes its blocks), `desc` when the map has one, and `channels`, each its `name` (`STREAM.CHANNEL`), `type`, and `unit` and `desc` when the map sets them. |
+| `get` | A channel: its **newest record**'s value in `"values"` (scale and offset applied), and that record's time in `"times"`, in seconds since 1970 (the stream's clock in the Studio, 13.9, laid on the PC's). Registers in the same request are read as always. |
+| `stream` | A channel: every `period_ms` (whole milliseconds, **10** at least; when left out `ms`, else 100) one line with each named channel's records of that period: `n` (how many), `min`, `max`, `mean` and `first` (the number of its first record, 64 bits from the stream's start, as in a recording). A period holds the records that came in it (a block comes a little after its records were taken); a period without one gives `n` 0 and nulls. `t` is the period's end, in seconds since 1970, as a sample's. Registers in the same request keep their samples every `ms`: two kinds of line, told apart by `values` and `fast`. |
+
+```
+{"cmd":"list"}
+{"ok":true,"registers":[...],"streams":[{"channels":[{"name":"ADC.I_LOAD","type":"i16","unit":"A"},
+ {"name":"ADC.V_BUS","type":"i16","unit":"V"}],"desc":"load current and bus voltage, sampled together",
+ "name":"ADC","on":true,"rate":10000}]}
+{"cmd":"get","names":["ADC.I_LOAD","SUPPLY_V"]}
+{"ok":true,"times":{"ADC.I_LOAD":1790170000.412},"values":{"ADC.I_LOAD":0.8145,"SUPPLY_V":12.05}}
+{"cmd":"stream","names":["ADC.I_LOAD","SUPPLY_V"],"ms":50,"period_ms":100,"id":"f"}
+{"fast":1,"id":"f","ms":50,"ok":true,"period_ms":100,"streaming":2}
+{"stream":"f","t":1790170000.475,"values":{"SUPPLY_V":12.0}}
+{"fast":{"ADC.I_LOAD":{"first":4120000,"max":6.5,"mean":0.0021,"min":-6.5,"n":1000}},"stream":"f","t":1790170000.512}
+```
+
+- The confirmation of a `stream` with fast channels has `fast` (their count) and `period_ms` (the period used); `ms`
+  only when registers are named.
+- A stream switched off meanwhile: its channels' lines go on with `n` 0. No line is sent while the Studio has no
+  link.
+- **Errors:** `fast stream ADC is off: start it in EVRe Studio (Fast streams), or start the Studio with --fast ADC`
+  (`get` and `stream`), and `fast stream ADC is on, but no record has come yet` (`get`).
+- Every record, as it came: port 1219 (17.4), or a recording's `.evrs` file (12.7) read with
+  `evre.read_recording`.
+
 #### An unknown command
 
 It gets `unknown cmd "x": info, list, get, set, stream, stop, read, write, broadcast`.
@@ -3211,6 +3255,20 @@ How frames are handled:
 - **Frames are not merged.** Each request is one request to the device.
 - **Pipelining works.** A client may pipeline requests. The Studio's In flight then limits how many are on the link at once.
 
+**A fast stream's blocks** (13.9) pass through to a client that asks for them the way it would ask the device: by
+writing the stream's `enable` register (exactly that register, `WRITE_ACK` or `WRITE`). The blocks then come as the
+device sent them, READ_RESP frames at the stream's window nobody asked for, with the slave address the client named
+(as an answer); a client that does not read them gets none past 8 MiB waiting (their numbers tell it what it missed).
+So an EVRe client that streams from the device streams through the Studio unchanged, the `evre` package's
+`Device.stream` (36) included.
+
+| The&nbsp;client&nbsp;writes | The&nbsp;Studio&nbsp;streams&nbsp;it | What happens |
+|---|---|---|
+| `enable`&nbsp;1 | yes | Taken by the Studio, not sent: the client's blocks start, acknowledged (`WRITE_ACK_RESP`). No write switch is needed: the device is not written. |
+| `enable`&nbsp;0 | yes | Taken by the Studio, not sent: the client's blocks end, acknowledged. No client switches the Studio's stream off. |
+| `enable`&nbsp;1 | no | The client's own write: to the device as any write (the switches of 17.2). Once the device acknowledges it, the client gets the blocks the device sends; the client keeps the device's watchdog fed itself (13.9). |
+| `enable`&nbsp;0 | no | To the device as any write, and the client's blocks end; but when its blocks came from the Studio's stream (started while the Studio streamed it), only its blocks end: nothing is sent. |
+
 ### 17.5 Examples
 
 The `examples/` folder has a client for Python, a demo for MATLAB and step-by-step notes for LabVIEW. They use the registers of `maps/example_device.json`: put your own map's names in their place.
@@ -3230,7 +3288,21 @@ for t, values in s.stream(["SUPPLY_V"], ms=20):
 s.close()
 ```
 
-Run it directly: `python3 examples/python/evre_studio_client.py [NAME ...]`.
+Run it directly: `python3 examples/python/evre_studio_client.py [NAME ...]`. It also has `streams()` and
+`fast_stream(channels, period_ms)` (fast streams), and lists the map's streams when it runs.
+
+The `evre` package (36) has the same client, `evre.connect_studio()`, with `get`, `fast_value` (a fast channel's
+newest record and its time), `stream` (each line, a sample or a fast channel's `Summary`) and `fast_stream`:
+
+```python
+import evre
+
+with evre.connect_studio() as studio:            # 127.0.0.1:1220
+    print([s["name"] for s in studio.streams()])   # ['ADC']
+    for t, summary in studio.fast_stream(["ADC.I_LOAD"], period_ms=100):
+        print(t, summary["ADC.I_LOAD"].min, summary["ADC.I_LOAD"].max)
+        break                                    # leaving the loop sends {"cmd":"stop"}
+```
 
 The same without the class:
 
@@ -3998,12 +4070,12 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
 | `cli/evre_sim.cpp` | `evre-sim`: a device made from a map (chapter 35) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour of chapter 35 |
-| `python/evre/` | the `evre` Python package: frames, link and master, the map, a device by register name, a fast stream's recording (`fast.py`, `read_recording`) (`python/README.md`) |
+| `python/evre/` | the `evre` Python package: frames, link and master, the map, a device by register name, a fast stream's recording (`fast.py`, `read_recording`), the Studio's JSON API (`studio.py`, `connect_studio`) (`python/README.md`) |
 | `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim`, a bus on `evre_fake_fast`, and fast streams' recordings: one made by hand (the numbers across a gap and the 32-bit wrap, a new start, the times from the marks, a bad block, a cut, a CSV refused) and one `evre record` writes from `evre_fake_fast` losing every 5th block (the device's waves, the gaps); the same stream live with `dev.stream` (its blocks for a second, the numbers and gaps, the waves, switched off at the end) |
 | `tests/cli_test.py` | `evre` end to end, against its own fake device on port 1212 |
 | `tests/schema_test.py` | the maps against `docs/evre-map-1.schema.json` (needs the `jsonschema` package) |
 | `docs/evre-map-1.schema.json` | the JSON Schema of `evre-map/1` |
-| `tests/api_test.py` | the API end to end, in three modes |
+| `tests/api_test.py` | the API end to end, in three modes, and the fast streams in a mode of their own |
 | `tests/fake_device.py` | a fake EVRe device over TCP (Python, standard library only) |
 | `tests/fake_device_fast.cpp` | `evre_fake_fast`: the same in C++, for speed measurements |
 | `tests/fake_login_test.py` | the login of both fake devices and of `evre_probe`, checked the same way (26.4) |
@@ -4218,7 +4290,11 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 - `start(evrePort, jsonPort, network, err)` listens on `QHostAddress::LocalHost`, or on `Any` when Network is
   ticked. The ports come from the settings `api/evrePort` (default 1219) and `api/jsonPort` (default 1220).
 - `stop()`, `running()`, `setAllowWrites()`, `setAllowDanger()`, `clientCount()` and `requests()`.
-- The engine gives it three functions: `isConnected`, `linkName` and `deviceName`.
+- The engine gives it its functions: `isConnected`, `linkName`, `deviceName`, `broadcastRefusal` and `fastStreams`
+  (each stream of the map as the engine has it: on or off, its rate, its newest record and that record's time).
+- Fast streams: the engine hands it each frame at a stream's window (`passBlock`, to the pass-through clients that
+  wrote the stream's enable, 17.4) and each good block's records of a stream the Studio takes (`fastRecords`, into the
+  periods of the JSON streams that name its channels).
 - JSON commands: `info`, `list`, `get`, `set`, `stream`, `stop`, `read` and `write`, one handler function each.
 - Reads go through `readRegisters()`, which merges blocks and writes the table. Streams use one `QTimer` per client
   and skip a tick while a sample is still being read, so a slow device lowers the rate instead of piling up
@@ -5284,7 +5360,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | Program | Covers | Needs | Writes? |
 |---|---|---|---|
 | `evre_gui_test` | the&nbsp;real&nbsp;window,&nbsp;end&nbsp;to&nbsp;end | `tests/fake_device.py` on 127.0.0.1:1210 | yes, a danger register included |
-| `tests/api_test.py` | the&nbsp;API&nbsp;server,&nbsp;three&nbsp;modes | the Studio connected to the fake device, API on | yes, in the modes `writes` and `danger` |
+| `tests/api_test.py` | the&nbsp;API&nbsp;server,&nbsp;four&nbsp;modes | the Studio connected to the fake device, API on; the mode `fast` starts its own Studio and `evre_fake_fast` | yes, in the modes `writes` and `danger` |
 | `evre_probe` | the protocol core against a real device | a&nbsp;device&nbsp;or&nbsp;gateway | no register values; only the login, if asked |
 | `tests/fake_device.py` | a fake device for the tests and for trying the Studio | Python&nbsp;3,&nbsp;standard&nbsp;library | serves writes |
 | `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
@@ -5433,7 +5509,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   *Polling & recording*;
   with Poll off 24 to 45 requests go out in 3 s (CONFIG every 100 ms) and after those 3 s the stream still runs (the
   fake device's 2 s watchdog never stops it); with *Log frames* the Monitor names a block *READ_RESP (fast stream
-  ADC)*; Stop writes 0. On again, then Disconnect: 0 written before the link closes, the button Start, greyed. On
+  ADC)*; Stop writes 0. On again, then Disconnect: 0 written before the link closes, the button Start, greyed.
+  `--fast adc,NOPE` (the command line): the stream on once connected, the button Stop, *NOPE* said in the Log. On
   again, the device killed and started again losing every 5th block (`--fast-lose 5`): after the reconnect the
   stream is on again by itself and the card counts the samples lost, in amber. A device that takes the enable and
   never sends (the same map without its stream): off again after 2 s (0 written), *no block came in 2 s* in the
@@ -5853,7 +5930,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 549 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 550 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -5883,11 +5960,11 @@ To keep the user's settings out of it, start the Studio with `EVRE_SHOT=';'`. Th
 and does not quit by itself (26.6).
 
 It picks two read-only f32 registers with a unit, a writable u8 and a writable 16-bit danger register of the device
-bank. With the example map these are SUPPLY_V, SUPPLY_I, FAN_SPEED and MOTOR_SPEED. It then runs 24 checks in
-`readonly`, 25 in `writes` and `danger`:
+bank. With the example map these are SUPPLY_V, SUPPLY_I, FAN_SPEED and MOTOR_SPEED. It then runs 25 checks in
+`readonly`, 26 in `writes` and `danger`:
 
 - `info` (connected, id echoed, write switches as started)
-- `list`
+- `list`, and its `"streams": []` (the example map has none); a fast channel's name not found there
 - `get` by name and by address, `decoded`
 - unknown register and unknown command
 - raw `read`
@@ -5900,6 +5977,25 @@ bank. With the example map these are SUPPLY_V, SUPPLY_I, FAN_SPEED and MOTOR_SPE
 - the danger register by pass-through
 
 What it writes it sets back to 0. The exit code is 1 on a failure.
+
+The fast streams have a mode of their own, which starts what it needs and stops it again (by its processes):
+
+```sh
+python3 tests/api_test.py fast build      # on Linux under xvfb-run, as the GUI test
+```
+
+It starts `evre_fake_fast` on port 1246 with `maps/example_fast.json` and an EVRe Studio connected to it with `--api`
+(writes off; `EVRE_SHOT`, so settings of its own, 26.6), twice, and runs 15 checks:
+
+- the stream off: `list` names it and its channels (off, 10000 a second); `get` and `stream` of a channel refused with
+  the reason; an unknown channel; the pass-through's write of its enable is the client's own, refused (ERROR_RESP 3)
+- started with `--fast ADC`: `list` says on; `get` of two channels and a register, their time within 1 s of now
+- the pass-through: the enable written 1 with writes off, acknowledged, and the blocks come; written 0, they end while
+  the Studio's stream goes on
+- `stream` of two channels and a register: both kinds of line, tagged; about 10 000 records a second, each period
+  starting where the one before ended; the min, max and mean of every period equal to those of the records the
+  pass-through brought, record by record
+- the `evre` package: `streams`, `fast_value`, `fast_stream`, `get`; `Device.stream` on port 1219 with writes off
 
 ### 26.4 The fake devices
 
@@ -6746,5 +6842,7 @@ a bus file (3.9). Its registers go by their names on the bus (`bus['D2_FAN_SPEED
 one back.
 
 Scripts that should share the device with the Studio use the Studio's API instead (chapter 17): the package opens a
-link of its own.
+link of its own. `evre.connect_studio()` is the client of the Studio's JSON port: `get`, `set`, `stream`, and a fast
+stream's channels as each period's min, max and mean (`fast_stream`, 17.3); `evre.connect_tcp('127.0.0.1', 1219, map)`
+reaches the device through the pass-through, `dev.stream` included (17.4).
 
