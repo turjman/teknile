@@ -2141,7 +2141,13 @@ recordings can be open.
 - **The window.** Its title is the file's name and its span: *run.csv · 2026-10-05 09:00:00 – 10:30:00 (1 h 30 min)*.
   The line above the chart says the same, with the lines, the rows and the columns left out. The chart is held on
   the whole recording: there is no Live, Memory, RAM, Clear or Remove all, and Smooth is off; Window, the wheel, a
-  drag and the memory strip move through it as through a held chart.
+  drag and the memory strip move through it as through a held chart. Its row of Window and Y range keeps Window on
+  the left and the Y range on the right, as on the Chart tab (the hidden Memory and RAM leave a gap, not boxes and
+  labels spread over the row).
+- **At once, whole.** It opens with the file's lines, their values in the legend and its Y range (the min and max
+  boxes show the range of its first frame, in Auto's grey). No frames come to a held chart by themselves: a change
+  is painted when it is made, and a window made bigger is painted whole on either drawing path (on a card, a frame
+  the system let go is drawn again: 23.7). A theme switched in the main window reaches it too.
 - **The columns** come by their titles, `NAME [unit]` (a title without `[…]` has no unit). Each is a line; the first
   64 are plotted, and the **Lines** menu shows or hides each. A cell that is empty is no sample. A column with a cell
   that is not a number (a byte array's hex) is left out.
@@ -4710,7 +4716,12 @@ layer of the window over the chart (DirectComposition), which a card draws and s
   window, topmost), its content a swap chain (flip model, two buffers) the card presents into. It covers the plot
   and 2 px around it (the lines' antialiasing: `layerRect()`), placed on whole pixels of the window's client area
   (`layerPixels_`; the chart's coordinates times the scaling may not be whole). `Present` never waits: a frame the
-  system is still busy with is dropped, the next comes a few ms later. The chart itself paints only what is around
+  system is still busy with is dropped, the next comes a few ms later. A held view has no next frame coming (a
+  recording's window, 12.6, never has): a dropped frame (`GpuLines::droppedFrames`) is painted again 16 ms later
+  (`DROPPED_AGAIN_MS`), until one reaches the layer. Without it the layer kept its last frame: after the window was
+  made bigger, at its old size, and the window's own plot beside it blank (the card's part is not painted by the CPU)
+  until something painted again: the black bar over the new part of a recording's window (2026-10-08). The chart
+  itself paints only what is around
   it, and asks Qt to paint again only that part (`refresh()`, for every change of the chart), so the plot is
   neither copied by Qt nor sent to the screen by it (at 4K that was half of a frame).
 - **Shown and taken away with the window.** A layer, not a native child window: Windows took a child window away
@@ -4845,6 +4856,15 @@ At 60 Hz, a frame lasts 16.7 ms. The work in the GUI thread per frame is:
 - `sync()`: a snapshot, the rows that moved, the samples, the monitor lines;
 - the chart's paint;
 - the table's repaint, at most 20 times a second.
+
+While frames come, a change of the chart waits for the next one (`refresh()`: the mouse moves up to 1000 times a
+second). When no frame came for 250 ms (`FRAMES_STOPPED_MS`) it is painted at once; a change made within those
+250 ms is painted when they are over (`framesStopped_`) if no frame came after all. A recording's window has
+frames only while it is fed (`frame()`): the change right after (the samples a measurement held back, the card
+opened) stayed off the screen until something else painted. A measurement that shares no line's arrays with the
+threads holds no samples back (`startMeasure`): the recording's window measures as it is made, before its lines
+come, and its file went in only when that measurement was done. A held view's frame tells the Y boxes its ranges
+when they changed (`yRangesShown`), so Auto's boxes show the range of the frame on the screen at once.
 
 The chart measures itself. The info line on the Chart tab shows frames per second, the average paint time (a
 running average, 0.9 old + 0.1 new) and the smooth delay. A paint time close to the frame time shows up as fps below
@@ -5635,6 +5655,15 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   (nothing), Cancel opens nothing; the recent list holds the last 8; **Open** beside Record CSV; a note added while
   recording is written beside the recording at once and shown when it is opened. With `EVRE_TEST_SHOT` set it saves
   `<prefix>_recording.png`.
+- **The recording's window revisited** (`recordingViewer`, in the recording windows' step): opened with Measure on,
+  the file's 600 samples on the chart and the legend's value at once, and the Y boxes showing its first frame's range
+  under 500 ms (not 0 and 1); a change right after a feed's frames painted though no frame follows; the Y row packed
+  (its labels and list no wider than they need); made bigger on the CPU, the window's own pixels its picture at once;
+  on a card (Windows), the frame of the window made bigger let go as if the system were busy (`dropNextGpuFrame`),
+  then drawn again, the layer at the new size and the screen's plot the CPU's picture (97 % of the blocks); the
+  theme switched, its boxes in the new theme at once. With `EVRE_TEST_SHOT` set the recording windows' step and the
+  fast streams' save `<prefix>_viewer_regs_*.png` and `<prefix>_viewer_fast_*.png` (dark and light, Lanes, measured,
+  smaller and bigger, Arabic) for a look.
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
@@ -5918,7 +5947,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 549 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 556 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
