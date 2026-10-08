@@ -335,6 +335,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 			"most), or the min and max typed (both above 0); values of 0 or less sit on the bottom edge. Log and "
 			"Normalise exclude each other.");
 	yMode_->setToolTip(yModeTip_);
+	/* Lanes: the lane the Y range row applies to, chosen here as well as by a click on the chart (hidden without) */
+	yLane_ = new QComboBox;
+	yLane_->setObjectName(QStringLiteral("yLane"));
+	yLane_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+	yLane_->setToolTip(tr("The lane these Y settings apply to · or click a lane's values on the chart"));
+	yLane_->hide();
 	yMin_ = new QLineEdit;
 	yMax_ = new QLineEdit;
 	yMin_->setObjectName(QStringLiteral("yMin"));
@@ -395,6 +401,7 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addSpacing(12);
 	yRangeLabel_ = mutedLabel(tr("Y range"));
 	row->addWidget(yRangeLabel_);
+	row->addWidget(yLane_);
 	row->addWidget(yMode_);
 	row->addSpacing(4);
 	row->addWidget(mutedLabel(tr("min")));
@@ -760,6 +767,7 @@ void ChartTab::connectControls() {
 		showYRange(false);
 		showLaneActions(); /* All lanes: Auto enabled while a lane is not */
 	});
+	connect(yLane_, &QComboBox::activated, view, &ChartView::setCurrentLane); /* as a click on its value labels */
 	connect(view, &ChartView::currentLaneChanged, this, [this] { /* the toolbar's Y range: that lane's at once */
 		showYControls();
 		showYRange(false);
@@ -767,6 +775,7 @@ void ChartTab::connectControls() {
 	connect(view, &ChartView::laneFoldsChanged, this, [this] {
 		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
 		showLaneActions();
+		showYControls(); /* the lane list marks the folded */
 	});
 	connect(view, &ChartView::laneHeightsChanged, this, [this] {
 		QSettings().setValue(settingKey("laneHeights"), chart_->view()->laneHeights());
@@ -2030,22 +2039,34 @@ void ChartTab::showSpan(double t0, double t1) {
 }
 
 void ChartTab::showYControls() {
-	/* lanes: the current lane's range, its unit beside "Y range" (a long one cut, so the row keeps its width);
-	 * normalised: the min and max mean nothing, the list offers Log */
+	/* lanes: the current lane's range, chosen in the list beside "Y range" (every lane by its unit, in the chart's
+	 * order, a folded one marked); normalised: the min and max mean nothing, the list offers Log */
 	const ChartView *view = chart_->view();
 	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
 	yMin_->setEnabled(!normalize_->isChecked());
 	yMax_->setEnabled(!normalize_->isChecked());
 	/* set only when they change: the info line's refresh calls this twice a second with Lanes on */
-	QString label = tr("Y range"), tip = yModeTip_;
-	if (lane >= 0) {
-		const QString unit = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
-		label = tr("Y range (%1)").arg(yRangeLabel_->fontMetrics().elidedText(unit, Qt::ElideRight, 48));
-		tip = tr("Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane's value labels "
-				"chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.").arg(unit)
-				+ QStringLiteral("\n\n") + yModeTip_;
+	QStringList units;
+	for (int k = 0; lane >= 0 && k < view->laneCount(); k++) {
+		const QString unit = view->laneLabel(k).isEmpty() ? tr("no unit") : view->laneLabel(k);
+		units << (view->laneFolded(k) ? tr("%1 (folded)").arg(unit) : unit);
 	}
-	if (yRangeLabel_->text() != label) yRangeLabel_->setText(label);
+	QStringList listed;
+	for (int k = 0; k < yLane_->count(); k++) listed << yLane_->itemText(k);
+	{
+		const QSignalBlocker quiet(yLane_);
+		if (listed != units) {
+			yLane_->clear();
+			yLane_->addItems(units);
+		}
+		if (lane >= 0 && yLane_->currentIndex() != lane) yLane_->setCurrentIndex(lane);
+	}
+	if (yLane_->isHidden() != (lane < 0)) yLane_->setHidden(lane < 0);
+	QString tip = yModeTip_;
+	if (lane >= 0)
+		tip = tr("Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane's value labels "
+				"chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.").arg(units.value(lane))
+				+ QStringLiteral("\n\n") + yModeTip_;
 	if (yMode_->toolTip() != tip) yMode_->setToolTip(tip);
 }
 

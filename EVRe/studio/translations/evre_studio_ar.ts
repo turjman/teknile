@@ -1237,8 +1237,12 @@ With many fast lines the Memory holds less than asked, and the memory strip says
         <translation>إعادة مدى Y لكل مسار إلى تلقائي (خطّي): المسارات الموسومة «يدوي» أو «لوغاريتمي»</translation>
     </message>
     <message>
-        <source>Y range (%1)</source>
-        <translation>مدى Y (⁦%1⁩)</translation>
+        <source>The lane these Y settings apply to · or click a lane&apos;s values on the chart</source>
+        <translation>المسار الذي تنطبق عليه إعدادات Y هذه · أو النقر على قيم مسار في المخطط</translation>
+    </message>
+    <message>
+        <source>%1 (folded)</source>
+        <translation>⁦%1⁩ (مطويّ)</translation>
     </message>
     <message>
         <source>Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane&apos;s value labels chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.</source>
@@ -2645,7 +2649,7 @@ equal again; the lanes always fill the plot, none lower than 80 px); each lane h
 Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
 zooms it, a double-click sets it to Auto; a lane not in Auto has a &lt;i&gt;Manual&lt;/i&gt; (amber) or &lt;i&gt;Log&lt;/i&gt; tag at the top of
 its values, and a click on the tag sets it back to Auto; a click on a lane&apos;s values makes it the current lane, whose
-range the Y range row shows and sets (&lt;i&gt;Y range (A)&lt;/i&gt;), and &lt;b&gt;All lanes: Auto&lt;/b&gt; under Lanes sets them all back;
+range the Y range row shows and sets (the list after &lt;i&gt;Y range&lt;/i&gt; chooses it too: &lt;i&gt;Y range [A ▾]&lt;/i&gt;), and &lt;b&gt;All lanes: Auto&lt;/b&gt; under Lanes sets them all back;
 one time axis, the cursors, notes and crosshair across them all;
 &lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
@@ -2667,7 +2671,7 @@ off the chart.&lt;/li&gt;
 &lt;p&gt;From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
 oscilloscope&apos;s: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
 right edge (&lt;i&gt;-8 ms&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;), or from &lt;b&gt;T&lt;/b&gt; while the trigger holds the view on a crossing (&lt;i&gt;0&lt;/i&gt; under
-it, &lt;i&gt;+4 ms&lt;/i&gt;). At the axis&apos;s right end &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
+it, &lt;i&gt;+4 ms&lt;/i&gt;). Above the plot, at the right of the legend&apos;s row, &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
 at 0; the wheel steps the window through 1, 2 and 5 per division. &lt;b&gt;Display → Time grid&lt;/b&gt;: Auto (divisions below
 1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, &lt;i&gt;T +1.234 ms&lt;/i&gt;). Long windows and fast lines are drawn
 from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
@@ -2810,7 +2814,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ واسحب الخط بين مسارين لتجعل الذي فوقه أطول أو أقصر (والنقر المزدوج عليه:
 تتساوى كلها من جديد؛ والمسارات تملأ الرسم دائمًا، ولا يقل أي منها عن ⁦80 px⁩)؛ ولكل مسار
 مدى Y خاص:
-انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «كل المسارات: تلقائي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ وللمسار غير التلقائي وسم &lt;i&gt;يدوي&lt;/i&gt; (كهرماني) أو &lt;i&gt;لوغاريتمي&lt;/i&gt; أعلى قيمه، والنقر على الوسم يعيده تلقائيًا؛ والنقر على قيم مسار يجعله المسار الحالي، الذي يعرض صف مدى Y مداه ويضبطه (&lt;i&gt;مدى Y (⁦A⁩)&lt;/i&gt;)، و&lt;b&gt;كل المسارات: تلقائي&lt;/b&gt; تحت المسارات يعيدها كلها؛ محور زمن واحد، والمؤشران والملاحظات و
+انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «كل المسارات: تلقائي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ وللمسار غير التلقائي وسم &lt;i&gt;يدوي&lt;/i&gt; (كهرماني) أو &lt;i&gt;لوغاريتمي&lt;/i&gt; أعلى قيمه، والنقر على الوسم يعيده تلقائيًا؛ والنقر على قيم مسار يجعله المسار الحالي، الذي يعرض صف مدى Y مداه ويضبطه (والقائمة بعد &lt;i&gt;مدى Y&lt;/i&gt; تختاره أيضًا: &lt;i&gt;مدى Y [⁦A ▾⁩]&lt;/i&gt;)، و&lt;b&gt;كل المسارات: تلقائي&lt;/b&gt; تحت المسارات يعيدها كلها؛ محور زمن واحد، والمؤشران والملاحظات و
 خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
 بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
 اليمنى ويتمرر دون قفزات؛ &lt;b&gt;قيم التحويم&lt;/b&gt; (مفعّلة افتراضيًا): مربع القيم بجانب الفأرة، عطّلها لترى
@@ -2828,7 +2832,7 @@ registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b
 &lt;li&gt;&lt;b&gt;مسح&lt;/b&gt; يفرغ الخطوط والذاكرة ويبدأ المجاميع من جديد؛ و&lt;b&gt;إزالة الكل&lt;/b&gt; تزيل كل مسجّل
 عن المخطط.&lt;/li&gt;
 &lt;/ul&gt;
-&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفي الطرف الأيمن للمحور يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
+&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفوق المخطط، في يمين صف المفتاح، يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
 الطويلة والخطوط السريعة تُرسم من ملخصات الأدنى/الأعلى، فلا تكلّف أكثر من القصيرة.&lt;/p&gt;
 &lt;h3&gt;القياسات&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
