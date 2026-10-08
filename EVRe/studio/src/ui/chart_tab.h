@@ -138,6 +138,7 @@ public:
 	const MathLines &mathLines() const { return mathLines_; }
 	bool addMathLine(const MathLine &line);
 	void removeMathLine(int line); /* as its menu's Remove */
+	bool setMathLineShown(int line, bool on); /* as its menu's Shown (false: refused by the cap) */
 	/* a recording's chart: its fast math lines computed from its streams' records (the file's), each register held at
 	 * the value polled at or before each record (before the first: the first), after the samples came (frame) */
 	void fillFastMath();
@@ -290,6 +291,7 @@ private:
 	std::function<double()> clock_;
 	bool recording_ = false;
 	ChartWidget *chart_;
+	QHBoxLayout *axesRow_ = nullptr; /* Window, Memory, RAM, the Y range (buildAxesRow) */
 	bool shown_ = false;
 	int nextColor_ = 0;           /* the palette's colour of the next register plotted */
 	QVector<StreamDef> fastStreams_; /* the map's fast streams (their channels' lines: ChartView::fastKey) */

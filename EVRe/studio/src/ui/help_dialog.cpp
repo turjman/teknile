@@ -212,7 +212,8 @@ channels, the map's checks under them. <code>evre check --writes</code> switches
 its numbers and its rate; Python reads one live with <code>dev.stream('ADC')</code>.</p>
 <p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
 <ul>
-<li>Each stream's row is headed by its name. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
+<li>Each stream's row is headed by one line: its name, then what it is, <i>· 2 channels · 10 kS/s</i> (the map's
+rate), and its <b>Log</b> tick. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
 reading its rate register, if the map names one); the button turns red, <b>■ Stop stream</b>, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.</li>
@@ -240,10 +241,13 @@ computed for every sample of that stream at its own time (<b>ƒ Math → New mat
 for every record of stream ADC</i>). A register in it is held at its last polled value. It is drawn, measured,
 triggered and exported as a fast line, and one of the chart's lines. Channels of two streams are refused: two
 streams, two clocks.</p>
-<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends is written beside the CSV as it came,
+<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends and has its <b>Log</b> ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
 <code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
 <code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
-cut off opens up to its last whole piece. Python reads one with <code>evre.read_recording</code>.
+cut off opens up to its last whole piece. The CSV's rows and a stream's samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording's chart says
+so. Python reads one with <code>evre.read_recording</code>.
 <code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
 Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
 page) or the API's <code>stream</code> command (values at a period for an API client).</p>
@@ -468,7 +472,11 @@ the file (<code>run.csv.notes.json</code>), and an export takes the notes of its
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
 own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
-registers' value names and fields are matched by name: <b>Lines</b> plots a register's field.</li>
+registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
+line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields. A recent
+recording whose file is gone is greyed, <i>(not found)</i>: a click takes it off the list; <b>Clear the list</b> empties
+it.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(

@@ -118,6 +118,7 @@ constexpr qsizetype TRIM_PER_FRAME = 4000000; /* samples moved by trims in a fra
 constexpr double BUDGET_SAMPLE_MS = 30;        /* a slow paint spends at most this (or twice the frames' average) */
 constexpr int LAYER_AFTER_FRAMES = 2;          /* the card's layer shown after this many frames under it (paintFrame) */
 constexpr qint64 FRAMES_STOPPED_MS = 250;      /* no frame() this long: a change is painted at once (refresh) */
+constexpr int DROPPED_AGAIN_MS = 16;            /* a held view's card frame let go: painted again after this */
 
 /* the notes' tags: at the bottom of the plot, the text cut to this width at most */
 constexpr double NOTE_TAG_H = 16;
@@ -312,6 +313,9 @@ ChartView::ChartView(QWidget *parent) : QWidget(parent) {
 	pool_.setMaxThreadCount(std::clamp(QThread::idealThreadCount() - 3, 1, 8));
 	pool_.setExpiryTimeout(-1);
 	opener_.setMaxThreadCount(1);
+	framesStopped_ = new QTimer(this);
+	framesStopped_->setSingleShot(true);
+	connect(framesStopped_, &QTimer::timeout, this, &ChartView::refresh);
 }
 
 /* job(i) for every i, taken in turn by the pool's threads and this one. This one waits for the jobs taken, never for
@@ -970,7 +974,13 @@ void ChartView::FrameBudget::spent(double paintMs) {
  * painted the chart past the display's rate and past the frame budget (with 64 lines on a card: 35 frames a second
  * where 60 were drawn, and the Smooth delay up as frames came between the samples) */
 void ChartView::refresh() {
-	if (framesCome_.isValid() && framesCome_.elapsed() < FRAMES_STOPPED_MS) return; /* the next frame paints it */
+	/* the next frame paints it; a recording's window has frames only while it is fed (and the frames may stop), so
+	 * when none came by FRAMES_STOPPED_MS it is painted then: a change just after a feed (the samples a measurement
+	 * held back, the card opened) stayed off the screen until something else painted */
+	if (framesCome_.isValid() && framesCome_.elapsed() < FRAMES_STOPPED_MS) {
+		if (!framesStopped_->isActive()) framesStopped_->start(int(FRAMES_STOPPED_MS - framesCome_.elapsed()) + 1);
+		return;
+	}
 	paintSoon();
 }
 
@@ -1938,15 +1948,12 @@ void ChartView::startMeasure(MeasureRequest request) {
 		job->values[i] = it->values;
 	}
 	job->request = std::move(request);
-	measuring_ = true;
 	job->clock.start();
-	if (n == 0) {
-		QMetaObject::invokeMethod(this, [this, job] {
-			measuring_ = false;
-			job->request.done(job->out, 0);
-		}, Qt::QueuedConnection);
+	if (n == 0) { /* no arrays shared with the threads: the samples meanwhile go in (a recording's, as it opens) */
+		QMetaObject::invokeMethod(this, [job] { job->request.done(job->out, 0); }, Qt::QueuedConnection);
 		return;
 	}
+	measuring_ = true;
 	job->left = int(n);
 	for (qsizetype i = 0; i < n; i++)
 		pool_.start([this, job, i] {
@@ -1962,7 +1969,10 @@ void ChartView::startMeasure(MeasureRequest request) {
 				measuring_ = false;
 				const QVector<HeldSample> held = std::exchange(heldSamples_, {});
 				for (const HeldSample &sample : held) appendNow(sample.key, sample.t, sample.v);
-				if (!held.isEmpty()) refresh();
+				/* a recording's window: no frames show the legend's values, they follow here (its feed showed them
+				 * without these) */
+				if (!held.isEmpty() && recording_) showLastValues();
+				else if (!held.isEmpty()) refresh();
 				job->request.done(job->out, ms);
 				if (measureNext_ && !measuring_) {
 					measureNext_ = false;
@@ -2639,6 +2649,14 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	}
 	lanesShown_ = plots;
 	lastAxes_ = plots.first().axes;
+	if (!live_) { /* held: the toolbar's Y boxes follow this frame's ranges (yRangesShown), only when they changed */
+		QVector<double> ranges{ y_.lo, y_.hi };
+		for (const YScale &scale : std::as_const(laneScales_)) ranges << scale.lo << scale.hi;
+		if (ranges != rangesShown_) {
+			rangesShown_ = ranges;
+			QTimer::singleShot(0, this, &ChartView::yRangesShown);
+		}
+	}
 
 	/* On a card (on the screen, with lines): the plot (grid, lines, cursors, crosshair) is drawn by it into its layer
 	 * over the window, and the chart paints what is around it. While the layer is not shown yet (the chart shown
@@ -2882,6 +2900,27 @@ void ChartView::binSeries(const Series &s, double t0, double t1, double columns,
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
+	rangeAtEdges(out, t0, t1);
+}
+
+void ChartView::rangeAtEdges(BinnedLine &out, double t0, double t1) {
+	const auto take = [&out](double v) {
+		out.lo = std::min(out.lo, v);
+		out.hi = std::max(out.hi, v);
+		if (v > 0) out.posLo = std::min(out.posLo, v);
+	};
+	/* the line's value at t between bin a's end and bin b's start */
+	const auto at = [](const Bin &a, const Bin &b, double t) {
+		if (b.t0 <= a.t1) return b.first;
+		return a.last + (b.first - a.last) * (t - a.t1) / (b.t0 - a.t1);
+	};
+	const QVector<Bin> &bins = out.bins;
+	for (qsizetype k = 0; k + 1 < bins.size(); k++) {
+		const Bin &a = bins[k], &b = bins[k + 1];
+		if (b.gap) continue;
+		if (a.t1 < t0 && b.t0 > t0) take(at(a, b, t0));
+		if (a.t1 < t1 && b.t0 > t1) take(at(a, b, t1));
+	}
 }
 
 void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins) {
@@ -2978,6 +3017,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
+	rangeAtEdges(out, t0, t1);
 }
 
 /* A fast line's bins: for each column on absolute time its records, found by their times (the store inverts its
@@ -3065,6 +3105,7 @@ void ChartView::binFast(const Series &s, double t0, double t1, double columns, B
 			out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 		}
 	}
+	rangeAtEdges(out, t0, t1);
 }
 
 /* every line binned for the view, in the order of series_, on the chart's threads */
@@ -3601,6 +3642,30 @@ bool ChartView::laneYAuto(int lane) const { return laneScales_.value(laneKey(lan
 bool ChartView::laneYLog(int lane) const { return laneScales_.value(laneKey(lane)).log; }
 double ChartView::laneYLo(int lane) const { return laneScales_.value(laneKey(lane)).lo; }
 double ChartView::laneYHi(int lane) const { return laneScales_.value(laneKey(lane)).hi; }
+
+double ChartView::drawnTo(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return NAN;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		const Bin &b = line.bins.last();
+		if (b.count <= 2) return b.count == 2 ? b.t1 : b.t0;
+		return (double(b.column) + 0.5) * lastAxes_.columnSeconds(); /* as toPolyline draws it */
+	}
+	return NAN;
+}
+
+bool ChartView::drawnRange(int key, double &lo, double &hi) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return false;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		lo = line.lo;
+		hi = line.hi;
+		return true;
+	}
+	return false;
+}
 
 double ChartView::laneYOfValue(int lane, double value) const {
 	return lane >= 0 && lane < lanesShown_.size() ? lanesShown_[lane].axes.y(value) : NAN;
@@ -4632,6 +4697,13 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	presenting.start();
 	const bool presented = gpu_->present(top->winId(), pixels, frame, error);
 	perf_.present += presenting.nsecsElapsed() / 1e6;
+	/* A frame the system let go (still busy with the one before): the layer keeps the last that reached it. Live, the
+	 * next frame comes anyway; held, none comes, and after a resize the layer stayed at its old size, the window's own
+	 * plot beside it blank (the black bar of a recording's window made bigger): a frame again, at the next refresh */
+	if (presented && gpu_->droppedFrames() != droppedSeen_) {
+		droppedSeen_ = gpu_->droppedFrames();
+		if (!live_) QTimer::singleShot(DROPPED_AGAIN_MS, this, [this] { paintSoon(); });
+	}
 	if (presented) return true;
 	gpu_.reset(); /* the CPU draws, from this frame on, and paints all of the plot at the next (its layer is gone) */
 	emit drawingFailed(error);
@@ -5954,15 +6026,19 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	p.restore();
 }
 
-/* the paint time as a running average; the frames counted over each second */
+/* the paint time as a running average; the frames of the last second */
 void ChartView::updatePaintStats(double paintMs) {
 	paintMs_ = paintMs_ * 0.9 + paintMs * 0.1;
-	fpsFrames_++;
-	if (fpsClock_.elapsed() >= 1000) {
-		fps_ = fpsFrames_ * 1000.0 / double(fpsClock_.elapsed());
-		fpsFrames_ = 0;
-		fpsClock_.restart();
-	}
+	const qint64 now = fpsClock_.elapsed();
+	paintTimes_.push_back(now);
+	while (paintTimes_.front() < now - 1000) paintTimes_.pop_front();
+}
+
+double ChartView::fps() const {
+	const qint64 since = fpsClock_.elapsed() - 1000;
+	int frames = 0;
+	for (auto it = paintTimes_.rbegin(); it != paintTimes_.rend() && *it >= since; ++it) frames++;
+	return frames;
 }
 
 /* -------------------------------------------------------------- ChartWidget */

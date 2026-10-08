@@ -425,6 +425,9 @@ QWidget *MainWindow::buildRegistersTab() {
 	connect(registersTab_, &RegistersTab::statusMessage, this, [this](const QString &text, int ms) {
 		statusBar()->showMessage(text, ms);
 	});
+	connect(sidebar_, &Sidebar::statusMessage, this, [this](const QString &text, int ms) {
+		statusBar()->showMessage(text, ms);
+	});
 	connect(model_, &RegisterModel::plotLimitReached, this, [this] {
 		const long rate = std::lround(sampleRateHz()); /* 0: not polling, no rate to name */
 		/* the chart full of lines of every kind, or the registers at what the rate allows */
@@ -1327,7 +1330,8 @@ void MainWindow::startRecord(const QString &file) {
 		columns << regKey(row.def);
 	}
 	recordFile_ = file;
-	engine_->post([engine = engine_, file, columns] { engine->startRecord(file, columns); });
+	const QStringList notLogged = sidebar_->fastNotLogged(); /* each stream's Log in the Fast streams card */
+	engine_->post([engine = engine_, file, columns, notLogged] { engine->startRecord(file, columns, notLogged); });
 }
 
 void MainWindow::stopRecord() {
@@ -1453,6 +1457,7 @@ void MainWindow::toggleTheme() {
 	showBus(); /* the devices' dots in the new look */
 	showDeviceInfo(); /* its amber too */
 	chartTab_->themeChanged();
+	for (RecordingWindow *window : RecordingWindow::windows()) window->chartTab()->themeChanged(); /* theirs too */
 }
 
 void MainWindow::showHelp() {

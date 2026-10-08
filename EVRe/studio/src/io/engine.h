@@ -199,7 +199,8 @@ public:
 	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
 	void setFastStream(int stream, bool on);
 	void setPlotted(const QVector<RegKey> &keys);
-	void startRecord(const QString &file, const QVector<RegKey> &cols);
+	/* notLogged: the fast streams whose Log is off (the sidebar's): not written beside the CSV */
+	void startRecord(const QString &file, const QVector<RegKey> &cols, const QStringList &notLogged = {});
 	void stopRecord();
 	/* slave: where the request goes, 1 to 255; evre::BROADCAST (0) for a broadcast WRITE (no acknowledge) */
 	void write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack);
@@ -416,6 +417,7 @@ private:
 	QFile *csvFile_;
 	QTextStream csvStream_;
 	QVector<RegKey> csvColumns_;                 /* by register key */
+	QStringList fastNotLogged_;                  /* the streams not written beside it, by name */
 	quint64 csvRows_ = 0;
 
 	/* what the other threads take, under crossThreadMutex_ */

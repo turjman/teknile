@@ -16,9 +16,14 @@
  *  - Fast streams' recordings (.evrs, model/fast_recording.h): opened alone, or with the CSV they were recorded
  *    beside (run.csv with run.ADC.evrs): the file mapped into memory, only the summaries made, on the same thread;
  *    a fast line per channel, on the CSV's clock (the TIME pieces are the Studio's time_s, as the CSV's rows).
+ *  - Lines (top right, "Lines 8/10"): a checklist of every line the file gives, grouped (Registers, Fast: ADC, Math),
+ *    each with its colour dot and unit, All and None, a search above LINES_SEARCH_FROM lines; the lines unticked kept
+ *    by name ("recording/linesHidden"), so the next recording opens without them; the fields of a matched register.
  *  - Notes: "<file>.notes.json" read at the start and saved at every change.
- *  - The last 8 recordings opened or exported (Recent recordings), and every
- *    window, closed with the main window (closeAll). */
+ *  - The last 8 recordings opened or exported (Recent recordings): checked each time the menu opens, a file no longer
+ *    there greyed, "(not found)", a click takes it off the list at once (said in the status bar: nothing is lost, a
+ *    question would only ask about a dead entry); Clear the list at the end. Every window is closed with the main
+ *    window (closeAll). */
 #pragma once
 
 #include <QPointer>
@@ -30,7 +35,9 @@
 #include "model/recording_file.h"
 
 class ChartTab;
+class QAbstractButton;
 class QAction;
+class QCheckBox;
 class QLabel;
 class QMenu;
 class QPushButton;
@@ -39,6 +46,7 @@ class RecordingWindow : public QWidget {
 	Q_OBJECT
 public:
 	static constexpr int MAX_RECENT = 8;
+	static constexpr int LINES_SEARCH_FROM = 13; /* the Lines list gets a search box from this many lines */
 	/* what the window keeps of a sample (its time and value) besides the chart's: the RAM asked for */
 	static constexpr int KEPT_BYTES_PER_SAMPLE = 16;
 
@@ -50,10 +58,13 @@ public:
 	/* the same, the file chosen in a dialog first */
 	static void choose(QWidget *dialogParent, const QVector<RegDef> &map, int ramMB,
 			const std::function<void(RecordingWindow *)> &done = {});
-	/* the recordings opened or exported last, newest first ("recording/recent"), and the menu of them */
+	/* the recordings opened or exported last, newest first ("recording/recent"), and the menu of them: openFile opens
+	 * one; said(text) tells the status bar that one was taken off the list, or the list cleared */
 	static QStringList recentFiles();
 	static void remember(const QString &file);
-	static void fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile);
+	static void forget(const QString &file);
+	static void fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile,
+			const std::function<void(const QString &)> &said = {});
 	static QList<RecordingWindow *> windows(); /* open now */
 	static void closeAll();
 
@@ -76,15 +87,19 @@ signals:
 private:
 	void feed();                         /* every plotted line and math line again from the file's values */
 	void feedColumn(int column);         /* one column's samples onto its line */
-	void rebuildLinesMenu();
+	void rebuildLinesMenu();             /* the Lines checklist, made again each time it opens */
+	void lineTicked(QCheckBox *box, bool on);
+	void showLinesCount();               /* "Lines 8/10" on the button */
+	int linesInFile() const;             /* every line the list offers: the columns, the channels, the math lines */
 	void saveNotes();
-	bool roomForLine(QAction *tick);     /* under the chart's cap of lines; if not, the tick taken back */
+	bool roomForLine(QAbstractButton *tick); /* under the chart's cap of lines; if not, the tick taken back */
 
 	QString file_;
 	recording::Data data_;
 	QVector<RegDef> defs_;
 	QVector<RegDef> map_;
 	QVector<bool> plotted_;
+	QStringList hidden_;                 /* the lines the user unticked, by name (recording/linesHidden) */
 	int ramMB_ = 0;
 	int skipped_ = 0;
 	QVector<fast::Recording> fast_;

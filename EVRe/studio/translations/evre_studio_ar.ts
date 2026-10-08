@@ -1225,10 +1225,6 @@ With many fast lines the Memory holds less than asked, and the memory strip says
         <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا: ألغِ واحدًا أولًا</translation>
     </message>
     <message>
-        <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
-        <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
-    </message>
-    <message>
         <source>All lanes: Auto</source>
         <translation>كل المسارات: تلقائي</translation>
     </message>
@@ -1271,6 +1267,14 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
     <message>
         <source>Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of the busiest line&apos;s middle (a fast line first, else the one with the most samples in the window), so a wave stands still instead of blurring (&quot;Auto (short window)&quot;; &quot;Auto · free running&quot; while it does not cross). Your own trigger takes over when it is on; Hold ends it.</source>
         <translation>تحت نافذة ⁦100 ms⁩، يُقفَل المخطط الحي والقدح مطفأ على كل عبور صاعد لمنتصف أنشط خط (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة)، فتقف الموجة بدل أن تتشوّش («تلقائي (نافذة قصيرة)»؛ «تلقائي · جريان حر» ما دام لا يعبر). قدحك أنت يحلّ محله حين يعمل؛ والتثبيت ينهيه.</translation>
+    </message>
+    <message>
+        <source> · idle</source>
+        <translation> · ساكن</translation>
+    </message>
+    <message>
+        <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second (idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
+        <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية الأخيرة (ساكن: لا إطار، لم يتغير شيء: العرض المثبَّت لا يُرسم إلا حين يتغير فيه شيء)، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
 </context>
 <context>
@@ -2493,7 +2497,8 @@ channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/
 its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Each stream&apos;s row is headed by its name. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
+&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
+rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
 reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
@@ -2521,10 +2526,13 @@ computed for every sample of that stream at its own time (&lt;b&gt;ƒ Math → N
 for every record of stream ADC&lt;/i&gt;). A register in it is held at its last polled value. It is drawn, measured,
 triggered and exported as a fast line, and one of the chart&apos;s lines. Channels of two streams are refused: two
 streams, two clocks.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends is written beside the CSV as it came,
+&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends and has its &lt;b&gt;Log&lt;/b&gt; ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
 &lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
 &lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
-cut off opens up to its last whole piece. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
+cut off opens up to its last whole piece. The CSV&apos;s rows and a stream&apos;s samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording&apos;s chart says
+so. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
 &lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
 Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
 page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
@@ -2546,7 +2554,8 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;كل صف تدفق يحمل اسمه في رأسه. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
+&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
+&lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
 &lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
 تشغيل.&lt;/li&gt;
 &lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
@@ -2572,10 +2581,12 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 عينة من ذلك التدفق في وقتها (&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;؛ والنافذة تقول &lt;i&gt;تُحسب لكل سجلّ من التدفق
 ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة استُطلعت. تُرسم وتُقاس ويُقدح عليها وتُصدَّر كخط سريع، وهي أحد خطوط
 المخطط. وقنوات تدفقين تُرفض: تدفقان، وساعتان.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل بجانب ملف CSV كما وصل،
+&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل ومربع &lt;b&gt;تسجيل&lt;/b&gt; فيه مفعّل (بجانب اسمه، مفعّل افتراضيًا؛ تدفق كامل أو لا شيء: كل كتلة
+تحمل كل قنواته) بجانب ملف CSV كما وصل،
 &lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
 ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
-يُفتح حتى آخر قطعة كاملة فيه. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
+يُفتح حتى آخر قطعة كاملة فيه. وصفوف CSV وعينات التدفق تنتهي بفارق بضعة أجزاء من الألف من الثانية (كلٌّ يُكتب
+حين يصل): الخط السريع ينتهي حيث تنتهي عيناته، والسطر فوق مخطط التسجيل يذكر ذلك. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
 &lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
 لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
 ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
@@ -2752,7 +2763,11 @@ the file (&lt;code&gt;run.csv.notes.json&lt;/code&gt;), and an export takes the 
 &lt;li&gt;&lt;b&gt;Open recording…&lt;/b&gt; and &lt;b&gt;Recent recordings&lt;/b&gt; (also &lt;b&gt;Open&lt;/b&gt; beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
 own; the live chart goes on. A file bigger than the chart&apos;s RAM asks to keep its last part. With a map loaded, its
-registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b&gt; plots a register&apos;s field.&lt;/li&gt;
+registers&apos; value names and fields are matched by name. &lt;b&gt;Lines&lt;/b&gt; (top right, &lt;i&gt;Lines 8/11&lt;/i&gt;) ticks each
+line on or off: the file&apos;s columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields. A recent
+recording whose file is gone is greyed, &lt;i&gt;(not found)&lt;/i&gt;: a click takes it off the list; &lt;b&gt;Clear the list&lt;/b&gt; empties
+it.&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -2904,7 +2919,10 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;li&gt;&lt;b&gt;فتح تسجيل…&lt;/b&gt; و&lt;b&gt;التسجيلات الأخيرة&lt;/b&gt; (و&lt;b&gt;فتح&lt;/b&gt; بجانب «تسجيل CSV» أيضًا، أو أفلت ملف .csv على
 النافذة): تسجيل أو تصدير في نافذة خاصة، بمخططه وقياساته وملاحظاته وخطوطه الرياضية
 الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
-أسماء قيم مسجّلاتها وحقولها بالاسم: &lt;b&gt;الخطوط&lt;/b&gt; ترسم حقل مسجّل.&lt;/li&gt;
+أسماء قيم مسجّلاتها وحقولها بالاسم. &lt;b&gt;الخطوط&lt;/b&gt; (أعلى اليمين، &lt;i&gt;الخطوط ⁦8/11⁩&lt;/i&gt;) تُفعّل كل خط أو
+تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
+ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
+&lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -5639,10 +5657,6 @@ Keep the last part: about the last %5 of %6?</source>
         <translation>الخطوط</translation>
     </message>
     <message>
-        <source>The file&apos;s columns on the chart or not; a register&apos;s bit fields (with the map loaded)</source>
-        <translation>أعمدة الملف على المخطط أو لا؛ حقول بتات المسجّل (مع تحميل الخريطة)</translation>
-    </message>
-    <message>
         <source> · notes not read: %1</source>
         <translation> · لم تُقرأ الملاحظات: %1</translation>
     </message>
@@ -5669,6 +5683,98 @@ Keep the last part: about the last %5 of %6?</source>
     <message>
         <source> (the file ends cut off: read up to its last whole piece)</source>
         <translation> (الملف ينتهي مقطوعًا: قُرئ حتى آخر قطعة كاملة فيه)</translation>
+    </message>
+    <message>
+        <source>The CSV&apos;s rows: %1 – %2</source>
+        <translation>صفوف CSV: ⁦%1 – %2⁩</translation>
+    </message>
+    <message>
+        <source>, its last %1 before the CSV&apos;s last row</source>
+        <translation>، وآخرها قبل آخر صف في CSV بـ %1</translation>
+    </message>
+    <message>
+        <source>%1&apos;s samples (%2): %3 – %4</source>
+        <translation>عينات %1 (%2): ⁦%3 – %4⁩</translation>
+    </message>
+    <message>
+        <source>The rows are written at each poll, a stream&apos;s blocks as they come: the two end a few ms apart, and a fast line ends where its samples end.</source>
+        <translation>تُكتب الصفوف عند كل استطلاع، وكتل التدفق حين تصل: فينتهي الاثنان بفارق بضعة أجزاء من الألف من الثانية، وينتهي الخط السريع حيث تنتهي عيناته.</translation>
+    </message>
+    <message>
+        <source>What the chart shows: every column of the file, each fast channel and the math lines, ticked on or off (All, None, a search); a register&apos;s bit fields with the map loaded. The lines unticked stay off in the next recording opened</source>
+        <translation>ما يعرضه المخطط: كل عمود في الملف، وكل قناة سريعة، والخطوط الرياضية، تُفعَّل أو تُلغى (الكل، لا شيء، بحث)؛ وحقول بتات المسجّل حين تُحمَّل الخريطة. والخطوط الملغاة تبقى ملغاة في التسجيل التالي الذي يُفتح</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>الكل</translation>
+    </message>
+    <message>
+        <source>Tick every line listed (those the search finds), up to the chart&apos;s 64</source>
+        <translation>تفعيل كل خط مدرَج (ما يجده البحث)، حتى 64 خطًا على المخطط</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>لا شيء</translation>
+    </message>
+    <message>
+        <source>Untick every line listed (those the search finds)</source>
+        <translation>إلغاء كل خط مدرَج (ما يجده البحث)</translation>
+    </message>
+    <message>
+        <source>Search lines</source>
+        <translation>البحث في الخطوط</translation>
+    </message>
+    <message>
+        <source>Only the lines whose name holds this</source>
+        <translation>الخطوط التي يحوي اسمها هذا فقط</translation>
+    </message>
+    <message>
+        <source>%1 on the chart, or not</source>
+        <translation>%1 على المخطط أو لا</translation>
+    </message>
+    <message>
+        <source>Registers</source>
+        <translation>المسجّلات</translation>
+    </message>
+    <message>
+        <source>Fast: %1</source>
+        <translation>تدفق سريع: %1</translation>
+    </message>
+    <message>
+        <source>Math</source>
+        <translation>الرياضيات</translation>
+    </message>
+    <message>
+        <source>Not drawn: %1</source>
+        <translation>لا يُرسم: %1</translation>
+    </message>
+    <message>
+        <source>Lines %1/%2</source>
+        <translation>الخطوط ⁦%1/%2⁩</translation>
+    </message>
+    <message>
+        <source>%1 (not found)   %2</source>
+        <translation>%1 (غير موجود)   %2</translation>
+    </message>
+    <message>
+        <source>%1 is not there any more (deleted or moved): a click takes it off this list</source>
+        <translation>%1 لم يعد موجودًا (حُذف أو نُقل): النقر يزيله من هذه القائمة</translation>
+    </message>
+    <message>
+        <source>%1 taken off the recent recordings: the file is not there any more</source>
+        <translation>أُزيل %1 من التسجيلات الأخيرة: الملف لم يعد موجودًا</translation>
+    </message>
+    <message>
+        <source>Clear the list</source>
+        <translation>مسح القائمة</translation>
+    </message>
+    <message>
+        <source>Every recording off this list; the files stay where they are</source>
+        <translation>إزالة كل تسجيل من هذه القائمة؛ والملفات تبقى في أماكنها</translation>
+    </message>
+    <message>
+        <source>The recent recordings list cleared</source>
+        <translation>مُسحت قائمة التسجيلات الأخيرة</translation>
     </message>
 </context>
 <context>
@@ -6661,6 +6767,33 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>▶  Start stream</source>
         <translation>▶  بدء التدفق</translation>
+    </message>
+    <message>
+        <source>Log</source>
+        <translation>تسجيل</translation>
+    </message>
+    <message>
+        <source>Log %1 beside the CSV while Record CSV runs (run.%1.evrs): its blocks as the device sent them. A stream is logged whole or not at all: each block carries every channel. Off: not written; its lines still plot. Taken when a recording starts; kept for the map&apos;s stream %1.</source>
+        <translation>تسجيل %1 بجانب ملف CSV ما دام تسجيل CSV يعمل (⁦run.%1.evrs⁩): كتله كما أرسلها الجهاز. التدفق يُسجَّل كاملًا أو لا يُسجَّل: كل كتلة تحمل كل القنوات. ملغى: لا يُكتب؛ وخطوطه تبقى مرسومة. يؤخذ حين يبدأ التسجيل؛ ويُحفظ لتدفق الخريطة %1.</translation>
+    </message>
+    <message>
+        <source>· 1 channel · %1</source>
+        <translation>· قناة واحدة · %1</translation>
+    </message>
+    <message numerus="yes">
+        <source>· %n channels · %1</source>
+        <translation>
+            <numerusform>· لا قنوات · %1</numerusform>
+            <numerusform>· قناة واحدة · %1</numerusform>
+            <numerusform>· قناتان · %1</numerusform>
+            <numerusform>· %n قنوات · %1</numerusform>
+            <numerusform>· %n قناة · %1</numerusform>
+            <numerusform>· %n قناة · %1</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Channels: %1</source>
+        <translation>القنوات: %1</translation>
     </message>
 </context>
 <context>

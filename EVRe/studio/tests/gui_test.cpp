@@ -581,6 +581,7 @@ public:
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
+		recentMissing();
 		mapEditor();
 		mapStreamsPage();
 		limitsAndFields();
@@ -1480,6 +1481,8 @@ private:
 				if (mathBefore.isValid()) QSettings().setValue(QStringLiteral("recording/math"), mathBefore);
 				else QSettings().remove(QStringLiteral("recording/math"));
 			}
+			recordingLinesList(opened, folder.path());
+			recordingWindowPictures(csv, QStringLiteral("fast"));
 			if (opened && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the recording with its fast lines */
 				opened->resize(1400, 800);
 				QTest::qWait(300);
@@ -1515,6 +1518,49 @@ private:
 							&& cut->fastRecordings()[0].store->size() > 0,
 					"fast streams recorded: a .evrs cut off opens up to its last whole piece, and its window says so");
 			RecordingWindow::closeAll();
+			/* Log off in the card: the next recording has no .evrs of the stream, its line still plotted; the tick kept
+			 * by the stream's name (a card made again shows it off); on again, the next one has it */
+			QCheckBox *log = sidebar->fastLogBox(0);
+			bool tipped = false, notWritten = false, keptOff = false, writtenAgain = false;
+			const auto recordFor = [&](const QString &name) {
+				MainWindow::Startup again;
+				again.record = folder.filePath(name);
+				window_.applyStartup(again);
+				QPushButton *stopIt = nullptr;
+				(void) QTest::qWaitFor([&] { return (stopIt = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; },
+						3000);
+				QTest::qWait(800);
+				if (stopIt) stopIt->click();
+				(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+			};
+			if (log) {
+				tipped = log->isChecked() && log->cursor().shape() == Qt::PointingHandCursor
+						&& log->toolTip().contains(QLatin1String("logged whole or not at all"))
+						&& log->toolTip().contains(QLatin1String("run.ADC.evrs"));
+				log->setChecked(false);
+				recordFor(QStringLiteral("nolog.csv"));
+				notWritten = QFileInfo::exists(folder.filePath(QStringLiteral("nolog.csv")))
+						&& !QFileInfo::exists(folder.filePath(QStringLiteral("nolog.ADC.evrs"))) && chartTab->fastPlotted(0, 0);
+				{
+					Sidebar card;
+					card.setFastStreams(fastMap.streams);
+					keptOff = QSettings().value(QStringLiteral("fast/notLogged")).toStringList() == QStringList{ QStringLiteral("ADC") }
+							&& card.fastLogBox(0) && !card.fastLogBox(0)->isChecked();
+				}
+				log->setChecked(true);
+				recordFor(QStringLiteral("logged.csv"));
+				writtenAgain = QFileInfo::exists(folder.filePath(QStringLiteral("logged.ADC.evrs")))
+						&& QSettings().value(QStringLiteral("fast/notLogged")).toStringList().isEmpty();
+			}
+			std::printf("  Log off: the CSV %d, no .evrs %d, the line still on the chart %d; kept off %d; on again: written %d\n",
+					int(QFileInfo::exists(folder.filePath(QStringLiteral("nolog.csv")))), int(notWritten),
+					int(chartTab->fastPlotted(0, 0)), int(keptOff), int(writtenAgain));
+			check(tipped, "fast streams, Log: a tick per stream in the card, on by default, a pointing hand; its tooltip says "
+					"it writes run.ADC.evrs beside the CSV and that a stream is logged whole or not at all (each block "
+					"carries every channel)");
+			check(notWritten && keptOff && writtenAgain, "fast streams, Log off: a recording writes its CSV and no .evrs of the "
+					"stream, whose line still plots; the choice kept by the stream's name (fast/notLogged); on again, the "
+					"next recording has its .evrs");
 		}
 		/* the trigger armed on the fast line (from its chip's menu) while its stream comes and goes: Disconnect, Connect
 		 * again, Arm, the stream stopped, the line removed. Each time the engine watches what the window asks (the same
@@ -1726,6 +1772,8 @@ private:
 		/* the card's texts fit its width, in English and in Arabic, the widest numbers too */
 		bool fits = true, arabicReads = false;
 		QString notes, arabicNotes;
+		bool header = true; /* the row's header: the name, then muted what the stream is, one line, both languages */
+		QString headerNotes;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1743,6 +1791,27 @@ private:
 			card.setFastOn(0, true);
 			QApplication::processEvents();
 			QPushButton *b = card.fastButton(0);
+			{
+				QLabel *name = card.fastCard()->findChild<QLabel *>(QStringLiteral("fastStreamName"));
+				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
+				const QString rate = QChar(0x2066) + QStringLiteral("10 kS/s") + QChar(0x2069);
+				const QString expected = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ") + rate
+						: QStringLiteral("· قناتان · ") + rate;
+				const int line = name ? name->fontMetrics().height() : 0;
+				const bool one = name && about && b && name->text() == QLatin1String("ADC") && about->fullText() == expected
+						&& !about->isCut() && name->height() <= line + 8 && about->height() <= line + 8
+						&& std::abs(name->geometry().center().y() - about->geometry().center().y()) <= 2
+						&& name->geometry().bottom() < b->geometry().top() && name->font().bold()
+						&& about->toolTip().contains(QLatin1String("I_LOAD, V_BUS"))
+						&& about->toolTip().contains(QLatin1String("sampled together"))
+						&& (code == QLatin1String("en") ? name->x() < about->x() : name->x() > about->x());
+				if (!one)
+					headerNotes += QStringLiteral(" %1: \"%2\" \"%3\" cut %4, heights %5 %6 (a line %7), x %8 %9;").arg(code,
+							name ? name->text() : QString(), about ? about->fullText() : QString())
+							.arg(about ? int(about->isCut()) : -1).arg(name ? name->height() : -1).arg(about ? about->height() : -1)
+							.arg(line).arg(name ? name->x() : -1).arg(about ? about->x() : -1);
+				header = header && one;
+			}
 			const auto labels = card.fastCard()->findChildren<QLabel *>();
 			for (QLabel *label : labels) {
 				if (label->text().isEmpty() || label->objectName() == QLatin1String("cardTitle")) continue;
@@ -1825,6 +1894,11 @@ private:
 		check(fits, "fast streams: the card's button and numbers fit the sidebar's width in English and Arabic "
 				"(1.23 M samples/s, lost 123 456 789)");
 		if (!arabicReads) std::printf("  %s\n", qPrintable(arabicNotes));
+		if (!header) std::printf("  the header:%s\n", qPrintable(headerNotes));
+		check(header, "fast streams: each stream's row has a one-line header: its name in the card's name weight (ADC), then "
+				"muted \"· 2 channels · 10 kS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
+				"width, both on one line above the button, the name first in the reading direction; the tooltip the "
+				"channels and the map's description");
 		check(arabicReads, "fast streams, Arabic: the rate (running and off) and the lost count are laid out right to left, "
 				"like the card's title, and each number keeps its prefix, its unit and its groups left to right "
 				"(1.23 M, (-123 ppm), 123 456 789, 10.0 k)");
@@ -2032,6 +2106,24 @@ private:
 					"chart's paint at most 8 ms a frame on average, its cost under a quarter of the window's thread");
 			chartTab->removeMathLine(mathIndex);
 		}
+		/* recorded at a million records a second beside its CSV, and opened (the owner's look at a 5 min recording) */
+		{
+			QTemporaryDir recorded;
+			const QString csv = recorded.filePath(QStringLiteral("speed.csv"));
+			MainWindow::Startup record;
+			record.record = csv;
+			window_.applyStartup(record);
+			QPushButton *stop = nullptr;
+			(void) QTest::qWaitFor([&] { return (stop = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+			QTest::qWait(3000);
+			if (stop) stop->click();
+			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+			RecordingWindow *opened = nullptr;
+			RecordingWindow::open(nullptr, csv, {}, 2048, [&](RecordingWindow *w) { opened = w; });
+			(void) QTest::qWaitFor([&] { return opened != nullptr; }, 20000);
+			recordedFastEnds(opened, csv);
+			RecordingWindow::closeAll();
+		}
 		button->click();
 		view->setWindow(windowBefore);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
@@ -2044,6 +2136,377 @@ private:
 				"fast speed: done; the example map again, the window polls the fake device of the other steps");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* A recent recording whose file was deleted: in every recent list (the sidebar's Open, the chart's Recent recordings)
+	 * greyed with "(not found)" and a tooltip that says so; a click takes it off the list at once and the status bar
+	 * says so (a disabled entry did nothing); Clear the list at the end empties it */
+	void recentMissing() {
+		const QVariant before = QSettings().value(QStringLiteral("recording/recent"));
+		QTemporaryDir folder;
+		const auto makeFile = [&](const QString &name) {
+			QFile file(folder.filePath(name));
+			if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+				file.write("time_s,datetime,V [V]\n0,2026-10-08T12:00:00.000,1\n1,2026-10-08T12:00:01.000,2\n");
+			return QFileInfo(file).absoluteFilePath();
+		};
+		const QString kept = makeFile(QStringLiteral("kept.csv")), gone = makeFile(QStringLiteral("gone.csv"));
+		QSettings().remove(QStringLiteral("recording/recent"));
+		RecordingWindow::remember(gone);
+		RecordingWindow::remember(kept);
+		QFile::remove(gone);
+		const auto missingIn = [](QMenu *menu) {
+			return menu ? menu->findChild<QPushButton *>(QStringLiteral("recentMissing")) : nullptr;
+		};
+		/* the sidebar's Open */
+		auto *open = window_.findChild<QPushButton *>(QStringLiteral("openRecording"));
+		QMenu *menu = open ? open->menu() : nullptr;
+		bool shown = false, keptEntry = false, clearLast = false;
+		QPushButton *missing = nullptr;
+		if (menu) {
+			menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+			QApplication::processEvents();
+			missing = missingIn(menu);
+			for (QAction *action : menu->actions()) keptEntry = keptEntry || action->text().startsWith(QLatin1String("kept.csv"));
+			const QList<QAction *> actions = menu->actions();
+			clearLast = actions.size() >= 2 && actions.last()->objectName() == QLatin1String("recentClear")
+					&& actions[actions.size() - 2]->isSeparator() && actions.last()->isEnabled();
+			shown = missing && missing->text().startsWith(QStringLiteral("gone.csv (not found)"))
+					&& missing->toolTip().contains(QLatin1String("not there any more")) && missing->isEnabled()
+					&& missing->cursor().shape() == Qt::PointingHandCursor
+					&& qApp->styleSheet().contains(QLatin1String("QMenu QPushButton#recentMissing { color: "))
+					&& qApp->styleSheet().contains(QLatin1String("QMenu QPushButton#recentMissing:hover"));
+			std::printf("  a recent recording deleted: \"%s\", tooltip \"%s\"; the one kept listed %d; Clear the list last %d\n",
+					missing ? qPrintable(missing->text()) : "(none)", missing ? qPrintable(missing->toolTip()) : "",
+					int(keptEntry), int(clearLast));
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* for a look: the menu with the entry not found */
+				for (const bool dark : { true, false }) {
+					menu->hide();
+					Theme::apply(*qApp, dark);
+					menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+					QTest::qWait(300);
+					menu->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_recent_missing_%1.png")
+							.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+			Theme::apply(*qApp, true);
+			missing = missingIn(menu);
+		}
+		check(shown && keptEntry && clearLast, "recent recordings: a file deleted since is listed greyed with \"(not found)\" "
+				"after its name, its tooltip says it is not there any more, a pointing hand and a highlight under the mouse; "
+				"the file still there is listed as before; Clear the list last, after a line");
+		/* the chart's Recent recordings: the same */
+		auto *chartTab = window_.findChild<ChartTab *>();
+		bool inChartMenu = false;
+		if (chartTab) {
+			chartTab->showChartMenu(QPoint(100, 100), 0);
+			QApplication::processEvents();
+			for (QMenu *sub : chartTab->chartMenu() ? chartTab->chartMenu()->findChildren<QMenu *>() : QList<QMenu *>())
+				inChartMenu = inChartMenu || missingIn(sub) != nullptr;
+			if (chartTab->chartMenu()) chartTab->chartMenu()->hide();
+		}
+		/* a click: off the list at once, said in the status bar */
+		bool removed = false;
+		if (missing) {
+			window_.statusBar()->clearMessage();
+			missing->click();
+			QApplication::processEvents();
+			removed = RecordingWindow::recentFiles() == QStringList{ kept } && !menu->isVisible()
+					&& window_.statusBar()->currentMessage().contains(QLatin1String("gone.csv taken off the recent recordings"));
+			std::printf("  clicked: the list \"%s\", the status bar \"%s\"\n",
+					qPrintable(RecordingWindow::recentFiles().join(QStringLiteral(", "))),
+					qPrintable(window_.statusBar()->currentMessage()));
+		}
+		check(inChartMenu && removed, "recent recordings: the chart's Recent recordings lists it the same way; a click takes "
+				"it off the list at once (saved without it) and the status bar says so");
+		/* Clear the list */
+		bool cleared = false;
+		if (menu) {
+			menu->popup(open->mapToGlobal(QPoint(0, open->height())));
+			QApplication::processEvents();
+			for (QAction *action : menu->actions())
+				if (action->objectName() == QLatin1String("recentClear")) action->trigger();
+			menu->hide();
+			cleared = RecordingWindow::recentFiles().isEmpty()
+					&& window_.statusBar()->currentMessage().contains(QLatin1String("list cleared")) && QFileInfo::exists(kept);
+		}
+		check(cleared, "recent recordings: Clear the list empties it (the files stay), the status bar says so");
+		if (before.isValid()) QSettings().setValue(QStringLiteral("recording/recent"), before);
+		else QSettings().remove(QStringLiteral("recording/recent"));
+	}
+
+	/* The recording window's Lines: a checklist of every line it offers, grouped (Registers, Fast: ADC, Math), each
+	 * with its colour dot and unit, All and None, a search from 13 lines, the count on the button ("Lines 8/11"), the
+	 * lines unticked kept by name (recording/linesHidden) for the next recording opened */
+	struct LinesList {
+		QMenu *menu = nullptr;
+		QWidget *panel = nullptr;
+		QList<QCheckBox *> boxes;
+		QStringList groups;
+		QPushButton *all = nullptr, *none = nullptr;
+		QLineEdit *search = nullptr;
+	};
+	static LinesList openLinesList(RecordingWindow *w) {
+		LinesList out;
+		auto *button = w ? w->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr;
+		out.menu = button ? button->menu() : nullptr;
+		if (!out.menu) return out;
+		out.menu->popup(button->mapToGlobal(QPoint(0, button->height())));
+		QApplication::processEvents();
+		out.panel = out.menu->findChild<QWidget *>(QStringLiteral("recordingLinesList"));
+		if (!out.panel) return out;
+		out.boxes = out.panel->findChildren<QCheckBox *>(QStringLiteral("recordingLine"));
+		for (QLabel *label : out.panel->findChildren<QLabel *>(QStringLiteral("linesGroup"))) out.groups << label->text();
+		out.all = out.panel->findChild<QPushButton *>(QStringLiteral("recordingLinesAll"));
+		out.none = out.panel->findChild<QPushButton *>(QStringLiteral("recordingLinesNone"));
+		out.search = out.panel->findChild<QLineEdit *>(QStringLiteral("recordingLinesSearch"));
+		return out;
+	}
+	void recordingLinesList(RecordingWindow *w, const QString &folder) {
+		const QVariant hiddenBefore = QSettings().value(QStringLiteral("recording/linesHidden"));
+		auto *button = w ? w->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr;
+		LinesList list = openLinesList(w);
+		const int total = w ? int(w->definitions().size()) + 2 + int(w->chartTab()->mathLines().lines().size()) : 0;
+		bool grouped = false, dotted = !list.boxes.isEmpty(), hands = list.all && list.none, counted = false;
+		if (w && list.panel) {
+			QStringList names;
+			for (QCheckBox *box : std::as_const(list.boxes)) {
+				names << box->text();
+				dotted = dotted && !box->icon().isNull();
+				hands = hands && box->cursor().shape() == Qt::PointingHandCursor && !box->toolTip().isEmpty();
+			}
+			hands = hands && list.all->cursor().shape() == Qt::PointingHandCursor && !list.all->toolTip().isEmpty()
+					&& list.none->cursor().shape() == Qt::PointingHandCursor && !list.none->toolTip().isEmpty();
+			grouped = list.groups == QStringList{ QStringLiteral("Registers"), QStringLiteral("Fast: ADC"), QStringLiteral("Math") }
+					&& list.boxes.size() == total && names.contains(QStringLiteral("ADC.I_LOAD [A]"))
+					&& names.contains(QStringLiteral("ADC.V_BUS [V]")) && names.contains(QStringLiteral("P [W]"));
+			int ticked = 0;
+			for (QCheckBox *box : std::as_const(list.boxes)) ticked += box->isChecked();
+			counted = button->text() == QStringLiteral("Lines %1/%2").arg(w->chartTab()->lineCount()).arg(total)
+					&& ticked == w->chartTab()->lineCount();
+			std::printf("  the Lines list: groups %s, %lld lines (%s), the button \"%s\"\n",
+					qPrintable(list.groups.join(QStringLiteral(", "))), (long long) list.boxes.size(),
+					qPrintable(names.join(QStringLiteral(", "))), qPrintable(button->text()));
+		}
+		check(grouped && dotted && counted, "recording window, Lines: a checklist of every line, grouped Registers, Fast: "
+				"ADC, Math, each with its dot and unit (ADC.I_LOAD [A], P [W]); the button counts them, \"Lines 11/11\"");
+		check(hands, "recording window, Lines: All, None and every line's tick have a pointing hand and a tooltip");
+		/* None, then All */
+		bool noneAll = false;
+		if (list.none && list.all) {
+			list.none->click();
+			const bool allOff = w->chartTab()->lineCount() == 0 && button->text() == QStringLiteral("Lines 0/%1").arg(total);
+			list.all->click();
+			bool allOn = w->chartTab()->lineCount() == total && button->text() == QStringLiteral("Lines %1/%1").arg(total);
+			for (QCheckBox *box : std::as_const(list.boxes)) allOn = allOn && box->isChecked();
+			noneAll = allOff && allOn && list.search && list.search->isHidden(); /* 11 lines: no search */
+			if (!noneAll) std::printf("     (None: %d, All: %d, the search hidden %d, \"%s\")\n", int(allOff), int(allOn),
+					list.search ? int(list.search->isHidden()) : -1, qPrintable(button->text()));
+		}
+		check(noneAll, "recording window, Lines: None takes every line off the chart (\"Lines 0/11\"), All puts them back; "
+				"no search box under 13 lines");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT") && list.menu) { /* for a look: the list open, both themes */
+			for (const bool dark : { true, false }) {
+				list.menu->hide();
+				Theme::apply(*qApp, dark);
+				list = openLinesList(w);
+				QTest::qWait(300);
+				if (list.menu)
+					list.menu->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_lines_%1.png")
+							.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, true);
+		}
+		if (list.menu) list.menu->hide();
+		/* many lines: the search, All and None on what it finds, kept for the next recording */
+		const QString many = folder + QStringLiteral("/many.csv");
+		{
+			QFile file(many);
+			if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+				QString text = QStringLiteral("time_s,datetime");
+				for (int k = 0; k < 14; k++) text += QStringLiteral(",L%1 [V]").arg(k);
+				text += QLatin1Char('\n');
+				for (int row = 0; row < 3; row++) {
+					text += QStringLiteral("%1,2026-10-08T12:00:0%1.000").arg(row);
+					for (int k = 0; k < 14; k++) text += QStringLiteral(",%1").arg(k + row);
+					text += QLatin1Char('\n');
+				}
+				file.write(text.toUtf8());
+			}
+		}
+		RecordingWindow *wide = nullptr;
+		RecordingWindow::open(nullptr, many, {}, 2048, [&](RecordingWindow *x) { wide = x; });
+		(void) QTest::qWaitFor([&] { return wide != nullptr; }, 5000);
+		LinesList more = openLinesList(wide);
+		bool searched = false;
+		int found = -1, nothing = -1;
+		bool titleHidden = false;
+		if (more.search && more.none) {
+			more.search->setText(QStringLiteral("l1"));
+			found = 0;
+			for (QCheckBox *box : std::as_const(more.boxes)) found += !box->isHidden();
+			more.none->click();
+			more.search->setText(QStringLiteral("zzz"));
+			nothing = 0;
+			for (QCheckBox *box : std::as_const(more.boxes)) nothing += !box->isHidden();
+			titleHidden = true;
+			for (QLabel *label : more.panel->findChildren<QLabel *>(QStringLiteral("linesGroup")))
+				titleHidden = titleHidden && label->isHidden();
+			/* the recording's own math lines (recording/math) are listed too, and on the chart */
+			const int math = int(wide->chartTab()->mathLines().lines().size());
+			const int mathShown = wide->chartTab()->mathLinesShown();
+			const QString text = wide->findChild<QPushButton *>(QStringLiteral("recordingLines"))->text();
+			searched = !more.search->isHidden() && found == 5 && nothing == 0 && titleHidden
+					&& wide->chartTab()->lineCount() == 9 + mathShown
+					&& text == QStringLiteral("Lines %1/%2").arg(9 + mathShown).arg(14 + math);
+			if (!searched)
+				std::printf("     (the search shown %d, the button \"%s\", math lines %d, %d shown)\n",
+						int(!more.search->isHidden()), qPrintable(text), math, mathShown);
+			more.menu->hide();
+		}
+		std::printf("  14 lines: the search \"l1\" lists %d, \"zzz\" %d (the group's title hidden %d); None on the 5: %d "
+				"on the chart\n", found, nothing, int(titleHidden), wide ? wide->chartTab()->lineCount() : -1);
+		check(searched, "recording window, Lines with 14 lines: a search box; \"l1\" lists L1 and L10 to L13 (case does not "
+				"matter), a search that finds nothing hides the group's title too; None takes only the lines found off "
+				"(\"Lines 9/14\")");
+		delete wide;
+		const QStringList hidden = QSettings().value(QStringLiteral("recording/linesHidden")).toStringList();
+		RecordingWindow *again = nullptr;
+		RecordingWindow::open(nullptr, many, {}, 2048, [&](RecordingWindow *x) { again = x; });
+		(void) QTest::qWaitFor([&] { return again != nullptr; }, 5000);
+		bool kept = again && hidden.contains(QStringLiteral("L13")) && !hidden.contains(QStringLiteral("L2"))
+				&& again->chartTab()->lineCount() == 9 + again->chartTab()->mathLinesShown();
+		if (again)
+			for (const ChartView::Info &line : again->chartTab()->view()->lines())
+				kept = kept && !line.name.startsWith(QLatin1String("L1"));
+		std::printf("  kept: recording/linesHidden \"%s\", opened again with %d lines\n",
+				qPrintable(hidden.join(QStringLiteral(", "))), again ? again->chartTab()->lineCount() : -1);
+		check(kept, "recording window, Lines: the lines unticked are kept by name (recording/linesHidden): the recording "
+				"opened again shows the 9 others");
+		delete again;
+		if (hiddenBefore.isValid()) QSettings().setValue(QStringLiteral("recording/linesHidden"), hiddenBefore);
+		else QSettings().remove(QStringLiteral("recording/linesHidden"));
+	}
+
+	/* A recording of a fast stream beside its CSV, opened (the owner's 5 min file: at a 10 ms window at its end the fast
+	 * lines stopped short of the view's end, the polled lines ran to it, UPTIME jumped at the very end, "11 fps"):
+	 *  - where each ends: the CSV's rows at each poll, the stream's blocks as they come, so the two stop apart by a
+	 *    few ms, either way; the line above the chart says so when the stream ends first, its tooltip gives both spans;
+	 *  - the fast line drawn up to its record at (or just past) the view's end at every window, 1 ms to the whole file,
+	 *    at its end, its start and its middle: within a column (a column's records are drawn at its middle);
+	 *  - Normalise at 10 ms at the CSV's end: a register polled every 10 ms or slower has one sample there; its range
+	 *    takes its value at the view's edge too, so the piece from the edge to that sample is drawn in the plot, not
+	 *    from far below it;
+	 *  - held and still it paints nothing, and the info line says "idle", not the frames of its last change */
+	void recordedFastEnds(RecordingWindow *w, const QString &csv) {
+		check(w && !w->fastRecordings().isEmpty() && w->fastRecordings()[0].store
+						&& w->fastRecordings()[0].store->size() > 1000000,
+				"fast recording at a million records a second: recorded beside its CSV and opened with it");
+		if (!w || w->fastRecordings().isEmpty() || !w->fastRecordings()[0].store) return;
+		(void) QTest::qWaitForWindowExposed(w);
+		w->resize(1400, 800);
+		QTest::qWait(300);
+		ChartView *v = w->chartTab()->view();
+		const fast::Store &store = *w->fastRecordings()[0].store;
+		double rowsEnd = NAN;
+		{
+			QFile file(csv);
+			if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QList<QByteArray> rows = file.readAll().trimmed().split('\n');
+				rowsEnd = rows.isEmpty() ? NAN : rows.last().split(',').value(0).toDouble();
+			}
+		}
+		const double fastEnd = w->fastRecordings()[0].lastTime;
+		const auto *info = w->findChild<QLabel *>(QStringLiteral("recordingInfo"));
+		const QString text = info ? info->text() : QString(), tip = info ? info->toolTip() : QString();
+		const bool said = rowsEnd - fastEnd >= 0.001 ? text.contains(QLatin1String("before the CSV's last row"))
+													  : !text.contains(QLatin1String("before the CSV's last row"));
+		std::printf("  recorded at 1 M/s: the CSV's last row %.6f s, the stream's last record %.6f s (the rows end %+.2f ms "
+				"after it); the line \"%s\"\n", rowsEnd, fastEnd, (rowsEnd - fastEnd) * 1000, qPrintable(text));
+		check(said && std::fabs(w->lastTime() - std::max(rowsEnd, fastEnd)) < 1e-9 && tip.contains(QLatin1String("The CSV's rows: "))
+						&& tip.contains(QLatin1String("ADC's samples (speed.ADC.evrs): ")),
+				"fast recording: the CSV's rows and the stream's samples end a few ms apart (each written as it comes); the "
+				"view ends at the later, the line above the chart says when the stream ends first, its tooltip both spans");
+		/* the fast line's last point against its record at the view's end, at every window and place */
+		const int key = ChartView::fastKey(0, 0);
+		const double first = w->firstTime(), last = w->lastTime();
+		int wrong = 0, tried = 0;
+		QString worst;
+		double worstColumns = 0;
+		for (const double asked : { 0.001, 0.01, 0.1, 1.0, 10.0, last - first }) {
+			const double window = std::min(asked, last - first); /* a longer one would grow the memory */
+			for (int place = 0; place < 3; place++) {
+				const double end = place == 0 ? last : place == 1 ? first + window : (first + last + window) / 2;
+				w->chartTab()->showSpan(end - window, end);
+				v->repaint();
+				const double t0 = v->lastViewStart(), t1 = v->lastViewEnd();
+				const double column = (t1 - t0) / std::max(1.0, v->lastPlot().width());
+				const qsizetype at = std::min(store.size() - 1, store.upperBound(t1));
+				const double drawn = v->drawnTo(key), off = std::fabs(drawn - store.timeAt(at)) / column;
+				tried++;
+				if (!(off <= 1.0)) wrong++;
+				if (!(off <= worstColumns)) {
+					worstColumns = std::isfinite(off) ? off : 1e9;
+					worst = QStringLiteral("%1 s at the %2: drawn to %3, its record %4").arg(window).arg(place == 0 ? "end"
+							: place == 1 ? "start" : "middle").arg(drawn, 0, 'f', 6).arg(store.timeAt(at), 0, 'f', 6);
+				}
+			}
+		}
+		std::printf("  the fast line's last point: %d of %d views within a column of its record at the view's end; the "
+				"furthest %.2f columns (%s)\n", tried - wrong, tried, worstColumns, qPrintable(worst));
+		check(tried == 18 && wrong == 0, "fast recording: the fast line drawn up to its record at the view's end at every "
+				"window (1 ms, 10 ms, 100 ms, 1 s, 10 s, the whole file), at the file's end, start and middle");
+		/* Normalise at 10 ms at the CSV's end */
+		auto *normalise = w->findChild<QAction *>(QStringLiteral("chartNormalise"));
+		int uptime = -1;
+		for (const RegDef &def : w->definitions())
+			if (def.name == QLatin1String("UPTIME")) uptime = int(regKey(def));
+		bool inRange = false;
+		double atEdge = NAN, lo = NAN, hi = NAN;
+		if (normalise && uptime >= 0) {
+			normalise->setChecked(true);
+			w->chartTab()->showSpan(rowsEnd - 0.01, rowsEnd); /* its last sample at the view's end */
+			v->repaint();
+			QVector<double> times, values;
+			const double t0 = v->lastViewStart();
+			if (v->lineSamples(uptime, t0 - 1, rowsEnd + 1, times, values) && v->drawnRange(uptime, lo, hi)) {
+				const qsizetype k = std::lower_bound(times.begin(), times.end(), t0) - times.begin();
+				if (k > 0 && k < times.size())
+					atEdge = values[k - 1] + (values[k] - values[k - 1]) * (t0 - times[k - 1]) / (times[k] - times[k - 1]);
+				inRange = std::isfinite(atEdge) && atEdge >= lo - 1e-6 && atEdge <= hi + 1e-6;
+			}
+		}
+		std::printf("  Normalise, 10 ms at the CSV's end: UPTIME %.3f at the view's left edge, its range %.3f .. %.3f\n", atEdge, lo,
+				hi);
+		check(inRange, "fast recording, Normalise at 10 ms at the CSV's end: a register with one sample in view (UPTIME) "
+				"is ranged with its value at the view's edge, so the piece drawn to its sample stays in the plot (it came "
+				"from far below it: a jump at the end that is not in the data)");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the fast lines at 10 ms at the file's end */
+			w->chartTab()->showSpan(last - 0.01, last);
+			for (const bool dark : { true, false }) {
+				Theme::apply(*qApp, dark);
+				QTest::qWait(300);
+				w->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_viewer_end10ms_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, true);
+		}
+		if (normalise) normalise->setChecked(false);
+		/* held and still: no paint, the info line says idle; painted, the frames again */
+		v->repaint();
+		const int paints = v->paints(), binnings = v->binnings();
+		QTest::qWait(1500);
+		w->chartTab()->refreshStatus();
+		const int idlePaints = v->paints() - paints;
+		const QString idle = w->chartTab()->infoText();
+		for (int i = 0; i < 10; i++) v->repaint();
+		const QString painting = w->chartTab()->infoText();
+		std::printf("  held and still for 1.5 s: %d paints, \"%s\"; 10 paints later \"%s\", %d binnings\n", idlePaints,
+				qPrintable(idle), qPrintable(painting), v->binnings() - binnings);
+		check(idlePaints == 0 && idle.contains(QStringLiteral(" · idle")) && !idle.contains(QLatin1String(" fps"))
+						&& painting.contains(QLatin1String(" fps")) && v->binnings() == binnings,
+				"fast recording, a held 10 ms view of it: nothing painted while nothing changes and the info line says "
+				"\"idle\" (not the frames of its last change); painted again, its frames counted, its lines reused (no "
+				"binning)");
 	}
 
 	/* the I/O thread's table, given the map again (a device picked, a map edited): a register keeps its value only
@@ -5739,9 +6202,10 @@ private:
 				"every cell)");
 		if (!info.startsWith(QStringLiteral("60/64 plotted · "))) std::printf("     (info line: \"%s\")\n", qPrintable(info));
 		if (measure) measure->setChecked(false); /* the setting back as the other steps expect it */
-		check(info.startsWith(QStringLiteral("60/64 plotted · ")) && info.contains(QStringLiteral(" fps · ")),
+		check(info.startsWith(QStringLiteral("60/64 plotted · "))
+						&& (info.contains(QStringLiteral(" fps · ")) || info.contains(QStringLiteral(" idle · "))),
 				"chart, the info line: the registers on the chart of the limit first (\"60/64 plotted\"), then "
-				"the frames");
+				"the frames (idle: none painted in the last second)");
 	}
 
 	/* The frame budget, 600 frames of 60 Hz worked out (no clock): cheap frames all painted; frames a little over
@@ -12379,7 +12843,7 @@ private:
 			LoneChart arabic(QStringLiteral("AR"), QStringLiteral("V"));
 			info = arabic.tab.infoText();
 		}
-		static const QRegularExpression fps(QStringLiteral("⁦[0-9]+ fps⁩"));
+		const QString fps = QCoreApplication::translate("ChartTab", " · %1 fps"); /* a tab never painted is idle */
 		const QString fill = QCoreApplication::translate("ChartView", "held: filling, %1 s to come · Live to follow");
 		const QString delay = QCoreApplication::translate("ChartTab", " · delay %1 ms");
 		QString help;
@@ -12394,7 +12858,7 @@ private:
 		}
 		const bool arabicPieces = seconds == piece(QStringLiteral("500 ms")) && span == piece(QStringLiteral("1 min 12.3 s"))
 				&& need.contains(piece(QStringLiteral("122 MB"))) && !need.startsWith(lri) && parseSeconds(seconds) == 0.5
-				&& fps.match(info).hasMatch() && fill.contains(piece(QStringLiteral("%1 s")))
+				&& fps.contains(piece(QStringLiteral("%1 fps"))) && fill.contains(piece(QStringLiteral("%1 s")))
 				&& delay.contains(piece(QStringLiteral("%1 ms"))) && help.contains(piece(QStringLiteral("10 s")))
 				&& help.contains(piece(QStringLiteral("2 V")));
 		language::apply(*qApp, QStringLiteral("en"));
@@ -12414,6 +12878,183 @@ private:
 	/* Recordings in windows of their own: opened from the file (with the map: names matched, a byte array left out, a
 	 * math line computed from the file), held, titled with the name and span, notes read and saved; the RAM question;
 	 * dropped on the window; several at once while the live chart goes on; a recording's notes written while it runs */
+	/* EVRE_TEST_SHOT: pictures of a recording's window for a look (the viewer's review), in each theme and language,
+	 * Lanes off and on, at its first size, smaller and bigger, and measured between two cursors */
+	void recordingWindowPictures(const QString &file, const QString &tag) {
+		if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_viewer_") + tag;
+		const QVariant lanesBefore = QSettings().value(QStringLiteral("recording/lanes"));
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		const auto picture = [&](const QString &name, bool lanes, const QSize &size, bool measure = false) {
+			QSettings().setValue(QStringLiteral("recording/lanes"), lanes);
+			QSettings().setValue(QStringLiteral("recording/measure"), measure);
+			RecordingWindow *shown = nullptr;
+			RecordingWindow::open(nullptr, file, map_.regs, 2048, [&](RecordingWindow *w) { shown = w; });
+			(void) QTest::qWaitFor([&] { return shown != nullptr; }, 5000);
+			if (!shown) return;
+			(void) QTest::qWaitForWindowExposed(shown);
+			if (size.isValid()) shown->resize(size);
+			if (measure) {
+				shown->chartTab()->view()->setCursors(shown->firstTime() + (shown->lastTime() - shown->firstTime()) * 0.3,
+						shown->firstTime() + (shown->lastTime() - shown->firstTime()) * 0.6);
+			}
+			QTest::qWait(measure ? 1200 : 600);
+			shown->grab().save(prefix + QLatin1Char('_') + name + QStringLiteral(".png"));
+			delete shown;
+		};
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+			picture(theme, false, QSize());
+			picture(theme + QStringLiteral("_lanes"), true, QSize());
+			picture(theme + QStringLiteral("_measure"), false, QSize(), true);
+		}
+		Theme::apply(*qApp, true);
+		picture(QStringLiteral("small"), false, QSize(900, 600));
+		picture(QStringLiteral("big"), false, QSize(1600, 900));
+		picture(QStringLiteral("big_lanes"), true, QSize(1600, 900));
+		language::apply(*qApp, QStringLiteral("ar"));
+		picture(QStringLiteral("ar_dark"), false, QSize());
+		picture(QStringLiteral("ar_dark_lanes"), true, QSize());
+		Theme::apply(*qApp, false);
+		picture(QStringLiteral("ar_light_measure"), false, QSize(), true);
+		Theme::apply(*qApp, true);
+		language::apply(*qApp, QStringLiteral("en"));
+		for (const auto &[key, before] : { std::pair{ QStringLiteral("recording/lanes"), lanesBefore },
+					 std::pair{ QStringLiteral("recording/measure"), measureBefore } }) {
+			if (before.isValid()) QSettings().setValue(key, before);
+			else QSettings().remove(key);
+		}
+	}
+
+	/* The recording's window revisited (P5): opened with Measure on, it showed an empty chart at 0..1 (the file's
+	 * samples held back by the opening's measurement, and the change after the feed never painted: no frames come to
+	 * it), the Y boxes "0" and "1" in Auto's grey; made bigger on the card, a frame the system let go left the layer at
+	 * its old size beside a blank bar; its Y row spread over the window; a theme switch passed it by. */
+	void recordingViewer(const QString &path) {
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		const QVariant lanesBefore = QSettings().value(QStringLiteral("recording/lanes"));
+		QSettings().setValue(QStringLiteral("recording/measure"), true);
+		QSettings().setValue(QStringLiteral("recording/lanes"), false);
+		QSettings().setValue(QStringLiteral("recording/yAuto"), true);
+		RecordingWindow::closeAll();
+		RecordingWindow *opened = nullptr;
+		QElapsedTimer since;
+		since.start();
+		RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { opened = w; });
+		(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+		if (!opened) {
+			check(false, "recording's window revisited: opened");
+			return;
+		}
+		ChartView *view = opened->chartTab()->view();
+		const int volts = int(regKey(opened->definitions().value(0)));
+		const qint64 keptAtOnce = view->pointsKept(volts);
+		const QString valueAtOnce = view->legendValue(volts);
+		(void) QTest::qWaitForWindowExposed(opened);
+		QTest::qWait(150); /* its first frame, under the status's 500 ms */
+		auto *low = opened->findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *high = opened->findChild<QLineEdit *>(QStringLiteral("yMax"));
+		const qint64 openedMs = since.elapsed();
+		const bool boxes = low && high && low->text() == ChartTab::yFieldText(view->yLo(), false)
+				&& high->text() == ChartTab::yFieldText(view->yHi(), false) && view->yLo() < 12 && view->yHi() > 17.9;
+		std::printf("  opened with Measure on: %lld samples and \"%s\" at once; Y %g..%g, the boxes \"%s\" \"%s\" after %lld ms\n",
+				(long long) keptAtOnce, qPrintable(valueAtOnce), view->yLo(), view->yHi(), low ? qPrintable(low->text()) : "",
+				high ? qPrintable(high->text()) : "", (long long) openedMs);
+		check(keptAtOnce == 600 && !valueAtOnce.isEmpty(), "recording's window, Measure on: the file's samples on the chart "
+				"at once and the legend's values shown (none held back by the opening's measurement)");
+		check(boxes && openedMs < 500, "recording's window: the Y boxes show the range of its first frame at once (Auto), "
+				"not 0 and 1 until the status's next turn");
+
+		/* a change just after a feed's frames (no frames come after them): painted all the same */
+		opened->chartTab()->frame({});
+		QApplication::processEvents(); /* the frame's own paint */
+		const int paintsBefore = view->paints();
+		view->showLastValues();
+		const bool painted = QTest::qWaitFor([&] { return view->paints() > paintsBefore; }, 600);
+		check(painted, "recording's window: a change just after a feed's frames is painted though no frame follows");
+
+		/* the Y row: its groups packed, as in the live chart's (the room of the hidden Memory and RAM a stretch) */
+		QLabel *minLabel = nullptr, *rangeLabel = nullptr;
+		for (QLabel *label : opened->findChildren<QLabel *>()) {
+			if (label->text() == QLatin1String("min")) minLabel = label;
+			if (label->text() == QLatin1String("Y range")) rangeLabel = label;
+		}
+		auto *mode = opened->findChild<QComboBox *>(QStringLiteral("yMode"));
+		/* each label and list as wide as it needs: the text of "min" beside its box, not across a stretched label */
+		int spread = minLabel && rangeLabel && mode ? 0 : 1000;
+		for (QWidget *w : std::initializer_list<QWidget *>{ minLabel, rangeLabel, mode })
+			if (w) spread = std::max(spread, w->width() - w->sizeHint().width());
+		std::printf("  the Y row: its label and list at most %d px wider than they need\n", spread);
+		check(spread <= 4, "recording's window: the Y row packed, \"Y range\" beside its list and \"min\" beside its box "
+				"(the room of the hidden Memory and RAM not spread over the labels)");
+
+		/* made bigger on the CPU: the window's own pixels are the chart's picture at once */
+		opened->resize(1000, 620);
+		view->setDrawing(ChartView::Drawing::Cpu);
+		QTest::qWait(300);
+		opened->resize(1300, 800);
+		QApplication::processEvents();
+		const QImage own = opened->screen()->grabWindow(opened->winId()).toImage().convertToFormat(QImage::Format_RGB32);
+		const QImage picture = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const double cpuAlike = own.size() == picture.size() ? blocksAlike(own, picture, 24) : 0;
+		std::printf("  made bigger on the CPU: the window's pixels %.2f%% like its picture\n", cpuAlike * 100);
+		check(cpuAlike >= 0.97, "recording's window made bigger on the CPU: all of it painted at once, the new part too");
+
+		/* on the card: a frame the system lets go (busy) as the window grows is followed by another, the layer at the
+		 * new size; on the screen the plot is the CPU's picture */
+		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
+		if (adapters.isEmpty()) {
+			check(true, "recording's window made bigger on a GPU: no adapter on this machine (Direct3D 11 on Windows "
+					"only): the CPU draws, skipped");
+		} else {
+			opened->resize(1000, 620);
+			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			(void) QTest::qWaitFor([&] { return !view->openingGpu(); }, 10000);
+			for (int k = 0; k < 3; k++) {
+				view->repaint();
+				QApplication::processEvents();
+			}
+			QTest::qWait(200);
+			const int dropped = view->gpuDropped();
+			view->dropNextGpuFrame();
+			opened->resize(1300, 800);
+			QApplication::processEvents();
+			QRect at;
+			(void) view->gpuPicture(&at);
+			const bool again = QTest::qWaitFor([&] { return view->gpuPresentedSize() == at.size(); }, 500);
+			QTest::qWait(100);
+			const QRect g = opened->geometry();
+			const QImage screen = opened->screen()->grabWindow(0, g.x(), g.y(), g.width(), g.height()).toImage()
+					.convertToFormat(QImage::Format_RGB32);
+			const QImage cpu = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
+			const double alike = screen.size() == cpu.size() ? blocksAlike(screen.copy(at), cpu.copy(at), 24) : 0;
+			std::printf("  made bigger on %s: a frame let go (%d), the layer %dx%d for the plot's %dx%d; on the screen "
+					"%.2f%% like the CPU's picture\n", qPrintable(view->drawingName()), view->gpuDropped() - dropped,
+					view->gpuPresentedSize().width(), view->gpuPresentedSize().height(), at.width(), at.height(), alike * 100);
+			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again && alike >= 0.97,
+					"recording's window made bigger on a GPU: a frame the system let go is followed by another, the card's "
+					"layer at the new size (no blank bar over the new part), its plot the CPU's picture");
+			view->setDrawing(ChartView::Drawing::Cpu);
+		}
+
+		/* the theme switched: its boxes in the new theme at once */
+		auto *sidebarCard = window_.findChild<Sidebar *>();
+		if (sidebarCard) emit sidebarCard->themeClicked();
+		const bool themed = low && low->styleSheet() == QStringLiteral("color:%1").arg(Theme::colors().muted.name());
+		if (sidebarCard) emit sidebarCard->themeClicked();
+		check(sidebarCard && themed && Theme::isDark(), "recording's window: the theme switched reaches it too (its Y "
+				"boxes in the new theme's grey at once)");
+
+		RecordingWindow::closeAll();
+		for (const auto &[key, before] : { std::pair{ QStringLiteral("recording/measure"), measureBefore },
+					 std::pair{ QStringLiteral("recording/lanes"), lanesBefore } }) {
+			if (before.isValid()) QSettings().setValue(key, before);
+			else QSettings().remove(key);
+		}
+		QSettings().remove(QStringLiteral("recording/drawing"));
+	}
+
 	void recordingWindows() {
 		QTemporaryDir folder;
 		const QString path = folder.filePath(QStringLiteral("bench.csv"));
@@ -12472,6 +13113,15 @@ private:
 				"with its value names), a byte array left out, an empty cell no sample");
 		check(math && notes, "recording window: a math line of its own (recording/math) computed from the file; the notes "
 				"beside it shown");
+		recordingViewer(path);
+		recordingWindowPictures(path, QStringLiteral("regs"));
+		/* (closed by the revisit's checks: opened again for the rest) */
+		opened = nullptr;
+		window_.openRecording(path);
+		(void) QTest::qWaitFor([&] { return !(RecordingWindow::windows().isEmpty() || !(opened = RecordingWindow::windows().first())); }, 5000);
+		if (!opened) return;
+		(void) QTest::qWaitForWindowExposed(opened);
+		view = opened->chartTab()->view();
 		/* held on a file, nothing comes after its end: no trigger, in a chip's menu or the Display menu */
 		opened->chartTab()->showLineMenu(keyOf(volts), QPoint(0, 0));
 		QMenu *chipMenu = opened->chartTab()->lineMenu();

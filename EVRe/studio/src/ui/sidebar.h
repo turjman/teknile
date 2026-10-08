@@ -15,7 +15,8 @@
  *    sends its read-only block by itself; one device only); Show values (how
  *    often the numbers on screen change, value_pace.h); Record CSV, and Open
  *    recording beside it (a file, or one of the last ones).
- *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Start / Stop button, its samples a second
+ *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Log tick (written beside a CSV recording
+ *    or not, kept by the stream's name in "fast/notLogged"), its Start / Stop button, its samples a second
  *    as the clock's fit has them with the correction, the samples lost, and a Plot tick for each of its channels with
  *    its newest value (the channels' rows are here, not in the Registers tab: they are no registers). One device only,
  *    as Auto send.
@@ -135,6 +136,11 @@ public:
 	void clearFastPlots();
 	void setFastPlotsEnabled(bool enabled, const QString &why = QString()); /* a bus: no fast line (why: the tooltip) */
 	QCheckBox *fastPlotBox(int stream, int channel) const; /* tests */
+	/* a stream's rate as the map gives it, one left-to-right piece: "1 MS/s", "10 kS/s", "500 S/s" (units as they are) */
+	static QString streamRateText(double hz);
+	/* a stream's Log tick: recorded beside the CSV or not (on by default); the streams with it off, by name */
+	QCheckBox *fastLogBox(int stream) const;
+	QStringList fastNotLogged() const;
 	/* the channels' newest values, at the values' pace (NaN: none yet) */
 	void showFastValues(int stream, const QVector<double> &values);
 	QString fastValueText(int stream, int channel) const; /* tests */
@@ -170,6 +176,7 @@ signals:
 	void saveMapClicked(bool saveAs);
 	void recordClicked();
 	void openRecordingClicked(const QString &file); /* empty: choose one */
+	void statusMessage(const QString &text, int ms); /* for the status bar (a recent recording taken off its list) */
 	void apiServeChanged(bool on); /* Serve API; Network switched while serving: on again, with it */
 	void apiWritesChanged();       /* Allow API writes, or including ⚠ registers */
 	void helpClicked();
@@ -240,6 +247,8 @@ private:
 	struct FastRow {
 		StreamDef def;
 		QLabel *title = nullptr;  /* the stream's name, heading its row */
+		ElidedLabel *about = nullptr; /* beside it, muted: "· 2 channels · 1 MS/s" */
+		QCheckBox *log = nullptr; /* recorded beside the CSV or not */
 		QPushButton *button = nullptr;
 		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
 		QLabel *lost = nullptr;   /* the samples lost */

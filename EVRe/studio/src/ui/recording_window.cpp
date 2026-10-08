@@ -2,6 +2,7 @@
 /* A recording opened: see recording_window.h. */
 #include "ui/recording_window.h"
 
+#include <QCheckBox>
 #include <QCursor>
 #include <QDateTime>
 #include <QDir>
@@ -9,16 +10,21 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QToolTip>
 #include <QThreadPool>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -29,12 +35,38 @@
 #include "ui/chart_tab.h"
 #include "ui/chart_widget.h"
 #include "ui/event_log.h"
+#include "ui/theme.h"
 #include "ui/ui_helpers.h"
 
 namespace {
 
 constexpr qint64 SAMPLES_PER_FEED = 500000; /* the file's values go to the chart in parts of about this many */
+constexpr double STREAM_END_SAID_S = 0.001; /* a stream's samples that end this much before the CSV's rows: said */
 const QString RECENT_KEY = QStringLiteral("recording/recent");
+const QString HIDDEN_KEY = QStringLiteral("recording/linesHidden"); /* the lines unticked in Lines, by name */
+constexpr int LINES_LIST_ROWS = 18;    /* the Lines list scrolls beyond this many rows (lines and group titles) */
+constexpr int LINES_LIST_MAX_H = 440;  /* then this high */
+enum LineKind { RegisterLine, ChannelLine, FormulaLine }; /* a line of the Lines list: a column, a fast channel, a math line */
+
+/* a line's dot in the Lines list: its colour on the chart, or a ring while it is not on it (it takes the palette's next
+ * colour when ticked, as on the live chart) */
+QIcon lineDot(const QColor &color, bool onChart, qreal ratio) {
+	QPixmap pixmap(QSize(10, 10) * ratio);
+	pixmap.setDevicePixelRatio(ratio);
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	painter.setRenderHint(QPainter::Antialiasing);
+	if (onChart) {
+		painter.setPen(Qt::NoPen);
+		painter.setBrush(color);
+		painter.drawEllipse(QRectF(1, 1, 8, 8));
+	} else {
+		painter.setPen(QPen(Theme::colors().muted, 1.2));
+		painter.setBrush(Qt::NoBrush);
+		painter.drawEllipse(QRectF(1.5, 1.5, 7, 7));
+	}
+	return QIcon(pixmap);
+}
 
 QList<QPointer<RecordingWindow>> &registry() {
 	static QList<QPointer<RecordingWindow>> all;
@@ -172,17 +204,54 @@ void RecordingWindow::remember(const QString &file) {
 	QSettings().setValue(RECENT_KEY, recent);
 }
 
-void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile) {
+void RecordingWindow::forget(const QString &file) {
+	QStringList recent = recentFiles();
+	recent.removeAll(file);
+	QSettings().setValue(RECENT_KEY, recent);
+}
+
+/* each entry checked as the menu opens: a file deleted or moved since is greyed with "(not found)" but still takes a
+ * click (a disabled entry did nothing, and said nothing), which takes it off the list */
+void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const QString &)> &openFile,
+		const std::function<void(const QString &)> &said) {
 	menu->clear();
 	const QStringList recent = recentFiles();
 	if (recent.isEmpty()) menu->addAction(tr("No recordings opened yet"))->setEnabled(false);
 	for (const QString &path : recent) {
 		const QFileInfo info(path);
-		QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(info.fileName(),
-				QDir::toNativeSeparators(info.absolutePath()))));
-		action->setToolTip(QDir::toNativeSeparators(path));
-		action->setEnabled(info.exists());
-		QObject::connect(action, &QAction::triggered, menu, [openFile, path] { openFile(path); });
+		const QString where = QDir::toNativeSeparators(info.absolutePath());
+		if (info.exists()) {
+			QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(info.fileName(), where)));
+			action->setToolTip(QDir::toNativeSeparators(path));
+			QObject::connect(action, &QAction::triggered, menu, [openFile, path] { openFile(path); });
+			continue;
+		}
+		/* a button in the menu's item shape, in the muted colour, lit under the mouse (theme.cpp) */
+		auto *missing = new QPushButton(noMnemonic(tr("%1 (not found)   %2").arg(info.fileName(), where)));
+		missing->setObjectName(QStringLiteral("recentMissing"));
+		missing->setProperty("path", path);
+		missing->setCursor(Qt::PointingHandCursor);
+		missing->setToolTip(tr("%1 is not there any more (deleted or moved): a click takes it off this list")
+				.arg(QDir::toNativeSeparators(path)));
+		auto *action = new QWidgetAction(menu);
+		action->setDefaultWidget(missing);
+		menu->addAction(action);
+		QObject::connect(missing, &QPushButton::clicked, menu, [menu, path, said] {
+			forget(path);
+			menu->close();
+			if (said) said(tr("%1 taken off the recent recordings: the file is not there any more")
+					.arg(QDir::toNativeSeparators(path)));
+		});
+	}
+	if (!recent.isEmpty()) {
+		menu->addSeparator();
+		QAction *clear = menu->addAction(tr("Clear the list"));
+		clear->setObjectName(QStringLiteral("recentClear"));
+		clear->setToolTip(tr("Every recording off this list; the files stay where they are"));
+		QObject::connect(clear, &QAction::triggered, menu, [said] {
+			QSettings().remove(RECENT_KEY);
+			if (said) said(tr("The recent recordings list cleared"));
+		});
 	}
 	menu->setToolTipsVisible(true);
 }
@@ -261,18 +330,43 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	info_->setObjectName(QStringLiteral("recordingInfo"));
 	QString info = isFastRecording(file_) ? span : tr("%1 · %2 lines · %3 rows").arg(span).arg(defs_.size()).arg(data_.rows);
 	if (skipped_ > 0) info += tr(" · columns left out (not numbers): %1").arg(skipped_);
+	/* the CSV's rows and each stream's samples end where each was written last: the rows at each poll, a stream's blocks
+	 * as they come, so the two stop a few ms apart (the device sends its newest samples in its next block). Said, so a
+	 * fast line that ends before the view's end at a short window is read as the data's end, not as a line cut */
+	double rows0 = std::numeric_limits<double>::infinity(), rows1 = -rows0;
+	for (const recording::Column &column : std::as_const(data_.columns)) {
+		if (column.times.isEmpty()) continue;
+		rows0 = std::min(rows0, column.times.first());
+		rows1 = std::max(rows1, column.times.last());
+	}
+	const QString clock = QStringLiteral("HH:mm:ss.zzz");
+	QString tip = QDir::toNativeSeparators(file_);
+	if (rows0 <= rows1)
+		tip += QLatin1Char('\n') + tr("The CSV's rows: %1 – %2").arg(clockText(data_.epochMs, rows0, clock),
+				clockText(data_.epochMs, rows1, clock));
 	for (const fast::Recording &stream : std::as_const(fast_)) { /* each stream: its samples, the lost, a cut */
 		const qint64 records = stream.store ? stream.store->size() : 0;
 		info += stream.lost > 0 ? tr(" · %1: %2 samples, %3 lost").arg(stream.stream.name, groupedNumber(records),
 												groupedNumber(qint64(stream.lost)))
 								: tr(" · %1: %2 samples").arg(stream.stream.name, groupedNumber(records));
+		if (rows0 <= rows1 && records > 0 && rows1 - stream.lastTime >= STREAM_END_SAID_S)
+			info += tr(", its last %1 before the CSV's last row").arg(secondsText(rows1 - stream.lastTime));
 		if (stream.cut) info += tr(" (the file ends cut off: read up to its last whole piece)");
+		if (records > 0)
+			tip += QLatin1Char('\n') + tr("%1's samples (%2): %3 – %4").arg(stream.stream.name,
+					QFileInfo(stream.file).fileName(), clockText(data_.epochMs, stream.firstTime, clock), clockText(data_.epochMs, stream.lastTime, clock));
 	}
+	if (rows0 <= rows1 && !fast_.isEmpty())
+		tip += QLatin1Char('\n') + tr("The rows are written at each poll, a stream's blocks as they come: the two end a "
+				"few ms apart, and a fast line ends where its samples end.");
 	info_->setText(info);
-	info_->setToolTip(QDir::toNativeSeparators(file_));
+	info_->setToolTip(tip);
 	lines_ = new QPushButton(tr("Lines"));
 	lines_->setObjectName(QStringLiteral("recordingLines"));
-	lines_->setToolTip(tr("The file's columns on the chart or not; a register's bit fields (with the map loaded)"));
+	lines_->setCursor(Qt::PointingHandCursor);
+	lines_->setToolTip(tr("What the chart shows: every column of the file, each fast channel and the math lines, ticked "
+			"on or off (All, None, a search); a register's bit fields with the map loaded. The lines unticked stay "
+			"off in the next recording opened"));
 	auto *menu = new QMenu(lines_);
 	setButtonMenu(lines_, menu);
 	connect(menu, &QMenu::aboutToShow, this, &RecordingWindow::rebuildLinesMenu);
@@ -290,8 +384,10 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	tab_->setRecording(data_.epochMs, t0_, t1_, ramMB_, int(defs_.size()));
 	tab_->setRegisters(defs_);
 	plotted_.fill(false, defs_.size());
+	hidden_ = QSettings().value(HIDDEN_KEY).toStringList();
 	int lines = 0;
-	for (int c = 0; c < defs_.size() && c < RegisterModel::MAX_PLOTTED; c++) {
+	for (int c = 0; c < defs_.size() && lines < RegisterModel::MAX_PLOTTED; c++) {
+		if (hidden_.contains(defs_[c].name)) continue;
 		plotted_[c] = true;
 		tab_->plotRegister(defs_[c], true);
 		lines++;
@@ -302,8 +398,11 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	tab_->setFastStreams(streams);
 	for (int i = 0; i < fast_.size(); i++) {
 		tab_->view()->setFastStore(i, fast_[i].store);
-		for (int c = 0; c < fast_[i].stream.channels.size() && lines < RegisterModel::MAX_PLOTTED; c++, lines++)
+		for (int c = 0; c < fast_[i].stream.channels.size() && lines < RegisterModel::MAX_PLOTTED; c++) {
+			if (hidden_.contains(fast_[i].stream.name + QLatin1Char('.') + fast_[i].stream.channels[c].name)) continue;
 			tab_->plotFastChannel(i, c, true);
+			lines++;
+		}
 	}
 	feed();
 	tab_->showSpan(t0_, t1_);
@@ -315,7 +414,9 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	/* a math line or a field added: its points from the file's values (its line made again empty) */
 	connect(tab_, &ChartTab::mathRegistersChanged, this, [this] {
 		if (!feeding_) feed();
+		showLinesCount();
 	});
+	showLinesCount();
 	connect(tab_, &ChartTab::notesChanged, this, &RecordingWindow::saveNotes);
 	connect(tab_, &ChartTab::statusMessage, this,
 			[this](const QString &text, int) { QToolTip::showText(QCursor::pos(), text, this); });
@@ -370,36 +471,139 @@ void RecordingWindow::feedColumn(int column) {
 	tab_->view()->showLastValues();
 }
 
+/* The Lines list: a check box per line, under its group (the file's columns, each stream's channels, the math lines),
+ * with its colour dot and unit; All and None for the lines listed, a search when they are many. A check box in a menu:
+ * a tick does not close it. The fields of a register matched in the map under it, as on the Registers tab */
 void RecordingWindow::rebuildLinesMenu() {
 	QMenu *menu = lines_->menu();
 	menu->clear();
-	for (int c = 0; c < defs_.size(); c++) {
-		const RegDef &def = defs_[c];
-		QAction *shown = menu->addAction(noMnemonic(recording::title(def.name, def.unit)));
-		shown->setCheckable(true);
-		shown->setChecked(plotted_[c]);
-		connect(shown, &QAction::toggled, this, [this, c, shown](bool on) {
-			if (on && !roomForLine(shown)) return;
-			plotted_[c] = on;
-			tab_->plotRegister(defs_[c], on);
-			if (on) feedColumn(c);
-		});
-	}
-	/* the streams' channels */
+	auto *panel = new QWidget(menu); /* in the menu from the start: its style sheet rules (QMenu ...) size it */
+	panel->setObjectName(QStringLiteral("recordingLinesList"));
+	auto *layout = new QVBoxLayout(panel);
+	layout->setContentsMargins(10, 6, 10, 6);
+	layout->setSpacing(6);
+	auto *all = new QPushButton(tr("All"));
+	all->setObjectName(QStringLiteral("recordingLinesAll"));
+	all->setToolTip(tr("Tick every line listed (those the search finds), up to the chart's 64"));
+	auto *none = new QPushButton(tr("None"));
+	none->setObjectName(QStringLiteral("recordingLinesNone"));
+	none->setToolTip(tr("Untick every line listed (those the search finds)"));
+	for (QPushButton *button : { all, none }) button->setCursor(Qt::PointingHandCursor);
+	auto *buttons = new QHBoxLayout;
+	buttons->addWidget(all);
+	buttons->addWidget(none);
+	buttons->addStretch();
+	layout->addLayout(buttons);
+	auto *search = new QLineEdit;
+	search->setObjectName(QStringLiteral("recordingLinesSearch"));
+	search->setPlaceholderText(tr("Search lines"));
+	search->setToolTip(tr("Only the lines whose name holds this"));
+	search->setClearButtonEnabled(true);
+	search->setVisible(linesInFile() >= LINES_SEARCH_FROM);
+	layout->addWidget(search);
+
+	auto *list = new QWidget;
+	auto *rows = new QVBoxLayout(list);
+	rows->setContentsMargins(0, 0, 0, 0);
+	rows->setSpacing(2);
+	struct Group {
+		QLabel *title;
+		QVector<QCheckBox *> boxes;
+	};
+	auto groups = std::make_shared<QVector<Group>>();
+	QHash<int, QColor> colors;
+	for (const ChartView::Info &line : tab_->view()->lines()) colors.insert(line.key, line.color);
+	const qreal ratio = devicePixelRatioF();
+	const auto addGroup = [&](const QString &title) {
+		if (!groups->isEmpty()) rows->addSpacing(6); /* a gap between the groups */
+		auto *label = new QLabel(title);
+		label->setObjectName(QStringLiteral("linesGroup"));
+		rows->addWidget(label);
+		groups->push_back({ label, {} });
+	};
+	const auto addBox = [&](const QString &name, const QString &unit, LineKind kind, int index, int key, bool on,
+								const QString &why) {
+		auto *box = new QCheckBox(noMnemonic(recording::title(name, unit)));
+		box->setObjectName(QStringLiteral("recordingLine"));
+		box->setProperty("lineName", name);
+		box->setProperty("lineKind", int(kind));
+		box->setProperty("lineIndex", index);
+		box->setProperty("lineKey", key);
+		box->setCursor(Qt::PointingHandCursor);
+		box->setIcon(lineDot(colors.value(key), colors.contains(key), ratio));
+		box->setChecked(on);
+		box->setEnabled(why.isEmpty());
+		box->setToolTip(why.isEmpty() ? tr("%1 on the chart, or not").arg(name) : why);
+		box->setContentsMargins(4, 1, 4, 1);
+		connect(box, &QCheckBox::toggled, this, [this, box](bool ticked) { lineTicked(box, ticked); });
+		rows->addWidget(box);
+		groups->last().boxes << box;
+	};
+	if (!defs_.isEmpty()) addGroup(tr("Registers"));
+	for (int c = 0; c < defs_.size(); c++)
+		addBox(defs_[c].name, defs_[c].unit, RegisterLine, c, int(regKey(defs_[c])), plotted_[c], QString());
 	for (int i = 0; i < fast_.size(); i++) {
-		menu->addSeparator();
+		addGroup(tr("Fast: %1").arg(fast_[i].stream.name));
 		for (int c = 0; c < fast_[i].stream.channels.size(); c++) {
 			const StreamChannel &channel = fast_[i].stream.channels[c];
-			QAction *shown = menu->addAction(noMnemonic(recording::title(fast_[i].stream.name + QLatin1Char('.') + channel.name,
-					channel.unit)));
-			shown->setCheckable(true);
-			shown->setChecked(tab_->fastPlotted(i, c));
-			connect(shown, &QAction::toggled, this, [this, i, c, shown](bool on) {
-				if (on && !roomForLine(shown)) return;
-				tab_->plotFastChannel(i, c, on);
-			});
+			addBox(fast_[i].stream.name + QLatin1Char('.') + channel.name, channel.unit, ChannelLine, 256 * i + c,
+					ChartView::fastKey(i, c), tab_->fastPlotted(i, c), QString());
 		}
 	}
+	const QVector<MathLine> &math = tab_->mathLines().lines();
+	if (!math.isEmpty()) addGroup(tr("Math"));
+	for (int i = 0; i < math.size(); i++)
+		addBox(math[i].name, math[i].unit, FormulaLine, i, math[i].fast() ? ChartTab::fastMathKey(i) : MathLines::chartKey(i),
+				math[i].active(), math[i].error.isEmpty() ? QString() : tr("Not drawn: %1").arg(math[i].error));
+	rows->addStretch();
+	auto *scroll = new QScrollArea;
+	scroll->setObjectName(QStringLiteral("recordingLinesScroll"));
+	scroll->setWidget(list);
+	scroll->setWidgetResizable(true);
+	scroll->setFrameShape(QFrame::NoFrame);
+	scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	scroll->viewport()->setAutoFillBackground(false);
+	list->setAutoFillBackground(false);
+	/* as tall as its lines (measured when the menu lays it out, in the menu's style), or LINES_LIST_MAX_H with its scroll
+	 * bar beside them, never over them, when they are many */
+	int rowsShown = int(groups->size());
+	for (const Group &group : std::as_const(*groups)) rowsShown += int(group.boxes.size());
+	const bool scrolls = rowsShown > LINES_LIST_ROWS;
+	scroll->setSizeAdjustPolicy(QAbstractScrollArea::AdjustToContents);
+	scroll->setVerticalScrollBarPolicy(scrolls ? Qt::ScrollBarAlwaysOn : Qt::ScrollBarAlwaysOff);
+	if (scrolls) scroll->setMaximumHeight(LINES_LIST_MAX_H);
+	layout->addWidget(scroll);
+
+	/* the search: the lines whose name holds it, a group's title only with a line under it */
+	connect(search, &QLineEdit::textChanged, panel, [groups](const QString &text) {
+		for (Group &group : *groups) {
+			bool any = false;
+			for (QCheckBox *box : std::as_const(group.boxes)) {
+				const bool match = text.isEmpty() || box->property("lineName").toString().contains(text, Qt::CaseInsensitive);
+				box->setHidden(!match);
+				any = any || match;
+			}
+			group.title->setHidden(!any);
+		}
+	});
+	/* All: in their order until the cap refuses one; None: every one listed */
+	connect(all, &QPushButton::clicked, panel, [groups] {
+		for (const Group &group : std::as_const(*groups))
+			for (QCheckBox *box : group.boxes) {
+				if (box->isHidden() || !box->isEnabled() || box->isChecked()) continue;
+				box->setChecked(true);
+				if (!box->isChecked()) return; /* the chart is full */
+			}
+	});
+	connect(none, &QPushButton::clicked, panel, [groups] {
+		for (const Group &group : std::as_const(*groups))
+			for (QCheckBox *box : group.boxes)
+				if (!box->isHidden() && box->isChecked()) box->setChecked(false);
+	});
+	auto *action = new QWidgetAction(menu);
+	action->setDefaultWidget(panel);
+	menu->addAction(action);
+
 	/* the fields of a register matched in the map, as on the Registers tab (not of a scaled one: no raw bits) */
 	bool title = false;
 	for (const RegDef &def : std::as_const(defs_)) {
@@ -412,11 +616,63 @@ void RecordingWindow::rebuildLinesMenu() {
 		for (const BitField &field : def.fields)
 			fields->addAction(noMnemonic(field.name), this, [this, def, field] { tab_->plotField(def, field); });
 	}
+	QTimer::singleShot(0, search, [search] {
+		if (search->isVisible()) search->setFocus();
+	});
 }
 
-/* one cap for every line, as on the live chart: a line past it is refused, the menu's tick taken back, and why said
+/* a line ticked on or off in the list: on the chart (a column's samples fed from the file), its dot in its colour now,
+ * the choice kept by name (a math line keeps its own, in recording/math) */
+void RecordingWindow::lineTicked(QCheckBox *box, bool on) {
+	if (on && !roomForLine(box)) return;
+	const int index = box->property("lineIndex").toInt();
+	const QString name = box->property("lineName").toString();
+	switch (LineKind(box->property("lineKind").toInt())) {
+	case RegisterLine:
+		plotted_[index] = on;
+		tab_->plotRegister(defs_[index], on);
+		if (on) feedColumn(index);
+		break;
+	case ChannelLine:
+		tab_->plotFastChannel(index / 256, index % 256, on);
+		break;
+	case FormulaLine:
+		if (!tab_->setMathLineShown(index, on)) {
+			const QSignalBlocker blocker(box);
+			box->setChecked(!on);
+		}
+		break;
+	}
+	if (LineKind(box->property("lineKind").toInt()) != FormulaLine) {
+		hidden_.removeAll(name);
+		if (!on) hidden_ << name;
+		QSettings().setValue(HIDDEN_KEY, hidden_);
+	}
+	const int key = box->property("lineKey").toInt();
+	QColor color;
+	bool onChart = false;
+	for (const ChartView::Info &line : tab_->view()->lines())
+		if (line.key == key) {
+			color = line.color;
+			onChart = true;
+		}
+	box->setIcon(lineDot(color, onChart, devicePixelRatioF()));
+	showLinesCount();
+}
+
+int RecordingWindow::linesInFile() const {
+	int n = int(defs_.size()) + int(tab_->mathLines().lines().size());
+	for (const fast::Recording &stream : fast_) n += int(stream.stream.channels.size());
+	return n;
+}
+
+void RecordingWindow::showLinesCount() {
+	lines_->setText(tr("Lines %1/%2").arg(tab_->lineCount()).arg(linesInFile()));
+}
+
+/* one cap for every line, as on the live chart: a line past it is refused, the list's tick taken back, and why said
  * beside the mouse (this window has no status bar) */
-bool RecordingWindow::roomForLine(QAction *tick) {
+bool RecordingWindow::roomForLine(QAbstractButton *tick) {
 	if (tab_->lineCount() < RegisterModel::MAX_PLOTTED) return true;
 	const QSignalBlocker blocker(tick);
 	tick->setChecked(false);

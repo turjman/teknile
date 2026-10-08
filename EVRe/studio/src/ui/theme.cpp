@@ -172,7 +172,8 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 #appSub { color: %MUTED%; font-size: 9pt; }
 #card { background: %S2%; border: 1px solid %BORDER%; border-radius: 10px; }
 #cardTitle { color: %MUTED%; font-size: 8pt; font-weight: 700; letter-spacing: 1px; }
-#muted, #chartInfo, #measureInfo, #triggerUnit { color: %MUTED%; }
+#muted, #chartInfo, #measureInfo, #triggerUnit, #fastStreamAbout { color: %MUTED%; }
+QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;
@@ -296,6 +297,10 @@ QMenu::indicator:non-exclusive { border-radius: 4px; border: 1px solid %CONTROL%
 QMenu::indicator:non-exclusive:checked { background: %AFILL%; border-color: %AFILL%; %TICK% }
 QMenu::indicator:exclusive:checked { %MENUTICK% }
 QMenu QLabel#menuTitle { color: %MUTED%; font-weight: 600; padding: 4px 18px 2px 18px; }
+QMenu QPushButton#recentMissing { color: %MUTED%; background: transparent; border: none; border-radius: 5px;
+	padding: 6px 18px; text-align: left; }
+QMenu QPushButton#recentMissing:hover { background: %ACCENTA%; color: %TEXT%; }
+QMenu QLabel#linesGroup { color: %MUTED%; font-weight: 600; padding: 2px 0; }
 QMessageBox { background: %S1%; }
 QSplitter::handle { background: transparent; }
 )"

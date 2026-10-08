@@ -408,6 +408,7 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addWidget(yMin_);
 	row->addWidget(mutedLabel(tr("max")));
 	row->addWidget(yMax_);
+	axesRow_ = row;
 	return row;
 }
 
@@ -691,6 +692,11 @@ void ChartTab::connectControls() {
 	for (QLineEdit *field : { yMin_, yMax_ })
 		connect(field, &QLineEdit::editingFinished, this, &ChartTab::applyYFields);
 	connect(chart_, &ChartWidget::yChangedByUser, this, [this] { showYRange(); });
+	/* a held view's frame: Auto's boxes show its range at once (a recording's window opened showed "0" and "1", the
+	 * range before its first frame, until the status's next turn) */
+	connect(view, &ChartView::yRangesShown, this, [this] {
+		if (lanes_->isChecked() || chart_->yAuto()) showYRange(false);
+	});
 	connect(normalize_, &QAction::toggled, this, [this](bool on) {
 		if (on && chart_->yLog()) { /* Log and Normalise exclude each other: the scale linear, its range kept */
 			chart_->setYLog(false);
@@ -911,6 +917,9 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, ramNeed_,
 				clearButton_, removeAllButton_ })
 		w->hide();
+	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
+	 * from its box, as if it were the list's) */
+	axesRow_->insertStretch(axesRow_->indexOf(ramNeed_), 1);
 	{
 		const QSignalBlocker quiet(smooth_);
 		smooth_->setChecked(false);
@@ -1235,7 +1244,9 @@ QString ChartTab::infoText(int width) const {
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
-	parts[Fps] = tr(" · %1 fps").arg(chart_->fps(), 0, 'f', 0);
+	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn */
+	const double fps = chart_->fps();
+	parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
 	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
@@ -1256,8 +1267,9 @@ QString ChartTab::infoText(int width) const {
 QString ChartTab::infoTip() const {
 	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
 			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
-			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time "
-			"to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second "
+			"(idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the "
+			"smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
 			"draw, the word \"plotted\" and the delay go first.");
 }
 
@@ -2220,7 +2232,8 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 	chartMenu_->addSeparator();
 	chartMenu_->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); });
 	RecordingWindow::fillRecentMenu(chartMenu_->addMenu(tr("Recent recordings")),
-			[this](const QString &file) { emit openRecordingRequested(file); });
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
 	chartMenu_->popup(globalPos);
 }
 
@@ -2402,6 +2415,14 @@ void ChartTab::rebuildMathMenu() {
 	}
 	const int active = mathLines_.activeCount();
 	mathButton_->setText(active ? tr("ƒ  Math (%1)").arg(active) : tr("ƒ  Math"));
+}
+
+bool ChartTab::setMathLineShown(int line, bool on) {
+	if (line < 0 || line >= mathLines_.lines().size()) return false;
+	if (on && !mathLines_.lines()[line].active() && !roomForLine()) return false;
+	mathLines_.setOn(line, on);
+	rebuildMath();
+	return true;
 }
 
 void ChartTab::editMathLine(int line) {
