@@ -543,6 +543,7 @@ public:
 		chartOneCap();
 		chartRamCut();
 		chartRamFree();
+		chartFastTiers();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -6865,6 +6866,186 @@ private:
 				"chart, the memory strip at a 10 ms window: a handle 12 px wide on the view (the mouse over it a pointing hand, "
 				"lit, a tooltip); dragged it moves the view by as much as the mouse, no jump when taken; a click elsewhere "
 				"takes the view there; the wheel over the strip a window later or earlier");
+	}
+
+	/* Long memory for fast lines (P6, SCOPE_PLAN.md section 10): older records kept as their summaries only. The store:
+	 * dropRecords lets the oldest pieces' records go and keeps their outline (a min and a max record per 256 and per
+	 * 4096 records), so the min and max over old data are those of the records before they went (a range widened to
+	 * whole 256s), their values and sums read NaN, their times stay. The chart: past its share the records of the
+	 * oldest piece go, a piece at a time, the summaries kept (nothing dropped from the front, not "memory full"); the
+	 * arithmetic of 100 min of two i16 channels at 1 MS/s in 512 MB; a RAM cut and the free memory's limit with the
+	 * tiers, no append, frame or paint over 20 ms */
+	static void chartFastTiers() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		def.channels[0].scale = 0.01;
+		def.channels[1].scale = -0.5; /* a falling scale: the lowest raw is the highest value */
+		def.channels[1].offset = 3;
+		constexpr qsizetype PIECE = fast::Store::PIECE;
+		const auto fill = [](QByteArray &records, quint64 first, qsizetype n) {
+			records.resize(n * 4);
+			auto *raw = reinterpret_cast<qint16 *>(records.data());
+			for (qsizetype i = 0; i < n; i++) {
+				const quint64 a = first + quint64(i);
+				raw[2 * i] = qint16(int((a * 37) % 2000) - 1000 + (a % 99991 == 5 ? 20000 : 0));
+				raw[2 * i + 1] = qint16(int((a * 7919) % 3001) - 1500);
+			}
+		};
+		/* the store alone: the min and max before and after the records went */
+		{
+			fast::Store store(def);
+			const qsizetype n = 6 * PIECE + 1000;
+			QByteArray records;
+			fill(records, 0, n);
+			store.append(0, n, records.constData(), true, 0);
+			store.mark(0, 10.0, 1e-6);
+			const QVector<QPair<qsizetype, qsizetype>> ranges{ { 0, 256 }, { 768, 10240 }, { 4096, 20480 }, { 0, 2 * PIECE },
+				{ 100, 300 }, { PIECE - 5000, PIECE + 77 }, { 7, 3 * PIECE - 9 }, { 2 * PIECE + 5, 4 * PIECE + 11 },
+				{ 3 * PIECE - 300, 3 * PIECE + 300 } };
+			const qsizetype boundary = 3 * PIECE;
+			/* what the outline gives: whole 256s before the boundary, the records after it */
+			const auto widened = [&](qsizetype i0, qsizetype i1, qsizetype &w0, qsizetype &w1) {
+				w0 = i0 < boundary ? i0 - i0 % 256 : i0;
+				w1 = i1 <= boundary ? std::min(boundary, (i1 + 255) / 256 * 256) : i1;
+			};
+			QVector<double> before;
+			for (const auto &r : ranges)
+				for (int c = 0; c < 2; c++) {
+					qsizetype w0, w1;
+					widened(r.first, r.second, w0, w1);
+					double lo, hi;
+					store.minMax(c, w0, w1, lo, hi);
+					before << lo << hi;
+				}
+			const double t = store.timeAt(boundary - 1), kept = store.value(1, boundary);
+			const qint64 bytes = store.bytes();
+			store.dropRecords(boundary + 100);
+			bool same = store.recordsFrom() == boundary && store.size() == n && store.dropped() == 0;
+			int k = 0;
+			for (const auto &r : ranges)
+				for (int c = 0; c < 2; c++) {
+					double lo, hi;
+					store.minMax(c, r.first, r.second, lo, hi);
+					if (lo != before[k] || hi != before[k + 1]) {
+						std::printf("     (range %lld..%lld channel %d: %g..%g after, %g..%g before)\n", (long long) r.first,
+								(long long) r.second, c, lo, hi, before[k], before[k + 1]);
+						same = false;
+					}
+					k += 2;
+				}
+			double sum, squares;
+			store.sums(0, 10, 500, sum, squares);
+			const bool reads = std::isnan(store.value(0, boundary - 1)) && store.value(1, boundary) == kept
+					&& store.timeAt(boundary - 1) == t && std::isnan(sum) && std::isnan(squares);
+			const qint64 freed = bytes - store.bytes();
+			std::printf("     (the store: %lld records, the first %lld as summaries; %lld KB let go, %.4f bytes a record as "
+					"summaries, %.4f whole)\n", (long long) n, (long long) store.recordsFrom(), (long long) (freed >> 10),
+					store.bytesPerSummary(), store.bytesPerRecord());
+			check(same && reads && freed >= 3 * PIECE * 4 && store.bytesPerSummary() <= 4.0 / 128 * 1.07,
+					"chart, long memory: the store lets the oldest pieces' records go and keeps their summaries (1/128 of "
+					"them): the min and max over old data are those of the records before (whole 256s), a falling scale "
+					"too; their values and sums read nothing, their times stay");
+		}
+		/* the arithmetic: 100 min of two i16 channels at 1 MS/s in 512 MB */
+		{
+			const fast::Store store(def);
+			const ChartView::Tiers t = ChartView::tiers(1e6, 6000, 512.0 * 1024 * 1024, store.bytesPerRecord(),
+					store.bytesPerSummary());
+			std::printf("     (100 min at 2 ch x 1 MS/s in 512 MB: summaries %.1f MB, keeps %.0f min, samples for the newest "
+					"%.1f s)\n", t.summaryBytes / 1048576.0, t.kept / 60, t.samples);
+			const ChartView::Tiers small = ChartView::tiers(1e6, 60, 512.0 * 1024 * 1024, store.bytesPerRecord(),
+					store.bytesPerSummary());
+			check(std::fabs(t.summaryBytes / 1048576.0 - 190) < 2 && t.kept == 6000 && t.samples > 75 && t.samples < 85
+							&& small.samples == 60 && small.summaryBytes == 0,
+					"chart, long memory: the arithmetic: 100 min of 2 ch x 1 MS/s in 512 MB keeps all 100 min, 190 MB of "
+					"summaries and the newest 79 s whole; a minute fits whole");
+		}
+		/* the chart: a fast line past its share keeps the summaries, the oldest piece's records go first */
+		{
+			QWidget host;
+			host.resize(1100, 480);
+			auto *view = new ChartView(&host);
+			view->setGeometry(9, 5, 1080, 470);
+			double now = 100;
+			view->setClock([&now] { return now; }, 0);
+			view->setMemory(3600);
+			view->setRamBudget(512);
+			view->setFastSummaries(true);
+			view->setFastStream(0, def);
+			view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+			QByteArray records;
+			quint64 first = 0;
+			const auto block = [&] {
+				fill(records, first, PIECE);
+				view->appendFast(0, first, PIECE, records, first == 0, 0);
+				first += PIECE;
+				now = 100.0 + first * 1e-6;
+				view->markFast(0, first, now, 1e-6);
+			};
+			const fast::Store *store = view->fastStore(0);
+			QElapsedTimer filling;
+			filling.start();
+			while (store->recordsFrom() == 0 && filling.elapsed() < 30000) block();
+			const double fillS = filling.elapsed() / 1000.0;
+			const qint64 share = 512ll * 1024 * 1024;
+			const qsizetype from = store->recordsFrom();
+			block();
+			const qsizetype went = store->recordsFrom() - from; /* a piece, two when the summaries' growth took one's room */
+			const bool ring = (went == PIECE || went == 2 * PIECE) && store->dropped() == 0
+					&& store->size() == qsizetype(first) && !view->memoryFull() && store->bytes() <= share
+					&& store->bytes() >= share * 0.95 && std::isnan(store->value(0, from))
+					&& std::isfinite(store->value(0, store->recordsFrom()));
+			/* the span whole now: what the share holds after the summaries so far (it shrinks as they grow) */
+			const double summary = store->bytesPerSummary();
+			const double wholeNow = (double(share) - double(store->size()) * summary) / (store->bytesPerRecord() - summary) / 1e6;
+			double kept = 0, samples = 0, since = 0;
+			const bool tiered = view->fastTiers(kept, samples) && view->summariesBefore(since)
+					&& since == store->timeAt(store->recordsFrom());
+			std::printf("     (the chart: %lld records in %.1f s, the first %lld as summaries, %lld MB of 512; it keeps %.0f s, "
+					"samples for the newest %.1f s (%.1f s now))\n", (long long) store->size(), fillS,
+					(long long) store->recordsFrom(), (long long) (store->bytes() >> 20), kept, samples,
+					now - since);
+			check(ring && tiered && kept == 3600 && std::fabs(now - since - wholeNow) < 0.05 * wholeNow + 0.2
+							&& samples > 0 && samples < now - since,
+					"chart, long memory: a fast line past its share of the RAM keeps every record's summaries and the "
+					"newest whole: the records of the oldest piece go, a piece at a time (none dropped, not \"memory full\"); "
+					"the span kept whole is what the share holds after the summaries, less once the Memory is full");
+
+			/* the RAM cut to 256 MB, then the free memory leaving 192 MB: at the next block, without a freeze */
+			(void) host.grab();
+			(void) view->takePerfStats();
+			double appendMax = 0, frameMax = 0;
+			bool down = true;
+			for (int b = 0; b < 60; b++) {
+				if (b == 0) view->setRamBudget(256);
+				if (b == 30) view->setRamLimit(192);
+				QElapsedTimer one;
+				one.start();
+				block();
+				appendMax = std::max(appendMax, one.nsecsElapsed() / 1e6);
+				if (b == 0 || b == 30) down = down && store->bytes() <= qint64(view->ramInUse()) * 1024 * 1024;
+				one.restart();
+				view->frame();
+				frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+				(void) host.grab();
+			}
+			const ChartView::PerfStats perf = view->takePerfStats();
+			std::printf("     (the tiers cut: %lld MB kept of %d, the first %lld of %lld as summaries; the longest append %.1f "
+					"ms, frame() %.1f ms, paint %.1f ms of %d)\n", (long long) (store->bytes() >> 20), view->ramInUse(),
+					(long long) store->recordsFrom(), (long long) store->size(), appendMax, frameMax, perf.paintMax,
+					perf.frames);
+			check(down && store->dropped() == 0 && appendMax < 20 && frameMax < 20 && perf.paintMax < 20 && perf.frames >= 50,
+					"chart, long memory: the RAM cut (512 to 256 MB) and the free memory's limit (192 MB) with the tiers: "
+					"the records down to the new share at the next block, the summaries kept, no append, frame or paint "
+					"over 20 ms");
+			view->setRamLimit(0);
+		}
 	}
 
 	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of

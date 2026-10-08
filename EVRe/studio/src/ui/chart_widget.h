@@ -538,6 +538,25 @@ public:
 	 * samples yet) */
 	qint64 bytesNeeded() const;
 	bool memoryFull() const { return capped_; } /* the budget, not the memory, limits what is kept */
+	/* Older samples of fast lines (Chart tab, Older samples; chart/fastOlder; SCOPE_PLAN.md section 10): on, a fast
+	 * line's store keeps the records its share of the RAM holds after the summaries' part, the newest, and the older
+	 * records only as their summaries (fast::Store::dropRecords), so the Memory is kept whole far longer; off (the
+	 * default here, and a recording's window, whose file holds every record), the oldest records go whole */
+	void setFastSummaries(bool on);
+	bool fastSummaries() const { return fastSummaries_; }
+	/* The tiers' arithmetic: a stream of `rate` records a second kept for `memory` seconds in `share` bytes, a record
+	 * costing perRecord bytes whole and perSummary bytes as summaries only: the bytes its summaries take, the seconds
+	 * kept (the memory, or less when the summaries alone do not fit) and the seconds of the newest kept whole */
+	struct Tiers {
+		double summaryBytes = 0, kept = 0, samples = 0;
+	};
+	static Tiers tiers(double rate, double memory, double share, double perRecord, double perSummary);
+	/* the fast lines' tiers now, at the rates they come: the least kept and the least kept whole (seconds) of the
+	 * stores that keep summaries; false: none does (or Older samples is off) */
+	bool fastTiers(double &kept, double &samples) const;
+	/* a fast line keeps older samples as summaries only now: from that time on its records are whole (the latest of
+	 * them); false: every fast line's records are whole */
+	bool summariesBefore(double &t) const;
 	/* a recording runs: the strip's words for the budget reached say the file keeps every sample */
 	void setRecordingOn(bool on);
 	/* tests: the strip's words and their colour as last drawn (empty: none), and its tooltip */
@@ -1000,6 +1019,7 @@ private:
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
+	bool fastSummaries_ = false;           /* older fast records as summaries only (setFastSummaries) */
 	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */
 	QString stripText_;                    /* the strip's words as last drawn, and their colour (tests) */
 	QColor stripTextColor_;

@@ -486,6 +486,58 @@ qsizetype ChartView::pointsKept(int key) const {
 	return it == series_.end() ? 0 : it->times.size();
 }
 
+void ChartView::setFastSummaries(bool on) {
+	if (fastSummaries_ == on) return;
+	fastSummaries_ = on;
+	capped_ = false; /* the lines past their new share say so again at their next records */
+	refresh();
+}
+
+ChartView::Tiers ChartView::tiers(double rate, double memory, double share, double perRecord, double perSummary) {
+	Tiers out;
+	if (rate <= 0 || memory <= 0 || perRecord <= perSummary) return out;
+	out.kept = out.samples = memory;
+	if (rate * memory * perRecord <= share) return out; /* every record whole */
+	out.kept = std::min(memory, share / perSummary / rate);
+	out.summaryBytes = out.kept * rate * perSummary;
+	out.samples = std::max(0.0, (share - out.summaryBytes) / (perRecord - perSummary) / rate);
+	return out;
+}
+
+bool ChartView::fastTiers(double &kept, double &samples) const {
+	kept = samples = memory_;
+	if (!fastSummaries_) return false;
+	bool any = false;
+	QSet<const fast::Store *> counted;
+	for (const Series &s : series_) {
+		if (!s.fast) continue;
+		const fast::Store &store = *s.fast;
+		if (counted.contains(&store) || store.mapped() || store.size() < 2 || !store.hasTime()) continue;
+		counted.insert(&store);
+		int lines = 0;
+		for (const Series &t : series_) lines += t.fast == s.fast;
+		const double rate = double(store.size() - 1) / std::max(1e-9, store.timeAt(store.size() - 1) - store.timeAt(0));
+		const double share = double(ramInUse()) * 1024 * 1024 / double(series_.size()) * lines;
+		const Tiers t = tiers(rate, memory_, share, store.bytesPerRecord(), store.bytesPerSummary());
+		if (t.samples >= memory_) continue;
+		any = true;
+		kept = std::min(kept, t.kept);
+		samples = std::min(samples, t.samples);
+	}
+	return any;
+}
+
+bool ChartView::summariesBefore(double &t) const {
+	bool any = false;
+	for (const Series &s : series_) {
+		if (!s.fast || s.fast->recordsFrom() <= 0 || s.fast->recordsFrom() >= s.fast->size() || !s.fast->hasTime()) continue;
+		const double from = s.fast->timeAt(s.fast->recordsFrom());
+		t = any ? std::max(t, from) : from;
+		any = true;
+	}
+	return any;
+}
+
 void ChartView::setRamBudget(int megabytes) {
 	ramMB_ = std::max(megabytes, MIN_RAM_MB);
 	capped_ = false; /* the lines past their new share say so again at their next sample */
@@ -846,7 +898,8 @@ void ChartView::sumFast(Series &s) {
 	if (!store.hasTime() || store.size() == 0) return;
 	const qint64 end = store.dropped() + store.size();
 	if (s.totalTo >= end) return;
-	const qsizetype from = qsizetype(std::max<qint64>(0, s.totalTo - 1 - store.dropped())); /* joined to the last */
+	/* joined to the last; never from summaries only (a store given whole, as a recording's, has none) */
+	const qsizetype from = qsizetype(std::max<qint64>(store.recordsFrom(), s.totalTo - 1 - store.dropped()));
 	if (end - store.dropped() - from >= 2) s.total += trapezoids(store, s.channel, from, end - store.dropped(), 0).area;
 	s.totalT = store.timeAt(store.size() - 1);
 	s.totalV = store.value(s.channel, store.size() - 1);
@@ -855,7 +908,10 @@ void ChartView::sumFast(Series &s) {
 }
 
 /* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
- * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces. What they held is not freed
+ * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces. With older samples as
+ * summaries (fastSummaries_), the share holds the summaries of all that is kept and the newest records whole: past it,
+ * the oldest pieces' records go a piece at a time (a ring, not an eighth at once), their summaries kept; only when the
+ * summaries themselves outgrow the share does the oldest go, as without. What they held is not freed
  * here but a slice at each frame (releaseSome): the RAM cut from 4 GB to 512 MB with a fast line filled let 3.5 GB
  * go, and freeing it in one go held the window's thread about 2 s. Freed on another thread instead, the frees held
  * the heap and the memory's pages while the chart's threads binned, and a paint took 30 to 50 ms. The store itself
@@ -866,10 +922,28 @@ void ChartView::trimFast(fast::Store &store, int lines) {
 	const double newest = store.timeAt(store.size() - 1);
 	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_), &gone);
 	const double share = double(ramInUse()) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
-	const qsizetype most = qsizetype(share / store.bytesPerRecord());
-	if (store.size() >= most - most / 16) {
-		store.dropFront(store.size() - most + most / 8, &gone);
-		capped_ = true;
+	if (fastSummaries_ && !store.mapped()) {
+		const double summary = store.bytesPerSummary();
+		const double piece = double(fast::Store::PIECE) * (store.bytesPerRecord() - summary); /* a piece's records */
+		/* two pieces of records kept whole at least: the newest, and the one filling */
+		if (double(store.size()) * summary + 2 * piece >= share - share / 16) {
+			const qsizetype most = qsizetype(std::max(0.0, (share * 7 / 8 - 2 * piece) / summary));
+			store.dropFront(store.size() - most, &gone);
+			capped_ = true;
+		}
+		/* by what it holds (its summaries' arrays keep the room freed at their front until refitted): the pieces of
+		 * records over the share go */
+		for (double over = double(store.bytes()) - share; over > 0; over = double(store.bytes()) - share) {
+			const qsizetype before = store.recordsFrom();
+			store.dropRecords(qsizetype(std::ceil(over / piece)) * fast::Store::PIECE, &gone);
+			if (store.recordsFrom() == before) break; /* the newest piece alone: kept */
+		}
+	} else {
+		const qsizetype most = qsizetype(share / store.bytesPerRecord());
+		if (store.size() >= most - most / 16) {
+			store.dropFront(store.size() - most + most / 8, &gone);
+			capped_ = true;
+		}
 	}
 	released_.pieces += std::move(gone.pieces);
 	released_.summaries += std::move(gone.summaries);

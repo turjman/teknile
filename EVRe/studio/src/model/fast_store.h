@@ -15,6 +15,13 @@
  *
  * Trimming drops whole pieces from the front (dropFront). The store is written by one thread (the window's, between
  * frames) and read by any number while nobody writes (the chart's threads, binning).
+ *
+ * Older records as summaries only (the chart's "Older samples: summaries", SCOPE_PLAN.md section 10): dropRecords lets
+ * the records of the oldest whole pieces go and keeps their outline, made as the records came: for every SMALL and
+ * every LARGE records a min record and a max record (each channel's bytes in them those of its record with the lowest
+ * and the highest value), 1/128 of the records' size. Records 0 .. recordsFrom() - 1 are kept so: their times stay,
+ * their values and sums read NaN, their min and max come from the outline (whole SMALL records: a range is widened to
+ * them).
  */
 #pragma once
 
@@ -72,6 +79,10 @@ public:
 	 * pieces and the summaries' old arrays handed there instead of freed here, so the caller frees them a slice at a
 	 * time (a RAM budget cut let 3.5 GB go and held the window's thread 2 s); the store is the same either way */
 	void dropFront(qsizetype records, Released *gone = nullptr);
+	/* the records of the oldest whole pieces that still hold them, as many as fit in `records` (never the newest piece),
+	 * their outline kept: from then on they are summaries only. gone: as dropFront's */
+	void dropRecords(qsizetype records, Released *gone = nullptr);
+	qsizetype recordsFrom() const { return recordsFrom_; } /* the first record still kept whole; before it summaries */
 
 	qsizetype size() const { return size_; }
 	qint64 dropped() const { return dropped_; }
@@ -82,9 +93,10 @@ public:
 	double newestShift() const { return epochs_.isEmpty() ? 0 : epochs_.last().shift; }
 	qint64 bytes() const;                 /* the memory held now: pieces, summaries, the lists */
 	double bytesPerRecord() const;        /* a record's share: its bytes (not when mapped) and its summaries' */
+	double bytesPerSummary() const;       /* the same once its record has gone: its share of the outline */
 	bool hasTime() const;                 /* a mark has come: the records have times */
 
-	/* a record's time; its channel's shown value (raw x scale + offset); i in 0 .. size() - 1 */
+	/* a record's time; its channel's shown value (raw x scale + offset), NaN before recordsFrom(); i in 0 .. size() - 1 */
 	double timeAt(qsizetype i) const;
 	double value(int channel, qsizetype i) const;
 	/* the first record at or after t (size(): none), the first after t */
@@ -99,7 +111,8 @@ public:
 	qint64 lostBefore(qsizetype i) const;
 	qsizetype gaps() const { return segments_.size() - 1; } /* tests */
 
-	/* over records i0 .. i1 - 1 of a channel, from the summaries where they cover whole pieces of it */
+	/* over records i0 .. i1 - 1 of a channel, from the summaries where they cover whole pieces of it; before
+	 * recordsFrom() the min and max from the outline (the SMALL records around i0 whole), the sums NaN */
 	void minMax(int channel, qsizetype i0, qsizetype i1, double &lo, double &hi) const;
 	void sums(int channel, qsizetype i0, qsizetype i1, double &sum, double &sumSquares) const;
 
@@ -119,6 +132,7 @@ private:
 	};
 	struct Channel {
 		int offset = 0;     /* its bytes in a record */
+		int size = 0;       /* how many */
 		RegType type = RegType::I16;
 		double scale = 1, offset0 = 0;
 		Summary small, large;
@@ -132,11 +146,19 @@ private:
 	qsizetype bound(double t, bool strict) const;
 	double timeOfRecord(int epoch, double record) const;
 	void summarize();                     /* the chunks the newest records completed */
+	/* the outline's row of SMALL chunk `chunk` (large: of LARGE chunk), counted since the store began: its min record,
+	 * then its max record */
+	char *outlineRow(qint64 chunk, bool large);
+	const char *outlineRow(qint64 chunk, bool large) const;
+	void dropSummaries(Released *gone);   /* the summaries of what is before the records kept */
 
 	StreamDef def_;
 	int recordSize_ = 0;
 	QVector<Channel> channels_;
-	QVector<QByteArray> pieces_;          /* each PIECE records (the last filling) */
+	QVector<QByteArray> pieces_;          /* each PIECE records (the last filling); empty before recordsFrom_ */
+	QVector<QByteArray> outlines_;        /* each piece's outline: OUTLINE_ROWS rows of two records (not mapped) */
+	qsizetype recordsFrom_ = 0;           /* the first record kept whole: a multiple of PIECE */
+	static constexpr qsizetype OUTLINE_ROWS = PIECE / SMALL + PIECE / LARGE;
 	struct Span {
 		const char *data = nullptr;
 		qsizetype begin = 0, count = 0;   /* its first record's index, its records */
