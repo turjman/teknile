@@ -2759,7 +2759,9 @@ the file (&lt;code&gt;run.csv.notes.json&lt;/code&gt;), and an export takes the 
 &lt;li&gt;&lt;b&gt;Open recording…&lt;/b&gt; and &lt;b&gt;Recent recordings&lt;/b&gt; (also &lt;b&gt;Open&lt;/b&gt; beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
 own; the live chart goes on. A file bigger than the chart&apos;s RAM asks to keep its last part. With a map loaded, its
-registers&apos; value names and fields are matched by name: &lt;b&gt;Lines&lt;/b&gt; plots a register&apos;s field.&lt;/li&gt;
+registers&apos; value names and fields are matched by name. &lt;b&gt;Lines&lt;/b&gt; (top right, &lt;i&gt;Lines 8/11&lt;/i&gt;) ticks each
+line on or off: the file&apos;s columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields.&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -2911,7 +2913,9 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;li&gt;&lt;b&gt;فتح تسجيل…&lt;/b&gt; و&lt;b&gt;التسجيلات الأخيرة&lt;/b&gt; (و&lt;b&gt;فتح&lt;/b&gt; بجانب «تسجيل CSV» أيضًا، أو أفلت ملف .csv على
 النافذة): تسجيل أو تصدير في نافذة خاصة، بمخططه وقياساته وملاحظاته وخطوطه الرياضية
 الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
-أسماء قيم مسجّلاتها وحقولها بالاسم: &lt;b&gt;الخطوط&lt;/b&gt; ترسم حقل مسجّل.&lt;/li&gt;
+أسماء قيم مسجّلاتها وحقولها بالاسم. &lt;b&gt;الخطوط&lt;/b&gt; (أعلى اليمين، &lt;i&gt;الخطوط ⁦8/11⁩&lt;/i&gt;) تُفعّل كل خط أو
+تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
+ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل.&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -5646,10 +5650,6 @@ Keep the last part: about the last %5 of %6?</source>
         <translation>الخطوط</translation>
     </message>
     <message>
-        <source>The file&apos;s columns on the chart or not; a register&apos;s bit fields (with the map loaded)</source>
-        <translation>أعمدة الملف على المخطط أو لا؛ حقول بتات المسجّل (مع تحميل الخريطة)</translation>
-    </message>
-    <message>
         <source> · notes not read: %1</source>
         <translation> · لم تُقرأ الملاحظات: %1</translation>
     </message>
@@ -5692,6 +5692,58 @@ Keep the last part: about the last %5 of %6?</source>
     <message>
         <source>The rows are written at each poll, a stream&apos;s blocks as they come: the two end a few ms apart, and a fast line ends where its samples end.</source>
         <translation>تُكتب الصفوف عند كل استطلاع، وكتل التدفق حين تصل: فينتهي الاثنان بفارق بضعة أجزاء من الألف من الثانية، وينتهي الخط السريع حيث تنتهي عيناته.</translation>
+    </message>
+    <message>
+        <source>What the chart shows: every column of the file, each fast channel and the math lines, ticked on or off (All, None, a search); a register&apos;s bit fields with the map loaded. The lines unticked stay off in the next recording opened</source>
+        <translation>ما يعرضه المخطط: كل عمود في الملف، وكل قناة سريعة، والخطوط الرياضية، تُفعَّل أو تُلغى (الكل، لا شيء، بحث)؛ وحقول بتات المسجّل حين تُحمَّل الخريطة. والخطوط الملغاة تبقى ملغاة في التسجيل التالي الذي يُفتح</translation>
+    </message>
+    <message>
+        <source>All</source>
+        <translation>الكل</translation>
+    </message>
+    <message>
+        <source>Tick every line listed (those the search finds), up to the chart&apos;s 64</source>
+        <translation>تفعيل كل خط مدرَج (ما يجده البحث)، حتى 64 خطًا على المخطط</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>لا شيء</translation>
+    </message>
+    <message>
+        <source>Untick every line listed (those the search finds)</source>
+        <translation>إلغاء كل خط مدرَج (ما يجده البحث)</translation>
+    </message>
+    <message>
+        <source>Search lines</source>
+        <translation>البحث في الخطوط</translation>
+    </message>
+    <message>
+        <source>Only the lines whose name holds this</source>
+        <translation>الخطوط التي يحوي اسمها هذا فقط</translation>
+    </message>
+    <message>
+        <source>%1 on the chart, or not</source>
+        <translation>%1 على المخطط أو لا</translation>
+    </message>
+    <message>
+        <source>Registers</source>
+        <translation>المسجّلات</translation>
+    </message>
+    <message>
+        <source>Fast: %1</source>
+        <translation>تدفق سريع: %1</translation>
+    </message>
+    <message>
+        <source>Math</source>
+        <translation>الرياضيات</translation>
+    </message>
+    <message>
+        <source>Not drawn: %1</source>
+        <translation>لا يُرسم: %1</translation>
+    </message>
+    <message>
+        <source>Lines %1/%2</source>
+        <translation>الخطوط ⁦%1/%2⁩</translation>
     </message>
 </context>
 <context>

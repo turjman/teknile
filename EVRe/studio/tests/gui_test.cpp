@@ -1480,6 +1480,7 @@ private:
 				if (mathBefore.isValid()) QSettings().setValue(QStringLiteral("recording/math"), mathBefore);
 				else QSettings().remove(QStringLiteral("recording/math"));
 			}
+			recordingLinesList(opened, folder.path());
 			recordingWindowPictures(csv, QStringLiteral("fast"));
 			if (opened && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the recording with its fast lines */
 				opened->resize(1400, 800);
@@ -2063,6 +2064,159 @@ private:
 				"fast speed: done; the example map again, the window polls the fake device of the other steps");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* The recording window's Lines: a checklist of every line it offers, grouped (Registers, Fast: ADC, Math), each
+	 * with its colour dot and unit, All and None, a search from 13 lines, the count on the button ("Lines 8/11"), the
+	 * lines unticked kept by name (recording/linesHidden) for the next recording opened */
+	struct LinesList {
+		QMenu *menu = nullptr;
+		QWidget *panel = nullptr;
+		QList<QCheckBox *> boxes;
+		QStringList groups;
+		QPushButton *all = nullptr, *none = nullptr;
+		QLineEdit *search = nullptr;
+	};
+	static LinesList openLinesList(RecordingWindow *w) {
+		LinesList out;
+		auto *button = w ? w->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr;
+		out.menu = button ? button->menu() : nullptr;
+		if (!out.menu) return out;
+		out.menu->popup(button->mapToGlobal(QPoint(0, button->height())));
+		QApplication::processEvents();
+		out.panel = out.menu->findChild<QWidget *>(QStringLiteral("recordingLinesList"));
+		if (!out.panel) return out;
+		out.boxes = out.panel->findChildren<QCheckBox *>(QStringLiteral("recordingLine"));
+		for (QLabel *label : out.panel->findChildren<QLabel *>(QStringLiteral("linesGroup"))) out.groups << label->text();
+		out.all = out.panel->findChild<QPushButton *>(QStringLiteral("recordingLinesAll"));
+		out.none = out.panel->findChild<QPushButton *>(QStringLiteral("recordingLinesNone"));
+		out.search = out.panel->findChild<QLineEdit *>(QStringLiteral("recordingLinesSearch"));
+		return out;
+	}
+	void recordingLinesList(RecordingWindow *w, const QString &folder) {
+		const QVariant hiddenBefore = QSettings().value(QStringLiteral("recording/linesHidden"));
+		auto *button = w ? w->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr;
+		LinesList list = openLinesList(w);
+		const int total = w ? int(w->definitions().size()) + 2 + int(w->chartTab()->mathLines().lines().size()) : 0;
+		bool grouped = false, dotted = !list.boxes.isEmpty(), hands = list.all && list.none, counted = false;
+		if (w && list.panel) {
+			QStringList names;
+			for (QCheckBox *box : std::as_const(list.boxes)) {
+				names << box->text();
+				dotted = dotted && !box->icon().isNull();
+				hands = hands && box->cursor().shape() == Qt::PointingHandCursor && !box->toolTip().isEmpty();
+			}
+			hands = hands && list.all->cursor().shape() == Qt::PointingHandCursor && !list.all->toolTip().isEmpty()
+					&& list.none->cursor().shape() == Qt::PointingHandCursor && !list.none->toolTip().isEmpty();
+			grouped = list.groups == QStringList{ QStringLiteral("Registers"), QStringLiteral("Fast: ADC"), QStringLiteral("Math") }
+					&& list.boxes.size() == total && names.contains(QStringLiteral("ADC.I_LOAD [A]"))
+					&& names.contains(QStringLiteral("ADC.V_BUS [V]")) && names.contains(QStringLiteral("P [W]"));
+			int ticked = 0;
+			for (QCheckBox *box : std::as_const(list.boxes)) ticked += box->isChecked();
+			counted = button->text() == QStringLiteral("Lines %1/%2").arg(w->chartTab()->lineCount()).arg(total)
+					&& ticked == w->chartTab()->lineCount();
+			std::printf("  the Lines list: groups %s, %lld lines (%s), the button \"%s\"\n",
+					qPrintable(list.groups.join(QStringLiteral(", "))), (long long) list.boxes.size(),
+					qPrintable(names.join(QStringLiteral(", "))), qPrintable(button->text()));
+		}
+		check(grouped && dotted && counted, "recording window, Lines: a checklist of every line, grouped Registers, Fast: "
+				"ADC, Math, each with its dot and unit (ADC.I_LOAD [A], P [W]); the button counts them, \"Lines 11/11\"");
+		check(hands, "recording window, Lines: All, None and every line's tick have a pointing hand and a tooltip");
+		/* None, then All */
+		bool noneAll = false;
+		if (list.none && list.all) {
+			list.none->click();
+			const bool allOff = w->chartTab()->lineCount() == 0 && button->text() == QStringLiteral("Lines 0/%1").arg(total);
+			list.all->click();
+			bool allOn = w->chartTab()->lineCount() == total && button->text() == QStringLiteral("Lines %1/%1").arg(total);
+			for (QCheckBox *box : std::as_const(list.boxes)) allOn = allOn && box->isChecked();
+			noneAll = allOff && allOn && list.search && list.search->isHidden(); /* 11 lines: no search */
+			if (!noneAll) std::printf("     (None: %d, All: %d, the search hidden %d, \"%s\")\n", int(allOff), int(allOn),
+					list.search ? int(list.search->isHidden()) : -1, qPrintable(button->text()));
+		}
+		check(noneAll, "recording window, Lines: None takes every line off the chart (\"Lines 0/11\"), All puts them back; "
+				"no search box under 13 lines");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT") && list.menu) { /* for a look: the list open, both themes */
+			for (const bool dark : { true, false }) {
+				list.menu->hide();
+				Theme::apply(*qApp, dark);
+				list = openLinesList(w);
+				QTest::qWait(300);
+				if (list.menu)
+					list.menu->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_lines_%1.png")
+							.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, true);
+		}
+		if (list.menu) list.menu->hide();
+		/* many lines: the search, All and None on what it finds, kept for the next recording */
+		const QString many = folder + QStringLiteral("/many.csv");
+		{
+			QFile file(many);
+			if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+				QString text = QStringLiteral("time_s,datetime");
+				for (int k = 0; k < 14; k++) text += QStringLiteral(",L%1 [V]").arg(k);
+				text += QLatin1Char('\n');
+				for (int row = 0; row < 3; row++) {
+					text += QStringLiteral("%1,2026-10-08T12:00:0%1.000").arg(row);
+					for (int k = 0; k < 14; k++) text += QStringLiteral(",%1").arg(k + row);
+					text += QLatin1Char('\n');
+				}
+				file.write(text.toUtf8());
+			}
+		}
+		RecordingWindow *wide = nullptr;
+		RecordingWindow::open(nullptr, many, {}, 2048, [&](RecordingWindow *x) { wide = x; });
+		(void) QTest::qWaitFor([&] { return wide != nullptr; }, 5000);
+		LinesList more = openLinesList(wide);
+		bool searched = false;
+		int found = -1, nothing = -1;
+		bool titleHidden = false;
+		if (more.search && more.none) {
+			more.search->setText(QStringLiteral("l1"));
+			found = 0;
+			for (QCheckBox *box : std::as_const(more.boxes)) found += !box->isHidden();
+			more.none->click();
+			more.search->setText(QStringLiteral("zzz"));
+			nothing = 0;
+			for (QCheckBox *box : std::as_const(more.boxes)) nothing += !box->isHidden();
+			titleHidden = true;
+			for (QLabel *label : more.panel->findChildren<QLabel *>(QStringLiteral("linesGroup")))
+				titleHidden = titleHidden && label->isHidden();
+			/* the recording's own math lines (recording/math) are listed too, and on the chart */
+			const int math = int(wide->chartTab()->mathLines().lines().size());
+			const int mathShown = wide->chartTab()->mathLinesShown();
+			const QString text = wide->findChild<QPushButton *>(QStringLiteral("recordingLines"))->text();
+			searched = !more.search->isHidden() && found == 5 && nothing == 0 && titleHidden
+					&& wide->chartTab()->lineCount() == 9 + mathShown
+					&& text == QStringLiteral("Lines %1/%2").arg(9 + mathShown).arg(14 + math);
+			if (!searched)
+				std::printf("     (the search shown %d, the button \"%s\", math lines %d, %d shown)\n",
+						int(!more.search->isHidden()), qPrintable(text), math, mathShown);
+			more.menu->hide();
+		}
+		std::printf("  14 lines: the search \"l1\" lists %d, \"zzz\" %d (the group's title hidden %d); None on the 5: %d "
+				"on the chart\n", found, nothing, int(titleHidden), wide ? wide->chartTab()->lineCount() : -1);
+		check(searched, "recording window, Lines with 14 lines: a search box; \"l1\" lists L1 and L10 to L13 (case does not "
+				"matter), a search that finds nothing hides the group's title too; None takes only the lines found off "
+				"(\"Lines 9/14\")");
+		delete wide;
+		const QStringList hidden = QSettings().value(QStringLiteral("recording/linesHidden")).toStringList();
+		RecordingWindow *again = nullptr;
+		RecordingWindow::open(nullptr, many, {}, 2048, [&](RecordingWindow *x) { again = x; });
+		(void) QTest::qWaitFor([&] { return again != nullptr; }, 5000);
+		bool kept = again && hidden.contains(QStringLiteral("L13")) && !hidden.contains(QStringLiteral("L2"))
+				&& again->chartTab()->lineCount() == 9 + again->chartTab()->mathLinesShown();
+		if (again)
+			for (const ChartView::Info &line : again->chartTab()->view()->lines())
+				kept = kept && !line.name.startsWith(QLatin1String("L1"));
+		std::printf("  kept: recording/linesHidden \"%s\", opened again with %d lines\n",
+				qPrintable(hidden.join(QStringLiteral(", "))), again ? again->chartTab()->lineCount() : -1);
+		check(kept, "recording window, Lines: the lines unticked are kept by name (recording/linesHidden): the recording "
+				"opened again shows the 9 others");
+		delete again;
+		if (hiddenBefore.isValid()) QSettings().setValue(QStringLiteral("recording/linesHidden"), hiddenBefore);
+		else QSettings().remove(QStringLiteral("recording/linesHidden"));
 	}
 
 	/* A recording of a fast stream beside its CSV, opened (the owner's 5 min file: at a 10 ms window at its end the fast

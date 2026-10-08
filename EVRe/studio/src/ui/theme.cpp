@@ -296,6 +296,7 @@ QMenu::indicator:non-exclusive { border-radius: 4px; border: 1px solid %CONTROL%
 QMenu::indicator:non-exclusive:checked { background: %AFILL%; border-color: %AFILL%; %TICK% }
 QMenu::indicator:exclusive:checked { %MENUTICK% }
 QMenu QLabel#menuTitle { color: %MUTED%; font-weight: 600; padding: 4px 18px 2px 18px; }
+QMenu QLabel#linesGroup { color: %MUTED%; font-weight: 600; padding: 2px 0; }
 QMessageBox { background: %S1%; }
 QSplitter::handle { background: transparent; }
 )"

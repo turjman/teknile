@@ -2156,10 +2156,19 @@ recordings can be open.
   is painted when it is made, and a window made bigger is painted whole on either drawing path (on a card, a frame
   the system let go is drawn again: 23.7). A theme switched in the main window reaches it too.
 - **The columns** come by their titles, `NAME [unit]` (a title without `[…]` has no unit). Each is a line; the first
-  64 are plotted, and the **Lines** menu shows or hides each. A cell that is empty is no sample. A column with a cell
-  that is not a number (a byte array's hex) is left out.
+  64 are plotted. A cell that is empty is no sample. A column with a cell that is not a number (a byte array's hex) is
+  left out.
+- **Lines** (top right, *Lines 8/11*: the lines on the chart of those the window offers) opens a checklist of every
+  line: the file's columns under *Registers*, each stream's channels under *Fast: ADC* (12.7), the window's math lines
+  under *Math*, each with its colour dot (a ring while it is off the chart: it takes the palette's next colour when
+  ticked) and its unit. A tick does not close the list. **All** ticks every line listed, in order, until the chart
+  holds 64 (the 65th is refused with the cap's words beside the mouse); **None** unticks every line listed. From 13
+  lines a **search** box comes first: only the lines whose name holds it are listed (case does not matter), and All
+  and None work on those. The lines unticked are kept by name (`recording/linesHidden`): a recording opened later
+  comes without them. A math line's tick is its *Shown* (kept in `recording/math`); one that does not compile is
+  greyed, its tooltip says why. Under the list, the fields of a matched register (below).
 - **With a map loaded,** a column named as one of its registers takes that register's definition: its value names
-  and fields. **Lines** then lists the fields of such a register (*Fields of CONFIG*) and plots one as a math line
+  and fields. **Lines** then lists the fields of such a register under its checklist (*Fields of CONFIG*) and plots one as a math line
   (`CONFIG.MSG_ENABLE`, 31.4). A byte array of the map is left out.
 - **Its own settings.** The window's chart keeps its choices under `recording/…` (14.3): its Window, Y range, Measure
   and columns, Display, and its **own math lines** (`recording/math`), computed from the file's values.
@@ -2522,6 +2531,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/math` | empty | on&nbsp;change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
 | `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
 | `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first. |
+| `recording/linesHidden` | empty | at&nbsp;each&nbsp;tick | The lines unticked in a recording window's **Lines** list, by name (`SUPPLY_V`, `ADC.I_LOAD`): a recording opened later comes without them (12.6). |
 
 **Never saved, by design:**
 
@@ -4336,7 +4346,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastStreams` (their channels offered and read; one stream's: a fast math line, said, 9.9) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
-| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
+| `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `fillRecentMenu`, `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
@@ -5558,7 +5568,13 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   *e+*), its peak within one step of 50 Hz. Recorded (12.7): **Record CSV** for 1.5 s writes `fast.ADC.evrs` beside
   `fast.csv` and the Log says so; the recording opens with it, a fast line of its samples (about 15 000, none lost)
   equal to those the live chart took at the same times, and its window's own fast math line (`recording/math`,
-  `ADC.I_LOAD * ADC.V_BUS`) computed from them record by record; the `.evrs` alone opens on the same wall clock (within 50 ms)
+  `ADC.I_LOAD * ADC.V_BUS`) computed from them record by record. Its **Lines** (`recordingLinesList`): a checklist grouped *Registers*, *Fast:
+  ADC*, *Math*, every line with its dot and unit (`ADC.I_LOAD [A]`, `P [W]`), the button *Lines 11/11*; All, None and
+  each tick with a pointing hand and a tooltip; None takes every line off (*Lines 0/11*), All puts them back, no
+  search under 13 lines; a CSV of 14 lines: a search box, *l1* lists L1 and L10 to L13, a search finding nothing hides
+  the group's title, None takes only the 5 off (*Lines 9/14*), and opened again it comes without them
+  (`recording/linesHidden`). With `EVRE_TEST_SHOT` it saves `<prefix>_lines_dark.png` and `_light.png`, the list open.
+  The `.evrs` alone opens on the same wall clock (within 50 ms)
   and says its samples; a copy cut 3 bytes into its last piece opens and says it was cut off. The trigger armed on
   the line in Normal (from its chip's menu, 0 A rising) through Disconnect, Connect, Arm and the stream stopped and
   started: the engine watches what the window asks (the same channel and arm, asked on its thread with
@@ -5974,7 +5990,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 562 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 567 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

@@ -470,7 +470,9 @@ the file (<code>run.csv.notes.json</code>), and an export takes the notes of its
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
 own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
-registers' value names and fields are matched by name: <b>Lines</b> plots a register's field.</li>
+registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
+line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(

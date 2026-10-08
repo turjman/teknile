@@ -2416,6 +2416,14 @@ void ChartTab::rebuildMathMenu() {
 	mathButton_->setText(active ? tr("ƒ  Math (%1)").arg(active) : tr("ƒ  Math"));
 }
 
+bool ChartTab::setMathLineShown(int line, bool on) {
+	if (line < 0 || line >= mathLines_.lines().size()) return false;
+	if (on && !mathLines_.lines()[line].active() && !roomForLine()) return false;
+	mathLines_.setOn(line, on);
+	rebuildMath();
+	return true;
+}
+
 void ChartTab::editMathLine(int line) {
 	MathLine start; /* a new one: the power of a supply, say */
 	start.name = QStringLiteral("P");
