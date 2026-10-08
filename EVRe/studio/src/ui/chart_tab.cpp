@@ -1613,8 +1613,10 @@ void ChartTab::refreshStatus() {
 		showTriggerState();
 	}
 	bool over = false;
+	double kept = -1, samples = -1;
+	if (!chart_->view()->fastTiers(kept, samples)) kept = samples = -1;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_, kept, samples) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
@@ -1624,7 +1626,7 @@ void ChartTab::refreshStatus() {
 }
 
 QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
-		qint64 freeMB) {
+		qint64 freeMB, double tieredKept, double tieredSamples) {
 	over = false;
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
@@ -1637,13 +1639,19 @@ QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySecond
 	const auto keptText = [](double kept) {
 		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
 	};
+	const bool tiers = tieredSamples >= 0; /* fast lines' older samples as summaries: the tiers say what is kept */
 	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
 		over = true;
+		if (tiers)
+			return tr("only %1 free: keeps about %2 (samples for the newest %3)").arg(megabytesText(freeMB),
+					keptText(tieredKept), keptText(tieredSamples));
 		return tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
 				keptText(memorySeconds * std::min(1.0, limitMB / megabytes)));
 	}
 	over = megabytes > ramMB;
 	if (!over) return tr("needs %1").arg(size);
+	if (tiers)
+		return tr("needs %1, keeps %2 (samples for the newest %3)").arg(size, keptText(tieredKept), keptText(tieredSamples));
 	return tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes));
 }
 
@@ -1938,6 +1946,8 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 	/* the cells written with the table's updates off: one repaint when they are all in, not one per cell */
 	measures_->setUpdatesEnabled(false);
 	const QString none = QStringLiteral("—");
+	const QString needsSamples = tr("Needs samples: in this range the fast line keeps only summaries, the lowest and "
+			"highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs");
 	measures_->setRowCount(int(lines.size()));
 	for (int row = 0; row < lines.size(); row++) {
 		const ChartView::Info &line = lines[row];
@@ -1950,12 +1960,14 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			std::isfinite(s.atA) && std::isfinite(s.atB) ? measureText(s.atB - s.atA) + unit : none,
 			s.ok ? measureText(s.min) + unit : none,
 			s.ok ? measureText(s.max) + unit : none,
-			s.ok ? measureText(s.mean) + unit : none,
-			s.ok ? measureText(s.rms) + unit : none,
-			s.ok ? measureText(s.std) + unit : none,
+			s.ok && std::isfinite(s.mean) ? measureText(s.mean) + unit : none, /* NaN: over summaries only */
+			s.ok && std::isfinite(s.rms) ? measureText(s.rms) + unit : none,
+			s.ok && std::isfinite(s.std) ? measureText(s.std) + unit : none,
 			s.ok ? measureText(s.p2p) + unit : none,
-			s.ok ? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
-			s.ok ? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 			std::isfinite(s.total) ? measureText(s.total / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 		};
 		for (int column = 0; column < cells.size(); column++) {
@@ -1969,6 +1981,10 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			}
 			if (item->text() != cells[column]) item->setText(cells[column]);
 			if (column == 0 && item->foreground().color() != line.color) item->setForeground(line.color);
+			const bool samplesOnly = column == ColAtA || column == ColAtB || column == ColDiff || column == ColMean
+					|| column == ColRms || column == ColStd || column == ColArea || column == ColAreaHours;
+			const QString tip = s.summaries && samplesOnly && cells[column] == none ? needsSamples : QString();
+			if (item->toolTip() != tip) item->setToolTip(tip);
 		}
 	}
 	/* the table shown again (one repaint), and the time the update took for the timing aid */
@@ -2133,6 +2149,13 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	bool only = false; /* a fast line kept as summaries only there: nothing to count or transform */
+	if (chart_->view()->summariesIn(key, t0, t1, &only) && only)
+		for (QAction *action : { histogram, spectrum }) {
+			action->setEnabled(false);
+			action->setToolTip(tr("Needs samples: %1 the fast line keeps only summaries, the lowest and highest of each "
+					"256 samples (Older samples, beside RAM)").arg(over));
+		}
 	if (trigger_->isVisible()) { /* not in a recording's window */
 		lineMenu_->addSeparator();
 		/* ticked for the line watched: unticking it turns the trigger off (Display -> Trigger, so all three agree) */
@@ -2162,7 +2185,9 @@ AnalysisWindow *ChartTab::openAnalysis(AnalysisWindow::Kind kind, int key) {
 	/* a fast line's spectrum: its longest part without a gap (even steps; nothing measured across a gap) */
 	const bool whole = view->lineSamples(key, t0, t1, times, values, kind == AnalysisWindow::Kind::Spectrum);
 	QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
-	if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
+	if (view->summariesIn(key, t0, t1) && times.size() >= 2) /* the older part kept as summaries only: said */
+		span = tr("%1: its newest %2, older kept as summaries").arg(span, durationText(times.last() - times.first()));
+	else if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
 		span = (kind == AnalysisWindow::Kind::Spectrum ? tr("%1: %2 of it without a gap") : tr("%1: its first %2"))
 					   .arg(span, durationText(times.last() - times.first()));
 	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window(),

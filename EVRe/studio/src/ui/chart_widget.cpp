@@ -538,6 +538,16 @@ bool ChartView::summariesBefore(double &t) const {
 	return any;
 }
 
+bool ChartView::summariesIn(int key, double t0, double t1, bool *only) const {
+	if (only) *only = false;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast || it->fast->recordsFrom() <= 0) return false;
+	const fast::Store &store = *it->fast;
+	if (store.lowerBound(t0) >= store.recordsFrom()) return false;
+	if (only) *only = store.upperBound(t1) <= store.recordsFrom();
+	return true;
+}
+
 void ChartView::setRamBudget(int megabytes) {
 	ramMB_ = std::max(megabytes, MIN_RAM_MB);
 	capped_ = false; /* the lines past their new share say so again at their next sample */
@@ -571,6 +581,11 @@ void ChartView::setRecordingOn(bool on) {
 QString ChartView::memoryStripTip() const {
 	QString tip = tr("The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view "
 			"goes there · Wheel: a window earlier or later");
+	double since = 0;
+	if (summariesBefore(since)) /* the shaded part */
+		tip += QStringLiteral("\n\n") + tr("Older samples: summaries. The shaded part keeps only the lowest and highest "
+				"value of each 256 samples of the fast lines (drawn as bars when zoomed in; their mean, RMS and area read "
+				"\"—\"): samples for the newest %1.").arg(formatDuration(std::max(0.0, clockNow() - since)));
 	if (!capped_) return tip;
 	double k0, k1;
 	memorySpan(k0, k1);
@@ -759,7 +774,7 @@ QVector<ChartView::BinInfo> ChartView::lastBins(int key) const {
 	if (it == series_.constEnd()) return out;
 	for (const BinnedLine &line : lastBinned_) {
 		if (line.series != &*it) continue;
-		for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap });
+		for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap, bin.bar });
 	}
 	return out;
 }
@@ -768,9 +783,16 @@ QVector<ChartView::BinInfo> ChartView::freshBins(int key) const {
 	QVector<BinInfo> out;
 	const auto it = series_.constFind(key);
 	if (it == series_.constEnd() || !it->fast || lastBinKey_.size() < 3) return out;
+	return freshBins(key, lastBinKey_[0], lastBinKey_[1], lastBinKey_[2]);
+}
+
+QVector<ChartView::BinInfo> ChartView::freshBins(int key, double t0, double t1, double columns) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast) return out;
 	BinnedLine line;
-	binFast(*it, lastBinKey_[0], lastBinKey_[1], lastBinKey_[2], line, nullptr);
-	for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap });
+	binFast(*it, t0, t1, columns, line, nullptr);
+	for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap, bin.bar });
 	return out;
 }
 
@@ -1552,6 +1574,7 @@ bool ChartView::fastSamples(const Series &s, double t0, double t1, qsizetype mos
 	if (store.size() == 0 || !store.hasTime()) return true;
 	qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
 	const qsizetype all = i1 - i0;
+	i0 = std::clamp(i0, store.recordsFrom(), std::max(i1, store.recordsFrom())); /* kept as summaries: no values */
 	if (withoutGap) { /* the longest segment's part in the range */
 		qsizetype best0 = i0, best1 = i0;
 		for (qsizetype k = i0; k < i1;) {
@@ -1895,9 +1918,16 @@ ChartView::Stats ChartView::statsOfFast(const fast::Store &store, int channel, d
 	const qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
 	if (i1 - i0 < 1) return result;
 	store.minMax(channel, i0, i1, result.min, result.max);
+	result.n = int(std::min<qsizetype>(i1 - i0, std::numeric_limits<int>::max()));
+	if (i0 < store.recordsFrom()) { /* summaries only in it: their min and max; a mean, an area need every record */
+		result.p2p = result.max - result.min;
+		result.mean = result.rms = result.std = result.integral = NAN;
+		result.summaries = true;
+		result.ok = true;
+		return result;
+	}
 	const double shift = store.value(channel, i0);
 	const Trapezoids sums = trapezoids(store, channel, i0, i1, shift);
-	result.n = int(std::min<qsizetype>(i1 - i0, std::numeric_limits<int>::max()));
 	result.integral = sums.area;
 	result.p2p = result.max - result.min;
 	if (sums.span > 0) {
@@ -1962,6 +1992,7 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 				i1 = std::min<qsizetype>(store.size(), i1 + 1);
 			}
 			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			if (i0 < store.recordsFrom()) key << double(store.dropped() + store.recordsFrom()); /* records go to summaries */
 			continue;
 		}
 		qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
@@ -2838,6 +2869,7 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 			const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(axes.t0) - 1);
 			const qsizetype i1 = std::min(store.size(), store.upperBound(axes.t1) + 1);
 			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			if (i0 < store.recordsFrom()) key << double(store.dropped() + store.recordsFrom()); /* records go to summaries */
 			continue;
 		}
 		if (s.times.isEmpty()) {
@@ -3114,6 +3146,7 @@ void ChartView::binFast(const Series &s, double t0, double t1, double columns, B
 	const fast::Store &store = *s.fast;
 	out.columnSeconds = (t1 - t0) / columns;
 	out.timeVersion = store.timeVersion();
+	out.wholeFrom = store.dropped() + store.recordsFrom();
 	if (store.size() == 0 || !store.hasTime() || t1 <= t0) return;
 	const double columnSeconds = out.columnSeconds;
 	const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(t0) - 1);
@@ -3144,8 +3177,61 @@ void ChartView::binFast(const Series &s, double t0, double t1, double columns, B
 			i = j;
 		}
 	};
+	/* Records kept as summaries only (before whole): a summary of SMALL records at a time, in the column of its first
+	 * record (its min and max are the records' own, so a column of SMALL records or more is binned as from them). A
+	 * column it holds no first record of, zoomed in past one a column, gets it again as a bar: the summary drawn over
+	 * every column it covers, up to the next one's */
+	const qsizetype whole = store.recordsFrom();
+	auto binSummaries = [&](qsizetype i, qsizetype end) {
+		constexpr qsizetype SMALL = fast::Store::SMALL;
+		i -= i % SMALL; /* to its summary's first (dropped() is a whole number of them) */
+		const qint64 firstShown = qint64(std::floor(t0 / columnSeconds)) - 1;
+		const qint64 lastShown = qint64(std::floor(t1 / columnSeconds)) + 1;
+		qsizetype before = -1; /* the bin before's first record */
+		while (i < end) {
+			const double ti = store.timeAt(i);
+			const qint64 column = qint64(std::floor(ti / columnSeconds));
+			qsizetype j = store.lowerBound(double(column + 1) * columnSeconds);
+			j = std::min(end, (j + SMALL - 1) / SMALL * SMALL);
+			if (j <= i) j = std::min(end, i + SMALL);
+			Bin bin;
+			bin.column = column;
+			bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
+			bin.firstSample = qsizetype(store.dropped()) + i;
+			bin.t0 = ti;
+			bin.t1 = store.timeAt(j - 1);
+			store.minMax(s.channel, i, j, bin.min, bin.max);
+			bin.first = bin.last = (bin.min + bin.max) / 2; /* their values are gone: the line runs through the middle */
+			/* a segment begun since the bin before (a gap inside a summary breaks the line at the next bin) */
+			bin.gap = i > i0 && (before >= 0 ? store.segmentEnd(before) <= i : store.startsAfterGap(i));
+			out.bins.push_back(bin);
+			binned++;
+			before = i;
+			const qint64 next = j < store.size() ? qint64(std::floor(store.timeAt(j) / columnSeconds)) : column + 1;
+			const qint64 barTo = std::min({ next - 1, qint64(std::floor(bin.t1 / columnSeconds)), lastShown });
+			if (barTo > column) {
+				Bin bar;
+				store.minMax(s.channel, j - 1, j, bar.min, bar.max); /* the last summary's: the one that goes on */
+				bar.first = bar.last = (bar.min + bar.max) / 2;
+				bar.firstSample = qsizetype(store.dropped()) + j;
+				bar.bar = true;
+				for (qint64 k = std::max(column + 1, firstShown); k <= barTo; k++) {
+					bar.column = k;
+					bar.t0 = bar.t1 = (double(k) + 0.5) * columnSeconds;
+					out.bins.push_back(bar);
+				}
+			}
+			i = j;
+		}
+	};
+	/* records from i to end, those before whole as summaries */
+	auto binSpan = [&](qsizetype i, qsizetype end) {
+		if (i < whole) binSummaries(i, std::min(end, whole));
+		binRecords(std::max(i, whole), end);
+	};
 	/* the kept bins: whole columns of the last frame (not its first or last bin) inside this frame's columns, with
-	 * their records still kept, made with the same column width over the same times */
+	 * their records still kept, made with the same column width over the same times; those of summaries only while
+	 * the records kept whole began where they did */
 	qsizetype keep0 = -1, keep1 = -1; /* previous->bins[keep0 .. keep1) */
 	if (previous && previous->series == &s && previous->columnSeconds == columnSeconds
 			&& previous->timeVersion == store.timeVersion() && previous->bins.size() >= 3) {
@@ -3154,22 +3240,23 @@ void ChartView::binFast(const Series &s, double t0, double t1, double columns, B
 		for (qsizetype k = 1; k + 1 < previous->bins.size(); k++) {
 			const Bin &b = previous->bins[k];
 			const qsizetype from = qsizetype(b.firstSample - store.dropped()); /* its records, as indexes now */
-			const bool whole = b.column > firstColumn && b.column < lastColumn && b.column >= c0 && b.column <= c1
-					&& from >= i0 && from + b.count <= i1; /* inside what this frame bins: its ends stay partial bins */
-			if (whole && keep0 < 0) keep0 = k;
-			if (whole) keep1 = k + 1;
-			if (!whole && keep0 >= 0) break; /* one run: the kept bins stay contiguous in records */
+			const bool inside = b.column > firstColumn && b.column < lastColumn && b.column >= c0 && b.column <= c1
+					&& from >= i0 && from + b.count <= i1 /* inside what this frame bins: its ends stay partial bins */
+					&& (from >= whole || previous->wholeFrom == out.wholeFrom);
+			if (inside && keep0 < 0) keep0 = k;
+			if (inside) keep1 = k + 1;
+			if (!inside && keep0 >= 0) break; /* one run: the kept bins stay contiguous in records */
 		}
 	}
 	if (keep0 < 0) {
-		binRecords(i0, i1);
+		binSpan(i0, i1);
 	} else {
 		const Bin &firstKept = previous->bins[keep0], &lastKept = previous->bins[keep1 - 1];
 		const qsizetype keptFrom = qsizetype(firstKept.firstSample - store.dropped());
 		const qsizetype keptTo = qsizetype(lastKept.firstSample - store.dropped()) + lastKept.count;
-		binRecords(i0, std::min(keptFrom, i1));           /* before the kept columns */
+		binSpan(i0, std::min(keptFrom, i1));              /* before the kept columns */
 		for (qsizetype k = keep0; k < keep1; k++) out.bins.push_back(previous->bins[k]);
-		binRecords(std::max(keptTo, i0), i1);             /* the newest columns */
+		binSpan(std::max(keptTo, i0), i1);                /* the newest columns */
 	}
 	fastColumnsBinned_ += binned;
 	for (const Bin &bin : out.bins) {
@@ -3723,7 +3810,7 @@ double ChartView::drawnTo(int key) const {
 	for (const BinnedLine &line : lastBinned_) {
 		if (line.series != &it.value() || line.bins.isEmpty()) continue;
 		const Bin &b = line.bins.last();
-		if (b.count <= 2) return b.count == 2 ? b.t1 : b.t0;
+		if (b.count <= 2 && !b.bar) return b.count == 2 ? b.t1 : b.t0;
 		return (double(b.column) + 0.5) * lastAxes_.columnSeconds(); /* as toPolyline draws it */
 	}
 	return NAN;
@@ -4337,7 +4424,7 @@ QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, 
 			piece = poly.size();
 			breaks->push_back(piece);
 		}
-		if (b.count <= 2) {
+		if (b.count <= 2 && !b.bar) {
 			put(QPointF(x(b.t0), y(b.first)));
 			if (b.count == 2) put(QPointF(x(b.t1), y(b.last)));
 			continue;
@@ -4850,7 +4937,7 @@ QVector<ChartView::FoldedItem> ChartView::foldedItems(const Lane &lane, double t
 			if (s.hasShown) value = chartNumber(s.shown);
 		} else if (s.fast) { /* the latest record in view */
 			const qsizetype k = s.fast->upperBound(t1) - 1;
-			if (k >= 0 && s.fast->timeAt(k) >= t0) value = chartNumber(s.fast->value(s.channel, k));
+			if (k >= s.fast->recordsFrom() && s.fast->timeAt(k) >= t0) value = chartNumber(s.fast->value(s.channel, k));
 		} else {
 			const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
 			if (k >= 0 && s.times[k] >= t0) value = chartNumber(s.values[k]);
@@ -5514,6 +5601,19 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 	strip.t0 = strip.t1 - memory_;
 	strip.span = strip.t1 - strip.t0;
 	strip.columns = std::max(1.0, box.width());
+	/* a fast line's records kept as summaries only: that part of the memory shaded, so where its samples begin shows */
+	double since = 0;
+	const bool tiers = strip.t1 > strip.t0 && summariesBefore(since);
+	if (tiers) {
+		QColor shade = c.border;
+		shade.setAlpha(150);
+		double k0, k1; /* from the oldest kept */
+		memorySpan(k0, k1);
+		const double x0 = std::clamp(strip.x(k0), box.left() + 1, box.right() - 1);
+		const double x1 = std::clamp(strip.x(since), x0, box.right() - 1);
+		p.fillRect(QRectF(QPointF(x0, box.top() + 1), QPointF(x1, box.bottom() - 1)), shade);
+		p.fillRect(QRectF(x1 - 0.5, box.top() + 1, 1, box.height() - 2), c.muted); /* where the samples begin */
+	}
 	if (strip.t1 > strip.t0) {
 		/* the lines: drawn again when the data has moved a pixel on the strip but at most once a second (its lines
 		 * bin the whole memory: 15 times a second for a minute's strip, a frame's worth each), or when the lines or
@@ -5571,6 +5671,9 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			const QString kept = formatDuration(k1 - k0), memory = formatDuration(memory_);
 			QStringList texts;
 			if (!capped_) {
+				if (tiers)
+					texts << tr("filling: %1 of %2 kept (samples for the newest %3)")
+									 .arg(kept, memory, formatDuration(std::max(0.0, clockNow() - since)));
 				texts << tr("filling: %1 of %2 kept").arg(kept, memory);
 			} else {
 				if (recordingOn_)
@@ -5589,6 +5692,29 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			p.setPen(stripTextColor_);
 			p.drawText(QRectF(box.left() + 8, box.top(), emptyW - 16, box.height()), Qt::AlignLeft | Qt::AlignVCenter,
 					stripText_);
+		} else if (tiers && !capped_) {
+			/* full, older samples as summaries: the words on a label of their own (the lines under it covered, not
+			 * written over), at the end of the strip the view's box is not at */
+			const QString newest = formatDuration(std::max(0.0, clockNow() - since));
+			const QStringList texts{ tr("keeps %1 (samples for the newest %2)").arg(formatDuration(k1 - k0), newest),
+				tr("samples for the newest %1").arg(newest) };
+			p.setFont(smallFont());
+			const QFontMetricsF metrics(p.font());
+			for (const QString &text : texts) {
+				const double w = std::ceil(metrics.horizontalAdvance(text)) + 14;
+				if (w > box.width() * 0.45) continue;
+				QRectF label(box.left() + 6, box.top() + 3, w, box.height() - 6);
+				if (label.adjusted(-6, 0, 6, 0).intersects(memoryHandle_)) label.moveRight(box.right() - 6);
+				if (label.adjusted(-6, 0, 6, 0).intersects(memoryHandle_)) break;
+				p.setPen(QPen(c.border, 1));
+				p.setBrush(c.surface2);
+				p.drawRoundedRect(label, 4, 4);
+				stripText_ = text;
+				stripTextColor_ = c.muted;
+				p.setPen(stripTextColor_);
+				p.drawText(label, Qt::AlignCenter, text);
+				break;
+			}
 		}
 	}
 	p.setFont(smallFont());
@@ -5758,6 +5884,13 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 			if (k > 0 && std::fabs(store.timeAt(k - 1) - t) < std::fabs(store.timeAt(k) - t)) k--;
 			sampleTime = store.timeAt(k);
 			v = store.value(s.channel, k);
+			if (k < store.recordsFrom()) { /* kept as its summary: the range of the 256 records it lies in, no dot */
+				double lo, hi;
+				store.minMax(s.channel, k, k + 1, lo, hi);
+				if (std::fabs(sampleTime - t) <= window_ / READOUT_REACH && remake && hoverValues_)
+					rows.push_back({ s.name, chartNumber(lo) + QStringLiteral(" … ") + chartNumber(hi), s.unit, s.color });
+				continue;
+			}
 		} else {
 			if (s.times.isEmpty()) continue;
 			const qsizetype k = nearestIndex(s.times, t);
@@ -5952,11 +6085,13 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 }
 
 /* The state corner's texts: the whole, then shortened in turn until one fits (fitState): "Live to follow" goes, then
- * the cursors' "click / drag", then "manual" of a manual Log Y; the time held and the trigger's state stay. With
+ * the cursors' "click / drag", then "manual" of a manual Log Y, then the summaries' span ("summaries: samples for the
+ * newest 79 s", a view reaching back into a fast line's records kept as summaries only, drawn as bars when zoomed
+ * in); the time held and the trigger's state stay. With
  * measuring, the time held is written as the widest number, so the room kept for it does not change with its digits
  * (the legend's end would follow them). */
 QStringList ChartView::stateVariants(bool measuring) const {
-	QString held[2], y[2], cursors[2], trigger;
+	QString held[2], summaries[2], y[2], cursors[2], trigger;
 	/* the trigger on: its state alone (a held time, "filling" or "Live to follow" read as a hold of the user's while the
 	 * trigger holds the view, and the time held rewrote itself at every frame) */
 	if (triggerMarked()) return QStringList(4, triggerStateText());
@@ -5967,6 +6102,11 @@ QStringList ChartView::stateVariants(bool measuring) const {
 		held[0] = behind >= 0 ? tr("held: -%1 s · Live to follow").arg(number)
 				: tr("held: filling, %1 s to come · Live to follow").arg(number);
 		held[1] = behind >= 0 ? tr("held: -%1 s").arg(number) : tr("held: filling");
+	}
+	double since = 0;
+	if (summariesBefore(since) && viewEnd() - window_ < since) {
+		summaries[0] = tr("summaries: samples for the newest %1").arg(formatDuration(std::max(0.0, clockNow() - since)));
+		summaries[1] = tr("summaries");
 	}
 	if (lanes_) {
 		/* each lane its own Y range; their buttons show the fold */
@@ -5982,8 +6122,8 @@ QStringList ChartView::stateVariants(bool measuring) const {
 	}
 	trigger = triggerStateText();
 	QStringList variants;
-	for (int stage = 0; stage < 4; stage++) {
-		QStringList parts{ held[stage >= 1], y[stage >= 3], cursors[stage >= 2], trigger };
+	for (int stage = 0; stage < 5; stage++) {
+		QStringList parts{ held[stage >= 1], summaries[stage >= 4], y[stage >= 3], cursors[stage >= 2], trigger };
 		parts.removeAll(QString());
 		variants << parts.join(QStringLiteral("  ·  "));
 	}

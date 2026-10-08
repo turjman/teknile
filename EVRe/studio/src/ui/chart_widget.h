@@ -155,11 +155,13 @@ public:
 		double t0, t1, min, max;
 		int count;
 		bool gap;
+		bool bar = false; /* a fast line's summary over a column it holds no first record of (Bin::bar) */
 	};
 	QVector<BinInfo> lastBins(int key) const;
 	/* tests: a fast line binned afresh for the last frame's view, with nothing kept from the frame before: what
 	 * lastBins must equal */
 	QVector<BinInfo> freshBins(int key) const;
+	QVector<BinInfo> freshBins(int key, double t0, double t1, double columns) const; /* tests: the same of this view */
 	qint64 fastColumnsBinned() const { return fastColumnsBinned_; } /* tests: columns of fast lines binned so far */
 	qint64 polledColumnsBinned() const { return polledColumnsBinned_; } /* tests: the same of the polled lines' views */
 	QStringList timeLabels() const { return timeLabels_; }
@@ -478,6 +480,9 @@ public:
 		double atA = NAN, atB = NAN, min = 0, max = 0, mean = 0, rms = 0, std = 0, p2p = 0, integral = 0;
 		double total = NAN; /* the area since Clear (totalsSince), unit x s; NaN: no sample yet */
 		int n = 0;
+		/* a fast line's records kept as summaries only in the range: min, max and p2p from them, the rest (and A or B
+		 * there) need samples: NaN */
+		bool summaries = false;
 	};
 	struct Info {
 		int key;
@@ -557,6 +562,8 @@ public:
 	/* a fast line keeps older samples as summaries only now: from that time on its records are whole (the latest of
 	 * them); false: every fast line's records are whole */
 	bool summariesBefore(double &t) const;
+	/* the line is a fast line whose records from t0 to t1 are partly kept as summaries only (only: all of them) */
+	bool summariesIn(int key, double t0, double t1, bool *only = nullptr) const;
 	/* a recording runs: the strip's words for the budget reached say the file keeps every sample */
 	void setRecordingOn(bool on);
 	/* tests: the strip's words and their colour as last drawn (empty: none), and its tooltip */
@@ -724,6 +731,10 @@ private:
 		qsizetype firstSample = 0; /* the line's sample it starts with, counted since the line began */
 		double t0 = 0, t1 = 0, first = 0, last = 0, min = 0, max = 0;
 		bool gap = false;          /* a fast line: records were lost (or the stream started again) before it */
+		/* a fast line's records kept as summaries only, zoomed in past one a column: the summary of the column before
+		 * drawn again over this one (no records of its own: count 0, its times the column's middle), so each summary
+		 * is a bar over the columns it covers */
+		bool bar = false;
 		void add(double ta, double tb, double firstValue, double lastValue, double lo, double hi, int samples);
 	};
 	struct Series {
@@ -764,6 +775,7 @@ private:
 		/* a fast line: what its bins were made with, so the next frame can keep the whole columns it shares */
 		double columnSeconds = 0;
 		int timeVersion = -1;
+		qint64 wholeFrom = -1; /* the store's first record kept whole then, counted since it began (recordsFrom) */
 	};
 	/* a time span and a value range mapped onto a rectangle of pixels: the plot
 	 * in one frame, or the memory strip */

@@ -544,6 +544,7 @@ public:
 		chartRamCut();
 		chartRamFree();
 		chartFastTiers();
+		chartFastSummariesShown();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -7046,6 +7047,211 @@ private:
 					"over 20 ms");
 			view->setRamLimit(0);
 		}
+	}
+
+	/* Long memory, what is seen (P6): a fast line whose older records are summaries only, beside one that keeps every
+	 * record (the same records, times on exact binary steps so columns fall on whole 256s). Columns of 256 and 1024
+	 * records are binned as from the records; zoomed in past one summary a column, each summary is a bar over every
+	 * column it covers; the state corner says "summaries: samples for the newest ..." over old data and nothing live;
+	 * the Measure table gives min, max and p2p over summaries and "—" for the rest, with a tooltip why; the histogram
+	 * and the spectrum need samples; the memory strip's shaded part, its words and tooltip */
+	void chartFastSummariesShown() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		def.channels[0].scale = 0.001;
+		constexpr qsizetype PIECE = fast::Store::PIECE;
+		constexpr double P = 1.0 / 1048576; /* a record's period: times exact in binary */
+		double now = 0;
+		const QString group = QStringLiteral("summariesTest"); /* its Measure and Memory not the chart's */
+		QSettings().remove(group);
+		ChartTab tab{ [&now] { return now; }, nullptr, group };
+		tab.resize(1100, 560);
+		tab.show();
+		(void) QTest::qWaitForWindowExposed(&tab);
+		tab.setShown(true);
+		tab.setFastStreams({ def });
+		ChartView *view = tab.view();
+		view->setMemory(3600);
+		view->setRamBudget(256);
+		view->setFastSummaries(true);
+		const int key = ChartView::fastKey(0, 0);
+		/* seven polled lines beside it: the fast line's share an eighth, 32 MB */
+		for (int k = 1; k <= 7; k++) view->addSeries(k, QStringLiteral("P%1").arg(k), QStringLiteral("V"), Qt::blue);
+		view->addSeries(key, QStringLiteral("ADC.I"), QStringLiteral("A"), QColor(220, 60, 50));
+		QWidget host;
+		host.resize(1100, 480);
+		auto *kept = new ChartView(&host); /* every record kept: what the bins must equal */
+		kept->setGeometry(9, 5, 1080, 470);
+		kept->setClock([&now] { return now; }, 0);
+		kept->setMemory(3600);
+		kept->setRamBudget(1024);
+		kept->setFastStream(0, def);
+		kept->addSeries(key, QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		QByteArray records(PIECE * 4, Qt::Uninitialized);
+		quint64 first = 0;
+		const auto block = [&] {
+			auto *raw = reinterpret_cast<qint16 *>(records.data());
+			for (qsizetype i = 0; i < PIECE; i++) {
+				const quint64 a = first + quint64(i);
+				raw[2 * i] = qint16(std::lround(800 * std::sin(double(a) * 2 * M_PI / 200000)) + int((a * 37) % 301) - 150);
+				raw[2 * i + 1] = qint16(a % 1000);
+			}
+			for (ChartView *v : { view, kept }) {
+				v->appendFast(0, first, PIECE, records, first == 0, 0);
+				v->markFast(0, first + PIECE, double(first + PIECE) * P, P);
+			}
+			first += PIECE;
+			now = double(first) * P;
+		};
+		for (int b = 0; b < 200; b++) block();
+		const fast::Store *store = view->fastStore(0), *whole = kept->fastStore(0);
+		const qsizetype from = store->recordsFrom();
+		std::printf("     (%lld records, the first %lld as summaries; the line beside keeps %lld whole)\n",
+				(long long) store->size(), (long long) from, (long long) (whole->size() - whole->recordsFrom()));
+
+		/* columns of 256 and 1024 records: the bins of the summaries are those of the records */
+		bool same = from >= 4 * PIECE && whole->recordsFrom() == 0;
+		for (const double perColumn : { 256.0, 1024.0 }) {
+			const double t0 = double(PIECE) * P, t1 = t0 + 500 * perColumn * P;
+			const QVector<ChartView::BinInfo> a = view->freshBins(key, t0, t1, 500), b = kept->freshBins(key, t0, t1, 500);
+			bool equal = a.size() == b.size() && a.size() >= 500;
+			for (int k = 1; equal && k + 1 < a.size(); k++)
+				equal = a[k].t0 == b[k].t0 && a[k].t1 == b[k].t1 && a[k].min == b[k].min && a[k].max == b[k].max
+						&& a[k].count == b[k].count && a[k].gap == b[k].gap && !a[k].bar;
+			if (!equal) std::printf("     (columns of %.0f records: %d bins of summaries, %d of records)\n", perColumn,
+						int(a.size()), int(b.size()));
+			same = same && equal;
+		}
+		check(same, "chart, long memory: a fast line's records kept as summaries only bin as the records did, in columns "
+				"of 256 records and more (each column's min and max, its records' count and times)");
+
+		/* zoomed in, 16 records a column: each summary a bar over its 16 columns, its own min and max */
+		{
+			const double t0 = double(PIECE + 7 * 256) * P, t1 = t0 + 400 * 16 * P, columnSeconds = 16 * P;
+			const QVector<ChartView::BinInfo> bins = view->freshBins(key, t0, t1, 400);
+			QMap<qint64, int> perColumn;
+			int bars = 0;
+			bool own = !bins.isEmpty();
+			for (const ChartView::BinInfo &bin : bins) {
+				const qint64 column = qint64(std::floor(bin.t0 / columnSeconds));
+				perColumn[column]++;
+				bars += bin.bar;
+				const qsizetype chunk = qsizetype(std::floor(bin.t0 / P)) / 256 * 256; /* the 256 records it is drawn for */
+				double lo, hi;
+				whole->minMax(0, chunk, chunk + 256, lo, hi);
+				if (bin.t0 >= t0 && bin.t0 < t1) own = own && bin.min == lo && bin.max == hi;
+			}
+			const qint64 c0 = qint64(std::floor(t0 / columnSeconds)), c1 = qint64(std::floor(t1 / columnSeconds));
+			bool every = true;
+			for (qint64 c = c0; c < c1; c++) every = every && perColumn.value(c) == 1;
+			std::printf("     (zoomed in: %d bins over %lld columns, %d of them bars)\n", int(bins.size()),
+					(long long) (c1 - c0), bars);
+			check(own && every && bars >= 300, "chart, long memory: zoomed in past one summary a column, each summary is a "
+					"bar over the columns it covers (one bin a column, its min and max the 256 records' own)");
+		}
+
+		/* the state corner: over old data it says so, live it says nothing of it */
+		view->setWindow(400 * 16 * P);
+		view->showSpan(double(PIECE + 7 * 256) * P, double(PIECE + 7 * 256 + 6400) * P);
+		tab.grab();
+		const QString held = view->stateFullText(), shown = view->stateText();
+		view->setLive(true);
+		tab.grab();
+		const QString live = view->stateFullText();
+		std::printf("     (the state: \"%s\", shown \"%s\"; live \"%s\")\n", qPrintable(held), qPrintable(shown),
+				qPrintable(live));
+		check(held.contains(QLatin1String("summaries: samples for the newest ")) && !shown.isEmpty()
+						&& !live.contains(QLatin1String("summaries")),
+				"chart, long memory: over records kept as summaries the state corner says \"summaries: samples for the "
+				"newest ...\"; live, nothing of it");
+
+		/* the measurements over old data: min, max and p2p from the summaries, the rest "—" with a tooltip; the same
+		 * range of the line beside, and a range of records kept whole, as from the records */
+		auto *measure = tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *table = tab.findChild<QTableWidget *>(QStringLiteral("measures"));
+		const double m0 = double(PIECE + 4096) * P, m1 = double(PIECE + 4096 + 65536 - 1) * P;
+		view->setWindow(m1 - m0);
+		view->showSpan(m0, m1);
+		kept->setWindow(m1 - m0);
+		kept->showSpan(m0, m1);
+		(void) host.grab(); /* its range: the view as last drawn */
+		if (measure) measure->setChecked(true);
+		tab.grab();
+		tab.setShown(true);
+		measured(view);
+		const ChartView::Stats a = view->stats(key), b = kept->stats(key);
+		int row = -1;
+		for (int r = 0; table && r < table->rowCount(); r++)
+			if (table->item(r, 0) && table->item(r, 0)->text() == QLatin1String("ADC.I")) row = r;
+		const auto cell = [&](int column) { return row >= 0 && table->item(row, column) ? table->item(row, column) : nullptr; };
+		const bool cells = cell(6) && cell(6)->text() == QStringLiteral("—") && cell(6)->toolTip().startsWith(QLatin1String("Needs samples"))
+				&& cell(4) && cell(4)->text() != QStringLiteral("—") && cell(4)->toolTip().isEmpty();
+		const double r0 = double(store->size() - 70000) * P, r1 = double(store->size() - 1000) * P;
+		view->showSpan(r0, r1);
+		kept->showSpan(r0, r1);
+		tab.grab();
+		(void) host.grab();
+		const ChartView::Stats c = view->stats(key), d = kept->stats(key);
+		std::printf("     (old data: min %g max %g mean %g, summaries %d; beside: min %g max %g mean %g; the table's mean "
+				"\"%s\")\n", a.min, a.max, a.mean, int(a.summaries), b.min, b.max, b.mean,
+				cell(6) ? qPrintable(cell(6)->text()) : "?");
+		check(a.ok && a.summaries && a.min == b.min && a.max == b.max && a.p2p == b.p2p && std::isnan(a.mean)
+						&& std::isnan(a.rms) && std::isnan(a.std) && std::isnan(a.integral) && std::isfinite(b.mean) && cells
+						&& !c.summaries && c.mean == d.mean && c.min == d.min,
+				"chart, long memory: the Measure table over summaries gives their min, max and p2p (those of the records), "
+				"and \"—\" for the mean, RMS, std dev and area with a tooltip why; over records kept whole, as before");
+
+		/* the histogram and the spectrum need samples: their menu items greyed with a tooltip over summaries only */
+		view->showSpan(m0, m1);
+		tab.grab(); /* the range: the view as last drawn */
+		const QPoint chip = view->mapToGlobal(view->chipButtonRect(key).center().toPoint());
+		tab.showLineMenu(key, chip);
+		auto *menu = tab.findChild<QMenu *>(QStringLiteral("lineMenu"));
+		bool greyed = menu != nullptr;
+		for (QAction *action : menu ? menu->actions() : QList<QAction *>())
+			if (action->text().startsWith(QLatin1String("Histogram")) || action->text().startsWith(QLatin1String("Spectrum")))
+				greyed = greyed && !action->isEnabled() && action->toolTip().startsWith(QLatin1String("Needs samples"));
+		if (menu) menu->close();
+		check(greyed, "chart, long memory: over summaries only, Histogram and Spectrum are greyed, their tooltip saying "
+				"they need samples");
+
+		/* the memory strip: the summaries' part shaded, its words and tooltip */
+		view->setLive(true);
+		const QString tip = view->memoryStripTip();
+		bool pictures = true;
+		view->setMemory(std::ceil(now)); /* the memory full: the summaries' part a good share of the strip, its label */
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the whole memory, and zoomed into the bars, both themes */
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				view->setWindow(now * 0.6); /* zoomed out over the older part: the strip's label right of the view */
+				view->showSpan(0, now * 0.6);
+				pictures = tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_p6_memory_%1.png").arg(theme))
+						&& pictures;
+				view->setWindow(400 * 16 * P);
+				view->showSpan(double(PIECE + 7 * 256) * P, double(PIECE + 7 * 256 + 6400) * P);
+				pictures = tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_p6_bars_%1.png").arg(theme))
+						&& pictures;
+			}
+			Theme::apply(*qApp, wasDark);
+			view->setLive(true);
+		}
+		tab.grab();
+		const QString words = view->memoryStripText();
+		std::printf("     (the strip: \"%s\")\n", qPrintable(words));
+		check(pictures && tip.contains(QLatin1String("Older samples: summaries")) && tip.contains(QLatin1String("samples for the newest"))
+						&& words.startsWith(QLatin1String("keeps ")) && words.contains(QLatin1String("samples for the newest")),
+				"chart, long memory: the memory strip shades the part kept as summaries and says \"keeps ... (samples for "
+				"the newest ...)\"; its tooltip says what the shaded part holds");
+		tab.hide();
+		QSettings().remove(group);
 	}
 
 	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of

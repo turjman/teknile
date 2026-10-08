@@ -89,9 +89,11 @@ public:
 
 	/* the note right of RAM: the memory the lines need for the Memory set ("needs 1.4 GB"); over the RAM, what fits
 	 * too ("needs 2.8 GB, keeps 22 min") and over = true. Empty: nothing measured yet. The free memory limiting the
-	 * RAM to limitMB (0: no limit; freeMB the free memory): "only 2.1 GB free: keeps about 40 s", over = true */
+	 * RAM to limitMB (0: no limit; freeMB the free memory): "only 2.1 GB free: keeps about 40 s", over = true. Fast
+	 * lines keeping older samples as summaries (ChartView::fastTiers; -1: none): what is kept and the newest part kept
+	 * whole, "needs 23 GB, keeps 100 min (samples for the newest 79 s)" */
 	static QString ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB = 0,
-			qint64 freeMB = -1);
+			qint64 freeMB = -1, double tieredKept = -1, double tieredSamples = -1);
 	/* The RAM against the free memory: the budget is a cap, not a reservation, so with less free than it the chart
 	 * keeps within what it holds now and the free memory, less a reserve (ramReserveMB: 1 GB, or a tenth of this
 	 * computer's memory when more), never under RAM_FLOOR_MB; the RAM set when that is more. freeMB < 0: not known */
