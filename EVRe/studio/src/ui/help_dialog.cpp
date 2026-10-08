@@ -243,7 +243,9 @@ streams, two clocks.</p>
 <p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends is written beside the CSV as it came,
 <code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
 <code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
-cut off opens up to its last whole piece. Python reads one with <code>evre.read_recording</code>.
+cut off opens up to its last whole piece. The CSV's rows and a stream's samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording's chart says
+so. Python reads one with <code>evre.read_recording</code>.
 <code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
 Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
 page) or the API's <code>stream</code> command (values at a period for an API client).</p>

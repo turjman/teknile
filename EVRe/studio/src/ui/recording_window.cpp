@@ -34,6 +34,7 @@
 namespace {
 
 constexpr qint64 SAMPLES_PER_FEED = 500000; /* the file's values go to the chart in parts of about this many */
+constexpr double STREAM_END_SAID_S = 0.001; /* a stream's samples that end this much before the CSV's rows: said */
 const QString RECENT_KEY = QStringLiteral("recording/recent");
 
 QList<QPointer<RecordingWindow>> &registry() {
@@ -261,15 +262,37 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	info_->setObjectName(QStringLiteral("recordingInfo"));
 	QString info = isFastRecording(file_) ? span : tr("%1 · %2 lines · %3 rows").arg(span).arg(defs_.size()).arg(data_.rows);
 	if (skipped_ > 0) info += tr(" · columns left out (not numbers): %1").arg(skipped_);
+	/* the CSV's rows and each stream's samples end where each was written last: the rows at each poll, a stream's blocks
+	 * as they come, so the two stop a few ms apart (the device sends its newest samples in its next block). Said, so a
+	 * fast line that ends before the view's end at a short window is read as the data's end, not as a line cut */
+	double rows0 = std::numeric_limits<double>::infinity(), rows1 = -rows0;
+	for (const recording::Column &column : std::as_const(data_.columns)) {
+		if (column.times.isEmpty()) continue;
+		rows0 = std::min(rows0, column.times.first());
+		rows1 = std::max(rows1, column.times.last());
+	}
+	const QString clock = QStringLiteral("HH:mm:ss.zzz");
+	QString tip = QDir::toNativeSeparators(file_);
+	if (rows0 <= rows1)
+		tip += QLatin1Char('\n') + tr("The CSV's rows: %1 – %2").arg(clockText(data_.epochMs, rows0, clock),
+				clockText(data_.epochMs, rows1, clock));
 	for (const fast::Recording &stream : std::as_const(fast_)) { /* each stream: its samples, the lost, a cut */
 		const qint64 records = stream.store ? stream.store->size() : 0;
 		info += stream.lost > 0 ? tr(" · %1: %2 samples, %3 lost").arg(stream.stream.name, groupedNumber(records),
 												groupedNumber(qint64(stream.lost)))
 								: tr(" · %1: %2 samples").arg(stream.stream.name, groupedNumber(records));
+		if (rows0 <= rows1 && records > 0 && rows1 - stream.lastTime >= STREAM_END_SAID_S)
+			info += tr(", its last %1 before the CSV's last row").arg(secondsText(rows1 - stream.lastTime));
 		if (stream.cut) info += tr(" (the file ends cut off: read up to its last whole piece)");
+		if (records > 0)
+			tip += QLatin1Char('\n') + tr("%1's samples (%2): %3 – %4").arg(stream.stream.name,
+					QFileInfo(stream.file).fileName(), clockText(data_.epochMs, stream.firstTime, clock), clockText(data_.epochMs, stream.lastTime, clock));
 	}
+	if (rows0 <= rows1 && !fast_.isEmpty())
+		tip += QLatin1Char('\n') + tr("The rows are written at each poll, a stream's blocks as they come: the two end a "
+				"few ms apart, and a fast line ends where its samples end.");
 	info_->setText(info);
-	info_->setToolTip(QDir::toNativeSeparators(file_));
+	info_->setToolTip(tip);
 	lines_ = new QPushButton(tr("Lines"));
 	lines_->setObjectName(QStringLiteral("recordingLines"));
 	lines_->setToolTip(tr("The file's columns on the chart or not; a register's bit fields (with the map loaded)"));

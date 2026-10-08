@@ -92,6 +92,7 @@
 #include <QWidget>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <memory>
 
@@ -507,8 +508,10 @@ public:
 	double totalsSince() const { return totalsSince_; }
 	qint64 epochMs() const { return epochMs_; } /* the wall-clock time of the time base's zero, ms since the epoch */
 
-	/* for the status line: frames per second, average paint time, delay */
-	double fps() const { return fps_; }
+	/* for the status line: frames per second, average paint time, delay. The frames are those painted in the last
+	 * second: 0 when nothing changed for a second (a held view paints only a change: its "11 fps" was the frames of
+	 * the last mouse moves, kept on the line long after) */
+	double fps() const;
 	double paintMs() const { return paintMs_; }
 	double delayMs() const { return delay_ * 1000.0; }
 	/* The memory the samples may take, all the lines together, in MB (RAM on the Chart tab): with many fast lines
@@ -610,6 +613,13 @@ public:
 	QStringList valueLabels() const { return valueLabels_; }
 	double yOfValue(double value) const { return lastAxes_.y(value); }
 	QRectF lastPlot() const { return lastAxes_.rect; }
+	/* tests: the time of a line's last point in the last frame painted (its last bin's: a record's own time, or its
+	 * column's middle) and the view it was drawn in; NaN: not drawn */
+	double drawnTo(int key) const;
+	/* tests: a line's own range in the last frame (what Normalise scales it by); false: not drawn */
+	bool drawnRange(int key, double &lo, double &hi) const;
+	double lastViewStart() const { return lastAxes_.t0; }
+	double lastViewEnd() const { return lastAxes_.t1; }
 	QRectF spanBarRect() const { return spanBar_.bar; }
 	QRectF spanBarTextRect() const { return spanBar_.textRect; }
 
@@ -839,6 +849,11 @@ private:
 	/* a fast line from its store: a bin per column (two where a gap falls in one), each column's min and max from the
 	 * summaries, so the cost follows the columns, not the records */
 	void binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous) const;
+	/* the line's range takes its values where it crosses the span's edges too (between the sample before an edge and
+	 * the one after it, not across a gap): drawn, that piece of it is in view. Without, a line with one sample in a
+	 * short view (a register polled at 100 Hz in 10 ms) was ranged on that sample alone, and Normalise drew the piece
+	 * from the edge to it far off the plot: a jump at the view's end that is not in the data */
+	static void rangeAtEdges(BinnedLine &out, double t0, double t1);
 	mutable std::atomic<qint64> fastColumnsBinned_{ 0 }; /* columns of fast lines binned (the kept ones not counted) */
 	mutable std::atomic<qint64> polledColumnsBinned_{ 0 }; /* the same of the polled lines' views (binViewSeries) */
 	void trimFast(fast::Store &store, int lines); /* by the memory and by its lines' share of the RAM */
@@ -1266,7 +1281,8 @@ private:
 
 	/* the status line's numbers */
 	QElapsedTimer frameClock_, fpsClock_;
-	int fpsFrames_ = 0, paints_ = 0;
+	int paints_ = 0;
+	std::deque<qint64> paintTimes_; /* the last second's paints, ms on fpsClock_ */
 	/* the reuse of a held view's lines (viewBins, drawLinesPicture, plotOnGpu) */
 	bool lineReuse_ = true;
 	int binnings_ = 0, lineBuilds_ = 0;
@@ -1299,7 +1315,7 @@ private:
 	/* a line's measurements from its arrays, over t0..t1, its values at the times a and b */
 	static Stats statsOf(const QVector<double> &times, const QVector<double> &values, double t0, double t1, double a,
 			double b);
-	double fps_ = 0, paintMs_ = 0;
+	double paintMs_ = 0;
 
 	FrameBudget budget_;
 	QElapsedTimer framesCome_; /* since frame() was called last: a change waits for the next frame (refresh()) */

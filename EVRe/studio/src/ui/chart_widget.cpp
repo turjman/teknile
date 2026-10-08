@@ -2900,6 +2900,27 @@ void ChartView::binSeries(const Series &s, double t0, double t1, double columns,
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
+	rangeAtEdges(out, t0, t1);
+}
+
+void ChartView::rangeAtEdges(BinnedLine &out, double t0, double t1) {
+	const auto take = [&out](double v) {
+		out.lo = std::min(out.lo, v);
+		out.hi = std::max(out.hi, v);
+		if (v > 0) out.posLo = std::min(out.posLo, v);
+	};
+	/* the line's value at t between bin a's end and bin b's start */
+	const auto at = [](const Bin &a, const Bin &b, double t) {
+		if (b.t0 <= a.t1) return b.first;
+		return a.last + (b.first - a.last) * (t - a.t1) / (b.t0 - a.t1);
+	};
+	const QVector<Bin> &bins = out.bins;
+	for (qsizetype k = 0; k + 1 < bins.size(); k++) {
+		const Bin &a = bins[k], &b = bins[k + 1];
+		if (b.gap) continue;
+		if (a.t1 < t0 && b.t0 > t0) take(at(a, b, t0));
+		if (a.t1 < t1 && b.t0 > t1) take(at(a, b, t1));
+	}
 }
 
 void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double columnSeconds, int top, QVector<Bin> &bins) {
@@ -2996,6 +3017,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
+	rangeAtEdges(out, t0, t1);
 }
 
 /* A fast line's bins: for each column on absolute time its records, found by their times (the store inverts its
@@ -3083,6 +3105,7 @@ void ChartView::binFast(const Series &s, double t0, double t1, double columns, B
 			out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 		}
 	}
+	rangeAtEdges(out, t0, t1);
 }
 
 /* every line binned for the view, in the order of series_, on the chart's threads */
@@ -3619,6 +3642,30 @@ bool ChartView::laneYAuto(int lane) const { return laneScales_.value(laneKey(lan
 bool ChartView::laneYLog(int lane) const { return laneScales_.value(laneKey(lane)).log; }
 double ChartView::laneYLo(int lane) const { return laneScales_.value(laneKey(lane)).lo; }
 double ChartView::laneYHi(int lane) const { return laneScales_.value(laneKey(lane)).hi; }
+
+double ChartView::drawnTo(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return NAN;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		const Bin &b = line.bins.last();
+		if (b.count <= 2) return b.count == 2 ? b.t1 : b.t0;
+		return (double(b.column) + 0.5) * lastAxes_.columnSeconds(); /* as toPolyline draws it */
+	}
+	return NAN;
+}
+
+bool ChartView::drawnRange(int key, double &lo, double &hi) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return false;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		lo = line.lo;
+		hi = line.hi;
+		return true;
+	}
+	return false;
+}
 
 double ChartView::laneYOfValue(int lane, double value) const {
 	return lane >= 0 && lane < lanesShown_.size() ? lanesShown_[lane].axes.y(value) : NAN;
@@ -5979,15 +6026,19 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	p.restore();
 }
 
-/* the paint time as a running average; the frames counted over each second */
+/* the paint time as a running average; the frames of the last second */
 void ChartView::updatePaintStats(double paintMs) {
 	paintMs_ = paintMs_ * 0.9 + paintMs * 0.1;
-	fpsFrames_++;
-	if (fpsClock_.elapsed() >= 1000) {
-		fps_ = fpsFrames_ * 1000.0 / double(fpsClock_.elapsed());
-		fpsFrames_ = 0;
-		fpsClock_.restart();
-	}
+	const qint64 now = fpsClock_.elapsed();
+	paintTimes_.push_back(now);
+	while (paintTimes_.front() < now - 1000) paintTimes_.pop_front();
+}
+
+double ChartView::fps() const {
+	const qint64 since = fpsClock_.elapsed() - 1000;
+	int frames = 0;
+	for (auto it = paintTimes_.rbegin(); it != paintTimes_.rend() && *it >= since; ++it) frames++;
+	return frames;
 }
 
 /* -------------------------------------------------------------- ChartWidget */

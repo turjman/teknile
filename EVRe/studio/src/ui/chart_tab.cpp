@@ -1244,7 +1244,9 @@ QString ChartTab::infoText(int width) const {
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
-	parts[Fps] = tr(" · %1 fps").arg(chart_->fps(), 0, 'f', 0);
+	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn */
+	const double fps = chart_->fps();
+	parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
 	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
@@ -1265,8 +1267,9 @@ QString ChartTab::infoText(int width) const {
 QString ChartTab::infoTip() const {
 	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
 			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
-			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time "
-			"to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second "
+			"(idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the "
+			"smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
 			"draw, the word \"plotted\" and the delay go first.");
 }
 

@@ -1225,10 +1225,6 @@ With many fast lines the Memory holds less than asked, and the memory strip says
         <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا: ألغِ واحدًا أولًا</translation>
     </message>
     <message>
-        <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn per second, time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
-        <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
-    </message>
-    <message>
         <source>All lanes: Auto</source>
         <translation>كل المسارات: تلقائي</translation>
     </message>
@@ -1271,6 +1267,14 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
     <message>
         <source>Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of the busiest line&apos;s middle (a fast line first, else the one with the most samples in the window), so a wave stands still instead of blurring (&quot;Auto (short window)&quot;; &quot;Auto · free running&quot; while it does not cross). Your own trigger takes over when it is on; Hold ends it.</source>
         <translation>تحت نافذة ⁦100 ms⁩، يُقفَل المخطط الحي والقدح مطفأ على كل عبور صاعد لمنتصف أنشط خط (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة)، فتقف الموجة بدل أن تتشوّش («تلقائي (نافذة قصيرة)»؛ «تلقائي · جريان حر» ما دام لا يعبر). قدحك أنت يحلّ محله حين يعمل؛ والتثبيت ينهيه.</translation>
+    </message>
+    <message>
+        <source> · idle</source>
+        <translation> · ساكن</translation>
+    </message>
+    <message>
+        <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second (idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
+        <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية الأخيرة (ساكن: لا إطار، لم يتغير شيء: العرض المثبَّت لا يُرسم إلا حين يتغير فيه شيء)، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
 </context>
 <context>
@@ -2524,7 +2528,9 @@ streams, two clocks.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends is written beside the CSV as it came,
 &lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
 &lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
-cut off opens up to its last whole piece. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
+cut off opens up to its last whole piece. The CSV&apos;s rows and a stream&apos;s samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording&apos;s chart says
+so. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
 &lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
 Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
 page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
@@ -2575,7 +2581,8 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
 &lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل بجانب ملف CSV كما وصل،
 &lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
 ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
-يُفتح حتى آخر قطعة كاملة فيه. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
+يُفتح حتى آخر قطعة كاملة فيه. وصفوف CSV وعينات التدفق تنتهي بفارق بضعة أجزاء من الألف من الثانية (كلٌّ يُكتب
+حين يصل): الخط السريع ينتهي حيث تنتهي عيناته، والسطر فوق مخطط التسجيل يذكر ذلك. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
 &lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
 لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
 ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
@@ -5669,6 +5676,22 @@ Keep the last part: about the last %5 of %6?</source>
     <message>
         <source> (the file ends cut off: read up to its last whole piece)</source>
         <translation> (الملف ينتهي مقطوعًا: قُرئ حتى آخر قطعة كاملة فيه)</translation>
+    </message>
+    <message>
+        <source>The CSV&apos;s rows: %1 – %2</source>
+        <translation>صفوف CSV: ⁦%1 – %2⁩</translation>
+    </message>
+    <message>
+        <source>, its last %1 before the CSV&apos;s last row</source>
+        <translation>، وآخرها قبل آخر صف في CSV بـ %1</translation>
+    </message>
+    <message>
+        <source>%1&apos;s samples (%2): %3 – %4</source>
+        <translation>عينات %1 (%2): ⁦%3 – %4⁩</translation>
+    </message>
+    <message>
+        <source>The rows are written at each poll, a stream&apos;s blocks as they come: the two end a few ms apart, and a fast line ends where its samples end.</source>
+        <translation>تُكتب الصفوف عند كل استطلاع، وكتل التدفق حين تصل: فينتهي الاثنان بفارق بضعة أجزاء من الألف من الثانية، وينتهي الخط السريع حيث تنتهي عيناته.</translation>
     </message>
 </context>
 <context>

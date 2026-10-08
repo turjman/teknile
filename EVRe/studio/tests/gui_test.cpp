@@ -2033,6 +2033,24 @@ private:
 					"chart's paint at most 8 ms a frame on average, its cost under a quarter of the window's thread");
 			chartTab->removeMathLine(mathIndex);
 		}
+		/* recorded at a million records a second beside its CSV, and opened (the owner's look at a 5 min recording) */
+		{
+			QTemporaryDir recorded;
+			const QString csv = recorded.filePath(QStringLiteral("speed.csv"));
+			MainWindow::Startup record;
+			record.record = csv;
+			window_.applyStartup(record);
+			QPushButton *stop = nullptr;
+			(void) QTest::qWaitFor([&] { return (stop = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+			QTest::qWait(3000);
+			if (stop) stop->click();
+			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+			RecordingWindow *opened = nullptr;
+			RecordingWindow::open(nullptr, csv, {}, 2048, [&](RecordingWindow *w) { opened = w; });
+			(void) QTest::qWaitFor([&] { return opened != nullptr; }, 20000);
+			recordedFastEnds(opened, csv);
+			RecordingWindow::closeAll();
+		}
 		button->click();
 		view->setWindow(windowBefore);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
@@ -2045,6 +2063,128 @@ private:
 				"fast speed: done; the example map again, the window polls the fake device of the other steps");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* A recording of a fast stream beside its CSV, opened (the owner's 5 min file: at a 10 ms window at its end the fast
+	 * lines stopped short of the view's end, the polled lines ran to it, UPTIME jumped at the very end, "11 fps"):
+	 *  - where each ends: the CSV's rows at each poll, the stream's blocks as they come, so the two stop apart by a
+	 *    few ms, either way; the line above the chart says so when the stream ends first, its tooltip gives both spans;
+	 *  - the fast line drawn up to its record at (or just past) the view's end at every window, 1 ms to the whole file,
+	 *    at its end, its start and its middle: within a column (a column's records are drawn at its middle);
+	 *  - Normalise at 10 ms at the CSV's end: a register polled every 10 ms or slower has one sample there; its range
+	 *    takes its value at the view's edge too, so the piece from the edge to that sample is drawn in the plot, not
+	 *    from far below it;
+	 *  - held and still it paints nothing, and the info line says "idle", not the frames of its last change */
+	void recordedFastEnds(RecordingWindow *w, const QString &csv) {
+		check(w && !w->fastRecordings().isEmpty() && w->fastRecordings()[0].store
+						&& w->fastRecordings()[0].store->size() > 1000000,
+				"fast recording at a million records a second: recorded beside its CSV and opened with it");
+		if (!w || w->fastRecordings().isEmpty() || !w->fastRecordings()[0].store) return;
+		(void) QTest::qWaitForWindowExposed(w);
+		w->resize(1400, 800);
+		QTest::qWait(300);
+		ChartView *v = w->chartTab()->view();
+		const fast::Store &store = *w->fastRecordings()[0].store;
+		double rowsEnd = NAN;
+		{
+			QFile file(csv);
+			if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+				const QList<QByteArray> rows = file.readAll().trimmed().split('\n');
+				rowsEnd = rows.isEmpty() ? NAN : rows.last().split(',').value(0).toDouble();
+			}
+		}
+		const double fastEnd = w->fastRecordings()[0].lastTime;
+		const auto *info = w->findChild<QLabel *>(QStringLiteral("recordingInfo"));
+		const QString text = info ? info->text() : QString(), tip = info ? info->toolTip() : QString();
+		const bool said = rowsEnd - fastEnd >= 0.001 ? text.contains(QLatin1String("before the CSV's last row"))
+													  : !text.contains(QLatin1String("before the CSV's last row"));
+		std::printf("  recorded at 1 M/s: the CSV's last row %.6f s, the stream's last record %.6f s (the rows end %+.2f ms "
+				"after it); the line \"%s\"\n", rowsEnd, fastEnd, (rowsEnd - fastEnd) * 1000, qPrintable(text));
+		check(said && std::fabs(w->lastTime() - std::max(rowsEnd, fastEnd)) < 1e-9 && tip.contains(QLatin1String("The CSV's rows: "))
+						&& tip.contains(QLatin1String("ADC's samples (speed.ADC.evrs): ")),
+				"fast recording: the CSV's rows and the stream's samples end a few ms apart (each written as it comes); the "
+				"view ends at the later, the line above the chart says when the stream ends first, its tooltip both spans");
+		/* the fast line's last point against its record at the view's end, at every window and place */
+		const int key = ChartView::fastKey(0, 0);
+		const double first = w->firstTime(), last = w->lastTime();
+		int wrong = 0, tried = 0;
+		QString worst;
+		double worstColumns = 0;
+		for (const double asked : { 0.001, 0.01, 0.1, 1.0, 10.0, last - first }) {
+			const double window = std::min(asked, last - first); /* a longer one would grow the memory */
+			for (int place = 0; place < 3; place++) {
+				const double end = place == 0 ? last : place == 1 ? first + window : (first + last + window) / 2;
+				w->chartTab()->showSpan(end - window, end);
+				v->repaint();
+				const double t0 = v->lastViewStart(), t1 = v->lastViewEnd();
+				const double column = (t1 - t0) / std::max(1.0, v->lastPlot().width());
+				const qsizetype at = std::min(store.size() - 1, store.upperBound(t1));
+				const double drawn = v->drawnTo(key), off = std::fabs(drawn - store.timeAt(at)) / column;
+				tried++;
+				if (!(off <= 1.0)) wrong++;
+				if (!(off <= worstColumns)) {
+					worstColumns = std::isfinite(off) ? off : 1e9;
+					worst = QStringLiteral("%1 s at the %2: drawn to %3, its record %4").arg(window).arg(place == 0 ? "end"
+							: place == 1 ? "start" : "middle").arg(drawn, 0, 'f', 6).arg(store.timeAt(at), 0, 'f', 6);
+				}
+			}
+		}
+		std::printf("  the fast line's last point: %d of %d views within a column of its record at the view's end; the "
+				"furthest %.2f columns (%s)\n", tried - wrong, tried, worstColumns, qPrintable(worst));
+		check(tried == 18 && wrong == 0, "fast recording: the fast line drawn up to its record at the view's end at every "
+				"window (1 ms, 10 ms, 100 ms, 1 s, 10 s, the whole file), at the file's end, start and middle");
+		/* Normalise at 10 ms at the CSV's end */
+		auto *normalise = w->findChild<QAction *>(QStringLiteral("chartNormalise"));
+		int uptime = -1;
+		for (const RegDef &def : w->definitions())
+			if (def.name == QLatin1String("UPTIME")) uptime = int(regKey(def));
+		bool inRange = false;
+		double atEdge = NAN, lo = NAN, hi = NAN;
+		if (normalise && uptime >= 0) {
+			normalise->setChecked(true);
+			w->chartTab()->showSpan(rowsEnd - 0.01, rowsEnd); /* its last sample at the view's end */
+			v->repaint();
+			QVector<double> times, values;
+			const double t0 = v->lastViewStart();
+			if (v->lineSamples(uptime, t0 - 1, rowsEnd + 1, times, values) && v->drawnRange(uptime, lo, hi)) {
+				const qsizetype k = std::lower_bound(times.begin(), times.end(), t0) - times.begin();
+				if (k > 0 && k < times.size())
+					atEdge = values[k - 1] + (values[k] - values[k - 1]) * (t0 - times[k - 1]) / (times[k] - times[k - 1]);
+				inRange = std::isfinite(atEdge) && atEdge >= lo - 1e-6 && atEdge <= hi + 1e-6;
+			}
+		}
+		std::printf("  Normalise, 10 ms at the CSV's end: UPTIME %.3f at the view's left edge, its range %.3f .. %.3f\n", atEdge, lo,
+				hi);
+		check(inRange, "fast recording, Normalise at 10 ms at the CSV's end: a register with one sample in view (UPTIME) "
+				"is ranged with its value at the view's edge, so the piece drawn to its sample stays in the plot (it came "
+				"from far below it: a jump at the end that is not in the data)");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the fast lines at 10 ms at the file's end */
+			w->chartTab()->showSpan(last - 0.01, last);
+			for (const bool dark : { true, false }) {
+				Theme::apply(*qApp, dark);
+				QTest::qWait(300);
+				w->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_viewer_end10ms_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, true);
+		}
+		if (normalise) normalise->setChecked(false);
+		/* held and still: no paint, the info line says idle; painted, the frames again */
+		v->repaint();
+		const int paints = v->paints(), binnings = v->binnings();
+		QTest::qWait(1500);
+		w->chartTab()->refreshStatus();
+		const int idlePaints = v->paints() - paints;
+		const QString idle = w->chartTab()->infoText();
+		for (int i = 0; i < 10; i++) v->repaint();
+		const QString painting = w->chartTab()->infoText();
+		std::printf("  held and still for 1.5 s: %d paints, \"%s\"; 10 paints later \"%s\", %d binnings\n", idlePaints,
+				qPrintable(idle), qPrintable(painting), v->binnings() - binnings);
+		check(idlePaints == 0 && idle.contains(QStringLiteral(" · idle")) && !idle.contains(QLatin1String(" fps"))
+						&& painting.contains(QLatin1String(" fps")) && v->binnings() == binnings,
+				"fast recording, a held 10 ms view of it: nothing painted while nothing changes and the info line says "
+				"\"idle\" (not the frames of its last change); painted again, its frames counted, its lines reused (no "
+				"binning)");
 	}
 
 	/* the I/O thread's table, given the map again (a device picked, a map edited): a register keeps its value only
@@ -5740,9 +5880,10 @@ private:
 				"every cell)");
 		if (!info.startsWith(QStringLiteral("60/64 plotted · "))) std::printf("     (info line: \"%s\")\n", qPrintable(info));
 		if (measure) measure->setChecked(false); /* the setting back as the other steps expect it */
-		check(info.startsWith(QStringLiteral("60/64 plotted · ")) && info.contains(QStringLiteral(" fps · ")),
+		check(info.startsWith(QStringLiteral("60/64 plotted · "))
+						&& (info.contains(QStringLiteral(" fps · ")) || info.contains(QStringLiteral(" idle · "))),
 				"chart, the info line: the registers on the chart of the limit first (\"60/64 plotted\"), then "
-				"the frames");
+				"the frames (idle: none painted in the last second)");
 	}
 
 	/* The frame budget, 600 frames of 60 Hz worked out (no clock): cheap frames all painted; frames a little over
@@ -12380,7 +12521,7 @@ private:
 			LoneChart arabic(QStringLiteral("AR"), QStringLiteral("V"));
 			info = arabic.tab.infoText();
 		}
-		static const QRegularExpression fps(QStringLiteral("⁦[0-9]+ fps⁩"));
+		const QString fps = QCoreApplication::translate("ChartTab", " · %1 fps"); /* a tab never painted is idle */
 		const QString fill = QCoreApplication::translate("ChartView", "held: filling, %1 s to come · Live to follow");
 		const QString delay = QCoreApplication::translate("ChartTab", " · delay %1 ms");
 		QString help;
@@ -12395,7 +12536,7 @@ private:
 		}
 		const bool arabicPieces = seconds == piece(QStringLiteral("500 ms")) && span == piece(QStringLiteral("1 min 12.3 s"))
 				&& need.contains(piece(QStringLiteral("122 MB"))) && !need.startsWith(lri) && parseSeconds(seconds) == 0.5
-				&& fps.match(info).hasMatch() && fill.contains(piece(QStringLiteral("%1 s")))
+				&& fps.contains(piece(QStringLiteral("%1 fps"))) && fill.contains(piece(QStringLiteral("%1 s")))
 				&& delay.contains(piece(QStringLiteral("%1 ms"))) && help.contains(piece(QStringLiteral("10 s")))
 				&& help.contains(piece(QStringLiteral("2 V")));
 		language::apply(*qApp, QStringLiteral("en"));
