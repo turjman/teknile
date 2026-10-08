@@ -71,6 +71,8 @@ constexpr double LANE_NAME_MIN = 24;       /* the menu button only with room lef
 constexpr double RANGE_TAG_H = 14;         /* a lane's range tag ("Manual", "Log") at the top of its value labels */
 constexpr double BADGE_PAD = 6;            /* the short window's lock badge: its text's margin either side */
 constexpr double BADGE_GAP = 8;            /* between the state's other words and the badge */
+constexpr double DIVISION_PAD = 6;         /* the time/div readout's box: its text's margin either side */
+constexpr double DIVISION_GAP = 10;        /* between the time/div readout and the state's text */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -2497,13 +2499,16 @@ ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
 		chipsFont_ = font.key();
 		chipMeasures_++;
 	}
-	/* the chips end where the state's text begins, so neither lies under the other */
+	/* the chips end where the corner begins (the time/div readout, else the state's text), so none lies under another */
 	int variant = -1;
 	double stateWidth = 0;
 	fitState(plot.width(), variant, stateWidth);
+	const double readout = divisionReadoutWidth();
+	double corner = variant >= 0 ? stateWidth : 0;
+	if (readout > 0) corner += readout + (variant >= 0 ? DIVISION_GAP : 0);
 	LegendLayout legend;
-	legend.viewport = QRectF(plot.left(), LEGEND_TOP,
-			std::max(0.0, plot.width() - (variant >= 0 ? stateWidth + STATE_GAP : 0)), LEGEND_ROW_H);
+	legend.viewport = QRectF(plot.left(), LEGEND_TOP, std::max(0.0, plot.width() - (corner > 0 ? corner + STATE_GAP : 0)),
+			LEGEND_ROW_H);
 	legend.valueRoom = chipValueRoom_;
 	double x = legend.viewport.left();
 	for (const double w : std::as_const(chipWidths_)) {
@@ -4062,9 +4067,20 @@ QString ChartView::divisionReadoutText(const GridTicks &ticks) const {
 	return ltrPiece(QStringLiteral("%1/div · %2").arg(divisionLength(ticks.division), divisionClock_));
 }
 
-/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room), and the
- * readout in a box of its own just left of the last label, at the axis's right end; labels it would cover are left
- * out */
+/* the readout's box in the state corner: as wide as its text with every digit a 0, so the legend's end does not move
+ * when the clock time's digits change; 0 without divisions */
+double ChartView::divisionReadoutWidth() const {
+	if (!divisionsShown()) return 0;
+	const double division = window_ / DIVISIONS;
+	QString text = QStringLiteral("%1/div · %2").arg(divisionLength(division), timeLabel(epochMs_, viewEnd(), division));
+	for (QChar &ch : text)
+		if (ch.isDigit()) ch = QLatin1Char('0');
+	return std::ceil(QFontMetricsF(labelFont()).horizontalAdvance(text)) + 2 * DIVISION_PAD;
+}
+
+/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room). The
+ * readout is only made here: drawState draws it in the row above the plot, so no label is left out for it (the owner:
+ * it hid the "-2 ms" label) */
 void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Axes &axes) const {
 	const ThemeColors &c = Theme::colors();
 	const QRectF &plot = axes.rect;
@@ -4087,33 +4103,11 @@ void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Ax
 		if (ticks.offsets[i] % every != 0 || ticks.timeX[i] - half < 0 || ticks.timeX[i] + half > width()) continue;
 		shown << i;
 	}
-	const QString readout = divisionReadoutText(ticks);
-	divisionText_ = readout;
+	divisionText_ = divisionReadoutText(ticks);
 	divisionFromT_ = ticks.fromT;
 	const double top = plot.bottom() + 6;
-	if (!shown.isEmpty()) {
-		const qsizetype lastLabel = shown.last();
-		const double lastLeft = ticks.timeX[lastLabel] - metrics.horizontalAdvance(texts[lastLabel]) / 2;
-		const double w = std::ceil(metrics.horizontalAdvance(readout)) + 12;
-		const QRectF box(std::round(lastLeft - 10 - w), top - 1, w, 18);
-		if (box.left() >= 2) {
-			divisionRect_ = box;
-			p.save();
-			p.setRenderHint(QPainter::Antialiasing, true);
-			p.setPen(QPen(c.border, 1));
-			p.setBrush(c.surface2);
-			p.drawRoundedRect(box.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-			p.setPen(c.text);
-			p.drawText(box, Qt::AlignCenter, readout);
-			p.restore();
-		}
-	}
 	for (qsizetype i : std::as_const(shown)) {
 		const double x = ticks.timeX[i];
-		const double half = metrics.horizontalAdvance(texts[i]) / 2;
-		if (i != shown.last() && !divisionRect_.isEmpty() && x + half > divisionRect_.left() - 8
-				&& x - half < divisionRect_.right() + 8)
-			continue; /* under the readout */
 		p.setPen(c.muted);
 		timeLabels_ << texts[i];
 		timeLabelX_ << x;
@@ -5858,9 +5852,12 @@ void ChartView::fitState(double plotWidth, int &variant, double &width) const {
 	const QStringList variants = stateVariants(true);
 	if (variants.first().isEmpty()) return;
 	const QFontMetricsF metrics(labelFont());
+	/* the time/div readout keeps its place left of the state, inside the same share: the state's parts go first */
+	const double readout = divisionReadoutWidth();
+	const double readoutRoom = readout > 0 ? readout + DIVISION_GAP : 0;
 	const double legendMin = (chipWidths_.isEmpty() ? 0 : chipWidths_.first()) + 2 * LEGEND_ARROW_W + STATE_GAP;
-	const double most = std::max(0.0, plotWidth - legendMin);
-	const double room = std::min(plotWidth * STATE_SHARE, most);
+	const double most = std::max(0.0, plotWidth - legendMin - readoutRoom);
+	const double room = std::min(plotWidth * STATE_SHARE - readoutRoom, most);
 	for (qsizetype i = 0; i < variants.size(); i++) {
 		width = std::ceil(stateWidth(variants[i]));
 		variant = int(i);
@@ -5890,13 +5887,30 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	stateText_.clear();
 	stateRect_ = QRectF();
 	stateBadge_ = QRectF();
+	const ThemeColors &c = Theme::colors();
+	/* the time/div readout (made with the time labels): in this row, left of the state, alone at the right end without
+	 * one; one left-to-right piece in Arabic too */
+	const double readout = divisionReadoutWidth();
+	divisionRect_ = QRectF();
+	if (readout > 0 && !divisionText_.isEmpty()) {
+		const double right = variant >= 0 ? axes.rect.right() - width - DIVISION_GAP : axes.rect.right();
+		divisionRect_ = QRectF(std::round(right - readout), LEGEND_TOP + 2, readout, LEGEND_ROW_H - 4);
+		p.save();
+		p.setFont(labelFont());
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(QPen(c.border, 1));
+		p.setBrush(c.surface2);
+		p.drawRoundedRect(divisionRect_.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+		p.setPen(c.text);
+		p.drawText(divisionRect_, Qt::AlignCenter, divisionText_);
+		p.restore();
+	}
 	if (variant < 0) return;
 	const QFontMetricsF metrics(labelFont());
 	stateText_ = texts[variant];
 	const bool whole = stateWidth(stateText_) <= width + 0.5;
 	if (metrics.horizontalAdvance(stateText_) > width) stateText_ = metrics.elidedText(stateText_, Qt::ElideRight, width);
 	stateRect_ = QRectF(axes.rect.right() - width, LEGEND_TOP, width, LEGEND_ROW_H);
-	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setFont(labelFont());
 	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;

@@ -7999,7 +7999,7 @@ private:
 
 	/* P7b: every lane's Y range seen and set on its own. A lane not in Auto has a tag at the top of its value labels
 	 * ("Manual" in the warn colour, "Log"); a click on it: Auto. A click on a lane's value labels (its ⋯, its tag)
-	 * makes it the current lane, whose range the toolbar's Y range shows and sets ("Y range (A)"); Display and each
+	 * makes it the current lane, whose range the toolbar's Y range shows and sets (its list: "A"); Display and each
 	 * lane's ⋯ have All lanes: Auto; a double-click on the labels: Auto; a manual lane comes back tagged */
 	void chartLaneRanges() {
 		const QString group = QStringLiteral("laneRanges");
@@ -8079,7 +8079,9 @@ private:
 		/* the label follows the lanes with the info line (the window's status, twice a second): the lines came after
 		 * Lanes was on */
 		tab.refreshStatus();
-		const bool first = rangeLabel->text() == QStringLiteral("Y range (V)") && view->currentLane() == 0
+		auto *unitBox = tab.findChild<QComboBox *>(QStringLiteral("yLane"));
+		const bool first = rangeLabel->text() == QStringLiteral("Y range") && unitBox && unitBox->currentText() == QStringLiteral("V")
+				&& view->currentLane() == 0
 				&& mode->isEnabled() && mode->currentIndex() == 0;
 		if (!first)
 			std::printf("     (at first: lane %d, \"%s\", mode %d %s)\n", view->currentLane(), qPrintable(rangeLabel->text()),
@@ -8096,7 +8098,7 @@ private:
 					if (near(picture.pixelColor(x, y), accent, 90)) n++;
 			return n;
 		};
-		const bool current = view->currentLane() == 1 && rangeLabel->text() == QStringLiteral("Y range (A)")
+		const bool current = view->currentLane() == 1 && unitBox->currentText() == QStringLiteral("A")
 				&& mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94") && high->text() == QStringLiteral("17.14")
 				&& accentIn(1) > 3 && accentIn(0) * 4 < accentIn(1); /* lit: its name in the accent, the other's not */
 		/* the toolbar sets it: 1 .. 20 typed, then Auto chosen; the first lane untouched */
@@ -8112,13 +8114,13 @@ private:
 		const QRectF menu0 = view->laneMenuButtonRect(0);
 		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, menu0.center().toPoint());
 		if (tab.laneMenu()) tab.laneMenu()->close();
-		const bool byMenu = view->currentLane() == 0 && rangeLabel->text() == QStringLiteral("Y range (V)");
+		const bool byMenu = view->currentLane() == 0 && unitBox->currentText() == QStringLiteral("V");
 		if (!first || !current || !typed || !toAuto || !byMenu)
 			std::printf("     (first %d; after the click: lane %d, \"%s\", mode %d, %s .. %s, lit %d/%d; typed %d; Auto %d; by ⋯ %d)\n",
 					int(first), view->currentLane(), qPrintable(rangeLabel->text()), mode->currentIndex(), qPrintable(low->text()),
 					qPrintable(high->text()), accentIn(1), accentIn(0), int(typed), int(toAuto), int(byMenu));
 		check(first && current && typed && toAuto && byMenu, "chart, a lane's Y range: the current lane (the first by "
-				"default) drives the toolbar's Y range, labelled with its unit; a click on another lane's value labels (or "
+				"default) drives the toolbar's Y range, its unit chosen in the list; a click on another lane's value labels (or "
 				"its ⋯) makes it current, its unit name lit, the toolbar its range at once; typing and Auto there set that "
 				"lane alone");
 
@@ -8165,7 +8167,7 @@ private:
 		const bool allDone = view->allLanesYAuto() && view->laneYAuto(0) && !view->laneYLog(0) && view->laneYAuto(1)
 				&& !allAuto->isEnabled() && view->laneRangeTagRect(0).isEmpty() && view->laneRangeTagRect(1).isEmpty();
 		lanes->setChecked(false);
-		const bool hidden = !allAuto->isVisible() && rangeLabel->text() == QStringLiteral("Y range");
+		const bool hidden = !allAuto->isVisible() && rangeLabel->text() == QStringLiteral("Y range") && !unitBox->isVisible();
 		lanes->setChecked(true);
 		(void) view->grab();
 		if (!enabled || !inMenu || !allDone || !hidden)
@@ -8189,6 +8191,60 @@ private:
 				qPrintable(labelsTip));
 		check(doubled, "chart, a lane's Y range: a double-click on a lane's value labels sets it to Auto; their tooltip "
 				"names the click (the toolbar) and the double-click");
+
+		/* the lane list beside "Y range": hidden without Lanes; with them every lane by its unit as on the chart, the
+		 * current one chosen; choosing another makes it current (its unit lit, the toolbar its range), a click on the
+		 * chart's lane moves the list; a folded lane marked, a lane gone leaves it */
+		QComboBox *laneBox = unitBox;
+		const auto listed = [&] {
+			QStringList items;
+			for (int k = 0; laneBox && k < laneBox->count(); k++) items << laneBox->itemText(k);
+			return items;
+		};
+		lanes->setChecked(false);
+		const bool boxHidden = laneBox && !laneBox->isVisible() && rangeLabel->text() == QStringLiteral("Y range");
+		lanes->setChecked(true);
+		view->setLaneYManual(1, 4.94, 17.14);
+		(void) view->grab();
+		tab.refreshStatus();
+		const bool both = laneBox && laneBox->isVisible() && listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A") })
+				&& laneBox->currentIndex() == view->currentLane() && view->currentLane() == 0
+				&& laneBox->toolTip() == QStringLiteral("The lane these Y settings apply to · or click a lane's values on the chart");
+		if (laneBox) {
+			laneBox->setCurrentIndex(1);
+			emit laneBox->activated(1);
+		}
+		picture = view->grab().toImage();
+		const bool chosen = view->currentLane() == 1 && mode->currentIndex() == 1 && low->text() == QStringLiteral("4.94")
+				&& high->text() == QStringLiteral("17.14") && accentIn(1) > 3 && accentIn(0) * 4 < accentIn(1);
+		QTest::mouseClick(view, Qt::LeftButton, Qt::NoModifier, QPoint(40, int(view->laneRect(0).bottom() - 20)));
+		const bool follows = view->currentLane() == 0 && laneBox && laneBox->currentIndex() == 0 && mode->currentIndex() == 0;
+		view->setLaneFolded(1, true);
+		const bool marked = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A (folded)") });
+		view->setLaneFolded(1, false);
+		RegDef power; /* a third unit comes and goes */
+		power.addr = 0xD104;
+		power.name = QStringLiteral("LOAD_P");
+		power.unit = QStringLiteral("W");
+		MathLines::Samples powered;
+		for (int i = 0; i < 4000; i++) powered[regKey(power)] << QPointF(90.0 + i * 0.0025, 120 + 80 * std::sin(i * 0.01));
+		tab.plotRegister(power, true);
+		tab.frame(powered);
+		tab.refreshStatus();
+		const bool added = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A"), QStringLiteral("W") });
+		tab.plotRegister(power, false);
+		tab.refreshStatus();
+		const bool removed = listed() == QStringList({ QStringLiteral("V"), QStringLiteral("A") });
+		if (!boxHidden || !both || !chosen || !follows || !marked || !added || !removed)
+			std::printf("     (hidden without Lanes %d; listed \"%s\", current %d of the list, %d of the chart; chosen: lane %d, "
+					"mode %d, %s .. %s, lit %d/%d; a chart click %d; folded %d; added %d; removed %d)\n", int(boxHidden),
+					qPrintable(listed().join(QLatin1Char('|'))), laneBox ? laneBox->currentIndex() : -1, view->currentLane(),
+					view->currentLane(), mode->currentIndex(), qPrintable(low->text()), qPrintable(high->text()), accentIn(1),
+					accentIn(0), int(follows), int(marked), int(added), int(removed));
+		check(boxHidden && both && chosen && follows && marked && added && removed, "chart, a lane's Y range: the lane list "
+				"beside \"Y range\" (hidden without Lanes) lists every lane by its unit, the current one chosen, a folded one "
+				"marked; choosing one makes it current (its unit lit, the toolbar its range); a click on the chart's lane moves "
+				"it; a lane gone leaves it; its tooltip");
 
 		/* kept: a manual lane is tagged again in a new tab (the next start) */
 		view->setLaneYManual(1, 4.94, 17.14);
@@ -11610,25 +11666,22 @@ private:
 		const QString readout = view->divisionReadout();
 		const QRectF readoutRect = view->divisionReadoutRect();
 		const QRegularExpression readoutForm(QStringLiteral("^1 ms/div · \\d\\d:\\d\\d:\\d\\d\\.\\d{3}$"));
-		QFont small = QGuiApplication::font(); /* the chart's labels' */
-		small.setPointSizeF(8.5);
-		const QFontMetricsF metrics(small);
-		bool apart = !readoutRect.isEmpty();
-		for (int k = 0; k < labels.size(); k++) {
-			const double half = metrics.horizontalAdvance(labels[k]) / 2;
-			apart = apart && (labelX[k] + half < readoutRect.left() || labelX[k] - half > readoutRect.right());
-		}
-		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.top() > plot.bottom()
-				&& readoutRect.right() < plot.right() && readoutRect.left() > plot.center().x()
-				&& readouts.size() <= 2 + ms / 500
+		/* the readout in the state corner's row above the plot (alone there live: at its right end), so every one of
+		 * the 11 labels is drawn (the owner: it hid "-2 ms"); never over the legend */
+		const QRectF legendRow = view->legendViewport();
+		const bool everyLabel = labels.size() == 11;
+		const bool readoutOk = readoutForm.match(readout).hasMatch() && readoutRect.bottom() < plot.top()
+				&& readoutRect.top() >= 0 && view->stateRect().isEmpty() && std::fabs(readoutRect.right() - plot.right()) <= 1
+				&& !readoutRect.intersects(legendRow) && readouts.size() <= 2 + ms / 500
 				&& view->toolTipAt(readoutRect.center()).contains(QStringLiteral("the clock time at 0, the right edge"));
-		std::printf("     (10 ms: labels %s; the readout \"%s\" at %.0f..%.0f)\n", qPrintable(labels.join(QStringLiteral(", "))),
-				qPrintable(readout), readoutRect.left(), readoutRect.right());
+		std::printf("     (10 ms: %d labels %s; the readout \"%s\" at %.0f..%.0f x %.0f..%.0f, the legend to %.0f)\n",
+				int(labels.size()), qPrintable(labels.join(QStringLiteral(", "))), qPrintable(readout), readoutRect.left(),
+				readoutRect.right(), readoutRect.top(), readoutRect.bottom(), legendRow.right());
 		check(offsets, "chart, time grid: at 10 ms live the labels are offsets from the right edge (-10 ms, -8 ms, -5 ms "
 				"... 0, the 0 at the right edge)");
-		check(readoutOk && apart, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the clock "
-				"time at 0) at the time axis's right end, clear of the labels, its clock time written at most twice a "
-				"second, its tooltip saying what it is");
+		check(readoutOk && everyLabel, "chart, time grid: the readout \"1 ms/div · 14:03:12.345\" (the division and the "
+				"clock time at 0) in the state corner's row above the plot, at its right end and clear of the legend; all 11 "
+				"time labels drawn; its clock time written at most twice a second, its tooltip saying what it is");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
@@ -11680,10 +11733,17 @@ private:
 				&& held.contains(QStringLiteral("+4 ms")) && held.contains(QStringLiteral("-2 ms"))
 				&& view->timeGridX().size() == 9 && heldReadout == QStringLiteral("1 ms/div · ") + atT
 				&& view->toolTipAt(view->divisionReadoutRect().center()).contains(QStringLiteral("(T)"));
-		std::printf("     (held on T at %.1f px: labels %s; the readout \"%s\", T at %s)\n", crossX,
-				qPrintable(held.join(QStringLiteral(", "))), qPrintable(heldReadout), qPrintable(atT));
-		check(fromT, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the crossing "
-				"within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so");
+		/* with the trigger's state in the corner the readout sits left of it, neither over the other nor over the legend */
+		const QRectF heldRect = view->divisionReadoutRect(), heldState = view->stateRect();
+		const bool beside = !heldState.isEmpty() && heldRect.right() <= heldState.left()
+				&& heldRect.bottom() < plot.top() && !heldRect.intersects(view->legendViewport());
+		std::printf("     (held on T at %.1f px: %d labels %s; the readout \"%s\" at %.0f..%.0f, the state from %.0f, the legend "
+				"to %.0f; T at %s)\n", crossX, int(held.size()), qPrintable(held.join(QStringLiteral(", "))),
+				qPrintable(heldReadout), heldRect.left(), heldRect.right(), heldState.left(), view->legendViewport().right(),
+				qPrintable(atT));
+		check(fromT && beside, "chart, time grid: held on a trigger's crossing the labels count from T (\"0\" under the "
+				"crossing within a pixel, -2 ms, +4 ms), the readout's clock time is T's and its tooltip says so; "
+				"the readout left of the trigger's state, over neither it nor the legend");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 			const bool wasDark = Theme::isDark();
 			windowBoxSays(QStringLiteral("10 ms")); /* the picture's Window box as the view (set here by the view itself) */
