@@ -1137,6 +1137,10 @@ Under the time labels, a thin strip shows the **whole memory depth**. Every line
 
 - While the memory fills up, the data grows in from the right. Where there is room, the strip says how much is kept so far, for example *filling: 20 s of 60 s kept* with the default memory. Lengths below 120 s are written in seconds, from 120 s in minutes with one decimal (*2.5 min*), and from 7200 s in hours (*2.0 h*).
 - The samples kept have a budget for all the lines together: **RAM** on the Chart tab's first row, beside Memory, 2 GB by default (a sample takes about 23 bytes: its time and value, and its share of the min/max summaries). Pick 512 MB to 16 GB, or type any size (*3000*, *3000 MB*, *3 GB*); it is kept within 256 MB and three quarters of the computer's memory, and saved. Many fast lines can need more than the memory asked for: with 2 GB, 98 lines at 500 Hz fill it in about 32 minutes, at 4000 Hz in about 4. The oldest samples then go, an eighth of each line at a time, and the strip says so in the warn colour (amber): *RAM budget reached: keeping the last 4.0 min of 30.0 min*, and while a recording runs *… · the recording keeps everything* (its file keeps every sample, whatever the chart lets go). The longest words that fit are shown, whole (then *RAM budget reached* alone); the strip's tooltip says what the budget does and that a recording keeps every sample, and so do the RAM box's. So the time kept goes down by an eighth and fills up again (with 12 min that fit: 12, then 10.5, then 12). A line keeps at most 16 million samples whatever the RAM. RAM is what the samples take: the Studio itself needs about 150 MB more (the window, its pictures, the graphics card's buffers), so with RAM 1 GB Task Manager shows it at about 1.14 GB once the memory is full.
+- **Fast lines' older samples as summaries** (*Older samples*, 7.14): the part of the memory a fast line keeps as
+  summaries only is shaded on the strip, and the strip says *keeps 100 min (samples for the newest 79 s)* on a label
+  of its own at the end the view's box is not at (*filling: 30 min of 100 min kept (samples for the newest 79 s)*
+  while it fills); its tooltip says what the shaded part holds.
 - **The RAM is a cap, not a reservation.** With 16 GB set and 2 GB free, filling on would make Windows page to disk:
   the whole computer slows, the chart stutters, and an allocation can fail. So every 3 s the chart reads the memory
   free (Windows: the available physical memory; Linux: `MemAvailable`), and keeps within the lower of the RAM set and
@@ -1287,14 +1291,15 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
 - **Fixed places.** A chip's width comes from the line's name, its unit and room for the widest number the legend writes (`-0.000e+00`). It never depends on the value, so a changing value cannot move the chips after it. The value is right-aligned in its room, with the unit after it: only the digits change.
 - **More lines than the row holds.** The chips use the row left of the state text. When they need more, a thin scroll bar appears under them, and an arrow at each end of the row marks where more chips lie. Scroll with the mouse wheel over the row (a sideways wheel too), drag the bar's thumb, click the bar to bring the thumb there, or click an arrow to move half a row. The scroll stays where you leave it while the values change; after a resize or a line removed it is kept within what the chips need. The bar sits inside the legend's row, so the plot does not move when it appears. When all chips fit, there is no bar and the wheel over the row zooms the time, as over the plot.
 - **The state, top right.** What holds the view or changes how it reads: *held: -12.5 s · Live to follow*,
+  *summaries: samples for the newest 79 s* (a view reaching back into a fast line's samples kept as summaries, 7.14),
   *Y log, manual*, *cursors: click / drag*. While the trigger is on it says the trigger's state alone, in the row's
   words (*Normal · waiting*, *Normal · triggered*, *Auto · free running*, *Stopped · Run to arm*, 7.13), amber only
   when stopped. It never lies over the legend: the chips end where
   its text begins, 16 px before it, so the row's arrow and the last chip are never under it, and a chip cut at the
   row's end is cut before the arrow. Its room is at most 40 % of the plot (more for its shortest form rather than
   cut, always leaving the legend its first chip and both arrows). When the text is longer, whole parts are dropped
-  in turn: *Live to follow*, then *click / drag* (*cursors* stays), then *manual* (*Y log* stays); the time held
-  always stays. Below a 1 s window the time/div readout sits in this row just left of the state, inside the same
+  in turn: *Live to follow*, then *click / drag* (*cursors* stays), then *manual* (*Y log* stays), then the
+  summaries' span (*summaries* stays); the time held always stays. Below a 1 s window the time/div readout sits in this row just left of the state, inside the same
   room; it keeps its place (the state's parts go first), and the chips end before it. The whole text is its
   tooltip. In Arabic it reads from the right. With Lanes it says nothing about them: the lanes' ▾ and ⋯ show the
   fold and the menu.
@@ -1618,9 +1623,24 @@ and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
 - **The memory.** The records are kept as they came, a few bytes each (two `i16` channels: 4 bytes a record, and
   a quarter of a byte for the summaries the chart draws from, 23.11), once for all the plotted channels of a stream.
   In the RAM budget each fast line counts as one line, as a polled one (7.3): two fast lines and two polled ones share
-  it in quarters. Past the Memory, or past its share, a stream's oldest records go in whole pieces of 65 536. A RAM
-  cut (4 GB filled to 512 MB) takes effect at the next block without a pause: the memory let go is freed a little
-  at each frame (23.11).
+  it in quarters. Past the Memory a stream's oldest records go in whole pieces of 65 536. Past its share, what goes
+  depends on **Older samples**, beside RAM on the Chart tab's first row (shown with fast streams only; saved,
+  `chart/fastOlder`):
+  - *summaries* (the default): the oldest piece's records go and its summaries stay, the lowest and the highest
+    record of each 256 (1/128 of their room), a piece at a time as new ones come, a ring. The Memory is kept whole
+    far longer: 100 min of two `i16` channels at 1 MS/s take 190 MB of summaries, so 512 MB keeps all of it, with
+    samples for the newest 79 s; the note beside RAM says *needs 24.0 GB, keeps 100 min (samples for the newest
+    79 s)*. Only when the summaries alone outgrow the share do the oldest go whole (*RAM budget reached*).
+  - *kept*: every record whole; past the share the oldest go, an eighth of it at a time (7.4).
+
+  A RAM cut (4 GB filled to 512 MB) takes effect at the next block without a pause: the memory let go is freed a
+  little at each frame (23.11). A recording's window keeps every record (its file is mapped) and has no such choice.
+- **Samples kept as summaries, what is seen.** Zoomed out, that part draws as before: a column's lowest and highest
+  come from the summaries anyway. Zoomed in past one summary a column (under 256 records a column), each summary is
+  a bar, from its lowest to its highest, over the columns it covers, and the state corner says *summaries: samples
+  for the newest 79 s* (7.1); the crosshair gives the summary's range there, *-0.42 … 0.81*, and the memory strip
+  shades that part (7.4). A fast math line keeps its older records the same way. The trigger watches the records as
+  they come, never the summaries: it does not fire on old data.
 - **At most 64 lines** on the chart, fast, polled and math lines together (one cap, 4.8): a tick past that is taken
   back, and the status bar says *At most 64 lines on the chart, registers, math and fast lines together: untick one
   first*.
@@ -1629,7 +1649,11 @@ and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
 **Measured as any line.** A fast line has its row in the Measure table (chapter 8), its total since Clear (8.4), its
 histogram and spectrum (8.6), the trigger (7.13) and Export to CSV (7.10). Nothing is measured across a gap: the
 area, the mean and the RMS cover each part without one, and a cursor in a gap reads `—`. The statistics come from the
-same summaries as the drawing, so a range of an hour at a million records a second is measured within a frame.
+same summaries as the drawing, so a range of an hour at a million records a second is measured within a frame. Over
+samples kept as summaries only (*Older samples*), Min, Max and Peak-peak come from them (the records' own), and the
+mean, the RMS, the std dev, the areas and a cursor there read `—`, the cell's tooltip saying they need samples;
+Histogram and Spectrum take the samples kept whole (*its newest 79 s, older kept as summaries*), greyed over
+summaries only.
 
 ## 8. Measurements
 
@@ -1670,7 +1694,9 @@ Let *t₀ … t₁* be the range. The samples inside it are *(tᵢ, vᵢ)* for *
 mean, the RMS and the standard deviation sum the trapezoids of each part without a gap (their times the parts'
 own), and a cursor in a gap reads `—` (no value is made up there). Its records are evenly spaced, so a part's
 trapezoids come from its sums, Δt × (Σ vᵢ − (v_first + v_last) ÷ 2), and the sums, the minimum and the maximum from
-the summaries of 256 and 4096 records (23.11): what the table costs does not grow with the range.
+the summaries of 256 and 4096 records (23.11): what the table costs does not grow with the range. Where its older
+records are kept as summaries only (7.14), the minimum, the maximum and Peak-peak come from those, and the rest
+reads `—`.
 
 **Time-weighted** means that a sample counts for the time it lasts. If polls come unevenly, a long gap weighs more than a short one. The mean is therefore the true average of the signal as drawn, not the average of the samples.
 
@@ -2521,6 +2547,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/window` | `30` | on&nbsp;change | Window, seconds. |
 | `chart/memory` | `60` | on&nbsp;change | Memory, seconds. |
 | `chart/drawing` | `0` | on&nbsp;change | Drawing: 0 Auto, 1 a dedicated card, 2 the processor's graphics, 3 the CPU (`ChartView::Drawing`). |
+| `chart/fastOlder` | `summaries` | on&nbsp;change | Older samples: a fast line's records past what its share of the RAM holds whole are kept as summaries (`summaries`) or not (`kept`) (7.14). |
 | `chart/ramMB` | `2048` | on&nbsp;change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
 | `chart/smooth` | `true` | on&nbsp;change | Smooth. |
 | `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
@@ -5108,6 +5135,7 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
  segments_    begin 0, record 0, epoch 0 | begin 70 000, record 70 512, epoch 0 | ...    a gap or a new start
  epochs_      each start's time marks (record, time, period) and its shift      time = mark + records x period
  summaries    per channel: min, max, sum, sum of squares of every 256 (small) and every 4096 (large) records
+ outlines_    per piece: a min and a max record of each 256 and 4096 records, kept when they go
 ```
 
 - **In.** The window's `sync()` takes the engine's `FastBlock`s (22.3) and gives each to `ChartTab::appendFast`,
@@ -5138,6 +5166,27 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   in one append); freed on another thread, the frees held the heap and the memory's pages while the chart's threads
   binned the memory strip, and the next paint took 30 to 50 ms. Now, 2 GB filled cut to 256 MB: the longest append
   4.6 ms, `frame()` 10.8 ms (one summary's array freed), the paint 10.8 ms (26.2, *the RAM cut*).
+- **Older records as summaries** (`ChartView::setFastSummaries`, the Chart tab's *Older samples*, 7.14). As the
+  summaries are made, each 256 records' (and 4096's) lowest and highest record are copied into the piece's outline
+  (`outlines_`: two records a row, each channel's bytes those of its own lowest or highest, so a falling scale
+  decodes right; 1/128 of the records). `Store::dropRecords` lets the oldest pieces' records go, never the newest
+  piece, and their summaries' arrays with them; the outline stays, and `recordsFrom()` is the first record kept
+  whole. Before it `value` and `sums` read NaN, the times stay, and `minMax` reads the outline's rows (4096's where
+  they lie wholly inside, a range widened to whole 256s). Nothing is read to make the outline at a trim (it is made
+  as the records come), so a cut of gigabytes costs what handing the pieces on costs. `trimFast` with summaries on:
+  the summaries of all that is kept and two pieces of records past a sixteenth short of the share: the oldest go
+  whole, to seven eighths (`capped_`); then, while `bytes()` (no walk over the pieces: each has the same room) is past
+  the share, the oldest pieces' records go: a ring, a piece at a time as the blocks come. `ChartView::tiers` is the
+  arithmetic (100 min of two `i16` channels at 1 MS/s in 512 MB: 190 MB of summaries, samples for the newest 79 s),
+  `fastTiers` the same for the lines now (the note beside RAM), `summariesBefore` the time the records kept whole
+  begin (the state corner, the strip). `binFast` bins the part before `recordsFrom` a summary at a time, each in the
+  column of its first record: a column of 256 records or more is the records' own bin; under that, the summary is
+  drawn again over each column it covers up to the next one's (`Bin::bar`: no records of its own, its times the
+  column's middle; the polyline treats it as a column's stroke), so it is a bar on the CPU and on the card alike.
+  Its line runs through each summary's middle (its first and last values are gone). The views' and the
+  measurements' keys hold where the records kept whole begin while the range reaches before it; kept bins of that
+  part only while it is the same. `statsOfFast` there gives min, max and p2p and sets `Stats::summaries`; the
+  samples given out (`fastSamples`: export, histogram, spectrum) are those kept whole.
 - **Times.** A record's time is its epoch's mark before it plus the records since times the mark's period; before
   the first mark, the first's backwards. A new start whose first time falls before the end of the one before is
   shifted after it (`Epoch::shift`): times never go back, so `lowerBound` / `upperBound` (a binary search on the
@@ -5995,6 +6044,23 @@ made up for the check:
   RAM box's tooltip (*Free now: ...*) and the strip's (*The free memory limits the budget now*); the free memory back:
   the RAM set again, nothing more let go over 20 blocks, the note *needs ...*. With `EVRE_TEST_SHOT` set it saves
   `<prefix>_ram_free_light.png` and `_dark.png`.
+- **Long memory** (`chartFastTiers`): a store of two `i16` channels (one with a falling scale): after
+  `dropRecords` the min and max of nine ranges are those of the records before (whole 256s), the values and sums
+  NaN, the times the same, the memory let go, a record's summaries 1/128 of it; the arithmetic of 100 min at 2 ch x
+  1 MS/s in 512 MB (190 MB of summaries, the newest 79 s whole); a chart filled past its share of 512 MB: nothing
+  dropped from the front, the oldest piece's records go first, a piece at a time, the store within the share, not
+  *memory full*, the span kept whole what the share holds after the summaries; RAM cut to 256 MB and the free
+  memory's limit to 192 MB: the store down at the next block, no append, frame or paint over 20 ms.
+- **Samples kept as summaries, seen** (`chartFastSummariesShown`, a Chart tab and a line beside it that keeps every
+  record, times on exact binary steps): columns of 256 and 1024 records bin as from the records; at 16 records a
+  column one bin a column, each summary a bar over its columns with its 256 records' min and max; the state corner
+  *summaries: samples for the newest ...* over old data, nothing of it live; the Measure table's min, max and p2p
+  those of the records, the mean, RMS, std dev and areas NaN, the table's `—` with its tooltip; Histogram and
+  Spectrum greyed over summaries only; the memory strip's words and tooltip. With `EVRE_TEST_SHOT` set it saves
+  `<prefix>_p6_memory_light.png`, `_dark.png` (the whole memory) and `_p6_bars_light.png`, `_dark.png` (zoomed in).
+- **Older samples** (`chartOlderSetting`): the choice beside RAM only with fast streams, *summaries* by default;
+  *kept* saved (`fastOlder`) and read back by a new tab; a recording's tab keeps every record and hides it. With
+  `EVRE_TEST_SHOT` set it saves `<prefix>_p6_setting_light.png` and `_dark.png`.
 - **The memory strip's handle** (`memoryStripHandle`, a chart of its own, 10 ms of a minute held): a handle 12 px
   wide; the mouse over it a pointing hand, lit, the tooltip; taken, no jump, dragged 100 px the view 100 px of the
   strip later; a click 300 px left of it takes the view there; the wheel over the strip a window later, two notches up
@@ -6013,7 +6079,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 583 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 584 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

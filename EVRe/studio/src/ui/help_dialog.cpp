@@ -233,6 +233,15 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
+<p><b>Long memory</b>: <b>Older samples</b>, beside RAM on the Chart tab (with fast streams only). <i>summaries</i>
+(the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
+highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels
+at a million samples a second in 512 MB, with samples for the newest 79 s. Zoomed out that part draws as before;
+zoomed in, each summary is a bar from its lowest to its highest, the chart's top right says <i>summaries: samples for
+the newest 79 s</i>, and the memory strip shades that part. There <b>Measure</b> gives min, max and peak-peak, and —
+for the mean, RMS, std dev and area (the tooltip says why); the histogram and spectrum take the samples kept whole;
+the trigger watches the samples as they come, never the summaries. <i>kept</i>: every sample whole, the oldest go
+when the RAM is full. A recording keeps every sample either way.</p>
 <p>A fast line is measured as any line: its row in <b>Measure</b> (nothing across a gap; a cursor in a gap reads —),
 its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
 without a gap), the trigger and Export to CSV (a row per sample).</p>

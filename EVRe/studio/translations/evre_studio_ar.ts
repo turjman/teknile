@@ -1276,6 +1276,52 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
         <source>Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second (idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to draw, the word &quot;plotted&quot; and the delay go first.</source>
         <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية الأخيرة (ساكن: لا إطار، لم يتغير شيء: العرض المثبَّت لا يُرسم إلا حين يتغير فيه شيء)، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
+    <message>
+        <source>Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this says how much keeps its samples whole: &quot;keeps 100 min (samples for the newest 79 s)&quot;.</source>
+        <translation>الخطوط السريعة مع «العينات الأقدم: ملخصات»: تُحفظ الذاكرة كلها ما دامت ملخصاتها تتسع، وتقول هذه كم يبقى منها بعيناته كاملة: «يحفظ ⁦100 min⁩ (عينات لآخر ⁦79 s⁩)».</translation>
+    </message>
+    <message>
+        <source>summaries</source>
+        <translation>ملخصات</translation>
+    </message>
+    <message>
+        <source>kept</source>
+        <translation>محفوظة</translation>
+    </message>
+    <message>
+        <source>A fast line&apos;s samples older than its share of the RAM holds whole.
+Summaries (the default): the newest stay whole, the older only as the lowest and highest of each 256 (1/128 of the room), so the Memory is kept far longer: 100 min of two channels at 1 MS/s in 512 MB, with samples for the newest 79 s. Zoomed in they are drawn as bars; their mean, RMS, area, histogram and spectrum need samples.
+Kept: every sample whole, the oldest go when the RAM is full.
+A recording&apos;s file keeps every sample either way.</source>
+        <translation>عينات الخط السريع الأقدم مما تتسع له حصته من RAM كاملةً.
+ملخصات (الافتراضي): تبقى الأحدث كاملة، والأقدم أدنى قيمة وأعلاها لكل 256 فقط (1/128 من المساحة)، فتُحفظ الذاكرة أطول بكثير: ⁦100 min⁩ لقناتين بـ ⁦1 MS/s⁩ في ⁦512 MB⁩، مع عينات لآخر ⁦79 s⁩. عند التكبير تُرسم أعمدةً؛ ويحتاج متوسطها وRMS ومساحتها والمدرّج التكراري والطيف إلى عينات.
+محفوظة: كل عينة كاملة، وتذهب الأقدم حين تمتلئ RAM.
+ملف التسجيل يحفظ كل عينة في الحالتين.</translation>
+    </message>
+    <message>
+        <source>Older samples</source>
+        <translation>العينات الأقدم</translation>
+    </message>
+    <message>
+        <source>only %1 free: keeps about %2 (samples for the newest %3)</source>
+        <translation>الحرّ %1 فقط: يحفظ نحو %2 (عينات لآخر %3)</translation>
+    </message>
+    <message>
+        <source>needs %1, keeps %2 (samples for the newest %3)</source>
+        <translation>يحتاج %1، ويحفظ %2 (عينات لآخر %3)</translation>
+    </message>
+    <message>
+        <source>Needs samples: in this range the fast line keeps only summaries, the lowest and highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs</source>
+        <translation>يحتاج إلى عينات: لا يحفظ الخط السريع في هذا المدى إلا ملخصات، أدنى قيمة وأعلاها لكل 256 عينة («العينات الأقدم»، بجانب RAM): الأدنى والأعلى وقمة–قمة منها</translation>
+    </message>
+    <message>
+        <source>Needs samples: %1 the fast line keeps only summaries, the lowest and highest of each 256 samples (Older samples, beside RAM)</source>
+        <translation>يحتاج إلى عينات: %1 لا يحفظ الخط السريع إلا ملخصات، أدنى قيمة وأعلاها لكل 256 عينة («العينات الأقدم»، بجانب RAM)</translation>
+    </message>
+    <message>
+        <source>%1: its newest %2, older kept as summaries</source>
+        <translation>%1: أحدث %2 منه، والأقدم محفوظ ملخصاتٍ</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1591,6 +1637,30 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
     <message>
         <source>The view locks on the busiest line&apos;s crossings at windows under 100 ms · Display → Lock short windows turns it off</source>
         <translation>يُقفَل العرض على عبورات أنشط خط في النوافذ الأقصر من ⁦100 ms⁩ · العرض ← قفل النوافذ القصيرة يُطفئه</translation>
+    </message>
+    <message>
+        <source>Older samples: summaries. The shaded part keeps only the lowest and highest value of each 256 samples of the fast lines (drawn as bars when zoomed in; their mean, RMS and area read &quot;—&quot;): samples for the newest %1.</source>
+        <translation>العينات الأقدم: ملخصات. لا يحفظ الجزء المظلّل إلا أدنى قيمة وأعلاها لكل 256 عينة من الخطوط السريعة (تُرسم أعمدةً عند التكبير؛ ومتوسطها وRMS ومساحتها «—»): عينات لآخر %1.</translation>
+    </message>
+    <message>
+        <source>filling: %1 of %2 kept (samples for the newest %3)</source>
+        <translation>تمتلئ: حُفظ %1 من %2 (عينات لآخر %3)</translation>
+    </message>
+    <message>
+        <source>keeps %1 (samples for the newest %2)</source>
+        <translation>يحفظ %1 (عينات لآخر %2)</translation>
+    </message>
+    <message>
+        <source>samples for the newest %1</source>
+        <translation>عينات لآخر %1</translation>
+    </message>
+    <message>
+        <source>summaries: samples for the newest %1</source>
+        <translation>ملخصات: عينات لآخر %1</translation>
+    </message>
+    <message>
+        <source>summaries</source>
+        <translation>ملخصات</translation>
     </message>
 </context>
 <context>
@@ -2481,119 +2551,6 @@ values: Auto ·
     </message>
     <message>
         <source>
-&lt;h2&gt;Fast streams&lt;/h2&gt;
-&lt;p&gt;A device that takes samples on its own clock (a current at 100 000 samples a second, say) can send them in
-numbered &lt;b&gt;blocks&lt;/b&gt;, with no request and no answer time: &lt;b&gt;Fast EVRe&lt;/b&gt;, a layer above the protocol. Each block
-says the number of its first sample, so every sample lost on the way is counted, never filled in.&lt;/p&gt;
-&lt;p&gt;The map describes the streams, in &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: where the blocks come from (a window of the device bank),
-how fast, the register that switches the stream, and what one sample holds (its channels):&lt;/p&gt;
-%CODE%&quot;streams&quot;: [
-  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
-    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
-    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
-                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
-&lt;p&gt;In the Map editor they are on &lt;b&gt;Map settings…&lt;/b&gt;, the &lt;b&gt;Streams&lt;/b&gt; page: each stream&apos;s window, rate and
-channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/code&gt; switches each on for 2 s and checks its START,
-its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
-rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
-reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
-stream without an enable register is only
-listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
-&lt;li&gt;Under it: the samples a second as the Studio&apos;s clock measures them, with the correction in parts in a million
-(&lt;i&gt;10.0 k samples/s (+32 ppm)&lt;/i&gt;), and the samples lost (&lt;i&gt;lost 1 024&lt;/i&gt;, in amber).&lt;/li&gt;
-&lt;li&gt;CONFIG is read every 100 ms while a stream runs, even with Poll off, so the device&apos;s host watchdog stays fed.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Disconnect&lt;/b&gt; (and closing the Studio) switches every stream off on the device first. After a lost link it
-is switched on again by itself.&lt;/li&gt;
-&lt;li&gt;No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
-is told once in the Log.&lt;/li&gt;
-&lt;li&gt;One device only: on a bus the card is greyed (a device sending by itself would collide with the others).&lt;/li&gt;
-&lt;li&gt;The Monitor names a block &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Under the stream, each channel has a &lt;b&gt;Plot&lt;/b&gt; tick and its newest value. Ticked, the channel is a line on the
-chart, &lt;i&gt;ADC.I_LOAD&lt;/i&gt;, like a register&apos;s: its legend chip, its lane, the crosshair, the cursors. Every sample
-keeps its own time: a view of an hour shows the lowest and highest sample of each pixel column, so a spike of one
-sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type &lt;code&gt;50 us&lt;/code&gt; in Window)
-each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
-The samples are kept as they came, a few bytes each, within the chart&apos;s RAM, where a fast line counts as one line.&lt;/p&gt;
-&lt;p&gt;A fast line is measured as any line: its row in &lt;b&gt;Measure&lt;/b&gt; (nothing across a gap; a cursor in a gap reads —),
-its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
-without a gap), the trigger and Export to CSV (a row per sample).&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Fast math lines&lt;/b&gt;: a formula over the channels of one stream, &lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt; in W, is
-computed for every sample of that stream at its own time (&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;; the dialog says &lt;i&gt;computed
-for every record of stream ADC&lt;/i&gt;). A register in it is held at its last polled value. It is drawn, measured,
-triggered and exported as a fast line, and one of the chart&apos;s lines. Channels of two streams are refused: two
-streams, two clocks.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends and has its &lt;b&gt;Log&lt;/b&gt; ticked (beside its
-name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
-&lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
-&lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
-cut off opens up to its last whole piece. The CSV&apos;s rows and a stream&apos;s samples end a few milliseconds apart
-(each is written as it comes): a fast line ends where its samples end, and the line above the recording&apos;s chart says
-so. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
-&lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
-Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
-page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;التدفقات السريعة&lt;/h2&gt;
-&lt;p&gt;الجهاز الذي يأخذ العينات على ساعته الخاصة (تيار بمعدل 100 000 عينة في الثانية مثلًا) يستطيع إرسالها في
-&lt;b&gt;كتل&lt;/b&gt; مرقّمة، بلا طلب ولا زمن انتظار للرد: &lt;b&gt;Fast EVRe&lt;/b&gt;، طبقة فوق البروتوكول. كل كتلة تذكر رقم أول عينة
-فيها، فكل عينة تُفقد في الطريق تُعدّ، ولا تُملأ أبدًا.&lt;/p&gt;
-&lt;p&gt;الخريطة تصف التدفقات في &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: من أين تأتي الكتل (نافذة في بنك الجهاز)، وبأي سرعة، والمسجّل الذي
-يشغّل التدفق، وما تحمله العينة الواحدة (قنواتها):&lt;/p&gt;
-%CODE%&quot;streams&quot;: [
-  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
-    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
-    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
-                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
-&lt;p&gt;في محرر الخريطة تجدها في &lt;b&gt;إعدادات الخريطة…&lt;/b&gt;، صفحة &lt;b&gt;التدفقات&lt;/b&gt;: نافذة كل تدفق ومعدّله وقنواته، وفحوص
-الخريطة تحتها. &lt;code&gt;evre check --writes&lt;/code&gt; يشغّل كلًّا منها ثانيتين ويفحص START وأرقامه ومعدّله؛ وتقرؤه بايثون مباشرةً
-بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
-&lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
-&lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
-&lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
-تشغيل.&lt;/li&gt;
-&lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
-(&lt;i&gt;10.0 k عينة/ث (‎+⁦32 ppm⁩)&lt;/i&gt;)، والعينات المفقودة (&lt;i&gt;مفقودة 1 024&lt;/i&gt;، بالكهرماني).&lt;/li&gt;
-&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ ما دام تدفق يعمل، حتى مع إيقاف الاستطلاع، فيبقى مراقب المضيف في الجهاز مطمئنًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يوقف كل تدفق على الجهاز أولًا. وبعد فقد الوصلة يُشغَّل من جديد من تلقاء
-نفسه.&lt;/li&gt;
-&lt;li&gt;لا كتلة خلال ⁦2 s⁩: يُوقف من جديد، والسجل يذكر ذلك. الجهاز الذي يوقف تدفقًا من تلقاء نفسه (إعادة تشغيل) يُذكر
-مرة واحدة في السجل.&lt;/li&gt;
-&lt;li&gt;جهاز واحد فقط: على ناقل تكون البطاقة رمادية (الجهاز الذي يرسل من تلقاء نفسه سيتصادم مع الآخرين).&lt;/li&gt;
-&lt;li&gt;المراقبة تسمّي الكتلة &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;تحت التدفق، لكل قناة مربع &lt;b&gt;رسم&lt;/b&gt; وأحدث قيمة لها. إذا فُعّل صارت القناة خطًا على المخطط،
-&lt;i&gt;ADC.I_LOAD&lt;/i&gt;، كخط المسجّل: له شريحته في المفتاح، ومساره، والتقاطع، والمؤشران. كل عينة تحتفظ بزمنها
-الخاص: عرض ساعة يُظهر أدنى عينة وأعلاها في كل عمود من البكسلات، فلا تختفي أبدًا قمة من عينة واحدة بين
-الملايين، ومع التكبير (حتى ⁦10 µs⁩: بعجلة الفأرة، أو اكتب &lt;code&gt;⁦50 us⁩&lt;/code&gt; في النافذة) تصير كل عينة نقطة
-مستقلة. حيث فُقدت عينات ينقطع الخط؛ والفأرة فوق الفجوة تقول كم فُقد. تُحفظ العينات كما وصلت، ببضعة بايتات
-لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
-&lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
-ومجموعه منذ المسح، ومدرّجه التكراري وطيفه (الطيف يأخذ العينات كما هي، على أطول جزء بلا فجوة)، والقدح والتصدير
-إلى CSV (صف لكل عينة).&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;الخطوط الرياضية السريعة&lt;/b&gt;: صيغة على قنوات تدفق واحد، &lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt; بـ W، تُحسب لكل
-عينة من ذلك التدفق في وقتها (&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;؛ والنافذة تقول &lt;i&gt;تُحسب لكل سجلّ من التدفق
-ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة استُطلعت. تُرسم وتُقاس ويُقدح عليها وتُصدَّر كخط سريع، وهي أحد خطوط
-المخطط. وقنوات تدفقين تُرفض: تدفقان، وساعتان.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل ومربع &lt;b&gt;تسجيل&lt;/b&gt; فيه مفعّل (بجانب اسمه، مفعّل افتراضيًا؛ تدفق كامل أو لا شيء: كل كتلة
-تحمل كل قنواته) بجانب ملف CSV كما وصل،
-&lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
-ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
-يُفتح حتى آخر قطعة كاملة فيه. وصفوف CSV وعينات التدفق تنتهي بفارق بضعة أجزاء من الألف من الثانية (كلٌّ يُكتب
-حين يصل): الخط السريع ينتهي حيث تنتهي عيناته، والسطر فوق مخطط التسجيل يذكر ذلك. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
-&lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
-لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
-ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
 &lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
 The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
@@ -3086,6 +3043,129 @@ the ⚠ switch.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; مثل تفعيل &lt;i&gt;السماح بكتابات API&lt;/i&gt;؛ و&lt;code&gt;--api-writes-danger&lt;/code&gt; مع
 مفتاح ⚠ أيضًا.&lt;/li&gt;
 &lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Fast streams&lt;/h2&gt;
+&lt;p&gt;A device that takes samples on its own clock (a current at 100 000 samples a second, say) can send them in
+numbered &lt;b&gt;blocks&lt;/b&gt;, with no request and no answer time: &lt;b&gt;Fast EVRe&lt;/b&gt;, a layer above the protocol. Each block
+says the number of its first sample, so every sample lost on the way is counted, never filled in.&lt;/p&gt;
+&lt;p&gt;The map describes the streams, in &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: where the blocks come from (a window of the device bank),
+how fast, the register that switches the stream, and what one sample holds (its channels):&lt;/p&gt;
+%CODE%&quot;streams&quot;: [
+  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
+    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
+    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
+                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;In the Map editor they are on &lt;b&gt;Map settings…&lt;/b&gt;, the &lt;b&gt;Streams&lt;/b&gt; page: each stream&apos;s window, rate and
+channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/code&gt; switches each on for 2 s and checks its START,
+its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
+rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
+reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
+stream without an enable register is only
+listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
+&lt;li&gt;Under it: the samples a second as the Studio&apos;s clock measures them, with the correction in parts in a million
+(&lt;i&gt;10.0 k samples/s (+32 ppm)&lt;/i&gt;), and the samples lost (&lt;i&gt;lost 1 024&lt;/i&gt;, in amber).&lt;/li&gt;
+&lt;li&gt;CONFIG is read every 100 ms while a stream runs, even with Poll off, so the device&apos;s host watchdog stays fed.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Disconnect&lt;/b&gt; (and closing the Studio) switches every stream off on the device first. After a lost link it
+is switched on again by itself.&lt;/li&gt;
+&lt;li&gt;No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
+is told once in the Log.&lt;/li&gt;
+&lt;li&gt;One device only: on a bus the card is greyed (a device sending by itself would collide with the others).&lt;/li&gt;
+&lt;li&gt;The Monitor names a block &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Under the stream, each channel has a &lt;b&gt;Plot&lt;/b&gt; tick and its newest value. Ticked, the channel is a line on the
+chart, &lt;i&gt;ADC.I_LOAD&lt;/i&gt;, like a register&apos;s: its legend chip, its lane, the crosshair, the cursors. Every sample
+keeps its own time: a view of an hour shows the lowest and highest sample of each pixel column, so a spike of one
+sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type &lt;code&gt;50 us&lt;/code&gt; in Window)
+each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
+The samples are kept as they came, a few bytes each, within the chart&apos;s RAM, where a fast line counts as one line.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Long memory&lt;/b&gt;: &lt;b&gt;Older samples&lt;/b&gt;, beside RAM on the Chart tab (with fast streams only). &lt;i&gt;summaries&lt;/i&gt;
+(the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
+highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels
+at a million samples a second in 512 MB, with samples for the newest 79 s. Zoomed out that part draws as before;
+zoomed in, each summary is a bar from its lowest to its highest, the chart&apos;s top right says &lt;i&gt;summaries: samples for
+the newest 79 s&lt;/i&gt;, and the memory strip shades that part. There &lt;b&gt;Measure&lt;/b&gt; gives min, max and peak-peak, and —
+for the mean, RMS, std dev and area (the tooltip says why); the histogram and spectrum take the samples kept whole;
+the trigger watches the samples as they come, never the summaries. &lt;i&gt;kept&lt;/i&gt;: every sample whole, the oldest go
+when the RAM is full. A recording keeps every sample either way.&lt;/p&gt;
+&lt;p&gt;A fast line is measured as any line: its row in &lt;b&gt;Measure&lt;/b&gt; (nothing across a gap; a cursor in a gap reads —),
+its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
+without a gap), the trigger and Export to CSV (a row per sample).&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Fast math lines&lt;/b&gt;: a formula over the channels of one stream, &lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt; in W, is
+computed for every sample of that stream at its own time (&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;; the dialog says &lt;i&gt;computed
+for every record of stream ADC&lt;/i&gt;). A register in it is held at its last polled value. It is drawn, measured,
+triggered and exported as a fast line, and one of the chart&apos;s lines. Channels of two streams are refused: two
+streams, two clocks.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Recorded&lt;/b&gt;: while &lt;b&gt;Record CSV&lt;/b&gt; runs, each stream that sends and has its &lt;b&gt;Log&lt;/b&gt; ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
+&lt;code&gt;run.csv&lt;/code&gt; and &lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;Open recording&lt;/b&gt; opens the CSV with them on one time axis, or a
+&lt;code&gt;.evrs&lt;/code&gt; alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
+cut off opens up to its last whole piece. The CSV&apos;s rows and a stream&apos;s samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording&apos;s chart says
+so. Python reads one with &lt;code&gt;evre.read_recording&lt;/code&gt;.
+&lt;code&gt;evre record&lt;/code&gt; (the command-line tool) writes a stream&apos;s blocks to a &lt;code&gt;.evrs&lt;/code&gt; file as they came.
+Not to be mixed up with &lt;b&gt;Auto send&lt;/b&gt; (the read-only block at a timer&apos;s rate, the &lt;i&gt;Polling &amp;amp; speed&lt;/i&gt;
+page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a period for an API client).&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;التدفقات السريعة&lt;/h2&gt;
+&lt;p&gt;الجهاز الذي يأخذ العينات على ساعته الخاصة (تيار بمعدل 100 000 عينة في الثانية مثلًا) يستطيع إرسالها في
+&lt;b&gt;كتل&lt;/b&gt; مرقّمة، بلا طلب ولا زمن انتظار للرد: &lt;b&gt;Fast EVRe&lt;/b&gt;، طبقة فوق البروتوكول. كل كتلة تذكر رقم أول عينة
+فيها، فكل عينة تُفقد في الطريق تُعدّ، ولا تُملأ أبدًا.&lt;/p&gt;
+&lt;p&gt;الخريطة تصف التدفقات في &lt;code&gt;&quot;streams&quot;&lt;/code&gt;: من أين تأتي الكتل (نافذة في بنك الجهاز)، وبأي سرعة، والمسجّل الذي
+يشغّل التدفق، وما تحمله العينة الواحدة (قنواتها):&lt;/p&gt;
+%CODE%&quot;streams&quot;: [
+  { &quot;name&quot;: &quot;ADC&quot;, &quot;addr&quot;: &quot;0xDC00&quot;, &quot;size&quot;: 1024, &quot;rate&quot;: 10000,
+    &quot;rate_reg&quot;: &quot;ADC_RATE&quot;, &quot;enable&quot;: &quot;ADC_STREAM&quot;,
+    &quot;channels&quot;: [ { &quot;name&quot;: &quot;I_LOAD&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;A&quot;, &quot;scale&quot;: 0.0005 },
+                  { &quot;name&quot;: &quot;V_BUS&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;unit&quot;: &quot;V&quot;, &quot;scale&quot;: 0.001 } ] } ]&lt;/pre&gt;
+&lt;p&gt;في محرر الخريطة تجدها في &lt;b&gt;إعدادات الخريطة…&lt;/b&gt;، صفحة &lt;b&gt;التدفقات&lt;/b&gt;: نافذة كل تدفق ومعدّله وقنواته، وفحوص
+الخريطة تحتها. &lt;code&gt;evre check --writes&lt;/code&gt; يشغّل كلًّا منها ثانيتين ويفحص START وأرقامه ومعدّله؛ وتقرؤه بايثون مباشرةً
+بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
+&lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
+&lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
+&lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
+تشغيل.&lt;/li&gt;
+&lt;li&gt;تحته: العينات في الثانية كما تقيسها ساعة البرنامج، مع التصحيح بالأجزاء من المليون
+(&lt;i&gt;10.0 k عينة/ث (‎+⁦32 ppm⁩)&lt;/i&gt;)، والعينات المفقودة (&lt;i&gt;مفقودة 1 024&lt;/i&gt;، بالكهرماني).&lt;/li&gt;
+&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ ما دام تدفق يعمل، حتى مع إيقاف الاستطلاع، فيبقى مراقب المضيف في الجهاز مطمئنًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يوقف كل تدفق على الجهاز أولًا. وبعد فقد الوصلة يُشغَّل من جديد من تلقاء
+نفسه.&lt;/li&gt;
+&lt;li&gt;لا كتلة خلال ⁦2 s⁩: يُوقف من جديد، والسجل يذكر ذلك. الجهاز الذي يوقف تدفقًا من تلقاء نفسه (إعادة تشغيل) يُذكر
+مرة واحدة في السجل.&lt;/li&gt;
+&lt;li&gt;جهاز واحد فقط: على ناقل تكون البطاقة رمادية (الجهاز الذي يرسل من تلقاء نفسه سيتصادم مع الآخرين).&lt;/li&gt;
+&lt;li&gt;المراقبة تسمّي الكتلة &lt;i&gt;READ_RESP (fast stream ADC)&lt;/i&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;تحت التدفق، لكل قناة مربع &lt;b&gt;رسم&lt;/b&gt; وأحدث قيمة لها. إذا فُعّل صارت القناة خطًا على المخطط،
+&lt;i&gt;ADC.I_LOAD&lt;/i&gt;، كخط المسجّل: له شريحته في المفتاح، ومساره، والتقاطع، والمؤشران. كل عينة تحتفظ بزمنها
+الخاص: عرض ساعة يُظهر أدنى عينة وأعلاها في كل عمود من البكسلات، فلا تختفي أبدًا قمة من عينة واحدة بين
+الملايين، ومع التكبير (حتى ⁦10 µs⁩: بعجلة الفأرة، أو اكتب &lt;code&gt;⁦50 us⁩&lt;/code&gt; في النافذة) تصير كل عينة نقطة
+مستقلة. حيث فُقدت عينات ينقطع الخط؛ والفأرة فوق الفجوة تقول كم فُقد. تُحفظ العينات كما وصلت، ببضعة بايتات
+لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;ذاكرة طويلة&lt;/b&gt;: &lt;b&gt;العينات الأقدم&lt;/b&gt;، بجانب RAM في تبويب المخطط (مع التدفقات السريعة فقط). &lt;i&gt;ملخصات&lt;/i&gt; (الافتراضي): بعد ما تتسع له حصته من RAM، لا يحفظ الخط السريع من عيناته الأقدم إلا أدنى قيمة وأعلاها لكل 256 منها (1/128 من المساحة)، والأحدث كاملة، فتُحفظ الذاكرة أطول بكثير: ⁦100 min⁩ لقناتين بمليون عينة في الثانية في ⁦512 MB⁩، مع عينات لآخر ⁦79 s⁩. عند التصغير يُرسم ذلك الجزء كما كان؛ وعند التكبير يصبح كل ملخص عمودًا من أدناه إلى أعلاه، ويقول أعلى يمين المخطط &lt;i&gt;ملخصات: عينات لآخر ⁦79 s⁩&lt;/i&gt;، ويظلّل شريط الذاكرة ذلك الجزء. هناك تعطي &lt;b&gt;القياسات&lt;/b&gt; الأدنى والأعلى وقمة–قمة، و— للمتوسط وRMS والانحراف المعياري والمساحة (يقول التلميح السبب)؛ ويأخذ المدرّج التكراري والطيف العينات المحفوظة كاملة؛ ويراقب القدح العينات كما تصل، لا الملخصات أبدًا. &lt;i&gt;محفوظة&lt;/i&gt;: كل عينة كاملة، وتذهب الأقدم حين تمتلئ RAM. ويحفظ التسجيل كل عينة في الحالتين.&lt;/p&gt;
+&lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
+ومجموعه منذ المسح، ومدرّجه التكراري وطيفه (الطيف يأخذ العينات كما هي، على أطول جزء بلا فجوة)، والقدح والتصدير
+إلى CSV (صف لكل عينة).&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;الخطوط الرياضية السريعة&lt;/b&gt;: صيغة على قنوات تدفق واحد، &lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt; بـ W، تُحسب لكل
+عينة من ذلك التدفق في وقتها (&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;؛ والنافذة تقول &lt;i&gt;تُحسب لكل سجلّ من التدفق
+ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة استُطلعت. تُرسم وتُقاس ويُقدح عليها وتُصدَّر كخط سريع، وهي أحد خطوط
+المخطط. وقنوات تدفقين تُرفض: تدفقان، وساعتان.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;التسجيل&lt;/b&gt;: ما دام &lt;b&gt;تسجيل CSV&lt;/b&gt; يعمل، يُكتب كل تدفق يرسل ومربع &lt;b&gt;تسجيل&lt;/b&gt; فيه مفعّل (بجانب اسمه، مفعّل افتراضيًا؛ تدفق كامل أو لا شيء: كل كتلة
+تحمل كل قنواته) بجانب ملف CSV كما وصل،
+&lt;code&gt;run.csv&lt;/code&gt; و&lt;code&gt;run.ADC.evrs&lt;/code&gt;. &lt;b&gt;فتح تسجيل&lt;/b&gt; يفتح ملف CSV معها على محور زمن واحد، أو
+ملف &lt;code&gt;.evrs&lt;/code&gt; وحده؛ الملف يُربط بالذاكرة ولا يُقرأ إليها، فيُفتح تسجيل أكبر من ذاكرة RAM، والملف المقطوع
+يُفتح حتى آخر قطعة كاملة فيه. وصفوف CSV وعينات التدفق تنتهي بفارق بضعة أجزاء من الألف من الثانية (كلٌّ يُكتب
+حين يصل): الخط السريع ينتهي حيث تنتهي عيناته، والسطر فوق مخطط التسجيل يذكر ذلك. وتقرؤه بايثون بـ &lt;code&gt;evre.read_recording&lt;/code&gt;.
+&lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
+لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
+ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
 </translation>
     </message>
 </context>

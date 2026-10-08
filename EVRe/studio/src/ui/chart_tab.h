@@ -337,6 +337,10 @@ private:
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */
 	QActionGroup *timeGridChoices_; /* the Time grid part of the Display menu: Auto, Clock times, Divisions */
 	QLabel *ramNeed_;             /* what the lines need for the Memory set; amber when more than the RAM */
+	/* Older samples (chart/fastOlder): a fast line's records past what the RAM holds whole kept as summaries, or not
+	 * (ChartView::setFastSummaries); shown with fast streams only, never in a recording's window */
+	QComboBox *older_ = nullptr;
+	QLabel *olderLabel_ = nullptr;
 	QTimer freeWatch_;            /* the free memory read every FREE_WATCH_MS (watchFreeMemory) */
 	qint64 freeMB_ = -1;          /* the free memory as last read, MB; -1: not known */
 	qint64 testFreeMB_ = -1, testHeldAt_ = 0; /* setTestFreeMemory: the free memory given, and the chart's bytes then */

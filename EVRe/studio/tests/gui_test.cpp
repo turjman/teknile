@@ -545,6 +545,7 @@ public:
 		chartRamFree();
 		chartFastTiers();
 		chartFastSummariesShown();
+		chartOlderSetting();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -4967,11 +4968,13 @@ private:
 					"computed in %.0f ms)\n", store ? store->bytes() / 1048576.0 : -1.0, (long long) (share >> 20),
 					(long long) (store ? store->size() : -1), 100 * 65536,
 					(long long) (view->fastStore(0) ? view->fastStore(0)->size() : -1), tab.fastMathNs() / 1e6);
-			check(store && store->bytes() <= share + 65536 * 4 && store->bytes() >= share / 2 && store->size() < 100 * 65536
+			check(store && store->bytes() <= share + 65536 * 4 && store->bytes() >= share / 2 && store->size() == 100 * 65536
+							&& store->recordsFrom() > 0 && store->dropped() == 0 && view->fastSummaries()
 							&& view->bytesHeld() >= store->bytes() && view->bytesNeeded() > 0 && view->fastStore(0)
 							&& view->fastStore(0)->size() == 0,
-					"math lines, fast: its records count in the chart's RAM budget as a fast line's (one line of 16: trimmed to "
-					"a sixteenth); the stream's store keeps none while none of its channels is plotted");
+					"math lines, fast: its records count in the chart's RAM budget as a fast line's (one line of 16: a "
+					"sixteenth), its older records kept as summaries as a stream's (Older samples); the stream's store keeps "
+					"none while none of its channels is plotted");
 		}
 		/* the one cap: a fast math line is one of the 64 lines; the 65th of any kind is refused */
 		{
@@ -7254,6 +7257,69 @@ private:
 		QSettings().remove(group);
 	}
 
+	/* The Older samples setting (chart/fastOlder): shown beside RAM with fast streams only, summaries by default; kept
+	 * turns the tiers off and is read back by a new tab; a recording's window keeps every record whatever it says */
+	void chartOlderSetting() {
+		const QString group = QStringLiteral("olderTest");
+		QSettings().remove(group);
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		StreamChannel channel;
+		channel.name = QStringLiteral("I");
+		channel.type = RegType::I16;
+		def.channels << channel;
+		bool shownOnlyWithStreams = false, byDefault = false, savedKept = false, readBack = false, recordingKeeps = false;
+		QString tip;
+		{
+			ChartTab tab{ [] { return 100.0; }, nullptr, group };
+			tab.resize(1280, 600);
+			tab.show();
+			(void) QTest::qWaitForWindowExposed(&tab);
+			auto *older = tab.findChild<QComboBox *>(QStringLiteral("chartOlder"));
+			const bool hiddenBefore = older && !older->isVisible();
+			tab.setFastStreams({ def });
+			shownOnlyWithStreams = hiddenBefore && older && older->isVisible();
+			byDefault = older && older->currentIndex() == 0 && older->currentText() == QLatin1String("summaries")
+					&& tab.view()->fastSummaries();
+			tip = older ? older->toolTip() : QString();
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the row with the setting, both themes */
+				const bool wasDark = Theme::isDark();
+				for (const bool dark : { false, true }) {
+					Theme::apply(*qApp, dark);
+					tab.grab(QRect(0, 0, tab.width(), 90)).save(qEnvironmentVariable("EVRE_TEST_SHOT")
+							+ (dark ? QStringLiteral("_p6_setting_dark.png") : QStringLiteral("_p6_setting_light.png")));
+				}
+				Theme::apply(*qApp, wasDark);
+			}
+			if (older) {
+				older->setCurrentIndex(1);
+				emit older->activated(1);
+			}
+			savedKept = QSettings().value(group + QStringLiteral("/fastOlder")).toString() == QLatin1String("kept")
+					&& !tab.view()->fastSummaries();
+		}
+		{
+			ChartTab tab{ [] { return 100.0; }, nullptr, group };
+			tab.setFastStreams({ def });
+			auto *older = tab.findChild<QComboBox *>(QStringLiteral("chartOlder"));
+			readBack = older && older->currentIndex() == 1 && !tab.view()->fastSummaries();
+		}
+		QSettings().setValue(group + QStringLiteral("/fastOlder"), QStringLiteral("summaries"));
+		{
+			ChartTab tab{ [] { return 100.0; }, nullptr, group };
+			tab.setRecording(0, 0, 10, 512, 64);
+			tab.setFastStreams({ def });
+			auto *older = tab.findChild<QComboBox *>(QStringLiteral("chartOlder"));
+			recordingKeeps = older && older->isHidden() && !tab.view()->fastSummaries();
+		}
+		QSettings().remove(group);
+		check(shownOnlyWithStreams && byDefault && savedKept && readBack && recordingKeeps
+						&& tip.contains(QLatin1String("1/128")) && tip.contains(QLatin1String("recording")),
+				"chart, Older samples: beside RAM with fast streams only, \"summaries\" by default; \"kept\" turns the "
+				"summaries off, saved (chart/fastOlder) and read back by a new tab; a recording's window keeps every "
+				"record and shows no such choice");
+	}
+
 	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of
 	 * 2 GB (as many as this machine fills in 20 s), then RAM set to 256 MB: at the next block the store is down to its
 	 * new share, and no block's append (its trim with it) and no paint takes over 20 ms. Letting gigabytes go took the
@@ -7358,6 +7424,7 @@ private:
 		(void) QTest::qWaitForWindowExposed(&tab);
 		tab.setShown(true);
 		ChartView *view = tab.view();
+		view->setFastSummaries(false); /* every record kept (Older samples, kept): the tiers have a check of their own */
 		view->setMemory(3600);
 		view->setRamBudget(512);
 		view->setFastStream(0, def);
