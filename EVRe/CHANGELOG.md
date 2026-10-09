@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (not released yet)
+## 1.0.0 (2026-10-09)
 
 The first public version of EVRe and the tools around it, under the Apache License 2.0.
 
@@ -55,8 +55,7 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   too), a file cut off up to its last whole piece. `evre.read_recording` in the Python package.
 - Fast streams in the Map editor (Map settings, a Streams page: the window, rate, enable and rate registers and the
   channels, the map's checks live), in the exports (Markdown, C header, Python module), in `evre check --writes` (a
-  stream starts with START, its numbers follow, its rate within 2 %, it stops) and live in Python (`dev.stream`); a
-  math line naming a fast channel is told why it cannot read it.
+  stream starts with START, its numbers follow, its rate within 2 %, it stops) and live in Python (`dev.stream`).
 - The Fast streams card: a stream's name as the row's title, "Start stream" / "Stop stream", the card before Polling
   and recording; the Map settings' channel table with columns that fit their words.
 - Fast lines at 60 frames a second: a view moved by a few columns keeps the columns it had and bins only the new
@@ -81,6 +80,32 @@ The first public version of EVRe and the tools around it, under the Apache Licen
   count on the button; the lines unticked are kept for the next recording. A stream's **Log** tick chooses whether
   a CSV recording writes it beside it; each stream's row is headed by its name, channels and rate on one line. A
   recent recording whose file is gone is greyed, *(not found)*, and a click takes it off; **Clear the list**.
+- The chart's readouts: standard deviation and peak-to-peak beside RMS, a column chooser on the Measure table, each
+  line's total since Clear (value x time, in hour units: Ah, Wh), and a Log Y range with decade lines.
+- Lanes: one plot per unit, stacked, each with its own Y range; lanes that do not fit scroll, fold to a strip with
+  their values, are resized by dragging the border between them, and are listed in a lane menu on the toolbar.
+- Pictures and files: copy or save the chart as a picture, export the view or A -> B to CSV, notes at a time on the
+  chart (saved beside a recording), and a recording opened in a window of its own (also by dropping the file on the
+  window, or from the recent list).
+- Histogram and spectrum of a line over A -> B or the view, each in its own window with a cursor readout.
+- The trigger: each line its own level and edge, set in its lane by dragging the level; Auto, Normal and Single
+  with Run and Stop, a hold-off, a trigger position you drag, Force and Arm; the crossing found among every record
+  for fast lines. Its state is said in steady words, and below 100 ms the chart locks on the busiest line by itself
+  (Auto, short window), marked in its own colour.
+- Short windows: below 1 s the time grid is in divisions, labelled from the right edge or from the trigger point,
+  with a "1 ms/div" readout; the wheel zooms in 1-2-5 steps; the cursors stay where they were put on the grid and
+  read the wave moving under them (A at -3.20 ms, B at T +1.75 ms; Shift snaps to a tenth of a division).
+- Long memory: older fast records kept as summaries of 256 records (the Older samples setting), so a stream of a
+  million records a second keeps far more time in the same RAM; the newest part keeps every record.
+- The RAM budget against the free memory: the chart keeps to less when the PC has less free, and says so, so it
+  trims before Windows pages; a budget cut is released in slices, so the chart never stops for it. At most 64
+  lines, polled, fast and math together.
+- Fast math lines: a formula over one stream's channels is computed for every record, with registers in it held at
+  their last polled value; it is drawn, measured, triggered, exported and recorded as a fast line.
+- A stopped stream is said on the chart ("ADC stopped · last record 14:03:12.345", its values greyed), the live
+  view goes on with the clock, and the stream's header gives its measured rate (the rate set while it is off).
+- The window in Arabic (right-to-left) or English, the Help included; numbers, units and register names stay left
+  to right, in tables too.
 - Formula completion in the math line dialog: register names and functions as you type.
 - Fast streams in the API, reading only (no write switch): `list` names the map's streams and their channels
   (`ADC.I_LOAD`: unit, rate, on or off); `get` of a channel its newest record and that record's time; `stream` of
