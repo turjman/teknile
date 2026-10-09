@@ -69,6 +69,7 @@
 #include <QTabBar>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTableView>
 #include <QTableWidget>
@@ -583,6 +584,7 @@ public:
 		chartTimeGrid();
 		chartTimesFromT();
 		chartGridCursors();
+		arabicNumbers();
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
@@ -13544,6 +13546,214 @@ private:
 		clearTriggerSettings();
 	}
 
+	/* Arabic: a number with its unit or its sign is one left-to-right piece wherever the window's right-to-left runs
+	 * through it. The measure table wrote "V 3.000-" for -3.000 V (the unit before the number, the minus after it), the
+	 * Registers tab "1500-" and "C°", Quick write "(C° 120 … 20-)", the Map editor "C°" and "120 … 20-", the histogram's
+	 * summary "V 0.9245". The cells are drawn between the isolates U+2066 and U+2069 (ltrPiece) and their data stays
+	 * plain, so a cell copied carries no isolate; the texts take them in the translation. English is unchanged. With
+	 * EVRE_TEST_SHOT: pictures in both themes */
+	void arabicNumbers() {
+		const QChar lri(0x2066), pdi(0x2069);
+		const auto drawn = [](QAbstractItemView *view, const QModelIndex &index) { /* the text a cell is drawn with */
+			auto *delegate = qobject_cast<QStyledItemDelegate *>(view->itemDelegateForIndex(index));
+			return delegate ? delegate->displayText(index.data(), view->locale()) : index.data().toString();
+		};
+		const auto copied = [](QAbstractItemView *view, const QModelIndex &index) { /* Ctrl+C on the cell */
+			QApplication::clipboard()->clear();
+			view->setCurrentIndex(index);
+			view->setFocus();
+			QTest::keyClick(view, Qt::Key_C, Qt::ControlModifier);
+			return QApplication::clipboard()->text();
+		};
+		const auto shot = [](QWidget *widget, const QString &name, const std::function<void()> &again = {}) {
+			if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				if (again) again(); /* a chart: a frame after the theme's change, its legend's values in again */
+				widget->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_%1_%2.png")
+						.arg(name, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		};
+		QSettings().remove(QStringLiteral("chart/measureColumns"));
+
+		/* the measure table: a saw from -3.5 V, a temperature below zero in °C, a line without a unit */
+		bool table = false, english = false, copyPlain = false, histogram = false;
+		QString cellA, cellDiff, cellTemp, cellPlain, clip, histogramSummary;
+		for (const QString &code : { QStringLiteral("ar"), QStringLiteral("en") }) {
+			language::apply(*qApp, code);
+			Theme::apply(*qApp, Theme::isDark()); /* the font the pictures are taken in */
+			LoneChart chart(QStringLiteral("SAW2"), QStringLiteral("V"));
+			chart.tab.resize(1500, 820);
+			RegDef temp, count;
+			temp.addr = 0xD004;
+			temp.name = QStringLiteral("TEMP");
+			temp.unit = QStringLiteral("°C");
+			count.addr = 0xD008;
+			count.name = QStringLiteral("COUNT");
+			chart.tab.plotRegister(temp, true);
+			chart.tab.plotRegister(count, true);
+			chart.tab.show();
+			(void) QTest::qWaitForWindowExposed(&chart.tab);
+			chart.view->setSmooth(false);
+			/* the table open and laid out before the first measurement: its columns fit the rows it shows */
+			auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+			auto *cursors = chart.tab.findChild<QPushButton *>(QStringLiteral("cursors"));
+			if (measure) measure->setChecked(true);
+			if (cursors) cursors->setChecked(true);
+			QApplication::processEvents();
+			MathLines::Samples samples;
+			for (int i = 0; i <= 2000; i++) {
+				const double t = 90.0 + i / 1000.0;
+				samples[regKey(chart.def)] << QPointF(t, std::fmod(i / 20.0, 7.0) - 3.5);
+				samples[regKey(temp)] << QPointF(t, -12.5 + 0.5 * std::sin(2 * M_PI * i / 1000.0));
+				samples[regKey(count)] << QPointF(t, -40.0 + i % 9);
+			}
+			chart.now = 92.0;
+			chart.tab.frame(samples);
+			chart.tab.showSpan(90.2, 90.6);
+			chart.view->setCursors(90.34, 90.42); /* the saw at -0.5 V and at -3.5 V: B - A is -3 V */
+			measured(chart.view);
+			const int fills = chart.tab.measureFills();
+			(void) chart.view->grab();
+			(void) QTest::qWaitFor([&] { return chart.tab.measureFills() > fills && !chart.view->measuring(); }, 3000);
+			QTableWidget *measures = chart.table();
+			if (!measures || measures->rowCount() < 3) {
+				check(false, "Arabic numbers: the measure table with three lines");
+				language::apply(*qApp, QStringLiteral("en"));
+				return;
+			}
+			const QModelIndex atA = measures->model()->index(0, ChartTab::ColAtA);
+			const QModelIndex diff = measures->model()->index(0, ChartTab::ColDiff);
+			const QModelIndex tempMin = measures->model()->index(1, ChartTab::ColMin);
+			const QModelIndex plainMin = measures->model()->index(2, ChartTab::ColMin);
+			if (code == QLatin1String("ar")) {
+				cellA = drawn(measures, atA);
+				cellDiff = drawn(measures, diff);
+				cellTemp = drawn(measures, tempMin);
+				cellPlain = drawn(measures, plainMin);
+				/* one piece: the isolate first, the number with its minus, then the unit, the isolate last */
+				const auto piece = [&](const QString &text, const QString &unit) {
+					return text.startsWith(lri) && text.endsWith(pdi) && text.mid(1, 1) == QLatin1String("-")
+							&& (unit.isEmpty() ? !text.contains(QLatin1Char(' '))
+											   : text.chopped(1).endsWith(QLatin1Char(' ') + unit));
+				};
+				table = piece(cellA, QStringLiteral("V")) && piece(cellDiff, QStringLiteral("V"))
+						&& piece(cellTemp, QStringLiteral("°C")) && piece(cellPlain, QString())
+						&& !measures->item(0, ChartTab::ColDiff)->text().contains(lri);
+				clip = copied(measures, diff);
+				copyPlain = !clip.isEmpty() && clip == measures->item(0, ChartTab::ColDiff)->text() && !clip.contains(lri)
+						&& !clip.contains(pdi);
+				measures->clearSelection();
+				shot(&chart.tab, QStringLiteral("measure"), [&] {
+					chart.tab.frame(MathLines::Samples());
+					(void) chart.view->grab();
+				});
+				/* the Histogram and the Spectrum of the saw, their readouts at the mouse */
+				for (const AnalysisWindow::Kind kind : { AnalysisWindow::Kind::Histogram, AnalysisWindow::Kind::Spectrum }) {
+					AnalysisWindow *window = chart.tab.openAnalysis(kind, chart.key());
+					if (!window) continue;
+					(void) QTest::qWaitForWindowExposed(window);
+					QWidget *plotWidget = window->plot();
+					const QPointF inside(plotWidget->width() * 0.3, plotWidget->height() / 2.0);
+					QMouseEvent hover(QEvent::MouseMove, inside, plotWidget->mapToGlobal(inside), Qt::NoButton, Qt::NoButton,
+							Qt::NoModifier);
+					QApplication::sendEvent(plotWidget, &hover);
+					if (kind == AnalysisWindow::Kind::Histogram) histogramSummary = window->summary();
+					std::printf("     (Arabic, %s: \"%s\" / \"%s\")\n",
+							kind == AnalysisWindow::Kind::Histogram ? "histogram" : "spectrum", qPrintable(window->summary()),
+							qPrintable(window->readout()));
+					shot(window, kind == AnalysisWindow::Kind::Histogram ? QStringLiteral("histogram") : QStringLiteral("spectrum"));
+					window->close();
+				}
+				/* the bin's width with its unit one piece: "0.9245 V" between the isolates */
+				histogram = QRegularExpression(lri + QStringLiteral("[0-9.]+ V") + pdi).match(histogramSummary).hasMatch();
+			} else {
+				english = drawn(measures, diff) == measures->item(0, ChartTab::ColDiff)->text()
+						&& measures->item(0, ChartTab::ColDiff)->text().startsWith(QLatin1Char('-'))
+						&& measures->item(0, ChartTab::ColDiff)->text().endsWith(QLatin1String(" V"))
+						&& !drawn(measures, diff).contains(lri);
+			}
+			if (measure) measure->setChecked(false);
+			if (cursors) cursors->setChecked(false);
+			chart.tab.hide();
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		std::printf("     (Arabic: at A \"%s\", B - A \"%s\", TEMP min \"%s\", COUNT min \"%s\"; copied \"%s\")\n",
+				qPrintable(cellA), qPrintable(cellDiff), qPrintable(cellTemp), qPrintable(cellPlain), qPrintable(clip));
+		check(table, "Arabic numbers: the measure table's cells of a negative value with its unit (V, °C) or without one "
+				"are drawn as one left-to-right piece: the isolate, the number with its minus first, then the unit");
+		check(copyPlain, "Arabic numbers: a measure cell copied (Ctrl+C) is its plain text, without the isolates");
+		check(english, "Arabic numbers: in English the measure table's cells are drawn as they are (\"-3.000 V\")");
+		check(histogram, "Arabic numbers: the histogram's summary writes the bins' width with its unit as one "
+				"left-to-right piece");
+
+		/* the Registers tab: a negative value, its unit, the detail line under the table, Quick write's range */
+		auto *tabs = window_.findChild<QTabWidget *>();
+		other_.writeI16(regs_.danger.addr, -1500);
+		language::apply(*qApp, QStringLiteral("ar"));
+		if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const QModelIndex value = valueCell(table_, regs_.danger.name);
+		const bool read = value.isValid()
+				&& QTest::qWaitFor([&] { return value.data().toString() == QLatin1String("-1500"); }, 3000);
+		QModelIndex degrees;
+		for (int r = 0; r < table_->model()->rowCount(); r++)
+			if (table_->model()->index(r, RegisterModel::ColUnit).data().toString() == QStringLiteral("°C"))
+				degrees = table_->model()->index(r, RegisterModel::ColUnit);
+		table_->setCurrentIndex(value);
+		QApplication::processEvents();
+		const QString shownValue = read ? drawn(table_, value) : QString();
+		const QString shownUnit = degrees.isValid() ? drawn(table_, degrees) : QString();
+		QString detailText;
+		if (auto *registers = window_.findChild<RegistersTab *>())
+			if (auto *detail = registers->findChild<QLabel *>(QStringLiteral("detail"))) detailText = detail->text();
+		const QString valueClip = read ? copied(table_, value) : QString();
+		shot(&window_, QStringLiteral("registers"));
+		const QModelIndex setpoint = valueCell(table_, QStringLiteral("SETPOINT"));
+		table_->setCurrentIndex(setpoint);
+		QApplication::processEvents();
+		auto *quickValue = window_.findChild<QLineEdit *>(QStringLiteral("qwValue"));
+		const QString range = quickValue ? quickValue->placeholderText() : QString();
+		shot(&window_, QStringLiteral("registers_setpoint"));
+		std::printf("     (Arabic, Registers: \"%s\" \"%s\"; copied \"%s\"; Quick write \"%s\"; the detail \"%s\")\n",
+				qPrintable(shownValue), qPrintable(shownUnit), qPrintable(valueClip), qPrintable(range),
+				qPrintable(detailText));
+
+		/* the Map editor: the unit, and SETPOINT's range in More */
+		QString mapUnit, mapMore;
+		if (auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"))) {
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabMap);
+			QApplication::processEvents();
+			for (int r = 0; r < mapTable->model()->rowCount(); r++) {
+				if (mapTable->model()->index(r, MapTableModel::ColName).data().toString() != QLatin1String("SETPOINT")) continue;
+				mapUnit = drawn(mapTable, mapTable->model()->index(r, MapTableModel::ColUnit));
+				mapMore = mapTable->model()->index(r, MapTableModel::ColMore).data().toString();
+				mapTable->scrollTo(mapTable->model()->index(r, MapTableModel::ColMore));
+			}
+			QApplication::processEvents();
+			shot(&window_, QStringLiteral("mapeditor"));
+		}
+		if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+		language::apply(*qApp, QStringLiteral("en"));
+		QApplication::processEvents();
+		const QString englishValue = read ? drawn(table_, value) : QString();
+		other_.writeI16(regs_.danger.addr, 0);
+		(void) QTest::qWaitFor([&] { return value.data().toString() == QLatin1String("0"); }, 3000);
+		std::printf("     (Arabic, Map editor: the unit \"%s\", More \"%s\")\n", qPrintable(mapUnit), qPrintable(mapMore));
+		check(read && shownValue == lri + QStringLiteral("-1500") + pdi && shownUnit == lri + QStringLiteral("°C") + pdi
+						&& valueClip == QLatin1String("-1500") && englishValue == QLatin1String("-1500"),
+				"Arabic numbers: the Registers tab draws a negative value (\"-1500\") and a unit (\"°C\") as left-to-right "
+				"pieces; Ctrl+C copies the plain value; English as it is");
+		check(detailText.contains(lri + QStringLiteral("<b>-1500</b> rpm") + pdi),
+				"Arabic numbers: the Registers tab's detail line writes the value and its unit as one left-to-right piece");
+		check(range.contains(lri + QStringLiteral("-20 … 120 °C") + pdi),
+				"Arabic numbers: Quick write's range (\"-20 … 120 °C\") is one left-to-right piece");
+		check(mapUnit == lri + QStringLiteral("°C") + pdi && mapMore.contains(lri + QStringLiteral("-20 … 120") + pdi),
+				"Arabic numbers: the Map editor draws a unit (\"°C\") and writes a register's range in More "
+				"(\"-20 … 120\") as left-to-right pieces");
+	}
 	/* O-14: the short window's lock watches the busiest line, not the first. A polled line of 10 polls a second plotted
 	 * first and a fast line of 50 000 records a second (a 50 Hz sine, its crossings found as the engine finds them)
 	 * second, at a 20 ms window: the lock watches the fast line and says "Auto (short window)" at each of 100 frames

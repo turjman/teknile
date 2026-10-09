@@ -2663,7 +2663,12 @@ within any text the numbers, units, register names, addresses and code. Numbers 
 point (`12.05 V`, not the Arabic-Indic digits of an Arabic system's locale). A number and its unit are one left to
 right piece (between U+2066 and U+2069, invisible): `ltrPiece` wraps them where the code joins them (the times and
 durations of `secondsText` and `durationText`, the memory strip's, the sizes of *needs …*), and the translations
-wrap the ones they write (*%1 fps*, *%1 ms*, the Help's *10 s* and *2 V*), so *0.886 s* never reads *s 0.886*. Counts take Arabic's plural forms
+wrap the ones they write (*%1 fps*, *%1 ms*, the Help's *10 s* and *2 V*), so *0.886 s* never reads *s 0.886*. The
+tables draw their cells so too (`ltrCells`): every cell of the measure table, the Registers tab's values and units,
+the Map editor's units, so *-3.000 V*, *-1500* and *°C* never read *V 3.000-*, *1500-* and *C°*; a cell copied
+(Ctrl+C) is its plain text. Quick write's range (*-20 … 120 °C*), the Map editor's *More* (*-20 … 120*, *default
+-5*), the Registers tab's line under the table (*Value -1500 rpm*) and the analysis windows' summaries (a bin's
+width, the peak's amplitude) keep theirs one piece the same way. Counts take Arabic's plural forms
 (*4 أجهزة*, *11 جهازًا*); a text with two counts names them as labels (*الخطوط: 5 · الصفوف: 600*). Qt's own buttons
 (OK, Cancel in its dialogs) come from Qt's `qtbase_ar.qm` when it is installed beside Qt. The Log file's lines are
 written in the language running. The exports a person reads (the Markdown specification) follow the language; the
@@ -4177,7 +4182,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
@@ -6082,6 +6087,17 @@ histogram's value labels are at the right of their boxes by the plot; English ag
 rest of the test runs in English. With `EVRE_TEST_SHOT` set it saves `<prefix>_arabic.png`, `<prefix>_arabic_chart.png`
 and `<prefix>_arabic_help.png`.
 
+**Numbers in Arabic** (`arabicNumbers`, after the grid cursors): a Chart tab of its own in Arabic with a saw from
+-3.5 V, a temperature below zero in °C and a line without a unit, the cursors on -0.5 V and -3.5 V: the measure
+table's cells at A, B - A and Min are drawn as U+2066, the number with its minus first, its unit, U+2069 (the
+item's text plain); Ctrl+C on B - A copies *-3.000 V* without the isolates; in English the cell is drawn as it is;
+the histogram's summary has the bins' width with its unit between the isolates. On the main window in Arabic, the
+fake device's MOTOR_SPEED at -1500: its value and a unit *°C* drawn as left-to-right pieces, Ctrl+C copies
+*-1500*, English draws it as it is; the line under the table has *-1500 rpm* as one piece; Quick write on SETPOINT
+has *-20 … 120 °C* as one piece; the Map editor draws *°C* so and its *More* has *-20 … 120* so. With
+`EVRE_TEST_SHOT` set it saves `<prefix>_measure_`, `_histogram_`, `_spectrum_`, `_registers_`,
+`_registers_setpoint_` and `_mapeditor_` `light.png` and `dark.png`.
+
 Some chart steps run on a Chart tab of their own, its clock standing still and moved by the test, fed samples
 made up for the check:
 
@@ -6153,7 +6169,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 605 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 613 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

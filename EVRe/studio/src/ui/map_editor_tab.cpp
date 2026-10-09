@@ -284,6 +284,8 @@ void MapEditorTab::buildTable() {
 	table_->setObjectName(QStringLiteral("mapTable"));
 	table_->setModel(filter_);
 	table_->setItemDelegate(new CellDelegate(doc_, table_));
+	/* the unit drawn as one left-to-right piece, "°C" in Arabic too, not "C°" (its editor a plain line, as before) */
+	table_->setItemDelegateForColumn(MapTableModel::ColUnit, ltrCells(table_));
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setSelectionMode(QAbstractItemView::ExtendedSelection);
 	table_->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed

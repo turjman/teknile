@@ -6,6 +6,7 @@
 
 #include "model/map_document.h"
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 namespace {
 
@@ -26,12 +27,12 @@ QString moreText(const RegDef &def) {
 	if (!def.plottable && def.isNumeric()) parts << QObject::tr("not plotted");
 	if (def.hex) parts << QStringLiteral("hex");
 	if (def.scale != 1.0 || def.offset != 0.0)
-		parts << QStringLiteral("×%1%2").arg(def.scale).arg(def.offset != 0.0 ? QStringLiteral(" %1%2")
-				.arg(def.offset > 0 ? QStringLiteral("+") : QString()).arg(def.offset) : QString());
-	if (def.hasMin() || def.hasMax())
-		parts << QStringLiteral("%1 … %2").arg(def.hasMin() ? QString::number(def.min) : QString(),
-				def.hasMax() ? QString::number(def.max) : QString());
-	if (def.hasDefault()) parts << QObject::tr("default %1").arg(def.defaultValue);
+		parts << ltrPiece(QStringLiteral("×%1%2").arg(def.scale).arg(def.offset != 0.0 ? QStringLiteral(" %1%2")
+				.arg(def.offset > 0 ? QStringLiteral("+") : QString()).arg(def.offset) : QString()));
+	if (def.hasMin() || def.hasMax()) /* one piece in Arabic: "-20 … 120", not "120 … 20-" */
+		parts << ltrPiece(QStringLiteral("%1 … %2").arg(def.hasMin() ? QString::number(def.min) : QString(),
+				def.hasMax() ? QString::number(def.max) : QString()));
+	if (def.hasDefault()) parts << QObject::tr("default %1").arg(ltrPiece(QString::number(def.defaultValue)));
 	if (!def.enumValues.isEmpty()) parts << QObject::tr("%n value name(s)", nullptr, int(def.enumValues.size()));
 	if (!def.special.isEmpty()) parts << QObject::tr("%n special", nullptr, int(def.special.size()));
 	if (!def.fields.isEmpty()) parts << QObject::tr("%n field(s)", nullptr, int(def.fields.size()));

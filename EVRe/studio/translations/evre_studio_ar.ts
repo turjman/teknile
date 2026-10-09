@@ -61,7 +61,7 @@
     </message>
     <message>
         <source>%1 samples · %2 bins of %3%4 (Freedman–Diaconis)</source>
-        <translation>العينات: %1 · الفئات: %2 بعرض %3%4 (فريدمان–دياكونيس)</translation>
+        <translation>العينات: %1 · الفئات: %2 بعرض ⁦%3%4⁩ (فريدمان–دياكونيس)</translation>
     </message>
     <message>
         <source>%1 samples: too few for a spectrum</source>
@@ -69,7 +69,7 @@
     </message>
     <message>
         <source>%1 samples, resampled to %2 Hz · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8</source>
-        <translation>العينات: %1، أعيد أخذها بمعدل ⁦%2 Hz⁩ · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: %7%8</translation>
+        <translation>العينات: %1، أعيد أخذها بمعدل ⁦%2 Hz⁩ · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: ⁦%7%8⁩</translation>
     </message>
     <message>
         <source>%1 … %2%3: %4 samples (%5 %)</source>
@@ -81,7 +81,7 @@
     </message>
     <message>
         <source>%1 samples at %2 Hz, evenly spaced · %3 segments of %4, Hann, 50 % overlap · %5 Hz apart · peak %6 Hz: %7%8</source>
-        <translation>العينات: %1 بمعدل ⁦%2 Hz⁩، متساوية التباعد · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: %7%8</translation>
+        <translation>العينات: %1 بمعدل ⁦%2 Hz⁩، متساوية التباعد · المقاطع: %3 بطول %4، نافذة هان، تداخل ⁦50 %⁩ · التباعد ⁦%5 Hz⁩ · القمة ⁦%6 Hz⁩: ⁦%7%8⁩</translation>
     </message>
 </context>
 <context>
@@ -5697,7 +5697,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
     <message>
         <source>%1 … %2%3</source>
-        <translation>%1 … %2%3</translation>
+        <translation>⁦%1 … %2%3⁩</translation>
     </message>
     <message>
         <source>value (%1), or a name</source>
@@ -5705,7 +5705,7 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
     <message>
         <source>Write the default: %1%2</source>
-        <translation>اكتب الافتراضي: %1%2</translation>
+        <translation>اكتب الافتراضي: ⁦%1%2⁩</translation>
     </message>
     <message>
         <source>tick Allow writes to write</source>

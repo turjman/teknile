@@ -33,6 +33,7 @@
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStyle>
+#include <QStyledItemDelegate>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidgetAction>
@@ -609,6 +610,7 @@ QWidget *ChartTab::buildMeasurements() {
 	layout->addWidget(measureInfo_);
 	measures_ = new QTableWidget(0, MEASURE_COLUMNS);
 	measures_->setObjectName(QStringLiteral("measures"));
+	measures_->setItemDelegate(ltrCells(measures_)); /* names, numbers and units: "-3.000 V" in Arabic too */
 	measures_->setHorizontalHeaderLabels({ tr("Line"), tr("at A"), tr("at B"), tr("B − A"), tr("Min"), tr("Max"),
 			tr("Mean"), tr("RMS"), tr("Std dev"), tr("Peak-peak"), tr("Area ∫ dt"), tr("Area / 3600"), tr("Since Clear") });
 	measures_->horizontalHeaderItem(ColStd)->setToolTip(tr("The standard deviation over the range, time-weighted as the "
