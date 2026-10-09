@@ -371,6 +371,9 @@ time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a
 plot's edge, and when the cursors are too close for the text, the text stands beside the tags. A tag's tooltip gives
 its clock time; while the trigger holds the view on a crossing, how far from <b>T</b> too (<i>T -0.250 ms</i>), as an
 oscilloscope's cursors read, and so does the line over the measurements (<i>A: T -0.250 ms · B: T +1.750 ms</i>).
+Below a 1 s window (the grid in divisions) the cursors sit on the grid: each keeps its place while the wave moves
+under it, its tooltip and the line say where (<i>A: -7.000 ms</i>, from the right edge, or from T), the measurements
+take the samples under them, and <b>Shift</b> while dragging snaps a cursor to a tenth of a division.
 <b>Clear cursors</b> removes them, and so does turning <b>Cursors</b> off.</li>
 <li><b>ƒ Math</b>: lines made from a formula (below).</li>
 <li><b>Display</b>, a menu of how the lines are drawn (its tooltip says what is on): <b>Normalise</b>, every line
@@ -683,8 +686,8 @@ the ⚠ switch.</li>
 cancels · right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
-<b>click</b> places A, then B, a <b>drag</b> moves the nearer; the mouse on a cursor's tag: its time (from T while
-the trigger holds the view)</td></tr>
+<b>click</b> places A, then B, a <b>drag</b> moves the nearer (below 1 s with <b>Shift</b>: to a tenth of a
+division); the mouse on a cursor's tag: its time (from T while the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or

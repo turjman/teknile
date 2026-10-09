@@ -466,12 +466,23 @@ public:
 	double yLo() const { return y_.lo; }  /* the range shown now */
 	double yHi() const { return y_.hi; }
 
-	/* cursors: with cursor mode on, a click places / drags the nearest */
+	/* cursors: with cursor mode on, a click places / drags the nearest (Shift on the grid: a tenth of a division) */
 	void setCursorMode(bool on) { cursorMode_ = on; refresh(); }
 	void clearCursors();
-	void setCursors(double a, double b);     /* times; NaN: none */
+	void setCursors(double a, double b);     /* times (on the grid: their places in the view as last painted); NaN: none */
 	double cursorA() const { return cursorA_; } /* NaN: not set */
 	double cursorB() const { return cursorB_; }
+	/* U-19, the cursors on the grid: while the time grid is in divisions a cursor is a place in the window, not a time
+	 * (the owner: at 10 ms a cursor's time left the screen within a frame), as a scope's cursors sit on its graticule;
+	 * the wave moves under it and cursorA() / cursorB() are the times at their places in the frame last painted, so
+	 * what reads them (the measurements, Export, Histogram, the bar) takes the samples under them then. On clock times
+	 * (U-20) they hold times; a change of window or grid keeps each where it is on the screen. A recording's window
+	 * keeps times: its samples do not move */
+	bool cursorsOnGrid() const { return divisionsShown() && !recording_; }
+	double cursorPlace(int k) const { return cursorPlace_[k & 1]; } /* tests: a share of the plot from its left edge */
+	/* on the grid, where a cursor is: from T while held on a trigger's crossing ("T +1.750 ms"), else from the right
+	 * edge ("-3.200 ms"); empty off the grid or not placed */
+	QString cursorPlaceText(int k) const;
 	double timeNow() const { return clockNow(); } /* the time base now (for tests) */
 
 	/* the legend (for tests): each line's chip where it is drawn now, the part
@@ -868,7 +879,10 @@ private:
 	double xAtTime(double t) const;
 
 	/* the mouse */
-	void pickCursor(double x);
+	void pickCursor(double x, bool snap);
+	void putCursor(int k, double x, bool snap); /* cursor k (0: A) to x in the plot; snap: a tenth of a division */
+	void placeCursors(const Axes &axes);         /* each frame: grid cursors' times from their places (U-19, U-20) */
+	double shownStart() const;                  /* where the view began as last painted (held: as it is now) */
 	void zoomTime(double factor, double mouseX);
 	void zoomY(double factor, double mouseY);
 	bool pressLegend(const QPointF &pos);
@@ -1183,6 +1197,10 @@ private:
 	/* the cursors and the mouse */
 	bool cursorMode_ = false;
 	double cursorA_ = NAN, cursorB_ = NAN;
+	/* their places in the view (a share of the plot from its left edge): on the grid what they are, on clock times
+	 * where they were last painted, so a switch to the grid keeps them there */
+	double cursorPlace_[2] = { NAN, NAN };
+	bool cursorsGridPainted_ = false; /* the last frame had them on the grid: a switch back converts once */
 	Drag drag_ = Drag::None;
 	double dragStartX_ = 0, dragStartEnd_ = 0; /* Pan: where the drag began, and the view's end then */
 	double dragStartScroll_ = 0;               /* LegendBar, LaneBar: the scroll when the drag began */
