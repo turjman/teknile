@@ -1836,6 +1836,7 @@ double ChartView::total(int key) const {
 
 void ChartView::clearCursors() {
 	cursorA_ = cursorB_ = NAN;
+	cursorPlace_[0] = cursorPlace_[1] = NAN;
 	emit cursorsChanged();
 	refresh();
 }
@@ -1843,8 +1844,30 @@ void ChartView::clearCursors() {
 void ChartView::setCursors(double a, double b) {
 	cursorA_ = a;
 	cursorB_ = b;
+	/* their places in the picture shown: on the grid they stay there (a live view's next frame moves on under them) */
+	const double start = shownStart();
+	cursorPlace_[0] = (a - start) / window_;
+	cursorPlace_[1] = (b - start) / window_;
 	emit cursorsChanged();
 	refresh();
+}
+
+double ChartView::shownStart() const { return (live_ && lastViewEnd_ != 0 ? lastViewEnd_ : viewEnd()) - window_; }
+
+/* Each frame, before anything reads them: on the grid a cursor's time is the one at its place in this frame's view;
+ * the frame after the grid gives way to clock times converts the same way once, and from then on the time is kept and
+ * its place follows it (where a switch back to the grid finds it) */
+void ChartView::placeCursors(const Axes &axes) {
+	const bool grid = cursorsOnGrid();
+	double *times[2] = { &cursorA_, &cursorB_ };
+	for (int k = 0; k < 2; k++) {
+		if (grid || cursorsGridPainted_) /* a place of 1 is the right edge exactly: its tag is drawn there */
+			*times[k] = !std::isfinite(cursorPlace_[k]) ? NAN
+					: cursorPlace_[k] == 1 ? axes.t1 : axes.t0 + cursorPlace_[k] * axes.span;
+		else
+			cursorPlace_[k] = (*times[k] - axes.t0) / axes.span;
+	}
+	cursorsGridPainted_ = grid;
 }
 
 QRectF ChartView::plotRect() const {
@@ -2255,7 +2278,7 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	}
 	if (!plotRect().contains(pos)) return;
 	if (cursorMode_) {
-		pickCursor(pos.x());
+		pickCursor(pos.x(), e->modifiers() & Qt::ShiftModifier);
 		return;
 	}
 	drag_ = Drag::Pan;
@@ -2329,14 +2352,42 @@ bool ChartView::pressLaneLabels(const QPointF &pos) {
 }
 
 /* cursor mode: a click places A, then B, then moves the nearer of the two */
-void ChartView::pickCursor(double x) {
-	const double t = timeAtX(x);
+void ChartView::pickCursor(double x, bool snap) {
+	/* on the grid the nearer by where it is drawn: a live view's times moved on since */
+	const QRectF plot = plotRect();
+	const auto xOf = [&](int k) {
+		return cursorsOnGrid() ? plot.left() + cursorPlace_[k] * plot.width() : xAtTime(k == 0 ? cursorA_ : cursorB_);
+	};
 	if (!std::isfinite(cursorA_)) drag_ = Drag::CurA;
 	else if (!std::isfinite(cursorB_)) drag_ = Drag::CurB;
-	else drag_ = std::fabs(xAtTime(cursorA_) - x) <= std::fabs(xAtTime(cursorB_) - x) ? Drag::CurA : Drag::CurB;
-	(drag_ == Drag::CurA ? cursorA_ : cursorB_) = t;
+	else drag_ = std::fabs(xOf(0) - x) <= std::fabs(xOf(1) - x) ? Drag::CurA : Drag::CurB;
+	putCursor(drag_ == Drag::CurA ? 0 : 1, x, snap);
 	emit cursorsChanged();
 	refresh();
+}
+
+/* On the grid a place in the picture shown (its time from it), Shift's snap counted from the grid's 0 (the right edge,
+ * or T) as the division lines are, so a snapped cursor sits on a line or a tenth between two; on clock times a time,
+ * as before, its place following at the next frame */
+void ChartView::putCursor(int k, double x, bool snap) {
+	double &time = k == 0 ? cursorA_ : cursorB_;
+	if (!cursorsOnGrid()) {
+		time = timeAtX(x);
+		return;
+	}
+	const QRectF plot = plotRect();
+	const double start = shownStart();
+	double place = (std::clamp(x, plot.left(), plot.right()) - plot.left()) / plot.width();
+	if (snap) {
+		constexpr double STEP = 1.0 / (DIVISIONS * 10);
+		const double zero = timesFromT(start, start + window_) ? (trigger_.at - start) / window_ : 1.0;
+		place = zero + std::round((place - zero) / STEP) * STEP;
+		if (place > 1 + 1e-9) place -= STEP; /* the step past an edge: the last one inside */
+		if (place < -1e-9) place += STEP;
+		place = std::clamp(place, 0.0, 1.0);
+	}
+	cursorPlace_[k] = place;
+	time = place == 1 ? start + window_ : start + place * window_;
 }
 
 void ChartView::mouseMoveEvent(QMouseEvent *e) {
@@ -2357,7 +2408,8 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 	}
 	case Drag::CurA:
 	case Drag::CurB:
-		(drag_ == Drag::CurA ? cursorA_ : cursorB_) = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
+		putCursor(drag_ == Drag::CurA ? 0 : 1, std::clamp(pos.x(), plot.left(), plot.right()),
+				e->modifiers() & Qt::ShiftModifier);
 		emit cursorsChanged();
 		break;
 	case Drag::Level: { /* the engine watches the new level from the next frame on, not after the release */
@@ -2809,6 +2861,7 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.t0 = axes.t1 - window_;
 	axes.span = window_;
 	axes.columns = std::max(1.0, axes.rect.width());
+	placeCursors(axes); /* on the grid: the times under them in this view */
 	QElapsedTimer stage; /* the timing aid's stages (perf_) */
 	stage.start();
 	const QVector<BinnedLine> binned = viewBins(axes);
@@ -3746,6 +3799,12 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 		if (!QRectF(x - 9, lastAxes_.rect.top() - 2, 18, 16).contains(pos)) continue;
 		const QString name = k == 0 ? QStringLiteral("A") : QStringLiteral("B");
 		const QString at = timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3);
+		/* on the grid its place first ("Cursor B at T +1.750 ms"), the time under it now after, and what keeps it there */
+		const QString place = cursorPlaceText(k);
+		if (!place.isEmpty())
+			return tr("Cursor %1 at %2 · %3").arg(name, place, at) + QLatin1Char('\n')
+					+ tr("On the grid: it keeps its place while the wave moves under it · Shift while dragging: a tenth "
+						 "of a division");
 		const QString fromT = fromTText(t);
 		return fromT.isEmpty() ? tr("Cursor %1 at %2").arg(name, at) : tr("Cursor %1 at %2 · %3").arg(name, at, fromT);
 	}
@@ -4357,6 +4416,19 @@ QString ChartView::fromTText(double t) const {
 	const QString unit = windowUnit(window_, scale);
 	const double v = (t - origin) / scale;
 	return ltrPiece(QStringLiteral("T %1%2 %3").arg(v >= 0 ? QStringLiteral("+") : QString(), QString::number(v, 'f', 3), unit));
+}
+
+/* on the grid: from T as fromTText, else from the right edge as the division labels count ("-3.200 ms"), from the
+ * place itself, so a live view's text does not change from frame to frame */
+QString ChartView::cursorPlaceText(int k) const {
+	const double place = cursorPlace_[k & 1], t = (k & 1) == 0 ? cursorA_ : cursorB_;
+	if (!cursorsOnGrid() || !std::isfinite(place) || !std::isfinite(t)) return QString();
+	const QString fromT = fromTText(t);
+	if (!fromT.isEmpty()) return fromT;
+	double scale;
+	const QString unit = windowUnit(window_, scale);
+	const double v = (place - 1) * window_ / scale;
+	return ltrPiece(QStringLiteral("%1 %2").arg(QString::number(std::fabs(v) < 5e-4 ? 0.0 : v, 'f', 3), unit));
 }
 
 /* "1 ms/div · 14:03:12.345": the division and the clock time at 0, as precise as the division needs. Live, its clock
@@ -6207,8 +6279,8 @@ QStringList ChartView::stateVariants(bool measuring) const {
 	} else if (!y_.autoRange && !normalized_) {
 		y[0] = y[1] = tr("Y manual");
 	}
-	if (cursorMode_) {
-		cursors[0] = tr("cursors: click / drag");
+	if (cursorMode_) { /* on the grid Shift's snap is said too (U-19) */
+		cursors[0] = cursorsOnGrid() ? tr("cursors: click / drag, Shift snaps") : tr("cursors: click / drag");
 		cursors[1] = tr("cursors");
 	}
 	trigger = triggerStateText();

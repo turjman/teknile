@@ -457,7 +457,9 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	cursorsButton_->setObjectName(QStringLiteral("cursors"));
 	cursorsButton_->setCheckable(true);
 	cursorsButton_->setToolTip(tr("On: a click on the chart places cursor A, then B; drag them.\n"
-			"The measurements under the chart then cover A → B instead of the view."));
+			"The measurements under the chart then cover A → B instead of the view.\n"
+			"With the grid in divisions (windows under 1 s) the cursors keep their place on the grid while the wave "
+			"moves under them;\nShift while dragging snaps them to a tenth of a division."));
 	clearCursorsButton_ = new QPushButton(tr("Clear cursors"));
 	measureButton_ = new QPushButton(tr("Measure"));
 	measureButton_->setObjectName(QStringLiteral("measure"));
@@ -2137,8 +2139,13 @@ QString ChartTab::measuredRangeText() const {
 	QString text;
 	if (cursors) {
 		text = tr("Measured between the cursors: A → B = %1 s").arg(measureText(std::fabs(view->cursorB() - view->cursorA())));
-		/* held on a trigger's crossing: each cursor from T as well (U-7, as a scope's cursors read) */
-		const QString a = view->fromTText(view->cursorA()), b = view->fromTText(view->cursorB());
+		/* held on a trigger's crossing: each cursor from T as well (U-7, as a scope's cursors read); on the grid where
+		 * each sits, from T or from the right edge (U-19: the same text while the wave moves under them) */
+		QString a = view->cursorPlaceText(0), b = view->cursorPlaceText(1);
+		if (a.isEmpty() || b.isEmpty()) {
+			a = view->fromTText(view->cursorA());
+			b = view->fromTText(view->cursorB());
+		}
 		if (!a.isEmpty()) text += tr(" · A: %1 · B: %2", "the cursors' times from the trigger's crossing").arg(a, b);
 	} else {
 		const QString hint = cursorsButton_->isChecked()
