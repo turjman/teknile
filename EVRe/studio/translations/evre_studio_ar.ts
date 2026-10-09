@@ -549,12 +549,6 @@ Dragging the chart holds it too.</source>
         <translation>المؤشران</translation>
     </message>
     <message>
-        <source>On: a click on the chart places cursor A, then B; drag them.
-The measurements under the chart then cover A → B instead of the view.</source>
-        <translation>مفعّل: نقرة على المخطط تضع المؤشر A ثم B؛ اسحبهما.
-تغطي القياسات تحت المخطط حينها A → B بدل العرض.</translation>
-    </message>
-    <message>
         <source>Clear cursors</source>
         <translation>مسح المؤشرين</translation>
     </message>
@@ -1330,6 +1324,16 @@ A recording&apos;s file keeps every sample either way.</source>
         <source>needs %1 for every sample; keeps %2, the newest %3 with every sample and the rest as summaries</source>
         <translation>يحتاج %1 لكل العينات؛ ويحفظ %2، آخر %3 منها بكل عيناتها والباقي ملخصات</translation>
     </message>
+    <message>
+        <source>On: a click on the chart places cursor A, then B; drag them.
+The measurements under the chart then cover A → B instead of the view.
+With the grid in divisions (windows under 1 s) the cursors keep their place on the grid while the wave moves under them;
+Shift while dragging snaps them to a tenth of a division.</source>
+        <translation>مفعّل: نقرة على المخطط تضع المؤشر A ثم B؛ اسحبهما.
+تغطي القياسات تحت المخطط حينها A → B بدل العرض.
+والشبكة بالتقسيمات (نوافذ تحت ⁦1 s⁩) يبقى المؤشران في مكانهما على الشبكة والموجة تتحرك تحتهما؛
+وShift أثناء السحب يضعهما على عُشر تقسيمة.</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -1692,6 +1696,14 @@ A recording&apos;s file keeps every sample either way.</source>
         <source>%1 · waiting (%2 stopped)</source>
         <comment>the trigger&apos;s mode; the fast stream of its line</comment>
         <translation>%1 · بانتظار عبور (%2 متوقف)</translation>
+    </message>
+    <message>
+        <source>On the grid: it keeps its place while the wave moves under it · Shift while dragging: a tenth of a division</source>
+        <translation>على الشبكة: يبقى في مكانه والموجة تتحرك تحته · Shift أثناء السحب: عُشر تقسيمة</translation>
+    </message>
+    <message>
+        <source>cursors: click / drag, Shift snaps</source>
+        <translation>المؤشران: انقر / اسحب، وShift للتثبيت على الشبكة</translation>
     </message>
 </context>
 <context>
@@ -2513,409 +2525,6 @@ others that came while it was up. All of them are in the Log; hover the pop-up f
     </message>
     <message>
         <source>
-&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
-cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
-&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer; the mouse on a cursor&apos;s tag: its time (from T while
-the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
-all fit&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
-handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
-&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
-Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
-arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
-it: 50 %&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
-Manual or Log tag: Auto ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
-values: Auto ·
-&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
-(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
-&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</source>
-        <translation>
-&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
-يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
-كلها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
-مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
-&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
-⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
-(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
-و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
-&lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
-The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
-every line at that moment: a box beside the mouse holds every line&apos;s value (its numbers change at the &lt;b&gt;Show
-values&lt;/b&gt; pace, as the legend&apos;s, and the box keeps its size).&lt;/p&gt;
-&lt;p&gt;Each line keeps its place in the legend; only its digits change, at the &lt;b&gt;Show values&lt;/b&gt; pace
-(10 per second by default) while the line itself moves at every frame. When the lines do not all fit, scroll
-the legend with the &lt;b&gt;mouse wheel&lt;/b&gt; over it, the &lt;b&gt;bar&lt;/b&gt; under it, or the arrows at its ends. The top right
-says what holds the view or changes its reading (held, Y log or manual, cursors, the trigger); when the row is short
-it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;How many lines&lt;/b&gt;: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
-2000, 16 at 4000 (with &lt;i&gt;Auto send&lt;/i&gt;, at its rate). Past that a Plot tick is refused, and when the rate goes up
-the lines plotted last come off; the status bar and the Log say which. &lt;b&gt;One cap of 64 lines&lt;/b&gt; holds for every
-kind: registers, math lines and fast stream channels (the &lt;i&gt;Fast streams&lt;/i&gt; page) count together, and a 65th of
-any kind (a Plot, a channel&apos;s tick, a field, &lt;i&gt;New math line…&lt;/i&gt;, a math line&apos;s &lt;i&gt;Shown&lt;/i&gt;) is refused with the
-same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
-shows how many lines are on the chart of how many it may hold: &lt;i&gt;32/64 plotted&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;The first row: what is shown and kept&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Window&lt;/b&gt;: how much time is shown. Pick one, or type any length: &lt;code&gt;45&lt;/code&gt; (seconds),
-&lt;code&gt;2.5 s&lt;/code&gt;, &lt;code&gt;500 ms&lt;/code&gt;, &lt;code&gt;3 min&lt;/code&gt;, &lt;code&gt;1 h&lt;/code&gt;. The &lt;b&gt;mouse wheel&lt;/b&gt; on the chart
-zooms it, around the mouse when held.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Memory&lt;/b&gt;: how much is kept (as an oscilloscope&apos;s memory depth), &lt;b&gt;Window&lt;/b&gt; the part shown: keep 1 min,
-look at 10 s. &lt;b&gt;Drag&lt;/b&gt; the chart to look back through the memory, or click / drag on the &lt;b&gt;memory strip&lt;/b&gt; under it
-(the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
-much is kept). Drag its box, or at a short window the handle drawn on it; the &lt;b&gt;wheel&lt;/b&gt; over it moves the view a
-window earlier or later.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
-size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
-&lt;i&gt;RAM budget reached: keeping the last 4.0 min of 30.0 min&lt;/i&gt;, and while a recording runs &lt;i&gt;· the recording
-keeps everything&lt;/i&gt; (the chart lets the oldest go, the recording&apos;s file keeps every sample). The oldest eighth goes
-at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
-Beside it, a note says what the lines need for the Memory set (&lt;i&gt;needs 1.4 GB&lt;/i&gt;), in amber with what fits when that
-is more than the RAM (&lt;i&gt;needs 2.8 GB, keeps 22 min&lt;/i&gt;). The RAM is a cap, not a reservation: with less memory free
-than it, the chart keeps within what is free (leaving 1 GB, or a tenth of the computer&apos;s memory), so its oldest go
-before the computer pages to disk, and the note says so in amber (&lt;i&gt;only 2.1 GB free: keeps about 40 s&lt;/i&gt;). The
-Studio itself takes about 150 MB more than the RAM set.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Y range&lt;/b&gt;: &lt;b&gt;Auto&lt;/b&gt; follows what is shown (grows at once, shrinks gently: no jumping), or
-&lt;b&gt;Manual&lt;/b&gt; with the min and max typed beside it (typing one sets Manual). &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y
-around the mouse; a &lt;b&gt;double-click&lt;/b&gt; goes back to Auto. &lt;b&gt;Log&lt;/b&gt;: a logarithmic scale, a line at each decade
-(&lt;i&gt;1 µ, 10 µ … 1, 10, 100 … 100 k&lt;/i&gt;), faint ones at 2 to 9: Auto spans the positive values shown (9 decades at
-most), or type a min and max above 0; values of 0 or less sit on the bottom edge. Log and &lt;b&gt;Normalise&lt;/b&gt; exclude
-each other: choosing one turns the other off.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;The second row: what to do&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Hold&lt;/b&gt; stops the view where it is (the memory keeps filling); &lt;b&gt;▶ Live&lt;/b&gt; follows now again. Dragging
-holds too. While the trigger is on, the same button is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;▶ Run&lt;/b&gt; (below).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows the measurements under the chart (below). &lt;b&gt;Cursors&lt;/b&gt; on (turns Measure on): click the
-chart for cursor &lt;b&gt;A&lt;/b&gt;, again for &lt;b&gt;B&lt;/b&gt;, drag them. A bar between their tags at the top of the plot says the
-time between them (&lt;i&gt;3.525 ms&lt;/i&gt;, &lt;i&gt;12.35 s&lt;/i&gt;, &lt;i&gt;1 min 23.4 s&lt;/i&gt;); with a cursor off the view it ends at the
-plot&apos;s edge, and when the cursors are too close for the text, the text stands beside the tags. A tag&apos;s tooltip gives
-its clock time; while the trigger holds the view on a crossing, how far from &lt;b&gt;T&lt;/b&gt; too (&lt;i&gt;T -0.250 ms&lt;/i&gt;), as an
-oscilloscope&apos;s cursors read, and so does the line over the measurements (&lt;i&gt;A: T -0.250 ms · B: T +1.750 ms&lt;/i&gt;).
-&lt;b&gt;Clear cursors&lt;/b&gt; removes them, and so does turning &lt;b&gt;Cursors&lt;/b&gt; off.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;ƒ Math&lt;/b&gt;: lines made from a formula (below).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Display&lt;/b&gt;, a menu of how the lines are drawn (its tooltip says what is on): &lt;b&gt;Normalise&lt;/b&gt;, every line
-scaled to its own range, to compare shapes of different units; &lt;b&gt;Lanes&lt;/b&gt;, a plot per unit stacked under each other,
-a line between two lanes, each at least 80 px high: when they do not fit they scroll (the wheel over their values, or
-the bar at the right); a click on a lane&apos;s ▾ (above its unit name) or on its unit name folds it into a strip of its
-lines and their values, a click on the strip opens it again, and &lt;b&gt;Fold all lanes&lt;/b&gt; / &lt;b&gt;Open all lanes&lt;/b&gt; under
-Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane&apos;s ⋯ (under its ▾), or a right-click on its values, gives
-Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
-zooms it, a double-click sets it to Auto; a lane not in Auto has a &lt;i&gt;Manual&lt;/i&gt; (amber) or &lt;i&gt;Log&lt;/i&gt; tag at the top of
-its values, and a click on the tag sets it back to Auto; a click on a lane&apos;s values makes it the current lane, whose
-range the Y range row shows and sets (the list after &lt;i&gt;Y range&lt;/i&gt; chooses it too: &lt;i&gt;Y range [A ▾]&lt;/i&gt;), and &lt;b&gt;All lanes: Auto&lt;/b&gt; under Lanes sets them all back;
-one time axis, the cursors, notes and crosshair across them all;
-&lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
-by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
-edge and scrolls without steps; &lt;b&gt;Hover values&lt;/b&gt; (on by default): the box of values beside the mouse, off to see
-only the crosshair and its dots; &lt;b&gt;Drawing&lt;/b&gt;: who draws the plot: &lt;b&gt;Auto&lt;/b&gt; (a dedicated graphics card when there
-is one, else the CPU), a card by name, or the &lt;b&gt;CPU&lt;/b&gt;. A card draws the whole plot (the lines, the grid, the
-cursors, the crosshair) and shows it itself: many fast lines at the display&apos;s rate, 64 lines of 1000 Hz at 60 frames
-a second on a 4K screen. A card takes a moment to start (up to a second while it wakes): the CPU draws meanwhile. If
-the card fails, the CPU takes over and the Log says why. The processor&apos;s own graphics is offered too, but on a large
-screen it draws slower than the CPU.&lt;/li&gt;
-&lt;li&gt;The info line, left of &lt;b&gt;Clear&lt;/b&gt;: the lines on the chart of how many it may hold, the math lines, frames drawn
-per second and the time one takes, the Smooth delay, and who draws (&lt;i&gt;GPU&lt;/i&gt; or &lt;i&gt;CPU&lt;/i&gt;). When it is narrow,
-whole parts go (the time to draw, the word &lt;i&gt;plotted&lt;/i&gt;, the delay first); its tooltip holds all of it. Frames follow the
-display refresh; while frames take long, one is skipped now and then (as many as needed), so the rest of the window
-always answers.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Clear&lt;/b&gt; empties the lines and the memory and starts the totals again; &lt;b&gt;Remove all&lt;/b&gt; takes every register
-off the chart.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
-oscilloscope&apos;s: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
-right edge (&lt;i&gt;-8 ms&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;), or from &lt;b&gt;T&lt;/b&gt; while the trigger holds the view on a crossing (&lt;i&gt;0&lt;/i&gt; under
-it, &lt;i&gt;+4 ms&lt;/i&gt;). Above the plot, at the right of the legend&apos;s row, &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
-at 0; the wheel steps the window through 1, 2 and 5 per division. &lt;b&gt;Display → Time grid&lt;/b&gt;: Auto (divisions below
-1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, &lt;i&gt;T +1.234 ms&lt;/i&gt;). Long windows and fast lines are drawn
-from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
-&lt;h3&gt;Measurements&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Measure&lt;/b&gt; (off by default) shows a table under the chart, for every line: the value at cursor &lt;b&gt;A&lt;/b&gt; and
-&lt;b&gt;B&lt;/b&gt;, &lt;b&gt;B − A&lt;/b&gt;, and over A → B (or over the view without cursors) the &lt;b&gt;min&lt;/b&gt;, &lt;b&gt;max&lt;/b&gt;, &lt;b&gt;mean&lt;/b&gt;,
-&lt;b&gt;RMS&lt;/b&gt;, the &lt;b&gt;standard deviation&lt;/b&gt; (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
-&lt;b&gt;peak to peak&lt;/b&gt; and the &lt;b&gt;area under the line&lt;/b&gt; (∫ value dt, by trapezoids between the samples): a power in
-&lt;b&gt;W&lt;/b&gt; gives &lt;b&gt;J&lt;/b&gt; and &lt;b&gt;Wh&lt;/b&gt;, a current in &lt;b&gt;A&lt;/b&gt; gives &lt;b&gt;A·s&lt;/b&gt; and &lt;b&gt;Ah&lt;/b&gt;. The splitter above the
-table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Since Clear&lt;/b&gt;: each line&apos;s total since the chart&apos;s &lt;b&gt;Clear&lt;/b&gt;, in Wh, Ah or unit·h, summed from every sample
-as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
-nothing. The line above the table says since when: &lt;i&gt;totals since 14:03:12 (1 h 12 min)&lt;/i&gt;. A line taken off the
-chart and put back keeps its total.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Right-click the table&apos;s header&lt;/b&gt; to show or hide its columns; the choice is kept.&lt;/p&gt;
-&lt;h3&gt;Histogram and spectrum&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Click a line&apos;s chip&lt;/b&gt; in the legend (its &lt;b&gt;▾&lt;/b&gt;) or right-click it: &lt;b&gt;Histogram&lt;/b&gt; (how its values spread, bins by the
-Freedman–Diaconis rule) or &lt;b&gt;Spectrum&lt;/b&gt; (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
-2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
-its own with a readout under the mouse, a picture and CSV.&lt;/p&gt;
-&lt;h3&gt;Trigger&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
-line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane from its &lt;b&gt;T▸&lt;/b&gt; marker
-left of the chart to its tab right of it, &lt;i&gt;0.4 A ↑&lt;/i&gt; (the level in the line&apos;s unit and the edge), so nothing
-covers the newest samples; their pointers are solid while the picture held crossed this level. &lt;b&gt;Drag&lt;/b&gt; the
-marker, the tab or the line to move the level; &lt;b&gt;click&lt;/b&gt; the tab&apos;s arrow (↑ ↓ ↕) for rising, falling or either;
-their tooltips name the line. A level beyond the lane&apos;s range stays on its edge, dotted, their pointers ▲ or ▼ and
-&lt;i&gt;(above range)&lt;/i&gt; in their tooltips. Each line keeps its own level and edge.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Auto&lt;/b&gt; holds on each crossing; when none comes for a window&apos;s length after the hold-off, it runs live until
-the next. &lt;b&gt;Normal&lt;/b&gt; holds on each crossing and stays held until the next one, however long. &lt;b&gt;Single&lt;/b&gt; holds on
-the first crossing and stops; &lt;b&gt;Arm&lt;/b&gt; for another. Normal and Single wait on a still picture; only Auto rolls.
-While they wait, &lt;b&gt;Force&lt;/b&gt; (in Arm&apos;s place) holds the view now, as if the line crossed; Normal waiting after a
-capture says when the last one was. &lt;b&gt;Find level&lt;/b&gt; puts the level halfway between the line&apos;s lowest and highest
-in view. The
-&lt;b&gt;hold-off&lt;/b&gt; (the window&apos;s length by default, 0 to
-10 s) is the time after a crossing in which no other counts. The &lt;b&gt;T ▼&lt;/b&gt; flag above the chart, its arrow over
-the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
-picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
-The row under the actions sets the same; the measurements, export and pictures take the view held.&lt;/p&gt;
-&lt;p&gt;While the trigger is on, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt; is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;Run&lt;/b&gt;: &lt;b&gt;Stop&lt;/b&gt; holds the picture
-and its T, no crossing counts (the button&apos;s &lt;b&gt;Run&lt;/b&gt; is amber while stopped); &lt;b&gt;Run&lt;/b&gt; arms again in the mode,
-from now. Dragging the chart stops it too. The row
-and the chart&apos;s top right say the same state (&lt;i&gt;Normal · waiting&lt;/i&gt;, &lt;i&gt;Normal · triggered&lt;/i&gt;, &lt;i&gt;Stopped · Run
-to arm&lt;/i&gt; ...), and change only when it does, with no number while it runs; while the view still fills after the
-crossing, a faint line marks where the data ends.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Short windows lock by themselves&lt;/b&gt;: below a 100 ms window a live chart with the trigger off holds on each
-rising crossing of its busiest line&apos;s middle (a fast line first, else the one with the most samples in the window; a
-line with fewer than 20 there is not watched) (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
-cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
-&lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
-&lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
-trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
-on another line by itself.&lt;/p&gt;
-&lt;h3&gt;Math lines&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;: a name, a unit and a formula over register names, e.g. &lt;code&gt;SUPPLY_V *
-SUPPLY_I&lt;/code&gt; in W (the power; its area is the energy). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;, &lt;code&gt;pi&lt;/code&gt;, and abs sqrt
-exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign clamp, and bits(x, lsb, width) for a
-bit field (right-click a register with fields → &lt;i&gt;Plot a field&lt;/i&gt; makes such a line). Type a few letters of a name and
-a list offers the registers (with their units) and functions: Up and Down pick, Enter or Tab takes one, Esc closes it;
-a function goes in as &lt;code&gt;name()&lt;/code&gt;, the cursor inside. It is drawn and measured like
-a register, from the same polls; the registers it reads are sampled for it even when they are not plotted. Kept for
-the next start; the menu shows, edits and removes them.&lt;/p&gt;
-&lt;p&gt;A formula over the channels of one fast stream (&lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt;) is computed for every sample
-of that stream, a register in it held at its last polled value: see &lt;i&gt;Fast streams&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;CSV&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;● Record CSV&lt;/b&gt; asks for a file, then writes one row per poll (one per frame with &lt;i&gt;Auto send&lt;/i&gt;):
-&lt;code&gt;time_s&lt;/code&gt; (since start), &lt;code&gt;datetime&lt;/code&gt;, then every register ticked &lt;b&gt;Log&lt;/b&gt; (all by default), as
-the values shown (scaled). Columns are fixed when the recording starts. &lt;b&gt;■ Stop recording&lt;/b&gt; closes the file.&lt;/p&gt;
-&lt;h3&gt;Right-click on the chart&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Copy picture&lt;/b&gt;, &lt;b&gt;Save picture…&lt;/b&gt; (PNG): the chart as shown, drawn by the CPU.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Export to CSV…&lt;/b&gt;: the samples of every line over the view, or between the cursors A → B when both are
-placed, in the recording&apos;s format (a row per poll); a big one runs on its own with a progress bar and Cancel.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Add note here&lt;/b&gt;: a labelled marker at that time, a tag at the bottom of the plot. Drag the tag to move it,
-double-click it to edit, click it and press &lt;b&gt;Delete&lt;/b&gt; to remove it. While recording, the notes are written beside
-the file (&lt;code&gt;run.csv.notes.json&lt;/code&gt;), and an export takes the notes of its span.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Open recording…&lt;/b&gt; and &lt;b&gt;Recent recordings&lt;/b&gt; (also &lt;b&gt;Open&lt;/b&gt; beside Record CSV, or drop a .csv on the
-window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
-own; the live chart goes on. A file bigger than the chart&apos;s RAM asks to keep its last part. With a map loaded, its
-registers&apos; value names and fields are matched by name. &lt;b&gt;Lines&lt;/b&gt; (top right, &lt;i&gt;Lines 8/11&lt;/i&gt;) ticks each
-line on or off: the file&apos;s columns, each fast channel and the math lines, grouped, with All, None and a search when
-they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields. A recent
-recording whose file is gone is greyed, &lt;i&gt;(not found)&lt;/i&gt;: a click takes it off the list; &lt;b&gt;Clear the list&lt;/b&gt; empties
-it.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;المخطط والتسجيل&lt;/h2&gt;
-&lt;p&gt;فعّل &lt;b&gt;رسم&lt;/b&gt; على أي مسجّلات عددية (المسجّل الذي تعلّمه الخريطة ثابتًا، معرّفًا أو إعدادًا، بلا مربع «رسم»).
-يعرضها المخطط على محور زمن واحد، مع آخر قيمة لكل منها في المفتاح. حرّك الفأرة فوقه لتقرأ
-كل خط في تلك اللحظة: مربع بجانب الفأرة يحمل قيمة كل خط (تتغير أعداده بإيقاع &lt;b&gt;عرض
-القيم&lt;/b&gt;، كأعداد المفتاح، ويحافظ المربع على حجمه).&lt;/p&gt;
-&lt;p&gt;يحافظ كل خط على مكانه في المفتاح؛ تتغير أرقامه فقط، بإيقاع &lt;b&gt;عرض القيم&lt;/b&gt;
-(10 في الثانية افتراضيًا) بينما يتحرك الخط نفسه في كل إطار. حين لا تتسع الخطوط كلها، مرّر
-المفتاح بـ&lt;b&gt;عجلة الفأرة&lt;/b&gt; فوقه، أو &lt;b&gt;الشريط&lt;/b&gt; تحته، أو السهمين عند طرفيه. ويقول الركن العلوي الأيمن ما يثبّت العرض أو يغيّر قراءته (التثبيت، Y لوغاريتمي أو
-يدوي، المؤشران، القدح)؛ وحين يضيق الصف يحذف تلميحاته أولًا («مباشر» للمتابعة، انقر / اسحب)، ولا يمتد فوق المفتاح أبدًا،
-وتلميحه يحمله كاملًا.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;كم خطًا&lt;/b&gt;: يأخذ المخطط 64,000 عينة في الثانية، أي 64 مسجّلًا عند 1000 استطلاع في الثانية، و32 عند
-2000، و16 عند 4000 (مع &lt;i&gt;الإرسال التلقائي&lt;/i&gt;، بمعدّله). بعد ذلك يُرفض تفعيل «رسم»، وحين يرتفع المعدّل
-تُزال الخطوط المرسومة أخيرًا؛ ويقول شريط الحالة والسجل أيها. &lt;b&gt;حدّ واحد من 64 خطًا&lt;/b&gt; يسري على كل
-الأنواع: المسجّلات والخطوط الرياضية وقنوات التدفقات السريعة (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;) تُعدّ معًا، ويُرفض
-الخط الخامس والستون من أي نوع (تفعيل «رسم»، أو تفعيل قناة، أو حقل، أو &lt;i&gt;خط رياضي جديد…&lt;/i&gt;، أو &lt;i&gt;المعروض&lt;/i&gt;
-لخط رياضي) بالكلمات نفسها في شريط الحالة. القناة السريعة خط من الخطوط الـ64، لا من العينات في الثانية. يعرض
-سطر المعلومات كم خطًا على المخطط من كم يمكنه أن يحمل: &lt;i&gt;32/64 مرسومة&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;الصف الأول: ما يُعرض وما يُحفظ&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;النافذة&lt;/b&gt;: كم من الزمن يُعرض. اختر واحدة، أو اكتب أي طول: &lt;code&gt;45&lt;/code&gt; (ثوانٍ)،
-&lt;code&gt;⁦2.5 s⁩&lt;/code&gt;، &lt;code&gt;⁦500 ms⁩&lt;/code&gt;، &lt;code&gt;⁦3 min⁩&lt;/code&gt;، &lt;code&gt;⁦1 h⁩&lt;/code&gt;. &lt;b&gt;عجلة الفأرة&lt;/b&gt; على المخطط
-تكبّرها وتصغّرها، حول الفأرة حين يكون مثبّتًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الذاكرة&lt;/b&gt;: كم يُحفظ (كعمق ذاكرة راسم الإشارة)، و&lt;b&gt;النافذة&lt;/b&gt; الجزء المعروض: احفظ ⁦1 min⁩،
-وانظر إلى ⁦10 s⁩. &lt;b&gt;اسحب&lt;/b&gt; المخطط لتنظر إلى الخلف عبر الذاكرة، أو انقر / اسحب على &lt;b&gt;شريط الذاكرة&lt;/b&gt; تحته
-(عمق الذاكرة كله، والعرض معلَّم عليه؛ وهي تمتلئ، تنمو البيانات من اليمين ويقول الشريط كم
-حُفظ). اسحب مربعه، أو في نافذة قصيرة المقبض المرسوم عليه؛ و&lt;b&gt;العجلة&lt;/b&gt; فوقه تنقل العرض نافذة إلى الأقدم
-أو الأحدث.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: أقصى ذاكرة تأخذها عينات الخطوط كلها معًا (⁦2 GB⁩ افتراضيًا؛ اختر واحدة أو اكتب أي
-حجم، 3000 أو ⁦3 GB⁩). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط ذلك بالكهرماني:
-&lt;i&gt;بلغت ميزانية RAM: يُحفظ آخر ⁦4.0 min⁩ من ⁦30.0 min⁩&lt;/i&gt;، وأثناء تشغيل تسجيل &lt;i&gt;· التسجيل يحفظ
-كل شيء&lt;/i&gt; (يترك المخطط الأقدم، وملف التسجيل يحفظ كل عينة). يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (⁦12 min⁩، 10.5، 12).
-بجانبه، ملاحظة تقول ما تحتاجه الخطوط لـ«الذاكرة» المضبوطة (&lt;i&gt;يحتاج ⁦1.4 GB⁩&lt;/i&gt;)، بالكهرماني مع ما يتسع حين يكون ذلك
-أكثر من RAM (&lt;i&gt;يحتاج ⁦2.8 GB⁩، ويحفظ ⁦22 min⁩&lt;/i&gt;). RAM حدّ أعلى لا حجز: حين تكون الذاكرة الحرة أقل منها، يبقى المخطط ضمن الحرّ منها (تاركًا ⁦1 GB⁩، أو عُشر ذاكرة الحاسوب)، فتذهب أقدم عيناته قبل أن ينقل الحاسوب الذاكرة إلى القرص، وتقول الملاحظة ذلك بالكهرماني (&lt;i&gt;الحرّ ⁦2.1 GB⁩ فقط: يحفظ نحو ⁦40 s⁩&lt;/i&gt;). البرنامج نفسه يأخذ نحو ⁦150 MB⁩ أكثر من RAM
-المضبوطة.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;مدى Y&lt;/b&gt;: &lt;b&gt;تلقائي&lt;/b&gt; يتبع ما يُعرض (يكبر فورًا، ويصغر بلطف: بلا قفزات)، أو
-&lt;b&gt;يدوي&lt;/b&gt; بالحدّين الأدنى والأعلى المكتوبين بجانبه (كتابة أحدهما تجعله يدويًا). &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y
-حول الفأرة؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعيده إلى تلقائي. &lt;b&gt;لوغاريتمي&lt;/b&gt;: مقياس لوغاريتمي، خط عند كل عقد
-(&lt;i&gt;1 µ، 10 µ … 1، 10، 100 … 100 k&lt;/i&gt;)، وخطوط باهتة عند 2 إلى 9: التلقائي يمتد على القيم الموجبة المعروضة (9 عقود
-على الأكثر)، أو اكتب حدًّا أدنى وأعلى فوق 0؛ والقيم 0 أو أقل تقع على الحافة السفلى. اللوغاريتمي و&lt;b&gt;التطبيع&lt;/b&gt;
-لا يجتمعان: اختيار أحدهما يعطّل الآخر.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;الصف الثاني: ما يُفعل&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;تثبيت&lt;/b&gt; يوقف العرض حيث هو (تستمر الذاكرة في الامتلاء)؛ و&lt;b&gt;▶ مباشر&lt;/b&gt; يتبع الآن من جديد. والسحب
-يثبّت أيضًا. وما دام القدح مفعّلًا، فالزر نفسه &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;▶ تشغيل&lt;/b&gt; (أدناه).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض القياسات تحت المخطط (أدناه). &lt;b&gt;المؤشران&lt;/b&gt; مفعّلان (يفعّل القياسات): انقر على
-المخطط للمؤشر &lt;b&gt;A&lt;/b&gt;، ومرة أخرى لـ&lt;b&gt;B&lt;/b&gt;، واسحبهما. شريط بين وسميهما في أعلى المخطط يقول
-الزمن بينهما (&lt;i&gt;⁦3.525 ms⁩&lt;/i&gt;، &lt;i&gt;⁦12.35 s⁩&lt;/i&gt;، &lt;i&gt;⁦1 min 23.4 s⁩&lt;/i&gt;)؛ ومع مؤشر خارج العرض ينتهي عند
-حافة المخطط، وحين يتقارب المؤشران فلا يتسع النص، يقف النص بجانب الوسمين. ويعطي تلميح الوسم وقت الساعة عنده؛ وحين يثبّت القدح العرض على عبور، بُعده عن &lt;b&gt;T&lt;/b&gt; أيضًا (&lt;i&gt;⁦T -0.250 ms⁩&lt;/i&gt;) كما تُقرأ مؤشرات راسم الذبذبات، وكذلك السطر فوق القياسات (&lt;i&gt;⁦A: T -0.250 ms · B: T +1.750 ms⁩&lt;/i&gt;). &lt;b&gt;مسح المؤشرين&lt;/b&gt;
-يزيلهما، وكذلك تعطيل &lt;b&gt;المؤشرين&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;ƒ الرياضيات&lt;/b&gt;: خطوط مصنوعة من صيغة (أدناه).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;العرض&lt;/b&gt;، قائمة بكيفية رسم الخطوط (تلميحها يقول ما هو مفعّل): &lt;b&gt;التطبيع&lt;/b&gt;، كل خط
-محجّم إلى مداه، لمقارنة أشكال وحدات مختلفة؛ &lt;b&gt;المسارات&lt;/b&gt;، مخطط لكل وحدة بعضها تحت بعض،
-بين كل مسارين خط فاصل، وارتفاع كلٍّ منها 80 px على الأقل: حين لا تتسع لها المساحة تتمرر (بالعجلة فوق قيمها، أو بشريط
-التمرير على اليمين)؛ والنقر على ▾ مسار (فوق اسم وحدته) أو على اسم وحدته يطويه في شريحة بخطوطه وقيمها، والنقر على
-الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ واسحب الخط بين مسارين لتجعل الذي فوقه أطول أو أقصر (والنقر المزدوج عليه:
-تتساوى كلها من جديد؛ والمسارات تملأ الرسم دائمًا، ولا يقل أي منها عن ⁦80 px⁩)؛ ولكل مسار
-مدى Y خاص:
-انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «كل المسارات: تلقائي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ وللمسار غير التلقائي وسم &lt;i&gt;يدوي&lt;/i&gt; (كهرماني) أو &lt;i&gt;لوغاريتمي&lt;/i&gt; أعلى قيمه، والنقر على الوسم يعيده تلقائيًا؛ والنقر على قيم مسار يجعله المسار الحالي، الذي يعرض صف مدى Y مداه ويضبطه (والقائمة بعد &lt;i&gt;مدى Y&lt;/i&gt; تختاره أيضًا: &lt;i&gt;مدى Y [⁦A ▾⁩]&lt;/i&gt;)، و&lt;b&gt;كل المسارات: تلقائي&lt;/b&gt; تحت المسارات يعيدها كلها؛ محور زمن واحد، والمؤشران والملاحظات و
-خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
-بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
-اليمنى ويتمرر دون قفزات؛ &lt;b&gt;قيم التحويم&lt;/b&gt; (مفعّلة افتراضيًا): مربع القيم بجانب الفأرة، عطّلها لترى
-خط التصويب ونقاطه فقط؛ &lt;b&gt;الرسم&lt;/b&gt;: من يرسم المخطط: &lt;b&gt;تلقائي&lt;/b&gt; (بطاقة رسوميات مخصّصة حين
-توجد، وإلا المعالج المركزي)، أو بطاقة باسمها، أو &lt;b&gt;CPU&lt;/b&gt;. البطاقة ترسم المخطط كله (الخطوط، الشبكة،
-المؤشرين، خط التصويب) وتعرضه بنفسها: خطوط سريعة كثيرة بمعدّل الشاشة، 64 خطًا بـ1000 Hz بـ60 إطارًا
-في الثانية على شاشة 4K. تحتاج البطاقة لحظة لتبدأ (حتى ثانية وهي تستيقظ): يرسم المعالج المركزي في الأثناء. وإن
-فشلت البطاقة، يتولى المعالج المركزي ويقول السجل لماذا. رسوميات المعالج نفسه معروضة أيضًا، لكنها على
-شاشة كبيرة ترسم أبطأ من المعالج المركزي.&lt;/li&gt;
-&lt;li&gt;سطر المعلومات، بجانب &lt;b&gt;مسح&lt;/b&gt;: الخطوط على المخطط من كم يمكنه أن يحمل، والخطوط الرياضية، والإطارات المرسومة
-في الثانية وزمن رسم الواحد، وتأخير التنعيم، ومن يرسم (&lt;i&gt;GPU&lt;/i&gt; أو &lt;i&gt;CPU&lt;/i&gt;). حين يضيق،
-تذهب أجزاء كاملة (زمن الرسم، وكلمة &lt;i&gt;مرسومة&lt;/i&gt;، والتأخير أولًا)؛ وتلميحه يحمله كله. تتبع الإطارات
-تحديث الشاشة؛ وحين تطول الإطارات، يُتخطى واحد بين حين وآخر (بقدر الحاجة)، فتبقى بقية النافذة
-تستجيب دائمًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;مسح&lt;/b&gt; يفرغ الخطوط والذاكرة ويبدأ المجاميع من جديد؛ و&lt;b&gt;إزالة الكل&lt;/b&gt; تزيل كل مسجّل
-عن المخطط.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفوق المخطط، في يمين صف المفتاح، يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
-الطويلة والخطوط السريعة تُرسم من ملخصات الأدنى/الأعلى، فلا تكلّف أكثر من القصيرة.&lt;/p&gt;
-&lt;h3&gt;القياسات&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
-&lt;b&gt;B&lt;/b&gt;، و&lt;b&gt;B − A&lt;/b&gt;، وعلى A → B (أو على العرض بلا مؤشرين) &lt;b&gt;الأدنى&lt;/b&gt;، و&lt;b&gt;الأعلى&lt;/b&gt;، و&lt;b&gt;المتوسط&lt;/b&gt;،
-و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: ⁦12 V⁩ مع تموّج ⁦1 mV⁩ يُقرأ ⁦0.707 mV⁩)،
-و&lt;b&gt;قمة–قمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
-&lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. والفاصل فوق
-الجدول يتحرك. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;منذ المسح&lt;/b&gt;: مجموع كل خط منذ &lt;b&gt;مسح&lt;/b&gt; المخطط، بـ Wh أو Ah أو unit·h، مجموعًا من كل عينة
-لحظة وصولها، فيغطي ساعات بينما تحفظ الذاكرة دقائق؛ والفجوة الأطول من ثانية بين عينتين لا تضيف
-شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (⁦1 h 12 min⁩)&lt;/i&gt;. الخط المُزال عن
-المخطط ثم المُعاد يحافظ على مجموعه.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على ترويسة الجدول&lt;/b&gt; لتُظهر أعمدته أو تخفيها؛ ويُحفظ الاختيار.&lt;/p&gt;
-&lt;h3&gt;المدرّج التكراري والطيف&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;انقر شارة خط&lt;/b&gt; في المفتاح (زرّها &lt;b&gt;▾&lt;/b&gt;) أو انقرها بالزر الأيمن: &lt;b&gt;المدرّج التكراري&lt;/b&gt; (كيف تتوزع قيمه، فئات بقاعدة
-فريدمان–دياكونيس) أو &lt;b&gt;الطيف&lt;/b&gt; (أي الترددات فيه، سعاتٍ بوحدته: جيب ⁦2 V⁩ يُقرأ
-⁦2 V⁩؛ مُعاد أخذه بخطوات متساوية، طريقة ويلش بنافذة هان، حتى نصف المعدّل)، على A → B أو العرض، في نافذة
-خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
-&lt;h3&gt;القدح&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;انقر شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
-الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط يمتد من علامته &lt;b&gt;⁦T▸⁩&lt;/b&gt; يسار المخطط إلى لسانه يمينه، &lt;i&gt;⁦0.4 A ↑⁩&lt;/i&gt; (المستوى بوحدة الخط والحافة)،
-فلا شيء يغطي أحدث العينات؛ ومؤشّراهما مصمتان ما دامت الصورة المثبّتة قد عبرت هذا المستوى. &lt;b&gt;اسحب&lt;/b&gt; العلامة أو اللسان أو الخط
-لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم اللسان (↑ ↓ ↕) لصاعد أو هابط أو أيّهما؛ ويسمّي تلميحاهما الخط. والمستوى الخارج عن مدى
-المسار يبقى عند طرف المسار، منقّطًا، ومؤشّراهما ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في تلميحيهما. ولكل خط مستواه وحافته.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;تلقائي&lt;/b&gt; يثبت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي.
-&lt;b&gt;عادي&lt;/b&gt; يثبت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. &lt;b&gt;مرة واحدة&lt;/b&gt; يثبت عند العبور الأول
-ويتوقف؛ و&lt;b&gt;تجهيز&lt;/b&gt; لعبور آخر. والعادي والمرة الواحدة ينتظران على صورة ثابتة؛ والتلقائي وحده يجري.
-وفي أثناء انتظارهما يثبّت &lt;b&gt;فرض&lt;/b&gt; (مكان «تجهيز») العرض الآن كأن الخط عبر؛ والعادي إذ ينتظر بعد التقاطٍ يقول
-متى كان آخره. و&lt;b&gt;إيجاد المستوى&lt;/b&gt; يضع المستوى في منتصف ما بين أدنى الخط وأعلاه في العرض.
-و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
-يُحسب فيها عبور آخر. والعلَم &lt;b&gt;⁦T ▼⁩&lt;/b&gt; فوق
-المخطط، وسهمه فوق العبور، موضعه في النافذة (يقول تلميحه متى عبر الخط وعند أي مستوى)، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
-عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
-المثبّت.&lt;/p&gt;
-&lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
-وعلامتها T، ولا يُحسب أي عبور (و&lt;b&gt;تشغيل&lt;/b&gt; على الزر كهرماني ما دام متوقفًا)؛ و&lt;b&gt;تشغيل&lt;/b&gt; يجهّزه من جديد بنمطه، من الآن. وسحب المخطط يوقفه أيضًا.
-ويقول الصف وأعلى يمين المخطط الحالة نفسها (&lt;i&gt;عادي · بانتظار عبور&lt;/i&gt;، &lt;i&gt;عادي · قُدح&lt;/i&gt;، &lt;i&gt;متوقف · «تشغيل»
-للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير، بلا أي رقم ما دام يعمل؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي
-البيانات.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
-لمنتصف أنشط خطوطه (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة؛ والخط الذي فيه أقل من 20 عينة هناك لا يُراقَب) (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
-تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
-&lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
-قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
-باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
-&lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
-SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
-exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign clamp، وbits(x, lsb, width) لحقل
-بتات (النقر بالزر الأيمن على مسجّل له حقول ← &lt;i&gt;رسم حقل&lt;/i&gt; يصنع خطًا كهذا). اكتب بضعة حروف من اسم فتعرض
-قائمة المسجّلات (بوحداتها) والدوال: الأعلى والأسفل للاختيار، وEnter أو Tab يأخذ واحدًا، وEsc يغلقها؛
-والدالة تدخل بصيغة &lt;code&gt;name()&lt;/code&gt;، والمؤشر داخلها. تُرسم وتُقاس مثل
-المسجّل، من الاستطلاعات نفسها؛ والمسجّلات التي تقرؤها تُؤخذ عيناتها لها حتى إن لم تكن مرسومة. تُحفظ
-للتشغيل التالي؛ والقائمة تعرضها وتحرّرها وتزيلها.&lt;/p&gt;
-&lt;p&gt;صيغة على قنوات تدفق سريع واحد (&lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt;) تُحسب لكل عينة من ذلك التدفق، والمسجّل
-فيها يُثبَّت عند آخر قيمة استُطلعت: انظر &lt;i&gt;التدفقات السريعة&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;CSV&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;● تسجيل CSV&lt;/b&gt; يطلب ملفًا، ثم يكتب صفًا لكل استطلاع (صفًا لكل إطار مع &lt;i&gt;الإرسال التلقائي&lt;/i&gt;):
-&lt;code&gt;time_s&lt;/code&gt; (منذ التشغيل)، و&lt;code&gt;datetime&lt;/code&gt;، ثم كل مسجّل مفعّل عليه &lt;b&gt;تسجيل&lt;/b&gt; (كلها افتراضيًا)، بـ
-القيم المعروضة (المحجّمة). تُثبَّت الأعمدة حين يبدأ التسجيل. و&lt;b&gt;■ إيقاف التسجيل&lt;/b&gt; يغلق الملف.&lt;/p&gt;
-&lt;h3&gt;النقر بالزر الأيمن على المخطط&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;نسخ الصورة&lt;/b&gt;، و&lt;b&gt;حفظ الصورة…&lt;/b&gt; (PNG): المخطط كما يُعرض، يرسمه المعالج المركزي.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;تصدير إلى CSV…&lt;/b&gt;: عينات كل خط على العرض، أو بين المؤشرين A → B حين يوضع
-كلاهما، بصيغة التسجيل (صف لكل استطلاع)؛ والكبير يعمل وحده بشريط تقدّم وإلغاء.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إضافة ملاحظة هنا&lt;/b&gt;: علامة مسمّاة عند ذلك الزمن، ووسم في أسفل المخطط. اسحب الوسم لتحرّكها،
-وانقر عليه نقرًا مزدوجًا لتحرّرها، وانقر عليه واضغط &lt;b&gt;Delete&lt;/b&gt; لتزيلها. أثناء التسجيل، تُكتب الملاحظات بجانب
-الملف (&lt;code&gt;run.csv.notes.json&lt;/code&gt;)، ويأخذ التصدير ملاحظات مداه.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;فتح تسجيل…&lt;/b&gt; و&lt;b&gt;التسجيلات الأخيرة&lt;/b&gt; (و&lt;b&gt;فتح&lt;/b&gt; بجانب «تسجيل CSV» أيضًا، أو أفلت ملف .csv على
-النافذة): تسجيل أو تصدير في نافذة خاصة، بمخططه وقياساته وملاحظاته وخطوطه الرياضية
-الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
-أسماء قيم مسجّلاتها وحقولها بالاسم. &lt;b&gt;الخطوط&lt;/b&gt; (أعلى اليمين، &lt;i&gt;الخطوط ⁦8/11⁩&lt;/i&gt;) تُفعّل كل خط أو
-تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
-ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
-&lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;API: other programs through the Studio&lt;/h2&gt;
 &lt;p&gt;Tick &lt;b&gt;Serve API&lt;/b&gt;. The Studio then shares the device it is connected to: every request goes through
 the Studio&apos;s one queue, so clients and the Studio never collide on the port.&lt;/p&gt;
@@ -3203,6 +2812,412 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
 &lt;code&gt;evre record&lt;/code&gt; (أداة سطر الأوامر) تكتب كتل التدفق في ملف &lt;code&gt;.evrs&lt;/code&gt; كما وصلت.
 لا يُخلط بينه وبين &lt;b&gt;الإرسال التلقائي&lt;/b&gt; (الكتلة للقراءة فقط بمعدل مؤقّت، صفحة &lt;i&gt;الاستطلاع والسرعة&lt;/i&gt;)
 ولا أمر &lt;code&gt;stream&lt;/code&gt; في API (قيم كل فترة لعميل API).&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
+&lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
+The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
+every line at that moment: a box beside the mouse holds every line&apos;s value (its numbers change at the &lt;b&gt;Show
+values&lt;/b&gt; pace, as the legend&apos;s, and the box keeps its size).&lt;/p&gt;
+&lt;p&gt;Each line keeps its place in the legend; only its digits change, at the &lt;b&gt;Show values&lt;/b&gt; pace
+(10 per second by default) while the line itself moves at every frame. When the lines do not all fit, scroll
+the legend with the &lt;b&gt;mouse wheel&lt;/b&gt; over it, the &lt;b&gt;bar&lt;/b&gt; under it, or the arrows at its ends. The top right
+says what holds the view or changes its reading (held, Y log or manual, cursors, the trigger); when the row is short
+it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;How many lines&lt;/b&gt;: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
+2000, 16 at 4000 (with &lt;i&gt;Auto send&lt;/i&gt;, at its rate). Past that a Plot tick is refused, and when the rate goes up
+the lines plotted last come off; the status bar and the Log say which. &lt;b&gt;One cap of 64 lines&lt;/b&gt; holds for every
+kind: registers, math lines and fast stream channels (the &lt;i&gt;Fast streams&lt;/i&gt; page) count together, and a 65th of
+any kind (a Plot, a channel&apos;s tick, a field, &lt;i&gt;New math line…&lt;/i&gt;, a math line&apos;s &lt;i&gt;Shown&lt;/i&gt;) is refused with the
+same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
+shows how many lines are on the chart of how many it may hold: &lt;i&gt;32/64 plotted&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;The first row: what is shown and kept&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Window&lt;/b&gt;: how much time is shown. Pick one, or type any length: &lt;code&gt;45&lt;/code&gt; (seconds),
+&lt;code&gt;2.5 s&lt;/code&gt;, &lt;code&gt;500 ms&lt;/code&gt;, &lt;code&gt;3 min&lt;/code&gt;, &lt;code&gt;1 h&lt;/code&gt;. The &lt;b&gt;mouse wheel&lt;/b&gt; on the chart
+zooms it, around the mouse when held.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Memory&lt;/b&gt;: how much is kept (as an oscilloscope&apos;s memory depth), &lt;b&gt;Window&lt;/b&gt; the part shown: keep 1 min,
+look at 10 s. &lt;b&gt;Drag&lt;/b&gt; the chart to look back through the memory, or click / drag on the &lt;b&gt;memory strip&lt;/b&gt; under it
+(the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
+much is kept). Drag its box, or at a short window the handle drawn on it; the &lt;b&gt;wheel&lt;/b&gt; over it moves the view a
+window earlier or later.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
+size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
+&lt;i&gt;RAM budget reached: keeping the last 4.0 min of 30.0 min&lt;/i&gt;, and while a recording runs &lt;i&gt;· the recording
+keeps everything&lt;/i&gt; (the chart lets the oldest go, the recording&apos;s file keeps every sample). The oldest eighth goes
+at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
+Beside it, a note says what the lines need for the Memory set (&lt;i&gt;needs 1.4 GB&lt;/i&gt;), in amber with what fits when that
+is more than the RAM (&lt;i&gt;needs 2.8 GB, keeps 22 min&lt;/i&gt;). The RAM is a cap, not a reservation: with less memory free
+than it, the chart keeps within what is free (leaving 1 GB, or a tenth of the computer&apos;s memory), so its oldest go
+before the computer pages to disk, and the note says so in amber (&lt;i&gt;only 2.1 GB free: keeps about 40 s&lt;/i&gt;). The
+Studio itself takes about 150 MB more than the RAM set.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Y range&lt;/b&gt;: &lt;b&gt;Auto&lt;/b&gt; follows what is shown (grows at once, shrinks gently: no jumping), or
+&lt;b&gt;Manual&lt;/b&gt; with the min and max typed beside it (typing one sets Manual). &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y
+around the mouse; a &lt;b&gt;double-click&lt;/b&gt; goes back to Auto. &lt;b&gt;Log&lt;/b&gt;: a logarithmic scale, a line at each decade
+(&lt;i&gt;1 µ, 10 µ … 1, 10, 100 … 100 k&lt;/i&gt;), faint ones at 2 to 9: Auto spans the positive values shown (9 decades at
+most), or type a min and max above 0; values of 0 or less sit on the bottom edge. Log and &lt;b&gt;Normalise&lt;/b&gt; exclude
+each other: choosing one turns the other off.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;The second row: what to do&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Hold&lt;/b&gt; stops the view where it is (the memory keeps filling); &lt;b&gt;▶ Live&lt;/b&gt; follows now again. Dragging
+holds too. While the trigger is on, the same button is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;▶ Run&lt;/b&gt; (below).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Measure&lt;/b&gt; shows the measurements under the chart (below). &lt;b&gt;Cursors&lt;/b&gt; on (turns Measure on): click the
+chart for cursor &lt;b&gt;A&lt;/b&gt;, again for &lt;b&gt;B&lt;/b&gt;, drag them. A bar between their tags at the top of the plot says the
+time between them (&lt;i&gt;3.525 ms&lt;/i&gt;, &lt;i&gt;12.35 s&lt;/i&gt;, &lt;i&gt;1 min 23.4 s&lt;/i&gt;); with a cursor off the view it ends at the
+plot&apos;s edge, and when the cursors are too close for the text, the text stands beside the tags. A tag&apos;s tooltip gives
+its clock time; while the trigger holds the view on a crossing, how far from &lt;b&gt;T&lt;/b&gt; too (&lt;i&gt;T -0.250 ms&lt;/i&gt;), as an
+oscilloscope&apos;s cursors read, and so does the line over the measurements (&lt;i&gt;A: T -0.250 ms · B: T +1.750 ms&lt;/i&gt;).
+Below a 1 s window (the grid in divisions) the cursors sit on the grid: each keeps its place while the wave moves
+under it, its tooltip and the line say where (&lt;i&gt;A: -7.000 ms&lt;/i&gt;, from the right edge, or from T), the measurements
+take the samples under them, and &lt;b&gt;Shift&lt;/b&gt; while dragging snaps a cursor to a tenth of a division.
+&lt;b&gt;Clear cursors&lt;/b&gt; removes them, and so does turning &lt;b&gt;Cursors&lt;/b&gt; off.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;ƒ Math&lt;/b&gt;: lines made from a formula (below).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Display&lt;/b&gt;, a menu of how the lines are drawn (its tooltip says what is on): &lt;b&gt;Normalise&lt;/b&gt;, every line
+scaled to its own range, to compare shapes of different units; &lt;b&gt;Lanes&lt;/b&gt;, a plot per unit stacked under each other,
+a line between two lanes, each at least 80 px high: when they do not fit they scroll (the wheel over their values, or
+the bar at the right); a click on a lane&apos;s ▾ (above its unit name) or on its unit name folds it into a strip of its
+lines and their values, a click on the strip opens it again, and &lt;b&gt;Fold all lanes&lt;/b&gt; / &lt;b&gt;Open all lanes&lt;/b&gt; under
+Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
+equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane&apos;s ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
+zooms it, a double-click sets it to Auto; a lane not in Auto has a &lt;i&gt;Manual&lt;/i&gt; (amber) or &lt;i&gt;Log&lt;/i&gt; tag at the top of
+its values, and a click on the tag sets it back to Auto; a click on a lane&apos;s values makes it the current lane, whose
+range the Y range row shows and sets (the list after &lt;i&gt;Y range&lt;/i&gt; chooses it too: &lt;i&gt;Y range [A ▾]&lt;/i&gt;), and &lt;b&gt;All lanes: Auto&lt;/b&gt; under Lanes sets them all back;
+one time axis, the cursors, notes and crosshair across them all;
+&lt;b&gt;Smooth&lt;/b&gt; (on by default): the picture is delayed
+by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
+edge and scrolls without steps; &lt;b&gt;Hover values&lt;/b&gt; (on by default): the box of values beside the mouse, off to see
+only the crosshair and its dots; &lt;b&gt;Drawing&lt;/b&gt;: who draws the plot: &lt;b&gt;Auto&lt;/b&gt; (a dedicated graphics card when there
+is one, else the CPU), a card by name, or the &lt;b&gt;CPU&lt;/b&gt;. A card draws the whole plot (the lines, the grid, the
+cursors, the crosshair) and shows it itself: many fast lines at the display&apos;s rate, 64 lines of 1000 Hz at 60 frames
+a second on a 4K screen. A card takes a moment to start (up to a second while it wakes): the CPU draws meanwhile. If
+the card fails, the CPU takes over and the Log says why. The processor&apos;s own graphics is offered too, but on a large
+screen it draws slower than the CPU.&lt;/li&gt;
+&lt;li&gt;The info line, left of &lt;b&gt;Clear&lt;/b&gt;: the lines on the chart of how many it may hold, the math lines, frames drawn
+per second and the time one takes, the Smooth delay, and who draws (&lt;i&gt;GPU&lt;/i&gt; or &lt;i&gt;CPU&lt;/i&gt;). When it is narrow,
+whole parts go (the time to draw, the word &lt;i&gt;plotted&lt;/i&gt;, the delay first); its tooltip holds all of it. Frames follow the
+display refresh; while frames take long, one is skipped now and then (as many as needed), so the rest of the window
+always answers.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Clear&lt;/b&gt; empties the lines and the memory and starts the totals again; &lt;b&gt;Remove all&lt;/b&gt; takes every register
+off the chart.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
+oscilloscope&apos;s: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
+right edge (&lt;i&gt;-8 ms&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;), or from &lt;b&gt;T&lt;/b&gt; while the trigger holds the view on a crossing (&lt;i&gt;0&lt;/i&gt; under
+it, &lt;i&gt;+4 ms&lt;/i&gt;). Above the plot, at the right of the legend&apos;s row, &lt;i&gt;1 ms/div · 14:03:12.345&lt;/i&gt; says a division&apos;s length and the clock time
+at 0; the wheel steps the window through 1, 2 and 5 per division. &lt;b&gt;Display → Time grid&lt;/b&gt;: Auto (divisions below
+1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, &lt;i&gt;T +1.234 ms&lt;/i&gt;). Long windows and fast lines are drawn
+from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
+&lt;h3&gt;Measurements&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;Measure&lt;/b&gt; (off by default) shows a table under the chart, for every line: the value at cursor &lt;b&gt;A&lt;/b&gt; and
+&lt;b&gt;B&lt;/b&gt;, &lt;b&gt;B − A&lt;/b&gt;, and over A → B (or over the view without cursors) the &lt;b&gt;min&lt;/b&gt;, &lt;b&gt;max&lt;/b&gt;, &lt;b&gt;mean&lt;/b&gt;,
+&lt;b&gt;RMS&lt;/b&gt;, the &lt;b&gt;standard deviation&lt;/b&gt; (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
+&lt;b&gt;peak to peak&lt;/b&gt; and the &lt;b&gt;area under the line&lt;/b&gt; (∫ value dt, by trapezoids between the samples): a power in
+&lt;b&gt;W&lt;/b&gt; gives &lt;b&gt;J&lt;/b&gt; and &lt;b&gt;Wh&lt;/b&gt;, a current in &lt;b&gt;A&lt;/b&gt; gives &lt;b&gt;A·s&lt;/b&gt; and &lt;b&gt;Ah&lt;/b&gt;. The splitter above the
+table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Since Clear&lt;/b&gt;: each line&apos;s total since the chart&apos;s &lt;b&gt;Clear&lt;/b&gt;, in Wh, Ah or unit·h, summed from every sample
+as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
+nothing. The line above the table says since when: &lt;i&gt;totals since 14:03:12 (1 h 12 min)&lt;/i&gt;. A line taken off the
+chart and put back keeps its total.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Right-click the table&apos;s header&lt;/b&gt; to show or hide its columns; the choice is kept.&lt;/p&gt;
+&lt;h3&gt;Histogram and spectrum&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;Click a line&apos;s chip&lt;/b&gt; in the legend (its &lt;b&gt;▾&lt;/b&gt;) or right-click it: &lt;b&gt;Histogram&lt;/b&gt; (how its values spread, bins by the
+Freedman–Diaconis rule) or &lt;b&gt;Spectrum&lt;/b&gt; (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
+2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
+its own with a readout under the mouse, a picture and CSV.&lt;/p&gt;
+&lt;h3&gt;Trigger&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;Click a line&apos;s chip → Trigger on this line&lt;/b&gt; (or &lt;b&gt;Display → Trigger&lt;/b&gt;): the chart holds when that
+line crosses its level, as an oscilloscope. The level is a dashed line in the line&apos;s lane from its &lt;b&gt;T▸&lt;/b&gt; marker
+left of the chart to its tab right of it, &lt;i&gt;0.4 A ↑&lt;/i&gt; (the level in the line&apos;s unit and the edge), so nothing
+covers the newest samples; their pointers are solid while the picture held crossed this level. &lt;b&gt;Drag&lt;/b&gt; the
+marker, the tab or the line to move the level; &lt;b&gt;click&lt;/b&gt; the tab&apos;s arrow (↑ ↓ ↕) for rising, falling or either;
+their tooltips name the line. A level beyond the lane&apos;s range stays on its edge, dotted, their pointers ▲ or ▼ and
+&lt;i&gt;(above range)&lt;/i&gt; in their tooltips. Each line keeps its own level and edge.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Auto&lt;/b&gt; holds on each crossing; when none comes for a window&apos;s length after the hold-off, it runs live until
+the next. &lt;b&gt;Normal&lt;/b&gt; holds on each crossing and stays held until the next one, however long. &lt;b&gt;Single&lt;/b&gt; holds on
+the first crossing and stops; &lt;b&gt;Arm&lt;/b&gt; for another. Normal and Single wait on a still picture; only Auto rolls.
+While they wait, &lt;b&gt;Force&lt;/b&gt; (in Arm&apos;s place) holds the view now, as if the line crossed; Normal waiting after a
+capture says when the last one was. &lt;b&gt;Find level&lt;/b&gt; puts the level halfway between the line&apos;s lowest and highest
+in view. The
+&lt;b&gt;hold-off&lt;/b&gt; (the window&apos;s length by default, 0 to
+10 s) is the time after a crossing in which no other counts. The &lt;b&gt;T ▼&lt;/b&gt; flag above the chart, its arrow over
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
+The row under the actions sets the same; the measurements, export and pictures take the view held.&lt;/p&gt;
+&lt;p&gt;While the trigger is on, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt; is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;Run&lt;/b&gt;: &lt;b&gt;Stop&lt;/b&gt; holds the picture
+and its T, no crossing counts (the button&apos;s &lt;b&gt;Run&lt;/b&gt; is amber while stopped); &lt;b&gt;Run&lt;/b&gt; arms again in the mode,
+from now. Dragging the chart stops it too. The row
+and the chart&apos;s top right say the same state (&lt;i&gt;Normal · waiting&lt;/i&gt;, &lt;i&gt;Normal · triggered&lt;/i&gt;, &lt;i&gt;Stopped · Run
+to arm&lt;/i&gt; ...), and change only when it does, with no number while it runs; while the view still fills after the
+crossing, a faint line marks where the data ends.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Short windows lock by themselves&lt;/b&gt;: below a 100 ms window a live chart with the trigger off holds on each
+rising crossing of its busiest line&apos;s middle (a fast line first, else the one with the most samples in the window; a
+line with fewer than 20 there is not watched) (&lt;i&gt;Auto (short window)&lt;/i&gt;; &lt;i&gt;Auto · free running&lt;/i&gt; while it does not
+cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+&lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
+&lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
+trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
+on another line by itself.&lt;/p&gt;
+&lt;h3&gt;Math lines&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;: a name, a unit and a formula over register names, e.g. &lt;code&gt;SUPPLY_V *
+SUPPLY_I&lt;/code&gt; in W (the power; its area is the energy). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;, &lt;code&gt;pi&lt;/code&gt;, and abs sqrt
+exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign clamp, and bits(x, lsb, width) for a
+bit field (right-click a register with fields → &lt;i&gt;Plot a field&lt;/i&gt; makes such a line). Type a few letters of a name and
+a list offers the registers (with their units) and functions: Up and Down pick, Enter or Tab takes one, Esc closes it;
+a function goes in as &lt;code&gt;name()&lt;/code&gt;, the cursor inside. It is drawn and measured like
+a register, from the same polls; the registers it reads are sampled for it even when they are not plotted. Kept for
+the next start; the menu shows, edits and removes them.&lt;/p&gt;
+&lt;p&gt;A formula over the channels of one fast stream (&lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt;) is computed for every sample
+of that stream, a register in it held at its last polled value: see &lt;i&gt;Fast streams&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;CSV&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;● Record CSV&lt;/b&gt; asks for a file, then writes one row per poll (one per frame with &lt;i&gt;Auto send&lt;/i&gt;):
+&lt;code&gt;time_s&lt;/code&gt; (since start), &lt;code&gt;datetime&lt;/code&gt;, then every register ticked &lt;b&gt;Log&lt;/b&gt; (all by default), as
+the values shown (scaled). Columns are fixed when the recording starts. &lt;b&gt;■ Stop recording&lt;/b&gt; closes the file.&lt;/p&gt;
+&lt;h3&gt;Right-click on the chart&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Copy picture&lt;/b&gt;, &lt;b&gt;Save picture…&lt;/b&gt; (PNG): the chart as shown, drawn by the CPU.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Export to CSV…&lt;/b&gt;: the samples of every line over the view, or between the cursors A → B when both are
+placed, in the recording&apos;s format (a row per poll); a big one runs on its own with a progress bar and Cancel.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Add note here&lt;/b&gt;: a labelled marker at that time, a tag at the bottom of the plot. Drag the tag to move it,
+double-click it to edit, click it and press &lt;b&gt;Delete&lt;/b&gt; to remove it. While recording, the notes are written beside
+the file (&lt;code&gt;run.csv.notes.json&lt;/code&gt;), and an export takes the notes of its span.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Open recording…&lt;/b&gt; and &lt;b&gt;Recent recordings&lt;/b&gt; (also &lt;b&gt;Open&lt;/b&gt; beside Record CSV, or drop a .csv on the
+window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
+own; the live chart goes on. A file bigger than the chart&apos;s RAM asks to keep its last part. With a map loaded, its
+registers&apos; value names and fields are matched by name. &lt;b&gt;Lines&lt;/b&gt; (top right, &lt;i&gt;Lines 8/11&lt;/i&gt;) ticks each
+line on or off: the file&apos;s columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register&apos;s fields. A recent
+recording whose file is gone is greyed, &lt;i&gt;(not found)&lt;/i&gt;: a click takes it off the list; &lt;b&gt;Clear the list&lt;/b&gt; empties
+it.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;المخطط والتسجيل&lt;/h2&gt;
+&lt;p&gt;فعّل &lt;b&gt;رسم&lt;/b&gt; على أي مسجّلات عددية (المسجّل الذي تعلّمه الخريطة ثابتًا، معرّفًا أو إعدادًا، بلا مربع «رسم»).
+يعرضها المخطط على محور زمن واحد، مع آخر قيمة لكل منها في المفتاح. حرّك الفأرة فوقه لتقرأ
+كل خط في تلك اللحظة: مربع بجانب الفأرة يحمل قيمة كل خط (تتغير أعداده بإيقاع &lt;b&gt;عرض
+القيم&lt;/b&gt;، كأعداد المفتاح، ويحافظ المربع على حجمه).&lt;/p&gt;
+&lt;p&gt;يحافظ كل خط على مكانه في المفتاح؛ تتغير أرقامه فقط، بإيقاع &lt;b&gt;عرض القيم&lt;/b&gt;
+(10 في الثانية افتراضيًا) بينما يتحرك الخط نفسه في كل إطار. حين لا تتسع الخطوط كلها، مرّر
+المفتاح بـ&lt;b&gt;عجلة الفأرة&lt;/b&gt; فوقه، أو &lt;b&gt;الشريط&lt;/b&gt; تحته، أو السهمين عند طرفيه. ويقول الركن العلوي الأيمن ما يثبّت العرض أو يغيّر قراءته (التثبيت، Y لوغاريتمي أو
+يدوي، المؤشران، القدح)؛ وحين يضيق الصف يحذف تلميحاته أولًا («مباشر» للمتابعة، انقر / اسحب)، ولا يمتد فوق المفتاح أبدًا،
+وتلميحه يحمله كاملًا.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;كم خطًا&lt;/b&gt;: يأخذ المخطط 64,000 عينة في الثانية، أي 64 مسجّلًا عند 1000 استطلاع في الثانية، و32 عند
+2000، و16 عند 4000 (مع &lt;i&gt;الإرسال التلقائي&lt;/i&gt;، بمعدّله). بعد ذلك يُرفض تفعيل «رسم»، وحين يرتفع المعدّل
+تُزال الخطوط المرسومة أخيرًا؛ ويقول شريط الحالة والسجل أيها. &lt;b&gt;حدّ واحد من 64 خطًا&lt;/b&gt; يسري على كل
+الأنواع: المسجّلات والخطوط الرياضية وقنوات التدفقات السريعة (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;) تُعدّ معًا، ويُرفض
+الخط الخامس والستون من أي نوع (تفعيل «رسم»، أو تفعيل قناة، أو حقل، أو &lt;i&gt;خط رياضي جديد…&lt;/i&gt;، أو &lt;i&gt;المعروض&lt;/i&gt;
+لخط رياضي) بالكلمات نفسها في شريط الحالة. القناة السريعة خط من الخطوط الـ64، لا من العينات في الثانية. يعرض
+سطر المعلومات كم خطًا على المخطط من كم يمكنه أن يحمل: &lt;i&gt;32/64 مرسومة&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;الصف الأول: ما يُعرض وما يُحفظ&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;النافذة&lt;/b&gt;: كم من الزمن يُعرض. اختر واحدة، أو اكتب أي طول: &lt;code&gt;45&lt;/code&gt; (ثوانٍ)،
+&lt;code&gt;⁦2.5 s⁩&lt;/code&gt;، &lt;code&gt;⁦500 ms⁩&lt;/code&gt;، &lt;code&gt;⁦3 min⁩&lt;/code&gt;، &lt;code&gt;⁦1 h⁩&lt;/code&gt;. &lt;b&gt;عجلة الفأرة&lt;/b&gt; على المخطط
+تكبّرها وتصغّرها، حول الفأرة حين يكون مثبّتًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الذاكرة&lt;/b&gt;: كم يُحفظ (كعمق ذاكرة راسم الإشارة)، و&lt;b&gt;النافذة&lt;/b&gt; الجزء المعروض: احفظ ⁦1 min⁩،
+وانظر إلى ⁦10 s⁩. &lt;b&gt;اسحب&lt;/b&gt; المخطط لتنظر إلى الخلف عبر الذاكرة، أو انقر / اسحب على &lt;b&gt;شريط الذاكرة&lt;/b&gt; تحته
+(عمق الذاكرة كله، والعرض معلَّم عليه؛ وهي تمتلئ، تنمو البيانات من اليمين ويقول الشريط كم
+حُفظ). اسحب مربعه، أو في نافذة قصيرة المقبض المرسوم عليه؛ و&lt;b&gt;العجلة&lt;/b&gt; فوقه تنقل العرض نافذة إلى الأقدم
+أو الأحدث.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;RAM&lt;/b&gt;: أقصى ذاكرة تأخذها عينات الخطوط كلها معًا (⁦2 GB⁩ افتراضيًا؛ اختر واحدة أو اكتب أي
+حجم، 3000 أو ⁦3 GB⁩). مع خطوط سريعة كثيرة تحفظ الذاكرة أقل مما طُلب، ويقول الشريط ذلك بالكهرماني:
+&lt;i&gt;بلغت ميزانية RAM: يُحفظ آخر ⁦4.0 min⁩ من ⁦30.0 min⁩&lt;/i&gt;، وأثناء تشغيل تسجيل &lt;i&gt;· التسجيل يحفظ
+كل شيء&lt;/i&gt; (يترك المخطط الأقدم، وملف التسجيل يحفظ كل عينة). يذهب الثُّمن الأقدم في كل مرة، فينزل الزمن المحفوظ ثُمنًا ثم يمتلئ من جديد (⁦12 min⁩، 10.5، 12).
+بجانبه، ملاحظة تقول ما تحتاجه الخطوط لـ«الذاكرة» المضبوطة (&lt;i&gt;يحتاج ⁦1.4 GB⁩&lt;/i&gt;)، بالكهرماني مع ما يتسع حين يكون ذلك
+أكثر من RAM (&lt;i&gt;يحتاج ⁦2.8 GB⁩، ويحفظ ⁦22 min⁩&lt;/i&gt;). RAM حدّ أعلى لا حجز: حين تكون الذاكرة الحرة أقل منها، يبقى المخطط ضمن الحرّ منها (تاركًا ⁦1 GB⁩، أو عُشر ذاكرة الحاسوب)، فتذهب أقدم عيناته قبل أن ينقل الحاسوب الذاكرة إلى القرص، وتقول الملاحظة ذلك بالكهرماني (&lt;i&gt;الحرّ ⁦2.1 GB⁩ فقط: يحفظ نحو ⁦40 s⁩&lt;/i&gt;). البرنامج نفسه يأخذ نحو ⁦150 MB⁩ أكثر من RAM
+المضبوطة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مدى Y&lt;/b&gt;: &lt;b&gt;تلقائي&lt;/b&gt; يتبع ما يُعرض (يكبر فورًا، ويصغر بلطف: بلا قفزات)، أو
+&lt;b&gt;يدوي&lt;/b&gt; بالحدّين الأدنى والأعلى المكتوبين بجانبه (كتابة أحدهما تجعله يدويًا). &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y
+حول الفأرة؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعيده إلى تلقائي. &lt;b&gt;لوغاريتمي&lt;/b&gt;: مقياس لوغاريتمي، خط عند كل عقد
+(&lt;i&gt;1 µ، 10 µ … 1، 10، 100 … 100 k&lt;/i&gt;)، وخطوط باهتة عند 2 إلى 9: التلقائي يمتد على القيم الموجبة المعروضة (9 عقود
+على الأكثر)، أو اكتب حدًّا أدنى وأعلى فوق 0؛ والقيم 0 أو أقل تقع على الحافة السفلى. اللوغاريتمي و&lt;b&gt;التطبيع&lt;/b&gt;
+لا يجتمعان: اختيار أحدهما يعطّل الآخر.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الصف الثاني: ما يُفعل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;تثبيت&lt;/b&gt; يوقف العرض حيث هو (تستمر الذاكرة في الامتلاء)؛ و&lt;b&gt;▶ مباشر&lt;/b&gt; يتبع الآن من جديد. والسحب
+يثبّت أيضًا. وما دام القدح مفعّلًا، فالزر نفسه &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;▶ تشغيل&lt;/b&gt; (أدناه).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القياسات&lt;/b&gt; تعرض القياسات تحت المخطط (أدناه). &lt;b&gt;المؤشران&lt;/b&gt; مفعّلان (يفعّل القياسات): انقر على
+المخطط للمؤشر &lt;b&gt;A&lt;/b&gt;، ومرة أخرى لـ&lt;b&gt;B&lt;/b&gt;، واسحبهما. شريط بين وسميهما في أعلى المخطط يقول
+الزمن بينهما (&lt;i&gt;⁦3.525 ms⁩&lt;/i&gt;، &lt;i&gt;⁦12.35 s⁩&lt;/i&gt;، &lt;i&gt;⁦1 min 23.4 s⁩&lt;/i&gt;)؛ ومع مؤشر خارج العرض ينتهي عند
+حافة المخطط، وحين يتقارب المؤشران فلا يتسع النص، يقف النص بجانب الوسمين. ويعطي تلميح الوسم وقت الساعة عنده؛ وحين يثبّت القدح العرض على عبور، بُعده عن &lt;b&gt;T&lt;/b&gt; أيضًا (&lt;i&gt;⁦T -0.250 ms⁩&lt;/i&gt;) كما تُقرأ مؤشرات راسم الذبذبات، وكذلك السطر فوق القياسات (&lt;i&gt;⁦A: T -0.250 ms · B: T +1.750 ms⁩&lt;/i&gt;). وتحت نافذة ⁦1 s⁩ (الشبكة بالتقسيمات) يقف المؤشران على الشبكة: يبقى كل منهما في مكانه والموجة تتحرك تحته، ويقول تلميحه والسطر أين هو (&lt;i&gt;⁦A: -7.000 ms⁩&lt;/i&gt;، من الحافة اليمنى، أو من T)، وتأخذ القياسات العينات التي تحتهما، و&lt;b&gt;Shift&lt;/b&gt; أثناء السحب يضع المؤشر على عُشر تقسيمة. &lt;b&gt;مسح المؤشرين&lt;/b&gt;
+يزيلهما، وكذلك تعطيل &lt;b&gt;المؤشرين&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;ƒ الرياضيات&lt;/b&gt;: خطوط مصنوعة من صيغة (أدناه).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;العرض&lt;/b&gt;، قائمة بكيفية رسم الخطوط (تلميحها يقول ما هو مفعّل): &lt;b&gt;التطبيع&lt;/b&gt;، كل خط
+محجّم إلى مداه، لمقارنة أشكال وحدات مختلفة؛ &lt;b&gt;المسارات&lt;/b&gt;، مخطط لكل وحدة بعضها تحت بعض،
+بين كل مسارين خط فاصل، وارتفاع كلٍّ منها 80 px على الأقل: حين لا تتسع لها المساحة تتمرر (بالعجلة فوق قيمها، أو بشريط
+التمرير على اليمين)؛ والنقر على ▾ مسار (فوق اسم وحدته) أو على اسم وحدته يطويه في شريحة بخطوطه وقيمها، والنقر على
+الشريحة يفتحه من جديد، و&lt;b&gt;طيّ كل المسارات&lt;/b&gt; / &lt;b&gt;فتح كل المسارات&lt;/b&gt; تحت «مسارات» تفعل ذلك لها كلها؛ واسحب الخط بين مسارين لتجعل الذي فوقه أطول أو أقصر (والنقر المزدوج عليه:
+تتساوى كلها من جديد؛ والمسارات تملأ الرسم دائمًا، ولا يقل أي منها عن ⁦80 px⁩)؛ ولكل مسار
+مدى Y خاص:
+انقر على ⋯ مسار (تحت ▾) أو بالزر الأيمن على قيمه لـ«تلقائي» أو «يدوي…» أو «لوغاريتمي» أو «كل المسارات: تلقائي» أو «طيّ المسار»، وCtrl + العجلة فوقه تكبّره، والنقر المزدوج يجعله تلقائيًا؛ وللمسار غير التلقائي وسم &lt;i&gt;يدوي&lt;/i&gt; (كهرماني) أو &lt;i&gt;لوغاريتمي&lt;/i&gt; أعلى قيمه، والنقر على الوسم يعيده تلقائيًا؛ والنقر على قيم مسار يجعله المسار الحالي، الذي يعرض صف مدى Y مداه ويضبطه (والقائمة بعد &lt;i&gt;مدى Y&lt;/i&gt; تختاره أيضًا: &lt;i&gt;مدى Y [⁦A ▾⁩]&lt;/i&gt;)، و&lt;b&gt;كل المسارات: تلقائي&lt;/b&gt; تحت المسارات يعيدها كلها؛ محور زمن واحد، والمؤشران والملاحظات و
+خط التصويب عبرها كلها؛ &lt;b&gt;التنعيم&lt;/b&gt; (مفعّل افتراضيًا): تُؤخَّر الصورة
+بضعة ms (بقدر ما يُقاس من تأخر وصول العينات، وتظهر في سطر المعلومات)، فيصل الخط دائمًا إلى الحافة
+اليمنى ويتمرر دون قفزات؛ &lt;b&gt;قيم التحويم&lt;/b&gt; (مفعّلة افتراضيًا): مربع القيم بجانب الفأرة، عطّلها لترى
+خط التصويب ونقاطه فقط؛ &lt;b&gt;الرسم&lt;/b&gt;: من يرسم المخطط: &lt;b&gt;تلقائي&lt;/b&gt; (بطاقة رسوميات مخصّصة حين
+توجد، وإلا المعالج المركزي)، أو بطاقة باسمها، أو &lt;b&gt;CPU&lt;/b&gt;. البطاقة ترسم المخطط كله (الخطوط، الشبكة،
+المؤشرين، خط التصويب) وتعرضه بنفسها: خطوط سريعة كثيرة بمعدّل الشاشة، 64 خطًا بـ1000 Hz بـ60 إطارًا
+في الثانية على شاشة 4K. تحتاج البطاقة لحظة لتبدأ (حتى ثانية وهي تستيقظ): يرسم المعالج المركزي في الأثناء. وإن
+فشلت البطاقة، يتولى المعالج المركزي ويقول السجل لماذا. رسوميات المعالج نفسه معروضة أيضًا، لكنها على
+شاشة كبيرة ترسم أبطأ من المعالج المركزي.&lt;/li&gt;
+&lt;li&gt;سطر المعلومات، بجانب &lt;b&gt;مسح&lt;/b&gt;: الخطوط على المخطط من كم يمكنه أن يحمل، والخطوط الرياضية، والإطارات المرسومة
+في الثانية وزمن رسم الواحد، وتأخير التنعيم، ومن يرسم (&lt;i&gt;GPU&lt;/i&gt; أو &lt;i&gt;CPU&lt;/i&gt;). حين يضيق،
+تذهب أجزاء كاملة (زمن الرسم، وكلمة &lt;i&gt;مرسومة&lt;/i&gt;، والتأخير أولًا)؛ وتلميحه يحمله كله. تتبع الإطارات
+تحديث الشاشة؛ وحين تطول الإطارات، يُتخطى واحد بين حين وآخر (بقدر الحاجة)، فتبقى بقية النافذة
+تستجيب دائمًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مسح&lt;/b&gt; يفرغ الخطوط والذاكرة ويبدأ المجاميع من جديد؛ و&lt;b&gt;إزالة الكل&lt;/b&gt; تزيل كل مسجّل
+عن المخطط.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;من نافذة ⁦1 s⁩ فما فوق عناوين الزمن هي وقت الساعة وتتحرك مع الخطوط. وتحت ⁦1 s⁩ يصير محور الزمن كمحور راسم الذبذبات: 10 تقسيمات ثابتة تبقى خطوطها في مكانها والموجة وحدها تتحرك، وعناوينها بُعدها عن الحافة اليمنى (&lt;i&gt;⁦-8 ms⁩&lt;/i&gt; … &lt;i&gt;0&lt;/i&gt;)، أو عن &lt;b&gt;T&lt;/b&gt; حين يثبّت القدح العرض على عبور (&lt;i&gt;0&lt;/i&gt; تحته، &lt;i&gt;⁦+4 ms⁩&lt;/i&gt;). وفوق المخطط، في يمين صف المفتاح، يذكر &lt;i&gt;⁦1 ms/div · 14:03:12.345⁩&lt;/i&gt; طول التقسيمة ووقت الساعة عند 0؛ والعجلة تنقل النافذة بين 1 و2 و5 لكل تقسيمة. &lt;b&gt;العرض ← شبكة الزمن&lt;/b&gt;: تلقائي (تقسيمات تحت ⁦1 s⁩)، أو أوقات الساعة، أو تقسيمات. ويعرض خط التصويب الزمن وكم مضى عليه (وعلى عبور مثبّت: بُعده عن T، &lt;i&gt;⁦T +1.234 ms⁩&lt;/i&gt;). النوافذ
+الطويلة والخطوط السريعة تُرسم من ملخصات الأدنى/الأعلى، فلا تكلّف أكثر من القصيرة.&lt;/p&gt;
+&lt;h3&gt;القياسات&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;القياسات&lt;/b&gt; (معطّلة افتراضيًا) تعرض جدولًا تحت المخطط، لكل خط: القيمة عند المؤشر &lt;b&gt;A&lt;/b&gt; و
+&lt;b&gt;B&lt;/b&gt;، و&lt;b&gt;B − A&lt;/b&gt;، وعلى A → B (أو على العرض بلا مؤشرين) &lt;b&gt;الأدنى&lt;/b&gt;، و&lt;b&gt;الأعلى&lt;/b&gt;، و&lt;b&gt;المتوسط&lt;/b&gt;،
+و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: ⁦12 V⁩ مع تموّج ⁦1 mV⁩ يُقرأ ⁦0.707 mV⁩)،
+و&lt;b&gt;قمة–قمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
+&lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. والفاصل فوق
+الجدول يتحرك. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;منذ المسح&lt;/b&gt;: مجموع كل خط منذ &lt;b&gt;مسح&lt;/b&gt; المخطط، بـ Wh أو Ah أو unit·h، مجموعًا من كل عينة
+لحظة وصولها، فيغطي ساعات بينما تحفظ الذاكرة دقائق؛ والفجوة الأطول من ثانية بين عينتين لا تضيف
+شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (⁦1 h 12 min⁩)&lt;/i&gt;. الخط المُزال عن
+المخطط ثم المُعاد يحافظ على مجموعه.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;انقر بالزر الأيمن على ترويسة الجدول&lt;/b&gt; لتُظهر أعمدته أو تخفيها؛ ويُحفظ الاختيار.&lt;/p&gt;
+&lt;h3&gt;المدرّج التكراري والطيف&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;انقر شارة خط&lt;/b&gt; في المفتاح (زرّها &lt;b&gt;▾&lt;/b&gt;) أو انقرها بالزر الأيمن: &lt;b&gt;المدرّج التكراري&lt;/b&gt; (كيف تتوزع قيمه، فئات بقاعدة
+فريدمان–دياكونيس) أو &lt;b&gt;الطيف&lt;/b&gt; (أي الترددات فيه، سعاتٍ بوحدته: جيب ⁦2 V⁩ يُقرأ
+⁦2 V⁩؛ مُعاد أخذه بخطوات متساوية، طريقة ويلش بنافذة هان، حتى نصف المعدّل)، على A → B أو العرض، في نافذة
+خاصة بقراءة تحت الفأرة، وصورة وCSV.&lt;/p&gt;
+&lt;h3&gt;القدح&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;انقر شارة خط ← القدح على هذا الخط&lt;/b&gt; (أو &lt;b&gt;العرض ← القدح&lt;/b&gt;): يثبت المخطط حين يعبر ذلك
+الخط مستواه، كما في راسم الإشارة. المستوى خط متقطع في مسار الخط يمتد من علامته &lt;b&gt;⁦T▸⁩&lt;/b&gt; يسار المخطط إلى لسانه يمينه، &lt;i&gt;⁦0.4 A ↑⁩&lt;/i&gt; (المستوى بوحدة الخط والحافة)،
+فلا شيء يغطي أحدث العينات؛ ومؤشّراهما مصمتان ما دامت الصورة المثبّتة قد عبرت هذا المستوى. &lt;b&gt;اسحب&lt;/b&gt; العلامة أو اللسان أو الخط
+لتحريك المستوى؛ و&lt;b&gt;انقر&lt;/b&gt; سهم اللسان (↑ ↓ ↕) لصاعد أو هابط أو أيّهما؛ ويسمّي تلميحاهما الخط. والمستوى الخارج عن مدى
+المسار يبقى عند طرف المسار، منقّطًا، ومؤشّراهما ▲ أو ▼ و&lt;i&gt;(فوق المدى)&lt;/i&gt; في تلميحيهما. ولكل خط مستواه وحافته.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;تلقائي&lt;/b&gt; يثبت عند كل عبور؛ وحين لا يأتي عبور طوال نافذة بعد مهلة التجاهل، يجري مباشرًا حتى التالي.
+&lt;b&gt;عادي&lt;/b&gt; يثبت عند كل عبور ويبقى مثبّتًا حتى التالي مهما طال. &lt;b&gt;مرة واحدة&lt;/b&gt; يثبت عند العبور الأول
+ويتوقف؛ و&lt;b&gt;تجهيز&lt;/b&gt; لعبور آخر. والعادي والمرة الواحدة ينتظران على صورة ثابتة؛ والتلقائي وحده يجري.
+وفي أثناء انتظارهما يثبّت &lt;b&gt;فرض&lt;/b&gt; (مكان «تجهيز») العرض الآن كأن الخط عبر؛ والعادي إذ ينتظر بعد التقاطٍ يقول
+متى كان آخره. و&lt;b&gt;إيجاد المستوى&lt;/b&gt; يضع المستوى في منتصف ما بين أدنى الخط وأعلاه في العرض.
+و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
+يُحسب فيها عبور آخر. والعلَم &lt;b&gt;⁦T ▼⁩&lt;/b&gt; فوق
+المخطط، وسهمه فوق العبور، موضعه في النافذة (يقول تلميحه متى عبر الخط وعند أي مستوى)، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
+عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
+المثبّت.&lt;/p&gt;
+&lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
+وعلامتها T، ولا يُحسب أي عبور (و&lt;b&gt;تشغيل&lt;/b&gt; على الزر كهرماني ما دام متوقفًا)؛ و&lt;b&gt;تشغيل&lt;/b&gt; يجهّزه من جديد بنمطه، من الآن. وسحب المخطط يوقفه أيضًا.
+ويقول الصف وأعلى يمين المخطط الحالة نفسها (&lt;i&gt;عادي · بانتظار عبور&lt;/i&gt;، &lt;i&gt;عادي · قُدح&lt;/i&gt;، &lt;i&gt;متوقف · «تشغيل»
+للتجهيز&lt;/i&gt; …)، ولا يتغيران إلا حين تتغير، بلا أي رقم ما دام يعمل؛ وما دام العرض يمتلئ بعد العبور، يدلّ خط باهت على حيث تنتهي
+البيانات.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;النوافذ القصيرة تُقفَل وحدها&lt;/b&gt;: تحت نافذة ⁦100 ms⁩ يثبت المخطط الحي والقدح مطفأ عند كل عبور صاعد
+لمنتصف أنشط خطوطه (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة؛ والخط الذي فيه أقل من 20 عينة هناك لا يُراقَب) (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
+تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
+قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
+باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
+&lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
+SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
+exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign clamp، وbits(x, lsb, width) لحقل
+بتات (النقر بالزر الأيمن على مسجّل له حقول ← &lt;i&gt;رسم حقل&lt;/i&gt; يصنع خطًا كهذا). اكتب بضعة حروف من اسم فتعرض
+قائمة المسجّلات (بوحداتها) والدوال: الأعلى والأسفل للاختيار، وEnter أو Tab يأخذ واحدًا، وEsc يغلقها؛
+والدالة تدخل بصيغة &lt;code&gt;name()&lt;/code&gt;، والمؤشر داخلها. تُرسم وتُقاس مثل
+المسجّل، من الاستطلاعات نفسها؛ والمسجّلات التي تقرؤها تُؤخذ عيناتها لها حتى إن لم تكن مرسومة. تُحفظ
+للتشغيل التالي؛ والقائمة تعرضها وتحرّرها وتزيلها.&lt;/p&gt;
+&lt;p&gt;صيغة على قنوات تدفق سريع واحد (&lt;code&gt;ADC.I_LOAD * ADC.V_BUS&lt;/code&gt;) تُحسب لكل عينة من ذلك التدفق، والمسجّل
+فيها يُثبَّت عند آخر قيمة استُطلعت: انظر &lt;i&gt;التدفقات السريعة&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;CSV&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;● تسجيل CSV&lt;/b&gt; يطلب ملفًا، ثم يكتب صفًا لكل استطلاع (صفًا لكل إطار مع &lt;i&gt;الإرسال التلقائي&lt;/i&gt;):
+&lt;code&gt;time_s&lt;/code&gt; (منذ التشغيل)، و&lt;code&gt;datetime&lt;/code&gt;، ثم كل مسجّل مفعّل عليه &lt;b&gt;تسجيل&lt;/b&gt; (كلها افتراضيًا)، بـ
+القيم المعروضة (المحجّمة). تُثبَّت الأعمدة حين يبدأ التسجيل. و&lt;b&gt;■ إيقاف التسجيل&lt;/b&gt; يغلق الملف.&lt;/p&gt;
+&lt;h3&gt;النقر بالزر الأيمن على المخطط&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;نسخ الصورة&lt;/b&gt;، و&lt;b&gt;حفظ الصورة…&lt;/b&gt; (PNG): المخطط كما يُعرض، يرسمه المعالج المركزي.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;تصدير إلى CSV…&lt;/b&gt;: عينات كل خط على العرض، أو بين المؤشرين A → B حين يوضع
+كلاهما، بصيغة التسجيل (صف لكل استطلاع)؛ والكبير يعمل وحده بشريط تقدّم وإلغاء.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إضافة ملاحظة هنا&lt;/b&gt;: علامة مسمّاة عند ذلك الزمن، ووسم في أسفل المخطط. اسحب الوسم لتحرّكها،
+وانقر عليه نقرًا مزدوجًا لتحرّرها، وانقر عليه واضغط &lt;b&gt;Delete&lt;/b&gt; لتزيلها. أثناء التسجيل، تُكتب الملاحظات بجانب
+الملف (&lt;code&gt;run.csv.notes.json&lt;/code&gt;)، ويأخذ التصدير ملاحظات مداه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;فتح تسجيل…&lt;/b&gt; و&lt;b&gt;التسجيلات الأخيرة&lt;/b&gt; (و&lt;b&gt;فتح&lt;/b&gt; بجانب «تسجيل CSV» أيضًا، أو أفلت ملف .csv على
+النافذة): تسجيل أو تصدير في نافذة خاصة، بمخططه وقياساته وملاحظاته وخطوطه الرياضية
+الخاصة؛ والمخطط الحي يستمر. الملف الأكبر من RAM المخطط يسأل عن الاحتفاظ بجزئه الأخير. ومع تحميل خريطة، تُطابق
+أسماء قيم مسجّلاتها وحقولها بالاسم. &lt;b&gt;الخطوط&lt;/b&gt; (أعلى اليمين، &lt;i&gt;الخطوط ⁦8/11⁩&lt;/i&gt;) تُفعّل كل خط أو
+تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
+ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
+&lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
+cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
+division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
+all fit&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
+handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
+&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
+Manual or Log tag: Auto ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
+values: Auto ·
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
+(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
+&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</source>
+        <translation>
+&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
+يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
+كلها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
+مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
+&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
+(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
+و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
 </translation>
     </message>
 </context>

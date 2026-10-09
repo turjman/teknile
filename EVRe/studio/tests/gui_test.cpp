@@ -13223,6 +13223,9 @@ private:
 		view->setFocus();
 		QApplication::processEvents();
 		view->setWindow(0.01);
+		for (QComboBox *box : chart.tab.findChildren<QComboBox *>()) /* the Window box as the view (the pictures) */
+			if (box->currentText() == QStringLiteral("30 s")) box->setEditText(QStringLiteral("10 ms"));
+		chart.tab.setShown(true); /* the table's timer measures while the tab is shown */
 		cursors->setChecked(true); /* Measure on with it */
 		frame();
 		QRectF plot = view->lastPlot();
@@ -13279,6 +13282,25 @@ private:
 				"chart, grid cursors: the measure line says \"A: -7.000 ms · B: -3.000 ms\", a tag's tooltip its place, "
 				"that it stays and Shift's snap; the corner \"cursors: click / drag, Shift snaps\", the Cursors button too");
 
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the table measured from this frame's view (its next tick) */
+			QEvent leave(QEvent::Leave); /* the mouse off the chart: no hover box in the pictures */
+			QApplication::sendEvent(view, &leave);
+			frame();
+			(void) QTest::qWaitFor([&] { return !view->measuring(); }, 3000);
+			const int fills = chart.tab.measureFills();
+			(void) QTest::qWaitFor([&] { return chart.tab.measureFills() > fills && !view->measuring(); }, 3000);
+		}
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: grid cursors on a live 10 ms view, light and dark */
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) view->grab();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_grid_cursors_live_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+
 		/* Shift while dragging B: a tenth of a division from the right edge (a place of 0.01 steps) */
 		{
 			const QPointF from(xNow(view->cursorB()), plot.center().y());
@@ -13320,6 +13342,76 @@ private:
 		check(held, "chart, grid cursors: Hold keeps them where they are (their times stay, nothing moves), Live again "
 				"keeps their places");
 
+		/* U-21: the table's A -> B over the samples now between the places, at the table's own rate (every 250 ms), not
+		 * at each frame: 60 frames a 60th of a second apart, the cell at A changing only with an update */
+		{
+			const int updates0 = chart.tab.measureUpdates(), fills0 = chart.tab.measureFills();
+			QStringList atACells;
+			QElapsedTimer took;
+			took.start();
+			for (int k = 0; k < 60; k++) {
+				frame();
+				QTest::qWait(16);
+				const QString cell = chart.cell(ChartTab::ColAtA);
+				if (atACells.isEmpty() || atACells.last() != cell) atACells << cell;
+			}
+			const double seconds = took.elapsed() / 1000.0;
+			const int updates = chart.tab.measureUpdates() - updates0, fills = chart.tab.measureFills() - fills0;
+			std::printf("     (60 frames in %.2f s: the table measured %d times, filled %d, the cell at A %lld values: %s)\n",
+					seconds, updates, fills, (long long) atACells.size(), qPrintable(atACells.mid(0, 6).join(QStringLiteral(" | "))));
+			check(updates >= 2 && updates <= seconds * 4 + 4 && updates < 20 && fills >= 2 && atACells.size() >= 3
+					&& atACells.size() <= fills + 1,
+					"chart, grid cursors: the table's A → B is measured over the samples now between them at the table's "
+					"rate (every 250 ms), not at each of 60 frames; its values change with each update");
+		}
+		/* held, grid cursors measured once and then no more while samples come after the view (phase 0's rule) */
+		{
+			view->setLive(false);
+			for (int k = 0; k < 3; k++) {
+				frame();
+				QTest::qWait(200);
+			}
+			const int full0 = chart.tab.measureFullUpdates();
+			for (int k = 0; k < 30; k++) {
+				frame();
+				QTest::qWait(33);
+			}
+			const int full = chart.tab.measureFullUpdates() - full0;
+			view->setLive(true);
+			frame();
+			check(full == 0, "chart, grid cursors: held, the table is not measured again while samples come after the view");
+		}
+		/* Export A -> B: the samples between the places at the moment of the export, not where they were placed */
+		{
+			for (int k = 0; k < 5; k++) frame();
+			(void) QTest::qWaitFor([view] { return !view->measuring(); }, 2000);
+			const double a = view->cursorA(), b = view->cursorB();
+			qint64 inside = 0;
+			for (qint64 i = 0; i < index; i++) {
+				const double t = 99.0 + double(i) / 20000;
+				if (t >= std::min(a, b) && t <= std::max(a, b)) inside++;
+			}
+			QTemporaryDir folder;
+			const QString file = folder.filePath(QStringLiteral("grid.csv"));
+			QSignalSpy done(&chart.tab, &ChartTab::exported);
+			qint64 rows = -1;
+			QStringList lines;
+			if (chart.tab.exportCsv(file) && done.wait(10000)) {
+				rows = done.first().at(1).toLongLong();
+				QFile in(file);
+				if (in.open(QIODevice::ReadOnly))
+					lines = QString::fromUtf8(in.readAll()).split(QRegularExpression(QStringLiteral("\r?\n")), Qt::SkipEmptyParts);
+			}
+			const double first = lines.value(1).section(QLatin1Char(','), 0, 0).toDouble();
+			const double last = lines.isEmpty() ? 0 : lines.last().section(QLatin1Char(','), 0, 0).toDouble();
+			std::printf("     (Export A → B: %lld rows, %lld samples between %.6f and %.6f s; %.6f .. %.6f; A placed at %.6f)\n",
+					(long long) rows, (long long) inside, a, b, first, last, a0);
+			check(rows == inside && inside >= 40 && first >= std::min(a, b) - 1e-6 && last <= std::max(a, b) + 1e-6
+					&& a > a0 + 1,
+					"chart, grid cursors: Export to CSV with grid cursors exports the samples between their places at the "
+					"moment of the export");
+		}
+
 		/* held on a trigger's crossing: from T, the same at each new crossing (T stays at its place) */
 		view->setTrigger(chart.key(), 3.5, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
 		for (int k = 0; k < 60 && !(std::isfinite(view->triggeredAt()) && !view->live()); k++) frame();
@@ -13338,6 +13430,24 @@ private:
 		check(steadyT && tipT.startsWith(QStringLiteral("Cursor B at %1 · ").arg(fromT)),
 				"chart, grid cursors: held on a trigger's crossing they read from T (\"B at T +...\"), the same at each "
 				"new crossing, B - A fixed");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the table measured from this frame's view (its next tick) */
+			QEvent leave(QEvent::Leave); /* the mouse off the chart: no hover box in the pictures */
+			QApplication::sendEvent(view, &leave);
+			frame();
+			(void) QTest::qWaitFor([&] { return !view->measuring(); }, 3000);
+			const int fills = chart.tab.measureFills();
+			(void) QTest::qWaitFor([&] { return chart.tab.measureFills() > fills && !view->measuring(); }, 3000);
+		}
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: grid cursors held on T, light and dark */
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				(void) view->grab();
+				chart.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_grid_cursors_T_%1.png")
+						.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
 		view->stopTrigger();
 		view->setLive(true);
 		for (int k = 0; k < 3; k++) frame();
@@ -13361,8 +13471,73 @@ private:
 				"chart, grid cursors: a switch to a 1 s window (clock times) keeps them where they are on the screen, and "
 				"from then on they hold times (they move with the data)");
 
+		/* Arabic: a cursor's place one left-to-right piece (isolates), the unit beside its number; the tag's tooltip in
+		 * Arabic; pictures of a live 10 ms view with grid cursors */
+		language::apply(*qApp, QStringLiteral("ar"));
+		bool arabic = false;
+		QString arabicPlace, arabicTip;
+		{
+			LoneChart other(QStringLiteral("SAW2"), QStringLiteral("V"));
+			other.tab.show();
+			(void) QTest::qWaitForWindowExposed(&other.tab);
+			other.view->setSmooth(false);
+			other.view->setFocus();
+			QApplication::processEvents();
+			other.view->setWindow(0.01);
+			for (QComboBox *box : other.tab.findChildren<QComboBox *>())
+				if (box->currentText().contains(QStringLiteral("30 s")))
+					box->setEditText(box->currentText().replace(QStringLiteral("30 s"), QStringLiteral("10 ms")));
+			other.tab.setShown(true);
+			qint64 at = 0;
+			const auto feed = [&] {
+				(void) QTest::qWaitFor([&] { return !other.view->measuring(); }, 2000);
+				MathLines::Samples samples;
+				for (const qint64 end = at + 333; at < end; at++)
+					samples[regKey(other.def)] << QPointF(99.0 + double(at) / 20000, std::fmod(double(at) / 20, 7.0));
+				other.now = 99.0 + double(at - 1) / 20000;
+				other.tab.frame(samples);
+				(void) other.view->grab();
+			};
+			for (int k = 0; k < 10; k++) feed();
+			if (auto *button = other.tab.findChild<QPushButton *>(QStringLiteral("cursors"))) button->setChecked(true);
+			feed();
+			double h0, h1;
+			other.view->viewSpan(h0, h1);
+			other.view->setCursors(h1 - 0.007, h1 - 0.003);
+			for (int k = 0; k < 5; k++) feed();
+			const QRectF otherPlot = other.view->lastPlot();
+			other.view->viewSpan(h0, h1);
+			arabicPlace = other.view->cursorPlaceText(0);
+			arabicTip = other.view->toolTipAt(
+					QPointF(otherPlot.left() + (other.view->cursorA() - h0) / (h1 - h0) * otherPlot.width(), otherPlot.top() + 6));
+			arabic = arabicPlace == QString(QChar(0x2066)) + QStringLiteral("-7.000 ms") + QChar(0x2069)
+					&& arabicTip.contains(arabicPlace) && !arabicTip.startsWith(QStringLiteral("Cursor"))
+					&& !arabicTip.contains(QStringLiteral("On the grid"));
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+				feed();
+				(void) QTest::qWaitFor([&] { return !other.view->measuring(); }, 3000);
+				const int fills = other.tab.measureFills();
+				(void) QTest::qWaitFor([&] { return other.tab.measureFills() > fills && !other.view->measuring(); }, 3000);
+				const bool wasDark = Theme::isDark();
+				for (const bool dark : { false, true }) {
+					Theme::apply(*qApp, dark);
+					(void) other.view->grab();
+					other.tab.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_grid_cursors_ar_%1.png")
+							.arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+				Theme::apply(*qApp, wasDark);
+			}
+			other.tab.setShown(false);
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		std::printf("     (Arabic: the place \"%s\", the tag \"%s\")\n", qPrintable(arabicPlace),
+				qPrintable(QString(arabicTip).replace(QLatin1Char('\n'), QStringLiteral(" | "))));
+		check(arabic, "chart, grid cursors: in Arabic a cursor's place (\"-7.000 ms\") is one left-to-right piece "
+				"(isolates) in its tag's tooltip, the tooltip in Arabic");
+
 		cursors->setChecked(false);
 		measure->setChecked(false);
+		chart.tab.setShown(false);
 		chart.tab.hide();
 		QSettings().remove(QStringLiteral("chart/autoShortWindows"));
 		QSettings().remove(QStringLiteral("chart/measure"));
