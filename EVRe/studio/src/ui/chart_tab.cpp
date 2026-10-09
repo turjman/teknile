@@ -380,8 +380,23 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
 			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
 			"recording's file keeps every sample, whatever the chart keeps.\nLess memory free than the RAM set: the "
-			"chart keeps within what is free, and this says \"only ... free\" in orange."));
+			"chart keeps within what is free, and this says \"only ... free\" in orange.") + QLatin1Char('\n')
+			+ tr("Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this "
+					"says how much keeps its samples whole: \"keeps 100 min (samples for the newest 79 s)\"."));
 	/* the RAM box's tooltip: once the chart is made, with the free memory (watchFreeMemory) */
+	older_ = new QComboBox;
+	older_->setObjectName(QStringLiteral("chartOlder"));
+	older_->addItem(tr("summaries"), true);
+	older_->addItem(tr("kept"), false);
+	older_->setToolTip(tr("A fast line's samples older than its share of the RAM holds whole.\nSummaries (the default): "
+			"the newest stay whole, the older only as the lowest and highest of each 256 (1/128 of the room), so the "
+			"Memory is kept far longer: 100 min of two channels at 1 MS/s in 512 MB, with samples for the newest 79 s. "
+			"Zoomed in they are drawn as bars; their mean, RMS, area, histogram and spectrum need samples.\nKept: every "
+			"sample whole, the oldest go when the RAM is full.\nA recording's file keeps every sample either way."));
+	olderLabel_ = mutedLabel(tr("Older samples"));
+	olderLabel_->setToolTip(older_->toolTip());
+	olderLabel_->hide(); /* with fast streams only (setFastStreams) */
+	older_->hide();
 
 	/* the first row: what is shown and kept (Window, Memory, RAM and what the lines need), the Y range */
 	auto *row = new QHBoxLayout;
@@ -396,6 +411,9 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	ramLabel_ = mutedLabel(tr("RAM"));
 	row->addWidget(ramLabel_);
 	row->addWidget(ram_);
+	row->addSpacing(6);
+	row->addWidget(olderLabel_);
+	row->addWidget(older_);
 	row->addSpacing(6);
 	row->addWidget(ramNeed_, 1);
 	row->addSpacing(12);
@@ -637,6 +655,12 @@ void ChartTab::connectControls() {
 	connect(memory_, &QComboBox::activated, this, [this] { applyMemoryText(); });
 	connect(memory_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyMemoryText);
 	connect(ram_, &QComboBox::activated, this, [this] { applyRamText(); });
+	connect(older_, &QComboBox::activated, this, [this] {
+		const bool summaries = older_->currentData().toBool();
+		QSettings().setValue(settingKey("fastOlder"), summaries ? QStringLiteral("summaries") : QStringLiteral("kept"));
+		chart_->view()->setFastSummaries(summaries && !recording_);
+		refreshStatus();
+	});
 	connect(drawingChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
 		QSettings().setValue(settingKey("drawing"), action->data().toInt());
 		applyDrawing(action->data().toInt());
@@ -862,6 +886,11 @@ void ChartTab::restoreSettings() {
 	const int ram = settings.value(settingKey("ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
 	chart_->view()->setRamBudget(std::clamp(ram, int(ChartView::MIN_RAM_MB), maxRamMB()));
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
+	{
+		const bool summaries = settings.value(settingKey("fastOlder")).toString() != QLatin1String("kept");
+		older_->setCurrentIndex(summaries ? 0 : 1);
+		chart_->view()->setFastSummaries(summaries && !recording_);
+	}
 	chart_->setWindow(settings.value(settingKey("window"), 30.0).toDouble());
 	window_->setEditText(secondsText(chart_->window()));
 	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
@@ -914,9 +943,10 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	chart_->view()->setRecording(true);
 	chart_->setClock(clock_, epochMs);
 	/* nothing comes after the file: no Live, no memory to set, nothing to clear */
-	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, ramNeed_,
-				clearButton_, removeAllButton_ })
+	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, olderLabel_,
+				older_, ramNeed_, clearButton_, removeAllButton_ })
 		w->hide();
+	chart_->view()->setFastSummaries(false); /* its file is mapped whole: every record kept */
 	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
 	 * from its box, as if it were the list's) */
 	axesRow_->insertStretch(axesRow_->indexOf(ramNeed_), 1);
@@ -977,6 +1007,8 @@ void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
 	}
 	const QStringList channelsBefore = fastChannelNames();
 	fastStreams_ = streams;
+	olderLabel_->setVisible(!streams.isEmpty() && !recording_); /* Older samples: of fast lines only */
+	older_->setVisible(!streams.isEmpty() && !recording_);
 	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
 	if (fastChannelNames() != channelsBefore) rebuildMath(); /* a formula over a channel compiles now, or no longer */
 }
@@ -1613,8 +1645,10 @@ void ChartTab::refreshStatus() {
 		showTriggerState();
 	}
 	bool over = false;
+	double kept = -1, samples = -1;
+	if (!chart_->view()->fastTiers(kept, samples)) kept = samples = -1;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_, kept, samples) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
@@ -1624,7 +1658,7 @@ void ChartTab::refreshStatus() {
 }
 
 QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
-		qint64 freeMB) {
+		qint64 freeMB, double tieredKept, double tieredSamples) {
 	over = false;
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
@@ -1637,13 +1671,19 @@ QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySecond
 	const auto keptText = [](double kept) {
 		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
 	};
+	const bool tiers = tieredSamples >= 0; /* fast lines' older samples as summaries: the tiers say what is kept */
 	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
 		over = true;
+		if (tiers)
+			return tr("only %1 free: keeps about %2 (samples for the newest %3)").arg(megabytesText(freeMB),
+					keptText(tieredKept), keptText(tieredSamples));
 		return tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
 				keptText(memorySeconds * std::min(1.0, limitMB / megabytes)));
 	}
 	over = megabytes > ramMB;
 	if (!over) return tr("needs %1").arg(size);
+	if (tiers)
+		return tr("needs %1, keeps %2 (samples for the newest %3)").arg(size, keptText(tieredKept), keptText(tieredSamples));
 	return tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes));
 }
 
@@ -1938,6 +1978,8 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 	/* the cells written with the table's updates off: one repaint when they are all in, not one per cell */
 	measures_->setUpdatesEnabled(false);
 	const QString none = QStringLiteral("—");
+	const QString needsSamples = tr("Needs samples: in this range the fast line keeps only summaries, the lowest and "
+			"highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs");
 	measures_->setRowCount(int(lines.size()));
 	for (int row = 0; row < lines.size(); row++) {
 		const ChartView::Info &line = lines[row];
@@ -1950,12 +1992,14 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			std::isfinite(s.atA) && std::isfinite(s.atB) ? measureText(s.atB - s.atA) + unit : none,
 			s.ok ? measureText(s.min) + unit : none,
 			s.ok ? measureText(s.max) + unit : none,
-			s.ok ? measureText(s.mean) + unit : none,
-			s.ok ? measureText(s.rms) + unit : none,
-			s.ok ? measureText(s.std) + unit : none,
+			s.ok && std::isfinite(s.mean) ? measureText(s.mean) + unit : none, /* NaN: over summaries only */
+			s.ok && std::isfinite(s.rms) ? measureText(s.rms) + unit : none,
+			s.ok && std::isfinite(s.std) ? measureText(s.std) + unit : none,
 			s.ok ? measureText(s.p2p) + unit : none,
-			s.ok ? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
-			s.ok ? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 			std::isfinite(s.total) ? measureText(s.total / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 		};
 		for (int column = 0; column < cells.size(); column++) {
@@ -1969,6 +2013,10 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			}
 			if (item->text() != cells[column]) item->setText(cells[column]);
 			if (column == 0 && item->foreground().color() != line.color) item->setForeground(line.color);
+			const bool samplesOnly = column == ColAtA || column == ColAtB || column == ColDiff || column == ColMean
+					|| column == ColRms || column == ColStd || column == ColArea || column == ColAreaHours;
+			const QString tip = s.summaries && samplesOnly && cells[column] == none ? needsSamples : QString();
+			if (item->toolTip() != tip) item->setToolTip(tip);
 		}
 	}
 	/* the table shown again (one repaint), and the time the update took for the timing aid */
@@ -2133,6 +2181,13 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	bool only = false; /* a fast line kept as summaries only there: nothing to count or transform */
+	if (chart_->view()->summariesIn(key, t0, t1, &only) && only)
+		for (QAction *action : { histogram, spectrum }) {
+			action->setEnabled(false);
+			action->setToolTip(tr("Needs samples: %1 the fast line keeps only summaries, the lowest and highest of each "
+					"256 samples (Older samples, beside RAM)").arg(over));
+		}
 	if (trigger_->isVisible()) { /* not in a recording's window */
 		lineMenu_->addSeparator();
 		/* ticked for the line watched: unticking it turns the trigger off (Display -> Trigger, so all three agree) */
@@ -2162,7 +2217,9 @@ AnalysisWindow *ChartTab::openAnalysis(AnalysisWindow::Kind kind, int key) {
 	/* a fast line's spectrum: its longest part without a gap (even steps; nothing measured across a gap) */
 	const bool whole = view->lineSamples(key, t0, t1, times, values, kind == AnalysisWindow::Kind::Spectrum);
 	QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
-	if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
+	if (view->summariesIn(key, t0, t1) && times.size() >= 2) /* the older part kept as summaries only: said */
+		span = tr("%1: its newest %2, older kept as summaries").arg(span, durationText(times.last() - times.first()));
+	else if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
 		span = (kind == AnalysisWindow::Kind::Spectrum ? tr("%1: %2 of it without a gap") : tr("%1: its first %2"))
 					   .arg(span, durationText(times.last() - times.first()));
 	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window(),

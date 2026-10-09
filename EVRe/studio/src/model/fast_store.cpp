@@ -25,6 +25,7 @@ void Store::reset(const StreamDef &def) {
 	for (const StreamChannel &c : def.channels) {
 		Channel channel;
 		channel.offset = offset;
+		channel.size = typeSize(c.type);
 		channel.type = c.type;
 		channel.scale = c.scale;
 		channel.offset0 = c.offset;
@@ -40,6 +41,8 @@ void Store::reset(const StreamDef &def) {
 void Store::clear() {
 	timeVersion_++;
 	pieces_.clear();
+	outlines_.clear();
+	recordsFrom_ = 0;
 	spans_.clear();
 	spanOfChunk_.clear();
 	dropped_ = 0;
@@ -92,6 +95,7 @@ void Store::put(const char *records, qsizetype count) {
 		if (pieces_.isEmpty() || pieces_.last().size() == PIECE * recordSize_) {
 			pieces_.push_back(QByteArray());
 			pieces_.last().reserve(PIECE * recordSize_);
+			outlines_.push_back(QByteArray(OUTLINE_ROWS * 2 * recordSize_, '\0')); /* its rows as its chunks complete */
 		}
 		QByteArray &piece = pieces_.last();
 		const qsizetype room = PIECE - piece.size() / recordSize_;
@@ -171,14 +175,52 @@ void Store::dropFront(qsizetype records, Released *gone) {
 	if (pieces <= 0) return;
 	const qsizetype n = pieces * PIECE;
 	if (gone)
-		for (qsizetype i = 0; i < pieces; i++) gone->pieces << std::move(pieces_[i]);
+		for (qsizetype i = 0; i < pieces; i++) {
+			if (pieces_[i].capacity() > 0) gone->pieces << std::move(pieces_[i]);
+			gone->pieces << std::move(outlines_[i]);
+		}
 	pieces_.remove(0, pieces);
+	outlines_.remove(0, std::min(pieces, outlines_.size()));
 	dropped_ += n;
 	size_ -= n;
+	recordsFrom_ = std::max<qsizetype>(0, recordsFrom_ - n);
+	dropSummaries(gone);
+	while (segments_.size() > 1 && segments_[1].begin <= dropped_) segments_.removeFirst();
+	/* the starts no segment is of any more, and the marks before the one the oldest record needs */
+	if (!segments_.isEmpty()) {
+		const int firstEpoch = segments_.first().epoch - epochBase_;
+		if (firstEpoch > 0) {
+			epochs_.remove(0, firstEpoch);
+			epochBase_ += firstEpoch;
+		}
+		const quint64 oldest = segments_.first().record + quint64(dropped_ - std::min(dropped_, segments_.first().begin));
+		QVector<Mark> &marks = epochs_.first().marks;
+		while (marks.size() > 1 && marks[1].record <= oldest) marks.removeFirst();
+	}
+}
+
+/* The oldest pieces that hold records, but the one with the newest record: their records go, their outline stays (made
+ * as they came, so nothing is read here: a cut of gigabytes costs what handing the pieces on costs) */
+void Store::dropRecords(qsizetype records, Released *gone) {
+	if (!spans_.isEmpty()) return; /* mapped: the file holds them */
+	const qsizetype pieces = std::min(records / PIECE, (size_ - recordsFrom_ - 1) / PIECE);
+	if (pieces <= 0) return;
+	const qsizetype first = recordsFrom_ / PIECE;
+	for (qsizetype i = first; i < first + pieces; i++) {
+		if (gone) gone->pieces << std::move(pieces_[i]);
+		pieces_[i] = QByteArray();
+	}
+	recordsFrom_ += pieces * PIECE;
+	dropSummaries(gone);
+}
+
+/* the summaries of the records before the first kept whole (or before the store's front): the outline holds theirs */
+void Store::dropSummaries(Released *gone) {
+	const qint64 boundary = dropped_ + recordsFrom_;
 	for (Channel &c : channels_) {
 		for (Summary *s : { &c.small, &c.large }) {
 			const qsizetype chunk = s == &c.small ? SMALL : LARGE;
-			const qsizetype chunks = std::min<qsizetype>(s->min.size(), dropped_ / chunk - s->first);
+			const qsizetype chunks = std::min<qsizetype>(s->min.size(), boundary / chunk - s->first);
 			if (chunks <= 0) continue;
 			for (QVector<double> *v : { &s->min, &s->max, &s->sum, &s->squares }) {
 				v->remove(0, chunks);
@@ -196,23 +238,14 @@ void Store::dropFront(qsizetype records, Released *gone) {
 			s->first += chunks;
 		}
 	}
-	while (segments_.size() > 1 && segments_[1].begin <= dropped_) segments_.removeFirst();
-	/* the starts no segment is of any more, and the marks before the one the oldest record needs */
-	if (!segments_.isEmpty()) {
-		const int firstEpoch = segments_.first().epoch - epochBase_;
-		if (firstEpoch > 0) {
-			epochs_.remove(0, firstEpoch);
-			epochBase_ += firstEpoch;
-		}
-		const quint64 oldest = segments_.first().record + quint64(dropped_ - std::min(dropped_, segments_.first().begin));
-		QVector<Mark> &marks = epochs_.first().marks;
-		while (marks.size() > 1 && marks[1].record <= oldest) marks.removeFirst();
-	}
 }
 
 qint64 Store::bytes() const {
 	qint64 total = 0;
-	for (const QByteArray &piece : pieces_) total += piece.capacity();
+	/* every piece's room is the same (put reserves it), none before recordsFrom_: no walk over thousands of them (a
+	 * trim asks at every block) */
+	if (!pieces_.isEmpty()) total += qint64(pieces_.size() - recordsFrom_ / PIECE) * pieces_.last().capacity();
+	if (!outlines_.isEmpty()) total += qint64(outlines_.size()) * outlines_.last().capacity();
 	total += spans_.capacity() * qint64(sizeof(Span)) + spanOfChunk_.capacity() * qint64(sizeof(int)); /* not the file's */
 	for (const Channel &c : channels_)
 		total += qint64(c.small.min.capacity() + c.large.min.capacity()) * 4 * qint64(sizeof(double));
@@ -222,7 +255,20 @@ qint64 Store::bytes() const {
 }
 
 double Store::bytesPerRecord() const {
-	return (spans_.isEmpty() ? recordSize_ : 0) + channels() * 4.0 * sizeof(double) * (1.0 / SMALL + 1.0 / LARGE);
+	return (spans_.isEmpty() ? recordSize_ + bytesPerSummary() : 0)
+			+ channels() * 4.0 * sizeof(double) * (1.0 / SMALL + 1.0 / LARGE);
+}
+
+double Store::bytesPerSummary() const { return 2.0 * recordSize_ * (1.0 / SMALL + 1.0 / LARGE); }
+
+char *Store::outlineRow(qint64 chunk, bool large) {
+	return const_cast<char *>(std::as_const(*this).outlineRow(chunk, large));
+}
+
+const char *Store::outlineRow(qint64 chunk, bool large) const {
+	const qint64 a = chunk * (large ? LARGE : SMALL);
+	const qsizetype row = large ? PIECE / SMALL + (a % PIECE) / LARGE : (a % PIECE) / SMALL;
+	return outlines_[qsizetype(a / PIECE - dropped_ / PIECE)].constData() + row * 2 * recordSize_;
 }
 
 /* ------------------------------------------------------------------ reading */
@@ -257,7 +303,10 @@ double Store::decode(const Channel &c, const char *record) const {
 	return raw * c.scale + c.offset0;
 }
 
-double Store::value(int channel, qsizetype i) const { return decode(channels_[channel], recordAt(i)); }
+double Store::value(int channel, qsizetype i) const {
+	if (i < recordsFrom_) return std::numeric_limits<double>::quiet_NaN(); /* summaries only */
+	return decode(channels_[channel], recordAt(i));
+}
 
 int Store::segmentOf(qint64 absolute) const {
 	const auto it = std::upper_bound(segments_.begin(), segments_.end(), absolute,
@@ -341,14 +390,27 @@ void Store::summarize() {
 		Summary &small = c.small, &large = c.large;
 		if (small.min.isEmpty() && small.first == 0) small.first = dropped_ / SMALL;
 		if (large.min.isEmpty() && large.first == 0) large.first = dropped_ / LARGE;
+		const bool outline = spans_.isEmpty();
 		for (qint64 j = small.first + small.min.size(); (j + 1) * SMALL <= end; j++) {
 			double lo = std::numeric_limits<double>::infinity(), hi = -lo, sum = 0, squares = 0;
+			qint64 lowest = j * SMALL, highest = lowest; /* their records, for the outline */
 			for (qint64 a = j * SMALL; a < (j + 1) * SMALL; a++) {
 				const double v = decode(c, recordAt(qsizetype(a - dropped_)));
-				lo = std::min(lo, v);
-				hi = std::max(hi, v);
+				if (v < lo) {
+					lo = v;
+					lowest = a;
+				}
+				if (v > hi) {
+					hi = v;
+					highest = a;
+				}
 				sum += v;
 				squares += v * v;
+			}
+			if (outline) {
+				char *row = outlineRow(j, false);
+				std::memcpy(row + c.offset, recordAt(qsizetype(lowest - dropped_)) + c.offset, size_t(c.size));
+				std::memcpy(row + recordSize_ + c.offset, recordAt(qsizetype(highest - dropped_)) + c.offset, size_t(c.size));
 			}
 			small.min << lo;
 			small.max << hi;
@@ -359,11 +421,24 @@ void Store::summarize() {
 		for (qint64 j = large.first + large.min.size(); (j + 1) * LARGE <= end; j++) {
 			const qsizetype k0 = qsizetype(j * STEP - small.first);
 			double lo = small.min[k0], hi = small.max[k0], sum = 0, squares = 0;
+			qsizetype lowest = k0, highest = k0;
 			for (qsizetype k = k0; k < k0 + STEP; k++) {
-				lo = std::min(lo, small.min[k]);
-				hi = std::max(hi, small.max[k]);
+				if (small.min[k] < lo) {
+					lo = small.min[k];
+					lowest = k;
+				}
+				if (small.max[k] > hi) {
+					hi = small.max[k];
+					highest = k;
+				}
 				sum += small.sum[k];
 				squares += small.squares[k];
+			}
+			if (outline) { /* the min and max records of the small chunks that hold them */
+				char *row = outlineRow(j, true);
+				std::memcpy(row + c.offset, outlineRow(small.first + lowest, false) + c.offset, size_t(c.size));
+				std::memcpy(row + recordSize_ + c.offset, outlineRow(small.first + highest, false) + recordSize_ + c.offset,
+						size_t(c.size));
 			}
 			large.min << lo;
 			large.max << hi;
@@ -396,7 +471,20 @@ void Store::minMax(int channel, qsizetype i0, qsizetype i1, double &lo, double &
 	lo = std::numeric_limits<double>::infinity();
 	hi = -lo;
 	const Channel &c = channels_[channel];
-	walk(dropped_ + i0, dropped_ + i1, c.small.first, c.small.min.size(), c.large.first, c.large.min.size(),
+	qint64 a0 = dropped_ + i0;
+	const qint64 a1 = dropped_ + i1, boundary = dropped_ + recordsFrom_;
+	if (a0 < boundary && a0 < a1) { /* summaries only: the outline's rows, LARGE ones where they lie wholly inside */
+		const qint64 end = std::min(a1, boundary);
+		for (qint64 a = a0 - a0 % SMALL; a < end;) {
+			const bool large = a % LARGE == 0 && a + LARGE <= end;
+			const char *row = outlineRow(large ? a / LARGE : a / SMALL, large);
+			lo = std::min(lo, decode(c, row));
+			hi = std::max(hi, decode(c, row + recordSize_));
+			a += large ? LARGE : SMALL;
+		}
+		a0 = end;
+	}
+	walk(a0, a1, c.small.first, c.small.min.size(), c.large.first, c.large.min.size(),
 			[&](bool large, qsizetype k) {
 				const Summary &s = large ? c.large : c.small;
 				lo = std::min(lo, s.min[k]);
@@ -411,6 +499,10 @@ void Store::minMax(int channel, qsizetype i0, qsizetype i1, double &lo, double &
 
 void Store::sums(int channel, qsizetype i0, qsizetype i1, double &sum, double &sumSquares) const {
 	sum = sumSquares = 0;
+	if (i0 < recordsFrom_ && i0 < i1) { /* summaries only: no sums kept */
+		sum = sumSquares = std::numeric_limits<double>::quiet_NaN();
+		return;
+	}
 	const Channel &c = channels_[channel];
 	walk(dropped_ + i0, dropped_ + i1, c.small.first, c.small.min.size(), c.large.first, c.large.min.size(),
 			[&](bool large, qsizetype k) {
