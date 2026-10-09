@@ -302,6 +302,20 @@ public:
 	bool shortLock() const { return shortLockOn_; }
 	bool shortLocked() const { return trigger_.on && trigger_.automatic; } /* the lock in effect now */
 	int shortLockKey() const { return shortLocked() ? trigger_.key : -1; } /* the line it watches (tests) */
+	/* A fast stream with nothing feeding it (stopped, or the link down: ChartTab::setFastFed), with its name. Its lines
+	 * keep their records, as polled lines after Disconnect (zoom, measure, export), but nothing of them looks live: the
+	 * state corner says "ADC stopped · last record 14:03:12.345", their legend values are greyed ("stopped at ..."),
+	 * the live view follows the clock rather than their newest record (updateDelay), so they move out to the left;
+	 * the short window's lock rests, and the user's trigger on one waits ("Normal · waiting (ADC stopped)"). A fast
+	 * math line's stream is set with the name of the stream it is computed from */
+	void setFastStopped(int stream, bool stopped, const QString &name = QString());
+	bool lineStopped(int key) const;   /* a fast line whose stream is stopped */
+	QString stoppedTip(int key) const; /* its chip's tooltip: "stopped at 14:03:12.345 ..."; empty: not stopped */
+	QString triggerStoppedName() const; /* the user's trigger on a stopped stream's line: that stream's name */
+	/* a fast line at rest: its stream stopped, or no record for REST_AFTER (two windows when longer) by the clock;
+	 * the short window's lock lets go of it, the live view no longer follows it */
+	static constexpr double REST_AFTER = 0.5;
+	bool lineResting(int key) const;
 	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
 	QVector<QLineF> nowEdges() const { return nowEdges_; }
 	void setTriggerLevel(double level);  /* of the line watched */
@@ -965,7 +979,7 @@ private:
 	void drawMemoryStrip(QPainter &p, const Axes &axes);
 	void drawMemoryLines(QPainter &p, const Axes &strip) const;
 	void drawLegend(QPainter &p, const Axes &axes) const;
-	void drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered) const;
+	void drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered, bool stopped) const;
 	void drawLegendBar(QPainter &p, const LegendLayout &legend, double offset) const;
 	/* the crosshair: its x, a dot on every line read and the box's place (readout_ made again when due) */
 	struct Crosshair {
@@ -998,6 +1012,11 @@ private:
 	const QImage &dotPicture(const QColor &color, qreal dpr) const;
 	void drawState(QPainter &p, const Axes &axes) const;
 	QStringList stateVariants(bool measuring) const;
+	/* the stopped streams' words in the state corner, one per stream: whole ("ADC stopped · last record 14:03:12.345")
+	 * or short ("ADC stopped") */
+	QStringList stoppedParts(bool whole) const;
+	double fastNewest(int stream) const; /* the time of a stream's newest record kept; NaN: none */
+	static int streamOf(int key) { return (key - FIRST_FAST_KEY) / 256; }
 	void fitState(double plotWidth, int &variant, double &width) const;
 	double divisionReadoutWidth() const; /* the time/div readout's box in the state corner; 0: none */
 	/* dpr: device pixels per unit of p's coordinates (the copies' count and shift) */
@@ -1018,6 +1037,8 @@ private:
 
 	QMap<int, Series> series_;
 	QHash<int, std::shared_ptr<fast::Store>> fastStores_; /* by stream */
+	QHash<int, QString> fastStopped_; /* the streams stopped (setFastStopped), their names */
+	quint64 fastStoppedGen_ = 0;      /* changed with them: the legend's picture made again */
 	quint64 seriesGeneration_ = 0; /* a line added or removed, or the samples cleared */
 	quint64 seriesAdded_ = 0;      /* lines added so far: each line's spread */
 

@@ -841,6 +841,7 @@ void IoEngine::updateStats() {
 		f.on = connected_ && run.on;
 		f.rate = run.state.clock().started() ? run.state.clock().rate() : 0;
 		f.ppm = run.state.clock().started() ? run.state.clock().ppm() : 0;
+		f.setRate = run.setRate;
 		f.recordsHz = run.recordsHz;
 		f.records = run.state.records;
 		f.blocks = run.state.blocks;
@@ -1131,9 +1132,10 @@ void IoEngine::applyFast(int stream) {
 		return;
 	}
 	master_->readFrom(slave, rate->addr, uint16_t(rate->size), [this, stream, name, request, switchOn](const evre::Result &r) {
-		const FastRun *asked = fastRunAsked(stream, name, request);
+		FastRun *asked = fastRunAsked(stream, name, request);
 		if (!asked) return;
 		const double hz = r.ok && r.data.size() == asked->rateReg.size ? decodeNumber(asked->rateReg, r.data) : 0;
+		if (hz > 0) asked->setRate = hz; /* the card's header says it while the stream is off */
 		switchOn(hz > 0 ? hz : asked->def.rate);
 	});
 }

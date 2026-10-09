@@ -234,6 +234,7 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	layout->setSpacing(8);
 	/* two rows over the chart: the axes, then what to do */
 	layout->addLayout(buildAxesRow());
+	layout->addLayout(noteRow_);
 	layout->addLayout(buildActionsRow());
 	layout->addWidget(buildTriggerRow());
 
@@ -372,17 +373,19 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	for (int megabytes : { 512, 1024, 2048, 4096, 8192, 16384 })
 		if (megabytes <= maxRamMB()) ram_->addItem(ramText(megabytes), megabytes);
 	ram_->setMinimumWidth(88); /* "1536 MB" */
-	/* it takes the room the row leaves, elided there (refreshStatus): its text changes and must not move the row */
+	/* it takes the room the row leaves (refreshStatus elides it there), or a line of its own under the row when that
+	 * room cannot hold its widest text (arrangeRamNote): its text changes and must not move the row */
 	ramNeed_ = new QLabel;
 	ramNeed_->setObjectName(QStringLiteral("ramNeed"));
 	ramNeed_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 	ramNeed_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
+	ramNeedTip_ = (tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
 			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
 			"recording's file keeps every sample, whatever the chart keeps.\nLess memory free than the RAM set: the "
 			"chart keeps within what is free, and this says \"only ... free\" in orange.") + QLatin1Char('\n')
 			+ tr("Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this "
-					"says how much keeps its samples whole: \"keeps 100 min (samples for the newest 79 s)\"."));
+					"says how much keeps its samples whole: \"keeps 100 min · 79 s in full\"."));
+	ramNeed_->setToolTip(ramNeedTip_);
 	/* the RAM box's tooltip: once the chart is made, with the free memory (watchFreeMemory) */
 	older_ = new QComboBox;
 	older_->setObjectName(QStringLiteral("chartOlder"));
@@ -427,6 +430,9 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addWidget(mutedLabel(tr("max")));
 	row->addWidget(yMax_);
 	axesRow_ = row;
+	ramNoteAt_ = row->indexOf(ramNeed_);
+	noteRow_ = new QHBoxLayout; /* empty while the note is on the first row: no room taken, no spacing */
+	noteRow_->setSpacing(0);
 	return row;
 }
 
@@ -949,6 +955,7 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	chart_->view()->setFastSummaries(false); /* its file is mapped whole: every record kept */
 	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
 	 * from its box, as if it were the list's) */
+	arrangeRamNote(); /* back on the first row, where its place is */
 	axesRow_->insertStretch(axesRow_->indexOf(ramNeed_), 1);
 	{
 		const QSignalBlocker quiet(smooth_);
@@ -1009,8 +1016,30 @@ void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
 	fastStreams_ = streams;
 	olderLabel_->setVisible(!streams.isEmpty() && !recording_); /* Older samples: of fast lines only */
 	older_->setVisible(!streams.isEmpty() && !recording_);
+	arrangeRamNote(); /* Older samples takes room from the note, and its texts are longer */
 	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
 	if (fastChannelNames() != channelsBefore) rebuildMath(); /* a formula over a channel compiles now, or no longer */
+	applyFastFed();
+}
+
+void ChartTab::setFastFed(int stream, bool fed) {
+	if (fed != fastUnfed_.contains(stream)) return;
+	if (fed) fastUnfed_.remove(stream);
+	else fastUnfed_.insert(stream);
+	applyFastFed();
+}
+
+/* A stream's lines and the fast math lines computed from it stop together: the math line's records are the stream's */
+void ChartTab::applyFastFed() {
+	ChartView *view = chart_->view();
+	for (int i = 0; i < fastStreams_.size(); i++)
+		view->setFastStopped(i, !recording_ && fastUnfed_.contains(i), fastStreams_[i].name);
+	const QVector<MathLine> &lines = mathLines_.lines();
+	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		const int stream = i < lines.size() && lines[i].fast() ? lines[i].stream : -1;
+		const bool stopped = !recording_ && stream >= 0 && stream < fastStreams_.size() && fastUnfed_.contains(stream);
+		view->setFastStopped(MathLines::fastStream(i), stopped, stopped ? fastStreams_[stream].name : QString());
+	}
 }
 
 QStringList ChartTab::fastChannelNames() const {
@@ -1563,6 +1592,7 @@ QString ChartTab::triggerState() const {
 	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
 	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
 	case ChartView::TriggerPhase::Waiting: /* a level the line does not reach says so: it would wait for ever */
+		if (!view->triggerStoppedName().isEmpty()) return view->triggerStateText(); /* "Normal · waiting (ADC stopped)" */
 		return view->triggerLevelBeyondLine() > 0 ? tr("waiting: level above the line's range")
 				: view->triggerLevelBeyondLine() < 0 ? tr("waiting: level below the line's range")
 				/* Normal back to waiting after a capture: when it was, a fixed time (a counter would run all the
@@ -1647,9 +1677,12 @@ void ChartTab::refreshStatus() {
 	bool over = false;
 	double kept = -1, samples = -1;
 	if (!chart_->view()->fastTiers(kept, samples)) kept = samples = -1;
+	QString full;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_, kept, samples) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_, kept, samples, &full) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
+	const QString needTip = full.isEmpty() ? ramNeedTip_ : full + QStringLiteral("\n\n") + ramNeedTip_;
+	if (ramNeed_->toolTip() != needTip) ramNeed_->setToolTip(needTip);
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
 		ramNeed_->style()->unpolish(ramNeed_);
@@ -1658,8 +1691,9 @@ void ChartTab::refreshStatus() {
 }
 
 QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
-		qint64 freeMB, double tieredKept, double tieredSamples) {
+		qint64 freeMB, double tieredKept, double tieredSamples, QString *full) {
 	over = false;
+	if (full) full->clear();
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
 	const double megabytes = double(bytesNeeded) / MB;
@@ -1672,19 +1706,68 @@ QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySecond
 		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
 	};
 	const bool tiers = tieredSamples >= 0; /* fast lines' older samples as summaries: the tiers say what is kept */
+	/* the row's room at the main window's narrowest holds the short text whole; the sentence goes in the tooltip */
+	const auto said = [full](const QString &text, const QString &sentence) {
+		if (full) *full = sentence.isEmpty() ? text : sentence;
+		return text;
+	};
 	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
 		over = true;
 		if (tiers)
-			return tr("only %1 free: keeps about %2 (samples for the newest %3)").arg(megabytesText(freeMB),
-					keptText(tieredKept), keptText(tieredSamples));
-		return tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
-				keptText(memorySeconds * std::min(1.0, limitMB / megabytes)));
+			return said(tr("only %1 free: keeps %2 · %3 in full").arg(megabytesText(freeMB), keptText(tieredKept),
+								keptText(tieredSamples)),
+					tr("only %1 free: keeps about %2, the newest %3 with every sample and the rest as summaries")
+							.arg(megabytesText(freeMB), keptText(tieredKept), keptText(tieredSamples)));
+		return said(tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
+				keptText(memorySeconds * std::min(1.0, limitMB / megabytes))), {});
 	}
 	over = megabytes > ramMB;
-	if (!over) return tr("needs %1").arg(size);
+	if (!over) return said(tr("needs %1").arg(size), {});
 	if (tiers)
-		return tr("needs %1, keeps %2 (samples for the newest %3)").arg(size, keptText(tieredKept), keptText(tieredSamples));
-	return tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes));
+		return said(tr("keeps %1 · %2 in full").arg(keptText(tieredKept), keptText(tieredSamples)),
+				tr("needs %1 for every sample; keeps %2, the newest %3 with every sample and the rest as summaries")
+						.arg(size, keptText(tieredKept), keptText(tieredSamples)));
+	return said(tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes)), {});
+}
+
+void ChartTab::resizeEvent(QResizeEvent *event) {
+	arrangeRamNote();
+	QWidget::resizeEvent(event);
+}
+
+/* The note beside RAM stays on the first row while the room the row's controls leave holds the widest text it can
+ * show; else it takes a line of its own under the row (the main window's narrowest left it 24 px, with Older samples
+ * shown), so it is never cut. Decided by the width and Older samples alone, not by the text shown: the chart's height
+ * does not move when the note's numbers change. A recording has no note: it stays in its place there */
+void ChartTab::arrangeRamNote() {
+	const bool below = !recording_ && width() < axesRow_->sizeHint().width() + ramNoteRoom();
+	if (below == ramNoteBelow_) return;
+	ramNoteBelow_ = below;
+	if (below) {
+		axesRow_->removeWidget(ramNeed_);
+		axesRow_->insertStretch(ramNoteAt_, 1); /* the row's groups as they were */
+		noteRow_->addWidget(ramNeed_, 1);
+	} else {
+		noteRow_->removeWidget(ramNeed_);
+		delete axesRow_->takeAt(ramNoteAt_);
+		axesRow_->insertWidget(ramNoteAt_, ramNeed_, 1);
+	}
+}
+
+/* the widest of the note's texts, with long numbers ("100.0 GB", "100 min"), in this language and font; those of
+ * summaries only with Older samples shown */
+int ChartTab::ramNoteRoom() const {
+	constexpr qint64 GB = qint64(1024) * 1024 * 1024;
+	const QFontMetrics metrics = ramNeed_->fontMetrics();
+	bool over = false;
+	int most = 0;
+	const bool tiers = !older_->isHidden();
+	for (const QString &text : { ramNeedText(qint64(100) * GB, 512, 1200000, over),
+				 ramNeedText(qint64(100) * GB, 2048, 1200000, over, 1024, 2150),
+				 tiers ? ramNeedText(qint64(100) * GB, 512, 6000, over, 0, -1, 6000, 100) : QString(),
+				 tiers ? ramNeedText(qint64(100) * GB, 2048, 6000, over, 1024, 2150, 6000, 100) : QString() })
+		most = std::max(most, metrics.horizontalAdvance(text));
+	return most + 12;
 }
 
 qint64 ChartTab::ramReserveMB() {
@@ -2432,6 +2515,7 @@ void ChartTab::drawMathLines() {
 			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
 		}
 	}
+	applyFastFed(); /* a fast math line over a stopped stream: stopped with it */
 }
 
 bool ChartTab::fastMathDrawn(int line) const {

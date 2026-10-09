@@ -212,8 +212,8 @@ channels, the map's checks under them. <code>evre check --writes</code> switches
 its numbers and its rate; Python reads one live with <code>dev.stream('ADC')</code>.</p>
 <p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
 <ul>
-<li>Each stream's row is headed by one line: its name, then what it is, <i>· 2 channels · 10 kS/s</i> (the map's
-rate), and its <b>Log</b> tick. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
+<li>Each stream's row is headed by one line: its name, then what it is, <i>· 2 channels · 1 MS/s</i> (the rate
+measured while it runs; while off the rate set, <i>10 kS/s set</i>), and its <b>Log</b> tick. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
 reading its rate register, if the map names one); the button turns red, <b>■ Stop stream</b>, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.</li>
@@ -233,6 +233,11 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
+<p><b>A stopped stream</b> keeps its samples on the chart (zoom, measure, export), but nothing of it looks live: the
+chart's top right says <i>ADC stopped · last record 14:03:12.345</i>, its lines' values in the legend are greyed
+(their tooltip says when it stopped), and a live view goes on with the clock, so its lines move out to the left; a
+short window's lock rests, and your trigger on it waits, <i>Normal · waiting (ADC stopped)</i>. <b>▶ Start
+stream</b> takes all of it away at once.</p>
 <p><b>Long memory</b>: <b>Older samples</b>, beside RAM on the Chart tab (with fast streams only). <i>summaries</i>
 (the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
 highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels

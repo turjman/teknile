@@ -546,6 +546,7 @@ public:
 		chartFastTiers();
 		chartFastSummariesShown();
 		chartOlderSetting();
+		chartRamNoteFits();
 		memoryStripHandle();
 		recordingFiles();
 		chartMenuAndPictures();
@@ -597,6 +598,7 @@ public:
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
+		fastStopped(); /* the same */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
@@ -1777,6 +1779,8 @@ private:
 		QString notes, arabicNotes;
 		bool header = true; /* the row's header: the name, then muted what the stream is, one line, both languages */
 		QString headerNotes;
+		bool rateHeader = true; /* its rate: the measured one while running, the rate set while off */
+		QString rateHeaderNotes;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1797,12 +1801,14 @@ private:
 			{
 				QLabel *name = card.fastCard()->findChild<QLabel *>(QStringLiteral("fastStreamName"));
 				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
-				const QString rate = QChar(0x2066) + QStringLiteral("10 kS/s") + QChar(0x2069);
+				/* running: the measured rate (busy's 1 234 567.8 a second), not the map's 10 kS/s */
+				const QString rate = QChar(0x2066) + QStringLiteral("1.23 MS/s") + QChar(0x2069);
 				const QString expected = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ") + rate
 						: QStringLiteral("· قناتان · ") + rate;
 				const int line = name ? name->fontMetrics().height() : 0;
 				const bool one = name && about && b && name->text() == QLatin1String("ADC") && about->fullText() == expected
-						&& !about->isCut() && name->height() <= line + 8 && about->height() <= line + 8
+						&& (about->text() == expected || about->text() == QStringLiteral("· ") + rate)
+						&& name->height() <= line + 8 && about->height() <= line + 8
 						&& std::abs(name->geometry().center().y() - about->geometry().center().y()) <= 2
 						&& name->geometry().bottom() < b->geometry().top() && name->font().bold()
 						&& about->toolTip().contains(QLatin1String("I_LOAD, V_BUS"))
@@ -1814,6 +1820,43 @@ private:
 							.arg(about ? int(about->isCut()) : -1).arg(name ? name->height() : -1).arg(about ? about->height() : -1)
 							.arg(line).arg(name ? name->x() : -1).arg(about ? about->x() : -1);
 				header = header && one;
+			}
+			{
+				/* the header never says another rate than the line under the button: at 1 MS/s measured against a map
+				 * of 10 kS/s it says "1 MS/s" (3 digits, at most once a second), off "10 kS/s set" */
+				auto *about = card.fastCard()->findChild<ElidedLabel *>(QStringLiteral("fastStreamAbout"));
+				auto isolated = [](const QString &text) { return QChar(0x2066) + text + QChar(0x2069); };
+				const QString lead = code == QLatin1String("en") ? QStringLiteral("· 2 channels · ")
+						: QStringLiteral("· قناتان · ");
+				IoEngine::Stats fast1M;
+				IoEngine::Stats::Fast f1;
+				f1.on = true;
+				f1.rate = 1000034;
+				f1.ppm = 34;
+				fast1M.fast = { f1 };
+				card.showStats(IoEngine::Stats(), true);
+				const QString offText = about ? about->fullText() : QString(), offTip = about ? about->toolTip() : QString();
+				/* "set" is not cut at the sidebar's width: the whole, or the rate whole without the channels' count */
+				const bool offWhole = about && (about->text() == about->fullText()
+						|| (about->text().startsWith(QStringLiteral("· ")) && about->fullText().endsWith(about->text().mid(2))));
+				const int offNeeds = about ? about->fontMetrics().horizontalAdvance(offText) : -1;
+				card.showStats(fast1M, true);
+				const QString onText = about ? about->fullText() : QString(), onLine = card.fastRateText(0);
+				fast1M.fast[0].rate = 2000000; /* within the second: kept, no flicker */
+				card.showStats(fast1M, true);
+				const QString soonText = about ? about->fullText() : QString();
+				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" ضبط");
+				const bool ok = offText == lead + isolated(QStringLiteral("10 kS/s")) + setWord && offWhole
+						&& offTip.contains(code == QLatin1String("en") ? QStringLiteral("the device may stream at another")
+								: QStringLiteral("قد يبث الجهاز بمعدّل آخر"))
+						&& onText == lead + isolated(QStringLiteral("1 MS/s")) && soonText == onText
+						&& onLine.contains(code == QLatin1String("en") ? QStringLiteral("1.00 M samples/s")
+								: QStringLiteral("1.00"));
+				if (!ok)
+					rateHeaderNotes += QStringLiteral(" %1: off \"%2\" (%6 px in %7) on \"%3\" soon \"%4\" line \"%5\";")
+							.arg(code, offText, onText, soonText, onLine).arg(offNeeds).arg(about ? about->width() : -1);
+				rateHeader = rateHeader && ok;
+				card.showStats(busy, true); /* as before, for the checks below */
 			}
 			const auto labels = card.fastCard()->findChildren<QLabel *>();
 			for (QLabel *label : labels) {
@@ -1898,8 +1941,12 @@ private:
 				"(1.23 M samples/s, lost 123 456 789)");
 		if (!arabicReads) std::printf("  %s\n", qPrintable(arabicNotes));
 		if (!header) std::printf("  the header:%s\n", qPrintable(headerNotes));
+		if (!rateHeader) std::printf("  the header's rate:%s\n", qPrintable(rateHeaderNotes));
+		check(rateHeader, "fast streams: the header's rate is the measured one while the stream runs (1 MS/s, 3 digits, "
+				"kept within the second: no flicker) against a map of 10 kS/s, and while off the rate set, \"10 kS/s set\" (not cut) "
+				"with the tooltip \"the device may stream at another\", English and Arabic");
 		check(header, "fast streams: each stream's row has a one-line header: its name in the card's name weight (ADC), then "
-				"muted \"· 2 channels · 10 kS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
+				"muted \"· 2 channels · 1.23 MS/s\" (the rate one left-to-right piece, Arabic too), not cut at the sidebar's "
 				"width, both on one line above the button, the name first in the reading direction; the tooltip the "
 				"channels and the map's description");
 		check(arabicReads, "fast streams, Arabic: the rate (running and off) and the lost count are laid out right to left, "
@@ -1919,6 +1966,169 @@ private:
 		check(chartView && !chartView->fastStore(0),
 				"fast streams: a map without the stream leaves no store of it in the chart: the same stream in a map loaded "
 				"later starts afresh");
+	}
+
+	/* The owner's finding: a stopped stream must not look live. evre_fake_fast at the map's 10 000 records a second,
+	 * ADC.I_LOAD and a fast math line over it on the chart, a 50 ms live window, the short window's lock on. Stop:
+	 * within a second the corner says "ADC stopped · last record ..." with its newest record's time, both lines'
+	 * legend values are greyed with "ADC stopped at ..." in their tooltip, the lock's badge is gone; over 30 frames the
+	 * live view follows the clock (its end advances with it), the lines' newest record moves left and the plot's right
+	 * half has none. The user's Normal trigger on the stopped line waits: "Normal · waiting (ADC stopped)". Start
+	 * again: the words and the grey go at once, the lock comes back */
+	void fastStopped() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		const QString fastMapFile = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		QTemporaryDir folder;
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_FAST_PORT), fastMapFile, QString::fromLatin1(fakeDeviceToken) });
+		OtherClient device;
+		const bool started = sidebar && chartTab && tabs && QFile::copy(map_.path, exampleFile) && fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device.open(FAKE_FAST_PORT, 1); }, 5000);
+		check(started, "fast stopped: evre_fake_fast at the map's 10 000 records a second started");
+		if (!started) return;
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup connectFast;
+		connectFast.map = fastMapFile;
+		connectFast.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_FAST_PORT);
+		connectFast.connect = true;
+		window_.applyStartup(connectFast);
+		QPushButton *button = sidebar->fastButton(0);
+		const bool offered = button && QTest::qWaitFor([&] { return button->isEnabled(); }, 5000);
+		ChartView *view = chartTab->view();
+		const double windowBefore = view->window();
+		const int iLoad = ChartView::fastKey(0, 0);
+		const int mathIndex = int(chartTab->mathLines().lines().size());
+		const int mathKey = ChartTab::fastMathKey(mathIndex);
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		sidebar->fastPlotBox(0, 0)->setChecked(true);
+		MathLine product;
+		product.name = QStringLiteral("P_STOP");
+		product.unit = QStringLiteral("W");
+		product.formula = QStringLiteral("ADC.I_LOAD * ADC.V_BUS");
+		const bool added = chartTab->addMathLine(product);
+		view->setShortLock(true);
+		view->setLive(true);
+		view->setWindow(0.05);
+		if (offered) button->click();
+		const bool locked = offered && QTest::qWaitFor([&] {
+			return view->shortLocked() && view->fastStore(0) && view->fastStore(0)->size() > 20000;
+		}, 8000);
+		const QString runningCorner = view->stateFullText();
+
+		/* Stop: said on the chart, greyed, the lock resting */
+		button->click();
+		QElapsedTimer sinceStop;
+		sinceStop.start();
+		const bool said = QTest::qWaitFor([&] {
+			return view->stateFullText().startsWith(QStringLiteral("ADC stopped · last record "));
+		}, 1000);
+		const double saidMs = double(sinceStop.elapsed());
+		QTest::qWait(400); /* the blocks still on their way */
+		(void) view->grab();
+		const fast::Store *store = view->fastStore(0);
+		const double newest = store && store->size() > 0 ? store->timeAt(store->size() - 1) : NAN;
+		const QString at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(newest * 1000)))
+				.toString(QStringLiteral("HH:mm:ss.zzz"));
+		const QString corner = view->stateFullText();
+		const bool rightTime = corner.startsWith(QStringLiteral("ADC stopped · last record %1").arg(at));
+		const QString chipTip = view->toolTipAt(view->chipButtonRect(iLoad).center());
+		const QString mathTip = view->stoppedTip(mathKey); /* its chip may lie past the legend's scroll */
+		const bool greyed = view->lineStopped(iLoad) && view->lineStopped(mathKey)
+				&& chipTip.startsWith(QStringLiteral("ADC stopped at %1").arg(at)) && mathTip.startsWith(QLatin1String("ADC stopped at "));
+		const bool badgeGone = !view->shortLocked() && !corner.contains(QLatin1String("Auto (short window)"))
+				&& !corner.contains(QLatin1String("free running")) && view->live();
+		/* run mode: the view follows the clock, the lines move out to the left, the right half holds nothing */
+		QVector<double> ends, lastX;
+		QElapsedTimer frames;
+		frames.start();
+		for (int k = 0; k < 30; k++) {
+			QTest::qWait(17);
+			(void) view->grab();
+			ends << view->lastViewEnd();
+			lastX << (newest - (view->lastViewEnd() - view->window())) / view->window();
+		}
+		const double advanced = ends.last() - ends.first(), clockRan = frames.elapsed() / 1000.0 * 29.0 / 30.0;
+		bool ascending = true, leftward = true;
+		for (int k = 1; k < ends.size(); k++) {
+			ascending = ascending && ends[k] > ends[k - 1];
+			leftward = leftward && lastX[k] < lastX[k - 1];
+		}
+		const bool follows = ascending && leftward && advanced > 0.7 * clockRan && advanced < 1.3 * clockRan
+				&& lastX.last() < 0.5;
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the stopped stream on the chart, live, in both themes */
+			const bool wasDark = Theme::isDark();
+			/* its last records on the left, the time since on the right with nothing: however slow the frames were */
+			view->setWindow(std::max(4.0, std::ceil((view->lastViewEnd() - newest) * 2.5)));
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QTest::qWait(200);
+				window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ QStringLiteral("_stopped_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+			view->setWindow(0.05);
+		}
+		std::printf("  fast stopped: running, the corner \"%s\" (locked %d); stopped, within %.0f ms the corner \"%s\" "
+				"(the newest record %s); the chips' tooltips \"%s\" | \"%s\"; over 30 frames the view's end moved %.3f s as "
+				"the clock ran %.3f s, the newest record at %.2f of the plot from %.2f\n", qPrintable(runningCorner),
+				int(locked), saidMs, qPrintable(corner), qPrintable(at), qPrintable(chipTip.section(QLatin1Char('\n'), 0, 0)),
+				qPrintable(mathTip.section(QLatin1Char('\n'), 0, 0)), advanced, clockRan, lastX.last(), lastX.first());
+		check(locked && added && said && rightTime, "fast stopped: the stream stopped at a 50 ms live window with the lock "
+				"on: within a second the state corner says \"ADC stopped · last record ...\" with the time of its newest "
+				"record");
+		check(greyed, "fast stopped: ADC.I_LOAD's legend value and that of the fast math line over the stream greyed, "
+				"their tooltip \"ADC stopped at ...: the value is its last record's\"");
+		check(badgeGone && follows, "fast stopped: the short window's lock rests (no badge, the view live) and the view "
+				"follows the clock: over 30 frames its end advances with it, the lines' newest record moves left, the "
+				"plot's right half holds none");
+
+		/* the user's Normal trigger on the stopped line: waiting, never "triggered" on the old records */
+		auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+		auto *mode = chartTab->findChild<QComboBox *>(QStringLiteral("triggerMode"));
+		const int modeWas = mode ? mode->currentIndex() : -1;
+		if (mode) mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Normal)));
+		chartTab->triggerOnLine(iLoad);
+		QTest::qWait(300);
+		(void) view->grab();
+		const QString triggerCorner = view->stateFullText(), triggerRow = chartTab->triggerState();
+		std::printf("  fast stopped, the user's trigger: the corner \"%s\", the row \"%s\"\n", qPrintable(triggerCorner),
+				qPrintable(triggerRow));
+		check(triggerRow == QStringLiteral("Normal · waiting (ADC stopped)")
+						&& triggerCorner.endsWith(QStringLiteral("Normal · waiting (ADC stopped)")),
+				"fast stopped: the user's Normal trigger on a stopped stream's line says \"Normal · waiting (ADC stopped)\" "
+				"in its row and the corner, not \"triggered\" on the old records");
+		if (trigger) trigger->setChecked(false);
+		if (mode) mode->setCurrentIndex(modeWas);
+		view->setLive(true);
+
+		/* Start again: the words and the grey go at once, the lock comes back */
+		button->click();
+		const bool cleared = QTest::qWaitFor([&] {
+			return !view->lineStopped(iLoad) && !view->lineStopped(mathKey)
+					&& !view->stateFullText().contains(QLatin1String("stopped"));
+		}, 1000);
+		const bool lockedAgain = QTest::qWaitFor([&] { return view->shortLocked(); }, 5000);
+		check(cleared && lockedAgain, "fast stopped: Start again: the corner's words and the grey go at once, the short "
+				"window's lock comes back");
+
+		button->click();
+		chartTab->removeMathLine(mathIndex);
+		sidebar->fastPlotBox(0, 0)->setChecked(false);
+		view->setWindow(windowBefore);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"fast stopped: done; the example map again, the window polls the fake device of the other steps");
+		fake.kill();
+		fake.waitForFinished(3000);
 	}
 
 	/* Fast EVRe's speed on this machine (FAST_PLAN.md section 16): evre_fake_fast sending a million records a second of
@@ -7253,6 +7463,22 @@ private:
 						&& words.startsWith(QLatin1String("keeps ")) && words.contains(QLatin1String("samples for the newest")),
 				"chart, long memory: the memory strip shades the part kept as summaries and says \"keeps ... (samples for "
 				"the newest ...)\"; its tooltip says what the shaded part holds");
+		/* the note beside RAM short ("keeps 100 h · 4 s in full"), its whole sentence first in its tooltip; a Memory of
+		 * 100 h needs more than the RAM */
+		view->setMemory(360000);
+		tab.refreshStatus();
+		auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+		const QString noteText = note ? note->text() : QString(), noteTip = note ? note->toolTip() : QString();
+		std::printf("     (the note: \"%s\"; its tooltip: \"%s\")\n", qPrintable(noteText),
+				qPrintable(noteTip.section(QLatin1Char('\n'), 0, 0)));
+		check(noteText.startsWith(QLatin1String("keeps ")) && noteText.contains(QStringLiteral(" · "))
+						&& noteText.endsWith(QLatin1String(" in full")) && noteTip.startsWith(QLatin1String("needs "))
+						&& noteTip.section(QLatin1Char('\n'), 0, 0).endsWith(
+								QLatin1String(" with every sample and the rest as summaries"))
+						&& noteTip.contains(QLatin1String("The memory the chart's samples need")),
+				"chart, long memory: the note beside RAM says \"keeps ... · ... in full\", the whole sentence (\"needs ... "
+				"for every sample; keeps ..., the newest ... with every sample and the rest as summaries\") first in its "
+				"tooltip");
 		tab.hide();
 		QSettings().remove(group);
 	}
@@ -8801,6 +9027,88 @@ private:
 				"the value labels stay whole inside their lane's part in view, a strip cut by the edge writes nothing");
 		tab.hide();
 		QSettings().remove(group);
+	}
+
+	/* The note beside RAM shows whole, Older samples shown (fast streams), in English and in Arabic: on the first row
+	 * where it has room (a wide tab), on a line of its own under it at the main window's narrowest (the row left it
+	 * 24 px); its texts ("keeps 90 min · 79 s in full", "needs 47.3 GB, keeps ...", "only ... free: keeps ...") not
+	 * elided at either width; the whole sentence for the tooltip */
+	void chartRamNoteFits() {
+		const QSize before = window_.size();
+		window_.resize(window_.minimumSizeHint().width(), window_.height());
+		QApplication::processEvents();
+		ChartTab *mainTab = window_.findChild<ChartTab *>();
+		const int narrow = mainTab && mainTab->width() > 300 ? mainTab->width() : 1000;
+		window_.resize(before);
+		QApplication::processEvents();
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		StreamChannel channel;
+		channel.name = QStringLiteral("I");
+		channel.type = RegType::I16;
+		def.channels << channel;
+		constexpr qint64 GB = qint64(1024) * 1024 * 1024;
+		bool whole = true, sentences = true, placed = true;
+		QString notes;
+		const bool wasDark = Theme::isDark();
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			const QString group = QStringLiteral("ramNoteTest");
+			QSettings().remove(group);
+			ChartTab tab{ [] { return 100.0; }, nullptr, group };
+			tab.setFastStreams({ def });
+			tab.show();
+			(void) QTest::qWaitForWindowExposed(&tab);
+			auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
+			auto *older = tab.findChild<QComboBox *>(QStringLiteral("chartOlder"));
+			auto *ram = tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+			bool over = false;
+			QString tiered, freed, kept;
+			const QString tieredText = ChartTab::ramNeedText(qint64(47.3 * GB), 512, 5400, over, 0, -1, 5400, 79, &tiered);
+			const QString freedText = ChartTab::ramNeedText(qint64(47.3 * GB), 2048, 5400, over, 1024, 2150, 5400, 79, &freed);
+			const QString keptText = ChartTab::ramNeedText(qint64(47.3 * GB), 512, 5400, over, 0, -1, -1, -1, &kept);
+			for (const int width : { std::max(narrow, tab.minimumSizeHint().width()), 1900 }) {
+				tab.resize(width, 700);
+				QApplication::processEvents();
+				QApplication::processEvents();
+				const int room = note ? note->contentsRect().width() : 0;
+				const bool below = note && ram && note->geometry().top() >= ram->geometry().bottom();
+				const bool onRow = note && ram && std::abs(note->geometry().center().y() - ram->geometry().center().y()) <= 2;
+				placed = placed && (width == 1900 ? onRow : below);
+				notes += QStringLiteral(" %1 at %2 px, %3:").arg(code).arg(width).arg(below ? QStringLiteral("below")
+								: onRow ? QStringLiteral("on the row") : QStringLiteral("?"));
+				for (const QString &text : { tieredText, freedText, keptText }) {
+					const bool fits = note && note->fontMetrics().elidedText(text, Qt::ElideRight, room) == text;
+					notes += QStringLiteral(" \"%1\" %2 of %3 px;").arg(text)
+							.arg(note ? note->fontMetrics().horizontalAdvance(text) : -1).arg(room);
+					whole = whole && fits;
+				}
+				if (width != 1900 && note && qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) /* the note under the row */
+					for (const bool dark : { false, true }) {
+						Theme::apply(*qApp, dark);
+						tab.refreshStatus();
+						note->setText(tieredText);
+						tab.grab(QRect(0, 0, tab.width(), 150)).save(qEnvironmentVariable("EVRE_TEST_SHOT")
+								+ QStringLiteral("_ramnote_%1_%2.png").arg(code, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+					}
+			}
+			Theme::apply(*qApp, wasDark);
+			const bool english = code == QLatin1String("en");
+			sentences = sentences && note && older && older->isVisible() && tiered != tieredText && freed != freedText
+					&& kept == keptText
+					&& (!english || (tieredText == QStringLiteral("keeps 90 min · 79 s in full")
+							&& tiered == QStringLiteral("needs 47.3 GB for every sample; keeps 90 min, the newest 79 s with every "
+									"sample and the rest as summaries")
+							&& keptText == QStringLiteral("needs 47.3 GB, keeps 57 s")));
+			tab.hide();
+			QSettings().remove(group);
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		std::printf("     (the note:%s)\n", qPrintable(notes));
+		check(whole && sentences && placed, "chart, the note beside RAM shows whole with Older samples shown, in English and "
+				"Arabic: on the first row where it has room, on a line of its own under it at the main window's narrowest; "
+				"\"keeps 90 min · 79 s in full\" (summaries), \"needs 47.3 GB, keeps ...\" (kept), \"only ... free: keeps "
+				"...\" never elided; the whole sentence for its tooltip");
 	}
 
 	/* The state corner fits its room: with the view held, Y log manual, cursors and a trigger on, its text is shortened

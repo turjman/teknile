@@ -1277,10 +1277,6 @@ Less memory free than the RAM set: the chart keeps within what is free, and this
         <translation>مرسومة: الخطوط على المخطط، المسجّلات والخطوط الرياضية والسريعة معًا / أقصى ما يحمله: 64 خطًا على الأكثر، والمسجّلات بقدر ما يسمح المعدّل الذي تأتي به العينات (64,000 عينة في الثانية: 64 حتى ⁦1000 Hz⁩، و32 عند ⁦2000 Hz⁩، و16 عند ⁦4000 Hz⁩)؛ الخطوط الرياضية والسريعة بينها؛ الإطارات المرسومة في الثانية الأخيرة (ساكن: لا إطار، لم يتغير شيء: العرض المثبَّت لا يُرسم إلا حين يتغير فيه شيء)، وزمن رسم الواحد، وتأخير التنعيم؛ ومن يرسم الخطوط (GPU أو CPU). حين يضيق السطر يذهب أولًا زمن الرسم، ثم كلمة «مرسومة»، ثم التأخير.</translation>
     </message>
     <message>
-        <source>Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this says how much keeps its samples whole: &quot;keeps 100 min (samples for the newest 79 s)&quot;.</source>
-        <translation>الخطوط السريعة مع «العينات الأقدم: ملخصات»: تُحفظ الذاكرة كلها ما دامت ملخصاتها تتسع، وتقول هذه كم يبقى منها بعيناته كاملة: «يحفظ ⁦100 min⁩ (عينات لآخر ⁦79 s⁩)».</translation>
-    </message>
-    <message>
         <source>summaries</source>
         <translation>ملخصات</translation>
     </message>
@@ -1303,14 +1299,6 @@ A recording&apos;s file keeps every sample either way.</source>
         <translation>العينات الأقدم</translation>
     </message>
     <message>
-        <source>only %1 free: keeps about %2 (samples for the newest %3)</source>
-        <translation>الحرّ %1 فقط: يحفظ نحو %2 (عينات لآخر %3)</translation>
-    </message>
-    <message>
-        <source>needs %1, keeps %2 (samples for the newest %3)</source>
-        <translation>يحتاج %1، ويحفظ %2 (عينات لآخر %3)</translation>
-    </message>
-    <message>
         <source>Needs samples: in this range the fast line keeps only summaries, the lowest and highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs</source>
         <translation>يحتاج إلى عينات: لا يحفظ الخط السريع في هذا المدى إلا ملخصات، أدنى قيمة وأعلاها لكل 256 عينة («العينات الأقدم»، بجانب RAM): الأدنى والأعلى وقمة–قمة منها</translation>
     </message>
@@ -1321,6 +1309,26 @@ A recording&apos;s file keeps every sample either way.</source>
     <message>
         <source>%1: its newest %2, older kept as summaries</source>
         <translation>%1: أحدث %2 منه، والأقدم محفوظ ملخصاتٍ</translation>
+    </message>
+    <message>
+        <source>Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this says how much keeps its samples whole: &quot;keeps 100 min · 79 s in full&quot;.</source>
+        <translation>الخطوط السريعة مع «العينات الأقدم: ملخصات»: تُحفظ الذاكرة كلها ما دامت ملخصاتها تتسع، وتقول هذه كم يبقى منها بعيناته كاملة: «يحفظ ⁦100 min⁩ · ⁦79 s⁩ كاملة».</translation>
+    </message>
+    <message>
+        <source>only %1 free: keeps %2 · %3 in full</source>
+        <translation>الحرّ %1 فقط: يحفظ %2 · %3 كاملة</translation>
+    </message>
+    <message>
+        <source>only %1 free: keeps about %2, the newest %3 with every sample and the rest as summaries</source>
+        <translation>الحرّ %1 فقط: يحفظ نحو %2، آخر %3 منها بكل عيناتها والباقي ملخصات</translation>
+    </message>
+    <message>
+        <source>keeps %1 · %2 in full</source>
+        <translation>يحفظ %1 · %2 كاملة</translation>
+    </message>
+    <message>
+        <source>needs %1 for every sample; keeps %2, the newest %3 with every sample and the rest as summaries</source>
+        <translation>يحتاج %1 لكل العينات؛ ويحفظ %2، آخر %3 منها بكل عيناتها والباقي ملخصات</translation>
     </message>
 </context>
 <context>
@@ -1661,6 +1669,29 @@ A recording&apos;s file keeps every sample either way.</source>
     <message>
         <source>summaries</source>
         <translation>ملخصات</translation>
+    </message>
+    <message>
+        <source>%1 stopped: no record yet</source>
+        <translation>%1 متوقف: لا سجلّ بعد</translation>
+    </message>
+    <message>
+        <source>%1 stopped at %2: the value is its last record&apos;s</source>
+        <translation>%1 متوقف عند %2: القيمة قيمة آخر سجلّ</translation>
+    </message>
+    <message>
+        <source>%1 stopped · last record %2</source>
+        <comment>a fast stream&apos;s name; the time of its newest record</comment>
+        <translation>%1 متوقف · آخر سجلّ %2</translation>
+    </message>
+    <message>
+        <source>%1 stopped</source>
+        <comment>a fast stream&apos;s name</comment>
+        <translation>%1 متوقف</translation>
+    </message>
+    <message>
+        <source>%1 · waiting (%2 stopped)</source>
+        <comment>the trigger&apos;s mode; the fast stream of its line</comment>
+        <translation>%1 · بانتظار عبور (%2 متوقف)</translation>
     </message>
 </context>
 <context>
@@ -3063,8 +3094,8 @@ channels, the map&apos;s checks under them. &lt;code&gt;evre check --writes&lt;/
 its numbers and its rate; Python reads one live with &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;A map with streams shows the &lt;b&gt;Fast streams&lt;/b&gt; card in the sidebar, a row for each:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 10 kS/s&lt;/i&gt; (the map&apos;s
-rate), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
+&lt;li&gt;Each stream&apos;s row is headed by one line: its name, then what it is, &lt;i&gt;· 2 channels · 1 MS/s&lt;/i&gt; (the rate
+measured while it runs; while off the rate set, &lt;i&gt;10 kS/s set&lt;/i&gt;), and its &lt;b&gt;Log&lt;/b&gt; tick. &lt;b&gt;▶ Start stream&lt;/b&gt; writes 1 to the stream&apos;s enable register (after
 reading its rate register, if the map names one); the button turns red, &lt;b&gt;■ Stop stream&lt;/b&gt;, which writes 0. A
 stream without an enable register is only
 listened to. Not remembered: every stream is off at every start.&lt;/li&gt;
@@ -3084,6 +3115,11 @@ keeps its own time: a view of an hour shows the lowest and highest sample of eac
 sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type &lt;code&gt;50 us&lt;/code&gt; in Window)
 each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
 The samples are kept as they came, a few bytes each, within the chart&apos;s RAM, where a fast line counts as one line.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;A stopped stream&lt;/b&gt; keeps its samples on the chart (zoom, measure, export), but nothing of it looks live: the
+chart&apos;s top right says &lt;i&gt;ADC stopped · last record 14:03:12.345&lt;/i&gt;, its lines&apos; values in the legend are greyed
+(their tooltip says when it stopped), and a live view goes on with the clock, so its lines move out to the left; a
+short window&apos;s lock rests, and your trigger on it waits, &lt;i&gt;Normal · waiting (ADC stopped)&lt;/i&gt;. &lt;b&gt;▶ Start
+stream&lt;/b&gt; takes all of it away at once.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Long memory&lt;/b&gt;: &lt;b&gt;Older samples&lt;/b&gt;, beside RAM on the Chart tab (with fast streams only). &lt;i&gt;summaries&lt;/i&gt;
 (the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
 highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels
@@ -3129,7 +3165,7 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 بـ &lt;code&gt;dev.stream(&apos;ADC&apos;)&lt;/code&gt;.&lt;/p&gt;
 &lt;p&gt;الخريطة التي فيها تدفقات تُظهر بطاقة &lt;b&gt;التدفقات السريعة&lt;/b&gt; في الشريط الجانبي، بصف لكل تدفق:&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦10 kS/s⁩&lt;/i&gt; (معدّل الخريطة)، ومربع
+&lt;li&gt;كل صف تدفق يتصدّره سطر واحد: اسمه، ثم ما هو، &lt;i&gt;· قناتان · ⁦1 MS/s⁩&lt;/i&gt; (المعدّل المقيس أثناء عمله؛ وفي الإيقاف المعدّل المضبوط، &lt;i&gt;⁦10 kS/s⁩ ضبط&lt;/i&gt;)، ومربع
 &lt;b&gt;تسجيل&lt;/b&gt; الخاص به. &lt;b&gt;▶ بدء التدفق&lt;/b&gt; يكتب 1 في مسجّل تشغيل التدفق (بعد قراءة مسجّل معدّله إن سمّته الخريطة)؛ ويصير الزر أحمر،
 &lt;b&gt;■ إيقاف التدفق&lt;/b&gt;، الذي يكتب 0. التدفق الذي لا مسجّل تشغيل له يُستمع إليه فقط. لا يُتذكَّر: كل تدفق معطّل عند كل
 تشغيل.&lt;/li&gt;
@@ -3149,6 +3185,7 @@ page) or the API&apos;s &lt;code&gt;stream&lt;/code&gt; command (values at a per
 الملايين، ومع التكبير (حتى ⁦10 µs⁩: بعجلة الفأرة، أو اكتب &lt;code&gt;⁦50 us⁩&lt;/code&gt; في النافذة) تصير كل عينة نقطة
 مستقلة. حيث فُقدت عينات ينقطع الخط؛ والفأرة فوق الفجوة تقول كم فُقد. تُحفظ العينات كما وصلت، ببضعة بايتات
 لكل منها، ضمن ذاكرة RAM للمخطط، حيث يُعدّ الخط السريع خطًا واحدًا.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;التدفق المتوقف&lt;/b&gt; يُبقي عيناته على المخطط (التكبير والقياس والتصدير)، لكن لا يبدو منه شيء حيًّا: يقول أعلى يمين المخطط &lt;i&gt;ADC متوقف · آخر سجلّ 14:03:12.345&lt;/i&gt;، وتُرسم قيم خطوطه في المفتاح رمادية (يقول تلميحها متى توقف)، ويمضي العرض الحي مع الساعة فتخرج خطوطه إلى اليسار؛ ويستريح قفل النافذة القصيرة، وينتظر القدح الذي وضعته عليه: &lt;i&gt;عادي · بانتظار عبور (ADC متوقف)&lt;/i&gt;. و&lt;b&gt;▶ بدء التدفق&lt;/b&gt; يزيل ذلك كله دفعة واحدة.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;ذاكرة طويلة&lt;/b&gt;: &lt;b&gt;العينات الأقدم&lt;/b&gt;، بجانب RAM في تبويب المخطط (مع التدفقات السريعة فقط). &lt;i&gt;ملخصات&lt;/i&gt; (الافتراضي): بعد ما تتسع له حصته من RAM، لا يحفظ الخط السريع من عيناته الأقدم إلا أدنى قيمة وأعلاها لكل 256 منها (1/128 من المساحة)، والأحدث كاملة، فتُحفظ الذاكرة أطول بكثير: ⁦100 min⁩ لقناتين بمليون عينة في الثانية في ⁦512 MB⁩، مع عينات لآخر ⁦79 s⁩. عند التصغير يُرسم ذلك الجزء كما كان؛ وعند التكبير يصبح كل ملخص عمودًا من أدناه إلى أعلاه، ويقول أعلى يمين المخطط &lt;i&gt;ملخصات: عينات لآخر ⁦79 s⁩&lt;/i&gt;، ويظلّل شريط الذاكرة ذلك الجزء. هناك تعطي &lt;b&gt;القياسات&lt;/b&gt; الأدنى والأعلى وقمة–قمة، و— للمتوسط وRMS والانحراف المعياري والمساحة (يقول التلميح السبب)؛ ويأخذ المدرّج التكراري والطيف العينات المحفوظة كاملة؛ ويراقب القدح العينات كما تصل، لا الملخصات أبدًا. &lt;i&gt;محفوظة&lt;/i&gt;: كل عينة كاملة، وتذهب الأقدم حين تمتلئ RAM. ويحفظ التسجيل كل عينة في الحالتين.&lt;/p&gt;
 &lt;p&gt;الخط السريع يُقاس كأي خط: له صفه في &lt;b&gt;القياسات&lt;/b&gt; (لا شيء عبر فجوة؛ والمؤشر في فجوة يقرأ —)،
 ومجموعه منذ المسح، ومدرّجه التكراري وطيفه (الطيف يأخذ العينات كما هي، على أطول جزء بلا فجوة)، والقدح والتصدير
@@ -6874,6 +6911,27 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>Channels: %1</source>
         <translation>القنوات: %1</translation>
+    </message>
+    <message>
+        <source>%1 set</source>
+        <comment>a stream&apos;s rate as set, not measured: 10 kS/s set</comment>
+        <translation>%1 ضبط</translation>
+    </message>
+    <message>
+        <source>The rate measured now; the line under the button has it to the ppm</source>
+        <translation>المعدّل المقيس الآن؛ السطر تحت الزر يذكره بدقة جزء في المليون</translation>
+    </message>
+    <message>
+        <source>The rate the device&apos;s %1 said when last read; the device may stream at another</source>
+        <translation>المعدّل الذي ذكره %1 في الجهاز عند آخر قراءة؛ قد يبث الجهاز بمعدّل آخر</translation>
+    </message>
+    <message>
+        <source>The rate the map gives; the device may stream at another</source>
+        <translation>المعدّل الذي تعطيه الخريطة؛ قد يبث الجهاز بمعدّل آخر</translation>
+    </message>
+    <message>
+        <source>The rate the device&apos;s %1 said when last read</source>
+        <translation>المعدّل الذي ذكره %1 في الجهاز عند آخر قراءة</translation>
     </message>
 </context>
 <context>
