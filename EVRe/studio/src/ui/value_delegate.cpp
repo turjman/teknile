@@ -11,6 +11,7 @@
 
 #include "model/register_model.h"
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 /* the whole cell's background (glow, selection), the value left of the (i), then the (i) */
 void ValueDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const {
@@ -41,6 +42,11 @@ void ValueDelegate::paintInfoMark(QPainter *painter, const QRect &cell, const QF
 	painter->setFont(letter);
 	painter->drawText(circle, Qt::AlignCenter, QStringLiteral("i"));
 	painter->restore();
+}
+
+/* "-1500" in Arabic too, not "1500-": drawn as one left-to-right piece, the data plain (Ctrl+C copies it so) */
+QString ValueDelegate::displayText(const QVariant &value, const QLocale &locale) const {
+	return ltrPiece(QStyledItemDelegate::displayText(value, locale));
 }
 
 QSize ValueDelegate::sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const {

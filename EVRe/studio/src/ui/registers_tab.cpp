@@ -14,6 +14,7 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStyledItemDelegate>
 #include <QTableView>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -146,6 +147,7 @@ QTableView *RegistersTab::buildTable() {
 	table_->setObjectName(QStringLiteral("registers"));
 	table_->setModel(filter_);
 	table_->setItemDelegateForColumn(RegisterModel::ColValue, new ValueDelegate(table_));
+	table_->setItemDelegateForColumn(RegisterModel::ColUnit, ltrCells(table_)); /* "°C" in Arabic too, not "C°" */
 	table_->setAlternatingRowColors(true);
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
@@ -470,8 +472,10 @@ void RegistersTab::updateDetail() {
 			.arg(addrText(def.addr), cellText(RegisterModel::ColType), cellText(RegisterModel::ColAccess),
 					def.group.toHtmlEscaped());
 	QString text = QStringLiteral("<b>%1</b> &nbsp;").arg(def.name.toHtmlEscaped()) + coloredSpan(what, colors.muted);
-	text += QStringLiteral("<br>%1 <b>%2</b> %3")
-			.arg(tr("Value"), cellText(RegisterModel::ColValue).toHtmlEscaped(), def.unit.toHtmlEscaped());
+	/* the value and its unit one piece in Arabic: "-1500 rpm", not "1500-" with the unit apart */
+	text += QStringLiteral("<br>%1 ").arg(tr("Value"))
+			+ ltrPiece(QStringLiteral("<b>%1</b> %2").arg(cellText(RegisterModel::ColValue).toHtmlEscaped(),
+					def.unit.toHtmlEscaped()));
 	if (row.valid) {
 		const QString raw = QString::fromLatin1(row.raw.toHex(' ').toUpper());
 		text += QStringLiteral(" &nbsp;") + coloredSpan(QStringLiteral("raw %1").arg(raw), colors.muted);

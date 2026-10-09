@@ -20,6 +20,7 @@
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QStyle>
+#include <QStyledItemDelegate>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -63,6 +64,20 @@ QString ltrPiece(const QString &text) {
 	if (text.isEmpty() || !QGuiApplication::isRightToLeft()) return text;
 	return QChar(0x2066) + text + QChar(0x2069);
 }
+
+namespace {
+
+class LtrCells : public QStyledItemDelegate {
+public:
+	using QStyledItemDelegate::QStyledItemDelegate;
+	QString displayText(const QVariant &value, const QLocale &locale) const override {
+		return ltrPiece(QStyledItemDelegate::displayText(value, locale));
+	}
+};
+
+} // namespace
+
+QStyledItemDelegate *ltrCells(QObject *parent) { return new LtrCells(parent); }
 
 QString secondsText(double seconds) { return ltrPiece(secondsPlain(seconds)); }
 

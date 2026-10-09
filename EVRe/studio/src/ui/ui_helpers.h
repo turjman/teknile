@@ -15,7 +15,9 @@ class QIcon;
 class QMenu;
 class QLabel;
 class QLayout;
+class QObject;
 class QPushButton;
+class QStyledItemDelegate;
 class QWidget;
 
 /* --------------------------------------------------------------------- text */
@@ -23,6 +25,10 @@ class QWidget;
 /* a number and its unit as one left-to-right piece in a right-to-left window: between U+2066 and U+2069 (an isolate,
  * invisible), so the Arabic around it does not split it ("s 0.886", "MB 122"); left to right, the text as it is */
 QString ltrPiece(const QString &text);
+
+/* a table's or a column's cells drawn as ltrPiece ("-3.000 V", "°C" in Arabic, not "V 3.000-" and "C°"): only
+ * the drawn text, the cell's data stays plain, so a cell copied (Ctrl+C) carries no isolate */
+QStyledItemDelegate *ltrCells(QObject *parent);
 
 /* a time length as the chart's Window and Memory boxes show it: "50 µs", "500 ms", "30 s", "2 min", "1.5 h" (one piece:
  * ltrPiece) */
