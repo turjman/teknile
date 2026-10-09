@@ -1807,7 +1807,8 @@ private:
 						: QStringLiteral("· قناتان · ") + rate;
 				const int line = name ? name->fontMetrics().height() : 0;
 				const bool one = name && about && b && name->text() == QLatin1String("ADC") && about->fullText() == expected
-						&& !about->isCut() && name->height() <= line + 8 && about->height() <= line + 8
+						&& (about->text() == expected || about->text() == QStringLiteral("· ") + rate)
+						&& name->height() <= line + 8 && about->height() <= line + 8
 						&& std::abs(name->geometry().center().y() - about->geometry().center().y()) <= 2
 						&& name->geometry().bottom() < b->geometry().top() && name->font().bold()
 						&& about->toolTip().contains(QLatin1String("I_LOAD, V_BUS"))
@@ -1835,7 +1836,9 @@ private:
 				fast1M.fast = { f1 };
 				card.showStats(IoEngine::Stats(), true);
 				const QString offText = about ? about->fullText() : QString(), offTip = about ? about->toolTip() : QString();
-				const bool offWhole = about && !about->isCut(); /* "set" is not cut at the sidebar's width */
+				/* "set" is not cut at the sidebar's width: the whole, or the rate whole without the channels' count */
+				const bool offWhole = about && (about->text() == about->fullText()
+						|| (about->text().startsWith(QStringLiteral("· ")) && about->fullText().endsWith(about->text().mid(2))));
 				const int offNeeds = about ? about->fontMetrics().horizontalAdvance(offText) : -1;
 				card.showStats(fast1M, true);
 				const QString onText = about ? about->fullText() : QString(), onLine = card.fastRateText(0);

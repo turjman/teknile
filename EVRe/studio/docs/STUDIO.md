@@ -2420,7 +2420,9 @@ in the muted colour what the stream is, *· 2 channels · 1 MS/s* while the stre
 digits and renewed at most once a second, so the header never says another rate than the line under the button and
 does not flicker), *· 2 channels · 10 kS/s set* while it is off (the rate set: what the stream's `rate_reg` said when
 last read, else the map's; the tooltip says which, and that the device may stream at another); the rate one
-left-to-right piece in Arabic too, its unit as it is; cut with "…" when the sidebar is narrow, and at the line's end
+left-to-right piece in Arabic too, its unit as it is; when the sidebar is too narrow for all of it, the channels' count
+goes first (*· 10 kS/s set*: the rate whole, the count in the tooltip and the ticks below), cut with "…" only past
+that, and at the line's end
 its **Log** tick (below). The tooltip holds all of it, the channels' names and the map's description:
 
 | Part | Behaviour |
@@ -5639,7 +5641,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   stream is on again by itself and the card counts the samples lost, in amber. A device that takes the enable and
   never sends (the same map without its stream): off again after 2 s (0 written), *no block came in 2 s* in the
   Log. A bus of two such devices: the card greyed, *not on a bus*. Each row's header is one line, in English and
-  Arabic: the name *ADC* (bold), then muted *· 2 channels · 1.23 MS/s* (the rate one left-to-right piece), not cut,
+  Arabic: the name *ADC* (bold), then muted *· 2 channels · 1.23 MS/s* (the rate one left-to-right piece), not cut
+  (with a font too wide for it, *· 1.23 MS/s* whole),
   on the same line above the button, the name first in the reading direction, its tooltip the channels and the map's
   description (`fastStreamName`, `fastStreamAbout`). The header's rate, against the map's 10 kS/s: running at
   1 000 034 samples/s it says *1 MS/s*, and a rate of 2 M within the same second leaves it so (no flicker); off it says

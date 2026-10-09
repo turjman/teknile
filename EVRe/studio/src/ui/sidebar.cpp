@@ -805,7 +805,9 @@ void Sidebar::showFastAbout(int stream, double hz, bool measured, bool fromDevic
 			: tr("The rate the map gives; the device may stream at another");
 	const QString headTip = QStringLiteral("%1 %2\n%3\n%4").arg(row.def.name, about, rateTip, row.channelsTip);
 	row.title->setToolTip(headTip);
-	row.about->setFullText(about, headTip);
+	/* the rate before the channels' count: a sidebar too narrow for both (Linux's fonts: "· 2 channels · 10 kS/s set"
+	 * asked 163 px of 144) shows the rate whole, the count in the tooltip and in the ticks below, never a cut word */
+	row.about->setFullText(about, headTip, QStringLiteral("· %1").arg(rate));
 }
 
 QCheckBox *Sidebar::fastLogBox(int stream) const {
