@@ -15595,6 +15595,14 @@ private:
 		if (auto *pill = window_.findChild<QLabel *>(QStringLiteral("pill")))
 			docsShot(QStringLiteral("connection_card"), docsCard(pill));
 
+		/* stale: Poll off, the values grey after two intervals (before the Decoded column: the same
+		 * columns as the live picture) */
+		poll_->setChecked(false);
+		QTest::qWait(2500);
+		docsShot(QStringLiteral("registers_stale"), &window_, QRect(), false, focus);
+		poll_->setChecked(true);
+		QTest::qWait(800);
+
 		/* the Decoded column: by the header's menu, as the user shows it */
 		QHeaderView *header = table_->horizontalHeader();
 		docsWhileOpen([header] { emit header->customContextMenuRequested(QPoint(200, header->height() / 2)); },
@@ -15607,12 +15615,6 @@ private:
 		QTest::qWait(800);
 		docsShot(QStringLiteral("registers_decoded"), &window_, QRect(), false, focus);
 
-		/* stale: Poll off, the values grey after two intervals */
-		poll_->setChecked(false);
-		QTest::qWait(2500);
-		docsShot(QStringLiteral("registers_stale"), &window_, QRect(), false, focus);
-		poll_->setChecked(true);
-		QTest::qWait(800);
 		docsWhileOpen([header] { emit header->customContextMenuRequested(QPoint(200, header->height() / 2)); },
 				[](QWidget *open) {
 					if (auto *menu = qobject_cast<QMenu *>(open))
@@ -15639,16 +15641,17 @@ private:
 			names->showPopup();
 			QTest::qWait(400);
 			QWidget *list = names->view()->window();
-			docsShot(QStringLiteral("write_led_mode"), &window_, docsUnion(&window_, { frame, list }));
+			docsShot(QStringLiteral("write_led_mode"), &window_, docsUnion(&window_, { frame, list }).adjusted(0, -12, 0, 0)); /* its header line whole */
 			names->hidePopup();
 		}
 
-		/* the prescaler field's menu (a click on the field opens it, in a loop of its own) */
+		/* the prescaler field's menu (a click on the field opens it, in a loop of its own; near its bottom edge, so
+		 * the menu opens under the field's label, not over it) */
 		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
 		QTest::qWait(800);
 		if (auto *bits = frame->findChild<BitView *>(QStringLiteral("bitView")); bits && bits->isVisible()) {
 			const QRect field = bits->fieldCell(QStringLiteral("AUTO_SEND prescaler"));
-			docsWhileOpen([bits, field] { docsClick(bits, field.center()); }, [&](QWidget *menu) {
+			docsWhileOpen([bits, field] { docsClick(bits, QPointF(field.center().x(), field.bottom() - 3)); }, [&](QWidget *menu) {
 				docsShot(QStringLiteral("write_field_menu"), &window_, docsUnion(&window_, { frame, menu }));
 			}, true);
 		}
@@ -15719,11 +15722,15 @@ private:
 		const double end = view->lastViewEnd();
 		view->setCursors(end - 21.5, end - 9.0);
 		QTest::qWait(1200);
-		docsShot(QStringLiteral("chart"), &window_, QRect(), false, focus);
+		docsShot(QStringLiteral("chart"), &window_, QRect(), false, [&] {
+			focus();
+			QTest::qWait(1600); /* the held view's rate, not the frames of the theme's switch, in the info line */
+		});
 
-		/* the hover box over the middle of the plot */
+		/* the hover box */
 		const QRectF plot = view->lastPlot();
-		const QPointF middle(plot.left() + plot.width() * 0.62, plot.center().y());
+		/* right of B: the box (at the plot's top, right of the mouse) covers neither the A-B bar nor B's tag */
+		const QPointF middle(plot.left() + plot.width() * 0.74, plot.center().y());
 		docsShot(QStringLiteral("chart_hover"), &window_, QRect(), false, [&] {
 			view->setFocus();
 			docsHover(view, middle);
@@ -15750,6 +15757,7 @@ private:
 		if (!tag.isEmpty()) docsClick(view, tag.center());
 		QTest::qWait(300);
 		docsShot(QStringLiteral("chart_notes"), &window_, QRect(), false, focus);
+		view->setNotes({}); /* the pictures after these show no notes */
 
 		/* the Display menu */
 		auto *display = tab->findChild<QPushButton *>(QStringLiteral("chartDisplay"));
@@ -15876,7 +15884,7 @@ private:
 			QTest::qWait(500);
 			for (int lane = 0; lane < view->laneCount(); lane++)
 				if (view->laneLabel(lane) == QLatin1String("V")) view->setLaneFolded(lane, true);
-			view->setLaneScroll(40); /* half a lane: the top one cut by the plot's edge */
+			view->setLaneScroll(0); /* at the top: the folded V strip first, the scroll bar for the rest */
 			QTest::qWait(400);
 			docsShot(QStringLiteral("lanes"), &window_, QRect(), false, focus);
 			/* a lane at Manual (its tag), another's menu open */
@@ -16065,9 +16073,20 @@ private:
 		const bool againWas = again && again->isChecked();
 		if (again) again->setChecked(false);
 		constexpr quint16 NOBODY = 1299;
-		connectTo(NOBODY);
-		QTest::qWait(50);
-		docsShot(QStringLiteral("pill_connecting"), card);
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) { /* an attempt per theme, pictured before it is refused */
+			Theme::apply(*qApp, dark);
+			QTest::qWait(150);
+			(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Connect")) != nullptr; }, 15000);
+			connectTo(NOBODY);
+			QTest::qWait(50);
+			const QString file = docsPrefix_ + QStringLiteral("_docs_pill_connecting_%1.png")
+					.arg(dark ? QStringLiteral("dark") : QStringLiteral("light"));
+			if (!pill->text().contains(QLatin1String("Connecting")) || !docsComposite(card, {}, QRect()).save(file))
+				std::printf("  docs pictures: %s not taken (the pill says \"%s\")\n", qPrintable(file), qPrintable(pill->text()));
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(100);
 		(void) QTest::qWaitFor([&] { return !pill->text().contains(QLatin1String("Connecting")); }, 15000);
 		QTest::qWait(300);
 		std::printf("  docs pictures: the pill refused says \"%s\"\n", qPrintable(pill->text()));
@@ -16183,6 +16202,11 @@ private:
 			QTest::qWait(1000);
 			docsShot(QStringLiteral("fast_chart"), &window_, QRect(), false, focus);
 			docsShot(QStringLiteral("fast_card_running"), sidebar->fastCard());
+			/* the time grid: 10 ms, 1 ms/div with the clock time */
+			docsWindow(chartTab, QStringLiteral("10 ms"));
+			QTest::qWait(800);
+			docsShot(QStringLiteral("time_grid"), view, QRect(), false, focus);
+			docsWindow(chartTab, QStringLiteral("20 ms"));
 
 			/* D6: held, 200 ms, A -> B over 100 ms */
 			hold->click();
@@ -16221,6 +16245,12 @@ private:
 			(void) QTest::qWaitFor([&] { return chartTab->triggerState().contains(QLatin1String("triggered")); }, 5000);
 			QTest::qWait(600);
 			docsShot(QStringLiteral("trigger"), &window_, QRect(), false, focus);
+			/* times relative to T: 10 ms, T at 0 */
+			docsWindow(chartTab, QStringLiteral("10 ms"));
+			QTest::qWait(300);
+			(void) QTest::qWaitFor([&] { return chartTab->triggerState().contains(QLatin1String("triggered")); }, 5000);
+			QTest::qWait(600);
+			docsShot(QStringLiteral("trigger_marks"), view, QRect(), false, focus);
 			if (trigger) trigger->setChecked(false);
 			if (lock) lock->setChecked(true);
 			if (!view->live()) hold->click();
