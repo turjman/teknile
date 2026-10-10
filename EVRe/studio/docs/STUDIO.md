@@ -1105,14 +1105,14 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **ƒ&nbsp;Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
 | **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Smooth on · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
 | -&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
-| -&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. |
+| -&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
 | -&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
 | -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
 | -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
-| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
+| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes; a recording's window has no fps part at all), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
@@ -1312,7 +1312,7 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
 
 ### 7.9 Legend, labels and the info line
 
-- **Legend.** Across the top, a chip per line shows its name and latest value: `SUPPLY_V  12.1 V` for a supply of 12.05 V. With no line yet, the plot says *Tick "Plot" on any register to chart it*.
+- **Legend.** Across the top, a chip per line shows its name and latest value: `SUPPLY_V  12.1 V` for a supply of 12.05 V. With no line yet, the plot says *Tick "Plot" on any register to chart it*. In a recording's window (12.6) the value is the line's latest sample **in the view**, as a folded lane's strip writes it held (7.12): zoomed into a part, the chips show that part's last values, not the file's; the live chart's chips keep the newest value.
 - **The chip's menu.** Each chip ends in a **▾**: a click anywhere on the chip (or a right-click) opens the line's menu under it, *Histogram of …*, *Spectrum of …* and *Trigger on this line* (8.6, 7.13). Over a chip the mouse is a pointing hand, the ▾ is lit and the tooltip says *Click or right-click: Histogram, Spectrum, Trigger on this line* (a recording's window: without the trigger).
 - **How often the values change.** At the pace chosen in *Show values* (13.2): 10 times a second by default, like the Registers table. A number that changes at every frame cannot be read. The lines still move at every frame.
 - **Fixed places.** A chip's width comes from the line's name, its unit and room for the widest number the legend writes (`-0.000e+00`). It never depends on the value, so a changing value cannot move the chips after it. The value is right-aligned in its room, with the unit after it: only the digits change.
@@ -1349,7 +1349,7 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   counted as its labels are (7.7).
 - **Display → Time grid.** *Auto (divisions below 1 s)*, the default; *Clock times* (as before, at every window);
   *Divisions* (at every window: a 10 s window reads *1 s/div*, *-10 s* ... *0*). Saved (`chart/timeGrid`, 14.3).
-- **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second (*idle* when none was: a held view, a recording's window, is drawn only when something in it changes, so it costs nothing while it stands; the frames of its last change are not kept on the line), and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
+- **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes, so it costs nothing while it stands; the frames of its last change are not kept on the line), and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). A recording's window leaves the fps out (*6/6 plotted · 1 math · 1.8 ms · CPU*): its chart is drawn only when something in it changes, so a rate says nothing there. When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
 
@@ -1710,7 +1710,7 @@ A line above the table says what is measured:
 
 - *Measured between the cursors: A → B = 2.500 s*, or
 - *Measured over the view: 30.000 s (Cursors: measure between two points)*, which says *(place cursor A on the chart)* or *…B…* while cursor mode is on;
-- then, while the Since Clear column is shown, since when the totals run, by the clock and how long: *· totals since 14:03:12 (1 h 12 min)* (8.4).
+- then, while the Since Clear column is shown, since when the totals run, by the clock and how long: *· totals since 14:03:12 (1 h 12 min)* (8.4); in a recording's window *· totals over the file (59.9 s)*.
 
 ### 8.1 The range
 
@@ -1782,6 +1782,8 @@ the charge of a whole test run, however long, without placing cursors.
   its total (the time it was off adds nothing). Math lines have their totals too.
 - The line above the table says since when: *totals since 14:03:12 (1 h 12 min)*, the clock time of the first sample
   after the Clear and how long ago that was.
+- **In a recording's window** there is no Clear: the column reads **Whole file**, the same sums over every sample of
+  the file, whatever part is in view, and the line says *totals over the file (59.9 s)* (12.6).
 
 ### 8.5 Number format
 
@@ -2226,8 +2228,13 @@ recordings can be open.
   part** reads from that place on; **Cancel** opens nothing.
 - **The window.** Its title is the file's name and its span: *run.csv · 2026-10-05 09:00:00 – 10:30:00 (1 h 30 min)*.
   The line above the chart says the same, with the lines, the rows and the columns left out. The chart is held on
-  the whole recording: there is no Live, Memory, RAM, Clear or Remove all, and Smooth is off; Window, the wheel, a
-  drag and the memory strip move through it as through a held chart. Its row of Window and Y range keeps Window on
+  the whole recording: there is no Live, Memory, RAM, Clear or Remove all, and no Smooth in Display (always off:
+  nothing comes late to a file); Window, the wheel, a drag and the memory strip move through it as through a held
+  chart. The keyboard's focus is on the chart at open (Delete removes a note clicked), not in the Window box.
+- **What reads differently from the Chart tab.** The legend shows each line's latest sample **in the view** (zoomed
+  into a part, that part's last values: 7.9). The info line has no fps (frames come only on a change: 7.9). The
+  measure table's totals column reads **Whole file** and the line over it *totals over the file (59.9 s)*: there is
+  no Clear to count from (8.4). Its row of Window and Y range keeps Window on
   the left and the Y range on the right, as on the Chart tab (the hidden Memory and RAM leave a gap, not boxes and
   labels spread over the row).
 - **At once, whole.** It opens with the file's lines, their values in the legend and its Y range (the min and max
@@ -5742,8 +5749,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   line above the chart says when the stream ends first and its tooltip gives both spans; the fast line drawn up to
   its record at the view's end (within a column, `drawnTo`) at 1 ms, 10 ms, 100 ms, 1 s, 10 s and the whole file, at
   its end, start and middle; Normalise at 10 ms at the CSV's end: UPTIME, one sample in view, ranged with its value
-  at the view's left edge too (`drawnRange`, 7.6); held and still for 1.5 s it paints nothing and the info line says
-  *idle*, then ten paints count as frames, its lines reused (no binning). With `EVRE_TEST_SHOT` it saves
+  at the view's left edge too (`drawnRange`, 7.6); held and still for 1.5 s it paints nothing and the info line has no
+  frame rate, nor after ten paints (V-1), its lines reused (no binning). With `EVRE_TEST_SHOT` it saves
   `<prefix>_viewer_end10ms_dark.png` and `_light.png`, 10 ms at the file's end with Normalise. Then the example map
   again, connected to the Python fake device.
 
@@ -5857,6 +5864,11 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   theme switched, its boxes in the new theme at once. With `EVRE_TEST_SHOT` set the recording windows' step and the
   fast streams' save `<prefix>_viewer_regs_*.png` and `<prefix>_viewer_fast_*.png` (dark and light, Lanes, measured,
   smaller and bigger, Arabic) for a look.
+- **The recording's window as decided** (`recordingDecisions`, V-1 to V-8, in the recording windows' step): its info
+  line without fps (the lines, the paint time and who draws kept), the Chart tab's with it; the totals' column
+  *Whole file* and the line over the table *totals over the file (59.9 s)*, the Chart tab's *Since Clear*; zoomed into
+  the first half, the legend's value 15.0 (the view's last sample), not the file's 18.0; the focus on the chart at
+  open; Smooth hidden in its Display menu, the Chart tab's shown.
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
@@ -6169,7 +6181,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 613 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 618 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

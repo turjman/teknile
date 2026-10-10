@@ -965,8 +965,14 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 		const QSignalBlocker quiet(smooth_);
 		smooth_->setChecked(false);
 	}
-	smooth_->setEnabled(false);
+	smooth_->setVisible(false); /* always off: nothing comes late to a file */
 	chart_->setSmooth(false);
+	/* no Clear to count from: the totals are the whole file's (the same sums, from its first sample) */
+	measures_->horizontalHeaderItem(ColTotal)->setText(tr("Whole file"));
+	measures_->horizontalHeaderItem(ColTotal)->setToolTip(tr("The area under the line over the whole file, in hours "
+			"(W → Wh, A → Ah), whatever part is in view. A gap of more than 1 s between two samples is not bridged."));
+	for (QAction *column : measureColumns_->actions())
+		if (column->data().toInt() == ColTotal) column->setText(tr("Whole file"));
 	trigger_->setVisible(false); /* nothing comes after the file to cross a level */
 	chart_->view()->setRamBudget(ramMB);
 	chart_->setMemory(std::max(1.0, t1 - t0));
@@ -1309,9 +1315,10 @@ QString ChartTab::infoText(int width) const {
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
-	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn */
+	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn. A
+	 * recording's window has frames only on a change: a rate says nothing there */
 	const double fps = chart_->fps();
-	parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
+	if (!recording_) parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
 	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
@@ -1330,6 +1337,11 @@ QString ChartTab::infoText(int width) const {
 }
 
 QString ChartTab::infoTip() const {
+	if (recording_)
+		return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold (the "
+				"file's columns, 64 lines at most); the math and fast lines among them; the time to draw the chart once; "
+				"and who draws the lines (GPU or CPU). A recording's chart is drawn only when something in it changes, so "
+				"no frame rate is given. When the line is narrow, the time to draw and the word \"plotted\" go first.");
 	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
 			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
 			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second "
@@ -2157,7 +2169,9 @@ QString ChartTab::measuredRangeText() const {
 		text = tr("Measured over the view: %1 s%2").arg(measureText(t1 - t0), hint);
 	}
 	const double since = view->totalsSince();
-	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
+	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal) && recording_) /* no Clear: the whole file */
+		text += tr(" · totals over the file (%1)").arg(durationText(std::max(0.0, view->timeNow() - since)));
+	else if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
 		const QDateTime at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(since * 1000)));
 		text += tr(" · totals since %1 (%2)").arg(at.toString(QStringLiteral("HH:mm:ss")),
 				durationText(std::max(0.0, view->timeNow() - since)));

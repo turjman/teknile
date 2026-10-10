@@ -426,6 +426,8 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 		else open(this, other, map_, ramMB_);
 	});
 	tab_->setShown(true);
+	/* the keys to the chart (Delete removes a note clicked), not a text cursor blinking in the Window box */
+	tab_->view()->setFocus();
 	/* the info line and the Y boxes as the main window's status keeps the live chart's */
 	auto *status = new QTimer(this);
 	connect(status, &QTimer::timeout, tab_, &ChartTab::refreshStatus);

@@ -2612,7 +2612,7 @@ private:
 	 *  - Normalise at 10 ms at the CSV's end: a register polled every 10 ms or slower has one sample there; its range
 	 *    takes its value at the view's edge too, so the piece from the edge to that sample is drawn in the plot, not
 	 *    from far below it;
-	 *  - held and still it paints nothing, and the info line says "idle", not the frames of its last change */
+	 *  - held and still it paints nothing, and the info line has no frame rate (V-1: frames come only on a change) */
 	void recordedFastEnds(RecordingWindow *w, const QString &csv) {
 		check(w && !w->fastRecordings().isEmpty() && w->fastRecordings()[0].store
 						&& w->fastRecordings()[0].store->size() > 1000000,
@@ -2707,7 +2707,7 @@ private:
 			Theme::apply(*qApp, true);
 		}
 		if (normalise) normalise->setChecked(false);
-		/* held and still: no paint, the info line says idle; painted, the frames again */
+		/* held and still: no paint; the info line without a frame rate, still or painting */
 		v->repaint();
 		const int paints = v->paints(), binnings = v->binnings();
 		QTest::qWait(1500);
@@ -2718,10 +2718,10 @@ private:
 		const QString painting = w->chartTab()->infoText();
 		std::printf("  held and still for 1.5 s: %d paints, \"%s\"; 10 paints later \"%s\", %d binnings\n", idlePaints,
 				qPrintable(idle), qPrintable(painting), v->binnings() - binnings);
-		check(idlePaints == 0 && idle.contains(QStringLiteral(" · idle")) && !idle.contains(QLatin1String(" fps"))
-						&& painting.contains(QLatin1String(" fps")) && v->binnings() == binnings,
-				"fast recording, a held 10 ms view of it: nothing painted while nothing changes and the info line says "
-				"\"idle\" (not the frames of its last change); painted again, its frames counted, its lines reused (no "
+		check(idlePaints == 0 && !idle.contains(QLatin1String(" idle")) && !idle.contains(QLatin1String(" fps"))
+						&& !painting.contains(QLatin1String(" fps")) && v->paints() >= paints + 10 && v->binnings() == binnings,
+				"fast recording, a held 10 ms view of it: nothing painted while nothing changes, and no frame rate on the "
+				"info line, still or painting (frames come only on a change); painted again, its lines reused (no "
 				"binning)");
 	}
 
@@ -14391,6 +14391,81 @@ private:
 		QSettings().remove(QStringLiteral("recording/drawing"));
 	}
 
+	/* The recording's window as the owner decided it (V-1 to V-8): no frame rate in its info line, the totals over the
+	 * whole file, the legend's values the view's, the focus on the chart, no Smooth; the live Chart tab as it was */
+	void recordingDecisions(const QString &path) {
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		QSettings().setValue(QStringLiteral("recording/measure"), true);
+		RecordingWindow::closeAll();
+		RecordingWindow *opened = nullptr;
+		RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { opened = w; });
+		(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+		auto *live = window_.findChild<ChartTab *>();
+		if (!opened || !live) {
+			check(false, "recording's window, the owner's decisions: opened");
+			return;
+		}
+		(void) QTest::qWaitForWindowExposed(opened);
+		ChartTab *tab = opened->chartTab();
+		ChartView *view = tab->view();
+		QTest::qWait(300);
+
+		/* V-1: no frame rate; the lines, the paint time and who draws stay */
+		const QString info = tab->infoText(), liveInfo = live->infoText();
+		std::printf("  the info lines: recording \"%s\", Chart tab \"%s\"\n", qPrintable(info), qPrintable(liveInfo));
+		check(!info.contains(QLatin1String("fps")) && !info.contains(QLatin1String("idle"))
+						&& info.contains(QLatin1String(" ms")) && (info.endsWith(QLatin1String("CPU")) || info.endsWith(QLatin1String("GPU")))
+						&& !tab->infoTip().contains(QLatin1String("frames drawn"))
+						&& (liveInfo.contains(QLatin1String(" fps")) || liveInfo.contains(QLatin1String(" idle"))),
+				"recording's window: no frame rate in its info line (the lines, the paint time and who draws kept); the "
+				"Chart tab's keeps its fps");
+
+		/* V-2: the totals over the whole file */
+		auto *table = tab->findChild<QTableWidget *>(QStringLiteral("measures"));
+		auto *liveTable = live->findChild<QTableWidget *>(QStringLiteral("measures"));
+		auto *measured = tab->findChild<QLabel *>(QStringLiteral("measureInfo"));
+		(void) QTest::qWaitFor([&] { return measured && measured->text().contains(QLatin1String("totals")); }, 2000);
+		const QString header = table ? table->horizontalHeaderItem(ChartTab::ColTotal)->text() : QString();
+		const QString liveHeader = liveTable ? liveTable->horizontalHeaderItem(ChartTab::ColTotal)->text() : QString();
+		const QString over = measured ? measured->text() : QString();
+		std::printf("  the totals: \"%s\" over \"%s\"; the Chart tab's \"%s\"\n", qPrintable(header), qPrintable(over),
+				qPrintable(liveHeader));
+		check(header == QLatin1String("Whole file") && over.contains(QStringLiteral(" · totals over the file (59.9 s)"))
+						&& !over.contains(QLatin1String("since")) && liveHeader == QLatin1String("Since Clear"),
+				"recording's window: the totals' column reads \"Whole file\" and the line over the table \"totals over the "
+				"file (59.9 s)\"; the Chart tab keeps \"Since Clear\"");
+
+		/* V-5: the legend's values are the view's latest samples: zoomed into the first half, 14.99 V, not the file's
+		 * last 17.99 V */
+		const int volts = int(regKey(opened->definitions().value(0)));
+		const QString whole = view->legendValue(volts);
+		tab->showSpan(opened->firstTime(), (opened->firstTime() + opened->lastTime()) / 2);
+		const int paints = view->paints();
+		(void) QTest::qWaitFor([&] { return view->paints() > paints; }, 1000);
+		const QString half = view->legendValue(volts);
+		const QImage chips = view->grab().toImage();
+		tab->showSpan(opened->firstTime(), opened->lastTime());
+		std::printf("  the legend's value: \"%s\" over the file, \"%s\" over its first half\n", qPrintable(whole),
+				qPrintable(half));
+		check(whole == QLatin1String("18.0") && half == QLatin1String("15.0") && !chips.isNull(),
+				"recording's window: the legend shows each line's latest sample in the view (zoomed into the first half: "
+				"its value at the view's end, not the file's last)");
+
+		/* V-6: the keys go to the chart */
+		check(opened->focusWidget() == view, "recording's window: the focus on the chart at open (no text cursor in the "
+				"Window box)");
+
+		/* V-7: Smooth is not offered (always off); the Chart tab keeps it */
+		auto *smooth = tab->findChild<QAction *>(QStringLiteral("chartSmooth"));
+		auto *liveSmooth = live->findChild<QAction *>(QStringLiteral("chartSmooth"));
+		check(smooth && !smooth->isVisible() && !smooth->isChecked() && liveSmooth && liveSmooth->isVisible(),
+				"recording's window: Smooth hidden in its Display menu, as Live, Memory and RAM; the Chart tab keeps it");
+
+		RecordingWindow::closeAll();
+		if (measureBefore.isValid()) QSettings().setValue(QStringLiteral("recording/measure"), measureBefore);
+		else QSettings().remove(QStringLiteral("recording/measure"));
+	}
+
 	void recordingWindows() {
 		QTemporaryDir folder;
 		const QString path = folder.filePath(QStringLiteral("bench.csv"));
@@ -14450,6 +14525,7 @@ private:
 		check(math && notes, "recording window: a math line of its own (recording/math) computed from the file; the notes "
 				"beside it shown");
 		recordingViewer(path);
+		recordingDecisions(path);
 		recordingWindowPictures(path, QStringLiteral("regs"));
 		/* (closed by the revisit's checks: opened again for the rest) */
 		opened = nullptr;

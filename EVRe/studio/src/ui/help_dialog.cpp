@@ -488,7 +488,9 @@ double-click it to edit, click it and press <b>Delete</b> to remove it. While re
 the file (<code>run.csv.notes.json</code>), and an export takes the notes of its span.</li>
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
-own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
+own; the live chart goes on. There the legend shows each line's latest value <i>in the view</i> (zoomed into a part,
+that part's), the info line has no fps (the chart is drawn only on a change), and the totals' column reads <b>Whole
+file</b>: there is no Clear. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
 registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
 line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
 they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields. A recent
