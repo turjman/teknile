@@ -2371,25 +2371,9 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 	chartMenu_->setObjectName(QStringLiteral("chartMenu"));
 	chartMenu_->setToolTipsVisible(true);
 	chartMenu_->addAction(tr("Copy picture"), this, &ChartTab::copyPicture);
-	chartMenu_->addAction(tr("Save picture…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
-		if (file.isEmpty()) return;
-		if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
-		else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
-	});
-	double t0, t1;
-	bool cursors;
-	chart_->view()->range(t0, t1, cursors);
-	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
-		if (!file.isEmpty()) exportCsv(file);
-	});
-	exportAction->setToolTip(cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
-			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)"));
+	chartMenu_->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture);
+	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setToolTip(exportTip());
 	exportAction->setEnabled(!job_);
 	chartMenu_->addAction(tr("Add note here"), this, [this, time] { addNoteAt(time); });
 	chartMenu_->addSeparator();
@@ -2398,6 +2382,63 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 			[this](const QString &file) { emit openRecordingRequested(file); },
 			[this](const QString &text) { emit statusMessage(text, 5000); });
 	chartMenu_->popup(globalPos);
+}
+
+QPushButton *ChartTab::makeFileButton(const char *name) {
+	auto *button = new QPushButton(tr("File"));
+	button->setObjectName(QLatin1String(name));
+	button->setCursor(Qt::PointingHandCursor);
+	button->setToolTip(tr("Copy picture, Save picture…, Export to CSV… (the view, or A → B with both cursors placed), "
+			"Open recording… and the recent recordings: the same as the chart's right-click.\nA note: right-click the "
+			"chart where it goes, Add note here."));
+	auto *menu = new QMenu(button);
+	menu->setToolTipsVisible(true);
+	setButtonMenu(button, menu);
+	/* made again at each opening: the export's tooltip and state, the recent list */
+	connect(menu, &QMenu::aboutToShow, this, [this, menu] { fillFileMenu(menu); });
+	return button;
+}
+
+void ChartTab::fillFileMenu(QMenu *menu) {
+	menu->clear();
+	for (QObject *child : menu->children()) /* the recent list's submenu of the last opening */
+		if (qobject_cast<QMenu *>(child)) child->deleteLater();
+	menu->addAction(tr("Copy picture"), this, &ChartTab::copyPicture)->setObjectName(QStringLiteral("fileCopyPicture"));
+	menu->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture)->setObjectName(QStringLiteral("fileSavePicture"));
+	QAction *exportAction = menu->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setObjectName(QStringLiteral("fileExportCsv"));
+	exportAction->setToolTip(exportTip());
+	exportAction->setEnabled(!job_);
+	menu->addSeparator();
+	menu->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); })
+			->setObjectName(QStringLiteral("fileOpenRecording"));
+	RecordingWindow::fillRecentMenu(menu->addMenu(tr("Recent recordings")),
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
+}
+
+void ChartTab::askSavePicture() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
+	if (file.isEmpty()) return;
+	if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
+	else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
+}
+
+void ChartTab::askExportCsv() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
+	if (!file.isEmpty()) exportCsv(file);
+}
+
+QString ChartTab::exportTip() const {
+	double t0, t1;
+	bool cursors;
+	chart_->view()->range(t0, t1, cursors);
+	return cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
+			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)");
 }
 
 QImage ChartTab::picture() const { return chart_->view()->grab().toImage(); } /* grab(): drawn by the CPU */

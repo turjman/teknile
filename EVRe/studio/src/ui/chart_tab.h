@@ -207,6 +207,11 @@ public:
 	/* a note at `time`: its text asked for (empty: none) */
 	void addNoteAt(double time);
 	void editNote(int index); /* its text asked for again; emptied: removed */
+	/* A File button ("File ▾", objectName name): Copy picture, Save picture…, Export to CSV…, Open recording… and the
+	 * recent recordings, the right-click's own actions, so none is reached by a right-click alone (a note needs a
+	 * place on the chart: the right-click keeps Add note here, the tooltip says so). The recording's window puts one
+	 * beside its Lines; its menu made again each time it opens */
+	QPushButton *makeFileButton(const char *name);
 	/* the chart's menu at a place on the screen, `time` under it (a right-click); tests: the menu, built at each
 	 * right-click */
 	void showChartMenu(const QPoint &globalPos, double time);
@@ -383,7 +388,11 @@ private:
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 
-	/* the right-click on the chart */
+	/* the right-click on the chart, and the File button's menu: the same actions */
+	void fillFileMenu(QMenu *menu);
+	void askSavePicture();   /* Save picture…: a file asked for, the Log says where */
+	void askExportCsv();     /* Export to CSV…: a file asked for */
+	QString exportTip() const; /* what Export to CSV takes now: the view, or A -> B */
 	QMenu *chartMenu_ = nullptr;
 	QMenu *laneMenu_ = nullptr;
 	QMenu *lineMenu_ = nullptr;

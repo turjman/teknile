@@ -32,6 +32,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QFileDialog>
 #include <QContextMenuEvent>
 #include <QDir>
 #include <QDropEvent>
@@ -14391,6 +14392,61 @@ private:
 		QSettings().remove(QStringLiteral("recording/drawing"));
 	}
 
+	/* A File ▾ button (V-4): its menu's four actions do what the chart's right-click does: a picture on the clipboard and
+	 * in a file, the samples exported, a recording opened (the file dialogs Qt's own here, so a step can answer
+	 * them). True when all four did; what each did is printed */
+	bool fileButtonWorks(ChartTab *tab, QPushButton *button, const QString &folder, const QString &recording,
+			const char *where) {
+		if (!tab || !button || !button->menu()) return false;
+		emit button->menu()->aboutToShow();
+		const auto action = [&](const char *name) { return button->menu()->findChild<QAction *>(QLatin1String(name)); };
+		QAction *copy = action("fileCopyPicture"), *save = action("fileSavePicture"), *exportCsv = action("fileExportCsv"),
+				*openFile = action("fileOpenRecording");
+		bool recent = false;
+		for (QAction *item : button->menu()->actions())
+			if (item->menu() && item->text() == QLatin1String("Recent recordings")) recent = true;
+		if (!copy || !save || !exportCsv || !openFile) {
+			std::printf("     (%s: the File menu lacks an action)\n", where);
+			return false;
+		}
+		const QVariant recentBefore = QSettings().value(QStringLiteral("recording/recent")); /* the export joins it */
+		QApplication::clipboard()->clear();
+		copy->trigger();
+		const QImage copied = QApplication::clipboard()->image();
+		const QSize shown = tab->picture().size();
+		const bool nativeBefore = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+		QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+		const auto answer = [](const QString &file) {
+			return [file](QDialog *dialog) {
+				if (auto *files = qobject_cast<QFileDialog *>(dialog)) {
+					files->selectFile(file);
+					/* selectFile fills the name box later (its folder read first): the name typed, as a person would */
+					if (auto *name = files->findChild<QLineEdit *>(QStringLiteral("fileNameEdit"))) name->setText(file);
+					dialog->accept(); /* QDialog's: QFileDialog's own is protected */
+				}
+			};
+		};
+		const QString png = folder + QStringLiteral("/file_%1.png").arg(QLatin1String(where));
+		const bool saveAsked = fillDialog(answer(png), [&] { save->trigger(); });
+		const QImage saved(png);
+		const QString csv = folder + QStringLiteral("/file_%1.csv").arg(QLatin1String(where));
+		const bool exportAsked = fillDialog(answer(csv), [&] { exportCsv->trigger(); });
+		(void) QTest::qWaitFor([&] { return !tab->exporting(); }, 10000);
+		QFile exported(csv);
+		const QByteArray head = exported.open(QIODevice::ReadOnly) ? exported.readLine() : QByteArray();
+		const qsizetype windowsBefore = RecordingWindow::windows().size();
+		const bool openAsked = fillDialog(answer(recording), [&] { openFile->trigger(); });
+		const bool opened = QTest::qWaitFor([&] { return RecordingWindow::windows().size() > windowsBefore; }, 5000);
+		QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, nativeBefore);
+		if (opened) delete RecordingWindow::windows().last();
+		QSettings().setValue(QStringLiteral("recording/recent"), recentBefore);
+		std::printf("  %s's File menu: copied %dx%d (the chart %dx%d), saved %dx%d, exported \"%s\", a recording opened %d, "
+				"recent %d\n", where, copied.width(), copied.height(), shown.width(), shown.height(), saved.width(),
+				saved.height(), head.trimmed().left(60).constData(), int(opened), int(recent));
+		return copied.size() == shown && saveAsked && saved.size() == shown && exportAsked
+				&& head.startsWith("time_s,datetime,") && openAsked && opened && recent;
+	}
+
 	/* The recording's window as the owner decided it (V-1 to V-8): no frame rate in its info line, the totals over the
 	 * whole file, the legend's values the view's, the focus on the chart, no Smooth; the live Chart tab as it was */
 	void recordingDecisions(const QString &path) {
@@ -14460,6 +14516,21 @@ private:
 		auto *liveSmooth = live->findChild<QAction *>(QStringLiteral("chartSmooth"));
 		check(smooth && !smooth->isVisible() && !smooth->isChecked() && liveSmooth && liveSmooth->isVisible(),
 				"recording's window: Smooth hidden in its Display menu, as Live, Memory and RAM; the Chart tab keeps it");
+
+		/* V-4: a File ▾ button beside Lines, its four actions those of the right-click; its tooltip says how a note is
+		 * added (the right-click keeps it: a note needs its place on the chart) */
+		auto *lines = opened->findChild<QPushButton *>(QStringLiteral("recordingLines"));
+		auto *file = opened->findChild<QPushButton *>(QStringLiteral("recordingFile"));
+		const bool beside = lines && file && file->isVisible() && std::abs(file->geometry().center().y()
+				- lines->geometry().center().y()) <= 2 && file->geometry().left() > lines->geometry().right()
+				&& file->geometry().left() - lines->geometry().right() < 24;
+		const bool fileTip = file && file->text() == QLatin1String("File") && file->toolTip().contains(QLatin1String(
+				"Add note here")) && file->cursor().shape() == Qt::PointingHandCursor;
+		QTemporaryDir out;
+		const bool works = fileButtonWorks(tab, file, out.path(), path, "recording");
+		check(beside && fileTip && works, "recording's window: a File ▾ button beside Lines (a pointing hand, its tooltip "
+				"saying how a note is added): Copy picture, Save picture…, Export to CSV…, Open recording… do what the "
+				"right-click does, and the recent recordings");
 
 		RecordingWindow::closeAll();
 		if (measureBefore.isValid()) QSettings().setValue(QStringLiteral("recording/measure"), measureBefore);

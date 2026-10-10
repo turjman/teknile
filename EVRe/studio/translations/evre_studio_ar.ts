@@ -1350,6 +1350,16 @@ Shift while dragging snaps them to a tenth of a division.</source>
         <source> · totals over the file (%1)</source>
         <translation> · المجاميع على الملف (%1)</translation>
     </message>
+    <message>
+        <source>File</source>
+        <translation>ملف</translation>
+    </message>
+    <message>
+        <source>Copy picture, Save picture…, Export to CSV… (the view, or A → B with both cursors placed), Open recording… and the recent recordings: the same as the chart&apos;s right-click.
+A note: right-click the chart where it goes, Add note here.</source>
+        <translation>نسخ الصورة، حفظ الصورة…، تصدير إلى CSV… (العرض، أو A → B مع وضع المؤشرين)، فتح تسجيل… والتسجيلات الأخيرة: كما في النقر بالزر الأيمن على المخطط.
+الملاحظة: انقر بالزر الأيمن على المخطط حيث تريدها، ثم «إضافة ملاحظة هنا».</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>

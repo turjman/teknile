@@ -375,6 +375,7 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	auto *top = new QHBoxLayout;
 	top->addWidget(info_, 1);
 	top->addWidget(lines_);
+	top->addWidget(tab_->makeFileButton("recordingFile")); /* the pictures and the export, not by a right-click alone */
 	auto *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(16, 12, 16, 12);
 	layout->addLayout(top);
