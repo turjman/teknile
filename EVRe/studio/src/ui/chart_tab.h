@@ -113,6 +113,7 @@ public:
 	void setTestFreeMemory(qint64 megabytes);
 	/* a Y box's text: Manual six digits; Auto four, but never fewer than the whole part (17420, not 1.742e+04) */
 	static QString yFieldText(double value, bool manual);
+	static QString yFieldShown(const QLineEdit *field, double value, bool manual); /* fitted to the box */
 	/* the measurement table's columns; every one but the line's can be hidden (a right-click on the header) */
 	enum MeasureColumn { ColLine, ColAtA, ColAtB, ColDiff, ColMin, ColMax, ColMean, ColRms, ColStd, ColP2p, ColArea,
 		ColAreaHours, ColTotal, MEASURE_COLUMNS };

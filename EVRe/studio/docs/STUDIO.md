@@ -1075,7 +1075,7 @@ The Chart tab has two rows of controls, the chart, and the measurements under a 
 | **RAM** | The most memory the chart's samples take, all the lines together. 2 GB by default; presets 512 MB to 16 GB (those within three quarters of the computer's memory), or any size typed: `3000`, `3000 MB`, `3 GB`. Saved. With many fast lines the Memory holds less than asked (7.4). A cap, not a reservation: with less memory free than it, the chart keeps within what is free (7.4). Its tooltip says the memory free now and, when that limits it, what the chart keeps within. |
 | Memory&nbsp;note | Beside RAM, muted: what the lines need to keep the Memory set, at the rates their samples come now: *needs 1.4 GB*. More than the RAM, in amber, with what fits: *needs 2.8 GB, keeps 22 min*. Less memory free than the RAM, in amber: *only 2.1 GB free: keeps about 40 s* (7.4). Fast lines keeping older samples as summaries (7.14): *keeps 100 min · 79 s in full*, the whole sentence in its tooltip. Where the row has no room for its widest text (the main window's narrowest left it 24 px with Older samples shown), the note takes a line of its own under the row, so it is never cut; decided by the width, not by the text shown, so the chart does not move when its numbers change. Updated twice a second while the Chart tab is shown; empty until a line has two samples. |
 | **Y&nbsp;range**&nbsp;Auto&nbsp;/&nbsp;Manual&nbsp;/&nbsp;Log | Auto follows the lines. Manual uses the **min** and **max** fields. Log draws the values on a logarithmic scale, its range Auto or typed (7.5). With Lanes on, the row is the **current lane's**, chosen by its unit in the list after the label (*Y&nbsp;range&nbsp;[A&nbsp;▾]*, 7.12). |
-| **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; in Log it keeps Log, its range typed (both above 0). |
+| **min**,&nbsp;**max** | The Y range. In Auto they are grey and show what the chart does, to four digits (*4.2*, not *4.20007*), the whole part always (*17420*, not *1.742e+04*). Typing either one switches to Manual, which keeps six digits; a value too long for the box is shown with fewer digits that fit (*2.53e6*), never cut at its edge; in Log it keeps Log, its range typed (both above 0). |
 
 - **Window presets:** 1 s, 5 s, 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h.
 - **Memory presets:** 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, 30 min, 1 h, 2 h.
@@ -1269,7 +1269,8 @@ times at every window: its samples do not move.
 **Their times.** A tag's tooltip gives the cursor's clock time (*Cursor A at 14:03:12.345*). While the trigger holds
 the view on a crossing (7.13), it also says how far the cursor is from **T**, as an oscilloscope's cursors measure from
 the trigger point (*Cursor A at 14:03:12.345 · T -0.250 ms*), and the line above the measurements adds both after the
-span (*A → B = ... · A: T -0.250 ms · B: T +1.750 ms*). B − A is the same either way. The distance from T has three
+span (*A → B = ... · A: T -0.250 ms · B: T +1.750 ms*). B − A is the same either way. A place a hair before T reads
+*T +0.000 ms*, never a negative zero. The distance from T has three
 decimals in the unit the window is written in (µs below a 1 ms window, ms below 1 s, then s). The tags stay letters,
 so the bar between them keeps its room; live, or without a crossing in view, the tooltip gives the clock time alone.
 On the grid the tooltip and the line give the place first, as above. In Arabic each place (*-7.000 ms*,
@@ -1767,7 +1768,7 @@ The area's unit follows the line's unit:
 | `W` | J | Wh |
 | `A` | A·s | Ah |
 | `mA` | mA·s | mAh |
-| none | ·s | ·h |
+| none | s | h |
 | any&nbsp;other,&nbsp;e.g.&nbsp;`bar` | bar·s | bar·h |
 
 Examples:
@@ -6202,7 +6203,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 622 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 625 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

@@ -4435,7 +4435,8 @@ QString ChartView::fromTText(double t) const {
 	if (!std::isfinite(origin) || !std::isfinite(t)) return QString();
 	double scale;
 	const QString unit = windowUnit(window_, scale);
-	const double v = (t - origin) / scale;
+	/* a hair before T reads "T +0.000", not "T -0.000": a negative zero is no place */
+	const double raw = (t - origin) / scale, v = std::fabs(raw) < 5e-4 ? 0.0 : raw;
 	return ltrPiece(QStringLiteral("T %1%2 %3").arg(v >= 0 ? QStringLiteral("+") : QString(), QString::number(v, 'f', 3), unit));
 }
 

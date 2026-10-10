@@ -81,7 +81,7 @@ QString areaUnit(const QString &unit, bool hours) {
 	if (unit == QLatin1String("W")) return hours ? QStringLiteral("Wh") : QStringLiteral("J");
 	if (unit == QLatin1String("A")) return hours ? QStringLiteral("Ah") : QStringLiteral("A·s");
 	if (unit == QLatin1String("mA")) return hours ? QStringLiteral("mAh") : QStringLiteral("mA·s");
-	if (unit.isEmpty()) return hours ? QStringLiteral("·h") : QStringLiteral("·s");
+	if (unit.isEmpty()) return hours ? QStringLiteral("h") : QStringLiteral("s"); /* a plain number times a time: a time */
 	return unit + (hours ? QStringLiteral("·h") : QStringLiteral("·s"));
 }
 
@@ -1925,6 +1925,22 @@ QString ChartTab::yFieldText(double value, bool manual) {
 	return QString::number(value, 'g', manual ? 6 : std::clamp(whole, 4, 6));
 }
 
+/* as yFieldText, but with fewer digits when that does not fit the box: a number cut at its left edge ("3001e+06" of
+ * 2.53001e+06) reads as another number */
+QString ChartTab::yFieldShown(const QLineEdit *field, double value, bool manual) {
+	QString text = yFieldText(value, manual);
+	const QMargins margins = field->textMargins();
+	const int frame = field->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, field);
+	const int room = field->width() - 2 * frame - 4 - margins.left() - margins.right(); /* 2 px of QLineEdit's own a side */
+	const QFontMetrics metrics = field->fontMetrics();
+	for (int digits = 5; digits >= 1 && metrics.horizontalAdvance(text) > room; digits--) {
+		text = QString::number(value, 'g', digits);
+		text.replace(QLatin1String("e+0"), QLatin1String("e")).replace(QLatin1String("e-0"), QLatin1String("e-"))
+				.replace(QLatin1String("e+"), QLatin1String("e")); /* 2.53e6: the box's validator and the C locale read it */
+	}
+	return text;
+}
+
 void ChartTab::applyDrawing(int choice) {
 	const auto drawing = ChartView::Drawing(std::clamp(choice, int(ChartView::Drawing::Auto), int(ChartView::Drawing::Cpu)));
 	ChartView *view = chart_->view();
@@ -1997,8 +2013,8 @@ void ChartTab::showYRange(bool save) {
 	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
 	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
+	if (!yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (!yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
@@ -2027,8 +2043,8 @@ void ChartTab::applyYFields() {
 	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
 	if (lane >= 0) { /* Lanes: the current lane's range */
 		const bool laneManual = !view->laneYAuto(lane);
-		if (yMin_->text().trimmed() == yFieldText(view->laneYLo(lane), laneManual)
-				&& yMax_->text().trimmed() == yFieldText(view->laneYHi(lane), laneManual))
+		if (yMin_->text().trimmed() == yFieldShown(yMin_, view->laneYLo(lane), laneManual)
+				&& yMax_->text().trimmed() == yFieldShown(yMax_, view->laneYHi(lane), laneManual))
 			return; /* no change */
 		if (low > high) std::swap(low, high);
 		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
@@ -2037,8 +2053,8 @@ void ChartTab::applyYFields() {
 		return;
 	}
 	const bool manual = !chart_->yAuto();
-	if (yMin_->text().trimmed() == yFieldText(chart_->yLo(), manual)
-			&& yMax_->text().trimmed() == yFieldText(chart_->yHi(), manual))
+	if (yMin_->text().trimmed() == yFieldShown(yMin_, chart_->yLo(), manual)
+			&& yMax_->text().trimmed() == yFieldShown(yMax_, chart_->yHi(), manual))
 		return; /* no change */
 	if (low > high) std::swap(low, high);
 	if (high - low < 1e-12) high = chart_->yLog() ? low * 10 : low + 1;

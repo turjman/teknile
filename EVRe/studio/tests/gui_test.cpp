@@ -540,6 +540,7 @@ public:
 		chartFollowsFrames();
 		cursorSpanBar();
 		chartReadouts();
+		chartSmallTexts();
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
@@ -6757,6 +6758,52 @@ private:
 		check(popped && hidden && kept && back, "chart, Measure: a right-click on the header lists the columns; Std dev "
 				"unticked hides it, kept for the next start (chart/measureColumns), ticked shows it again");
 		measure->setChecked(false);
+		chart.tab.hide();
+	}
+
+	/* small texts seen in the docs' pictures: a line without a unit has its areas in s and h (a plain number times a
+	 * time is a time), not "·s" and "·h" with nothing before the dot; a Y box too narrow for its value shows it with
+	 * fewer digits (2.53e6), never cut at its left edge ("3001e+06"), and the same text typed again changes nothing */
+	void chartSmallTexts() {
+		QSettings().remove(QStringLiteral("chart/measureColumns"));
+		LoneChart chart(QStringLiteral("COUNT"), QString());
+		MathLines::Samples samples;
+		for (int i = 0; i <= 1000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 100.0, 2.0);
+		chart.tab.frame(samples);
+		chart.view->setCursors(91, 95);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		if (measure) measure->setChecked(true);
+		measured(chart.view);
+		const QString area = chart.cell(ChartTab::ColArea), hours = chart.cell(ChartTab::ColAreaHours),
+				total = chart.cell(ChartTab::ColTotal);
+		std::printf("     (a line without a unit: area \"%s\", over hours \"%s\", since Clear \"%s\")\n", qPrintable(area),
+				qPrintable(hours), qPrintable(total));
+		check(measure && area == QLatin1String("8.000 s") && hours.endsWith(QLatin1String(" h"))
+						&& total.endsWith(QLatin1String(" h")) && !(area + hours + total).contains(QChar(0x00B7)),
+				"chart, Measure: a line without a unit has its areas in s and h (\"8.000 s\"), no \"·s\" or \"·h\"");
+
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *yMax = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		bool fits = false, close = false, kept = false;
+		QString shown;
+		if (yMax) {
+			const double big = 2530010.7;
+			yMax->setText(QStringLiteral("2530010.7"));
+			emit yMax->editingFinished();
+			shown = yMax->text();
+			const QMargins margins = yMax->textMargins();
+			const int frame = yMax->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, yMax);
+			const int room = yMax->width() - 2 * frame - 4 - margins.left() - margins.right();
+			fits = yMax->fontMetrics().horizontalAdvance(shown) <= room;
+			close = std::fabs(QLocale::c().toDouble(shown) - big) < 0.01 * big;
+			emit yMax->editingFinished(); /* its own text again: the range as set, not rounded to it */
+			kept = chart.view->yHi() == big && yMax->text() == shown;
+		}
+		std::printf("     (Y max 2530010.7 in its box: \"%s\")\n", qPrintable(shown));
+		check(yMax && fits && close && kept, "chart, Y range: a value too long for its box (2530010.7) is shown with fewer "
+				"digits that fit (2.53e6), never cut at the box's left edge; the same text again changes nothing");
+		if (measure) measure->setChecked(false);
 		chart.tab.hide();
 	}
 
@@ -13124,6 +13171,12 @@ private:
 		std::printf("     (held on T: the box's time \"%s\", %.3f ms expected)\n", qPrintable(heldBox), expectedMs);
 		check(boxFromT, "chart, times from T: held on a trigger's crossing, the hover box says how far from T the mouse is "
 				"(\"T +1.000 ms\") beside its clock time");
+		/* a hair before T: "T +0.000 ms", as at T itself; a negative zero ("T -0.000 ms") is no place */
+		const QString hairBefore = view->fromTText(crossing - (h1 - h0) * 1e-6);
+		std::printf("     (a hair before T: \"%s\")\n", qPrintable(hairBefore));
+		check(hairBefore == view->fromTText(crossing) && hairBefore.contains(QLatin1String("T +0.000 ms"))
+						&& !hairBefore.contains(QLatin1String("-0.000")),
+				"chart, times from T: a hair before T reads \"T +0.000 ms\", never a negative zero");
 
 		/* the cursors 0.25 ms before T and 1.75 ms after: their tags' tooltips and the measure line from T */
 		{ /* the mouse off the chart: the hover box gone from the cursors' picture */
