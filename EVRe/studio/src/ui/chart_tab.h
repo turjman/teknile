@@ -207,6 +207,11 @@ public:
 	/* a note at `time`: its text asked for (empty: none) */
 	void addNoteAt(double time);
 	void editNote(int index); /* its text asked for again; emptied: removed */
+	/* A File button ("File ▾", objectName name): Copy picture, Save picture…, Export to CSV…, Open recording… and the
+	 * recent recordings, the right-click's own actions, so none is reached by a right-click alone (a note needs a
+	 * place on the chart: the right-click keeps Add note here, the tooltip says so). The recording's window puts one
+	 * beside its Lines; its menu made again each time it opens */
+	QPushButton *makeFileButton(const char *name);
 	/* the chart's menu at a place on the screen, `time` under it (a right-click); tests: the menu, built at each
 	 * right-click */
 	void showChartMenu(const QPoint &globalPos, double time);
@@ -301,6 +306,7 @@ private:
 	QString group_;               /* the settings' group: "chart", or a recording's */
 	std::function<double()> clock_;
 	bool recording_ = false;
+	double recordingSpan_ = 0;    /* a recording's: its first to its last time, as its title says */
 	ChartWidget *chart_;
 	QHBoxLayout *axesRow_ = nullptr; /* Window, Memory, RAM, the Y range (buildAxesRow) */
 	QHBoxLayout *noteRow_ = nullptr; /* under it: the note beside RAM when the row has no room for it */
@@ -346,6 +352,7 @@ private:
 	QComboBox *ram_;              /* the samples' RAM, all the lines together */
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
+	QPushButton *fileButton_ = nullptr; /* File ▾ (makeFileButton); a recording's window has its own beside Lines */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
@@ -383,7 +390,11 @@ private:
 	QVector<int> measuredKeys_;   /* the lines measured last: while the same, the columns only grow */
 	QMenu *measureColumns_;       /* the header's right-click: a tick per column */
 
-	/* the right-click on the chart */
+	/* the right-click on the chart, and the File button's menu: the same actions */
+	void fillFileMenu(QMenu *menu);
+	void askSavePicture();   /* Save picture…: a file asked for, the Log says where */
+	void askExportCsv();     /* Export to CSV…: a file asked for */
+	QString exportTip() const; /* what Export to CSV takes now: the view, or A -> B */
 	QMenu *chartMenu_ = nullptr;
 	QMenu *laneMenu_ = nullptr;
 	QMenu *lineMenu_ = nullptr;

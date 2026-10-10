@@ -32,6 +32,8 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QSplitter>
+#include <QFileDialog>
 #include <QContextMenuEvent>
 #include <QDir>
 #include <QDropEvent>
@@ -2612,7 +2614,7 @@ private:
 	 *  - Normalise at 10 ms at the CSV's end: a register polled every 10 ms or slower has one sample there; its range
 	 *    takes its value at the view's edge too, so the piece from the edge to that sample is drawn in the plot, not
 	 *    from far below it;
-	 *  - held and still it paints nothing, and the info line says "idle", not the frames of its last change */
+	 *  - held and still it paints nothing, and the info line has no frame rate (V-1: frames come only on a change) */
 	void recordedFastEnds(RecordingWindow *w, const QString &csv) {
 		check(w && !w->fastRecordings().isEmpty() && w->fastRecordings()[0].store
 						&& w->fastRecordings()[0].store->size() > 1000000,
@@ -2707,7 +2709,7 @@ private:
 			Theme::apply(*qApp, true);
 		}
 		if (normalise) normalise->setChecked(false);
-		/* held and still: no paint, the info line says idle; painted, the frames again */
+		/* held and still: no paint; the info line without a frame rate, still or painting */
 		v->repaint();
 		const int paints = v->paints(), binnings = v->binnings();
 		QTest::qWait(1500);
@@ -2718,10 +2720,10 @@ private:
 		const QString painting = w->chartTab()->infoText();
 		std::printf("  held and still for 1.5 s: %d paints, \"%s\"; 10 paints later \"%s\", %d binnings\n", idlePaints,
 				qPrintable(idle), qPrintable(painting), v->binnings() - binnings);
-		check(idlePaints == 0 && idle.contains(QStringLiteral(" · idle")) && !idle.contains(QLatin1String(" fps"))
-						&& painting.contains(QLatin1String(" fps")) && v->binnings() == binnings,
-				"fast recording, a held 10 ms view of it: nothing painted while nothing changes and the info line says "
-				"\"idle\" (not the frames of its last change); painted again, its frames counted, its lines reused (no "
+		check(idlePaints == 0 && !idle.contains(QLatin1String(" idle")) && !idle.contains(QLatin1String(" fps"))
+						&& !painting.contains(QLatin1String(" fps")) && v->paints() >= paints + 10 && v->binnings() == binnings,
+				"fast recording, a held 10 ms view of it: nothing painted while nothing changes, and no frame rate on the "
+				"info line, still or painting (frames come only on a change); painted again, its lines reused (no "
 				"binning)");
 	}
 
@@ -14391,6 +14393,326 @@ private:
 		QSettings().remove(QStringLiteral("recording/drawing"));
 	}
 
+	/* V-8: a drag of the splitter's handle between the chart and the measurements, by dy px (the mouse's events on the
+	 * handle, as a person's drag sends them) */
+	static void dragSplitHandle(QSplitterHandle *handle, int dy) {
+		const QPoint from = handle->rect().center(), to = from + QPoint(0, dy);
+		QMouseEvent press(QEvent::MouseButtonPress, QPointF(from), QPointF(handle->mapToGlobal(from)), Qt::LeftButton,
+				Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(handle, &press);
+		QMouseEvent move(QEvent::MouseMove, QPointF(to), QPointF(handle->mapToGlobal(to)), Qt::NoButton, Qt::LeftButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(handle, &move);
+		QMouseEvent release(QEvent::MouseButtonRelease, QPointF(to), QPointF(handle->mapToGlobal(to)), Qt::LeftButton,
+				Qt::NoButton, Qt::NoModifier);
+		QApplication::sendEvent(handle, &release);
+		QApplication::processEvents();
+	}
+
+	/* the rows of the measure table in view, whole */
+	static int measureRowsShown(QWidget *tab) {
+		auto *table = tab ? tab->findChild<QTableWidget *>(QStringLiteral("measures")) : nullptr;
+		if (!table || !table->isVisible()) return 0;
+		return table->viewport()->height() / std::max(1, table->verticalHeader()->defaultSectionSize());
+	}
+
+	/* V-8 in one tab: the handle seen (a grip, lit under the mouse, the resize cursor, a tooltip), dragged up, its place
+	 * saved under the tab's settings; reopen() makes the tab again (a new window or tab) to see it restored */
+	bool splitterWorks(QWidget *tab, const QString &key, const char *where, int &rowsBefore, int &rowsAfter,
+			const std::function<QWidget *()> &reopen) {
+		auto *split = tab ? tab->findChild<QSplitter *>(QStringLiteral("chartSplit")) : nullptr;
+		if (!split || split->count() != 2) return false;
+		QSplitterHandle *handle = split->handle(1);
+		const QImage plain = handle->grab().toImage();
+		QEnterEvent enter(QPointF(handle->rect().center()), QPointF(handle->rect().center()),
+				QPointF(handle->mapToGlobal(handle->rect().center())));
+		QApplication::sendEvent(handle, &enter);
+		const QImage lit = handle->grab().toImage();
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(handle, &leave);
+		const bool seen = handle->height() >= 7 && plain != lit && !handle->toolTip().isEmpty()
+				&& handle->cursor().shape() == Qt::SplitVCursor;
+		QSettings().remove(key);
+		rowsBefore = measureRowsShown(tab);
+		const int chartBefore = split->sizes().value(0);
+		dragSplitHandle(handle, -160);
+		rowsAfter = measureRowsShown(tab);
+		const QList<int> moved = split->sizes();
+		const bool saved = QSettings().value(key).toByteArray() == split->saveState();
+		QWidget *again = reopen();
+		auto *other = again ? again->findChild<QSplitter *>(QStringLiteral("chartSplit")) : nullptr;
+		const QList<int> restored = other ? other->sizes() : QList<int>();
+		/* a new tab of another height shares the difference by the stretch factors (4:1): the table's part of it */
+		const int slack = 4 + std::abs((restored.value(0) + restored.value(1)) - (moved.value(0) + moved.value(1)));
+		const bool back = restored.size() == 2 && std::abs(restored[1] - moved[1]) <= slack;
+		std::printf("  %s's splitter: handle %d px high, lit %d, tooltip %d; the chart %d -> %d px, the table's rows %d -> %d; "
+				"saved %d, a new one %d/%d (moved %d/%d)\n", where, handle->height(), int(plain != lit),
+				int(!handle->toolTip().isEmpty()), chartBefore, moved.value(0), rowsBefore, rowsAfter, int(saved),
+				restored.value(0), restored.value(1), moved.value(0), moved.value(1));
+		return seen && moved.value(0) <= chartBefore - 150 && saved && back;
+	}
+
+	/* A File ▾ button (V-4): its menu's four actions do what the chart's right-click does: a picture on the clipboard and
+	 * in a file, the samples exported, a recording opened (the file dialogs Qt's own here, so a step can answer
+	 * them). True when all four did; what each did is printed */
+	bool fileButtonWorks(ChartTab *tab, QPushButton *button, const QString &folder, const QString &recording,
+			const char *where) {
+		if (!tab || !button || !button->menu()) return false;
+		emit button->menu()->aboutToShow();
+		const auto action = [&](const char *name) { return button->menu()->findChild<QAction *>(QLatin1String(name)); };
+		QAction *copy = action("fileCopyPicture"), *save = action("fileSavePicture"), *exportCsv = action("fileExportCsv"),
+				*openFile = action("fileOpenRecording");
+		bool recent = false;
+		for (QAction *item : button->menu()->actions())
+			if (item->menu() && item->text() == QLatin1String("Recent recordings")) recent = true;
+		if (!copy || !save || !exportCsv || !openFile) {
+			std::printf("     (%s: the File menu lacks an action)\n", where);
+			return false;
+		}
+		const QVariant recentBefore = QSettings().value(QStringLiteral("recording/recent")); /* the export joins it */
+		QApplication::clipboard()->clear();
+		copy->trigger();
+		const QImage copied = QApplication::clipboard()->image();
+		const QSize shown = tab->picture().size();
+		const bool nativeBefore = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+		QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, true);
+		const auto answer = [](const QString &file) {
+			return [file](QDialog *dialog) {
+				if (auto *files = qobject_cast<QFileDialog *>(dialog)) {
+					files->selectFile(file);
+					/* selectFile fills the name box later (its folder read first): the name typed, as a person would */
+					if (auto *name = files->findChild<QLineEdit *>(QStringLiteral("fileNameEdit"))) name->setText(file);
+					dialog->accept(); /* QDialog's: QFileDialog's own is protected */
+				}
+			};
+		};
+		const QString png = folder + QStringLiteral("/file_%1.png").arg(QLatin1String(where));
+		const bool saveAsked = fillDialog(answer(png), [&] { save->trigger(); });
+		const QImage saved(png);
+		const QString csv = folder + QStringLiteral("/file_%1.csv").arg(QLatin1String(where));
+		const bool exportAsked = fillDialog(answer(csv), [&] { exportCsv->trigger(); });
+		(void) QTest::qWaitFor([&] { return !tab->exporting(); }, 10000);
+		QFile exported(csv);
+		const QByteArray head = exported.open(QIODevice::ReadOnly) ? exported.readLine() : QByteArray();
+		const qsizetype windowsBefore = RecordingWindow::windows().size();
+		const bool openAsked = fillDialog(answer(recording), [&] { openFile->trigger(); });
+		const bool opened = QTest::qWaitFor([&] { return RecordingWindow::windows().size() > windowsBefore; }, 5000);
+		QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, nativeBefore);
+		if (opened) delete RecordingWindow::windows().last();
+		QSettings().setValue(QStringLiteral("recording/recent"), recentBefore);
+		std::printf("  %s's File menu: copied %dx%d (the chart %dx%d), saved %dx%d, exported \"%s\", a recording opened %d, "
+				"recent %d\n", where, copied.width(), copied.height(), shown.width(), shown.height(), saved.width(),
+				saved.height(), head.trimmed().left(60).constData(), int(opened), int(recent));
+		return copied.size() == shown && saveAsked && saved.size() == shown && exportAsked
+				&& head.startsWith("time_s,datetime,") && openAsked && opened && recent;
+	}
+
+	/* The recording's window as the owner decided it (V-1 to V-8): no frame rate in its info line, the totals over the
+	 * whole file, the legend's values the view's, the focus on the chart, no Smooth; the live Chart tab as it was */
+	void recordingDecisions(const QString &path) {
+		const QVariant measureBefore = QSettings().value(QStringLiteral("recording/measure"));
+		QSettings().setValue(QStringLiteral("recording/measure"), true);
+		RecordingWindow::closeAll();
+		RecordingWindow *opened = nullptr;
+		RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { opened = w; });
+		(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+		auto *live = window_.findChild<ChartTab *>();
+		if (!opened || !live) {
+			check(false, "recording's window, the owner's decisions: opened");
+			return;
+		}
+		(void) QTest::qWaitForWindowExposed(opened);
+		ChartTab *tab = opened->chartTab();
+		ChartView *view = tab->view();
+		QTest::qWait(300);
+
+		/* V-1: no frame rate; the lines, the paint time and who draws stay */
+		const QString info = tab->infoText(), liveInfo = live->infoText();
+		std::printf("  the info lines: recording \"%s\", Chart tab \"%s\"\n", qPrintable(info), qPrintable(liveInfo));
+		check(!info.contains(QLatin1String("fps")) && !info.contains(QLatin1String("idle"))
+						&& info.contains(QLatin1String(" ms")) && (info.endsWith(QLatin1String("CPU")) || info.endsWith(QLatin1String("GPU")))
+						&& !tab->infoTip().contains(QLatin1String("frames drawn"))
+						&& (liveInfo.contains(QLatin1String(" fps")) || liveInfo.contains(QLatin1String(" idle"))),
+				"recording's window: no frame rate in its info line (the lines, the paint time and who draws kept); the "
+				"Chart tab's keeps its fps");
+
+		/* V-2: the totals over the whole file */
+		auto *table = tab->findChild<QTableWidget *>(QStringLiteral("measures"));
+		auto *liveTable = live->findChild<QTableWidget *>(QStringLiteral("measures"));
+		auto *measured = tab->findChild<QLabel *>(QStringLiteral("measureInfo"));
+		(void) QTest::qWaitFor([&] { return measured && measured->text().contains(QLatin1String("totals")); }, 2000);
+		const QString header = table ? table->horizontalHeaderItem(ChartTab::ColTotal)->text() : QString();
+		const QString liveHeader = liveTable ? liveTable->horizontalHeaderItem(ChartTab::ColTotal)->text() : QString();
+		const QString over = measured ? measured->text() : QString();
+		std::printf("  the totals: \"%s\" over \"%s\"; the Chart tab's \"%s\"\n", qPrintable(header), qPrintable(over),
+				qPrintable(liveHeader));
+		check(header == QLatin1String("Whole file") && over.contains(QStringLiteral(" · totals over the file (59.9 s)"))
+						&& !over.contains(QLatin1String("since")) && liveHeader == QLatin1String("Since Clear"),
+				"recording's window: the totals' column reads \"Whole file\" and the line over the table \"totals over the "
+				"file (59.9 s)\"; the Chart tab keeps \"Since Clear\"");
+
+		/* V-5: the legend's values are the view's latest samples: zoomed into the first half, 14.99 V, not the file's
+		 * last 17.99 V */
+		const int volts = int(regKey(opened->definitions().value(0)));
+		const QString whole = view->legendValue(volts);
+		tab->showSpan(opened->firstTime(), (opened->firstTime() + opened->lastTime()) / 2);
+		const int paints = view->paints();
+		(void) QTest::qWaitFor([&] { return view->paints() > paints; }, 1000);
+		const QString half = view->legendValue(volts);
+		const QImage chips = view->grab().toImage();
+		tab->showSpan(opened->firstTime(), opened->lastTime());
+		std::printf("  the legend's value: \"%s\" over the file, \"%s\" over its first half\n", qPrintable(whole),
+				qPrintable(half));
+		check(whole == QLatin1String("18.0") && half == QLatin1String("15.0") && !chips.isNull(),
+				"recording's window: the legend shows each line's latest sample in the view (zoomed into the first half: "
+				"its value at the view's end, not the file's last)");
+
+		/* V-6: the keys go to the chart */
+		check(opened->focusWidget() == view, "recording's window: the focus on the chart at open (no text cursor in the "
+				"Window box)");
+
+		/* V-7: Smooth is not offered (always off); the Chart tab keeps it */
+		auto *smooth = tab->findChild<QAction *>(QStringLiteral("chartSmooth"));
+		auto *liveSmooth = live->findChild<QAction *>(QStringLiteral("chartSmooth"));
+		check(smooth && !smooth->isVisible() && !smooth->isChecked() && liveSmooth && liveSmooth->isVisible(),
+				"recording's window: Smooth hidden in its Display menu, as Live, Memory and RAM; the Chart tab keeps it");
+
+		/* V-4: a File ▾ button beside Lines, its four actions those of the right-click; its tooltip says how a note is
+		 * added (the right-click keeps it: a note needs its place on the chart) */
+		auto *lines = opened->findChild<QPushButton *>(QStringLiteral("recordingLines"));
+		auto *file = opened->findChild<QPushButton *>(QStringLiteral("recordingFile"));
+		const bool beside = lines && file && file->isVisible() && std::abs(file->geometry().center().y()
+				- lines->geometry().center().y()) <= 2 && file->geometry().left() > lines->geometry().right()
+				&& file->geometry().left() - lines->geometry().right() < 24;
+		const bool fileTip = file && file->text() == QLatin1String("File") && file->toolTip().contains(QLatin1String(
+				"Add note here")) && file->cursor().shape() == Qt::PointingHandCursor;
+		QTemporaryDir out;
+		const bool works = fileButtonWorks(tab, file, out.path(), path, "recording");
+		check(beside && fileTip && works, "recording's window: a File ▾ button beside Lines (a pointing hand, its tooltip "
+				"saying how a note is added): Copy picture, Save picture…, Export to CSV…, Open recording… do what the "
+				"right-click does, and the recent recordings");
+
+		/* the Chart tab's File ▾ in its actions row, right of Display (the recording's window shows its own only) */
+		auto *mainTabs = window_.findChild<QTabWidget *>();
+		const int tabBefore = mainTabs ? mainTabs->currentIndex() : 0;
+		if (mainTabs) mainTabs->setCurrentIndex(1); /* the Chart tab shown: its row laid out */
+		QTest::qWait(200);
+		auto *liveFile = live->findChild<QPushButton *>(QStringLiteral("chartFile"));
+		auto *display = live->findChild<QPushButton *>(QStringLiteral("chartDisplay"));
+		auto *hiddenThere = tab->findChild<QPushButton *>(QStringLiteral("chartFile"));
+		const bool inRow = liveFile && display && !liveFile->isHidden() && std::abs(liveFile->geometry().center().y()
+				- display->geometry().center().y()) <= 2 && liveFile->geometry().left() > display->geometry().right()
+				&& liveFile->text() == QLatin1String("File") && liveFile->toolTip() == (file ? file->toolTip() : QString())
+				&& hiddenThere && hiddenThere->isHidden();
+		const bool liveWorks = fileButtonWorks(live, liveFile, out.path(), path, "chart");
+		if (mainTabs) mainTabs->setCurrentIndex(tabBefore);
+		check(inRow && liveWorks, "Chart tab: the same File ▾ button in its actions row, right of Display, its actions "
+				"those of the right-click (a picture copied and saved, the samples exported, a recording opened)");
+
+		/* V-8: the splitter between the chart and the measurements, in the recording's window at its first size and in
+		 * the Chart tab; each kept under its own settings */
+		opened->resize(1280, 800);
+		QTest::qWait(300);
+		int rowsBefore = 0, rowsAfter = 0, liveBefore = 0, liveAfter = 0;
+		RecordingWindow *reopened = nullptr;
+		const bool recordingSplit = splitterWorks(tab, QStringLiteral("recording/measureSplit"), "recording", rowsBefore,
+				rowsAfter, [&]() -> QWidget * {
+					RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { reopened = w; });
+					(void) QTest::qWaitFor([&] { return reopened != nullptr; }, 5000);
+					if (!reopened) return nullptr;
+					reopened->resize(1280, 800);
+					(void) QTest::qWaitForWindowExposed(reopened);
+					QTest::qWait(200);
+					return reopened->chartTab();
+				});
+		check(recordingSplit && rowsAfter > 3, "recording's window: a splitter between the chart and the measure table, "
+				"its handle seen (a grip, lit under the mouse, the resize cursor, a tooltip); dragged up, more than 3 rows "
+				"of the table in view at 1280x800; its place kept (recording/measureSplit) and restored in a new window");
+		auto *splitTabs = window_.findChild<QTabWidget *>();
+		const int splitTabBefore = splitTabs ? splitTabs->currentIndex() : 0;
+		if (splitTabs) splitTabs->setCurrentIndex(1);
+		QTest::qWait(200);
+		const QVariant liveMeasure = QSettings().value(QStringLiteral("chart/measure"));
+		auto *liveMeasureButton = live->findChild<QPushButton *>(QStringLiteral("measure"));
+		const bool measureWasOn = liveMeasureButton && liveMeasureButton->isChecked();
+		if (liveMeasureButton && !measureWasOn) liveMeasureButton->click();
+		QTest::qWait(200);
+		std::unique_ptr<ChartTab> fresh;
+		const bool liveSplit = splitterWorks(live, QStringLiteral("chart/measureSplit"), "Chart tab", liveBefore, liveAfter,
+				[&]() -> QWidget * {
+					fresh = std::make_unique<ChartTab>([] { return 0.0; });
+					fresh->resize(live->size());
+					fresh->show();
+					(void) QTest::qWaitForWindowExposed(fresh.get());
+					QTest::qWait(200);
+					return fresh.get();
+				});
+		fresh.reset();
+		if (liveMeasureButton && !measureWasOn) liveMeasureButton->click();
+		if (liveMeasure.isValid()) QSettings().setValue(QStringLiteral("chart/measure"), liveMeasure);
+		else QSettings().remove(QStringLiteral("chart/measure"));
+		QSettings().remove(QStringLiteral("chart/measureSplit"));
+		if (splitTabs) splitTabs->setCurrentIndex(splitTabBefore);
+		check(liveSplit, "Chart tab: the same splitter, its place kept apart (chart/measureSplit) and restored in a new tab");
+
+		/* EVRE_TEST_SHOT: the Chart tab and the recording's window with File ▾ and the splitter's handle (lit, as under
+		 * the mouse), its menu open, in each language and theme, for a look */
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const QVariant chartMeasure = QSettings().value(QStringLiteral("chart/measure"));
+			QSettings().setValue(QStringLiteral("chart/measure"), true);
+			const auto lightHandle = [](QWidget *on) {
+				auto *split = on->findChild<QSplitter *>(QStringLiteral("chartSplit"));
+				if (!split) return;
+				QSplitterHandle *handle = split->handle(1);
+				QEnterEvent enter(QPointF(handle->rect().center()), QPointF(handle->rect().center()),
+						QPointF(handle->mapToGlobal(handle->rect().center())));
+				QApplication::sendEvent(handle, &enter);
+			};
+			for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+				language::apply(*qApp, code);
+				for (const bool dark : { true, false }) {
+					Theme::apply(*qApp, dark);
+					const QString name = code + (dark ? QStringLiteral("_dark") : QStringLiteral("_light"));
+					{
+						ChartTab chart([] { return 0.0; });
+						chart.resize(1280, 760);
+						chart.show();
+						(void) QTest::qWaitForWindowExposed(&chart);
+						lightHandle(&chart);
+						QTest::qWait(300);
+						chart.grab().save(prefix + QStringLiteral("_charttab_") + name + QStringLiteral(".png"));
+					}
+					RecordingWindow *shown = nullptr;
+					RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { shown = w; });
+					(void) QTest::qWaitFor([&] { return shown != nullptr; }, 5000);
+					if (!shown) continue;
+					shown->resize(1280, 800);
+					(void) QTest::qWaitForWindowExposed(shown);
+					lightHandle(shown);
+					QTest::qWait(600);
+					shown->grab().save(prefix + QStringLiteral("_recording_") + name + QStringLiteral(".png"));
+					if (auto *button = shown->findChild<QPushButton *>(QStringLiteral("recordingFile")); button && button->menu()) {
+						button->menu()->popup(button->mapToGlobal(QPoint(0, button->height())));
+						QTest::qWait(300);
+						button->menu()->grab().save(prefix + QStringLiteral("_filemenu_") + name + QStringLiteral(".png"));
+						button->menu()->hide();
+					}
+					delete shown;
+				}
+			}
+			language::apply(*qApp, QStringLiteral("en"));
+			Theme::apply(*qApp, true);
+			if (chartMeasure.isValid()) QSettings().setValue(QStringLiteral("chart/measure"), chartMeasure);
+			else QSettings().remove(QStringLiteral("chart/measure"));
+		}
+
+		RecordingWindow::closeAll();
+		QSettings().remove(QStringLiteral("recording/measureSplit"));
+		if (measureBefore.isValid()) QSettings().setValue(QStringLiteral("recording/measure"), measureBefore);
+		else QSettings().remove(QStringLiteral("recording/measure"));
+	}
+
 	void recordingWindows() {
 		QTemporaryDir folder;
 		const QString path = folder.filePath(QStringLiteral("bench.csv"));
@@ -14450,6 +14772,7 @@ private:
 		check(math && notes, "recording window: a math line of its own (recording/math) computed from the file; the notes "
 				"beside it shown");
 		recordingViewer(path);
+		recordingDecisions(path);
 		recordingWindowPictures(path, QStringLiteral("regs"));
 		/* (closed by the revisit's checks: opened again for the rest) */
 		opened = nullptr;

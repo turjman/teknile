@@ -417,8 +417,8 @@ from min/max summaries, so they cost no more than short ones.</p>
 <b>B</b>, <b>B − A</b>, and over A → B (or over the view without cursors) the <b>min</b>, <b>max</b>, <b>mean</b>,
 <b>RMS</b>, the <b>standard deviation</b> (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
 <b>peak to peak</b> and the <b>area under the line</b> (∫ value dt, by trapezoids between the samples): a power in
-<b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. The splitter above the
-table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
+<b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. Drag the handle
+between the chart and the table (a grip, lit under the mouse) for more rows or a taller chart; its place is kept. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
 <p><b>Since Clear</b>: each line's total since the chart's <b>Clear</b>, in Wh, Ah or unit·h, summed from every sample
 as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
 nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
@@ -478,7 +478,9 @@ of that stream, a register in it held at its last polled value: see <i>Fast stre
 <p><b>● Record CSV</b> asks for a file, then writes one row per poll (one per frame with <i>Auto send</i>):
 <code>time_s</code> (since start), <code>datetime</code>, then every register ticked <b>Log</b> (all by default), as
 the values shown (scaled). Columns are fixed when the recording starts. <b>■ Stop recording</b> closes the file.</p>
-<h3>Right-click on the chart</h3>
+<h3>Right-click on the chart, and File ▾</h3>
+<p>The same items but <b>Add note here</b> are on the <b>File ▾</b> button (right of <b>Display</b>; beside
+<b>Lines</b> in a recording's window). A note needs its place: right-click the chart where it goes.</p>
 <ul>
 <li><b>Copy picture</b>, <b>Save picture…</b> (PNG): the chart as shown, drawn by the CPU.</li>
 <li><b>Export to CSV…</b>: the samples of every line over the view, or between the cursors A → B when both are
@@ -488,7 +490,9 @@ double-click it to edit, click it and press <b>Delete</b> to remove it. While re
 the file (<code>run.csv.notes.json</code>), and an export takes the notes of its span.</li>
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
-own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
+own; the live chart goes on. There the legend shows each line's latest value <i>in the view</i> (zoomed into a part,
+that part's), the info line has no fps (the chart is drawn only on a change), and the totals' column reads <b>Whole
+file</b>: there is no Clear. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
 registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
 line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
 they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields. A recent
@@ -692,7 +696,8 @@ division); the mouse on a cursor's tag: its time (from T while the trigger holds
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or
 handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
-<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
+<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording (all but the note on
+<b>File ▾</b> too)</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>

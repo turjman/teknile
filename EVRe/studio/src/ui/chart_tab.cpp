@@ -26,6 +26,7 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMetaMethod>
+#include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
@@ -226,6 +227,54 @@ private:
 	bool two_ = false;
 };
 
+/* The handle between the chart and the measurements: the style sheet's handles are transparent, and an empty gap was
+ * not seen as something to drag. A line across with a grip in its middle; under the mouse a highlight, the grip in the
+ * accent colour (the resize cursor is the splitter's own) */
+class MeasureSplitHandle : public QSplitterHandle {
+public:
+	MeasureSplitHandle(Qt::Orientation orientation, QSplitter *parent) : QSplitterHandle(orientation, parent) {
+		setAttribute(Qt::WA_Hover);
+	}
+	bool lit() const { return lit_; }
+
+protected:
+	bool event(QEvent *event) override {
+		if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+			lit_ = event->type() == QEvent::Enter;
+			update();
+		}
+		return QSplitterHandle::event(event);
+	}
+	void paintEvent(QPaintEvent *) override {
+		const ThemeColors &c = Theme::colors();
+		QPainter p(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		const QRectF area = rect();
+		if (lit_) {
+			QColor glow = c.accent;
+			glow.setAlpha(48);
+			p.fillRect(area, glow);
+		}
+		const double y = area.center().y();
+		p.fillRect(QRectF(area.left(), y - 0.5, area.width(), 1), c.border);
+		p.setPen(Qt::NoPen);
+		p.setBrush(lit_ ? c.accent : c.muted);
+		p.drawRoundedRect(QRectF(area.center().x() - GRIP_W / 2, y - 1.5, GRIP_W, 3), 1.5, 1.5);
+	}
+
+private:
+	static constexpr double GRIP_W = 36;
+	bool lit_ = false;
+};
+
+class MeasureSplitter : public QSplitter {
+public:
+	using QSplitter::QSplitter;
+
+protected:
+	QSplitterHandle *createHandle() override { return new MeasureSplitHandle(orientation(), this); }
+};
+
 } // namespace
 
 ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
@@ -244,14 +293,22 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	const qint64 epoch = QDateTime::currentMSecsSinceEpoch() - qint64(std::llround(clock() * 1000.0));
 	chart_->setClock(std::move(clock), epoch);
 
-	/* the measurements under the chart: the splitter between them moves */
-	auto *split = new QSplitter(Qt::Vertical);
+	/* the measurements under the chart: the splitter between them moves, its place kept under the tab's own settings
+	 * (the Chart tab's and a recording's window's apart) */
+	auto *split = new MeasureSplitter(Qt::Vertical);
+	split->setObjectName(QStringLiteral("chartSplit"));
 	split->addWidget(chart_);
 	split->addWidget(buildMeasurements());
 	split->setStretchFactor(0, 4);
 	split->setStretchFactor(1, 1);
 	split->setChildrenCollapsible(false);
+	split->setHandleWidth(9);
 	split->setSizes({ 600, 170 });
+	split->handle(1)->setToolTip(tr("Drag: the room of the chart and of the measurements under it (kept)"));
+	const QByteArray splitAt = QSettings().value(settingKey("measureSplit")).toByteArray();
+	if (!splitAt.isEmpty()) split->restoreState(splitAt);
+	connect(split, &QSplitter::splitterMoved, this,
+			[this, split] { QSettings().setValue(settingKey("measureSplit"), split->saveState()); });
 	layout->addWidget(split, 1);
 
 	connectControls();
@@ -581,6 +638,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 				adapter.dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
 	addChoice(tr("CPU"), ChartView::Drawing::Cpu);
 	setButtonMenu(displayButton_, displayMenu);
+	fileButton_ = makeFileButton("chartFile");
 	auto *row = new QHBoxLayout;
 	row->setSpacing(6);
 	row->addWidget(holdButton_);
@@ -591,6 +649,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	row->addWidget(mathButton_);
 	row->addSpacing(12);
 	row->addWidget(displayButton_);
+	row->addWidget(fileButton_);
 	row->addSpacing(12);
 	row->addWidget(chartInfo_, 1); /* the room the buttons leave */
 	row->addSpacing(12);
@@ -950,11 +1009,12 @@ void ChartTab::restoreSettings() {
 
 void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int columns) {
 	recording_ = true;
+	recordingSpan_ = t1 - t0;
 	chart_->view()->setRecording(true);
 	chart_->setClock(clock_, epochMs);
 	/* nothing comes after the file: no Live, no memory to set, nothing to clear */
 	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, olderLabel_,
-				older_, ramNeed_, clearButton_, removeAllButton_ })
+				older_, ramNeed_, clearButton_, removeAllButton_, fileButton_ /* its own beside Lines */ })
 		w->hide();
 	chart_->view()->setFastSummaries(false); /* its file is mapped whole: every record kept */
 	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
@@ -965,8 +1025,14 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 		const QSignalBlocker quiet(smooth_);
 		smooth_->setChecked(false);
 	}
-	smooth_->setEnabled(false);
+	smooth_->setVisible(false); /* always off: nothing comes late to a file */
 	chart_->setSmooth(false);
+	/* no Clear to count from: the totals are the whole file's (the same sums, from its first sample) */
+	measures_->horizontalHeaderItem(ColTotal)->setText(tr("Whole file"));
+	measures_->horizontalHeaderItem(ColTotal)->setToolTip(tr("The area under the line over the whole file, in hours "
+			"(W → Wh, A → Ah), whatever part is in view. A gap of more than 1 s between two samples is not bridged."));
+	for (QAction *column : measureColumns_->actions())
+		if (column->data().toInt() == ColTotal) column->setText(tr("Whole file"));
 	trigger_->setVisible(false); /* nothing comes after the file to cross a level */
 	chart_->view()->setRamBudget(ramMB);
 	chart_->setMemory(std::max(1.0, t1 - t0));
@@ -1309,9 +1375,10 @@ QString ChartTab::infoText(int width) const {
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
 	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
-	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn */
+	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn. A
+	 * recording's window has frames only on a change: a rate says nothing there */
 	const double fps = chart_->fps();
-	parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
+	if (!recording_) parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
 	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
@@ -1330,6 +1397,11 @@ QString ChartTab::infoText(int width) const {
 }
 
 QString ChartTab::infoTip() const {
+	if (recording_)
+		return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold (the "
+				"file's columns, 64 lines at most); the math and fast lines among them; the time to draw the chart once; "
+				"and who draws the lines (GPU or CPU). A recording's chart is drawn only when something in it changes, so "
+				"no frame rate is given. When the line is narrow, the time to draw and the word \"plotted\" go first.");
 	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
 			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
 			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second "
@@ -2157,7 +2229,9 @@ QString ChartTab::measuredRangeText() const {
 		text = tr("Measured over the view: %1 s%2").arg(measureText(t1 - t0), hint);
 	}
 	const double since = view->totalsSince();
-	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
+	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal) && recording_) /* no Clear: the whole file */
+		text += tr(" · totals over the file (%1)").arg(durationText(recordingSpan_));
+	else if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
 		const QDateTime at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(since * 1000)));
 		text += tr(" · totals since %1 (%2)").arg(at.toString(QStringLiteral("HH:mm:ss")),
 				durationText(std::max(0.0, view->timeNow() - since)));
@@ -2357,25 +2431,9 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 	chartMenu_->setObjectName(QStringLiteral("chartMenu"));
 	chartMenu_->setToolTipsVisible(true);
 	chartMenu_->addAction(tr("Copy picture"), this, &ChartTab::copyPicture);
-	chartMenu_->addAction(tr("Save picture…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
-		if (file.isEmpty()) return;
-		if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
-		else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
-	});
-	double t0, t1;
-	bool cursors;
-	chart_->view()->range(t0, t1, cursors);
-	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
-		if (!file.isEmpty()) exportCsv(file);
-	});
-	exportAction->setToolTip(cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
-			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)"));
+	chartMenu_->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture);
+	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setToolTip(exportTip());
 	exportAction->setEnabled(!job_);
 	chartMenu_->addAction(tr("Add note here"), this, [this, time] { addNoteAt(time); });
 	chartMenu_->addSeparator();
@@ -2384,6 +2442,63 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 			[this](const QString &file) { emit openRecordingRequested(file); },
 			[this](const QString &text) { emit statusMessage(text, 5000); });
 	chartMenu_->popup(globalPos);
+}
+
+QPushButton *ChartTab::makeFileButton(const char *name) {
+	auto *button = new QPushButton(tr("File"));
+	button->setObjectName(QLatin1String(name));
+	button->setCursor(Qt::PointingHandCursor);
+	button->setToolTip(tr("Copy picture, Save picture…, Export to CSV… (the view, or A → B with both cursors placed), "
+			"Open recording… and the recent recordings: the same as the chart's right-click.\nA note: right-click the "
+			"chart where it goes, Add note here."));
+	auto *menu = new QMenu(button);
+	menu->setToolTipsVisible(true);
+	setButtonMenu(button, menu);
+	/* made again at each opening: the export's tooltip and state, the recent list */
+	connect(menu, &QMenu::aboutToShow, this, [this, menu] { fillFileMenu(menu); });
+	return button;
+}
+
+void ChartTab::fillFileMenu(QMenu *menu) {
+	menu->clear();
+	for (QObject *child : menu->children()) /* the recent list's submenu of the last opening */
+		if (qobject_cast<QMenu *>(child)) child->deleteLater();
+	menu->addAction(tr("Copy picture"), this, &ChartTab::copyPicture)->setObjectName(QStringLiteral("fileCopyPicture"));
+	menu->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture)->setObjectName(QStringLiteral("fileSavePicture"));
+	QAction *exportAction = menu->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setObjectName(QStringLiteral("fileExportCsv"));
+	exportAction->setToolTip(exportTip());
+	exportAction->setEnabled(!job_);
+	menu->addSeparator();
+	menu->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); })
+			->setObjectName(QStringLiteral("fileOpenRecording"));
+	RecordingWindow::fillRecentMenu(menu->addMenu(tr("Recent recordings")),
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
+}
+
+void ChartTab::askSavePicture() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
+	if (file.isEmpty()) return;
+	if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
+	else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
+}
+
+void ChartTab::askExportCsv() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
+	if (!file.isEmpty()) exportCsv(file);
+}
+
+QString ChartTab::exportTip() const {
+	double t0, t1;
+	bool cursors;
+	chart_->view()->range(t0, t1, cursors);
+	return cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
+			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)");
 }
 
 QImage ChartTab::picture() const { return chart_->view()->grab().toImage(); } /* grab(): drawn by the CPU */

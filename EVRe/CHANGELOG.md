@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### EVRe Studio
+
+- The recording's window reads right: no fps on its info line (it is drawn only on a change); the totals' column
+  reads *Whole file* and the line over the table *totals over the file (59.9 s)* (no Clear there); the legend shows
+  each line's latest sample in the view, so a part zoomed into shows its own values; the focus on the chart at open;
+  no Smooth in its Display menu.
+- A **File ▾** button (beside Lines in a recording's window, right of Display on the Chart tab): Copy picture, Save
+  picture…, Export to CSV…, Open recording… and the recent recordings, until now on the chart's right-click alone.
+- The splitter between the chart and the measure table has a handle that shows (a grip, lit under the mouse, the
+  resize cursor, a tooltip); its place is kept, the Chart tab's and a recording's window's apart.
+
 ## 1.0.0 (2026-10-09)
 
 The first public version of EVRe and the tools around it, under the Apache License 2.0.

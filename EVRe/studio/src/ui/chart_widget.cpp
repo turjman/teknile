@@ -2810,7 +2810,28 @@ void ChartView::setLegendScroll(double pixels) {
 
 QString ChartView::legendValue(int key) const {
 	const auto it = series_.constFind(key);
-	return it != series_.constEnd() && it->hasShown ? chartNumber(it->shown) : QString();
+	double value = 0;
+	return it != series_.constEnd() && chipValue(*it, viewEnd() - window_, viewEnd(), value) ? chartNumber(value)
+			: QString();
+}
+
+bool ChartView::chipValue(const Series &s, double t0, double t1, double &value) const {
+	if (recording_) return latestInView(s, t0, t1, value);
+	value = s.shown;
+	return s.hasShown;
+}
+
+bool ChartView::latestInView(const Series &s, double t0, double t1, double &value) const {
+	if (s.fast) {
+		const qsizetype k = s.fast->upperBound(t1) - 1;
+		if (k < s.fast->recordsFrom() || s.fast->timeAt(k) < t0) return false;
+		value = s.fast->value(s.channel, k);
+		return true;
+	}
+	const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
+	if (k < 0 || s.times[k] < t0) return false;
+	value = s.values[k];
+	return true;
 }
 
 /* ------------------------------------------------------------------ drawing */
@@ -5085,14 +5106,11 @@ QVector<ChartView::FoldedItem> ChartView::foldedItems(const Lane &lane, double t
 	for (int i : lane.lines) {
 		const Series &s = *byIndex[i];
 		QString value;
+		double v = 0;
 		if (live_) {
 			if (s.hasShown) value = chartNumber(s.shown);
-		} else if (s.fast) { /* the latest record in view */
-			const qsizetype k = s.fast->upperBound(t1) - 1;
-			if (k >= s.fast->recordsFrom() && s.fast->timeAt(k) >= t0) value = chartNumber(s.fast->value(s.channel, k));
-		} else {
-			const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
-			if (k >= 0 && s.times[k] >= t0) value = chartNumber(s.values[k]);
+		} else if (latestInView(s, t0, t1, v)) {
+			value = chartNumber(v);
 		}
 		QString text = s.name;
 		if (!value.isEmpty()) text += QLatin1Char(' ') + value + (s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit);
@@ -5907,7 +5925,7 @@ void ChartView::drawMemoryLines(QPainter &p, const Axes &strip) const {
 }
 
 /* The legend: a chip per line across the top with its latest value (taken at
- * the values' pace by frame()), each at a fixed place beside the state. Chips
+ * the values' pace by frame(); a recording's, the latest in the view), each at a fixed place beside the state. Chips
  * that do not fit are reached with the
  * scroll bar under them; with no line yet, a hint in the plot. */
 void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
@@ -5923,8 +5941,11 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 	 * values' pace, not at every frame (drawn at every frame it took 1.3 ms at 4K) */
 	const qreal dpr = p.device()->devicePixelRatioF();
 	const QRectF area(legend.viewport.left(), LEGEND_TOP, legend.viewport.width(), LEGEND_BAR_Y + LEGEND_BAR_H + 1 - LEGEND_TOP);
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
+	QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
 			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark()).arg(hoverChip_).arg(fastStoppedGen_);
+	/* a recording's values are the view's: made again when the view moves */
+	if (recording_) key += QLatin1Char('|') + QString::number(axes.t0, 'g', 17) + QLatin1Char('|')
+			+ QString::number(axes.t1, 'g', 17);
 	if (key != legendKey_ || legendImage_.isNull()) {
 		legendKey_ = key;
 		legendBuilds_++;
@@ -5943,7 +5964,7 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 		for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
 			const QRectF chip = legend.chips[i++].translated(-offset, 0);
 			if (chip.right() >= legend.viewport.left() && chip.left() <= legend.viewport.right())
-				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_, lineStopped(it.key()));
+				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_, lineStopped(it.key()), axes.t0, axes.t1);
 		}
 		lp.setClipping(false);
 		if (legend.maxScroll() > 0) drawLegendBar(lp, legend, offset);
@@ -5956,7 +5977,7 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
  * lanes' fold button's shape), stronger while the mouse is on the chip: the whole chip opens the menu. A stopped
  * stream's line: its value (the last record's) greyed, as nothing comes after it */
 void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered,
-		bool stopped) const {
+		bool stopped, double t0, double t1) const {
 	const ThemeColors &c = Theme::colors();
 	p.setPen(Qt::NoPen);
 	p.setBrush(c.surface2);
@@ -5973,12 +5994,13 @@ void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, doubl
 	p.setPen(c.text);
 	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT - CHIP_BUTTON_W, 0);
 	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, s.name);
-	if (!s.hasShown) return;
+	double shown = 0;
+	if (!chipValue(s, t0, t1, shown)) return;
 	if (stopped) p.setPen(c.muted);
 	const QString unit = s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit;
 	const double unitW = QFontMetricsF(p.font()).horizontalAdvance(unit);
 	const QRectF value(text.right() - unitW - valueRoom, chip.top(), valueRoom, chip.height());
-	p.drawText(value, Qt::AlignVCenter | Qt::AlignRight, chartNumber(s.shown));
+	p.drawText(value, Qt::AlignVCenter | Qt::AlignRight, chartNumber(shown));
 	if (!unit.isEmpty())
 		p.drawText(QRectF(value.right(), chip.top(), unitW, chip.height()), Qt::AlignVCenter | Qt::AlignLeft, unit);
 }

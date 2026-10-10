@@ -375,6 +375,7 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 	auto *top = new QHBoxLayout;
 	top->addWidget(info_, 1);
 	top->addWidget(lines_);
+	top->addWidget(tab_->makeFileButton("recordingFile")); /* the pictures and the export, not by a right-click alone */
 	auto *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(16, 12, 16, 12);
 	layout->addLayout(top);
@@ -426,6 +427,8 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 		else open(this, other, map_, ramMB_);
 	});
 	tab_->setShown(true);
+	/* the keys to the chart (Delete removes a note clicked), not a text cursor blinking in the Window box */
+	tab_->view()->setFocus();
 	/* the info line and the Y boxes as the main window's status keeps the live chart's */
 	auto *status = new QTimer(this);
 	connect(status, &QTimer::timeout, tab_, &ChartTab::refreshStatus);
