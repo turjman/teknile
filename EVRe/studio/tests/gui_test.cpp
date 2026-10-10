@@ -32,6 +32,7 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QSplitter>
 #include <QFileDialog>
 #include <QContextMenuEvent>
 #include <QDir>
@@ -14392,6 +14393,65 @@ private:
 		QSettings().remove(QStringLiteral("recording/drawing"));
 	}
 
+	/* V-8: a drag of the splitter's handle between the chart and the measurements, by dy px (the mouse's events on the
+	 * handle, as a person's drag sends them) */
+	static void dragSplitHandle(QSplitterHandle *handle, int dy) {
+		const QPoint from = handle->rect().center(), to = from + QPoint(0, dy);
+		QMouseEvent press(QEvent::MouseButtonPress, QPointF(from), QPointF(handle->mapToGlobal(from)), Qt::LeftButton,
+				Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(handle, &press);
+		QMouseEvent move(QEvent::MouseMove, QPointF(to), QPointF(handle->mapToGlobal(to)), Qt::NoButton, Qt::LeftButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(handle, &move);
+		QMouseEvent release(QEvent::MouseButtonRelease, QPointF(to), QPointF(handle->mapToGlobal(to)), Qt::LeftButton,
+				Qt::NoButton, Qt::NoModifier);
+		QApplication::sendEvent(handle, &release);
+		QApplication::processEvents();
+	}
+
+	/* the rows of the measure table in view, whole */
+	static int measureRowsShown(QWidget *tab) {
+		auto *table = tab ? tab->findChild<QTableWidget *>(QStringLiteral("measures")) : nullptr;
+		if (!table || !table->isVisible()) return 0;
+		return table->viewport()->height() / std::max(1, table->verticalHeader()->defaultSectionSize());
+	}
+
+	/* V-8 in one tab: the handle seen (a grip, lit under the mouse, the resize cursor, a tooltip), dragged up, its place
+	 * saved under the tab's settings; reopen() makes the tab again (a new window or tab) to see it restored */
+	bool splitterWorks(QWidget *tab, const QString &key, const char *where, int &rowsBefore, int &rowsAfter,
+			const std::function<QWidget *()> &reopen) {
+		auto *split = tab ? tab->findChild<QSplitter *>(QStringLiteral("chartSplit")) : nullptr;
+		if (!split || split->count() != 2) return false;
+		QSplitterHandle *handle = split->handle(1);
+		const QImage plain = handle->grab().toImage();
+		QEnterEvent enter(QPointF(handle->rect().center()), QPointF(handle->rect().center()),
+				QPointF(handle->mapToGlobal(handle->rect().center())));
+		QApplication::sendEvent(handle, &enter);
+		const QImage lit = handle->grab().toImage();
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(handle, &leave);
+		const bool seen = handle->height() >= 7 && plain != lit && !handle->toolTip().isEmpty()
+				&& handle->cursor().shape() == Qt::SplitVCursor;
+		QSettings().remove(key);
+		rowsBefore = measureRowsShown(tab);
+		const int chartBefore = split->sizes().value(0);
+		dragSplitHandle(handle, -160);
+		rowsAfter = measureRowsShown(tab);
+		const QList<int> moved = split->sizes();
+		const bool saved = QSettings().value(key).toByteArray() == split->saveState();
+		QWidget *again = reopen();
+		auto *other = again ? again->findChild<QSplitter *>(QStringLiteral("chartSplit")) : nullptr;
+		const QList<int> restored = other ? other->sizes() : QList<int>();
+		/* a new tab of another height shares the difference by the stretch factors (4:1): the table's part of it */
+		const int slack = 4 + std::abs((restored.value(0) + restored.value(1)) - (moved.value(0) + moved.value(1)));
+		const bool back = restored.size() == 2 && std::abs(restored[1] - moved[1]) <= slack;
+		std::printf("  %s's splitter: handle %d px high, lit %d, tooltip %d; the chart %d -> %d px, the table's rows %d -> %d; "
+				"saved %d, a new one %d/%d (moved %d/%d)\n", where, handle->height(), int(plain != lit),
+				int(!handle->toolTip().isEmpty()), chartBefore, moved.value(0), rowsBefore, rowsAfter, int(saved),
+				restored.value(0), restored.value(1), moved.value(0), moved.value(1));
+		return seen && moved.value(0) <= chartBefore - 150 && saved && back;
+	}
+
 	/* A File ▾ button (V-4): its menu's four actions do what the chart's right-click does: a picture on the clipboard and
 	 * in a file, the samples exported, a recording opened (the file dialogs Qt's own here, so a step can answer
 	 * them). True when all four did; what each did is printed */
@@ -14549,7 +14609,106 @@ private:
 		check(inRow && liveWorks, "Chart tab: the same File ▾ button in its actions row, right of Display, its actions "
 				"those of the right-click (a picture copied and saved, the samples exported, a recording opened)");
 
+		/* V-8: the splitter between the chart and the measurements, in the recording's window at its first size and in
+		 * the Chart tab; each kept under its own settings */
+		opened->resize(1280, 800);
+		QTest::qWait(300);
+		int rowsBefore = 0, rowsAfter = 0, liveBefore = 0, liveAfter = 0;
+		RecordingWindow *reopened = nullptr;
+		const bool recordingSplit = splitterWorks(tab, QStringLiteral("recording/measureSplit"), "recording", rowsBefore,
+				rowsAfter, [&]() -> QWidget * {
+					RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { reopened = w; });
+					(void) QTest::qWaitFor([&] { return reopened != nullptr; }, 5000);
+					if (!reopened) return nullptr;
+					reopened->resize(1280, 800);
+					(void) QTest::qWaitForWindowExposed(reopened);
+					QTest::qWait(200);
+					return reopened->chartTab();
+				});
+		check(recordingSplit && rowsAfter > 3, "recording's window: a splitter between the chart and the measure table, "
+				"its handle seen (a grip, lit under the mouse, the resize cursor, a tooltip); dragged up, more than 3 rows "
+				"of the table in view at 1280x800; its place kept (recording/measureSplit) and restored in a new window");
+		auto *splitTabs = window_.findChild<QTabWidget *>();
+		const int splitTabBefore = splitTabs ? splitTabs->currentIndex() : 0;
+		if (splitTabs) splitTabs->setCurrentIndex(1);
+		QTest::qWait(200);
+		const QVariant liveMeasure = QSettings().value(QStringLiteral("chart/measure"));
+		auto *liveMeasureButton = live->findChild<QPushButton *>(QStringLiteral("measure"));
+		const bool measureWasOn = liveMeasureButton && liveMeasureButton->isChecked();
+		if (liveMeasureButton && !measureWasOn) liveMeasureButton->click();
+		QTest::qWait(200);
+		std::unique_ptr<ChartTab> fresh;
+		const bool liveSplit = splitterWorks(live, QStringLiteral("chart/measureSplit"), "Chart tab", liveBefore, liveAfter,
+				[&]() -> QWidget * {
+					fresh = std::make_unique<ChartTab>([] { return 0.0; });
+					fresh->resize(live->size());
+					fresh->show();
+					(void) QTest::qWaitForWindowExposed(fresh.get());
+					QTest::qWait(200);
+					return fresh.get();
+				});
+		fresh.reset();
+		if (liveMeasureButton && !measureWasOn) liveMeasureButton->click();
+		if (liveMeasure.isValid()) QSettings().setValue(QStringLiteral("chart/measure"), liveMeasure);
+		else QSettings().remove(QStringLiteral("chart/measure"));
+		QSettings().remove(QStringLiteral("chart/measureSplit"));
+		if (splitTabs) splitTabs->setCurrentIndex(splitTabBefore);
+		check(liveSplit, "Chart tab: the same splitter, its place kept apart (chart/measureSplit) and restored in a new tab");
+
+		/* EVRE_TEST_SHOT: the Chart tab and the recording's window with File ▾ and the splitter's handle (lit, as under
+		 * the mouse), its menu open, in each language and theme, for a look */
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const QVariant chartMeasure = QSettings().value(QStringLiteral("chart/measure"));
+			QSettings().setValue(QStringLiteral("chart/measure"), true);
+			const auto lightHandle = [](QWidget *on) {
+				auto *split = on->findChild<QSplitter *>(QStringLiteral("chartSplit"));
+				if (!split) return;
+				QSplitterHandle *handle = split->handle(1);
+				QEnterEvent enter(QPointF(handle->rect().center()), QPointF(handle->rect().center()),
+						QPointF(handle->mapToGlobal(handle->rect().center())));
+				QApplication::sendEvent(handle, &enter);
+			};
+			for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+				language::apply(*qApp, code);
+				for (const bool dark : { true, false }) {
+					Theme::apply(*qApp, dark);
+					const QString name = code + (dark ? QStringLiteral("_dark") : QStringLiteral("_light"));
+					{
+						ChartTab chart([] { return 0.0; });
+						chart.resize(1280, 760);
+						chart.show();
+						(void) QTest::qWaitForWindowExposed(&chart);
+						lightHandle(&chart);
+						QTest::qWait(300);
+						chart.grab().save(prefix + QStringLiteral("_charttab_") + name + QStringLiteral(".png"));
+					}
+					RecordingWindow *shown = nullptr;
+					RecordingWindow::open(nullptr, path, map_.regs, 2048, [&](RecordingWindow *w) { shown = w; });
+					(void) QTest::qWaitFor([&] { return shown != nullptr; }, 5000);
+					if (!shown) continue;
+					shown->resize(1280, 800);
+					(void) QTest::qWaitForWindowExposed(shown);
+					lightHandle(shown);
+					QTest::qWait(600);
+					shown->grab().save(prefix + QStringLiteral("_recording_") + name + QStringLiteral(".png"));
+					if (auto *button = shown->findChild<QPushButton *>(QStringLiteral("recordingFile")); button && button->menu()) {
+						button->menu()->popup(button->mapToGlobal(QPoint(0, button->height())));
+						QTest::qWait(300);
+						button->menu()->grab().save(prefix + QStringLiteral("_filemenu_") + name + QStringLiteral(".png"));
+						button->menu()->hide();
+					}
+					delete shown;
+				}
+			}
+			language::apply(*qApp, QStringLiteral("en"));
+			Theme::apply(*qApp, true);
+			if (chartMeasure.isValid()) QSettings().setValue(QStringLiteral("chart/measure"), chartMeasure);
+			else QSettings().remove(QStringLiteral("chart/measure"));
+		}
+
 		RecordingWindow::closeAll();
+		QSettings().remove(QStringLiteral("recording/measureSplit"));
 		if (measureBefore.isValid()) QSettings().setValue(QStringLiteral("recording/measure"), measureBefore);
 		else QSettings().remove(QStringLiteral("recording/measure"));
 	}

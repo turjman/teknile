@@ -26,6 +26,7 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMetaMethod>
+#include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
@@ -226,6 +227,54 @@ private:
 	bool two_ = false;
 };
 
+/* The handle between the chart and the measurements: the style sheet's handles are transparent, and an empty gap was
+ * not seen as something to drag. A line across with a grip in its middle; under the mouse a highlight, the grip in the
+ * accent colour (the resize cursor is the splitter's own) */
+class MeasureSplitHandle : public QSplitterHandle {
+public:
+	MeasureSplitHandle(Qt::Orientation orientation, QSplitter *parent) : QSplitterHandle(orientation, parent) {
+		setAttribute(Qt::WA_Hover);
+	}
+	bool lit() const { return lit_; }
+
+protected:
+	bool event(QEvent *event) override {
+		if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+			lit_ = event->type() == QEvent::Enter;
+			update();
+		}
+		return QSplitterHandle::event(event);
+	}
+	void paintEvent(QPaintEvent *) override {
+		const ThemeColors &c = Theme::colors();
+		QPainter p(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		const QRectF area = rect();
+		if (lit_) {
+			QColor glow = c.accent;
+			glow.setAlpha(48);
+			p.fillRect(area, glow);
+		}
+		const double y = area.center().y();
+		p.fillRect(QRectF(area.left(), y - 0.5, area.width(), 1), c.border);
+		p.setPen(Qt::NoPen);
+		p.setBrush(lit_ ? c.accent : c.muted);
+		p.drawRoundedRect(QRectF(area.center().x() - GRIP_W / 2, y - 1.5, GRIP_W, 3), 1.5, 1.5);
+	}
+
+private:
+	static constexpr double GRIP_W = 36;
+	bool lit_ = false;
+};
+
+class MeasureSplitter : public QSplitter {
+public:
+	using QSplitter::QSplitter;
+
+protected:
+	QSplitterHandle *createHandle() override { return new MeasureSplitHandle(orientation(), this); }
+};
+
 } // namespace
 
 ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
@@ -244,14 +293,22 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	const qint64 epoch = QDateTime::currentMSecsSinceEpoch() - qint64(std::llround(clock() * 1000.0));
 	chart_->setClock(std::move(clock), epoch);
 
-	/* the measurements under the chart: the splitter between them moves */
-	auto *split = new QSplitter(Qt::Vertical);
+	/* the measurements under the chart: the splitter between them moves, its place kept under the tab's own settings
+	 * (the Chart tab's and a recording's window's apart) */
+	auto *split = new MeasureSplitter(Qt::Vertical);
+	split->setObjectName(QStringLiteral("chartSplit"));
 	split->addWidget(chart_);
 	split->addWidget(buildMeasurements());
 	split->setStretchFactor(0, 4);
 	split->setStretchFactor(1, 1);
 	split->setChildrenCollapsible(false);
+	split->setHandleWidth(9);
 	split->setSizes({ 600, 170 });
+	split->handle(1)->setToolTip(tr("Drag: the room of the chart and of the measurements under it (kept)"));
+	const QByteArray splitAt = QSettings().value(settingKey("measureSplit")).toByteArray();
+	if (!splitAt.isEmpty()) split->restoreState(splitAt);
+	connect(split, &QSplitter::splitterMoved, this,
+			[this, split] { QSettings().setValue(settingKey("measureSplit"), split->saveState()); });
 	layout->addWidget(split, 1);
 
 	connectControls();

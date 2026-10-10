@@ -1360,6 +1360,10 @@ A note: right-click the chart where it goes, Add note here.</source>
         <translation>نسخ الصورة، حفظ الصورة…، تصدير إلى CSV… (العرض، أو A → B مع وضع المؤشرين)، فتح تسجيل… والتسجيلات الأخيرة: كما في النقر بالزر الأيمن على المخطط.
 الملاحظة: انقر بالزر الأيمن على المخطط حيث تريدها، ثم «إضافة ملاحظة هنا».</translation>
     </message>
+    <message>
+        <source>Drag: the room of the chart and of the measurements under it (kept)</source>
+        <translation>السحب: المساحة بين المخطط والقياسات تحته (تُحفظ)</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -2842,6 +2846,76 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
     </message>
     <message>
         <source>
+&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
+cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
+division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
+all fit&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
+handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
+&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
+&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
+Manual or Log tag: Auto ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
+values: Auto ·
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
+(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
+&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</source>
+        <translation>
+&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
+يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
+كلها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
+مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
+&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
+(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
+و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</translation>
+    </message>
+    <message>
+        <source>
 &lt;h2&gt;Chart &amp;amp; recording&lt;/h2&gt;
 &lt;p&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on any numeric registers (a register the map marks fixed, an ID or a setting, has no Plot box).
 The chart shows them on one time axis, with the latest value of each in the legend. Move the mouse over it to read
@@ -2942,8 +3016,8 @@ from min/max summaries, so they cost no more than short ones.&lt;/p&gt;
 &lt;b&gt;B&lt;/b&gt;, &lt;b&gt;B − A&lt;/b&gt;, and over A → B (or over the view without cursors) the &lt;b&gt;min&lt;/b&gt;, &lt;b&gt;max&lt;/b&gt;, &lt;b&gt;mean&lt;/b&gt;,
 &lt;b&gt;RMS&lt;/b&gt;, the &lt;b&gt;standard deviation&lt;/b&gt; (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
 &lt;b&gt;peak to peak&lt;/b&gt; and the &lt;b&gt;area under the line&lt;/b&gt; (∫ value dt, by trapezoids between the samples): a power in
-&lt;b&gt;W&lt;/b&gt; gives &lt;b&gt;J&lt;/b&gt; and &lt;b&gt;Wh&lt;/b&gt;, a current in &lt;b&gt;A&lt;/b&gt; gives &lt;b&gt;A·s&lt;/b&gt; and &lt;b&gt;Ah&lt;/b&gt;. The splitter above the
-table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.&lt;/p&gt;
+&lt;b&gt;W&lt;/b&gt; gives &lt;b&gt;J&lt;/b&gt; and &lt;b&gt;Wh&lt;/b&gt;, a current in &lt;b&gt;A&lt;/b&gt; gives &lt;b&gt;A·s&lt;/b&gt; and &lt;b&gt;Ah&lt;/b&gt;. Drag the handle
+between the chart and the table (a grip, lit under the mouse) for more rows or a taller chart; its place is kept. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Since Clear&lt;/b&gt;: each line&apos;s total since the chart&apos;s &lt;b&gt;Clear&lt;/b&gt;, in Wh, Ah or unit·h, summed from every sample
 as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
 nothing. The line above the table says since when: &lt;i&gt;totals since 14:03:12 (1 h 12 min)&lt;/i&gt;. A line taken off the
@@ -3109,8 +3183,7 @@ it.&lt;/li&gt;
 &lt;b&gt;B&lt;/b&gt;، و&lt;b&gt;B − A&lt;/b&gt;، وعلى A → B (أو على العرض بلا مؤشرين) &lt;b&gt;الأدنى&lt;/b&gt;، و&lt;b&gt;الأعلى&lt;/b&gt;، و&lt;b&gt;المتوسط&lt;/b&gt;،
 و&lt;b&gt;RMS&lt;/b&gt;، و&lt;b&gt;الانحراف المعياري&lt;/b&gt; (التموّج، أيًّا كان المستوى: ⁦12 V⁩ مع تموّج ⁦1 mV⁩ يُقرأ ⁦0.707 mV⁩)،
 و&lt;b&gt;قمة–قمة&lt;/b&gt; و&lt;b&gt;المساحة تحت الخط&lt;/b&gt; (∫ القيمة dt، بشبه منحرفات بين العينات): القدرة بـ
-&lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. والفاصل فوق
-الجدول يتحرك. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
+&lt;b&gt;W&lt;/b&gt; تعطي &lt;b&gt;J&lt;/b&gt; و&lt;b&gt;Wh&lt;/b&gt;، والتيار بـ&lt;b&gt;A&lt;/b&gt; يعطي &lt;b&gt;A·s&lt;/b&gt; و&lt;b&gt;Ah&lt;/b&gt;. واسحب المقبض بين المخطط والجدول (مقبض يُضاء تحت الفأرة) لصفوف أكثر أو مخطط أطول؛ ويُحفظ مكانه. بينما يُسحب مؤشر، تتبعه A وB وB − A؛ ويُقاس الباقي من جديد حين يُترك.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;منذ المسح&lt;/b&gt;: مجموع كل خط منذ &lt;b&gt;مسح&lt;/b&gt; المخطط، بـ Wh أو Ah أو unit·h، مجموعًا من كل عينة
 لحظة وصولها، فيغطي ساعات بينما تحفظ الذاكرة دقائق؛ والفجوة الأطول من ثانية بين عينتين لا تضيف
 شيئًا. السطر فوق الجدول يقول منذ متى: &lt;i&gt;المجاميع منذ 14:03:12 (⁦1 h 12 min⁩)&lt;/i&gt;. الخط المُزال عن
@@ -3180,76 +3253,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
 &lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
 &lt;/ul&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
-cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
-&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
-division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
-all fit&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
-handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
-&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
-&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
-Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
-arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
-it: 50 %&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
-Manual or Log tag: Auto ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
-values: Auto ·
-&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
-(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
-&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</source>
-        <translation>
-&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
-يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
-كلها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
-مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
-&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
-⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
-(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
-و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
 </translation>
     </message>
 </context>
