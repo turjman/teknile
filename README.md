@@ -31,7 +31,14 @@
   <a href="#documentation">Docs</a>
 </p>
 
-<p align="center"><img src="EVRe/docs/assets/studio.png" alt="EVRe Studio: live registers charted from the example device" width="900"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/hero-chart-dark.png">
+    <img src="EVRe/docs/assets/pictures/hero-chart-light.png" alt="EVRe Studio connected to the example device: the sidebar with a green Connected pill, the Chart tab with SUPPLY_V, SUPPLY_I, TEMPERATURE and the math line P in lanes, cursors A and B and the measurement table" width="900">
+  </picture>
+  <br>
+  <em>The example device, connected: three registers and a math line in lanes, cursors A and B and what they measure.</em>
+</p>
 
 ---
 
@@ -53,7 +60,7 @@ and the same throwaway script to look at them. EVRe is that protocol and that to
 
 No hardware needed: a fake device in Python plays the example map, and the Studio connects to it.
 
-**1. Get the Studio.** Download it from [Releases](#download), or build it (Qt 6.5+ with Widgets, Network,
+**1. Get the Studio.** Download it from [Releases](https://github.com/turjman/teknile/releases), or build it (Qt 6.5+ with Widgets, Network,
 SerialPort, Test and the Linguist tools; CMake 3.21+; a C++17 compiler):
 
 ```sh
@@ -77,6 +84,15 @@ EVRE_TOKEN=example-token build/EVReStudio --tcp 127.0.0.1:1210 \
 The pill turns green, the device ID appears under it, the Registers tab fills with live decoded values and the
 Chart tab is already running. Press **F1** for the built-in help. Windows notes and every option:
 [EVRe Studio's README](EVRe/studio/README.md).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/try-it-connected-dark.png">
+    <img src="EVRe/docs/assets/pictures/try-it-connected-light.png" alt="The Connection card with &quot;Connected · 127.0.0.1:1210&quot; and &quot;Device ID 0x1001&quot;, beside the live Registers table" width="700">
+  </picture>
+  <br>
+  <em>What step 3 shows: the green pill, the device ID under it and the live decoded values.</em>
+</p>
 
 ## Download
 
@@ -107,14 +123,75 @@ The Windows installer and the zip hold the command-line tools and the example ma
 
 A JSON map tells the Studio what the device holds; the Studio does the rest.
 
-**See the device**
+### See the device
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/registers-close-dark.png">
+    <img src="EVRe/docs/assets/pictures/registers-close-light.png" alt="The Registers table: addresses, names, live values with units, types and access; rw with a warning sign on CONFIG and MOTOR_SPEED" width="490">
+  </picture>
+  <br>
+  <em>Live values with their units; ⚠ marks a register that asks before a write.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/bit-view-dark.png">
+    <img src="EVRe/docs/assets/pictures/bit-view-light.png" alt="Write CONFIG and the bit view: bits 15 to 0, the AUTO_SEND prescaler field set to 79 and the flags" width="900">
+  </picture>
+  <br>
+  <em>The bit view of CONFIG: click a bit or a field to write it.</em>
+</p>
 
 - A live register table with units, decoded bit fields and enum names, search and group filters, the raw bytes
   and the value's age in a tooltip. Changed values glow; values that stop refreshing turn grey.
 - A datasheet-style bit view for quick writes: click a bit or a field, the Studio does the read-modify-write.
 - A frame monitor that shows every byte sent and received, and a log of every event, in a tab and a daily file.
 
-**Chart it like an oscilloscope**
+### Chart it like an oscilloscope
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/lanes-dark.png">
+    <img src="EVRe/docs/assets/pictures/lanes-light.png" alt="Lanes: one plot per unit, the V lane folded to a strip at the top, then A, degC, bar, % and rpm, each with a fold button and a lane menu button, separators between them and a scroll bar at the right" width="900">
+  </picture>
+  <br>
+  <em>Lanes: one plot per unit, each with its own Y range. ▾ folds a lane to a strip (V, at the top), ⋯ opens its menu, and a scroll bar shows when they do not fit.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/trigger-close-dark.png">
+    <img src="EVRe/docs/assets/pictures/trigger-close-light.png" alt="The trigger held on a rising crossing of ADC.I_LOAD: the Trigger row (Rising, level 0 A, Normal), the dashed level line and the T marker above the crossing" width="600">
+  </picture>
+  <br>
+  <em>The trigger: held on a rising crossing of the dashed level, the T marker above it.</em>
+</p>
+
+<table>
+  <tr>
+    <th width="50%">Histogram</th>
+    <th width="50%">Spectrum</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/histogram-dark.png">
+        <img src="EVRe/docs/assets/pictures/histogram-light.png" alt="Histogram of ADC.V_BUS between the cursors: the summary line with the Freedman-Diaconis bins, the export buttons and the bars" width="430">
+      </picture>
+      <br>
+      <em>Values between A and B, Freedman-Diaconis bins.</em>
+    </td>
+    <td align="center" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/spectrum-dark.png">
+        <img src="EVRe/docs/assets/pictures/spectrum-light.png" alt="Spectrum of ADC.I_LOAD on the Log scale: one clear peak at 50 Hz, the Welch summary line and the export buttons" width="430">
+      </picture>
+      <br>
+      <em>Welch, on a Log scale: one peak near 50 Hz.</em>
+    </td>
+  </tr>
+</table>
 
 - Memory depth apart from the view, Hold / Live, a memory strip, cursors A and B, Auto, Manual or Log Y,
   Normalise, hover values of every line beside the mouse, and smooth scrolling paced by the display's refresh.
@@ -128,25 +205,82 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
 - Built for many fast lines: binning and drawing on several threads, a RAM budget the samples keep to, and the
   plot drawn by a dedicated graphics card when there is one (Windows, Direct3D 11): 64 lines of 1000 Hz at
   60 frames a second on a 4K screen.
+
+### Fast streams at a million samples a second
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/fast-plot-dark.png">
+    <img src="EVRe/docs/assets/pictures/fast-plot-light.png" alt="ADC.I_LOAD and ADC.V_BUS from the example fast device at 10 k samples/s in a 20 ms window, every record at its own time" width="900">
+  </picture>
+  <br>
+  <em>Every record at its own time: 10 k samples/s in a 20 ms window.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/fast-card-running-dark.png">
+    <img src="EVRe/docs/assets/pictures/fast-card-running-light.png" alt="The Fast streams card running: the red Stop stream button, the measured rate, lost 0 and the channels I_LOAD and V_BUS" width="300">
+  </picture>
+  <br>
+  <em>The Fast streams card: Stop, the measured rate, lost 0, the channels.</em>
+</p>
+
 - Fast streams (Fast EVRe): a device sends samples taken on its own clock, up to a million a second, in numbered
   blocks nobody asked for; the Studio starts and stops them from a card, plots every record at its own time (an
   hour down to 10 us in one view, a spike of one record in millions still visible), measures and triggers on them,
   and records them beside the CSV as they came (`.evrs`). The device side is `lib/fast`, a header beside the
   library; the protocol itself is unchanged.
 
-**Record and replay**
+### Record and replay
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/recording-window-dark.png">
+    <img src="EVRe/docs/assets/pictures/recording-window-light.png" alt="A recording opened in its own window: its title with the span, the Lines and File buttons, lanes per unit, two notes and the crosshair box" width="900">
+  </picture>
+  <br>
+  <em>A recording in its own window: lanes per unit, two notes and the crosshair's values, while the live chart goes on.</em>
+</p>
 
 - CSV recording of every poll, or of every frame with auto send; the view or A to B exported to CSV; pictures of
   the chart; notes pinned to a moment.
 - A recording opens in a window of its own, with its chart, measurements, notes and math lines, while the live
   chart goes on.
 
-**Write safely**
+### Write safely
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/write-confirm-dark.png">
+    <img src="EVRe/docs/assets/pictures/write-confirm-light.png" alt="Allow writes on, 300 typed into MOTOR_SPEED and the confirmation asking before it is written" width="700">
+  </picture>
+  <br>
+  <em>300 typed into MOTOR_SPEED, a register marked danger: the Studio asks before it is written.</em>
+</p>
 
 - Writes only with *Allow writes* on; registers marked `danger` ask first; a value that changed while you were
   editing asks first; limits from the map; every write read back from the device.
 
-**Make the map without touching JSON**
+### Make the map without touching JSON
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/map-editor-close-dark.png">
+    <img src="EVRe/docs/assets/pictures/map-editor-close-light.png" alt="The Map editor: its toolbar, the register table edited in place, SUPPLY_V selected with its form and live value" width="900">
+  </picture>
+  <br>
+  <em>The Map editor: the table edited in place, and the selected register's form with its live value.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/map-bit-fields-dark.png">
+    <img src="EVRe/docs/assets/pictures/map-bit-fields-light.png" alt="The Bit fields page of CONFIG: the bit strip with its fields and the live value, the field list" width="430">
+  </picture>
+  <br>
+  <em>CONFIG's fields on a bit strip, with the live value.</em>
+</p>
 
 - The Map editor: a table edited in place, bulk edits, copy and paste between maps, undo and redo, bit fields and
   value names on a bit strip, limits, defaults, special values, notes, live checks, and a live preview of the
@@ -155,12 +289,21 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
   header, a Python module, CSV, and a device table for firmware on the EVRe library (packed register images with
   their addresses checked at compile time).
 
-**Many devices, many programs**
+### Many devices, many programs
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/bus-devices-dark.png">
+    <img src="EVRe/docs/assets/pictures/bus-devices-light.png" alt="A bus of three example devices: D1 and D2 online, D3 offline, and the Registers tab showing D1 with its D1_ register names" width="900">
+  </picture>
+  <br>
+  <em>Three example devices on one link: D1 and D2 online, D3 offline, the registers named after them.</em>
+</p>
 
 - Several devices on one link (RS-485, a gateway): a bus file puts each at its slave address, their registers
   are named after them (`D1_SPEED`, `D2_STATUS`), a device that stops answering goes offline without slowing the
   others, and broadcast writes read back from each.
-- Auto send: a device that can streams its read-only block by itself at 40 to 4000 frames a second; each frame
+- Auto send: a device that can stream its read-only block by itself at 40 to 4000 frames a second; each frame
   is one chart point and one CSV row.
 - An API for everything else: JSON lines by register name on port 1220 (`get`, `set`, `stream`), and an EVRe
   pass-through on port 1219 for existing EVRe code. Local only unless you allow the network; writes only when
@@ -168,7 +311,32 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
 - Fast: all device I/O on its own thread with a high-resolution poll clock, registers merged into block reads,
   pipelined requests. About 4000 polls a second against the fast test device on the same computer.
 
-**In your language**
+### In your language
+
+<table>
+  <tr>
+    <th width="50%">Registers in Arabic</th>
+    <th width="50%">Measurements in Arabic</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-registers-close-dark.png">
+        <img src="EVRe/docs/assets/pictures/arabic-registers-close-light.png" alt="The Registers table in Arabic, right to left with the Plot column first; register names, addresses, values and units left to right" width="450">
+      </picture>
+      <br>
+      <em>Right to left, the Plot column first; names, numbers and units left to right.</em>
+    </td>
+    <td align="center" valign="top">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-chart-close-dark.png">
+        <img src="EVRe/docs/assets/pictures/arabic-chart-close-light.png" alt="The measurement table in Arabic: its headings and the info line right to left, the values with their units left to right" width="450">
+      </picture>
+      <br>
+      <em>The measurement table: headings in Arabic, values with their units left to right.</em>
+    </td>
+  </tr>
+</table>
 
 - English and Arabic (right to left; the chart, numbers, units and register names stay left to right), the Help
   pages included. Dark and light themes.
@@ -198,6 +366,15 @@ host                                                     device
 | **Revision** | 1, reported in `STATUS[7:0]`; capability bits say what the device can do (error frames, broadcast, messages, auto send, DFU) |
 
 Frames, errors, test vectors, the device API and the conformance checklist: [PROTOCOL.md](EVRe/docs/PROTOCOL.md).
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/monitor-dark.png">
+    <img src="EVRe/docs/assets/pictures/monitor-light.png" alt="The Monitor tab: a READ of 0xA000 and its READ_RESP, every byte and the CRC" width="700">
+  </picture>
+  <br>
+  <em>A READ of 0xA000 and its READ_RESP in the Studio's Monitor tab, byte for byte, the CRC included.</em>
+</p>
 
 ## Your device in 20 lines
 
@@ -268,6 +445,15 @@ line each way:
 
 Working examples for each: [EVRe/studio/examples](EVRe/studio/examples/).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/api-card-dark.png">
+    <img src="EVRe/docs/assets/pictures/api-card-light.png" alt="The API server card serving: EVRe :1219 and JSON :1220 on this PC" width="300">
+  </picture>
+  <br>
+  <em>The API, switched on in the sidebar: EVRe on port 1219, JSON lines on 1220, this PC only.</em>
+</p>
+
 ## Documentation
 
 | Document | What it holds |
@@ -281,6 +467,15 @@ Working examples for each: [EVRe/studio/examples](EVRe/studio/examples/).
 | [Contributing](EVRe/CONTRIBUTING.md) | how a change is made, tested and documented; how a release is made |
 
 The Studio's own **Help (F1)** holds a short form of the guide, in English and Arabic.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/help-window-dark.png">
+    <img src="EVRe/docs/assets/pictures/help-window-light.png" alt="The Help window: the topic list and its first page" width="700">
+  </picture>
+  <br>
+  <em>Help (F1): the topics on the left, Getting started open.</em>
+</p>
 
 ## Tested on every push
 
@@ -300,7 +495,7 @@ virtual display and checks that it draws before anything is published.
 
 ```
 EVRe/
-  docs/        the protocol and the assets
+  docs/        the protocol, the assets and the docs' pictures
   lib/         the device library (C++): EVRe.h, EVRe.cpp, ports/; fast/ for Fast EVRe streams
   studio/      EVRe Studio
     src/         the Studio's sources

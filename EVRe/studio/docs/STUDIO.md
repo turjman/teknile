@@ -286,6 +286,13 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
 
 EVRe Studio is a desktop tool for devices that speak the EVRe register protocol. It connects to one device over TCP or a serial port (including USB CDC). It reads the device's registers many times a second and shows them in a table. It charts them like an oscilloscope, records them to CSV and writes them. It also serves them to other programs through a local API.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/hero-chart-dark.png">
+  <img src="../../docs/assets/pictures/hero-chart-light.png" alt="EVRe Studio connected to the example device: the sidebar with a green Connected pill, the Chart tab with SUPPLY_V, SUPPLY_I, TEMPERATURE and the math line P in lanes, cursors A and B and the measurement table" width="900">
+</picture>
+
+*The example device, connected: the green pill in the sidebar, three registers and the math line P in lanes, cursors A and B and their measurements.*
+
 The Studio has no built-in knowledge of any device. It learns what a device holds from a **device map**: a JSON file that lists the registers, with their addresses, types, units, bit fields, value names and which ones may be written. One map describes one kind of device. The repository ships one example, `maps/example_device.json`, and every example in this document uses its registers.
 
 The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
@@ -410,7 +417,7 @@ To measure the Studio at thousands of polls a second, use `evre_fake_fast [port]
 
 ### 2.3 A first session, step by step
 
-1. **Start the Studio.** Run `build/EVReStudio` (on Windows `build\EVReStudio.exe`). The window has a sidebar on the left and four tabs: *Registers*, *Chart*, *Monitor* and *Log*.
+1. **Start the Studio.** Run `build/EVReStudio` (on Windows `build\EVReStudio.exe`). The window has a sidebar on the left and five tabs: *Registers*, *Chart*, *Monitor*, *Map editor* and *Log*.
    - On a fresh install the link settings are already TCP, host `127.0.0.1`, port `1210`.
    - The example map is loaded by itself: with no saved choice, the Studio opens the first `*.json` in the `maps/` folder next to the program.
    - The sidebar's *Device map* card reads **Example device**, *16 registers · example_device.json*.
@@ -422,6 +429,14 @@ To measure the Studio at thousands of polls a second, use `evre_fake_fast [port]
    - SUPPLY_V, SUPPLY_I and TEMPERATURE change. Each changed value glows for a moment.
    - UPTIME counts up.
    - STATE shows `0x0000`, with an ⓘ beside it. Hover the ⓘ to see the decoded fields: `MODE=idle`.
+
+   <picture>
+     <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/try-it-connected-dark.png">
+     <img src="../../docs/assets/pictures/try-it-connected-light.png" alt="The Connection card with Connected · 127.0.0.1:1210 and Device ID 0x1001, beside the live Registers table" width="600">
+   </picture>
+
+   *What step 3 shows: the green pill, Device ID 0x1001 under it, and the Registers table with live values.*
+
 4. **Look at one register in full.** Click the SUPPLY_V row. The detail line under the table shows its address, type, access, group, value, raw bytes and description.
 5. **Plot.** Tick **Plot** on SUPPLY_V and SUPPLY_I, then open the **Chart** tab. Both lines scroll in from the right, and the legend shows their latest values. Move the mouse over the chart to read both lines at one moment.
 6. **Add a math line.** Click **ƒ Math → New math line…**. The dialog offers the name `P` and the unit `W`. Type the formula `SUPPLY_V * SUPPLY_I` and click OK. A third line, *ƒ P*, shows the power.
@@ -453,6 +468,13 @@ Everything about the link is in the sidebar's **Connection** card. The card has,
 - **Slave**, **Timeout** and **In flight**
 - **Reconnect by itself**
 - **Connect**, with the state pill and the device line under it
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/connection-card-dark.png">
+  <img src="../../docs/assets/pictures/connection-card-light.png" alt="The Connection card connected: TCP, 127.0.0.1 and 1210, the token as dots, Slave 1, Timeout 500 ms, In flight 4, Reconnect by itself, Disconnect, the green pill and the device line" width="430">
+</picture>
+
+*The card from top to bottom, connected: TCP, host and port, the token as dots, Slave, Timeout, In flight, Disconnect, the pill and the device line.*
 
 ### 3.1 TCP
 
@@ -576,6 +598,13 @@ the card never changes height.
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason, cut in the middle when it is longer than the pill; the tooltip and the Log have it in full. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/state-pills-dark.png">
+  <img src="../../docs/assets/pictures/state-pills-light.png" alt="The Connect button and the state pill in its four states: Disconnected, Connecting, Connected and Connection refused" width="430">
+</picture>
+
+*The pill under the button in its four states: Disconnected (no tint), Connecting (amber), Connected (green) and Connection refused (red).*
+
 The device line under the pill keeps its last text after a disconnect, until the next device ID answer or login error replaces it.
 
 ### 3.9 Several devices on one link (a bus)
@@ -615,6 +644,13 @@ does not know are kept when the bus file is saved again. Tokens are never in it.
 math lines, the CSV columns and the API all use those names, so any register of any device is reached by its name
 alone, without a slave address.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bus-devices-dark.png">
+  <img src="../../docs/assets/pictures/bus-devices-light.png" alt="A bus of three example devices: D1 and D2 online, D3 offline, and the Registers tab showing D1 with its D1_ register names" width="900">
+</picture>
+
+*The Devices on the link card: D1 and D2 answer (green dots), D3 is offline (red); the table shows D1, its registers named D1_.*
+
 **The selected device.** The Registers tab shows the device selected in the list, and the Map editor edits its map.
 The Registers tab has a picker of its own over the table: a device, or **All devices**, every device's registers in
 one table (with twelve devices of one map, a search for `SPEED` lists `D1_SPEED` to `D12_SPEED`); editing the
@@ -649,6 +685,13 @@ new connection every device starts online.
 **Edit…** dialog and never saved, or else the token of the Connection card)
 and asked for its DEVICE_ID; each answer is logged with its name (`D2: device ID 0x1001, protocol revision 1`), and a
 map for another device ID is warned of per device. The line under the pill shows the selected device's.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bus-device-dialog-dark.png">
+  <img src="../../docs/assets/pictures/bus-device-dialog-light.png" alt="The dialog of a device on a bus: name, slave, map, Polled with the others and its own token" width="600">
+</picture>
+
+*A device's dialog: its name, slave address and map, Polled with the others, and its own token (not stored).*
 
 The bus file chosen last opens at the next start, as a map does (setting `map/bus`). Opening or making a map closes
 the bus. Opening another bus asks first when the open one has unsaved changes. A start never opens a bus file as a
@@ -697,6 +740,13 @@ The Registers tab has four parts, from top to bottom:
 - the register table
 - the detail line
 - the quick-write panel (see chapter 5)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/registers-live-dark.png">
+  <img src="../../docs/assets/pictures/registers-live-light.png" alt="The Registers tab: the toolbar, then the table with Plot and Log ticks, addresses, live values with units, the info marks, rw with a warning sign on CONFIG and MOTOR_SPEED, and the groups; CONFIG selected" width="900">
+</picture>
+
+*The toolbar over the table: Plot and Log ticks, live values with their units, an ⓘ on the decoded registers, rw ⚠ on the danger ones.*
 
 ### 4.1 The toolbar
 
@@ -747,6 +797,13 @@ The columns fit their content when a map loads and after each edit of the map. T
 - **Stale grey.** A value that has not been read successfully for longer than **the larger of two poll intervals and one poll interval plus the timeout, plus the time between two value updates on screen** (*Show values*, 13.2) turns grey. This applies to the Value and Decoded columns. At the defaults (100 ms interval, 500 ms timeout, 10 values per second) that is 700 ms. With the interval *max* (0) it is the timeout plus 100 ms. With *Show values* at *every frame* nothing is added.
 
   Grey means *not refreshed*. Polling may be off, the link may be lost, or reads of this register fail while an older good value is kept. The value stays visible so you can still read it, but it is marked old.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/glow-stale-dark.png">
+  <img src="../../docs/assets/pictures/glow-stale-light.png" alt="Four register rows live, then the same rows grey after polling stopped" width="900">
+</picture>
+
+*Above: values polled, in black; below: the same rows grey once polling stopped.*
 
 ### 4.4 Tooltips and the ⓘ
 
@@ -859,6 +916,13 @@ Examples from the example map:
 | LED_MODE | `2` | `blink` |
 | STATUS | `0x3F01` | `protocol revision=1  CAP_ERROR_FRAME  CAP_BROADCAST  CAP_MSG  CAP_AUTO_SEND  CAP_DFU` |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/decoded-column-dark.png">
+  <img src="../../docs/assets/pictures/decoded-column-light.png" alt="The Decoded column: STATUS with its protocol revision and CAP_ flags, CONFIG with its prescaler field, STATE as MODE=idle, LED_MODE as blink" width="900">
+</picture>
+
+*The Decoded column on: STATUS's revision and CAP_ flags, CONFIG's prescaler, STATE as MODE=idle, LED_MODE as blink.*
+
 ### 4.11 The detail line, adding and editing registers
 
 **The detail line.** Under the table, the selected register is shown in full. The line wraps, so nothing is cut off, and its text can be selected. It shows:
@@ -933,6 +997,13 @@ The panel has one row of controls:
 | **Bits** | Shown for an integer register that has no bit fields and no scale or offset. Ticked, it draws the bit view (5.4) for that register too. Saved (`ui/quickBits`). |
 | Hint,&nbsp;at&nbsp;the&nbsp;right | *tick Allow writes to write*, or *not connected*. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/quick-write-dark.png">
+  <img src="../../docs/assets/pictures/quick-write-light.png" alt="Quick write of SETPOINT with its limits and Default, and of LED_MODE with its names list open and Bits ticked" width="900">
+</picture>
+
+*Above: SETPOINT, its limits in the box's hint and a Default button; below: LED_MODE's list of names open, Bits ticked.*
+
 The controls are enabled only while **Allow writes** is on **and** the link is up. The hint says which of the two is missing.
 
 Every quick write follows exactly the same path as an edit in the table: the danger confirmation and the other checks of chapter 6. After each attempt, written or not, the named-values list and the bit view show the device's value again. The value box keeps the text you typed, so a refused value can be corrected. It is emptied only when the panel is set up anew: another register is selected, a map is loaded, or **Bits** is switched.
@@ -973,6 +1044,13 @@ The bit view draws the register as a datasheet does:
 - a box for each field across the bits it takes
 - a cell per bit showing 0 or 1, filled with the accent colour when set
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bit-view-dark.png">
+  <img src="../../docs/assets/pictures/bit-view-light.png" alt="Write CONFIG and the bit view: bits 15 to 0, the AUTO_SEND prescaler field set to 79 and the one-bit flags" width="900">
+</picture>
+
+*CONFIG's bits: the AUTO_SEND prescaler field across bits 15 to 8 reads 79, its set bits filled; the flags take bits 4 to 0.*
+
 A register wider than 16 bits takes one line per 16 bits: bits 31 – 16, then 15 – 0.
 
 The bit view appears for every integer register with bit fields that has no scale or offset. For other integer registers it appears when **Bits** is ticked. Float and scaled registers have none.
@@ -987,6 +1065,13 @@ What each part shows and does:
 | A&nbsp;bit&nbsp;in&nbsp;no&nbsp;field | a&nbsp;box&nbsp;with&nbsp;`—` | |
 
 The tooltip over a bit or field shows its bits (`bits 1:0`), its value names and what a click does.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bit-field-menu-dark.png">
+  <img src="../../docs/assets/pictures/bit-field-menu-light.png" alt="The AUTO_SEND prescaler field clicked: its menu with Value…" width="600">
+</picture>
+
+*A click on the prescaler field: it has no value names, so its menu holds Value… alone.*
 
 Example with STATE on the example map. MODE (bits 1:0) shows `MODE = idle`. A click on it offers `idle  (0)`, `run  (1)` and `fault  (2)`. Picking *run* writes the whole register with bits 1:0 set to 1. READY and ALARM are flags: a click flips them. STATE is read-only in the example map, so this is only an illustration. A read-write register with fields, such as CONFIG, behaves the same way.
 
@@ -1010,12 +1095,19 @@ When an edit starts in the table, the editor remembers the raw value it started 
 
 > **Value changed while editing**
 > SETPOINT changed while you were editing:
-> when you started: 20.000
-> now on the device: 25.000
+> when you started: 20.0
+> now on the device: 25.0
 > you typed: 22.5
 > Something else writes this register (the device itself, or another client). Write yours anyway?
 
 The dialog has **Cancel** (the default) and **Write anyway**. A cancel logs *SETPOINT: write of 22.5 cancelled (the value changed meanwhile)*.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/changed-while-editing-dark.png">
+  <img src="../../docs/assets/pictures/changed-while-editing-light.png" alt="Value changed while editing: started at 20.0, now 25.0 on the device, typed 22.5; Write anyway or Cancel" width="600">
+</picture>
+
+*SETPOINT went from 20.0 to 25.0 on the device while 22.5 was typed: Cancel, or Write anyway.*
 
 A quick write always starts from the value that is current at the click, so it never raises this dialog.
 
@@ -1030,6 +1122,13 @@ A register marked `"danger": true` in the map (shown `rw ⚠`) asks before every
 > This register moves, powers or changes something on the device.
 
 The dialog has **Cancel** (the default) and **Write**. A cancel logs *MOTOR_SPEED: write of 300 cancelled at the confirmation*.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/write-confirm-dark.png">
+  <img src="../../docs/assets/pictures/write-confirm-light.png" alt="300 typed into MOTOR_SPEED in the table and the confirmation asking before it is written" width="600">
+</picture>
+
+*300 typed into MOTOR_SPEED (rw ⚠): the question names the value and the register, its description muted, before anything is sent.*
 
 Two write paths do not show this dialog:
 
@@ -1065,6 +1164,13 @@ Errors also pop up (see 11.3).
 ## 7. The Chart
 
 The Chart tab has two rows of controls, the chart, and the measurements under a movable splitter. The first row is what is shown and kept (Window, Memory, RAM and what the lines need, the Y range); the second what to do (Hold, Measure, Cursors, ƒ Math), how the lines are drawn (the Display menu: Normalise, Smooth, Drawing), the info line, and Clear, Remove all.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/chart-tab-dark.png">
+  <img src="../../docs/assets/pictures/chart-tab-light.png" alt="The Chart tab: Window and Memory, the actions row, four lines in lanes with their legend values, cursors A and B with the span bar, the memory strip and the measurement table" width="900">
+</picture>
+
+*The two rows of controls, four lines in lanes with cursors A and B, the memory strip, and the measurements under the splitter.*
 
 ### 7.1 The axes row
 
@@ -1107,8 +1213,10 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | -&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
 | -&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
 | -&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
-| -&nbsp;**Fold&nbsp;all&nbsp;lanes**,&nbsp;**Open&nbsp;all&nbsp;lanes** | With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
+| -&nbsp;**Fold&nbsp;/&nbsp;Open&nbsp;all&nbsp;lanes** | **Fold all lanes** and **Open all lanes**. With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
+| -&nbsp;**All&nbsp;lanes:&nbsp;Auto** | With Lanes on: every lane back to Auto, linear; enabled while a lane is not in Auto (7.12). |
 | -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
+| -&nbsp;**Lock&nbsp;short&nbsp;windows** | Below a 100 ms window a live chart with the trigger off locks on its busiest line. On by default. Saved (7.13). |
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
@@ -1117,12 +1225,26 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/display-menu-dark.png">
+  <img src="../../docs/assets/pictures/display-menu-light.png" alt="The Display menu: Normalise, Smooth, Lanes with Fold all lanes, Open all lanes and All lanes: Auto, Trigger, Lock short windows, Hover values and the Time grid" width="430">
+</picture>
+
+*The Display menu with Lanes on: the lanes' three commands under it, then Trigger, Lock short windows, Hover values and the Time grid.*
+
 ### 7.3 Window and memory, Hold and Live
 
 The chart keeps the last *Memory* seconds of every line, and shows *Window* seconds of them.
 
 - **Live**, the view ends at *now* and scrolls.
 - **Held**, the view stays at a fixed time while new samples keep filling the memory. The top right of the chart says *held: -12.5 s · Live to follow*: how far the view's end lies behind now. While the trigger is on (7.13) the button is **Run** / **Stop** and the top right says the trigger's state instead.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/held-view-dark.png">
+  <img src="../../docs/assets/pictures/held-view-light.png" alt="A held view: the Live button lit on the left, and held: -4.19 s · Live to follow at the top right of the chart" width="900">
+</picture>
+
+*Held: the Live button is lit, and the top right says how far the view's end lies behind now.*
 
 Ways to look back:
 
@@ -1135,6 +1257,13 @@ Data older than the memory is dropped in whole blocks, a little behind the memor
 ### 7.4 The memory strip
 
 Under the time labels, a thin strip shows the **whole memory depth**. Every line is drawn there thin and faded, each in its own range. The part the view shows is marked on it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/memory-strip-dark.png">
+  <img src="../../docs/assets/pictures/memory-strip-light.png" alt="Two memory strips: one filling, filling: 10 s of 60 s kept with the view's box at the right; one a 10 ms view of a minute, its handle at the left" width="900">
+</picture>
+
+*Top: the memory filling, the view's box at the right. Bottom: a 10 ms view of a minute, the handle at the left.*
 
 - While the memory fills up, the data grows in from the right. Where there is room, the strip says how much is kept so far, for example *filling: 20 s of 60 s kept* with the default memory. Lengths below 120 s are written in seconds, from 120 s in minutes with one decimal (*2.5 min*), and from 7200 s in hours (*2.0 h*).
 - The samples kept have a budget for all the lines together: **RAM** on the Chart tab's first row, beside Memory, 2 GB by default (a sample takes about 23 bytes: its time and value, and its share of the min/max summaries). Pick 512 MB to 16 GB, or type any size (*3000*, *3000 MB*, *3 GB*); it is kept within 256 MB and three quarters of the computer's memory, and saved. Many fast lines can need more than the memory asked for: with 2 GB, 98 lines at 500 Hz fill it in about 32 minutes, at 4000 Hz in about 4. The oldest samples then go, an eighth of each line at a time, and the strip says so in the warn colour (amber): *RAM budget reached: keeping the last 4.0 min of 30.0 min*, and while a recording runs *… · the recording keeps everything* (its file keeps every sample, whatever the chart lets go). The longest words that fit are shown, whole (then *RAM budget reached* alone); the strip's tooltip says what the budget does and that a recording keeps every sample, and so do the RAM box's. So the time kept goes down by an eighth and fills up again (with 12 min that fit: 12, then 10.5, then 12). A line keeps at most 16 million samples whatever the RAM. RAM is what the samples take: the Studio itself needs about 150 MB more (the window, its pictures, the graphics card's buffers), so with RAM 1 GB Task Manager shows it at about 1.14 GB once the memory is full.
@@ -1184,6 +1313,14 @@ so a current of 1 µA and one of 1 A can be read on the same chart.
   100, 1000, 10000* as the chart writes values, then *100 k, 1 M …*. Faint lines mark 2 to 9 of each decade while a
   decade is at least 24 px tall. Over less than two decades the faint lines are labelled too (or 2 and 5 of them,
   when there is no room for all).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/log-y-dark.png">
+    <img src="../../docs/assets/pictures/log-y-light.png" alt="Y range Log: decade lines labelled 10, 100, 1000, 10000 and 100 k, the faint lines between, and Y log in the state corner" width="900">
+  </picture>
+
+  *Log: registers near 10 and a math line up to 50 000 on one plot, a line per decade (10 to 100 k) and faint lines between.*
+
 - **Auto** spans the positive values in view: from the smallest above 0 to the largest, at most **9 decades** under
   the largest (a value further down sits on the bottom edge), at least one decade, with 8 % of the decades as margin.
   It grows and shrinks as the linear Auto does, in decades.
@@ -1205,6 +1342,13 @@ tag at the top of its value labels, *Manual* in amber or *Log*; a click on the t
 ### 7.6 Normalise and Smooth
 
 **Normalise** scales each line into the chart by its own range in the view (its samples in the view and its values where it crosses the view's edges: a register polled every 10 ms has one sample in a 10 ms view, and the piece of its line from the edge to that sample is in view too), so lines of different units can be compared by their shapes. The value labels become percentages (0 % – 100 %). The min and max fields are disabled while Normalise is on; the Y range list stays, and picking Log from it turns Normalise off (7.5). Normalise turns Log off. Normalise is not saved.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/normalise-dark.png">
+  <img src="../../docs/assets/pictures/normalise-light.png" alt="The same three lines without and with Normalise" width="600">
+</picture>
+
+*The same three lines in their units (above) and normalised, each from 0 % to 100 % of its range in view (below).*
 
 **Smooth** fixes a problem of live charts. Samples arrive in bursts: per poll, per display frame and per TCP packet. Without Smooth, the right end of each line would jump back and forth. Smooth delays the whole picture by a little more than the gap last measured between now and the newest sample, so the lines always reach the right edge and scroll without steps.
 
@@ -1238,6 +1382,13 @@ Once both are placed, a bar joins their tags at the top of the plot and says the
    |A| | | |B| | 300 ms |                     too close: the text beside B
    +-+ +-+ +-+ +--------+
 ```
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/cursors-bar-dark.png">
+  <img src="../../docs/assets/pictures/cursors-bar-light.png" alt="Cursors A and B with the span bar reading 12.5 s, and close cursors with their text, 400 ms, beside B" width="600">
+</picture>
+
+*Above: the bar from A to B reads 12.5 s; below: cursors 400 ms apart, the text beside B.*
 
 On clock times (a window of 1 s and more, or Display → Time grid → Clock times, 7.9) cursors are fixed **times**,
 not screen positions: in a live view they move left with the data. Once both are placed, the measurements cover
@@ -1288,17 +1439,17 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 | Lane's&nbsp;▾&nbsp;or&nbsp;unit&nbsp;name | Click | Fold the lane (7.12). |
 | Lane's&nbsp;⋯ | Click | The lane's menu: its Y range (Auto, Manual…, Log) and Fold lane (7.12). |
 | Folded&nbsp;strip&nbsp;or&nbsp;its&nbsp;▸ | Click | Open the lane again (7.12). |
-| Separator&nbsp;between&nbsp;lanes | Drag&nbsp;/&nbsp;double-click | The lane above taller or lower, the one below giving or taking / every lane its equal share again (7.12). |
+| Separator&nbsp;between&nbsp;lanes | Drag&nbsp;/&nbsp;double&#8209;click | The lane above taller or lower, the one below giving or taking / every lane its equal share again (7.12). |
 | Chart | Double-click | Y back to Auto (on a note's tag: edit the note, 7.11). |
 | Lane's&nbsp;value&nbsp;labels | Right-click | The lane's Y range: Auto, Manual…, Log, All lanes: Auto; Fold lane / Open lane (7.12). |
-| Lane's&nbsp;value&nbsp;labels | Click&nbsp;/&nbsp;double-click | Make it the current lane: the toolbar's Y range shows and sets its range / that lane back to Auto (7.12). |
+| Lane's&nbsp;value&nbsp;labels | Click&nbsp;/&nbsp;double&#8209;click | Make it the current lane: the toolbar's Y range shows and sets its range / that lane back to Auto (7.12). |
 | Lane's&nbsp;range&nbsp;tag | Click | That lane back to Auto, linear (*Manual* or *Log* at the top of its value labels, 7.12). |
 | Legend&nbsp;chip | Click&nbsp;/&nbsp;right-click | The line's menu, under the chip: its Histogram or Spectrum (8.6), and Trigger on this line, ticked for the line watched (7.13). The chip's ▾ says so; over it the mouse is a pointing hand, the ▾ is lit and the tooltip names the entries. |
 | Trigger's&nbsp;level&nbsp;marker,&nbsp;tab&nbsp;or&nbsp;line | Drag | Move the level, from where it was taken (7.13); the marker (*T▸*) lies left of the plot, the tab (*0.4 A ↑*) right of it, both lit under the mouse, their tooltips the level in words. |
 | Trigger&nbsp;tab's&nbsp;arrow | Click | The next edge: rising, falling, either (7.13). |
-| Trigger's&nbsp;T&nbsp;▼&nbsp;flag&nbsp;above&nbsp;the&nbsp;plot | Drag&nbsp;/&nbsp;double-click | The crossing's place in the window, 0 to 90 %, from where it was taken; a double-click puts it back at 50 %, the default; its tooltip says when the line crossed (7.13). |
+| Trigger's&nbsp;T&nbsp;▼&nbsp;flag&nbsp;above&nbsp;the&nbsp;plot | Drag&nbsp;/&nbsp;double&#8209;click | The crossing's place in the window, 0 to 90 %, from where it was taken; a double-click puts it back at 50 %, the default; its tooltip says when the line crossed (7.13). |
 | Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
-| Note's&nbsp;tag | Drag / double-click / click, Delete | Move the note / edit its text / remove it (7.11). |
+| Note's&nbsp;tag | Drag&nbsp;/&nbsp;double&#8209;click&nbsp;/&nbsp;Delete | Move the note / edit its text / remove the note clicked last with Delete (7.11). |
 | Legend&nbsp;(chips&nbsp;overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
 | Legend&nbsp;scroll&nbsp;bar | Click&nbsp;/&nbsp;drag | Bring the thumb under the mouse, then drag it. |
 | Legend&nbsp;arrows | Click | Scroll half a row that way. |
@@ -1310,12 +1461,27 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 | Anywhere | F1 | Help. |
 | Register&nbsp;table | Enter&nbsp;/&nbsp;Esc&nbsp;/&nbsp;F2 | Write the edited value / cancel the edit / start an edit. |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/hover-box-dark.png">
+  <img src="../../docs/assets/pictures/hover-box-light.png" alt="The crosshair: a dot on each line and the box with the clock time, how long ago and every value with its unit" width="450">
+</picture>
+
+*The crosshair: a dot on each line in its lane, and one box with the clock time, how long ago, and every value with its unit.*
+
 The chart takes one key: **Delete** (or Backspace) removes the note clicked last (7.11).
 
 ### 7.9 Legend, labels and the info line
 
 - **Legend.** Across the top, a chip per line shows its name and latest value: `SUPPLY_V  12.1 V` for a supply of 12.05 V. With no line yet, the plot says *Tick "Plot" on any register to chart it*. In a recording's window (12.6) the value is the line's latest sample **in the view**, as a folded lane's strip writes it held (7.12): zoomed into a part, the chips show that part's last values, not the file's; the live chart's chips keep the newest value.
 - **The chip's menu.** Each chip ends in a **▾**: a click anywhere on the chip (or a right-click) opens the line's menu under it, *Histogram of …*, *Spectrum of …* and *Trigger on this line* (8.6, 7.13). Over a chip the mouse is a pointing hand, the ▾ is lit and the tooltip says *Click or right-click: Histogram, Spectrum, Trigger on this line* (a recording's window: without the trigger).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/chip-menu-dark.png">
+    <img src="../../docs/assets/pictures/chip-menu-light.png" alt="A legend chip's menu: Histogram of ƒ P, Spectrum of ƒ P and Trigger on this line" width="300">
+  </picture>
+
+  *The menu under the ƒ P chip: its histogram, its spectrum, and Trigger on this line.*
+
 - **How often the values change.** At the pace chosen in *Show values* (13.2): 10 times a second by default, like the Registers table. A number that changes at every frame cannot be read. The lines still move at every frame.
 - **Fixed places.** A chip's width comes from the line's name, its unit and room for the widest number the legend writes (`-0.000e+00`). It never depends on the value, so a changing value cannot move the chips after it. The value is right-aligned in its room, with the unit after it: only the digits change.
 - **More lines than the row holds.** The chips use the row left of the state text. When they need more, a thin scroll bar appears under them, and an arrow at each end of the row marks where more chips lie. Scroll with the mouse wheel over the row (a sideways wheel too), drag the bar's thumb, click the bar to bring the thumb there, or click an arrow to move half a row. The scroll stays where you leave it while the values change; after a resize or a line removed it is kept within what the chips need. The bar sits inside the legend's row, so the plot does not move when it appears. When all chips fit, there is no bar and the wheel over the row zooms the time, as over the plot.
@@ -1349,6 +1515,14 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
   typed (*30 ms*) is kept, and the readout then says its exact division (*3 ms/div*). In Arabic every offset and the
   readout are one left-to-right piece, the unit beside its number. The cursors sit on this grid: places in the window,
   counted as its labels are (7.7).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/time-grid-dark.png">
+    <img src="../../docs/assets/pictures/time-grid-light.png" alt="A 10 ms window of the example fast device's ADC.I_LOAD and ADC.V_BUS on the time grid: ten divisions labelled -10 ms to 0 and the readout 1 ms/div with the clock time" width="600">
+  </picture>
+
+  *A 10 ms window: ten divisions labelled from -10 ms to 0 at the right edge, and the readout 1 ms/div with the clock time at 0.*
+
 - **Display → Time grid.** *Auto (divisions below 1 s)*, the default; *Clock times* (as before, at every window);
   *Divisions* (at every window: a 10 s window reads *1 s/div*, *-10 s* ... *0*). Saved (`chart/timeGrid`, 14.3).
 - **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes, so it costs nothing while it stands; the frames of its last change are not kept on the line), and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). A recording's window leaves the fps out (*6/6 plotted · 1 math · 1.8 ms · CPU*): its chart is drawn only when something in it changes, so a rate says nothing there. When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
@@ -1369,6 +1543,13 @@ right-click alone. A note needs its place on the chart, so it stays on the right
 | **Add&nbsp;note&nbsp;here** | A note at the time under the mouse (7.11). |
 | **Open&nbsp;recording…** | A recording in a window of its own (12.6). |
 | **Recent&nbsp;recordings** | The last 8 recordings opened or exported, newest first. |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/chart-menu-dark.png">
+  <img src="../../docs/assets/pictures/chart-menu-light.png" alt="The chart's right-click menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording and the recent files" width="600">
+</picture>
+
+*The right-click menu, Recent recordings open: two files, then Clear the list.*
 
 **The pictures are painted by the CPU**, the plot too, also while a graphics card draws the chart on the screen: they
 are what the CPU would show, the same lines, grid and tags.
@@ -1404,10 +1585,24 @@ A note marks a moment on the chart with a few words: *pump on*, *valve shut*.
   beside it at every change, `<recording>.notes.json` (12.5); an export writes the notes of its span beside it. A
   recording opened shows its notes, and saves them again at every change. Notes made otherwise are not saved.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/notes-dark.png">
+  <img src="../../docs/assets/pictures/notes-light.png" alt="Two notes, pump on and valve shut, one selected" width="900">
+</picture>
+
+*Two notes, pump on and valve shut: dashed lines with their tags at the bottom of the plot; pump on is selected.*
+
 ### 7.12 Lanes
 
 **Display → Lanes** gives each unit a plot of its own, stacked under each other: volts in one, amps in the next, a
 power in a third, each read on its own scale instead of a 12 V line flattening a 0.5 A one.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/lanes-dark.png">
+  <img src="../../docs/assets/pictures/lanes-light.png" alt="Lanes: one plot per unit, the V lane folded to a strip at the top, then A, degC, bar, % and rpm, each with a fold button and a lane menu button, separators between them and a scroll bar at the right" width="900">
+</picture>
+
+*A lane per unit, each with its ▾ and ⋯ buttons and a line between two lanes; the V lane folded to a strip at the top; more lanes than fit, so a scroll bar at the right.*
 
 - **One lane per unit**, however many, in the order the lines came, of equal height, 10 px apart. Lines without a
   unit share a lane of their own (*no unit*). The unit stands up the left edge of each lane's labels.
@@ -1434,7 +1629,8 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   unit and saved, so a unit folded stays folded when it comes back, at the next start too; a recording's window
   keeps its own.
 - **Each lane its own Y range,** kept by its unit (the same unit finds its range again, also at the next start):
-  a **click on its ⋯ button**, under its ▾, opens the lane's menu under the button: **Auto**, **Manual…** (its min
+  a **click on its ⋯ button**, under its ▾, opens the lane's menu under the button, titled with its unit
+  (*Lane V: Y range*): **Auto**, **Manual…** (its min
   and max asked), **Log** (7.5), **All lanes: Auto** and **Fold lane**; a right-click on its value labels opens the
   same menu. The ⋯ shows on every open lane with room for it and a short unit name (not on a lane cut to a sliver by
   the plot's edge). **Ctrl + wheel** over a lane zooms that lane (Manual); a **double-click** in it or on its value
@@ -1444,6 +1640,14 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
   colour; no value label is drawn under it. Its tooltip gives the range (*This lane's Y range is manual: 4.94 to 17.1
   A · Click: back to Auto*); over it the mouse is a pointing hand and the tag lights up; a **click** sets the lane to
   Auto (linear). A range set long ago (a Ctrl + wheel, saved by unit) comes back tagged at the next start.
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/lane-menu-dark.png">
+    <img src="../../docs/assets/pictures/lane-menu-light.png" alt="A lane's menu: its title Lane °C: Y range, then Auto, Manual, Log, All lanes: Auto and Fold lane; another lane with its Manual tag" width="900">
+  </picture>
+
+  *The °C lane's menu open under its ⋯ button, its title on top, and the A lane above it tagged Manual.*
+
 - **The current lane drives the toolbar:** with Lanes on, the Y range row (7.1) shows and sets the range of the
   **current lane**, chosen in the **lane list** right after *Y range* (*Y range [A ▾] [Auto ▾] min max*: every lane
   by its unit as the chart orders them, a folded one marked *(folded)*), and its unit name is lit in the accent colour
@@ -1479,6 +1683,13 @@ power in a third, each read on its own scale instead of a 12 V line flattening a
 A click (or a right-click) on a line's chip in the legend, **Trigger on this line**, or **Display → Trigger** holds
 the chart when a line crosses a level, as an oscilloscope's trigger: a spike, a step, a start-up, caught and held for a look, or a
 repeating wave held still.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/trigger-dark.png">
+  <img src="../../docs/assets/pictures/trigger-light.png" alt="The trigger held on a rising crossing of ADC.I_LOAD: the trigger row, the dashed level line with its marker and tab, the T flag above the plot and Normal · triggered" width="900">
+</picture>
+
+*Normal, triggered on ADC.I_LOAD rising through 0 A: the Trigger row, the dashed level from its marker to its tab, the T flag at 20 %.*
 
 **On the chart.** One line is watched at a time; each line keeps its own level and edge.
 
@@ -1632,6 +1843,14 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   each cursor is from T (*A: T -0.250 ms · B: T +1.750 ms*, 7.7). Live (Auto running free) or with the crossing out of
   view, clock times as before. Below a 1 s window the cursors are places on the grid (7.7): held on a crossing they keep
   their distance from T at each new crossing, and so read the same wave point while Normal holds again and again.
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/trigger-marks-dark.png">
+    <img src="../../docs/assets/pictures/trigger-marks-light.png" alt="Normal, triggered on ADC.I_LOAD rising through 0 A: the T flag at 0, the time axis relative to T and the dashed level with its rising tab" width="900">
+  </picture>
+
+  *Held on a crossing: the time axis counts from T (-2 ms to +8 ms), 0 under the T flag.*
+
 - The line, each line's level and edge, the mode, the hold-off and the place are kept (`chart/trigger…`, 14.3); the
   trigger itself is off at each start. A recording's window has no trigger (its chips' menus do not offer it):
   nothing comes after its end.
@@ -1641,6 +1860,13 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
 A channel of a fast stream (13.9) is a line like a register's: its **Plot** tick is in the *Fast streams* card, under
 its stream's row, with the channel's newest value beside it. The line is named by stream and channel, *ADC.I_LOAD*,
 and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/fast-chart-dark.png">
+  <img src="../../docs/assets/pictures/fast-chart-light.png" alt="ADC.I_LOAD and ADC.V_BUS from the example fast device at 10 k samples/s in a 20 ms window, every record at its own time" width="900">
+</picture>
+
+*Two channels of the example fast device at 10 kS/s in a 20 ms window: 2 ms/div, and 2 fast in the info line.*
 
 - **Every record, at its own time.** A stream's records keep their numbers and the times the clock's fit gives them
   (13.9), not the times they arrived. In each pixel column the line covers the lowest and the highest record in it,
@@ -1657,6 +1883,13 @@ and the chart's info line counts it apart: *2/62 · 2 fast · CPU*.
   when longer), from where it was and at the clock's pace: the lines move out to the left and the right of the plot
   stays empty, as a scope rolling with no input. The short window's lock rests (7.13). Hold keeps the view where it
   is, as always. **Start stream** takes the words and the grey away at once.
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/fast-stopped-dark.png">
+    <img src="../../docs/assets/pictures/fast-stopped-light.png" alt="The legend of a stopped stream, ADC.I_LOAD and ADC.V_BUS with their last values, and the state corner ADC stopped · last record 22:55:26.458 beside the time/div readout" width="900">
+  </picture>
+
+  *A stopped stream: the last records' values in the legend, and the time of the newest record in the corner.*
 - **Lost records break the line.** Nothing is drawn across a gap: the line ends before it and starts again after it.
   The mouse over the gap says how many records are missing: *ADC.I_LOAD: 512 sample(s) lost here*, or *the stream
   started again here* where it did (its numbers begin again; what came between cannot be counted).
@@ -1709,6 +1942,13 @@ summaries only.
 ## 8. Measurements
 
 **Measure** shows a table under the chart with one row per line: every plotted register, every active math line and every fast line (7.14). **A right-click on the table's header** lists the columns, each with a tick: untick one to hide it (*Line* always stays). The choice is kept (`chart/measureColumns`); every column is shown by default. The table is computed every 250 ms while the Chart tab is shown, and at once when the cursors move; while a cursor is dragged, at most every 100 ms, A, B and B − A alone (the rest at the 250 ms pace), and all of it at the place it is left. With Measure off, nothing is computed.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/measure-table-dark.png">
+  <img src="../../docs/assets/pictures/measure-table-light.png" alt="The measurement table: at A, at B, B - A, Min, Max, Mean, RMS, Std dev, Peak-peak, Area, Area / 3600, Since Clear; and its column chooser" width="900">
+</picture>
+
+*The table over A to B, from at A to Since Clear, and the column chooser a right-click on its header opens.*
 
 **The handle between the chart and the table** moves: a line across with a grip in its middle, lit in the accent
 colour under the mouse, the resize cursor, and the tooltip *Drag: the room of the chart and of the measurements under
@@ -1809,6 +2049,14 @@ window keeps what it was given. Its title says what: *Spectrum of SUPPLY_I — A
   (IQR: the spread of the middle half), which a few outliers do not widen; values that do not spread between their
   quartiles (a few levels) get √n bins, a single value one bin; at most 2000 bins. The bars count samples, not time.
   A fast line gives every record in the range, at most 16 million (the first; the title then says *its first …*).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/histogram-dark.png">
+    <img src="../../docs/assets/pictures/histogram-light.png" alt="Histogram of ADC.V_BUS: the summary line with the Freedman-Diaconis bins, the export buttons and the bars" width="600">
+  </picture>
+
+  *A histogram: 10000 samples in 16 bins of 1.684 V, with Copy picture, Save picture… and Export CSV….*
+
 - **Spectrum.** Which frequencies the line holds, as amplitudes in its own unit: a sine of 2 V reads 2 V at its
   frequency, the mean at 0 Hz. Polls are uneven, so the samples are first resampled to even steps at their mean
   rate (straight between neighbours). Then Welch's method: segments of a power of two samples, about 8 of them
@@ -1820,6 +2068,14 @@ window keeps what it was given. Its title says what: *Spectrum of SUPPLY_I — A
   Hz, evenly spaced · …*). Even steps hold only within a part without a gap, so over a range with a gap the spectrum
   takes the longest such part, and the title says so: *Spectrum of ADC.I_LOAD — A → B, 1.98 s: 1.39 s of it without
   a gap*. Rates are written whole up to ten million (*10000 Hz*).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/spectrum-dark.png">
+    <img src="../../docs/assets/pictures/spectrum-light.png" alt="Spectrum of ADC.I_LOAD on the Log scale: one clear peak near 50 Hz, the Welch summary line and the export buttons" width="600">
+  </picture>
+
+  *A spectrum on the Log scale: 8 segments of 2048, Hann, and one clear peak near 50 Hz.*
+
 - **The readout.** The mouse over the plot shows a dashed line and, above the plot, the bin and its count
   (*12.05 … 12.06 V: 341 samples (13.6 %)*), or the frequency and its amplitude (*62.5 Hz: 2 V*).
 - **Copy picture**, **Save picture…** (PNG) and **Export CSV…**: `from [unit],to [unit],count,share_percent`, or
@@ -1854,6 +2110,13 @@ The **ƒ Math** menu lists every line as `P = SUPPLY_V * SUPPLY_I`. A line whose
 - **Shown**: on or off. It is disabled while the formula has an error.
 - **Edit…**
 - **Remove**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/math-dialog-dark.png">
+  <img src="../../docs/assets/pictures/math-dialog-light.png" alt="The New math line dialog: P in W, SUPPLY_V * SUP typed and SUPPLY_I offered; the Math menu with P and a line in error" width="600">
+</picture>
+
+*Above: P in W, `SUPPLY_V * SUP` typed, the list offering SUPPLY_I; below: the ƒ Math menu with P and a line in error.*
 
 Math lines are kept in the settings (`chart/math`; a recording's window keeps its own, `recording/math`, 12.6), not in the map. They are saved at every change and come back at the next start. They are compiled again whenever the map changes. A line that names registers the current map does not have shows its error and is not drawn. It works again with a map that has them.
 
@@ -1997,6 +2260,13 @@ math line. The dialog says so: *OK: reads ADC.I_LOAD, ADC.V_BUS · computed for 
 
 The Monitor shows the frames on the link and sends single requests by hand.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/monitor-dark.png">
+  <img src="../../docs/assets/pictures/monitor-light.png" alt="The Monitor tab: a READ of 0xA000 and its READ_RESP, every byte and the CRC" width="900">
+</picture>
+
+*A READ of two bytes at 0xA000 sent by hand: its result line, then each TX frame and its READ_RESP, byte by byte.*
+
 ### 10.1 The request row
 
 | Control | Meaning |
@@ -2118,6 +2388,13 @@ The tab's bar shows where the file is (*Also saved to …*) and has four control
 
 The tab keeps the newest 5000 lines, and the file keeps everything.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/log-tab-dark.png">
+  <img src="../../docs/assets/pictures/log-tab-light.png" alt="The Log tab: the file it is saved to, its controls, info lines, a red error and an amber warning" width="900">
+</picture>
+
+*The Log tab: where the file is, its four controls, info lines, a red error and an amber warning.*
+
 **The file** is `logs/studio_<yyyyMMdd>.log` in the program's folder. A new file starts each day. When that folder is not writable, the file goes to the user's application data folder instead: on Windows `%LOCALAPPDATA%\teknile\EVReStudio\logs`, on Linux `~/.local/share/teknile/EVReStudio/logs`. When neither can be written, the bar says *Not saved to a file (no writable folder)*.
 
 Each line is UTF-8:
@@ -2157,6 +2434,13 @@ While another tab is shown, the Log tab's title counts the warnings and errors l
 - **■ Stop recording** closes the file. The card then says *Saved 1234 rows to <path>*.
 - `--record file.csv` starts a recording at start-up (chapter 14).
 - A file that cannot be opened shows *Cannot record* with the reason, and logs an error.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/recording-card-dark.png">
+  <img src="../../docs/assets/pictures/recording-card-light.png" alt="The Polling & recording card while recording run.csv" width="430">
+</picture>
+
+*While recording: Stop recording in red, and Recording 15 columns · 44 rows with the file's name.*
 
 ### 12.2 Which columns
 
@@ -2221,6 +2505,13 @@ A recording, or an export of the chart (7.10), opens in a **window of its own**:
 math lines, notes and the right-click menu as on the Chart tab. The live chart goes on meanwhile, and several
 recordings can be open.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/recording-window-dark.png">
+  <img src="../../docs/assets/pictures/recording-window-light.png" alt="A recording opened in its own window: the line with its span, the Lines and File buttons, lanes per unit, two notes and the crosshair box" width="900">
+</picture>
+
+*A recording in its own window: its span over the chart, Lines 7/8 and File at the top right, lanes per unit, two notes.*
+
 - **Open it:** **Open** beside **● Record CSV** (*Open recording…*, or one of the last 8 recordings), **Open
   recording…** or **Recent recordings** on the chart's right-click menu, or drop a `.csv` (or a fast stream's `.evrs`,
   12.7) on the window.
@@ -2236,6 +2527,14 @@ recordings can be open.
   the file's values (16), from which a math line or a field added later is computed. When the file's samples need
   more than the chart's RAM, it asks: *Keep the last part: about the last 12 min of 1 h 30 min?* **Keep the last
   part** reads from that place on; **Cancel** opens nothing.
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/keep-last-dark.png">
+    <img src="../../docs/assets/pictures/keep-last-light.png" alt="The question for a file bigger than the RAM: Keep the last part, about the last 14 min of 1 h 30 min?" width="600">
+  </picture>
+
+  *A file bigger than the RAM: how much it needs, the part that fits, and Keep the last part or Cancel.*
+
 - **The window.** Its title is the file's name and its span: *run.csv · 2026-10-05 09:00:00 – 10:30:00 (1 h 30 min)*.
   The line above the chart says the same, with the lines, the rows and the columns left out. The chart is held on
   the whole recording: there is no Live, Memory, RAM, Clear or Remove all, and no Smooth in Display (always off:
@@ -2266,6 +2565,14 @@ recordings can be open.
   and None work on those. The lines unticked are kept by name (`recording/linesHidden`): a recording opened later
   comes without them. A math line's tick is its *Shown* (kept in `recording/math`); one that does not compile is
   greyed, its tooltip says why. Under the list, the fields of a matched register (below).
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/lines-menu-dark.png">
+    <img src="../../docs/assets/pictures/lines-menu-light.png" alt="The Lines list of a recording: All, None, the registers and the math line with their units" width="300">
+  </picture>
+
+  *The Lines list: All and None, the file's columns with their units (ƒ P [W] is the math column the recording holds), and the window's own math line P off the chart (a ring).*
+
 - **With a map loaded,** a column named as one of its registers takes that register's definition: its value names
   and fields. **Lines** then lists the fields of such a register under its checklist (*Fields of CONFIG*) and plots one as a math line
   (`CONFIG.MSG_ENABLE`, 31.4). A byte array of the map is left out.
@@ -2332,6 +2639,20 @@ The sidebar shows the result, for example *10.0 polls/s, 15 registers in 3 reads
 | Interval | 0.05 – 60000 ms (default 100): polls start on a clock at that interval. The field has two decimals; anything below 0.05 ms is run at 0.05 ms. |
 | **max**&nbsp;(0) | Polls run back to back. The next one starts as soon as a slot is free. |
 | **Poll**&nbsp;unticked | No polling. The keep-alive (18.7) still runs, and values turn grey. |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/polling-card-dark.png">
+  <img src="../../docs/assets/pictures/polling-card-light.png" alt="The Polling & recording card with Poll every 0.10 ms: 2236.8 polls/s, 15 registers in 3 reads" width="430">
+</picture>
+
+*The Polling & recording card at 0.1 ms: 2236.8 polls/s, fewer than the 10000 asked.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/status-slow-dark.png">
+  <img src="../../docs/assets/pictures/status-slow-light.png" alt="The status bar's amber hint: Slower than asked: a poll is 3 reads; In flight 4 runs 1 poll(s) at once; 0.4 ms per answer. Set In flight to 12 for more." width="700">
+</picture>
+
+*The status bar's amber hint when the polls cannot keep up: a poll is 3 reads, In flight 4 runs one poll at once, 0.4 ms per answer, so it says to set In flight to 12 (15.7).*
 
 You can type the interval, or use the arrows or the mouse wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09). A change applies at once. 0.25 ms is 4000 polls/s.
 
@@ -2483,6 +2804,20 @@ its **Log** tick (below). The tooltip holds all of it, the channels' names and t
 | **Log** | At the end of the stream's header, on by default: while **● Record CSV** runs the stream is written beside the CSV (`run.ADC.evrs`, 12.7), as a register's **Log** column puts it into the CSV. A whole stream or none: each block carries every channel of its instants and the file keeps the blocks as the device sent them, so there is no tick per channel (the tooltip says so). Off: not written, its lines still plot. Taken when a recording starts; kept by the stream's name (`fast/notLogged`). |
 | Channels | Under the stream's row, each channel: its **Plot** tick (its line on the chart, 7.14) and its newest value with its unit, at the pace of *Show values*. The tick's tooltip says what it draws and gives the channel's `desc`. |
 | Greyed | With no link (*not connected*) or a bus (*not on a bus*: a device sending by itself would collide with the others on a shared line). The button's tooltip says why. |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/fast-card-off-dark.png">
+  <img src="../../docs/assets/pictures/fast-card-off-light.png" alt="The Fast streams card off: ADC, 2 channels, 10 kS/s set, Start stream" width="430">
+</picture>
+
+*Off: ADC · 2 channels · 10 kS/s set, Start stream, and its two channels unticked.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/fast-card-running-dark.png">
+  <img src="../../docs/assets/pictures/fast-card-running-light.png" alt="The Fast streams card running: the red Stop stream button, the measured rate, lost 0 and the channels I_LOAD and V_BUS" width="430">
+</picture>
+
+*Running: Stop stream in red, the rate measured, lost 0, and both channels plotted with their newest values.*
 
 What the Studio does with a stream on:
 
@@ -2668,7 +3003,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 
 The foot of the sidebar holds two buttons, the language and the version line (*v1.0.0 · teknile*):
 
-- **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
+- **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
 - The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`).
 - **Language**: **System** (the default: the computer's language when the Studio has it, else English), **English**
   or **العربية** (Arabic), each in its own words. It is saved at once (`ui/language`) and applied at the next start: a
@@ -2676,8 +3011,37 @@ The foot of the sidebar holds two buttons, the language and the version line (*v
   running, **Restart now** under it closes the Studio (asking about an unsaved map as a close does) and starts it
   again with the same command line.
 
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/sidebar-foot-dark.png">
+    <img src="../../docs/assets/pictures/sidebar-foot-light.png" alt="The sidebar's foot: Help, the theme button, Language and the version line" width="430">
+  </picture>
+
+  *The sidebar's foot: Help, the theme button (Dark theme while the light one is shown), Language and the version.*
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/help-window-dark.png">
+    <img src="../../docs/assets/pictures/help-window-light.png" alt="The Help window: the topic list and its first page" width="600">
+  </picture>
+
+  *The Help window: its pages on the left, Getting started open.*
+
 **Arabic** translates every text of the window, its messages and the Help pages, and lays the window out right to
 left: the sidebar on the right, the rows of controls and the tables mirrored, the Help's paragraphs right to left.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/arabic-registers-dark.png">
+  <img src="../../docs/assets/pictures/arabic-registers-light.png" alt="The window in Arabic, right to left, connected; register names, numbers and units read left to right" width="900">
+</picture>
+
+*The window in Arabic: the sidebar on the right, the rows mirrored; names, addresses, values and units still read left to right.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/arabic-help-dark.png">
+  <img src="../../docs/assets/pictures/arabic-help-light.png" alt="The Help window in Arabic" width="600">
+</picture>
+
+*The Help in Arabic, its paragraphs right to left.*
+
 What reads left to right in any language stays so: the chart (time runs to the right; its legend, labels and
 crosshair), the analysis windows' plots, the bit view, the Monitor's frames and its address and bytes fields, and
 within any text the numbers, units, register names, addresses and code. Numbers keep Western digits and a decimal
@@ -2694,6 +3058,13 @@ width, the peak's amplitude) keep theirs one piece the same way. Counts take Ara
 (OK, Cancel in its dialogs) come from Qt's `qtbase_ar.qm` when it is installed beside Qt. The Log file's lines are
 written in the language running. The exports a person reads (the Markdown specification) follow the language; the
 files programs read (CSV, JSON, the C header, the Python module) do not change.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/arabic-chart-dark.png">
+  <img src="../../docs/assets/pictures/arabic-chart-light.png" alt="The Chart tab in Arabic with lanes, cursors and the measurement table; values with units read left to right" width="900">
+</picture>
+
+*The Chart tab in Arabic: the controls mirrored, while the chart, its legend and the measured values read left to right.*
 
 ## 15. Troubleshooting and FAQ
 
@@ -3129,6 +3500,14 @@ The ports can be changed only in the settings (`api/evrePort`, `api/jsonPort`, s
 - **Localhost:** by default the server listens on `127.0.0.1` only, so only programs on the same computer can connect.
 - **Network (not only this PC):** the server listens on all addresses. Ticking or unticking it while serving restarts the server on the new addresses. Both Serve API and Network are saved.
 - **Running:** the card shows *EVRe :1219 · JSON :1220 on this PC*, or *on the network*, with the number of clients and requests.
+
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/api-card-dark.png">
+    <img src="../../docs/assets/pictures/api-card-light.png" alt="The API server card serving: EVRe :1219 and JSON :1220 on this PC" width="430">
+  </picture>
+
+  *Serving on this PC: EVRe :1219 and JSON :1220, with its clients and requests.*
+
 - **Off:** the card says *Off. Scripts: see Help → API.* (MATLAB, LabVIEW, Python: the Help page names them)
 - **A failed start:** for example when a port is in use. Serve API is unticked again, the card shows *not started: EVRe port 1219: <reason>*, and the Log has the error.
 
@@ -3142,6 +3521,13 @@ The server keeps running while the Studio has no link. In that state `info`, `li
 | **including&nbsp;⚠&nbsp;registers** | Enabled only while Allow API writes is on. Also allows writes that touch a register marked `danger`. Shown in red while on. Unticking Allow API writes unticks it. |
 
 Both are off at every start, and neither is ever saved. They can be set at start with `--api-writes` and `--api-writes-danger`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/api-states-dark.png">
+  <img src="../../docs/assets/pictures/api-states-light.png" alt="The API card serving, with writes allowed, and with danger writes allowed" width="600">
+</picture>
+
+*Serving read only, with Allow API writes (amber), and with including ⚠ registers too (red).*
 
 Reading a fast stream (17.3, *Fast streams*; the blocks of 17.4) needs neither switch: nothing is written to the device.
 
@@ -6215,6 +6601,16 @@ fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) 
 (`<prefix>_fast_records.png`), a recording opened with its fast stream (`<prefix>_fast_recording.png`), and the Map
 settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`).
 
+`EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
+(`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device
+(its lines, the math line P, writes, the Map editor, the Monitor, the sidebar's cards and the pill's four states), the
+example fast map on `evre_fake_fast` (the chart at 20 ms, the trigger, the histogram and the spectrum, a stopped
+stream), a recording opened in its own window, and the chart and the Help in Arabic. The window is 1560 × 900, the
+focus on the plot or the table (no caret in a box), and every picture is taken in both themes:
+`<prefix>_docs_<name>_<light|dark>.png`. Files go in a neutral folder (`C:/evre-docs`, or `/tmp/evre-docs`), made
+and removed by the step, so no picture shows a user's path; when it cannot be made, no picture is taken. The step
+takes about 7 minutes.
+
 ### 26.3 The API test
 
 Start the Studio against the fake device with the API on, then run the test in the mode that matches how the Studio
@@ -6614,6 +7010,13 @@ in chapter 16.
 +-----------------------------------------------------------+-------------------------+
 ```
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-editor-dark.png">
+  <img src="../../docs/assets/pictures/map-editor-light.png" alt="The Map editor: the register table edited in place, the toolbar, SUPPLY_V selected with its form and live value, the checks list" width="900">
+</picture>
+
+*The Map editor with SUPPLY_V selected: the table edited in place, the toolbar, the form with the live value, and the checks.*
+
 ### 30.1 The table
 
 One row per register, in address order. The cells are edited in place: double-click, or start typing.
@@ -6674,6 +7077,13 @@ reset), *danger* (confirm every write), *show in hex*, *plot* (a line on the cha
 change with time, `"plot": false`); scale and offset (shown = raw × scale + offset); decimals
 (*auto*, or a fixed number); min, max and default.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-form-dark.png">
+  <img src="../../docs/assets/pictures/map-form-light.png" alt="The form: the register card with its live value and the General page with scale, offset, decimals, min and max" width="430">
+</picture>
+
+*The form of SUPPLY_V: its card with the live value, and the General page from Address to Max.*
+
 - **Min and max** are in shown units. A write past them from the window asks first (6.4); the API refuses it. A
   special value is always allowed.
 - **Default** is the value after a reset (with *persist*: the factory value): a number, or one of the register's
@@ -6732,6 +7142,13 @@ The checks never stop a save: a map under construction may be incomplete.
 | Notes | notes on the whole map, and a note per group |
 | Streams | the map's fast streams (Fast EVRe, 13.9, 16.13): the list on the left (**+&nbsp;Stream**, **Remove**), the selected one's name, its window (**Address** and **Size**), its rate in samples a second, its **Enable** and **Rate register** (the map's registers offered, any name typed), its description, and its channels in a table: name, type (`u8` … `i32`, `f32`), unit, scale, offset, decimals, description (**+&nbsp;Channel**, **Remove&nbsp;channel**) |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-settings-dark.png">
+  <img src="../../docs/assets/pictures/map-settings-light.png" alt="Map settings: the Device page of the example map" width="600">
+</picture>
+
+*The Device page of the example map: Example device, Device ID 0x1001, slave 1, and a login at 0xF000 of 16 bytes.*
+
 **The Streams page** says under the channels what a sample takes and how many fit a block (*A sample: 4 bytes · at
 most 254 samples a block*), and under everything the map's checks of the streams as they are typed (16.13): a
 window outside the device bank or over a register or another stream, too small for one sample, no channel, a channel
@@ -6763,6 +7180,13 @@ The **Values** page lists the names of the register's raw values: `0 = off`, `1 
 - **Hex** shows the values as `0x…`, and the map saves them that way.
 - A row being filled in (a value, no name yet) changes nothing until it is complete.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-values-dark.png">
+  <img src="../../docs/assets/pictures/map-values-light.png" alt="The Values page of LED_MODE: 0 off, 1 on, 2 blink and its controls" width="430">
+</picture>
+
+*The Values page of LED_MODE: 0 off, 1 on, 2 blink, then + Name, − Name, Paste lines and Hex.*
+
 The names show in the Decoded column, in the quick-write list, and in the danger question before a write.
 
 ### 31.2 Special values
@@ -6783,6 +7207,13 @@ The **Bit fields** page draws the register's bits as the Registers tab does, wit
 - **+ Field** makes a one-bit field on the lowest free bit; **− Field** removes the picked one.
 - The picked field's **value names** work as in 31.1.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-bit-fields-dark.png">
+  <img src="../../docs/assets/pictures/map-bit-fields-light.png" alt="The Bit fields page of CONFIG: the bit strip with its fields and the live value, the field list" width="430">
+</picture>
+
+*The Bit fields page of CONFIG: the bit strip with the live value in its fields, and the field list under it.*
+
 The page is for integer registers (not `f32`, not `bytes`). Fields may leave gaps; fields that share bits are a
 warning of the checks. For any other register the page is a note that says why (30.5). A `bytes` register has no
 bits drawn, whatever its size: a 255-byte one would be 128 lines of bits, a page taller than the screen (the editor
@@ -6799,6 +7230,13 @@ line. A register shown with a scale or an offset does not offer it: its shown va
 **Export** on the Map editor's toolbar writes the map for the people and the programs that implement or use the
 device. Each file says it is generated, and from which map. The functions are in `src/model/map_export.*`, without
 any window, so command-line tools use the same.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/export-menu-dark.png">
+  <img src="../../docs/assets/pictures/export-menu-light.png" alt="The Export menu: Markdown, C header, Python module, CSV, the device table" width="300">
+</picture>
+
+*The Export menu: the Markdown specification, a C header, a Python module, CSV, and the device table.*
 
 ### 32.1 Markdown specification
 
