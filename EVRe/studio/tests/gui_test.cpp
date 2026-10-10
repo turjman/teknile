@@ -58,6 +58,7 @@
 #include <QListWidget>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPlainTextEdit>
 #include <QPointer>
 #include <QProcess>
@@ -96,7 +97,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
+#include <tuple>
 
 #include "evre/frame.h"
 #include "io/engine.h"
@@ -607,7 +610,8 @@ public:
 		fastStopped(); /* the same */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
-		tokenWithoutLoginRegister(); /* the last step: the window keeps a map without the login */
+		tokenWithoutLoginRegister(); /* the last check: the window keeps a map without the login */
+		docsPictures(); /* EVRE_DOCS_SHOT only: the docs' pictures, no check */
 		return true;
 	}
 
@@ -15300,6 +15304,1014 @@ private:
 				&& withLogin.loginAddr == map_.loginAddr && withLogin.loginSize == map_.loginSize;
 		const bool leftOut = withoutLogin.load(withoutLoginFile, error) && withoutLogin.loginAddr == 0;
 		check(kept && leftOut, "the map file: \"login\" saved and loaded again, left out when the map has none");
+	}
+
+	/* ---- the docs' pictures (EVRE_DOCS_SHOT, a prefix): README.md's and STUDIO.md's pictures, scene by scene, from
+	 * the example maps' real signals (the fake devices), each in both themes as <prefix>_docs_<name>_<light|dark>.png.
+	 * A test aid like EVRE_TEST_SHOT: it adds no check and runs last. The window is 1400 x 860; the focus goes to the
+	 * plot or the table before a picture (no caret in a box); files go in a neutral folder (C:/evre-docs, or
+	 * /tmp/evre-docs), made and removed here, so no picture shows a user's path. */
+
+	QString docsPrefix_, docsFolder_;
+	/* the windows' size in the pictures: the measurement table's every column and the bit view's names fit */
+	static constexpr int DOCS_W = 1560, DOCS_H = 900;
+
+	/* the windows open over base now: popups (menus, lists, completions) and, with dialogs, the other windows shown */
+	static QList<QWidget *> docsOver(const QWidget *base, bool dialogs) {
+		QList<QWidget *> windows, popups;
+		for (QWidget *top : QApplication::topLevelWidgets()) {
+			if (top == base || !top->isVisible() || top == base->window()) continue;
+			if ((top->windowType() == Qt::Popup)) popups << top;
+			else if (dialogs && qobject_cast<QDialog *>(top)) windows << top;
+		}
+		return windows + popups; /* the popups over the dialogs */
+	}
+
+	/* base painted, the windows over it painted on it at their places (a dialog with a 1 px edge, as its frame is not
+	 * in a picture), cut to area (base's coordinates; empty: base and every window over it) */
+	static QImage docsComposite(QWidget *base, const QList<QWidget *> &over, QRect area) {
+		const QPoint origin = base->mapToGlobal(QPoint(0, 0));
+		QRect all = base->rect();
+		for (QWidget *w : over) all |= QRect(w->mapToGlobal(QPoint(0, 0)) - origin, w->size());
+		if (area.isEmpty()) area = all;
+		const QPixmap whole = base->grab();
+		const qreal dpr = whole.devicePixelRatio();
+		QImage image(QSize(qRound(area.width() * dpr), qRound(area.height() * dpr)), QImage::Format_ARGB32_Premultiplied);
+		image.setDevicePixelRatio(dpr);
+		image.fill(Theme::colors().bg);
+		QPainter p(&image);
+		p.translate(-area.topLeft());
+		p.drawPixmap(QPoint(0, 0), whole);
+		for (QWidget *w : over) {
+			const QPoint at = w->mapToGlobal(QPoint(0, 0)) - origin;
+			p.drawPixmap(at, w->grab());
+			if (w->windowType() != Qt::Popup) {
+				p.setPen(QPen(Theme::colors().control, 1));
+				p.setBrush(Qt::NoBrush);
+				p.drawRect(QRectF(QRectF(at, w->size())).adjusted(-0.5, -0.5, 0.5, 0.5));
+			}
+		}
+		p.end();
+		return image;
+	}
+
+	/* `name` in both themes: base and the windows over it (docsOver), cut to area; again() runs after each switch of
+	 * the theme (a hover made again, the focus) */
+	void docsShot(const QString &name, QWidget *base, const QRect &area = QRect(), bool dialogs = false,
+			const std::function<void()> &again = {}) {
+		docsShots({ { name, base, area, dialogs } }, again);
+	}
+
+	/* several pictures at each switch of the theme (a dialog open: the guard in main() closes one left 15 s) */
+	struct DocsTarget {
+		QString name;
+		QWidget *base;
+		QRect area;
+		bool dialogs;
+	};
+	void docsShots(const QList<DocsTarget> &targets, const std::function<void()> &again = {}) {
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			QTest::qWait(150);
+			if (again) again();
+			QTest::qWait(250);
+			for (const DocsTarget &target : targets) {
+				const QString file = docsPrefix_ + QStringLiteral("_docs_%1_%2.png").arg(target.name,
+						dark ? QStringLiteral("dark") : QStringLiteral("light"));
+				if (!docsComposite(target.base, docsOver(target.base, target.dialogs), target.area).save(file))
+					std::printf("  docs pictures: %s not saved\n", qPrintable(file));
+			}
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(100);
+	}
+
+	/* trigger brings a modal dialog (a message box too) or a popup's loop (QMenu::exec): act(it) while it is open,
+	 * then it is closed (a dialog rejected: nothing written) */
+	bool docsWhileOpen(const std::function<void()> &trigger, const std::function<void(QWidget *)> &act, bool popup = false) {
+		bool done = false;
+		const AwaitingDialog awaiting;
+		QTimer poll;
+		poll.setInterval(50);
+		QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+			QWidget *open = popup ? QApplication::activePopupWidget() : QApplication::activeModalWidget();
+			if (!open) return;
+			poll.stop();
+			QTest::qWait(300); /* laid out and painted */
+			act(open);
+			if (auto *dialog = qobject_cast<QDialog *>(open); dialog && dialog->isVisible()) dialog->reject();
+			else if (open->isVisible()) open->close();
+			done = true;
+		});
+		poll.start();
+		trigger();
+		(void) QTest::qWaitFor([&] { return done; }, DIALOG_WAIT_MS);
+		QTest::qWait(200);
+		return done;
+	}
+
+	/* the card (ui_helpers' card()) a widget is in */
+	static QWidget *docsCard(QWidget *inside) {
+		for (QWidget *w = inside; w; w = w->parentWidget())
+			if (w->objectName() == QLatin1String("card")) return w;
+		return inside;
+	}
+
+	/* a widget's rect in another's coordinates */
+	static QRect docsRectIn(const QWidget *w, const QWidget *in) {
+		return QRect(w->mapTo(in, QPoint(0, 0)), w->size());
+	}
+
+	/* the Chart tab's Window box: a length typed, as the user does */
+	static void docsWindow(ChartTab *tab, const QString &text) {
+		for (QComboBox *box : tab->findChildren<QComboBox *>()) {
+			if (!box->isEditable() || !box->toolTip().startsWith(QLatin1String("View: the time shown"))) continue;
+			box->setEditText(text);
+			emit box->lineEdit()->editingFinished();
+		}
+		QApplication::processEvents();
+	}
+
+	/* the mouse moved to a point of the chart without a button (the hover box) */
+	static void docsHover(ChartView *view, QPointF at) {
+		QMouseEvent move(QEvent::MouseMove, at, view->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &move);
+		(void) view->grab();
+	}
+
+	static void docsLeave(ChartView *view) {
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(view, &leave);
+	}
+
+	/* a click (press and release) at a point of a widget */
+	static void docsClick(QWidget *on, QPointF at) {
+		QMouseEvent press(QEvent::MouseButtonPress, at, on->mapToGlobal(at), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(on, &press);
+		QMouseEvent release(QEvent::MouseButtonRelease, at, on->mapToGlobal(at), Qt::LeftButton, Qt::NoButton,
+				Qt::NoModifier);
+		QApplication::sendEvent(on, &release);
+	}
+
+	/* a f32 register written by the other client (the device holds it as another program wrote it) */
+	bool docsWriteF32(const QString &name, float value) {
+		const int row = regRow(name);
+		if (row < 0) return false;
+		QByteArray bytes(4, '\0');
+		std::memcpy(bytes.data(), &value, 4);
+		return other_.write(uint16_t(model_->rows()[row].def.addr), bytes);
+	}
+
+	uint16_t docsAddr(const QString &name) const {
+		const int row = regRow(name);
+		return row < 0 ? 0 : uint16_t(model_->rows()[row].def.addr);
+	}
+
+	/* a popup menu shown under a button, as its click shows it */
+	static void docsPopupUnder(QPushButton *button) {
+		if (!button || !button->menu()) return;
+		button->menu()->popup(button->mapToGlobal(QPoint(0, button->height())));
+		QTest::qWait(300);
+	}
+
+	static QRect docsUnion(const QWidget *base, const QList<QWidget *> &widgets, int margin = 8) {
+		QRect all;
+		for (const QWidget *w : widgets)
+			if (w) all |= QRect(w->mapToGlobal(QPoint(0, 0)) - base->mapToGlobal(QPoint(0, 0)), w->size());
+		return all.adjusted(-margin, -margin, margin, margin);
+	}
+
+	void docsPictures() {
+		if (!qEnvironmentVariableIsSet("EVRE_DOCS_SHOT")) return;
+		docsPrefix_ = qEnvironmentVariable("EVRE_DOCS_SHOT");
+#ifdef Q_OS_WIN
+		docsFolder_ = QStringLiteral("C:/evre-docs");
+#else
+		docsFolder_ = QStringLiteral("/tmp/evre-docs");
+#endif
+		QDir(docsFolder_).removeRecursively();
+		const QString mapsDir = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/");
+		const bool made = QDir().mkpath(docsFolder_)
+				&& QFile::copy(mapsDir + QStringLiteral("example_device.json"), docsFolder_ + QStringLiteral("/example_device.json"))
+				&& QFile::copy(mapsDir + QStringLiteral("example_fast.json"), docsFolder_ + QStringLiteral("/example_fast.json"));
+		if (!made) {
+			std::printf("  docs pictures: %s not writable, none taken\n", qPrintable(docsFolder_));
+			return;
+		}
+		QElapsedTimer took;
+		took.start();
+		std::printf("docs pictures into %s_docs_*\n", qPrintable(docsPrefix_));
+		std::fflush(stdout);
+		const QSize sizeWas = window_.size();
+		window_.resize(DOCS_W, DOCS_H);
+		QSettings().remove(QStringLiteral("recording/recent"));
+		QSettings().remove(QStringLiteral("chart/measureColumns"));
+		QSettings().setValue(QStringLiteral("ui/decodedColumn"), false);
+
+		/* the example map from the neutral folder, connected; the one math line P */
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		if (!chartTab || !tabs) return;
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup example;
+		example.map = docsFolder_ + QStringLiteral("/example_device.json");
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Disconnect")) != nullptr; }, 5000);
+		QTest::qWait(1500);
+		/* a short recording in the neutral folder: the Polling & recording card's "Saved ... rows to" names it, not
+		 * another step's file in a user's temporary folder */
+		MainWindow::Startup record;
+		record.record = docsFolder_ + QStringLiteral("/first_run.csv");
+		window_.applyStartup(record);
+		QPushButton *stopRecording = nullptr;
+		(void) QTest::qWaitFor([&] { return (stopRecording = buttonWithText(QStringLiteral("■  Stop recording"))) != nullptr; }, 3000);
+		QTest::qWait(2000);
+		if (stopRecording) stopRecording->click();
+		(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
+		QSettings().remove(QStringLiteral("recording/recent"));
+		/* the Log seen and emptied: no count of the other steps' warnings on its tab */
+		tabs->setCurrentIndex(MainWindow::TabLog);
+		QApplication::processEvents();
+		if (auto *log = window_.findChild<EventLog *>())
+			if (QPushButton *clear = buttonWithText(*log, QStringLiteral("Clear"))) clear->click();
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		for (int r = 0; r < model_->rows().size(); r++) model_->setPlot(r, false);
+		while (!chartTab->mathLines().lines().isEmpty()) chartTab->removeMathLine(0);
+		MathLine power;
+		power.name = QStringLiteral("P");
+		power.unit = QStringLiteral("W");
+		power.formula = QStringLiteral("SUPPLY_V * SUPPLY_I");
+		(void) chartTab->addMathLine(power);
+		docsWriteF32(QStringLiteral("SETPOINT"), 25.0f);
+		other_.writeU8(docsAddr(QStringLiteral("FAN_SPEED")), 30);
+		other_.writeU8(docsAddr(QStringLiteral("LED_MODE")), 2);
+		other_.writeI16(docsAddr(QStringLiteral("MOTOR_SPEED")), 1200);
+		other_.write(docsAddr(QStringLiteral("CONFIG")), QByteArray::fromHex("004f")); /* the prescaler 79 */
+
+		docsRegisters();
+		docsWrites();
+		docsChart(chartTab, tabs);
+		docsMonitor(tabs);
+		docsMapEditor(tabs);
+		docsSidebar();
+		docsMath(chartTab, tabs);
+		docsFast(chartTab, tabs);
+		docsArabic();
+
+		other_.write(docsAddr(QStringLiteral("CONFIG")), QByteArray(2, '\0'));
+		other_.writeI16(regs_.danger.addr, 0);
+		RecordingWindow::closeAll();
+		QSettings().remove(QStringLiteral("recording/recent"));
+		window_.resize(sizeWas);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		QDir(docsFolder_).removeRecursively();
+		std::printf("docs pictures: taken in %.0f s\n", took.elapsed() / 1000.0);
+		std::fflush(stdout);
+	}
+
+	/* D3, the Registers tab: Allow writes on, CONFIG selected with its bit view; the Decoded column; Poll off */
+	void docsRegisters() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		allowWrites_->setChecked(true);
+		QuickWriteWidgets panel;
+		panel.frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		if (panel.frame)
+			for (QCheckBox *box : panel.frame->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Bits")) panel.bits = box;
+		table_->scrollToTop();
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+		if (panel.bits && !panel.bits->isChecked()) panel.bits->setChecked(true);
+		QTest::qWait(1500);
+		const auto focus = [this] { table_->setFocus(); };
+		docsShot(QStringLiteral("registers"), &window_, QRect(), false, focus);
+		if (auto *pill = window_.findChild<QLabel *>(QStringLiteral("pill")))
+			docsShot(QStringLiteral("connection_card"), docsCard(pill));
+
+		/* the Decoded column: by the header's menu, as the user shows it */
+		QHeaderView *header = table_->horizontalHeader();
+		docsWhileOpen([header] { emit header->customContextMenuRequested(QPoint(200, header->height() / 2)); },
+				[](QWidget *open) {
+					if (auto *menu = qobject_cast<QMenu *>(open))
+						for (QAction *action : menu->actions())
+							if (action->text() == QLatin1String("Decoded column")) action->trigger();
+				}, true);
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("STATE")));
+		QTest::qWait(800);
+		docsShot(QStringLiteral("registers_decoded"), &window_, QRect(), false, focus);
+
+		/* stale: Poll off, the values grey after two intervals */
+		poll_->setChecked(false);
+		QTest::qWait(2500);
+		docsShot(QStringLiteral("registers_stale"), &window_, QRect(), false, focus);
+		poll_->setChecked(true);
+		QTest::qWait(800);
+		docsWhileOpen([header] { emit header->customContextMenuRequested(QPoint(200, header->height() / 2)); },
+				[](QWidget *open) {
+					if (auto *menu = qobject_cast<QMenu *>(open))
+						for (QAction *action : menu->actions())
+							if (action->text() == QLatin1String("Decoded column")) action->trigger();
+				}, true);
+		QSettings().setValue(QStringLiteral("ui/decodedColumn"), false);
+	}
+
+	/* D4, writes: SETPOINT with its limits and Default; LED_MODE's names; the prescaler field's menu; MOTOR_SPEED's
+	 * confirmation; a value changed while editing */
+	void docsWrites() {
+		auto *frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		if (!frame) return;
+		const auto focus = [this] { table_->setFocus(); };
+		const QRect panelArea = docsRectIn(frame, &window_).adjusted(-6, -6, 6, 6);
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("SETPOINT")));
+		QTest::qWait(800);
+		docsShot(QStringLiteral("write_setpoint"), &window_, panelArea, false, focus);
+
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("LED_MODE")));
+		QTest::qWait(800);
+		if (auto *names = frame->findChild<QComboBox *>(QStringLiteral("qwEnum")); names && names->isVisible()) {
+			names->showPopup();
+			QTest::qWait(400);
+			QWidget *list = names->view()->window();
+			docsShot(QStringLiteral("write_led_mode"), &window_, docsUnion(&window_, { frame, list }));
+			names->hidePopup();
+		}
+
+		/* the prescaler field's menu (a click on the field opens it, in a loop of its own) */
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+		QTest::qWait(800);
+		if (auto *bits = frame->findChild<BitView *>(QStringLiteral("bitView")); bits && bits->isVisible()) {
+			const QRect field = bits->fieldCell(QStringLiteral("AUTO_SEND prescaler"));
+			docsWhileOpen([bits, field] { docsClick(bits, field.center()); }, [&](QWidget *menu) {
+				docsShot(QStringLiteral("write_field_menu"), &window_, docsUnion(&window_, { frame, menu }));
+			}, true);
+		}
+
+		/* MOTOR_SPEED 300: the confirmation, over the window */
+		const QModelIndex motor = valueCell(table_, regs_.danger.name);
+		docsWhileOpen([&] {
+			if (QLineEdit *editor = typeInto(motor, QStringLiteral("300"))) QTest::keyClick(editor, Qt::Key_Return);
+		}, [&](QWidget *dialog) {
+			docsShots({ { QStringLiteral("write_confirm"), &window_, QRect(), true },
+					{ QStringLiteral("write_confirm_dialog"), dialog, QRect(), false } });
+		});
+
+		/* SETPOINT: 20 when the editing starts, 25 written by another program meanwhile, 22.5 typed */
+		docsWriteF32(QStringLiteral("SETPOINT"), 20.0f);
+		QTest::qWait(800);
+		const QModelIndex setpoint = valueCell(table_, QStringLiteral("SETPOINT"));
+		docsWhileOpen([&] {
+			QLineEdit *editor = typeInto(setpoint, QStringLiteral("22.5"));
+			docsWriteF32(QStringLiteral("SETPOINT"), 25.0f);
+			QTest::qWait(700);
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		}, [&](QWidget *dialog) { docsShot(QStringLiteral("write_changed"), dialog); });
+		QTest::qWait(300);
+		docsWriteF32(QStringLiteral("SETPOINT"), 25.0f);
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+	}
+
+	/* D1, D2 and D7: the chart of the example device, its menus and readouts, lanes, a recording's window */
+	void docsChart(ChartTab *tab, QTabWidget *tabs) {
+		ChartView *view = tab->view();
+		auto *hold = tab->findChild<QPushButton *>(QStringLiteral("hold"));
+		auto *measure = tab->findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *lanes = tab->findChild<QAction *>(QStringLiteral("chartLanes"));
+		auto *split = tab->findChild<QSplitter *>(QStringLiteral("chartSplit"));
+		if (!view || !hold || !measure || !lanes || !split) return;
+		const auto focus = [view] {
+			docsLeave(view);
+			view->setFocus();
+		};
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		for (const QString &name : { QStringLiteral("SUPPLY_V"), QStringLiteral("SUPPLY_I"), QStringLiteral("TEMPERATURE") })
+			(void) plotRegister(name);
+		docsWindow(tab, QStringLiteral("30 s"));
+		if (auto *clear = tab->findChild<QPushButton *>(QStringLiteral("chartClear"))) clear->click();
+		if (!view->live()) hold->click();
+		for (const char *name : { "chartNormalise", "chartSmooth", "chartTrigger" })
+			if (auto *action = tab->findChild<QAction *>(QLatin1String(name))) action->setChecked(false);
+		if (auto *hover = tab->findChild<QAction *>(QStringLiteral("chartHoverValues"))) hover->setChecked(true);
+		lanes->setChecked(true);
+		view->setAllLanesFolded(false); /* as a first start: no fold, no range, equal heights */
+		view->setAllLanesYAuto();
+		view->resetLaneHeights();
+		if (!measure->isChecked()) measure->click();
+		QTest::qWait(300);
+		const QList<int> sizes = split->sizes();
+		if (sizes.size() == 2) split->setSizes({ sizes[0] + sizes[1] - 190, 190 }); /* the table's every row */
+		/* the fill: 35 s, the strip taken while it fills */
+		QElapsedTimer fill;
+		fill.start();
+		while (fill.elapsed() < 35000) {
+			QTest::qWait(250);
+			if (fill.elapsed() > 9000 && fill.elapsed() < 9300)
+				docsShot(QStringLiteral("strip_filling"), view, QRect(), false, focus);
+		}
+		hold->click(); /* held */
+		QTest::qWait(300);
+		const double end = view->lastViewEnd();
+		view->setCursors(end - 21.5, end - 9.0);
+		QTest::qWait(1200);
+		docsShot(QStringLiteral("chart"), &window_, QRect(), false, focus);
+
+		/* the hover box over the middle of the plot */
+		const QRectF plot = view->lastPlot();
+		const QPointF middle(plot.left() + plot.width() * 0.62, plot.center().y());
+		docsShot(QStringLiteral("chart_hover"), &window_, QRect(), false, [&] {
+			view->setFocus();
+			docsHover(view, middle);
+		});
+		docsLeave(view);
+
+		/* two exports for the recent files, then the right-click menu with Recent recordings open */
+		const QString bench = docsFolder_ + QStringLiteral("/bench_run.csv"), pump = docsFolder_ + QStringLiteral("/pump_test.csv");
+		(void) tab->exportCsv(pump);
+		(void) QTest::qWaitFor([tab] { return !tab->exporting(); }, 10000);
+		view->clearCursors();
+		(void) tab->exportCsv(bench);
+		(void) QTest::qWaitFor([tab] { return !tab->exporting(); }, 10000);
+		RecordingWindow::remember(pump);
+		RecordingWindow::remember(bench);
+		view->setCursors(end - 21.5, end - 9.0);
+		QTest::qWait(600);
+
+		/* notes: pump on and valve shut, one selected */
+		const int pumpOn = view->addNote(end - 24.0, QStringLiteral("pump on"));
+		(void) view->addNote(end - 6.5, QStringLiteral("valve shut"));
+		(void) view->grab();
+		const QRectF tag = view->noteTag(pumpOn);
+		if (!tag.isEmpty()) docsClick(view, tag.center());
+		QTest::qWait(300);
+		docsShot(QStringLiteral("chart_notes"), &window_, QRect(), false, focus);
+
+		/* the Display menu */
+		auto *display = tab->findChild<QPushButton *>(QStringLiteral("chartDisplay"));
+		docsPopupUnder(display);
+		if (display && display->menu()->isVisible())
+			docsShot(QStringLiteral("chart_display_menu"), &window_, docsUnion(&window_, { display, display->menu() }, 12));
+		if (display) display->menu()->hide();
+
+		/* a chip's menu (P's) */
+		const int powerKey = lineKey(view, powerLine);
+		if (powerKey >= 0) {
+			const QRectF chip = view->chipButtonRect(powerKey);
+			tab->showLineMenu(powerKey, view->mapToGlobal(chip.bottomLeft().toPoint() + QPoint(0, 2)));
+			QTest::qWait(400);
+			if (QMenu *menu = tab->lineMenu(); menu && menu->isVisible()) {
+				const QRect chipInWindow(view->mapTo(&window_, chip.topLeft().toPoint()), chip.size().toSize());
+				docsShot(QStringLiteral("chart_chip_menu"), &window_, docsUnion(&window_, { menu }, 12) | chipInWindow.adjusted(-12, -12, 12, 12));
+				menu->hide();
+			}
+		}
+
+		/* the chart's right-click menu, Recent recordings open */
+		const QPoint at = view->mapToGlobal(QPointF(plot.left() + plot.width() * 0.45, plot.top() + plot.height() * 0.3).toPoint());
+		tab->showChartMenu(at, view->timeAt(plot.left() + plot.width() * 0.45));
+		QTest::qWait(400);
+		if (QMenu *menu = tab->chartMenu(); menu && menu->isVisible()) {
+			QMenu *recent = nullptr;
+			for (QAction *action : menu->actions())
+				if (action->menu() && action->text() == QLatin1String("Recent recordings")) recent = action->menu();
+			if (recent) {
+				menu->setActiveAction(recent->menuAction());
+				QTest::qWait(500);
+				if (!recent->isVisible())
+					recent->popup(menu->mapToGlobal(menu->actionGeometry(recent->menuAction()).topRight()));
+				QTest::qWait(300);
+			}
+			docsShot(QStringLiteral("chart_menu"), &window_, docsUnion(&window_, { menu, recent }, 40));
+			if (recent) recent->hide();
+			menu->hide();
+		}
+
+		/* the column chooser (a right-click on the table's header) */
+		if (auto *columns = tab->findChild<QMenu *>(QStringLiteral("measureColumns"))) {
+			auto *table = tab->findChild<QTableWidget *>(QStringLiteral("measures"));
+			if (table) {
+				QHeaderView *header = table->horizontalHeader();
+				columns->popup(header->mapToGlobal(QPoint(header->sectionViewportPosition(ChartTab::ColMean) + 10,
+						header->height())));
+				QTest::qWait(400);
+				docsShot(QStringLiteral("chart_columns"), &window_, docsUnion(&window_, { table, columns }, 8));
+				columns->hide();
+			}
+		}
+
+		/* close cursors: the span's text beside B */
+		view->setCursors(end - 12.0, end - 11.6);
+		QTest::qWait(400);
+		docsShot(QStringLiteral("chart_close_cursors"), view, QRect(), false, focus);
+		view->setCursors(end - 21.5, end - 9.0);
+
+		/* Normalise off and on: the three registers alone, lanes off */
+		lanes->setChecked(false);
+		(void) tab->setMathLineShown(0, false);
+		QTest::qWait(400);
+		auto *normalise = tab->findChild<QAction *>(QStringLiteral("chartNormalise"));
+		docsShot(QStringLiteral("chart_normalise_off"), view, QRect(), false, focus);
+		if (normalise) {
+			normalise->setChecked(true);
+			QTest::qWait(400);
+			docsShot(QStringLiteral("chart_normalise_on"), view, QRect(), false, focus);
+			normalise->setChecked(false);
+		}
+		(void) tab->setMathLineShown(0, true);
+		QTest::qWait(300);
+
+		/* a 10 ms view of the memory: the strip's handle */
+		docsWindow(tab, QStringLiteral("10 ms"));
+		QTest::qWait(400);
+		docsShot(QStringLiteral("strip_10ms"), view, QRect(), false, focus);
+		docsWindow(tab, QStringLiteral("30 s"));
+		QTest::qWait(300);
+
+		view->clearCursors();
+
+		/* Log Y: I^4 spans decades */
+		MathLine fourth;
+		fourth.name = QStringLiteral("I4");
+		fourth.formula = QStringLiteral("SUPPLY_I * SUPPLY_I * SUPPLY_I * SUPPLY_I");
+		const int fourthIndex = int(tab->mathLines().lines().size());
+		if (tab->addMathLine(fourth)) {
+			hold->click(); /* live: the new line fills */
+			QTest::qWait(12000);
+			hold->click();
+			auto *yMode = tab->findChild<QComboBox *>(QStringLiteral("yMode"));
+			if (yMode) {
+				yMode->setCurrentIndex(2);
+				emit yMode->activated(2);
+				QTest::qWait(500);
+				docsShot(QStringLiteral("chart_log"), &window_, QRect(), false, focus);
+				yMode->setCurrentIndex(0);
+				emit yMode->activated(0);
+			}
+			tab->removeMathLine(fourthIndex);
+		}
+
+		/* D2, lanes: PRESSURE, FAN_SPEED and MOTOR_SPEED too (7 units with P's W), their writes stepping */
+		for (const QString &name : { QStringLiteral("PRESSURE"), QStringLiteral("FAN_SPEED"), QStringLiteral("MOTOR_SPEED") })
+			(void) plotRegister(name);
+		docsWindow(tab, QStringLiteral("20 s"));
+		if (!view->live()) hold->click();
+		const uint16_t fan = docsAddr(QStringLiteral("FAN_SPEED"));
+		QElapsedTimer lanesFill;
+		lanesFill.start();
+		const int steps[] = { 30, 60, 45, 80 };
+		const int16_t motor[] = { 1200, 1500, 900, 1300 };
+		for (int k = 0; k < 4; k++) {
+			other_.writeU8(fan, uint8_t(steps[k]));
+			other_.writeI16(regs_.danger.addr, motor[k]);
+			while (lanesFill.elapsed() < (k + 1) * 5500) QTest::qWait(250);
+		}
+		hold->click();
+		{
+			lanes->setChecked(true); /* with the table under them: more than fits, the lanes scroll */
+			QTest::qWait(500);
+			for (int lane = 0; lane < view->laneCount(); lane++)
+				if (view->laneLabel(lane) == QLatin1String("V")) view->setLaneFolded(lane, true);
+			view->setLaneScroll(40); /* half a lane: the top one cut by the plot's edge */
+			QTest::qWait(400);
+			docsShot(QStringLiteral("lanes"), &window_, QRect(), false, focus);
+			/* a lane at Manual (its tag), another's menu open */
+			int manual = -1, menuLane = -1;
+			for (int lane = 0; lane < view->laneCount(); lane++) {
+				if (view->laneFolded(lane)) continue;
+				const QRectF r = view->laneRect(lane);
+				if (r.top() < view->laneRect(0).top() + view->laneScroll() || r.bottom() > view->height() * 0.7) continue; /* whole, in view */
+				if (manual < 0) manual = lane;
+				else if (menuLane < 0) menuLane = lane;
+			}
+			if (manual >= 0 && menuLane >= 0) {
+				(void) view->setLaneYManual(manual, view->laneYLo(manual) - 1, view->laneYHi(manual) + 1);
+				QTest::qWait(300);
+				const QRectF button = view->laneMenuButtonRect(menuLane);
+				tab->showLaneMenu(menuLane, view->mapToGlobal(button.bottomLeft().toPoint()));
+				QTest::qWait(400);
+				if (QMenu *menu = tab->laneMenu(); menu && menu->isVisible()) {
+					docsShot(QStringLiteral("lane_menu"), &window_, QRect(), false);
+					menu->hide();
+				} else {
+					std::printf("  docs pictures: lane %d's menu not shown\n", menuLane);
+				}
+				view->setLaneYAuto(manual);
+			} else {
+				std::printf("  docs pictures: no two lanes in view for the lane menu (%d, %d)\n", manual, menuLane);
+				for (int lane = 0; lane < view->laneCount(); lane++)
+					std::printf("    lane %d %s, folded %d: %.0f..%.0f (the plot %.0f..%.0f)\n", lane,
+							qPrintable(view->laneLabel(lane)), int(view->laneFolded(lane)), view->laneRect(lane).top(),
+							view->laneRect(lane).bottom(), view->lastPlot().top(), view->lastPlot().bottom());
+			}
+		}
+
+		/* D7: the view with two notes exported as run.csv, opened in a window of its own with lanes */
+		view->setNotes({});
+		const double lanesEnd = view->lastViewEnd();
+		(void) view->addNote(lanesEnd - 14.0, QStringLiteral("pump on"));
+		(void) view->addNote(lanesEnd - 4.0, QStringLiteral("valve shut"));
+		view->clearCursors();
+		const QString run = docsFolder_ + QStringLiteral("/run.csv");
+		(void) tab->exportCsv(run);
+		(void) QTest::qWaitFor([tab] { return !tab->exporting(); }, 10000);
+		lanes->setChecked(false);
+		view->setNotes({});
+		if (measure->isChecked()) measure->click();
+		for (int r = 0; r < model_->rows().size(); r++) model_->setPlot(r, false);
+		if (!view->live()) hold->click();
+		docsRecording(run);
+	}
+
+	/* D7: a recording in its own window (lanes, the notes, the crosshair), its Lines menu; a big file's question */
+	void docsRecording(const QString &run) {
+		RecordingWindow *shown = nullptr;
+		RecordingWindow::open(&window_, run, map_.regs, 2048, [&](RecordingWindow *w) { shown = w; });
+		(void) QTest::qWaitFor([&] { return shown != nullptr; }, 10000);
+		if (shown) {
+			shown->resize(DOCS_W, DOCS_H);
+			(void) QTest::qWaitForWindowExposed(shown);
+			ChartView *view = shown->chartTab()->view();
+			if (auto *lanes = shown->findChild<QAction *>(QStringLiteral("chartLanes"))) lanes->setChecked(true);
+			QTest::qWait(800);
+			const QRectF plot = view->lastPlot();
+			docsShot(QStringLiteral("recording"), shown, QRect(), false, [&] {
+				view->setFocus();
+				docsHover(view, QPointF(plot.left() + plot.width() * 0.55, plot.top() + plot.height() * 0.35));
+			});
+			docsLeave(view);
+			LinesList list = openLinesList(shown);
+			QTest::qWait(400);
+			if (list.menu) {
+				docsShot(QStringLiteral("recording_lines"), list.menu);
+				list.menu->hide();
+			}
+			delete shown;
+		}
+
+		/* a file bigger than the RAM: 1 h 30 min of the example's lines at 20 a second */
+		const QString big = docsFolder_ + QStringLiteral("/endurance_run.csv");
+		recording::Line volts{ QStringLiteral("SUPPLY_V"), QStringLiteral("V"), {}, {} };
+		recording::Line amps{ QStringLiteral("SUPPLY_I"), QStringLiteral("A"), {}, {} };
+		recording::Line temp{ QStringLiteral("TEMPERATURE"), QStringLiteral("°C"), {}, {} };
+		for (int i = 0; i < 90 * 60 * 20; i++) {
+			const double t = i / 20.0;
+			volts.times << t;
+			volts.values << 10 + 5 * std::sin(t * 0.37 + 1);
+			amps.times << t;
+			amps.values << 10 + 5 * std::sin(t * 0.44 + 2);
+			temp.times << t;
+			temp.values << 10 + 5 * std::sin(t * 0.3 + 3);
+		}
+		std::atomic<bool> cancel{ false };
+		qint64 rows = 0;
+		QString error;
+		if (recording::write(big, { volts, amps, temp }, QDateTime::currentMSecsSinceEpoch(), cancel, {}, rows, error)) {
+			recording::Estimate estimate;
+			int ramMB = 8;
+			if (recording::estimate(big, estimate, error)) {
+				const double needed = double(estimate.samples()) * (ChartView::BYTES_PER_SAMPLE
+						+ RecordingWindow::KEPT_BYTES_PER_SAMPLE) / (1024 * 1024);
+				ramMB = std::max(1, int(std::lround(needed * 12.0 / 90.0)));
+			}
+			docsWhileOpen([&] { RecordingWindow::open(&window_, big, map_.regs, ramMB); },
+					[&](QWidget *dialog) { docsShot(QStringLiteral("recording_keep_last"), dialog); });
+		}
+		RecordingWindow::closeAll();
+	}
+
+	/* the Monitor: a READ of DEVICE_ID and its answer, every byte */
+	void docsMonitor(QTabWidget *tabs) {
+		auto *tab = window_.findChild<MonitorTab *>();
+		if (!tab) return;
+		const MonitorWidgets monitor = findMonitor();
+		auto *function = tab->findChild<QComboBox *>(QStringLiteral("monitorFunction"));
+		QList<QLineEdit *> boxes = tab->findChildren<QLineEdit *>();
+		boxes.removeIf([](const QLineEdit *box) { return qobject_cast<QAbstractSpinBox *>(box->parent()) != nullptr; });
+		QPushButton *send = buttonWithText(*tab, QStringLiteral("Send"));
+		if (!monitor.complete() || !function || boxes.size() < 2 || !send) return;
+		tabs->setCurrentIndex(MainWindow::TabMonitor);
+		if (auto *slave = tab->findChild<QSpinBox *>(QStringLiteral("monitorSlave"))) slave->setValue(1); /* the device's */
+		poll_->setChecked(false);
+		QTest::qWait(500);
+		monitor.logFrames->setChecked(true);
+		monitor.clear->click();
+		function->setCurrentIndex(0);
+		boxes[0]->setText(QStringLiteral("0xA000"));
+		boxes[1]->setText(QStringLiteral("2"));
+		send->click();
+		QTest::qWait(150);
+		monitor.logFrames->setChecked(false); /* the request's frames, not the next checks of the link */
+		docsShot(QStringLiteral("monitor"), &window_, QRect(), false, [&] { send->setFocus(); });
+		monitor.logFrames->setChecked(false);
+		monitor.clear->click();
+		poll_->setChecked(true);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* D8, the Map editor: SUPPLY_V on General, CONFIG's bit fields, LED_MODE's value names, the Export menu */
+	void docsMapEditor(QTabWidget *tabs) {
+		auto *editorTab = window_.findChild<MapEditorTab *>();
+		auto *pages = window_.findChild<QTabWidget *>(QStringLiteral("editorPages"));
+		if (!editorTab || !pages) return;
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		const auto focus = [mapTable] { if (mapTable) mapTable->setFocus(); };
+		const auto show = [&](const QString &name, int page, const QString &picture) {
+			const int row = regRow(name);
+			if (row < 0) return;
+			editorTab->selectRegister(model_->rows()[row].def.uid);
+			pages->setCurrentIndex(page);
+			QTest::qWait(800);
+			docsShot(picture, &window_, QRect(), false, focus);
+		};
+		show(QStringLiteral("SUPPLY_V"), 0, QStringLiteral("map_editor"));
+		show(QStringLiteral("CONFIG"), 2, QStringLiteral("map_bit_fields"));
+		show(QStringLiteral("LED_MODE"), 1, QStringLiteral("map_values"));
+		if (auto *exportButton = editorTab->findChild<QPushButton *>(QStringLiteral("mapExport"))) {
+			docsPopupUnder(exportButton);
+			if (exportButton->menu() && exportButton->menu()->isVisible()) {
+				docsShot(QStringLiteral("map_export_menu"), &window_, docsUnion(&window_, { exportButton, exportButton->menu() }, 40));
+				exportButton->menu()->hide();
+			}
+		}
+		pages->setCurrentIndex(0);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* D11 and the sidebar's cards: the pill's four states, polling (and slower than asked), the API's three */
+	void docsSidebar() {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *pill = window_.findChild<QLabel *>(QStringLiteral("pill"));
+		if (!sidebar || !pill) return;
+		QWidget *card = docsCard(pill);
+		const auto connectTo = [&](quint16 port) {
+			if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+			QTest::qWait(300);
+			sidebar->useTcp(QStringLiteral("127.0.0.1:%1").arg(port));
+			if (QPushButton *connect = buttonWithText(QStringLiteral("Connect"))) connect->click();
+		};
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		QTest::qWait(600);
+		docsShot(QStringLiteral("pill_disconnected"), card);
+		/* nobody on this port: Connecting, then refused */
+		QCheckBox *again = nullptr;
+		for (QCheckBox *box : sidebar->findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Reconnect by itself")) again = box;
+		const bool againWas = again && again->isChecked();
+		if (again) again->setChecked(false);
+		constexpr quint16 NOBODY = 1299;
+		connectTo(NOBODY);
+		QTest::qWait(50);
+		docsShot(QStringLiteral("pill_connecting"), card);
+		(void) QTest::qWaitFor([&] { return !pill->text().contains(QLatin1String("Connecting")); }, 15000);
+		QTest::qWait(300);
+		std::printf("  docs pictures: the pill refused says \"%s\"\n", qPrintable(pill->text()));
+		docsShot(QStringLiteral("pill_refused"), card);
+		if (again) again->setChecked(againWas);
+		connectTo(FAKE_DEVICE_PORT);
+		(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Disconnect")) != nullptr; }, 5000);
+		QTest::qWait(1500);
+		docsShot(QStringLiteral("pill_connected"), card);
+
+		/* polling, then slower than asked at 1 ms */
+		docsShot(QStringLiteral("polling_card"), docsCard(poll_));
+		const double interval = sidebar->pollIntervalMs();
+		sidebar->setPollInterval(0.1);
+		QTest::qWait(2500);
+		docsShot(QStringLiteral("polling_card_slow"), docsCard(poll_));
+		docsShot(QStringLiteral("status_slow"), window_.statusBar()); /* why, in the status bar */
+		sidebar->setPollInterval(interval);
+
+		/* the API: served, writes, danger writes */
+		QCheckBox *serve = nullptr, *writes = nullptr, *danger = nullptr;
+		for (QCheckBox *box : sidebar->findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Serve API")) serve = box;
+			if (box->text() == QLatin1String("Allow API writes")) writes = box;
+			if (box->text().startsWith(QLatin1String("including"))) danger = box;
+		}
+		if (serve && writes && danger) {
+			serve->setChecked(true);
+			QTest::qWait(800);
+			docsShot(QStringLiteral("api_card"), docsCard(serve));
+			writes->setChecked(true);
+			QTest::qWait(300);
+			docsShot(QStringLiteral("api_card_writes"), docsCard(serve));
+			danger->setChecked(true);
+			QTest::qWait(300);
+			docsShot(QStringLiteral("api_card_danger"), docsCard(serve));
+			danger->setChecked(false);
+			writes->setChecked(false);
+			serve->setChecked(false);
+			QTest::qWait(300);
+		}
+		docsShot(QStringLiteral("sidebar"), sidebar);
+	}
+
+	/* D12: the New math line dialog with the completion open; the Math menu with P and a line in error */
+	void docsMath(ChartTab *tab, QTabWidget *tabs) {
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		MathLine start;
+		start.name = QStringLiteral("P");
+		start.unit = QStringLiteral("W");
+		{
+			MathLineDialog dialog(start, false, map_.regs, &window_);
+			dialog.show();
+			(void) QTest::qWaitForWindowExposed(&dialog);
+			if (auto *box = dialog.findChild<QLineEdit *>(QStringLiteral("formula"))) {
+				box->setFocus();
+				QTest::keyClicks(box, QStringLiteral("SUPPLY_V * SUP"));
+				QTest::qWait(500);
+				docsShot(QStringLiteral("math_dialog"), &dialog);
+			}
+			dialog.reject();
+		}
+		MathLine typo;
+		typo.name = QStringLiteral("EFF");
+		typo.unit = QStringLiteral("%");
+		typo.formula = QStringLiteral("100 * P_OUT / P_IN");
+		const int typoIndex = int(tab->mathLines().lines().size());
+		const bool added = tab->addMathLine(typo);
+		auto *math = tab->findChild<QPushButton *>(QStringLiteral("math"));
+		docsPopupUnder(math);
+		if (math && math->menu()->isVisible()) {
+			docsShot(QStringLiteral("math_menu"), &window_, docsUnion(&window_, { math, math->menu() }, 40));
+			math->menu()->hide();
+		}
+		if (added) tab->removeMathLine(typoIndex);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* D5 and D6: the example fast device at 10 000 records a second: the chart at 20 ms, the card running, the
+	 * histogram and spectrum over 100 ms, the trigger held on a crossing, the stream stopped */
+	void docsFast(ChartTab *chartTab, QTabWidget *tabs) {
+		auto *sidebar = window_.findChild<Sidebar *>();
+		const QString fastMapFile = docsFolder_ + QStringLiteral("/example_fast.json");
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_FAST_PORT), fastMapFile, QString::fromLatin1(fakeDeviceToken) });
+		OtherClient device;
+		if (!sidebar || !fake.waitForStarted(3000) || !QTest::qWaitFor([&] { return device.open(FAKE_FAST_PORT, 1); }, 5000)) {
+			std::printf("  docs pictures: evre_fake_fast not started, no fast pictures\n");
+			return;
+		}
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		MainWindow::Startup connectFast;
+		connectFast.map = fastMapFile;
+		connectFast.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_FAST_PORT);
+		connectFast.connect = true;
+		window_.applyStartup(connectFast);
+		QPushButton *button = sidebar->fastButton(0);
+		ChartView *view = chartTab->view();
+		auto *hold = chartTab->findChild<QPushButton *>(QStringLiteral("hold"));
+		if (button && hold && QTest::qWaitFor([&] { return button->isEnabled(); }, 5000)) {
+			const auto focus = [view] { view->setFocus(); };
+			const int iLoad = ChartView::fastKey(0, 0), vBus = ChartView::fastKey(0, 1);
+			tabs->setCurrentIndex(MainWindow::TabChart);
+			while (!chartTab->mathLines().lines().isEmpty()) chartTab->removeMathLine(0);
+			sidebar->fastPlotBox(0, 0)->setChecked(true);
+			sidebar->fastPlotBox(0, 1)->setChecked(true);
+			auto *lock = chartTab->findChild<QAction *>(QStringLiteral("chartShortLock"));
+			if (lock && !lock->isChecked()) lock->setChecked(true);
+			docsWindow(chartTab, QStringLiteral("20 ms"));
+			button->click();
+			(void) QTest::qWaitFor([&] { return view->fastStore(0) && view->fastStore(0)->size() > 40000; }, 10000);
+			QTest::qWait(1000);
+			docsShot(QStringLiteral("fast_chart"), &window_, QRect(), false, focus);
+			docsShot(QStringLiteral("fast_card_running"), sidebar->fastCard());
+
+			/* D6: held, 200 ms, A -> B over 100 ms */
+			hold->click();
+			docsWindow(chartTab, QStringLiteral("2 s"));
+			QTest::qWait(500);
+			const double end = view->lastViewEnd();
+			view->setCursors(end - 1.5, end - 0.5);
+			QTest::qWait(500);
+			for (const auto &[kind, key, name] : { std::tuple(AnalysisWindow::Kind::Histogram, vBus, QStringLiteral("histogram")),
+						std::tuple(AnalysisWindow::Kind::Spectrum, iLoad, QStringLiteral("spectrum")) }) {
+				if (AnalysisWindow *w = chartTab->openAnalysis(kind, key)) {
+					w->resize(900, 560);
+					(void) QTest::qWaitForWindowExposed(w);
+					if (auto *log = w->findChild<QCheckBox *>(QStringLiteral("spectrumLog"))) log->setChecked(true);
+					QTest::qWait(800);
+					docsShot(name, w);
+					w->close();
+				}
+			}
+			view->clearCursors();
+
+			/* the trigger: Normal, rising on I_LOAD at 0, at 20 % */
+			docsWindow(chartTab, QStringLiteral("20 ms"));
+			hold->click(); /* live */
+			if (lock) lock->setChecked(false);
+			auto *trigger = chartTab->findChild<QAction *>(QStringLiteral("chartTrigger"));
+			auto *mode = chartTab->findChild<QComboBox *>(QStringLiteral("triggerMode"));
+			chartTab->triggerOnLine(iLoad);
+			if (mode) {
+				mode->setCurrentIndex(mode->findData(int(ChartView::TriggerMode::Normal)));
+				emit mode->activated(mode->currentIndex());
+			}
+			view->setTriggerLevel(0.0);
+			view->setTriggerEdge(ChartView::TriggerEdge::Rising);
+			view->setTriggerPosition(0.2);
+			(void) QTest::qWaitFor([&] { return chartTab->triggerState().contains(QLatin1String("triggered")); }, 5000);
+			QTest::qWait(600);
+			docsShot(QStringLiteral("trigger"), &window_, QRect(), false, focus);
+			if (trigger) trigger->setChecked(false);
+			if (lock) lock->setChecked(true);
+			if (!view->live()) hold->click();
+
+			/* stopped */
+			button->click();
+			(void) QTest::qWaitFor([&] { return view->stateFullText().startsWith(QStringLiteral("ADC stopped")); }, 3000);
+			QTest::qWait(800);
+			docsShot(QStringLiteral("fast_stopped"), &window_, QRect(), false, focus);
+			sidebar->fastPlotBox(0, 0)->setChecked(false);
+			sidebar->fastPlotBox(0, 1)->setChecked(false);
+		}
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		fake.kill();
+		fake.waitForFinished(3000);
+		MainWindow::Startup example;
+		example.map = docsFolder_ + QStringLiteral("/example_device.json");
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Disconnect")) != nullptr; }, 5000);
+		docsWindow(chartTab, QStringLiteral("30 s"));
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* D10, Arabic: a window of its own in Arabic, connected: the registers, the chart with cursors and the table,
+	 * the Help */
+	void docsArabic() {
+		language::apply(*qApp, QStringLiteral("ar"));
+		{
+			MainWindow other;
+			other.resize(DOCS_W, DOCS_H);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			MainWindow::Startup example;
+			example.map = docsFolder_ + QStringLiteral("/example_device.json");
+			example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+			example.connect = true;
+			other.applyStartup(example);
+			auto *table = other.findChild<QTableView *>(QStringLiteral("registers"));
+			auto *model = other.findChild<RegisterModel *>();
+			auto *tabs = other.findChild<QTabWidget *>();
+			auto *tab = other.findChild<ChartTab *>();
+			QTest::qWait(3000);
+			if (table && model && tabs && tab) {
+				table->setCurrentIndex(valueCell(table, QStringLiteral("SUPPLY_V")));
+				docsShot(QStringLiteral("arabic_registers"), &other, QRect(), false, [table] { table->setFocus(); });
+				while (!tab->mathLines().lines().isEmpty()) tab->removeMathLine(0);
+				MathLine power;
+				power.name = QStringLiteral("P");
+				power.unit = QStringLiteral("W");
+				power.formula = QStringLiteral("SUPPLY_V * SUPPLY_I");
+				(void) tab->addMathLine(power);
+				for (int r = 0; r < model->rows().size(); r++) {
+					const QString name = model->rows()[r].def.name;
+					model->setPlot(r, name == QLatin1String("SUPPLY_V") || name == QLatin1String("SUPPLY_I")
+							|| name == QLatin1String("TEMPERATURE"));
+				}
+				tabs->setCurrentIndex(MainWindow::TabChart);
+				docsWindow(tab, QStringLiteral("20 s"));
+				if (auto *smooth = tab->findChild<QAction *>(QStringLiteral("chartSmooth"))) smooth->setChecked(false);
+				if (auto *lanes = tab->findChild<QAction *>(QStringLiteral("chartLanes"))) lanes->setChecked(true);
+				QTest::qWait(300);
+				tab->view()->setAllLanesFolded(false);
+				if (auto *split = tab->findChild<QSplitter *>(QStringLiteral("chartSplit")); split && split->sizes().size() == 2)
+					split->setSizes({ split->sizes()[0] + split->sizes()[1] - 190, 190 });
+				QTest::qWait(26000);
+				ChartView *view = tab->view();
+				if (auto *hold = tab->findChild<QPushButton *>(QStringLiteral("hold"))) hold->click();
+				QTest::qWait(300);
+				const double end = view->lastViewEnd();
+				view->setCursors(end - 15.0, end - 6.0);
+				if (auto *measure = tab->findChild<QPushButton *>(QStringLiteral("measure")); measure && !measure->isChecked())
+					measure->click();
+				QTest::qWait(1200);
+				docsShot(QStringLiteral("arabic_chart"), &other, QRect(), false, [view] { view->setFocus(); });
+				if (auto *measure = tab->findChild<QPushButton *>(QStringLiteral("measure")); measure && measure->isChecked())
+					measure->click();
+				for (int r = 0; r < model->rows().size(); r++) model->setPlot(r, false);
+				if (auto *lanes = tab->findChild<QAction *>(QStringLiteral("chartLanes"))) lanes->setChecked(false);
+				if (auto *help = other.findChild<QPushButton *>(QStringLiteral("sidebarHelp"))) {
+					help->click();
+					QTest::qWait(800);
+					for (QWidget *top : QApplication::topLevelWidgets()) {
+						if (!top->isVisible() || !qobject_cast<HelpDialog *>(top)) continue;
+						top->resize(1100, 760);
+						QTest::qWait(400);
+						docsShot(QStringLiteral("arabic_help"), top);
+						top->close();
+					}
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		QApplication::processEvents();
 	}
 
 	MainWindow &window_;
