@@ -306,6 +306,7 @@ private:
 	QString group_;               /* the settings' group: "chart", or a recording's */
 	std::function<double()> clock_;
 	bool recording_ = false;
+	double recordingSpan_ = 0;    /* a recording's: its first to its last time, as its title says */
 	ChartWidget *chart_;
 	QHBoxLayout *axesRow_ = nullptr; /* Window, Memory, RAM, the Y range (buildAxesRow) */
 	QHBoxLayout *noteRow_ = nullptr; /* under it: the note beside RAM when the row has no room for it */
@@ -351,6 +352,7 @@ private:
 	QComboBox *ram_;              /* the samples' RAM, all the lines together */
 	QLabel *chartInfo_;           /* the lines on the chart, frames per second, time to draw one, the smoothing delay */
 	QPushButton *displayButton_;  /* how the lines are drawn; its menu: Normalise, Smooth, Hover values, Drawing */
+	QPushButton *fileButton_ = nullptr; /* File ▾ (makeFileButton); a recording's window has its own beside Lines */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */

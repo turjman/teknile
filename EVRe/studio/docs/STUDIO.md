@@ -1112,6 +1112,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
 | -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
+| **File&nbsp;▾** | Copy picture, Save picture…, Export to CSV…, Open recording… and Recent recordings: the chart's right-click menu (7.10) but *Add note here*, so none is reached by a right-click alone. A note needs its place on the chart: it stays on the right-click, and the button's tooltip says so. A recording's window has its own beside Lines (12.6). |
 | Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes; a recording's window has no fps part at all), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
@@ -1355,7 +1356,9 @@ Frames follow the display's refresh. On Windows the Studio waits for each refres
 
 ### 7.10 The right-click menu: pictures and export
 
-A right-click on the chart opens its menu:
+A right-click on the chart opens its menu. The same items but *Add note here* are on the **File&nbsp;▾** button too,
+right of Display in the actions row (7.2) and beside **Lines** in a recording's window (12.6), so none is reached by a
+right-click alone. A note needs its place on the chart, so it stays on the right-click: the button's tooltip says so.
 
 | Item | What it does |
 |---|---|
@@ -2244,6 +2247,9 @@ recordings can be open.
 - **The columns** come by their titles, `NAME [unit]` (a title without `[…]` has no unit). Each is a line; the first
   64 are plotted. A cell that is empty is no sample. A column with a cell that is not a number (a byte array's hex) is
   left out.
+- **File&nbsp;▾** (top right, beside Lines): Copy picture, Save picture…, Export to CSV…, Open recording… and Recent
+  recordings, the chart's right-click menu but *Add note here* (7.10); its tooltip says how a note is added (a
+  right-click on the chart where it goes). The Chart tab has the same button in its actions row (7.2).
 - **Lines** (top right, *Lines 8/11*: the lines on the chart of those the window offers) opens a checklist of every
   line: the file's columns under *Registers*, each stream's channels under *Fast: ADC* (12.7), the window's math lines
   under *Math*, each with its colour dot (a ring while it is off the chart: it takes the palette's next colour when
@@ -5868,7 +5874,11 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   line without fps (the lines, the paint time and who draws kept), the Chart tab's with it; the totals' column
   *Whole file* and the line over the table *totals over the file (59.9 s)*, the Chart tab's *Since Clear*; zoomed into
   the first half, the legend's value 15.0 (the view's last sample), not the file's 18.0; the focus on the chart at
-  open; Smooth hidden in its Display menu, the Chart tab's shown.
+  open; Smooth hidden in its Display menu, the Chart tab's shown; a **File ▾** button beside Lines (a pointing hand,
+  its tooltip saying how a note is added), its Copy picture (the clipboard's picture the chart's size), Save picture…
+  (the PNG written), Export to CSV… (the file's first line `time_s,datetime,…`) and Open recording… (a window opened)
+  answered in Qt's own file dialogs (`AA_DontUseNativeDialogs` for the step), and Recent recordings in its menu; the
+  Chart tab's File ▾ right of Display, the same four (the recording window's own one in its row hidden).
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
@@ -6181,7 +6191,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 619 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 620 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

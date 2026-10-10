@@ -581,6 +581,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 				adapter.dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
 	addChoice(tr("CPU"), ChartView::Drawing::Cpu);
 	setButtonMenu(displayButton_, displayMenu);
+	fileButton_ = makeFileButton("chartFile");
 	auto *row = new QHBoxLayout;
 	row->setSpacing(6);
 	row->addWidget(holdButton_);
@@ -591,6 +592,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	row->addWidget(mathButton_);
 	row->addSpacing(12);
 	row->addWidget(displayButton_);
+	row->addWidget(fileButton_);
 	row->addSpacing(12);
 	row->addWidget(chartInfo_, 1); /* the room the buttons leave */
 	row->addSpacing(12);
@@ -950,11 +952,12 @@ void ChartTab::restoreSettings() {
 
 void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int columns) {
 	recording_ = true;
+	recordingSpan_ = t1 - t0;
 	chart_->view()->setRecording(true);
 	chart_->setClock(clock_, epochMs);
 	/* nothing comes after the file: no Live, no memory to set, nothing to clear */
 	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, olderLabel_,
-				older_, ramNeed_, clearButton_, removeAllButton_ })
+				older_, ramNeed_, clearButton_, removeAllButton_, fileButton_ /* its own beside Lines */ })
 		w->hide();
 	chart_->view()->setFastSummaries(false); /* its file is mapped whole: every record kept */
 	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
@@ -2170,7 +2173,7 @@ QString ChartTab::measuredRangeText() const {
 	}
 	const double since = view->totalsSince();
 	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal) && recording_) /* no Clear: the whole file */
-		text += tr(" · totals over the file (%1)").arg(durationText(std::max(0.0, view->timeNow() - since)));
+		text += tr(" · totals over the file (%1)").arg(durationText(recordingSpan_));
 	else if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
 		const QDateTime at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(since * 1000)));
 		text += tr(" · totals since %1 (%2)").arg(at.toString(QStringLiteral("HH:mm:ss")),

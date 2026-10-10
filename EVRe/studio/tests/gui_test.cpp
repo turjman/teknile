@@ -14532,6 +14532,23 @@ private:
 				"saying how a note is added): Copy picture, Save picture…, Export to CSV…, Open recording… do what the "
 				"right-click does, and the recent recordings");
 
+		/* the Chart tab's File ▾ in its actions row, right of Display (the recording's window shows its own only) */
+		auto *mainTabs = window_.findChild<QTabWidget *>();
+		const int tabBefore = mainTabs ? mainTabs->currentIndex() : 0;
+		if (mainTabs) mainTabs->setCurrentIndex(1); /* the Chart tab shown: its row laid out */
+		QTest::qWait(200);
+		auto *liveFile = live->findChild<QPushButton *>(QStringLiteral("chartFile"));
+		auto *display = live->findChild<QPushButton *>(QStringLiteral("chartDisplay"));
+		auto *hiddenThere = tab->findChild<QPushButton *>(QStringLiteral("chartFile"));
+		const bool inRow = liveFile && display && !liveFile->isHidden() && std::abs(liveFile->geometry().center().y()
+				- display->geometry().center().y()) <= 2 && liveFile->geometry().left() > display->geometry().right()
+				&& liveFile->text() == QLatin1String("File") && liveFile->toolTip() == (file ? file->toolTip() : QString())
+				&& hiddenThere && hiddenThere->isHidden();
+		const bool liveWorks = fileButtonWorks(live, liveFile, out.path(), path, "chart");
+		if (mainTabs) mainTabs->setCurrentIndex(tabBefore);
+		check(inRow && liveWorks, "Chart tab: the same File ▾ button in its actions row, right of Display, its actions "
+				"those of the right-click (a picture copied and saved, the samples exported, a recording opened)");
+
 		RecordingWindow::closeAll();
 		if (measureBefore.isValid()) QSettings().setValue(QStringLiteral("recording/measure"), measureBefore);
 		else QSettings().remove(QStringLiteral("recording/measure"));

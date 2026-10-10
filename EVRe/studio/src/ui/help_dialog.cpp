@@ -478,7 +478,9 @@ of that stream, a register in it held at its last polled value: see <i>Fast stre
 <p><b>● Record CSV</b> asks for a file, then writes one row per poll (one per frame with <i>Auto send</i>):
 <code>time_s</code> (since start), <code>datetime</code>, then every register ticked <b>Log</b> (all by default), as
 the values shown (scaled). Columns are fixed when the recording starts. <b>■ Stop recording</b> closes the file.</p>
-<h3>Right-click on the chart</h3>
+<h3>Right-click on the chart, and File ▾</h3>
+<p>The same items but <b>Add note here</b> are on the <b>File ▾</b> button (right of <b>Display</b>; beside
+<b>Lines</b> in a recording's window). A note needs its place: right-click the chart where it goes.</p>
 <ul>
 <li><b>Copy picture</b>, <b>Save picture…</b> (PNG): the chart as shown, drawn by the CPU.</li>
 <li><b>Export to CSV…</b>: the samples of every line over the view, or between the cursors A → B when both are
@@ -694,7 +696,8 @@ division); the mouse on a cursor's tag: its time (from T while the trigger holds
 all fit</td></tr>
 <tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or
 handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
-<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
+<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording (all but the note on
+<b>File ▾</b> too)</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
