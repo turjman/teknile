@@ -2321,7 +2321,13 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	laneMenu_ = new QMenu(this);
 	laneMenu_->setObjectName(QStringLiteral("laneMenu"));
 	const QString units = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
-	laneMenu_->addSection(tr("Lane %1: Y range").arg(noMnemonic(units)));
+	/* its title as a muted label, as the Display menu's: the style draws a section as a bare line, without its text */
+	auto *title = new QWidgetAction(laneMenu_);
+	auto *titleLabel = new QLabel(tr("Lane %1: Y range").arg(units));
+	titleLabel->setObjectName(QStringLiteral("menuTitle"));
+	titleLabel->setTextFormat(Qt::PlainText);
+	title->setDefaultWidget(titleLabel);
+	laneMenu_->addAction(title);
 	QAction *autoRange = laneMenu_->addAction(tr("Auto"), this, [view, lane] { view->setLaneYAuto(lane); });
 	autoRange->setCheckable(true);
 	autoRange->setChecked(view->laneYAuto(lane));

@@ -8437,14 +8437,18 @@ private:
 		QAction *manual = nullptr;
 		if (menu)
 			for (QAction *action : menu->actions()) {
-				if (action->isSeparator()) continue;
+				if (action->isSeparator() || qobject_cast<QWidgetAction *>(action)) continue;
 				items << action->text();
 				if (action->text() == QStringLiteral("Manual…")) manual = action;
 			}
+		/* its title shown as a muted label (a section is drawn as a bare line by the style, its text not shown) */
+		auto *titleAction = menu ? qobject_cast<QWidgetAction *>(menu->actions().value(0)) : nullptr;
+		auto *title = titleAction ? qobject_cast<QLabel *>(titleAction->defaultWidget()) : nullptr;
 		const bool popped = menu && QTest::qWaitFor([&] { return menu->isVisible(); }, 2000)
 				&& items == QStringList{ QStringLiteral("Auto"), QStringLiteral("Manual…"), QStringLiteral("Log"),
 						QStringLiteral("All lanes: Auto"), QStringLiteral("Fold lane") }
-				&& menu->actions().value(0)->text() == QLatin1String("Lane A: Y range"); /* its title, a section */
+				&& title && title->objectName() == QLatin1String("menuTitle") && title->isVisible()
+				&& title->text() == QLatin1String("Lane A: Y range");
 		if (!popped) std::printf("     (the lane's menu: %s)\n", qPrintable(items.join(QStringLiteral(" | "))));
 		bool unanimated = false; /* made without the window animations (STUDIO.md 27) */
 		const bool typed = manual && fillDialog([&](QDialog *d) {
@@ -8474,7 +8478,7 @@ private:
 					&& otherView->laneYLog(2);
 		}
 		check(popped && manualSet && kept.contains(QStringLiteral("A\t0\t0\t0\t5")) && restored,
-				"chart, Lanes: a right-click on a lane's labels: Auto, Manual… (0 .. 5 typed; a dialog without the window "
+				"chart, Lanes: a right-click on a lane's labels: its title shown (Lane A: Y range), Auto, Manual… (0 .. 5 typed; a dialog without the window "
 				"animations), Log, All lanes: Auto, Fold lane; each lane alone; kept (chart/laneY) for the next start");
 
 		/* Ctrl + wheel over the first lane: that lane Manual; a double-click there: Auto again */
@@ -8858,7 +8862,7 @@ private:
 		QAction *foldItem = nullptr;
 		if (laneMenu)
 			for (QAction *action : laneMenu->actions()) {
-				if (!action->isSeparator()) items << action->text();
+				if (!action->isSeparator() && !qobject_cast<QWidgetAction *>(action)) items << action->text();
 				if (action->text() == QStringLiteral("Fold lane")) foldItem = action;
 			}
 		const bool shown = laneMenu && laneMenu->isVisible() && !view->laneFolded(1)
