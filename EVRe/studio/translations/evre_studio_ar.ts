@@ -1737,6 +1737,103 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
 </context>
 <context>
+    <name>DumpView</name>
+    <message>
+        <source>%1 ago</source>
+        <translation>منذ ⁦%1⁩</translation>
+    </message>
+    <message numerus="yes">
+        <source>→ READ %n bytes @ %1</source>
+        <translation>
+            <numerusform>→ قراءة %n بايت عند ⁦%1⁩</numerusform>
+            <numerusform>→ قراءة بايت واحد عند ⁦%1⁩</numerusform>
+            <numerusform>→ قراءة بايتين عند ⁦%1⁩</numerusform>
+            <numerusform>→ قراءة %n بايتات عند ⁦%1⁩</numerusform>
+            <numerusform>→ قراءة %n بايتًا عند ⁦%1⁩</numerusform>
+            <numerusform>→ قراءة %n بايت عند ⁦%1⁩</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1, slave %2</source>
+        <translation>%1، التابع %2</translation>
+    </message>
+    <message>
+        <source>← AUTO_SEND</source>
+        <translation>← AUTO_SEND</translation>
+    </message>
+    <message>
+        <source>← REPLY</source>
+        <translation>← رد</translation>
+    </message>
+    <message>
+        <source>held %1</source>
+        <translation>مثبّت عند ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>the link is closed</source>
+        <translation>الوصلة مغلقة</translation>
+    </message>
+    <message>
+        <source>no reply yet</source>
+        <translation>لا رد بعد</translation>
+    </message>
+    <message>
+        <source>error: %1</source>
+        <translation>خطأ: %1</translation>
+    </message>
+    <message>
+        <source>read once, %1 ago</source>
+        <translation>قُرئ مرة واحدة، منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>stale %1</source>
+        <translation>قديم ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Held at %1: these bytes are not refreshed (Follow shows the replies again)</source>
+        <translation>مثبّت عند ⁦%1⁩: هذه البايتات لا تُحدَّث (المتابعة تعرض الردود من جديد)</translation>
+    </message>
+    <message>
+        <source>The link is closed: these are the last bytes read</source>
+        <translation>الوصلة مغلقة: هذه آخر البايتات المقروءة</translation>
+    </message>
+    <message>
+        <source>A manual read: read once, not refreshed</source>
+        <translation>قراءة يدوية: قُرئت مرة واحدة ولا تُحدَّث</translation>
+    </message>
+    <message>
+        <source>The last read failed (%1): these are the last bytes read</source>
+        <translation>فشلت القراءة الأخيرة (%1): هذه آخر البايتات المقروءة</translation>
+    </message>
+    <message>
+        <source>No reply yet</source>
+        <translation>لا رد بعد</translation>
+    </message>
+    <message>
+        <source>Not refreshed for %1</source>
+        <translation>لم يُحدَّث منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>fast stream %1: see the Chart</source>
+        <translation>التدفق السريع %1: انظر المخطط</translation>
+    </message>
+    <message numerus="yes">
+        <source>Manual read %1 · %n bytes</source>
+        <translation>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايت</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · بايت واحد</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · بايتان</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايتات</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايتًا</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايت</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>split: the device refused the merged read</source>
+        <translation>مقسّم: رفض الجهاز القراءة المدمجة</translation>
+    </message>
+</context>
+<context>
     <name>EventLog</name>
     <message>
         <source>Show info</source>

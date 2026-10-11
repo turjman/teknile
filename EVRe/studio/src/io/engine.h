@@ -178,6 +178,26 @@ public:
 	/* the monitor's lines since the last call (when monitoring), and how many
 	 * were dropped: at thousands of frames a second only the newest are kept */
 	QStringList takeFrames(int &dropped);
+	/* The Dump tab: each block's latest reply as the polls (and AUTO_SEND's frames) bring it, the newest winning;
+	 * kept only while setDump is on (the tab shown), so a hidden tab costs the I/O thread nothing. The payload is
+	 * the one onBlockResult matched to its block; the tab rebuilds the frames' header and CRC from it with
+	 * evre::build (the same bytes as on the wire). Fast stream blocks never come here: their records are the
+	 * chart's. */
+	struct DumpReply {
+		uint8_t slave = 0;       /* the device's, as the table has it (RegDef::slave) */
+		uint8_t wireSlave = 0;   /* where the request went (and the reply came from) */
+		uint16_t addr = 0, size = 0;
+		QByteArray data;         /* the payload last answered; empty: no answer yet */
+		double time = 0;         /* when it came, on now()'s clock */
+		quint64 version = 0;     /* moves at every answer, good or not */
+		bool single = false;     /* one register of a block the device refused merged */
+		bool autoSend = false;   /* AUTO_SEND's frame, nobody asked for it */
+		QString error;           /* the last answer's error, the bytes then the last good ones; empty: fine */
+	};
+	/* true when a reply moved (or a block went) since the last call: `blocks` is then every block's, in address
+	 * order (the whole set, so the tab also sees the blocks gone: a split, a register refused for good, another
+	 * map). false: nothing new, `blocks` untouched. */
+	bool takeDumps(QVector<DumpReply> &blocks);
 
 	/* in the engine thread (through post) */
 	/* generation: the window's number for this map. devices: the one device of a map (slave 0), or the devices
@@ -207,6 +227,7 @@ public:
 	void write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack);
 	void read(quint64 id, uint8_t slave, uint16_t addr, uint16_t count, bool intoTable);
 	void setMonitor(bool on) { monitorOn_ = on; }
+	void setDump(bool on); /* the Dump tab shown: its replies kept (takeDumps); hidden: none kept, and none taken */
 	void apiStart(quint16 evrePort, quint16 jsonPort, bool network);
 	void apiStop();
 	void apiSetWrites(bool writes, bool danger);
@@ -283,6 +304,9 @@ private:
 	void appendSamples(double t);
 	void writeCsvRow(double t);
 	void readBack(uint8_t tableSlave, uint16_t addr, int writtenSize);
+	/* the Dump tab's store (with dumpOn_): a block's answer kept, and the replies of blocks no longer read dropped */
+	void keepDump(const Block &block, const evre::Result &r);
+	void pruneDumps();
 
 	/* AUTO_SEND */
 	/* the state wanted to the device at slave: CONFIG read, then written */
@@ -388,6 +412,7 @@ private:
 	QElapsedTimer clock_, rateClock_;
 	QVector<RegKey> plottedKeys_;
 	bool monitorOn_ = false;
+	bool dumpOn_ = false;
 
 	/* AUTO_SEND */
 	qint32 serialBaud_ = 0;                      /* the link's baud rate; 0: not a serial link */
@@ -428,6 +453,9 @@ private:
 	QHash<RegKey, QVector<QPointF>> samples_;
 	QStringList monitorLines_;
 	int monitorLinesDropped_ = 0;
+	QHash<quint32, DumpReply> dumps_;            /* by dumpKey (engine.cpp) */
+	quint64 dumpVersion_ = 0;
+	bool dumpsMoved_ = false;                    /* since the last takeDumps */
 	QVector<FastBlock> fastBlocks_;
 	qint64 fastQueued_ = 0;                      /* the bytes in fastBlocks_ */
 };

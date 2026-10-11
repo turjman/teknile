@@ -11,6 +11,7 @@
 #include <QTimer>
 #include <algorithm>
 #include <chrono>
+#include <tuple>
 
 #include "api/api_server.h"
 #include "model/bus_file.h"
@@ -53,6 +54,12 @@ QString csvTitle(const RegDef &d) {
 /* a CSV cell: the number as shown (scale and offset applied), or the bytes in hex */
 QString csvCell(const RegValue &v) {
 	return v.def.isNumeric() ? QString::number(decodeNumber(v.def, v.raw), 'g', 9) : QString::fromLatin1(v.raw.toHex());
+}
+
+/* a block's place in the Dump tab's store: its device and address; AUTO_SEND's frame apart from a polled read at the
+ * same address */
+quint32 dumpKey(uint8_t slave, uint16_t addr, bool autoSend) {
+	return (autoSend ? 1u << 24 : 0u) | (quint32(slave) << 16) | addr;
 }
 
 } // namespace
@@ -208,6 +215,69 @@ QStringList IoEngine::takeFrames(int &dropped) {
 	QStringList out;
 	out.swap(monitorLines_);
 	return out;
+}
+
+bool IoEngine::takeDumps(QVector<DumpReply> &blocks) {
+	QMutexLocker lock(&crossThreadMutex_);
+	if (!dumpsMoved_) return false;
+	dumpsMoved_ = false;
+	blocks = dumps_.values();
+	lock.unlock();
+	std::sort(blocks.begin(), blocks.end(), [](const DumpReply &a, const DumpReply &b) {
+		return std::tie(a.slave, a.addr, a.autoSend) < std::tie(b.slave, b.addr, b.autoSend);
+	});
+	return true;
+}
+
+/* Hidden, the tab keeps nothing: the store is emptied, and the next takeDumps says so (an empty set). */
+void IoEngine::setDump(bool on) {
+	dumpOn_ = on;
+	if (on) return;
+	QMutexLocker lock(&crossThreadMutex_);
+	dumpsMoved_ = !dumps_.isEmpty() || dumpsMoved_;
+	dumps_.clear();
+}
+
+/* A block's answer: its bytes when good; an error keeps the last good bytes and says what went wrong. */
+void IoEngine::keepDump(const Block &block, const evre::Result &r) {
+	QMutexLocker lock(&crossThreadMutex_);
+	DumpReply &reply = dumps_[dumpKey(block.slave, block.addr, false)];
+	reply.slave = block.slave;
+	reply.wireSlave = target(block.slave);
+	reply.addr = block.addr;
+	reply.size = block.size;
+	reply.single = block.single;
+	reply.time = now();
+	reply.version = ++dumpVersion_;
+	if (r.ok) {
+		reply.data = r.data;
+		reply.error.clear();
+	} else {
+		reply.error = r.message;
+	}
+	dumpsMoved_ = true;
+}
+
+/* The replies of blocks no longer read go with them: a merged block split into singles, a register refused for good,
+ * another map, AUTO_SEND switched off. */
+void IoEngine::pruneDumps() {
+	if (!dumpOn_) return;
+	QMutexLocker lock(&crossThreadMutex_);
+	for (auto it = dumps_.begin(); it != dumps_.end();) {
+		const DumpReply &reply = it.value();
+		const bool read = reply.autoSend
+				? autoSendOn_ && reply.addr == streamAddr_ && reply.size == streamCount_
+				: std::any_of(blocks_.begin(), blocks_.end(), [&reply](const Block &b) {
+						  return b.slave == reply.slave && b.addr == reply.addr && b.size == reply.size
+								  && b.single == reply.single;
+					  });
+		if (read) {
+			++it;
+		} else {
+			it = dumps_.erase(it);
+			dumpsMoved_ = true;
+		}
+	}
 }
 
 /* the text is made here, off the window's thread */
@@ -665,6 +735,7 @@ void IoEngine::rebuildBlocks() {
 	}
 	layoutGeneration_++;
 	pollsUnderWay_.clear();
+	pruneDumps();
 }
 
 int IoEngine::maxPollsUnderWay() const {
@@ -717,6 +788,11 @@ void IoEngine::onBlockResult(quint64 layout, quint64 pollId, const Block &block,
 	} else {
 		for (int row : block.rows) table_.setError(row, r.message, false); /* a timeout or the link: next poll */
 	}
+	/* kept for the Dump tab while the block is still read as it was (not split, not refused for good) */
+	if (dumpOn_ && std::any_of(blocks_.begin(), blocks_.end(), [&block](const Block &b) {
+			return b.slave == block.slave && b.addr == block.addr && b.size == block.size && b.single == block.single;
+		}))
+		keepDump(block, r);
 	auto it = pollsUnderWay_.find(pollId);
 	if (it != pollsUnderWay_.end() && --it.value() <= 0) {
 		pollsUnderWay_.erase(it);
@@ -748,6 +824,7 @@ void IoEngine::onBlockRefused(const Block &block, const evre::Result &r) {
 	const auto it = std::find_if(blocks_.begin(), blocks_.end(),
 			[&block](const Block &b) { return b.single && b.slave == block.slave && b.addr == block.addr; });
 	if (it != blocks_.end()) blocks_.erase(it);
+	pruneDumps();
 }
 
 /* a merged block -> one block per register, in its place (unless the answer
@@ -769,6 +846,7 @@ void IoEngine::splitBlock(const Block &block) {
 		single.single = true;
 		blocks_.insert(at + i, single);
 	}
+	pruneDumps();
 }
 
 /* every block of a poll answered: a point per plotted register, a CSV row (with AUTO_SEND on and its frames coming,
@@ -1002,6 +1080,18 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 	for (const int row : std::as_const(streamRows_)) {
 		const RegDef &d = rows[row].def;
 		table_.setRaw(row, frame.data.mid(d.addr - streamAddr_, d.size));
+	}
+	if (dumpOn_) {
+		QMutexLocker lock(&crossThreadMutex_);
+		DumpReply &reply = dumps_[dumpKey(0, frame.addr, true)];
+		reply.wireSlave = frame.slave;
+		reply.addr = frame.addr;
+		reply.size = frame.cnt;
+		reply.data = frame.data;
+		reply.time = now();
+		reply.version = ++dumpVersion_;
+		reply.autoSend = true;
+		dumpsMoved_ = true;
 	}
 	framesSinceRate_++;
 	const double t = now();
