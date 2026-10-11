@@ -6000,7 +6000,9 @@ Before the window opens, the second client writes zeros to the login register (t
 refused token, so this clears what an earlier run left), and the test sets `EVRE_TOKEN` to `example-token`, the
 fake device's token. The window reads it at start.
 
-It prepares math lines in its own settings:
+Before that, the test clears its own settings and prepares them again. A check (before the first step): a
+`recording/measure = true` written first is gone, and only the three keys the test prepares are there
+(`chart/math`, `chart/memory`, `chart/window`). Among them are math lines:
 
 - `P = SUPPLY_V * SUPPLY_I`
 - one that names no register of the map

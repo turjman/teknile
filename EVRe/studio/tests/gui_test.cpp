@@ -16485,7 +16485,12 @@ int main(int argc, char **argv) {
 	QSettings().clear();
 	prepareSettings(TestRegisters::find(map));
 	{
-		QStringList keys = QSettings().allKeys();
+		/* the application's own keys only: allKeys() also lists the organisation's fallback keys (teknile.conf on
+		 * Linux, the OrganizationDefaults key on Windows), which clear() does not remove and no run of this
+		 * test writes, so a machine that has one would fail the check for nothing */
+		QSettings own;
+		own.setFallbacksEnabled(false);
+		QStringList keys = own.allKeys();
 		keys.sort();
 		check(QSettings().applicationName() == QLatin1String("EVReStudioTest")
 						&& keys == QStringList{ QStringLiteral("chart/math"), QStringLiteral("chart/memory"),
