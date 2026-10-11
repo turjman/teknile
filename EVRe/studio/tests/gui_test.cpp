@@ -4329,12 +4329,14 @@ private:
 			if (view->decodeText(card, l).startsWith(QLatin1String("SUPPLY_V  "))) supplyLine = l;
 			if (view->decodeText(card, l).startsWith(QLatin1String("TEMPERATURE  "))) tempLine = l;
 		}
-		/* where the change shows: SUPPLY_V's outline over its chip's top, the fill between its bytes 2 and 3, its decode
-		 * line's fill at the right end (past the value), UPTIME's fill between its bytes 1 and 2 */
+		/* where the change shows: SUPPLY_V's outline over its chip's top (1 px under the cell's top: the outline spans
+		 * 0.75 to 2.25 px there and the chip starts at 2.5, at 100 % and at 225 % alike; 1.5 px rounded to the row the
+		 * chip's edge shares at 100 %), the fill between its bytes 2 and 3, its decode line's fill at the right end (past
+		 * the value), UPTIME's fill between its bytes 1 and 2 */
 		const bool dark = Theme::isDark();
 		const ThemeColors &c = Theme::colors();
 		const QColor colour = view->chipColour(card, supplyV), uptimeColour = view->chipColour(card, keyOf(QStringLiteral("UPTIME")));
-		const QPointF outline(view->byteRect(card, 5).center().x(), view->byteRect(card, 5).top() + 1.5);
+		const QPointF outline(view->byteRect(card, 5).center().x(), view->byteRect(card, 5).top() + 1.0);
 		const QPointF fill(view->byteRect(card, 6).left(), view->byteRect(card, 6).center().y());
 		const QPointF line(view->decodeRect(card, supplyLine).right() - 4, view->decodeRect(card, supplyLine).center().y());
 		const QPointF uptime(view->byteRect(card, 2).left(), view->byteRect(card, 2).center().y());
