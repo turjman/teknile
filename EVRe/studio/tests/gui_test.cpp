@@ -16402,7 +16402,23 @@ int main(int argc, char **argv) {
 		std::printf("map %s: %s\n", qPrintable(mapPath), qPrintable(error));
 		return 2;
 	}
+	/* a run starts from no settings, as the CI's fresh machine does: what an earlier run left (a run stopped half way
+	 * leaves its steps' settings, recording/measure = true among them) changes no result. Only the test's own
+	 * application is cleared, never the user's EVReStudio nor EVRE_SHOT's EVReStudio-test. The stale setting is
+	 * written first, so the check below sees the clearing work on every run. */
+	QSettings().setValue(QStringLiteral("recording/measure"), true);
+	QSettings().clear();
 	prepareSettings(TestRegisters::find(map));
+	{
+		QStringList keys = QSettings().allKeys();
+		keys.sort();
+		check(QSettings().applicationName() == QLatin1String("EVReStudioTest")
+						&& keys == QStringList{ QStringLiteral("chart/math"), QStringLiteral("chart/memory"),
+								QStringLiteral("chart/window") },
+				"the test's own settings (EVReStudioTest) cleared at its start: a recording/measure = true an earlier run "
+				"left is gone, only the three the test prepares are there when the first step runs");
+		if (keys.size() != 3) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
+	}
 
 	OtherClient other;
 	if (!other.open()) {

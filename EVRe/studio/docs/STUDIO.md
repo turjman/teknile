@@ -5960,7 +5960,8 @@ real hardware, and it reads only.
 
 Settings stay apart from the user's:
 
-- The GUI test runs as organisation `teknile`, application `EVReStudioTest`.
+- The GUI test runs as organisation `teknile`, application `EVReStudioTest`. It clears those settings at its start,
+  so a run starts as on a fresh machine: what an earlier run left (or one stopped half way) changes no result.
 - A run with `EVRE_SHOT` set uses the application name `EVReStudio-test`.
 
 A script that runs the tests should stop only the processes it started, by their process id, never by name or
@@ -6589,7 +6590,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 625 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 626 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
