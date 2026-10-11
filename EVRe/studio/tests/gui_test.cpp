@@ -92,6 +92,7 @@
 #include <QUndoStack>
 #include <QWheelEvent>
 #include <QWidgetAction>
+#include <QWindow>
 #include <QXmlStreamReader>
 #include <algorithm>
 #include <atomic>
@@ -14407,6 +14408,10 @@ private:
 			check(true, "recording's window made bigger on a GPU: no adapter on this machine (Direct3D 11 on Windows "
 					"only): the CPU draws, skipped");
 		} else {
+			/* the screen is read, so the window must be in front: Windows lets a program in the background open its
+			 * windows only behind the one the person works in, and that window was read for the plot (85 to 89 %
+			 * alike, dark on dark). On top for this check only (no focus taken). */
+			opened->windowHandle()->setFlag(Qt::WindowStaysOnTopHint, true);
 			opened->resize(1000, 620);
 			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
 			(void) QTest::qWaitFor([&] { return !view->openingGpu(); }, 10000);
@@ -14428,13 +14433,21 @@ private:
 					.convertToFormat(QImage::Format_RGB32);
 			const QImage cpu = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
 			const double alike = screen.size() == cpu.size() ? blocksAlike(screen.copy(at), cpu.copy(at), 24) : 0;
+			/* the rest of the window as its own picture: it is in front, so a plot unlike the CPU's is the card's */
+			const auto withoutPlot = [&at](QImage image) {
+				QPainter(&image).fillRect(at, Qt::black);
+				return image;
+			};
+			const double front = screen.size() == cpu.size() ? blocksAlike(withoutPlot(screen), withoutPlot(cpu), 24) : 0;
 			std::printf("  made bigger on %s: a frame let go (%d), the layer %dx%d for the plot's %dx%d; on the screen "
-					"%.2f%% like the CPU's picture\n", qPrintable(view->drawingName()), view->gpuDropped() - dropped,
-					view->gpuPresentedSize().width(), view->gpuPresentedSize().height(), at.width(), at.height(), alike * 100);
+					"%.2f%% like the CPU's picture (the rest of the window %.2f%%: in front)\n", qPrintable(view->drawingName()),
+					view->gpuDropped() - dropped, view->gpuPresentedSize().width(), view->gpuPresentedSize().height(),
+					at.width(), at.height(), alike * 100, front * 100);
 			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again && alike >= 0.97,
 					"recording's window made bigger on a GPU: a frame the system let go is followed by another, the card's "
 					"layer at the new size (no blank bar over the new part), its plot the CPU's picture");
 			view->setDrawing(ChartView::Drawing::Cpu);
+			opened->windowHandle()->setFlag(Qt::WindowStaysOnTopHint, false);
 		}
 
 		/* the theme switched: its boxes in the new theme at once */
