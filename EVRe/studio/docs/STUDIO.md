@@ -6015,9 +6015,10 @@ The steps run in order. Each leaves the window and the device as the next step e
 3. writes off by default, then on
 4. a write read back
 5. another client's write shown
-6. typed text survives polls; "Value changed while editing" with Cancel and with Write anyway
+6. typed text survives polls; "Value changed while editing" with Cancel and with Write anyway; it opens with the
+   keyboard's focus on Cancel, its default, so Space and Enter both cancel
 7. no question when nothing changed
-8. the danger confirmation
+8. the danger confirmation; it too opens with the focus on Cancel, and Space and Enter cancel
 9. an out-of-range value refused, with a pop-up
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
 11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
@@ -6590,7 +6591,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 626 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 628 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

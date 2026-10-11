@@ -353,11 +353,16 @@ struct AwaitingDialog {
 	AwaitingDialog &operator=(const AwaitingDialog &) = delete;
 };
 
+/* the last message box answerDialog answered: the button with the keyboard's focus, and its default (Space presses
+ * the one with the focus, Enter the default: a question before a write keeps both on Cancel) */
+QString lastBoxFocus, lastBoxDefault;
+
 /* runs trigger, then answers the modal message box it brings by clicking
  * buttonText (or rejects it, without that button): the box's title, or empty if none came.
+ * With a key, that key is pressed instead, where a person's would go (the focus, the box active).
  * The poll timer is local, so it stops when this returns: a poll left running
  * after a call that brought no box would answer the next call's box itself. */
-QString answerDialog(const QString &buttonText, const std::function<void()> &trigger) {
+QString answerDialog(const QString &buttonText, const std::function<void()> &trigger, Qt::Key key = Qt::Key_unknown) {
 	QString title;
 	bool done = false;
 	const QPointer<QWidget> wasActive = QApplication::activeWindow();
@@ -370,6 +375,18 @@ QString answerDialog(const QString &buttonText, const std::function<void()> &tri
 		poll.stop();
 		title = box->windowTitle();
 		done = true;
+		/* a key goes where the focus is once the box is active (xvfb may never make it so: then its focus child) */
+		if (key != Qt::Key_unknown) (void) QTest::qWaitFor([box] { return QApplication::activeWindow() == box; }, 1000);
+		QWidget *focus = QApplication::activeWindow() == box && QApplication::focusWidget() ? QApplication::focusWidget()
+				: box->focusWidget();
+		const auto *focused = qobject_cast<QPushButton *>(focus);
+		lastBoxFocus = focused ? focused->text().remove(QLatin1Char('&')) : QString();
+		lastBoxDefault = box->defaultButton() ? box->defaultButton()->text().remove(QLatin1Char('&')) : QString();
+		if (key != Qt::Key_unknown) {
+			QTest::keyClick(focus ? focus : box, key);
+			if (box->isVisible()) box->reject(); /* never left open */
+			return;
+		}
 		for (QAbstractButton *button : box->buttons()) {
 			if (button->text().remove(QLatin1Char('&')) == buttonText) {
 				button->click();
@@ -760,7 +777,31 @@ private:
 			QTest::qWait(400);
 			if (editor) QTest::keyClick(editor, Qt::Key_Return);
 		});
-		check(title == valueChangedTitle && u8Becomes(2), "Write anyway: the device holds 2");
+		const bool written = u8Becomes(2);
+		if (title != valueChangedTitle || !written)
+			std::printf("     (the question \"%s\", the device holds %d)\n", qPrintable(title), other_.readU8(regs_.u8.addr));
+		check(title == valueChangedTitle && written, "Write anyway: the device holds 2");
+
+		/* safe by default: the keyboard's focus on Cancel, the default, so Space and Enter both cancel */
+		QString focusWas, defaultWas;
+		bool keysCancel = true;
+		for (const auto &[key, value] : { std::pair{ Qt::Key_Space, 5 }, std::pair{ Qt::Key_Return, 6 } }) {
+			title = answerDialog(QString(), [&, value = value] {
+				editor = typeInto(u8Cell_, QStringLiteral("2"));
+				other_.writeU8(regs_.u8.addr, uint8_t(value));
+				QTest::qWait(400);
+				if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			}, key);
+			if (key == Qt::Key_Space) { focusWas = lastBoxFocus; defaultWas = lastBoxDefault; }
+			QTest::qWait(300); /* a write it let through would land meanwhile */
+			keysCancel = keysCancel && title == valueChangedTitle && other_.readU8(regs_.u8.addr) == value;
+		}
+		std::printf("  \"Value changed while editing\": the focus on \"%s\", the default \"%s\"\n", qPrintable(focusWas),
+				qPrintable(defaultWas));
+		check(focusWas == QLatin1String("Cancel") && defaultWas == QLatin1String("Cancel") && keysCancel,
+				"\"Value changed while editing\" opens with the keyboard's focus on Cancel, its default: Space and Enter "
+				"both cancel (nothing written)");
+		other_.writeU8(regs_.u8.addr, 2); /* as the write above left it, for the next step */
 	}
 
 	/* 5. no question when nothing changed meanwhile. The table first shows
@@ -778,6 +819,22 @@ private:
 		QString title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Cancel"));
 		check(title == confirmWriteTitle && other_.readI16(regs_.danger.addr) == 0,
 				"the danger register: confirm asked, Cancel writes nothing");
+		/* safe by default: the keyboard's focus on Cancel, the default, so Space and Enter both cancel */
+		QString focusWas, defaultWas;
+		bool keysCancel = true;
+		for (const Qt::Key key : { Qt::Key_Space, Qt::Key_Return }) {
+			title = answerDialog(QString(), [&] {
+				if (QLineEdit *editor = typeInto(cell, QStringLiteral("50"))) QTest::keyClick(editor, Qt::Key_Return);
+			}, key);
+			if (key == Qt::Key_Space) { focusWas = lastBoxFocus; defaultWas = lastBoxDefault; }
+			QTest::qWait(300); /* a write it let through would land meanwhile */
+			keysCancel = keysCancel && title == confirmWriteTitle && other_.readI16(regs_.danger.addr) == 0;
+		}
+		std::printf("  \"Confirm write\": the focus on \"%s\", the default \"%s\"\n", qPrintable(focusWas),
+				qPrintable(defaultWas));
+		check(focusWas == QLatin1String("Cancel") && defaultWas == QLatin1String("Cancel") && keysCancel,
+				"the danger register: \"Confirm write\" opens with the keyboard's focus on Cancel, its default: Space and "
+				"Enter both cancel (nothing written)");
 		title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Write"));
 		check(title == confirmWriteTitle && dangerBecomes(50), "... Write: the device holds 50");
 	}
