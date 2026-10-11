@@ -5960,7 +5960,8 @@ real hardware, and it reads only.
 
 Settings stay apart from the user's:
 
-- The GUI test runs as organisation `teknile`, application `EVReStudioTest`.
+- The GUI test runs as organisation `teknile`, application `EVReStudioTest`. It clears those settings at its start,
+  so a run starts as on a fresh machine: what an earlier run left (or one stopped half way) changes no result.
 - A run with `EVRE_SHOT` set uses the application name `EVReStudio-test`.
 
 A script that runs the tests should stop only the processes it started, by their process id, never by name or
@@ -5999,7 +6000,9 @@ Before the window opens, the second client writes zeros to the login register (t
 refused token, so this clears what an earlier run left), and the test sets `EVRE_TOKEN` to `example-token`, the
 fake device's token. The window reads it at start.
 
-It prepares math lines in its own settings:
+Before that, the test clears its own settings and prepares them again. A check (before the first step): a
+`recording/measure = true` written first is gone, and only the three keys the test prepares are there
+(`chart/math`, `chart/memory`, `chart/window`). Among them are math lines:
 
 - `P = SUPPLY_V * SUPPLY_I`
 - one that names no register of the map
@@ -6014,9 +6017,10 @@ The steps run in order. Each leaves the window and the device as the next step e
 3. writes off by default, then on
 4. a write read back
 5. another client's write shown
-6. typed text survives polls; "Value changed while editing" with Cancel and with Write anyway
+6. typed text survives polls; "Value changed while editing" with Cancel and with Write anyway; it opens with the
+   keyboard's focus on Cancel, its default, so Space and Enter both cancel
 7. no question when nothing changed
-8. the danger confirmation
+8. the danger confirmation; it too opens with the focus on Cancel, and Space and Enter cancel
 9. an out-of-range value refused, with a pop-up
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
 11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
@@ -6589,7 +6593,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 625 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 628 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

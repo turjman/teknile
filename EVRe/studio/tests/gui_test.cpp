@@ -92,6 +92,7 @@
 #include <QUndoStack>
 #include <QWheelEvent>
 #include <QWidgetAction>
+#include <QWindow>
 #include <QXmlStreamReader>
 #include <algorithm>
 #include <atomic>
@@ -352,11 +353,16 @@ struct AwaitingDialog {
 	AwaitingDialog &operator=(const AwaitingDialog &) = delete;
 };
 
+/* the last message box answerDialog answered: the button with the keyboard's focus, and its default (Space presses
+ * the one with the focus, Enter the default: a question before a write keeps both on Cancel) */
+QString lastBoxFocus, lastBoxDefault;
+
 /* runs trigger, then answers the modal message box it brings by clicking
  * buttonText (or rejects it, without that button): the box's title, or empty if none came.
+ * With a key, that key is pressed instead, where a person's would go (the focus, the box active).
  * The poll timer is local, so it stops when this returns: a poll left running
  * after a call that brought no box would answer the next call's box itself. */
-QString answerDialog(const QString &buttonText, const std::function<void()> &trigger) {
+QString answerDialog(const QString &buttonText, const std::function<void()> &trigger, Qt::Key key = Qt::Key_unknown) {
 	QString title;
 	bool done = false;
 	const QPointer<QWidget> wasActive = QApplication::activeWindow();
@@ -369,6 +375,18 @@ QString answerDialog(const QString &buttonText, const std::function<void()> &tri
 		poll.stop();
 		title = box->windowTitle();
 		done = true;
+		/* a key goes where the focus is once the box is active (xvfb may never make it so: then its focus child) */
+		if (key != Qt::Key_unknown) (void) QTest::qWaitFor([box] { return QApplication::activeWindow() == box; }, 1000);
+		QWidget *focus = QApplication::activeWindow() == box && QApplication::focusWidget() ? QApplication::focusWidget()
+				: box->focusWidget();
+		const auto *focused = qobject_cast<QPushButton *>(focus);
+		lastBoxFocus = focused ? focused->text().remove(QLatin1Char('&')) : QString();
+		lastBoxDefault = box->defaultButton() ? box->defaultButton()->text().remove(QLatin1Char('&')) : QString();
+		if (key != Qt::Key_unknown) {
+			QTest::keyClick(focus ? focus : box, key);
+			if (box->isVisible()) box->reject(); /* never left open */
+			return;
+		}
 		for (QAbstractButton *button : box->buttons()) {
 			if (button->text().remove(QLatin1Char('&')) == buttonText) {
 				button->click();
@@ -759,7 +777,31 @@ private:
 			QTest::qWait(400);
 			if (editor) QTest::keyClick(editor, Qt::Key_Return);
 		});
-		check(title == valueChangedTitle && u8Becomes(2), "Write anyway: the device holds 2");
+		const bool written = u8Becomes(2);
+		if (title != valueChangedTitle || !written)
+			std::printf("     (the question \"%s\", the device holds %d)\n", qPrintable(title), other_.readU8(regs_.u8.addr));
+		check(title == valueChangedTitle && written, "Write anyway: the device holds 2");
+
+		/* safe by default: the keyboard's focus on Cancel, the default, so Space and Enter both cancel */
+		QString focusWas, defaultWas;
+		bool keysCancel = true;
+		for (const auto &[key, value] : { std::pair{ Qt::Key_Space, 5 }, std::pair{ Qt::Key_Return, 6 } }) {
+			title = answerDialog(QString(), [&, value = value] {
+				editor = typeInto(u8Cell_, QStringLiteral("2"));
+				other_.writeU8(regs_.u8.addr, uint8_t(value));
+				QTest::qWait(400);
+				if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			}, key);
+			if (key == Qt::Key_Space) { focusWas = lastBoxFocus; defaultWas = lastBoxDefault; }
+			QTest::qWait(300); /* a write it let through would land meanwhile */
+			keysCancel = keysCancel && title == valueChangedTitle && other_.readU8(regs_.u8.addr) == value;
+		}
+		std::printf("  \"Value changed while editing\": the focus on \"%s\", the default \"%s\"\n", qPrintable(focusWas),
+				qPrintable(defaultWas));
+		check(focusWas == QLatin1String("Cancel") && defaultWas == QLatin1String("Cancel") && keysCancel,
+				"\"Value changed while editing\" opens with the keyboard's focus on Cancel, its default: Space and Enter "
+				"both cancel (nothing written)");
+		other_.writeU8(regs_.u8.addr, 2); /* as the write above left it, for the next step */
 	}
 
 	/* 5. no question when nothing changed meanwhile. The table first shows
@@ -777,6 +819,22 @@ private:
 		QString title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Cancel"));
 		check(title == confirmWriteTitle && other_.readI16(regs_.danger.addr) == 0,
 				"the danger register: confirm asked, Cancel writes nothing");
+		/* safe by default: the keyboard's focus on Cancel, the default, so Space and Enter both cancel */
+		QString focusWas, defaultWas;
+		bool keysCancel = true;
+		for (const Qt::Key key : { Qt::Key_Space, Qt::Key_Return }) {
+			title = answerDialog(QString(), [&] {
+				if (QLineEdit *editor = typeInto(cell, QStringLiteral("50"))) QTest::keyClick(editor, Qt::Key_Return);
+			}, key);
+			if (key == Qt::Key_Space) { focusWas = lastBoxFocus; defaultWas = lastBoxDefault; }
+			QTest::qWait(300); /* a write it let through would land meanwhile */
+			keysCancel = keysCancel && title == confirmWriteTitle && other_.readI16(regs_.danger.addr) == 0;
+		}
+		std::printf("  \"Confirm write\": the focus on \"%s\", the default \"%s\"\n", qPrintable(focusWas),
+				qPrintable(defaultWas));
+		check(focusWas == QLatin1String("Cancel") && defaultWas == QLatin1String("Cancel") && keysCancel,
+				"the danger register: \"Confirm write\" opens with the keyboard's focus on Cancel, its default: Space and "
+				"Enter both cancel (nothing written)");
 		title = enterAnswering(typeInto(cell, QStringLiteral("50")), QStringLiteral("Write"));
 		check(title == confirmWriteTitle && dangerBecomes(50), "... Write: the device holds 50");
 	}
@@ -1667,9 +1725,14 @@ private:
 		const qint64 txBefore = sent();
 		QTest::qWait(3000);
 		const qint64 heartbeats = sent() - txBefore;
-		std::printf("  Poll off for 3 s, a fast stream on: %lld requests sent\n", heartbeats);
-		check(traffic && heartbeats >= 24 && heartbeats <= 45 && device->readU8(enable->addr) == 1
-						&& rate.match(sidebar->fastRateText(0)).hasMatch(),
+		const int enabled = device->readU8(enable->addr);
+		/* the stream was stopped and started above, its clock with it: its rate settles within seconds (the first
+		 * Start waits up to 6 s for it). A stream the watchdog stopped reads "off", so the wait hides no stop. */
+		const bool rateShown = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 3000);
+		std::printf("  Poll off for 3 s, a fast stream on: %lld requests sent (24 to 45), the enable %d (1), the rate "
+				"\"%s\" (%s)\n", heartbeats, enabled, qPrintable(sidebar->fastRateText(0)), rateShown ? "as it should be"
+				: "not 9.9 to 10.1 k samples/s with its ppm in 3 s");
+		check(traffic && heartbeats >= 24 && heartbeats <= 45 && enabled == 1 && rateShown,
 				"fast streams, Poll off: CONFIG read every 100 ms; after 3 s the stream still runs (the device's 2 s "
 				"host watchdog sees the Studio)");
 		poll_->setChecked(true);
@@ -14407,6 +14470,10 @@ private:
 			check(true, "recording's window made bigger on a GPU: no adapter on this machine (Direct3D 11 on Windows "
 					"only): the CPU draws, skipped");
 		} else {
+			/* the screen is read, so the window must be in front: Windows lets a program in the background open its
+			 * windows only behind the one the person works in, and that window was read for the plot (85 to 89 %
+			 * alike, dark on dark). On top for this check only (no focus taken). */
+			opened->windowHandle()->setFlag(Qt::WindowStaysOnTopHint, true);
 			opened->resize(1000, 620);
 			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
 			(void) QTest::qWaitFor([&] { return !view->openingGpu(); }, 10000);
@@ -14428,13 +14495,21 @@ private:
 					.convertToFormat(QImage::Format_RGB32);
 			const QImage cpu = opened->grab().toImage().convertToFormat(QImage::Format_RGB32);
 			const double alike = screen.size() == cpu.size() ? blocksAlike(screen.copy(at), cpu.copy(at), 24) : 0;
+			/* the rest of the window as its own picture: it is in front, so a plot unlike the CPU's is the card's */
+			const auto withoutPlot = [&at](QImage image) {
+				QPainter(&image).fillRect(at, Qt::black);
+				return image;
+			};
+			const double front = screen.size() == cpu.size() ? blocksAlike(withoutPlot(screen), withoutPlot(cpu), 24) : 0;
 			std::printf("  made bigger on %s: a frame let go (%d), the layer %dx%d for the plot's %dx%d; on the screen "
-					"%.2f%% like the CPU's picture\n", qPrintable(view->drawingName()), view->gpuDropped() - dropped,
-					view->gpuPresentedSize().width(), view->gpuPresentedSize().height(), at.width(), at.height(), alike * 100);
+					"%.2f%% like the CPU's picture (the rest of the window %.2f%%: in front)\n", qPrintable(view->drawingName()),
+					view->gpuDropped() - dropped, view->gpuPresentedSize().width(), view->gpuPresentedSize().height(),
+					at.width(), at.height(), alike * 100, front * 100);
 			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again && alike >= 0.97,
 					"recording's window made bigger on a GPU: a frame the system let go is followed by another, the card's "
 					"layer at the new size (no blank bar over the new part), its plot the CPU's picture");
 			view->setDrawing(ChartView::Drawing::Cpu);
+			opened->windowHandle()->setFlag(Qt::WindowStaysOnTopHint, false);
 		}
 
 		/* the theme switched: its boxes in the new theme at once */
@@ -16402,7 +16477,28 @@ int main(int argc, char **argv) {
 		std::printf("map %s: %s\n", qPrintable(mapPath), qPrintable(error));
 		return 2;
 	}
+	/* a run starts from no settings, as the CI's fresh machine does: what an earlier run left (a run stopped half way
+	 * leaves its steps' settings, recording/measure = true among them) changes no result. Only the test's own
+	 * application is cleared, never the user's EVReStudio nor EVRE_SHOT's EVReStudio-test. The stale setting is
+	 * written first, so the check below sees the clearing work on every run. */
+	QSettings().setValue(QStringLiteral("recording/measure"), true);
+	QSettings().clear();
 	prepareSettings(TestRegisters::find(map));
+	{
+		/* the application's own keys only: allKeys() also lists the organisation's fallback keys (teknile.conf on
+		 * Linux, the OrganizationDefaults key on Windows), which clear() does not remove and no run of this
+		 * test writes, so a machine that has one would fail the check for nothing */
+		QSettings own;
+		own.setFallbacksEnabled(false);
+		QStringList keys = own.allKeys();
+		keys.sort();
+		check(QSettings().applicationName() == QLatin1String("EVReStudioTest")
+						&& keys == QStringList{ QStringLiteral("chart/math"), QStringLiteral("chart/memory"),
+								QStringLiteral("chart/window") },
+				"the test's own settings (EVReStudioTest) cleared at its start: a recording/measure = true an earlier run "
+				"left is gone, only the three the test prepares are there when the first step runs");
+		if (keys.size() != 3) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
+	}
 
 	OtherClient other;
 	if (!other.open()) {
