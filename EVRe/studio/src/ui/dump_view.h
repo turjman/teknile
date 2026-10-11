@@ -116,6 +116,12 @@ public:
 	QString decodeText(int card, int line) const;    /* its name and value, whole (the line may elide them) */
 	int decodeLines(int card) const;
 	RegKey registerAt(const QPoint &pos) const;      /* under a chip's byte or a decode line; NO_REGISTER: none */
+	QString toolTipAt(const QPoint &pos) const;      /* what the tooltip says there (empty: none) */
+	/* the request line's words and the frame's bytes as drawn (empty: no request line, AUTO_SEND's or a note), the
+	 * reply line's label, its state and the reply's header bytes; the line of the reply's CRC and end byte */
+	QString requestText(int card) const;
+	QString replyText(int card) const;
+	QRect tailRect(int card) const;
 	int paintCount() const { return paints_; }
 
 signals:

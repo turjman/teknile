@@ -275,6 +275,13 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [34.2 `evre record`: a fast stream into a file](#342-evre-record-a-fast-stream-into-a-file)
   - [35. `evre-sim`: a device made from a map](#35-evre-sim-a-device-made-from-a-map)
   - [36. The `evre` Python package](#36-the-evre-python-package)
+  - [37. The Dump tab](#37-the-dump-tab)
+    - [37.1 What a card shows](#371-what-a-card-shows)
+    - [37.2 Follow, Hold and the amber frame](#372-follow-hold-and-the-amber-frame)
+    - [37.3 Colours](#373-colours)
+    - [37.4 The mouse and the menu](#374-the-mouse-and-the-menu)
+    - [37.5 Other reads](#375-other-reads)
+    - [37.6 How it works](#376-how-it-works)
 
 ---
 
@@ -323,6 +330,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Broadcast | One write to every device at once (slave 0), only where it means the same to each, then each read back (3.10). |
 | Auto&nbsp;send | A device that can sends its read-only block by itself at a set rate: one chart point and one CSV row per frame (13.8). |
 | Monitor | Every frame sent and received. Raw reads and writes, to any slave address or as a broadcast. |
+| Dump | The device's bytes as the reads bring them: a card per block read with its request and reply, the payload as a hex grid with each register a coloured chip and its value beside its row; live, or held (chapter 37). |
 | Log | Every event in a tab and in a daily file. Pop-ups for warnings and errors; the same message pops up at most every 30 s (11.3). |
 | CSV | One row per poll of the registers you choose (per frame with auto send). |
 | Recordings | A recording (or an export of the chart) opened in a window of its own with its chart, measurements and notes, while the live chart goes on; the chart's view or A → B exported to CSV; pictures of the chart; notes on the chart, kept beside a recording (7.10, 7.11, 12.6). |
@@ -881,6 +889,7 @@ On a register:
 - **Plot** or **Remove from chart** (numeric registers only)
 - **Read now**: one read of this register at once, into the table. This is how a byte array too long to be polled is read (see 13.3).
 - **Copy value**: the value text, as shown when the menu opened.
+- **Show in dump**: the Dump tab on this register, its chips selected and in view (chapter 37).
 - **Edit definition…** (see 4.11)
 - **Remove**: removes the **selected** rows from the map. It does not ask.
 
@@ -2303,6 +2312,8 @@ Answers to requests sent from here are printed in the view:
 
 A write sent without acknowledgement is reported `OK` as soon as it is sent.
 
+A READ's answer also shows in the Dump tab, as a card at the top with the map's chips and values on it, until the next READ (37.5); its line here ends with *(shown in the Dump)*.
+
 ### 10.2 The frame lines
 
 With **Log frames** on, each frame is one line:
@@ -2873,7 +2884,7 @@ as they came); the Registers tab lists only the registers. `evre record` (34.x) 
 
 ```
 EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv]
            [--api] [--api-writes] [--api-writes-danger]
 ```
@@ -2885,7 +2896,7 @@ EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus
 | `--map file.json` | Loads this map **for this run only**. The next plain start opens the map chosen last. |
 | `--bus bus.json` | Loads this bus (3.9) **for this run only**, in place of a map. |
 | `--plot NAME,NAME` | Ticks Plot on these registers (names in any case). One the map marks fixed (`"plot": false`), or past what the chart holds at the poll rate (4.8), is left off, and the Log says which. |
-| `--tab registers\|chart\|monitor\|map` | The tab shown at start (`map`: the Map editor). Any other value is ignored. |
+| `--tab registers\|chart\|dump\|monitor\|map` | The tab shown at start (`map`: the Map editor). Any other value is ignored. |
 | `--connect` | Connects at start, as if you clicked Connect. |
 | `--fast NAME,NAME` | Starts these fast streams (13.9; names in any case) once connected, as their **Start stream** does: for a script that reads them through the API (17.3). A name the map has no stream of is left, and the Log says which. Like Start, it is not remembered. |
 | `--interval ms` | The poll interval. `0` is *max*, `0.25` is 4000 polls/s. |
@@ -2952,6 +2963,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `ui/decodedColumn` | `false` | on&nbsp;change | Decoded column shown. |
 | `ui/quickBits` | `false` | on&nbsp;change | Quick write: Bits ticked. |
 | `ui/popups` | `true` | on&nbsp;change | Log: Pop-ups. |
+| `dump/colour` | `all` | on&nbsp;change | The Dump tab's Colour: `all` (every register's chips in colour) or `plotted` (only the plotted ones) (37.3). |
 | `ui/valueRate` | `10` | on&nbsp;change | Show values: values per second on screen (2, 5, 10, 30; 0 = every frame). Another number reads as 10. |
 | `chart/window` | `30` | on&nbsp;change | Window, seconds. |
 | `chart/memory` | `60` | on&nbsp;change | Memory, seconds. |
@@ -2993,6 +3005,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 - the groups ticked
 - Normalise
 - the Monitor's Log frames
+- the Dump tab's Follow / Hold: Follow at every start
 - Show info
 
 The slave address is part of the map, not of the settings.
@@ -3881,7 +3894,7 @@ Every frame, request or answer, has the same layout. All multi-byte numbers are 
 | 7&nbsp;+&nbsp;n | 2 | CRC | CRC-16/X-25 over bytes 0 … 6 + n, low byte first (18.4). |
 | 9&nbsp;+&nbsp;n | 1 | END | `0x7D` |
 
-A frame is 10 + n bytes long. Examples, with slave 1:
+A frame is 10 + n bytes long (to see each read's frames with the map's registers on their bytes: the Dump tab, chapter 37). Examples, with slave 1:
 
 ```
 READ 4 bytes at 0xA000 (DEVICE_ID and STATUS):
@@ -4106,7 +4119,7 @@ The window does not call the engine's functions directly. It uses three paths:
 |---|---|---|
 | window&nbsp;→&nbsp;engine | `IoEngine::post(std::function<void()>)`, which calls `QMetaObject::invokeMethod(engine, f, Qt::QueuedConnection)` | every request: map, link, polling, plotted set, CSV, writes, reads, API switches |
 | engine&nbsp;→&nbsp;window | signals, queued because the sender lives in the other thread | `opened`, `closed`, `deviceInfo`, `loginRefused`, `loginSkipped`, `readDone`, `writeDone`, `recordStarted`, `recordStopped`, `apiStarted` |
-| window&nbsp;reads&nbsp;engine&nbsp;state | copies&nbsp;under&nbsp;a&nbsp;mutex | `table().snapshot()`, `takeSamples()`, `takeFrames()`, `stats()` |
+| window&nbsp;reads&nbsp;engine&nbsp;state | copies&nbsp;under&nbsp;a&nbsp;mutex | `table().snapshot()`, `takeSamples()`, `takeFrames()`, `takeDumps()`, `stats()` |
 
 The posted lambdas capture their arguments by value. They run in the order they were posted, so a `setMap` posted
 before `connectTcp` is applied first.
@@ -4582,6 +4595,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/math_line_dialog.h`,&nbsp;`.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
 | `src/ui/formula_completer.h`,&nbsp;`.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
 | `src/ui/monitor_tab.h`,&nbsp;`.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
+| `src/ui/dump_tab.h`,&nbsp;`.cpp` | `DumpTab`: the Dump tab's toolbar (device, Follow / Hold, Colour, Copy ▾), its menu, the manual read's card and the fast streams' notes |
+| `src/ui/dump_view.h`,&nbsp;`.cpp` | `DumpView`: the cards painted (request, reply, the hex grid with chips, the decode column), the glow, the amber frame, the mouse and the copy texts; `DumpBlock` |
 | `src/ui/event_log.h`,&nbsp;`.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
 | `src/ui/frame_clock.h`,&nbsp;`.cpp` | `FrameClock`: one tick per display refresh |
 | `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
@@ -4658,10 +4673,10 @@ pass-through checks compare frames byte for byte (chapter 26).
 
 - Called through `post()`: `setMap`, `connectTcp`, `connectSerial`, `disconnectLink`, `setLinkOptions`,
   `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord` (with the streams not logged), `stopRecord`, `write`, `read`,
-  `setMonitor`, `apiStart`, `apiStop`, `apiSetWrites`.
+  `setMonitor`, `setDump` (the Dump tab shown: each block's latest reply kept, 37.6), `apiStart`, `apiStop`, `apiSetWrites`.
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
   (19.3), so the window waits until the engine has stopped.
-- Called from any thread: `table()`, `now()`, `stats()`, `takeSamples()`, `takeFrames(dropped)`, and the static
+- Called from any thread: `table()`, `now()`, `stats()`, `takeSamples()`, `takeFrames(dropped)`, `takeDumps(blocks)` (every block's `DumpReply` when one moved), and the static
   `autoSendDividers()` (the 18 prescalers + 1 of 13.8) and `autoSendPrescalerFor(prescaler, baud, streamBytes)` (the
   serial link's cap, public for the tests).
 - AUTO_SEND's signals: `autoSendSet(on, hz, err)` (switched, or not and why), `autoSendSlowed(why)` (a serial link
@@ -4854,6 +4869,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `forget` / `fillRecentMenu` (a file not found greyed, `recentMissing`; `recentClear`), `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
+| `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`; signals `registerPicked`, `writeRequested` | GUI test (the Dump steps) |
+| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipFill` (static); for the tests `cardRect`, `byteRect`, `decodeRect`, `tailRect`, `registerAt`, `toolTipAt`, `requestText`, `replyText`, `chipColour`, `glow`, `paintCount`; signals `registerPicked`, `menuRequested` | GUI test (the Dump steps) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
@@ -4864,7 +4881,8 @@ Widgets that tests or the theme find carry fixed object names. Examples: `regist
 `detail`, `sideScroll`, `sidebar`, `sidebarHelp`, `pill`, `primary`, `danger`, `valuePace`, `formScroll`, `helpTopics`,
 `mapIssues`, `autoSend`, `deviceInfo`, `mapDevicesText`, `problem` (the bus dialogs' problem line), `mapSlave`,
 `monitorDevice`, `monitorFunction`, `registersDevice`, `liveDevice`, `chartDisplay`, `chartNormalise`, `chartSmooth`,
-`chartHoverValues` (the Display menu's actions), `chartRam`, `ramNeed`, `menuTitle` (a menu's title label).
+`chartHoverValues` (the Display menu's actions), `chartRam`, `ramNeed`, `menuTitle` (a menu's title label),
+`dumpView`, `dumpDevice`, `dumpFollow`, `dumpHold`, `dumpColourAll`, `dumpColourPlotted`, `dumpCopy`.
 Renaming one breaks the tests or the style sheet.
 
 **The combo boxes' arrow.** The style sheet styles their drop-down (no border, 20 px), and Qt then draws no arrow
@@ -6580,6 +6598,44 @@ made up for the check:
   strip later; a click 300 px left of it takes the view there; the wheel over the strip a window later, two notches up
   two windows earlier. With `EVRE_TEST_SHOT` set it saves `<prefix>_strip_handle.png`.
 
+The Dump tab's steps (chapter 37), after the Monitor's, against the fake device and the example map:
+
+- **The tab and its cards** (`dumpCards`): between Chart and Monitor with its tooltip; `--tab dump` opens it;
+  hidden, the engine keeps no reply (`dumpWanted` off), shown, a card per block comes, on another tab they go; three
+  cards in address order (0xA000 7 bytes, 0xD000 22, 0xD080 8), apart, the request line's words and bytes those of
+  `evre::build`, the reply's header, the CRC and `7D` on a line under the grid; rows of 16 aligned to 16, their
+  addresses (tooltip `0xD010`), the D000 row four lines tall; SUPPLY_V's four bytes one chip, SETPOINT's bytes the
+  table's raw bytes; `··` for a byte no read covers (its ink weaker than a chip's text, its tooltip); the decode
+  lines: FAN_SPEED's Value and Unit, STATE's Decoded text.
+- **Colours** (`dumpColours`): no two neighbouring chips alike; TEMPERATURE plotted takes its chart colour, unplotted
+  the palette's again; Colour: Plotted greys SUPPLY_I and keeps TEMPERATURE's chart colour, saved in `dump/colour`;
+  the byte text on every series colour's tint and on a neutral chip at least 4.5:1 in both themes.
+- **Live** (`dumpLive`): Follow shows about 10 new replies a second at *Show values* 10; Hold takes none and paints
+  nothing in 1 s while the table moves; fresh replies draw no amber frame, held cards do (the reply line *held ...*),
+  Follow live again; a byte changed by the other client glows, then fades after `GLOW_MS`; Poll off: *stale* and the
+  frame, polled again: live; Disconnect: the last bytes stay with *the link is closed* and the frame, connected
+  again: live. The frame is found in the picture's pixels at the card's left edge (in device pixels).
+- **The mouse** (`dumpMouse`): over a chip the pointing hand, the chip's pixels changed (the ring), the tooltip
+  `0xD006 · SUPPLY_V · byte 3 of 4 · 0x.. · raw .. · .. V`; a decode line lights its register; empty room nothing; a
+  click selects SUPPLY_V here and in the Registers tab without leaving; a double-click on TEMPERATURE's line goes
+  there; the Registers tab's current row selected in the Dump; its menu's *Show in dump* opens the Dump with
+  SETPOINT selected and in view.
+- **The menu** (`dumpMenu`): its eight items, the same on Copy ▾; with known bytes at 0xD080 the four copies exactly
+  (bytes, hex, the C array, decoded); Plot then Unplot from it; Write… greyed with Allow writes off (its tooltip),
+  with it on the Registers tab's editor on SETPOINT.
+- **Other maps** (`dumpOtherMaps`): the example map without COUNTER: its two bytes muted hex, *not mapped*; a name
+  too long cut, whole in the tooltip; with a register 2 bytes past the block that the device lacks: the merged read
+  refused, a card per single read saying *split*, none for the register refused for good; the example map again.
+- **The manual read** (`dumpManualRead`): a Monitor READ of 0xD080, 8 bytes, at the top, amber, *read once*, the
+  chips on it, the Monitor's line ending *(shown in the Dump)*; the next READ replaces it.
+- **Arabic** (`dumpArabic`): the tab *عرض الذاكرة*, the window right to left and the cards left to right; the window
+  with the Dump shown at most 1280 px wide in English and Arabic.
+
+The auto send, bus and fast streams steps check the Dump too: the 0xD000 card is AUTO_SEND's (*← AUTO_SEND 100 /s*,
+no request line, the polled read gone); on a bus the Device list starts on D2 with D2's cards only, each request
+line naming it, and D1 chosen shows D1's; a running stream is a note without hex, its blocks never in the store. The
+Help step checks the Dump's page and the first page's line for it.
+
 The last check counts Qt's warnings about objects used across threads. It installs a message handler at start and
 looks for messages that contain one of these phrases:
 
@@ -6593,7 +6649,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 628 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 660 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6603,7 +6659,10 @@ its widest numbers and off, in English and Arabic and in both themes
 (`<prefix>_fast_<en|ar>_<on|off>_<dark|light>.png`), and the window with two
 fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) and 2 ms
 (`<prefix>_fast_records.png`), a recording opened with its fast stream (`<prefix>_fast_recording.png`), and the Map
-settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`).
+settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`), and the Dump tab in English
+and Arabic, both themes, SUPPLY_V and TEMPERATURE plotted: live with the manual read's card and SUPPLY_V's byte
+hovered with its tooltip (`<prefix>_dump_<en|ar>_<light|dark>.png`, the tab alone `<prefix>_dump_tab_...`, from which
+the docs' `dump-tab` pictures are made), and held (`<prefix>_dump_held_...`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device
@@ -7561,3 +7620,143 @@ link of its own. `evre.connect_studio()` is the client of the Studio's JSON port
 stream's channels as each period's min, max and mean (`fast_stream`, 17.3); `evre.connect_tcp('127.0.0.1', 1219, map)`
 reaches the device through the pass-through, `dev.stream` included (17.4).
 
+## 37. The Dump tab
+
+The **Dump** tab (between Chart and Monitor; `--tab dump`) shows the device's bytes as the reads bring them: one
+**card** per block the polling reads, in address order. A card holds the request the Studio sent, the reply's header,
+the payload as a hex grid with every register of the map as a coloured **chip**, and the register's value beside its
+row. It is a fourth way of looking at the device: the Registers tab shows the values, the Chart shows them over time,
+the Monitor shows the frames as text, and the Dump shows the bytes.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/dump-tab-dark.png">
+  <img src="../../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: Follow and Hold, the Colour pair and the Copy button; a manual read's card at the top in an amber frame, then the cards of the blocks at 0xA000 and 0xD000 with their request and reply lines, the hex grid with each register as a tinted chip, the decode column beside the rows, and the tooltip of a SUPPLY_V byte" width="900">
+</picture>
+
+*A manual READ's card at the top (amber: read once), the polled blocks below it; the mouse on a byte of SUPPLY_V.*
+
+```
++------------------------------------------------------------------------------------------------+
+| [Follow|Hold]   Colour [All registers|Plotted]                                         [Copy v] |
++------------------------------------------------------------------------------------------------+
+| -> READ 22 bytes @ 0xD000     7B 01 AA 00 D0 16 00 FC A5 7D                                    |
+| <- REPLY 12 ms ago            7B 01 AB 00 D0 16 00                                             |
+|                                                                                                |
+|  D000  [10 27 00 00] [FA 7E 40 41] [2D B2 BD 3F] [66 66 26 42]   o UPTIME        10000 ms      |
+|                                                                   o SUPPLY_V      12.031 V      |
+|                                                                   o SUPPLY_I      1.482 A       |
+|                                                                   o TEMPERATURE   41.6 °C       |
+|  D010  [05 00] [2C 01] [B9 00] ..  ..  ..  ..  ..  ..  ..  ..  .. o STATE         MODE=run      |
+|                                                                   o COUNTER       300           |
+|                                                                   o PRESSURE      18.5 bar      |
+|                                                  AE 41 7D                                      |
++------------------------------------------------------------------------------------------------+
+```
+
+`[..]` is a chip, `..` a byte of the row that no read covers (`··` on screen), `o` the register's colour dot.
+
+### 37.1 What a card shows
+
+| Part | What it shows |
+|---|---|
+| Request&nbsp;line | `→ READ 22 bytes @ 0xD000` (the count is in bytes, never registers) and the frame the Studio sent, rebuilt with `evre::build` from the same numbers, so it equals the wire's: `7B`, the CRC and `7D` muted, the header in the text colour. On a bus the device's name and slave come first. |
+| Reply&nbsp;line | `← REPLY` with its state in colour (`12 ms ago`, or why the bytes are not live: 37.2), then the reply's header bytes. |
+| Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last; the row's base address at its left, four digits and muted (its tooltip `0xD010`). A byte of a row that no read covers is a muted `··`, never an invented `00`. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
+| Chips | Each register's bytes in a row are one chip: a fill tinted in the register's colour (30 % in the dark theme, 22 % in the light one), a 1 px edge in the colour, the byte text in the text colour, 2 px between two chips. The text on every tint reads at 4.5:1 or more in both themes (checked). |
+| Decode&nbsp;column | One line per register that starts in the row: its colour dot, its name, and its value as the Registers tab shows it (Value and Unit, or the Decoded text with ` · ` between its parts). A row is as tall as its lines; a name or value too long for its room is cut with `…` and the whole line is the tooltip. |
+| Tail | The reply's CRC and `7D` on a line of their own, muted, at the column after the payload's last byte: the grid is the payload only. |
+
+A byte whose value changed glows a moment: a thin ring in the accent colour fading over the Registers tab's
+`GLOW_MS` (700 ms), so the dump and the table pulse together. The glow's 50 ms timer runs only while a byte glows.
+
+### 37.2 Follow, Hold and the amber frame
+
+**Follow** (the default, at every start) shows each block's newest reply at the pace of *Show values* (10 a second
+by default, 14.3): one new picture a beat, the newest reply winning, so a fast poll costs the tab nothing more.
+**Hold** keeps the bytes shown: no reply is taken and nothing repaints while the Registers tab moves on.
+
+A card whose bytes are not live has a thin **amber** frame (the theme's warn colour) over its edge, and its reply line
+and tooltip say why, so a frozen dump never reads as live:
+
+| Reason | Reply&nbsp;line | Tooltip |
+|---|---|---|
+| Hold | `held 14:03:12` | *Held at 14:03:12: these bytes are not refreshed (Follow shows the replies again)* |
+| Stale | `stale 2.1 s` | *Not refreshed for 2.1 s*: older than the Registers tab's stale limit (4.3) |
+| Failed&nbsp;read | `error: <reason>`&nbsp;(red) | *The last read failed (...): these are the last bytes read* |
+| Link&nbsp;closed | `the link is closed` | *The link is closed: these are the last bytes read* |
+| Manual&nbsp;read | `read once, 2.2 s ago` | *A manual read: read once, not refreshed* (37.5) |
+| No&nbsp;reply&nbsp;yet | `no reply yet` | *No reply yet* |
+
+Fresh replies followed draw no frame.
+
+### 37.3 Colours
+
+A plotted register takes its chart colour (the chip, the dot and the chart's line agree). Every other register takes
+the palette colour of its row in the map, or the next one when a neighbour in the block has that colour already, so
+two chips side by side never read as one. The toolbar's **Colour** pair narrows it: **All registers** (the default)
+or **Plotted**, where only the plotted registers are in colour and the others' chips are neutral (the raised surface
+with a plain edge), so register and gap still read apart. The choice is kept in `dump/colour`.
+
+### 37.4 The mouse and the menu
+
+| Where | What it does |
+|---|---|
+| Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; every byte of the register ringed and its decode line lit. Tooltip: `0xD006 · SUPPLY_V · byte 3 of 4 · 0x40 (64) · raw FA 7E 40 41 · 12.031 V`; a gap byte `0xD012 · not mapped · 0x83`; a `··` byte `0xD088 · not read: no register here`. On a card not live, the reason follows. |
+| Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit; the tooltip is the whole line. |
+| Click | Selects the register here (its chips framed in the accent, its decode line bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. |
+| Double-click | Goes to the Registers tab on the register. |
+| Right-click,&nbsp;or&nbsp;**Copy&nbsp;▾** | The menu of the register under the mouse (Copy ▾: the selected one) and of its card (or the first card in view). Nothing is reachable only by the right-click. |
+
+The menu, always the same eight items; one that cannot be used now is greyed with the reason in its tooltip:
+
+| Item | What it does |
+|---|---|
+| Show&nbsp;in&nbsp;Registers | The Registers tab on the register. |
+| Plot&nbsp;/&nbsp;Unplot | The register on or off the chart (a number the map lets plot). |
+| Write… | The Registers tab's editor on the register: only with **Allow writes** on and a read-write register. |
+| Copy&nbsp;register&nbsp;bytes | `00 00 48 42` |
+| Copy&nbsp;block&nbsp;as&nbsp;hex | One row a line, as the grid: `D080  00 00 48 42 32 01 B8 0B` (a byte no read covers left blank). |
+| Copy&nbsp;block&nbsp;as&nbsp;C&nbsp;array | `static const uint8_t block_d080[8] = {` then a line per register, `/* 0xD080 SETPOINT */ 0x00, 0x00, 0x48, 0x42,`, the bytes no register maps on lines of their own, then `};` |
+| Copy&nbsp;decoded | A line per register: `0xD080  SETPOINT  50.0 °C` |
+
+From the Registers tab, the right-click menu's **Show in dump** (4.9) opens the Dump on the register: its device on a
+bus, its chips selected and scrolled into view (when the tab was hidden, at the next beat, once its card is back).
+
+### 37.5 Other reads
+
+- **A manual READ.** A READ sent from the Monitor (10.1) shows as a card at the top, titled *Manual read 0xD080 · 8
+  bytes*, with the map's chips and decode on it and the amber frame (read once). It stays until the next one; the
+  Monitor's answer line ends with *(shown in the Dump)*.
+- **Auto send** (13.8). The block the device sends by itself is a card `← AUTO_SEND 100 /s` with no request line:
+  nobody asked for it. Its frames come through `onUnsolicited` into the same store; the polled read of that block is
+  gone while they run.
+- **Fast streams** (13.9). A running stream is a one-line note, *fast stream ADC: see the Chart*: its blocks are
+  packed channel records, not registers, and they never come into the Dump's store.
+- **A bus** (3.9). The **Device** list (shown only on a bus) shows one device's cards at a time; it starts on the
+  selected device, as the Monitor's does. Each request line names the device and its slave.
+- **A split block** (13.4). When the device refuses a merged read, each single read is a card of its own, its
+  request line ending *split: the device refused the merged read*. A register refused for good is no longer read,
+  and has no card.
+
+The Dump is left to right in every language: the addresses, the bytes, the names and the values belong to the grid,
+not to the window. Each label is drawn in its own direction (an Arabic label right to left), at the left of its room.
+
+### 37.6 How it works
+
+- **The engine's store** (`io/`, `EVRe/lib` untouched). `IoEngine::setDump(on)` (posted, as `setMonitor`) turns it
+  on while the tab is shown. `onBlockResult` keeps each block's latest reply as a `DumpReply` (the device, where the
+  request went, the address and size, the payload already matched to its block, the time on `now()`'s clock, a
+  version, whether it was split or AUTO_SEND's, the last error; a failed read keeps the last good bytes). AUTO_SEND's
+  frames come from `onUnsolicited` with a key of their own. `pruneDumps` drops the replies of blocks no longer read
+  (a split, a register refused for good, another map, auto send off). Hidden, the store is emptied and the I/O thread
+  does nothing for it.
+- **The window** takes the replies in `syncDump`, at the values' pace and only while the tab is shown and following:
+  `takeDumps(blocks)` returns every block in address order when one moved (so the tab also sees a block gone), under
+  the mutex the other `take...` calls use; the payloads are shared, not copied. It adds the device's name on a bus,
+  the auto send rate, a note per fast stream switched on, and the chart's colour of each plotted register; then one
+  repaint moves the ages.
+- **The view** (`DumpView`, a `QAbstractScrollArea`) paints as `BitView` does: `ThemeColors`, the monospace font, no
+  style sheet; only the cards in view are painted. The tab (`DumpTab`) holds the toolbar, the menu and the manual
+  read's card.
+
+No history of replies in this version: the Monitor keeps the frames as text.

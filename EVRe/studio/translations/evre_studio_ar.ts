@@ -2486,6 +2486,67 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>API (MATLAB وLabVIEW وPython)</translation>
     </message>
     <message>
+        <source>Dump</source>
+        <translation>عرض الذاكرة</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Dump&lt;/h2&gt;
+&lt;p&gt;The &lt;b&gt;Dump&lt;/b&gt; tab shows the device&apos;s bytes as the reads bring them: one &lt;b&gt;card&lt;/b&gt; per block the polling reads,
+in address order. Each card has the request the Studio sent (&lt;i&gt;→ READ 22 bytes @ 0xD000&lt;/i&gt; and its frame&apos;s bytes),
+the reply (&lt;i&gt;← REPLY 12 ms ago&lt;/i&gt; and its header bytes), the payload as a grid of 16 bytes a row with the row&apos;s
+address at its left, and the reply&apos;s CRC and end byte on a line of their own.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every register of the map is a &lt;b&gt;chip&lt;/b&gt;: its bytes tinted in its colour, a plotted one in its chart colour.
+Beside each row, one line per register that starts in it: its dot, its name and its value as the Registers tab shows
+it. A byte inside the block that no register maps is plain grey hex; &lt;b&gt;··&lt;/b&gt; is a byte of the row that no read covers
+(never an invented 00).&lt;/li&gt;
+&lt;li&gt;A byte whose value changed glows a moment, as a value in the Registers tab does.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Follow&lt;/b&gt; shows each block&apos;s newest reply at the pace of &lt;i&gt;Show values&lt;/i&gt;; &lt;b&gt;Hold&lt;/b&gt; keeps the bytes shown.
+&lt;b&gt;Colour&lt;/b&gt;: &lt;b&gt;All registers&lt;/b&gt;, or &lt;b&gt;Plotted&lt;/b&gt; (only the plotted ones in colour, the others grey).&lt;/li&gt;
+&lt;li&gt;A card whose bytes are not live has a thin &lt;b&gt;amber&lt;/b&gt; frame, and its reply line and tooltip say why: held, stale
+(not refreshed for longer than the Registers tab&apos;s stale limit), a failed read (the last good bytes stay), the link
+closed, or a manual read.&lt;/li&gt;
+&lt;li&gt;The mouse on a chip says the byte: its address, its register, which byte of it, its value. A &lt;b&gt;click&lt;/b&gt; selects
+the register here and in the Registers tab; a &lt;b&gt;double-click&lt;/b&gt; goes there. The Registers tab&apos;s current row is
+selected here too, and its right-click menu has &lt;b&gt;Show in dump&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Right-click&lt;/b&gt;, or the &lt;b&gt;Copy ▾&lt;/b&gt; button: Show in Registers, Plot / Unplot, Write… (with &lt;i&gt;Allow
+writes&lt;/i&gt;), and Copy: the register&apos;s bytes, the block as hex rows or as a C array, or its decoded values.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;READ&lt;/b&gt; sent from the Monitor shows as a card at the top, until the next one. A running fast stream is a
+note (its records are on the Chart); auto send&apos;s frame shows as &lt;i&gt;← AUTO_SEND&lt;/i&gt; with its rate. On a bus the
+&lt;b&gt;Device&lt;/b&gt; list shows one device&apos;s cards at a time.&lt;/li&gt;
+&lt;li&gt;The tab keeps nothing while another tab is shown: its cards come again with the next replies.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;عرض الذاكرة&lt;/h2&gt;
+&lt;p&gt;يعرض لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt; بايتات الجهاز كما تأتي بها القراءات: &lt;b&gt;بطاقة&lt;/b&gt; لكل كتلة يقرؤها الاستطلاع،
+بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;→ قراءة 22 بايتًا عند 0xD000&lt;/i&gt; وبايتات إطاره)،
+والرد (&lt;i&gt;← رد منذ 12 ms&lt;/i&gt; وبايتات ترويسته)، والحمولة شبكةً من 16 بايتًا في كل صف وعنوان الصف على يساره، ثم
+CRC الرد وبايت نهايته على سطر خاص بهما.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;كل مسجّل في الخريطة &lt;b&gt;شارة&lt;/b&gt;: بايتاته ملوّنة بلونه، والمسجّل المرسوم بلونه في المخطط. وبجانب كل صف سطر
+لكل مسجّل يبدأ فيه: نقطته واسمه وقيمته كما يعرضها لسان المسجّلات. والبايت داخل الكتلة الذي لا يعرّفه أي مسجّل
+ست عشري رمادي عادي؛ و&lt;b&gt;··&lt;/b&gt; بايت من الصف لا تغطيه أي قراءة (لا 00 مختلَق أبدًا).&lt;/li&gt;
+&lt;li&gt;البايت الذي تغيّرت قيمته يتوهّج لحظة، كما تتوهّج القيمة في لسان المسجّلات.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;متابعة&lt;/b&gt; تعرض أحدث رد لكل كتلة بوتيرة &lt;i&gt;عرض القيم&lt;/i&gt;؛ و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي البايتات المعروضة.
+&lt;b&gt;اللون&lt;/b&gt;: &lt;b&gt;كل المسجّلات&lt;/b&gt;، أو &lt;b&gt;المرسومة&lt;/b&gt; (المرسومة وحدها ملوّنة، والبقية رمادية).&lt;/li&gt;
+&lt;li&gt;للبطاقة التي ليست بايتاتها حية إطار &lt;b&gt;كهرماني&lt;/b&gt; رفيع، ويقول سطر ردها وتلميحها السبب: مثبّتة، أو قديمة
+(لم تُحدَّث مدة أطول من حدّ القِدم في لسان المسجّلات)، أو قراءة فاشلة (تبقى آخر البايتات السليمة)، أو الوصلة
+مغلقة، أو قراءة يدوية.&lt;/li&gt;
+&lt;li&gt;الفأرة على شارة تقول البايت: عنوانه، ومسجّله، وأي بايت هو منه، وقيمته. &lt;b&gt;النقر&lt;/b&gt; يحدّد المسجّل هنا وفي
+لسان المسجّلات؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt; ينتقل إليه هناك. والصف الحالي في لسان المسجّلات يُحدَّد هنا أيضًا، وفي
+قائمة زره الأيمن &lt;b&gt;إظهار في عرض الذاكرة&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt;، أو زر &lt;b&gt;نسخ ▾&lt;/b&gt;: إظهار في المسجّلات، ورسم / إزالة من المخطط، وكتابة… (مع
+&lt;i&gt;السماح بالكتابة&lt;/i&gt;)، والنسخ: بايتات المسجّل، أو الكتلة صفوفًا ست عشرية أو مصفوفة C، أو قيمها المفكوكة.&lt;/li&gt;
+&lt;li&gt;قراءة &lt;b&gt;READ&lt;/b&gt; تُرسل من المراقبة تظهر بطاقةً في الأعلى، حتى القراءة التالية. والتدفق السريع الجاري ملاحظة
+(سجلّاته في المخطط)؛ وإطار الإرسال التلقائي يظهر &lt;i&gt;← AUTO_SEND&lt;/i&gt; بمعدّله. وعلى ناقل تعرض قائمة
+&lt;b&gt;الجهاز&lt;/b&gt; بطاقات جهاز واحد في كل مرة.&lt;/li&gt;
+&lt;li&gt;لا يحتفظ اللسان بشيء ما دام لسان آخر معروضًا: تأتي بطاقاته من جديد مع الردود التالية.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
         <source>Monitor</source>
         <translation>المراقبة</translation>
     </message>
@@ -2502,6 +2563,7 @@ to say it arrived; READ it to see.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Slave&lt;/b&gt;: the device it goes to (on a bus, the devices by name). &lt;b&gt;0 (broadcast)&lt;/b&gt;, or &lt;i&gt;Broadcast · slave
 0&lt;/i&gt; on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see &lt;b&gt;Connecting&lt;/b&gt;), which every device
 takes and none answers. A device chosen again gets back the function chosen before.&lt;/p&gt;
+&lt;p&gt;A READ&apos;s answer also shows at the top of the &lt;b&gt;Dump&lt;/b&gt; tab, decoded by the map.&lt;/p&gt;
 </source>
         <translation>
 &lt;h2&gt;المراقبة&lt;/h2&gt;
@@ -2515,6 +2577,7 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
 &lt;p&gt;&lt;b&gt;التابع&lt;/b&gt;: الجهاز الذي يذهب إليه (على الناقل، الأجهزة بأسمائها). &lt;b&gt;0 (بث)&lt;/b&gt;، أو &lt;i&gt;بث · التابع
 0&lt;/i&gt; على الناقل، بث: WRITE فقط، كما تسمح قاعدة البث (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، يأخذه كل جهاز
 ولا أحد يجيب. والجهاز الذي يُختار من جديد يستعيد الوظيفة المختارة قبل.&lt;/p&gt;
+&lt;p&gt;يظهر جواب قراءة READ أيضًا في أعلى لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt;، مفكوكًا بالخريطة.&lt;/p&gt;
 </translation>
     </message>
     <message>
@@ -2557,6 +2620,7 @@ it quickly under the table (a value, its enum list, its bits drawn as in a datas
 &lt;li&gt;&lt;b&gt;Chart&lt;/b&gt;: like an oscilloscope: memory depth apart from the view, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt;, &lt;b&gt;Measure&lt;/b&gt;
 (min, max, mean, RMS, the area under a line: W → Wh), &lt;b&gt;Cursors&lt;/b&gt; A and B, &lt;b&gt;ƒ Math&lt;/b&gt; lines (SUPPLY_V *
 SUPPLY_I), and &lt;b&gt;Display&lt;/b&gt;: how the lines are drawn, by a graphics card when the computer has one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Dump&lt;/b&gt;: the device&apos;s bytes as the reads bring them, each register a coloured chip, decoded beside.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame sent and received, raw reads and writes.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Map editor&lt;/b&gt;: make a map from nothing or change one, check it, and export it (a specification, a C header,
 a Python module).&lt;/li&gt;
@@ -2593,6 +2657,7 @@ none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/
 &lt;li&gt;&lt;b&gt;المخطط&lt;/b&gt;: مثل راسم الإشارة: عمق الذاكرة منفصل عن العرض، &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt;، &lt;b&gt;القياسات&lt;/b&gt;
 (الأدنى، الأعلى، المتوسط، RMS، المساحة تحت الخط: W → Wh)، &lt;b&gt;المؤشران&lt;/b&gt; A وB، خطوط &lt;b&gt;ƒ الرياضيات&lt;/b&gt; (SUPPLY_V *
 SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ببطاقة رسوميات حين يكون في الحاسوب واحدة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;: بايتات الجهاز كما تأتي بها القراءات، كل مسجّل شارة ملوّنة، مفكوكةً بجانبها.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;: اصنع خريطة من لا شيء أو غيّر واحدة، وافحصها، وصدّرها (مواصفة، ترويسة C،
 وحدة Python).&lt;/li&gt;
@@ -2921,7 +2986,7 @@ print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pr
         <source>
 &lt;h2&gt;Command line&lt;/h2&gt;
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
 &lt;ul&gt;
 &lt;li&gt;A server token comes from the environment variable &lt;code&gt;EVRE_TOKEN&lt;/code&gt;, never from the command line.&lt;/li&gt;
@@ -2941,7 +3006,7 @@ the ⚠ switch.&lt;/li&gt;
         <translation>
 &lt;h2&gt;سطر الأوامر&lt;/h2&gt;
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
 &lt;ul&gt;
 &lt;li&gt;رمز دخول الخادم يأتي من متغير البيئة &lt;code&gt;EVRE_TOKEN&lt;/code&gt;، لا من سطر الأوامر أبدًا.&lt;/li&gt;
@@ -3095,6 +3160,8 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
 cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
+&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
 &lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
 &lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
@@ -3132,6 +3199,8 @@ values: Auto ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
 يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
 &lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
 &lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;

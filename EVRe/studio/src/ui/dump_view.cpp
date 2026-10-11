@@ -24,6 +24,8 @@ QByteArray requestFrame(const DumpBlock &b) { return evre::build(b.wireSlave, ev
 QByteArray replyFrame(const DumpBlock &b) { return evre::build(b.wireSlave, evre::READ_RESP, b.addr, b.size, b.data); }
 constexpr int REPLY_HEADER = 7; /* 7B SLAVE FN OFF(2) CNT(2): the CRC and the end byte follow the payload */
 constexpr int FRAME_TAIL = 3;   /* CRC(2) 7D */
+/* a text at the left of its room whatever its direction (the painter takes each text's own: paintEvent) */
+constexpr Qt::Alignment LEFT = Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter;
 
 /* a row's base address as the grid writes it: four digits, no 0x (the tooltip gives 0x) */
 QString rowAddress(int base) { return QStringLiteral("%1").arg(base, 4, 16, QLatin1Char('0')).toUpper(); }
@@ -337,6 +339,16 @@ QRect DumpView::byteRect(int card, int offset) const {
 			lineHeight());
 }
 
+/* at the column after the payload's last byte, all three on the line */
+QRect DumpView::tailRect(int card) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].crcTop < 0) return {};
+	const DumpBlock &b = blocks_[card];
+	const int first = std::min((int(b.addr) + b.size) & 0xF, 16 - FRAME_TAIL);
+	const QPoint o = origin();
+	return QRect(o.x() + gridLeft() + first * cellWidth(), o.y() + cards_[card].top + cards_[card].crcTop,
+			FRAME_TAIL * cellWidth(), lineHeight());
+}
+
 int DumpView::decodeLines(int card) const { return card < 0 || card >= cards_.size() ? 0 : int(cards_[card].regs.size()); }
 
 QRect DumpView::decodeRect(int card, int line) const {
@@ -469,6 +481,23 @@ QString DumpView::notLiveReason(int card) const {
 	return {};
 }
 
+QString DumpView::requestText(int card) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].requestTop < 0) return {};
+	const DumpBlock &b = blocks_[card];
+	QString text = requestLabel(b) + QStringLiteral("  ") + evre::hex(requestFrame(b));
+	if (b.single) text += QStringLiteral("  ") + tr("split: the device refused the merged read");
+	return text;
+}
+
+QString DumpView::replyText(int card) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].replyTop < 0) return {};
+	const DumpBlock &b = blocks_[card];
+	QColor colour;
+	QString text = replyLabel(b) + QLatin1Char(' ') + replyState(card, colour);
+	if (b.data.size() >= b.size) text += QStringLiteral("  ") + evre::hex(replyFrame(b).left(REPLY_HEADER));
+	return text;
+}
+
 /* "0xD006 · SUPPLY_V · byte 2 of 4 · 0x40 (64) · raw FA 7E 40 41 · 12.031 V"; a gap byte "0xD016 · not mapped · 0x83";
  * a byte of the row that no read covers "0xD088 · not read: no register here" */
 QString DumpView::byteTip(int card, int offset) const {
@@ -593,9 +622,10 @@ void DumpView::changeEvent(QEvent *e) {
 void DumpView::paintEvent(QPaintEvent *) {
 	paints_++;
 	QPainter p(viewport());
-	/* a painter starts in the application's direction: in Arabic a name drawn "left" sat at the right of its room, and
-	 * "8634 ms" read "ms 8634" */
-	p.setLayoutDirection(Qt::LeftToRight);
+	/* a painter starts in the application's direction: in Arabic "8634 ms" read "ms 8634". Each text in its own direction
+	 * instead (hex, names and values left to right, an Arabic label right to left: forced left to right its words came
+	 * in the wrong order), every one at the left of its room (AlignAbsolute) */
+	p.setLayoutDirection(Qt::LayoutDirectionAuto);
 	const ThemeColors &c = Theme::colors();
 	p.fillRect(viewport()->rect(), c.bg);
 	p.setFont(font());
@@ -621,7 +651,7 @@ void DumpView::drawBytes(QPainter &p, int x, int y, const QByteArray &bytes, int
 	for (int i = 0; i < bytes.size(); i++) {
 		const bool muted = i < mutedFirst || i > mutedLast;
 		p.setPen(muted ? c.muted : c.text);
-		p.drawText(QRect(x + i * step, y, step, line), Qt::AlignLeft | Qt::AlignVCenter, byteText(bytes[i]));
+		p.drawText(QRect(x + i * step, y, step, line), LEFT, byteText(bytes[i]));
 	}
 }
 
@@ -641,7 +671,7 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 
 	if (b.kind == DumpBlock::FastStream) {
 		p.setPen(c.muted);
-		p.drawText(QRect(textLeft, at.y() + card.noteTop, rect.width() - 2 * PAD, line), Qt::AlignLeft | Qt::AlignVCenter,
+		p.drawText(QRect(textLeft, at.y() + card.noteTop, rect.width() - 2 * PAD, line), LEFT,
 				tr("fast stream %1: see the Chart").arg(b.stream));
 		return;
 	}
@@ -650,20 +680,20 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 		bold.setBold(true);
 		p.setFont(bold);
 		p.setPen(c.text);
-		p.drawText(QRect(textLeft, at.y() + card.titleTop, rect.width() - 2 * PAD, line), Qt::AlignLeft | Qt::AlignVCenter,
+		p.drawText(QRect(textLeft, at.y() + card.titleTop, rect.width() - 2 * PAD, line), LEFT,
 				tr("Manual read %1 · %n bytes", nullptr, b.size).arg(addrText(b.addr)));
 		p.setFont(font());
 	}
 	if (card.requestTop >= 0) {
 		const int y = at.y() + card.requestTop;
 		p.setPen(c.text);
-		p.drawText(QRect(textLeft, y, labelWidth_, line), Qt::AlignLeft | Qt::AlignVCenter, requestLabel(b));
+		p.drawText(QRect(textLeft, y, labelWidth_, line), LEFT, requestLabel(b));
 		const QByteArray request = requestFrame(b);
 		drawBytes(p, bytesLeft, y, request, 1, int(request.size()) - 1 - FRAME_TAIL);
 		if (b.single) {
 			const int x = bytesLeft + int(request.size()) * fontMetrics().horizontalAdvance(QStringLiteral("00 ")) + 8;
 			p.setPen(c.muted);
-			p.drawText(QRect(x, y, rect.right() - PAD - x, line), Qt::AlignLeft | Qt::AlignVCenter,
+			p.drawText(QRect(x, y, rect.right() - PAD - x, line), LEFT,
 					fontMetrics().elidedText(tr("split: the device refused the merged read"), Qt::ElideRight,
 							std::max(0, rect.right() - PAD - x)));
 		}
@@ -673,19 +703,19 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 		const int y = at.y() + card.replyTop;
 		p.setPen(c.text);
 		const QString label = replyLabel(b);
-		p.drawText(QRect(textLeft, y, labelWidth_, line), Qt::AlignLeft | Qt::AlignVCenter, label);
+		p.drawText(QRect(textLeft, y, labelWidth_, line), LEFT, label);
 		QColor stateColour;
 		const QString state = replyState(i, stateColour);
 		const int stateLeft = textLeft + fontMetrics().horizontalAdvance(label) + fontMetrics().horizontalAdvance(QLatin1Char(' '));
 		const bool hasBytes = b.data.size() >= b.size;
 		p.setPen(stateColour);
 		if (hasBytes && stateLeft + fontMetrics().horizontalAdvance(state) <= bytesLeft - 8) {
-			p.drawText(QRect(stateLeft, y, bytesLeft - stateLeft, line), Qt::AlignLeft | Qt::AlignVCenter, state);
+			p.drawText(QRect(stateLeft, y, bytesLeft - stateLeft, line), LEFT, state);
 		} else {
 			/* longer than the label's column (a long error): after the bytes, where there is room */
 			const int x = hasBytes ? bytesLeft + REPLY_HEADER * fontMetrics().horizontalAdvance(QStringLiteral("00 ")) + 8
 								   : stateLeft;
-			p.drawText(QRect(x, y, rect.right() - PAD - x, line), Qt::AlignLeft | Qt::AlignVCenter,
+			p.drawText(QRect(x, y, rect.right() - PAD - x, line), LEFT,
 					fontMetrics().elidedText(state, Qt::ElideRight, std::max(0, rect.right() - PAD - x)));
 		}
 		if (hasBytes) drawBytes(p, bytesLeft, y, replyFrame(b).left(REPLY_HEADER), 1, REPLY_HEADER);
@@ -696,12 +726,10 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 	/* the reply's CRC and end byte, closing it on a line of their own, at the column after the payload's last byte */
 	if (card.crcTop >= 0) {
 		const QByteArray reply = replyFrame(b);
-		const int y = at.y() + card.crcTop;
-		const int x = rect.left() - CARD_GAP + gridLeft();
-		const int first = std::min((int(b.addr) + b.size) & 0xF, 16 - FRAME_TAIL); /* all three on the line */
+		const QRect tail = tailRect(i);
 		p.setPen(c.muted);
 		for (int t = 0; t < FRAME_TAIL; t++)
-			p.drawText(QRect(x + (first + t) * cellWidth(), y, cellWidth(), line), Qt::AlignCenter,
+			p.drawText(QRect(tail.left() + t * cellWidth(), tail.top(), cellWidth(), line), Qt::AlignCenter,
 					byteText(reply[reply.size() - FRAME_TAIL + t]));
 	}
 	/* not live: a thin amber frame over the card's edge */
@@ -729,7 +757,7 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 		const int y = at.y() + row.top;
 		if (y + row.height < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
 		p.setPen(c.muted);
-		p.drawText(QRect(at.x() + PAD, y, left - at.x() - PAD, line), Qt::AlignLeft | Qt::AlignVCenter, rowAddress(row.base));
+		p.drawText(QRect(at.x() + PAD, y, left - at.x() - PAD, line), LEFT, rowAddress(row.base));
 		/* the chips of the registers with bytes in this row; the selected one's frame over them all */
 		p.setRenderHint(QPainter::Antialiasing, true);
 		QRectF selectedChip;
@@ -799,9 +827,9 @@ void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 		const QFontMetrics lineFm(f);
 		const QByteArray raw = b.data.size() >= b.size ? b.data.mid(d.addr - b.addr, d.size) : QByteArray();
 		p.setPen(c.text);
-		p.drawText(QRect(rect.left() + 14, rect.top(), nameWidth, rect.height()), Qt::AlignLeft | Qt::AlignVCenter,
+		p.drawText(QRect(rect.left() + 14, rect.top(), nameWidth, rect.height()), LEFT,
 				lineFm.elidedText(d.name, Qt::ElideRight, nameWidth - 8));
-		p.drawText(QRect(rect.left() + 14 + nameWidth, rect.top(), valueWidth, rect.height()), Qt::AlignLeft | Qt::AlignVCenter,
+		p.drawText(QRect(rect.left() + 14 + nameWidth, rect.top(), valueWidth, rect.height()), LEFT,
 				lineFm.elidedText(decodeValue(d, raw), Qt::ElideRight, valueWidth));
 		p.setFont(font());
 	}
@@ -872,7 +900,18 @@ bool DumpView::viewportEvent(QEvent *e) {
 	if (e->type() == QEvent::Leave) setHovered(NO_REGISTER);
 	if (e->type() != QEvent::ToolTip) return QAbstractScrollArea::viewportEvent(e);
 	const auto *help = static_cast<QHelpEvent *>(e);
-	const QPoint pos = help->pos();
+	const QString tip = toolTipAt(help->pos());
+	if (tip.isEmpty()) {
+		QToolTip::hideText();
+		e->ignore();
+	} else {
+		QToolTip::showText(help->globalPos(), tip, viewport());
+	}
+	return true;
+}
+
+/* a decode line's whole text; a byte's words (and why its card is not live); a row's address; else the card's reason */
+QString DumpView::toolTipAt(const QPoint &pos) const {
 	QString tip;
 	for (int i = 0; i < cards_.size() && tip.isEmpty(); i++) {
 		if (!cardRect(i).contains(pos)) continue;
@@ -892,11 +931,5 @@ bool DumpView::viewportEvent(QEvent *e) {
 		}
 		if (tip.isEmpty()) tip = notLiveReason(i);
 	}
-	if (tip.isEmpty()) {
-		QToolTip::hideText();
-		e->ignore();
-	} else {
-		QToolTip::showText(help->globalPos(), tip, viewport());
-	}
-	return true;
+	return tip;
 }

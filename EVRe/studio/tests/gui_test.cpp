@@ -126,6 +126,7 @@
 #include "ui/help_dialog.h"
 #include "ui/math_line_dialog.h"
 #include "ui/chart_widget.h"
+#include "ui/dump_tab.h"
 #include "ui/main_window.h"
 #include "ui/map_editor_tab.h"
 #include "ui/limit_spin_box.h"
@@ -620,6 +621,14 @@ public:
 		uiAudit();
 		hoverEdges();
 		monitorRequests();
+		dumpCards();
+		dumpColours();
+		dumpLive();
+		dumpMouse();
+		dumpMenu();
+		dumpOtherMaps();
+		dumpManualRead(); /* its card at the top for the pictures */
+		dumpArabic();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
@@ -1084,6 +1093,27 @@ private:
 		}, 5000);
 		if (!streaming) std::printf("  the rate line: %s\n", rateLine ? qPrintable(rateLine->text()) : "none");
 		check(streaming, "auto send: the frames come at 100 per second (the sidebar's rate line, within 15%)");
+		/* the Dump tab: the 0xD000 block's card is AUTO_SEND's, with its rate and no request line (nobody asked) */
+		if (DumpTab *dump = dumpTab()) {
+			auto *tabs = window_.findChild<QTabWidget *>();
+			const int tabWas = tabs->currentIndex();
+			tabs->setCurrentIndex(MainWindow::TabDump);
+			DumpView *view = dump->view();
+			const QRegularExpression words(QStringLiteral("^← AUTO_SEND (8[5-9]|9[0-9]|10[0-9]|11[0-5]) /s  7B "));
+			const bool card = QTest::qWaitFor([&] {
+				const int c = dumpCard(view, 0xD000, DumpBlock::AutoSend);
+				return c >= 0 && view->requestText(c).isEmpty() && words.match(view->replyText(c)).hasMatch()
+						&& view->notLiveReason(c).isEmpty() && dumpCard(view, 0xD000) < 0;
+			}, 3000);
+			if (!card) {
+				QStringList seen;
+				for (int i = 0; i < view->blocks().size(); i++) seen << view->replyText(i);
+				std::printf("     (the Dump's replies: %s)\n", qPrintable(seen.join(QStringLiteral(" | "))));
+			}
+			tabs->setCurrentIndex(tabWas);
+			check(card, "auto send: the Dump's 0xD000 card is AUTO_SEND's frame: \"← AUTO_SEND 100 /s\", no request line, "
+					"the polled read of that block gone");
+		}
 		/* another rate while it is on: written to the device at once (200 Hz: prescaler 39), then back to 100 */
 		rate->setCurrentIndex(rate->findData(200));
 		const bool faster = configBecomes([](int v) { return (v & 0x0008) && (v >> 8) == 39; });
@@ -1332,6 +1362,25 @@ private:
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
+		/* the Dump tab: the running stream is a note (its records are the chart's), no hex; its blocks never come in */
+		if (DumpTab *dump = dumpTab()) {
+			auto *tabs = window_.findChild<QTabWidget *>();
+			const int tabWas = tabs->currentIndex();
+			tabs->setCurrentIndex(MainWindow::TabDump);
+			DumpView *view = dump->view();
+			const uint16_t streamAddr = fastMap.streams[0].addr;
+			const bool note = QTest::qWaitFor([&] {
+				const int c = dumpCard(view, streamAddr, DumpBlock::FastStream);
+				bool polled = false;
+				for (const DumpBlock &b : view->blocks())
+					if (b.kind == DumpBlock::Read && b.size > 0 && b.data.size() >= b.size) polled = true;
+				return c >= 0 && view->blocks()[c].stream == QLatin1String("ADC") && view->byteRect(c, 0).isNull()
+						&& view->requestText(c).isEmpty() && dumpCard(view, streamAddr) < 0 && polled;
+			}, 3000);
+			tabs->setCurrentIndex(tabWas);
+			check(note, "fast streams: the Dump shows the running stream as a note (\"fast stream ADC: see the Chart\"), no "
+					"hex; the polled blocks as cards; the stream's blocks never come into the Dump");
+		}
 
 		/* a channel's Plot tick in the card: its line on the chart, its records kept, its newest value beside it */
 		auto *chartTab = window_.findChild<ChartTab *>();
@@ -2910,6 +2959,40 @@ private:
 		if (devices) devices->setCurrentRow(1);
 		check(cellShows(valueCell(table_, d2u8), QStringLiteral("22"), 5000) && !valueCell(table_, d1u8).isValid(),
 				"bus: D2 selected in the Devices card: the table shows D2's registers, from slave 2");
+		/* the Dump tab on a bus: the device chooser set to the selected device (D2), one device's cards at a time, each
+		 * request line naming the device */
+		if (DumpTab *dump = dumpTab()) {
+			auto *tabs = window_.findChild<QTabWidget *>();
+			auto *chooser = dump->findChild<QComboBox *>(QStringLiteral("dumpDevice"));
+			DumpView *view = dump->view();
+			tabs->setCurrentIndex(MainWindow::TabDump);
+			auto onlyDevice = [&](int slave) {
+				int reads = 0;
+				for (int i = 0; i < view->blocks().size(); i++) {
+					const DumpBlock &b = view->blocks()[i];
+					if (b.kind != DumpBlock::Read) continue;
+					if (b.slave != slave || !view->requestText(i).startsWith(QStringLiteral("D%1, slave %1  → READ ").arg(slave)))
+						return false;
+					reads++;
+				}
+				return reads >= 3;
+			};
+			const bool d2 = chooser && chooser->isVisible() && chooser->count() == 2 && chooser->currentData().toInt() == 2
+					&& QTest::qWaitFor([&] { return onlyDevice(2); }, 3000);
+			if (chooser) {
+				chooser->setCurrentIndex(chooser->findData(1));
+				emit chooser->activated(chooser->currentIndex());
+			}
+			const bool d1 = QTest::qWaitFor([&] { return onlyDevice(1); }, 3000);
+			if (!d2 || !d1) {
+				QStringList seen;
+				for (int i = 0; i < view->blocks().size(); i++) seen << view->requestText(i);
+				std::printf("     (the Dump on the bus: %s)\n", qPrintable(seen.join(QStringLiteral(" | "))));
+			}
+			tabs->setCurrentIndex(MainWindow::TabRegisters);
+			check(d2 && d1, "bus: the Dump's device chooser is set to the selected device (D2): its cards only, each request "
+					"line naming it (\"D2, slave 2  → READ ...\"); D1 chosen there: D1's cards");
+		}
 		/* D2's ID comes from its own read after the switch: waited for, not taken at once (a slow run failed here) */
 		const bool d2Read = deviceInfo && QTest::qWaitFor([&] {
 			return deviceInfo->text().startsWith(QLatin1String("D2: ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
@@ -3586,6 +3669,939 @@ private:
 		argument->setText(QStringLiteral("2"));
 		allowWrites_->setChecked(writesWere);
 		if (u8Before >= 0) other_.writeU8(regs_.u8.addr, uint8_t(u8Before));
+	}
+
+	/* ---- the Dump tab (STUDIO.md 37): one card per block read, the request and the reply, the payload as a hex grid
+	 * with the map's registers as chips and their values beside each row. Against the fake device and the example map:
+	 * its three blocks are 0xA000 (7 bytes), 0xD000 (22) and 0xD080 (8). */
+
+	DumpTab *dumpTab() const { return window_.findChild<DumpTab *>(); }
+
+	/* the card of the read of this kind at addr; -1: none */
+	static int dumpCard(const DumpView *view, uint16_t addr, DumpBlock::Kind kind = DumpBlock::Read) {
+		const QVector<DumpBlock> &blocks = view->blocks();
+		for (int i = 0; i < blocks.size(); i++)
+			if (blocks[i].addr == addr && blocks[i].kind == kind) return i;
+		return -1;
+	}
+
+	/* the cards of the polled reads (a manual read's card from the Monitor stays at the top until the next one) */
+	static QVector<int> readCards(const DumpView *view) {
+		QVector<int> out;
+		for (int i = 0; i < view->blocks().size(); i++)
+			if (view->blocks()[i].kind == DumpBlock::Read) out << i;
+		return out;
+	}
+
+	/* the card of addr there with its reply in, within ms */
+	static bool dumpAnswered(const DumpView *view, uint16_t addr, int ms = 3000) {
+		return QTest::qWaitFor([&] {
+			const int card = dumpCard(view, addr);
+			return card >= 0 && view->blocks()[card].data.size() >= view->blocks()[card].size;
+		}, ms);
+	}
+
+	static int colourDistance(const QColor &a, const QColor &b) {
+		return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+	}
+
+	/* a picture's pixel at a point in logical px (the picture is in device px: 225 % on the owner's screen) */
+	static QColor pixelAt(const QImage &picture, const QPointF &at) {
+		const QPoint p = (at * picture.devicePixelRatio()).toPoint();
+		return picture.rect().contains(p) ? QColor(picture.pixel(p)) : QColor();
+	}
+
+	/* the card's edge amber (the theme's warn) at its left side's middle: what a not-live card is framed with */
+	static bool dumpAmber(DumpView *view, int card) {
+		const QImage picture = view->viewport()->grab().toImage();
+		const QRect rect = view->cardRect(card);
+		for (const double dx : { 0.25, 0.75 })
+			if (colourDistance(pixelAt(picture, QPointF(rect.left() + dx, rect.center().y())), Theme::colors().warn) < 60)
+				return true;
+		return false;
+	}
+
+	/* how far a cell's ink reaches from its ground (the commonest colour inside it): its text's strength as drawn */
+	static int inkReach(const QImage &picture, const QRect &cell) {
+		const double dpr = picture.devicePixelRatio();
+		const QRect r = QRectF(QPointF(cell.topLeft()) * dpr, QSizeF(cell.size()) * dpr).toRect()
+				.adjusted(qRound(3 * dpr), qRound(3 * dpr), -qRound(3 * dpr), -qRound(3 * dpr)).intersected(picture.rect());
+		QHash<QRgb, int> counts;
+		for (int y = r.top(); y <= r.bottom(); y++)
+			for (int x = r.left(); x <= r.right(); x++) counts[picture.pixel(x, y)]++;
+		QRgb ground = 0;
+		int most = -1;
+		for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+			if (it.value() > most) {
+				most = it.value();
+				ground = it.key();
+			}
+		int reach = 0;
+		for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+			reach = std::max(reach, colourDistance(QColor(it.key()), QColor(ground)));
+		return reach;
+	}
+
+	RegKey keyOf(const QString &name) const {
+		const int row = regRow(name);
+		return row >= 0 ? regKey(model_->rows()[row].def) : DumpView::NO_REGISTER;
+	}
+
+	/* the line of the chart that draws a register: its colour (invalid: not plotted) */
+	QColor chartColour(RegKey key) const {
+		auto *chartTab = window_.findChild<ChartTab *>();
+		if (chartTab)
+			for (const ChartView::Info &line : chartTab->view()->lines())
+				if (line.key == int(key)) return line.color;
+		return {};
+	}
+
+	/* the mouse moved over the view (no button), as a person's would */
+	static void dumpMouseTo(DumpView *view, const QPoint &at) {
+		QMouseEvent move(QEvent::MouseMove, at, view->viewport()->mapToGlobal(at), Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+		QApplication::sendEvent(view->viewport(), &move);
+	}
+
+	/* The tab, its cards and their grid: where it sits, when it keeps replies, the cards' order, frames, rows and chips */
+	void dumpCards() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		check(tabs && view && MainWindow::TabDump == MainWindow::TabChart + 1 && MainWindow::TabMonitor == MainWindow::TabDump + 1
+						&& tabs->tabText(MainWindow::TabChart) == QLatin1String("Chart")
+						&& tabs->tabText(MainWindow::TabDump) == QLatin1String("Dump")
+						&& tabs->tabText(MainWindow::TabMonitor) == QLatin1String("Monitor")
+						&& tabs->tabToolTip(MainWindow::TabDump) == QLatin1String("The bytes of every read, decoded by the map"),
+				"Dump: a tab between Chart and Monitor; its tooltip says what it shows");
+		if (!tabs || !view) return;
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		poll_->setChecked(true);
+
+		/* hidden, the engine keeps nothing (setDump off); --tab dump opens it and the cards come; hidden again, they go */
+		QSignalSpy wanted(tab, &DumpTab::dumpWanted);
+		QTest::qWait(500);
+		const bool emptyHidden = !tab->shown() && readCards(view).isEmpty();
+		MainWindow::Startup toDump;
+		toDump.tab = QStringLiteral("dump");
+		window_.applyStartup(toDump);
+		const bool opened = tabs->currentIndex() == MainWindow::TabDump && tab->shown() && wanted.size() == 1
+				&& wanted[0][0].toBool();
+		const bool cardsCame = dumpAnswered(view, 0xA000) && dumpAnswered(view, 0xD000) && dumpAnswered(view, 0xD080);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const bool gone = wanted.size() == 2 && !wanted[1][0].toBool() && readCards(view).isEmpty();
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		check(emptyHidden && opened && cardsCame && gone, "Dump: --tab dump opens it; shown, the engine keeps the replies "
+				"(setDump on) and a card per block read comes; on another tab it keeps none and the cards go");
+
+		/* three cards in address order, apart; the frames' bytes evre::build's; the CRC and 7D under the grid */
+		const bool answered = dumpAnswered(view, 0xA000) && dumpAnswered(view, 0xD000) && dumpAnswered(view, 0xD080);
+		const QVector<int> reads = readCards(view);
+		const int a = dumpCard(view, 0xA000), d = dumpCard(view, 0xD000), e = dumpCard(view, 0xD080);
+		bool cards = answered && reads.size() == 3 && a < d && d < e && view->blocks()[a].size == 7
+				&& view->blocks()[d].size == 22 && view->blocks()[e].size == 8;
+		QString notes;
+		for (int k = 0; cards && k < 3; k++) {
+			const int i = reads[k];
+			const DumpBlock &b = view->blocks()[i];
+			const QString request = QStringLiteral("→ READ %1 bytes @ %2  %3").arg(b.size).arg(addrText(b.addr),
+					evre::hex(evre::build(b.wireSlave, evre::READ, b.addr, b.size)));
+			const QString header = evre::hex(evre::build(b.wireSlave, evre::READ_RESP, b.addr, b.size, b.data).left(7));
+			const bool apart = k == 0 || view->cardRect(i).top() > view->cardRect(reads[k - 1]).bottom() + 4;
+			const QRect last = view->byteRect(i, b.size - 1);
+			if (view->requestText(i) != request || !view->replyText(i).startsWith(QStringLiteral("← REPLY "))
+					|| !view->replyText(i).endsWith(header) || !apart || view->tailRect(i).top() < last.bottom()
+					|| !view->cardRect(i).contains(view->tailRect(i))) {
+				cards = false;
+				notes += QStringLiteral(" [%1 | %2]").arg(view->requestText(i), view->replyText(i));
+			}
+		}
+		if (!cards) std::printf("     (the cards:%s)\n", qPrintable(notes));
+		check(cards, "Dump: three cards in address order (0xA000 7 bytes, 0xD000 22, 0xD080 8), apart; the request line "
+				"\"→ READ 22 bytes @ 0xD000\" with the frame evre::build makes, the reply's header bytes; its CRC and 7D on "
+				"a line of their own under the grid");
+		if (!answered || reads.size() != 3) return;
+
+		/* the rows: 16 bytes each, aligned to 16, the base address at the left (0x in its tooltip); rows only to the
+		 * block's last; the D000 row as tall as its four registers' lines */
+		const int line = view->byteRect(d, 0).height();
+		const QPoint d010Address(view->cardRect(d).left() + 16, view->byteRect(d, 16).center().y());
+		const QPoint d080Address(view->cardRect(e).left() + 16, view->byteRect(e, 0).center().y());
+		bool rows = view->byteRect(d, 15).top() == view->byteRect(d, 0).top()
+				&& view->byteRect(d, 15).left() > view->byteRect(d, 0).left()
+				&& view->byteRect(d, 16).left() == view->byteRect(d, 0).left()
+				&& view->byteRect(e, 0).left() == view->byteRect(d, 0).left()
+				&& !view->byteRect(d, 22).isNull() && view->byteRect(d, 32).isNull()
+				&& view->toolTipAt(d010Address) == QLatin1String("0xD010")
+				&& view->toolTipAt(d080Address) == QLatin1String("0xD080");
+		const bool fourLines = view->byteRect(d, 16).top() == view->byteRect(d, 0).top() + 4 * line
+				&& view->decodeRect(d, 3).top() == view->byteRect(d, 0).top() + 3 * line
+				&& view->decodeRect(d, 4).top() == view->byteRect(d, 16).top();
+		check(rows && fourLines, "Dump: rows of 16 bytes aligned to 16, the row's base address at its left (its tooltip "
+				"0xD010, 0xD080), rows only to the block's last byte; the D000 row as tall as its four registers' lines");
+
+		/* the chips: SUPPLY_V's four bytes one chip, its neighbours others; SETPOINT's bytes the table's */
+		const RegKey supplyV = keyOf(QStringLiteral("SUPPLY_V")), setpoint = keyOf(QStringLiteral("SETPOINT"));
+		bool chip = view->registerAt(view->byteRect(d, 3).center()) == keyOf(QStringLiteral("UPTIME"))
+				&& view->registerAt(view->byteRect(d, 8).center()) == keyOf(QStringLiteral("SUPPLY_I"))
+				&& view->chipColour(d, supplyV).isValid();
+		for (int offset = 4; offset < 8; offset++)
+			if (view->registerAt(view->byteRect(d, offset).center()) != supplyV) chip = false;
+		const int setpointRow = regRow(QStringLiteral("SETPOINT"));
+		const bool sameBytes = setpointRow >= 0
+				&& QTest::qWaitFor([&] {
+					   return view->copyText(DumpView::CopyRegisterBytes, dumpCard(view, 0xD080), setpoint)
+							   == evre::hex(model_->rows()[setpointRow].raw);
+				   }, 2000);
+		check(chip && sameBytes, "Dump: a register's bytes are one chip (SUPPLY_V's four, UPTIME and SUPPLY_I beside); "
+				"SETPOINT's bytes in the Dump are the Registers tab's raw bytes");
+
+		/* a byte of the row that no read covers: "··", its tooltip says so */
+		const int d080 = dumpCard(view, 0xD080);
+		const QImage picture = view->viewport()->grab().toImage();
+		const bool notRead = view->toolTipAt(view->byteRect(d080, 8).center())
+						.startsWith(QStringLiteral("0xD088 · not read: no register here"))
+				&& view->registerAt(view->byteRect(d080, 8).center()) == DumpView::NO_REGISTER
+				&& inkReach(picture, view->byteRect(d080, 8)) > 0
+				&& inkReach(picture, view->byteRect(d080, 8)) < inkReach(picture, view->byteRect(d080, 4));
+		check(notRead, "Dump: a byte of the row no read covers is a muted \"··\" (never an invented 00), its tooltip "
+				"\"0xD088 · not read: no register here\"");
+
+		/* the decode column: the Registers tab's Value and Unit (FAN_SPEED), its Decoded text with " · " (STATE) */
+		const int fanRow = regRow(QStringLiteral("FAN_SPEED")), stateRow = regRow(QStringLiteral("STATE"));
+		auto lineOf = [&](int card, const QString &name) {
+			for (int l = 0; l < view->decodeLines(card); l++)
+				if (view->decodeText(card, l).startsWith(name + QStringLiteral("  "))) return l;
+			return -1;
+		};
+		const QString fanValue = fanRow < 0 ? QString()
+				: model_->index(fanRow, RegisterModel::ColValue).data().toString() + QLatin1Char(' ')
+						+ model_->index(fanRow, RegisterModel::ColUnit).data().toString();
+		const QString stateDecoded = stateRow < 0 ? QString()
+				: model_->index(stateRow, RegisterModel::ColDecoded).data().toString().replace(QLatin1String("  "),
+						QStringLiteral(" · "));
+		const int fanLine = lineOf(d080, QStringLiteral("FAN_SPEED")), stateLine = lineOf(d, QStringLiteral("STATE"));
+		const bool decoded = QTest::qWaitFor([&] {
+			return view->decodeText(d080, fanLine) == QStringLiteral("FAN_SPEED  ") + fanValue;
+		}, 2000) && !stateDecoded.isEmpty()
+				&& view->decodeText(d, stateLine) == QStringLiteral("STATE  ") + stateDecoded
+				&& view->toolTipAt(view->decodeRect(d, stateLine).center()) == view->decodeText(d, stateLine);
+		if (!decoded)
+			std::printf("     (decode lines: \"%s\" for \"%s\", \"%s\" for \"%s\")\n", qPrintable(view->decodeText(d080, fanLine)),
+					qPrintable(fanValue), qPrintable(view->decodeText(d, stateLine)), qPrintable(stateDecoded));
+		check(decoded, "Dump: each decode line is the register's name and the Registers tab's Value and Unit (FAN_SPEED), "
+				"or its Decoded text with \" · \" between the parts (STATE); its tooltip the whole line");
+	}
+
+	/* The chips' colours: a plotted register's from the chart, the others the palette's (neighbours apart), Colour:
+	 * plotted greys the rest; the byte text readable on every tint in both themes */
+	void dumpColours() {
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!view || !dumpAnswered(view, 0xD000)) {
+			check(false, "Dump: the colours (no cards)");
+			return;
+		}
+		const RegKey temperature = keyOf(QStringLiteral("TEMPERATURE")), supplyI = keyOf(QStringLiteral("SUPPLY_I"));
+		const int row = regRow(QStringLiteral("TEMPERATURE"));
+		const QColor before = view->chipColour(dumpCard(view, 0xD000), temperature);
+		bool neighboursApart = true;
+		for (const int card : readCards(view)) {
+			QColor last;
+			for (int offset = 0; offset < view->blocks()[card].size; offset++) {
+				const RegKey key = view->registerAt(view->byteRect(card, offset).center());
+				if (key == DumpView::NO_REGISTER) {
+					last = QColor();
+					continue;
+				}
+				const QColor colour = view->chipColour(card, key);
+				const bool sameChip = offset > 0 && view->registerAt(view->byteRect(card, offset - 1).center()) == key;
+				if (!sameChip && last.isValid() && colour == last) neighboursApart = false;
+				last = colour;
+			}
+		}
+		model_->setPlot(row, true);
+		const bool chartsColour = QTest::qWaitFor([&] {
+			const QColor line = chartColour(temperature);
+			return line.isValid() && view->chipColour(dumpCard(view, 0xD000), temperature) == line;
+		}, 3000);
+		/* Colour: plotted: the others neutral, the plotted one in its chart colour; saved */
+		auto *all = tab->findChild<QPushButton *>(QStringLiteral("dumpColourAll"));
+		auto *plotted = tab->findChild<QPushButton *>(QStringLiteral("dumpColourPlotted"));
+		if (plotted) plotted->click();
+		const int card = dumpCard(view, 0xD000);
+		/* the chart's colours come at the values' pace: the line's within a beat */
+		const bool narrowed = plotted && view->colourMode() == DumpView::PlottedOnly
+				&& view->chipColour(card, supplyI) == Theme::colors().surface2
+				&& QTest::qWaitFor([&] { return view->chipColour(card, temperature) == chartColour(temperature); }, 2000)
+				&& QSettings().value(QStringLiteral("dump/colour")).toString() == QLatin1String("plotted");
+		if (!narrowed)
+			std::printf("     (Colour: Plotted: mode %d, SUPPLY_I %s (surface2 %s), TEMPERATURE %s (chart %s), saved %s)\n",
+					int(view->colourMode()), qPrintable(view->chipColour(card, supplyI).name()),
+					qPrintable(Theme::colors().surface2.name()), qPrintable(view->chipColour(card, temperature).name()),
+					qPrintable(chartColour(temperature).name()),
+					qPrintable(QSettings().value(QStringLiteral("dump/colour")).toString()));
+		if (all) all->click();
+		const bool back = all && view->colourMode() == DumpView::AllRegisters
+				&& QSettings().value(QStringLiteral("dump/colour")).toString() == QLatin1String("all");
+		if (!narrowed || !back)
+			std::printf("     (Colour: buttons %d %d, mode %d, SUPPLY_I %s (surface2 %s), TEMPERATURE %s (chart %s), saved %s)\n",
+					plotted != nullptr, all != nullptr, int(view->colourMode()), qPrintable(view->chipColour(card, supplyI).name()),
+					qPrintable(Theme::colors().surface2.name()), qPrintable(view->chipColour(card, temperature).name()),
+					qPrintable(chartColour(temperature).name()),
+					qPrintable(QSettings().value(QStringLiteral("dump/colour")).toString()));
+		model_->setPlot(row, false);
+		const bool palette = QTest::qWaitFor([&] {
+			return !chartColour(temperature).isValid() && view->chipColour(dumpCard(view, 0xD000), temperature) == before;
+		}, 3000);
+		check(neighboursApart && chartsColour && palette, "Dump: every register's chip in a colour of the palette, two "
+				"neighbours never the same; plotted, it takes its chart colour (the chip and the dot); unplotted, the "
+				"palette's again");
+		check(narrowed && back, "Dump: Colour: Plotted greys the chips of the registers not plotted and keeps the plotted "
+				"one's chart colour; All registers again; the choice saved (dump/colour)");
+
+		/* the byte text on each colour's tint, both themes: 4.5:1 at least */
+		const bool wasDark = Theme::isDark();
+		bool readable = true;
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const ThemeColors &c = Theme::colors();
+			for (const QColor &colour : c.series) {
+				const double ratio = contrast(c.text, DumpView::chipFill(colour, c.surface, dark));
+				if (ratio < 4.5) {
+					readable = false;
+					std::printf("     (chip %s, %s: %.2f)\n", qPrintable(colour.name()), dark ? "dark" : "light", ratio);
+				}
+			}
+			if (contrast(c.text, c.surface2) < 4.5) readable = false; /* a neutral chip */
+		}
+		Theme::apply(*qApp, wasDark);
+		QApplication::processEvents();
+		check(readable, "Dump: the byte text on every colour's chip (tinted 30 % dark, 22 % light) and on a neutral one: "
+				"at least 4.5:1 in both themes");
+	}
+
+	/* Follow and Hold, the glow, and the amber frame of values not live (held, stale, the link closed) */
+	void dumpLive() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		auto *sidebar = window_.findChild<Sidebar *>();
+		if (!view || !sidebar || !dumpAnswered(view, 0xD080)) {
+			check(false, "Dump: Follow and Hold (no cards)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		/* Follow: a new picture at each beat of Show values, the newest reply each time */
+		const int pace = sidebar->valuesPerSecond();
+		auto newPictures = [&](int ms) {
+			int changes = 0;
+			quint64 last = 0;
+			QElapsedTimer clock;
+			clock.start();
+			while (clock.elapsed() < ms) {
+				QTest::qWait(5);
+				const int card = dumpCard(view, 0xD080);
+				const quint64 version = card >= 0 ? view->blocks()[card].version : 0;
+				if (version != last && last != 0) changes++;
+				last = version;
+			}
+			return changes;
+		};
+		const int followed = newPictures(1000);
+		std::printf("     (Follow: %d new replies shown in 1 s at %d a second)\n", followed, pace);
+		check(pace > 0 ? followed >= pace / 2 && followed <= pace + pace / 2 + 1 : followed >= 5,
+				"Dump: Follow shows each block's newest reply at the pace of Show values (10 a second)");
+
+		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
+		const bool liveFirst = QTest::qWaitFor([&] {
+			for (const int i : readCards(view))
+				if (!view->notLiveReason(i).isEmpty()) return false;
+			return true;
+		}, 3000);
+		bool noAmberLive = liveFirst;
+		for (const int i : readCards(view))
+			if (dumpAmber(view, i)) noAmberLive = false;
+		auto *hold = tab->findChild<QPushButton *>(QStringLiteral("dumpHold"));
+		auto *follow = tab->findChild<QPushButton *>(QStringLiteral("dumpFollow"));
+		if (hold) hold->click();
+		QTest::qWait(RegisterModel::GLOW_MS + 100); /* a glow under way ends */
+		const QModelIndex volts = model_->index(regRow(QStringLiteral("SUPPLY_V")), RegisterModel::ColValue);
+		const QString voltsBefore = volts.data().toString();
+		const int paintsBefore = view->paintCount();
+		const int heldChanges = newPictures(1000);
+		const int heldPaints = view->paintCount() - paintsBefore;
+		const bool tableMoved = volts.data().toString() != voltsBefore;
+		std::printf("     (Hold: %d new replies, %d paints in 1 s; the table moved %d)\n", heldChanges, heldPaints,
+				tableMoved ? 1 : 0);
+		check(hold && heldChanges == 0 && heldPaints <= 1 && tableMoved && !tab->following(),
+				"Dump: Hold keeps the bytes shown (no reply taken, no repaint) while the Registers tab moves on");
+		bool heldAmber = hold != nullptr;
+		for (const int i : readCards(view))
+			if (!dumpAmber(view, i) || !view->notLiveReason(i).startsWith(QLatin1String("Held at "))
+					|| !view->replyText(i).contains(QStringLiteral("← REPLY held ")))
+				heldAmber = false;
+		if (follow) follow->click();
+		const bool liveAgain = QTest::qWaitFor([&] {
+			for (const int i : readCards(view))
+				if (!view->notLiveReason(i).isEmpty()) return false;
+			return !readCards(view).isEmpty();
+		}, 3000);
+		if (!noAmberLive || !heldAmber || !liveAgain) {
+			for (int i = 0; i < view->blocks().size(); i++)
+				std::printf("     (card %d: \"%s\", amber %d)\n", i, qPrintable(view->replyText(i)), dumpAmber(view, i) ? 1 : 0);
+			std::printf("     (live first %d, no amber %d, held %d, live again %d)\n", liveFirst, noAmberLive, heldAmber, liveAgain);
+		}
+		check(noAmberLive && heldAmber && liveAgain, "Dump: fresh replies followed: no card framed; Hold: every card in a "
+				"thin amber frame, the reply line \"held 14:03:12\" and the reason in its tooltip; Follow: live again");
+
+		/* a changed byte glows, then fades over the Registers tab's GLOW_MS */
+		const uint16_t fanAddr = 0xD084;
+		const int fanWas = other_.readU8(fanAddr);
+		other_.writeU8(fanAddr, uint8_t(fanWas == 40 ? 41 : 40));
+		const bool lit = QTest::qWaitFor([&] {
+			const int card = dumpCard(view, 0xD080);
+			return card >= 0 && view->glow(card, 4) > 0.5;
+		}, 3000);
+		QTest::qWait(RegisterModel::GLOW_MS + 200);
+		const int card = dumpCard(view, 0xD080);
+		const bool faded = card >= 0 && view->glow(card, 4) == 0.0 && view->glow(card, 0) == 0.0;
+		if (fanWas >= 0) other_.writeU8(fanAddr, uint8_t(fanWas));
+		check(lit && faded, "Dump: a byte whose value changed glows (a ring in the accent), fading over the Registers "
+				"tab's GLOW_MS; the bytes that did not change do not");
+
+		/* stale: Poll off, the replies age past the Registers tab's stale limit: amber, "stale" in the reply line */
+		poll_->setChecked(false);
+		const bool stale = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 && view->notLiveReason(c).startsWith(QLatin1String("Not refreshed for "))
+					&& view->replyText(c).startsWith(QStringLiteral("← REPLY stale "));
+		}, 6000) && dumpAmber(view, dumpCard(view, 0xD080));
+		if (!stale) {
+			const int c = dumpCard(view, 0xD080);
+			std::printf("     (Poll off: %d cards, D080 card %d \"%s\" \"%s\" amber %d)\n", int(view->blocks().size()), c,
+					qPrintable(view->notLiveReason(c)), qPrintable(view->replyText(c)), c >= 0 && dumpAmber(view, c) ? 1 : 0);
+		}
+		poll_->setChecked(true);
+		const bool freshAgain = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 && view->notLiveReason(c).isEmpty();
+		}, 3000) && !dumpAmber(view, dumpCard(view, 0xD080));
+		check(stale && freshAgain, "Dump: Poll off, a reply older than the stale limit: its card framed amber, \"stale "
+				"2.1 s\" in the reply line; polled again, live");
+
+		/* the link closed: the last bytes stay, framed amber, the reason said; connected again, live */
+		QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnect) disconnect->click();
+		const bool closed = disconnect && QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD000);
+			return c >= 0 && view->notLiveReason(c) == QLatin1String("The link is closed: these are the last bytes read")
+					&& view->replyText(c).startsWith(QStringLiteral("← REPLY the link is closed"));
+		}, 3000) && dumpAmber(view, dumpCard(view, 0xD000));
+		if (!closed) {
+			const int c = dumpCard(view, 0xD000);
+			std::printf("     (closed: %d cards, D000 card %d \"%s\" \"%s\")\n", int(view->blocks().size()), c,
+					qPrintable(view->notLiveReason(c)), qPrintable(view->replyText(c)));
+		}
+		MainWindow::Startup again;
+		again.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		again.connect = true;
+		window_.applyStartup(again);
+		const bool reconnected = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD000);
+			return c >= 0 && view->notLiveReason(c).isEmpty() && view->blocks().size() >= 3;
+		}, 6000) && !dumpAmber(view, dumpCard(view, 0xD000));
+		check(closed && reconnected, "Dump: the link closed: the last bytes stay, framed amber, \"the link is closed\" in "
+				"the reply line; connected again, live");
+	}
+
+	/* The mouse: hover lights a register and says its byte; a click selects it in the Registers tab too, a double-click
+	 * goes there; the Registers tab's Show in dump and its current row */
+	void dumpMouse() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!view || !dumpAnswered(view, 0xD000)) {
+			check(false, "Dump: the mouse (no cards)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		QTest::qWait(200);
+		const RegKey supplyV = keyOf(QStringLiteral("SUPPLY_V")), temperature = keyOf(QStringLiteral("TEMPERATURE"));
+		int card = dumpCard(view, 0xD000);
+		const QPoint byte6 = view->byteRect(card, 6).center();
+		const QRect chipArea = view->byteRect(card, 4).united(view->byteRect(card, 7)).adjusted(-2, -2, 2, 2);
+		const QImage plain = view->viewport()->grab().toImage();
+		dumpMouseTo(view, byte6);
+		QApplication::processEvents();
+		const QImage lit = view->viewport()->grab().toImage();
+		const double dpr = lit.devicePixelRatio();
+		const QRect deviceArea = QRectF(QPointF(chipArea.topLeft()) * dpr, QSizeF(chipArea.size()) * dpr).toRect();
+		const bool ringed = plain.copy(deviceArea) != lit.copy(deviceArea);
+		const bool hand = view->hovered() == supplyV && view->viewport()->cursor().shape() == Qt::PointingHandCursor;
+		const QString tip = view->toolTipAt(byte6);
+		const bool said = tip.startsWith(QStringLiteral("0xD006 · SUPPLY_V · byte 3 of 4 · 0x"))
+				&& tip.contains(QStringLiteral(" · raw ")) && tip.endsWith(QLatin1String(" V"));
+		/* a decode line lights its chips the same way; empty room lights nothing */
+		int tempLine = -1;
+		for (int l = 0; l < view->decodeLines(card); l++)
+			if (view->decodeText(card, l).startsWith(QLatin1String("TEMPERATURE  "))) tempLine = l;
+		dumpMouseTo(view, view->decodeRect(card, tempLine).center());
+		const bool lineLights = view->hovered() == temperature;
+		dumpMouseTo(view, view->tailRect(card).center());
+		const bool nothing = view->hovered() == DumpView::NO_REGISTER
+				&& view->viewport()->cursor().shape() != Qt::PointingHandCursor;
+		if (!said || !ringed || !hand || !lineLights || !nothing)
+			std::printf("     (hover: tip \"%s\", ringed %d, hand %d, line %d, nothing %d)\n", qPrintable(tip), ringed, hand,
+					lineLights, nothing);
+		check(ringed && hand && said && lineLights && nothing, "Dump: the mouse over a chip: a pointing hand, all the "
+				"register's bytes ringed, the tooltip \"0xD006 · SUPPLY_V · byte 3 of 4 · 0x.. · raw .. · 12.031 V\"; over "
+				"a decode line the same register lit; over empty room nothing");
+
+		/* a click: selected here and the Registers tab's current row, without leaving; a double-click goes there */
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, byte6);
+		QApplication::processEvents();
+		const auto currentName = [&] { return table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString(); };
+		const bool clicked = view->selected() == supplyV && tabs->currentIndex() == MainWindow::TabDump
+				&& currentName() == QLatin1String("SUPPLY_V");
+		QTest::mouseDClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->decodeRect(card, tempLine).center());
+		QApplication::processEvents();
+		const bool went = tabs->currentIndex() == MainWindow::TabRegisters && currentName() == QLatin1String("TEMPERATURE")
+				&& view->selected() == temperature;
+		check(clicked && went, "Dump: a click on a chip selects the register here and makes it the Registers tab's current "
+				"row without leaving; a double-click (a decode line too) goes to the Registers tab on it");
+
+		/* the Registers tab: its current row is the Dump's selected register; its menu's Show in dump goes there */
+		const RegKey fan = keyOf(QStringLiteral("FAN_SPEED")), setpoint = keyOf(QStringLiteral("SETPOINT"));
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("FAN_SPEED")));
+		const bool follows = view->selected() == fan;
+		const QModelIndex setpointCell = valueCell(table_, QStringLiteral("SETPOINT"));
+		table_->scrollTo(setpointCell);
+		table_->setCurrentIndex(setpointCell);
+		bool hadItem = false;
+		QTimer poll;
+		poll.setInterval(50);
+		QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+			auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+			if (!menu) return;
+			poll.stop();
+			for (QAction *action : menu->actions())
+				if (action->text() == QLatin1String("Show in dump") && action->isEnabled()) {
+					hadItem = true;
+					action->trigger();
+				}
+			menu->close();
+		});
+		poll.start();
+		emit table_->customContextMenuRequested(table_->visualRect(setpointCell).center());
+		(void) QTest::qWaitFor([&] { return !poll.isActive(); }, 3000);
+		QApplication::processEvents();
+		/* the cards come at the next beat (hidden, the tab kept none): the register is scrolled into view then */
+		const bool inView = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 && view->viewport()->rect().contains(view->byteRect(c, 0));
+		}, 3000);
+		const bool shown = hadItem && tabs->currentIndex() == MainWindow::TabDump && view->selected() == setpoint && inView;
+		if (!follows || !shown)
+			std::printf("     (Registers -> Dump: follows %d, the item %d, tab %d, selected %d, chip in view %d)\n", follows, hadItem,
+					tabs->currentIndex(), view->selected() == setpoint, inView);
+		check(follows && shown, "Dump: the Registers tab's current row is the Dump's selected register (its chips framed, "
+				"its decode line bold); its right-click menu's Show in dump opens the Dump on it, in view");
+	}
+
+	/* The menu (the right-click's, repeated in Copy ▾): Show in Registers, Plot / Unplot, Write…, the four copies */
+	void dumpMenu() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!view || !dumpAnswered(view, 0xD080)) {
+			check(false, "Dump: the menu (no cards)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const QByteArray was = other_.read(0xD080, 8);
+		const QByteArray known("\x00\x00\x48\x42\x32\x01\xB8\x0B", 8); /* 50.0, 50 %, on, 3000 rpm */
+		const bool written = other_.write(0xD080, known);
+		const bool came = written && QTest::qWaitFor([&] {
+			const int card = dumpCard(view, 0xD080);
+			return card >= 0 && view->blocks()[card].data == known;
+		}, 3000);
+		const int card = dumpCard(view, 0xD080);
+		const RegKey setpoint = keyOf(QStringLiteral("SETPOINT"));
+		view->select(setpoint);
+		auto texts = [](const QMenu &menu) {
+			QStringList out;
+			for (const QAction *action : menu.actions()) out << (action->isSeparator() ? QStringLiteral("|") : action->text());
+			return out;
+		};
+		auto actionOf = [](const QMenu &menu, const QString &text) -> QAction * {
+			for (QAction *action : menu.actions())
+				if (action->text() == text) return action;
+			return nullptr;
+		};
+		QMenu menu;
+		tab->fillMenu(&menu, setpoint, card);
+		const QStringList items { QStringLiteral("Show in Registers"), QStringLiteral("Plot"), QStringLiteral("Write…"),
+			QStringLiteral("|"), QStringLiteral("Copy register bytes"), QStringLiteral("Copy block as hex"),
+			QStringLiteral("Copy block as C array"), QStringLiteral("Copy decoded") };
+		/* the Copy button: the same items, for the selected register and its card */
+		QMenu *buttonMenu = tab->copyButton() ? tab->copyButton()->menu() : nullptr;
+		if (buttonMenu) emit buttonMenu->aboutToShow();
+		const bool button = buttonMenu && texts(*buttonMenu) == items && tab->copyButton()->property("menuButton").toBool()
+				&& !tab->copyButton()->toolTip().isEmpty();
+		if (texts(menu) != items) std::printf("     (the menu: %s)\n", qPrintable(texts(menu).join(QStringLiteral(", "))));
+		check(came && texts(menu) == items && button, "Dump: the menu of a register: Show in Registers, Plot, Write…, then "
+				"Copy register bytes, block as hex, block as C array, decoded; the toolbar's Copy ▾ button holds the same");
+
+		/* the four copies, exact */
+		/* Windows' clipboard is shared: another program holding it a moment fails a write (OpenClipboard), so a few tries */
+		auto copied = [&](const QString &item) {
+			const QString marker = QStringLiteral("(nothing copied)");
+			QString text;
+			for (int attempt = 0; attempt < 10; attempt++) {
+				QGuiApplication::clipboard()->setText(marker);
+				if (QAction *action = actionOf(menu, item)) action->trigger();
+				text = QGuiApplication::clipboard()->text();
+				if (text != marker && !text.isEmpty()) break;
+				QTest::qWait(100);
+			}
+			return text;
+		};
+		auto shown = [&](const QString &name) {
+			const int row = regRow(name);
+			const QString decodedText = model_->index(row, RegisterModel::ColDecoded).data().toString();
+			if (!decodedText.isEmpty()) return QString(decodedText).replace(QLatin1String("  "), QStringLiteral(" · "));
+			const QString unit = model_->index(row, RegisterModel::ColUnit).data().toString();
+			const QString value = model_->index(row, RegisterModel::ColValue).data().toString();
+			return unit.isEmpty() ? value : value + QLatin1Char(' ') + unit;
+		};
+		(void) QTest::qWaitFor([&] {
+			return model_->rows()[regRow(QStringLiteral("SETPOINT"))].raw == known.left(4);
+		}, 2000);
+		const QString cArray = QStringLiteral("static const uint8_t block_d080[8] = {\n"
+				"\t/* 0xD080 SETPOINT */ 0x00, 0x00, 0x48, 0x42,\n"
+				"\t/* 0xD084 FAN_SPEED */ 0x32,\n"
+				"\t/* 0xD085 LED_MODE */ 0x01,\n"
+				"\t/* 0xD086 MOTOR_SPEED */ 0xB8, 0x0B,\n"
+				"};");
+		const QString decodedLines = QStringLiteral("0xD080  SETPOINT  %1\n0xD084  FAN_SPEED  %2\n0xD085  LED_MODE  %3\n"
+				"0xD086  MOTOR_SPEED  %4").arg(shown(QStringLiteral("SETPOINT")), shown(QStringLiteral("FAN_SPEED")),
+				shown(QStringLiteral("LED_MODE")), shown(QStringLiteral("MOTOR_SPEED")));
+		const QString bytes = copied(QStringLiteral("Copy register bytes")), hex = copied(QStringLiteral("Copy block as hex")),
+				c = copied(QStringLiteral("Copy block as C array")), decoded = copied(QStringLiteral("Copy decoded"));
+		const bool copies = bytes == QLatin1String("00 00 48 42") && hex == QLatin1String("D080  00 00 48 42 32 01 B8 0B")
+				&& c == cArray && decoded == decodedLines;
+		if (!copies)
+			std::printf("     (copied: \"%s\" | \"%s\" | \"%s\" | \"%s\"; the decoded expected \"%s\")\n", qPrintable(bytes),
+					qPrintable(hex), qPrintable(c), qPrintable(decoded), qPrintable(decodedLines));
+		check(copies, "Dump: Copy register bytes \"00 00 48 42\", block as hex \"D080  00 00 48 42 32 01 B8 0B\", as a C "
+				"array with each register's address and name before its bytes, decoded \"0xD080  SETPOINT  50.0 °C\" a line "
+				"a register");
+
+		/* Plot from the menu; Write… only with Allow writes, then the Registers tab's editor on the register */
+		const int setpointRow = regRow(QStringLiteral("SETPOINT"));
+		if (QAction *plot = actionOf(menu, QStringLiteral("Plot"))) plot->trigger();
+		QMenu plotted;
+		tab->fillMenu(&plotted, setpoint, card);
+		const bool plotItem = model_->rows()[setpointRow].plot && actionOf(plotted, QStringLiteral("Unplot"));
+		if (QAction *unplot = actionOf(plotted, QStringLiteral("Unplot"))) unplot->trigger();
+		const bool writesWere = allowWrites_->isChecked();
+		allowWrites_->setChecked(false);
+		QMenu off;
+		tab->fillMenu(&off, setpoint, card);
+		QAction *writeOff = actionOf(off, QStringLiteral("Write…"));
+		const bool greyed = writeOff && !writeOff->isEnabled()
+				&& writeOff->toolTip() == QLatin1String("Tick Allow writes on the Registers tab first");
+		allowWrites_->setChecked(true);
+		QMenu on;
+		tab->fillMenu(&on, setpoint, card);
+		QAction *writeOn = actionOf(on, QStringLiteral("Write…"));
+		const bool offered = writeOn && writeOn->isEnabled();
+		if (offered) writeOn->trigger();
+		QLineEdit *editor = nullptr;
+		const bool editing = offered && QTest::qWaitFor([&] {
+			for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+				if (line->isVisible()) editor = line;
+			return editor != nullptr;
+		}, 2000) && tabs->currentIndex() == MainWindow::TabRegisters
+				&& table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString() == QLatin1String("SETPOINT");
+		if (editor) QTest::keyClick(editor, Qt::Key_Escape);
+		QApplication::processEvents();
+		allowWrites_->setChecked(writesWere);
+		check(plotItem && !model_->rows()[setpointRow].plot && greyed && editing, "Dump: Plot from the menu plots the "
+				"register (Unplot then); Write… greyed with Allow writes off (its tooltip says so), with it on the Registers "
+				"tab's editor opens on the register");
+		if (was.size() == 8) other_.write(0xD080, was);
+		tabs->setCurrentIndex(MainWindow::TabDump);
+	}
+
+	/* A READ typed in the Monitor: its answer as a card at the top of the Dump, kept until the next one */
+	void dumpManualRead() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *function = monitor ? monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) : nullptr;
+		QList<QLineEdit *> boxes = monitor ? monitor->findChildren<QLineEdit *>() : QList<QLineEdit *>();
+		boxes.removeIf([](const QLineEdit *b) { return qobject_cast<QAbstractSpinBox *>(b->parent()) != nullptr; });
+		QPushButton *send = monitor ? buttonWithText(*monitor, QStringLiteral("Send")) : nullptr;
+		auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		if (!view || !function || boxes.size() < 2 || !send || !frames) {
+			check(false, "Dump: the manual read (no Monitor)");
+			return;
+		}
+		auto read = [&](const QString &addr, const QString &count) {
+			tabs->setCurrentIndex(MainWindow::TabMonitor);
+			function->setCurrentIndex(0);
+			boxes[0]->setText(addr);
+			boxes[1]->setText(count);
+			frames->clear();
+			send->click();
+			return QTest::qWaitFor([&] { return frames->toPlainText().contains(QLatin1String("OK")); }, 3000);
+		};
+		const bool first = read(QStringLiteral("0xD080"), QStringLiteral("8"));
+		const bool said = frames->toPlainText().trimmed().endsWith(QLatin1String("(shown in the Dump)"));
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const bool top = QTest::qWaitFor([&] { return dumpAnswered(view, 0xD000); }, 3000) && !view->blocks().isEmpty()
+				&& view->blocks()[0].kind == DumpBlock::Manual && view->blocks()[0].addr == 0xD080 && view->blocks()[0].size == 8
+				&& view->notLiveReason(0) == QLatin1String("A manual read: read once, not refreshed")
+				&& view->replyText(0).startsWith(QStringLiteral("← REPLY read once, ")) && dumpAmber(view, 0)
+				&& view->registerAt(view->byteRect(0, 0).center()) == keyOf(QStringLiteral("SETPOINT"));
+		if (!first || !said || !top)
+			std::printf("     (manual: first %d, said %d (\"%s\"), top %d: \"%s\" \"%s\" amber %d)\n", first, said,
+					qPrintable(frames->toPlainText().right(80)), top, qPrintable(view->notLiveReason(0)),
+					qPrintable(view->replyText(0)), dumpAmber(view, 0));
+		const bool second = read(QStringLiteral("0xA000"), QStringLiteral("4"));
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		int manuals = 0;
+		for (const DumpBlock &b : view->blocks()) manuals += b.kind == DumpBlock::Manual ? 1 : 0;
+		const bool replaced = second && manuals == 1 && view->blocks()[0].kind == DumpBlock::Manual
+				&& view->blocks()[0].addr == 0xA000 && view->blocks()[0].size == 4;
+		check(first && said && top && replaced, "Dump: a READ sent from the Monitor shows at the top as a card of its own "
+				"(\"read once\", framed amber, the map's chips on it); the Monitor's answer line says \"(shown in the Dump)\"; "
+				"the next READ replaces it");
+		function->setCurrentIndex(0);
+		boxes[1]->setText(QStringLiteral("2"));
+		/* the card of 0xD080 read again: the pictures and the steps after show it */
+		(void) read(QStringLiteral("0xD080"), QStringLiteral("8"));
+		tabs->setCurrentIndex(MainWindow::TabDump);
+	}
+
+	/* Two maps of the example's device: one with a gap in its block (bytes no register maps, muted hex) and a long name,
+	 * one with a register the device does not have beside the block (the merged read refused: split) */
+	void dumpOtherMaps() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		QTemporaryDir folder;
+		DeviceMap gapMap = map_, splitMap = map_;
+		const QString longName = QStringLiteral("TEMPERATURE_NEAR_THE_SUPPLY_INLET");
+		gapMap.regs.removeIf([](const RegDef &d) { return d.name == QLatin1String("COUNTER"); });
+		for (RegDef &d : gapMap.regs)
+			if (d.name == QLatin1String("TEMPERATURE")) d.name = longName;
+		for (const RegDef &d : map_.regs)
+			if (d.name == QLatin1String("COUNTER")) {
+				RegDef extra = d;
+				extra.name = QStringLiteral("EXTRA");
+				extra.addr = 0xD018;
+				extra.source = -1;
+				extra.uid = 0;
+				splitMap.regs << extra;
+			}
+		const QString gapFile = folder.filePath(QStringLiteral("gap.json")), splitFile = folder.filePath(QStringLiteral("split.json"));
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		QString error;
+		const bool written = view && folder.isValid() && gapMap.save(gapFile, error) && splitMap.save(splitFile, error)
+				&& QFile::copy(map_.path, exampleFile);
+		if (!written) std::printf("     (the Dump's maps: %s)\n", qPrintable(error));
+		auto load = [&](const QString &file) {
+			MainWindow::Startup startup;
+			startup.map = file;
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+			startup.connect = true;
+			answerDialog(QStringLiteral("Discard"), [&] { window_.applyStartup(startup); });
+			tabs->setCurrentIndex(MainWindow::TabDump);
+		};
+		if (!written) {
+			check(false, "Dump: the maps with a gap and with a register the device lacks (not written)");
+			return;
+		}
+		/* the gap: COUNTER's two bytes read with the block, no register's: plain hex, muted, "not mapped" */
+		load(gapFile);
+		const bool gapRead = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD000);
+			return c >= 0 && view->blocks()[c].size == 22 && view->blocks()[c].data.size() == 22
+					&& view->decodeLines(c) == 6;
+		}, 5000);
+		const int card = dumpCard(view, 0xD000);
+		const QImage picture = view->viewport()->grab().toImage();
+		const QString gapTip = view->toolTipAt(view->byteRect(card, 0x12).center());
+		const QByteArray gapData = view->blocks().value(card).data;
+		const QString gapHex = QStringLiteral("%1").arg(gapData.size() > 0x12 ? uchar(gapData.at(0x12)) : 0, 2, 16,
+				QLatin1Char('0')).toUpper();
+		const int gapInk = inkReach(picture, view->byteRect(card, 0x12)), chipInk = inkReach(picture, view->byteRect(card, 0x10));
+		const bool gap = gapRead && gapTip.startsWith(QStringLiteral("0xD012 · not mapped · 0x") + gapHex)
+				&& view->registerAt(view->byteRect(card, 0x12).center()) == DumpView::NO_REGISTER && gapInk > 0
+				&& gapInk < chipInk;
+		if (!gap) std::printf("     (the gap byte: \"%s\", ink %d against a chip's %d)\n", qPrintable(gapTip), gapInk, chipInk);
+		check(gap, "Dump: a byte inside the block that no register maps (the engine reads over small gaps): plain hex in the "
+				"muted colour, no chip, its tooltip \"0xD012 · not mapped · 0x..\"");
+		/* a name too long for the decode column: cut there, whole in the tooltip, the line no wider */
+		int longLine = -1;
+		for (int l = 0; l < view->decodeLines(card); l++)
+			if (view->decodeText(card, l).startsWith(longName + QStringLiteral("  "))) longLine = l;
+		const QRect longRect = view->decodeRect(card, longLine);
+		const bool cut = gapRead && longLine >= 0 && longRect.width() == view->decodeRect(card, 0).width()
+				&& view->fontMetrics().horizontalAdvance(longName) > longRect.width() / 2
+				&& view->toolTipAt(longRect.center()) == view->decodeText(card, longLine);
+		check(cut, "Dump: a name longer than the decode column's room is cut with \"…\", the line as wide as the others; "
+				"its tooltip has the whole line");
+
+		/* a register the device does not have, 2 bytes past the block: the merged read refused, split into single reads,
+		 * each a card saying why; the register refused for good has none */
+		load(splitFile);
+		const bool split = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD004);
+			bool none = true;
+			for (const DumpBlock &b : view->blocks())
+				if (b.addr == 0xD018 || (b.addr == 0xD000 && b.size > 4)) none = false;
+			return c >= 0 && view->blocks()[c].single && view->blocks()[c].size == 4 && view->blocks()[c].data.size() == 4
+					&& view->requestText(c).endsWith(QLatin1String("split: the device refused the merged read")) && none;
+		}, 6000);
+		if (!split) {
+			QStringList seen;
+			for (int i = 0; i < view->blocks().size(); i++) seen << view->requestText(i);
+			std::printf("     (after the split: %s)\n", qPrintable(seen.join(QStringLiteral(" | "))));
+		}
+		check(split, "Dump: a merged read the device refuses: a card per single read, its request line ending \"split: the "
+				"device refused the merged read\"; the register refused for good has none");
+
+		load(exampleFile);
+		check(dumpAnswered(view, 0xD000, 5000) && dumpAnswered(view, 0xD080) && dumpCard(view, 0xD004) < 0
+						&& cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"Dump: the example map again, its three blocks, polled from the fake device");
+		tabs->setCurrentIndex(MainWindow::TabDump);
+	}
+
+	/* the window and the tooltip over it painted together (a tooltip is a window of its own) */
+	static QImage withTooltip(QWidget *window, const QRect &area) {
+		const QPixmap whole = window->grab();
+		const qreal dpr = whole.devicePixelRatio();
+		QImage image(QSize(qRound(area.width() * dpr), qRound(area.height() * dpr)), QImage::Format_ARGB32_Premultiplied);
+		image.setDevicePixelRatio(dpr);
+		image.fill(Theme::colors().bg);
+		QPainter p(&image);
+		p.translate(-area.topLeft());
+		p.drawPixmap(QPoint(0, 0), whole);
+		for (QWidget *top : QApplication::topLevelWidgets())
+			if (top->isVisible() && top->inherits("QTipLabel"))
+				p.drawPixmap(top->mapToGlobal(QPoint(0, 0)) - window->mapToGlobal(QPoint(0, 0)), top->grab());
+		p.end();
+		return image;
+	}
+
+	/* EVRE_TEST_SHOT: the Dump tab of a window in both themes: live, the manual read's card amber at the top, SUPPLY_V's
+	 * chip hovered with its tooltip (<prefix>_dump_<lang>_<theme>.png, the tab alone as _dump_tab_<lang>_<theme>.png for
+	 * the docs), and held (<prefix>_dump_held_<lang>_<theme>.png) */
+	static void dumpShots(QWidget *window, const QString &lang) {
+		if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		auto *tab = window->findChild<DumpTab *>();
+		auto *tabs = window->findChild<QTabWidget *>();
+		if (!tab || !tabs) return;
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		DumpView *view = tab->view();
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) {
+			const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+			Theme::apply(*qApp, dark);
+			view->verticalScrollBar()->setValue(0);
+			QTest::qWait(600);
+			/* the theme's switch holds the window a moment: the polled cards live again first (not "stale" in the picture) */
+			(void) QTest::qWaitFor([&] {
+				const QVector<int> reads = readCards(view);
+				return !reads.isEmpty() && std::all_of(reads.begin(), reads.end(), [&](int i) {
+					return view->notLiveReason(i).isEmpty();
+				});
+			}, 3000);
+			const int card = dumpCard(view, 0xD000);
+			if (card < 0) continue;
+			const QPoint at = view->byteRect(card, 6).center();
+			dumpMouseTo(view, at);
+			QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
+			QApplication::sendEvent(view->viewport(), &help);
+			QTest::qWait(250);
+			withTooltip(window, window->rect()).save(prefix + QStringLiteral("_dump_%1_%2.png").arg(lang, theme));
+			const QRect tabArea(tabs->mapTo(window, QPoint(0, 0)), tabs->size());
+			withTooltip(window, tabArea).save(prefix + QStringLiteral("_dump_tab_%1_%2.png").arg(lang, theme));
+			QToolTip::hideText();
+			QEvent leave(QEvent::Leave);
+			QApplication::sendEvent(view->viewport(), &leave);
+			tab->setFollow(false);
+			QTest::qWait(300);
+			window->grab().save(prefix + QStringLiteral("_dump_held_%1_%2.png").arg(lang, theme));
+			tab->setFollow(true);
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(200);
+	}
+
+	/* Arabic: the tab named, its cards left to right in a right-to-left window, the window no wider; the pictures */
+	void dumpArabic() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		QApplication::processEvents();
+		const int english = window_.minimumSizeHint().width();
+		/* the English pictures: SUPPLY_V and TEMPERATURE plotted, the window at the docs' size */
+		const int supplyRow = regRow(QStringLiteral("SUPPLY_V")), tempRow = regRow(QStringLiteral("TEMPERATURE"));
+		model_->setPlot(supplyRow, true);
+		model_->setPlot(tempRow, true);
+		const QSize sizeWas = window_.size();
+		window_.resize(DOCS_W, DOCS_H);
+		tabs->setCurrentIndex(MainWindow::TabLog); /* seen: no count of the other steps' warnings on its tab */
+		QApplication::processEvents();
+		dumpShots(&window_, QStringLiteral("en"));
+		window_.resize(sizeWas);
+		model_->setPlot(supplyRow, false);
+		model_->setPlot(tempRow, false);
+
+		language::apply(*qApp, QStringLiteral("ar"));
+		int arabic = 100000;
+		bool named = false, leftToRight = false;
+		{
+			MainWindow other(map_.path);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1280, 800);
+			auto *otherTabs = other.findChild<QTabWidget *>();
+			auto *tab = other.findChild<DumpTab *>();
+			if (otherTabs && tab) {
+				otherTabs->setCurrentIndex(MainWindow::TabDump);
+				QApplication::processEvents();
+				arabic = other.minimumSizeHint().width();
+				named = otherTabs->tabText(MainWindow::TabDump) == QStringLiteral("عرض الذاكرة");
+				leftToRight = qApp->layoutDirection() == Qt::RightToLeft && tab->isRightToLeft()
+						&& tab->view()->layoutDirection() == Qt::LeftToRight
+						&& tab->view()->viewport()->layoutDirection() == Qt::LeftToRight;
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+					MainWindow::Startup live;
+					live.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+					live.connect = true;
+					live.plot = QStringList{ QStringLiteral("SUPPLY_V"), QStringLiteral("TEMPERATURE") };
+					live.tab = QStringLiteral("dump");
+					other.applyStartup(live);
+					other.resize(DOCS_W, DOCS_H);
+					(void) dumpAnswered(tab->view(), 0xD080, 5000);
+					dumpShots(&other, QStringLiteral("ar"));
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(1200); /* the window's texts made meanwhile (the rate line) are English again at their next refresh */
+		std::printf("     (the window's minimum width with the Dump shown: %d px in English, %d in Arabic)\n", english, arabic);
+		check(english <= 1280 && arabic <= 1280 && named && leftToRight, "Dump, Arabic: the tab is عرض الذاكرة; the window "
+				"right to left, the cards left to right (addresses, bytes, names and values); the window with the Dump shown "
+				"at most 1280 px wide in English and in Arabic");
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
 	}
 
 	/* the UI audit of 2026-10-01: each finding, as it is now */
@@ -6414,10 +7430,23 @@ private:
 			if (topics->item(i)->text() == QLatin1String("Command line")) commandLine = text;
 		}
 		const bool options = commandLine.contains(QLatin1String("--bus bus.json"))
-				&& commandLine.contains(QLatin1String("--tab registers|chart|monitor|map"));
+				&& commandLine.contains(QLatin1String("--tab registers|chart|dump|monitor|map"));
 		if (!empty.isEmpty()) std::printf("     (help pages without their text: %s)\n", qPrintable(empty));
 		check(filled && empty.isEmpty() && options, "Help: every page opens with its heading and text, its numbers "
 				"put in; the command line page lists --bus and the Map editor's --tab");
+		/* the Dump tab's page, and the overview's list of the tabs */
+		QString dumpPage, overview;
+		for (int i = 0; filled && i < topics->count(); i++) {
+			topics->setCurrentRow(i);
+			if (topics->item(i)->text() == QLatin1String("Dump")) dumpPage = page->toPlainText();
+			if (i == 0) overview = page->toPlainText();
+		}
+		check(dumpPage.contains(QLatin1String("Follow")) && dumpPage.contains(QLatin1String("Hold"))
+						&& dumpPage.contains(QLatin1String("amber")) && dumpPage.contains(QLatin1String("Show in dump"))
+						&& dumpPage.contains(QLatin1String("C array")) && dumpPage.contains(QStringLiteral("··"))
+						&& overview.contains(QLatin1String("Dump: ")),
+				"Help: a page for the Dump tab (the cards, the chips, Follow and Hold, the amber frame, the menu and Show in "
+				"dump); the first page's list of the tabs names it");
 		/* Trigger v2: the Chart page says how it is armed and what the modes, the hold-off, the tab and the flag do */
 		QString chartPage, keysPage;
 		for (int i = 0; filled && i < topics->count(); i++) {

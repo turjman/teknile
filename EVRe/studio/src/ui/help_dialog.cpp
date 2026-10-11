@@ -46,6 +46,7 @@ it quickly under the table (a value, its enum list, its bits drawn as in a datas
 <li><b>Chart</b>: like an oscilloscope: memory depth apart from the view, <b>Hold</b> / <b>Live</b>, <b>Measure</b>
 (min, max, mean, RMS, the area under a line: W → Wh), <b>Cursors</b> A and B, <b>ƒ Math</b> lines (SUPPLY_V *
 SUPPLY_I), and <b>Display</b>: how the lines are drawn, by a graphics card when the computer has one.</li>
+<li><b>Dump</b>: the device's bytes as the reads bring them, each register a coloured chip, decoded beside.</li>
 <li><b>Monitor</b>: every frame sent and received, raw reads and writes.</li>
 <li><b>Map editor</b>: make a map from nothing or change one, check it, and export it (a specification, a C header,
 a Python module).</li>
@@ -629,6 +630,34 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
 (e.g. <code>ok</code> boolean, <code>values</code> cluster with a <code>SUPPLY_V</code> double).</p>
 <p>Full examples: <code>examples/</code> next to the program's source.</p>
 )HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Dump"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
+<h2>Dump</h2>
+<p>The <b>Dump</b> tab shows the device's bytes as the reads bring them: one <b>card</b> per block the polling reads,
+in address order. Each card has the request the Studio sent (<i>→ READ 22 bytes @ 0xD000</i> and its frame's bytes),
+the reply (<i>← REPLY 12 ms ago</i> and its header bytes), the payload as a grid of 16 bytes a row with the row's
+address at its left, and the reply's CRC and end byte on a line of their own.</p>
+<ul>
+<li>Every register of the map is a <b>chip</b>: its bytes tinted in its colour, a plotted one in its chart colour.
+Beside each row, one line per register that starts in it: its dot, its name and its value as the Registers tab shows
+it. A byte inside the block that no register maps is plain grey hex; <b>··</b> is a byte of the row that no read covers
+(never an invented 00).</li>
+<li>A byte whose value changed glows a moment, as a value in the Registers tab does.</li>
+<li><b>Follow</b> shows each block's newest reply at the pace of <i>Show values</i>; <b>Hold</b> keeps the bytes shown.
+<b>Colour</b>: <b>All registers</b>, or <b>Plotted</b> (only the plotted ones in colour, the others grey).</li>
+<li>A card whose bytes are not live has a thin <b>amber</b> frame, and its reply line and tooltip say why: held, stale
+(not refreshed for longer than the Registers tab's stale limit), a failed read (the last good bytes stay), the link
+closed, or a manual read.</li>
+<li>The mouse on a chip says the byte: its address, its register, which byte of it, its value. A <b>click</b> selects
+the register here and in the Registers tab; a <b>double-click</b> goes there. The Registers tab's current row is
+selected here too, and its right-click menu has <b>Show in dump</b>.</li>
+<li><b>Right-click</b>, or the <b>Copy ▾</b> button: Show in Registers, Plot / Unplot, Write… (with <i>Allow
+writes</i>), and Copy: the register's bytes, the block as hex rows or as a C array, or its decoded values.</li>
+<li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one. A running fast stream is a
+note (its records are on the Chart); auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
+<b>Device</b> list shows one device's cards at a time.</li>
+<li>The tab keeps nothing while another tab is shown: its cards come again with the next replies.</li>
+</ul>
+)HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Monitor</h2>
 <p><b>Log frames</b> shows every frame sent and received (off by default: at fast polling it is a lot of text).
@@ -641,6 +670,7 @@ to say it arrived; READ it to see.</p>
 <p><b>Slave</b>: the device it goes to (on a bus, the devices by name). <b>0 (broadcast)</b>, or <i>Broadcast · slave
 0</i> on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see <b>Connecting</b>), which every device
 takes and none answers. A device chosen again gets back the function chosen before.</p>
+<p>A READ's answer also shows at the top of the <b>Dump</b> tab, decoded by the map.</p>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Log & pop-ups"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Log &amp; pop-ups</h2>
@@ -665,7 +695,7 @@ others that came while it was up. All of them are in the Log; hover the pop-up f
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Command line"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Command line</h2>
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]</pre>
 <ul>
 <li>A server token comes from the environment variable <code>EVRE_TOKEN</code>, never from the command line.</li>
@@ -688,6 +718,8 @@ the ⚠ switch.</li>
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
 cancels · right-click: the menu of the row and the table</td></tr>
+<tr><td><b>Dump</b></td><td><b>Click</b> a chip or a decode line: the register selected (in the Registers tab too) ·
+<b>double-click</b>: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on <b>Copy ▾</b> too)</td></tr>
 <tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
 <b>click</b> places A, then B, a <b>drag</b> moves the nearer (below 1 s with <b>Shift</b>: to a tenth of a
