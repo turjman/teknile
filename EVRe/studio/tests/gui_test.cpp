@@ -1668,9 +1668,14 @@ private:
 		const qint64 txBefore = sent();
 		QTest::qWait(3000);
 		const qint64 heartbeats = sent() - txBefore;
-		std::printf("  Poll off for 3 s, a fast stream on: %lld requests sent\n", heartbeats);
-		check(traffic && heartbeats >= 24 && heartbeats <= 45 && device->readU8(enable->addr) == 1
-						&& rate.match(sidebar->fastRateText(0)).hasMatch(),
+		const int enabled = device->readU8(enable->addr);
+		/* the stream was stopped and started above, its clock with it: its rate settles within seconds (the first
+		 * Start waits up to 6 s for it). A stream the watchdog stopped reads "off", so the wait hides no stop. */
+		const bool rateShown = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 3000);
+		std::printf("  Poll off for 3 s, a fast stream on: %lld requests sent (24 to 45), the enable %d (1), the rate "
+				"\"%s\" (%s)\n", heartbeats, enabled, qPrintable(sidebar->fastRateText(0)), rateShown ? "as it should be"
+				: "not 9.9 to 10.1 k samples/s with its ppm in 3 s");
+		check(traffic && heartbeats >= 24 && heartbeats <= 45 && enabled == 1 && rateShown,
 				"fast streams, Poll off: CONFIG read every 100 ms; after 3 s the stream still runs (the device's 2 s "
 				"host watchdog sees the Studio)");
 		poll_->setChecked(true);
