@@ -688,10 +688,10 @@ map for another device ID is warned of per device. The line under the pill shows
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bus-device-dialog-dark.png">
-  <img src="../../docs/assets/pictures/bus-device-dialog-light.png" alt="The dialog of a device on a bus: name, slave, map, Polled with the others and its own token" width="600">
+  <img src="../../docs/assets/pictures/bus-device-dialog-light.png" alt="The + Device dialog for a new device on the bus above: D4 at slave 4, the map, Polled with the others and its own token" width="600">
 </picture>
 
-*A device's dialog: its name, slave address and map, Polled with the others, and its own token (not stored).*
+*+ Device on the bus above: the new device gets the next free slave address (4) and its name (D4); then the map, Polled with the others, and its own token (not stored).*
 
 The bus file chosen last opens at the next start, as a map does (setting `map/bus`). Opening or making a map closes
 the bus. Opening another bus asks first when the open one has unsaved changes. A start never opens a bus file as a
@@ -1210,16 +1210,16 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **Clear&nbsp;cursors** | Removes A and B. |
 | **ƒ&nbsp;Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
 | **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Smooth on · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
-| -&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
-| -&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
-| -&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
-| -&nbsp;**Fold&nbsp;/&nbsp;Open&nbsp;all&nbsp;lanes** | **Fold all lanes** and **Open all lanes**. With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
-| -&nbsp;**All&nbsp;lanes:&nbsp;Auto** | With Lanes on: every lane back to Auto, linear; enabled while a lane is not in Auto (7.12). |
-| -&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
-| -&nbsp;**Lock&nbsp;short&nbsp;windows** | Below a 100 ms window a live chart with the trigger off locks on its busiest line. On by default. Saved (7.13). |
-| -&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
-| -&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
-| -&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
+| &#8209;&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
+| &#8209;&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
+| &#8209;&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
+| &#8209;&nbsp;**Fold&nbsp;/&nbsp;Open&nbsp;all&nbsp;lanes** | **Fold all lanes** and **Open all lanes**. With Lanes on: every lane folded, or opened again; each disabled when there is nothing to do (7.12). |
+| &#8209;&nbsp;**All&nbsp;lanes:&nbsp;Auto** | With Lanes on: every lane back to Auto, linear; enabled while a lane is not in Auto (7.12). |
+| &#8209;&nbsp;**Trigger** | A row under the actions: hold the chart when a line crosses a level (7.13). |
+| &#8209;&nbsp;**Lock&nbsp;short&nbsp;windows** | Below a 100 ms window a live chart with the trigger off locks on its busiest line. On by default. Saved (7.13). |
+| &#8209;&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
+| &#8209;&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
+| &#8209;&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | **File&nbsp;▾** | Copy picture, Save picture…, Export to CSV…, Open recording… and Recent recordings: the chart's right-click menu (7.10) but *Add note here*, so none is reached by a right-click alone. A note needs its place on the chart: it stays on the right-click, and the button's tooltip says so. A recording's window has its own beside Lines (12.6). |
 | Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes; a recording's window has no fps part at all), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
@@ -1241,10 +1241,10 @@ The chart keeps the last *Memory* seconds of every line, and shows *Window* seco
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/held-view-dark.png">
-  <img src="../../docs/assets/pictures/held-view-light.png" alt="A held view: the Live button lit on the left, and held: -4.19 s · Live to follow at the top right of the chart" width="900">
+  <img src="../../docs/assets/pictures/held-view-light.png" alt="A held view: the Live button lit, and at the chart's top right how far back the view is held, with Live to follow" width="505">
 </picture>
 
-*Held: the Live button is lit, and the top right says how far the view's end lies behind now.*
+*Held: the Live button is lit (left), and the chart's top right corner (right) says how far the view's end lies behind now.*
 
 Ways to look back:
 
@@ -1260,7 +1260,7 @@ Under the time labels, a thin strip shows the **whole memory depth**. Every line
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/memory-strip-dark.png">
-  <img src="../../docs/assets/pictures/memory-strip-light.png" alt="Two memory strips: one filling, filling: 10 s of 60 s kept with the view's box at the right; one a 10 ms view of a minute, its handle at the left" width="900">
+  <img src="../../docs/assets/pictures/memory-strip-light.png" alt="Two memory strips: one filling, with how much of 60 s is kept and the view's box at the right; one a 10 ms view of a minute, its handle at the left" width="900">
 </picture>
 
 *Top: the memory filling, the view's box at the right. Bottom: a 10 ms view of a minute, the handle at the left.*
@@ -1385,10 +1385,10 @@ Once both are placed, a bar joins their tags at the top of the plot and says the
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/cursors-bar-dark.png">
-  <img src="../../docs/assets/pictures/cursors-bar-light.png" alt="Cursors A and B with the span bar reading 12.5 s, and close cursors with their text, 400 ms, beside B" width="600">
+  <img src="../../docs/assets/pictures/cursors-bar-light.png" alt="Cursors A and B with the span bar reading 12.5 s, and close cursors with their text, 400 ms, beside B" width="900">
 </picture>
 
-*Above: the bar from A to B reads 12.5 s; below: cursors 400 ms apart, the text beside B.*
+*Left: the bar from A to B reads 12.5 s; right: cursors 400 ms apart, the text beside B.*
 
 On clock times (a window of 1 s and more, or Display → Time grid → Clock times, 7.9) cursors are fixed **times**,
 not screen positions: in a live view they move left with the data. Once both are placed, the measurements cover
@@ -1518,7 +1518,7 @@ The chart takes one key: **Delete** (or Backspace) removes the note clicked last
 
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/time-grid-dark.png">
-    <img src="../../docs/assets/pictures/time-grid-light.png" alt="A 10 ms window of the example fast device's ADC.I_LOAD and ADC.V_BUS on the time grid: ten divisions labelled -10 ms to 0 and the readout 1 ms/div with the clock time" width="600">
+    <img src="../../docs/assets/pictures/time-grid-light.png" alt="A 10 ms window of the example fast device's ADC.I_LOAD and ADC.V_BUS on the time grid: ten divisions labelled -10 ms to 0 and the readout 1 ms/div with the clock time" width="900">
   </picture>
 
   *A 10 ms window: ten divisions labelled from -10 ms to 0 at the right edge, and the readout 1 ms/div with the clock time at 0.*
@@ -1945,10 +1945,10 @@ summaries only.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/measure-table-dark.png">
-  <img src="../../docs/assets/pictures/measure-table-light.png" alt="The measurement table: at A, at B, B - A, Min, Max, Mean, RMS, Std dev, Peak-peak, Area, Area / 3600, Since Clear; and its column chooser" width="900">
+  <img src="../../docs/assets/pictures/measure-table-light.png" alt="The measurement table: at A, at B, B - A, Min, Max, Mean, RMS, Std dev, Peak-peak, Area, Area / 3600, Since Clear; and beside it its column chooser" width="900">
 </picture>
 
-*The table over A to B, from at A to Since Clear, and the column chooser a right-click on its header opens.*
+*The table over A to B, from at A to Since Clear, and beside it the column chooser that a right-click on its header opens.*
 
 **The handle between the chart and the table** moves: a line across with a grip in its middle, lit in the accent
 colour under the mouse, the resize cursor, and the tooltip *Drag: the room of the chart and of the measurements under
@@ -2440,7 +2440,7 @@ While another tab is shown, the Log tab's title counts the warnings and errors l
   <img src="../../docs/assets/pictures/recording-card-light.png" alt="The Polling & recording card while recording run.csv" width="430">
 </picture>
 
-*While recording: Stop recording in red, and Recording 15 columns · 44 rows with the file's name.*
+*While recording: Stop recording in red, and Recording 15 columns with the row count and the file's name.*
 
 ### 12.2 Which columns
 
@@ -2642,17 +2642,17 @@ The sidebar shows the result, for example *10.0 polls/s, 15 registers in 3 reads
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/polling-card-dark.png">
-  <img src="../../docs/assets/pictures/polling-card-light.png" alt="The Polling & recording card with Poll every 0.10 ms: 2236.8 polls/s, 15 registers in 3 reads" width="430">
+  <img src="../../docs/assets/pictures/polling-card-light.png" alt="The Polling & recording card with Poll every 0.10 ms: about 2200 polls/s, 15 registers in 3 reads" width="430">
 </picture>
 
-*The Polling & recording card at 0.1 ms: 2236.8 polls/s, fewer than the 10000 asked.*
+*The Polling & recording card at 0.1 ms: about 2200 polls/s, fewer than the 10000 asked.*
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/status-slow-dark.png">
-  <img src="../../docs/assets/pictures/status-slow-light.png" alt="The status bar's amber hint: Slower than asked: a poll is 3 reads; In flight 4 runs 1 poll(s) at once; 0.4 ms per answer. Set In flight to 12 for more." width="700">
+  <img src="../../docs/assets/pictures/status-slow-light.png" alt="The status bar's amber hint: Slower than asked, with how many reads a poll is, how many polls In flight runs at once, the time per answer and the In flight to set" width="700">
 </picture>
 
-*The status bar's amber hint when the polls cannot keep up: a poll is 3 reads, In flight 4 runs one poll at once, 0.4 ms per answer, so it says to set In flight to 12 (15.7).*
+*The status bar's amber hint when the polls cannot keep up: a poll is 3 reads and In flight 4 runs one poll at once, so it says how many ms an answer takes and what to set In flight to (15.7).*
 
 You can type the interval, or use the arrows or the mouse wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09). A change applies at once. 0.25 ms is 4000 polls/s.
 

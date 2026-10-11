@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="152.9 143.0 1102.5 406.0" width="1103" height="406" role="img" aria-label="teknile"><title>teknile</title><g transform="translate(165.05,191.35) scale(3.0255)"><defs><linearGradient id="gD" x1="50" y1="97" x2="50" y2="3" gradientUnits="userSpaceOnUse">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="152.9 143.0 1102.5 406.0" width="1103" height="406" role="img" aria-label="teknile"><title>teknile</title><rect x="152.9" y="143.0" width="1102.5" height="406.0" fill="#35363b"/><g transform="translate(165.05,191.35) scale(3.0255)"><defs><linearGradient id="gD" x1="50" y1="97" x2="50" y2="3" gradientUnits="userSpaceOnUse">
 <stop offset="0" stop-color="#8fa2ab"/><stop offset="1" stop-color="#4fd3f5"/></linearGradient></defs>
 <g fill="none" stroke="url(#gD)" stroke-linecap="round" stroke-linejoin="round">
 <path d="M50 86.4C50 80 38 79 38 70 38 60 62 58 62 48 62 38 50 36 50 32" stroke-width="9.0"/>

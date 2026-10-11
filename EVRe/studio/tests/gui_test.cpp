@@ -15472,6 +15472,19 @@ private:
 		return row < 0 ? 0 : uint16_t(model_->rows()[row].def.addr);
 	}
 
+	/* a message box's focus on its default button, as a user sees it (the frame of the button Enter presses); the
+	 * test's dialog may have given it to the first button */
+	static void docsFocusDefault(QWidget *dialog) {
+		auto *box = qobject_cast<QMessageBox *>(dialog);
+		if (!box || !box->defaultButton()) return;
+		const QWidget *had = QApplication::focusWidget();
+		const auto *button = qobject_cast<const QPushButton *>(had);
+		std::printf("  docs pictures: the dialog's focus was on %s, its default is %s\n",
+				button ? qPrintable(button->text()) : "another widget", qPrintable(box->defaultButton()->text()));
+		box->defaultButton()->setFocus();
+		QTest::qWait(100);
+	}
+
 	/* a popup menu shown under a button, as its click shows it */
 	static void docsPopupUnder(QPushButton *button) {
 		if (!button || !button->menu()) return;
@@ -15662,7 +15675,8 @@ private:
 			if (QLineEdit *editor = typeInto(motor, QStringLiteral("300"))) QTest::keyClick(editor, Qt::Key_Return);
 		}, [&](QWidget *dialog) {
 			docsShots({ { QStringLiteral("write_confirm"), &window_, QRect(), true },
-					{ QStringLiteral("write_confirm_dialog"), dialog, QRect(), false } });
+					{ QStringLiteral("write_confirm_dialog"), dialog, QRect(), false } },
+					[dialog] { docsFocusDefault(dialog); });
 		});
 
 		/* SETPOINT: 20 when the editing starts, 25 written by another program meanwhile, 22.5 typed */
@@ -15674,7 +15688,9 @@ private:
 			docsWriteF32(QStringLiteral("SETPOINT"), 25.0f);
 			QTest::qWait(700);
 			if (editor) QTest::keyClick(editor, Qt::Key_Return);
-		}, [&](QWidget *dialog) { docsShot(QStringLiteral("write_changed"), dialog); });
+		}, [&](QWidget *dialog) {
+			docsShot(QStringLiteral("write_changed"), dialog, QRect(), false, [dialog] { docsFocusDefault(dialog); });
+		});
 		QTest::qWait(300);
 		docsWriteF32(QStringLiteral("SETPOINT"), 25.0f);
 		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
@@ -15807,7 +15823,9 @@ private:
 				columns->popup(header->mapToGlobal(QPoint(header->sectionViewportPosition(ChartTab::ColMean) + 10,
 						header->height())));
 				QTest::qWait(400);
-				docsShot(QStringLiteral("chart_columns"), &window_, docsUnion(&window_, { table, columns }, 8));
+				/* the menu alone: at the window's bottom it opens upwards, over the chart, so a picture of the
+				 * table and the menu together would hold the chart between them */
+				docsShot(QStringLiteral("chart_columns"), columns);
 				columns->hide();
 			}
 		}

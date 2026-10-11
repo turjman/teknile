@@ -168,30 +168,23 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
   <em>The trigger: held on a rising crossing of the dashed level, the T marker above it.</em>
 </p>
 
-<table>
-  <tr>
-    <th width="50%">Histogram</th>
-    <th width="50%">Spectrum</th>
-  </tr>
-  <tr>
-    <td align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/histogram-dark.png">
-        <img src="EVRe/docs/assets/pictures/histogram-light.png" alt="Histogram of ADC.V_BUS between the cursors: the summary line with the Freedman-Diaconis bins, the export buttons and the bars" width="430">
-      </picture>
-      <br>
-      <em>Values between A and B, Freedman-Diaconis bins.</em>
-    </td>
-    <td align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/spectrum-dark.png">
-        <img src="EVRe/docs/assets/pictures/spectrum-light.png" alt="Spectrum of ADC.I_LOAD on the Log scale: one clear peak at 50 Hz, the Welch summary line and the export buttons" width="430">
-      </picture>
-      <br>
-      <em>Welch, on a Log scale: one peak near 50 Hz.</em>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/histogram-dark.png">
+    <img src="EVRe/docs/assets/pictures/histogram-light.png" alt="Histogram of ADC.V_BUS between the cursors: the summary line with the Freedman-Diaconis bins, the export buttons and the bars" width="430">
+  </picture>
+  <br>
+  <em>Histogram: values between A and B, Freedman-Diaconis bins.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/spectrum-dark.png">
+    <img src="EVRe/docs/assets/pictures/spectrum-light.png" alt="Spectrum of ADC.I_LOAD on the Log scale: one clear peak near 50 Hz, the Welch summary line and the export buttons" width="430">
+  </picture>
+  <br>
+  <em>Spectrum: Welch, on a Log scale, one peak near 50 Hz.</em>
+</p>
 
 - Memory depth apart from the view, Hold / Live, a memory strip, cursors A and B, Auto, Manual or Log Y,
   Normalise, hover values of every line beside the mouse, and smooth scrolling paced by the display's refresh.
@@ -313,30 +306,23 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
 
 ### In your language
 
-<table>
-  <tr>
-    <th width="50%">Registers in Arabic</th>
-    <th width="50%">Measurements in Arabic</th>
-  </tr>
-  <tr>
-    <td align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-registers-close-dark.png">
-        <img src="EVRe/docs/assets/pictures/arabic-registers-close-light.png" alt="The Registers table in Arabic, right to left with the Plot column first; register names, addresses, values and units left to right" width="450">
-      </picture>
-      <br>
-      <em>Right to left, the Plot column first; names, numbers and units left to right.</em>
-    </td>
-    <td align="center" valign="top">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-chart-close-dark.png">
-        <img src="EVRe/docs/assets/pictures/arabic-chart-close-light.png" alt="The measurement table in Arabic: its headings and the info line right to left, the values with their units left to right" width="450">
-      </picture>
-      <br>
-      <em>The measurement table: headings in Arabic, values with their units left to right.</em>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-registers-close-dark.png">
+    <img src="EVRe/docs/assets/pictures/arabic-registers-close-light.png" alt="The Registers table in Arabic, right to left with the Plot column first; register names, addresses, values and units left to right" width="450">
+  </picture>
+  <br>
+  <em>Registers in Arabic: right to left, the Plot column first; names, numbers and units left to right.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/arabic-chart-close-dark.png">
+    <img src="EVRe/docs/assets/pictures/arabic-chart-close-light.png" alt="The measurement table in Arabic: its headings and the info line right to left, the values with their units left to right" width="450">
+  </picture>
+  <br>
+  <em>The measurement table: headings in Arabic, values with their units left to right.</em>
+</p>
 
 - English and Arabic (right to left; the chart, numbers, units and register names stay left to right), the Help
   pages included. Dark and light themes.
