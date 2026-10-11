@@ -15,6 +15,8 @@
 #include <QComboBox>
 #include <QCommandLineParser>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QLineEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
@@ -184,6 +186,10 @@ void saveMapEditorPicture(QWidget &window, const QString &path, bool withFields)
 void saveDialogPicture(const QWidget &window, const QString &path, const QString &button) {
 	QTimer::singleShot(400, [path] {
 		if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) {
+			/* the focus off a text box: no caret in the picture */
+			if (qobject_cast<QLineEdit *>(dialog->focusWidget()))
+				if (auto *buttons = dialog->findChild<QDialogButtonBox *>(); buttons && !buttons->buttons().isEmpty())
+					buttons->buttons().constFirst()->setFocus();
 			dialog->grab().save(path);
 			dialog->reject();
 		}
