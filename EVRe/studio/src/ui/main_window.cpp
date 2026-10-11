@@ -1232,7 +1232,8 @@ void MainWindow::syncDump() {
 		blocks.reserve(replies.size());
 		for (const IoEngine::DumpReply &r : replies) {
 			DumpBlock b;
-			b.kind = r.autoSend ? DumpBlock::AutoSend : DumpBlock::Read;
+			b.kind = r.write ? DumpBlock::Write : r.autoSend ? DumpBlock::AutoSend : DumpBlock::Read;
+			b.ack = r.ack;
 			b.slave = r.slave;
 			b.wireSlave = r.wireSlave;
 			b.addr = r.addr;
@@ -1242,6 +1243,8 @@ void MainWindow::syncDump() {
 			b.version = r.version;
 			b.single = r.single;
 			b.error = r.error;
+			b.errorCode = r.errorCode;
+			b.timedOut = r.timedOut;
 			b.rate = r.autoSend ? autoSendHz_ : 0;
 			const int device = isBus() ? deviceOfSlave(r.slave) : -1;
 			if (device >= 0) b.device = bus_.devices[device].name;

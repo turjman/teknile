@@ -1,33 +1,48 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The Dump tab's picture: the device's memory as the reads bring it. One card per block read, in address order:
- * the request the host sent and the reply's header, rebuilt with evre::build from the same bytes (equal to the
- * wire's); the payload as a hex grid, 16 bytes a row, the rows aligned to 16 with the row's base address at the
- * left; every mapped register's bytes one chip, tinted in its colour with a 1 px edge in it; and beside each row
- * one decode line per register that starts in it (its colour dot, its name, its value as the Registers tab shows
- * it), the row as tall as its lines. The reply's CRC and end byte close the card on a line of their own: the grid
- * is the payload only.
+ * the request the host sent and the reply, each a strip of the frame's named fields in the wire's order (START,
+ * SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END: their bytes on one line, the field's name and meaning under them),
+ * rebuilt with evre::build from the same bytes (equal to the wire's); the payload as a hex grid, 16 bytes a row, the
+ * rows aligned to 16 with the row's base address at the left, one line high; every mapped register's bytes one chip
+ * (a fill in its colour, no edge); and beside the grid the decode list, one line per register (its colour dot, its
+ * name, its value as the Registers tab shows it), each level with its register's row when there is room, else under
+ * the line before it.
  *
- *   +--------------------------------------------------------------------------------+
- *   | -> READ 22 bytes @ 0xD000   7B 01 AA 00 D0 16 00 FC A5 7D                      |
- *   | <- REPLY 12 ms ago          7B 01 AB 00 D0 16 00                               |
- *   |  D000  [10 27 00 00] [FA 7E 40 41] ...           o UPTIME       10000 ms        |
- *   |                                                  o SUPPLY_V     12.031 V        |
- *   |  D010  [05 00] [2C 01] [B9 00] ..  ..  ..        o STATE        run . READY     |
- *   |                          AE 41 7D                                              |
- *   +--------------------------------------------------------------------------------+
+ *   +------------------------------------------------------------------------------------------------+
+ *   |  -> REQUEST  READ 22 bytes @ 0xD000                                                            |
+ *   |  7B     01       AA                 00 D0          16 00                 FC A5   7D            |
+ *   |  START  SLAVE 1  FUNCTION READ      OFFSET 0xD000  COUNT 22   DATA none  CRC     END           |
+ *   |                                                                                                |
+ *   |  <- REPLY    12 ms ago                                                                         |
+ *   |  7B     01       AB                 00 D0          16 00     ...         AE 41   7D            |
+ *   |  START  SLAVE 1  FUNCTION READ_RESP OFFSET 0xD000  COUNT 22   DATA 22 v  CRC ok  END           |
+ *   |                                                                                                |
+ *   |  D000  [10 27 00 00][FA 7E 40 41][2D B2 BD 3F][66 66 26 42]    o UPTIME       10000 ms         |
+ *   |  D010  [05 00][2C 01][B9 00]                                   o SUPPLY_V     12.031 V         |
+ *   |                                                                o SUPPLY_I     1.482 A          |
+ *   |                                                                o STATE        run . READY      |
+ *   +------------------------------------------------------------------------------------------------+
  *
- * A byte of a row that no read covers is "··" (never an invented 00); a byte inside the block that no register
- * maps (the engine reads over small gaps) is plain hex, muted. Values not live (Hold, a stale or failed reply,
- * the link closed, the manual READ's card) get a thin amber frame around their card, the reason in the reply
- * line and the card's tooltip, so a frozen dump never reads as live.
+ * The strips share their columns over the whole tab (each as wide as the widest text it holds), so the request's
+ * bytes stand over the reply's, field under field, in every card. With Fields off (setFields) each frame is one line
+ * of bytes, the fields named in their tooltips. A row starts at its first cell and ends at the block's last byte: a
+ * block that starts inside a row shows "··" before it (never an invented 00), a block with no reply yet "··" in every
+ * cell; a byte inside the block that no register maps is plain hex, muted. Values not live (Hold, a stale or failed
+ * reply, the link closed, the manual READ's card, the last write's) get a 3 px amber stripe at their card's left edge
+ * and the reason in the reply's label and the card's tooltip, so a frozen dump never reads as live. The last write is
+ * a card at the top: its WRITE_ACK (or WRITE) as the request, the written bytes as the grid, the WRITE_ACK_RESP (or
+ * the refusal) as the reply; a WRITE is never answered, and the card says so.
  *
  * A byte whose value changed glows a moment (a thin ring fading over the Registers tab's GLOW_MS), so the dump and
- * the table pulse together. Hovering a byte or a decode line lights its register's chips; a click selects it (and the
+ * the table pulse together. Hovering a byte or a decode line lights its register in its own colour (the chips
+ * stronger and outlined, the decode line filled) while the other chips step back; a click selects it (and the
  * window makes it the Registers tab's current row), a double-click goes there, a right-click asks for the menu (the
- * tab's, repeated in its Copy button).
+ * tab's, repeated in its Copy button). The keys do the same: the arrows move the selection, Enter goes there, the
+ * Menu key or Shift+F10 opens the menu.
  *
- * Painted as BitView paints (ThemeColors, a monospace font, no style sheet), left to right in every language: the
- * addresses, the bytes and the decode column belong to the grid, not to the window. Only the cards in view are
+ * Painted as BitView paints (ThemeColors, no style sheet): the bytes, addresses, names and values in a monospace
+ * font, the labels and field names in the window's font a point smaller; left to right in every language, the
+ * addresses, the bytes and the decode list belong to the grid, not to the window. Only the cards in view are
  * painted. */
 #pragma once
 
@@ -43,9 +58,10 @@
 
 class QTimer;
 
-/* One block as the Dump tab shows it: the engine's reply (IoEngine::DumpReply) and what kind of read it was. */
+/* One block as the Dump tab shows it: the engine's reply (IoEngine::DumpReply) and what kind of read it was (or the
+ * last write: its bytes, WRITE_ACK's answer or the device's refusal). */
 struct DumpBlock {
-	enum Kind { Read, AutoSend, Manual, FastStream };
+	enum Kind { Read, AutoSend, Manual, FastStream, Write };
 	Kind kind = Read;
 	uint8_t slave = 0;        /* the device's, as the table has it (RegDef::slave) */
 	uint8_t wireSlave = 0;    /* where the request went: the frames are rebuilt with it */
@@ -55,20 +71,33 @@ struct DumpBlock {
 	quint64 version = 0;
 	bool single = false;      /* one register of a block the device refused merged */
 	QString error;            /* the last answer's error (the bytes the last good ones); empty: fine */
+	uint8_t errorCode = 0;    /* the last answer's ERROR_RESP code (its frame is shown); 0: none came */
+	bool timedOut = false;    /* the last read had no answer in time: no frame to show */
 	QString device;           /* on a bus: the device's name, written before the request */
 	QString stream;           /* FastStream: the stream's name */
 	double rate = 0;          /* AutoSend: its frames a second */
+	bool ack = false;         /* Write: a WRITE_ACK (answered), not a WRITE (never answered) */
 };
 
 class DumpView : public QAbstractScrollArea {
 	Q_OBJECT
 public:
 	/* the tint of a chip: the register's colour at this alpha over the card, the byte text in the theme's text
-	 * colour on it (4.5:1 in both themes, checked) */
-	static constexpr double CHIP_ALPHA_DARK = 0.30, CHIP_ALPHA_LIGHT = 0.22;
+	 * colour on it (4.5:1 in both themes at rest and hovered, checked). The fill carries the colour alone (no edge),
+	 * so it is a step stronger than an edged chip's. Hovered, the dark theme's is held at 0.38: 0.46 left the text on
+	 * the yellow and orange chips under 4.5:1, and the outline carries the hover anyway. The other chips, while one
+	 * register is hovered, at half their alpha. */
+	static constexpr double CHIP_ALPHA_DARK = 0.34, CHIP_ALPHA_LIGHT = 0.26;
+	static constexpr double CHIP_ALPHA_HOVER_DARK = 0.38, CHIP_ALPHA_HOVER_LIGHT = 0.36;
+	static constexpr double CHIP_ALPHA_DIM = 0.5; /* a factor of the resting alpha */
+	static constexpr int STRIPE_W = 3;            /* the amber stripe of a card not live */
+	static constexpr int FIELD_GAP = 14;          /* between two columns of a strip */
 	enum ColourMode { AllRegisters, PlottedOnly };
 	/* what the Copy items put on the clipboard (copyText) */
 	enum CopyKind { CopyRegisterBytes, CopyBlockHex, CopyBlockC, CopyDecoded };
+	/* a frame's fields, in the wire's order (PROTOCOL.md's frame table), and which frame of a card */
+	enum Field { Start, Slave, Function, Offset, Count, Data, Crc, End, N_FIELDS };
+	enum Side { Request, Reply };
 	static constexpr RegKey NO_REGISTER = ~RegKey(0); /* select() and registerAt(): none (0 is slave 0's 0x0000) */
 
 	explicit DumpView(QWidget *parent = nullptr);
@@ -80,9 +109,14 @@ public:
 	void setColours(const QHash<RegKey, QColor> &plotted);
 	void setColourMode(ColourMode mode);
 	ColourMode colourMode() const { return colourMode_; }
-	void setHold(bool on);                          /* the picture frozen: said in every reply line */
+	void setHold(bool on);                          /* the picture frozen: said in every reply's label */
 	bool hold() const { return hold_; }
+	QString heldAt() const { return heldAt_; }      /* when Hold was pressed, "14:03:12"; empty: following */
 	void setConnected(bool on);                     /* the link closed: the bytes are the last ones */
+	bool connected() const { return connected_; }
+	/* the frames' fields named under their bytes (on), or each frame one line of bytes (off) */
+	void setFields(bool on);
+	bool fields() const { return fields_; }
 	void setClock(std::function<double()> now);     /* the seconds DumpBlock::time is on */
 	void setStaleAfterMs(qint64 ms);                /* a reply older than this is stale (the Registers tab's) */
 	void select(RegKey key);                        /* its chips framed, its decode line bold */
@@ -96,36 +130,55 @@ public:
 	int currentCard() const;
 	/* the clipboard's text: the register's bytes, the card's block as hex rows or a C array, or its decoded lines */
 	QString copyText(CopyKind kind, int card, RegKey key = NO_REGISTER) const;
-	/* a byte's tooltip: its address, its register (or not mapped, or not read) and its value */
+	/* a byte's tooltip: its register (or not mapped, or not read) and address, then its value */
 	QString byteTip(int card, int offset) const;
 	double glow(int card, int offset) const;        /* how strongly a changed byte glows now: 1 just changed .. 0 */
 	bool glowing() const;                           /* the glow's timer runs (only while a byte glows) */
 	RegKey hovered() const { return hovered_; }
 
-	/* what is not live in card i, and why (empty: live): its amber frame and the reply line's words */
+	/* what is not live in card i, and why (empty: live): its amber stripe and the reply label's words */
 	QString notLiveReason(int card) const;
 	/* the colour a register's chip takes in card i (invalid: no chip of it there); the tint over the card */
 	QColor chipColour(int card, const RegKey &key) const;
-	static QColor chipFill(const QColor &colour, const QColor &card, bool dark);
+	static double chipAlpha(bool dark, bool hovered = false);
+	static QColor chipFill(const QColor &colour, const QColor &card, double alpha);
+
+	/* the strips: a field's name ("START" .. "END", the protocol's words), its meaning in card i's frame ("READ",
+	 * "0xD000", "22 bytes ↓", "ok"; empty: none), its tooltip, its bytes; whether the card has that frame */
+	static QString fieldName(Field field);
+	QString fieldMeaning(int card, Side side, Field field) const;
+	QString fieldTip(int card, Side side, Field field) const;
+	QByteArray fieldBytes(int card, Side side, Field field) const;
+	bool hasStrip(int card, Side side) const;
+	QFont labelFont() const;                        /* the labels and field names: the window's font, a point smaller */
 
 	/* where things are drawn, in the viewport's coordinates (the tests, the tooltips) */
 	QRect cardRect(int card) const;
+	QRect stripeRect(int card) const;                /* the amber stripe at its left edge; empty: live */
+	QRect stripRect(int card, Side side) const;      /* the frame's strip (both lines; Fields off: its one line) */
+	/* a field's column, its bytes and its label (Fields off: its bytes in the frame's line); empty: no such frame */
+	QRect fieldRect(int card, Side side, Field field) const;
 	QRect byteRect(int card, int offset) const;      /* the cell of the block's byte at offset (may be outside) */
 	/* the card's decode line `line`, top to bottom (one per register of the block, in address order) */
 	QRect decodeRect(int card, int line) const;
 	QString decodeText(int card, int line) const;    /* its name and value, whole (the line may elide them) */
 	int decodeLines(int card) const;
+	int decodeLeft() const;                          /* where the decode list starts, the same in every card */
+	int lineHeight() const;                          /* a bytes line: a grid row, a decode line */
 	RegKey registerAt(const QPoint &pos) const;      /* under a chip's byte or a decode line; NO_REGISTER: none */
 	QString toolTipAt(const QPoint &pos) const;      /* what the tooltip says there (empty: none) */
-	/* the request line's words and the frame's bytes as drawn (empty: no request line, AUTO_SEND's or a note), the
-	 * reply line's label, its state and the reply's header bytes; the line of the reply's CRC and end byte */
+	/* where the tooltip at pos goes (in the viewport): a chip's under its row and left of the decode list, a decode
+	 * line's under the line, a field's under its column; empty: at the mouse, as a tooltip usually is */
+	QRect tipPlace(const QPoint &pos) const;
+	/* the request's label and sentence with the frame's bytes (empty: no request, AUTO_SEND's or a note), the
+	 * reply's label, its state and its frame's bytes ("…" for the payload) */
 	QString requestText(int card) const;
+	QString titleText(int card) const; /* a manual read's or a write's title; empty: none */
 	QString replyText(int card) const;
-	QRect tailRect(int card) const;
 	int paintCount() const { return paints_; }
 
 signals:
-	/* a click on a chip or a decode line (switchTab false), a double-click (true) */
+	/* a click on a chip or a decode line (switchTab false), a double-click or Enter (true) */
 	void registerPicked(RegKey key, bool switchTab);
 	/* a right-click: the menu for this register (NO_REGISTER: none under the mouse) of card (-1: none) */
 	void menuRequested(RegKey key, int card, const QPoint &globalPos);
@@ -136,23 +189,26 @@ protected:
 	void mousePressEvent(QMouseEvent *e) override;
 	void mouseDoubleClickEvent(QMouseEvent *e) override;
 	void contextMenuEvent(QContextMenuEvent *e) override;
+	void keyPressEvent(QKeyEvent *e) override;
 	void resizeEvent(QResizeEvent *) override;
 	void changeEvent(QEvent *e) override;
 	bool viewportEvent(QEvent *e) override; /* tooltips, and the mouse leaving */
 
 private:
-	static constexpr int PAD = 12;          /* inside a card */
-	static constexpr int CARD_GAP = 10;     /* between cards, and around them */
-	static constexpr int GRID_GAP = 6;      /* between the reply line and the grid */
-	static constexpr int DECODE_GAP = 18;   /* between the grid and the decode column */
+	static constexpr int PAD = 14;          /* inside a card */
+	static constexpr int CARD_GAP = 12;     /* between cards, and around them */
+	static constexpr int LABEL_GAP = 2;     /* between a strip's bytes and its labels */
+	static constexpr int STRIP_GAP = 8;     /* between the request's strip and the reply's label */
+	static constexpr int GRID_GAP = 10;     /* between the reply's strip and the grid */
+	static constexpr int DECODE_GAP = 18;   /* between the grid and the decode list */
 	static constexpr int NAME_CHARS = 14;   /* a decode line's name, at most (elided past it) */
 	static constexpr int VALUE_CHARS = 22;  /* and its value */
+	static constexpr int TIP_GAP = 8;       /* a chip's tooltip ends this far before the decode list */
 
-	/* one row of the grid: its base address, its top in the card, its height, the registers starting in it */
+	/* one row of the grid: its base address and its top in the card (one line high) */
 	struct Row {
 		int base = 0;
-		int top = 0, height = 0;
-		QVector<int> starts;               /* indices into Card::regs */
+		int top = 0;
 	};
 	/* a card laid out: its registers in address order with their colours, its rows, its lines */
 	struct Card {
@@ -160,32 +216,54 @@ private:
 		QVector<int> regs;                 /* indices into defs_ */
 		QVector<QColor> colours;           /* each one's colour; invalid: neutral (Colour: plotted) */
 		QVector<Row> rows;
-		int titleTop = -1, requestTop = -1, replyTop = -1, gridTop = -1, crcTop = -1, noteTop = -1;
+		QVector<int> lineTop;              /* each decode line's top in the card (the flow: level with its row, or
+											* under the line before) */
+		int titleTop = -1, requestTop = -1, requestStripTop = -1, replyTop = -1, replyStripTop = -1, noReplyTop = -1;
+		int gridTop = -1, noteTop = -1;
 	};
 
 	void relayout();
 	void assignColours(Card &card) const;
-	int lineHeight() const;
+	int labelLineHeight() const;  /* a strip's label line */
+	int headLineHeight() const;   /* the request's and the reply's label, a title */
+	int stripHeight() const;
 	int cellWidth() const;
 	int gridLeft() const;
-	int decodeLeft() const;
+	int stripLeft(Field field) const; /* a strip's column, from the card's left */
 	int contentWidth() const;
+	int nameWidth() const;
+	int valueWidth() const;
 	QPoint origin() const; /* the content's top left in the viewport (the scroll) */
 	int regAt(int card, int offset) const; /* the index into Card::regs of the register holding this byte; -1 none */
-	/* the grid's cell under pos: its card and its byte's offset in the block (outside it: a "··" of the row) */
+	/* a register of the map that card's block holds (a read's: the readable ones; a write's: any it wrote) */
+	static bool holds(const DumpBlock &block, const RegDef &def);
+	/* the grid's cell under pos: its card and its byte's offset in the block (before it: a "··" of the row) */
 	bool byteAt(const QPoint &pos, int &card, int &offset) const;
+	bool fieldAt(const QPoint &pos, int &card, Side &side, Field &field) const;
 	void setHovered(RegKey key);
 	void scrollToPending();
+	void ensureVisible(int card, RegKey key);
 	/* the bytes that changed since the last blocks of the same read start glowing */
 	void noteChanges(const QVector<DumpBlock> &was);
 
-	QString requestLabel(const DumpBlock &block) const;
+	QByteArray frame(int card, Side side) const; /* the frame of that side as on the wire; empty: none */
+	QString fieldBytesText(int card, Side side, Field field) const; /* as the strip writes them ("…" the payload) */
+	QString fieldLabel(int card, Side side, Field field) const;     /* its name and meaning, as the strip writes them */
+	QString requestSentence(const DumpBlock &block) const;
+	QString requestLabel() const;
 	QString replyLabel(const DumpBlock &block) const;
 	QString replyState(int card, QColor &colour) const;
+	QString noReplyText(int card) const;
 	QString decodeValue(const RegDef &def, const QByteArray &raw) const;
+	/* the text wrapped (at its words) to a tooltip's room: the tooltip of a chip never reaches the decode list */
+	QString wrapTip(const QString &text, int width) const;
+	QRect tipRoom(int card) const; /* where a chip's tooltip may go, across: from the card's padding to the list */
 
 	void drawCard(QPainter &p, int card, const QPoint &at) const;
-	void drawBytes(QPainter &p, int x, int y, const QByteArray &bytes, int mutedFirst, int mutedLast) const;
+	void drawHead(QPainter &p, int x, int y, int width, const QString &label, const QString &sentence,
+			const QColor &sentenceColour) const;
+	void drawStrip(QPainter &p, int card, Side side, int x, int y) const;
+	void drawStripe(QPainter &p, int card) const;
 	void drawGrid(QPainter &p, int card, const QPoint &at) const;
 	void drawDecode(QPainter &p, int card, const QPoint &at) const;
 	void drawGlow(QPainter &p, int card) const;
@@ -198,18 +276,24 @@ private:
 	bool hold_ = false;
 	QString heldAt_;
 	bool connected_ = true;
+	bool fields_ = true;
 	std::function<double()> now_;
 	qint64 staleAfterMs_ = 1000;
 	RegKey selected_ = NO_REGISTER;
+	int selectedCard_ = -1;           /* the card of the selection (a register in two cards: the one picked) */
 	RegKey hovered_ = NO_REGISTER;
 	RegKey scrollTo_ = NO_REGISTER;   /* scrollToRegister's, waiting for its card */
 	QString emptyText_;
 	/* the glow: when each byte of a read last changed (ms on glowClock_), by the read (its kind, device, address) */
 	QHash<quint32, QVector<qint64>> changedMs_;
 	QElapsedTimer glowClock_;
+	QElapsedTimer keyMenu_;      /* when the keys last opened the menu */
 	QTimer *glowTimer_ = nullptr;
 	int contentHeight_ = 0;
-	int labelWidth_ = 0;  /* the widest request or reply label of the cards: their frame bytes line up */
+	int fieldW_[N_FIELDS] = {};  /* each strip column's width, the widest text it holds in any card */
+	int headLabelW_ = 0;         /* the widest of "→ REQUEST", "← REPLY", "← AUTO_SEND": the sentences line up */
+	int usedColumns_ = 16;       /* the grid's columns any card uses: the decode list starts after them */
+	int nameChars_ = NAME_CHARS; /* the widest name of the tab, at most NAME_CHARS, plus two */
 	int paints_ = 0;
 	bool drawnDark_ = true;
 };

@@ -193,6 +193,10 @@ public:
 		bool single = false;     /* one register of a block the device refused merged */
 		bool autoSend = false;   /* AUTO_SEND's frame, nobody asked for it */
 		QString error;           /* the last answer's error, the bytes then the last good ones; empty: fine */
+		uint8_t errorCode = 0;   /* the last answer's ERROR_RESP code (the tab rebuilds that frame); 0: none came */
+		bool timedOut = false;   /* the last read had no answer in time */
+		bool write = false;      /* the last WRITE sent (its bytes in data), not a read: the Dump's write card */
+		bool ack = false;        /* that write was a WRITE_ACK (answered), not a WRITE (never answered) */
 	};
 	/* true when a reply moved (or a block went) since the last call: `blocks` is then every block's, in address
 	 * order (the whole set, so the tab also sees the blocks gone: a split, a register refused for good, another
@@ -306,6 +310,7 @@ private:
 	void readBack(uint8_t tableSlave, uint16_t addr, int writtenSize);
 	/* the Dump tab's store (with dumpOn_): a block's answer kept, and the replies of blocks no longer read dropped */
 	void keepDump(const Block &block, const evre::Result &r);
+	void keepWrite(uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack, const evre::Result &r);
 	void pruneDumps();
 
 	/* AUTO_SEND */
@@ -454,6 +459,9 @@ private:
 	QStringList monitorLines_;
 	int monitorLinesDropped_ = 0;
 	QHash<quint32, DumpReply> dumps_;            /* by dumpKey (engine.cpp) */
+	/* the last write (its `write` set once one went): kept whether the Dump is shown or not, since a write is made on
+	 * another tab (the Registers tab, the Monitor); one record, the next write replacing it, another map clearing it */
+	DumpReply lastWrite_;
 	quint64 dumpVersion_ = 0;
 	bool dumpsMoved_ = false;                    /* since the last takeDumps */
 	QVector<FastBlock> fastBlocks_;

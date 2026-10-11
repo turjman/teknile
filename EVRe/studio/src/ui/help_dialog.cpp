@@ -633,29 +633,38 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Dump"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Dump</h2>
 <p>The <b>Dump</b> tab shows the device's bytes as the reads bring them: one <b>card</b> per block the polling reads,
-in address order. Each card has the request the Studio sent (<i>→ READ 22 bytes @ 0xD000</i> and its frame's bytes),
-the reply (<i>← REPLY 12 ms ago</i> and its header bytes), the payload as a grid of 16 bytes a row with the row's
-address at its left, and the reply's CRC and end byte on a line of their own.</p>
+in address order. Each card has the request the Studio sent (<i>→ REQUEST  READ 22 bytes @ 0xD000</i>) and the reply
+(<i>← REPLY  12 ms ago</i>), each broken down into the frame's fields: every byte of it named, START, SLAVE,
+FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (<i>FUNCTION READ_RESP</i>, <i>OFFSET 0xD000</i>,
+<i>DATA 22 bytes ↓</i>, <i>CRC ok</i>: the reply's CRC was checked). The mouse on a field says what the protocol makes of
+it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row's address at its left.</p>
 <ul>
 <li>Every register of the map is a <b>chip</b>: its bytes tinted in its colour, a plotted one in its chart colour.
-Beside each row, one line per register that starts in it: its dot, its name and its value as the Registers tab shows
-it. A byte inside the block that no register maps is plain grey hex; <b>··</b> is a byte of the row that no read covers
-(never an invented 00).</li>
+Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
+the block that no register maps is plain grey hex; <b>··</b> stands for a byte before the block in its row, or one
+with no reply yet (never an invented 00).</li>
+<li><b>Fields</b> (on by default): off, each frame is one line of bytes, and a byte's tooltip names its field.</li>
 <li>A byte whose value changed glows a moment, as a value in the Registers tab does.</li>
 <li><b>Follow</b> shows each block's newest reply at the pace of <i>Show values</i>; <b>Hold</b> keeps the bytes shown.
 <b>Colour</b>: <b>All registers</b>, or <b>Plotted</b> (only the plotted ones in colour, the others grey).</li>
-<li>A card whose bytes are not live has a thin <b>amber</b> frame, and its reply line and tooltip say why: held, stale
-(not refreshed for longer than the Registers tab's stale limit), a failed read (the last good bytes stay), the link
-closed, or a manual read.</li>
-<li>The mouse on a chip says the byte: its address, its register, which byte of it, its value. A <b>click</b> selects
-the register here and in the Registers tab; a <b>double-click</b> goes there. The Registers tab's current row is
-selected here too, and its right-click menu has <b>Show in dump</b>.</li>
+<li>A card whose bytes are not live has an <b>amber</b> stripe at its left edge, and its reply's label and tooltip say
+why: held, stale (not refreshed for longer than the Registers tab's stale limit), a failed read (the device's error
+answer shown, the last good bytes stay), the link closed, a manual read or a write. Held, or with the link closed, a
+banner
+over the cards says it once.</li>
+<li>The mouse on a chip lights the register in its own colour, its chips and its decode line, and says the byte: its
+register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
+<b>click</b> selects the register here and in the Registers tab; a <b>double-click</b> goes there. The Registers tab's
+current row is selected here too, and its right-click menu has <b>Show in dump</b>. With the cards in focus the
+<b>arrow keys</b> move the selection, <b>Enter</b> goes to the Registers tab, the <b>Menu</b> key opens the menu.</li>
 <li><b>Right-click</b>, or the <b>Copy ▾</b> button: Show in Registers, Plot / Unplot, Write… (with <i>Allow
 writes</i>), and Copy: the register's bytes, the block as hex rows or as a C array, or its decoded values.</li>
-<li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one. A running fast stream is a
-note (its records are on the Chart); auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
+<li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one; so does the last <b>write</b>
+(from the Registers tab or the Monitor): its WRITE_ACK and the device's WRITE_ACK_RESP over the bytes written, or a
+WRITE, which is never answered. A running fast stream is a note (its records are on the Chart); auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
 <b>Device</b> list shows one device's cards at a time.</li>
-<li>The tab keeps nothing while another tab is shown: its cards come again with the next replies.</li>
+<li>The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
+kept).</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(

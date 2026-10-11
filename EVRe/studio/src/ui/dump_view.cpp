@@ -2,10 +2,13 @@
 /* The Dump tab's picture: see dump_view.h. */
 #include "ui/dump_view.h"
 
+#include <QApplication>
 #include <QContextMenuEvent>
 #include <QHelpEvent>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QScrollBar>
 #include <QTime>
 #include <QTimer>
@@ -19,13 +22,11 @@
 
 namespace {
 
-/* the bytes of a READ and of its answer, as on the wire: one definition with the master's (evre::build) */
-QByteArray requestFrame(const DumpBlock &b) { return evre::build(b.wireSlave, evre::READ, b.addr, b.size); }
-QByteArray replyFrame(const DumpBlock &b) { return evre::build(b.wireSlave, evre::READ_RESP, b.addr, b.size, b.data); }
-constexpr int REPLY_HEADER = 7; /* 7B SLAVE FN OFF(2) CNT(2): the CRC and the end byte follow the payload */
-constexpr int FRAME_TAIL = 3;   /* CRC(2) 7D */
 /* a text at the left of its room whatever its direction (the painter takes each text's own: paintEvent) */
 constexpr Qt::Alignment LEFT = Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter;
+constexpr int FRAME_HEAD = 7; /* 7B SLAVE FN OFF(2) CNT(2): the data, the CRC and the end byte follow */
+/* a tooltip's own room around its text: the style sheet's padding (6) and border (1), the label's margin (2) */
+constexpr int TIP_CHROME = 2 * (6 + 1 + 2);
 
 /* a row's base address as the grid writes it: four digits, no 0x (the tooltip gives 0x) */
 QString rowAddress(int base) { return QStringLiteral("%1").arg(base, 4, 16, QLatin1Char('0')).toUpper(); }
@@ -51,6 +52,31 @@ QColor blend(const QColor &over, const QColor &under, double alpha) {
 			float(over.blueF() * alpha + under.blueF() * (1 - alpha)));
 }
 
+/* where a field's bytes are in a frame: the header's fixed places, the data between it and the CRC */
+void fieldSlice(int frameSize, DumpView::Field field, int &from, int &count) {
+	switch (field) {
+	case DumpView::Start: from = 0, count = 1; return;
+	case DumpView::Slave: from = 1, count = 1; return;
+	case DumpView::Function: from = 2, count = 1; return;
+	case DumpView::Offset: from = 3, count = 2; return;
+	case DumpView::Count: from = 5, count = 2; return;
+	case DumpView::Data: from = FRAME_HEAD, count = std::max(0, frameSize - FRAME_HEAD - 3); return;
+	case DumpView::Crc: from = frameSize - 3, count = 2; return;
+	default: from = frameSize - 1, count = 1; return;
+	}
+}
+
+/* The window's font, `smaller` points smaller, its family and style hint marked as set: a painter resolves a font
+ * against the widget's, and the view's is the monospace one, whose Monospace hint alone made the labels Courier. */
+QFont uiFont(double smaller = 0) {
+	const QFont app = QApplication::font();
+	QFont f(app.families(), -1, app.weight(), app.italic());
+	if (app.pointSizeF() > 0) f.setPointSizeF(app.pointSizeF() - smaller);
+	else f.setPixelSize(std::max(8, app.pixelSize() - int(smaller)));
+	f.setStyleHint(app.styleHint(), app.styleStrategy());
+	return f;
+}
+
 } // namespace
 
 DumpView::DumpView(QWidget *parent) : QAbstractScrollArea(parent) {
@@ -58,6 +84,8 @@ DumpView::DumpView(QWidget *parent) : QAbstractScrollArea(parent) {
 	setLayoutDirection(Qt::LeftToRight);
 	viewport()->setLayoutDirection(Qt::LeftToRight); /* it is the one painted on */
 	setFrameShape(QFrame::NoFrame);
+	/* the arrows, Enter and the Menu key work the cards: the Tab key reaches the view after the toolbar */
+	setFocusPolicy(Qt::StrongFocus);
 	viewport()->setMouseTracking(true);
 	viewport()->setAutoFillBackground(false);
 	setFont(monospaceFont());
@@ -144,12 +172,18 @@ void DumpView::setHold(bool on) {
 	if (on == hold_) return;
 	hold_ = on;
 	heldAt_ = on ? QTime::currentTime().toString(QStringLiteral("HH:mm:ss")) : QString();
-	relayout(); /* the reply lines' words, and with them the labels' width */
+	relayout();
 }
 
 void DumpView::setConnected(bool on) {
 	if (on == connected_) return;
 	connected_ = on;
+	relayout();
+}
+
+void DumpView::setFields(bool on) {
+	if (on == fields_) return;
+	fields_ = on;
 	relayout();
 }
 
@@ -159,6 +193,11 @@ void DumpView::setStaleAfterMs(qint64 ms) { staleAfterMs_ = ms; }
 void DumpView::select(RegKey key) {
 	if (key == selected_) return;
 	selected_ = key;
+	/* a register in two cards (the manual read's and the polled one): the card it was picked in stays its card */
+	if (selectedCard_ < 0 || selectedCard_ >= cards_.size() || cardOf(key) < 0
+			|| std::none_of(cards_[selectedCard_].regs.begin(), cards_[selectedCard_].regs.end(),
+					[&](int r) { return regKey(defs_[r]) == key; }))
+		selectedCard_ = cardOf(key);
 	viewport()->update();
 }
 
@@ -172,7 +211,7 @@ void DumpView::scrollToRegister(RegKey key) {
 	scrollToPending();
 }
 
-/* The register's row in view, with its card's top when both fit: the request and reply lines say what it is. */
+/* The register's row in view, with its card's top when both fit: the request and the reply say what it is. */
 void DumpView::scrollToPending() {
 	const int card = cardOf(scrollTo_);
 	if (card < 0) return;
@@ -188,10 +227,25 @@ void DumpView::scrollToPending() {
 	scrollTo_ = NO_REGISTER;
 }
 
+/* The keys' selection in view: its first chip and its decode line, scrolled by as little as it takes. */
+void DumpView::ensureVisible(int card, RegKey key) {
+	if (card < 0 || card >= cards_.size()) return;
+	const Card &c = cards_[card];
+	for (int r = 0; r < c.regs.size(); r++) {
+		if (regKey(defs_[c.regs[r]]) != key) continue;
+		const QRect area = byteRect(card, defs_[c.regs[r]].addr - blocks_[card].addr).united(decodeRect(card, r));
+		const int height = viewport()->height();
+		if (area.top() < 0) verticalScrollBar()->setValue(verticalScrollBar()->value() + area.top() - lineHeight());
+		else if (area.bottom() > height)
+			verticalScrollBar()->setValue(verticalScrollBar()->value() + area.bottom() - height + lineHeight());
+		return;
+	}
+}
+
 void DumpView::setHovered(RegKey key) {
 	if (key == hovered_) return;
 	hovered_ = key;
-	/* a hand over what a click picks */
+	/* a hand over what a click picks: a chip or a decode line */
 	if (key == NO_REGISTER) viewport()->unsetCursor();
 	else viewport()->setCursor(Qt::PointingHandCursor);
 	viewport()->update();
@@ -199,17 +253,29 @@ void DumpView::setHovered(RegKey key) {
 
 /* ------------------------------------------------------------------- layout */
 
+QFont DumpView::labelFont() const { return uiFont(1); }
+
 int DumpView::lineHeight() const { return fontMetrics().height() + 6; }
-/* a byte's cell: its two digits and room for a chip's edge and the 2 px between two chips */
+int DumpView::labelLineHeight() const { return QFontMetrics(labelFont()).height() + 2; }
+int DumpView::headLineHeight() const { return QFontMetrics(uiFont()).height() + 6; }
+int DumpView::stripHeight() const { return fields_ ? lineHeight() + LABEL_GAP + labelLineHeight() : lineHeight(); }
+/* a byte's cell: its two digits and room for the 3 px of card between two chips */
 int DumpView::cellWidth() const { return fontMetrics().horizontalAdvance(QStringLiteral("00")) + 10; }
 int DumpView::gridLeft() const { return CARD_GAP + PAD + fontMetrics().horizontalAdvance(QStringLiteral("D000")) + 12; }
-int DumpView::decodeLeft() const { return gridLeft() + 16 * cellWidth() + DECODE_GAP; }
+int DumpView::decodeLeft() const { return origin().x() + gridLeft() + usedColumns_ * cellWidth() + DECODE_GAP; }
+int DumpView::nameWidth() const { return fontMetrics().horizontalAdvance(QLatin1Char('M')) * nameChars_; }
+int DumpView::valueWidth() const { return fontMetrics().horizontalAdvance(QLatin1Char('M')) * VALUE_CHARS; }
+
+int DumpView::stripLeft(Field field) const {
+	int x = PAD;
+	for (int f = 0; f < field; f++) x += fieldW_[f] + FIELD_GAP;
+	return x;
+}
 
 int DumpView::contentWidth() const {
-	const QFontMetrics fm = fontMetrics();
-	const int decodeRight = decodeLeft() + 14 + fm.horizontalAdvance(QLatin1Char('M')) * (NAME_CHARS + VALUE_CHARS) + 10;
-	const int frameRight = CARD_GAP + PAD + labelWidth_ + 10 * fm.horizontalAdvance(QStringLiteral("00 "));
-	return std::max(decodeRight, frameRight) + PAD + CARD_GAP;
+	const int decodeRight = gridLeft() + usedColumns_ * cellWidth() + DECODE_GAP + 14 + nameWidth() + valueWidth() + 10;
+	const int stripRight = CARD_GAP + stripLeft(End) + fieldW_[End];
+	return std::max(decodeRight, stripRight) + PAD + CARD_GAP;
 }
 
 QPoint DumpView::origin() const { return { -horizontalScrollBar()->value(), -verticalScrollBar()->value() }; }
@@ -235,11 +301,31 @@ void DumpView::assignColours(Card &card) const {
 	}
 }
 
+/* Each card from the top: a title (a manual read), the request's label and strip, the reply's label and strip (or
+ * the one line of a reply that never came), then the grid of one-line rows with the decode list beside it. The list
+ * flows: a line sits level with its register's row, or under the line before when that one is lower, so a sparse
+ * block reads row by row and a dense one stacks its lines past the grid; the card is as tall as the taller. The
+ * strips' columns and the grid's width are the whole tab's, so the cards line up under each other. */
 void DumpView::relayout() {
-	const QFontMetrics fm = fontMetrics();
-	const int line = lineHeight();
+	const QFontMetrics mono = fontMetrics(), labels(labelFont());
+	const int line = lineHeight(), head = headLineHeight();
 	cards_.clear();
-	labelWidth_ = 0;
+	std::fill(std::begin(fieldW_), std::end(fieldW_), 0);
+	headLabelW_ = std::max({ labels.horizontalAdvance(requestLabel()), labels.horizontalAdvance(tr("← REPLY")),
+						 labels.horizontalAdvance(tr("← AUTO_SEND")) }) + 12;
+	/* the tab's widths first: the grid's columns in use and the longest name */
+	usedColumns_ = 0;
+	int longestName = 4;
+	for (const DumpBlock &b : blocks_) {
+		if (b.kind == DumpBlock::FastStream) continue;
+		const int first = b.addr & ~0xF, last = (int(b.addr) + std::max(1, int(b.size)) - 1);
+		usedColumns_ = std::max(usedColumns_, (last & ~0xF) > first ? 16 : (last & 0xF) + 1);
+		for (const RegDef &d : defs_)
+			if (holds(b, d)) longestName = std::max(longestName, int(d.name.size()));
+	}
+	if (usedColumns_ == 0) usedColumns_ = 16;
+	nameChars_ = std::min(int(NAME_CHARS), longestName) + 2;
+
 	int y = CARD_GAP;
 	for (int i = 0; i < blocks_.size(); i++) {
 		const DumpBlock &b = blocks_[i];
@@ -251,52 +337,57 @@ void DumpView::relayout() {
 			at += line;
 		} else {
 			/* the registers wholly inside the block, in address order */
-			for (int r = 0; r < defs_.size(); r++) {
-				const RegDef &d = defs_[r];
-				if (d.slave == b.slave && d.readable && d.size > 0 && d.addr >= b.addr
-						&& int(d.addr) + d.size <= int(b.addr) + b.size)
-					card.regs << r;
-			}
+			for (int r = 0; r < defs_.size(); r++)
+				if (holds(b, defs_[r])) card.regs << r;
 			std::sort(card.regs.begin(), card.regs.end(), [this](int x, int z) { return defs_[x].addr < defs_[z].addr; });
 			assignColours(card);
-			if (b.kind == DumpBlock::Manual) {
+			if (b.kind == DumpBlock::Manual || b.kind == DumpBlock::Write) {
 				card.titleTop = at;
-				at += line;
+				at += head;
 			}
 			if (b.kind != DumpBlock::AutoSend) {
 				card.requestTop = at;
-				at += line;
-				labelWidth_ = std::max(labelWidth_, fm.horizontalAdvance(requestLabel(b)));
+				at += head;
+				card.requestStripTop = at;
+				at += stripHeight() + STRIP_GAP;
 			}
 			card.replyTop = at;
-			at += line + GRID_GAP;
-			/* the reply's label with room for its usual state ("999 ms ago"); a longer one (an error, held) goes
-			 * after the header bytes */
-			labelWidth_ = std::max(labelWidth_, fm.horizontalAdvance(replyLabel(b) + QLatin1Char(' ')
-					+ tr("%1 ago").arg(QStringLiteral("999 ms"))));
-			/* the rows from the block's first to its last, aligned to 16; each as tall as its decode lines */
-			card.gridTop = at;
-			const int first = b.addr & ~0xF, last = (int(b.addr) + std::max(1, int(b.size)) - 1) & ~0xF;
-			int reg = 0;
-			for (int base = first; base <= last; base += 16) {
-				Row row;
-				row.base = base;
-				row.top = at;
-				while (reg < card.regs.size() && defs_[card.regs[reg]].addr < base + 16) row.starts << reg++;
-				row.height = std::max(1, int(row.starts.size())) * line;
-				at += row.height;
-				card.rows << row;
-			}
-			if (b.data.size() >= b.size) {
-				card.crcTop = at;
+			at += head;
+			if (!frame(i, Reply).isEmpty()) {
+				card.replyStripTop = at;
+				at += stripHeight();
+			} else if (!b.error.isEmpty()) {
+				card.noReplyTop = at;
 				at += line;
 			}
+			at += GRID_GAP;
+			/* the rows from the block's first to its last, aligned to 16, one line each */
+			card.gridTop = at;
+			const int first = b.addr & ~0xF, last = (int(b.addr) + std::max(1, int(b.size)) - 1) & ~0xF;
+			for (int base = first; base <= last; base += 16) {
+				card.rows << Row { base, at };
+				at += line;
+			}
+			int listBottom = card.gridTop;
+			for (const int r : card.regs) {
+				const int top = std::max(card.gridTop + ((defs_[r].addr & ~0xF) - first) / 16 * line, listBottom);
+				card.lineTop << top;
+				listBottom = top + line;
+			}
+			at = std::max(at, listBottom);
 		}
 		card.height = at + PAD;
 		y += card.height + CARD_GAP;
 		cards_ << card;
 	}
-	labelWidth_ += 16;
+	/* the strips' columns: each as wide as the widest bytes or label it holds in any card */
+	for (int i = 0; i < blocks_.size(); i++)
+		for (const Side side : { Request, Reply }) {
+			if (!hasStrip(i, side)) continue;
+			for (int f = 0; f < N_FIELDS; f++)
+				fieldW_[f] = std::max({ fieldW_[f], mono.horizontalAdvance(fieldBytesText(i, side, Field(f))),
+						labels.horizontalAdvance(fieldLabel(i, side, Field(f))) });
+		}
 	contentHeight_ = y;
 	const QSize view = viewport()->size();
 	verticalScrollBar()->setRange(0, std::max(0, contentHeight_ - view.height()));
@@ -306,6 +397,11 @@ void DumpView::relayout() {
 	horizontalScrollBar()->setPageStep(view.width());
 	horizontalScrollBar()->setSingleStep(cellWidth());
 	viewport()->update();
+}
+
+bool DumpView::holds(const DumpBlock &b, const RegDef &d) {
+	return d.slave == b.slave && (d.readable || b.kind == DumpBlock::Write) && d.size > 0 && d.addr >= b.addr
+			&& int(d.addr) + d.size <= int(b.addr) + b.size;
 }
 
 int DumpView::regAt(int card, int offset) const {
@@ -319,6 +415,128 @@ int DumpView::regAt(int card, int offset) const {
 	return -1;
 }
 
+/* ------------------------------------------------------------------- frames */
+
+/* The bytes of a READ and of its answer (or of a WRITE_ACK and its WRITE_ACK_RESP), as on the wire: one definition
+ * with the master's (evre::build). An error answer is rebuilt as the device sent it (its code the one data byte, the
+ * count echoed); a read with no answer, and a WRITE (never answered), have no reply frame. */
+QByteArray DumpView::frame(int card, Side side) const {
+	if (card < 0 || card >= blocks_.size()) return {};
+	const DumpBlock &b = blocks_[card];
+	if (b.kind == DumpBlock::FastStream) return {};
+	const bool write = b.kind == DumpBlock::Write;
+	if (side == Request) {
+		if (write) return evre::build(b.wireSlave, b.ack ? evre::WRITE_ACK : evre::WRITE, b.addr, b.size, b.data);
+		return b.kind == DumpBlock::AutoSend ? QByteArray() : evre::build(b.wireSlave, evre::READ, b.addr, b.size);
+	}
+	if (b.errorCode != 0)
+		return evre::build(b.wireSlave, evre::ERROR_RESP, b.addr, b.size, QByteArray(1, char(b.errorCode)));
+	if (!b.error.isEmpty() || b.data.size() < b.size) return {};
+	if (write) return b.ack ? evre::build(b.wireSlave, evre::WRITE_ACK_RESP, b.addr, b.size) : QByteArray();
+	return evre::build(b.wireSlave, evre::READ_RESP, b.addr, b.size, b.data.left(b.size));
+}
+
+bool DumpView::hasStrip(int card, Side side) const { return !frame(card, side).isEmpty(); }
+
+QByteArray DumpView::fieldBytes(int card, Side side, Field field) const {
+	const QByteArray bytes = frame(card, side);
+	if (bytes.isEmpty()) return {};
+	int from = 0, count = 0;
+	fieldSlice(int(bytes.size()), field, from, count);
+	return bytes.mid(from, count);
+}
+
+/* the payload is in the grid: its column says so with "…" (an error answer's one code byte is written) */
+QString DumpView::fieldBytesText(int card, Side side, Field field) const {
+	const QByteArray bytes = fieldBytes(card, side, field);
+	if (field == Data && !bytes.isEmpty() && uchar(frame(card, side).at(2)) != evre::ERROR_RESP)
+		return QStringLiteral("…");
+	return evre::hex(bytes);
+}
+
+QString DumpView::fieldName(Field field) {
+	/* the protocol's own words, as READ_RESP and AUTO_SEND are: not translated */
+	static const char *const names[N_FIELDS] = { "START", "SLAVE", "FUNCTION", "OFFSET", "COUNT", "DATA", "CRC", "END" };
+	return field >= 0 && field < N_FIELDS ? QLatin1String(names[field]) : QString();
+}
+
+QString DumpView::fieldMeaning(int card, Side side, Field field) const {
+	const QByteArray bytes = frame(card, side);
+	if (bytes.size() < FRAME_HEAD + 3) return {};
+	const uint8_t fn = uint8_t(bytes.at(2));
+	const uint16_t count = evre::littleEndian16(bytes, 5);
+	switch (field) {
+	case Slave:
+		return uchar(bytes.at(1)) == evre::BROADCAST ? QStringLiteral("0 ") + tr("all") : QString::number(uchar(bytes.at(1)));
+	case Function: return evre::fnName(fn);
+	case Offset: return addrText(evre::littleEndian16(bytes, 3));
+	case Count: return QString::number(count);
+	case Data: {
+		if (fn == evre::ERROR_RESP) {
+			const uint8_t code = uint8_t(bytes.at(FRAME_HEAD));
+			return tr("ERROR %1 %2").arg(code).arg(evre::errorName(code));
+		}
+		const int data = int(bytes.size()) - FRAME_HEAD - 3;
+		return data == 0 ? tr("none") : tr("%n bytes ↓", nullptr, data);
+	}
+	case Crc: return side == Reply ? tr("ok") : QString();
+	default: return {};
+	}
+}
+
+QString DumpView::fieldLabel(int card, Side side, Field field) const {
+	const QString meaning = fieldMeaning(card, side, field);
+	return meaning.isEmpty() ? fieldName(field) : fieldName(field) + QLatin1Char(' ') + meaning;
+}
+
+/* PROTOCOL.md's words for each field, with this frame's numbers */
+QString DumpView::fieldTip(int card, Side side, Field field) const {
+	const QByteArray bytes = frame(card, side);
+	if (bytes.size() < FRAME_HEAD + 3) return {};
+	const uint8_t fn = uint8_t(bytes.at(2));
+	const int data = int(bytes.size()) - FRAME_HEAD - 3;
+	const QString crc = QStringLiteral("0x")
+			+ QStringLiteral("%1").arg(evre::littleEndian16(bytes, int(bytes.size()) - 3), 4, 16, QLatin1Char('0')).toUpper();
+	switch (field) {
+	case Start: return tr("Start byte 0x7B (\"{\"): a frame is recognisable in a terminal dump");
+	case Slave: return tr("Slave ID %1; 0 is the broadcast, every device takes a WRITE to it").arg(uchar(bytes.at(1)));
+	case Function: {
+		QString words = evre::fnName(fn);
+		if (fn == evre::READ) words = tr("READ, answered with READ_RESP");
+		else if (fn == evre::READ_RESP) words = tr("READ_RESP, the answer to a READ: the bytes asked for");
+		else if (fn == evre::ERROR_RESP) words = tr("ERROR_RESP, the answer to a request that failed: one error code");
+		else if (fn == evre::WRITE_ACK) words = tr("WRITE_ACK, a write answered with WRITE_ACK_RESP");
+		else if (fn == evre::WRITE) words = tr("WRITE, a write that is never answered");
+		else if (fn == evre::WRITE_ACK_RESP) words = tr("WRITE_ACK_RESP, the answer to a WRITE_ACK: the write landed");
+		return tr("Function code 0x%1: %2").arg(byteText(char(fn)), words);
+	}
+	case Offset:
+		return tr("Register offset, little endian: %1 is %2")
+				.arg(QStringLiteral("0x%1 0x%2").arg(byteText(bytes.at(3)), byteText(bytes.at(4))),
+						addrText(evre::littleEndian16(bytes, 3)));
+	case Count:
+		return tr("Number of registers, little endian: %1 (a register is one byte: the count is in bytes)")
+				.arg(evre::littleEndian16(bytes, 5));
+	case Data:
+		if (fn == evre::ERROR_RESP) {
+			const uint8_t code = uint8_t(bytes.at(FRAME_HEAD));
+			return tr("Data: the error code %1, %2").arg(code).arg(evre::errorName(code));
+		}
+		if (data == 0)
+			return fn == evre::WRITE_ACK_RESP ? tr("Data: none, the answer carries no status")
+											  : tr("Data: none, a READ carries no data");
+		if (fn == evre::WRITE || fn == evre::WRITE_ACK) return tr("Data: the %n bytes written, in the grid below", nullptr, data);
+		return tr("Data: the %n bytes of the grid below (the payload)", nullptr, data);
+	case Crc:
+		return side == Request
+				? tr("CRC-16/X-25 over every byte before it, low byte first: %1; the Studio computed it").arg(crc)
+				: tr("CRC-16/X-25 over every byte before it, low byte first: %1; checked before the reply "
+						"was taken (a frame whose CRC fails is dropped and counted in the status bar's Bad "
+						"frames)").arg(crc);
+	default: return tr("End byte 0x7D (\"}\")");
+	}
+}
+
 /* ------------------------------------------------------------- where things are */
 
 QRect DumpView::cardRect(int card) const {
@@ -326,6 +544,38 @@ QRect DumpView::cardRect(int card) const {
 	const QPoint o = origin();
 	const int width = std::max(contentWidth(), viewport()->width()) - 2 * CARD_GAP;
 	return QRect(o.x() + CARD_GAP, o.y() + cards_[card].top, width, cards_[card].height);
+}
+
+QRect DumpView::stripeRect(int card) const {
+	if (notLiveReason(card).isEmpty()) return {};
+	const QRect rect = cardRect(card);
+	return QRect(rect.left(), rect.top(), STRIPE_W, rect.height());
+}
+
+QRect DumpView::stripRect(int card, Side side) const {
+	if (!hasStrip(card, side)) return {};
+	const Card &c = cards_[card];
+	const int top = side == Request ? c.requestStripTop : c.replyStripTop;
+	const QRect first = fieldRect(card, side, Start), last = fieldRect(card, side, End);
+	return QRect(first.left(), cardRect(card).top() + top, last.right() - first.left() + 1, stripHeight());
+}
+
+/* Fields on: the column, both lines. Off: the field's bytes in the frame's one line (the payload one "…"). */
+QRect DumpView::fieldRect(int card, Side side, Field field) const {
+	if (!hasStrip(card, side)) return {};
+	const Card &c = cards_[card];
+	const QRect rect = cardRect(card);
+	const int top = rect.top() + (side == Request ? c.requestStripTop : c.replyStripTop);
+	if (fields_) return QRect(rect.left() + stripLeft(field), top, fieldW_[field], stripHeight());
+	const int step = fontMetrics().horizontalAdvance(QStringLiteral("00 "));
+	int x = rect.left() + PAD;
+	for (int f = 0; f < field; f++) {
+		const QString text = fieldBytesText(card, side, Field(f));
+		if (!text.isEmpty()) x += (int(text.size()) + 1) / 3 * step + (text == QStringLiteral("…") ? step : 0);
+	}
+	const QString text = fieldBytesText(card, side, field);
+	const int units = text == QStringLiteral("…") ? 1 : (int(text.size()) + 1) / 3;
+	return QRect(x, top, units * step, lineHeight());
 }
 
 QRect DumpView::byteRect(int card, int offset) const {
@@ -339,29 +589,12 @@ QRect DumpView::byteRect(int card, int offset) const {
 			lineHeight());
 }
 
-/* at the column after the payload's last byte, all three on the line */
-QRect DumpView::tailRect(int card) const {
-	if (card < 0 || card >= cards_.size() || cards_[card].crcTop < 0) return {};
-	const DumpBlock &b = blocks_[card];
-	const int first = std::min((int(b.addr) + b.size) & 0xF, 16 - FRAME_TAIL);
-	const QPoint o = origin();
-	return QRect(o.x() + gridLeft() + first * cellWidth(), o.y() + cards_[card].top + cards_[card].crcTop,
-			FRAME_TAIL * cellWidth(), lineHeight());
-}
-
 int DumpView::decodeLines(int card) const { return card < 0 || card >= cards_.size() ? 0 : int(cards_[card].regs.size()); }
 
 QRect DumpView::decodeRect(int card, int line) const {
-	if (line < 0 || line >= decodeLines(card)) return {};
+	if (line < 0 || line >= decodeLines(card) || line >= cards_[card].lineTop.size()) return {};
 	const Card &c = cards_[card];
-	for (const Row &row : c.rows) {
-		const int at = int(row.starts.indexOf(line));
-		if (at < 0) continue;
-		const QPoint o = origin();
-		const int width = 14 + fontMetrics().horizontalAdvance(QLatin1Char('M')) * (NAME_CHARS + VALUE_CHARS) + 10;
-		return QRect(o.x() + decodeLeft(), o.y() + c.top + row.top + at * lineHeight(), width, lineHeight());
-	}
-	return {};
+	return QRect(decodeLeft(), origin().y() + c.top + c.lineTop[line], 14 + nameWidth() + valueWidth() + 10, lineHeight());
 }
 
 QString DumpView::decodeText(int card, int line) const {
@@ -372,6 +605,7 @@ QString DumpView::decodeText(int card, int line) const {
 	return d.name + QStringLiteral("  ") + decodeValue(d, raw);
 }
 
+/* a cell the row draws: from the row's first cell to the block's last byte ("··" before the block) */
 bool DumpView::byteAt(const QPoint &pos, int &card, int &offset) const {
 	const QPoint o = origin();
 	const int column = pos.x() - (o.x() + gridLeft());
@@ -379,12 +613,30 @@ bool DumpView::byteAt(const QPoint &pos, int &card, int &offset) const {
 	for (int i = 0; i < cards_.size(); i++) {
 		if (!cardRect(i).contains(pos)) continue;
 		for (const Row &row : cards_[i].rows) {
-			const int top = o.y() + cards_[i].top + row.top; /* the bytes are on a row's first line */
+			const int top = o.y() + cards_[i].top + row.top;
 			if (pos.y() < top || pos.y() >= top + lineHeight()) continue;
+			const int at = row.base + column / cellWidth() - int(blocks_[i].addr);
+			if (at >= blocks_[i].size) return false; /* after the block: the card's surface */
 			card = i;
-			offset = row.base + column / cellWidth() - int(blocks_[i].addr);
+			offset = at;
 			return true;
 		}
+		return false;
+	}
+	return false;
+}
+
+bool DumpView::fieldAt(const QPoint &pos, int &card, Side &side, Field &field) const {
+	for (int i = 0; i < cards_.size(); i++) {
+		if (!cardRect(i).contains(pos)) continue;
+		for (const Side s : { Request, Reply })
+			for (int f = 0; f < N_FIELDS; f++)
+				if (fieldRect(i, s, Field(f)).contains(pos)) {
+					card = i;
+					side = s;
+					field = Field(f);
+					return true;
+				}
 		return false;
 	}
 	return false;
@@ -412,7 +664,8 @@ int DumpView::cardOf(RegKey key) const {
 }
 
 int DumpView::currentCard() const {
-	const int card = cardOf(selected_);
+	const int card = selectedCard_ >= 0 && selectedCard_ < cards_.size() && cardOf(selected_) >= 0 ? selectedCard_
+																									 : cardOf(selected_);
 	if (card >= 0) return card;
 	for (int i = 0; i < cards_.size(); i++)
 		if (blocks_[i].kind != DumpBlock::FastStream && cardRect(i).bottom() >= 0) return i;
@@ -427,24 +680,32 @@ QColor DumpView::chipColour(int card, const RegKey &key) const {
 	return {};
 }
 
-QColor DumpView::chipFill(const QColor &colour, const QColor &card, bool dark) {
-	return blend(colour, card, dark ? CHIP_ALPHA_DARK : CHIP_ALPHA_LIGHT);
+double DumpView::chipAlpha(bool dark, bool hovered) {
+	if (hovered) return dark ? CHIP_ALPHA_HOVER_DARK : CHIP_ALPHA_HOVER_LIGHT;
+	return dark ? CHIP_ALPHA_DARK : CHIP_ALPHA_LIGHT;
 }
+
+QColor DumpView::chipFill(const QColor &colour, const QColor &card, double alpha) { return blend(colour, card, alpha); }
 
 /* ------------------------------------------------------------------- words */
 
-QString DumpView::requestLabel(const DumpBlock &b) const {
-	QString label = tr("→ READ %n bytes @ %1", nullptr, b.size).arg(addrText(b.addr));
-	if (!b.device.isEmpty()) label = tr("%1, slave %2").arg(b.device).arg(b.wireSlave) + QStringLiteral("  ") + label;
-	return label;
+QString DumpView::requestLabel() const { return tr("→ REQUEST"); }
+
+QString DumpView::requestSentence(const DumpBlock &b) const {
+	QString sentence = b.kind != DumpBlock::Write ? tr("READ %n bytes @ %1", nullptr, b.size).arg(addrText(b.addr))
+			: b.ack ? tr("WRITE_ACK %n bytes @ %1", nullptr, b.size).arg(addrText(b.addr))
+					: tr("WRITE %n bytes @ %1", nullptr, b.size).arg(addrText(b.addr));
+	if (!b.device.isEmpty())
+		sentence = tr("%1, slave %2").arg(b.device).arg(b.wireSlave) + QStringLiteral(" · ") + sentence;
+	return sentence;
 }
 
 QString DumpView::replyLabel(const DumpBlock &b) const {
 	return b.kind == DumpBlock::AutoSend ? tr("← AUTO_SEND") : tr("← REPLY");
 }
 
-/* The reply line's state, in its colour; the reasons a card is not live come first, so the line says why its frame
- * is amber. */
+/* The reply label's state, in its colour; the reasons a card is not live come first, so the label says why its
+ * stripe is amber. */
 QString DumpView::replyState(int card, QColor &colour) const {
 	const ThemeColors &c = Theme::colors();
 	const DumpBlock &b = blocks_[card];
@@ -461,10 +722,33 @@ QString DumpView::replyState(int card, QColor &colour) const {
 		return tr("error: %1").arg(b.error);
 	}
 	if (b.kind == DumpBlock::Manual) return tr("read once, %1 ago").arg(ageText(age));
+	if (b.kind == DumpBlock::Write) {
+		if (b.ack) return tr("acknowledged, %1 ago").arg(ageText(age));
+		colour = c.muted;
+		return tr("none: WRITE is not answered");
+	}
 	if (age * 1000.0 > double(staleAfterMs_)) return tr("stale %1").arg(ageText(age));
 	colour = c.muted;
 	if (b.kind == DumpBlock::AutoSend) return QStringLiteral("%1 /s").arg(b.rate, 0, 'f', 0);
 	return tr("%1 ago").arg(ageText(age));
+}
+
+/* a manual read's "Manual read 0xD080 · 8 bytes"; a write's "Write SETPOINT @ 0xD080 · 4 bytes" (the register it
+ * starts at, when one does) */
+QString DumpView::titleText(int card) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].titleTop < 0) return {};
+	const DumpBlock &b = blocks_[card];
+	if (b.kind != DumpBlock::Write) return tr("Manual read %1 · %n bytes", nullptr, b.size).arg(addrText(b.addr));
+	for (const int r : cards_[card].regs)
+		if (defs_[r].addr == b.addr)
+			return tr("Write %1 @ %2 · %n bytes", nullptr, b.size).arg(ltrPiece(defs_[r].name), addrText(b.addr));
+	return tr("Write %1 · %n bytes", nullptr, b.size).arg(addrText(b.addr));
+}
+
+/* a read whose last answer never came: no frame to draw, one line instead */
+QString DumpView::noReplyText(int card) const {
+	const DumpBlock &b = blocks_[card];
+	return b.timedOut ? tr("no reply: timed out") : tr("no reply: %1").arg(b.error);
 }
 
 QString DumpView::notLiveReason(int card) const {
@@ -474,6 +758,7 @@ QString DumpView::notLiveReason(int card) const {
 	if (hold_) return tr("Held at %1: these bytes are not refreshed (Follow shows the replies again)").arg(heldAt_);
 	if (!connected_) return tr("The link is closed: these are the last bytes read");
 	if (b.kind == DumpBlock::Manual) return tr("A manual read: read once, not refreshed");
+	if (b.kind == DumpBlock::Write) return tr("A write: sent once, not refreshed");
 	if (!b.error.isEmpty()) return tr("The last read failed (%1): these are the last bytes read").arg(b.error);
 	if (b.data.size() < b.size) return tr("No reply yet");
 	const double age = now_ ? now_() - b.time : 0.0;
@@ -484,7 +769,8 @@ QString DumpView::notLiveReason(int card) const {
 QString DumpView::requestText(int card) const {
 	if (card < 0 || card >= cards_.size() || cards_[card].requestTop < 0) return {};
 	const DumpBlock &b = blocks_[card];
-	QString text = requestLabel(b) + QStringLiteral("  ") + evre::hex(requestFrame(b));
+	QString text = requestLabel() + QStringLiteral("  ") + requestSentence(b) + QStringLiteral("  ")
+			+ evre::hex(frame(card, Request));
 	if (b.single) text += QStringLiteral("  ") + tr("split: the device refused the merged read");
 	return text;
 }
@@ -494,44 +780,52 @@ QString DumpView::replyText(int card) const {
 	const DumpBlock &b = blocks_[card];
 	QColor colour;
 	QString text = replyLabel(b) + QLatin1Char(' ') + replyState(card, colour);
-	if (b.data.size() >= b.size) text += QStringLiteral("  ") + evre::hex(replyFrame(b).left(REPLY_HEADER));
+	if (hasStrip(card, Reply)) {
+		QStringList bytes;
+		for (int f = 0; f < N_FIELDS; f++) {
+			const QString field = fieldBytesText(card, Reply, Field(f));
+			if (!field.isEmpty()) bytes << field;
+		}
+		text += QStringLiteral("  ") + bytes.join(QLatin1Char(' '));
+	} else if (cards_[card].noReplyTop >= 0) {
+		text += QStringLiteral("  ") + noReplyText(card);
+	}
 	return text;
 }
 
-/* "0xD006 · SUPPLY_V · byte 2 of 4 · 0x40 (64) · raw FA 7E 40 41 · 12.031 V"; a gap byte "0xD016 · not mapped · 0x83";
- * a byte of the row that no read covers "0xD088 · not read: no register here" */
+/* Two lines: "SUPPLY_V · byte 3 of 4 · 0xD006" and "0x40 (64) · raw FA 7E 40 41 · 12.031 V"; a gap byte "not mapped ·
+ * 0xD016" and "0x83 (131)"; a byte before the block "0xD000" and "not read: no register here" */
 QString DumpView::byteTip(int card, int offset) const {
 	if (card < 0 || card >= blocks_.size()) return {};
 	const DumpBlock &b = blocks_[card];
 	const int addr = int(b.addr) + offset;
 	const QString dot = QStringLiteral(" · ");
-	QStringList parts { ltrPiece(addrText(uint16_t(addr))) };
+	const QString address = ltrPiece(addrText(uint16_t(addr)));
 	const RegDef *def = nullptr;
 	for (const RegDef &d : defs_)
-		if (d.slave == b.slave && d.readable && addr >= d.addr && addr < int(d.addr) + d.size) def = &d;
-	if (offset < 0 || offset >= b.size) {
-		parts << (def ? ltrPiece(def->name) + dot + tr("not in this read") : tr("not read: no register here"));
-		return parts.join(dot);
-	}
+		if (d.slave == b.slave && (d.readable || b.kind == DumpBlock::Write) && addr >= d.addr
+				&& addr < int(d.addr) + d.size)
+			def = &d;
+	if (offset < 0 || offset >= b.size)
+		return address + QLatin1Char('\n') + (def ? ltrPiece(def->name) + dot + tr("not in this read")
+												  : tr("not read: no register here"));
 	const int reg = regAt(card, offset);
+	QString first;
 	if (reg < 0) {
-		parts << tr("not mapped");
+		first = tr("not mapped") + dot + address;
 	} else {
 		const RegDef &d = defs_[cards_[card].regs[reg]];
-		parts << ltrPiece(d.name) << tr("byte %1 of %2").arg(addr - d.addr + 1).arg(d.size);
+		first = ltrPiece(d.name) + dot + tr("byte %1 of %2").arg(addr - d.addr + 1).arg(d.size) + dot + address;
 	}
-	if (b.data.size() < b.size) {
-		parts << tr("no reply yet");
-		return parts.join(dot);
-	}
+	if (b.data.size() < b.size) return first + QLatin1Char('\n') + tr("no reply yet");
 	const uchar byte = uchar(b.data[offset]);
-	parts << ltrPiece(QStringLiteral("0x%1 (%2)").arg(byteText(char(byte))).arg(byte));
+	QStringList second { ltrPiece(QStringLiteral("0x%1 (%2)").arg(byteText(char(byte))).arg(byte)) };
 	if (reg >= 0) {
 		const RegDef &d = defs_[cards_[card].regs[reg]];
 		const QByteArray raw = b.data.mid(d.addr - b.addr, d.size);
-		parts << tr("raw %1").arg(ltrPiece(evre::hex(raw))) << ltrPiece(decodeValue(d, raw));
+		second << tr("raw %1").arg(ltrPiece(evre::hex(raw))) << ltrPiece(decodeValue(d, raw));
 	}
-	return parts.join(dot);
+	return first + QLatin1Char('\n') + second.join(dot);
 }
 
 /* The clipboard's forms of a card: a register's bytes "FA 7E 40 41"; the block as hex rows "D000  10 27 00 00 ..."
@@ -642,17 +936,64 @@ void DumpView::paintEvent(QPaintEvent *) {
 	}
 }
 
-/* the frame's bytes spaced as the Monitor writes them; those from mutedFirst to mutedLast (the start, the CRC and the
- * end byte) in the muted colour, the header in the text colour */
-void DumpView::drawBytes(QPainter &p, int x, int y, const QByteArray &bytes, int mutedFirst, int mutedLast) const {
+/* A label line: the small muted label ("→ REQUEST"), then its sentence in the window's font, cut to its room. */
+void DumpView::drawHead(QPainter &p, int x, int y, int width, const QString &label, const QString &sentence,
+		const QColor &sentenceColour) const {
 	const ThemeColors &c = Theme::colors();
-	const int step = fontMetrics().horizontalAdvance(QStringLiteral("00 "));
+	const int head = headLineHeight();
+	p.setFont(labelFont());
+	p.setPen(c.muted);
+	p.drawText(QRect(x, y, headLabelW_, head), LEFT, label);
+	const QFont font = uiFont();
+	p.setFont(font);
+	p.setPen(sentenceColour);
+	const int room = std::max(0, width - headLabelW_);
+	p.drawText(QRect(x + headLabelW_, y, room, head), LEFT, QFontMetrics(font).elidedText(sentence, Qt::ElideRight, room));
+	p.setFont(this->font());
+}
+
+/* A frame. Fields on: a column per field, its bytes (START, CRC, END and the payload's "…" muted) over its name
+ * (muted) and meaning ("ok" in the good colour, an error in the bad). Off: the bytes on one line. */
+void DumpView::drawStrip(QPainter &p, int i, Side side, int x, int y) const {
+	const ThemeColors &c = Theme::colors();
+	const QByteArray bytes = frame(i, side);
+	const bool error = uchar(bytes.at(2)) == evre::ERROR_RESP;
 	const int line = lineHeight();
-	for (int i = 0; i < bytes.size(); i++) {
-		const bool muted = i < mutedFirst || i > mutedLast;
-		p.setPen(muted ? c.muted : c.text);
-		p.drawText(QRect(x + i * step, y, step, line), LEFT, byteText(bytes[i]));
+	const QFont labels = labelFont();
+	const QFontMetrics labelFm(labels);
+	Q_UNUSED(x);
+	for (int f = 0; f < N_FIELDS; f++) {
+		const Field field = Field(f);
+		const QString text = fieldBytesText(i, side, field);
+		const QRect rect = fieldRect(i, side, field); /* drawn where the tests and the tooltips find it */
+		const bool muted = field == Start || field == Crc || field == End || text == QStringLiteral("…");
+		p.setFont(font());
+		p.setPen(field == Data && error ? c.bad : muted ? c.muted : c.text);
+		p.drawText(QRect(rect.left(), y, rect.width() + FIELD_GAP, line), LEFT, text);
+		if (!fields_) continue;
+		const int labelTop = y + line + LABEL_GAP;
+		const QString name = fieldName(field), meaning = fieldMeaning(i, side, field);
+		p.setFont(labels);
+		p.setPen(c.muted);
+		p.drawText(QRect(rect.left(), labelTop, rect.width(), labelLineHeight()), LEFT, name);
+		if (meaning.isEmpty()) continue;
+		const int at = rect.left() + labelFm.horizontalAdvance(name + QLatin1Char(' '));
+		p.setPen(field == Crc ? c.good : (error && (field == Function || field == Data)) ? c.bad : c.text);
+		p.drawText(QRect(at, labelTop, rect.right() + 1 - at, labelLineHeight()), LEFT, meaning);
 	}
+	p.setFont(font());
+}
+
+/* not live: a 3 px amber stripe down the card's left edge, inside its rounded corners */
+void DumpView::drawStripe(QPainter &p, int i) const {
+	const QRect stripe = stripeRect(i);
+	if (stripe.isEmpty()) return;
+	QPainterPath card, edge;
+	card.addRoundedRect(QRectF(cardRect(i)).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
+	edge.addRect(QRectF(stripe));
+	p.setRenderHint(QPainter::Antialiasing, true);
+	p.fillPath(card.intersected(edge), Theme::colors().warn);
+	p.setRenderHint(QPainter::Antialiasing, false);
 }
 
 void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
@@ -662,88 +1003,63 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 	const QRect rect = cardRect(i);
 	const int line = lineHeight();
 	const int textLeft = at.x() + PAD;
-	const int bytesLeft = textLeft + labelWidth_;
+	const int textWidth = rect.width() - 2 * PAD;
 	p.setRenderHint(QPainter::Antialiasing, true);
 	p.setPen(QPen(c.border, 1));
 	p.setBrush(c.surface);
 	p.drawRoundedRect(QRectF(rect).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
 	p.setRenderHint(QPainter::Antialiasing, false);
+	drawStripe(p, i);
 
 	if (b.kind == DumpBlock::FastStream) {
 		p.setPen(c.muted);
-		p.drawText(QRect(textLeft, at.y() + card.noteTop, rect.width() - 2 * PAD, line), LEFT,
+		p.drawText(QRect(textLeft, at.y() + card.noteTop, textWidth, line), LEFT,
 				tr("fast stream %1: see the Chart").arg(b.stream));
 		return;
 	}
 	if (card.titleTop >= 0) {
-		QFont bold = font();
+		QFont bold = uiFont();
 		bold.setBold(true);
 		p.setFont(bold);
 		p.setPen(c.text);
-		p.drawText(QRect(textLeft, at.y() + card.titleTop, rect.width() - 2 * PAD, line), LEFT,
-				tr("Manual read %1 · %n bytes", nullptr, b.size).arg(addrText(b.addr)));
+		p.drawText(QRect(textLeft, at.y() + card.titleTop, textWidth, headLineHeight()), LEFT, titleText(i));
 		p.setFont(font());
 	}
 	if (card.requestTop >= 0) {
 		const int y = at.y() + card.requestTop;
-		p.setPen(c.text);
-		p.drawText(QRect(textLeft, y, labelWidth_, line), LEFT, requestLabel(b));
-		const QByteArray request = requestFrame(b);
-		drawBytes(p, bytesLeft, y, request, 1, int(request.size()) - 1 - FRAME_TAIL);
+		const QString sentence = requestSentence(b);
+		drawHead(p, textLeft, y, textWidth, requestLabel(), sentence, c.text);
 		if (b.single) {
-			const int x = bytesLeft + int(request.size()) * fontMetrics().horizontalAdvance(QStringLiteral("00 ")) + 8;
+			/* the split's reason after the sentence, muted */
+			const int x = textLeft + headLabelW_ + QFontMetrics(uiFont()).horizontalAdvance(sentence) + 12;
+			p.setFont(uiFont());
 			p.setPen(c.muted);
-			p.drawText(QRect(x, y, rect.right() - PAD - x, line), LEFT,
-					fontMetrics().elidedText(tr("split: the device refused the merged read"), Qt::ElideRight,
-							std::max(0, rect.right() - PAD - x)));
+			p.drawText(QRect(x, y, std::max(0, rect.right() - PAD - x), headLineHeight()), LEFT,
+					QFontMetrics(uiFont()).elidedText(QStringLiteral("· ") + tr("split: the device refused the merged read"),
+							Qt::ElideRight, std::max(0, rect.right() - PAD - x)));
+			p.setFont(font());
 		}
+		drawStrip(p, i, Request, textLeft, at.y() + card.requestStripTop);
 	}
-	/* the reply line: its label, its state in its colour, then the reply's header bytes */
-	{
-		const int y = at.y() + card.replyTop;
-		p.setPen(c.text);
-		const QString label = replyLabel(b);
-		p.drawText(QRect(textLeft, y, labelWidth_, line), LEFT, label);
-		QColor stateColour;
-		const QString state = replyState(i, stateColour);
-		const int stateLeft = textLeft + fontMetrics().horizontalAdvance(label) + fontMetrics().horizontalAdvance(QLatin1Char(' '));
-		const bool hasBytes = b.data.size() >= b.size;
-		p.setPen(stateColour);
-		if (hasBytes && stateLeft + fontMetrics().horizontalAdvance(state) <= bytesLeft - 8) {
-			p.drawText(QRect(stateLeft, y, bytesLeft - stateLeft, line), LEFT, state);
-		} else {
-			/* longer than the label's column (a long error): after the bytes, where there is room */
-			const int x = hasBytes ? bytesLeft + REPLY_HEADER * fontMetrics().horizontalAdvance(QStringLiteral("00 ")) + 8
-								   : stateLeft;
-			p.drawText(QRect(x, y, rect.right() - PAD - x, line), LEFT,
-					fontMetrics().elidedText(state, Qt::ElideRight, std::max(0, rect.right() - PAD - x)));
-		}
-		if (hasBytes) drawBytes(p, bytesLeft, y, replyFrame(b).left(REPLY_HEADER), 1, REPLY_HEADER);
+	QColor stateColour;
+	const QString state = replyState(i, stateColour);
+	drawHead(p, textLeft, at.y() + card.replyTop, textWidth, replyLabel(b), state, stateColour);
+	if (card.replyStripTop >= 0) drawStrip(p, i, Reply, textLeft, at.y() + card.replyStripTop);
+	if (card.noReplyTop >= 0) {
+		p.setFont(uiFont());
+		p.setPen(c.muted);
+		p.drawText(QRect(textLeft, at.y() + card.noReplyTop, textWidth, line), LEFT, noReplyText(i));
+		p.setFont(font());
 	}
 	drawGrid(p, i, at);
 	drawGlow(p, i);
 	drawDecode(p, i, at);
-	/* the reply's CRC and end byte, closing it on a line of their own, at the column after the payload's last byte */
-	if (card.crcTop >= 0) {
-		const QByteArray reply = replyFrame(b);
-		const QRect tail = tailRect(i);
-		p.setPen(c.muted);
-		for (int t = 0; t < FRAME_TAIL; t++)
-			p.drawText(QRect(tail.left() + t * cellWidth(), tail.top(), cellWidth(), line), Qt::AlignCenter,
-					byteText(reply[reply.size() - FRAME_TAIL + t]));
-	}
-	/* not live: a thin amber frame over the card's edge */
-	if (!notLiveReason(i).isEmpty()) {
-		p.setRenderHint(QPainter::Antialiasing, true);
-		p.setPen(QPen(c.warn, 1.5));
-		p.setBrush(Qt::NoBrush);
-		p.drawRoundedRect(QRectF(rect).adjusted(0.75, 0.75, -0.75, -0.75), 6, 6);
-		p.setRenderHint(QPainter::Antialiasing, false);
-	}
 }
 
-/* The rows: the address, then 16 cells. The chips first (a register's bytes in one row are one chip, 1 px inside
- * its cells, so two neighbours have 2 px between them), then each byte's text over them. */
+/* The rows: the address, then the cells from the row's first to the block's last byte. The chips first (a register's
+ * bytes in one row are one fill, 1.5 px inside its cells, so two neighbours have 3 px of card between them), then
+ * each byte's text over them. While a register is hovered its chips are stronger and outlined in its colour and the
+ * others step back to half their tint: one clear change, in its own colour. */
 void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const ThemeColors &c = Theme::colors();
 	const bool dark = Theme::isDark();
@@ -753,32 +1069,36 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const int left = at.x() - CARD_GAP + gridLeft();
 	const bool answered = b.data.size() >= b.size;
 	const int viewHeight = viewport()->height();
+	const double rest = chipAlpha(dark), hot = chipAlpha(dark, true), dim = rest * CHIP_ALPHA_DIM;
+	const bool anyHovered = hovered_ != NO_REGISTER;
 	for (const Row &row : card.rows) {
 		const int y = at.y() + row.top;
-		if (y + row.height < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
+		if (y + line < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
 		p.setPen(c.muted);
 		p.drawText(QRect(at.x() + PAD, y, left - at.x() - PAD, line), LEFT, rowAddress(row.base));
-		/* the chips of the registers with bytes in this row; the selected one's frame over them all */
 		p.setRenderHint(QPainter::Antialiasing, true);
 		QRectF selectedChip;
-		QVector<QRectF> hoveredChips;
+		QVector<QPair<QRectF, QColor>> hoveredChips;
 		for (int r = 0; r < card.regs.size(); r++) {
 			const RegDef &d = defs_[card.regs[r]];
 			const int from = std::max(int(d.addr), row.base), to = std::min(int(d.addr) + d.size, row.base + 16) - 1;
 			if (from > to) continue;
 			const QColor colour = card.colours[r];
+			const bool isHovered = regKey(d) == hovered_;
 			const QRectF chip(left + (from - row.base) * cell + 1.5, y + 2.5, (to - from + 1) * cell - 3.0, line - 5.0);
-			p.setPen(QPen(colour.isValid() ? colour : c.border, 1));
-			p.setBrush(colour.isValid() ? chipFill(colour, c.surface, dark) : c.surface2);
+			const double alpha = !anyHovered ? rest : isHovered ? hot : dim;
+			QColor fill = colour.isValid() ? chipFill(colour, c.surface, alpha) : c.surface2;
+			if (!colour.isValid() && anyHovered && !isHovered) fill = blend(c.surface2, c.surface, CHIP_ALPHA_DIM);
+			p.setPen(Qt::NoPen);
+			p.setBrush(fill);
 			p.drawRoundedRect(chip, 4, 4);
 			if (regKey(d) == selected_) selectedChip = chip;
-			if (regKey(d) == hovered_) hoveredChips << chip;
+			if (isHovered) hoveredChips << qMakePair(chip, colour.isValid() ? colour : c.muted);
 		}
-		/* the register under the mouse: all its bytes ringed (its decode line lit too) */
-		for (const QRectF &chip : hoveredChips) {
-			p.setPen(QPen(c.accent, 1));
+		for (const auto &chip : hoveredChips) {
+			p.setPen(QPen(chip.second, 1.5));
 			p.setBrush(Qt::NoBrush);
-			p.drawRoundedRect(chip.adjusted(-1, -1, 1, 1), 5, 5);
+			p.drawRoundedRect(chip.first.adjusted(-1, -1, 1, 1), 5, 5);
 		}
 		if (!selectedChip.isNull()) {
 			p.setPen(QPen(c.accent, 2));
@@ -788,8 +1108,9 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 		p.setRenderHint(QPainter::Antialiasing, false);
 		for (int column = 0; column < 16; column++) {
 			const int offset = row.base + column - int(b.addr);
+			if (offset >= b.size) break; /* after the block: the card's surface, nothing invented */
 			const QRect rect(left + column * cell, y, cell, line);
-			if (offset < 0 || offset >= b.size || !answered) {
+			if (offset < 0 || !answered) {
 				p.setPen(c.muted);
 				p.drawText(rect, Qt::AlignCenter, QStringLiteral("··"));
 				continue;
@@ -800,37 +1121,44 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	}
 }
 
-/* One line per register, in the row it starts in: its dot, its name, its value; each elided past its room (the whole
- * line is the tooltip). The selected register's line is bold. */
+/* One line per register, placed by the flow (relayout): its dot, its name, its value; each elided past its room (the
+ * whole line is the tooltip). The selected register's line is bold; the hovered one is filled with its colour's tint
+ * (the chip's own), its dot larger and its name bold, so the chip and its line light together. */
 void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 	Q_UNUSED(at);
 	const ThemeColors &c = Theme::colors();
-	const QFontMetrics fm = fontMetrics();
-	const int nameWidth = fm.horizontalAdvance(QLatin1Char('M')) * NAME_CHARS;
-	const int valueWidth = fm.horizontalAdvance(QLatin1Char('M')) * VALUE_CHARS;
+	const bool dark = Theme::isDark();
+	const int names = nameWidth(), values = valueWidth();
 	const DumpBlock &b = blocks_[i];
 	const Card &card = cards_[i];
 	for (int r = 0; r < card.regs.size(); r++) {
 		const QRect rect = decodeRect(i, r);
 		if (rect.isEmpty()) continue;
 		const RegDef &d = defs_[card.regs[r]];
+		const bool isHovered = regKey(d) == hovered_, isSelected = regKey(d) == selected_;
 		const QColor colour = card.colours[r].isValid() ? card.colours[r] : c.muted;
-		if (regKey(d) == hovered_) p.fillRect(rect, blend(c.accent, c.surface, 0.14));
 		p.setRenderHint(QPainter::Antialiasing, true);
 		p.setPen(Qt::NoPen);
+		if (isHovered) {
+			p.setBrush(card.colours[r].isValid() ? chipFill(colour, c.surface, chipAlpha(dark)) : c.surface2);
+			p.drawRoundedRect(QRectF(rect).adjusted(-4, 1, 0, -1), 4, 4);
+		}
 		p.setBrush(colour);
-		p.drawEllipse(QPointF(rect.left() + 4.5, rect.center().y() + 0.5), 4, 4);
+		const double radius = isHovered ? 5 : 4;
+		p.drawEllipse(QPointF(rect.left() + 4.5, rect.center().y() + 0.5), radius, radius);
 		p.setRenderHint(QPainter::Antialiasing, false);
-		QFont f = font();
-		f.setBold(regKey(d) == selected_);
-		p.setFont(f);
-		const QFontMetrics lineFm(f);
+		QFont nameFont = font();
+		nameFont.setBold(isSelected || isHovered);
+		QFont valueFont = font();
+		valueFont.setBold(isSelected);
 		const QByteArray raw = b.data.size() >= b.size ? b.data.mid(d.addr - b.addr, d.size) : QByteArray();
 		p.setPen(c.text);
-		p.drawText(QRect(rect.left() + 14, rect.top(), nameWidth, rect.height()), LEFT,
-				lineFm.elidedText(d.name, Qt::ElideRight, nameWidth - 8));
-		p.drawText(QRect(rect.left() + 14 + nameWidth, rect.top(), valueWidth, rect.height()), LEFT,
-				lineFm.elidedText(decodeValue(d, raw), Qt::ElideRight, valueWidth));
+		p.setFont(nameFont);
+		p.drawText(QRect(rect.left() + 14, rect.top(), names, rect.height()), LEFT,
+				QFontMetrics(nameFont).elidedText(d.name, Qt::ElideRight, names - 8));
+		p.setFont(valueFont);
+		p.drawText(QRect(rect.left() + 14 + names, rect.top(), values, rect.height()), LEFT,
+				QFontMetrics(valueFont).elidedText(decodeValue(d, raw), Qt::ElideRight, values));
 		p.setFont(font());
 	}
 }
@@ -853,7 +1181,7 @@ void DumpView::drawGlow(QPainter &p, int i) const {
 	p.setRenderHint(QPainter::Antialiasing, false);
 }
 
-/* ------------------------------------------------------------------ the mouse */
+/* ------------------------------------------------------------------ the mouse and the keys */
 
 void DumpView::mouseMoveEvent(QMouseEvent *e) {
 	setHovered(registerAt(e->position().toPoint()));
@@ -862,11 +1190,14 @@ void DumpView::mouseMoveEvent(QMouseEvent *e) {
 
 /* a click picks the register under it (here and in the Registers tab); the menu is the right-click's */
 void DumpView::mousePressEvent(QMouseEvent *e) {
-	const RegKey key = e->button() == Qt::LeftButton ? registerAt(e->position().toPoint()) : NO_REGISTER;
+	const QPoint pos = e->position().toPoint();
+	const RegKey key = e->button() == Qt::LeftButton ? registerAt(pos) : NO_REGISTER;
 	if (key == NO_REGISTER) {
 		QAbstractScrollArea::mousePressEvent(e);
 		return;
 	}
+	for (int i = 0; i < cards_.size(); i++)
+		if (cardRect(i).contains(pos)) selectedCard_ = i;
 	select(key);
 	emit registerPicked(key, false);
 }
@@ -883,34 +1214,192 @@ void DumpView::mouseDoubleClickEvent(QMouseEvent *e) {
 
 /* the register under the mouse picked first, so the menu and the Registers tab speak of the same one */
 void DumpView::contextMenuEvent(QContextMenuEvent *e) {
+	if (e->reason() == QContextMenuEvent::Keyboard) {
+		/* the Menu key or Shift+F10: the selected register's menu, at its chip. The key press opens it (keyPressEvent);
+		 * the system's own context menu event for the same key, if one follows, is not a second menu */
+		if (keyMenu_.isValid() && keyMenu_.elapsed() < 500) return;
+		keyMenu_.start();
+		const int card = currentCard();
+		QPoint at = viewport()->rect().center();
+		if (card >= 0 && selected_ != NO_REGISTER)
+			at = byteRect(card, regKeyAddr(selected_) - blocks_[card].addr).bottomLeft();
+		emit menuRequested(selected_, card, viewport()->mapToGlobal(at));
+		return;
+	}
 	const RegKey key = registerAt(e->pos());
 	int card = -1;
 	for (int i = 0; i < cards_.size() && card < 0; i++)
 		if (cardRect(i).contains(e->pos())) card = i;
 	if (key != NO_REGISTER) {
+		selectedCard_ = card;
 		select(key);
 		emit registerPicked(key, false);
 	}
 	emit menuRequested(key, card >= 0 ? card : currentCard(), e->globalPos());
 }
 
+/* Up and Left the register before, Down and Right the next, across the cards (the first key without a selection
+ * picks the first register); each move is a click's (the Registers tab follows), scrolled into view. Enter goes to
+ * the Registers tab on it. The Menu key and Shift+F10 come as a context menu event (contextMenuEvent). */
+void DumpView::keyPressEvent(QKeyEvent *e) {
+	const int key = e->key();
+	if (key == Qt::Key_Menu || (key == Qt::Key_F10 && e->modifiers() == Qt::ShiftModifier)) {
+		const QPoint centre = viewport()->rect().center();
+		QContextMenuEvent menu(QContextMenuEvent::Keyboard, centre, viewport()->mapToGlobal(centre), e->modifiers());
+		contextMenuEvent(&menu);
+		return;
+	}
+	if (key == Qt::Key_Return || key == Qt::Key_Enter) {
+		if (selected_ != NO_REGISTER) emit registerPicked(selected_, true);
+		return;
+	}
+	const bool back = key == Qt::Key_Up || key == Qt::Key_Left, forth = key == Qt::Key_Down || key == Qt::Key_Right;
+	if (!back && !forth) {
+		QAbstractScrollArea::keyPressEvent(e);
+		return;
+	}
+	QVector<QPair<int, int>> order; /* every register of every card, in the cards' order */
+	for (int i = 0; i < cards_.size(); i++)
+		for (int r = 0; r < cards_[i].regs.size(); r++) order << qMakePair(i, r);
+	if (order.isEmpty()) return;
+	int at = -1;
+	const int card = currentCard();
+	for (int k = 0; k < order.size() && at < 0; k++)
+		if (order[k].first == card && regKey(defs_[cards_[card].regs[order[k].second]]) == selected_) at = k;
+	const int next = at < 0 ? 0 : std::clamp(at + (forth ? 1 : -1), 0, int(order.size()) - 1);
+	const RegKey picked = regKey(defs_[cards_[order[next].first].regs[order[next].second]]);
+	selectedCard_ = order[next].first;
+	select(picked);
+	ensureVisible(selectedCard_, picked);
+	emit registerPicked(picked, false);
+}
+
 /* ------------------------------------------------------------------ tooltips */
+
+/* A text's lines broken at their words so none is wider than width (a tooltip shows its text's lines as they come). */
+QString DumpView::wrapTip(const QString &text, int width) const {
+	const QFontMetrics fm(QToolTip::font());
+	QStringList out;
+	for (const QString &line : text.split(QLatin1Char('\n'))) {
+		if (fm.horizontalAdvance(line) <= width) {
+			out << line;
+			continue;
+		}
+		QString current;
+		for (const QString &word : line.split(QLatin1Char(' '))) {
+			const QString longer = current.isEmpty() ? word : current + QLatin1Char(' ') + word;
+			if (!current.isEmpty() && fm.horizontalAdvance(longer) > width) {
+				out << current;
+				current = word;
+			} else {
+				current = longer;
+			}
+		}
+		out << current;
+	}
+	return out.join(QLatin1Char('\n'));
+}
+
+QRect DumpView::tipRoom(int card) const {
+	const QRect rect = cardRect(card);
+	const int left = rect.left() + PAD, right = decodeLeft() - TIP_GAP;
+	return QRect(left, rect.top(), std::max(0, right - left), rect.height());
+}
+
+/* The chip's tooltip goes under its row, from the chip's left, moved left so that it ends before the decode list;
+ * a decode line's under the line; a field's under its column. Its size from the tooltip's font and chrome. */
+QRect DumpView::tipPlace(const QPoint &pos) const {
+	const QString text = toolTipAt(pos);
+	if (text.isEmpty()) return {};
+	const QFontMetrics fm(QToolTip::font());
+	const QSize size = fm.boundingRect(QRect(0, 0, 4000, 4000), Qt::AlignLeft | Qt::AlignTop, text).size()
+			+ QSize(TIP_CHROME, TIP_CHROME);
+	for (int i = 0; i < cards_.size(); i++) {
+		if (!cardRect(i).contains(pos)) continue;
+		for (int line = 0; line < decodeLines(i); line++) {
+			const QRect rect = decodeRect(i, line);
+			if (rect.contains(pos)) return QRect(QPoint(rect.left(), rect.bottom() + 4), size);
+		}
+		break;
+	}
+	int card = -1, offset = 0;
+	if (byteAt(pos, card, offset)) {
+		const QRect cell = byteRect(card, offset);
+		int chipLeft = cell.left();
+		const int reg = offset >= 0 ? regAt(card, offset) : -1;
+		if (reg >= 0) {
+			const RegDef &d = defs_[cards_[card].regs[reg]];
+			const int rowBase = (int(blocks_[card].addr) + offset) & ~0xF;
+			chipLeft = byteRect(card, std::max(int(d.addr), rowBase) - blocks_[card].addr).left();
+		}
+		const QRect room = tipRoom(card);
+		const int left = std::max(room.left(), std::min(chipLeft, room.right() + 1 - size.width()));
+		return QRect(QPoint(left, cell.bottom() + 4), size);
+	}
+	Side side = Request;
+	Field field = Start;
+	if (fieldAt(pos, card, side, field)) {
+		const QRect rect = fieldRect(card, side, field);
+		return QRect(QPoint(rect.left(), rect.bottom() + 4), size);
+	}
+	return {};
+}
 
 bool DumpView::viewportEvent(QEvent *e) {
 	if (e->type() == QEvent::Leave) setHovered(NO_REGISTER);
 	if (e->type() != QEvent::ToolTip) return QAbstractScrollArea::viewportEvent(e);
 	const auto *help = static_cast<QHelpEvent *>(e);
-	const QString tip = toolTipAt(help->pos());
+	const QPoint pos = help->pos();
+	const QString tip = toolTipAt(pos);
+	const QRect place = tipPlace(pos);
 	if (tip.isEmpty()) {
 		QToolTip::hideText();
 		e->ignore();
-	} else {
+		return true;
+	}
+	if (place.isNull()) {
 		QToolTip::showText(help->globalPos(), tip, viewport());
+		return true;
+	}
+	/* shown with the thing's rect, so it goes when the mouse leaves it: the chip's cells in this row, the line, the
+	 * column */
+	QRect hot;
+	int card = -1, offset = 0;
+	Side side = Request;
+	Field field = Start;
+	for (int i = 0; i < cards_.size() && hot.isNull(); i++)
+		for (int line = 0; line < decodeLines(i) && hot.isNull(); line++)
+			if (decodeRect(i, line).contains(pos)) hot = decodeRect(i, line);
+	if (hot.isNull() && byteAt(pos, card, offset)) {
+		hot = byteRect(card, offset);
+		const int reg = offset >= 0 ? regAt(card, offset) : -1;
+		if (reg >= 0) {
+			const RegDef &d = defs_[cards_[card].regs[reg]];
+			const int rowBase = (int(blocks_[card].addr) + offset) & ~0xF;
+			hot = byteRect(card, std::max(int(d.addr), rowBase) - blocks_[card].addr)
+						  .united(byteRect(card, std::min(int(d.addr) + d.size, rowBase + 16) - 1 - blocks_[card].addr));
+		}
+	} else if (hot.isNull() && fieldAt(pos, card, side, field)) {
+		hot = fieldRect(card, side, field);
+	}
+	const QPoint global = viewport()->mapToGlobal(place.topLeft());
+	QToolTip::showText(global, tip, viewport(), hot);
+	/* Qt puts a tooltip a cursor's height under the point it is given: moved to its place, and a chip's kept left of
+	 * the decode list by its real width */
+	int rightEdge = -1;
+	if (byteAt(pos, card, offset)) rightEdge = viewport()->mapToGlobal(QPoint(tipRoom(card).right(), 0)).x();
+	for (QWidget *top : QApplication::topLevelWidgets()) {
+		if (!top->isVisible() || !top->inherits("QTipLabel")) continue;
+		QPoint at = global;
+		if (rightEdge >= 0 && at.x() + top->width() - 1 > rightEdge)
+			at.setX(std::max(viewport()->mapToGlobal(QPoint(tipRoom(card).left(), 0)).x(), rightEdge + 1 - top->width()));
+		top->move(at);
 	}
 	return true;
 }
 
-/* a decode line's whole text; a byte's words (and why its card is not live); a row's address; else the card's reason */
+/* a decode line's whole text; a byte's words (and why its card is not live), wrapped to the room left of the decode
+ * list; a field's name, meaning and the protocol's words; a row's address; else the card's reason */
 QString DumpView::toolTipAt(const QPoint &pos) const {
 	QString tip;
 	for (int i = 0; i < cards_.size() && tip.isEmpty(); i++) {
@@ -923,7 +1412,12 @@ QString DumpView::toolTipAt(const QPoint &pos) const {
 			tip = byteTip(i, offset);
 			const QString reason = notLiveReason(i);
 			if (!reason.isEmpty()) tip += QLatin1Char('\n') + reason;
+			tip = wrapTip(tip, tipRoom(i).width() - TIP_CHROME);
 		}
+		Side side = Request;
+		Field field = Start;
+		if (tip.isEmpty() && fieldAt(pos, card, side, field) && card == i)
+			tip = fieldLabel(i, side, field) + QLatin1Char('\n') + fieldTip(i, side, field);
 		for (const Row &row : cards_[i].rows) {
 			const QRect address(cardRect(i).left() + PAD, cardRect(i).top() + row.top,
 					gridLeft() - CARD_GAP - PAD, lineHeight());

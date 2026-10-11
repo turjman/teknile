@@ -3,8 +3,10 @@
 #include "ui/dump_tab.h"
 
 #include <QButtonGroup>
+#include <QCheckBox>
 #include <QClipboard>
 #include <QComboBox>
+#include <QFrame>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -16,12 +18,14 @@
 #include <algorithm>
 
 #include "model/register_model.h"
+#include "ui/elided_label.h"
 
 namespace {
 
 const QString COLOUR_KEY = QStringLiteral("dump/colour");
 const QString COLOUR_PLOTTED = QStringLiteral("plotted");
 const QString COLOUR_ALL = QStringLiteral("all");
+const QString FIELDS_KEY = QStringLiteral("dump/fields");
 
 } // namespace
 
@@ -46,8 +50,8 @@ DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model
 	followButton_->setToolTip(tr("Follow: every card shows its block's latest reply, at the pace of Show values"));
 	holdButton_ = segmentButton(tr("Hold"), "last");
 	holdButton_->setObjectName(QStringLiteral("dumpHold"));
-	holdButton_->setToolTip(tr("Hold: the cards keep the bytes they show now (an amber frame says they are not live); "
-			"Follow shows the replies again"));
+	holdButton_->setToolTip(tr("Hold: the cards keep the bytes they show now (an amber stripe and a banner say they are "
+			"not live); Follow shows the replies again"));
 	auto *followGroup = new QButtonGroup(this);
 	followGroup->addButton(followButton_);
 	followGroup->addButton(holdButton_);
@@ -74,6 +78,35 @@ DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model
 		view_->setColourMode(on ? DumpView::PlottedOnly : DumpView::AllRegisters);
 		QSettings().setValue(COLOUR_KEY, on ? COLOUR_PLOTTED : COLOUR_ALL);
 	});
+
+	/* Fields: the frames broken down for those who are learning the frame; off, each frame one line for those who
+	 * know it (the names still in the bytes' tooltips). One choice for the tab, saved: the cards stay alike */
+	fields_ = new QCheckBox(tr("Fields"));
+	fields_->setObjectName(QStringLiteral("dumpFields"));
+	fields_->setToolTip(tr("The frame's fields named under their bytes; off: each frame on one line, the names in the "
+			"bytes' tooltips"));
+	fields_->setCursor(Qt::PointingHandCursor);
+	fields_->setChecked(QSettings().value(FIELDS_KEY, true).toBool());
+	view_->setFields(fields_->isChecked());
+	connect(fields_, &QCheckBox::toggled, this, [this](bool on) {
+		view_->setFields(on);
+		QSettings().setValue(FIELDS_KEY, on);
+	});
+
+	/* the whole tab's reason the cards are not live, said once over them (each card's own reasons are its stripe
+	 * and its label) */
+	banner_ = new ElidedLabel;
+	banner_->setObjectName(QStringLiteral("dumpBanner"));
+	auto *bannerLine = new QFrame; /* a line in the same amber under it: the banner reads apart from the cards */
+	bannerLine->setObjectName(QStringLiteral("dumpBannerLine"));
+	bannerLine->setFixedHeight(1);
+	bannerBox_ = new QWidget;
+	auto *bannerLayout = new QVBoxLayout(bannerBox_);
+	bannerLayout->setContentsMargins(0, 0, 0, 0);
+	bannerLayout->setSpacing(6);
+	bannerLayout->addWidget(banner_);
+	bannerLayout->addWidget(bannerLine);
+	bannerBox_->hide();
 
 	/* the right-click's items on a button: the selected register's, and its card's (or the first card in view) */
 	copyButton_ = new QPushButton(tr("Copy"));
@@ -113,13 +146,17 @@ DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model
 	colourPair->addWidget(allColoursButton_);
 	colourPair->addWidget(plottedColoursButton_);
 	bar->addLayout(colourPair);
+	bar->addSpacing(12);
+	bar->addWidget(fields_);
 	bar->addStretch(1);
 	bar->addWidget(copyButton_);
 	auto *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(0, 12, 0, 0);
 	layout->setSpacing(10);
 	layout->addLayout(bar);
+	layout->addWidget(bannerBox_);
 	layout->addWidget(view_, 1);
+	setTabOrder(copyButton_, view_); /* the keys work the cards after the toolbar */
 	updateEmptyText();
 }
 
@@ -166,12 +203,14 @@ void DumpTab::setFollow(bool follow) {
 	followButton_->setChecked(follow);
 	holdButton_->setChecked(!follow);
 	view_->setHold(!follow);
+	updateBanner();
 }
 
 void DumpTab::setConnected(bool connected) {
 	connected_ = connected;
 	view_->setConnected(connected);
 	updateEmptyText();
+	updateBanner();
 }
 
 void DumpTab::setDevices(const QVector<PickerDevice> &devices) {
@@ -198,16 +237,19 @@ void DumpTab::showRegister(RegKey key) {
 	view_->scrollToRegister(key);
 }
 
-/* The cards in their order: the manual read at the top (the answer the user asked for), then the blocks of the device
- * shown and the fast streams' notes by address. */
+/* The cards in their order: the manual read and the last write at the top (what the user asked for), then the blocks
+ * of the device shown and the fast streams' notes by address. */
 void DumpTab::compose() {
 	QVector<DumpBlock> blocks;
 	for (const DumpBlock &b : engineBlocks_ + streamNotes_)
 		if (!bus_ || b.slave == slave_) blocks << b;
-	std::stable_sort(blocks.begin(), blocks.end(), [](const DumpBlock &a, const DumpBlock &b) { return a.addr < b.addr; });
+	std::stable_sort(blocks.begin(), blocks.end(), [](const DumpBlock &a, const DumpBlock &b) {
+		return std::make_pair(a.kind != DumpBlock::Write, a.addr) < std::make_pair(b.kind != DumpBlock::Write, b.addr);
+	});
 	if (hasManual_) blocks.prepend(manual_);
 	view_->setBlocks(blocks);
 	updateEmptyText();
+	updateBanner();
 }
 
 void DumpTab::updateEmptyText() {
@@ -216,6 +258,21 @@ void DumpTab::updateEmptyText() {
 				 "bytes, decoded by the map. A READ sent from the Monitor shows here too.")
 			: tr("Not connected. Once the link is up, each block the polling reads shows here as a card: the request, "
 				 "the reply and its bytes, decoded by the map."));
+}
+
+QString DumpTab::bannerText() const {
+	if (view_->blocks().isEmpty()) return {}; /* no card: the empty view says what there is */
+	if (view_->hold())
+		return tr("Held at %1 · the cards show the bytes of that moment; Follow shows the replies again")
+				.arg(view_->heldAt());
+	if (!connected_) return tr("The link is closed · the cards show the last bytes read");
+	return {};
+}
+
+void DumpTab::updateBanner() {
+	const QString text = bannerText();
+	banner_->setFullText(text);
+	bannerBox_->setVisible(!text.isEmpty());
 }
 
 int DumpTab::rowOf(RegKey key) const {

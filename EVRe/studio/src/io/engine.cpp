@@ -222,6 +222,7 @@ bool IoEngine::takeDumps(QVector<DumpReply> &blocks) {
 	if (!dumpsMoved_) return false;
 	dumpsMoved_ = false;
 	blocks = dumps_.values();
+	if (lastWrite_.write) blocks << lastWrite_;
 	lock.unlock();
 	std::sort(blocks.begin(), blocks.end(), [](const DumpReply &a, const DumpReply &b) {
 		return std::tie(a.slave, a.addr, a.autoSend) < std::tie(b.slave, b.addr, b.autoSend);
@@ -249,12 +250,35 @@ void IoEngine::keepDump(const Block &block, const evre::Result &r) {
 	reply.single = block.single;
 	reply.time = now();
 	reply.version = ++dumpVersion_;
+	reply.errorCode = r.ok ? 0 : r.error;
+	reply.timedOut = !r.ok && r.timedOut;
 	if (r.ok) {
 		reply.data = r.data;
 		reply.error.clear();
 	} else {
 		reply.error = r.message;
 	}
+	dumpsMoved_ = true;
+}
+
+/* The last write, for the Dump's write card: its bytes, how it went out and what came back (a WRITE_ACK's answer or
+ * the device's refusal; a WRITE has none). Kept with the tab hidden too: the write was made on another tab. */
+void IoEngine::keepWrite(uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack, const evre::Result &r) {
+	QMutexLocker lock(&crossThreadMutex_);
+	DumpReply &reply = lastWrite_;
+	reply = DumpReply();
+	reply.write = true;
+	reply.ack = ack;
+	reply.slave = tableSlave(slave);
+	reply.wireSlave = slave;
+	reply.addr = addr;
+	reply.size = uint16_t(bytes.size());
+	reply.data = bytes;
+	reply.time = now();
+	reply.version = ++dumpVersion_;
+	reply.errorCode = r.ok ? 0 : r.error;
+	reply.timedOut = !r.ok && r.timedOut;
+	if (!r.ok) reply.error = r.message;
 	dumpsMoved_ = true;
 }
 
@@ -299,6 +323,11 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		const QVector<EngineDevice> &devices) {
 	table_.setDefs(defs, generation);
 	deviceName_ = deviceName;
+	{
+		QMutexLocker lock(&crossThreadMutex_); /* the Dump's last write was the map before's */
+		dumpsMoved_ = dumpsMoved_ || lastWrite_.write;
+		lastWrite_ = DumpReply();
+	}
 	const uint8_t oneDevice = isBus() ? 0 : target(0); /* where the one device was, before the new devices */
 	devices_ = devices;
 	/* Several devices now: none may send by itself. The window switched it off already; this makes sure, and when
@@ -1490,15 +1519,19 @@ void IoEngine::write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray 
 		return;
 	}
 	if (!ack) {
-		master_->writeNoAckTo(slave, addr, bytes, [this, id](const evre::Result &r) { emit writeDone(id, r.ok, r.message); });
+		master_->writeNoAckTo(slave, addr, bytes, [this, id, slave, addr, bytes](const evre::Result &r) {
+			keepWrite(slave, addr, bytes, false, r);
+			emit writeDone(id, r.ok, r.message);
+		});
 		return;
 	}
 	/* with one device, a write to another slave (the Monitor) is not that device's: no read back into the table */
 	const bool ours = isBus() || slave == master_->slave();
-	master_->writeTo(slave, addr, bytes, [this, id, ours, table = tableSlave(slave), addr, size = int(bytes.size())](
+	master_->writeTo(slave, addr, bytes, [this, id, ours, table = tableSlave(slave), addr, bytes, slave](
 			const evre::Result &r) {
+		keepWrite(slave, addr, bytes, true, r);
 		emit writeDone(id, r.ok, r.message);
-		if (r.ok && ours) readBack(table, addr, size);
+		if (r.ok && ours) readBack(table, addr, int(bytes.size()));
 	});
 }
 
