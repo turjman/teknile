@@ -2,14 +2,18 @@
 /* The Dump tab's picture: see dump_view.h. */
 #include "ui/dump_view.h"
 
+#include <QContextMenuEvent>
 #include <QHelpEvent>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QScrollBar>
 #include <QTime>
+#include <QTimer>
 #include <QToolTip>
 #include <algorithm>
 
 #include "evre/frame.h"
+#include "model/register_model.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 
@@ -33,6 +37,12 @@ QString ageText(double seconds) {
 	return QStringLiteral("%1 s").arg(seconds, 0, 'f', seconds < 100 ? 1 : 0);
 }
 
+/* a read's place in the glow's memory: the same read again (its kind, device and address) is compared with the last */
+quint32 readId(const DumpBlock &b) { return (quint32(b.kind) << 24) | (quint32(b.slave) << 16) | b.addr; }
+
+constexpr qint64 NEVER_CHANGED = -1000000; /* a byte that has not changed since it was first shown */
+constexpr int GLOW_TICK_MS = 50;           /* the glow fades in steps this long, only while a byte glows */
+
 QColor blend(const QColor &over, const QColor &under, double alpha) {
 	return QColor::fromRgbF(float(over.redF() * alpha + under.redF() * (1 - alpha)),
 			float(over.greenF() * alpha + under.greenF() * (1 - alpha)),
@@ -44,18 +54,71 @@ QColor blend(const QColor &over, const QColor &under, double alpha) {
 DumpView::DumpView(QWidget *parent) : QAbstractScrollArea(parent) {
 	/* addresses, hex, names and values in their own order in any language (the grid's, not the window's) */
 	setLayoutDirection(Qt::LeftToRight);
+	viewport()->setLayoutDirection(Qt::LeftToRight); /* it is the one painted on */
 	setFrameShape(QFrame::NoFrame);
 	viewport()->setMouseTracking(true);
 	viewport()->setAutoFillBackground(false);
 	setFont(monospaceFont());
 	drawnDark_ = Theme::isDark();
+	glowClock_.start();
+	glowTimer_ = new QTimer(this);
+	glowTimer_->setInterval(GLOW_TICK_MS);
+	connect(glowTimer_, &QTimer::timeout, this, [this] {
+		if (!glowing()) glowTimer_->stop(); /* one more paint takes the last rings away */
+		viewport()->update();
+	});
 }
 
 /* ------------------------------------------------------------------- inputs */
 
 void DumpView::setBlocks(const QVector<DumpBlock> &blocks) {
+	const QVector<DumpBlock> was = blocks_;
 	blocks_ = blocks;
+	noteChanges(was);
 	relayout();
+	scrollToPending();
+}
+
+/* The bytes of a read that differ from its last answer start glowing; a read shown for the first time does not glow
+ * (nothing changed, it only came), and reads gone are forgotten. */
+void DumpView::noteChanges(const QVector<DumpBlock> &was) {
+	QHash<quint32, const DumpBlock *> before;
+	for (const DumpBlock &b : was) before.insert(readId(b), &b);
+	QHash<quint32, QVector<qint64>> kept;
+	const qint64 now = glowClock_.elapsed();
+	bool changed = false;
+	for (const DumpBlock &b : blocks_) {
+		const quint32 id = readId(b);
+		QVector<qint64> times = changedMs_.value(id);
+		if (times.size() != b.size) times = QVector<qint64>(b.size, NEVER_CHANGED);
+		const DumpBlock *old = before.value(id);
+		if (old && old->size == b.size && old->data.size() >= b.size && b.data.size() >= b.size) {
+			for (int i = 0; i < b.size; i++) {
+				if (old->data[i] == b.data[i]) continue;
+				times[i] = now;
+				changed = true;
+			}
+		}
+		kept.insert(id, times);
+	}
+	changedMs_ = kept;
+	if (changed && !glowTimer_->isActive()) glowTimer_->start();
+}
+
+double DumpView::glow(int card, int offset) const {
+	if (card < 0 || card >= blocks_.size()) return 0;
+	const QVector<qint64> times = changedMs_.value(readId(blocks_[card]));
+	if (offset < 0 || offset >= times.size()) return 0;
+	const qint64 since = glowClock_.elapsed() - times[offset];
+	return since >= RegisterModel::GLOW_MS ? 0.0 : 1.0 - double(since) / double(RegisterModel::GLOW_MS);
+}
+
+bool DumpView::glowing() const {
+	const qint64 now = glowClock_.elapsed();
+	for (const QVector<qint64> &times : changedMs_)
+		for (qint64 t : times)
+			if (now - t < RegisterModel::GLOW_MS) return true;
+	return false;
 }
 
 void DumpView::setRegisters(const QVector<RegDef> &defs) {
@@ -94,6 +157,41 @@ void DumpView::setStaleAfterMs(qint64 ms) { staleAfterMs_ = ms; }
 void DumpView::select(RegKey key) {
 	if (key == selected_) return;
 	selected_ = key;
+	viewport()->update();
+}
+
+void DumpView::setEmptyText(const QString &text) {
+	emptyText_ = text;
+	viewport()->update();
+}
+
+void DumpView::scrollToRegister(RegKey key) {
+	scrollTo_ = key;
+	scrollToPending();
+}
+
+/* The register's row in view, with its card's top when both fit: the request and reply lines say what it is. */
+void DumpView::scrollToPending() {
+	const int card = cardOf(scrollTo_);
+	if (card < 0) return;
+	const Card &c = cards_[card];
+	const int addr = regKeyAddr(scrollTo_);
+	int rowTop = c.rows.isEmpty() ? 0 : c.rows.first().top;
+	for (const Row &row : c.rows)
+		if (addr >= row.base && addr < row.base + 16) rowTop = row.top;
+	const int top = c.top + rowTop; /* in the content */
+	int value = c.top - CARD_GAP;
+	if (top + 2 * lineHeight() - value > viewport()->height()) value = top - 2 * lineHeight();
+	verticalScrollBar()->setValue(value);
+	scrollTo_ = NO_REGISTER;
+}
+
+void DumpView::setHovered(RegKey key) {
+	if (key == hovered_) return;
+	hovered_ = key;
+	/* a hand over what a click picks */
+	if (key == NO_REGISTER) viewport()->unsetCursor();
+	else viewport()->setCursor(Qt::PointingHandCursor);
 	viewport()->update();
 }
 
@@ -262,20 +360,51 @@ QString DumpView::decodeText(int card, int line) const {
 	return d.name + QStringLiteral("  ") + decodeValue(d, raw);
 }
 
+bool DumpView::byteAt(const QPoint &pos, int &card, int &offset) const {
+	const QPoint o = origin();
+	const int column = pos.x() - (o.x() + gridLeft());
+	if (column < 0 || column >= 16 * cellWidth()) return false;
+	for (int i = 0; i < cards_.size(); i++) {
+		if (!cardRect(i).contains(pos)) continue;
+		for (const Row &row : cards_[i].rows) {
+			const int top = o.y() + cards_[i].top + row.top; /* the bytes are on a row's first line */
+			if (pos.y() < top || pos.y() >= top + lineHeight()) continue;
+			card = i;
+			offset = row.base + column / cellWidth() - int(blocks_[i].addr);
+			return true;
+		}
+		return false;
+	}
+	return false;
+}
+
 RegKey DumpView::registerAt(const QPoint &pos) const {
 	for (int i = 0; i < cards_.size(); i++) {
 		if (!cardRect(i).contains(pos)) continue;
 		for (int line = 0; line < decodeLines(i); line++)
 			if (decodeRect(i, line).contains(pos)) return regKey(defs_[cards_[i].regs[line]]);
-		const DumpBlock &b = blocks_[i];
-		for (int offset = 0; offset < b.size; offset++) {
-			if (!byteRect(i, offset).contains(pos)) continue;
-			const int reg = regAt(i, offset);
-			return reg >= 0 ? regKey(defs_[cards_[i].regs[reg]]) : NO_REGISTER;
-		}
-		return NO_REGISTER;
+		break;
 	}
-	return NO_REGISTER;
+	int card = -1, offset = 0;
+	if (!byteAt(pos, card, offset) || offset < 0 || offset >= blocks_[card].size) return NO_REGISTER;
+	const int reg = regAt(card, offset);
+	return reg >= 0 ? regKey(defs_[cards_[card].regs[reg]]) : NO_REGISTER;
+}
+
+int DumpView::cardOf(RegKey key) const {
+	if (key == NO_REGISTER) return -1;
+	for (int i = 0; i < cards_.size(); i++)
+		for (int r : cards_[i].regs)
+			if (regKey(defs_[r]) == key) return i;
+	return -1;
+}
+
+int DumpView::currentCard() const {
+	const int card = cardOf(selected_);
+	if (card >= 0) return card;
+	for (int i = 0; i < cards_.size(); i++)
+		if (blocks_[i].kind != DumpBlock::FastStream && cardRect(i).bottom() >= 0) return i;
+	return -1;
 }
 
 QColor DumpView::chipColour(int card, const RegKey &key) const {
@@ -340,6 +469,106 @@ QString DumpView::notLiveReason(int card) const {
 	return {};
 }
 
+/* "0xD006 · SUPPLY_V · byte 2 of 4 · 0x40 (64) · raw FA 7E 40 41 · 12.031 V"; a gap byte "0xD016 · not mapped · 0x83";
+ * a byte of the row that no read covers "0xD088 · not read: no register here" */
+QString DumpView::byteTip(int card, int offset) const {
+	if (card < 0 || card >= blocks_.size()) return {};
+	const DumpBlock &b = blocks_[card];
+	const int addr = int(b.addr) + offset;
+	const QString dot = QStringLiteral(" · ");
+	QStringList parts { ltrPiece(addrText(uint16_t(addr))) };
+	const RegDef *def = nullptr;
+	for (const RegDef &d : defs_)
+		if (d.slave == b.slave && d.readable && addr >= d.addr && addr < int(d.addr) + d.size) def = &d;
+	if (offset < 0 || offset >= b.size) {
+		parts << (def ? ltrPiece(def->name) + dot + tr("not in this read") : tr("not read: no register here"));
+		return parts.join(dot);
+	}
+	const int reg = regAt(card, offset);
+	if (reg < 0) {
+		parts << tr("not mapped");
+	} else {
+		const RegDef &d = defs_[cards_[card].regs[reg]];
+		parts << ltrPiece(d.name) << tr("byte %1 of %2").arg(addr - d.addr + 1).arg(d.size);
+	}
+	if (b.data.size() < b.size) {
+		parts << tr("no reply yet");
+		return parts.join(dot);
+	}
+	const uchar byte = uchar(b.data[offset]);
+	parts << ltrPiece(QStringLiteral("0x%1 (%2)").arg(byteText(char(byte))).arg(byte));
+	if (reg >= 0) {
+		const RegDef &d = defs_[cards_[card].regs[reg]];
+		const QByteArray raw = b.data.mid(d.addr - b.addr, d.size);
+		parts << tr("raw %1").arg(ltrPiece(evre::hex(raw))) << ltrPiece(decodeValue(d, raw));
+	}
+	return parts.join(dot);
+}
+
+/* The clipboard's forms of a card: a register's bytes "FA 7E 40 41"; the block as hex rows "D000  10 27 00 00 ..."
+ * (aligned as the grid, a byte the read does not cover left blank); the block as a C array with each register's
+ * address and name before its bytes; the decoded lines "0xD004  SUPPLY_V  12.031 V". Empty: nothing answered yet. */
+QString DumpView::copyText(CopyKind kind, int card, RegKey key) const {
+	if (card < 0 || card >= blocks_.size()) return {};
+	const DumpBlock &b = blocks_[card];
+	const Card &c = cards_[card];
+	if (b.kind == DumpBlock::FastStream || b.data.size() < b.size) return {};
+	auto bytesOf = [&b](int from, int count, const QString &prefix, const QString &separator) {
+		QStringList out;
+		for (int i = from; i < from + count; i++) out << prefix + byteText(b.data[i]);
+		return out.join(separator);
+	};
+	QStringList lines;
+	switch (kind) {
+	case CopyRegisterBytes:
+		for (int r : c.regs)
+			if (regKey(defs_[r]) == key) return bytesOf(defs_[r].addr - b.addr, defs_[r].size, QString(), QStringLiteral(" "));
+		return {};
+	case CopyBlockHex:
+		for (const Row &row : c.rows) {
+			QStringList cells;
+			for (int column = 0; column < 16; column++) {
+				const int offset = row.base + column - int(b.addr);
+				cells << (offset >= 0 && offset < b.size ? byteText(b.data[offset]) : QStringLiteral("  "));
+			}
+			lines << (rowAddress(row.base) + QStringLiteral("  ") + cells.join(QLatin1Char(' '))).trimmed();
+		}
+		return lines.join(QLatin1Char('\n'));
+	case CopyBlockC: {
+		lines << QStringLiteral("static const uint8_t block_%1[%2] = {")
+						 .arg(QStringLiteral("%1").arg(b.addr, 4, 16, QLatin1Char('0')))
+						 .arg(b.size);
+		/* one line per register, its address and name first; the bytes no register maps on lines of their own */
+		int offset = 0;
+		while (offset < b.size) {
+			const int reg = regAt(card, offset);
+			int count = 1;
+			QString comment = QStringLiteral("/* %1 */ ").arg(addrText(uint16_t(b.addr + offset)));
+			if (reg >= 0) {
+				const RegDef &d = defs_[c.regs[reg]];
+				count = int(d.addr) + d.size - (int(b.addr) + offset);
+				comment = QStringLiteral("/* %1 %2 */ ").arg(addrText(d.addr), d.name);
+			} else {
+				while (offset + count < b.size && regAt(card, offset + count) < 0) count++;
+			}
+			lines << QStringLiteral("\t") + comment + bytesOf(offset, count, QStringLiteral("0x"), QStringLiteral(", "))
+							+ QLatin1Char(',');
+			offset += count;
+		}
+		lines << QStringLiteral("};");
+		return lines.join(QLatin1Char('\n'));
+	}
+	case CopyDecoded:
+		for (int r : c.regs) {
+			const RegDef &d = defs_[r];
+			lines << addrText(d.addr) + QStringLiteral("  ") + d.name + QStringLiteral("  ")
+							+ decodeValue(d, b.data.mid(d.addr - b.addr, d.size));
+		}
+		return lines.join(QLatin1Char('\n'));
+	}
+	return {};
+}
+
 /* the Registers tab's Value and Unit, or its Decoded text (an enum's name, the fields) with " · " between the parts */
 QString DumpView::decodeValue(const RegDef &def, const QByteArray &raw) const {
 	if (raw.size() != def.size) return QStringLiteral("—");
@@ -364,10 +593,18 @@ void DumpView::changeEvent(QEvent *e) {
 void DumpView::paintEvent(QPaintEvent *) {
 	paints_++;
 	QPainter p(viewport());
+	/* a painter starts in the application's direction: in Arabic a name drawn "left" sat at the right of its room, and
+	 * "8634 ms" read "ms 8634" */
+	p.setLayoutDirection(Qt::LeftToRight);
 	const ThemeColors &c = Theme::colors();
 	p.fillRect(viewport()->rect(), c.bg);
 	p.setFont(font());
 	const QRect view = viewport()->rect();
+	if (cards_.isEmpty() && !emptyText_.isEmpty()) {
+		p.setPen(c.muted);
+		p.drawText(view.adjusted(24, 24, -24, -24), Qt::AlignCenter | Qt::TextWordWrap, emptyText_);
+		return;
+	}
 	for (int i = 0; i < cards_.size(); i++) {
 		const QRect rect = cardRect(i);
 		if (rect.bottom() < view.top() || rect.top() > view.bottom()) continue;
@@ -454,6 +691,7 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 		if (hasBytes) drawBytes(p, bytesLeft, y, replyFrame(b).left(REPLY_HEADER), 1, REPLY_HEADER);
 	}
 	drawGrid(p, i, at);
+	drawGlow(p, i);
 	drawDecode(p, i, at);
 	/* the reply's CRC and end byte, closing it on a line of their own, at the column after the payload's last byte */
 	if (card.crcTop >= 0) {
@@ -486,13 +724,16 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const int line = lineHeight(), cell = cellWidth();
 	const int left = at.x() - CARD_GAP + gridLeft();
 	const bool answered = b.data.size() >= b.size;
+	const int viewHeight = viewport()->height();
 	for (const Row &row : card.rows) {
 		const int y = at.y() + row.top;
+		if (y + row.height < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
 		p.setPen(c.muted);
 		p.drawText(QRect(at.x() + PAD, y, left - at.x() - PAD, line), Qt::AlignLeft | Qt::AlignVCenter, rowAddress(row.base));
 		/* the chips of the registers with bytes in this row; the selected one's frame over them all */
 		p.setRenderHint(QPainter::Antialiasing, true);
 		QRectF selectedChip;
+		QVector<QRectF> hoveredChips;
 		for (int r = 0; r < card.regs.size(); r++) {
 			const RegDef &d = defs_[card.regs[r]];
 			const int from = std::max(int(d.addr), row.base), to = std::min(int(d.addr) + d.size, row.base + 16) - 1;
@@ -503,6 +744,13 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 			p.setBrush(colour.isValid() ? chipFill(colour, c.surface, dark) : c.surface2);
 			p.drawRoundedRect(chip, 4, 4);
 			if (regKey(d) == selected_) selectedChip = chip;
+			if (regKey(d) == hovered_) hoveredChips << chip;
+		}
+		/* the register under the mouse: all its bytes ringed (its decode line lit too) */
+		for (const QRectF &chip : hoveredChips) {
+			p.setPen(QPen(c.accent, 1));
+			p.setBrush(Qt::NoBrush);
+			p.drawRoundedRect(chip.adjusted(-1, -1, 1, 1), 5, 5);
 		}
 		if (!selectedChip.isNull()) {
 			p.setPen(QPen(c.accent, 2));
@@ -539,6 +787,7 @@ void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 		if (rect.isEmpty()) continue;
 		const RegDef &d = defs_[card.regs[r]];
 		const QColor colour = card.colours[r].isValid() ? card.colours[r] : c.muted;
+		if (regKey(d) == hovered_) p.fillRect(rect, blend(c.accent, c.surface, 0.14));
 		p.setRenderHint(QPainter::Antialiasing, true);
 		p.setPen(Qt::NoPen);
 		p.setBrush(colour);
@@ -558,9 +807,69 @@ void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 	}
 }
 
+/* A byte that changed: a thin ring in the accent colour, fading over GLOW_MS as the Registers tab's value does. */
+void DumpView::drawGlow(QPainter &p, int i) const {
+	const QVector<qint64> times = changedMs_.value(readId(blocks_[i]));
+	if (times.isEmpty()) return;
+	const qint64 now = glowClock_.elapsed();
+	const QColor accent = Theme::colors().accent;
+	p.setRenderHint(QPainter::Antialiasing, true);
+	p.setBrush(Qt::NoBrush);
+	for (int offset = 0; offset < times.size(); offset++) {
+		if (now - times[offset] >= RegisterModel::GLOW_MS) continue;
+		QColor ring = accent;
+		ring.setAlphaF(float(glow(i, offset)));
+		p.setPen(QPen(ring, 1.5));
+		p.drawRoundedRect(QRectF(byteRect(i, offset)).adjusted(2.5, 3.5, -2.5, -3.5), 3, 3);
+	}
+	p.setRenderHint(QPainter::Antialiasing, false);
+}
+
+/* ------------------------------------------------------------------ the mouse */
+
+void DumpView::mouseMoveEvent(QMouseEvent *e) {
+	setHovered(registerAt(e->position().toPoint()));
+	QAbstractScrollArea::mouseMoveEvent(e);
+}
+
+/* a click picks the register under it (here and in the Registers tab); the menu is the right-click's */
+void DumpView::mousePressEvent(QMouseEvent *e) {
+	const RegKey key = e->button() == Qt::LeftButton ? registerAt(e->position().toPoint()) : NO_REGISTER;
+	if (key == NO_REGISTER) {
+		QAbstractScrollArea::mousePressEvent(e);
+		return;
+	}
+	select(key);
+	emit registerPicked(key, false);
+}
+
+void DumpView::mouseDoubleClickEvent(QMouseEvent *e) {
+	const RegKey key = e->button() == Qt::LeftButton ? registerAt(e->position().toPoint()) : NO_REGISTER;
+	if (key == NO_REGISTER) {
+		QAbstractScrollArea::mouseDoubleClickEvent(e);
+		return;
+	}
+	select(key);
+	emit registerPicked(key, true);
+}
+
+/* the register under the mouse picked first, so the menu and the Registers tab speak of the same one */
+void DumpView::contextMenuEvent(QContextMenuEvent *e) {
+	const RegKey key = registerAt(e->pos());
+	int card = -1;
+	for (int i = 0; i < cards_.size() && card < 0; i++)
+		if (cardRect(i).contains(e->pos())) card = i;
+	if (key != NO_REGISTER) {
+		select(key);
+		emit registerPicked(key, false);
+	}
+	emit menuRequested(key, card >= 0 ? card : currentCard(), e->globalPos());
+}
+
 /* ------------------------------------------------------------------ tooltips */
 
 bool DumpView::viewportEvent(QEvent *e) {
+	if (e->type() == QEvent::Leave) setHovered(NO_REGISTER);
 	if (e->type() != QEvent::ToolTip) return QAbstractScrollArea::viewportEvent(e);
 	const auto *help = static_cast<QHelpEvent *>(e);
 	const QPoint pos = help->pos();
@@ -569,6 +878,13 @@ bool DumpView::viewportEvent(QEvent *e) {
 		if (!cardRect(i).contains(pos)) continue;
 		for (int line = 0; line < decodeLines(i) && tip.isEmpty(); line++)
 			if (decodeRect(i, line).contains(pos)) tip = decodeText(i, line);
+		int card = -1, offset = 0;
+		if (tip.isEmpty() && byteAt(pos, card, offset) && card == i) {
+			/* a byte's own words; a card not live says why under them */
+			tip = byteTip(i, offset);
+			const QString reason = notLiveReason(i);
+			if (!reason.isEmpty()) tip += QLatin1Char('\n') + reason;
+		}
 		for (const Row &row : cards_[i].rows) {
 			const QRect address(cardRect(i).left() + PAD, cardRect(i).top() + row.top,
 					gridLeft() - CARD_GAP - PAD, lineHeight());

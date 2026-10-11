@@ -32,6 +32,7 @@
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
 #include "ui/chart_widget.h"
+#include "ui/dump_tab.h"
 #include "ui/elided_label.h"
 #include "ui/event_log.h"
 #include "ui/frame_clock.h"
@@ -159,6 +160,7 @@ void MainWindow::applyStartup(const Startup &startup) {
 		logEvent(LogLevel::Warning, tr("--plot: %1 registers left off the chart: %2 at most at this rate")
 				.arg(leftOff).arg(model_->plotLimit()));
 	if (startup.tab == QLatin1String("chart")) tabs_->setCurrentIndex(TabChart);
+	else if (startup.tab == QLatin1String("dump")) tabs_->setCurrentIndex(TabDump);
 	else if (startup.tab == QLatin1String("monitor")) tabs_->setCurrentIndex(TabMonitor);
 	else if (startup.tab == QLatin1String("map")) tabs_->setCurrentIndex(TabMap);
 	if (startup.interval >= 0) sidebar_->setPollInterval(startup.interval);
@@ -332,6 +334,8 @@ void MainWindow::buildWindow() {
 	tabs_ = new QTabWidget;
 	tabs_->addTab(buildRegistersTab(), tr("Registers"));
 	tabs_->addTab(buildChartTab(), tr("Chart"));
+	tabs_->addTab(buildDumpTab(), tr("Dump"));
+	tabs_->setTabToolTip(TabDump, tr("The bytes of every read, decoded by the map"));
 	tabs_->addTab(buildMonitorTab(), tr("Monitor"));
 	tabs_->addTab(buildMapTab(), tr("Map editor"));
 	buildEventLog();
@@ -471,6 +475,44 @@ QWidget *MainWindow::buildChartTab() {
 	return chartTab_;
 }
 
+QWidget *MainWindow::buildDumpTab() {
+	dumpTab_ = new DumpTab(model_);
+	dumpTab_->view()->setClock([engine = engine_] { return engine->now(); }); /* the replies' times */
+	dumpTab_->view()->setRegisters(model_->definitions());
+	connect(dumpTab_, &DumpTab::dumpWanted, this, [this](bool on) {
+		engine_->post([engine = engine_, on] { engine->setDump(on); });
+	});
+	/* a click: the Registers tab's current row, without going there; a double-click or Show in Registers: there */
+	connect(dumpTab_, &DumpTab::registerPicked, this, [this](RegKey key, bool switchTab) {
+		const int row = rowOfKey(key);
+		if (row < 0) return;
+		if (switchTab) tabs_->setCurrentIndex(TabRegisters);
+		if (!registersTab_->selectRow(row))
+			statusBar()->showMessage(tr("%1 is hidden on the Registers tab by its search or groups")
+					.arg(model_->rows()[row].def.name), 4000);
+	});
+	connect(dumpTab_, &DumpTab::writeRequested, this, [this](RegKey key) {
+		const int row = rowOfKey(key);
+		if (row < 0) return;
+		tabs_->setCurrentIndex(TabRegisters);
+		if (!registersTab_->editValue(row))
+			statusBar()->showMessage(tr("%1 is hidden on the Registers tab by its search or groups")
+					.arg(model_->rows()[row].def.name), 4000);
+	});
+	/* the Registers tab's current register is the Dump's selected one; Show in dump goes there */
+	connect(registersTab_, &RegistersTab::currentRegisterChanged, this, [this](int row) {
+		dumpTab_->view()->select(row >= 0 && row < model_->rows().size() ? regKey(model_->rows()[row].def)
+																		 : DumpView::NO_REGISTER);
+	});
+	connect(registersTab_, &RegistersTab::showInDumpRequested, this, [this](int row) {
+		if (row < 0 || row >= model_->rows().size()) return;
+		tabs_->setCurrentIndex(TabDump);
+		dumpTab_->showRegister(regKey(model_->rows()[row].def));
+	});
+	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) { dumpTab_->setShown(tab == TabDump); });
+	return dumpTab_;
+}
+
 QWidget *MainWindow::buildMonitorTab() {
 	monitorTab_ = new MonitorTab(model_);
 	connect(monitorTab_, &MonitorTab::logFramesToggled, this, [this](bool on) {
@@ -547,6 +589,7 @@ void MainWindow::connectModel() {
 		pushMap();
 		updateMapInfo();
 		chartTab_->setRegisters(model_->definitions());
+		dumpTab_->view()->setRegisters(model_->definitions());
 	});
 }
 
@@ -642,6 +685,7 @@ void MainWindow::disconnectLink() {
 	connected_ = false;
 	offlineDevices_.clear();
 	registersTab_->setConnected(false);
+	dumpTab_->setConnected(false);
 	sidebar_->showDisconnected();
 	showBus();
 	autoSendCap_ = -1;
@@ -655,6 +699,7 @@ void MainWindow::onOpened(const QString &link) {
 	deviceInfo_.clear();
 	showDeviceInfo(); /* "not read yet" until the engine reads it */
 	registersTab_->setConnected(true);
+	dumpTab_->setConnected(true);
 	sidebar_->showConnected(link);
 	showBus();
 	autoSendCap_ = -1; /* until STATUS is read */
@@ -676,6 +721,7 @@ void MainWindow::onClosed(const QString &why) {
 	updateAutoSendOffer();
 	updateFastOffer(); /* and the fast streams wanted: their buttons keep their state */
 	registersTab_->setConnected(false);
+	dumpTab_->setConnected(false);
 	if (why.isEmpty()) sidebar_->showDisconnected();
 	else sidebar_->showLinkError(why);
 	if (wantConnected_ && sidebar_->autoReconnect()) {
@@ -1065,8 +1111,9 @@ void MainWindow::updateStaleAfter() {
 	const double interval = sidebar_->pollIntervalMs();
 	const int perSecond = valuePacer_.perSecond();
 	const qint64 copyGapMs = perSecond > 0 ? 1000 / perSecond : 0;
-	model_->setStaleAfterMs(copyGapMs
-			+ std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs()));
+	const qint64 staleAfterMs = copyGapMs + std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs());
+	model_->setStaleAfterMs(staleAfterMs);
+	dumpTab_->view()->setStaleAfterMs(staleAfterMs); /* the Dump's replies are stale when the table's values are */
 }
 
 void MainWindow::applyValuePace() {
@@ -1100,6 +1147,7 @@ void MainWindow::sync() {
 	qint64 nowMs = 0;
 	const bool copyValues = valuePacer_.due(valueClock_.elapsed());
 	if (copyValues) engine_->table().snapshot(values, generation, nowMs);
+	if (copyValues) syncDump();
 	if (copyValues && generation == mapGeneration_ && values.size() == model_->rows().size()) {
 		for (int row = 0; row < values.size(); row++) {
 			const RegValue &value = values[row];
@@ -1171,6 +1219,59 @@ void MainWindow::sync() {
 	int dropped = 0;
 	const QStringList frames = engine_->takeFrames(dropped);
 	monitorTab_->addFrames(frames, dropped);
+}
+
+/* The Dump tab follows at the values' pace: the replies that moved (only while it is shown and not held: the engine
+ * keeps them only then), a note for each fast stream switched on, and the chart's colour of each plotted register, so
+ * its chips, its dot and its line agree. One repaint a beat moves the replies' ages. */
+void MainWindow::syncDump() {
+	if (!dumpTab_->shown()) return;
+	QVector<IoEngine::DumpReply> replies;
+	if (dumpTab_->wantsReplies() && engine_->takeDumps(replies)) {
+		QVector<DumpBlock> blocks;
+		blocks.reserve(replies.size());
+		for (const IoEngine::DumpReply &r : replies) {
+			DumpBlock b;
+			b.kind = r.autoSend ? DumpBlock::AutoSend : DumpBlock::Read;
+			b.slave = r.slave;
+			b.wireSlave = r.wireSlave;
+			b.addr = r.addr;
+			b.size = r.size;
+			b.data = r.data;
+			b.time = r.time;
+			b.version = r.version;
+			b.single = r.single;
+			b.error = r.error;
+			b.rate = r.autoSend ? autoSendHz_ : 0;
+			const int device = isBus() ? deviceOfSlave(r.slave) : -1;
+			if (device >= 0) b.device = bus_.devices[device].name;
+			blocks << b;
+		}
+		dumpTab_->applyDumps(blocks);
+	}
+	QVector<DumpBlock> notes;
+	const QVector<StreamDef> &streams = doc_->map().streams;
+	for (int i = 0; !isBus() && i < std::min(int(streams.size()), sidebar_->fastStreamCount()); i++) {
+		if (!sidebar_->fastOn(i)) continue;
+		DumpBlock note;
+		note.kind = DumpBlock::FastStream;
+		note.addr = streams[i].addr;
+		note.stream = streams[i].name;
+		notes << note;
+	}
+	dumpTab_->setStreamNotes(notes);
+	QHash<RegKey, QColor> colours;
+	for (const ChartView::Info &line : chartTab_->view()->lines())
+		if (!ChartView::isFastKey(line.key) && line.key < MathLines::FIRST_CHART_KEY) colours.insert(RegKey(line.key), line.color);
+	dumpTab_->view()->setColours(colours);
+	dumpTab_->tick();
+}
+
+int MainWindow::rowOfKey(RegKey key) const {
+	const QVector<RegisterModel::Row> &rows = model_->rows();
+	for (int i = 0; i < rows.size(); i++)
+		if (regKey(rows[i].def) == key) return i;
+	return -1;
 }
 
 /* before the table takes the new value: reads of the register started failing, or work again */
@@ -1260,9 +1361,25 @@ bool MainWindow::confirmDangerWrite(const RegDef &def, const QString &text, cons
 	return confirmed(this, tr("Confirm write"), question, tr("Write"));
 }
 
+/* its answer in the Monitor, and as a card at the top of the Dump tab (the map's chips and decode on it) */
 void MainWindow::sendRawRead(quint8 slave, quint16 addr, quint16 count) {
-	engineRead(slave, addr, count, false, [this, addr](bool ok, const QByteArray &data, const QString &message, double ms) {
-		monitorTab_->showAnswer(addr, ok, data, message, ms);
+	engineRead(slave, addr, count, false, [this, slave, addr, count](bool ok, const QByteArray &data,
+			const QString &message, double ms) {
+		const bool inDump = ok && data.size() == count;
+		if (inDump) {
+			DumpBlock b;
+			b.kind = DumpBlock::Manual;
+			b.slave = isBus() ? slave : 0; /* one device: its map's registers are slave 0's */
+			b.wireSlave = slave;
+			b.addr = addr;
+			b.size = count;
+			b.data = data;
+			b.time = engine_->now();
+			const int device = isBus() ? deviceOfSlave(slave) : -1;
+			if (device >= 0) b.device = bus_.devices[device].name;
+			dumpTab_->showManualRead(b);
+		}
+		monitorTab_->showAnswer(addr, ok, data, message, ms, inDump);
 	});
 }
 

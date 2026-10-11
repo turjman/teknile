@@ -1737,6 +1737,133 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
 </context>
 <context>
+    <name>DumpTab</name>
+    <message>
+        <source>Device</source>
+        <translation>الجهاز</translation>
+    </message>
+    <message>
+        <source>The device whose reads the Dump shows: one device at a time</source>
+        <translation>الجهاز الذي تُعرض قراءاته في عرض الذاكرة: جهاز واحد في كل مرة</translation>
+    </message>
+    <message>
+        <source>Follow</source>
+        <translation>متابعة</translation>
+    </message>
+    <message>
+        <source>Follow: every card shows its block&apos;s latest reply, at the pace of Show values</source>
+        <translation>متابعة: تعرض كل بطاقة آخر رد لكتلتها، بوتيرة «عرض القيم»</translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation>تثبيت</translation>
+    </message>
+    <message>
+        <source>Hold: the cards keep the bytes they show now (an amber frame says they are not live); Follow shows the replies again</source>
+        <translation>تثبيت: تحتفظ البطاقات بالبايتات التي تعرضها الآن (يقول إطار كهرماني إنها ليست حية)؛ والمتابعة تعرض الردود من جديد</translation>
+    </message>
+    <message>
+        <source>All registers</source>
+        <translation>كل المسجّلات</translation>
+    </message>
+    <message>
+        <source>Every register&apos;s chips in a colour of its own; a plotted one in its chart colour</source>
+        <translation>شارات كل مسجّل بلون خاص به؛ والمسجّل المرسوم بلونه في المخطط</translation>
+    </message>
+    <message>
+        <source>Plotted</source>
+        <translation>المرسومة</translation>
+    </message>
+    <message>
+        <source>Only the plotted registers in colour (their chart colours); the others grey</source>
+        <translation>المسجّلات المرسومة وحدها ملوّنة (بألوانها في المخطط)؛ والبقية رمادية</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>The selected register and its block: Show in Registers, Plot, Write…, and the bytes or the decoded values to the clipboard. The same as a right-click on the cards.</source>
+        <translation>المسجّل المحدّد وكتلته: إظهار في المسجّلات، ورسم، وكتابة…، ونسخ البايتات أو القيم المفكوكة إلى الحافظة. مثل النقر بالزر الأيمن على البطاقات.</translation>
+    </message>
+    <message>
+        <source>Colour</source>
+        <translation>اللون</translation>
+    </message>
+    <message>
+        <source>Nothing read yet. Each block the polling reads shows here as a card: the request, the reply and its bytes, decoded by the map. A READ sent from the Monitor shows here too.</source>
+        <translation>لم يُقرأ شيء بعد. كل كتلة يقرؤها الاستطلاع تظهر هنا بطاقةً: الطلب، والرد وبايتاته، مفكوكةً بالخريطة. وقراءة READ تُرسل من المراقبة تظهر هنا أيضًا.</translation>
+    </message>
+    <message>
+        <source>Not connected. Once the link is up, each block the polling reads shows here as a card: the request, the reply and its bytes, decoded by the map.</source>
+        <translation>غير متصل. حين تقوم الوصلة، تظهر هنا كل كتلة يقرؤها الاستطلاع بطاقةً: الطلب، والرد وبايتاته، مفكوكةً بالخريطة.</translation>
+    </message>
+    <message>
+        <source>Click a register&apos;s chip or decode line first</source>
+        <translation>انقر على شارة مسجّل أو على سطر فك ترميزه أولًا</translation>
+    </message>
+    <message>
+        <source>Show in Registers</source>
+        <translation>إظهار في المسجّلات</translation>
+    </message>
+    <message>
+        <source>The Registers tab, on %1</source>
+        <translation>لسان المسجّلات، على ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Unplot</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>رسم</translation>
+    </message>
+    <message>
+        <source>%1 on or off the chart</source>
+        <translation>⁦%1⁩ على المخطط أو خارجه</translation>
+    </message>
+    <message>
+        <source>%1 is not a number the map lets plot</source>
+        <translation>⁦%1⁩ ليس عددًا تسمح الخريطة برسمه</translation>
+    </message>
+    <message>
+        <source>Write…</source>
+        <translation>كتابة…</translation>
+    </message>
+    <message>
+        <source>%1 is read only</source>
+        <translation>⁦%1⁩ للقراءة فقط</translation>
+    </message>
+    <message>
+        <source>Tick Allow writes on the Registers tab first</source>
+        <translation>فعّل «السماح بالكتابة» في لسان المسجّلات أولًا</translation>
+    </message>
+    <message>
+        <source>The Registers tab&apos;s editor on %1</source>
+        <translation>محرر لسان المسجّلات على ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>No reply to copy yet</source>
+        <translation>لا رد للنسخ بعد</translation>
+    </message>
+    <message>
+        <source>Copy register bytes</source>
+        <translation>نسخ بايتات المسجّل</translation>
+    </message>
+    <message>
+        <source>Copy block as hex</source>
+        <translation>نسخ الكتلة ست عشريًا</translation>
+    </message>
+    <message>
+        <source>Copy block as C array</source>
+        <translation>نسخ الكتلة كمصفوفة C</translation>
+    </message>
+    <message>
+        <source>Copy decoded</source>
+        <translation>نسخ القيم المفكوكة</translation>
+    </message>
+</context>
+<context>
     <name>DumpView</name>
     <message>
         <source>%1 ago</source>
@@ -1831,6 +1958,26 @@ A note: right-click the chart where it goes, Add note here.</source>
     <message>
         <source>split: the device refused the merged read</source>
         <translation>مقسّم: رفض الجهاز القراءة المدمجة</translation>
+    </message>
+    <message>
+        <source>not in this read</source>
+        <translation>ليس في هذه القراءة</translation>
+    </message>
+    <message>
+        <source>not read: no register here</source>
+        <translation>غير مقروء: لا مسجّل هنا</translation>
+    </message>
+    <message>
+        <source>not mapped</source>
+        <translation>غير معرّف في الخريطة</translation>
+    </message>
+    <message>
+        <source>byte %1 of %2</source>
+        <translation>البايت %1 من %2</translation>
+    </message>
+    <message>
+        <source>raw %1</source>
+        <translation>الخام %1</translation>
     </message>
 </context>
 <context>
@@ -4024,6 +4171,18 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <source>--fast: no such fast stream in the map: %1</source>
         <translation>--fast: لا تدفق سريع بهذا الاسم في الخريطة: %1</translation>
     </message>
+    <message>
+        <source>Dump</source>
+        <translation>عرض الذاكرة</translation>
+    </message>
+    <message>
+        <source>The bytes of every read, decoded by the map</source>
+        <translation>بايتات كل قراءة، مفكوكةً بالخريطة</translation>
+    </message>
+    <message>
+        <source>%1 is hidden on the Registers tab by its search or groups</source>
+        <translation>⁦%1⁩ مخفي في لسان المسجّلات ببحثه أو مجموعاته</translation>
+    </message>
 </context>
 <context>
     <name>MapEditorTab</name>
@@ -4935,6 +5094,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>!! writes are off: tick &quot;Allow writes&quot; on the Registers tab</source>
         <translation>!! الكتابات معطّلة: فعّل «السماح بالكتابة» في لسان المسجّلات</translation>
+    </message>
+    <message>
+        <source>(shown in the Dump)</source>
+        <translation>(معروض في عرض الذاكرة)</translation>
     </message>
 </context>
 <context>
@@ -6585,6 +6748,10 @@ Right-click the table to remove them again.</source>
     <message>
         <source>Decoded</source>
         <translation>فك الترميز</translation>
+    </message>
+    <message>
+        <source>Show in dump</source>
+        <translation>إظهار في عرض الذاكرة</translation>
     </message>
 </context>
 <context>

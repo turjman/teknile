@@ -21,6 +21,11 @@
  * the link closed, the manual READ's card) get a thin amber frame around their card, the reason in the reply
  * line and the card's tooltip, so a frozen dump never reads as live.
  *
+ * A byte whose value changed glows a moment (a thin ring fading over the Registers tab's GLOW_MS), so the dump and
+ * the table pulse together. Hovering a byte or a decode line lights its register's chips; a click selects it (and the
+ * window makes it the Registers tab's current row), a double-click goes there, a right-click asks for the menu (the
+ * tab's, repeated in its Copy button).
+ *
  * Painted as BitView paints (ThemeColors, a monospace font, no style sheet), left to right in every language: the
  * addresses, the bytes and the decode column belong to the grid, not to the window. Only the cards in view are
  * painted. */
@@ -29,11 +34,14 @@
 #include <QAbstractScrollArea>
 #include <QByteArray>
 #include <QColor>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QVector>
 #include <functional>
 
 #include "model/device_map.h"
+
+class QTimer;
 
 /* One block as the Dump tab shows it: the engine's reply (IoEngine::DumpReply) and what kind of read it was. */
 struct DumpBlock {
@@ -59,6 +67,8 @@ public:
 	 * colour on it (4.5:1 in both themes, checked) */
 	static constexpr double CHIP_ALPHA_DARK = 0.30, CHIP_ALPHA_LIGHT = 0.22;
 	enum ColourMode { AllRegisters, PlottedOnly };
+	/* what the Copy items put on the clipboard (copyText) */
+	enum CopyKind { CopyRegisterBytes, CopyBlockHex, CopyBlockC, CopyDecoded };
 	static constexpr RegKey NO_REGISTER = ~RegKey(0); /* select() and registerAt(): none (0 is slave 0's 0x0000) */
 
 	explicit DumpView(QWidget *parent = nullptr);
@@ -77,6 +87,20 @@ public:
 	void setStaleAfterMs(qint64 ms);                /* a reply older than this is stale (the Registers tab's) */
 	void select(RegKey key);                        /* its chips framed, its decode line bold */
 	RegKey selected() const { return selected_; }
+	/* scrolled so the register's first chip is in view; a register no card holds yet: when its card comes */
+	void scrollToRegister(RegKey key);
+	void setEmptyText(const QString &text);         /* said in the middle while there is no card */
+
+	int cardOf(RegKey key) const;                   /* the card holding the register; -1: none */
+	/* the card the block items of the menu act on: the selected register's, else the first one in view; -1: none */
+	int currentCard() const;
+	/* the clipboard's text: the register's bytes, the card's block as hex rows or a C array, or its decoded lines */
+	QString copyText(CopyKind kind, int card, RegKey key = NO_REGISTER) const;
+	/* a byte's tooltip: its address, its register (or not mapped, or not read) and its value */
+	QString byteTip(int card, int offset) const;
+	double glow(int card, int offset) const;        /* how strongly a changed byte glows now: 1 just changed .. 0 */
+	bool glowing() const;                           /* the glow's timer runs (only while a byte glows) */
+	RegKey hovered() const { return hovered_; }
 
 	/* what is not live in card i, and why (empty: live): its amber frame and the reply line's words */
 	QString notLiveReason(int card) const;
@@ -94,11 +118,21 @@ public:
 	RegKey registerAt(const QPoint &pos) const;      /* under a chip's byte or a decode line; NO_REGISTER: none */
 	int paintCount() const { return paints_; }
 
+signals:
+	/* a click on a chip or a decode line (switchTab false), a double-click (true) */
+	void registerPicked(RegKey key, bool switchTab);
+	/* a right-click: the menu for this register (NO_REGISTER: none under the mouse) of card (-1: none) */
+	void menuRequested(RegKey key, int card, const QPoint &globalPos);
+
 protected:
 	void paintEvent(QPaintEvent *) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+	void mousePressEvent(QMouseEvent *e) override;
+	void mouseDoubleClickEvent(QMouseEvent *e) override;
+	void contextMenuEvent(QContextMenuEvent *e) override;
 	void resizeEvent(QResizeEvent *) override;
 	void changeEvent(QEvent *e) override;
-	bool viewportEvent(QEvent *e) override; /* tooltips */
+	bool viewportEvent(QEvent *e) override; /* tooltips, and the mouse leaving */
 
 private:
 	static constexpr int PAD = 12;          /* inside a card */
@@ -132,6 +166,12 @@ private:
 	int contentWidth() const;
 	QPoint origin() const; /* the content's top left in the viewport (the scroll) */
 	int regAt(int card, int offset) const; /* the index into Card::regs of the register holding this byte; -1 none */
+	/* the grid's cell under pos: its card and its byte's offset in the block (outside it: a "··" of the row) */
+	bool byteAt(const QPoint &pos, int &card, int &offset) const;
+	void setHovered(RegKey key);
+	void scrollToPending();
+	/* the bytes that changed since the last blocks of the same read start glowing */
+	void noteChanges(const QVector<DumpBlock> &was);
 
 	QString requestLabel(const DumpBlock &block) const;
 	QString replyLabel(const DumpBlock &block) const;
@@ -142,6 +182,7 @@ private:
 	void drawBytes(QPainter &p, int x, int y, const QByteArray &bytes, int mutedFirst, int mutedLast) const;
 	void drawGrid(QPainter &p, int card, const QPoint &at) const;
 	void drawDecode(QPainter &p, int card, const QPoint &at) const;
+	void drawGlow(QPainter &p, int card) const;
 
 	QVector<DumpBlock> blocks_;
 	QVector<Card> cards_;
@@ -154,6 +195,13 @@ private:
 	std::function<double()> now_;
 	qint64 staleAfterMs_ = 1000;
 	RegKey selected_ = NO_REGISTER;
+	RegKey hovered_ = NO_REGISTER;
+	RegKey scrollTo_ = NO_REGISTER;   /* scrollToRegister's, waiting for its card */
+	QString emptyText_;
+	/* the glow: when each byte of a read last changed (ms on glowClock_), by the read (its kind, device, address) */
+	QHash<quint32, QVector<qint64>> changedMs_;
+	QElapsedTimer glowClock_;
+	QTimer *glowTimer_ = nullptr;
 	int contentHeight_ = 0;
 	int labelWidth_ = 0;  /* the widest request or reply label of the cards: their frame bytes line up */
 	int paints_ = 0;

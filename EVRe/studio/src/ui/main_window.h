@@ -39,6 +39,7 @@
 #include "ui/value_pace.h"
 
 class ChartTab;
+class DumpTab;
 class ElidedLabel;
 class EventLog;
 class MapDocument;
@@ -61,7 +62,7 @@ class MainWindow : public QMainWindow {
 	Q_OBJECT
 public:
 	/* the main tabs, in their order */
-	enum Tab { TabRegisters, TabChart, TabMonitor, TabMap, TabLog };
+	enum Tab { TabRegisters, TabChart, TabDump, TabMonitor, TabMap, TabLog };
 
 	/* what the command line asks for (main.cpp), applied once the window is shown */
 	struct Startup {
@@ -112,6 +113,7 @@ private:
 	void connectSidebar();        /* its choices and buttons, to the engine and the map */
 	QWidget *buildRegistersTab(); /* its writes, reads and map edits go through the window */
 	QWidget *buildChartTab();     /* wired to the engine and the table */
+	QWidget *buildDumpTab();      /* the engine's replies, the Registers tab's register */
 	QWidget *buildMonitorTab();   /* its requests are sent through the engine */
 	QWidget *buildMapTab();       /* the map made and changed, through the document */
 	void buildEventLog();         /* the Log tab and the pop-up beside the tabs */
@@ -209,6 +211,9 @@ private:
 	/* once per display frame: the engine's values into the table, its samples into the chart,
 	 * its frames into the monitor */
 	void sync();
+	/* at the values' pace, the Dump tab shown: the engine's replies, the fast streams' notes, the chart's colours */
+	void syncDump();
+	int rowOfKey(RegKey key) const; /* the register's row in the table; -1: none */
 	void logReadStateChange(int row, const RegValue &value); /* reads of a register fail, or work again */
 
 	/* writes */
@@ -319,6 +324,7 @@ private:
 	RegistersTab *registersTab_ = nullptr;
 	MapEditorTab *mapTab_ = nullptr;
 	ChartTab *chartTab_ = nullptr;
+	DumpTab *dumpTab_ = nullptr;
 	MonitorTab *monitorTab_ = nullptr;
 	EventLog *eventLog_ = nullptr;         /* the Log tab */
 	Notice *notice_ = nullptr;             /* the pop-up, in the free space right of the tabs */
