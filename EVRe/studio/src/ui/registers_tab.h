@@ -58,6 +58,11 @@ public:
 	void setShown(bool shown);
 	/* with the window's statistics, twice a second: room for values that grew, and a changed value stops glowing */
 	void refreshStatus();
+	/* the register in this row of the model made the current one (the detail line and the quick-write panel follow);
+	 * false when the search or the groups hide it */
+	bool selectRow(int row);
+	/* the Value editor opened on the row (as a double-click on it): false when it is hidden or cannot be written */
+	bool editValue(int row);
 
 signals:
 	/* a write asked for here: an edit in the table (RegisterModel::writeRequested) or the quick-write panel.
@@ -81,6 +86,10 @@ signals:
 	void writesAllowedChanged(bool on);
 	/* a short note for the status bar, shown for ms */
 	void statusMessage(const QString &text, int ms);
+	/* the current register changed (a row of the model; -1: none): the Dump tab selects it too */
+	void currentRegisterChanged(int row);
+	/* Show in dump: the Dump tab on this row's register */
+	void showInDumpRequested(int row);
 
 protected:
 	void changeEvent(QEvent *event) override; /* the theme switched: its colours again (Theme::switched) */

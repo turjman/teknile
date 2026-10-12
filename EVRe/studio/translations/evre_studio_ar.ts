@@ -1745,6 +1745,470 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
 </context>
 <context>
+    <name>DumpTab</name>
+    <message>
+        <source>Device</source>
+        <translation>الجهاز</translation>
+    </message>
+    <message>
+        <source>The device whose reads the Dump shows: one device at a time</source>
+        <translation>الجهاز الذي تُعرض قراءاته في عرض الذاكرة: جهاز واحد في كل مرة</translation>
+    </message>
+    <message>
+        <source>Follow</source>
+        <translation>متابعة</translation>
+    </message>
+    <message>
+        <source>Follow: every card shows its block&apos;s latest reply, at the pace of Show values</source>
+        <translation>متابعة: تعرض كل بطاقة آخر رد لكتلتها، بوتيرة «عرض القيم»</translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation>تثبيت</translation>
+    </message>
+    <message>
+        <source>All registers</source>
+        <translation>كل المسجّلات</translation>
+    </message>
+    <message>
+        <source>Every register&apos;s chips in a colour of its own; a plotted one in its chart colour</source>
+        <translation>شارات كل مسجّل بلون خاص به؛ والمسجّل المرسوم بلونه في المخطط</translation>
+    </message>
+    <message>
+        <source>Plotted</source>
+        <translation>المرسومة</translation>
+    </message>
+    <message>
+        <source>Only the plotted registers in colour (their chart colours); the others grey</source>
+        <translation>المسجّلات المرسومة وحدها ملوّنة (بألوانها في المخطط)؛ والبقية رمادية</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>The selected register and its block: Show in Registers, Plot, Write…, and the bytes or the decoded values to the clipboard. The same as a right-click on the cards.</source>
+        <translation>المسجّل المحدّد وكتلته: إظهار في المسجّلات، ورسم، وكتابة…، ونسخ البايتات أو القيم المفكوكة إلى الحافظة. مثل النقر بالزر الأيمن على البطاقات.</translation>
+    </message>
+    <message>
+        <source>Colour</source>
+        <translation>اللون</translation>
+    </message>
+    <message>
+        <source>Nothing read yet. Each block the polling reads shows here as a card: the request, the reply and its bytes, decoded by the map. A READ sent from the Monitor shows here too.</source>
+        <translation>لم يُقرأ شيء بعد. كل كتلة يقرؤها الاستطلاع تظهر هنا بطاقةً: الطلب، والرد وبايتاته، مفكوكةً بالخريطة. وقراءة READ تُرسل من المراقبة تظهر هنا أيضًا.</translation>
+    </message>
+    <message>
+        <source>Not connected. Once the link is up, each block the polling reads shows here as a card: the request, the reply and its bytes, decoded by the map.</source>
+        <translation>غير متصل. حين تقوم الوصلة، تظهر هنا كل كتلة يقرؤها الاستطلاع بطاقةً: الطلب، والرد وبايتاته، مفكوكةً بالخريطة.</translation>
+    </message>
+    <message>
+        <source>Click a register&apos;s chip or decode line first</source>
+        <translation>انقر على شارة مسجّل أو على سطر فك ترميزه أولًا</translation>
+    </message>
+    <message>
+        <source>Show in Registers</source>
+        <translation>إظهار في المسجّلات</translation>
+    </message>
+    <message>
+        <source>The Registers tab, on %1</source>
+        <translation>لسان المسجّلات، على ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Unplot</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>رسم</translation>
+    </message>
+    <message>
+        <source>%1 on or off the chart</source>
+        <translation>⁦%1⁩ على المخطط أو خارجه</translation>
+    </message>
+    <message>
+        <source>%1 is not a number the map lets plot</source>
+        <translation>⁦%1⁩ ليس عددًا تسمح الخريطة برسمه</translation>
+    </message>
+    <message>
+        <source>Write…</source>
+        <translation>كتابة…</translation>
+    </message>
+    <message>
+        <source>%1 is read only</source>
+        <translation>⁦%1⁩ للقراءة فقط</translation>
+    </message>
+    <message>
+        <source>Tick Allow writes on the Registers tab first</source>
+        <translation>فعّل «السماح بالكتابة» في لسان المسجّلات أولًا</translation>
+    </message>
+    <message>
+        <source>The Registers tab&apos;s editor on %1</source>
+        <translation>محرر لسان المسجّلات على ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>No reply to copy yet</source>
+        <translation>لا رد للنسخ بعد</translation>
+    </message>
+    <message>
+        <source>Copy register bytes</source>
+        <translation>نسخ بايتات المسجّل</translation>
+    </message>
+    <message>
+        <source>Copy block as hex</source>
+        <translation>نسخ الكتلة ست عشريًا</translation>
+    </message>
+    <message>
+        <source>Copy block as C array</source>
+        <translation>نسخ الكتلة كمصفوفة C</translation>
+    </message>
+    <message>
+        <source>Copy decoded</source>
+        <translation>نسخ القيم المفكوكة</translation>
+    </message>
+    <message>
+        <source>Hold: the cards keep the bytes they show now (an amber stripe and a banner say they are not live); Follow shows the replies again</source>
+        <translation>تثبيت: تحتفظ البطاقات بالبايتات التي تعرضها الآن (تقول حافة كهرمانية وشريط تنبيه إنها ليست حية)؛ والمتابعة تعرض الردود من جديد</translation>
+    </message>
+    <message>
+        <source>Fields</source>
+        <translation>الحقول</translation>
+    </message>
+    <message>
+        <source>The frame&apos;s fields named under their bytes; off: each frame on one line, the names in the bytes&apos; tooltips</source>
+        <translation>حقول الإطار مسمّاة تحت بايتاتها؛ عند الإيقاف كل إطار في سطر واحد والأسماء في تلميحات البايتات</translation>
+    </message>
+    <message>
+        <source>Held at %1 · the cards show the bytes of that moment; Follow shows the replies again</source>
+        <translation>مثبّت عند ⁦%1⁩ · تعرض البطاقات بايتات تلك اللحظة؛ المتابعة تعرض الردود من جديد</translation>
+    </message>
+    <message>
+        <source>The link is closed · the cards show the last bytes read</source>
+        <translation>الوصلة مغلقة · تعرض البطاقات آخر بايتات مقروءة</translation>
+    </message>
+</context>
+<context>
+    <name>DumpView</name>
+    <message>
+        <source>%1 ago</source>
+        <translation>منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1, slave %2</source>
+        <translation>%1، التابع %2</translation>
+    </message>
+    <message>
+        <source>← AUTO_SEND</source>
+        <translation>→ ‏AUTO_SEND</translation>
+    </message>
+    <message>
+        <source>← REPLY</source>
+        <translation>→ رد</translation>
+    </message>
+    <message>
+        <source>held %1</source>
+        <translation>مثبّت عند ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>the link is closed</source>
+        <translation>الوصلة مغلقة</translation>
+    </message>
+    <message>
+        <source>no reply yet</source>
+        <translation>لا رد بعد</translation>
+    </message>
+    <message>
+        <source>error: %1</source>
+        <translation>خطأ: %1</translation>
+    </message>
+    <message>
+        <source>read once, %1 ago</source>
+        <translation>قُرئ مرة واحدة، منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>stale %1</source>
+        <translation>قديم ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Held at %1: these bytes are not refreshed (Follow shows the replies again)</source>
+        <translation>مثبّت عند ⁦%1⁩: هذه البايتات لا تُحدَّث (المتابعة تعرض الردود من جديد)</translation>
+    </message>
+    <message>
+        <source>The link is closed: these are the last bytes read</source>
+        <translation>الوصلة مغلقة: هذه آخر البايتات المقروءة</translation>
+    </message>
+    <message>
+        <source>A manual read: read once, not refreshed</source>
+        <translation>قراءة يدوية: قُرئت مرة واحدة ولا تُحدَّث</translation>
+    </message>
+    <message>
+        <source>The last read failed (%1): these are the last bytes read</source>
+        <translation>فشلت القراءة الأخيرة (%1): هذه آخر البايتات المقروءة</translation>
+    </message>
+    <message>
+        <source>No reply yet</source>
+        <translation>لا رد بعد</translation>
+    </message>
+    <message>
+        <source>Not refreshed for %1</source>
+        <translation>لم يُحدَّث منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>fast stream %1: see the Chart</source>
+        <translation>التدفق السريع %1: انظر المخطط</translation>
+    </message>
+    <message numerus="yes">
+        <source>Manual read %1 · %n bytes</source>
+        <translation>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايت</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · بايت واحد</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · بايتان</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايتات</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايتًا</numerusform>
+            <numerusform>قراءة يدوية ⁦%1⁩ · %n بايت</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>split: the device refused the merged read</source>
+        <translation>مقسّم: رفض الجهاز القراءة المدمجة</translation>
+    </message>
+    <message>
+        <source>not in this read</source>
+        <translation>ليس في هذه القراءة</translation>
+    </message>
+    <message>
+        <source>not read: no register here</source>
+        <translation>غير مقروء: لا مسجّل هنا</translation>
+    </message>
+    <message>
+        <source>not mapped</source>
+        <translation>غير معرّف في الخريطة</translation>
+    </message>
+    <message>
+        <source>byte %1 of %2</source>
+        <translation>البايت %1 من %2</translation>
+    </message>
+    <message>
+        <source>raw %1</source>
+        <translation>الخام %1</translation>
+    </message>
+    <message>
+        <source>all</source>
+        <translation>الكل</translation>
+    </message>
+    <message>
+        <source>ERROR %1 %2</source>
+        <translation>خطأ %1 ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>none</source>
+        <translation>لا شيء</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n bytes ↓</source>
+        <translation>
+            <numerusform>%n بايت ↓</numerusform>
+            <numerusform>بايت واحد ↓</numerusform>
+            <numerusform>بايتان ↓</numerusform>
+            <numerusform>%n بايتات ↓</numerusform>
+            <numerusform>%n بايتًا ↓</numerusform>
+            <numerusform>%n بايت ↓</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Start byte 0x7B (&quot;{&quot;): a frame is recognisable in a terminal dump</source>
+        <translation>بايت البداية ⁦0x7B (&quot;{&quot;)⁩: يُعرف الإطار به في عرض الطرفية</translation>
+    </message>
+    <message>
+        <source>Slave ID %1; 0 is the broadcast, every device takes a WRITE to it</source>
+        <translation>معرّف التابع %1؛ 0 هو البث، وكل جهاز يأخذ WRITE إليه</translation>
+    </message>
+    <message>
+        <source>READ, answered with READ_RESP</source>
+        <translation>READ، ويُجاب بـ READ_RESP</translation>
+    </message>
+    <message>
+        <source>READ_RESP, the answer to a READ: the bytes asked for</source>
+        <translation>READ_RESP، الرد على READ: البايتات المطلوبة</translation>
+    </message>
+    <message>
+        <source>ERROR_RESP, the answer to a request that failed: one error code</source>
+        <translation>ERROR_RESP، الرد على طلب فشل: رمز خطأ واحد</translation>
+    </message>
+    <message>
+        <source>Function code 0x%1: %2</source>
+        <translation>رمز الوظيفة ⁦0x%1⁩: %2</translation>
+    </message>
+    <message>
+        <source>Register offset, little endian: %1 is %2</source>
+        <translation>إزاحة المسجّل، البايت الأدنى أولًا: ⁦%1⁩ هي ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>Number of registers, little endian: %1 (a register is one byte: the count is in bytes)</source>
+        <translation>عدد المسجّلات، البايت الأدنى أولًا: %1 (المسجّل بايت واحد: العدد بالبايتات)</translation>
+    </message>
+    <message>
+        <source>Data: the error code %1, %2</source>
+        <translation>البيانات: رمز الخطأ %1، ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>Data: none, a READ carries no data</source>
+        <translation>البيانات: لا شيء، فطلب READ لا يحمل بيانات</translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes of the grid below (the payload)</source>
+        <translation>
+            <numerusform>البيانات: %n بايت في الشبكة أدناه (الحمولة)</numerusform>
+            <numerusform>البيانات: بايت واحد في الشبكة أدناه (الحمولة)</numerusform>
+            <numerusform>البيانات: بايتان في الشبكة أدناه (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتات في الشبكة أدناه (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايتًا في الشبكة أدناه (الحمولة)</numerusform>
+            <numerusform>البيانات: %n بايت في الشبكة أدناه (الحمولة)</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>CRC-16/X-25 over every byte before it, low byte first: %1; the Studio computed it</source>
+        <translation>⁦CRC-16/X-25⁩ على كل بايت قبله، البايت الأدنى أولًا: ⁦%1⁩؛ حسبه الاستوديو</translation>
+    </message>
+    <message>
+        <source>CRC-16/X-25 over every byte before it, low byte first: %1; checked before the reply was taken (a frame whose CRC fails is dropped and counted in the status bar&apos;s Bad frames)</source>
+        <translation>⁦CRC-16/X-25⁩ على كل بايت قبله، البايت الأدنى أولًا: ⁦%1⁩؛ فُحص قبل أخذ الرد (الإطار الذي يفشل فحص CRC فيه يُسقط ويُعدّ في «الإطارات التالفة» بشريط الحالة)</translation>
+    </message>
+    <message>
+        <source>End byte 0x7D (&quot;}&quot;)</source>
+        <translation>بايت النهاية ⁦0x7D (&quot;}&quot;)⁩</translation>
+    </message>
+    <message>
+        <source>→ REQUEST</source>
+        <translation>← طلب</translation>
+    </message>
+    <message numerus="yes">
+        <source>READ %n bytes @ %1</source>
+        <translation>
+            <numerusform>قراءة %n بايت عند ⁦%1⁩</numerusform>
+            <numerusform>قراءة بايت واحد عند ⁦%1⁩</numerusform>
+            <numerusform>قراءة بايتين عند ⁦%1⁩</numerusform>
+            <numerusform>قراءة %n بايتات عند ⁦%1⁩</numerusform>
+            <numerusform>قراءة %n بايتًا عند ⁦%1⁩</numerusform>
+            <numerusform>قراءة %n بايت عند ⁦%1⁩</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>no reply: timed out</source>
+        <translation>لا رد: انتهت المهلة</translation>
+    </message>
+    <message>
+        <source>no reply: %1</source>
+        <translation>لا رد: %1</translation>
+    </message>
+    <message>
+        <source>WRITE_ACK, a write answered with WRITE_ACK_RESP</source>
+        <translation>WRITE_ACK، كتابة يُجاب عليها بـ WRITE_ACK_RESP</translation>
+    </message>
+    <message>
+        <source>WRITE, a write that is never answered</source>
+        <translation>WRITE، كتابة لا يُجاب عليها أبدًا</translation>
+    </message>
+    <message>
+        <source>WRITE_ACK_RESP, the answer to a WRITE_ACK: the write landed</source>
+        <translation>WRITE_ACK_RESP، الرد على WRITE_ACK: وصلت الكتابة</translation>
+    </message>
+    <message>
+        <source>Data: none, the answer carries no status</source>
+        <translation>البيانات: لا شيء، الرد لا يحمل حالة</translation>
+    </message>
+    <message numerus="yes">
+        <source>Data: the %n bytes written, in the grid below</source>
+        <translation>
+            <numerusform>البيانات: %n بايت مكتوب، في الشبكة أدناه</numerusform>
+            <numerusform>البيانات: بايت واحد مكتوب، في الشبكة أدناه</numerusform>
+            <numerusform>البيانات: بايتان مكتوبان، في الشبكة أدناه</numerusform>
+            <numerusform>البيانات: %n بايتات مكتوبة، في الشبكة أدناه</numerusform>
+            <numerusform>البيانات: %n بايتًا مكتوبًا، في الشبكة أدناه</numerusform>
+            <numerusform>البيانات: %n بايت مكتوب، في الشبكة أدناه</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>WRITE_ACK %n bytes @ %1</source>
+        <translation>
+            <numerusform>كتابة مع إقرار %n بايت عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة مع إقرار بايت واحد عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة مع إقرار بايتين عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة مع إقرار %n بايتات عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة مع إقرار %n بايتًا عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة مع إقرار %n بايت عند ⁦%1⁩</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>WRITE %n bytes @ %1</source>
+        <translation>
+            <numerusform>كتابة %n بايت عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة بايت واحد عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة بايتين عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة %n بايتات عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة %n بايتًا عند ⁦%1⁩</numerusform>
+            <numerusform>كتابة %n بايت عند ⁦%1⁩</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>acknowledged, %1 ago</source>
+        <translation>أُقرّت، منذ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>none: WRITE is not answered</source>
+        <translation>لا شيء: WRITE لا يُجاب</translation>
+    </message>
+    <message numerus="yes">
+        <source>Write %1 @ %2 · %n bytes</source>
+        <translation>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · %n بايت</numerusform>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · بايت واحد</numerusform>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · بايتان</numerusform>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · %n بايتات</numerusform>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · %n بايتًا</numerusform>
+            <numerusform>كتابة %1 عند ⁦%2⁩ · %n بايت</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>Write %1 · %n bytes</source>
+        <translation>
+            <numerusform>كتابة ⁦%1⁩ · %n بايت</numerusform>
+            <numerusform>كتابة ⁦%1⁩ · بايت واحد</numerusform>
+            <numerusform>كتابة ⁦%1⁩ · بايتان</numerusform>
+            <numerusform>كتابة ⁦%1⁩ · %n بايتات</numerusform>
+            <numerusform>كتابة ⁦%1⁩ · %n بايتًا</numerusform>
+            <numerusform>كتابة ⁦%1⁩ · %n بايت</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>A write: sent once, not refreshed</source>
+        <translation>كتابة: أُرسلت مرة واحدة ولا تُحدَّث</translation>
+    </message>
+    <message>
+        <source>payload</source>
+        <translation>الحمولة</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>سليم</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n bytes not read</source>
+        <translation>
+            <numerusform>%n بايت غير مقروء</numerusform>
+            <numerusform>بايت واحد غير مقروء</numerusform>
+            <numerusform>بايتان غير مقروءين</numerusform>
+            <numerusform>%n بايتات غير مقروءة</numerusform>
+            <numerusform>%n بايتًا غير مقروء</numerusform>
+            <numerusform>%n بايت غير مقروء</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>not read</source>
+        <translation>غير مقروء</translation>
+    </message>
+</context>
+<context>
     <name>EventLog</name>
     <message>
         <source>Show info</source>
@@ -2250,6 +2714,10 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
         <translation>API (MATLAB وLabVIEW وPython)</translation>
     </message>
     <message>
+        <source>Dump</source>
+        <translation>عرض الذاكرة</translation>
+    </message>
+    <message>
         <source>Monitor</source>
         <translation>المراقبة</translation>
     </message>
@@ -2266,6 +2734,7 @@ to say it arrived; READ it to see.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Slave&lt;/b&gt;: the device it goes to (on a bus, the devices by name). &lt;b&gt;0 (broadcast)&lt;/b&gt;, or &lt;i&gt;Broadcast · slave
 0&lt;/i&gt; on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see &lt;b&gt;Connecting&lt;/b&gt;), which every device
 takes and none answers. A device chosen again gets back the function chosen before.&lt;/p&gt;
+&lt;p&gt;A READ&apos;s answer also shows at the top of the &lt;b&gt;Dump&lt;/b&gt; tab, decoded by the map.&lt;/p&gt;
 </source>
         <translation>
 &lt;h2&gt;المراقبة&lt;/h2&gt;
@@ -2279,6 +2748,7 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
 &lt;p&gt;&lt;b&gt;التابع&lt;/b&gt;: الجهاز الذي يذهب إليه (على الناقل، الأجهزة بأسمائها). &lt;b&gt;0 (بث)&lt;/b&gt;، أو &lt;i&gt;بث · التابع
 0&lt;/i&gt; على الناقل، بث: WRITE فقط، كما تسمح قاعدة البث (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، يأخذه كل جهاز
 ولا أحد يجيب. والجهاز الذي يُختار من جديد يستعيد الوظيفة المختارة قبل.&lt;/p&gt;
+&lt;p&gt;يظهر جواب قراءة READ أيضًا في أعلى لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt;، مفكوكًا بالخريطة.&lt;/p&gt;
 </translation>
     </message>
     <message>
@@ -2321,6 +2791,7 @@ it quickly under the table (a value, its enum list, its bits drawn as in a datas
 &lt;li&gt;&lt;b&gt;Chart&lt;/b&gt;: like an oscilloscope: memory depth apart from the view, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt;, &lt;b&gt;Measure&lt;/b&gt;
 (min, max, mean, RMS, the area under a line: W → Wh), &lt;b&gt;Cursors&lt;/b&gt; A and B, &lt;b&gt;ƒ Math&lt;/b&gt; lines (SUPPLY_V *
 SUPPLY_I), and &lt;b&gt;Display&lt;/b&gt;: how the lines are drawn, by a graphics card when the computer has one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Dump&lt;/b&gt;: the device&apos;s bytes as the reads bring them, each register a coloured chip, decoded beside.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame sent and received, raw reads and writes.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Map editor&lt;/b&gt;: make a map from nothing or change one, check it, and export it (a specification, a C header,
 a Python module).&lt;/li&gt;
@@ -2357,6 +2828,7 @@ none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/
 &lt;li&gt;&lt;b&gt;المخطط&lt;/b&gt;: مثل راسم الإشارة: عمق الذاكرة منفصل عن العرض، &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt;، &lt;b&gt;القياسات&lt;/b&gt;
 (الأدنى، الأعلى، المتوسط، RMS، المساحة تحت الخط: W → Wh)، &lt;b&gt;المؤشران&lt;/b&gt; A وB، خطوط &lt;b&gt;ƒ الرياضيات&lt;/b&gt; (SUPPLY_V *
 SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ببطاقة رسوميات حين يكون في الحاسوب واحدة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;: بايتات الجهاز كما تأتي بها القراءات، كل مسجّل شارة ملوّنة، مفكوكةً بجانبها.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;: اصنع خريطة من لا شيء أو غيّر واحدة، وافحصها، وصدّرها (مواصفة، ترويسة C،
 وحدة Python).&lt;/li&gt;
@@ -2685,7 +3157,7 @@ print(json.loads(f.readline())[&quot;values&quot;][&quot;SUPPLY_V&quot;])&lt;/pr
         <source>
 &lt;h2&gt;Command line&lt;/h2&gt;
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
 &lt;ul&gt;
 &lt;li&gt;A server token comes from the environment variable &lt;code&gt;EVRE_TOKEN&lt;/code&gt;, never from the command line.&lt;/li&gt;
@@ -2705,7 +3177,7 @@ the ⚠ switch.&lt;/li&gt;
         <translation>
 &lt;h2&gt;سطر الأوامر&lt;/h2&gt;
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect] [--fast NAME,NAME]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]&lt;/pre&gt;
 &lt;ul&gt;
 &lt;li&gt;رمز دخول الخادم يأتي من متغير البيئة &lt;code&gt;EVRE_TOKEN&lt;/code&gt;، لا من سطر الأوامر أبدًا.&lt;/li&gt;
@@ -2859,6 +3331,8 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
 cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
+&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
 &lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
 &lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
@@ -2896,6 +3370,8 @@ values: Auto ·
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
 يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
 &lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
 &lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
 &lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
@@ -3262,6 +3738,86 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
 ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
 &lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Dump&lt;/h2&gt;
+&lt;p&gt;The &lt;b&gt;Dump&lt;/b&gt; tab shows the device&apos;s bytes as the reads bring them: one &lt;b&gt;card&lt;/b&gt; per block the polling reads,
+in address order. Each card has the request the Studio sent (&lt;i&gt;→ REQUEST  READ 22 bytes @ 0xD000&lt;/i&gt;) and the reply
+(&lt;i&gt;← REPLY  12 ms ago&lt;/i&gt;), each broken down into the frame&apos;s fields: every byte of it named, START, SLAVE,
+FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;, &lt;i&gt;OFFSET 0xD000&lt;/i&gt;,
+&lt;i&gt;DATA payload&lt;/i&gt; under a grey &lt;i&gt;22 bytes ↓&lt;/i&gt;, &lt;i&gt;CRC OK&lt;/i&gt;: the reply&apos;s CRC was checked). The mouse on a field says
+what the protocol makes of it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row&apos;s
+address at its left.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every register of the map is a &lt;b&gt;chip&lt;/b&gt;: its bytes tinted in its colour, a plotted one in its chart colour.
+Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
+the block that no register maps is plain grey hex. Bytes no read covers (before the block in its row, or a block with
+no reply yet) are empty cells in a &lt;b&gt;dashed frame&lt;/b&gt;, with &lt;i&gt;4 bytes not read&lt;/i&gt; or &lt;i&gt;no reply yet&lt;/i&gt; in it when
+it fits (never an invented 00).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Fields&lt;/b&gt; (on by default): off, each frame is one line of bytes, and a byte&apos;s tooltip names its field.&lt;/li&gt;
+&lt;li&gt;A byte whose value changed is written in blue a moment (a light cyan in the dark theme), as a value in the Registers tab glows; not
+while the mouse is on a chip.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Follow&lt;/b&gt; shows each block&apos;s newest reply at the pace of &lt;i&gt;Show values&lt;/i&gt;; &lt;b&gt;Hold&lt;/b&gt; keeps the bytes shown.
+&lt;b&gt;Colour&lt;/b&gt;: &lt;b&gt;All registers&lt;/b&gt;, or &lt;b&gt;Plotted&lt;/b&gt; (only the plotted ones in colour, the others grey).&lt;/li&gt;
+&lt;li&gt;A card whose bytes are not live has an &lt;b&gt;amber&lt;/b&gt; stripe at its left edge, and its reply&apos;s label and tooltip say
+why: held, stale (not refreshed for longer than the Registers tab&apos;s stale limit), a failed read (the device&apos;s error
+answer shown, the last good bytes stay), the link closed, a manual read or a write. Held, or with the link closed, a
+banner
+over the cards says it once.&lt;/li&gt;
+&lt;li&gt;The mouse on a chip lights the register in its own colour, its chips filled stronger and outlined and its decode
+line filled, the rest as it was, and says the byte: its
+register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
+&lt;b&gt;click&lt;/b&gt; selects the register here and in the Registers tab (lit the same way, framed in blue); a
+&lt;b&gt;double-click&lt;/b&gt; goes there. The Registers tab&apos;s
+current row is selected here too, and its right-click menu has &lt;b&gt;Show in dump&lt;/b&gt;. With the cards in focus the
+&lt;b&gt;arrow keys&lt;/b&gt; move the selection, &lt;b&gt;Enter&lt;/b&gt; goes to the Registers tab, the &lt;b&gt;Menu&lt;/b&gt; key opens the menu.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Right-click&lt;/b&gt;, or the &lt;b&gt;Copy ▾&lt;/b&gt; button: Show in Registers, Plot / Unplot, Write… (with &lt;i&gt;Allow
+writes&lt;/i&gt;), and Copy: the register&apos;s bytes, the block as hex rows or as a C array, or its decoded values.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;READ&lt;/b&gt; sent from the Monitor shows as a card at the top, until the next one; so does the last &lt;b&gt;write&lt;/b&gt;
+(from the Registers tab or the Monitor): its WRITE_ACK and the device&apos;s WRITE_ACK_RESP over the bytes written, or a
+WRITE, which is never answered. A running fast stream is a note (its records are on the Chart); auto send&apos;s frame shows as &lt;i&gt;← AUTO_SEND&lt;/i&gt; with its rate. On a bus the
+&lt;b&gt;Device&lt;/b&gt; list shows one device&apos;s cards at a time.&lt;/li&gt;
+&lt;li&gt;The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
+kept).&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;عرض الذاكرة&lt;/h2&gt;
+&lt;p&gt;يعرض لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt; بايتات الجهاز كما تأتي بها القراءات: &lt;b&gt;بطاقة&lt;/b&gt; لكل كتلة يقرؤها الاستطلاع،
+بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;← طلب  قراءة 22 بايتًا عند 0xD000&lt;/i&gt;) والرد
+(&lt;i&gt;→ رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
+وDATA وCRC وEND، ومعناه تحته (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;، &lt;i&gt;OFFSET 0xD000&lt;/i&gt;، &lt;i&gt;DATA الحمولة&lt;/i&gt; تحت &lt;i&gt;22 بايتًا ↓&lt;/i&gt;
+الرمادية، &lt;i&gt;CRC سليم&lt;/i&gt;: فُحص CRC الرد). والفأرة على حقل تقول ما يعنيه في البروتوكول. وتحتها الحمولة شبكةً من 16 بايتًا في كل صف، بارتفاع سطر
+واحد، وعنوان الصف على يساره.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;كل مسجّل في الخريطة &lt;b&gt;شارة&lt;/b&gt;: بايتاته ملوّنة بلونه، والمسجّل المرسوم بلونه في المخطط. وبجانب الشبكة سطر لكل
+مسجّل: نقطته واسمه وقيمته كما يعرضها لسان المسجّلات. والبايت داخل الكتلة الذي لا يعرّفه أي مسجّل ست عشري رمادي
+عادي. والبايتات التي لا تغطيها قراءة (قبل الكتلة في صفها، أو كتلة لا رد لها بعد) خلايا فارغة في &lt;b&gt;إطار
+متقطع&lt;/b&gt;، فيه &lt;i&gt;4 بايتات غير مقروءة&lt;/i&gt; أو &lt;i&gt;لا رد بعد&lt;/i&gt; حين يتسع لذلك (لا 00 مختلَق أبدًا).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الحقول&lt;/b&gt; (مفعّلة افتراضيًا): عند إيقافها يصير كل إطار سطرًا واحدًا من البايتات، ويسمّي تلميح البايت حقله.&lt;/li&gt;
+&lt;li&gt;البايت الذي تغيّرت قيمته يُكتب بالأزرق لحظة (بسماوي فاتح في السمة الداكنة)، كما تتوهّج القيمة في لسان المسجّلات، إلا حين تكون الفأرة على شارة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;متابعة&lt;/b&gt; تعرض أحدث رد لكل كتلة بوتيرة &lt;i&gt;عرض القيم&lt;/i&gt;؛ و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي البايتات المعروضة.
+&lt;b&gt;اللون&lt;/b&gt;: &lt;b&gt;كل المسجّلات&lt;/b&gt;، أو &lt;b&gt;المرسومة&lt;/b&gt; (المرسومة وحدها ملوّنة، والبقية رمادية).&lt;/li&gt;
+&lt;li&gt;للبطاقة التي ليست بايتاتها حية حافة &lt;b&gt;كهرمانية&lt;/b&gt; على طرفها الأيسر، ويقول عنوان ردها وتلميحها السبب: مثبّتة،
+أو قديمة (لم تُحدَّث مدة أطول من حدّ القِدم في لسان المسجّلات)، أو قراءة فاشلة (يُعرض رد الخطأ من الجهاز وتبقى آخر
+البايتات السليمة)، أو الوصلة مغلقة، أو قراءة يدوية أو كتابة. وعند التثبيت أو إغلاق الوصلة يقول ذلك شريط تنبيه فوق البطاقات مرة
+واحدة.&lt;/li&gt;
+&lt;li&gt;الفأرة على شارة تضيء المسجّل بلونه، شاراته مملوءة أقوى ومحاطة بخط وسطر قيمته مملوء، والباقي كما كان، وتقول البايت: مسجّله، وأي بايت هو منه، وعنوانه، وقيمته؛
+والتلميح تحت الصف، لا فوق القيم أبدًا. &lt;b&gt;النقر&lt;/b&gt; يحدّد المسجّل هنا وفي لسان المسجّلات (يضيء بالطريقة نفسها، بإطار أزرق)؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt;
+ينتقل إليه هناك. والصف الحالي في لسان المسجّلات يُحدَّد هنا أيضًا، وفي قائمة زره الأيمن &lt;b&gt;إظهار في عرض
+الذاكرة&lt;/b&gt;. وحين يكون التركيز على البطاقات تنقل &lt;b&gt;مفاتيح الأسهم&lt;/b&gt; التحديد، و&lt;b&gt;Enter&lt;/b&gt; ينتقل إلى لسان
+المسجّلات، ومفتاح &lt;b&gt;القائمة&lt;/b&gt; يفتح القائمة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt;، أو زر &lt;b&gt;نسخ ▾&lt;/b&gt;: إظهار في المسجّلات، ورسم / إزالة من المخطط، وكتابة… (مع
+&lt;i&gt;السماح بالكتابة&lt;/i&gt;)، والنسخ: بايتات المسجّل، أو الكتلة صفوفًا ست عشرية أو مصفوفة C، أو قيمها المفكوكة.&lt;/li&gt;
+&lt;li&gt;قراءة &lt;b&gt;READ&lt;/b&gt; تُرسل من المراقبة تظهر بطاقةً في الأعلى، حتى القراءة التالية؛ وكذلك آخر &lt;b&gt;كتابة&lt;/b&gt;
+(من لسان المسجّلات أو من المراقبة): إطار WRITE_ACK ورد الجهاز WRITE_ACK_RESP فوق البايتات المكتوبة، أو إطار WRITE الذي
+لا يُجاب أبدًا. والتدفق السريع الجاري ملاحظة
+(سجلّاته في المخطط)؛ وإطار الإرسال التلقائي يظهر &lt;i&gt;← AUTO_SEND&lt;/i&gt; بمعدّله. وعلى ناقل تعرض قائمة
+&lt;b&gt;الجهاز&lt;/b&gt; بطاقات جهاز واحد في كل مرة.&lt;/li&gt;
+&lt;li&gt;لا يحتفظ اللسان بشيء ما دام لسان آخر معروضًا: تأتي بطاقاته من جديد مع الردود التالية (وتبقى آخر كتابة).&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -3936,6 +4492,18 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>--fast: no such fast stream in the map: %1</source>
         <translation>--fast: لا تدفق سريع بهذا الاسم في الخريطة: %1</translation>
+    </message>
+    <message>
+        <source>Dump</source>
+        <translation>عرض الذاكرة</translation>
+    </message>
+    <message>
+        <source>The bytes of every read, decoded by the map</source>
+        <translation>بايتات كل قراءة، مفكوكةً بالخريطة</translation>
+    </message>
+    <message>
+        <source>%1 is hidden on the Registers tab by its search or groups</source>
+        <translation>⁦%1⁩ مخفي في لسان المسجّلات ببحثه أو مجموعاته</translation>
     </message>
 </context>
 <context>
@@ -4848,6 +5416,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>!! writes are off: tick &quot;Allow writes&quot; on the Registers tab</source>
         <translation>!! الكتابات معطّلة: فعّل «السماح بالكتابة» في لسان المسجّلات</translation>
+    </message>
+    <message>
+        <source>(shown in the Dump)</source>
+        <translation>(معروض في عرض الذاكرة)</translation>
     </message>
 </context>
 <context>
@@ -6498,6 +7070,10 @@ Right-click the table to remove them again.</source>
     <message>
         <source>Decoded</source>
         <translation>فك الترميز</translation>
+    </message>
+    <message>
+        <source>Show in dump</source>
+        <translation>إظهار في عرض الذاكرة</translation>
     </message>
 </context>
 <context>

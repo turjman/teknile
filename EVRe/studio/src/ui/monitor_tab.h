@@ -35,8 +35,10 @@ public:
 
 	/* the frames logged since the last display frame; dropped: how many were left out (too many to show) */
 	void addFrames(const QStringList &lines, int dropped);
-	/* the answer to a request sent from here (a write's carries no data; ms < 0: not timed) */
-	void showAnswer(quint16 addr, bool ok, const QByteArray &data, const QString &message, double ms);
+	/* the answer to a request sent from here (a write's carries no data; ms < 0: not timed); inDump: a READ's answer
+	 * shown on the Dump tab too, and the line says so */
+	void showAnswer(quint16 addr, bool ok, const QByteArray &data, const QString &message, double ms,
+			bool inDump = false);
 	/* a WRITE without acknowledge went out: no answer comes, so nothing says it arrived */
 	void showSent(quint16 addr, const QByteArray &bytes);
 
