@@ -462,8 +462,8 @@ cross; a blue badge in the corner), so a wave stands still instead of blurring. 
 <b>Display → Lock short windows</b> turns it off.</p>
 <p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
 <b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
-trigger (<i>no line to watch</i>, its name greyed in the row's list); it arms again when the line comes back, never
-on another line by itself.</p>
+trigger (<i>no line to watch</i>; the row's list says <i>choose a line</i>, its tooltip names the line awaited); it
+arms again when the line comes back, never on another line by itself.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt

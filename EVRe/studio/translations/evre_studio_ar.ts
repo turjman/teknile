@@ -1364,6 +1364,14 @@ A note: right-click the chart where it goes, Add note here.</source>
         <source>Drag: the room of the chart and of the measurements under it (kept)</source>
         <translation>السحب: المساحة بين المخطط والقياسات تحته (تُحفظ)</translation>
     </message>
+    <message>
+        <source>choose a line</source>
+        <translation>اختر خطًا</translation>
+    </message>
+    <message>
+        <source>%1 is not on the chart: plot it again, or choose another line</source>
+        <translation>%1 ليس على المخطط: ارسمه مجددًا، أو اختر خطًا آخر</translation>
+    </message>
 </context>
 <context>
     <name>ChartView</name>
@@ -3536,8 +3544,8 @@ cross; a blue badge in the corner), so a wave stands still instead of blurring. 
 &lt;b&gt;Display → Lock short windows&lt;/b&gt; turns it off.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;Off&lt;/b&gt; in the row turns the trigger off, as unticking &lt;b&gt;Display → Trigger&lt;/b&gt; or the chip&apos;s
 &lt;b&gt;Trigger on this line&lt;/b&gt;, which is ticked for the line watched. A line watched that leaves the chart stops the
-trigger (&lt;i&gt;no line to watch&lt;/i&gt;, its name greyed in the row&apos;s list); it arms again when the line comes back, never
-on another line by itself.&lt;/p&gt;
+trigger (&lt;i&gt;no line to watch&lt;/i&gt;; the row&apos;s list says &lt;i&gt;choose a line&lt;/i&gt;, its tooltip names the line awaited); it
+arms again when the line comes back, never on another line by itself.&lt;/p&gt;
 &lt;h3&gt;Math lines&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ Math → New math line…&lt;/b&gt;: a name, a unit and a formula over register names, e.g. &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; in W (the power; its area is the energy). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;, &lt;code&gt;pi&lt;/code&gt;, and abs sqrt
@@ -3695,8 +3703,8 @@ it.&lt;/li&gt;
 لمنتصف أنشط خطوطه (خط سريع أولًا، وإلا الذي فيه أكثر العينات في النافذة؛ والخط الذي فيه أقل من 20 عينة هناك لا يُراقَب) (&lt;i&gt;تلقائي (نافذة قصيرة)&lt;/i&gt;؛ و&lt;i&gt;تلقائي · جريان حر&lt;/i&gt; ما دام لا يعبر؛ شارة زرقاء في الزاوية)، فتقف الموجة بدل أن
 تتشوّش. وقدحك أنت يحلّ محله حين يعمل، والتثبيت ينهيه، و&lt;b&gt;العرض ← قفل النوافذ القصيرة&lt;/b&gt; يُطفئه.&lt;/p&gt;
 &lt;p&gt;&lt;b&gt;إطفاء&lt;/b&gt; في الصف يُطفئ القدح، كإلغاء تحديد &lt;b&gt;العرض ← القدح&lt;/b&gt; أو &lt;b&gt;القدح على هذا الخط&lt;/b&gt; في
-قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;، واسمه
-باهت في قائمة الصف)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
+قائمة الشارة، المحدَّد للخط المراقَب. والخط المراقَب إن غادر المخطط أوقف القدح (&lt;i&gt;لا خط للمراقبة&lt;/i&gt;؛ وقائمة الصف تقول &lt;i&gt;اختر خطًا&lt;/i&gt;، وتلميحها يسمّي
+الخط المنتظَر)؛ ويتجهّز من جديد حين يعود الخط، ولا ينتقل من تلقاء نفسه إلى خط آخر أبدًا.&lt;/p&gt;
 &lt;h3&gt;الخطوط الرياضية&lt;/h3&gt;
 &lt;p&gt;&lt;b&gt;ƒ الرياضيات ← خط رياضي جديد…&lt;/b&gt;: اسم، ووحدة، وصيغة على أسماء المسجّلات، مثل &lt;code&gt;SUPPLY_V *
 SUPPLY_I&lt;/code&gt; بـ W (القدرة؛ ومساحتها الطاقة). &lt;code&gt;+ − * / ^ ( )&lt;/code&gt;، و&lt;code&gt;pi&lt;/code&gt;، وabs sqrt
