@@ -213,6 +213,11 @@ public:
 		int count = 0;           /* the header's count */
 		uint8_t flags = 0, spare = 0;
 		quint64 lost = 0;        /* records lost before it (by the numbers) */
+		/* the stream's records lost so far (the sidebar's count, Stats::Fast::lost) as this block was kept, and the
+		 * number of the start that count runs from (FastRun::starts): the tab takes one block in four or so, and
+		 * says what was lost since the block it showed before, whichever blocks the losses were in */
+		quint64 lostTotal = 0;
+		quint64 start = 0;
 		bool newStart = false;
 		fast::BlockCheck check = fast::BlockCheck::Ok;
 		double time = 0;         /* when it came, on now()'s clock */
@@ -368,6 +373,7 @@ private:
 		quint64 recordsSinceRate = 0;
 		double recordsHz = 0;
 		quint64 notShown = 0;
+		quint64 starts = 0;         /* +1 at every state.reset: its counts begin again (FastDump::start) */
 		/* while the CSV records: its blocks as they came beside it (run.csv -> run.ADC.evrs), opened at the first */
 		std::shared_ptr<fast::RecordingWriter> writer;
 		bool writeFailed = false;

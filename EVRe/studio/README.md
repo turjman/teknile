@@ -33,7 +33,7 @@ EVRe is a protocol of **teknile**.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/dump-tab-dark.png">
-    <img src="../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: the card of the block at 0xD000, the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END), CRC OK in green, then the hex grid with each register as a tinted chip and the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line" width="900">
+    <img src="../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: the card of the block at 0xD000, the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END), CRC OK in green, then the hex grid with the column offsets 00 to 0F over it and each register as a tinted chip, the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line, its column offset and its row address" width="900">
   </picture>
   <br>
   <em>The Dump tab: a block as the reply carries it, its frame broken into named fields, each register a chip in the hex grid.</em>
@@ -225,7 +225,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (712 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (717 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
 | `evre_map_test` | the map files without a window (25 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |

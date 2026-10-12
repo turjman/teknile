@@ -6735,7 +6735,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 712 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 717 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7717,13 +7717,14 @@ reaches the device through the pass-through, `dev.stream` included (17.4).
 The **Dump** tab (between Chart and Monitor; `--tab dump`) shows the device's bytes as the reads bring them: one
 **card** per block the polling reads, in address order. A card holds the request the Studio sent and the reply, each
 broken down into the protocol's fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END), the payload as a hex
-grid with every register of the map as a coloured **chip**, and the registers' values beside the grid. It is a fourth
+grid with every register of the map as a coloured **chip** (the rows' addresses at its left, the columns' offsets
+`00` to `0F` over it, so a byte's address is read, not counted), and the registers' values beside the grid. It is a fourth
 way of looking at the device: the Registers tab shows the values, the Chart shows them over time, the Monitor shows
 the frames as text, and the Dump shows the bytes and what each one is.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/dump-tab-dark.png">
-  <img src="../../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: Follow and Hold, the Colour pair, the Fields check box and the Copy button; the card of the block at 0xD000: the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END) with their meanings under the bytes, the payload a grey pill, CRC OK in green, then the hex grid with each register as a tinted chip and the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line in its colour, the other chips as they were, its tooltip under the chip's row" width="900">
+  <img src="../../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: Follow and Hold, the Colour pair, the Fields check box and the Copy button; the card of the block at 0xD000: the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END) with their meanings under the bytes, the payload a grey pill, CRC OK in green, then the hex grid with the column offsets 00 to 0F over it and each register as a tinted chip, the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line in its colour, the offset 06 and the row address D000 too, the other chips as they were, its tooltip under the chip's row" width="900">
 </picture>
 
 *The polled block at 0xD000, its request and reply broken down into the frame's fields; the mouse on a byte of
@@ -7741,6 +7742,7 @@ SUPPLY_V.*
 |  7B     01       AB                 00 D0          16 00      (22 bytes v)  AE 41   7D         |
 |  START  SLAVE 1  FUNCTION READ_RESP OFFSET 0xD000  COUNT 22   DATA payload  CRC OK  END        |
 |                                                                                                |
+|         00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F                                        |
 |  D000  [10 27 00 00][FA 7E 40 41][2D B2 BD 3F][66 66 26 42]    o UPTIME       10000 ms         |
 |  D010  [05 00][2C 01][B9 00]                                   o SUPPLY_V     12.031 V         |
 |                                                                o SUPPLY_I     1.482 A          |
@@ -7751,12 +7753,14 @@ SUPPLY_V.*
 +------------------------------------------------------------------------------------------------+
 ```
 
-`[..]` is a chip (a fill, no edge), `o` the register's colour dot, `(22 bytes v)` the DATA column's grey pill standing
+`00 .. 0F` are the columns' offsets, each over its byte column (the chips' brackets push the bytes right in this
+sketch; on the screen each offset stands over its own byte), `[..]` is a chip (a fill, no edge), `o` the register's colour dot, `(22 bytes v)` the DATA column's grey pill standing
 for the grid, `v` the arrow of `22 bytes ↓`. A block that starts inside its row (a manual read of 0xD004, say) begins
 with the cells before it as one empty run in a dashed frame:
 
 ```
 +------------------------------------------------------------------+
+|         00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F          |
 |  D000  +- - 4 bytes not read - -+[FA 7E 40 41][2D B2 BD 3F] ...  |
 |  D010  [05 00][2C 01][B9 00]                                     |
 +------------------------------------------------------------------+
@@ -7771,7 +7775,7 @@ with the cells before it as one empty run in a dashed frame:
 | Request&nbsp;strip | The frame the Studio sent, rebuilt with `evre::build` from the same numbers, so it equals the wire's, as a strip of named fields (the table below): the bytes on one line (monospace; START, CRC and END muted), each field's name (muted) and meaning under them in the window's font a point smaller. |
 | Reply&nbsp;label | `← REPLY` with its state in colour (`12 ms ago`, or why the bytes are not live: 37.2). AUTO_SEND's card: `← AUTO_SEND` and `1000 /s`. |
 | Reply&nbsp;strip | The reply's frame: `READ_RESP`, `DATA payload` under a grey pill `22 bytes ↓` on the bytes line (the payload is the grid right under it), `CRC OK` ("OK" in the good colour, in capitals as the names beside it), END. A refusal is the device's ERROR_RESP frame (FUNCTION and the DATA's `ERROR 4 offset out of range` in red, the count echoed); the grid keeps the last good bytes. A read that timed out has no frame: one muted line, `no reply: timed out`. |
-| Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last, each **one line high**; the row's base address at its left, four digits and muted (its tooltip `0xD010`). A row runs from its first cell to the block's last byte: nothing after it. The cells no read covers, before a block that starts inside a row (0xD004) or all of a block with no reply yet, are one empty run per row in a dashed frame (the controls' colour, 3:1 to the card), its words muted in it when they fit (`4 bytes not read`, else `not read`; `no reply yet`), the cell's tooltip saying which; never an invented `00`. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
+| Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last, each **one line high**; the row's base address at its left, four digits and muted (its tooltip `0xD010`). Over the rows, each column's **offset** `00` to `0F`, centred over its byte column, in the bytes' font a point smaller and muted, so a byte's address is its row's plus its column's (`D000` and `06`: 0xD006); a block shorter than a row has as many as its cells (`00` to `06` over 7 bytes). Every grid has them (a polled block, AUTO_SEND's, the manual read's, the last write's), left to right in every language; a fast card's records do not (37.7). A row runs from its first cell to the block's last byte: nothing after it. The cells no read covers, before a block that starts inside a row (0xD004) or all of a block with no reply yet, are one empty run per row in a dashed frame (the controls' colour, 3:1 to the card), its words muted in it when they fit (`4 bytes not read`, else `not read`; `no reply yet`), the cell's tooltip saying which; never an invented `00`. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
 | Chips | Each register's bytes in a row are one chip: a fill tinted in the register's colour (34 % in the dark theme, 26 % in the light one), no edge line, the byte text in the text colour, 3 px of the card between two chips. The text on every tint reads at 4.5:1 or more in both themes, lit too (checked). |
 | Decode&nbsp;list | One line per register of the block, in address order: its colour dot, its name, and its value as the Registers tab shows it (Value and Unit, or the Decoded text with ` · ` between its parts). A line sits level with its register's row, or under the line before when that one is lower (37.6): a sparse block reads row by row, a dense one stacks its lines past the grid. The name column is as wide as the tab's longest name (at most 14 characters) plus two; a name or value too long is cut with `…` and the whole line is the tooltip. |
 | Fast&nbsp;block&nbsp;card | A fast stream's newest block: its frame, its header and its records, the channels named (37.7). |
@@ -7853,7 +7857,7 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 
 | Where | What it does |
 |---|---|
-| Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. |
+| Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. The byte's column offset over the grid and its row's address at its left are lit too, a crosshair that finds the byte from both edges: their text bold on the lit chip's fill (a gap byte's or a cell no read covers on the grey's), in that card only. |
 | Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit, with the hand; the tooltip is the whole line, under it. |
 | Mouse&nbsp;on&nbsp;a&nbsp;field | Its name, meaning and the protocol's words for it (the table in 37.1), under its column. |
 | Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7). |
@@ -7880,7 +7884,7 @@ card the register's items say *A fast block has records, not registers*):
 | Plot&nbsp;/&nbsp;Unplot | The register on or off the chart (a number the map lets plot). |
 | Write… | The Registers tab's editor on the register: only with **Allow writes** on and a read-write register. |
 | Copy&nbsp;register&nbsp;bytes | `00 00 48 42` |
-| Copy&nbsp;block&nbsp;as&nbsp;hex | One row a line, as the grid: `D080  00 00 48 42 32 01 B8 0B` (a byte no read covers left blank). |
+| Copy&nbsp;block&nbsp;as&nbsp;hex | One row a line, as the grid: `D080  00 00 48 42 32 01 B8 0B` (a byte no read covers left blank); the rows alone, without the line of column offsets. |
 | Copy&nbsp;block&nbsp;as&nbsp;C&nbsp;array | `static const uint8_t block_d080[8] = {` then a line per register, `/* 0xD080 SETPOINT */ 0x00, 0x00, 0x48, 0x42,`, the bytes no register maps on lines of their own, then `};` |
 | Copy&nbsp;decoded | A line per register: `0xD080  SETPOINT  50.0 °C`; on a fast card the records as CSV, as the item below. |
 | Copy&nbsp;records&nbsp;as&nbsp;CSV | A fast card's records, every one of the block: `record,I_LOAD [A],V_BUS [V]` then `1191259,1.2000,12.010` and so on (the recording's column form, the values as the card writes them). Greyed on a read: *A read has registers: Copy decoded*. |
@@ -7946,8 +7950,9 @@ the tab and follows the window's direction.
   repaints only while a byte glows. Hidden, the tab is not ticked.
 - **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
   stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
-  in 64 bits, count, flags, spare, the records lost before it, a new start, what the rules said of it, the time and a
-  serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
+  in 64 bits, count, flags, spare, the records lost before it, the stream's records lost so far and the start that
+  count runs from (`FastRun::starts`, +1 at every reset of its counts; the loss line of 37.7), a new start, what the
+  rules said of it, the time and a serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
   about 3 900 blocks a second at a million records a second. A bad block or one of a newer kind is kept too (a dump
   is where a device's mistakes are seen). `takeFastDumps` copies one small struct per stream and no byte of a block;
   it tries the lock first and counts a take that then waited longer than 0.2 ms for it (`FAST_DUMP_WAIT_NS`; the
@@ -7957,7 +7962,10 @@ the tab and follows the window's direction.
   bytes, addresses, names and values in the monospace font, the labels, field names and meanings in the window's font
   a point smaller (`labelFont()`), the sentences in the window's font. Only the cards in view are painted. `relayout()`
   measures the tab once: each strip column's width (`FIELD_GAP` 14 px apart), the grid's columns in use (16 when any
-  card has a full row, so the decode list starts at the same x in every card), the longest name. The decode list
+  card has a full row, so the decode list starts at the same x in every card), the longest name. A grid starts with
+  the line of its column offsets (`columnLabelRect`, the cells' x and width, `columnFont()` the monospace a point
+  smaller), then its rows; the mouse's byte (`crosshair`) lights its offset and its row's address
+  (`rowAddressRect`). The decode list
   flows: line k's top is the larger of its register's row top and line k-1's bottom; the card is as tall as the
   taller of the grid and the list. A chip's tooltip is placed by `tipPlace` (under the row, its right edge kept before
   the list) and wrapped at its words to that room. The tab (`DumpTab`) holds the toolbar, the banner, the menu and the
@@ -8002,9 +8010,9 @@ the button. The lines of the card:
 | Reply&nbsp;label | `← REPLY`, then *READ_RESP, unasked: a block of ADC* and the state: `8 ms ago` (muted), `held 14:03:12`, `ADC stopped · last block 14:03:12`, `stale 2.1 s`, `the link is closed` (amber, with the stripe: 37.2). No request: nobody asked, as AUTO_SEND's card. On a bus the device's name comes first, as a request's does. |
 | Reply&nbsp;strip | The frame rebuilt with `evre::build` from the block, so it equals the wire's: FUNCTION `READ_RESP (unasked)`, OFFSET `0xDC00 · ADC` (the stream's window and name), COUNT the frame's bytes (8 + 253 × 4 = 1020), DATA the grey pill `block ↓` over `header + records`, `CRC OK`. Its columns are the tab's, under the poll cards'. |
 | Block&nbsp;header | `BLOCK HEADER`, then the 8-byte header as a strip of four columns: FIRST `record 1191259` (the 64-bit number the Studio counts; the tooltip gives the wire's 32 bits, which wrap), COUNT `253 records`, FLAGS `none`, `START`, `LOST` (amber) or `START, LOST`, SPARE `0`; each member's tooltip is PROTOCOL.md's words for it. |
-| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
+| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted. The tab takes about one block in four, so a loss may be in a block never shown: the line counts from the stream's running total of records lost (the sidebar's `lost`, which the engine hands with each block) at the card shown before, in the same start, and reads `254 records lost since the last block shown` when some of them were before earlier blocks; a new start counts from 0, and the first card after the tab is shown again (or another map) says only its block's own; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
 | Records&nbsp;head | `RECORDS`, then over each channel's column its dot, its name and its type with its scale and unit (`i16 × 0.0005 A`), in the map's order (the record's byte order). |
-| Records | `#1191259`, then per channel its bytes as a chip in its colour and its value with the channel's decimals, else as many as its scale needs for one raw step to show (0.001: `12.009 V`, 0.0005: `1.2050 A`, 1: none), then its unit: finer than the sidebar's four digits, so two neighbouring raw numbers never read the same and every row is as wide. Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. |
+| Records | `#1191259`, then per channel its bytes as a chip in its colour and its value with the channel's decimals, else as many as its scale needs for one raw step to show (0.001: `12.009 V`, 0.0005: `1.2050 A`, 1: none), then its unit: finer than the sidebar's four digits, so two neighbouring raw numbers never read the same and every row is as wide. Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. A row is a record, not 16 bytes of memory: no column offsets over the records and no crosshair on them. |
 
 **Show all ▾** shows every record of the block; the button is then **Show fewer ▴** in the row after the last. Open,
 the card is as tall as the stream's largest block (`recordsPerBlock()`, 254 rows for ADC) whatever this block holds,

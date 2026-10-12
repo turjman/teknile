@@ -1310,6 +1310,8 @@ void MainWindow::syncDump(bool values, bool fast) {
 			b.flags = d.flags;
 			b.spare = d.spare;
 			b.lost = d.lost;
+			b.lostTotal = d.lostTotal;
+			b.start = d.start;
 			b.newStart = d.newStart;
 			b.check = int(d.check);
 			blocks << b;

@@ -100,6 +100,7 @@
 #include <cstdio>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <tuple>
 
 #include "evre/frame.h"
@@ -626,6 +627,7 @@ public:
 		dumpColours();
 		dumpLive();
 		dumpMouse();
+		dumpColumns();
 		dumpKeys();
 		dumpFields();
 		dumpErrors();
@@ -1111,7 +1113,8 @@ private:
 				const int c = dumpCard(view, 0xD000, DumpBlock::AutoSend);
 				return c >= 0 && view->requestText(c).isEmpty() && words.match(view->replyText(c)).hasMatch()
 						&& view->notLiveReason(c).isEmpty() && dumpCard(view, 0xD000) < 0 && !view->hasStrip(c, DumpView::Request)
-						&& view->fieldMeaning(c, DumpView::Reply, DumpView::Function) == QLatin1String("READ_RESP");
+						&& view->fieldMeaning(c, DumpView::Reply, DumpView::Function) == QLatin1String("READ_RESP")
+						&& view->columnLabels(c) == 16;
 			}, 3000);
 			if (!card) {
 				QStringList seen;
@@ -1127,7 +1130,7 @@ private:
 				});
 			tabs->setCurrentIndex(tabWas);
 			check(card, "auto send: the Dump's 0xD000 card is AUTO_SEND's frame: \"← AUTO_SEND 100 /s\", no request strip, "
-					"the device's READ_RESP strip; the polled read of that block gone");
+					"the device's READ_RESP strip, the column offsets 00 .. 0F over its grid; the polled read of that block gone");
 		}
 		/* another rate while it is on: written to the device at once (200 Hz: prescaler 39), then back to 100 */
 		rate->setCurrentIndex(rate->findData(200));
@@ -4606,6 +4609,134 @@ private:
 				"its decode line bold); its right-click menu's Show in dump opens the Dump on it, in view");
 	}
 
+	/* the middle of the ink drawn in an area (the pixels far from its commonest colour), across, in logical px; -1: none */
+	static double inkMiddle(const QImage &picture, const QRect &area) {
+		const double dpr = picture.devicePixelRatio();
+		const QRect r = QRectF(QPointF(area.topLeft()) * dpr, QSizeF(area.size()) * dpr).toRect().intersected(picture.rect());
+		QHash<QRgb, int> counts;
+		for (int y = r.top(); y <= r.bottom(); y++)
+			for (int x = r.left(); x <= r.right(); x++) counts[picture.pixel(x, y)]++;
+		QRgb ground = 0;
+		int most = -1;
+		for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+			if (it.value() > most) {
+				most = it.value();
+				ground = it.key();
+			}
+		int from = std::numeric_limits<int>::max(), to = -1;
+		for (int y = r.top(); y <= r.bottom(); y++)
+			for (int x = r.left(); x <= r.right(); x++)
+				if (colourDistance(QColor(picture.pixel(x, y)), QColor(ground)) > 80) {
+					from = std::min(from, x);
+					to = std::max(to, x);
+				}
+		return to < 0 ? -1 : (from + to + 1) / 2.0 / dpr;
+	}
+
+	/* The grid's column offsets: 00 .. 0F over the rows, each centred over its byte column, muted (measured in the
+	 * picture); a short block as many as its row's cells; the hovered byte's offset and its row's address lit in its
+	 * register's tint, in both themes; Copy block as hex the rows alone */
+	void dumpColumns() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!view || !dumpAnswered(view, 0xD000) || !dumpAnswered(view, 0xA000)) {
+			check(false, "Dump: the column offsets (no cards)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		QTest::qWait(200);
+		view->select(DumpView::NO_REGISTER);
+		int d = dumpCard(view, 0xD000);
+		const int a = dumpCard(view, 0xA000);
+		dumpInView(view, d);
+		QApplication::processEvents();
+		const QImage picture = view->viewport()->grab().toImage();
+		const ThemeColors &colours = Theme::colors();
+		/* each offset over its column (the same middle and width as the byte's cell), between the reply's strip and the
+		 * first row, its two digits drawn in the middle of it in the muted grey */
+		bool over = view->columnLabels(d) == 16 && view->columnLabels(a) == 7 && view->columnLabelRect(d, 16).isNull()
+				&& view->columnLabelRect(a, 7).isNull();
+		QStringList texts;
+		QString notes;
+		for (int column = 0; over && column < 16; column++) {
+			const QRect label = view->columnLabelRect(d, column), cell = view->byteRect(d, column);
+			texts << DumpView::columnLabelText(column);
+			const double ink = inkMiddle(picture, label);
+			if (label.center().x() != cell.center().x() || label.width() != cell.width() || label.bottom() >= cell.top()
+					|| label.top() <= view->stripRect(d, DumpView::Reply).bottom() || std::abs(ink - (label.left() + label.width() / 2.0)) > 2.0
+					|| nearestIn(picture, label, colours.muted) > 60) {
+				over = false;
+				notes += QStringLiteral(" %1: label %2..%3 y %4..%5, cell %6..%7 y %8, ink at %9, muted %10;").arg(column)
+						.arg(label.left()).arg(label.right()).arg(label.top()).arg(label.bottom()).arg(cell.left()).arg(cell.right())
+						.arg(cell.top()).arg(ink).arg(nearestIn(picture, label, colours.muted));
+			}
+		}
+		over = over && texts.join(QLatin1Char(' ')) == QLatin1String("00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F")
+				&& view->columnLabelRect(a, 6).center().x() == view->byteRect(a, 6).center().x();
+		if (!over) std::printf("     (the offsets: %s;%s)\n", qPrintable(texts.join(QLatin1Char(' '))), qPrintable(notes));
+		check(over, "Dump: the grid's column offsets 00 .. 0F over the rows, each centred over its byte column (measured: "
+				"its digits' ink in the middle of the cell's width, muted), between the reply's strip and the first row; the "
+				"0xA000 block of 7 bytes has 00 .. 06");
+
+		/* the mouse on SUPPLY_V's byte at 0xD006: the offset 06 and the address D000 on its tint at hover strength, the
+		 * offset 05 and the address D010 not; on the 0xA000 card the 0xD000 card's edges at rest; away, none */
+		const RegKey supplyV = keyOf(QStringLiteral("SUPPLY_V"));
+		const bool wasDark = Theme::isDark();
+		bool lit = true;
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			QTest::qWait(300);
+			d = dumpCard(view, 0xD000);
+			dumpInView(view, d);
+			QApplication::processEvents();
+			const ThemeColors &c = Theme::colors();
+			const QColor tint = DumpView::chipFill(view->chipColour(d, supplyV), c.surface, DumpView::chipAlpha(dark, true));
+			const QRect six = view->columnLabelRect(d, 6), five = view->columnLabelRect(d, 5);
+			const QRect first = view->rowAddressRect(d, 0), second = view->rowAddressRect(d, 1);
+			const QPointF sixFill(six.left() + 3, six.center().y()), fiveFill(five.left() + 3, five.center().y());
+			const QPointF firstFill(first.left() - 2, first.center().y()), secondFill(second.left() - 2, second.center().y());
+			/* grab() paints at once: no event is let through between the move and the picture (the real mouse on the
+			 * screen would move the crosshair) */
+			dumpMouseTo(view, view->byteRect(d, 6).center());
+			int card = -1, offset = -1;
+			const bool crossed = view->crosshair(card, offset) && card == d && offset == 6;
+			const QString at = QStringLiteral("%1 %2 (the card %3)").arg(card).arg(offset).arg(d);
+			const QImage on = view->viewport()->grab().toImage();
+			const bool shows = pixelOff(on, sixFill, tint) < 12 && pixelOff(on, firstFill, tint) < 12
+					&& nearestIn(on, six, DumpView::litText(c, dark)) < 60 && nearestIn(on, first, DumpView::litText(c, dark)) < 60
+					&& pixelOff(on, fiveFill, c.surface) < 8 && pixelOff(on, secondFill, c.surface) < 8;
+			dumpMouseTo(view, view->byteRect(a, 2).center());
+			const QImage other = view->viewport()->grab().toImage();
+			const bool elsewhere = view->crosshair(card, offset) && card == a && offset == 2
+					&& pixelOff(other, sixFill, c.surface) < 8 && pixelOff(other, firstFill, c.surface) < 8;
+			dumpMouseTo(view, QPoint(view->byteRect(d, 16).left() + 4, view->byteRect(d, 16).bottom() + 12));
+			const QImage away = view->viewport()->grab().toImage();
+			const bool none = !view->crosshair(card, offset) && pixelOff(away, sixFill, c.surface) < 8
+					&& pixelOff(away, firstFill, c.surface) < 8 && nearestIn(away, six, c.muted) < 60;
+			if (!crossed || !shows || !elsewhere || !none) {
+				lit = false;
+				std::printf("     (%s: crossed %d at %s, shows %d (06 %s, D000 %s, the tint %s, 05 %s, D010 %s), elsewhere %d, none %d)\n",
+						dark ? "dark" : "light", crossed, qPrintable(at), shows, qPrintable(pixelAt(on, sixFill).name()),
+						qPrintable(pixelAt(on, firstFill).name()), qPrintable(tint.name()), qPrintable(pixelAt(on, fiveFill).name()),
+						qPrintable(pixelAt(on, secondFill).name()), elsewhere, none);
+			}
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(200);
+		check(lit, "Dump: the mouse on a byte lights its column's offset and its row's address in its register's tint "
+				"(SUPPLY_V's 0xD006: 06 and D000 on the lit chip's fill, their text the lit chip's; 05 and D010 at rest), "
+				"measured in both themes; on another card's byte only that card's; the mouse away, none");
+
+		/* Copy block as hex: the rows as they were, no line of offsets */
+		d = dumpCard(view, 0xD000);
+		const QString hex = view->copyText(DumpView::CopyBlockHex, d);
+		const bool copied = hex.startsWith(QLatin1String("D000  ")) && hex.count(QLatin1Char('\n')) == 1
+				&& hex.section(QLatin1Char('\n'), 1, 1).startsWith(QLatin1String("D010  ")) && !hex.contains(QLatin1String("0A 0B 0C"));
+		if (!copied) std::printf("     (Copy block as hex: \"%s\")\n", qPrintable(hex));
+		check(copied, "Dump: Copy block as hex is the rows alone (D000 .., D010 ..), the column offsets not in it");
+	}
+
 	/* The keys: Tab reaches the view after the toolbar; the arrows move the selection across the cards (the Registers
 	 * tab follows), Enter goes there, the Menu key opens the menu of the selected register */
 	void dumpKeys() {
@@ -5131,6 +5262,7 @@ private:
 				&& view->fieldBytes(c, DumpView::Request, F::Crc)
 						== evre::build(1, evre::WRITE_ACK, 0xD080, 4, written).right(3).left(2)
 				&& view->registerAt(view->byteRect(c, 0).center()) == setpoint && view->decodeLines(c) == 1
+				&& view->columnLabels(c) == 4 && view->columnLabelRect(c, 3).center().x() == view->byteRect(c, 3).center().x()
 				&& view->decodeText(c, 0).startsWith(QStringLiteral("SETPOINT  55.0"))
 				&& view->fieldMeaning(c, DumpView::Reply, F::Function) == QLatin1String("WRITE_ACK_RESP")
 				&& view->fieldMeaning(c, DumpView::Reply, F::Data) == QLatin1String("none")
@@ -5212,7 +5344,8 @@ private:
 				&& view->replyText(0).startsWith(QStringLiteral("← REPLY read once, ")) && dumpStripe(view, 0)
 				&& view->hasStrip(0, DumpView::Request) && view->hasStrip(0, DumpView::Reply)
 				&& view->stripRect(0, DumpView::Request).top() > view->cardRect(0).top() + view->lineHeight()
-				&& view->registerAt(view->byteRect(0, 0).center()) == keyOf(QStringLiteral("SETPOINT"));
+				&& view->registerAt(view->byteRect(0, 0).center()) == keyOf(QStringLiteral("SETPOINT"))
+				&& view->columnLabels(0) == 8 && view->columnLabelRect(0, 7).center().x() == view->byteRect(0, 7).center().x();
 		if (!first || !said || !top)
 			std::printf("     (manual: first %d, said %d (\"%s\"), top %d: \"%s\" \"%s\" amber %d)\n", first, said,
 					qPrintable(frames->toPlainText().right(80)), top, qPrintable(view->notLiveReason(0)),
@@ -5224,7 +5357,8 @@ private:
 		const bool replaced = second && manuals == 1 && view->blocks()[0].kind == DumpBlock::Manual
 				&& view->blocks()[0].addr == 0xA000 && view->blocks()[0].size == 4;
 		check(first && said && top && replaced, "Dump: a READ sent from the Monitor shows at the top as a card of its own "
-				"(its title, the request's and the reply's strips, \"read once\", the amber stripe, the map's chips on it); "
+				"(its title, the request's and the reply's strips, \"read once\", the amber stripe, the map's chips on it, "
+				"the column offsets 00 .. 07 over its grid); "
 				"the Monitor's answer line says \"(shown in the Dump)\"; the next READ replaces it");
 		function->setCurrentIndex(0);
 		boxes[1]->setText(QStringLiteral("2"));
@@ -5280,6 +5414,7 @@ private:
 					&& view->decodeLines(c) == 6;
 		}, 5000);
 		const int card = dumpCard(view, 0xD000);
+		dumpInView(view, card); /* its second row in the picture under the column offsets */
 		const QImage picture = view->viewport()->grab().toImage();
 		const QString gapTip = view->toolTipAt(view->byteRect(card, 0x12).center());
 		const QByteArray gapData = view->blocks().value(card).data;
@@ -5517,7 +5652,11 @@ private:
 							tab->view()->headRect(0, DumpView::Reply).left());
 				leftToRight = qApp->layoutDirection() == Qt::RightToLeft && tab->isRightToLeft()
 						&& tab->view()->layoutDirection() == Qt::LeftToRight
-						&& tab->view()->viewport()->layoutDirection() == Qt::LeftToRight;
+						&& tab->view()->viewport()->layoutDirection() == Qt::LeftToRight
+						&& tab->view()->columnLabels(0) == 16
+						&& tab->view()->columnLabelRect(0, 0).left() < tab->view()->columnLabelRect(0, 15).left()
+						&& tab->view()->columnLabelRect(0, 0).center().x() == tab->view()->byteRect(0, 0).center().x()
+						&& tab->view()->columnLabelRect(0, 15).center().x() == tab->view()->byteRect(0, 15).center().x();
 				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
 					MainWindow::Startup live;
 					live.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
@@ -5535,7 +5674,8 @@ private:
 		QTest::qWait(1200); /* the window's texts made meanwhile (the rate line) are English again at their next refresh */
 		std::printf("     (the window's minimum width with the Dump shown: %d px in English, %d in Arabic)\n", english, arabic);
 		check(english <= 1280 && arabic <= 1280 && named && leftToRight && meanings, "Dump, Arabic: the tab is عرض الذاكرة; "
-				"the window right to left, the cards left to right (addresses, bytes, names and values); the field names the "
+				"the window right to left, the cards left to right (addresses, column offsets 00 .. 0F, bytes, names and values); "
+				"the field names the "
 				"protocol's (DATA, CRC), their meanings Arabic (الحمولة under the pill 22 بايتًا ↓, سليم, لا شيء), the arrows "
 				"turned with the reading (← طلب, → رد, → AUTO_SEND) and at the right of their Arabic words; the window with "
 				"the Dump shown and "
@@ -5663,6 +5803,16 @@ private:
 		check(strip && bytes && aligned, "Dump, a fast card: by its window's address after the poll cards; no request (nobody "
 				"asked); the reply's strip READ_RESP (unasked), OFFSET 0xDC00 · ADC, COUNT 1020, the pill block ↓, CRC OK, its "
 				"bytes evre::build's and its columns the poll cards'; the label READ_RESP, unasked: a block of ADC 8 ms ago");
+		/* a fast card's rows are records, not 16 bytes of memory: no column offsets over them, no crosshair on them */
+		{
+			dumpMouseTo(view, view->channelChipRect(c, 0, 1).center());
+			int card = -1, offset = 0;
+			const bool crossed = view->crosshair(card, offset);
+			dumpMouseTo(view, QPoint(-100, -100));
+			check(view->columnLabels(c) == 0 && view->columnLabelRect(c, 0).isNull() && view->columnLabels(p) == 16 && !crossed,
+					"Dump, a fast card: no column offsets over its records and no crosshair on them (the poll card beside it "
+					"has its 00 .. 0F)");
+		}
 
 		/* the header: four columns in the wire's order, named, the 64-bit number, LOST in amber; START in the text's ink */
 		const ThemeColors &tc = Theme::colors();
@@ -5704,6 +5854,45 @@ private:
 						&& started == QLatin1String("a new start of the stream"),
 				"Dump, a fast card: the line under the header says the records lost before this block (254, in amber), "
 				"nothing without a loss, a new start of the stream muted");
+
+		/* losses in blocks the tab never took (it takes about one in four): the next card says them, counted from the
+		 * stream's total at the card before in the same start, whichever block they were in; a new start counts from 0,
+		 * and with no card before (the tab hidden and shown again) only the block's own */
+		auto counted = [](quint64 first, quint64 lost, quint64 lostTotal, quint64 start, quint64 version) {
+			DumpBlock b = fastDumpBlock(first, 253, lost > 0 ? fast::FLAG_LOST : 0, lost, 99.992, version);
+			b.lostTotal = lostTotal;
+			b.start = start;
+			return b;
+		};
+		tab->applyFastDumps({ counted(1191259, 0, 100, 7, 20) });
+		const QString fromStart = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1192271, 0, 354, 7, 21) });
+		const QString unseen = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1192828, 50, 404, 7, 22) });
+		const QString justBefore = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193207, 30, 500, 7, 23) });
+		const QString both = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193460, 0, 500, 7, 24) });
+		const QString noLoss = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193460, 0, 500, 7, 24) }); /* the same block taken again: kept as it is */
+		const QString again = view->lossText(fastCard(view));
+		tab->setShown(true);
+		tab->setShown(false);
+		tab->applyDumps({ poll });
+		tab->applyFastDumps({ counted(1194472, 0, 900, 7, 25) });
+		const QString afresh = view->lossText(fastCard(view));
+		const bool counts = fromStart == QLatin1String("100 records lost since the last block shown")
+				&& unseen == QLatin1String("254 records lost since the last block shown")
+				&& justBefore == QLatin1String("50 records lost before this block")
+				&& both == QLatin1String("96 records lost since the last block shown") && noLoss.isEmpty() && again.isEmpty()
+				&& afresh.isEmpty();
+		if (!counts)
+			std::printf("     (losses between takes: \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\")\n", qPrintable(fromStart),
+					qPrintable(unseen), qPrintable(justBefore), qPrintable(both), qPrintable(noLoss), qPrintable(again),
+					qPrintable(afresh));
+		check(counts, "Dump, a fast card: records lost only in blocks never taken still show on the next card (254 records "
+				"lost since the last block shown), counted from the total at the card before; lost just before it, before "
+				"this block; a new start counts from 0; nothing lost, no line; the tab shown again, only the block's own");
 
 		/* bad blocks: the words in amber instead of the records, the header still there */
 		DumpBlock badCount = fastDumpBlock(1191259, 253, 0, 0, 99.992, 5);
@@ -6222,31 +6411,46 @@ private:
 		if (!tabs || !view) return;
 		const int tabWas = tabs->currentIndex();
 		tabs->setCurrentIndex(MainWindow::TabDump);
-		bool lossShown = false, plain = false, wrapped = false;
+		/* Every card is held to the rule, whichever block a take lands on (about one in four: each 100 ms brings four
+		 * blocks and a loss): its line says the records lost since the card before, by the engine's running total of the
+		 * stream (the sidebar's lost count), "before this block" when they were all just before it, none when nothing was
+		 * lost; FLAGS LOST in amber on a block after a loss. The engine's total only grows on one start. */
+		bool lossShown = false, wrong = false, wrapped = false;
+		quint64 seen = 0, total = 0;
+		int cards = 0;
 		QString notes;
 		(void) QTest::qWaitFor([&] {
 			const int c = fastCard(view);
 			if (c < 0) return false;
 			const DumpBlock &b = view->blocks()[c];
-			if (b.lost > 0 && !lossShown) {
-				lossShown = view->lossText(c) == QStringLiteral("%1 records lost before this block").arg(b.lost)
-						&& view->headerFieldMeaning(c, DumpView::Flags).contains(QLatin1String("LOST"))
-						&& view->headerFieldColour(c, DumpView::Flags) == Theme::colors().warn;
-				if (!lossShown) notes = QStringLiteral("loss \"%1\" lost %2 flags \"%3\"").arg(view->lossText(c)).arg(b.lost)
-						.arg(view->headerFieldMeaning(c, DumpView::Flags));
+			if (b.version != seen && b.check == 0) {
+				seen = b.version;
+				cards++;
+				const quint64 n = std::max(b.lostSince, b.lost);
+				const QString want = n > b.lost ? QStringLiteral("%1 records lost since the last block shown").arg(n)
+						: n > 0 ? QStringLiteral("%1 records lost before this block").arg(n)
+						: b.newStart ? QStringLiteral("a new start of the stream") : QString();
+				const bool flags = b.lost == 0 || (view->headerFieldMeaning(c, DumpView::Flags).contains(QLatin1String("LOST"))
+						&& view->headerFieldColour(c, DumpView::Flags) == Theme::colors().warn);
+				if (view->lossText(c) != want || !flags || b.lostTotal < total || b.lostSince > b.lostTotal) {
+					wrong = true;
+					notes = QStringLiteral("loss \"%1\" lost %2 since %3 total %4 (before %5) flags \"%6\"").arg(view->lossText(c))
+							.arg(b.lost).arg(b.lostSince).arg(b.lostTotal).arg(total).arg(view->headerFieldMeaning(c, DumpView::Flags));
+				}
+				total = b.lostTotal;
+				if (n > 0) lossShown = true;
 			}
-			if (b.lost == 0 && !b.newStart && !plain) plain = view->lossText(c).isEmpty();
 			if (b.first > 0xFFFFFFFFull && !wrapped)
 				wrapped = view->headerFieldMeaning(c, DumpView::First) == QStringLiteral("record %1").arg(b.first)
 						&& view->headerFieldTip(c, DumpView::First).contains(QStringLiteral("on the wire 0x%1")
 								.arg(QStringLiteral("%1").arg(quint32(b.first), 8, 16, QLatin1Char('0')).toUpper()));
-			return lossShown && plain && wrapped;
+			return wrong || (lossShown && wrapped && cards >= 10);
 		}, 6000);
-		if (!lossShown || !plain || !wrapped)
-			std::printf("     (the Dump's losses: shown %d, plain %d, wrapped %d; %s)\n", int(lossShown), int(plain), int(wrapped),
-					qPrintable(notes));
-		check(lossShown && plain, "fast streams, every 5th block lost: the Dump's card says the records lost before a block "
-				"(the engine's number) in amber with FLAGS LOST; a block after none lost has no such line");
+		if (!lossShown || wrong || !wrapped)
+			std::printf("     (the Dump's losses: shown %d, wrong %d, wrapped %d, cards %d; %s)\n", int(lossShown), int(wrong),
+					int(wrapped), cards, qPrintable(notes));
+		check(lossShown && !wrong, "fast streams, every 5th block lost: each Dump card says the records lost since the card "
+				"before (the engine's running total), whichever blocks a take lands on, in amber with FLAGS LOST after a loss");
 		check(wrapped, "fast streams, counting from 4294967200: the Dump's FIRST is the 64-bit record number past the wire's "
 				"wrap, the wire's 32 bits in its tooltip");
 		tabs->setCurrentIndex(tabWas);

@@ -300,12 +300,34 @@ void DumpView::setHovered(RegKey key) {
 	viewport()->update();
 }
 
+void DumpView::setCrosshair(int card, int offset) {
+	if (card == crossCard_ && (card < 0 || offset == crossOffset_)) return;
+	crossCard_ = card;
+	crossOffset_ = offset;
+	viewport()->update();
+}
+
+bool DumpView::crosshair(int &card, int &offset) const {
+	if (crossCard_ < 0 || crossCard_ >= cards_.size() || byteRect(crossCard_, crossOffset_).isNull()) return false;
+	card = crossCard_;
+	offset = crossOffset_;
+	return true;
+}
+
 /* ------------------------------------------------------------------- layout */
 
 QFont DumpView::labelFont() const { return uiFont(1); }
 
 int DumpView::lineHeight() const { return fontMetrics().height() + 6; }
 int DumpView::labelLineHeight() const { return QFontMetrics(labelFont()).height() + 2; }
+int DumpView::columnLineHeight() const { return QFontMetrics(columnFont()).height() + 4; }
+
+QFont DumpView::columnFont() const {
+	QFont f = font();
+	if (f.pointSizeF() > 0) f.setPointSizeF(f.pointSizeF() - 1);
+	else f.setPixelSize(std::max(8, f.pixelSize() - 1));
+	return f;
+}
 int DumpView::headLineHeight() const { return QFontMetrics(uiFont()).height() + 6; }
 int DumpView::stripHeight() const { return fields_ ? lineHeight() + LABEL_GAP + labelLineHeight() : lineHeight(); }
 /* a byte's cell: its two digits and room for the 3 px of card between two chips */
@@ -418,16 +440,18 @@ void DumpView::relayout() {
 				at += line;
 			}
 			at += GRID_GAP;
-			/* the rows from the block's first to its last, aligned to 16, one line each */
+			/* the column offsets' line, then the rows from the block's first to its last, aligned to 16, one line each */
 			card.gridTop = at;
+			at += columnLineHeight();
+			const int rowsTop = at;
 			const int first = b.addr & ~0xF, last = (int(b.addr) + std::max(1, int(b.size)) - 1) & ~0xF;
 			for (int base = first; base <= last; base += 16) {
 				card.rows << Row { base, at };
 				at += line;
 			}
-			int listBottom = card.gridTop;
+			int listBottom = rowsTop;
 			for (const int r : card.regs) {
-				const int top = std::max(card.gridTop + ((defs_[r].addr & ~0xF) - first) / 16 * line, listBottom);
+				const int top = std::max(rowsTop + ((defs_[r].addr & ~0xF) - first) / 16 * line, listBottom);
 				card.lineTop << top;
 				listBottom = top + line;
 			}
@@ -778,6 +802,29 @@ QRect DumpView::byteRect(int card, int offset) const {
 	const QPoint o = origin();
 	return QRect(o.x() + gridLeft() + (addr & 0xF) * cellWidth(), o.y() + c.top + c.rows[index].top, cellWidth(),
 			lineHeight());
+}
+
+int DumpView::columnLabels(int card) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].rows.isEmpty()) return 0;
+	const DumpBlock &b = blocks_[card];
+	return cards_[card].rows.size() > 1 ? 16 : ((int(b.addr) + std::max(1, int(b.size)) - 1) & 0xF) + 1;
+}
+
+QRect DumpView::columnLabelRect(int card, int column) const {
+	if (column < 0 || column >= columnLabels(card)) return {};
+	const QPoint o = origin();
+	return QRect(o.x() + gridLeft() + column * cellWidth(), o.y() + cards_[card].top + cards_[card].gridTop, cellWidth(),
+			columnLineHeight());
+}
+
+QString DumpView::columnLabelText(int column) { return byteText(char(column)); }
+
+QRect DumpView::rowAddressRect(int card, int row) const {
+	if (card < 0 || card >= cards_.size() || row < 0 || row >= cards_[card].rows.size()) return {};
+	const QPoint o = origin();
+	const QRect rect = cardRect(card);
+	return QRect(rect.left() + PAD, o.y() + cards_[card].top + cards_[card].rows[row].top,
+			o.x() + gridLeft() - rect.left() - PAD, lineHeight());
 }
 
 int DumpView::decodeLines(int card) const { return card < 0 || card >= cards_.size() ? 0 : int(cards_[card].regs.size()); }
@@ -1315,7 +1362,10 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
  * each byte's text over them. A hovered register's chips are filled stronger and outlined in its colour, a selected
  * one's filled stronger and framed in the accent; the other chips keep their tint (dimming them greyed the whole tab,
  * the other cards too). Cells no read covers are an empty run in a dashed frame with its words, not dots that say
- * nothing: dashed, as an empty slot is drawn, and empty, as a debugger leaves memory it could not read. */
+ * nothing: dashed, as an empty slot is drawn, and empty, as a debugger leaves memory it could not read. Over the rows,
+ * each column's offset (00 .. 0F) in the bytes' font a point smaller and muted, so a byte's address reads off the
+ * edges; the hovered byte's offset and its row's address are lit in its register's tint (the lit chip's fill and
+ * text, so they read in both themes as the chip does), a crosshair that finds the byte from either edge. */
 void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const ThemeColors &c = Theme::colors();
 	const bool dark = Theme::isDark();
@@ -1327,12 +1377,55 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const int viewHeight = viewport()->height();
 	const double rest = chipAlpha(dark), hot = chipAlpha(dark, true);
 	const QFont labels = labelFont();
+	/* the crosshair: the hovered byte's column and row, in its register's colour (a gap, a byte not read: the grey) */
+	int crossCard = -1, crossOffset = 0, crossColumn = -1, crossRow = -1;
+	QColor crossColour = c.muted;
+	if (crosshair(crossCard, crossOffset) && crossCard == i) {
+		const int addr = int(b.addr) + crossOffset;
+		crossColumn = addr & 0xF;
+		crossRow = (addr - card.rows.first().base) / 16;
+		const int reg = answered && crossOffset >= 0 && crossOffset < b.size ? regAt(i, crossOffset) : -1;
+		if (reg >= 0 && card.colours[reg].isValid()) crossColour = card.colours[reg];
+	}
+	QFont columns = columnFont(), litColumns = columns, litAddress = font();
+	litColumns.setBold(true);
+	litAddress.setBold(true);
+	const int columnsY = at.y() + card.gridTop, columnsH = columnLineHeight();
+	if (columnsY + columnsH >= 0 && columnsY <= viewHeight) {
+		for (int column = 0; column < columnLabels(i); column++) {
+			const QRect rect(left + column * cell, columnsY, cell, columnsH);
+			const bool lit = column == crossColumn;
+			if (lit) {
+				p.setRenderHint(QPainter::Antialiasing, true);
+				p.setPen(Qt::NoPen);
+				p.setBrush(chipFill(crossColour, c.surface, hot));
+				p.drawRoundedRect(QRectF(rect).adjusted(1.5, 0.5, -1.5, -0.5), 4, 4);
+				p.setRenderHint(QPainter::Antialiasing, false);
+			}
+			p.setFont(lit ? litColumns : columns);
+			p.setPen(lit ? litText(c, dark) : c.muted);
+			p.drawText(rect, Qt::AlignCenter, columnLabelText(column));
+		}
+		p.setFont(font());
+	}
 	for (int rowIndex = 0; rowIndex < card.rows.size(); rowIndex++) {
 		const Row &row = card.rows[rowIndex];
 		const int y = at.y() + row.top;
 		if (y + line < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
-		p.setPen(c.muted);
+		if (rowIndex == crossRow) {
+			const int width = QFontMetrics(litAddress).horizontalAdvance(rowAddress(row.base));
+			p.setRenderHint(QPainter::Antialiasing, true);
+			p.setPen(Qt::NoPen);
+			p.setBrush(chipFill(crossColour, c.surface, hot));
+			p.drawRoundedRect(QRectF(at.x() + PAD - 4, y + 2.5, width + 8, line - 5.0), 4, 4);
+			p.setRenderHint(QPainter::Antialiasing, false);
+			p.setFont(litAddress);
+			p.setPen(litText(c, dark));
+		} else {
+			p.setPen(c.muted);
+		}
 		p.drawText(QRect(at.x() + PAD, y, left - at.x() - PAD, line), LEFT, rowAddress(row.base));
+		p.setFont(font());
 		p.setRenderHint(QPainter::Antialiasing, true);
 		QRectF selectedChip;
 		QVector<QPair<QRectF, QColor>> hoveredChips;
@@ -1745,10 +1838,14 @@ QRect DumpView::headerFieldRect(int card, HeaderField field) const {
 			lineHeight() + LABEL_GAP + labelLineHeight());
 }
 
-/* by the numbers (FIRST), not by the LOST flag: the flag only tells a person who reads a dump (PROTOCOL.md) */
+/* by the numbers (FIRST), not by the LOST flag: the flag only tells a person who reads a dump (PROTOCOL.md). Losses
+ * in blocks between the one shown before and this one are said as such: "before this block" would hide them */
 QString DumpView::lossText(int card) const {
 	if (!fastBlockShown(card) || blocks_[card].check != 0) return {};
 	const DumpBlock &b = blocks_[card];
+	const quint64 lost = std::max(b.lostSince, b.lost);
+	if (lost > b.lost)
+		return tr("%n records lost since the last block shown", nullptr, int(std::min<quint64>(lost, INT_MAX)));
 	if (b.lost > 0) return tr("%n records lost before this block", nullptr, int(std::min<quint64>(b.lost, INT_MAX)));
 	if (b.newStart) return tr("a new start of the stream");
 	return {};
@@ -1972,7 +2069,7 @@ void DumpView::drawFastCard(QPainter &p, int i, const QPoint &at) const {
 	if (!bad.isEmpty() || !loss.isEmpty()) {
 		const QRect lossLine = lossRect(i);
 		p.setFont(ui);
-		p.setPen(!bad.isEmpty() || b.lost > 0 ? c.warn : c.muted);
+		p.setPen(!bad.isEmpty() || b.lost > 0 || b.lostSince > 0 ? c.warn : c.muted);
 		p.drawText(lossLine, LEFT, uiFm.elidedText(bad.isEmpty() ? loss : bad, Qt::ElideRight, lossLine.width()));
 	}
 	p.setFont(font());
@@ -2148,6 +2245,9 @@ void DumpView::drawShowAll(QPainter &p, int i) const {
 void DumpView::mouseMoveEvent(QMouseEvent *e) {
 	const QPoint pos = e->position().toPoint();
 	setHovered(registerAt(pos));
+	int cross = -1, offset = 0;
+	if (!byteAt(pos, cross, offset)) cross = -1; /* before the call: the order of its arguments is the compiler's */
+	setCrosshair(cross, offset);
 	int card = -1, row = -1, channel = -1;
 	FastPart part = NoPart;
 	(void) fastAt(pos, card, row, channel, part);
@@ -2344,6 +2444,7 @@ QRect DumpView::tipPlace(const QPoint &pos) const {
 bool DumpView::viewportEvent(QEvent *e) {
 	if (e->type() == QEvent::Leave) {
 		setHovered(NO_REGISTER);
+		setCrosshair(-1, 0);
 		setHoveredFast(-1, -1, -1);
 	}
 	if (e->type() != QEvent::ToolTip) return QAbstractScrollArea::viewportEvent(e);

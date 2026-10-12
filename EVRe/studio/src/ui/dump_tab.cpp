@@ -173,12 +173,25 @@ void DumpTab::setShown(bool shown) {
 	emit dumpWanted(shown);
 }
 
+/* A new block's losses are counted from the stream's total at the block shown before it (in the same start): one
+ * block in four is taken, and a loss in a block never taken is still said on the next card. A new start counts from
+ * 0; a stream with no block shown before (the tab shown again, another map) says only its block's own. */
 void DumpTab::applyFastDumps(const QVector<DumpBlock> &blocks) {
 	QVector<DumpBlock> kept;
-	for (const DumpBlock &b : blocks) {
+	for (DumpBlock b : blocks) {
 		const auto same = std::find_if(fastBlocks_.begin(), fastBlocks_.end(),
 				[&b](const DumpBlock &was) { return was.stream == b.stream && was.version == b.version; });
-		kept << (same != fastBlocks_.end() ? *same : b);
+		if (same != fastBlocks_.end()) {
+			kept << *same;
+			continue;
+		}
+		const auto before = std::find_if(fastBlocks_.begin(), fastBlocks_.end(),
+				[&b](const DumpBlock &was) { return was.stream == b.stream && !was.data.isEmpty(); });
+		if (before != fastBlocks_.end()) {
+			const quint64 from = before->start == b.start && before->lostTotal <= b.lostTotal ? before->lostTotal : 0;
+			b.lostSince = b.lostTotal - from;
+		}
+		kept << b;
 	}
 	fastBlocks_ = kept;
 	compose();

@@ -640,7 +640,7 @@ in address order. Each card has the request the Studio sent (<i>→ REQUEST  REA
 FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (<i>FUNCTION READ_RESP</i>, <i>OFFSET 0xD000</i>,
 <i>DATA payload</i> under a grey <i>22 bytes ↓</i>, <i>CRC OK</i>: the reply's CRC was checked). The mouse on a field says
 what the protocol makes of it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row's
-address at its left.</p>
+address at its left and each column's offset over it (00 to 0F): a byte's address is its row's plus its column's.</p>
 <ul>
 <li>Every register of the map is a <b>chip</b>: its bytes tinted in its colour, a plotted one in its chart colour.
 Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
@@ -658,7 +658,7 @@ answer shown, the last good bytes stay), the link closed, a manual read or a wri
 banner
 over the cards says it once.</li>
 <li>The mouse on a chip lights the register in its own colour, its chips filled stronger and outlined and its decode
-line filled, the rest as it was, and says the byte: its
+line filled, the rest as it was, lights the byte's column offset and its row's address, and says the byte: its
 register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
 <b>click</b> selects the register here and in the Registers tab (lit the same way, framed in blue); a
 <b>double-click</b> goes there. The Registers tab's
