@@ -592,6 +592,7 @@ public:
 		analysisWindows();
 		chartTrigger();
 		chartTriggerLines();
+		chartTriggerInstant();
 		chartTriggerModes();
 		chartTriggerSteady();
 		chartTriggerFast();
@@ -11715,6 +11716,231 @@ private:
 		view->clearCursors();
 		action->setChecked(false);
 		chart.tab.hide();
+		clearTriggerSettings();
+	}
+
+	/* The trigger's instant: while the view holds a crossing, a faint dashed line from the T flag down the plot to the
+	 * time axis (2 px on, 3 off: not the crosshair's 4 on, 2 off), across every lane; none while waiting for a first
+	 * crossing, after a change of the level, or with T out of view; Display, Trigger line turns it off, saved; none in a
+	 * recording's window (no trigger there); the card draws it as the CPU does */
+	void chartTriggerInstant() {
+		clearTriggerSettings();
+		QSettings().remove(QStringLiteral("chart/triggerInstantLine"));
+		const QString shots = qEnvironmentVariable("EVRE_TEST_SHOT");
+		/* for a look: a pair held on its crossing (VOLTS rising through 6 at 100.0833, off the grid's times), in both
+		 * themes; the language as set */
+		const auto heldPair = [](TriggerPair &pair, bool lanes) {
+			pair.feed(99.95);
+			pair.view->setLanes(lanes);
+			pair.tab.show();
+			(void) QTest::qWaitForWindowExposed(&pair.tab);
+			QEvent away(QEvent::Leave); /* no crosshair */
+			QApplication::sendEvent(pair.view, &away);
+			pair.view->setTrigger(pair.voltsKey(), 6, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+			pair.feed(100.4);
+			(void) pair.view->grab();
+		};
+		const auto shoot = [&shots](QWidget *widget, const QString &name) {
+			if (shots.isEmpty()) return;
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				widget->grab().save(shots + QStringLiteral("_tline_%1_%2.png").arg(name, dark ? QStringLiteral("dark")
+						: QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		};
+
+		TriggerPair pair;
+		ChartView *view = pair.view;
+		auto *choice = pair.tab.findChild<QAction *>(QStringLiteral("chartTriggerLine"));
+		if (!choice) {
+			check(false, "chart, Trigger line: the Display menu's choice");
+			return;
+		}
+		const bool byDefault = choice->isChecked() && view->triggerInstant() && choice->isVisible();
+		pair.feed(99.95);
+		pair.tab.show();
+		(void) QTest::qWaitForWindowExposed(&pair.tab);
+		QEvent away(QEvent::Leave);
+		QApplication::sendEvent(view, &away);
+		/* armed in Normal, no crossing yet: waiting, no line */
+		view->setTrigger(pair.voltsKey(), 6, ChartView::TriggerEdge::Rising, ChartView::TriggerMode::Normal);
+		(void) view->grab();
+		const bool noneWaiting = view->triggerPhase() == ChartView::TriggerPhase::Waiting && view->triggerInstantLine().isNull();
+		/* the crossing at 100.0833: held, the line at the flag's x, the plot's height */
+		pair.feed(100.4);
+		(void) view->grab();
+		const QRectF plot = view->lastPlot(), flag = view->triggerPositionMark(), tTag = view->triggerTag();
+		const QLineF line = view->triggerInstantLine();
+		double t0, t1;
+		bool cursors;
+		view->range(t0, t1, cursors);
+		const double wantX = plot.left() + (100.0 + 1.0 / 12 - t0) / (t1 - t0) * plot.width();
+		const bool placed = !line.isNull() && !flag.isEmpty() && !tTag.isEmpty() && line.x1() == line.x2()
+				&& std::fabs(line.x1() - flag.center().x()) <= 1 && std::fabs(line.x1() - tTag.center().x()) <= 1
+				&& std::fabs(line.x1() - wantX) <= 1 && std::fabs(line.y1() - plot.top()) < 0.5
+				&& std::fabs(line.y2() - plot.bottom()) < 0.5;
+		std::printf("     (the instant's line at x %.2f, the flag's %.2f, the T's %.2f, the crossing's %.2f; from y %.1f to %.1f, the "
+				"plot %.1f to %.1f)\n", line.x1(), flag.center().x(), tTag.center().x(), wantX, line.y1(), line.y2(), plot.top(),
+				plot.bottom());
+		check(byDefault && noneWaiting && placed, "chart, Trigger line: on by default; none while Normal waits for its first "
+				"crossing; held on the crossing, a line at the T flag's x (within 1 px) from the plot's top to its bottom");
+
+		/* its look on the CPU, in both themes: the column's share of ink and its dashes' length (the crosshair's are 4 on,
+		 * 2 off: two thirds ink) */
+		const auto dashLook = [&plot](const QImage &picture, double x0, double &share, double &dash) {
+			const double dpr = picture.devicePixelRatio();
+			const int x = int(std::floor(x0 * dpr)), far = int(std::lround(6 * dpr));
+			int rows = 0, ink = 0, runs = 0, run = 0;
+			for (int y = int(std::ceil((plot.top() + 4) * dpr)); y < int((plot.bottom() - 4) * dpr); y++, rows++) {
+				const QColor here = picture.pixelColor(x, y);
+				const bool on = here != picture.pixelColor(x - far, y) && here != picture.pixelColor(x + far, y);
+				ink += on;
+				if (on) run++;
+				if (!on && run > 0) {
+					runs++;
+					run = 0;
+				}
+			}
+			share = rows > 0 ? double(ink) / rows : 0;
+			dash = runs > 0 ? ink / dpr / runs : 0;
+		};
+		const bool wasDark = Theme::isDark();
+		double share[2] = {}, dash[2] = {};
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			dashLook(view->grab().toImage(), line.x1(), share[dark], dash[dark]);
+		}
+		Theme::apply(*qApp, wasDark);
+		std::printf("     (its column: %.0f %% ink with dashes of %.1f px (light), %.0f %% with %.1f px (dark))\n", share[0] * 100,
+				dash[0], share[1] * 100, dash[1]);
+		bool looks = true;
+		for (int k = 0; k < 2; k++) looks = looks && share[k] >= 0.25 && share[k] <= 0.6 && dash[k] >= 1.4 && dash[k] <= 3.2;
+		check(looks, "chart, Trigger line: drawn in both themes, dashed 2 px on and 3 off (less ink than gap, unlike the "
+				"crosshair's 4 on, 2 off)");
+		shoot(&pair.tab, QStringLiteral("en"));
+
+		/* the card: the line's band in its picture as in the CPU's (the waves' rows left out: the card rounds them a
+		 * little differently) */
+		const QVector<GpuLines::Adapter> adapters = GpuLines::adapters();
+		double cardAlike = -1, cardX = -1;
+		if (!adapters.isEmpty()) {
+			view->setDrawing(adapters.first().dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
+			if (QTest::qWaitFor([view] { return !view->openingGpu(); }, 10000) && view->drawsOnGpu()) {
+				for (int k = 0; k < 3; k++) {
+					view->repaint();
+					QApplication::processEvents();
+				}
+				QRect at;
+				const QImage card = view->gpuPicture(&at).convertToFormat(QImage::Format_RGB32);
+				const QImage cpu = pair.tab.grab().toImage().convertToFormat(QImage::Format_RGB32).copy(at);
+				const double dpr = view->devicePixelRatioF();
+				const QPointF origin = QPointF(view->mapTo(&pair.tab, QPoint(0, 0))) * dpr - QPointF(at.topLeft());
+				cardX = view->triggerInstantLine().x1();
+				const double volts = view->yOfValue(6), amps = view->yOfValue(0.5 + 0.25 * std::sin(2 * M_PI / 12 + 1));
+				const int left = int(std::floor((cardX - 12) * dpr + origin.x())), width = int(std::lround(24 * dpr));
+				double alike = 0;
+				int bands = 0;
+				/* the rows between the plot's top, the two waves' crossings and its bottom, each clear of them by 16 px */
+				QVector<double> edges{ plot.top() + 4, plot.bottom() - 4, volts - 16, volts + 16, amps - 16, amps + 16 };
+				std::sort(edges.begin(), edges.end());
+				for (int k = 0; k + 1 < edges.size(); k += 2) {
+					const double top = std::max(edges[k], plot.top() + 4), bottom = std::min(edges[k + 1], plot.bottom() - 4);
+					if (bottom - top < 24) continue;
+					const QRect area(left, int(std::ceil(top * dpr + origin.y())), width, int((bottom - top) * dpr));
+					if (!card.rect().contains(area)) continue;
+					alike += blocksAlike(card.copy(area), cpu.copy(area), 24);
+					bands++;
+				}
+				if (bands > 0 && view->plotOnCard()) cardAlike = alike / bands;
+			}
+			view->setDrawing(ChartView::Drawing::Cpu);
+			(void) view->grab();
+		}
+		std::printf("     (the card: %s)\n", cardAlike < 0 ? "none" : qPrintable(QStringLiteral("the line at x %1, %2 % of its "
+				"band's blocks like the CPU's").arg(cardX, 0, 'f', 2).arg(cardAlike * 100, 0, 'f', 1)));
+		check(adapters.isEmpty() || (cardAlike >= 0.93 && std::fabs(cardX - line.x1()) < 0.01), "chart on a GPU: the "
+				"trigger line drawn by the card as the CPU draws it, at the same x");
+
+		/* none with T out of view (a shorter window ending where the view ends), none after a change of the level (the T
+		 * hollow: no longer this level's crossing); back with the window */
+		view->setWindow(0.2);
+		(void) view->grab();
+		const bool noneOut = view->triggerInstantLine().isNull() && view->triggerTag().isEmpty();
+		view->setWindow(1);
+		(void) view->grab();
+		const bool back = !view->triggerInstantLine().isNull();
+		view->setTriggerLevel(5.5);
+		(void) view->grab();
+		const bool noneChanged = view->triggerInstantLine().isNull() && !view->triggerHandleSolid();
+		view->setTriggerLevel(6);
+		(void) view->grab();
+		const bool backAgain = !view->triggerInstantLine().isNull();
+		check(noneOut && back && noneChanged && backAgain, "chart, Trigger line: none while T is out of the view or after a "
+				"change of the level (the T hollow), back when T is in view on its level again");
+
+		/* with lanes: one line across every lane, from the first's top to the last's bottom */
+		bool acrossLanes = false;
+		{
+			TriggerPair lanes;
+			heldPair(lanes, true);
+			const QLineF across = lanes.view->triggerInstantLine();
+			const int count = lanes.view->laneCount();
+			acrossLanes = count == 2 && !across.isNull()
+					&& std::fabs(across.x1() - lanes.view->triggerPositionMark().center().x()) <= 1
+					&& across.y1() <= lanes.view->laneRect(0).top() + 0.5 && across.y2() >= lanes.view->laneRect(1).bottom() - 0.5;
+			std::printf("     (with %d lanes: the line from y %.1f to %.1f, the lanes from %.1f to %.1f)\n", count, across.y1(),
+					across.y2(), lanes.view->laneRect(0).top(), count > 1 ? lanes.view->laneRect(1).bottom() : -1.0);
+			shoot(&lanes.tab, QStringLiteral("en_lanes"));
+			lanes.view->stopTrigger();
+			lanes.tab.hide();
+		}
+		check(acrossLanes, "chart, Trigger line: with Lanes on, one line across every lane at the T flag's x");
+
+		/* Display, Trigger line off: none, saved, read back by a new tab; a recording's window offers none */
+		choice->setChecked(false);
+		(void) view->grab();
+		const bool offHides = !view->triggerInstant() && view->triggerInstantLine().isNull() && !view->triggerTag().isEmpty();
+		const bool saved = !QSettings().value(QStringLiteral("chart/triggerInstantLine"), true).toBool();
+		bool readBack = false;
+		{
+			ChartTab other{ [] { return 100.0; } };
+			auto *otherChoice = other.findChild<QAction *>(QStringLiteral("chartTriggerLine"));
+			readBack = otherChoice && !otherChoice->isChecked() && !other.view()->triggerInstant();
+		}
+		choice->setChecked(true);
+		(void) view->grab();
+		const bool onAgain = !view->triggerInstantLine().isNull();
+		bool recordingNone = false;
+		{
+			ChartTab recording{ [] { return 100.0; } };
+			recording.setRecording(0, 0, 10, 512, 4);
+			auto *recordingChoice = recording.findChild<QAction *>(QStringLiteral("chartTriggerLine"));
+			recordingNone = recordingChoice && !recordingChoice->isVisible();
+		}
+		check(offHides && saved && readBack && onAgain && recordingNone, "chart, Display, Trigger line: off hides the line "
+				"(the T stays), saved (chart/triggerInstantLine) and read back by a new tab, on again shows it; a recording's window "
+				"has no such choice");
+		view->stopTrigger();
+		pair.tab.hide();
+
+		/* for a look: the same in Arabic */
+		if (!shots.isEmpty()) {
+			language::apply(*qApp, QStringLiteral("ar"));
+			QTest::qWait(100);
+			{
+				TriggerPair arabic;
+				heldPair(arabic, false);
+				shoot(&arabic.tab, QStringLiteral("ar"));
+				arabic.view->stopTrigger();
+				arabic.tab.hide();
+			}
+			language::apply(*qApp, QStringLiteral("en"));
+			QTest::qWait(100);
+		}
+		QSettings().remove(QStringLiteral("chart/triggerInstantLine"));
 		clearTriggerSettings();
 	}
 

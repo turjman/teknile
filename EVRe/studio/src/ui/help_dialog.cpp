@@ -445,7 +445,9 @@ capture says when the last one was. <b>Find level</b> puts the level halfway bet
 in view. The
 <b>hold-off</b> (the window's length by default, 0 to
 10 s) is the time after a crossing in which no other counts. The <b>T ▼</b> flag above the chart, its arrow over
-the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again.
+While the view holds a crossing, a faint dashed line runs down from the T through the chart and every lane, so the
+instant is read on every wave; <b>Display → Trigger line</b> turns it off. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
 <p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
