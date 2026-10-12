@@ -33,7 +33,11 @@
  * reply, the link closed, the manual READ's card, the last write's) get a 3 px amber stripe at their card's left edge
  * and the reason in the reply's label and the card's tooltip, so a frozen dump never reads as live. The last write is
  * a card at the top: its WRITE_ACK (or WRITE) as the request, the written bytes as the grid, the WRITE_ACK_RESP (or
- * the refusal) as the reply; a WRITE is never answered, and the card says so.
+ * the refusal) as the reply; a WRITE is never answered, and the card says so. A fast stream's newest block is a card of
+ * its own: the READ_RESP nobody asked for as the reply's strip (no request), the block's 8-byte header as a strip of
+ * its four members (FIRST, COUNT, FLAGS, SPARE), a line for the records lost, then the records one row each: the
+ * number, each channel's bytes a chip in its colour and its value; folded the first three and the last, with Show all
+ * every record (as many rows as the stream's largest block, so the card never jumps between blocks).
  *
  * A byte whose value changed glows a moment (its text in a readable accent, fading over the Registers tab's
  * GLOW_MS), so the dump and the table pulse together; not while a register is hovered. Hovering a byte or a decode
@@ -54,6 +58,7 @@
 #include <QColor>
 #include <QElapsedTimer>
 #include <QHash>
+#include <QSet>
 #include <QVector>
 #include <functional>
 
@@ -81,6 +86,16 @@ struct DumpBlock {
 	QString stream;           /* FastStream: the stream's name */
 	double rate = 0;          /* AutoSend: its frames a second */
 	bool ack = false;         /* Write: a WRITE_ACK (answered), not a WRITE (never answered) */
+	/* FastStream: the newest block (IoEngine::FastDump; data empty: switched on, no block yet), version its serial */
+	int streamIndex = -1;     /* the stream's index in the map's streams (setStreams) */
+	quint64 first = 0;        /* its first record in 64 bits; a bad block: the wire's 32 */
+	int count = 0;            /* the header's count of records */
+	uint8_t flags = 0, spare = 0;
+	quint64 lost = 0;         /* records lost before it */
+	bool newStart = false;    /* a new start of the stream */
+	int check = 0;            /* 0 a good block, 1 a bad count, 2 a newer kind (fast::BlockCheck) */
+	bool stopped = false;     /* the stream is switched off: this was its last block */
+	qint64 wallMs = 0;        /* when it came, on the wall clock (ms since 1970): "last block 14:03:12" */
 };
 
 class DumpView : public QAbstractScrollArea {
@@ -96,8 +111,13 @@ public:
 	static constexpr int STRIPE_W = 3;            /* the amber stripe of a card not live */
 	static constexpr int FIELD_GAP = 14;          /* between two columns of a strip */
 	enum ColourMode { AllRegisters, PlottedOnly };
-	/* what the Copy items put on the clipboard (copyText) */
-	enum CopyKind { CopyRegisterBytes, CopyBlockHex, CopyBlockC, CopyDecoded };
+	/* what the Copy items put on the clipboard (copyText); the records as CSV only of a fast stream's block */
+	enum CopyKind { CopyRegisterBytes, CopyBlockHex, CopyBlockC, CopyDecoded, CopyRecordsCsv };
+	/* a fast stream's block header, its members in the wire's order (PROTOCOL.md's block table) */
+	enum HeaderField { First, HeaderCount, Flags, Spare, N_HEADER };
+	/* what is under the mouse on a fast card's records (fastAt) */
+	enum FastPart { NoPart, ChannelChip, ChannelValue, ChannelHead, RecordNumber, ShowAllButton };
+	static constexpr int RECORDS_SHOWN = 3; /* a fast card folded: the first three records, then the last */
 	/* a frame's fields, in the wire's order (PROTOCOL.md's frame table), and which frame of a card */
 	enum Field { Start, Slave, Function, Offset, Count, Data, Crc, End, N_FIELDS };
 	enum Side { Request, Reply };
@@ -194,6 +214,41 @@ public:
 	QRect payloadRect(int card, Side side) const;    /* the DATA field's pill; empty: no payload in that frame */
 	QString payloadText(int card, Side side) const;  /* the pill's words, "22 bytes ↓"; empty: no payload pill */
 	int paintCount() const { return paints_; }
+	int glowRepaints() const { return glowRepaints_; } /* the glow's own repaints, while a byte fades (tests) */
+
+	/* Fast streams: their definitions (the map's, by index: DumpBlock::streamIndex), and the chart's colour of each
+	 * plotted channel by ChartView::fastKey (its chips and dot take it; the others the palette's) */
+	void setStreams(const QVector<StreamDef> &streams);
+	void setFastColours(const QHash<int, QColor> &plotted);
+	/* a fast card: its block header's columns, their name ("FIRST" .. "SPARE", the protocol's), meaning ("record
+	 * 1191259", "253 records", "LOST", "0"), tooltip and bytes */
+	static QString headerFieldName(HeaderField field);
+	QString headerFieldMeaning(int card, HeaderField field) const;
+	QString headerFieldTip(int card, HeaderField field) const;
+	QByteArray headerFieldBytes(int card, HeaderField field) const;
+	QRect headerFieldRect(int card, HeaderField field) const; /* both lines; empty: no header there */
+	QColor headerFieldColour(int card, HeaderField field) const; /* its meaning's ink: warn for LOST, a bad count */
+	/* the line under the header: the records lost before this block, a new start, or a bad block's words (empty: none) */
+	QString lossText(int card) const;
+	QString badBlockText(int card) const;
+	QRect lossRect(int card) const;
+	/* the record rows as laid: folded the first three and the last (row 3), open every record (recordsPerBlock rows) */
+	int fastRowsShown(int card) const;
+	quint64 recordNumber(int card, int row) const;  /* its record's number; -1 (all ones): none in that row */
+	QRect recordRect(int card, int row) const;      /* the whole row, in the viewport */
+	QRect channelChipRect(int card, int row, int channel) const;
+	QRect channelValueRect(int card, int row, int channel) const;
+	QString channelValueText(int card, int row, int channel) const; /* "1.2000 A": a raw step shows (channelText) */
+	QRect channelHeadRect(int card, int channel) const; /* the records head's dot, name and type of a channel */
+	QColor channelColour(int card, int channel) const;  /* its chips' colour (invalid: neutral) */
+	QString moreText(int card) const;               /* folded: "249 more records"; empty: none */
+	QRect showAllRect(int card) const;              /* the Show all (Show fewer) button; empty: none */
+	QString showAllText(int card) const;
+	bool showAll(int card) const;
+	void setShowAll(int card, bool on);             /* by the card's stream, kept while the view lives */
+	bool fastAt(const QPoint &pos, int &card, int &row, int &channel, FastPart &part) const;
+	int hoveredChannel() const { return hoverChannel_; } /* the channel lit on a fast card; -1: none */
+	int hoveredFastCard() const { return hoverFastCard_; }
 
 signals:
 	/* a click on a chip or a decode line (switchTab false), a double-click or Enter (true) */
@@ -223,6 +278,10 @@ private:
 	static constexpr int VALUE_CHARS = 22;  /* and its value */
 	static constexpr int TIP_GAP = 8;       /* a chip's tooltip ends this far before the decode list */
 	static constexpr int PILL_PAD = 8;      /* the payload pill's room left and right of its words */
+	/* a fast card's records: a channel's chip and its value close, the channels further apart, so each value reads
+	 * with its own chip */
+	static constexpr int RECORD_GAP = 8;
+	static constexpr int GROUP_GAP = 28;
 
 	/* one row of the grid: its base address and its top in the card (one line high) */
 	struct Row {
@@ -239,6 +298,13 @@ private:
 											* under the line before) */
 		int titleTop = -1, requestTop = -1, requestStripTop = -1, replyTop = -1, replyStripTop = -1, noReplyTop = -1;
 		int gridTop = -1, noteTop = -1;
+		/* a fast stream's block: its header, the line under it, the records' head, rows and button */
+		int headerLabelTop = -1, headerStripTop = -1, lossTop = -1, recordsHeadTop = -1, rowsTop = -1, showAllTop = -1;
+		int recRows = 0;                   /* the record rows laid */
+		bool folded = false;               /* the first three, a row "249 more records", the last */
+		bool open = false;                 /* Show all: every record of the block */
+		QVector<int> groupLeft, groupW;    /* each channel's column, from the card's left */
+		QVector<QColor> channelColours;    /* invalid: neutral (Colour: plotted) */
 	};
 
 	void relayout();
@@ -302,6 +368,31 @@ private:
 	void drawGrid(QPainter &p, int card, const QPoint &at) const;
 	void drawDecode(QPainter &p, int card, const QPoint &at) const;
 
+	/* fast stream cards */
+	void layFastCard(int i, Card &card, int &at) const;
+	const StreamDef *streamOf(int card) const;       /* the card's stream; null: not a fast card with a block */
+	bool fastBlockShown(int card) const;             /* a fast card with a block (not the note of a stream switched on) */
+	int recordIndex(int card, int row) const;        /* the block's record in that row; -1: none */
+	int rowTop(int card, int row) const;             /* the row's top in the card */
+	int recnoWidth() const;
+	int headerLeft(HeaderField field) const;         /* a header column's left, from the card's left */
+	QString headerBytesText(int card, HeaderField field) const;
+	QString headerLabel(int card, HeaderField field) const;
+	QString fastSentence(const DumpBlock &block) const;
+	QString channelTip(int card, int row, int channel) const;
+	static QString channelText(const StreamChannel &channel, double value); /* its decimals, else the scale's */
+	static QString typeText(const StreamChannel &channel);                   /* "i16 × 0.0005 A" */
+	static int channelOffset(const StreamDef &def, int channel);             /* its first byte in a record */
+	void setHoveredFast(int card, int channel, int buttonCard);
+	void drawFastCard(QPainter &p, int card, const QPoint &at) const;
+	void drawHeaderStrip(QPainter &p, int card, const QPoint &at) const;
+	void drawRecordsHead(QPainter &p, int card, const QPoint &at) const;
+	void drawRecordRows(QPainter &p, int card, const QPoint &at) const;
+	void drawShowAll(QPainter &p, int card) const;
+	QString fastCopyText(CopyKind kind, int card) const;
+	/* what the tooltip of a fast card's part stands for: a channel's chip and value in the row, its head, the number */
+	QRect fastAnchor(int card, int row, int channel, FastPart part) const;
+
 	QVector<DumpBlock> blocks_;
 	QVector<Card> cards_;
 	QVector<RegDef> defs_;
@@ -329,5 +420,15 @@ private:
 	int usedColumns_ = 16;       /* the grid's columns any card uses: the decode list starts after them */
 	int nameChars_ = NAME_CHARS; /* the widest name of the tab, at most NAME_CHARS, plus two */
 	int paints_ = 0;
+	int glowRepaints_ = 0;
 	bool drawnDark_ = true;
+	/* fast stream cards */
+	QVector<StreamDef> streams_;
+	QHash<int, QColor> fastColours_;  /* by ChartView::fastKey */
+	QSet<QString> showAll_;           /* the streams whose cards show every record */
+	int headerW_[N_HEADER] = {};      /* each header column's width, the widest in any fast card */
+	int recnoW_ = 0;                  /* the records' number column, the widest number shown */
+	int fastRight_ = 0;               /* the fast cards' widest content, from the content's left */
+	int hoverFastCard_ = -1, hoverChannel_ = -1; /* the channel lit, in that card */
+	int hoverButtonCard_ = -1;        /* the card whose Show all button is under the mouse */
 };

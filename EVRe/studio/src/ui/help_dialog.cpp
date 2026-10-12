@@ -226,7 +226,7 @@ is switched on again by itself.</li>
 <li>No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
 is told once in the Log.</li>
 <li>One device only: on a bus the card is greyed (a device sending by itself would collide with the others).</li>
-<li>The Monitor names a block <i>READ_RESP (fast stream ADC)</i>.</li>
+<li>The Monitor names a block <i>READ_RESP (fast stream ADC)</i>; the <b>Dump</b> tab shows the newest block.</li>
 </ul>
 <p>Under the stream, each channel has a <b>Plot</b> tick and its newest value. Ticked, the channel is a line on the
 chart, <i>ADC.I_LOAD</i>, like a register's: its legend chip, its lane, the crosshair, the cursors. Every sample
@@ -668,8 +668,13 @@ current row is selected here too, and its right-click menu has <b>Show in dump</
 writes</i>), and Copy: the register's bytes, the block as hex rows or as a C array, or its decoded values.</li>
 <li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one; so does the last <b>write</b>
 (from the Registers tab or the Monitor): its WRITE_ACK and the device's WRITE_ACK_RESP over the bytes written, or a
-WRITE, which is never answered. A running fast stream is a note (its records are on the Chart); auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
+WRITE, which is never answered. Auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
 <b>Device</b> list shows one device's cards at a time.</li>
+<li>A running <b>fast stream</b> has a card of its own: its newest block, at most ten times a second whatever
+<i>Show values</i> says. The frame's fields, the block's header (FIRST, COUNT, FLAGS, SPARE), then the first three
+records and the last, each channel's bytes a chip and its value beside it, and <b>Show all ▾</b> for the whole
+block. Records lost or a stopped stream in amber; <b>Hold</b> keeps the block shown. The mouse on a channel lights
+it in every row. Copy gives the block as hex or a C array, or the records as CSV.</li>
 <li>The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
 kept).</li>
 </ul>

@@ -9,16 +9,18 @@
  *   | the cards: one per block read, in address order (DumpView)                         |
  *   +------------------------------------------------------------------------------------+
  *
- * The window hands the engine's replies over at the values' pace (applyDumps, only while the tab is shown and
- * following: wantsReplies) and calls tick() at each of those beats, so the replies' ages move with one repaint a
- * beat. Hold freezes the picture: the replies are not taken, the cards say "held" and get the amber stripe, and a
- * banner over them says so once for the whole tab (as it does when the link is closed: both are the whole tab's). The
- * manual READ typed in the Monitor shows as a card at the top until the next one; the fast streams switched on are a
- * note each (their records are on the Chart). On a bus the device chooser shows one device's cards at a time.
+ * The window ticks the tab once for all its cards (tick(): one repaint) and hands the engine's replies over at the
+ * values' pace (applyDumps, only while the tab is shown and following: wantsReplies), each fast stream's newest block
+ * at most ten times a second whatever that pace (applyFastDumps), on those same ticks. Hold freezes the picture: the
+ * replies are not taken, the cards say "held" and get the amber stripe, and a banner over them says so once for the
+ * whole tab (as it does when the link is closed: both are the whole tab's). The manual READ typed in the Monitor shows
+ * as a card at the top until the next one; a fast stream's newest block is a card by its window's address (a stream
+ * switched on that has sent none yet, one line). On a bus the device chooser shows one device's cards at a time.
  *
  * The menu of a register or a card (a right-click on the view, and the same items in the Copy button, so nothing is
  * reachable only by a right-click): Show in Registers, Plot or Unplot, Write... (the Registers tab's editor, with
- * Allow writes on), and the four Copy forms. Colour (all registers or plotted only) is kept in "dump/colour", Fields
+ * Allow writes on), and the Copy forms (a fast block's records as CSV too). Colour (all registers or plotted only) is
+ * kept in "dump/colour", Fields
  * (the frames' fields named under their bytes, or each frame one line) in "dump/fields". */
 #pragma once
 
@@ -48,8 +50,15 @@ public:
 	bool wantsReplies() const { return shown_ && !view_->hold(); }
 	/* the engine's blocks (every device's), as the window made them from IoEngine::DumpReply */
 	void applyDumps(const QVector<DumpBlock> &blocks);
-	/* the fast streams switched on: a note card each (DumpBlock::FastStream) */
+	/* the fast streams switched on (DumpBlock::FastStream, no data): a stream with no block yet a one-line card, one
+	 * not among them whose block is shown says it stopped */
 	void setStreamNotes(const QVector<DumpBlock> &notes);
+	/* each fast stream's newest block, as the window made them from IoEngine::FastDump (a block already shown is kept
+	 * as it is: the same version) */
+	void applyFastDumps(const QVector<DumpBlock> &blocks);
+	bool hasFastCards() const { return !fastBlocks_.isEmpty(); }
+	/* the map's fast streams (none on a bus): another layout drops the blocks shown */
+	void setStreams(const QVector<StreamDef> &streams);
 	/* the manual READ's answer from the Monitor: a card at the top, kept until the next one */
 	void showManualRead(const DumpBlock &block);
 	/* a beat of the values' pace: the ages move (one repaint) */
@@ -93,7 +102,8 @@ private:
 	QCheckBox *fields_;
 	ElidedLabel *banner_;
 	QWidget *bannerBox_;  /* the banner and its line */
-	QVector<DumpBlock> engineBlocks_, streamNotes_;
+	QVector<DumpBlock> engineBlocks_, streamNotes_, fastBlocks_;
+	QVector<StreamDef> streams_;
 	DumpBlock manual_;
 	bool hasManual_ = false;
 	bool shown_ = false;

@@ -831,8 +831,9 @@ void MainWindow::onAutoSendSet(bool on, int hz, const QString &err) {
 /* the card's rows: the map's streams (the one device's; on a bus the selected device's map, greyed) */
 void MainWindow::showFastStreams() {
 	sidebar_->setFastStreams(doc_->map().streams);
-	/* the chart's stores: the one device's streams; a bus has none */
+	/* the chart's stores and the Dump's cards: the one device's streams; a bus has none */
 	chartTab_->setFastStreams(isBus() ? QVector<StreamDef>() : doc_->map().streams);
+	if (dumpTab_) dumpTab_->setStreams(isBus() ? QVector<StreamDef>() : doc_->map().streams);
 	for (int i = 0; i < doc_->map().streams.size(); i++)
 		for (int c = 0; c < doc_->map().streams[i].channels.size(); c++)
 			sidebar_->setFastPlot(i, c, !isBus() && chartTab_->fastPlotted(i, c));
@@ -1145,9 +1146,25 @@ void MainWindow::sync() {
 	QVector<RegValue> values;
 	quint64 generation = 0;
 	qint64 nowMs = 0;
-	const bool copyValues = valuePacer_.due(valueClock_.elapsed());
+	const qint64 elapsedMs = valueClock_.elapsed();
+	const bool copyValues = valuePacer_.due(elapsedMs);
 	if (copyValues) engine_->table().snapshot(values, generation, nowMs);
-	if (copyValues) syncDump();
+	/* The Dump tab, one tick for all its cards. Its pace is the values' (their beats are its ticks), or ten a second
+	 * while it has fast cards and Show values is slower: then a beat is latched and its replies taken at the next tick
+	 * (their ages are measured at the paint, so they stay true). The fast blocks are taken at most ten times a
+	 * second, met at the frame closest to 100 ms (as ValuePacer meets its period), not at every tick of a faster
+	 * pace: one tick and two pacers would give twenty half-updates a second. Hidden, the tab is not ticked. */
+	if (copyValues) dumpValuesPending_ = true;
+	if (dumpTab_->shown()) {
+		const bool fast = dumpWantsFast();
+		const int pace = valuePacer_.perSecond();
+		const int tabPace = fast && pace != ValuePace::EVERY_FRAME && pace < FAST_DUMP_PER_SECOND ? FAST_DUMP_PER_SECOND : pace;
+		if (dumpPacer_.perSecond() != tabPace) dumpPacer_.setPerSecond(tabPace);
+		const bool tick = tabPace == pace ? copyValues : dumpPacer_.due(elapsedMs);
+		const bool fastDue = fast && dumpTab_->wantsReplies()
+				&& (!fastDumpClock_.isValid() || fastDumpClock_.elapsed() >= 1000 / FAST_DUMP_PER_SECOND - 8);
+		if (tick) syncDump(dumpValuesPending_, fastDue);
+	}
 	if (copyValues && generation == mapGeneration_ && values.size() == model_->rows().size()) {
 		for (int row = 0; row < values.size(); row++) {
 			const RegValue &value = values[row];
@@ -1221,13 +1238,26 @@ void MainWindow::sync() {
 	monitorTab_->addFrames(frames, dropped);
 }
 
-/* The Dump tab follows at the values' pace: the replies that moved (only while it is shown and not held: the engine
- * keeps them only then), a note for each fast stream switched on, and the chart's colour of each plotted register, so
- * its chips, its dot and its line agree. One repaint a beat moves the replies' ages. */
-void MainWindow::syncDump() {
-	if (!dumpTab_->shown()) return;
+bool MainWindow::dumpWantsFast() const {
+	if (isBus()) return false;
+	if (dumpTab_->hasFastCards()) return true;
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++)
+		if (sidebar_->fastOn(i)) return true;
+	return false;
+}
+
+int MainWindow::fastDumpLockMisses() const { return engine_->fastDumpLockMisses(); }
+
+/* A tick of the Dump tab: the replies that moved (only while it is shown and not held: the engine keeps them only
+ * then), each fast stream's newest block (its data shared with the engine's: no byte copied), the streams switched
+ * on, and the chart's colour of each plotted register and channel, so its chips, its dot and its line agree. One
+ * repaint moves every card: Qt folds the repaints the new blocks ask for into the tick's. */
+void MainWindow::syncDump(bool values, bool fast) {
+	dumpTicks_++;
 	QVector<IoEngine::DumpReply> replies;
-	if (dumpTab_->wantsReplies() && engine_->takeDumps(replies)) {
+	if (values) dumpValuesPending_ = false;
+	if (values && dumpTab_->wantsReplies()) pollDumpTakes_++;
+	if (values && dumpTab_->wantsReplies() && engine_->takeDumps(replies)) {
 		QVector<DumpBlock> blocks;
 		blocks.reserve(replies.size());
 		for (const IoEngine::DumpReply &r : replies) {
@@ -1252,6 +1282,41 @@ void MainWindow::syncDump() {
 		}
 		dumpTab_->applyDumps(blocks);
 	}
+	const QVector<StreamDef> &streamDefs = doc_->map().streams;
+	QVector<IoEngine::FastDump> dumps;
+	if (fast) {
+		fastDumpClock_.start();
+		fastDumpTakes_++;
+	}
+	if (fast && engine_->takeFastDumps(dumps)) {
+		const qint64 wallNow = QDateTime::currentMSecsSinceEpoch();
+		const double engineNow = engine_->now();
+		QVector<DumpBlock> blocks;
+		for (const IoEngine::FastDump &d : dumps) {
+			if (d.stream < 0 || d.stream >= streamDefs.size()) continue;
+			DumpBlock b;
+			b.kind = DumpBlock::FastStream;
+			b.stream = streamDefs[d.stream].name;
+			b.streamIndex = d.stream;
+			b.wireSlave = d.slave;
+			b.addr = d.addr;
+			b.size = uint16_t(d.data.size());
+			b.data = d.data;
+			b.time = d.time;
+			b.wallMs = wallNow - qint64((engineNow - d.time) * 1000.0);
+			b.version = d.serial;
+			b.first = d.first;
+			b.count = d.count;
+			b.flags = d.flags;
+			b.spare = d.spare;
+			b.lost = d.lost;
+			b.newStart = d.newStart;
+			b.check = int(d.check);
+			blocks << b;
+		}
+		if (!dumps.isEmpty()) lastFastDumpData_ = dumps.first().data.constData();
+		dumpTab_->applyFastDumps(blocks);
+	}
 	QVector<DumpBlock> notes;
 	const QVector<StreamDef> &streams = doc_->map().streams;
 	for (int i = 0; !isBus() && i < std::min(int(streams.size()), sidebar_->fastStreamCount()); i++) {
@@ -1264,9 +1329,13 @@ void MainWindow::syncDump() {
 	}
 	dumpTab_->setStreamNotes(notes);
 	QHash<RegKey, QColor> colours;
-	for (const ChartView::Info &line : chartTab_->view()->lines())
+	QHash<int, QColor> fastColours; /* by the view's key of a channel: 256 x its stream + its index */
+	for (const ChartView::Info &line : chartTab_->view()->lines()) {
 		if (!ChartView::isFastKey(line.key) && line.key < MathLines::FIRST_CHART_KEY) colours.insert(RegKey(line.key), line.color);
+		if (ChartView::isFastKey(line.key)) fastColours.insert(line.key - ChartView::fastKey(0, 0), line.color);
+	}
 	dumpTab_->view()->setColours(colours);
+	dumpTab_->view()->setFastColours(fastColours);
 	dumpTab_->tick();
 }
 

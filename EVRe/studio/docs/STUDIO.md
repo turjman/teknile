@@ -4566,7 +4566,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
-| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams |
+| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, the Dump tab's store (its replies, each fast stream's newest block) |
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
 | `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
@@ -4609,8 +4609,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/math_line_dialog.h`,&nbsp;`.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
 | `src/ui/formula_completer.h`,&nbsp;`.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
 | `src/ui/monitor_tab.h`,&nbsp;`.cpp` | `MonitorTab`: frame log, hand-typed READ or WRITE |
-| `src/ui/dump_tab.h`,&nbsp;`.cpp` | `DumpTab`: the Dump tab's toolbar (device, Follow / Hold, Colour, Fields, Copy ▾), the banner, its menu, the manual read's card and the fast streams' notes |
-| `src/ui/dump_view.h`,&nbsp;`.cpp` | `DumpView`: the cards painted (the request's and the reply's strips of named fields, the hex grid of one-line rows with chips, the decode list), the glow, the hover, the amber stripe, the tooltips' places, the mouse, the keys and the copy texts; `DumpBlock` |
+| `src/ui/dump_tab.h`,&nbsp;`.cpp` | `DumpTab`: the Dump tab's toolbar (device, Follow / Hold, Colour, Fields, Copy ▾), the banner, its menu, the manual read's card and the fast streams' blocks (`applyFastDumps`, stopped or switched on) |
+| `src/ui/dump_view.h`,&nbsp;`.cpp` | `DumpView`: the cards painted (the request's and the reply's strips of named fields, the hex grid of one-line rows with chips, the decode list; a fast stream's block with its header strip, its records and Show all), the glow, the hover, the amber stripe, the tooltips' places, the mouse, the keys and the copy texts; `DumpBlock` |
 | `src/ui/event_log.h`,&nbsp;`.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
 | `src/ui/frame_clock.h`,&nbsp;`.cpp` | `FrameClock`: one tick per display refresh |
 | `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
@@ -6735,7 +6735,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 688 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 712 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6751,7 +6751,10 @@ hovered with its tooltip (`<prefix>_dump_<en|ar>_<light|dark>.png`, the tab alon
 the docs' `dump-tab` pictures are made), with Fields off (`<prefix>_dump_fields_off_...`) and held
 (`<prefix>_dump_held_...`); and single cards in both themes (`<prefix>_dump_<name>_<light|dark>.png`): the error
 answers (a refused read, a timed-out one, one with no reply yet: `answers`), the write cards (`write_ack`, `write`)
-and AUTO_SEND's card (`auto_send`).
+and AUTO_SEND's card (`auto_send`); a fast stream's card (37.7) on known blocks, I_LOAD hovered with its tooltip
+(`<prefix>_fastcard_en_<light|dark>.png`, `_fastcard_ar_light.png`), with Show all open
+(`<prefix>_fastcard_showall_en_<light|dark>.png`) and on a bus beside a poll card (`<prefix>_fastcard_bus_en_light.png`),
+and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device
@@ -7771,6 +7774,7 @@ with the cells before it as one empty run in a dashed frame:
 | Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last, each **one line high**; the row's base address at its left, four digits and muted (its tooltip `0xD010`). A row runs from its first cell to the block's last byte: nothing after it. The cells no read covers, before a block that starts inside a row (0xD004) or all of a block with no reply yet, are one empty run per row in a dashed frame (the controls' colour, 3:1 to the card), its words muted in it when they fit (`4 bytes not read`, else `not read`; `no reply yet`), the cell's tooltip saying which; never an invented `00`. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
 | Chips | Each register's bytes in a row are one chip: a fill tinted in the register's colour (34 % in the dark theme, 26 % in the light one), no edge line, the byte text in the text colour, 3 px of the card between two chips. The text on every tint reads at 4.5:1 or more in both themes, lit too (checked). |
 | Decode&nbsp;list | One line per register of the block, in address order: its colour dot, its name, and its value as the Registers tab shows it (Value and Unit, or the Decoded text with ` · ` between its parts). A line sits level with its register's row, or under the line before when that one is lower (37.6): a sparse block reads row by row, a dense one stacks its lines past the grid. The name column is as wide as the tab's longest name (at most 14 characters) plus two; a name or value too long is cut with `…` and the whole line is the tooltip. |
+| Fast&nbsp;block&nbsp;card | A fast stream's newest block: its frame, its header and its records, the channels named (37.7). |
 
 The strip's fields, the protocol's own words (PROTOCOL.md's frame table), in the wire's order:
 
@@ -7831,6 +7835,8 @@ moment; Follow shows the replies again*, or *The link is closed · the cards sho
 | Manual&nbsp;read | `read once, 2.2 s ago` | no | *A manual read: read once, not refreshed* (37.5) |
 | Write | `acknowledged, 2.2 s ago`; a WRITE `none: WRITE is not answered` | no | *A write: sent once, not refreshed* (37.5) |
 | No&nbsp;reply&nbsp;yet | `no reply yet` | no | *No reply yet* |
+| Stream&nbsp;stopped | `ADC stopped · last block 14:03:12` | no | *ADC is switched off: this is its last block, of 14:03:12* (37.7) |
+| Stream&nbsp;stale | `stale 2.1 s` | no | *Not refreshed for 2.1 s*: a stream switched on whose blocks stopped coming |
 
 Fresh replies followed draw no stripe and no banner. The Hold button stays checked (the segment's accent) as the
 control's own state.
@@ -7850,6 +7856,8 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 | Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. |
 | Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit, with the hand; the tooltip is the whole line, under it. |
 | Mouse&nbsp;on&nbsp;a&nbsp;field | Its name, meaning and the protocol's words for it (the table in 37.1), under its column. |
+| Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7). |
+| **Show&nbsp;all&nbsp;▾** | On a fast card: every record of the block, the button then **Show fewer ▴** (37.7). A hand and a highlight under the mouse, a tooltip. |
 | Click | Selects the register here (its chips lit as on the mouse and framed in the accent, its decode line filled with its tint and bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
 | Double-click | Goes to the Registers tab on the register. |
 | Right-click,&nbsp;or&nbsp;**Copy&nbsp;▾** | The menu of the register under the mouse (Copy ▾: the selected one) and of its card (or the first card in view). Nothing is reachable only by the right-click. |
@@ -7863,7 +7871,8 @@ The keys, once the cards have the focus (the Tab key reaches them after the tool
 | Enter | The Registers tab on the selected register. |
 | Menu,&nbsp;Shift&nbsp;+&nbsp;F10 | The menu of the selected register, at its chip. |
 
-The menu, always the same eight items; one that cannot be used now is greyed with the reason in its tooltip:
+The menu, always the same nine items; one that cannot be used now is greyed with the reason in its tooltip (on a fast
+card the register's items say *A fast block has records, not registers*):
 
 | Item | What it does |
 |---|---|
@@ -7873,7 +7882,8 @@ The menu, always the same eight items; one that cannot be used now is greyed wit
 | Copy&nbsp;register&nbsp;bytes | `00 00 48 42` |
 | Copy&nbsp;block&nbsp;as&nbsp;hex | One row a line, as the grid: `D080  00 00 48 42 32 01 B8 0B` (a byte no read covers left blank). |
 | Copy&nbsp;block&nbsp;as&nbsp;C&nbsp;array | `static const uint8_t block_d080[8] = {` then a line per register, `/* 0xD080 SETPOINT */ 0x00, 0x00, 0x48, 0x42,`, the bytes no register maps on lines of their own, then `};` |
-| Copy&nbsp;decoded | A line per register: `0xD080  SETPOINT  50.0 °C` |
+| Copy&nbsp;decoded | A line per register: `0xD080  SETPOINT  50.0 °C`; on a fast card the records as CSV, as the item below. |
+| Copy&nbsp;records&nbsp;as&nbsp;CSV | A fast card's records, every one of the block: `record,I_LOAD [A],V_BUS [V]` then `1191259,1.2000,12.010` and so on (the recording's column form, the values as the card writes them). Greyed on a read: *A read has registers: Copy decoded*. |
 
 From the Registers tab, the right-click menu's **Show in dump** (4.9) opens the Dump on the register: its device on a
 bus, its chips selected and scrolled into view (when the tab was hidden, at the next beat, once its card is back).
@@ -7895,8 +7905,8 @@ bus, its chips selected and scrolled into view (when the tab was hidden, at the 
   `onUnsolicited` into the same store; the polled read of that block is gone while they run.
 - **A refused read.** When the device answers a read with ERROR_RESP, the reply strip is that frame, rebuilt from
   the block and the error code the engine kept; the grid keeps the last good bytes and the stripe says so.
-- **Fast streams** (13.9). A running stream is a one-line note, *fast stream ADC: see the Chart*: its blocks are
-  packed channel records, not registers, and they never come into the Dump's store.
+- **Fast streams** (13.9). A running stream's newest block is a card of its own by its window's address (37.7); a
+  stream switched on that has sent no block yet is one muted line, *ADC switched on · no block yet*.
 - **A bus** (3.9). The **Device** list (shown only on a bus) shows one device's cards at a time; it starts on the
   selected device, as the Monitor's does. Each request names the device and its slave.
 - **A split block** (13.4). When the device refuses a merged read, each single read is a card of its own, its
@@ -7923,8 +7933,26 @@ the tab and follows the window's direction.
 - **The window** takes the replies in `syncDump`, at the values' pace and only while the tab is shown and following:
   `takeDumps(blocks)` returns every block in address order when one moved (so the tab also sees a block gone), under
   the mutex the other `take...` calls use; the payloads are shared, not copied. It adds the device's name on a bus,
-  the auto send rate, a note per fast stream switched on, and the chart's colour of each plotted register; then one
-  repaint moves the ages.
+  the auto send rate, the fast streams switched on, and the chart's colour of each plotted register and channel; then
+  one repaint moves the ages.
+- **One tick for the whole tab.** Every card, poll and fast, moves on one tick, one repaint each. The tick is the
+  *Show values* beat (`valuePacer_`), or, while a fast card is shown and *Show values* is slower than ten a second,
+  a pacer of its own at ten a second (`dumpPacer_`); a values beat is then latched and its replies taken at the next
+  tick, at most 100 ms later (their ages are measured at the paint, so they stay true). The fast blocks are taken at
+  most ten times a second (`FAST_DUMP_PER_SECOND`, `fastDumpClock_`, met at the frame closest to 100 ms), whatever
+  *Show values* says: at every frame the tab ticks every frame and the fast cards still change ten times a second;
+  at two a second the polls' cards move twice a second and the fast cards ten times. Two pacers of ten a second on one
+  clock would be a frame apart and give twenty half-updates a second, hence one. The glow's own 50 ms fading (37.1)
+  repaints only while a byte glows. Hidden, the tab is not ticked.
+- **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
+  stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
+  in 64 bits, count, flags, spare, the records lost before it, a new start, what the rules said of it, the time and a
+  serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
+  about 3 900 blocks a second at a million records a second. A bad block or one of a newer kind is kept too (a dump
+  is where a device's mistakes are seen). `takeFastDumps` copies one small struct per stream and no byte of a block;
+  it tries the lock first and counts a take that then waited longer than 0.2 ms for it (`FAST_DUMP_WAIT_NS`; the
+  tests hold that at 0: meeting the lock held now and then costs microseconds). `setDump(false)` and `setMap` empty
+  it.
 - **The view** (`DumpView`, a `QAbstractScrollArea`) paints as `BitView` does: `ThemeColors`, no style sheet; the
   bytes, addresses, names and values in the monospace font, the labels, field names and meanings in the window's font
   a point smaller (`labelFont()`), the sentences in the window's font. Only the cards in view are painted. `relayout()`
@@ -7936,3 +7964,66 @@ the tab and follows the window's direction.
   manual read's card.
 
 No history of replies in this version: the Monitor keeps the frames as text.
+
+### 37.7 The fast stream's newest block
+
+A running fast stream (13.9) has a card of its own, after the poll cards by its window's address: its newest block,
+taken at most ten times a second whatever *Show values* says (37.6), the frame's fields, the block's header, and the
+records with their channels named and decoded.
+
+```
++----------------------------------------------------------------------------------------------+
+|  <- REPLY    READ_RESP, unasked: a block of ADC    8 ms ago                                  |
+|  7B     01       AB                   00 DC            FC 03   (block v)  3A 91   7D         |
+|  START  SLAVE 1  FUNCTION READ_RESP   OFFSET 0xDC00    COUNT   DATA       CRC OK  END        |
+|                  (unasked)            . ADC            1020    header + records              |
+|                                                                                              |
+|  BLOCK HEADER                                                                                |
+|  5B 2D 12 00        FD 00          02          00                                            |
+|  FIRST record       COUNT          FLAGS       SPARE 0                                       |
+|  1191259            253 records    LOST                                                      |
+|  254 records lost before this block                                                          |
+|                                                                                              |
+|  RECORDS         o I_LOAD  i16 x 0.0005 A       o V_BUS  i16 x 0.001 V                       |
+|  #1191259        [60 09]   1.2000 A             [EA 2E]  12.010 V                            |
+|  #1191260        [6A 09]   1.2050 A             [E9 2E]  12.009 V                            |
+|  #1191261        [74 09]   1.2100 A             [E8 2E]  12.008 V                            |
+|  249 more records  [Show all v]                                                              |
+|  #1191511        [74 09]   1.2100 A             [EA 2E]  12.010 V                            |
++----------------------------------------------------------------------------------------------+
+```
+
+In the Studio each label is one line (`FUNCTION READ_RESP (unasked)`, `OFFSET 0xDC00 · ADC`, `DATA header +
+records`, `FIRST record 1191259`); `[..]` is a chip, `o` the channel's colour dot, `v` the arrow of `block ↓` and of
+the button. The lines of the card:
+
+| Line | What it shows |
+|---|---|
+| Reply&nbsp;label | `← REPLY`, then *READ_RESP, unasked: a block of ADC* and the state: `8 ms ago` (muted), `held 14:03:12`, `ADC stopped · last block 14:03:12`, `stale 2.1 s`, `the link is closed` (amber, with the stripe: 37.2). No request: nobody asked, as AUTO_SEND's card. On a bus the device's name comes first, as a request's does. |
+| Reply&nbsp;strip | The frame rebuilt with `evre::build` from the block, so it equals the wire's: FUNCTION `READ_RESP (unasked)`, OFFSET `0xDC00 · ADC` (the stream's window and name), COUNT the frame's bytes (8 + 253 × 4 = 1020), DATA the grey pill `block ↓` over `header + records`, `CRC OK`. Its columns are the tab's, under the poll cards'. |
+| Block&nbsp;header | `BLOCK HEADER`, then the 8-byte header as a strip of four columns: FIRST `record 1191259` (the 64-bit number the Studio counts; the tooltip gives the wire's 32 bits, which wrap), COUNT `253 records`, FLAGS `none`, `START`, `LOST` (amber) or `START, LOST`, SPARE `0`; each member's tooltip is PROTOCOL.md's words for it. |
+| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
+| Records&nbsp;head | `RECORDS`, then over each channel's column its dot, its name and its type with its scale and unit (`i16 × 0.0005 A`), in the map's order (the record's byte order). |
+| Records | `#1191259`, then per channel its bytes as a chip in its colour and its value with the channel's decimals, else as many as its scale needs for one raw step to show (0.001: `12.009 V`, 0.0005: `1.2050 A`, 1: none), then its unit: finer than the sidebar's four digits, so two neighbouring raw numbers never read the same and every row is as wide. Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. |
+
+**Show all ▾** shows every record of the block; the button is then **Show fewer ▴** in the row after the last. Open,
+the card is as tall as the stream's largest block (`recordsPerBlock()`, 254 rows for ADC) whatever this block holds,
+so it never jumps from block to block; a shorter block ends with the muted row `end of block`. The tab's own scroll
+bar scrolls it (no scroll area inside a scroll area) and only the rows in view are painted. Kept by the stream's name
+while the tab lives, not saved: a look at one block, not a setting.
+
+**Colours.** A channel plotted on the chart takes its line's colour; the others the palette's, by their index (the
+next one when a neighbour has it); with *Colour: Plotted* the unplotted ones are neutral, as the registers are.
+
+**The mouse.** On a channel's chip, value or head the channel is lit in every row shown, the others as they are
+(37.4). On a record's number: `record 1191260 of ADC · 2 of the 253 in this block`. A click selects nothing (there
+is no register to pick). The fast cards do not glow: a block changes whole at every take, and a glow would flicker.
+
+**Copy** (the menu and Copy ▾): *Copy block as hex* in rows of 16 from the window's address (`DC00  5B 2D 12 00 FD
+00 02 00 60 09 EA 2E 6A 09 E9 2E`), *Copy records as CSV* and *Copy decoded* (`record,I_LOAD [A],V_BUS [V]`, a row
+per record), *Copy block as C array* (`static const uint8_t adc_block_1191259[1020] = {`, the header's line `/* header:
+first 1191259, count 253, flags LOST */` with its 8 bytes, then `/* #1191259 */ 0x60, 0x09, 0xEA, 0x2E,` per record).
+
+**The CRC.** The parser checks a frame's CRC before it becomes a frame (a failing one is dropped and counted in *Bad
+frames*), and the engine keeps the block's data, not its raw bytes. The strip is rebuilt from that data: the same
+bytes give the same CRC, so `CRC OK` is true by construction, as on the poll cards.
