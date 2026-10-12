@@ -188,7 +188,9 @@ QLabel#liveDot[state="warn"] { background: %WARN%; }
 QLabel#liveDot[state="none"] { background: %MUTED%; }
 )"
 		/* input boxes; spin boxes without their arrow buttons. The edge in the accent while focused, and while the mouse
-		 * is over one, as a button's (the rules after them keep a disabled, read-only or out-of-range edge) */
+		 * is over one, as a button's (the rules after them keep a disabled, read-only or out-of-range edge). The trigger's
+		 * line box with no line chosen: its "choose a line" muted, a prompt (the style sheet draws a combo's text in Text,
+		 * not in the placeholder colour QComboBox asks for) */
 		R"(
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {
   background: %BG%; border: 1px solid %CONTROL%; border-radius: 7px; padding: 5px 8px;
@@ -199,6 +201,7 @@ QSpinBox[outOfRange="true"] { border-color: %WARN%; }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled { border-color: %BORDER%;
   color: %MUTED%; }
 QLineEdit:read-only { border-color: %BORDER%; color: %MUTED%; }
+QComboBox#triggerLine[prompt="true"] { color: %MUTED%; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { min-height: 20px; max-height: 20px; }
 QAbstractItemView QLineEdit, QAbstractItemView QSpinBox, QAbstractItemView QDoubleSpinBox,
 QAbstractItemView QComboBox, QComboBox QLineEdit { min-height: 0px; max-height: 16777215px; }

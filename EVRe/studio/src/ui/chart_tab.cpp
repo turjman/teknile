@@ -1432,6 +1432,8 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerLine_ = new QComboBox;
 	triggerLine_->setObjectName(QStringLiteral("triggerLine"));
 	triggerLine_->setToolTip(tr("The line watched: a register, a math line or a fast line on the chart"));
+	/* shown while no line in the list is chosen (the one watched gone from the chart, or no line plotted) */
+	triggerLine_->setPlaceholderText(tr("choose a line"));
 	triggerLine_->setMinimumWidth(140);
 	triggerLine_->setIconSize(QSize(10, 10)); /* each line's colour dot, as on its chip */
 	triggerEdge_ = new QComboBox;
@@ -1592,16 +1594,33 @@ void ChartTab::fillTriggerLines() {
 		triggerKeys_ << line.key;
 	}
 	/* the line chosen gone (removed from the chart): none, never another line in its place (the chart would hold on a
-	 * line nobody chose, and the one saved would be overwritten); its name stays in the box, greyed, until it is back */
+	 * line nobody chose, and the one saved would be overwritten). The closed box shows only what its list holds: the gone
+	 * name there read as chosen while the open list did not hold it, so "choose a line", and the tooltip says which line
+	 * it waits for (chosen again when it is back) */
 	const int index = triggerLine_->findText(noMnemonic(chosen));
-	triggerLine_->setPlaceholderText(noMnemonic(chosen));
 	triggerLine_->setCurrentIndex(index >= 0 ? index : chosen.isEmpty() ? 0 : -1);
 	showLineSettings();
+	if (triggerLine_->currentIndex() < 0)
+		triggerLine_->setToolTip(chosen.isEmpty() ? tr("The line watched: a register, a math line or a fast line on the chart")
+				: tr("%1 is not on the chart: plot it again, or choose another line").arg(ltrPiece(noMnemonic(chosen))));
 }
 
 /* the boxes show the line chosen's own level and edge (kept by its name; a line never set: its mid-range) */
 void ChartTab::showLineSettings() {
-	if (triggerLine_->currentIndex() < 0) return;
+	/* "choose a line" muted, a prompt, not read as a line of that name; a line chosen in the text's colour */
+	const bool prompt = triggerLine_->currentIndex() < 0;
+	if (triggerLine_->property("prompt").toBool() != prompt) {
+		triggerLine_->setProperty("prompt", prompt);
+		repolish(triggerLine_);
+	}
+	if (prompt) { /* no line chosen: no level or unit of a line the box does not hold */
+		triggerLevel_->clear();
+		triggerUnit_->clear();
+		triggerUnit_->hide();
+		return;
+	}
+	/* a line chosen: the usual tooltip again (fillTriggerLines names the gone one while none is) */
+	triggerLine_->setToolTip(tr("The line watched: a register, a math line or a fast line on the chart"));
 	const ChartView::TriggerSettings settings = chart_->view()->triggerSettings(triggerLine_->currentData().toInt());
 	triggerLevel_->setText(ChartView::levelText(settings.level));
 	/* the unit beside the box: the level is in it, as the tag on the chart writes it */

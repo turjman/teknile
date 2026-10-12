@@ -17121,29 +17121,144 @@ private:
 				"Trigger on this line is ticked for the line watched only; unticking it turns the trigger off, ticking it on "
 				"another line arms there; it follows Display -> Trigger");
 
-		/* the line watched removed: the trigger stops, never another line, the line saved kept; back: armed on it again */
+		/* the line watched removed: the trigger stops, never another line, the line saved kept; back: armed on it again.
+		 * The closed box shows only what its list holds (the owner: the gone name stayed in it while the open list no
+		 * longer held it): "choose a line", the tooltip naming the line it waits for, the level empty and the unit hidden.
+		 * This check expected the gone name as the box's placeholder before */
+		auto *level = pair.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		auto *unit = pair.tab.findChild<QLabel *>(QStringLiteral("triggerUnit"));
+		auto *edge = pair.tab.findChild<QComboBox *>(QStringLiteral("triggerEdge"));
+		view->setTriggerSettings(pair.ampsKey(), { 0.6, ChartView::TriggerEdge::Falling }); /* its own, not VOLTS' */
 		pair.tab.triggerOnLine(pair.ampsKey());
 		const int modeBefore = mode->currentData().toInt();
+		const QString watchTip = line->toolTip();
+		const QString goneTip = QStringLiteral("AMPS is not on the chart: plot it again, or choose another line");
+		const auto saved = [] { return QSettings().value(QStringLiteral("chart/triggerLine")).toString(); };
+		/* the list holds the lines plotted, in their order, and nothing else */
+		const auto listed = [&] {
+			const QVector<ChartView::Info> lines = view->lines();
+			bool same = line->count() == lines.size();
+			for (int i = 0; same && i < lines.size(); i++) same = line->itemText(i) == lines[i].name;
+			return same;
+		};
+		/* waiting for AMPS: none chosen, "choose a line" shown, the gone line named in the tooltip only */
+		const auto waits = [&] {
+			return action->isChecked() && row->isVisible() && !view->triggerOn() && view->triggerKey() == -1
+					&& state->fullText() == QStringLiteral("no line to watch") && line->currentIndex() < 0
+					&& line->currentText().isEmpty() && line->placeholderText() == QStringLiteral("choose a line")
+					&& line->findText(QStringLiteral("AMPS")) < 0 && listed() && line->toolTip() == goneTip
+					&& level && level->text().isEmpty() && level->placeholderText().isEmpty()
+					&& unit && unit->isHidden() && saved() == QStringLiteral("AMPS");
+		};
+		const auto notes = [&](const char *when) {
+			std::printf("     (%s: on %d, key %d, \"%s\", index %d of %d, shown \"%s\", tooltip \"%s\", level \"%s\", unit %s "
+					"\"%s\", edge %d, saved \"%s\")\n", when, int(view->triggerOn()), view->triggerKey(),
+					qPrintable(state->fullText()), line->currentIndex(), line->count(), qPrintable(line->currentIndex() < 0
+					? line->placeholderText() : line->currentText()), qPrintable(line->toolTip()),
+					qPrintable(level ? level->text() : QString()), unit && unit->isHidden() ? "hidden" : "shown",
+					qPrintable(unit ? unit->text() : QString()), edge ? edge->currentData().toInt() : -1, qPrintable(saved()));
+		};
+		const auto shots = [&](const QString &tag) { /* EVRE_TEST_SHOT: the trigger's row, for a look in both themes */
+			if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				row->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_list_%1_en_%2.png")
+						.arg(tag, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		};
+		/* the box's text as drawn, in each theme: the pixel farthest from the box's background (the most common one),
+		 * right of the colour dot and left of the arrow (the picture in device pixels: 225 % on the owner's screen);
+		 * "muted" when it is nearer the theme's muted colour than its text colour */
+		QString inkNotes;
+		const auto drawnMuted = [&](bool wanted) {
+			bool right = true;
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				const QImage image = line->grab().toImage().convertToFormat(QImage::Format_RGB32);
+				const qreal dpr = image.devicePixelRatio();
+				const QRect area = QRectF(24 * dpr, 6 * dpr, (line->width() - 48) * dpr, (line->height() - 12) * dpr)
+						.toAlignedRect() & image.rect();
+				QHash<QRgb, int> counts;
+				for (int y = area.top(); y <= area.bottom(); y++)
+					for (int x = area.left(); x <= area.right(); x++) counts[image.pixel(x, y)]++;
+				QRgb background = 0;
+				for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+					if (it.value() > counts.value(background)) background = it.key();
+				const auto distance = [](QRgb a, QRgb b) {
+					return std::abs(qRed(a) - qRed(b)) + std::abs(qGreen(a) - qGreen(b)) + std::abs(qBlue(a) - qBlue(b));
+				};
+				QRgb ink = background;
+				for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+					if (distance(it.key(), background) > distance(ink, background)) ink = it.key();
+				const bool muted = distance(ink, Theme::colors().muted.rgb()) < distance(ink, Theme::colors().text.rgb());
+				right = right && muted == wanted;
+				inkNotes += QStringLiteral(" %1 %2: ink #%3, muted %4;").arg(wanted ? QStringLiteral("gone") : QStringLiteral("back"),
+						dark ? QStringLiteral("dark") : QStringLiteral("light"), QString::number(ink & 0xFFFFFF, 16), QString::number(int(muted)));
+			}
+			Theme::apply(*qApp, wasDark);
+			QApplication::processEvents();
+			return right;
+		};
 		pair.tab.plotRegister(pair.amps, false);
 		pair.tab.refreshStatus();
-		const QString savedLine = QSettings().value(QStringLiteral("chart/triggerLine")).toString();
-		const bool stopped = action->isChecked() && row->isVisible() && !view->triggerOn() && view->triggerKey() == -1
-				&& state->fullText() == QStringLiteral("no line to watch") && line->currentIndex() < 0
-				&& line->placeholderText() == QStringLiteral("AMPS") && savedLine == QStringLiteral("AMPS");
+		const bool stopped = waits();
+		if (!stopped) notes("removed");
+		const bool goneMuted = drawnMuted(true);
+		shots(QStringLiteral("gone"));
+		check(stopped, "chart, Trigger's flow: the line watched removed stops the trigger (\"no line to watch\", "
+				"chart/triggerLine kept; not moved to another line); the box shows \"choose a line\", not the gone name, its "
+				"list only the lines plotted, its tooltip \"AMPS is not on the chart: plot it again, or choose another line\"; "
+				"the level box empty (no placeholder: the label \"level\" is beside it) and the unit hidden");
+
+		/* Remove all: the same, the list empty */
+		pair.tab.plotRegister(pair.volts, false);
+		pair.tab.refreshStatus();
+		const bool emptied = line->count() == 0 && waits();
+		if (!emptied) notes("all removed");
+		check(emptied, "chart, Trigger's flow: every line removed (Remove all): the list empty, the box \"choose a line\" "
+				"with the tooltip naming AMPS, the level empty and the unit hidden, the trigger waiting (\"no line to watch\")");
+
+		/* back: chosen again with its own level and edge, armed in its mode, the tooltip the usual one */
+		pair.tab.plotRegister(pair.volts, true);
 		pair.tab.plotRegister(pair.amps, true);
 		pair.feed(100.2);
 		pair.tab.refreshStatus();
 		const bool back = view->triggerOn() && view->triggerKey() == pair.ampsKey() && line->currentText() == QStringLiteral("AMPS")
-				&& mode->currentData().toInt() == modeBefore
-				&& QSettings().value(QStringLiteral("chart/triggerLine")).toString() == QStringLiteral("AMPS");
-		if (!stopped || !back)
-			std::printf("     (removed: on %d, key %d, \"%s\", index %d, placeholder \"%s\", saved \"%s\"; back: on %d, \"%s\")\n",
-					int(view->triggerOn()), view->triggerKey(), qPrintable(state->fullText()), line->currentIndex(),
-					qPrintable(line->placeholderText()), qPrintable(savedLine), int(view->triggerOn()),
-					qPrintable(line->currentText()));
-		check(stopped && back, "chart, Trigger's flow: the line watched removed stops the trigger (\"no line to watch\", "
-				"its name greyed in the list, chart/triggerLine kept; not moved to another line); back, it is armed on it again "
-				"in its mode");
+				&& mode->currentData().toInt() == modeBefore && listed() && line->toolTip() == watchTip
+				&& watchTip != goneTip && level && level->text() == ChartView::levelText(0.6) && view->triggerLevel() == 0.6
+				&& edge && edge->currentData().toInt() == int(ChartView::TriggerEdge::Falling)
+				&& view->triggerEdge() == ChartView::TriggerEdge::Falling && unit && !unit->isHidden()
+				&& unit->text() == QStringLiteral("A") && saved() == QStringLiteral("AMPS");
+		if (!back) notes("back");
+		const bool backPlain = drawnMuted(false);
+		shots(QStringLiteral("back"));
+		check(back, "chart, Trigger's flow: the line watched plotted again is chosen again with its own level (0.6) and "
+				"edge (Falling) and unit, armed in its mode, the box's tooltip the usual one");
+		if (!goneMuted || !backPlain) std::printf("     (the line box's text:%s)\n", qPrintable(inkNotes));
+		check(goneMuted && backPlain, "chart, Trigger's flow: the line box's \"choose a line\" drawn in the theme's muted "
+				"colour (a prompt, not a line of that name), the line chosen again in the text colour; light and dark");
+
+		/* another line chosen while it is gone: that one is saved and watched, and stays when the gone one is back */
+		pair.tab.plotRegister(pair.amps, false);
+		pair.tab.refreshStatus();
+		const int volts = line->findText(QStringLiteral("VOLTS"));
+		line->setCurrentIndex(volts);
+		emit line->activated(volts);
+		const bool moved = view->triggerOn() && view->triggerKey() == pair.voltsKey() && saved() == QStringLiteral("VOLTS")
+				&& line->toolTip() == watchTip;
+		pair.tab.plotRegister(pair.amps, true);
+		pair.feed(100.4);
+		pair.tab.refreshStatus();
+		const bool kept = view->triggerOn() && view->triggerKey() == pair.voltsKey() && line->currentText() == QStringLiteral("VOLTS")
+				&& saved() == QStringLiteral("VOLTS");
+		if (!moved || !kept) notes("another chosen");
+		check(moved && kept, "chart, Trigger's flow: another line chosen while the one watched is gone is watched and saved "
+				"(chart/triggerLine VOLTS); the gone line plotted again does not take its place");
 		action->setChecked(false);
 
 		/* each chip's menu button: at its right end; under the mouse a hand, lit, a tooltip; a click opens the menu */
@@ -17217,6 +17332,29 @@ private:
 				&& fps.contains(piece(QStringLiteral("%1 fps"))) && fill.contains(piece(QStringLiteral("%1 s")))
 				&& delay.contains(piece(QStringLiteral("%1 ms"))) && help.contains(piece(QStringLiteral("10 s")))
 				&& help.contains(piece(QStringLiteral("2 V")));
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the trigger's row in Arabic, its line gone and back */
+			const bool wasDark = Theme::isDark();
+			Theme::apply(*qApp, false);
+			{
+				TriggerPair arabic;
+				arabic.feed(99.95);
+				arabic.tab.show();
+				(void) QTest::qWaitForWindowExposed(&arabic.tab);
+				arabic.tab.triggerOnLine(arabic.ampsKey());
+				auto *arabicRow = arabic.tab.findChild<QWidget *>(QStringLiteral("triggerRow"));
+				for (const bool gone : { true, false }) {
+					arabic.tab.plotRegister(arabic.amps, !gone);
+					if (!gone) arabic.feed(100.2);
+					arabic.tab.refreshStatus();
+					QApplication::processEvents();
+					if (arabicRow)
+						arabicRow->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_trigger_list_%1_ar_light.png")
+								.arg(gone ? QStringLiteral("gone") : QStringLiteral("back")));
+				}
+				if (auto *on = arabic.tab.findChild<QAction *>(QStringLiteral("chartTrigger"))) on->setChecked(false);
+			}
+			Theme::apply(*qApp, wasDark);
+		}
 		language::apply(*qApp, QStringLiteral("en"));
 		const bool englishPlain = secondsText(0.5) == QStringLiteral("500 ms") && durationText(72.34) == QStringLiteral(
 				"1 min 12.3 s");

@@ -1852,9 +1852,12 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
 - **Turning it off.** **Off** beside Force / Arm in the row, **Display → Trigger** unticked, or the chip menu's **Trigger on this
   line** unticked (it is ticked for the line watched, and only for it): one switch, the three always in step.
 - **A line watched that leaves the chart** (its Plot unticked, its math line or its stream gone) stops the trigger:
-  the row says *no line to watch* and its list shows the line's name greyed. The line saved (`chart/triggerLine`)
-  stays, and when the line comes back the trigger arms on it again, in its mode. It never moves to another line
-  by itself: the chart would hold on a line nobody chose.
+  the row says *no line to watch*. The box shows only what its list holds: *choose a line* in the muted colour (a
+  prompt), not the gone line's name, and its tooltip names the line it waits for (*SUPPLY_V is not on the chart: plot it again, or choose another
+  line*); the level box is empty and the unit beside it hidden. The line saved (`chart/triggerLine`) stays, and when
+  the line comes back it is chosen again with its own level and edge and the trigger arms on it, in its mode. It
+  never moves to another line by itself: the chart would hold on a line nobody chose. Another line chosen meanwhile
+  is the one watched and saved.
 - **Times from T.** While the view is held on a crossing in view, times are read from T, as a scope's: the time
   axis below 1 s counts its divisions from T (*-2 ms ... 0 ... +8 ms*, 7.9), the hover box says *T +1.234 ms* beside
   the clock time (in place of how long ago), and the cursors' tags and the line above the measurements say how far
@@ -5447,8 +5450,11 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
 
 ### 23.10 The trigger
 
-- **The line watched gone.** `ChartTab::fillTriggerLines` leaves the list with no line chosen (its name the
-  placeholder) when the line saved is not on the chart, never the first line in its place; `refreshStatus` then
+- **The line watched gone.** `ChartTab::fillTriggerLines` leaves the list with no line chosen (the placeholder
+  *choose a line*, muted by the box's `prompt` property and the theme's `QComboBox#triggerLine[prompt="true"]` rule,
+  since the style sheet draws a combo's text in Text and not in the placeholder colour; the tooltip naming the line
+  saved; `showLineSettings` empties the level and hides the unit) when
+  the line saved is not on the chart, never the first line in its place; `refreshStatus` then
   stops the trigger (`stopTrigger`) and arms it again when the line is back. The chip menu's entry is checkable,
   ticked for `triggerKey`; unticking it and the row's Off untick `trigger_` (Display -> Trigger), whose toggle does
   the rest.
@@ -6492,12 +6498,18 @@ lines under it included), and of the dashed line's 8 px strip from the plot's le
 of the 12 lines reach; the tab lies right of the card's layer. The language step measures the main window's minimum width with the trigger's row
 shown too. A recording window offers no trigger (no chip menu entry, no Display entry). The trigger's flow: Off
 at the row's end and the chip's checkable entry turn it off as Display -> Trigger does; the line watched removed
-stops it (*no line to watch*, the line saved kept) and it arms again on that line when it is back; each chip's ▾
+stops it (*no line to watch*, the line saved kept; the box *choose a line*, drawn in the muted colour in both themes
+(the line back: in the text colour), with only the lines plotted in its list,
+its tooltip naming the gone line, the level empty and the unit hidden; the same with every line removed) and it is
+chosen and armed again on that line, with its own level and edge, when it is back; another line chosen meanwhile is
+watched and saved, and stays when the gone one is back; each chip's ▾
 (at its right end, lit under the mouse with a pointing hand and its tooltip; a click opens the menu); in Arabic
 the times, durations, sizes, fps and ms, the fill time and the Help's *10 s* and *2 V* are pieces between U+2066
 and U+2069, English unchanged. With `EVRE_TEST_SHOT` set it saves `<prefix>_trigger_lane.png` (the tab in its lane) and
 `<prefix>_trigger_marks_dark.png` / `_light.png` (the flag, the marker and the tab), `_trigger_marks_lanes_*` the
-same with Lanes on, and `_trigger_lane_dark.png` / `_light.png` (two lanes, the marks in the second).
+same with Lanes on, `_trigger_lane_dark.png` / `_light.png` (two lanes, the marks in the second), and
+`_trigger_list_gone_*` / `_trigger_list_back_*` (the trigger's row with its line removed and plotted again: `en_dark`,
+`en_light`, `ar_light`).
 What the reference scopes add (`chartTriggerScopes`): with no place saved the flag is at 50 %, a saved 0.35 is
 kept by a new tab, and a double-click on the flag puts it back at 50 % (its tooltip ends *Double-click: back to
 50 %*; the box and the setting follow); the row's Line list has the line's colour dot (10 px, its middle the line's
@@ -6723,7 +6735,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 707 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 711 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
