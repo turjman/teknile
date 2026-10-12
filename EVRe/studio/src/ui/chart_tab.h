@@ -356,6 +356,7 @@ private:
 	QPushButton *fileButton_ = nullptr; /* File ▾ (makeFileButton); a recording's window has its own beside Lines */
 	QAction *normalize_, *smooth_, *hoverValues_, *lanes_, *trigger_;
 	QAction *shortLock_; /* Lock short windows (chart/autoShortWindows) */
+	QAction *triggerInstant_; /* Trigger line (chart/triggerInstantLine): the dashed line down from T while held on a crossing */
 	QAction *foldAll_, *openAll_; /* Fold all lanes, Open all lanes: shown with Lanes on */
 	QAction *allAuto_;            /* All lanes: Auto: shown with Lanes on, enabled when a lane is not Auto */
 	QActionGroup *drawingChoices_; /* the Drawing part of the Display menu: Auto, the adapters by name, CPU */

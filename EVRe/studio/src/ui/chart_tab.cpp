@@ -579,6 +579,12 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"holds on the first crossing and stops; Arm for another.")
 			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. A line's chip (click or right-click): Trigger "
 			"on this line. Off: the row's Off, this entry or the chip's entry unticked."));
+	/* the trigger's instant across the plot while it holds on a crossing (ChartView::setTriggerInstant) */
+	triggerInstant_ = displayMenu->addAction(tr("Trigger line"));
+	triggerInstant_->setObjectName(QStringLiteral("chartTriggerLine"));
+	triggerInstant_->setCheckable(true);
+	triggerInstant_->setToolTip(tr("While the chart holds on a crossing, a faint dashed line runs down from the T above the "
+			"plot to the time axis, across every lane: the trigger's instant on every wave. Off: the T alone."));
 	/* a live view under 100 ms with the trigger off locks on its busiest line by itself (ChartView::setShortLock) */
 	shortLock_ = displayMenu->addAction(tr("Lock short windows"));
 	shortLock_->setObjectName(QStringLiteral("chartShortLock"));
@@ -885,6 +891,10 @@ void ChartTab::connectControls() {
 		chart_->view()->setShortLock(on);
 		QSettings().setValue(settingKey("autoShortWindows"), on);
 	});
+	connect(triggerInstant_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setTriggerInstant(on);
+		QSettings().setValue(settingKey("triggerInstantLine"), on);
+	});
 	connect(hoverValues_, &QAction::toggled, this, [this](bool on) {
 		chart_->view()->setHoverValues(on);
 		QSettings().setValue(settingKey("hoverValues"), on);
@@ -985,6 +995,8 @@ void ChartTab::restoreSettings() {
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
+	triggerInstant_->setChecked(settings.value(settingKey("triggerInstantLine"), true).toBool());
+	chart_->view()->setTriggerInstant(triggerInstant_->isChecked());
 	shortLock_->setChecked(settings.value(settingKey("autoShortWindows"), true).toBool());
 	chart_->view()->setShortLock(shortLock_->isChecked());
 	{
@@ -1034,6 +1046,7 @@ void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int
 	for (QAction *column : measureColumns_->actions())
 		if (column->data().toInt() == ColTotal) column->setText(tr("Whole file"));
 	trigger_->setVisible(false); /* nothing comes after the file to cross a level */
+	triggerInstant_->setVisible(false); /* no crossing to hold on */
 	chart_->view()->setRamBudget(ramMB);
 	chart_->setMemory(std::max(1.0, t1 - t0));
 	registerLimit_ = columns;

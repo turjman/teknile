@@ -318,6 +318,13 @@ public:
 	bool lineResting(int key) const;
 	/* tests: the "now" edges as last drawn (the data's end in a view still capturing), one per lane in view */
 	QVector<QLineF> nowEdges() const { return nowEdges_; }
+	/* The trigger's instant: while the view holds a crossing (the T flag solid on it), a faint dashed line runs down the
+	 * plot from the flag to the time axis, across every lane, so the instant is read on every wave (the flag alone sits
+	 * above the plot, and the hover's crosshair put at T was taken for such a line). Display, Trigger line; on by
+	 * default */
+	void setTriggerInstant(bool on);
+	bool triggerInstant() const { return triggerInstant_; }
+	QLineF triggerInstantLine() const { return triggerInstantLine_; } /* tests: as last drawn; null: none */
 	void setTriggerLevel(double level);  /* of the line watched */
 	void setTriggerEdge(TriggerEdge edge);
 	bool triggerOn() const { return trigger_.on && !trigger_.automatic; } /* the user's (not a short window's lock) */
@@ -1275,6 +1282,10 @@ private:
 	/* the faint "now" edges: where the data ends in a view still filling after its crossing, in every lane in view */
 	QVector<QLineF> nowEdgeLines(const QVector<Lane> &plots) const;
 	mutable QVector<QLineF> nowEdges_;
+	/* the instant's line in this view (null: none), on a device pixel's middle as the grid's lines */
+	QLineF instantLine(const Axes &axes, qreal dpr) const;
+	bool triggerInstant_ = true;
+	mutable QLineF triggerInstantLine_;
 	QHash<QString, TriggerSettings> triggerSettings_; /* by the line's name */
 	TriggerSettings watchedSettings() const;           /* the line watched's */
 	TriggerSettings &watchedSettingsRef();             /* the same, to change (made when there is none) */

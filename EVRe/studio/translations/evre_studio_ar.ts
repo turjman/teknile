@@ -1365,6 +1365,14 @@ A note: right-click the chart where it goes, Add note here.</source>
         <translation>السحب: المساحة بين المخطط والقياسات تحته (تُحفظ)</translation>
     </message>
     <message>
+        <source>Trigger line</source>
+        <translation>خط لحظة القدح</translation>
+    </message>
+    <message>
+        <source>While the chart holds on a crossing, a faint dashed line runs down from the T above the plot to the time axis, across every lane: the trigger&apos;s instant on every wave. Off: the T alone.</source>
+        <translation>حين يثبّت المخطط على عبور، ينزل خط متقطع باهت من ⁦T⁩ فوق المخطط إلى محور الزمن، عبر كل مسار: لحظة القدح على كل موجة. معطّل: ⁦T⁩ وحدها.</translation>
+    </message>
+    <message>
         <source>choose a line</source>
         <translation>اختر خطًا</translation>
     </message>
@@ -3528,7 +3536,9 @@ capture says when the last one was. &lt;b&gt;Find level&lt;/b&gt; puts the level
 in view. The
 &lt;b&gt;hold-off&lt;/b&gt; (the window&apos;s length by default, 0 to
 10 s) is the time after a crossing in which no other counts. The &lt;b&gt;T ▼&lt;/b&gt; flag above the chart, its arrow over
-the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again. In a window under a second the next
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again.
+While the view holds a crossing, a faint dashed line runs down from the T through the chart and every lane, so the
+instant is read on every wave; &lt;b&gt;Display → Trigger line&lt;/b&gt; turns it off. In a window under a second the next
 picture shows once it is whole, so a repeating wave stands still. A fast line&apos;s crossing is found as its blocks come.
 The row under the actions sets the same; the measurements, export and pictures take the view held.&lt;/p&gt;
 &lt;p&gt;While the trigger is on, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt; is &lt;b&gt;Stop&lt;/b&gt; / &lt;b&gt;Run&lt;/b&gt;: &lt;b&gt;Stop&lt;/b&gt; holds the picture
@@ -3691,7 +3701,7 @@ it.&lt;/li&gt;
 متى كان آخره. و&lt;b&gt;إيجاد المستوى&lt;/b&gt; يضع المستوى في منتصف ما بين أدنى الخط وأعلاه في العرض.
 و&lt;b&gt;مهلة التجاهل&lt;/b&gt; (طول النافذة افتراضيًا، من 0 إلى ⁦10 s⁩) هي المدة بعد عبور التي لا
 يُحسب فيها عبور آخر. والعلَم &lt;b&gt;⁦T ▼⁩&lt;/b&gt; فوق
-المخطط، وسهمه فوق العبور، موضعه في النافذة (يقول تلميحه متى عبر الخط وعند أي مستوى)، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
+المخطط، وسهمه فوق العبور، موضعه في النافذة (يقول تلميحه متى عبر الخط وعند أي مستوى)، ⁦50 %⁩ افتراضيًا: اسحبه (من 0 إلى ⁦90 %⁩)، وانقره نقرًا مزدوجًا ليعود إلى ⁦50 %⁩. وما دام القدح يثبّت العرض على عبور، ينزل من ⁦T⁩ خط متقطع باهت عبر المخطط وكل مسار، فتُقرأ لحظة القدح على كل موجة؛ ويُطفئه &lt;b&gt;العرض ← خط لحظة القدح&lt;/b&gt;. وفي نافذة أقصر من ثانية تظهر الصورة التالية حين تكتمل، فتقف الموجة المتكررة ثابتة. ويُعثر على
 عبور الخط السريع لحظة وصول كتله. والصف تحت الأزرار يضبط الشيء نفسه؛ والقياسات والتصدير والصور تأخذ العرض
 المثبّت.&lt;/p&gt;
 &lt;p&gt;ما دام القدح مفعّلًا، يصير &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt; هو &lt;b&gt;إيقاف&lt;/b&gt; / &lt;b&gt;تشغيل&lt;/b&gt;: &lt;b&gt;إيقاف&lt;/b&gt; يثبّت الصورة
