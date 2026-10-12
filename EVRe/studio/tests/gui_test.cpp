@@ -635,6 +635,7 @@ public:
 		dumpOtherMaps();
 		dumpManualRead(); /* its card at the top for the pictures */
 		dumpArabic();
+		dumpFastCard();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
@@ -1376,25 +1377,8 @@ private:
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
-		/* the Dump tab: the running stream is a note (its records are the chart's), no hex; its blocks never come in */
-		if (DumpTab *dump = dumpTab()) {
-			auto *tabs = window_.findChild<QTabWidget *>();
-			const int tabWas = tabs->currentIndex();
-			tabs->setCurrentIndex(MainWindow::TabDump);
-			DumpView *view = dump->view();
-			const uint16_t streamAddr = fastMap.streams[0].addr;
-			const bool note = QTest::qWaitFor([&] {
-				const int c = dumpCard(view, streamAddr, DumpBlock::FastStream);
-				bool polled = false;
-				for (const DumpBlock &b : view->blocks())
-					if (b.kind == DumpBlock::Read && b.size > 0 && b.data.size() >= b.size) polled = true;
-				return c >= 0 && view->blocks()[c].stream == QLatin1String("ADC") && view->byteRect(c, 0).isNull()
-						&& view->requestText(c).isEmpty() && dumpCard(view, streamAddr) < 0 && polled;
-			}, 3000);
-			tabs->setCurrentIndex(tabWas);
-			check(note, "fast streams: the Dump shows the running stream as a note (\"fast stream ADC: see the Chart\"), no "
-					"hex; the polled blocks as cards; the stream's blocks never come into the Dump");
-		}
+		/* the Dump tab: the running stream's newest block as a card of its own */
+		dumpFastLive(button, fastMap);
 
 		/* a channel's Plot tick in the card: its line on the chart, its records kept, its newest value beside it */
 		auto *chartTab = window_.findChild<ChartTab *>();
@@ -1863,7 +1847,9 @@ private:
 		button->click();
 		const bool onBeforeLoss = enableBecomes(1);
 		stopFake();
-		const bool back = startFake(fastMapFile, { QStringLiteral("--fast-lose"), QStringLiteral("5") }) && openDevice();
+		const bool back = startFake(fastMapFile, { QStringLiteral("--fast-lose"), QStringLiteral("5"),
+										 QStringLiteral("--fast-first"), QStringLiteral("4294967200") })
+				&& openDevice();
 		const bool again = back && enableBecomes(1, 10000) && button->text() == QStringLiteral("■  Stop stream");
 		const bool lostShown = QTest::qWaitFor([&] {
 			const QString text = sidebar->fastLostText(0);
@@ -1878,6 +1864,7 @@ private:
 		check(onBeforeLoss && again && lostShown && lostLabel && lostLabel->styleSheet().contains(QLatin1String("font-weight:600")),
 				"fast streams: after a lost link and a reconnect, switched on again by itself; every 5th block lost: "
 				"the card counts the samples lost, highlighted");
+		dumpFastLosses();
 		button->click();
 		(void) enableBecomes(0);
 
@@ -2472,6 +2459,33 @@ private:
 			(void) QTest::qWaitFor([&] { return opened != nullptr; }, 20000);
 			recordedFastEnds(opened, csv);
 			RecordingWindow::closeAll();
+		}
+		/* the Dump shown at a million records a second: its fast card takes the newest block ten times a second, each a
+		 * new block, its data the engine's (shared, not copied), the window's thread never waiting on the engine's lock */
+		if (DumpTab *dump = dumpTab()) {
+			DumpView *dumpView = dump->view();
+			tabs->setCurrentIndex(MainWindow::TabDump);
+			(void) QTest::qWaitFor([&] { return fastCard(dumpView) >= 0; }, 2000);
+			const int takes0 = window_.fastDumpTakes(), misses0 = window_.fastDumpLockMisses();
+			QSet<quint64> firsts;
+			bool shared = false;
+			QElapsedTimer clock;
+			clock.start();
+			while (clock.elapsed() < 3000) {
+				QTest::qWait(5);
+				const int c = fastCard(dumpView);
+				if (c < 0) continue;
+				firsts.insert(dumpView->blocks()[c].first);
+				if (dumpView->blocks()[c].data.constData() == window_.lastFastDumpData()) shared = true;
+			}
+			const int takes = window_.fastDumpTakes() - takes0, misses = window_.fastDumpLockMisses() - misses0;
+			std::printf("  the Dump at a million records a second: %d fast takes in 3 s, %d blocks shown, %d waits on the lock, "
+					"shared %d\n", takes, int(firsts.size()), misses, int(shared));
+			check(takes >= 24 && takes <= 31 && int(firsts.size()) >= takes - 1 && misses == 0 && shared,
+					"fast speed: the Dump shown at a million records a second takes the newest block ten times a second (24 to "
+					"31 in 3 s), a new block each time, its bytes the engine's (shared, not copied), the window's thread never "
+					"waiting on the engine's lock");
+			tabs->setCurrentIndex(MainWindow::TabChart);
 		}
 		button->click();
 		view->setWindow(windowBefore);
@@ -4264,6 +4278,18 @@ private:
 		std::printf("     (Follow: %d new replies shown in 1 s at %d a second)\n", followed, pace);
 		check(pace > 0 ? followed >= pace / 2 && followed <= pace + pace / 2 + 1 : followed >= 5,
 				"Dump: Follow shows each block's newest reply at the pace of Show values (10 a second)");
+		/* one tick for every card: no fast card, the tab ticks at the beats of Show values, one repaint a tick (the glow's
+		 * own fading aside), the replies taken at each */
+		{
+			const DumpCounts counts = dumpCounts(view, 2000);
+			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d poll takes)\n",
+					pace, counts.ticks, counts.paints, counts.glows, counts.polls);
+			check((pace > 0 ? counts.ticks >= 2 * pace - 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
+							&& counts.polls == counts.ticks && counts.paints >= counts.ticks - 1
+							&& counts.paints <= counts.ticks + counts.glows + 1,
+					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (20 in 2 s at 10 a second), one "
+					"repaint a tick, the replies taken at each");
+		}
 
 		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
 		const bool liveFirst = QTest::qWaitFor([&] {
@@ -4955,7 +4981,7 @@ private:
 		tab->fillMenu(&menu, setpoint, card);
 		const QStringList items { QStringLiteral("Show in Registers"), QStringLiteral("Plot"), QStringLiteral("Write…"),
 			QStringLiteral("|"), QStringLiteral("Copy register bytes"), QStringLiteral("Copy block as hex"),
-			QStringLiteral("Copy block as C array"), QStringLiteral("Copy decoded") };
+			QStringLiteral("Copy block as C array"), QStringLiteral("Copy decoded"), QStringLiteral("Copy records as CSV") };
 		/* the Copy button: the same items, for the selected register and its card */
 		QMenu *buttonMenu = tab->copyButton() ? tab->copyButton()->menu() : nullptr;
 		if (buttonMenu) emit buttonMenu->aboutToShow();
@@ -4963,7 +4989,8 @@ private:
 				&& !tab->copyButton()->toolTip().isEmpty();
 		if (texts(menu) != items) std::printf("     (the menu: %s)\n", qPrintable(texts(menu).join(QStringLiteral(", "))));
 		check(came && texts(menu) == items && button, "Dump: the menu of a register: Show in Registers, Plot, Write…, then "
-				"Copy register bytes, block as hex, block as C array, decoded; the toolbar's Copy ▾ button holds the same");
+				"Copy register bytes, block as hex, block as C array, decoded, records as CSV (a fast block's); the toolbar's "
+				"Copy ▾ button holds the same");
 
 		/* the four copies, exact */
 		/* Windows' clipboard is shared: another program holding it a moment fails a write (OpenClipboard), so a few tries */
@@ -5510,6 +5537,666 @@ private:
 				"the Dump shown and "
 				"Fields on at most 1280 px wide in English and in Arabic");
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* A fast stream's block as a Dump card (fed to a tab of its own, so every number is known): the block of the fast
+	 * example map's stream ADC (I_LOAD and V_BUS, two i16 a record), 253 records from record 1191259, LOST */
+	static DumpBlock fastDumpBlock(quint64 first, int count, uint8_t flags, quint64 lost, double time, quint64 version) {
+		QByteArray data(fast::HEADER + count * 4, '\0');
+		const quint32 wire = quint32(first);
+		for (int k = 0; k < 4; k++) data[k] = char(wire >> (8 * k));
+		data[4] = char(count & 0xFF);
+		data[5] = char(count >> 8);
+		data[6] = char(flags);
+		for (int r = 0; r < count; r++) {
+			const int current = 2400 + 10 * (r % 5), volts = 12010 - (r % 3);
+			char *record = data.data() + fast::HEADER + 4 * r;
+			record[0] = char(current & 0xFF);
+			record[1] = char(current >> 8);
+			record[2] = char(volts & 0xFF);
+			record[3] = char(volts >> 8);
+		}
+		DumpBlock b;
+		b.kind = DumpBlock::FastStream;
+		b.stream = QStringLiteral("ADC");
+		b.streamIndex = 0;
+		b.wireSlave = 1;
+		b.addr = 0xDC00;
+		b.size = uint16_t(data.size());
+		b.data = data;
+		b.time = time;
+		b.wallMs = QDateTime::currentMSecsSinceEpoch();
+		b.version = version;
+		b.first = first;
+		b.count = count;
+		b.flags = flags;
+		b.lost = lost;
+		return b;
+	}
+
+	/* the card of a fast stream's block in a view; -1: none */
+	static int fastCard(const DumpView *view) {
+		for (int i = 0; i < view->blocks().size(); i++)
+			if (view->blocks()[i].kind == DumpBlock::FastStream && !view->blocks()[i].data.isEmpty()) return i;
+		return -1;
+	}
+
+	/* The fast stream's card, on known blocks: its reply strip, its header, the loss line, a bad block, the records
+	 * folded and with Show all, the colours, the hover, the Copy forms, stopped and stale, Arabic, and its pictures */
+	void dumpFastCard() {
+		DeviceMap fastMap;
+		QString error;
+		const bool loaded = fastMap.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), error)
+				&& fastMap.streams.size() == 1 && fastMap.streams[0].channels.size() == 2;
+		check(loaded, "Dump, a fast card: the fast example map loaded (ADC: I_LOAD and V_BUS)");
+		if (!loaded) return;
+		const StreamDef &def = fastMap.streams[0];
+		auto *tab = new DumpTab(model_);
+		tab->resize(1280, 860);
+		tab->show();
+		(void) QTest::qWaitForWindowExposed(tab);
+		DumpView *view = tab->view();
+		double now = 100.0;
+		view->setClock([&now] { return now; });
+		view->setRegisters(model_->definitions());
+		tab->setConnected(true);
+		tab->setStreams(fastMap.streams);
+		DumpBlock note;
+		note.kind = DumpBlock::FastStream;
+		note.addr = def.addr;
+		note.stream = def.name;
+		tab->setStreamNotes({ note });
+		/* a stream switched on that has sent nothing yet: one line, no stripe */
+		const int noteCard = dumpCard(view, 0xDC00, DumpBlock::FastStream);
+		check(noteCard >= 0 && view->stripeRect(noteCard).isEmpty() && view->cardRect(noteCard).height() < 3 * view->lineHeight()
+						&& fastCard(view) < 0,
+				"Dump, a fast card: a stream switched on with no block yet is one line (ADC switched on · no block yet), "
+				"no stripe");
+		DumpBlock poll;
+		poll.wireSlave = 1;
+		poll.addr = 0xD000;
+		poll.size = 22;
+		poll.data = QByteArray(22, '\x11');
+		poll.time = 99.99;
+		tab->applyDumps({ poll });
+		const DumpBlock block = fastDumpBlock(1191259, 253, fast::FLAG_LOST, 254, 99.992, 1);
+		tab->applyFastDumps({ block });
+		QApplication::processEvents();
+		const int c = fastCard(view), p = dumpCard(view, 0xD000);
+		if (c < 0 || p < 0) {
+			check(false, "Dump, a fast card: the block shown as a card after the poll card");
+			delete tab;
+			return;
+		}
+		using F = DumpView::Field;
+		using H = DumpView::HeaderField;
+
+		/* the reply strip: no request, READ_RESP (unasked) at the window, the block a pill, CRC OK, the bytes evre::build's */
+		const QByteArray frame = evre::build(1, evre::READ_RESP, 0xDC00, uint16_t(block.data.size()), block.data);
+		const QByteArray slices[DumpView::N_FIELDS] = { frame.left(1), frame.mid(1, 1), frame.mid(2, 1), frame.mid(3, 2),
+			frame.mid(5, 2), frame.mid(7, frame.size() - 10), frame.mid(frame.size() - 3, 2), frame.right(1) };
+		bool bytes = true, aligned = true;
+		for (int f = 0; f < DumpView::N_FIELDS; f++) {
+			bytes = bytes && view->fieldBytes(c, DumpView::Reply, F(f)) == slices[f];
+			aligned = aligned && view->fieldRect(c, DumpView::Reply, F(f)).left() == view->fieldRect(p, DumpView::Reply, F(f)).left();
+		}
+		const bool strip = c > p && !view->hasStrip(c, DumpView::Request) && view->requestText(c).isEmpty()
+				&& view->fieldMeaning(c, DumpView::Reply, F::Function) == QLatin1String("READ_RESP (unasked)")
+				&& view->fieldMeaning(c, DumpView::Reply, F::Offset) == QStringLiteral("0xDC00 · ADC")
+				&& view->fieldMeaning(c, DumpView::Reply, F::Count) == QLatin1String("1020")
+				&& view->payloadText(c, DumpView::Reply) == QStringLiteral("block ↓")
+				&& view->fieldMeaning(c, DumpView::Reply, F::Crc) == QLatin1String("OK")
+				&& view->fieldTip(c, DumpView::Reply, F::Function).contains(QLatin1String("nobody asked for: a block of the fast stream ADC"))
+				&& view->fieldTip(c, DumpView::Reply, F::Offset).contains(QLatin1String("The stream's window, 0xDC00"))
+				&& view->replyText(c).startsWith(QStringLiteral("← REPLY READ_RESP, unasked: a block of ADC 8 ms ago"))
+				&& view->notLiveReason(c).isEmpty() && view->stripeRect(c).isEmpty();
+		if (!strip || !bytes || !aligned)
+			std::printf("     (the fast card's strip: \"%s\" \"%s\" \"%s\" \"%s\", reply \"%s\", bytes %d, aligned %d)\n",
+					qPrintable(view->fieldMeaning(c, DumpView::Reply, F::Function)),
+					qPrintable(view->fieldMeaning(c, DumpView::Reply, F::Offset)), qPrintable(view->payloadText(c, DumpView::Reply)),
+					qPrintable(view->fieldMeaning(c, DumpView::Reply, F::Crc)), qPrintable(view->replyText(c).left(80)), int(bytes),
+					int(aligned));
+		check(strip && bytes && aligned, "Dump, a fast card: by its window's address after the poll cards; no request (nobody "
+				"asked); the reply's strip READ_RESP (unasked), OFFSET 0xDC00 · ADC, COUNT 1020, the pill block ↓, CRC OK, its "
+				"bytes evre::build's and its columns the poll cards'; the label READ_RESP, unasked: a block of ADC 8 ms ago");
+
+		/* the header: four columns in the wire's order, named, the 64-bit number, LOST in amber; START in the text's ink */
+		const ThemeColors &tc = Theme::colors();
+		bool order = true;
+		for (int f = 1; f < DumpView::N_HEADER; f++)
+			order = order && view->headerFieldRect(c, H(f)).left() == view->headerFieldRect(c, H(f - 1)).right() + 1 + DumpView::FIELD_GAP;
+		const bool header = order && DumpView::headerFieldName(H::First) == QLatin1String("FIRST")
+				&& DumpView::headerFieldName(H::Spare) == QLatin1String("SPARE")
+				&& view->headerFieldMeaning(c, H::First) == QLatin1String("record 1191259")
+				&& view->headerFieldBytes(c, H::First) == QByteArray("\x5B\x2D\x12\x00", 4)
+				&& view->headerFieldMeaning(c, H::HeaderCount) == QLatin1String("253 records")
+				&& view->headerFieldMeaning(c, H::Flags) == QLatin1String("LOST") && view->headerFieldColour(c, H::Flags) == tc.warn
+				&& view->headerFieldMeaning(c, H::Spare) == QLatin1String("0")
+				&& view->toolTipAt(view->headerFieldRect(c, H::First).center()).contains(QLatin1String("on the wire 0x00122D5B"))
+				&& view->headerFieldRect(c, H::First).top() > view->stripRect(c, DumpView::Reply).bottom();
+		tab->applyFastDumps({ fastDumpBlock(1191512, 253, fast::FLAG_START, 0, 99.992, 2) });
+		const bool start = view->headerFieldMeaning(fastCard(view), H::Flags) == QLatin1String("START")
+				&& view->headerFieldColour(fastCard(view), H::Flags) == tc.text;
+		if (!header || !start)
+			std::printf("     (the header: \"%s\" \"%s\" \"%s\" \"%s\", tip \"%s\", order %d, start %d)\n",
+					qPrintable(view->headerFieldMeaning(c, H::First)), qPrintable(view->headerFieldMeaning(c, H::HeaderCount)),
+					qPrintable(view->headerFieldMeaning(c, H::Flags)), qPrintable(view->headerFieldMeaning(c, H::Spare)),
+					qPrintable(view->toolTipAt(view->headerFieldRect(c, H::First).center()).replace(QLatin1Char('\n'), QLatin1Char('|'))),
+					int(order), int(start));
+		check(header && start, "Dump, a fast card: the block header as a strip of four columns FIELD_GAP apart (FIRST record "
+				"1191259, COUNT 253 records, FLAGS LOST in amber, SPARE 0), the wire's 32 bits in FIRST's tooltip; a first block "
+				"FLAGS START in the text's ink");
+
+		/* the loss line: by the numbers, in amber; none without a loss; a new start muted */
+		tab->applyFastDumps({ block });
+		const QString lost = view->lossText(fastCard(view));
+		tab->applyFastDumps({ fastDumpBlock(1191512, 253, 0, 0, 99.992, 3) });
+		const QString none = view->lossText(fastCard(view));
+		DumpBlock restart = fastDumpBlock(5, 253, fast::FLAG_START, 0, 99.992, 4);
+		restart.newStart = true;
+		tab->applyFastDumps({ restart });
+		const QString started = view->lossText(fastCard(view));
+		check(lost == QLatin1String("254 records lost before this block") && none.isEmpty()
+						&& started == QLatin1String("a new start of the stream"),
+				"Dump, a fast card: the line under the header says the records lost before this block (254, in amber), "
+				"nothing without a loss, a new start of the stream muted");
+
+		/* bad blocks: the words in amber instead of the records, the header still there */
+		DumpBlock badCount = fastDumpBlock(1191259, 253, 0, 0, 99.992, 5);
+		badCount.data.append('\0');
+		badCount.size = uint16_t(badCount.data.size());
+		badCount.check = int(fast::BlockCheck::BadCount);
+		tab->applyFastDumps({ badCount });
+		const int b1 = fastCard(view);
+		const bool badShown = view->badBlockText(b1) == QStringLiteral("bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)")
+				&& view->fastRowsShown(b1) == 0 && !view->headerFieldRect(b1, H::First).isEmpty()
+				&& view->headerFieldColour(b1, H::HeaderCount) == tc.warn && view->channelChipRect(b1, 0, 0).isEmpty();
+		DumpBlock newer = fastDumpBlock(1191259, 253, 0x04, 0, 99.992, 6);
+		newer.check = int(fast::BlockCheck::NewerKind);
+		tab->applyFastDumps({ newer });
+		const int b2 = fastCard(view);
+		const bool newerShown = view->badBlockText(b2) == QStringLiteral("block of a newer kind: flags 0x04, spare 0x00 · none of its records is used")
+				&& view->fastRowsShown(b2) == 0 && view->headerFieldMeaning(b2, H::Flags) == QLatin1String("0x04");
+		if (!badShown || !newerShown)
+			std::printf("     (bad blocks: \"%s\" \"%s\" rows %d %d)\n", qPrintable(view->badBlockText(b1)), qPrintable(view->badBlockText(b2)),
+					view->fastRowsShown(b1), view->fastRowsShown(b2));
+		check(badShown && newerShown, "Dump, a fast card: a bad block (1021 bytes) and a block of a newer kind (flags 0x04) "
+				"say so in amber instead of the records, their header still shown");
+
+		/* the records folded: the first three, "249 more records" with Show all, the last; values as the sidebar writes */
+		tab->applyFastDumps({ block });
+		const int r = fastCard(view);
+		const auto value = [](int raw, double scale, const QString &unit) {
+			return QString::number(raw * scale, 'g', 4) + QLatin1Char(' ') + unit;
+		};
+		const bool rows = view->fastRowsShown(r) == 4 && view->recordNumber(r, 0) == 1191259 && view->recordNumber(r, 2) == 1191261
+				&& view->recordNumber(r, 3) == 1191259 + 252 && view->moreText(r) == QLatin1String("249 more records")
+				&& view->channelValueText(r, 0, 0) == value(2400, 0.0005, QStringLiteral("A"))
+				&& view->channelValueText(r, 1, 1) == value(12009, 0.001, QStringLiteral("V"))
+				&& view->channelValueText(r, 3, 0) == value(2400 + 10 * (252 % 5), 0.0005, QStringLiteral("A"))
+				&& view->recordRect(r, 3).top() == view->recordRect(r, 2).top() + 2 * view->lineHeight()
+				&& view->showAllRect(r).top() > view->recordRect(r, 2).bottom() && view->showAllRect(r).bottom() < view->recordRect(r, 3).top()
+				&& view->channelChipRect(r, 0, 0).width() == view->channelChipRect(r, 0, 1).width();
+		tab->applyFastDumps({ fastDumpBlock(1191259, 3, 0, 0, 99.992, 7) });
+		const int s = fastCard(view);
+		const bool few = view->fastRowsShown(s) == 3 && view->showAllRect(s).isEmpty() && view->moreText(s).isEmpty();
+		if (!rows || !few)
+			std::printf("     (the rows: %d, %llu %llu %llu, \"%s\", \"%s\" \"%s\"; 3 records: %d rows)\n", view->fastRowsShown(r),
+					(unsigned long long) view->recordNumber(r, 0), (unsigned long long) view->recordNumber(r, 2),
+					(unsigned long long) view->recordNumber(r, 3), qPrintable(view->moreText(r)),
+					qPrintable(view->channelValueText(r, 0, 0)), qPrintable(view->channelValueText(r, 1, 1)), view->fastRowsShown(s));
+		check(rows && few, "Dump, a fast card: the records folded as the first three, a row 249 more records with its Show all "
+				"button, and the last; each channel's bytes a chip and its value as the sidebar writes it; three records: all "
+				"of them, no button");
+
+		/* Show all: a button with the hand and a tooltip; every record, the card as tall as the stream's largest block, the
+		 * tab's own scroll bar; kept across blocks, gone with a new tab */
+		tab->applyFastDumps({ block });
+		const int a = fastCard(view);
+		view->verticalScrollBar()->setValue(0);
+		QApplication::processEvents();
+		const QRect button = view->showAllRect(a);
+		dumpMouseTo(view, button.center());
+		const bool hand = view->viewport()->cursor().shape() == Qt::PointingHandCursor
+				&& view->toolTipAt(button.center()) == QLatin1String("Every record of this block; the tab scrolls")
+				&& view->showAllText(a) == QStringLiteral("Show all ▾");
+		const int heightFolded = view->cardRect(a).height(), rangeFolded = view->verticalScrollBar()->maximum();
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, button.center());
+		QApplication::processEvents();
+		bool every = view->showAll(a) && view->fastRowsShown(a) == def.recordsPerBlock();
+		for (int k = 0; k < 253 && every; k++) every = view->recordNumber(a, k) == 1191259 + quint64(k);
+		const bool open = every && view->recordNumber(a, 253) == ~quint64(0) && view->cardRect(a).height() > heightFolded + 200 * view->lineHeight()
+				&& view->verticalScrollBar()->maximum() > rangeFolded && view->showAllText(a) == QStringLiteral("Show fewer ▴")
+				&& view->findChildren<QAbstractScrollArea *>().isEmpty();
+		const int heightOpen = view->cardRect(a).height();
+		tab->applyFastDumps({ fastDumpBlock(1191512, 120, 0, 0, 99.992, 8) });
+		const int a2 = fastCard(view);
+		const bool kept = view->showAll(a2) && view->cardRect(a2).height() == heightOpen && view->recordNumber(a2, 119) == 1191512 + 119
+				&& view->recordNumber(a2, 120) == ~quint64(0);
+		bool newTabFolded = false;
+		{
+			DumpTab other(model_);
+			other.setStreams(fastMap.streams);
+			other.setStreamNotes({ note });
+			other.applyFastDumps({ block });
+			newTabFolded = !other.view()->showAll(fastCard(other.view())) && other.view()->fastRowsShown(fastCard(other.view())) == 4;
+		}
+		tab->applyFastDumps({ block });
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, view->showAllRect(fastCard(view)).center());
+		const bool foldedAgain = !view->showAll(fastCard(view)) && view->fastRowsShown(fastCard(view)) == 4;
+		if (!hand || !open || !kept || !newTabFolded || !foldedAgain)
+			std::printf("     (Show all: hand %d, open %d (rows %d, height %d from %d), kept %d, a new tab folded %d, folded again %d)\n",
+					int(hand), int(open), view->fastRowsShown(a), heightOpen, heightFolded, int(kept), int(newTabFolded), int(foldedAgain));
+		check(hand && open && kept && newTabFolded && foldedAgain, "Dump, a fast card: Show all (a hand, a tooltip) shows every "
+				"record, the card as tall as the stream's largest block (254 rows) so it does not jump, the tab's own scroll "
+				"bar; Show fewer folds it; kept by the stream across blocks, not in a new tab");
+
+		/* colours: a plotted channel its chart line's, the other the palette's; Colour: plotted makes the other neutral */
+		const QColor lineColour(0xE0, 0x40, 0x40);
+		view->setFastColours({ { 0, lineColour } });
+		const int k = fastCard(view);
+		view->verticalScrollBar()->setValue(view->verticalScrollBar()->value() + view->cardRect(k).top() - 8);
+		dumpMouseTo(view, QPoint(2, 2));
+		QApplication::processEvents();
+		const bool dark = Theme::isDark();
+		const QImage picture = view->viewport()->grab().toImage();
+		const QRect chip0 = view->channelChipRect(k, 0, 0), chip1 = view->channelChipRect(k, 0, 1);
+		const bool painted = pixelOff(picture, QPointF(chip0.left() + 3, chip0.center().y()),
+									 DumpView::chipFill(lineColour, tc.surface, DumpView::chipAlpha(dark))) < 12
+				&& pixelOff(picture, QPointF(chip1.left() + 3, chip1.center().y()),
+						   DumpView::chipFill(view->channelColour(k, 1), tc.surface, DumpView::chipAlpha(dark))) < 12;
+		const bool palette = view->channelColour(k, 0) == lineColour && tc.series.contains(view->channelColour(k, 1));
+		view->setColourMode(DumpView::PlottedOnly);
+		const bool neutral = view->channelColour(fastCard(view), 0) == lineColour && !view->channelColour(fastCard(view), 1).isValid();
+		view->setColourMode(DumpView::AllRegisters);
+		check(painted && palette && neutral, "Dump, a fast card: a plotted channel's chips in its chart line's colour, the "
+				"other's in the palette's; Colour: plotted leaves the unplotted one neutral");
+
+		/* hover: V_BUS's chip in row 1 lights V_BUS in every row (stronger, outlined), I_LOAD at rest; the tooltip's two
+		 * lines exact, under the row; the number's tooltip; empty room lights nothing */
+		const int h = fastCard(view);
+		const QPoint onBus = view->channelChipRect(h, 1, 1).center();
+		dumpMouseTo(view, onBus);
+		QApplication::processEvents();
+		const QImage lit = view->viewport()->grab().toImage();
+		const QRect bus0 = view->channelChipRect(h, 0, 1), load0 = view->channelChipRect(h, 0, 0);
+		const bool hovered = view->hoveredChannel() == 1 && view->hoveredFastCard() == h
+				&& view->viewport()->cursor().shape() == Qt::PointingHandCursor
+				&& pixelOff(lit, QPointF(bus0.left() + 3, bus0.center().y()),
+						   DumpView::chipFill(view->channelColour(h, 1), tc.surface, DumpView::chipAlpha(dark, true))) < 12
+				&& pixelOff(lit, QPointF(load0.left() + 3, load0.center().y()),
+						   DumpView::chipFill(lineColour, tc.surface, DumpView::chipAlpha(dark))) < 12;
+		const QString tip = view->toolTipAt(onBus);
+		const QRect place = view->tipPlace(onBus);
+		const QPoint onLoad = view->channelChipRect(h, 1, 0).center();
+		const QRect loadPlace = view->tipPlace(onLoad);
+		const bool tipped = tip == QStringLiteral("V_BUS · record 1191260 · bytes 2-3 of the record\nraw E9 2E · 12009 × 0.001 = 12.01 V")
+				&& place.top() >= view->recordRect(h, 1).bottom() && loadPlace.top() >= view->recordRect(h, 1).bottom()
+				&& loadPlace.right() <= view->channelChipRect(h, 1, 1).left()
+				&& view->toolTipAt(QPoint(view->recordRect(h, 1).left() + 4, view->recordRect(h, 1).center().y()))
+						== QStringLiteral("record 1191260 of ADC · 2 of the 253 in this block");
+		dumpMouseTo(view, QPoint(view->cardRect(h).right() - 6, view->recordRect(h, 1).center().y()));
+		const bool nothing = view->hoveredChannel() < 0;
+		if (!hovered || !tipped || !nothing)
+			std::printf("     (hover: lit %d, tip \"%s\", places %d,%d %d,%d (the row's bottom %d, V_BUS from %d), number \"%s\", "
+					"nothing %d)\n", int(hovered), qPrintable(QString(tip).replace(QLatin1Char('\n'), QLatin1Char('|'))), place.left(),
+					place.top(), loadPlace.right(), loadPlace.top(), view->recordRect(h, 1).bottom(), view->channelChipRect(h, 1, 1).left(),
+					qPrintable(view->toolTipAt(QPoint(view->recordRect(h, 1).left() + 4, view->recordRect(h, 1).center().y()))), int(nothing));
+		check(hovered && tipped && nothing, "Dump, a fast card: the mouse over V_BUS's chip lights V_BUS in every row (its "
+				"chips stronger and outlined), I_LOAD stays at rest, a hand; the tooltip V_BUS · record 1191260 · bytes 2-3 of the "
+				"record / raw E9 2E · 12009 × 0.001 = 12.01 V under the row, I_LOAD's left of V_BUS's column; the number's "
+				"record 1191260 of ADC · 2 of the 253 in this block; empty room lights nothing");
+
+		/* the Copy forms, exact; the register items disabled with their reason, records as CSV only on a fast card */
+		const int y = fastCard(view);
+		const QString hex = view->copyText(DumpView::CopyBlockHex, y);
+		const QString csv = view->copyText(DumpView::CopyRecordsCsv, y);
+		const QString cArray = view->copyText(DumpView::CopyBlockC, y);
+		const bool copies = hex.startsWith(QLatin1String("DC00  5B 2D 12 00 FD 00 02 00 60 09 EA 2E 6A 09 E9 2E\nDC10  "))
+				&& hex.count(QLatin1Char('\n')) == 63
+				&& csv.startsWith(QLatin1String("record,I_LOAD [A],V_BUS [V]\n1191259,1.2,12.01\n1191260,1.205,12.01\n"))
+				&& csv.count(QLatin1Char('\n')) == 253
+				&& cArray.startsWith(QLatin1String("static const uint8_t adc_block_1191259[1020] = {\n"
+						"\t/* header: first 1191259, count 253, flags LOST */ 0x5B, 0x2D, 0x12, 0x00, 0xFD, 0x00, 0x02, 0x00,\n"
+						"\t/* #1191259 */ 0x60, 0x09, 0xEA, 0x2E,\n"))
+				&& cArray.endsWith(QLatin1String("\n};")) && view->copyText(DumpView::CopyDecoded, y) == csv
+				&& view->copyText(DumpView::CopyRegisterBytes, y).isEmpty() && view->copyText(DumpView::CopyRecordsCsv, p).isEmpty();
+		QMenu menu;
+		menu.setToolTipsVisible(true);
+		tab->fillMenu(&menu, DumpView::NO_REGISTER, y);
+		QMenu pollMenu;
+		tab->fillMenu(&pollMenu, DumpView::NO_REGISTER, p);
+		auto item = [](QMenu &m, const QString &text) -> QAction * {
+			for (QAction *action : m.actions())
+				if (action->text() == text) return action;
+			return nullptr;
+		};
+		QAction *showIn = item(menu, QStringLiteral("Show in Registers")), *records = item(menu, QStringLiteral("Copy records as CSV"));
+		QAction *decoded = item(menu, QStringLiteral("Copy decoded")), *pollRecords = item(pollMenu, QStringLiteral("Copy records as CSV"));
+		const bool menus = showIn && !showIn->isEnabled() && showIn->toolTip() == QLatin1String("A fast block has records, not registers")
+				&& records && records->isEnabled() && decoded && decoded->toolTip().startsWith(QLatin1String("The records as CSV"))
+				&& pollRecords && !pollRecords->isEnabled() && pollRecords->toolTip() == QLatin1String("A read has registers: Copy decoded");
+		if (!copies || !menus)
+			std::printf("     (copies: hex \"%s\", csv \"%s\", C \"%s\"; menus %d)\n", qPrintable(hex.left(60)),
+					qPrintable(csv.left(60).replace(QLatin1Char('\n'), QLatin1Char('|'))),
+					qPrintable(cArray.left(140).replace(QLatin1Char('\n'), QLatin1Char('|'))), int(menus));
+		check(copies && menus, "Dump, a fast card: Copy block as hex (rows of 16 from DC00), Copy records as CSV (record,I_LOAD "
+				"[A],V_BUS [V], every record), Copy block as C array (the header's line, one line per record), Copy decoded the "
+				"CSV; the register items disabled (A fast block has records, not registers); records as CSV disabled on a read");
+
+		/* not live: stopped (its last block kept, the stripe, no banner), stale */
+		tab->setStreamNotes({});
+		const int st = fastCard(view);
+		const bool stopped = st >= 0 && view->replyText(st).contains(QStringLiteral("ADC stopped · last block "))
+				&& !view->stripeRect(st).isEmpty() && view->notLiveReason(st).startsWith(QLatin1String("ADC is switched off"))
+				&& tab->bannerText().isEmpty();
+		if (!stopped && st >= 0)
+			std::printf("     (stopped: \"%s\", \"%s\", the banner \"%s\")\n", qPrintable(view->replyText(st).left(90)),
+					qPrintable(view->notLiveReason(st)), qPrintable(tab->bannerText()));
+		tab->setStreamNotes({ note });
+		now = 102.1;
+		view->viewport()->update();
+		const bool stale = view->replyText(fastCard(view)).contains(QLatin1String(" stale 2.1 s"))
+				&& !view->stripeRect(fastCard(view)).isEmpty() && view->notLiveReason(fastCard(view)).startsWith(QLatin1String("Not refreshed"));
+		if (!stale)
+			std::printf("     (stale: \"%s\", \"%s\")\n", qPrintable(view->replyText(fastCard(view)).left(90)),
+					qPrintable(view->notLiveReason(fastCard(view))));
+		now = 100.0;
+		check(stopped && stale, "Dump, a fast card: a stream stopped keeps its last block, says ADC stopped · last block "
+				"hh:mm:ss with the amber stripe and no banner; a block older than the stale limit says stale 2.1 s");
+
+		/* the pictures: the card with I_LOAD hovered and its tooltip, Show all open, both themes */
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const bool wasDark = Theme::isDark();
+			for (const bool d : { false, true }) {
+				Theme::apply(*qApp, d);
+				QTest::qWait(300);
+				const QString theme = d ? QStringLiteral("dark") : QStringLiteral("light");
+				const int f = fastCard(view);
+				view->verticalScrollBar()->setValue(view->verticalScrollBar()->value() + view->cardRect(f).top() - 12);
+				QApplication::processEvents();
+				const QPoint at = view->channelChipRect(f, 1, 0).center();
+				dumpMouseTo(view, at);
+				QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
+				QApplication::sendEvent(view->viewport(), &help);
+				QTest::qWait(250);
+				withTooltip(tab, tab->rect()).save(prefix + QStringLiteral("_fastcard_en_%1.png").arg(theme));
+				QToolTip::hideText();
+				view->setShowAll(f, true);
+				view->verticalScrollBar()->setValue(view->verticalScrollBar()->value() + view->cardRect(f).top() + 300);
+				dumpMouseTo(view, view->channelChipRect(f, 20, 1).center());
+				QApplication::processEvents();
+				tab->grab().save(prefix + QStringLiteral("_fastcard_showall_en_%1.png").arg(theme));
+				view->setShowAll(f, false);
+			}
+			/* a bus: a device's poll card and its fast card (the engine runs no stream on a bus today: the words are ready) */
+			DumpBlock busPoll = poll, busFast = block;
+			busPoll.device = busFast.device = QStringLiteral("Device 2");
+			busPoll.wireSlave = busFast.wireSlave = 2;
+			Theme::apply(*qApp, false);
+			QTest::qWait(300);
+			view->setBlocks({ busPoll, busFast });
+			view->verticalScrollBar()->setValue(0);
+			dumpMouseTo(view, QPoint(2, 2));
+			QApplication::processEvents();
+			tab->grab().save(prefix + QStringLiteral("_fastcard_bus_en_light.png"));
+			Theme::apply(*qApp, wasDark);
+			QTest::qWait(200);
+		}
+		QToolTip::hideText();
+		QTest::qWait(500); /* no tooltip left on the tab's viewport when it goes */
+		delete tab;
+
+		/* Arabic: the protocol's names English, the meanings Arabic, the records left to right */
+		language::apply(*qApp, QStringLiteral("ar"));
+		bool arabic = false;
+		{
+			DumpTab other(model_);
+			other.resize(1280, 860);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			DumpView *v = other.view();
+			v->setClock([] { return 100.0; });
+			v->setRegisters(model_->definitions());
+			other.setConnected(true);
+			other.setStreams(fastMap.streams);
+			other.setStreamNotes({ note });
+			other.applyDumps({ poll });
+			other.applyFastDumps({ block });
+			QApplication::processEvents();
+			const int ar = fastCard(v);
+			arabic = ar >= 0 && DumpView::headerFieldName(H::First) == QLatin1String("FIRST")
+					&& v->headerFieldMeaning(ar, H::First) == QStringLiteral("سجلّ 1191259")
+					&& v->payloadText(ar, DumpView::Reply) == QStringLiteral("كتلة ↓")
+					&& v->showAllText(ar) == QStringLiteral("عرض الكل ▾")
+					&& v->lossText(ar).contains(QStringLiteral("قبل هذه الكتلة"))
+					&& v->fieldMeaning(ar, DumpView::Reply, F::Function).startsWith(QLatin1String("READ_RESP "))
+					&& v->layoutDirection() == Qt::LeftToRight && other.isRightToLeft()
+					&& v->channelChipRect(ar, 0, 0).left() < v->channelChipRect(ar, 0, 1).left();
+			if (!arabic && ar >= 0)
+				std::printf("     (Arabic: \"%s\" \"%s\" \"%s\" \"%s\")\n", qPrintable(v->headerFieldMeaning(ar, H::First)),
+						qPrintable(v->payloadText(ar, DumpView::Reply)), qPrintable(v->showAllText(ar)), qPrintable(v->lossText(ar)));
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+				const bool wasDark = Theme::isDark();
+				Theme::apply(*qApp, false);
+				QTest::qWait(300);
+				v->verticalScrollBar()->setValue(v->verticalScrollBar()->value() + v->cardRect(ar).top() - 12);
+				const QPoint at = v->channelChipRect(ar, 1, 1).center();
+				dumpMouseTo(v, at);
+				QHelpEvent help(QEvent::ToolTip, at, v->viewport()->mapToGlobal(at));
+				QApplication::sendEvent(v->viewport(), &help);
+				QTest::qWait(250);
+				withTooltip(&other, other.rect()).save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_fastcard_ar_light.png"));
+				QToolTip::hideText();
+				QTest::qWait(500);
+				Theme::apply(*qApp, wasDark);
+				QTest::qWait(200);
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(1200); /* the window's texts made meanwhile (the rate line) are English again at their next refresh */
+		check(arabic, "Dump, a fast card in Arabic: the member names the protocol's (FIRST), the meanings Arabic (سجلّ 1191259, "
+				"كتلة ↓, عرض الكل ▾, the loss line), the records left to right");
+	}
+
+	/* the Dump tab's ticks, repaints, takes and glow repaints over ms, the mouse off the view */
+	struct DumpCounts {
+		int ticks = 0, paints = 0, glows = 0, polls = 0, fasts = 0;
+	};
+	DumpCounts dumpCounts(DumpView *view, int ms) {
+		dumpMouseTo(view, QPoint(-20, -20));
+		const DumpCounts before { window_.dumpTicks(), view->paintCount(), view->glowRepaints(), window_.pollDumpTakes(),
+			window_.fastDumpTakes() };
+		QTest::qWait(ms);
+		return { window_.dumpTicks() - before.ticks, view->paintCount() - before.paints, view->glowRepaints() - before.glows,
+			window_.pollDumpTakes() - before.polls, window_.fastDumpTakes() - before.fasts };
+	}
+
+	/* The fast card live (the fast streams step, the stream running at 10 000 records a second): the card of the newest
+	 * block after the polled ones, its rows, Hold, the one tick at Show values 2 a second and at every frame, Stop and
+	 * Start, the tab hidden */
+	void dumpFastLive(QPushButton *button, const DeviceMap &fastMap) {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		auto *pace = window_.findChild<QComboBox *>(QStringLiteral("valuePace"));
+		if (!tabs || !view || !pace) {
+			check(false, "fast streams: the Dump tab and Show values found");
+			return;
+		}
+		const int tabWas = tabs->currentIndex();
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const StreamDef &def = fastMap.streams[0];
+		const bool came = QTest::qWaitFor([&] {
+			const int c = fastCard(view);
+			if (c < 0) return false;
+			const DumpBlock &b = view->blocks()[c];
+			int lastRead = -1;
+			for (int i = 0; i < view->blocks().size(); i++)
+				if (view->blocks()[i].kind == DumpBlock::Read && view->blocks()[i].data.size() >= view->blocks()[i].size
+						&& view->blocks()[i].size > 0)
+					lastRead = i;
+			return b.addr == def.addr && b.stream == def.name && b.count > 0 && b.check == 0
+					&& b.data.size() == fast::HEADER + b.count * def.recordSize() && lastRead >= 0 && c > lastRead
+					&& view->requestText(c).isEmpty() && dumpCard(view, def.addr) < 0 && view->fastRowsShown(c) >= 1;
+		}, 3000);
+		check(came, "fast streams: the Dump shows the running stream's newest block as a card by its window's address after "
+				"the polled cards (its header and records, 8 + count x 4 bytes), no request; the stream's blocks never as a read");
+		/* the last row's values from the block's own bytes, as the sidebar writes a value */
+		bool values = false;
+		if (came) {
+			const int c = fastCard(view);
+			const DumpBlock &b = view->blocks()[c];
+			const int last = view->fastRowsShown(c) - 1;
+			const char *record = b.data.constData() + fast::HEADER + qsizetype(b.count - 1) * def.recordSize();
+			values = view->recordNumber(c, last) == b.first + quint64(b.count) - 1;
+			int offset = 0;
+			for (int ch = 0; ch < def.channels.size(); ch++) {
+				const double v = fast::channelValue(def.channels[ch], record + offset);
+				values = values && view->channelValueText(c, last, ch)
+						== QString::number(v, 'g', 4) + QLatin1Char(' ') + def.channels[ch].unit;
+				offset += typeSize(def.channels[ch].type);
+			}
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the window, its fast card in view */
+				const bool wasDark = Theme::isDark();
+				for (const bool dark : { false, true }) {
+					Theme::apply(*qApp, dark);
+					QTest::qWait(500);
+					const int f = fastCard(view);
+					if (f >= 0) view->verticalScrollBar()->setValue(view->verticalScrollBar()->value() + view->cardRect(f).top() - 12);
+					QTest::qWait(200);
+					window_.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+							+ QStringLiteral("_fastcard_live_en_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+				Theme::apply(*qApp, wasDark);
+				QTest::qWait(300);
+			}
+		}
+		check(values, "fast streams: the Dump's fast card writes each record's values from the block's bytes, as the "
+				"sidebar's card writes a value (I_LOAD in A, V_BUS in V), its last row the block's last record");
+
+		/* Hold: no fast block taken, the card's block kept, held and amber; Follow: the next take within 250 ms */
+		auto *hold = tab->findChild<QPushButton *>(QStringLiteral("dumpHold"));
+		auto *follow = tab->findChild<QPushButton *>(QStringLiteral("dumpFollow"));
+		bool held = false, followed = false;
+		if (hold && follow && came) {
+			hold->click();
+			QTest::qWait(150);
+			const int c = fastCard(view);
+			const QByteArray data = view->blocks()[c].data;
+			const quint64 first = view->blocks()[c].first;
+			const int takes = window_.fastDumpTakes();
+			QTest::qWait(1000);
+			const int h = fastCard(view);
+			held = takes == window_.fastDumpTakes() && h >= 0 && view->blocks()[h].data == data && view->blocks()[h].first == first
+					&& view->replyText(h).contains(QStringLiteral(" held ")) && dumpStripe(view, h)
+					&& dumpBanner().startsWith(QLatin1String("Held at "));
+			follow->click();
+			QElapsedTimer since;
+			since.start();
+			followed = QTest::qWaitFor([&] {
+				const int f = fastCard(view);
+				return window_.fastDumpTakes() > takes && f >= 0 && view->blocks()[f].first != first;
+			}, 1000) && since.elapsed() <= 250;
+			if (!held || !followed)
+				std::printf("     (fast card held: takes %d -> %d, reply \"%s\"; followed in %lld ms)\n", takes,
+						window_.fastDumpTakes(), qPrintable(view->replyText(h).left(70)), (long long) since.elapsed());
+		}
+		check(held && followed, "fast streams: Dump's Hold takes no fast block (the card keeps its block, says held, the "
+				"stripe and the banner); Follow brings the newest within 250 ms");
+
+		/* the one tick for every card: Show values 2 a second, a fast card shown: ten ticks a second, the polls' replies
+		 * at their two beats, the fast blocks at each tick, one repaint a tick; every frame: a tick each frame, the fast
+		 * blocks still ten a second */
+		const int paceWas = pace->currentData().toInt();
+		pace->setCurrentIndex(pace->findData(2));
+		QTest::qWait(400);
+		const DumpCounts slow = dumpCounts(view, 2000);
+		pace->setCurrentIndex(pace->findData(ValuePace::EVERY_FRAME));
+		QTest::qWait(400);
+		const DumpCounts every = dumpCounts(view, 2000);
+		pace->setCurrentIndex(pace->findData(paceWas));
+		std::printf("     (the Dump's tick in 2 s: Show values 2/s: %d ticks, %d paints (%d of the glow), %d poll takes, %d fast "
+				"takes; every frame: %d ticks, %d paints (%d of the glow), %d fast takes)\n", slow.ticks, slow.paints, slow.glows,
+				slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.fasts);
+		check(slow.ticks >= 18 && slow.ticks <= 22 && slow.polls >= 3 && slow.polls <= 5 && slow.fasts >= 18 && slow.fasts <= 22
+						&& slow.paints >= slow.ticks - 1 && slow.paints <= slow.ticks + slow.glows + 1,
+				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each), "
+				"the polls' replies taken at their two beats, the fast block at every tick");
+		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10 && every.paints >= every.ticks - 2
+						&& every.paints <= every.ticks + every.glows + 1,
+				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each), the "
+				"fast block still taken at most ten times a second");
+
+		/* Stop: the card keeps its last block, says stopped, the stripe, no banner; Start: live again */
+		bool stopped = false, live = false;
+		if (came) {
+			button->click();
+			stopped = QTest::qWaitFor([&] {
+				const int c = fastCard(view);
+				return c >= 0 && view->replyText(c).contains(QStringLiteral("ADC stopped · last block ")) && !view->stripeRect(c).isEmpty()
+						&& dumpBanner().isEmpty();
+			}, 2000);
+			button->click();
+			live = QTest::qWaitFor([&] {
+				const int c = fastCard(view);
+				return c >= 0 && view->notLiveReason(c).isEmpty() && !view->replyText(c).contains(QLatin1String("stopped"));
+			}, 4000);
+		}
+		check(stopped && live, "fast streams: Stop stream: the Dump's card keeps the last block and says ADC stopped · last "
+				"block hh:mm:ss with the amber stripe, no banner; Start: live again at its next block");
+
+		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		QTest::qWait(150);
+		const int ticks = window_.dumpTicks(), takes = window_.fastDumpTakes();
+		QTest::qWait(1000);
+		const bool quiet = ticks == window_.dumpTicks() && takes == window_.fastDumpTakes() && fastCard(view) < 0;
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const bool back = QTest::qWaitFor([&] { return fastCard(view) >= 0; }, 2000);
+		check(quiet && back, "fast streams: the Dump hidden is not ticked and takes no fast block (its blocks gone); shown "
+				"again, the card comes with the next take");
+		tabs->setCurrentIndex(tabWas);
+	}
+
+	/* The fast card of a device that loses every 5th block and counts from near 2^32: the loss line by the numbers (in
+	 * amber, FLAGS LOST), none without a loss; FIRST the 64-bit number past the wire's wrap, the wire's in its tooltip */
+	void dumpFastLosses() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !view) return;
+		const int tabWas = tabs->currentIndex();
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		bool lossShown = false, plain = false, wrapped = false;
+		QString notes;
+		(void) QTest::qWaitFor([&] {
+			const int c = fastCard(view);
+			if (c < 0) return false;
+			const DumpBlock &b = view->blocks()[c];
+			if (b.lost > 0 && !lossShown) {
+				lossShown = view->lossText(c) == QStringLiteral("%1 records lost before this block").arg(b.lost)
+						&& view->headerFieldMeaning(c, DumpView::Flags).contains(QLatin1String("LOST"))
+						&& view->headerFieldColour(c, DumpView::Flags) == Theme::colors().warn;
+				if (!lossShown) notes = QStringLiteral("loss \"%1\" lost %2 flags \"%3\"").arg(view->lossText(c)).arg(b.lost)
+						.arg(view->headerFieldMeaning(c, DumpView::Flags));
+			}
+			if (b.lost == 0 && !b.newStart && !plain) plain = view->lossText(c).isEmpty();
+			if (b.first > 0xFFFFFFFFull && !wrapped)
+				wrapped = view->headerFieldMeaning(c, DumpView::First) == QStringLiteral("record %1").arg(b.first)
+						&& view->headerFieldTip(c, DumpView::First).contains(QStringLiteral("on the wire 0x%1")
+								.arg(QStringLiteral("%1").arg(quint32(b.first), 8, 16, QLatin1Char('0')).toUpper()));
+			return lossShown && plain && wrapped;
+		}, 6000);
+		if (!lossShown || !plain || !wrapped)
+			std::printf("     (the Dump's losses: shown %d, plain %d, wrapped %d; %s)\n", int(lossShown), int(plain), int(wrapped),
+					qPrintable(notes));
+		check(lossShown && plain, "fast streams, every 5th block lost: the Dump's card says the records lost before a block "
+				"(the engine's number) in amber with FLAGS LOST; a block after none lost has no such line");
+		check(wrapped, "fast streams, counting from 4294967200: the Dump's FIRST is the 64-bit record number past the wire's "
+				"wrap, the wire's 32 bits in its tooltip");
+		tabs->setCurrentIndex(tabWas);
 	}
 
 	/* the UI audit of 2026-10-01: each finding, as it is now */

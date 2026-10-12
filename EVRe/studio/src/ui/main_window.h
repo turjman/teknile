@@ -95,6 +95,16 @@ public:
 	fast::TriggerWatch engineFastWatch(int stream) const;
 	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
 	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
+	/* tests: the Dump tab's ticks (one repaint each), the takes of the polls' replies and of the fast streams' newest
+	 * blocks, the fast takes that found the engine's lock held, and the data of the last fast block taken (shared with
+	 * the engine's, not copied) */
+	int dumpTicks() const { return dumpTicks_; }
+	int pollDumpTakes() const { return pollDumpTakes_; }
+	int fastDumpTakes() const { return fastDumpTakes_; }
+	int fastDumpLockMisses() const;
+	const char *lastFastDumpData() const { return lastFastDumpData_; }
+	/* the Dump tab's fast streams take their newest block at most this often, whatever Show values says */
+	static constexpr int FAST_DUMP_PER_SECOND = 10;
 
 protected:
 	void closeEvent(QCloseEvent *event) override;
@@ -211,8 +221,10 @@ private:
 	/* once per display frame: the engine's values into the table, its samples into the chart,
 	 * its frames into the monitor */
 	void sync();
-	/* at the values' pace, the Dump tab shown: the engine's replies, the fast streams' notes, the chart's colours */
-	void syncDump();
+	/* a tick of the Dump tab, shown: the engine's replies (values: a beat of Show values came since the last tick), the
+	 * fast streams' newest blocks (fast), the streams switched on, the chart's colours, then one repaint */
+	void syncDump(bool values, bool fast);
+	bool dumpWantsFast() const; /* a fast stream switched on, or a fast card shown */
 	int rowOfKey(RegKey key) const; /* the register's row in the table; -1: none */
 	void logReadStateChange(int row, const RegValue &value); /* reads of a register fail, or work again */
 
@@ -292,6 +304,14 @@ private:
 	quint64 mapGeneration_ = 0;         /* which map the engine's values belong to */
 	QVector<quint64> copiedVersions_;   /* per row, the engine's version copied last */
 	ValuePacer valuePacer_;             /* when the next copy is due: at the pace chosen for the values */
+	/* The Dump tab's one tick for every card: at the values' beats, or ten a second while it has fast cards and Show
+	 * values is slower; a beat of the values is latched until the next tick, the fast blocks taken at most ten times
+	 * a second (fastDumpClock_) */
+	ValuePacer dumpPacer_;
+	bool dumpValuesPending_ = false;
+	QElapsedTimer fastDumpClock_;
+	int dumpTicks_ = 0, pollDumpTakes_ = 0, fastDumpTakes_ = 0;
+	const char *lastFastDumpData_ = nullptr;
 	QElapsedTimer valueClock_;
 	QHash<int, qint64> readErrorLoggedMs_; /* per row: when its last read error was logged */
 

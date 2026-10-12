@@ -165,9 +165,45 @@ void DumpTab::setShown(bool shown) {
 	shown_ = shown;
 	/* hidden, the engine keeps nothing and the cards go: shown again, they come with the next replies, never as old
 	 * bytes that look new */
-	if (!shown) engineBlocks_.clear();
+	if (!shown) {
+		engineBlocks_.clear();
+		fastBlocks_.clear();
+	}
 	compose();
 	emit dumpWanted(shown);
+}
+
+void DumpTab::applyFastDumps(const QVector<DumpBlock> &blocks) {
+	QVector<DumpBlock> kept;
+	for (const DumpBlock &b : blocks) {
+		const auto same = std::find_if(fastBlocks_.begin(), fastBlocks_.end(),
+				[&b](const DumpBlock &was) { return was.stream == b.stream && was.version == b.version; });
+		kept << (same != fastBlocks_.end() ? *same : b);
+	}
+	fastBlocks_ = kept;
+	compose();
+}
+
+/* the same streams again (the map's info shown again) keep their blocks; another layout's would be read wrongly */
+void DumpTab::setStreams(const QVector<StreamDef> &streams) {
+	auto layout = [](const QVector<StreamDef> &list) {
+		QStringList out;
+		for (const StreamDef &s : list) {
+			QStringList channels;
+			for (const StreamChannel &c : s.channels)
+				channels << c.name + QLatin1Char(' ') + typeName(c.type) + QLatin1Char(' ') + QString::number(c.scale)
+								+ QLatin1Char(' ') + QString::number(c.offset) + QLatin1Char(' ') + c.unit
+								+ QLatin1Char(' ') + QString::number(c.decimals);
+			out << s.name + QLatin1Char(' ') + QString::number(s.addr) + QLatin1Char(' ') + QString::number(s.size)
+							+ QLatin1Char(' ') + channels.join(QLatin1Char(','));
+		}
+		return out;
+	};
+	if (layout(streams) == layout(streams_)) return;
+	streams_ = streams;
+	fastBlocks_.clear();
+	view_->setStreams(streams);
+	compose();
 }
 
 void DumpTab::applyDumps(const QVector<DumpBlock> &blocks) {
@@ -238,10 +274,19 @@ void DumpTab::showRegister(RegKey key) {
 }
 
 /* The cards in their order: the manual read and the last write at the top (what the user asked for), then the blocks
- * of the device shown and the fast streams' notes by address. */
+ * of the device shown and the fast streams' by address: each stream's newest block (stopped when its stream is no
+ * longer switched on), or its one line while it has sent none. */
 void DumpTab::compose() {
+	QVector<DumpBlock> fast;
+	for (DumpBlock b : fastBlocks_) {
+		b.stopped = std::none_of(streamNotes_.begin(), streamNotes_.end(), [&b](const DumpBlock &on) { return on.stream == b.stream; });
+		fast << b;
+	}
+	for (const DumpBlock &note : streamNotes_)
+		if (std::none_of(fastBlocks_.begin(), fastBlocks_.end(), [&note](const DumpBlock &b) { return b.stream == note.stream; }))
+			fast << note;
 	QVector<DumpBlock> blocks;
-	for (const DumpBlock &b : engineBlocks_ + streamNotes_)
+	for (const DumpBlock &b : engineBlocks_ + fast)
 		if (!bus_ || b.slave == slave_) blocks << b;
 	std::stable_sort(blocks.begin(), blocks.end(), [](const DumpBlock &a, const DumpBlock &b) {
 		return std::make_pair(a.kind != DumpBlock::Write, a.addr) < std::make_pair(b.kind != DumpBlock::Write, b.addr);
@@ -287,7 +332,10 @@ int DumpTab::rowOf(RegKey key) const {
 void DumpTab::fillMenu(QMenu *menu, RegKey key, int card) {
 	const int row = key == DumpView::NO_REGISTER ? -1 : rowOf(key);
 	const RegisterModel::Row *reg = row >= 0 ? &model_->rows()[row] : nullptr;
-	const QString none = tr("Click a register's chip or decode line first");
+	/* a fast stream's block has no register to act on: its items say so */
+	const bool fastCard = card >= 0 && card < view_->blocks().size() && view_->blocks()[card].kind == DumpBlock::FastStream;
+	const QString none = fastCard && !reg ? tr("A fast block has records, not registers")
+										  : tr("Click a register's chip or decode line first");
 
 	QAction *show = menu->addAction(tr("Show in Registers"), this, [this, key] { emit registerPicked(key, true); });
 	show->setEnabled(reg != nullptr);
@@ -314,11 +362,18 @@ void DumpTab::fillMenu(QMenu *menu, RegKey key, int card) {
 		QAction *action = menu->addAction(text, this, [value] { QGuiApplication::clipboard()->setText(value); });
 		action->setEnabled(!value.isEmpty());
 		action->setToolTip(value.isEmpty() ? tip : value.section(QLatin1Char('\n'), 0, 3));
+		return action;
 	};
 	const int keyCard = view_->cardOf(key);
 	const QString noCard = tr("No reply to copy yet");
 	copy(tr("Copy register bytes"), DumpView::CopyRegisterBytes, keyCard, key, reg ? noCard : none);
 	copy(tr("Copy block as hex"), DumpView::CopyBlockHex, card, DumpView::NO_REGISTER, noCard);
 	copy(tr("Copy block as C array"), DumpView::CopyBlockC, card, DumpView::NO_REGISTER, noCard);
-	copy(tr("Copy decoded"), DumpView::CopyDecoded, card, DumpView::NO_REGISTER, noCard);
+	QAction *decoded = copy(tr("Copy decoded"), DumpView::CopyDecoded, card, DumpView::NO_REGISTER, noCard);
+	/* one meaning of "decoded" on a fast card: its records, as Copy records as CSV gives them */
+	if (fastCard && decoded->isEnabled())
+		decoded->setToolTip(tr("The records as CSV, as Copy records as CSV gives them:") + QLatin1Char('\n')
+				+ view_->copyText(DumpView::CopyDecoded, card).section(QLatin1Char('\n'), 0, 2));
+	copy(tr("Copy records as CSV"), DumpView::CopyRecordsCsv, card, DumpView::NO_REGISTER,
+			card >= 0 && !fastCard ? tr("A read has registers: Copy decoded") : noCard);
 }
