@@ -181,8 +181,7 @@ public:
 	/* The Dump tab: each block's latest reply as the polls (and AUTO_SEND's frames) bring it, the newest winning;
 	 * kept only while setDump is on (the tab shown), so a hidden tab costs the I/O thread nothing. The payload is
 	 * the one onBlockResult matched to its block; the tab rebuilds the frames' header and CRC from it with
-	 * evre::build (the same bytes as on the wire). Fast stream blocks never come here: their records are the
-	 * chart's. */
+	 * evre::build (the same bytes as on the wire). A fast stream's blocks come as FastDump, the newest of each. */
 	struct DumpReply {
 		uint8_t slave = 0;       /* the device's, as the table has it (RegDef::slave) */
 		uint8_t wireSlave = 0;   /* where the request went (and the reply came from) */
@@ -202,6 +201,27 @@ public:
 	 * order (the whole set, so the tab also sees the blocks gone: a split, a register refused for good, another
 	 * map). false: nothing new, `blocks` untouched. */
 	bool takeDumps(QVector<DumpReply> &blocks);
+	/* The Dump tab's newest block of each fast stream, kept as it came while setDump is on (bad ones too: a dump is
+	 * where a device's mistakes are seen). Its data is the frame's, shared and never written, so a take copies no
+	 * byte of a block; the tab takes them at most ten times a second, whatever the blocks' rate. */
+	struct FastDump {
+		int stream = 0;
+		uint8_t slave = 0;       /* the frame's */
+		uint16_t addr = 0;       /* the stream's window: where its blocks come */
+		QByteArray data;         /* the frame's data: the 8-byte header and the records */
+		quint64 first = 0;       /* its first record in 64 bits (BlockTaken::first); a bad block: the wire's 32 */
+		int count = 0;           /* the header's count */
+		uint8_t flags = 0, spare = 0;
+		quint64 lost = 0;        /* records lost before it (by the numbers) */
+		bool newStart = false;
+		fast::BlockCheck check = fast::BlockCheck::Ok;
+		double time = 0;         /* when it came, on now()'s clock */
+		quint64 serial = 0;      /* moves at every block kept: a take sees which streams moved */
+	};
+	/* true when a block was kept since the last call: `dumps` is then every stream's newest (the streams that sent
+	 * one). false: nothing new, `dumps` untouched. Tests: the takes that found the lock held (the window waited). */
+	bool takeFastDumps(QVector<FastDump> &dumps);
+	int fastDumpLockMisses() const { return fastDumpLockMisses_; }
 
 	/* in the engine thread (through post) */
 	/* generation: the window's number for this map. devices: the one device of a map (slave 0), or the devices
@@ -466,4 +486,10 @@ private:
 	bool dumpsMoved_ = false;                    /* since the last takeDumps */
 	QVector<FastBlock> fastBlocks_;
 	qint64 fastQueued_ = 0;                      /* the bytes in fastBlocks_ */
+	QVector<FastDump> fastDumps_;                /* by stream; only while dumpOn_ */
+	quint64 fastDumpSerial_ = 0;
+	bool fastDumpsMoved_ = false;                /* since the last takeFastDumps */
+	int fastDumpLockMisses_ = 0;                 /* the window's thread only (takeFastDumps) */
+
+	void keepFastDump(int stream, const evre::Frame &frame, fast::BlockCheck check, const fast::BlockTaken &taken);
 };

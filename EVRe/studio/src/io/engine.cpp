@@ -230,13 +230,66 @@ bool IoEngine::takeDumps(QVector<DumpReply> &blocks) {
 	return true;
 }
 
-/* Hidden, the tab keeps nothing: the store is emptied, and the next takeDumps says so (an empty set). */
+/* The lock tried first: a take that finds it held is counted (the tests hold it at 0 at a million records a second,
+ * since the engine holds it only for the few assignments of a block kept). */
+bool IoEngine::takeFastDumps(QVector<FastDump> &dumps) {
+	if (!crossThreadMutex_.tryLock()) {
+		fastDumpLockMisses_++;
+		crossThreadMutex_.lock();
+	}
+	const bool moved = fastDumpsMoved_;
+	if (moved) {
+		dumps.clear();
+		for (const FastDump &dump : std::as_const(fastDumps_))
+			if (dump.serial != 0) dumps << dump;
+		fastDumpsMoved_ = false;
+	}
+	crossThreadMutex_.unlock();
+	return moved;
+}
+
+/* Hidden, the tab keeps nothing: the store is emptied, and the next takeDumps says so (an empty set); the fast blocks
+ * go too (the tab clears its own) */
 void IoEngine::setDump(bool on) {
 	dumpOn_ = on;
 	if (on) return;
 	QMutexLocker lock(&crossThreadMutex_);
 	dumpsMoved_ = !dumps_.isEmpty() || dumpsMoved_;
 	dumps_.clear();
+	fastDumps_.clear();
+	fastDumpsMoved_ = false;
+}
+
+/* A block for the Dump tab, under the lock: a few assignments and the frame's data shared (a reference count, the
+ * block before released), whatever the rate. A good block's numbers are the rules' (64 bits); a bad one's the
+ * header's as it came, read here (rare). */
+void IoEngine::keepFastDump(int stream, const evre::Frame &frame, fast::BlockCheck check, const fast::BlockTaken &taken) {
+	FastDump dump;
+	dump.stream = stream;
+	dump.slave = frame.slave;
+	dump.addr = frame.addr;
+	dump.data = frame.data;
+	dump.check = check;
+	dump.time = now();
+	if (check == fast::BlockCheck::Ok) {
+		dump.first = taken.first;
+		dump.count = taken.count;
+		dump.lost = taken.lost;
+		dump.newStart = taken.newStart;
+	} else {
+		fast::BlockHeader header;
+		(void) fast::fastBlock(frame.data, fastRuns_[stream].def.recordSize(), header);
+		dump.first = header.first;
+		dump.count = header.count;
+	}
+	if (frame.data.size() >= fast::HEADER) {
+		dump.flags = uint8_t(frame.data[6]);
+		dump.spare = uint8_t(frame.data[7]);
+	}
+	if (fastDumps_.size() <= stream) fastDumps_.resize(stream + 1);
+	dump.serial = ++fastDumpSerial_;
+	fastDumps_[stream] = std::move(dump);
+	fastDumpsMoved_ = true;
 }
 
 /* A block's answer: its bytes when good; an error keeps the last good bytes and says what went wrong. */
@@ -327,6 +380,8 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		QMutexLocker lock(&crossThreadMutex_); /* the Dump's last write was the map before's */
 		dumpsMoved_ = dumpsMoved_ || lastWrite_.write;
 		lastWrite_ = DumpReply();
+		fastDumps_.clear(); /* and its fast blocks, by the streams' numbers before */
+		fastDumpsMoved_ = false;
 	}
 	const uint8_t oneDevice = isBus() ? 0 : target(0); /* where the one device was, before the new devices */
 	devices_ = devices;
@@ -1305,7 +1360,13 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 		emit fastStreamNote(stream, tr("fast stream %1: blocks of a newer kind (a flag or a spare byte this Studio does "
 				"not know): none of their samples is used").arg(run.def.name), false);
 	}
-	if (check != fast::BlockCheck::Ok) return;
+	if (check != fast::BlockCheck::Ok) {
+		if (dumpOn_) {
+			QMutexLocker lock(&crossThreadMutex_);
+			keepFastDump(stream, frame, check, taken);
+		}
+		return;
+	}
 	if (csvFile_->isOpen() && !fastNotLogged_.contains(run.def.name)) recordBlock(stream, taken, frame.data);
 	FastBlock block;
 	block.stream = stream;
@@ -1333,6 +1394,7 @@ void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
 			run.state.clock().period(), block.crossings);
 	{
 		QMutexLocker lock(&crossThreadMutex_);
+		if (dumpOn_) keepFastDump(stream, frame, check, taken); /* the Dump tab's newest, under the same lock */
 		fastQueued_ += block.records.size();
 		fastBlocks_.push_back(std::move(block));
 		/* a window that does not take them: the oldest go, counted; a start or a mark they carried goes on with the
