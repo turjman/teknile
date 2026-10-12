@@ -11729,7 +11729,15 @@ private:
 		const QString shots = qEnvironmentVariable("EVRE_TEST_SHOT");
 		/* for a look: a pair held on its crossing (VOLTS rising through 6 at 100.0833, off the grid's times), in both
 		 * themes; the language as set */
-		const auto heldPair = [](TriggerPair &pair, bool lanes) {
+		/* the Window box says the view's 1 s: the pair sets the view's window, and the box's own 30 s, applied when it
+		 * lost the focus (a card opening), moved T to the view's edge under the card's check */
+		const auto boxAsView = [](TriggerPair &pair) {
+			for (QComboBox *box : pair.tab.findChildren<QComboBox *>())
+				if (box->toolTip().startsWith(QLatin1String("View: the time shown")))
+					box->setEditText(secondsText(pair.view->window()));
+		};
+		const auto heldPair = [&boxAsView](TriggerPair &pair, bool lanes) {
+			boxAsView(pair);
 			pair.feed(99.95);
 			pair.view->setLanes(lanes);
 			pair.tab.show();
@@ -11760,6 +11768,7 @@ private:
 			return;
 		}
 		const bool byDefault = choice->isChecked() && view->triggerInstant() && choice->isVisible();
+		boxAsView(pair);
 		pair.feed(99.95);
 		pair.tab.show();
 		(void) QTest::qWaitForWindowExposed(&pair.tab);
@@ -11923,6 +11932,38 @@ private:
 		check(offHides && saved && readBack && onAgain && recordingNone, "chart, Display, Trigger line: off hides the line "
 				"(the T stays), saved (chart/triggerInstantLine) and read back by a new tab, on again shows it; a recording's window "
 				"has no such choice");
+
+		/* a pan by the user (a drag on the plot: the run stops) and then a zoom: the view shows the crossing with its T
+		 * solid, so the line stays at the flag's x (it once went with the pan, the trigger no longer holding the view).
+		 * Six tenths of the plot earlier: the view, still filling past now, would otherwise be clamped to now and live. At
+		 * the 1 s window of the checks above (the tabs made since set the window box's) */
+		view->setWindow(1);
+		(void) view->grab();
+		const double offLevel = view->triggerLineY() < plot.center().y() ? plot.bottom() - 15 : plot.top() + 15;
+		const QPointF grip(plot.left() + 0.15 * plot.width(), offLevel), to(plot.left() + 0.75 * plot.width(), offLevel);
+		QTest::mousePress(view, Qt::LeftButton, Qt::NoModifier, grip.toPoint());
+		QMouseEvent drag(QEvent::MouseMove, to, view->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(view, &drag);
+		QTest::mouseRelease(view, Qt::LeftButton, Qt::NoModifier, to.toPoint());
+		(void) view->grab();
+		const QLineF panned = view->triggerInstantLine();
+		const QRectF pannedFlag = view->triggerPositionMark();
+		const bool panStays = view->triggerPhase() == ChartView::TriggerPhase::Stopped && !view->live() && view->triggerHandleSolid()
+				&& !panned.isNull() && !pannedFlag.isEmpty() && std::fabs(panned.x1() - pannedFlag.center().x()) <= 1
+				&& panned.x1() - line.x1() > 0.05 * plot.width();
+		const QPointF onT(panned.x1(), offLevel);
+		QWheelEvent zoom(onT, view->mapToGlobal(onT), QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase,
+				false);
+		QApplication::sendEvent(view, &zoom);
+		(void) view->grab();
+		const QLineF zoomed = view->triggerInstantLine();
+		const bool zoomStays = !zoomed.isNull() && view->window() < 1
+				&& std::fabs(zoomed.x1() - view->triggerPositionMark().center().x()) <= 1;
+		std::printf("     (panned: the line at x %.2f, the flag's %.2f (held on the crossing: %.2f); zoomed to %.3g s: %.2f, the "
+				"flag's %.2f)\n", panned.x1(), pannedFlag.center().x(), line.x1(), view->window(), zoomed.x1(),
+				view->triggerPositionMark().center().x());
+		check(panStays && zoomStays, "chart, Trigger line: a pan by the user (the run stopped) and a zoom keep the line at "
+				"the T flag's x while T, solid, is in view");
 		view->stopTrigger();
 		pair.tab.hide();
 

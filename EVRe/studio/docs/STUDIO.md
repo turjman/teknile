@@ -1803,10 +1803,10 @@ written only in Single's state and in Normal's *last at* (to the second, set whe
   samples come (Single says *capturing after T*), and a faint "now" edge in every lane marks where the data ends, so the empty
   part does not read as missing data. Only crossings after the trigger was armed count, not ones already in the
   memory.
-- **The trigger line.** While the view holds a crossing of the level as set (the pointers solid), a faint dashed line
-  runs down from the T ▼ flag through the plot to the time axis, across every lane in view, so the trigger's instant
-  is read on every wave and not only on the line watched. It is in the watched line's colour at 60 % (the family of the
-  flag and the level, not the crosshair's grey), 1 px wide, 2 px on and 3 px off (the crosshair's dashes are 4 on and
+- **The trigger line.** While the view holds a crossing of the level as set (the pointers solid), also after a pan or a
+  zoom that keeps T in view, a faint dashed line runs down from the T ▼ flag through the plot to the time axis, across
+  every lane in view, so the trigger's instant is read on every wave and not only on the line watched. It is in the
+  watched line's colour at 60 % (the family of the flag and the level, not the crosshair's grey), 1 px wide, 2 px on and 3 px off (the crosshair's dashes are 4 on and
   2 off), drawn over the grid and under the lines. There is none while the trigger waits for its first crossing, while
   Auto runs free, after the level was moved (the pointers hollow) or when T is outside the view. **Display → Trigger
   line** (on by default, `chart/triggerInstantLine`) turns it off: the flag alone marks T then. A recording's window has no
@@ -5536,9 +5536,9 @@ the display rate. Samples are not lost when frames drop: the engine keeps them u
   lane in view (cut by the plot as the lanes are), in the muted colour at 55 %, under the marks' lines (the cursors',
   the notes', the level's): the CPU draws them before those, the card a layer of its own from the same lines before
   the marks' layer (`nowEdges` for the tests).
-- **The trigger line** (`instantLine`): while the view holds a crossing of the level as set (`triggerMarked`,
-  `trigger_.holding`, not live, `triggerHandleSolid`) with T in view, and `setTriggerInstant` on (Display, Trigger line),
-  one line at T's time from the plot's top to its bottom, across the lanes and their gaps as the cursors' lines, its x
+- **The trigger line** (`instantLine`): while a held view shows a crossing of the level as set (`triggerMarked`, not
+  live, `triggerHandleSolid`; not `trigger_.holding`, which a pan clears while the T stays solid) with T in view, and
+  `setTriggerInstant` on (Display, Trigger line), one line at T's time from the plot's top to its bottom, across the lanes and their gaps as the cursors' lines, its x
   on a device pixel's middle (within half a pixel of the flag's point). `instantColor`: the watched line's colour at
   60 %; dashed `INSTANT_DASH` on, `INSTANT_GAP` off (2 and 3 px, flat ends), 1 px. Over the grid and under the lines:
   the CPU draws it after the grid and the cursors' span, before the lines (or their held picture); the card a layer of
@@ -6405,8 +6405,9 @@ dashes of 1.4 to 3.2 px (2 on, 3 off; the crosshair's are two thirds ink); on a 
 rows left out) at least 93 % like the CPU's and the line at the same x; none with T out of the view (a 0.2 s window)
 or after the level was moved, back after both; with Lanes on one line from the first lane's top to the last's bottom;
 the choice off hides it (the T stays), saved false (`chart/triggerInstantLine`) and read back by a new tab, on again
-shows it; a recording's window has no such choice. With `EVRE_TEST_SHOT` set it saves `<prefix>_tline_en_light.png`,
-`_dark`, the same with lanes (`_tline_en_lanes_…`) and in Arabic (`_tline_ar_…`).
+shows it; a recording's window has no such choice; a pan by the user (a drag of six tenths of the plot: the run stopped)
+and then a wheel's zoom on T keep the line at the T flag's x (within 1 px). With `EVRE_TEST_SHOT` set it saves
+`<prefix>_tline_en_light.png`, `_dark`, the same with lanes (`_tline_en_lanes_…`) and in Arabic (`_tline_ar_…`).
 
 **Trigger v2** (`chartTriggerLines`, `chartTriggerModes`, `chartTriggerSteady`, `chartTriggerFast`, `chartTriggerAuto`,
 `chartTriggerRunStop`, `chartTriggerReview`, `chartTriggerLook`, `chartTriggerFlow`, `chartTriggerScopes`, on Chart tabs of their own). Per line:
@@ -6621,7 +6622,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 634 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 635 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

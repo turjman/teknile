@@ -5355,11 +5355,13 @@ QVector<QLineF> ChartView::nowEdgeLines(const QVector<Lane> &plots) const {
 	return edges;
 }
 
-/* Only while the view holds a crossing of the level as set (the T solid on it): waiting for a first crossing, rolling
- * free in Auto or after a change of the level, the T marks no instant. The plot's height, one line across the lanes and
- * their gaps (as the cursors' lines), on a device pixel's middle so its dashes are crisp at 100 % */
+/* Only while a held view shows a crossing of the level as set (the T solid on it): waiting for a first crossing, rolling
+ * free in Auto or after a change of the level, the T marks no instant. A view the user panned still shows the crossing
+ * with its T solid, so the line stays as the flag does (not only while the trigger holds the view: a pan dropped it,
+ * a zoom kept it). The plot's height, one line across the lanes and their gaps (as the cursors' lines), on a device
+ * pixel's middle so its dashes are crisp at 100 % */
 QLineF ChartView::instantLine(const Axes &axes, qreal dpr) const {
-	if (!triggerInstant_ || !triggerMarked() || live_ || !trigger_.holding || !triggerHandleSolid()) return QLineF();
+	if (!triggerInstant_ || !triggerMarked() || live_ || !triggerHandleSolid()) return QLineF();
 	if (trigger_.at < axes.t0 || trigger_.at > axes.t1) return QLineF();
 	const double x = (std::floor(axes.x(trigger_.at) * dpr) + 0.5) / dpr;
 	return QLineF(x, axes.rect.top(), x, axes.rect.bottom());
