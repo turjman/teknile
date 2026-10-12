@@ -224,6 +224,16 @@ QColor nowEdgeColor() {
 	return edge;
 }
 
+/* The trigger's instant line: its line's colour, as the T flag's pointer and the level's line (one family), not the
+ * crosshair's grey (the crosshair put at T was taken for a trigger line); faint, so the waves stay in front of it */
+QColor instantColor(QColor line) {
+	line.setAlphaF(0.6);
+	return line;
+}
+/* its dashes, flat ended: more gap than ink (2 on, 3 off), where the crosshair's are more ink than gap (4 on, 2 off) and
+ * the cursors', the notes' and the level's longer (4.8 on, 2.4 off) */
+constexpr double INSTANT_DASH = 2, INSTANT_GAP = 3;
+
 /* a range too narrow to scale into: one unit around it */
 void widenFlatRange(double &lo, double &hi) {
 	if (hi - lo > FLAT_RANGE) return;
@@ -2937,6 +2947,17 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	perf_.grid += stage.nsecsElapsed() / 1e6;
 	if (!onCard) {
 		drawCursorSpan(p, axes);
+		/* the trigger's instant over the grid and under the lines, as the card's layer */
+		triggerInstantLine_ = instantLine(axes, p.device()->devicePixelRatioF());
+		if (!triggerInstantLine_.isNull()) {
+			p.save();
+			QPen pen(instantColor(series_.value(trigger_.key).color), 1);
+			pen.setDashPattern({ INSTANT_DASH, INSTANT_GAP });
+			pen.setCapStyle(Qt::FlatCap);
+			p.setPen(pen);
+			p.drawLine(triggerInstantLine_);
+			p.restore();
+		}
 		stage.restart();
 		if (!live_ && lineReuse_) {
 			drawLinesPicture(p, plots, binned); /* held: drawn again only when they change */
@@ -4886,6 +4907,16 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			frame.layers << span;
 		}
 	}
+	/* the trigger's instant: a layer over the grid and under the lines, dashed as the CPU's pen (2 on, 3 off, flat ends) */
+	triggerInstantLine_ = instantLine(axes, dpr);
+	if (!triggerInstantLine_.isNull()) {
+		GpuLines::Layer instant;
+		instant.widthPx = float(dpr);
+		instant.caps = false;
+		dashes(instant.segments, map(triggerInstantLine_.p1()), map(triggerInstantLine_.p2()), INSTANT_DASH * dpr,
+				INSTANT_GAP * dpr, gpuColor(instantColor(series_.value(trigger_.key).color)));
+		frame.layers << instant;
+	}
 	/* the lines: as thick as the CPU's, its copies one device pixel each; each in its plot (lanes: cut to its lane's
 	 * part in the plot; none for a folded lane or one out of view) */
 	QVector<const Axes *> axesOf(lines.size(), nullptr);
@@ -5322,6 +5353,23 @@ QVector<QLineF> ChartView::nowEdgeLines(const QVector<Lane> &plots) const {
 		edges << QLineF(x, shown.top(), x, shown.bottom());
 	}
 	return edges;
+}
+
+/* Only while a held view shows a crossing of the level as set (the T solid on it): waiting for a first crossing, rolling
+ * free in Auto or after a change of the level, the T marks no instant. A view the user panned still shows the crossing
+ * with its T solid, so the line stays as the flag does (not only while the trigger holds the view: a pan dropped it,
+ * a zoom kept it). The plot's height, one line across the lanes and their gaps (as the cursors' lines), on a device
+ * pixel's middle so its dashes are crisp at 100 % */
+QLineF ChartView::instantLine(const Axes &axes, qreal dpr) const {
+	if (!triggerInstant_ || !triggerMarked() || live_ || !triggerHandleSolid()) return QLineF();
+	if (trigger_.at < axes.t0 || trigger_.at > axes.t1) return QLineF();
+	const double x = (std::floor(axes.x(trigger_.at) * dpr) + 0.5) / dpr;
+	return QLineF(x, axes.rect.top(), x, axes.rect.bottom());
+}
+
+void ChartView::setTriggerInstant(bool on) {
+	triggerInstant_ = on;
+	refresh();
 }
 
 void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const {
