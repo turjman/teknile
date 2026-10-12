@@ -6735,7 +6735,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 711 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 712 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7856,7 +7856,7 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 | Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. |
 | Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit, with the hand; the tooltip is the whole line, under it. |
 | Mouse&nbsp;on&nbsp;a&nbsp;field | Its name, meaning and the protocol's words for it (the table in 37.1), under its column. |
-| Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.205 A` under the row, ending before the next channel's column (37.7). |
+| Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7). |
 | **Show&nbsp;all&nbsp;▾** | On a fast card: every record of the block, the button then **Show fewer ▴** (37.7). A hand and a highlight under the mouse, a tooltip. |
 | Click | Selects the register here (its chips lit as on the mouse and framed in the accent, its decode line filled with its tint and bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
 | Double-click | Goes to the Registers tab on the register. |
@@ -7883,7 +7883,7 @@ card the register's items say *A fast block has records, not registers*):
 | Copy&nbsp;block&nbsp;as&nbsp;hex | One row a line, as the grid: `D080  00 00 48 42 32 01 B8 0B` (a byte no read covers left blank). |
 | Copy&nbsp;block&nbsp;as&nbsp;C&nbsp;array | `static const uint8_t block_d080[8] = {` then a line per register, `/* 0xD080 SETPOINT */ 0x00, 0x00, 0x48, 0x42,`, the bytes no register maps on lines of their own, then `};` |
 | Copy&nbsp;decoded | A line per register: `0xD080  SETPOINT  50.0 °C`; on a fast card the records as CSV, as the item below. |
-| Copy&nbsp;records&nbsp;as&nbsp;CSV | A fast card's records, every one of the block: `record,I_LOAD [A],V_BUS [V]` then `1191259,1.2,12.01` and so on (the recording's column form). Greyed on a read: *A read has registers: Copy decoded*. |
+| Copy&nbsp;records&nbsp;as&nbsp;CSV | A fast card's records, every one of the block: `record,I_LOAD [A],V_BUS [V]` then `1191259,1.2000,12.010` and so on (the recording's column form, the values as the card writes them). Greyed on a read: *A read has registers: Copy decoded*. |
 
 From the Registers tab, the right-click menu's **Show in dump** (4.9) opens the Dump on the register: its device on a
 bus, its chips selected and scrolled into view (when the tab was hidden, at the next beat, once its card is back).
@@ -7985,11 +7985,11 @@ records with their channels named and decoded.
 |  254 records lost before this block                                                          |
 |                                                                                              |
 |  RECORDS         o I_LOAD  i16 x 0.0005 A       o V_BUS  i16 x 0.001 V                       |
-|  #1191259        [60 09]   1.2 A                [EA 2E]  12.01 V                             |
-|  #1191260        [6A 09]   1.205 A              [E9 2E]  12.01 V                             |
-|  #1191261        [74 09]   1.21 A               [E8 2E]  12.01 V                             |
+|  #1191259        [60 09]   1.2000 A             [EA 2E]  12.010 V                            |
+|  #1191260        [6A 09]   1.2050 A             [E9 2E]  12.009 V                            |
+|  #1191261        [74 09]   1.2100 A             [E8 2E]  12.008 V                            |
 |  249 more records  [Show all v]                                                              |
-|  #1191511        [74 09]   1.21 A               [EA 2E]  12.01 V                             |
+|  #1191511        [74 09]   1.2100 A             [EA 2E]  12.010 V                            |
 +----------------------------------------------------------------------------------------------+
 ```
 
@@ -8002,9 +8002,9 @@ the button. The lines of the card:
 | Reply&nbsp;label | `← REPLY`, then *READ_RESP, unasked: a block of ADC* and the state: `8 ms ago` (muted), `held 14:03:12`, `ADC stopped · last block 14:03:12`, `stale 2.1 s`, `the link is closed` (amber, with the stripe: 37.2). No request: nobody asked, as AUTO_SEND's card. On a bus the device's name comes first, as a request's does. |
 | Reply&nbsp;strip | The frame rebuilt with `evre::build` from the block, so it equals the wire's: FUNCTION `READ_RESP (unasked)`, OFFSET `0xDC00 · ADC` (the stream's window and name), COUNT the frame's bytes (8 + 253 × 4 = 1020), DATA the grey pill `block ↓` over `header + records`, `CRC OK`. Its columns are the tab's, under the poll cards'. |
 | Block&nbsp;header | `BLOCK HEADER`, then the 8-byte header as a strip of four columns: FIRST `record 1191259` (the 64-bit number the Studio counts; the tooltip gives the wire's 32 bits, which wrap), COUNT `253 records`, FLAGS `none`, `START`, `LOST` (amber) or `START, LOST`, SPARE `0`; each member's tooltip is PROTOCOL.md's words for it. |
-| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted; always laid, so a loss that comes and goes never moves the records. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
+| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
 | Records&nbsp;head | `RECORDS`, then over each channel's column its dot, its name and its type with its scale and unit (`i16 × 0.0005 A`), in the map's order (the record's byte order). |
-| Records | `#1191259`, then per channel its bytes as a chip in its colour and its value as the sidebar's card and the chart's legend write it (the channel's decimals, else four digits, then its unit). Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. |
+| Records | `#1191259`, then per channel its bytes as a chip in its colour and its value with the channel's decimals, else as many as its scale needs for one raw step to show (0.001: `12.009 V`, 0.0005: `1.2050 A`, 1: none), then its unit: finer than the sidebar's four digits, so two neighbouring raw numbers never read the same and every row is as wide. Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. |
 
 **Show all ▾** shows every record of the block; the button is then **Show fewer ▴** in the row after the last. Open,
 the card is as tall as the stream's largest block (`recordsPerBlock()`, 254 rows for ADC) whatever this block holds,

@@ -238,7 +238,7 @@ public:
 	QRect recordRect(int card, int row) const;      /* the whole row, in the viewport */
 	QRect channelChipRect(int card, int row, int channel) const;
 	QRect channelValueRect(int card, int row, int channel) const;
-	QString channelValueText(int card, int row, int channel) const; /* "1.2 A", as the sidebar writes it */
+	QString channelValueText(int card, int row, int channel) const; /* "1.2000 A": a raw step shows (channelText) */
 	QRect channelHeadRect(int card, int channel) const; /* the records head's dot, name and type of a channel */
 	QColor channelColour(int card, int channel) const;  /* its chips' colour (invalid: neutral) */
 	QString moreText(int card) const;               /* folded: "249 more records"; empty: none */
@@ -380,7 +380,7 @@ private:
 	QString headerLabel(int card, HeaderField field) const;
 	QString fastSentence(const DumpBlock &block) const;
 	QString channelTip(int card, int row, int channel) const;
-	static QString channelText(const StreamChannel &channel, double value); /* the sidebar's and the legend's form */
+	static QString channelText(const StreamChannel &channel, double value); /* its decimals, else the scale's */
 	static QString typeText(const StreamChannel &channel);                   /* "i16 × 0.0005 A" */
 	static int channelOffset(const StreamDef &def, int channel);             /* its first byte in a record */
 	void setHoveredFast(int card, int channel, int buttonCard);

@@ -5727,17 +5727,14 @@ private:
 		check(badShown && newerShown, "Dump, a fast card: a bad block (1021 bytes) and a block of a newer kind (flags 0x04) "
 				"say so in amber instead of the records, their header still shown");
 
-		/* the records folded: the first three, "249 more records" with Show all, the last; values as the sidebar writes */
+		/* the records folded: the first three, "249 more records" with Show all, the last; values to one raw step */
 		tab->applyFastDumps({ block });
 		const int r = fastCard(view);
-		const auto value = [](int raw, double scale, const QString &unit) {
-			return QString::number(raw * scale, 'g', 4) + QLatin1Char(' ') + unit;
-		};
 		const bool rows = view->fastRowsShown(r) == 4 && view->recordNumber(r, 0) == 1191259 && view->recordNumber(r, 2) == 1191261
 				&& view->recordNumber(r, 3) == 1191259 + 252 && view->moreText(r) == QLatin1String("249 more records")
-				&& view->channelValueText(r, 0, 0) == value(2400, 0.0005, QStringLiteral("A"))
-				&& view->channelValueText(r, 1, 1) == value(12009, 0.001, QStringLiteral("V"))
-				&& view->channelValueText(r, 3, 0) == value(2400 + 10 * (252 % 5), 0.0005, QStringLiteral("A"))
+				&& view->channelValueText(r, 0, 0) == QLatin1String("1.2000 A")
+				&& view->channelValueText(r, 1, 1) == QLatin1String("12.009 V")
+				&& view->channelValueText(r, 3, 0) == QLatin1String("1.2100 A")
 				&& view->recordRect(r, 3).top() == view->recordRect(r, 2).top() + 2 * view->lineHeight()
 				&& view->showAllRect(r).top() > view->recordRect(r, 2).bottom() && view->showAllRect(r).bottom() < view->recordRect(r, 3).top()
 				&& view->channelChipRect(r, 0, 0).width() == view->channelChipRect(r, 0, 1).width();
@@ -5750,8 +5747,48 @@ private:
 					(unsigned long long) view->recordNumber(r, 3), qPrintable(view->moreText(r)),
 					qPrintable(view->channelValueText(r, 0, 0)), qPrintable(view->channelValueText(r, 1, 1)), view->fastRowsShown(s));
 		check(rows && few, "Dump, a fast card: the records folded as the first three, a row 249 more records with its Show all "
-				"button, and the last; each channel's bytes a chip and its value as the sidebar writes it; three records: all "
-				"of them, no button");
+				"button, and the last; each channel's bytes a chip and its value to one raw step; three records: all of them, "
+				"no button");
+
+		/* a channel with no decimals in the map: as many as its scale needs for one raw step (0.001: 12009 and 12010
+		 * read 12.009 V and 12.010 V, not both 12.01 V), every row as wide; the map's decimals still win, a scale of 1
+		 * none; the loss line a gap above the records, which sit where they sit without a loss */
+		tab->applyFastDumps({ block });
+		const int d = fastCard(view);
+		bool even = view->channelValueText(d, 0, 1) == QLatin1String("12.010 V")
+				&& view->channelValueText(d, 1, 1) == QLatin1String("12.009 V")
+				&& view->channelValueText(d, 1, 0) == QLatin1String("1.2050 A");
+		const QFontMetrics valueMetrics(view->font());
+		for (int ch = 0; ch < 2; ch++)
+			for (int row = 1; row < view->fastRowsShown(d); row++)
+				even = even && valueMetrics.horizontalAdvance(view->channelValueText(d, row, ch))
+						== valueMetrics.horizontalAdvance(view->channelValueText(d, 0, ch));
+		const int gapLoss = view->channelHeadRect(d, 0).top() - view->lossRect(d).bottom() - 1;
+		const int rowsLoss = view->recordRect(d, 0).top() - view->cardRect(d).top();
+		tab->applyFastDumps({ fastDumpBlock(1191259, 253, 0, 0, 99.992, 8) });
+		const int rowsNoLoss = view->recordRect(fastCard(view), 0).top() - view->cardRect(fastCard(view)).top();
+		QVector<StreamDef> mapped = fastMap.streams;
+		mapped[0].channels[1].decimals = 1;
+		mapped[0].channels[0].scale = 1;
+		tab->setStreams(mapped);
+		tab->applyFastDumps({ block });
+		QApplication::processEvents();
+		const QString oneDecimal = view->channelValueText(fastCard(view), 0, 1), wholes = view->channelValueText(fastCard(view), 0, 0);
+		tab->setStreams(fastMap.streams);
+		tab->applyFastDumps({ block });
+		QApplication::processEvents();
+		if (!even || gapLoss < 10 || rowsLoss != rowsNoLoss || oneDecimal != QLatin1String("12.0 V") || wholes != QLatin1String("2400 A"))
+			std::printf("     (the values: \"%s\" \"%s\" \"%s\", even %d; decimals 1 \"%s\", scale 1 \"%s\"; the gap under the "
+						"loss line %d, the rows at %d and %d)\n",
+					qPrintable(view->channelValueText(d, 0, 1)), qPrintable(view->channelValueText(d, 1, 1)),
+					qPrintable(view->channelValueText(d, 1, 0)), int(even), qPrintable(oneDecimal), qPrintable(wholes), gapLoss,
+					rowsLoss, rowsNoLoss);
+		check(even && gapLoss >= 10 && rowsLoss == rowsNoLoss && oneDecimal == QLatin1String("12.0 V")
+						&& wholes == QLatin1String("2400 A"),
+				"Dump, a fast card: a channel with no decimals in the map writes as many as its scale needs for one raw step "
+				"(V_BUS 0.001: 12010 and 12009 read 12.010 V and 12.009 V; I_LOAD 0.0005: 1.2050 A), every row as wide; the "
+				"map's decimals still win (1: 12.0 V), a scale of 1 none (2400 A); the loss line a gap above RECORDS, the "
+				"records where they sit without a loss");
 
 		/* Show all: a button with the hand and a tooltip; every record, the card as tall as the stream's largest block, the
 		 * tab's own scroll bar; kept across blocks, gone with a new tab */
@@ -5834,7 +5871,7 @@ private:
 		const QRect place = view->tipPlace(onBus);
 		const QPoint onLoad = view->channelChipRect(h, 1, 0).center();
 		const QRect loadPlace = view->tipPlace(onLoad);
-		const bool tipped = tip == QStringLiteral("V_BUS · record 1191260 · bytes 2-3 of the record\nraw E9 2E · 12009 × 0.001 = 12.01 V")
+		const bool tipped = tip == QStringLiteral("V_BUS · record 1191260 · bytes 2-3 of the record\nraw E9 2E · 12009 × 0.001 = 12.009 V")
 				&& place.top() >= view->recordRect(h, 1).bottom() && loadPlace.top() >= view->recordRect(h, 1).bottom()
 				&& loadPlace.right() <= view->channelChipRect(h, 1, 1).left()
 				&& view->toolTipAt(QPoint(view->recordRect(h, 1).left() + 4, view->recordRect(h, 1).center().y()))
@@ -5848,7 +5885,7 @@ private:
 					qPrintable(view->toolTipAt(QPoint(view->recordRect(h, 1).left() + 4, view->recordRect(h, 1).center().y()))), int(nothing));
 		check(hovered && tipped && nothing, "Dump, a fast card: the mouse over V_BUS's chip lights V_BUS in every row (its "
 				"chips stronger and outlined), I_LOAD stays at rest, a hand; the tooltip V_BUS · record 1191260 · bytes 2-3 of the "
-				"record / raw E9 2E · 12009 × 0.001 = 12.01 V under the row, I_LOAD's left of V_BUS's column; the number's "
+				"record / raw E9 2E · 12009 × 0.001 = 12.009 V under the row, I_LOAD's left of V_BUS's column; the number's "
 				"record 1191260 of ADC · 2 of the 253 in this block; empty room lights nothing");
 
 		/* the Copy forms, exact; the register items disabled with their reason, records as CSV only on a fast card */
@@ -5858,7 +5895,7 @@ private:
 		const QString cArray = view->copyText(DumpView::CopyBlockC, y);
 		const bool copies = hex.startsWith(QLatin1String("DC00  5B 2D 12 00 FD 00 02 00 60 09 EA 2E 6A 09 E9 2E\nDC10  "))
 				&& hex.count(QLatin1Char('\n')) == 63
-				&& csv.startsWith(QLatin1String("record,I_LOAD [A],V_BUS [V]\n1191259,1.2,12.01\n1191260,1.205,12.01\n"))
+				&& csv.startsWith(QLatin1String("record,I_LOAD [A],V_BUS [V]\n1191259,1.2000,12.010\n1191260,1.2050,12.009\n"))
 				&& csv.count(QLatin1Char('\n')) == 253
 				&& cArray.startsWith(QLatin1String("static const uint8_t adc_block_1191259[1020] = {\n"
 						"\t/* header: first 1191259, count 253, flags LOST */ 0x5B, 0x2D, 0x12, 0x00, 0xFD, 0x00, 0x02, 0x00,\n"
@@ -6047,7 +6084,7 @@ private:
 		}, 3000);
 		check(came, "fast streams: the Dump shows the running stream's newest block as a card by its window's address after "
 				"the polled cards (its header and records, 8 + count x 4 bytes), no request; the stream's blocks never as a read");
-		/* the last row's values from the block's own bytes, as the sidebar writes a value */
+		/* the last row's values from the block's own bytes, to one raw step (the map gives no decimals) */
 		bool values = false;
 		if (came) {
 			const int c = fastCard(view);
@@ -6058,8 +6095,9 @@ private:
 			int offset = 0;
 			for (int ch = 0; ch < def.channels.size(); ch++) {
 				const double v = fast::channelValue(def.channels[ch], record + offset);
+				const int places = std::clamp(int(std::ceil(-std::log10(std::abs(def.channels[ch].scale)) - 1e-9)), 0, 6);
 				values = values && view->channelValueText(c, last, ch)
-						== QString::number(v, 'g', 4) + QLatin1Char(' ') + def.channels[ch].unit;
+						== QString::number(v, 'f', places) + QLatin1Char(' ') + def.channels[ch].unit;
 				offset += typeSize(def.channels[ch].type);
 			}
 			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the window, its fast card in view */
@@ -6077,8 +6115,8 @@ private:
 				QTest::qWait(300);
 			}
 		}
-		check(values, "fast streams: the Dump's fast card writes each record's values from the block's bytes, as the "
-				"sidebar's card writes a value (I_LOAD in A, V_BUS in V), its last row the block's last record");
+		check(values, "fast streams: the Dump's fast card writes each record's values from the block's bytes, to one "
+				"raw step (I_LOAD in A, V_BUS in V), its last row the block's last record");
 
 		/* Hold: no fast block taken, the card's block kept, held and amber; Follow: the next take within 250 ms */
 		auto *hold = tab->findChild<QPushButton *>(QStringLiteral("dumpHold"));

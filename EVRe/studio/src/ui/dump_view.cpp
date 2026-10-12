@@ -84,6 +84,21 @@ QFont uiFont(double smaller = 0) {
 	return f;
 }
 
+/* A channel's decimals: the map's, else as many as its scale needs for one raw step to show (0.001: 3, 0.0005: 4,
+ * 1: 0), so a dump's value tells apart the raw numbers its bytes hold (12009 and 12010 both read 12.01 V with four
+ * digits) and every row writes it as wide; -1 (four digits) for a scale of 0 or not a number. */
+int channelDecimals(const StreamChannel &channel) {
+	if (channel.decimals >= 0) return channel.decimals;
+	const double scale = std::abs(channel.scale);
+	if (!std::isfinite(scale) || scale == 0) return -1;
+	return std::clamp(int(std::ceil(-std::log10(scale) - 1e-9)), 0, 6);
+}
+
+QString channelNumber(const StreamChannel &channel, double value) {
+	const int decimals = channelDecimals(channel);
+	return decimals >= 0 ? QString::number(value, 'f', decimals) : QString::number(value, 'g', 4);
+}
+
 } // namespace
 
 DumpView::DumpView(QWidget *parent) : QAbstractScrollArea(parent) {
@@ -1448,10 +1463,11 @@ int DumpView::channelOffset(const StreamDef &def, int channel) {
 	return offset;
 }
 
-/* as the sidebar's Fast streams card and the chart's legend write a channel's value: its decimals, else four digits */
+/* a channel's value with its decimals, or the scale's (channelDecimals): finer than the sidebar's four digits, as a
+ * dump shows the raw number beside it */
 QString DumpView::channelText(const StreamChannel &channel, double value) {
 	if (!std::isfinite(value)) return QStringLiteral("—");
-	const QString number = channel.decimals >= 0 ? QString::number(value, 'f', channel.decimals) : QString::number(value, 'g', 4);
+	const QString number = channelNumber(channel, value);
 	return channel.unit.isEmpty() ? number : number + QLatin1Char(' ') + channel.unit;
 }
 
@@ -1488,7 +1504,7 @@ void DumpView::layFastCard(int i, Card &card, int &at) const {
 	card.headerStripTop = at;
 	at += line + LABEL_GAP + labelLineHeight();
 	card.lossTop = at;
-	at += line;
+	at += line + GRID_GAP; /* a gap after it, loss or not: the header's group ends there */
 	const StreamDef *def = b.streamIndex >= 0 && b.streamIndex < streams_.size() ? &streams_[b.streamIndex] : nullptr;
 	if (b.check != 0 || !def) return; /* a bad block: its words on the loss line, no records */
 	card.recordsHeadTop = at;
@@ -1882,7 +1898,7 @@ QString DumpView::fastCopyText(CopyKind kind, int card) const {
 			int offset = 0;
 			for (const StreamChannel &c : def->channels) {
 				const double v = fast::channelValue(c, b.data.constData() + fast::HEADER + qsizetype(r) * size + offset);
-				row << (c.decimals >= 0 ? QString::number(v, 'f', c.decimals) : QString::number(v, 'g', 4));
+				row << channelNumber(c, v);
 				offset += typeSize(c.type);
 			}
 			lines << row.join(QLatin1Char(','));
