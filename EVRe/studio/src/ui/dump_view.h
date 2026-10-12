@@ -3,7 +3,8 @@
  * the request the host sent and the reply, each a strip of the frame's named fields in the wire's order (START,
  * SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END: their bytes on one line, the field's name and meaning under them),
  * rebuilt with evre::build from the same bytes (equal to the wire's); the payload as a hex grid, 16 bytes a row, the
- * rows aligned to 16 with the row's base address at the left, one line high; every mapped register's bytes one chip
+ * rows aligned to 16 with the row's base address at the left, one line high, the columns' offsets 00 .. 0F over them
+ * (so a byte's address is its row's plus its column's, read, not counted); every mapped register's bytes one chip
  * (a fill in its colour, no edge); and beside the grid the decode list, one line per register (its colour dot, its
  * name, its value as the Registers tab shows it), each level with its register's row when there is room, else under
  * the line before it.
@@ -17,6 +18,7 @@
  *   |  7B     01       AB                 00 D0          16 00      (22 bytes v)  AE 41   7D         |
  *   |  START  SLAVE 1  FUNCTION READ_RESP OFFSET 0xD000  COUNT 22   DATA payload  CRC OK  END        |
  *   |                                                                                                |
+ *   |         00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F                                        |
  *   |  D000  [10 27 00 00][FA 7E 40 41][2D B2 BD 3F][66 66 26 42]    o UPTIME       10000 ms         |
  *   |  D010  [05 00][2C 01][B9 00]                                   o SUPPLY_V     12.031 V         |
  *   |                                                                o SUPPLY_I     1.482 A          |
@@ -42,7 +44,9 @@
  * A byte whose value changed glows a moment (its text in a readable accent, fading over the Registers tab's
  * GLOW_MS), so the dump and the table pulse together; not while a register is hovered. Hovering a byte or a decode
  * line lights its register in its own colour (the chips filled stronger and outlined, the decode line filled), and
- * nothing else changes: the other chips keep their tint. A click selects it (the same light, framed in the accent; the
+ * nothing else changes: the other chips keep their tint. A hovered byte also lights its column's offset and its row's
+ * address, a crosshair in the register's tint, so its place reads at the edges. A fast card's records have no column
+ * offsets: a row there is a record, not 16 bytes of memory. A click selects it (the same light, framed in the accent; the
  * window makes it the Registers tab's current row), a double-click goes there, a right-click asks for the menu (the
  * tab's, repeated in its Copy button). The keys do the same: the arrows move the
  * selection, Enter goes there, the Menu key or Shift+F10 opens the menu.
@@ -192,6 +196,15 @@ public:
 	/* a field's column, its bytes and its label (Fields off: its bytes in the frame's line); empty: no such frame */
 	QRect fieldRect(int card, Side side, Field field) const;
 	QRect byteRect(int card, int offset) const;      /* the cell of the block's byte at offset (may be outside) */
+	/* the grid's column offsets "00" .. "0F" over the byte columns: how many the card has (as many as its widest row's
+	 * cells; 0: no grid, a fast card), each one's rect (the width of its column) and its text */
+	int columnLabels(int card) const;
+	QRect columnLabelRect(int card, int column) const;
+	static QString columnLabelText(int column);
+	QRect rowAddressRect(int card, int row) const;   /* the row's base address at its left, "D010" */
+	QFont columnFont() const;                        /* the offsets: the bytes' monospace font, a point smaller */
+	/* the byte under the mouse whose column offset and row address are lit (the crosshair); false: none */
+	bool crosshair(int &card, int &offset) const;
 	/* the card's decode line `line`, top to bottom (one per register of the block, in address order) */
 	QRect decodeRect(int card, int line) const;
 	QString decodeText(int card, int line) const;    /* its name and value, whole (the line may elide them) */
@@ -302,7 +315,7 @@ private:
 		QVector<int> lineTop;              /* each decode line's top in the card (the flow: level with its row, or
 											* under the line before) */
 		int titleTop = -1, requestTop = -1, requestStripTop = -1, replyTop = -1, replyStripTop = -1, noReplyTop = -1;
-		int gridTop = -1, noteTop = -1;
+		int gridTop = -1, noteTop = -1;    /* the grid: its column offsets' line, then the rows */
 		/* a fast stream's block: its header, the line under it, the records' head, rows and button */
 		int headerLabelTop = -1, headerStripTop = -1, lossTop = -1, recordsHeadTop = -1, rowsTop = -1, showAllTop = -1;
 		int recRows = 0;                   /* the record rows laid */
@@ -315,6 +328,7 @@ private:
 	void relayout();
 	void assignColours(Card &card) const;
 	int labelLineHeight() const;  /* a strip's label line */
+	int columnLineHeight() const; /* the grid's column offsets */
 	int headLineHeight() const;   /* the request's and the reply's label, a title */
 	int stripHeight() const;
 	int cellWidth() const;
@@ -331,6 +345,7 @@ private:
 	bool byteAt(const QPoint &pos, int &card, int &offset) const;
 	bool fieldAt(const QPoint &pos, int &card, Side &side, Field &field) const;
 	void setHovered(RegKey key);
+	void setCrosshair(int card, int offset);
 	void scrollToPending();
 	void ensureVisible(int card, RegKey key);
 	/* the bytes that changed since the last blocks of the same read start glowing */
@@ -412,6 +427,7 @@ private:
 	RegKey selected_ = NO_REGISTER;
 	int selectedCard_ = -1;           /* the card of the selection (a register in two cards: the one picked) */
 	RegKey hovered_ = NO_REGISTER;
+	int crossCard_ = -1, crossOffset_ = 0; /* the byte under the mouse: its column offset and row address lit */
 	RegKey scrollTo_ = NO_REGISTER;   /* scrollToRegister's, waiting for its card */
 	QString emptyText_;
 	/* the glow: when each byte of a read last changed (ms on glowClock_), by the read (its kind, device, address) */

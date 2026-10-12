@@ -3940,7 +3940,7 @@ in address order. Each card has the request the Studio sent (&lt;i&gt;→ REQUES
 FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;, &lt;i&gt;OFFSET 0xD000&lt;/i&gt;,
 &lt;i&gt;DATA payload&lt;/i&gt; under a grey &lt;i&gt;22 bytes ↓&lt;/i&gt;, &lt;i&gt;CRC OK&lt;/i&gt;: the reply&apos;s CRC was checked). The mouse on a field says
 what the protocol makes of it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row&apos;s
-address at its left.&lt;/p&gt;
+address at its left and each column&apos;s offset over it (00 to 0F): a byte&apos;s address is its row&apos;s plus its column&apos;s.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;Every register of the map is a &lt;b&gt;chip&lt;/b&gt;: its bytes tinted in its colour, a plotted one in its chart colour.
 Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
@@ -3958,7 +3958,7 @@ answer shown, the last good bytes stay), the link closed, a manual read or a wri
 banner
 over the cards says it once.&lt;/li&gt;
 &lt;li&gt;The mouse on a chip lights the register in its own colour, its chips filled stronger and outlined and its decode
-line filled, the rest as it was, and says the byte: its
+line filled, the rest as it was, lights the byte&apos;s column offset and its row&apos;s address, and says the byte: its
 register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
 &lt;b&gt;click&lt;/b&gt; selects the register here and in the Registers tab (lit the same way, framed in blue); a
 &lt;b&gt;double-click&lt;/b&gt; goes there. The Registers tab&apos;s
@@ -3986,7 +3986,7 @@ kept).&lt;/li&gt;
 (&lt;i&gt;→ رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
 وDATA وCRC وEND، ومعناه تحته (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;، &lt;i&gt;OFFSET 0xD000&lt;/i&gt;، &lt;i&gt;DATA الحمولة&lt;/i&gt; تحت &lt;i&gt;22 بايتًا ↓&lt;/i&gt;
 الرمادية، &lt;i&gt;CRC سليم&lt;/i&gt;: فُحص CRC الرد). والفأرة على حقل تقول ما يعنيه في البروتوكول. وتحتها الحمولة شبكةً من 16 بايتًا في كل صف، بارتفاع سطر
-واحد، وعنوان الصف على يساره.&lt;/p&gt;
+واحد، وعنوان الصف على يساره وإزاحة كل عمود فوقه (من 00 إلى 0F): عنوان البايت هو عنوان صفّه زائد إزاحة عموده.&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;كل مسجّل في الخريطة &lt;b&gt;شارة&lt;/b&gt;: بايتاته ملوّنة بلونه، والمسجّل المرسوم بلونه في المخطط. وبجانب الشبكة سطر لكل
 مسجّل: نقطته واسمه وقيمته كما يعرضها لسان المسجّلات. والبايت داخل الكتلة الذي لا يعرّفه أي مسجّل ست عشري رمادي
@@ -4000,7 +4000,7 @@ kept).&lt;/li&gt;
 أو قديمة (لم تُحدَّث مدة أطول من حدّ القِدم في لسان المسجّلات)، أو قراءة فاشلة (يُعرض رد الخطأ من الجهاز وتبقى آخر
 البايتات السليمة)، أو الوصلة مغلقة، أو قراءة يدوية أو كتابة. وعند التثبيت أو إغلاق الوصلة يقول ذلك شريط تنبيه فوق البطاقات مرة
 واحدة.&lt;/li&gt;
-&lt;li&gt;الفأرة على شارة تضيء المسجّل بلونه، شاراته مملوءة أقوى ومحاطة بخط وسطر قيمته مملوء، والباقي كما كان، وتقول البايت: مسجّله، وأي بايت هو منه، وعنوانه، وقيمته؛
+&lt;li&gt;الفأرة على شارة تضيء المسجّل بلونه، شاراته مملوءة أقوى ومحاطة بخط وسطر قيمته مملوء، والباقي كما كان، وتضيء إزاحة عمود البايت وعنوان صفّه، وتقول البايت: مسجّله، وأي بايت هو منه، وعنوانه، وقيمته؛
 والتلميح تحت الصف، لا فوق القيم أبدًا. &lt;b&gt;النقر&lt;/b&gt; يحدّد المسجّل هنا وفي لسان المسجّلات (يضيء بالطريقة نفسها، بإطار أزرق)؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt;
 ينتقل إليه هناك. والصف الحالي في لسان المسجّلات يُحدَّد هنا أيضًا، وفي قائمة زره الأيمن &lt;b&gt;إظهار في عرض
 الذاكرة&lt;/b&gt;. وحين يكون التركيز على البطاقات تنقل &lt;b&gt;مفاتيح الأسهم&lt;/b&gt; التحديد، و&lt;b&gt;Enter&lt;/b&gt; ينتقل إلى لسان
