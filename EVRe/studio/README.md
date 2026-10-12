@@ -10,6 +10,62 @@ checks, and shares the device with other programs through a local API. It runs o
 
 EVRe is a protocol of **teknile**.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/hero-chart-dark.png">
+    <img src="../docs/assets/pictures/hero-chart-light.png" alt="EVRe Studio connected to the example device: the sidebar with a green Connected pill, the Chart tab with SUPPLY_V, SUPPLY_I, TEMPERATURE and the math line P in lanes, cursors A and B and the measurement table" width="900">
+  </picture>
+  <br>
+  <em>The example device, connected: three registers and a math line in lanes, cursors A and B and what they measure.</em>
+</p>
+
+## A look at it
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/registers-live-dark.png">
+    <img src="../docs/assets/pictures/registers-live-light.png" alt="The Registers tab: the toolbar, then the table with Plot and Log ticks, addresses, live values with units, the info marks, rw with a warning sign on CONFIG and MOTOR_SPEED, and the groups; CONFIG selected" width="900">
+  </picture>
+  <br>
+  <em>The Registers tab: live values with their units, Plot and Log ticks, decoded registers and the danger ones marked.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/dump-tab-dark.png">
+    <img src="../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: the card of the block at 0xD000, the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END), CRC OK in green, then the hex grid with each register as a tinted chip and the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line" width="900">
+  </picture>
+  <br>
+  <em>The Dump tab: a block as the reply carries it, its frame broken into named fields, each register a chip in the hex grid.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/trigger-dark.png">
+    <img src="../docs/assets/pictures/trigger-light.png" alt="The trigger held on a rising crossing of ADC.I_LOAD: the trigger row, the dashed level line with its marker and tab, the T flag above the plot and Normal, triggered" width="900">
+  </picture>
+  <br>
+  <em>The trigger, as on an oscilloscope: Normal, held on a rising crossing of a fast line.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/map-editor-dark.png">
+    <img src="../docs/assets/pictures/map-editor-light.png" alt="The Map editor: the register table edited in place, the toolbar, SUPPLY_V selected with its form and live value, the checks list" width="900">
+  </picture>
+  <br>
+  <em>The Map editor: a map made or changed without touching JSON, with the device's live value beside the form.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../docs/assets/pictures/arabic-chart-dark.png">
+    <img src="../docs/assets/pictures/arabic-chart-light.png" alt="The Chart tab in Arabic with lanes, cursors and the measurement table; values with units read left to right" width="900">
+  </picture>
+  <br>
+  <em>In Arabic: the controls mirrored, while the chart, its legend and the values read left to right.</em>
+</p>
+
 ## Features
 
 - **Links:** TCP (any EVRe-over-TCP server or gateway) or a serial / USB CDC port; slave address, answer timeout,
