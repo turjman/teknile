@@ -1378,7 +1378,7 @@ private:
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
 		/* the Dump tab: the running stream's newest block as a card of its own */
-		dumpFastLive(button, fastMap);
+		dumpFastLive(fastMap);
 
 		/* a channel's Plot tick in the card: its line on the chart, its records kept, its newest value beside it */
 		auto *chartTab = window_.findChild<ChartTab *>();
@@ -1682,6 +1682,9 @@ private:
 					"stream, whose line still plots; the choice kept by the stream's name (fast/notLogged); on again, the "
 					"next recording has its .evrs");
 		}
+		/* the Dump's card of a stream stopped and started again */
+		dumpFastStopped(button);
+
 		/* the trigger armed on the fast line (from its chip's menu) while its stream comes and goes: Disconnect, Connect
 		 * again, Arm, the stream stopped, the line removed. Each time the engine watches what the window asks (the same
 		 * line, the same arm) or, the line gone, nothing; no watch, crossing or rescan reaches a stream, a run or a line
@@ -6014,9 +6017,9 @@ private:
 	}
 
 	/* The fast card live (the fast streams step, the stream running at 10 000 records a second): the card of the newest
-	 * block after the polled ones, its rows, Hold, the one tick at Show values 2 a second and at every frame, Stop and
-	 * Start, the tab hidden */
-	void dumpFastLive(QPushButton *button, const DeviceMap &fastMap) {
+	 * block after the polled ones, its rows, Hold, the one tick at Show values 2 a second and at every frame, the tab
+	 * hidden (Stop and Start: dumpFastStopped, after the recording checks) */
+	void dumpFastLive(const DeviceMap &fastMap) {
 		auto *tabs = window_.findChild<QTabWidget *>();
 		DumpTab *tab = dumpTab();
 		DumpView *view = tab ? tab->view() : nullptr;
@@ -6129,7 +6132,29 @@ private:
 				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each), the "
 				"fast block still taken at most ten times a second");
 
-		/* Stop: the card keeps its last block, says stopped, the stripe, no banner; Start: live again */
+		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
+		tabs->setCurrentIndex(MainWindow::TabChart);
+		QTest::qWait(150);
+		const int ticks = window_.dumpTicks(), takes = window_.fastDumpTakes();
+		QTest::qWait(1000);
+		const bool quiet = ticks == window_.dumpTicks() && takes == window_.fastDumpTakes() && fastCard(view) < 0;
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const bool back = QTest::qWaitFor([&] { return fastCard(view) >= 0; }, 2000);
+		check(quiet && back, "fast streams: the Dump hidden is not ticked and takes no fast block (its blocks gone); shown "
+				"again, the card comes with the next take");
+		tabs->setCurrentIndex(tabWas);
+	}
+
+	/* Stop stream with the Dump shown: the card keeps the last block, says stopped, the stripe, no banner; Start: live
+	 * again (after the recording checks: a new start lays the live chart's records on a new clock) */
+	void dumpFastStopped(QPushButton *button) {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !view) return;
+		const int tabWas = tabs->currentIndex();
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const bool came = QTest::qWaitFor([&] { return fastCard(view) >= 0; }, 3000);
 		bool stopped = false, live = false;
 		if (came) {
 			button->click();
@@ -6146,17 +6171,6 @@ private:
 		}
 		check(stopped && live, "fast streams: Stop stream: the Dump's card keeps the last block and says ADC stopped · last "
 				"block hh:mm:ss with the amber stripe, no banner; Start: live again at its next block");
-
-		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
-		tabs->setCurrentIndex(MainWindow::TabChart);
-		QTest::qWait(150);
-		const int ticks = window_.dumpTicks(), takes = window_.fastDumpTakes();
-		QTest::qWait(1000);
-		const bool quiet = ticks == window_.dumpTicks() && takes == window_.fastDumpTakes() && fastCard(view) < 0;
-		tabs->setCurrentIndex(MainWindow::TabDump);
-		const bool back = QTest::qWaitFor([&] { return fastCard(view) >= 0; }, 2000);
-		check(quiet && back, "fast streams: the Dump hidden is not ticked and takes no fast block (its blocks gone); shown "
-				"again, the card comes with the next take");
 		tabs->setCurrentIndex(tabWas);
 	}
 
