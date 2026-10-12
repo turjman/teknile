@@ -1436,7 +1436,6 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerLevel_->setValidator(validator);
 	triggerLevel_->setFixedWidth(90);
 	triggerLevel_->setAlignment(Qt::AlignRight);
-	triggerLevel_->setPlaceholderText(tr("level")); /* empty while no line is chosen, as the Y boxes are when blank */
 	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
 	triggerMode_ = new QComboBox;
 	triggerMode_->setObjectName(QStringLiteral("triggerMode"));
@@ -1595,7 +1594,13 @@ void ChartTab::fillTriggerLines() {
 
 /* the boxes show the line chosen's own level and edge (kept by its name; a line never set: its mid-range) */
 void ChartTab::showLineSettings() {
-	if (triggerLine_->currentIndex() < 0) { /* no line chosen: no level or unit of a line the box does not hold */
+	/* "choose a line" muted, a prompt, not read as a line of that name; a line chosen in the text's colour */
+	const bool prompt = triggerLine_->currentIndex() < 0;
+	if (triggerLine_->property("prompt").toBool() != prompt) {
+		triggerLine_->setProperty("prompt", prompt);
+		repolish(triggerLine_);
+	}
+	if (prompt) { /* no line chosen: no level or unit of a line the box does not hold */
 		triggerLevel_->clear();
 		triggerUnit_->clear();
 		triggerUnit_->hide();

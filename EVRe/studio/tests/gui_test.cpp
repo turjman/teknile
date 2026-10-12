@@ -16193,7 +16193,7 @@ private:
 					&& state->fullText() == QStringLiteral("no line to watch") && line->currentIndex() < 0
 					&& line->currentText().isEmpty() && line->placeholderText() == QStringLiteral("choose a line")
 					&& line->findText(QStringLiteral("AMPS")) < 0 && listed() && line->toolTip() == goneTip
-					&& level && level->text().isEmpty() && level->placeholderText() == QStringLiteral("level")
+					&& level && level->text().isEmpty() && level->placeholderText().isEmpty()
 					&& unit && unit->isHidden() && saved() == QStringLiteral("AMPS");
 		};
 		const auto notes = [&](const char *when) {
@@ -16215,15 +16215,51 @@ private:
 			}
 			Theme::apply(*qApp, wasDark);
 		};
+		/* the box's text as drawn, in each theme: the pixel farthest from the box's background (the most common one),
+		 * right of the colour dot and left of the arrow (the picture in device pixels: 225 % on the owner's screen);
+		 * "muted" when it is nearer the theme's muted colour than its text colour */
+		QString inkNotes;
+		const auto drawnMuted = [&](bool wanted) {
+			bool right = true;
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				const QImage image = line->grab().toImage().convertToFormat(QImage::Format_RGB32);
+				const qreal dpr = image.devicePixelRatio();
+				const QRect area = QRectF(24 * dpr, 6 * dpr, (line->width() - 48) * dpr, (line->height() - 12) * dpr)
+						.toAlignedRect() & image.rect();
+				QHash<QRgb, int> counts;
+				for (int y = area.top(); y <= area.bottom(); y++)
+					for (int x = area.left(); x <= area.right(); x++) counts[image.pixel(x, y)]++;
+				QRgb background = 0;
+				for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+					if (it.value() > counts.value(background)) background = it.key();
+				const auto distance = [](QRgb a, QRgb b) {
+					return std::abs(qRed(a) - qRed(b)) + std::abs(qGreen(a) - qGreen(b)) + std::abs(qBlue(a) - qBlue(b));
+				};
+				QRgb ink = background;
+				for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+					if (distance(it.key(), background) > distance(ink, background)) ink = it.key();
+				const bool muted = distance(ink, Theme::colors().muted.rgb()) < distance(ink, Theme::colors().text.rgb());
+				right = right && muted == wanted;
+				inkNotes += QStringLiteral(" %1 %2: ink #%3, muted %4;").arg(wanted ? QStringLiteral("gone") : QStringLiteral("back"),
+						dark ? QStringLiteral("dark") : QStringLiteral("light"), QString::number(ink & 0xFFFFFF, 16), QString::number(int(muted)));
+			}
+			Theme::apply(*qApp, wasDark);
+			QApplication::processEvents();
+			return right;
+		};
 		pair.tab.plotRegister(pair.amps, false);
 		pair.tab.refreshStatus();
 		const bool stopped = waits();
 		if (!stopped) notes("removed");
+		const bool goneMuted = drawnMuted(true);
 		shots(QStringLiteral("gone"));
 		check(stopped, "chart, Trigger's flow: the line watched removed stops the trigger (\"no line to watch\", "
 				"chart/triggerLine kept; not moved to another line); the box shows \"choose a line\", not the gone name, its "
 				"list only the lines plotted, its tooltip \"AMPS is not on the chart: plot it again, or choose another line\"; "
-				"the level empty (its placeholder \"level\") and the unit hidden");
+				"the level box empty (no placeholder: the label \"level\" is beside it) and the unit hidden");
 
 		/* Remove all: the same, the list empty */
 		pair.tab.plotRegister(pair.volts, false);
@@ -16245,9 +16281,13 @@ private:
 				&& view->triggerEdge() == ChartView::TriggerEdge::Falling && unit && !unit->isHidden()
 				&& unit->text() == QStringLiteral("A") && saved() == QStringLiteral("AMPS");
 		if (!back) notes("back");
+		const bool backPlain = drawnMuted(false);
 		shots(QStringLiteral("back"));
 		check(back, "chart, Trigger's flow: the line watched plotted again is chosen again with its own level (0.6) and "
 				"edge (Falling) and unit, armed in its mode, the box's tooltip the usual one");
+		if (!goneMuted || !backPlain) std::printf("     (the line box's text:%s)\n", qPrintable(inkNotes));
+		check(goneMuted && backPlain, "chart, Trigger's flow: the line box's \"choose a line\" drawn in the theme's muted "
+				"colour (a prompt, not a line of that name), the line chosen again in the text colour; light and dark");
 
 		/* another line chosen while it is gone: that one is saved and watched, and stays when the gone one is back */
 		pair.tab.plotRegister(pair.amps, false);
