@@ -176,6 +176,8 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
+QLabel#dumpBanner { color: %WARN%; padding: 0 2px; }
+QFrame#dumpBannerLine { background: %WARN%; border: none; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;
   padding: 10px 18px; font-weight: 600; }
 QLabel[chip="true"] { background: %BG%; border: 1px solid %BORDER%; border-radius: 6px; padding: 1px 8px;

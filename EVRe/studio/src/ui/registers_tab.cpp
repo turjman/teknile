@@ -82,6 +82,24 @@ void RegistersTab::refreshStatus() {
 	if (!model_->rows().isEmpty()) table_->viewport()->update(); /* let a value that changed stop glowing */
 }
 
+bool RegistersTab::selectRow(int row) {
+	if (row < 0 || row >= model_->rows().size()) return false;
+	const QModelIndex index = filter_->mapFromSource(model_->index(row, RegisterModel::ColName));
+	if (!index.isValid()) return false;
+	table_->setCurrentIndex(index);
+	table_->scrollTo(index);
+	return true;
+}
+
+bool RegistersTab::editValue(int row) {
+	if (!selectRow(row)) return false;
+	const QModelIndex value = filter_->mapFromSource(model_->index(row, RegisterModel::ColValue));
+	if (!(value.flags() & Qt::ItemIsEditable)) return false;
+	table_->setCurrentIndex(value);
+	table_->edit(value);
+	return true;
+}
+
 /* ----------------------------------------------------------------- building */
 
 QHBoxLayout *RegistersTab::buildToolbar() {
@@ -207,6 +225,7 @@ void RegistersTab::connectModel() {
 				detailRow_ = current.isValid() ? filter_->mapToSource(current).row() : -1;
 				updateDetail();
 				quickWrite_->showRegister(detailRow_);
+				emit currentRegisterChanged(detailRow_);
 			});
 	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last) {
 		if (detailRow_ >= first.row() && detailRow_ <= last.row()) updateDetail();
@@ -248,6 +267,9 @@ void RegistersTab::showTableMenu(const QPoint &pos) {
 		menu.addAction(tr("Copy value"), this, [reg] { /* the value when the menu opened */
 			QGuiApplication::clipboard()->setText(reg.valid ? formatValue(reg.def, reg.raw) : QString());
 		});
+		/* its bytes as read, with the map's chips and the reply they came in */
+		QAction *dump = menu.addAction(tr("Show in dump"), this, [this, row] { emit showInDumpRequested(row); });
+		dump->setEnabled(reg.def.readable);
 		menu.addSeparator();
 		menu.addAction(tr("Edit definition…"), this, [this, row] {
 			emit editDefinitionRequested(model_->rows()[row].def.uid, model_->rows()[row].def.slave);

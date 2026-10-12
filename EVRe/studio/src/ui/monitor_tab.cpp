@@ -125,15 +125,18 @@ void MonitorTab::addFrames(const QStringList &lines, int dropped) {
 	frames_->appendPlainText(text);
 }
 
-void MonitorTab::showAnswer(quint16 addr, bool ok, const QByteArray &data, const QString &message, double ms) {
+void MonitorTab::showAnswer(quint16 addr, bool ok, const QByteArray &data, const QString &message, double ms,
+		bool inDump) {
 	if (!ok) {
 		frames_->appendPlainText(tr("!! %1 %2").arg(addrText(addr), message));
 		return;
 	}
 	const QString bytes = data.isEmpty() ? QString() : QStringLiteral(": ") + evre::hex(data);
 	/* a write is not timed: no "(0.0 ms)" */
-	frames_->appendPlainText(ms >= 0 ? tr("== %1 OK%2  (%3 ms)").arg(addrText(addr), bytes).arg(ms, 0, 'f', 1)
-									 : tr("== %1 OK%2").arg(addrText(addr), bytes));
+	QString line = ms >= 0 ? tr("== %1 OK%2  (%3 ms)").arg(addrText(addr), bytes).arg(ms, 0, 'f', 1)
+						   : tr("== %1 OK%2").arg(addrText(addr), bytes);
+	if (inDump) line += QStringLiteral("  ") + tr("(shown in the Dump)");
+	frames_->appendPlainText(line);
 }
 
 void MonitorTab::setSlave(int slave) {

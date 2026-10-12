@@ -3,7 +3,7 @@
  * Device maps are JSON (maps/). Live values, charts, CSV recording.
  *
  *   EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
- *              [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+ *              [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect]
  *              [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]
  *   The token, if the server needs one, from the environment: EVRE_TOKEN.
  *
@@ -52,7 +52,7 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	const QCommandLineOption plot(QStringLiteral("plot"), QStringLiteral("Registers to chart."),
 			QStringLiteral("NAME,NAME"));
 	const QCommandLineOption tab(QStringLiteral("tab"), QStringLiteral("Tab to show."),
-			QStringLiteral("registers|chart|monitor|map"));
+			QStringLiteral("registers|chart|dump|monitor|map"));
 	const QCommandLineOption interval(QStringLiteral("interval"),
 			QStringLiteral("Poll interval, ms (0.25 = 4000/s, 0 = as fast as possible)."), QStringLiteral("ms"));
 	const QCommandLineOption inFlight(QStringLiteral("inflight"), QStringLiteral("Requests in flight (pipelining)."),

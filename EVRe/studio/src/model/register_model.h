@@ -66,6 +66,7 @@ public:
 	static constexpr int MAX_PLOTTED = 64;
 	static constexpr double PLOT_SAMPLES_PER_SECOND = 64000;
 	static int plotLimitFor(double samplesPerSecond); /* each line's rate; 0: not known, MAX_PLOTTED */
+	static constexpr qint64 GLOW_MS = 700; /* a changed value glows this long, fading out (the Dump tab's bytes too) */
 	void setPlotLimit(int limit);
 	int plotLimit() const { return plotLimit_; }
 	bool setPlot(int i, bool on);
