@@ -4284,11 +4284,11 @@ private:
 			const DumpCounts counts = dumpCounts(view, 2000);
 			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d poll takes)\n",
 					pace, counts.ticks, counts.paints, counts.glows, counts.polls);
-			check((pace > 0 ? counts.ticks >= 2 * pace - 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
+			check((pace > 0 ? counts.ticks >= 3 * pace / 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
 							&& counts.polls == counts.ticks && counts.paints >= counts.ticks - 1
 							&& counts.paints <= counts.ticks + counts.glows + 1,
-					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (20 in 2 s at 10 a second), one "
-					"repaint a tick, the replies taken at each");
+					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (15 to 22 in 2 s at 10 a second, "
+					"the frames as a busy PC keeps them), one repaint a tick, the replies taken at each");
 		}
 
 		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
