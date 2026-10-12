@@ -4833,12 +4833,19 @@ private:
 		}
 		Theme::apply(*qApp, wasDark);
 		QTest::qWait(100);
-		if (runWords != QLatin1String("4 bytes not read") || !runTip.contains(QLatin1String("not read"))) {
+		/* the longest words that fit with 4 px each side: "4 bytes not read" at 100 % in Segoe UI, "not read" in a wider
+		 * font (DejaVu Sans on Linux) */
+		const QFontMetrics labelMetrics(view.labelFont());
+		const QString longWords = QStringLiteral("4 bytes not read");
+		const QString wantWords = labelMetrics.horizontalAdvance(longWords) <= run.width() - 8 ? longWords
+				: labelMetrics.horizontalAdvance(QStringLiteral("not read")) <= run.width() - 8 ? QStringLiteral("not read") : QString();
+		if (runWords != wantWords || wantWords.isEmpty() || !runTip.contains(QLatin1String("not read"))) {
 			marked = false;
 			std::printf("     (the run's words \"%s\", tip \"%s\")\n", qPrintable(runWords), qPrintable(runTip));
 		}
 		check(marked, "Dump: the cells no read covers are one empty run in a dashed frame (the controls' colour, 3:1 to the "
-				"card, dashes) with its words muted, \"4 bytes not read\", the tooltip \"not read\"; the payload a grey pill "
+				"card, dashes) with its words muted, \"4 bytes not read\" (\"not read\" where they do not fit), the tooltip "
+				"\"not read\"; the payload a grey pill "
 				"\"22 bytes ↓\" in the DATA column, its words 4.5:1 on it: in both themes");
 		dumpCardShots(&view, QStringLiteral("rows"), [&] { return view.cardRect(0).united(view.cardRect(1)).adjusted(-8, -8, 8, 8); });
 
