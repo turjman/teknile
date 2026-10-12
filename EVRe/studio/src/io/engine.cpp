@@ -275,6 +275,8 @@ void IoEngine::keepFastDump(int stream, const evre::Frame &frame, fast::BlockChe
 	dump.data = frame.data;
 	dump.check = check;
 	dump.time = now();
+	dump.lostTotal = fastRuns_[stream].state.lost;
+	dump.start = fastRuns_[stream].starts;
 	if (check == fast::BlockCheck::Ok) {
 		dump.first = taken.first;
 		dump.count = taken.count;
@@ -410,6 +412,7 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 			 * again once it has the new streams) */
 			if (run.def.addr != def.addr || run.def.recordSize() != def.recordSize()) {
 				run.state.reset(def);
+				run.starts++;
 				run.trigger = fast::TriggerScan();
 				run.lastRecord.clear();
 			}
@@ -1254,6 +1257,7 @@ void IoEngine::applyFast(int stream) {
 		if (!asked) return;
 		FastRun &run = *asked;
 		run.state.reset(run.def, rate);
+		run.starts++;
 		run.notShown = 0;
 		run.on = true;
 		run.newerSaid = run.silenceAsked = false;

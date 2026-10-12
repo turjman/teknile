@@ -5705,6 +5705,45 @@ private:
 				"Dump, a fast card: the line under the header says the records lost before this block (254, in amber), "
 				"nothing without a loss, a new start of the stream muted");
 
+		/* losses in blocks the tab never took (it takes about one in four): the next card says them, counted from the
+		 * stream's total at the card before in the same start, whichever block they were in; a new start counts from 0,
+		 * and with no card before (the tab hidden and shown again) only the block's own */
+		auto counted = [](quint64 first, quint64 lost, quint64 lostTotal, quint64 start, quint64 version) {
+			DumpBlock b = fastDumpBlock(first, 253, lost > 0 ? fast::FLAG_LOST : 0, lost, 99.992, version);
+			b.lostTotal = lostTotal;
+			b.start = start;
+			return b;
+		};
+		tab->applyFastDumps({ counted(1191259, 0, 100, 7, 20) });
+		const QString fromStart = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1192271, 0, 354, 7, 21) });
+		const QString unseen = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1192828, 50, 404, 7, 22) });
+		const QString justBefore = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193207, 30, 500, 7, 23) });
+		const QString both = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193460, 0, 500, 7, 24) });
+		const QString noLoss = view->lossText(fastCard(view));
+		tab->applyFastDumps({ counted(1193460, 0, 500, 7, 24) }); /* the same block taken again: kept as it is */
+		const QString again = view->lossText(fastCard(view));
+		tab->setShown(true);
+		tab->setShown(false);
+		tab->applyDumps({ poll });
+		tab->applyFastDumps({ counted(1194472, 0, 900, 7, 25) });
+		const QString afresh = view->lossText(fastCard(view));
+		const bool counts = fromStart == QLatin1String("100 records lost since the last block shown")
+				&& unseen == QLatin1String("254 records lost since the last block shown")
+				&& justBefore == QLatin1String("50 records lost before this block")
+				&& both == QLatin1String("96 records lost since the last block shown") && noLoss.isEmpty() && again.isEmpty()
+				&& afresh.isEmpty();
+		if (!counts)
+			std::printf("     (losses between takes: \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\")\n", qPrintable(fromStart),
+					qPrintable(unseen), qPrintable(justBefore), qPrintable(both), qPrintable(noLoss), qPrintable(again),
+					qPrintable(afresh));
+		check(counts, "Dump, a fast card: records lost only in blocks never taken still show on the next card (254 records "
+				"lost since the last block shown), counted from the total at the card before; lost just before it, before "
+				"this block; a new start counts from 0; nothing lost, no line; the tab shown again, only the block's own");
+
 		/* bad blocks: the words in amber instead of the records, the header still there */
 		DumpBlock badCount = fastDumpBlock(1191259, 253, 0, 0, 99.992, 5);
 		badCount.data.append('\0');
@@ -6222,31 +6261,46 @@ private:
 		if (!tabs || !view) return;
 		const int tabWas = tabs->currentIndex();
 		tabs->setCurrentIndex(MainWindow::TabDump);
-		bool lossShown = false, plain = false, wrapped = false;
+		/* Every card is held to the rule, whichever block a take lands on (about one in four: each 100 ms brings four
+		 * blocks and a loss): its line says the records lost since the card before, by the engine's running total of the
+		 * stream (the sidebar's lost count), "before this block" when they were all just before it, none when nothing was
+		 * lost; FLAGS LOST in amber on a block after a loss. The engine's total only grows on one start. */
+		bool lossShown = false, wrong = false, wrapped = false;
+		quint64 seen = 0, total = 0;
+		int cards = 0;
 		QString notes;
 		(void) QTest::qWaitFor([&] {
 			const int c = fastCard(view);
 			if (c < 0) return false;
 			const DumpBlock &b = view->blocks()[c];
-			if (b.lost > 0 && !lossShown) {
-				lossShown = view->lossText(c) == QStringLiteral("%1 records lost before this block").arg(b.lost)
-						&& view->headerFieldMeaning(c, DumpView::Flags).contains(QLatin1String("LOST"))
-						&& view->headerFieldColour(c, DumpView::Flags) == Theme::colors().warn;
-				if (!lossShown) notes = QStringLiteral("loss \"%1\" lost %2 flags \"%3\"").arg(view->lossText(c)).arg(b.lost)
-						.arg(view->headerFieldMeaning(c, DumpView::Flags));
+			if (b.version != seen && b.check == 0) {
+				seen = b.version;
+				cards++;
+				const quint64 n = std::max(b.lostSince, b.lost);
+				const QString want = n > b.lost ? QStringLiteral("%1 records lost since the last block shown").arg(n)
+						: n > 0 ? QStringLiteral("%1 records lost before this block").arg(n)
+						: b.newStart ? QStringLiteral("a new start of the stream") : QString();
+				const bool flags = b.lost == 0 || (view->headerFieldMeaning(c, DumpView::Flags).contains(QLatin1String("LOST"))
+						&& view->headerFieldColour(c, DumpView::Flags) == Theme::colors().warn);
+				if (view->lossText(c) != want || !flags || b.lostTotal < total || b.lostSince > b.lostTotal) {
+					wrong = true;
+					notes = QStringLiteral("loss \"%1\" lost %2 since %3 total %4 (before %5) flags \"%6\"").arg(view->lossText(c))
+							.arg(b.lost).arg(b.lostSince).arg(b.lostTotal).arg(total).arg(view->headerFieldMeaning(c, DumpView::Flags));
+				}
+				total = b.lostTotal;
+				if (n > 0) lossShown = true;
 			}
-			if (b.lost == 0 && !b.newStart && !plain) plain = view->lossText(c).isEmpty();
 			if (b.first > 0xFFFFFFFFull && !wrapped)
 				wrapped = view->headerFieldMeaning(c, DumpView::First) == QStringLiteral("record %1").arg(b.first)
 						&& view->headerFieldTip(c, DumpView::First).contains(QStringLiteral("on the wire 0x%1")
 								.arg(QStringLiteral("%1").arg(quint32(b.first), 8, 16, QLatin1Char('0')).toUpper()));
-			return lossShown && plain && wrapped;
+			return wrong || (lossShown && wrapped && cards >= 10);
 		}, 6000);
-		if (!lossShown || !plain || !wrapped)
-			std::printf("     (the Dump's losses: shown %d, plain %d, wrapped %d; %s)\n", int(lossShown), int(plain), int(wrapped),
-					qPrintable(notes));
-		check(lossShown && plain, "fast streams, every 5th block lost: the Dump's card says the records lost before a block "
-				"(the engine's number) in amber with FLAGS LOST; a block after none lost has no such line");
+		if (!lossShown || wrong || !wrapped)
+			std::printf("     (the Dump's losses: shown %d, wrong %d, wrapped %d, cards %d; %s)\n", int(lossShown), int(wrong),
+					int(wrapped), cards, qPrintable(notes));
+		check(lossShown && !wrong, "fast streams, every 5th block lost: each Dump card says the records lost since the card "
+				"before (the engine's running total), whichever blocks a take lands on, in amber with FLAGS LOST after a loss");
 		check(wrapped, "fast streams, counting from 4294967200: the Dump's FIRST is the 64-bit record number past the wire's "
 				"wrap, the wire's 32 bits in its tooltip");
 		tabs->setCurrentIndex(tabWas);

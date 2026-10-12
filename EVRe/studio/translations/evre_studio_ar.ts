@@ -2331,6 +2331,17 @@ A note: right-click the chart where it goes, Add note here.</source>
             <numerusform>فُقد %n سجلّ قبل هذه الكتلة</numerusform>
         </translation>
     </message>
+    <message numerus="yes">
+        <source>%n records lost since the last block shown</source>
+        <translation>
+            <numerusform>فُقد %n سجلّ منذ آخر كتلة معروضة</numerusform>
+            <numerusform>فُقد سجلّ واحد منذ آخر كتلة معروضة</numerusform>
+            <numerusform>فُقد سجلّان منذ آخر كتلة معروضة</numerusform>
+            <numerusform>فُقدت %n سجلات منذ آخر كتلة معروضة</numerusform>
+            <numerusform>فُقد %n سجلًّا منذ آخر كتلة معروضة</numerusform>
+            <numerusform>فُقد %n سجلّ منذ آخر كتلة معروضة</numerusform>
+        </translation>
+    </message>
     <message>
         <source>a new start of the stream</source>
         <translation>بداية جديدة للتدفق</translation>

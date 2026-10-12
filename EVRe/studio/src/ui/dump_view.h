@@ -92,6 +92,11 @@ struct DumpBlock {
 	int count = 0;            /* the header's count of records */
 	uint8_t flags = 0, spare = 0;
 	quint64 lost = 0;         /* records lost before it */
+	quint64 lostTotal = 0;    /* the stream's records lost so far, counted from its start number `start` */
+	quint64 start = 0;
+	/* the records lost since the block the tab showed before it (DumpTab::applyFastDumps): the tab takes the newest
+	 * block ten times a second, so the losses may be in blocks never shown; 0 (none shown before): `lost` */
+	quint64 lostSince = 0;
 	bool newStart = false;    /* a new start of the stream */
 	int check = 0;            /* 0 a good block, 1 a bad count, 2 a newer kind (fast::BlockCheck) */
 	bool stopped = false;     /* the stream is switched off: this was its last block */

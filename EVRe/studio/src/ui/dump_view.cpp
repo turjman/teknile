@@ -1745,10 +1745,14 @@ QRect DumpView::headerFieldRect(int card, HeaderField field) const {
 			lineHeight() + LABEL_GAP + labelLineHeight());
 }
 
-/* by the numbers (FIRST), not by the LOST flag: the flag only tells a person who reads a dump (PROTOCOL.md) */
+/* by the numbers (FIRST), not by the LOST flag: the flag only tells a person who reads a dump (PROTOCOL.md). Losses
+ * in blocks between the one shown before and this one are said as such: "before this block" would hide them */
 QString DumpView::lossText(int card) const {
 	if (!fastBlockShown(card) || blocks_[card].check != 0) return {};
 	const DumpBlock &b = blocks_[card];
+	const quint64 lost = std::max(b.lostSince, b.lost);
+	if (lost > b.lost)
+		return tr("%n records lost since the last block shown", nullptr, int(std::min<quint64>(lost, INT_MAX)));
 	if (b.lost > 0) return tr("%n records lost before this block", nullptr, int(std::min<quint64>(b.lost, INT_MAX)));
 	if (b.newStart) return tr("a new start of the stream");
 	return {};
@@ -1972,7 +1976,7 @@ void DumpView::drawFastCard(QPainter &p, int i, const QPoint &at) const {
 	if (!bad.isEmpty() || !loss.isEmpty()) {
 		const QRect lossLine = lossRect(i);
 		p.setFont(ui);
-		p.setPen(!bad.isEmpty() || b.lost > 0 ? c.warn : c.muted);
+		p.setPen(!bad.isEmpty() || b.lost > 0 || b.lostSince > 0 ? c.warn : c.muted);
 		p.drawText(lossLine, LEFT, uiFm.elidedText(bad.isEmpty() ? loss : bad, Qt::ElideRight, lossLine.width()));
 	}
 	p.setFont(font());

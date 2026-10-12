@@ -6735,7 +6735,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 712 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 713 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7946,8 +7946,9 @@ the tab and follows the window's direction.
   repaints only while a byte glows. Hidden, the tab is not ticked.
 - **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
   stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
-  in 64 bits, count, flags, spare, the records lost before it, a new start, what the rules said of it, the time and a
-  serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
+  in 64 bits, count, flags, spare, the records lost before it, the stream's records lost so far and the start that
+  count runs from (`FastRun::starts`, +1 at every reset of its counts; the loss line of 37.7), a new start, what the
+  rules said of it, the time and a serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
   about 3 900 blocks a second at a million records a second. A bad block or one of a newer kind is kept too (a dump
   is where a device's mistakes are seen). `takeFastDumps` copies one small struct per stream and no byte of a block;
   it tries the lock first and counts a take that then waited longer than 0.2 ms for it (`FAST_DUMP_WAIT_NS`; the
@@ -8002,7 +8003,7 @@ the button. The lines of the card:
 | Reply&nbsp;label | `← REPLY`, then *READ_RESP, unasked: a block of ADC* and the state: `8 ms ago` (muted), `held 14:03:12`, `ADC stopped · last block 14:03:12`, `stale 2.1 s`, `the link is closed` (amber, with the stripe: 37.2). No request: nobody asked, as AUTO_SEND's card. On a bus the device's name comes first, as a request's does. |
 | Reply&nbsp;strip | The frame rebuilt with `evre::build` from the block, so it equals the wire's: FUNCTION `READ_RESP (unasked)`, OFFSET `0xDC00 · ADC` (the stream's window and name), COUNT the frame's bytes (8 + 253 × 4 = 1020), DATA the grey pill `block ↓` over `header + records`, `CRC OK`. Its columns are the tab's, under the poll cards'. |
 | Block&nbsp;header | `BLOCK HEADER`, then the 8-byte header as a strip of four columns: FIRST `record 1191259` (the 64-bit number the Studio counts; the tooltip gives the wire's 32 bits, which wrap), COUNT `253 records`, FLAGS `none`, `START`, `LOST` (amber) or `START, LOST`, SPARE `0`; each member's tooltip is PROTOCOL.md's words for it. |
-| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
+| Loss&nbsp;line | `254 records lost before this block` in amber when the numbers say records were lost (the LOST flag only colours FLAGS), `a new start of the stream` muted. The tab takes about one block in four, so a loss may be in a block never shown: the line counts from the stream's running total of records lost (the sidebar's `lost`, which the engine hands with each block) at the card shown before, in the same start, and reads `254 records lost since the last block shown` when some of them were before earlier blocks; a new start counts from 0, and the first card after the tab is shown again (or another map) says only its block's own; always laid, with a gap under it before `RECORDS`, so a loss that comes and goes never moves the records and the header's group ends there. A bad block says so here instead of the records, in amber: `bad block: 1021 bytes do not hold whole records of 4 (8 + 253 × 4 = 1020)`, `block of a newer kind: flags 0x04, spare 0x00 · none of its records is used`. |
 | Records&nbsp;head | `RECORDS`, then over each channel's column its dot, its name and its type with its scale and unit (`i16 × 0.0005 A`), in the map's order (the record's byte order). |
 | Records | `#1191259`, then per channel its bytes as a chip in its colour and its value with the channel's decimals, else as many as its scale needs for one raw step to show (0.001: `12.009 V`, 0.0005: `1.2050 A`, 1: none), then its unit: finer than the sidebar's four digits, so two neighbouring raw numbers never read the same and every row is as wide. Folded: the first three, a row `249 more records` with **Show all ▾**, the last. Four or fewer: all of them. An empty block: `no records (an empty block)`. |
 
