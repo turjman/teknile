@@ -23,7 +23,7 @@ one finished. The GUI test fails while a message is unfinished or empty, or when
   A text with two counts says them as labels instead: «الخطوط: %2 · الصفوف: %3».
 - The frame's field names START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END and the function codes' names
   (READ, READ_RESP, ERROR_RESP ...) are the protocol's words and stay in English, as units do; their meanings are
-  translated (`ok` سليم, `none` لا شيء).
+  translated (`OK` سليم, `none` لا شيء).
 - Numbers keep Western digits and a decimal point; units, symbols, register names, addresses, file names, code and the
   JSON keys stay as they are.
 - A number with a Latin prefix or unit beside an Arabic word is laid out piece by piece, right to left: "10.0 k" comes

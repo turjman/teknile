@@ -628,6 +628,7 @@ public:
 		dumpKeys();
 		dumpFields();
 		dumpErrors();
+		dumpRows();
 		dumpMenu();
 		dumpWrite();
 		dumpOtherMaps();
@@ -1115,6 +1116,13 @@ private:
 				for (int i = 0; i < view->blocks().size(); i++) seen << view->replyText(i);
 				std::printf("     (the Dump's replies: %s)\n", qPrintable(seen.join(QStringLiteral(" | "))));
 			}
+			if (card)
+				dumpCardShots(view, QStringLiteral("auto_send"), [&] {
+					const int c = dumpCard(view, 0xD000, DumpBlock::AutoSend);
+					if (c < 0) return QRect();
+					dumpInView(view, c);
+					return view->cardRect(c).adjusted(-8, -8, 8, 8);
+				});
 			tabs->setCurrentIndex(tabWas);
 			check(card, "auto send: the Dump's 0xD000 card is AUTO_SEND's frame: \"← AUTO_SEND 100 /s\", no request strip, "
 					"the device's READ_RESP strip; the polled read of that block gone");
@@ -3842,7 +3850,8 @@ private:
 			const QString request = QStringLiteral("→ REQUEST  READ %1 bytes @ %2  %3").arg(b.size).arg(addrText(b.addr),
 					evre::hex(evre::build(b.wireSlave, evre::READ, b.addr, b.size)));
 			const QByteArray reply = evre::build(b.wireSlave, evre::READ_RESP, b.addr, b.size, b.data);
-			const QString bytes = evre::hex(reply.left(7)) + QStringLiteral(" … ") + evre::hex(reply.right(3));
+			const QString bytes = evre::hex(reply.left(7)) + QLatin1Char(' ') + view->payloadText(i, DumpView::Reply)
+					+ QLatin1Char(' ') + evre::hex(reply.right(3));
 			const bool apart = k == 0 || view->cardRect(i).top() > view->cardRect(reads[k - 1]).bottom() + 4;
 			if (view->requestText(i) != request || !view->replyText(i).startsWith(QStringLiteral("← REPLY "))
 					|| !view->replyText(i).endsWith(bytes) || !apart) {
@@ -3852,7 +3861,8 @@ private:
 		}
 		if (!cards) std::printf("     (the cards:%s)\n", qPrintable(notes));
 		check(cards, "Dump: three cards in address order (0xA000 7 bytes, 0xD000 22, 0xD080 8), apart; \"→ REQUEST  READ "
-				"22 bytes @ 0xD000\" with the frame evre::build makes; \"← REPLY\" with its frame, the payload \"…\", its CRC "
+				"22 bytes @ 0xD000\" with the frame evre::build makes; \"← REPLY\" with its frame, the payload's pill \"22 "
+				"bytes ↓\", its CRC "
 				"and 7D the strip's last");
 		if (!answered || reads.size() != 3) return;
 
@@ -3907,7 +3917,7 @@ private:
 		check(chip && sameBytes, "Dump: a register's bytes are one chip (SUPPLY_V's four, UPTIME and SUPPLY_I beside); "
 				"SETPOINT's bytes in the Dump are the Registers tab's raw bytes");
 
-		/* after a block's last byte the row ends: no "··" filling it (0xD088 on, 0xA007 on), no tooltip there */
+		/* after a block's last byte the row ends: nothing filling it (0xD088 on, 0xA007 on), no tooltip there */
 		const int d080 = dumpCard(view, 0xD080);
 		dumpInView(view, a);
 		const QImage pictureA = view->viewport()->grab().toImage();
@@ -3924,7 +3934,7 @@ private:
 					inkReach(picture, view->byteRect(d080, 8)), inkReach(picture, view->byteRect(d080, 15)),
 					inkReach(picture, view->byteRect(d080, 4)), qPrintable(view->toolTipAt(view->byteRect(d080, 8).center())));
 		check(noDots, "Dump: a row ends at the block's last byte: the cells after it (0xD088, 0xA007) are the card's "
-				"surface, no \"··\", no tooltip");
+				"surface, no mark, no tooltip");
 
 		/* the decode column: the Registers tab's Value and Unit (FAN_SPEED), its Decoded text with " · " (STATE) */
 		const int fanRow = regRow(QStringLiteral("FAN_SPEED")), stateRow = regRow(QStringLiteral("STATE"));
@@ -3985,7 +3995,7 @@ private:
 				"COUNT DATA CRC END, each with its bytes of evre::build's frame and its meaning (SLAVE 1, FUNCTION READ, "
 				"OFFSET 0xD000, COUNT 22, DATA none), the columns FIELD_GAP apart");
 
-		/* the reply: READ_RESP, the payload pointed at, the CRC checked ("ok" in the good colour), the columns aligned */
+		/* the reply: READ_RESP, the payload pointed at, the CRC checked ("OK" in the good colour), the columns aligned */
 		const QImage picture = view->viewport()->grab().toImage();
 		const QRect crc = view->fieldRect(d, DumpView::Reply, F::Crc);
 		const QRect crcLabel(crc.left(), crc.top() + view->lineHeight(), crc.width(), crc.height() - view->lineHeight());
@@ -4001,8 +4011,9 @@ private:
 				view->decodeLeft() - view->cardRect(d).left() - 16, view->cardRect(d).bottom() - view->byteRect(d, 16).bottom() - 6);
 		const bool replyStrip = view->hasStrip(d, DumpView::Reply)
 				&& view->fieldMeaning(d, DumpView::Reply, F::Function) == QLatin1String("READ_RESP")
-				&& view->fieldMeaning(d, DumpView::Reply, F::Data) == QStringLiteral("22 bytes ↓")
-				&& view->fieldMeaning(d, DumpView::Reply, F::Crc) == QLatin1String("ok")
+				&& view->fieldMeaning(d, DumpView::Reply, F::Data) == QLatin1String("payload")
+				&& view->payloadText(d, DumpView::Reply) == QStringLiteral("22 bytes ↓")
+				&& view->fieldMeaning(d, DumpView::Reply, F::Crc) == QLatin1String("OK")
 				&& view->fieldBytes(d, DumpView::Reply, F::Crc) == reply.mid(reply.size() - 3, 2)
 				&& view->fieldBytes(d, DumpView::Reply, F::End) == QByteArray(1, '\x7D')
 				&& nearestIn(picture, crcLabel, Theme::colors().good) < 60 && aligned && underGrid.height() > 4
@@ -4013,8 +4024,9 @@ private:
 					qPrintable(view->fieldMeaning(d, DumpView::Reply, F::Function)),
 					qPrintable(view->fieldMeaning(d, DumpView::Reply, F::Data)), qPrintable(view->fieldMeaning(d, DumpView::Reply, F::Crc)),
 					nearestIn(picture, crcLabel, Theme::colors().good), aligned, inkReach(picture, underGrid));
-		check(replyStrip, "Dump: the reply's strip: FUNCTION READ_RESP, DATA 22 bytes ↓ (the payload is the grid under it), "
-				"CRC ok (\"ok\" in the good colour; its tooltip: checked before the reply was taken), END; every card's "
+		check(replyStrip, "Dump: the reply's strip: FUNCTION READ_RESP, DATA payload under the pill 22 bytes ↓ (the payload is "
+				"the grid under it), CRC OK (\"OK\" in the good colour, in capitals as the names; its tooltip: checked before the "
+				"reply was taken), END; every card's "
 				"columns at the same x, field under field; nothing under the grid (no tail line)");
 
 		/* the labels in the window's font a point smaller (not the bytes' monospace), drawn as wide as it measures */
@@ -4039,6 +4051,42 @@ private:
 					QApplication::font().pointSizeF(), function.width(), labelWidth, drawnWidth);
 		check(fonts, "Dump: the field names and meanings in the window's font a point smaller (the bytes, addresses, names "
 				"and values monospace), drawn as wide as that font measures them");
+
+		/* the arrows of "→ REQUEST" and "← REPLY": their ink centred on the word's (its "RE", no descender), measured in
+		 * the picture; a font puts an arrow on its maths axis, and drawn in the text it sat at the bottom of the line */
+		bool centred = true;
+		QString arrows;
+		for (const DumpView::Side side : { DumpView::Request, DumpView::Reply }) {
+			const QRectF arrow = view->arrowRect(d, side);
+			const QRect head = view->headRect(d, side);
+			const int re = QFontMetrics(view->labelFont()).horizontalAdvance(QStringLiteral(" RE"));
+			const QRect arrowArea = arrow.toAlignedRect().adjusted(-1, -4, 1, 4).intersected(head);
+			const QRect wordArea(int(std::ceil(arrow.right())) + 2, head.top(), re, head.height());
+			const double a = inkMiddle(picture, arrowArea, Theme::colors().surface);
+			const double w = inkMiddle(picture, wordArea, Theme::colors().surface);
+			const double line = head.top() + head.height() / 2.0;
+			if (arrow.isEmpty() || a < 0 || w < 0 || std::abs(a - w) > 1.0 || std::abs(a - line) > 2.0) centred = false;
+			arrows += QStringLiteral(" [%1: arrow %2, word %3, line %4]").arg(side == DumpView::Request ? "request" : "reply")
+					.arg(a, 0, 'f', 2).arg(w, 0, 'f', 2).arg(line, 0, 'f', 1);
+		}
+		if (!centred) std::printf("     (the arrows:%s)\n", qPrintable(arrows));
+		check(centred, "Dump: the arrows of \"→ REQUEST\" and \"← REPLY\" are centred on their line: the arrow's ink "
+				"within 1 px of the word's (measured in the picture), not at the line's bottom");
+	}
+
+	/* the middle of the ink in an area, in logical px (-1: none): the rows with a pixel far from the ground */
+	static double inkMiddle(const QImage &picture, const QRect &area, const QColor &ground) {
+		const double dpr = picture.devicePixelRatio();
+		const QRect r = QRectF(QPointF(area.topLeft()) * dpr, QSizeF(area.size()) * dpr).toRect().intersected(picture.rect());
+		int top = -1, bottom = -1;
+		for (int y = r.top(); y <= r.bottom(); y++)
+			for (int x = r.left(); x <= r.right(); x++)
+				if (colourDistance(QColor(picture.pixel(x, y)), ground) > 150) {
+					if (top < 0) top = y;
+					bottom = y;
+					break;
+				}
+		return top < 0 ? -1.0 : (top + bottom + 1) / 2.0 / dpr;
 	}
 
 	/* The chips' colours: a plotted register's from the chart, the others the palette's (neighbours apart), Colour:
@@ -4116,7 +4164,8 @@ private:
 			const ThemeColors &c = Theme::colors();
 			for (const QColor &colour : c.series)
 				for (const bool hovered : { false, true }) {
-					const double ratio = contrast(c.text, DumpView::chipFill(colour, c.surface, DumpView::chipAlpha(dark, hovered)));
+					const double ratio = contrast(hovered ? DumpView::litText(c, dark) : c.text,
+							DumpView::chipFill(colour, c.surface, DumpView::chipAlpha(dark, hovered)));
 					if (ratio < 4.5) {
 						readable = false;
 						std::printf("     (chip %s, %s%s: %.2f)\n", qPrintable(colour.name()), dark ? "dark" : "light",
@@ -4124,14 +4173,23 @@ private:
 					}
 				}
 			if (contrast(c.text, c.surface2) < 4.5) readable = false; /* a neutral chip */
+			if (contrast(DumpView::litText(c, dark), DumpView::chipFill(c.muted, c.surface, DumpView::chipAlpha(dark, true))) < 4.5)
+				readable = false; /* a neutral chip lit */
+			/* a glowing byte's text: a byte that changes at every poll glows all the time */
+			for (const QColor &colour : c.series)
+				if (contrast(DumpView::glowText(c, dark), DumpView::chipFill(colour, c.surface, DumpView::chipAlpha(dark))) < 4.5) {
+					readable = false;
+					std::printf("     (glowing on chip %s, %s)\n", qPrintable(colour.name()), dark ? "dark" : "light");
+				}
+			if (contrast(DumpView::glowText(c, dark), c.surface2) < 4.5) readable = false;
 		}
 		Theme::apply(*qApp, wasDark);
 		QApplication::processEvents();
-		check(readable, "Dump: the byte text on every colour's chip (tinted 34 % dark, 26 % light; hovered 38 % and 36 %) "
-				"and on a neutral one: at least 4.5:1 in both themes");
+		check(readable, "Dump: the byte text on every colour's chip (tinted 34 % dark, 26 % light; lit 46 % with white text "
+				"and 50 %) and on a neutral one, at rest and lit, and a glowing byte's text on them: at least 4.5:1 in both themes");
 
 		/* a chip is a fill without an edge: inside it the tint, between two neighbours the card's surface (SETPOINT's
-		 * bytes and FAN_SPEED's, which do not change, so no glow ring is near) */
+		 * bytes and FAN_SPEED's, which do not change, so no glow is near) */
 		QEvent leave(QEvent::Leave);
 		QApplication::sendEvent(view->viewport(), &leave);
 		view->select(DumpView::NO_REGISTER); /* no selection frame over the gap */
@@ -4235,20 +4293,58 @@ private:
 				"14:03:12\", the reason in its tooltip, and one banner over the cards \"Held at 14:03:12 · …\"; Follow: live "
 				"again, the banner gone");
 
-		/* a changed byte glows, then fades over the Registers tab's GLOW_MS */
+		/* A changed byte glows, then fades over the Registers tab's GLOW_MS: its text in glowText, no ring round the cell
+		 * (where a ring's left side was, 2.5 px inside the cell, the pixel is the same lit and faded: the chip's fill). A
+		 * hovered register is the one mark on the grid: while it is, nothing glows. */
+		const ThemeColors &tc = Theme::colors();
+		QEvent away(QEvent::Leave);
+		QApplication::sendEvent(view->viewport(), &away);
 		const uint16_t fanAddr = 0xD084;
 		const int fanWas = other_.readU8(fanAddr);
-		other_.writeU8(fanAddr, uint8_t(fanWas == 40 ? 41 : 40));
+		const uint8_t fanNew = uint8_t(fanWas == 40 ? 41 : 40);
+		other_.writeU8(fanAddr, fanNew);
 		const bool lit = QTest::qWaitFor([&] {
 			const int card = dumpCard(view, 0xD080);
 			return card >= 0 && view->glow(card, 4) > 0.5;
 		}, 3000);
+		int card = dumpCard(view, 0xD080);
+		dumpInView(view, card);
+		const QImage glowing = view->viewport()->grab().toImage();
+		const QColor drawn = card >= 0 ? view->byteColour(card, 4) : QColor();
+		const QRect fanCell = card >= 0 ? view->byteRect(card, 4) : QRect();
+		const QPointF ringSide(fanCell.left() + 2.5, fanCell.center().y());
+		const QColor glowText = DumpView::glowText(tc, Theme::isDark());
+		const bool accentText = lit && colourDistance(drawn, glowText) < colourDistance(drawn, tc.text)
+				&& nearestIn(glowing, fanCell.adjusted(3, 3, -3, -3), drawn) < 90;
 		QTest::qWait(RegisterModel::GLOW_MS + 200);
-		const int card = dumpCard(view, 0xD080);
-		const bool faded = card >= 0 && view->glow(card, 4) == 0.0 && view->glow(card, 0) == 0.0;
+		card = dumpCard(view, 0xD080);
+		dumpInView(view, card);
+		const QImage plainShot = view->viewport()->grab().toImage();
+		const bool faded = card >= 0 && view->glow(card, 4) == 0.0 && view->glow(card, 0) == 0.0
+				&& view->byteColour(card, 4) == tc.text;
+		const bool noRing = card >= 0 && pixelOff(glowing, ringSide, pixelAt(plainShot, ringSide)) < 8
+				&& pixelOff(glowing, ringSide, tc.accent) > 60;
+		other_.writeU8(fanAddr, uint8_t(fanNew + 1));
+		const bool litAgain = QTest::qWaitFor([&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 && view->glow(c, 4) > 0.5;
+		}, 3000);
+		/* the mouse on SETPOINT (bytes 0 to 3): FAN_SPEED's changed byte is drawn plain, SETPOINT's in the lit text */
+		card = dumpCard(view, 0xD080);
+		if (card >= 0) dumpMouseTo(view, view->byteRect(card, 1).center());
+		const bool hoverOnly = litAgain && view->hovered() == keyOf(QStringLiteral("SETPOINT")) && view->glow(card, 4) > 0
+				&& view->byteColour(card, 4) == tc.text && view->byteColour(card, 1) == DumpView::litText(tc, Theme::isDark());
+		QApplication::sendEvent(view->viewport(), &away);
 		if (fanWas >= 0) other_.writeU8(fanAddr, uint8_t(fanWas));
-		check(lit && faded, "Dump: a byte whose value changed glows (a ring in the accent), fading over the Registers "
-				"tab's GLOW_MS; the bytes that did not change do not");
+		if (!lit || !accentText || !faded || !noRing || !hoverOnly)
+			std::printf("     (lit %d, accent text %d (drawn %s, nearest %d), faded %d, no ring %d (lit %s, faded %s), "
+					"hovered, no glow %d)\n", lit, accentText, qPrintable(drawn.name()),
+					nearestIn(glowing, fanCell.adjusted(3, 3, -3, -3), drawn), faded, noRing,
+					qPrintable(pixelAt(glowing, ringSide).name()), qPrintable(pixelAt(plainShot, ringSide).name()), hoverOnly);
+		check(lit && accentText && faded && noRing && hoverOnly, "Dump: a byte whose value changed glows, its text in "
+				"the accent made readable (no ring round the cell: its edge pixel the chip's fill, lit and faded), fading over the "
+				"Registers tab's GLOW_MS; the bytes that did not change do not; while a register is hovered nothing glows (the "
+				"hovered one's bytes in the lit text)");
 
 		/* stale: Poll off, the replies age past the Registers tab's stale limit: amber, "stale" in the reply line */
 		poll_->setChecked(false);
@@ -4350,7 +4446,7 @@ private:
 				&& pixelOff(lit, fill, DumpView::chipFill(colour, c.surface, DumpView::chipAlpha(dark, true))) < 12
 				&& pixelOff(lit, line, DumpView::chipFill(colour, c.surface, DumpView::chipAlpha(dark))) < 12
 				&& colourDistance(pixelAt(lit, line), c.surface) > 60
-				&& pixelOff(lit, uptime, DumpView::chipFill(uptimeColour, c.surface, DumpView::chipAlpha(dark) * DumpView::CHIP_ALPHA_DIM)) < 12;
+				&& pixelOff(lit, uptime, DumpView::chipFill(uptimeColour, c.surface, DumpView::chipAlpha(dark))) < 12;
 		const bool hand = view->hovered() == supplyV && view->viewport()->cursor().shape() == Qt::PointingHandCursor;
 		const QString tip = view->toolTipAt(byte6);
 		const bool said = tip.startsWith(QStringLiteral("SUPPLY_V · byte 3 of 4 · 0xD006\n0x"))
@@ -4371,7 +4467,7 @@ private:
 					hand, lineLights, nothing);
 		check(atRest && shows && hand && said && lineLights && nothing, "Dump: the mouse over a chip lights its register in "
 				"its own colour, measured: its chips outlined in it and filled stronger, its decode line filled with its tint "
-				"(the surface before), the other chips at half their tint; a pointing hand; the tooltip \"SUPPLY_V · byte 3 "
+				"(the surface before), the other chips at their tint; a pointing hand; the tooltip \"SUPPLY_V · byte 3 "
 				"of 4 · 0xD006\" over \"0x.. · raw .. · 12.031 V\"; a decode line lights the same, with the hand; empty "
 				"room nothing");
 
@@ -4551,7 +4647,7 @@ private:
 				&& view->stripRect(c, DumpView::Reply).height() == view->lineHeight() && offset.width() == 2 * step
 				&& offset.left() == view->fieldRect(c, DumpView::Request, F::Start).left() + 3 * step
 				&& tip.startsWith(QStringLiteral("OFFSET 0xD000\nRegister offset, little endian: 0x00 0xD0 is 0xD000"))
-				&& view->toolTipAt(view->fieldRect(c, DumpView::Reply, F::Crc).center()).startsWith(QStringLiteral("CRC ok\n"))
+				&& view->toolTipAt(view->fieldRect(c, DumpView::Reply, F::Crc).center()).startsWith(QStringLiteral("CRC OK\n"))
 				&& !QSettings().value(QStringLiteral("dump/fields")).toBool();
 		bool kept = false;
 		{
@@ -4571,7 +4667,7 @@ private:
 	}
 
 	/* Answers that are not a READ_RESP, on a view of their own: a refusal (the ERROR_RESP frame rebuilt, the grid the
-	 * last good bytes), a read that timed out (one line), a block with no reply yet ("··" in each of its cells) */
+	 * last good bytes), a read that timed out (one line), a block with no reply yet (its cells one run in a dashed frame) */
 	void dumpErrors() {
 		DumpView view;
 		view.resize(1400, 900);
@@ -4609,27 +4705,195 @@ private:
 				&& view.fieldMeaning(1, DumpView::Reply, F::Data) == QLatin1String("ERROR 4 offset out of range")
 				&& view.fieldBytes(1, DumpView::Reply, F::Data) == QByteArray(1, '\x04')
 				&& view.fieldBytes(1, DumpView::Reply, F::Count) == view.fieldBytes(1, DumpView::Request, F::Count)
-				&& view.fieldMeaning(1, DumpView::Reply, F::Crc) == QLatin1String("ok")
+				&& view.fieldMeaning(1, DumpView::Reply, F::Crc) == QLatin1String("OK")
 				&& nearestIn(picture, functionLabel, Theme::colors().bad) < 60
 				&& view.copyText(DumpView::CopyRegisterBytes, 1, keyOf(QStringLiteral("SUPPLY_V"))) == QLatin1String("40 00 00 00")
 				&& view.notLiveReason(1).startsWith(QLatin1String("The last read failed (offset out of range)"))
 				&& !view.stripeRect(1).isEmpty();
+		dumpCardShots(&view, QStringLiteral("answers"), [&] {
+			return view.cardRect(0).united(view.cardRect(2)).adjusted(-8, -8, 8, 8);
+		});
 		const bool timeout = !view.hasStrip(2, DumpView::Reply) && view.hasStrip(2, DumpView::Request)
 				&& view.replyText(2).endsWith(QLatin1String("no reply: timed out")) && !view.stripeRect(2).isEmpty();
+		const QRect waitingRun = view.unreadRect(0, 0);
 		bool dots = !view.hasStrip(0, DumpView::Reply) && view.replyText(0) == QStringLiteral("← REPLY no reply yet")
 				&& view.toolTipAt(view.byteRect(0, 2).center()).contains(QLatin1String("no reply yet"))
-				&& inkReach(picture, view.byteRect(0, 7)) == 0;
+				&& inkReach(picture, view.byteRect(0, 7)) == 0 && waitingRun.left() == view.byteRect(0, 0).left() + 1
+				&& waitingRun.right() == view.byteRect(0, 6).right() - 1 && view.unreadText(0, 3) == QLatin1String("no reply yet")
+				&& nearestIn(picture, QRect(waitingRun.left() + 4, waitingRun.top(), waitingRun.width() - 8, 1),
+						DumpView::unreadEdge(Theme::colors())) < 60
+				&& nearestIn(picture, waitingRun.adjusted(3, 3, -3, -3), Theme::colors().muted) < 60;
 		for (int offset = 0; offset < 7; offset++)
-			if (inkReach(picture, view.byteRect(0, offset)) == 0) dots = false;
+			if (view.unreadRect(0, offset) != waitingRun) dots = false;
 		if (!error || !timeout || !dots)
 			std::printf("     (answers: error %d (%s / %s, red %d), timed out %d (\"%s\"), no reply %d (\"%s\"))\n", error,
 					qPrintable(view.fieldMeaning(1, DumpView::Reply, F::Function)), qPrintable(view.fieldMeaning(1, DumpView::Reply, F::Data)),
 					nearestIn(picture, functionLabel, Theme::colors().bad), timeout, qPrintable(view.replyText(2)), dots,
 					qPrintable(view.replyText(0)));
 		check(error && timeout && dots, "Dump: a refused read shows the device's ERROR_RESP frame (FUNCTION ERROR_RESP and "
-				"DATA ERROR 4 offset out of range in the bad colour, the count echoed, CRC ok) over the last good bytes, its "
-				"stripe; a read that timed out one line \"no reply: timed out\"; a block with no reply yet \"··\" in each of "
-				"its cells and none after");
+				"DATA ERROR 4 offset out of range in the bad colour, the count echoed, CRC OK) over the last good bytes, its "
+				"stripe; a read that timed out one line \"no reply: timed out\"; a block with no reply yet one empty run of "
+				"its cells in a dashed frame, \"no reply yet\" in it, and nothing after");
+	}
+
+	/* A block of five rows on a view of its own, with a map made here: 0xD004 to 0xD047, seven f32 inputs, four bytes
+	 * no register maps, seven u32 counters, four u16 flags; and a second card. Its rows evenly spaced and its value list
+	 * in address order; the cells before the block a dashed run with its words, and the payload's pill, in both themes;
+	 * a lit register (hovered, selected) changes, and no other chip of either card does. */
+	void dumpRows() {
+		QVector<RegDef> defs;
+		auto add = [&](uint16_t addr, const QString &name, RegType type, int size, const QString &unit) {
+			RegDef d;
+			d.addr = addr;
+			d.name = name;
+			d.type = type;
+			d.size = size;
+			d.unit = unit;
+			defs << d;
+		};
+		for (int k = 0; k < 7; k++) add(uint16_t(0xD004 + 4 * k), QStringLiteral("INPUT_%1").arg(k + 1), RegType::F32, 4, QStringLiteral("V"));
+		for (int k = 0; k < 7; k++) add(uint16_t(0xD024 + 4 * k), QStringLiteral("COUNT_%1").arg(k + 1), RegType::U32, 4, QString());
+		for (int k = 0; k < 4; k++) add(uint16_t(0xD040 + 2 * k), QStringLiteral("FLAG_%1").arg(k + 1), RegType::U16, 2, QString());
+		add(0xD080, QStringLiteral("LIMIT"), RegType::U16, 2, QString());
+		add(0xD082, QStringLiteral("MODE"), RegType::U8, 1, QString());
+		DumpView view;
+		view.resize(1400, 1100);
+		view.setRegisters(defs);
+		view.setClock([] { return 0.0; });
+		DumpBlock rows, small;
+		rows.wireSlave = 1;
+		rows.addr = 0xD004;
+		rows.size = 68;
+		for (int k = 0; k < 68; k++) rows.data.append(char((k * 37 + 11) & 0xFF));
+		small.wireSlave = 1;
+		small.addr = 0xD080;
+		small.size = 3;
+		small.data = QByteArray("\x10\x00\x02", 3);
+		view.setBlocks({ rows, small });
+		view.show();
+		(void) QTest::qWaitForWindowExposed(&view);
+		QApplication::processEvents();
+
+		/* the rows: five, each one line below the last; the list: one line per register in address order, each level
+		 * with its register's row or under the line before, never over it */
+		const int line = view.lineHeight();
+		bool even = true;
+		QString notes;
+		for (int r = 1; r < 5; r++)
+			if (view.byteRect(0, r * 16 - 4).top() - view.byteRect(0, (r - 1) * 16 - 4).top() != line) even = false;
+		if (view.byteRect(0, 63).top() - view.byteRect(0, -4).top() != 4 * line || view.byteRect(0, 64 + 12).isValid()) even = false;
+		bool ordered = view.decodeLines(0) == 18;
+		for (int l = 0; l < view.decodeLines(0); l++) {
+			const RegDef &d = defs[l];
+			const QRect rect = view.decodeRect(0, l);
+			const int rowTop = view.byteRect(0, d.addr - 0xD004).top();
+			if (!view.decodeText(0, l).startsWith(d.name + QStringLiteral("  ")) || rect.top() < rowTop
+					|| (l > 0 && rect.top() < view.decodeRect(0, l - 1).bottom() + 1)
+					|| (l > 0 && rect.top() != std::max(rowTop, view.decodeRect(0, l - 1).bottom() + 1)))
+				ordered = false;
+		}
+		const bool gapByte = view.toolTipAt(view.byteRect(0, 0xD020 - 0xD004).center()).startsWith(QLatin1String("not mapped"))
+				&& view.unreadRect(0, 0xD020 - 0xD004).isEmpty();
+		if (!even || !ordered || !gapByte) {
+			for (int l = 0; l < view.decodeLines(0); l++) notes += QStringLiteral(" %1@%2").arg(view.decodeText(0, l).section(QLatin1Char(' '), 0, 0)).arg(view.decodeRect(0, l).top());
+			std::printf("     (five rows: even %d, ordered %d, gap byte %d; the list:%s)\n", even, ordered, gapByte, qPrintable(notes));
+		}
+		check(even && ordered && gapByte, "Dump: a block of five rows (0xD004 to 0xD047): each row one line below the last, "
+				"none after the block; the value list one line per register in address order, each level with its row or "
+				"under the line before; the unmapped bytes inside the block read (\"not mapped\"), not a run");
+
+		/* the cells before the block and the payload's pill, in both themes: the run's dashed edge in the controls'
+		 * colour (dashes: the surface between them), its words muted; the pill's grey fill and its words */
+		const bool wasDark = Theme::isDark();
+		bool marked = true;
+		const QRect run = view.unreadRect(0, -4);
+		const QString runWords = view.unreadText(0, -4);
+		const QString runTip = view.toolTipAt(view.byteRect(0, -3).center());
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			QTest::qWait(100);
+			const ThemeColors &c = Theme::colors();
+			const QImage picture = view.viewport()->grab().toImage();
+			const QRect edge(run.left() + 4, run.top(), run.width() - 8, 1);
+			const QRect pill = view.payloadRect(0, DumpView::Reply);
+			const bool ok = !run.isEmpty() && nearestIn(picture, edge, DumpView::unreadEdge(c)) < 40
+					&& nearestIn(picture, edge, c.surface) < 40 && nearestIn(picture, run.adjusted(3, 3, -3, -3), c.muted) < 60
+					&& contrast(DumpView::unreadEdge(c), c.surface) >= 3.0 && contrast(c.muted, c.surface) >= 4.5
+					&& !pill.isEmpty() && view.fieldRect(0, DumpView::Reply, DumpView::Data).contains(pill.center())
+					&& pixelOff(picture, QPointF(pill.left() + 3, pill.center().y()), DumpView::payloadFill(c)) < 12
+					&& nearestIn(picture, pill.adjusted(4, 4, -4, -4), c.text) < 60
+					&& contrast(c.text, DumpView::payloadFill(c)) >= 4.5;
+			if (!ok)
+				std::printf("     (%s: the run's edge %d / surface %d, words %d; the pill %d,%d %dx%d, fill %s for %s)\n",
+						dark ? "dark" : "light", nearestIn(picture, edge, DumpView::unreadEdge(c)), nearestIn(picture, edge, c.surface),
+						nearestIn(picture, run.adjusted(3, 3, -3, -3), c.muted), pill.x(), pill.y(), pill.width(), pill.height(),
+						qPrintable(pixelAt(picture, QPointF(pill.left() + 3, pill.center().y())).name()),
+						qPrintable(DumpView::payloadFill(c).name()));
+			if (!ok) marked = false;
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(100);
+		if (runWords != QLatin1String("4 bytes not read") || !runTip.contains(QLatin1String("not read"))) {
+			marked = false;
+			std::printf("     (the run's words \"%s\", tip \"%s\")\n", qPrintable(runWords), qPrintable(runTip));
+		}
+		check(marked, "Dump: the cells no read covers are one empty run in a dashed frame (the controls' colour, 3:1 to the "
+				"card, dashes) with its words muted, \"4 bytes not read\", the tooltip \"not read\"; the payload a grey pill "
+				"\"22 bytes ↓\" in the DATA column, its words 4.5:1 on it: in both themes");
+		dumpCardShots(&view, QStringLiteral("rows"), [&] { return view.cardRect(0).united(view.cardRect(1)).adjusted(-8, -8, 8, 8); });
+
+		/* a lit register: hovered, then selected; every other chip's pixel the same, in this card and the other */
+		struct Spot {
+			RegKey key;
+			QPointF at;
+		};
+		QVector<Spot> spots;
+		for (int card = 0; card < 2; card++)
+			for (const RegDef &d : defs) {
+				const int offset = d.addr - view.blocks()[card].addr;
+				if (offset < 0 || offset >= view.blocks()[card].size) continue;
+				const QRect cell = view.byteRect(card, offset);
+				spots << Spot { regKey(d), QPointF(cell.left() + 3, cell.center().y()) };
+			}
+		const bool dark = Theme::isDark();
+		const ThemeColors &c = Theme::colors();
+		const QImage plain = view.viewport()->grab().toImage();
+		auto lightsAlone = [&](RegKey key, const QImage &lit, QString &why) {
+			bool ok = true;
+			for (const Spot &spot : spots) {
+				const int moved = colourDistance(pixelAt(lit, spot.at), pixelAt(plain, spot.at));
+				if (spot.key == key) {
+					const int at = view.cardOf(key);
+					const QColor want = DumpView::chipFill(view.chipColour(at, key), c.surface, DumpView::chipAlpha(dark, true));
+					if (moved < 40 || pixelOff(lit, spot.at, want) > 12) ok = false;
+					why += QStringLiteral(" lit moved %1 (off %2)").arg(moved).arg(pixelOff(lit, spot.at, want));
+				} else if (moved > 6) {
+					ok = false;
+					why += QStringLiteral(" other moved %1").arg(moved);
+				}
+			}
+			return ok;
+		};
+		const RegKey input3 = regKey(defs[2]), count5 = regKey(defs[11]);
+		dumpMouseTo(&view, view.byteRect(0, defs[2].addr - 0xD004 + 1).center());
+		QApplication::processEvents();
+		QString why;
+		const bool hovered = view.hovered() == input3 && lightsAlone(input3, view.viewport()->grab().toImage(), why);
+		QEvent leave(QEvent::Leave);
+		QApplication::sendEvent(view.viewport(), &leave);
+		view.select(count5);
+		QApplication::processEvents();
+		const QImage selected = view.viewport()->grab().toImage();
+		const int line5 = 11;
+		const QPointF lineEnd(view.decodeRect(0, line5).right() - 4, view.decodeRect(0, line5).center().y());
+		const bool picked = lightsAlone(count5, selected, why)
+				&& pixelOff(selected, lineEnd, DumpView::chipFill(view.chipColour(0, count5), c.surface, DumpView::chipAlpha(dark))) < 12
+				&& pixelOff(plain, lineEnd, c.surface) < 8;
+		dumpCardShots(&view, QStringLiteral("rows_selected"), [&] { return view.cardRect(0).adjusted(-8, -8, 8, 8); });
+		view.select(DumpView::NO_REGISTER);
+		if (!hovered || !picked) std::printf("     (lit alone: hovered %d, selected %d:%s)\n", hovered, picked, qPrintable(why));
+		check(hovered && picked, "Dump: a hovered or a selected register's chips are filled clearly stronger (the lit tint, "
+				"measured) and its value line filled, and no other chip changes, in its card or another: nothing greys out");
 	}
 
 	/* The menu (the right-click's, repeated in Copy ▾): Show in Registers, Plot / Unplot, Write…, the four copies */
@@ -4805,7 +5069,8 @@ private:
 		const bool ack = came && c == (view->blocks()[0].kind == DumpBlock::Manual ? 1 : 0) && view->titleText(c) == QStringLiteral("Write SETPOINT @ 0xD080 · 4 bytes")
 				&& view->requestText(c).startsWith(QStringLiteral("→ REQUEST  WRITE_ACK 4 bytes @ 0xD080  "))
 				&& view->fieldMeaning(c, DumpView::Request, F::Function) == QLatin1String("WRITE_ACK")
-				&& view->fieldMeaning(c, DumpView::Request, F::Data) == QStringLiteral("4 bytes ↓")
+				&& view->fieldMeaning(c, DumpView::Request, F::Data) == QLatin1String("payload")
+				&& view->payloadText(c, DumpView::Request) == QStringLiteral("4 bytes ↓")
 				&& view->fieldBytes(c, DumpView::Request, F::Data) == written
 				&& view->fieldBytes(c, DumpView::Request, F::Crc)
 						== evre::build(1, evre::WRITE_ACK, 0xD080, 4, written).right(3).left(2)
@@ -4813,16 +5078,21 @@ private:
 				&& view->decodeText(c, 0).startsWith(QStringLiteral("SETPOINT  55.0"))
 				&& view->fieldMeaning(c, DumpView::Reply, F::Function) == QLatin1String("WRITE_ACK_RESP")
 				&& view->fieldMeaning(c, DumpView::Reply, F::Data) == QLatin1String("none")
-				&& view->fieldMeaning(c, DumpView::Reply, F::Crc) == QLatin1String("ok")
+				&& view->fieldMeaning(c, DumpView::Reply, F::Crc) == QLatin1String("OK")
 				&& view->replyText(c).startsWith(QStringLiteral("← REPLY acknowledged, "))
 				&& view->notLiveReason(c) == QLatin1String("A write: sent once, not refreshed") && dumpStripe(view, c);
 		if (!ack)
 			std::printf("     (the write card: landed %d, card %d \"%s\" | \"%s\" | \"%s\" | %s | %s)\n", landed, c,
 					qPrintable(view->titleText(c)), qPrintable(view->requestText(c)), qPrintable(view->replyText(c)),
 					qPrintable(view->fieldMeaning(c, DumpView::Reply, F::Function)), qPrintable(view->decodeText(c, 0)));
+		if (ack)
+			dumpCardShots(view, QStringLiteral("write_ack"), [&] {
+				dumpInView(view, c);
+				return view->cardRect(c).adjusted(-8, -8, 8, 8);
+			});
 		check(ack, "Dump: a write from the Registers tab's editor shows at the top: \"Write SETPOINT @ 0xD080 · 4 bytes\", "
-				"the WRITE_ACK strip with DATA 4 bytes ↓, the written bytes as SETPOINT's chip and its decode line, the "
-				"WRITE_ACK_RESP strip (DATA none, CRC ok), \"acknowledged\", the amber stripe");
+				"the WRITE_ACK strip with DATA payload under the pill 4 bytes ↓, the written bytes as SETPOINT's chip and its "
+				"decode line, the WRITE_ACK_RESP strip (DATA none, CRC OK), \"acknowledged\", the amber stripe");
 
 		/* the next write replaces it: a WRITE (no ack) from the Monitor, never answered */
 		tabs->setCurrentIndex(MainWindow::TabMonitor);
@@ -4841,6 +5111,11 @@ private:
 		if (!replaced)
 			std::printf("     (the WRITE: back %d, card %d \"%s\" | \"%s\")\n", back, c, qPrintable(view->requestText(c)),
 					qPrintable(view->replyText(c)));
+		if (replaced)
+			dumpCardShots(view, QStringLiteral("write"), [&] {
+				dumpInView(view, c);
+				return view->cardRect(c).adjusted(-8, -8, 8, 8);
+			});
 		check(replaced, "Dump: the next write replaces the write card: a WRITE from the Monitor, its strip FUNCTION "
 				"WRITE, no reply strip, \"none: WRITE is not answered\", the stripe");
 		function->setCurrentIndex(0);
@@ -4983,20 +5258,25 @@ private:
 			return c >= 0 && view->blocks()[c].single && view->blocks()[c].size == 4 && view->blocks()[c].data.size() == 4
 					&& view->requestText(c).endsWith(QLatin1String("split: the device refused the merged read")) && none;
 		}, 6000);
-		/* the 0xD004 block starts inside its row: "··" before it, muted, the tooltip says those bytes are not in it */
+		/* the 0xD004 block starts inside its row: the cells before it one run in a dashed frame with its words, the
+		 * tooltip says those bytes are not in it */
 		const int mid = dumpCard(view, 0xD004);
 		dumpInView(view, mid);
 		const QImage midPicture = view->viewport()->grab().toImage();
-		const bool before = split && mid >= 0 && inkReach(midPicture, view->byteRect(mid, -4)) > 0
-				&& inkReach(midPicture, view->byteRect(mid, -4)) < inkReach(midPicture, view->byteRect(mid, 0))
+		const QRect run = view->unreadRect(mid, -4);
+		const bool before = split && mid >= 0 && run.left() == view->byteRect(mid, -4).left() + 1
+				&& run.right() == view->byteRect(mid, -1).right() - 1 && view->unreadRect(mid, -1) == run
+				&& view->unreadRect(mid, 0).isEmpty() && !view->unreadText(mid, -4).isEmpty()
+				&& nearestIn(midPicture, run.adjusted(3, 3, -3, -3), Theme::colors().muted) < 60
 				&& view->toolTipAt(view->byteRect(mid, -4).center()).startsWith(QStringLiteral("0xD000\n"))
 				&& view->toolTipAt(view->byteRect(mid, -4).center()).contains(QLatin1String("not in this read"))
 				&& inkReach(midPicture, view->byteRect(mid, 4)) == 0;
 		if (split && !before)
-			std::printf("     (before 0xD004: ink %d against %d, tip \"%s\")\n", inkReach(midPicture, view->byteRect(mid, -4)),
-					inkReach(midPicture, view->byteRect(mid, 0)), qPrintable(view->toolTipAt(view->byteRect(mid, -4).center())));
-		check(before, "Dump: a block that starts inside its row (0xD004) shows a muted \"··\" for the cells before it, its "
-				"tooltip \"0xD000\" and the register there not in this read; nothing after the block");
+			std::printf("     (before 0xD004: run %d,%d %dx%d, words \"%s\", tip \"%s\")\n", run.x(), run.y(), run.width(),
+					run.height(), qPrintable(view->unreadText(mid, -4)), qPrintable(view->toolTipAt(view->byteRect(mid, -4).center())));
+		check(before, "Dump: a block that starts inside its row (0xD004): the cells before it one empty run in a dashed "
+				"frame with its words (\"4 bytes not read\"), its tooltip \"0xD000\" and the register there not in this read; "
+				"nothing after the block");
 		if (!split) {
 			QStringList seen;
 			for (int i = 0; i < view->blocks().size(); i++) seen << view->requestText(i);
@@ -5029,9 +5309,27 @@ private:
 		return image;
 	}
 
+	/* EVRE_TEST_SHOT: cards of a Dump view in both themes (<prefix>_dump_<name>_<theme>.png): the area the function
+	 * gives after it scrolled them into view, so a write card, an error answer or AUTO_SEND's card can be looked at */
+	static void dumpCardShots(DumpView *view, const QString &name, const std::function<QRect()> &area) {
+		if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			QTest::qWait(300);
+			const QRect rect = area().intersected(view->viewport()->rect());
+			if (rect.isEmpty()) continue;
+			view->viewport()->grab(rect).save(prefix + QStringLiteral("_dump_%1_%2.png")
+					.arg(name, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+		}
+		Theme::apply(*qApp, wasDark);
+		QTest::qWait(200);
+	}
+
 	/* EVRE_TEST_SHOT: the Dump tab of a window in both themes: live, the manual read's card amber at the top, SUPPLY_V's
 	 * chip hovered with its tooltip (<prefix>_dump_<lang>_<theme>.png, the tab alone as _dump_tab_<lang>_<theme>.png for
-	 * the docs), and held (<prefix>_dump_held_<lang>_<theme>.png) */
+	 * the docs), with Fields off (_dump_fields_off_<lang>_<theme>.png), and held (<prefix>_dump_held_<lang>_<theme>.png) */
 	static void dumpShots(QWidget *window, const QString &lang) {
 		if (!qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) return;
 		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
@@ -5065,12 +5363,26 @@ private:
 			QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
 			QApplication::sendEvent(view->viewport(), &help);
 			QTest::qWait(250);
+			/* the picture of a live card just as a new reply comes (a busy or locked session slows the polls, and a
+			 * reply waited for could age past the stale limit), the tooltip shown again so it says the bytes pictured */
+			const QByteArray shown = view->blocks().value(card).data;
+			(void) QTest::qWaitFor([&] { return view->blocks().value(card).data != shown; }, 3000);
+			QApplication::sendEvent(view->viewport(), &help);
+			QApplication::processEvents();
 			withTooltip(window, window->rect()).save(prefix + QStringLiteral("_dump_%1_%2.png").arg(lang, theme));
 			const QRect tabArea(tabs->mapTo(window, QPoint(0, 0)), tabs->size());
 			withTooltip(window, tabArea).save(prefix + QStringLiteral("_dump_tab_%1_%2.png").arg(lang, theme));
 			QToolTip::hideText();
 			QEvent leave(QEvent::Leave);
 			QApplication::sendEvent(view->viewport(), &leave);
+			/* Fields off: each frame one line of bytes (the tab alone) */
+			if (auto *fields = tab->findChild<QCheckBox *>(QStringLiteral("dumpFields"))) {
+				fields->setChecked(false);
+				view->verticalScrollBar()->setValue(view->verticalScrollBar()->value() + view->cardRect(card).top() - 12);
+				QTest::qWait(250);
+				window->grab(tabArea).save(prefix + QStringLiteral("_dump_fields_off_%1_%2.png").arg(lang, theme));
+				fields->setChecked(true);
+			}
 			tab->setFollow(false);
 			view->verticalScrollBar()->setValue(0);
 			QTest::qWait(300);
@@ -5124,7 +5436,10 @@ private:
 				tab->view()->setBlocks({ block });
 				QApplication::processEvents();
 				meanings = tab->view()->fields() && DumpView::fieldName(DumpView::Data) == QLatin1String("DATA")
-						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Data) == QStringLiteral("22 بايتًا ↓")
+						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Data) == QStringLiteral("الحمولة")
+						&& tab->view()->payloadText(0, DumpView::Reply) == QStringLiteral("22 بايتًا ↓")
+						/* the arrow after the Arabic word, at its right, as the label drawn whole put it */
+						&& tab->view()->arrowRect(0, DumpView::Reply).left() > tab->view()->headRect(0, DumpView::Reply).left() + 12
 						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Crc) == QStringLiteral("سليم")
 						&& tab->view()->fieldMeaning(0, DumpView::Request, DumpView::Data) == QStringLiteral("لا شيء")
 						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Function) == QLatin1String("READ_RESP");
@@ -5133,6 +5448,10 @@ private:
 							qPrintable(tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Data)),
 							qPrintable(tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Crc)),
 							qPrintable(tab->view()->fieldMeaning(0, DumpView::Request, DumpView::Data)));
+				if (!meanings)
+					std::printf("     (Arabic: the pill \"%s\", the arrow at %.1f in the label from %d)\n",
+							qPrintable(tab->view()->payloadText(0, DumpView::Reply)), tab->view()->arrowRect(0, DumpView::Reply).left(),
+							tab->view()->headRect(0, DumpView::Reply).left());
 				leftToRight = qApp->layoutDirection() == Qt::RightToLeft && tab->isRightToLeft()
 						&& tab->view()->layoutDirection() == Qt::LeftToRight
 						&& tab->view()->viewport()->layoutDirection() == Qt::LeftToRight;
@@ -5154,7 +5473,8 @@ private:
 		std::printf("     (the window's minimum width with the Dump shown: %d px in English, %d in Arabic)\n", english, arabic);
 		check(english <= 1280 && arabic <= 1280 && named && leftToRight && meanings, "Dump, Arabic: the tab is عرض الذاكرة; "
 				"the window right to left, the cards left to right (addresses, bytes, names and values); the field names the "
-				"protocol's (DATA, CRC), their meanings Arabic (22 بايتًا ↓, سليم, لا شيء); the window with the Dump shown and "
+				"protocol's (DATA, CRC), their meanings Arabic (الحمولة under the pill 22 بايتًا ↓, سليم, لا شيء), the reply's "
+				"arrow at the right of its Arabic word; the window with the Dump shown and "
 				"Fields on at most 1280 px wide in English and in Arabic");
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
 	}
@@ -7998,13 +8318,14 @@ private:
 		}
 		check(dumpPage.contains(QLatin1String("Follow")) && dumpPage.contains(QLatin1String("Hold"))
 						&& dumpPage.contains(QLatin1String("amber")) && dumpPage.contains(QLatin1String("Show in dump"))
-						&& dumpPage.contains(QLatin1String("C array")) && dumpPage.contains(QStringLiteral("··"))
-						&& dumpPage.contains(QLatin1String("START, SLAVE")) && dumpPage.contains(QLatin1String("CRC ok"))
+						&& dumpPage.contains(QLatin1String("C array")) && dumpPage.contains(QLatin1String("dashed frame"))
+						&& dumpPage.contains(QLatin1String("START, SLAVE")) && dumpPage.contains(QLatin1String("CRC OK"))
 						&& dumpPage.contains(QLatin1String("Fields")) && dumpPage.contains(QLatin1String("stripe"))
 						&& dumpPage.contains(QLatin1String("banner")) && dumpPage.contains(QLatin1String("arrow keys"))
 						&& overview.contains(QLatin1String("Dump: ")),
-				"Help: a page for the Dump tab (the cards, the frame's fields named, Fields, the chips, Follow and Hold, the "
-				"amber stripe and the banner, the keys, the menu and Show in dump); the first page's list of the tabs names it");
+				"Help: a page for the Dump tab (the cards, the frame's fields named, CRC OK, Fields, the chips, the dashed frame "
+				"of bytes not read, Follow and Hold, the amber stripe and the banner, the keys, the menu and Show in dump); the "
+				"first page's list of the tabs names it");
 		/* Trigger v2: the Chart page says how it is armed and what the modes, the hold-off, the tab and the flag do */
 		QString chartPage, keysPage;
 		for (int i = 0; filled && i < topics->count(); i++) {

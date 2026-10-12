@@ -4871,7 +4871,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`, `bannerText`; signals `registerPicked`, `writeRequested` | GUI test (the Dump steps) |
-| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha` and `chipFill` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `byteRect`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `paintCount`; signals `registerPicked`, `menuRequested` | GUI test (the Dump steps) |
+| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`; signals `registerPicked`, `menuRequested` | GUI test (the Dump steps) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
@@ -6607,27 +6607,29 @@ The Dump tab's steps (chapter 37), after the Monitor's, against the fake device 
   `evre::build`, the reply's frame with its CRC and `7D`; rows of 16 aligned to 16, their addresses (tooltip
   `0xD010`); each row one line high and the decode list flowing (line k at the lower of its row and line k-1, the
   card as tall as the taller of the grid and the list); SUPPLY_V's four bytes one chip, SETPOINT's bytes the table's
-  raw bytes; no `··` after a block's last byte (0xD088, 0xA007: the card's surface, no tooltip); the decode lines:
+  raw bytes; nothing after a block's last byte (0xD088, 0xA007: the card's surface, no tooltip); the decode lines:
   FAN_SPEED's Value and Unit, STATE's Decoded text. The strips (`dumpStrips`): the request's eight fields in the
   wire's order, their names, meanings and bytes (slices of `evre::build`'s frame), `FIELD_GAP` apart; the reply's
-  READ_RESP, *22 bytes ↓* and *CRC ok* ("ok" found in the good colour in the picture), its columns under the
-  request's in every card, nothing under the grid; the labels in the window's font a point smaller, drawn as wide as
-  that font measures (a monospace label would run wider).
+  READ_RESP, *DATA payload* under the pill *22 bytes ↓* and *CRC OK* ("OK" found in the good colour in the picture),
+  its columns under the request's in every card, nothing under the grid; the labels in the window's font a point
+  smaller, drawn as wide as that font measures (a monospace label would run wider); the arrows of *→ REQUEST* and
+  *← REPLY* centred: the arrow's ink within 1 px of its word's (its "RE"), measured in the picture.
 - **Colours** (`dumpColours`): no two neighbouring chips alike; TEMPERATURE plotted takes its chart colour, unplotted
   the palette's again; Colour: Plotted greys SUPPLY_I and keeps TEMPERATURE's chart colour, saved in `dump/colour`;
-  the byte text on every series colour's tint, at rest and hovered, and on a neutral chip at least 4.5:1 in both
-  themes; a chip's fill pixel (its top row too) is the tint and the pixel between two neighbours the card's surface:
+  the byte text on every series colour's tint, at rest and lit (the lit text on the lit tint), and on a neutral chip,
+  at rest and lit, and a glowing byte's text on them, at least 4.5:1 in both themes; a chip's fill pixel (its top row too) is the tint and the pixel between two neighbours the card's surface:
   no edge line.
 - **Live** (`dumpLive`): Follow shows about 10 new replies a second at *Show values* 10; Hold takes none and paints
   nothing in 1 s while the table moves; fresh replies draw no stripe and no banner, held cards a 3 px amber stripe
   (the reply's label *held ...*) and the banner *Held at ...*, Follow live again without it; a byte changed by the
-  other client glows, then fades after `GLOW_MS`; Poll off: *stale* and the stripe, no banner, polled again: live;
+  other client glows (its text in the accent, measured as the colour it is drawn in; no ring: the cell's edge pixels
+  the chip's fill), then fades after `GLOW_MS`, and does not glow while a register is hovered; Poll off: *stale* and the stripe, no banner, polled again: live;
   Disconnect: the last bytes stay with *the link is closed*, the stripe and the banner, connected again: live. The
   stripe is found in the picture's pixels at the card's left edge, the top edge's the plain border (in device
   pixels).
 - **The mouse** (`dumpMouse`): over a chip the hover measured in the picture: SUPPLY_V's outline pixel its colour
-  (the surface before), its fill at the hover alpha, its decode line's fill its tint (the surface before), UPTIME's
-  chip at half its tint; the pointing hand; the two-line tooltip `SUPPLY_V · byte 3 of 4 · 0xD006` /
+  (the surface before), its fill at the lit alpha, its decode line's fill its tint (the surface before), UPTIME's
+  chip at its tint (nothing greys out); the pointing hand; the two-line tooltip `SUPPLY_V · byte 3 of 4 · 0xD006` /
   `0x.. · raw .. · .. V`; a decode line lights its register with the hand; empty room nothing. The tooltip's place:
   `tipPlace` and the tooltip shown (measured) under the chip's row, its right edge 8 px before the decode list, over
   no decode line, for a chip in the row's last column too; a decode line's under it. A click selects SUPPLY_V here
@@ -6640,26 +6642,37 @@ The Dump tab's steps (chapter 37), after the Monitor's, against the fake device 
   frame's line has them, the tooltip *OFFSET 0xD000* and the protocol's words, saved in `dump/fields` and read by a
   new tab; on again, two lines.
 - **Other answers** (`dumpErrors`, a view of its own with made-up blocks): a refused read's ERROR_RESP strip
-  (FUNCTION and DATA in the bad colour, the count echoed, CRC ok) over the last good bytes, its stripe; a timed-out
-  read's one line *no reply: timed out*; a block with no reply yet `··` in each of its cells, none after.
+  (FUNCTION and DATA in the bad colour, the count echoed, CRC OK) over the last good bytes, its stripe; a timed-out
+  read's one line *no reply: timed out*; a block with no reply yet one empty run of its cells in a dashed frame (the
+  edge's colour and the words found in the picture) with *no reply yet* in it, nothing after.
+- **Five rows** (`dumpRows`, a view of its own with a map made in the test: 0xD004 to 0xD047, seven f32, four bytes
+  no register maps, seven u32, four u16, and a second card at 0xD080): each row one line below the last, none after
+  the block, the value list one line per register in address order (level with its row or under the line before);
+  the four unmapped bytes read (*not mapped*), not a run; the cells before the block one run in a dashed frame (the
+  controls' colour, dashes, 3:1 to the card) with *4 bytes not read* muted, its tooltip *not read*, and the payload's
+  grey pill in the DATA column with its words (4.5:1), in both themes; a hovered and then a selected register's chip
+  at the lit tint (moved by 40 or more) and its value line filled, every other chip of both cards the same pixel as
+  before. With `EVRE_TEST_SHOT` set it saves `<prefix>_dump_rows_<light|dark>.png` and `_dump_rows_selected_...`.
 - **The menu** (`dumpMenu`): its eight items, the same on Copy ▾; with known bytes at 0xD080 the four copies exactly
   (bytes, hex, the C array, decoded); Plot then Unplot from it; Write… greyed with Allow writes off (its tooltip),
   with it on the Registers tab's editor on SETPOINT.
 - **The write card** (`dumpWrite`): 55 typed into SETPOINT on the Registers tab: at the top *Write SETPOINT @
-  0xD080 · 4 bytes*, the request *WRITE_ACK 4 bytes @ 0xD080* with the WRITE_ACK strip (*DATA 4 bytes ↓*, the bytes
-  `00 00 5C 42`, the CRC `evre::build`'s), SETPOINT's chip and its decode line *55.0*, the WRITE_ACK_RESP strip
-  (*DATA none*, *CRC ok*), *acknowledged*, the stripe; a WRITE (no ack) typed in the Monitor replaces it: FUNCTION
+  0xD080 · 4 bytes*, the request *WRITE_ACK 4 bytes @ 0xD080* with the WRITE_ACK strip (*DATA payload* under the pill
+  *4 bytes ↓*, the bytes `00 00 5C 42`, the CRC `evre::build`'s), SETPOINT's chip and its decode line *55.0*, the
+  WRITE_ACK_RESP strip (*DATA none*, *CRC OK*), *acknowledged*, the stripe; a WRITE (no ack) typed in the Monitor replaces it: FUNCTION
   WRITE, no reply strip, *none: WRITE is not answered*.
 - **Other maps** (`dumpOtherMaps`): the example map without COUNTER: its two bytes muted hex, *not mapped*; a name
   too long cut, whole in the tooltip; with a register 2 bytes past the block that the device lacks: the merged read
   refused, a card per single read saying *split*, none for the register refused for good; the 0xD004 card starting
-  inside its row: `··` before it (its tooltip *0xD000* and the register not in this read), nothing after it; the
+  inside its row: the cells before it one run in a dashed frame with its words (its tooltip *0xD000* and the
+  register not in this read), nothing after it; the
   example map again.
 - **The manual read** (`dumpManualRead`): a Monitor READ of 0xD080, 8 bytes, at the top, both strips under its
   title, the amber stripe, *read once*, the chips on it, the Monitor's line ending *(shown in the Dump)*; the next
   READ replaces it.
 - **Arabic** (`dumpArabic`): the tab *عرض الذاكرة*, the window right to left and the cards left to right; the field
-  names English and their meanings Arabic (*22 بايتًا ↓*, *سليم*, *لا شيء*); the window with the Dump shown and
+  names English and their meanings Arabic (*الحمولة* under the pill *22 بايتًا ↓*, *سليم*, *لا شيء*), the reply's arrow
+  at the right of its Arabic word; the window with the Dump shown and
   Fields on at most 1280 px wide in English and Arabic.
 
 The auto send, bus and fast streams steps check the Dump too: the 0xD000 card is AUTO_SEND's (*← AUTO_SEND 100 /s*,
@@ -6680,7 +6693,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 672 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 676 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6693,7 +6706,10 @@ fast lines of a million records a second, over 10 s (`<prefix>_fast_chart.png`) 
 settings' Streams page in English and Arabic (`<prefix>_map_streams_en.png`, `_ar.png`), and the Dump tab in English
 and Arabic, both themes, SUPPLY_V and TEMPERATURE plotted: live with the manual read's card and SUPPLY_V's byte
 hovered with its tooltip (`<prefix>_dump_<en|ar>_<light|dark>.png`, the tab alone `<prefix>_dump_tab_...`, from which
-the docs' `dump-tab` pictures are made), and held (`<prefix>_dump_held_...`).
+the docs' `dump-tab` pictures are made), with Fields off (`<prefix>_dump_fields_off_...`) and held
+(`<prefix>_dump_held_...`); and single cards in both themes (`<prefix>_dump_<name>_<light|dark>.png`): the error
+answers (a refused read, a timed-out one, one with no reply yet: `answers`), the write cards (`write_ack`, `write`)
+and AUTO_SEND's card (`auto_send`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device
@@ -7662,7 +7678,7 @@ the frames as text, and the Dump shows the bytes and what each one is.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/dump-tab-dark.png">
-  <img src="../../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: Follow and Hold, the Colour pair, the Fields check box and the Copy button; the card of the block at 0xD000: the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END) with their meanings under the bytes, CRC ok in green, then the hex grid with each register as a tinted chip and the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line in its colour while the other chips step back, its tooltip under the chip's row" width="900">
+  <img src="../../docs/assets/pictures/dump-tab-light.png" alt="The Dump tab: Follow and Hold, the Colour pair, the Fields check box and the Copy button; the card of the block at 0xD000: the request and the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END) with their meanings under the bytes, the payload a grey pill, CRC OK in green, then the hex grid with each register as a tinted chip and the decode list beside it; the mouse on a SUPPLY_V byte lights its chips and decode line in its colour, the other chips as they were, its tooltip under the chip's row" width="900">
 </picture>
 
 *The polled block at 0xD000, its request and reply broken down into the frame's fields; the mouse on a byte of
@@ -7673,12 +7689,12 @@ SUPPLY_V.*
 | [Follow|Hold]   Colour [All registers|Plotted]   [x] Fields                            [Copy v] |
 +------------------------------------------------------------------------------------------------+
 |  -> REQUEST  READ 22 bytes @ 0xD000                                                            |
-|  7B     01       AA                 00 D0          16 00                 FC A5   7D            |
-|  START  SLAVE 1  FUNCTION READ      OFFSET 0xD000  COUNT 22   DATA none  CRC     END           |
+|  7B     01       AA                 00 D0          16 00                    FC A5   7D         |
+|  START  SLAVE 1  FUNCTION READ      OFFSET 0xD000  COUNT 22   DATA none     CRC     END        |
 |                                                                                                |
 |  <- REPLY    12 ms ago                                                                         |
-|  7B     01       AB                 00 D0          16 00     ...         AE 41   7D            |
-|  START  SLAVE 1  FUNCTION READ_RESP OFFSET 0xD000  COUNT 22   DATA 22 v  CRC ok  END           |
+|  7B     01       AB                 00 D0          16 00      (22 bytes v)  AE 41   7D         |
+|  START  SLAVE 1  FUNCTION READ_RESP OFFSET 0xD000  COUNT 22   DATA payload  CRC OK  END        |
 |                                                                                                |
 |  D000  [10 27 00 00][FA 7E 40 41][2D B2 BD 3F][66 66 26 42]    o UPTIME       10000 ms         |
 |  D010  [05 00][2C 01][B9 00]                                   o SUPPLY_V     12.031 V         |
@@ -7690,20 +7706,28 @@ SUPPLY_V.*
 +------------------------------------------------------------------------------------------------+
 ```
 
-`[..]` is a chip (a fill, no edge), `o` the register's colour dot, `...` the DATA column's muted `…` standing for the
-grid, `v` the arrow of `22 bytes ↓`.
+`[..]` is a chip (a fill, no edge), `o` the register's colour dot, `(22 bytes v)` the DATA column's grey pill standing
+for the grid, `v` the arrow of `22 bytes ↓`. A block that starts inside its row (a manual read of 0xD004, say) begins
+with the cells before it as one empty run in a dashed frame:
+
+```
++------------------------------------------------------------------+
+|  D000  +- - 4 bytes not read - -+[FA 7E 40 41][2D B2 BD 3F] ...  |
+|  D010  [05 00][2C 01][B9 00]                                     |
++------------------------------------------------------------------+
+```
 
 ### 37.1 What a card shows
 
 | Part | What it shows |
 |---|---|
 | Title | Only on a manual read: *Manual read 0xD080 · 8 bytes*, bold. |
-| Request&nbsp;label | `→ REQUEST` (small, muted) then `READ 22 bytes @ 0xD000` (the count is in bytes, never registers). On a bus the device's name and slave come first (`D2, slave 2 · READ …`); a split read ends `· split: the device refused the merged read`, muted. |
+| Request&nbsp;label | `→ REQUEST` (small, muted; the arrow's ink centred on the word's capitals, where a font would set it on its maths axis, low in the line) then `READ 22 bytes @ 0xD000` (the count is in bytes, never registers). On a bus the device's name and slave come first (`D2, slave 2 · READ …`); a split read ends `· split: the device refused the merged read`, muted. |
 | Request&nbsp;strip | The frame the Studio sent, rebuilt with `evre::build` from the same numbers, so it equals the wire's, as a strip of named fields (the table below): the bytes on one line (monospace; START, CRC and END muted), each field's name (muted) and meaning under them in the window's font a point smaller. |
 | Reply&nbsp;label | `← REPLY` with its state in colour (`12 ms ago`, or why the bytes are not live: 37.2). AUTO_SEND's card: `← AUTO_SEND` and `1000 /s`. |
-| Reply&nbsp;strip | The reply's frame: `READ_RESP`, `DATA 22 bytes ↓` (its payload is the grid right under it, `…` on the bytes line), `CRC ok` ("ok" in the good colour), END. A refusal is the device's ERROR_RESP frame (FUNCTION and the DATA's `ERROR 4 offset out of range` in red, the count echoed); the grid keeps the last good bytes. A read that timed out has no frame: one muted line, `no reply: timed out`. |
-| Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last, each **one line high**; the row's base address at its left, four digits and muted (its tooltip `0xD010`). A row runs from its first cell to the block's last byte: nothing after it. A block that starts inside a row (0xD004) shows a muted `··` for the cells before it, never an invented `00`; a block with no reply yet `··` in every cell. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
-| Chips | Each register's bytes in a row are one chip: a fill tinted in the register's colour (34 % in the dark theme, 26 % in the light one), no edge line, the byte text in the text colour, 3 px of the card between two chips. The text on every tint reads at 4.5:1 or more in both themes, hovered too (checked). |
+| Reply&nbsp;strip | The reply's frame: `READ_RESP`, `DATA payload` under a grey pill `22 bytes ↓` on the bytes line (the payload is the grid right under it), `CRC OK` ("OK" in the good colour, in capitals as the names beside it), END. A refusal is the device's ERROR_RESP frame (FUNCTION and the DATA's `ERROR 4 offset out of range` in red, the count echoed); the grid keeps the last good bytes. A read that timed out has no frame: one muted line, `no reply: timed out`. |
+| Grid | 16 bytes a row, the rows aligned to 16, from the block's first row to its last, each **one line high**; the row's base address at its left, four digits and muted (its tooltip `0xD010`). A row runs from its first cell to the block's last byte: nothing after it. The cells no read covers, before a block that starts inside a row (0xD004) or all of a block with no reply yet, are one empty run per row in a dashed frame (the controls' colour, 3:1 to the card), its words muted in it when they fit (`4 bytes not read`, else `not read`; `no reply yet`), the cell's tooltip saying which; never an invented `00`. A byte inside the block that no register maps (the engine reads over gaps of up to 8 bytes, 13.3) is plain hex, muted, without a chip. |
+| Chips | Each register's bytes in a row are one chip: a fill tinted in the register's colour (34 % in the dark theme, 26 % in the light one), no edge line, the byte text in the text colour, 3 px of the card between two chips. The text on every tint reads at 4.5:1 or more in both themes, lit too (checked). |
 | Decode&nbsp;list | One line per register of the block, in address order: its colour dot, its name, and its value as the Registers tab shows it (Value and Unit, or the Decoded text with ` · ` between its parts). A line sits level with its register's row, or under the line before when that one is lower (37.6): a sparse block reads row by row, a dense one stacks its lines past the grid. The name column is as wide as the tab's longest name (at most 14 characters) plus two; a name or value too long is cut with `…` and the whole line is the tooltip. |
 
 The strip's fields, the protocol's own words (PROTOCOL.md's frame table), in the wire's order:
@@ -7715,22 +7739,32 @@ The strip's fields, the protocol's own words (PROTOCOL.md's frame table), in the
 | FUNCTION | `AA` | `FUNCTION READ` | Function code 0xAA: READ, answered with READ_RESP (also `READ_RESP`, `ERROR_RESP`) |
 | OFFSET | `00 D0` | `OFFSET 0xD000` | Register offset, little endian: 0x00 0xD0 is 0xD000 |
 | COUNT | `16 00` | `COUNT 22` | Number of registers, little endian: 22 (a register is one byte: the count is in bytes) |
-| DATA | none,&nbsp;or&nbsp;`…` | `DATA none`,&nbsp;`DATA 22 bytes ↓` | The payload: the bytes of the grid below; an error answer's one error code |
-| CRC | `FC A5` | `CRC`,&nbsp;`CRC ok` | CRC-16/X-25 over every byte before it, low byte first; the request's computed by the Studio, the reply's checked before the reply was taken |
+| DATA | none,&nbsp;or&nbsp;the&nbsp;pill&nbsp;`22 bytes ↓` | `DATA none`,&nbsp;`DATA payload` | The payload: the bytes of the grid below; an error answer's one error code |
+| CRC | `FC A5` | `CRC`,&nbsp;`CRC OK` | CRC-16/X-25 over every byte before it, low byte first; the request's computed by the Studio, the reply's checked before the reply was taken |
 | END | `7D` | `END` | End byte 0x7D ("}") |
 
 "CRC bad" never shows: a frame whose CRC fails is dropped before it becomes a reply, and the status bar's *Bad
 frames* counts it (18.5). The field and function names are the protocol's words and stay in English in every
-language; their meanings (`none`, `ok`, `22 bytes`) are translated.
+language; their meanings (`none`, `OK`, `payload`, `22 bytes`) are translated.
+
+The payload is a pill, not an ellipsis: a grey fill (the muted colour at 18 % over the card) the height of a chip,
+`22 bytes ↓` in it in the labels' font, as a protocol analyser writes a data field it does not spell out ("Data (22
+bytes)") and a packet diagram boxes it. With Fields off it stands among the frame's bytes (`7B 01 AB 00 D0 16 00
+[22 bytes ↓] AE 41 7D`), where a muted `…` said nothing about what was left out.
 
 The strips share their columns over the whole tab (each column as wide as the widest text it holds in any card, 14 px
 apart), so the request's bytes stand over the reply's, field under field, in every card. The toolbar's **Fields**
 check box (on by default, kept in `dump/fields`) folds them: off, each frame is one line of bytes (`7B 01 AA 00 D0 16
-00 FC A5 7D`, START, CRC and END muted) and hovering a byte shows its field's name and tooltip. One choice for the
+00 FC A5 7D`, START, CRC and END muted, a reply's payload the pill) and hovering a byte shows its field's name and tooltip. One choice for the
 whole tab, so the cards stay alike.
 
-A byte whose value changed glows a moment: a thin ring in the accent colour fading over the Registers tab's
-`GLOW_MS` (700 ms), so the dump and the table pulse together. The glow's 50 ms timer runs only while a byte glows.
+A byte whose value changed glows a moment: its text is written in the accent colour, fading back to its plain
+colour over the Registers tab's `GLOW_MS` (700 ms), so the dump and the table pulse together. Not a ring round the
+cell: on a live device most bytes of a float change at every poll, and rings would read as bordered bytes. Such a byte
+glows all the time, so its colour is the accent made lighter (dark theme, `#CADCFF`) or deeper (light theme,
+`#1E4FBC`) as far as keeps 4.5:1 on every chip's tint (`DumpView::glowText`; the accent itself is 2.0 to 4.0:1 there).
+While a register is hovered nothing glows, so the hover is the one mark on the grid, and a lit register's bytes are
+in the lit text, never the glow's. The glow's 50 ms timer runs only while a byte glows.
 
 ### 37.2 Follow, Hold, the stripe and the banner
 
@@ -7769,10 +7803,10 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 
 | Where | What it does |
 |---|---|
-| Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled stronger (38 % dark, 36 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold; every other chip steps back to half its tint. The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a `··` byte `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. |
+| Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. |
 | Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit, with the hand; the tooltip is the whole line, under it. |
 | Mouse&nbsp;on&nbsp;a&nbsp;field | Its name, meaning and the protocol's words for it (the table in 37.1), under its column. |
-| Click | Selects the register here (its chips framed in the accent, its decode line bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
+| Click | Selects the register here (its chips lit as on the mouse and framed in the accent, its decode line filled with its tint and bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
 | Double-click | Goes to the Registers tab on the register. |
 | Right-click,&nbsp;or&nbsp;**Copy&nbsp;▾** | The menu of the register under the mouse (Copy ▾: the selected one) and of its card (or the first card in view). Nothing is reachable only by the right-click. |
 
@@ -7807,9 +7841,9 @@ bus, its chips selected and scrolled into view (when the tab was hidden, at the 
   one; the Monitor's answer line ends with *(shown in the Dump)*.
 - **The last write.** A write from the Registers tab's editor (Allow writes on) or from the Monitor shows as a card
   at the top, titled *Write SETPOINT @ 0xD080 · 4 bytes* (the register it starts at, when one does): the request is
-  the WRITE_ACK (or WRITE) strip with *DATA 4 bytes ↓*, the grid holds the written bytes as the register's chip and
-  its decode line (the value written), and the reply is the WRITE_ACK_RESP strip (*DATA none*: the answer carries no
-  status, *CRC ok*) or the device's ERROR_RESP. A WRITE is never answered: its reply label says *none: WRITE is not
+  the WRITE_ACK (or WRITE) strip with *DATA payload* under the pill *4 bytes ↓*, the grid holds the written bytes as
+  the register's chip and its decode line (the value written), and the reply is the WRITE_ACK_RESP strip (*DATA
+  none*: the answer carries no status, *CRC OK*) or the device's ERROR_RESP. A WRITE is never answered: its reply label says *none: WRITE is not
   answered* and there is no reply strip. The amber stripe says it was sent once. The next write replaces it; another
   map clears it.
 - **Auto send** (13.8). The block the device sends by itself is a card `← AUTO_SEND 100 /s` with no request label

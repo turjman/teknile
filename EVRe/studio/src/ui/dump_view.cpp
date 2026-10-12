@@ -94,7 +94,7 @@ DumpView::DumpView(QWidget *parent) : QAbstractScrollArea(parent) {
 	glowTimer_ = new QTimer(this);
 	glowTimer_->setInterval(GLOW_TICK_MS);
 	connect(glowTimer_, &QTimer::timeout, this, [this] {
-		if (!glowing()) glowTimer_->stop(); /* one more paint takes the last rings away */
+		if (!glowing()) glowTimer_->stop(); /* one more paint draws the last bytes in their plain colour */
 		viewport()->update();
 	});
 }
@@ -141,6 +141,29 @@ double DumpView::glow(int card, int offset) const {
 	if (offset < 0 || offset >= times.size()) return 0;
 	const qint64 since = glowClock_.elapsed() - times[offset];
 	return since >= RegisterModel::GLOW_MS ? 0.0 : 1.0 - double(since) / double(RegisterModel::GLOW_MS);
+}
+
+/* A changed byte's text is drawn in the glow's colour, fading back to its plain colour: a ring round the cell would
+ * read as a bordered byte, and a live grid would be a field of them. While a register is hovered nothing glows, so the
+ * hover is the one mark on the grid; a lit register's bytes (hovered or selected) are in the lit text, on its stronger
+ * fill. */
+QColor DumpView::byteColour(int card, int offset) const {
+	const ThemeColors &c = Theme::colors();
+	const int reg = regAt(card, offset);
+	if (reg >= 0) {
+		const RegKey key = regKey(defs_[cards_[card].regs[reg]]);
+		if (key == hovered_ || key == selected_) return litText(c, Theme::isDark());
+	}
+	const QColor plain = reg >= 0 ? c.text : c.muted; /* a gap byte: read, but no register's */
+	const double g = hovered_ != NO_REGISTER ? 0.0 : glow(card, offset);
+	return g > 0 ? blend(glowText(c, Theme::isDark()), plain, g) : plain;
+}
+
+/* The accent itself is 2.0 to 3.2:1 on the dark theme's chips and 3.5 to 4.0:1 on the light one's, and a byte that
+ * changes at every poll glows all the time: so the accent made lighter (dark) or deeper (light), as far as keeps
+ * 4.5:1 on every chip's tint, as the byte's plain text does. */
+QColor DumpView::glowText(const ThemeColors &c, bool dark) {
+	return dark ? blend(QColor(Qt::white), c.accent, 0.7) : blend(QColor(Qt::black), c.accent, 0.2);
 }
 
 bool DumpView::glowing() const {
@@ -384,9 +407,12 @@ void DumpView::relayout() {
 	for (int i = 0; i < blocks_.size(); i++)
 		for (const Side side : { Request, Reply }) {
 			if (!hasStrip(i, side)) continue;
-			for (int f = 0; f < N_FIELDS; f++)
-				fieldW_[f] = std::max({ fieldW_[f], mono.horizontalAdvance(fieldBytesText(i, side, Field(f))),
+			for (int f = 0; f < N_FIELDS; f++) {
+				const QString pill = f == Data ? payloadText(i, side) : QString();
+				fieldW_[f] = std::max({ fieldW_[f],
+						pill.isEmpty() ? mono.horizontalAdvance(fieldBytesText(i, side, Field(f))) : payloadWidth(pill),
 						labels.horizontalAdvance(fieldLabel(i, side, Field(f))) });
+			}
 		}
 	contentHeight_ = y;
 	const QSize view = viewport()->size();
@@ -446,12 +472,27 @@ QByteArray DumpView::fieldBytes(int card, Side side, Field field) const {
 	return bytes.mid(from, count);
 }
 
-/* the payload is in the grid: its column says so with "…" (an error answer's one code byte is written) */
+/* the payload is in the grid: its column says so with the pill's words (an error answer's one code byte is written) */
 QString DumpView::fieldBytesText(int card, Side side, Field field) const {
-	const QByteArray bytes = fieldBytes(card, side, field);
-	if (field == Data && !bytes.isEmpty() && uchar(frame(card, side).at(2)) != evre::ERROR_RESP)
-		return QStringLiteral("…");
-	return evre::hex(bytes);
+	if (field == Data) {
+		const QString pill = payloadText(card, side);
+		if (!pill.isEmpty()) return pill;
+	}
+	return evre::hex(fieldBytes(card, side, field));
+}
+
+/* The payload in a strip: a grey pill saying how many bytes and that they are the grid below ("22 bytes ↓"), as a
+ * protocol analyser writes a data field it does not spell out ("Data (22 bytes)") and a packet diagram boxes it; an
+ * ellipsis said only that something was left out. */
+QString DumpView::payloadText(int card, Side side) const {
+	const QByteArray bytes = frame(card, side);
+	const int data = int(bytes.size()) - FRAME_HEAD - 3;
+	if (data <= 0 || uchar(bytes.at(2)) == evre::ERROR_RESP) return {};
+	return tr("%n bytes ↓", nullptr, data);
+}
+
+int DumpView::payloadWidth(const QString &text) const {
+	return QFontMetrics(labelFont()).horizontalAdvance(text) + 2 * PILL_PAD;
 }
 
 QString DumpView::fieldName(Field field) {
@@ -477,9 +518,10 @@ QString DumpView::fieldMeaning(int card, Side side, Field field) const {
 			return tr("ERROR %1 %2").arg(code).arg(evre::errorName(code));
 		}
 		const int data = int(bytes.size()) - FRAME_HEAD - 3;
-		return data == 0 ? tr("none") : tr("%n bytes ↓", nullptr, data);
+		return data == 0 ? tr("none") : tr("payload");
 	}
-	case Crc: return side == Reply ? tr("ok") : QString();
+	/* in capitals, as the field names beside it are */
+	case Crc: return side == Reply ? tr("OK") : QString();
 	default: return {};
 	}
 }
@@ -568,15 +610,97 @@ QRect DumpView::fieldRect(int card, Side side, Field field) const {
 	const int top = rect.top() + (side == Request ? c.requestStripTop : c.replyStripTop);
 	if (fields_) return QRect(rect.left() + stripLeft(field), top, fieldW_[field], stripHeight());
 	const int step = fontMetrics().horizontalAdvance(QStringLiteral("00 "));
+	const int space = step - fontMetrics().horizontalAdvance(QStringLiteral("00"));
+	const QString pill = payloadText(card, side);
 	int x = rect.left() + PAD;
 	for (int f = 0; f < field; f++) {
+		if (f == Data && !pill.isEmpty()) {
+			x += payloadWidth(pill) + space;
+			continue;
+		}
 		const QString text = fieldBytesText(card, side, Field(f));
-		if (!text.isEmpty()) x += (int(text.size()) + 1) / 3 * step + (text == QStringLiteral("…") ? step : 0);
+		if (!text.isEmpty()) x += (int(text.size()) + 1) / 3 * step;
 	}
-	const QString text = fieldBytesText(card, side, field);
-	const int units = text == QStringLiteral("…") ? 1 : (int(text.size()) + 1) / 3;
+	if (field == Data && !pill.isEmpty()) return QRect(x, top, payloadWidth(pill), lineHeight());
+	const int units = (int(fieldBytesText(card, side, field).size()) + 1) / 3;
 	return QRect(x, top, units * step, lineHeight());
 }
+
+QRect DumpView::headRect(int card, Side side) const {
+	if (card < 0 || card >= cards_.size()) return {};
+	const int top = side == Request ? cards_[card].requestTop : cards_[card].replyTop;
+	if (top < 0) return {};
+	const QRect rect = cardRect(card);
+	return QRect(rect.left() + PAD, rect.top() + top, headLabelW_, headLineHeight());
+}
+
+QRectF DumpView::arrowRect(int card, Side side) const {
+	const QRect head = headRect(card, side);
+	if (head.isEmpty()) return {};
+	const QString label = side == Request ? requestLabel() : replyLabel(blocks_[card]);
+	return headLabel(label, head.left(), head.top()).arrowInk;
+}
+
+QRect DumpView::payloadRect(int card, Side side) const {
+	if (payloadText(card, side).isEmpty()) return {};
+	const QRect field = fieldRect(card, side, Data);
+	return QRect(field.left(), field.top(), payloadWidth(payloadText(card, side)), lineHeight());
+}
+
+/* the cells of a row no read covers: before a block that starts inside it, or all of a block with no reply yet */
+QVector<DumpView::Run> DumpView::unreadRuns(int card, int row) const {
+	QVector<Run> runs;
+	if (card < 0 || card >= cards_.size() || row < 0 || row >= cards_[card].rows.size()) return runs;
+	const DumpBlock &b = blocks_[card];
+	const bool answered = b.data.size() >= b.size;
+	const int base = cards_[card].rows[row].base;
+	for (int column = 0; column < 16; column++) {
+		const int offset = base + column - int(b.addr);
+		if (offset >= b.size) break;
+		if (offset >= 0 && answered) continue;
+		const bool waiting = offset >= 0; /* in the block, no reply yet; else before it */
+		if (!runs.isEmpty() && runs.last().to == column - 1 && runs.last().waiting == waiting) runs.last().to = column;
+		else runs << Run { column, column, waiting };
+	}
+	return runs;
+}
+
+bool DumpView::unreadRun(int card, int offset, int &row, Run &run) const {
+	if (card < 0 || card >= cards_.size() || cards_[card].rows.isEmpty()) return false;
+	const int addr = int(blocks_[card].addr) + offset;
+	row = (addr - cards_[card].rows.first().base) / 16;
+	if (addr < cards_[card].rows.first().base || row >= cards_[card].rows.size()) return false;
+	for (const Run &r : unreadRuns(card, row))
+		if ((addr & 0xF) >= r.from && (addr & 0xF) <= r.to) {
+			run = r;
+			return true;
+		}
+	return false;
+}
+
+QRect DumpView::unreadRect(int card, int offset) const {
+	int row = 0;
+	Run run;
+	if (!unreadRun(card, offset, row, run)) return {};
+	const QRect first = byteRect(card, offset - ((int(blocks_[card].addr) + offset) & 0xF) + run.from);
+	return QRect(first.left() + 1, first.top() + 2, (run.to - run.from + 1) * cellWidth() - 2, lineHeight() - 4);
+}
+
+/* the longest of the run's words that fits: "4 bytes not read", "not read" (a block with no reply yet: "no reply yet");
+ * none in a run too short, whose cells' tooltips say it */
+QString DumpView::unreadWords(int card, int offset, int width) const {
+	int row = 0;
+	Run run;
+	if (!unreadRun(card, offset, row, run)) return {};
+	const QStringList words = run.waiting ? QStringList { tr("no reply yet") }
+									  : QStringList { tr("%n bytes not read", nullptr, run.to - run.from + 1), tr("not read") };
+	const QFontMetrics fm(labelFont());
+	for (const QString &w : words)
+		if (fm.horizontalAdvance(w) <= width - 8) return w;
+	return {};
+}
+
+QString DumpView::unreadText(int card, int offset) const { return unreadWords(card, offset, unreadRect(card, offset).width()); }
 
 QRect DumpView::byteRect(int card, int offset) const {
 	if (card < 0 || card >= cards_.size() || cards_[card].rows.isEmpty()) return {};
@@ -605,7 +729,7 @@ QString DumpView::decodeText(int card, int line) const {
 	return d.name + QStringLiteral("  ") + decodeValue(d, raw);
 }
 
-/* a cell the row draws: from the row's first cell to the block's last byte ("··" before the block) */
+/* a cell the row draws: from the row's first cell to the block's last byte (the cells before the block, framed as not read) */
 bool DumpView::byteAt(const QPoint &pos, int &card, int &offset) const {
 	const QPoint o = origin();
 	const int column = pos.x() - (o.x() + gridLeft());
@@ -686,6 +810,14 @@ double DumpView::chipAlpha(bool dark, bool hovered) {
 }
 
 QColor DumpView::chipFill(const QColor &colour, const QColor &card, double alpha) { return blend(colour, card, alpha); }
+
+QColor DumpView::litText(const ThemeColors &c, bool dark) { return dark ? QColor(Qt::white) : c.text; }
+
+/* a grey a step off the card in both themes (the text on it 11:1 dark, 14:1 light) */
+QColor DumpView::payloadFill(const ThemeColors &c) { return blend(c.muted, c.surface, 0.18); }
+
+/* the controls' edge colour: 3:1 or more to the card, as a shape needs (the label in it is muted, as text needs) */
+QColor DumpView::unreadEdge(const ThemeColors &c) { return c.control; }
 
 /* ------------------------------------------------------------------- words */
 
@@ -936,14 +1068,45 @@ void DumpView::paintEvent(QPaintEvent *) {
 	}
 }
 
+/* The label's arrow and its word apart, where the label drawn whole would put them (the arrow first in the word's
+ * direction: at the left of an English word, at the right of an Arabic one), the arrow's baseline moved so its ink is
+ * centred on the word's capitals: a font draws an arrow on its maths axis, lower, and "→ REQUEST" read as an arrow
+ * at the bottom of the line. */
+DumpView::HeadLabel DumpView::headLabel(const QString &label, int x, int y) const {
+	HeadLabel h;
+	const QFontMetricsF fm(labelFont());
+	const double baseline = qRound(y + (headLineHeight() - fm.height()) / 2.0 + fm.ascent());
+	const bool arrow = !label.isEmpty() && (label.at(0) == QChar(0x2192) || label.at(0) == QChar(0x2190));
+	h.arrow = arrow ? label.left(1) : QString();
+	h.word = arrow ? label.mid(1) : label;
+	const bool rtl = h.word.isRightToLeft();
+	h.wordAt = QPointF(rtl || !arrow ? x : x + fm.horizontalAdvance(h.arrow), baseline);
+	if (arrow) {
+		const QRectF ink = fm.tightBoundingRect(h.arrow);
+		h.arrowAt = QPointF(rtl ? x + fm.horizontalAdvance(h.word) : x,
+				qRound(baseline - fm.capHeight() / 2.0 - ink.center().y()));
+		h.arrowInk = ink.translated(h.arrowAt);
+	}
+	return h;
+}
+
 /* A label line: the small muted label ("→ REQUEST"), then its sentence in the window's font, cut to its room. */
 void DumpView::drawHead(QPainter &p, int x, int y, int width, const QString &label, const QString &sentence,
 		const QColor &sentenceColour) const {
 	const ThemeColors &c = Theme::colors();
 	const int head = headLineHeight();
-	p.setFont(labelFont());
+	const QFont labels = labelFont();
+	const QFontMetricsF fm(labels);
+	const HeadLabel h = headLabel(label, x, y);
+	p.setFont(labels);
 	p.setPen(c.muted);
-	p.drawText(QRect(x, y, headLabelW_, head), LEFT, label);
+	/* each at its baseline: a rect's top at the baseline less the ascent, aligned to its top */
+	const auto at = [&](const QPointF &baseline, const QString &text) {
+		p.drawText(QRectF(baseline.x(), baseline.y() - fm.ascent(), fm.horizontalAdvance(text) + 2, fm.height()),
+				Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignTop, text);
+	};
+	at(h.wordAt, h.word);
+	if (!h.arrow.isEmpty()) at(h.arrowAt, h.arrow);
 	const QFont font = uiFont();
 	p.setFont(font);
 	p.setPen(sentenceColour);
@@ -952,8 +1115,9 @@ void DumpView::drawHead(QPainter &p, int x, int y, int width, const QString &lab
 	p.setFont(this->font());
 }
 
-/* A frame. Fields on: a column per field, its bytes (START, CRC, END and the payload's "…" muted) over its name
- * (muted) and meaning ("ok" in the good colour, an error in the bad). Off: the bytes on one line. */
+/* A frame. Fields on: a column per field, its bytes (START, CRC and END muted; the payload a grey pill, its bytes are
+ * the grid) over its name (muted) and meaning ("OK" in the good colour, an error in the bad). Off: the bytes on one
+ * line, the pill among them. */
 void DumpView::drawStrip(QPainter &p, int i, Side side, int x, int y) const {
 	const ThemeColors &c = Theme::colors();
 	const QByteArray bytes = frame(i, side);
@@ -966,10 +1130,23 @@ void DumpView::drawStrip(QPainter &p, int i, Side side, int x, int y) const {
 		const Field field = Field(f);
 		const QString text = fieldBytesText(i, side, field);
 		const QRect rect = fieldRect(i, side, field); /* drawn where the tests and the tooltips find it */
-		const bool muted = field == Start || field == Crc || field == End || text == QStringLiteral("…");
-		p.setFont(font());
-		p.setPen(field == Data && error ? c.bad : muted ? c.muted : c.text);
-		p.drawText(QRect(rect.left(), y, rect.width() + FIELD_GAP, line), LEFT, text);
+		const QRect pill = field == Data ? payloadRect(i, side) : QRect();
+		if (!pill.isEmpty()) {
+			/* the payload: a grey pill the size of a chip, its words in the labels' font */
+			p.setRenderHint(QPainter::Antialiasing, true);
+			p.setPen(Qt::NoPen);
+			p.setBrush(payloadFill(c));
+			p.drawRoundedRect(QRectF(pill).adjusted(0, 2.5, 0, -2.5), 4, 4);
+			p.setRenderHint(QPainter::Antialiasing, false);
+			p.setFont(labels);
+			p.setPen(c.text);
+			p.drawText(pill, Qt::AlignCenter, text);
+		} else {
+			const bool muted = field == Start || field == Crc || field == End;
+			p.setFont(font());
+			p.setPen(field == Data && error ? c.bad : muted ? c.muted : c.text);
+			p.drawText(QRect(rect.left(), y, rect.width() + FIELD_GAP, line), LEFT, text);
+		}
 		if (!fields_) continue;
 		const int labelTop = y + line + LABEL_GAP;
 		const QString name = fieldName(field), meaning = fieldMeaning(i, side, field);
@@ -1052,14 +1229,15 @@ void DumpView::drawCard(QPainter &p, int i, const QPoint &at) const {
 		p.setFont(font());
 	}
 	drawGrid(p, i, at);
-	drawGlow(p, i);
 	drawDecode(p, i, at);
 }
 
 /* The rows: the address, then the cells from the row's first to the block's last byte. The chips first (a register's
  * bytes in one row are one fill, 1.5 px inside its cells, so two neighbours have 3 px of card between them), then
- * each byte's text over them. While a register is hovered its chips are stronger and outlined in its colour and the
- * others step back to half their tint: one clear change, in its own colour. */
+ * each byte's text over them. A hovered register's chips are filled stronger and outlined in its colour, a selected
+ * one's filled stronger and framed in the accent; the other chips keep their tint (dimming them greyed the whole tab,
+ * the other cards too). Cells no read covers are an empty run in a dashed frame with its words, not dots that say
+ * nothing: dashed, as an empty slot is drawn, and empty, as a debugger leaves memory it could not read. */
 void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const ThemeColors &c = Theme::colors();
 	const bool dark = Theme::isDark();
@@ -1069,9 +1247,10 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 	const int left = at.x() - CARD_GAP + gridLeft();
 	const bool answered = b.data.size() >= b.size;
 	const int viewHeight = viewport()->height();
-	const double rest = chipAlpha(dark), hot = chipAlpha(dark, true), dim = rest * CHIP_ALPHA_DIM;
-	const bool anyHovered = hovered_ != NO_REGISTER;
-	for (const Row &row : card.rows) {
+	const double rest = chipAlpha(dark), hot = chipAlpha(dark, true);
+	const QFont labels = labelFont();
+	for (int rowIndex = 0; rowIndex < card.rows.size(); rowIndex++) {
+		const Row &row = card.rows[rowIndex];
 		const int y = at.y() + row.top;
 		if (y + line < 0 || y > viewHeight) continue; /* a long manual read: only the rows in view */
 		p.setPen(c.muted);
@@ -1079,16 +1258,16 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 		p.setRenderHint(QPainter::Antialiasing, true);
 		QRectF selectedChip;
 		QVector<QPair<QRectF, QColor>> hoveredChips;
-		for (int r = 0; r < card.regs.size(); r++) {
+		for (int r = 0; r < card.regs.size() && answered; r++) {
 			const RegDef &d = defs_[card.regs[r]];
 			const int from = std::max(int(d.addr), row.base), to = std::min(int(d.addr) + d.size, row.base + 16) - 1;
 			if (from > to) continue;
 			const QColor colour = card.colours[r];
-			const bool isHovered = regKey(d) == hovered_;
+			const bool isHovered = regKey(d) == hovered_, lit = isHovered || regKey(d) == selected_;
 			const QRectF chip(left + (from - row.base) * cell + 1.5, y + 2.5, (to - from + 1) * cell - 3.0, line - 5.0);
-			const double alpha = !anyHovered ? rest : isHovered ? hot : dim;
-			QColor fill = colour.isValid() ? chipFill(colour, c.surface, alpha) : c.surface2;
-			if (!colour.isValid() && anyHovered && !isHovered) fill = blend(c.surface2, c.surface, CHIP_ALPHA_DIM);
+			/* a neutral chip (Colour: plotted) lit: the muted grey at the lit alpha */
+			const QColor fill = colour.isValid() ? chipFill(colour, c.surface, lit ? hot : rest)
+												 : lit ? chipFill(c.muted, c.surface, hot) : c.surface2;
 			p.setPen(Qt::NoPen);
 			p.setBrush(fill);
 			p.drawRoundedRect(chip, 4, 4);
@@ -1105,25 +1284,38 @@ void DumpView::drawGrid(QPainter &p, int i, const QPoint &at) const {
 			p.setBrush(Qt::NoBrush);
 			p.drawRoundedRect(selectedChip.adjusted(-1, -1, 1, 1), 5, 5);
 		}
+		/* the runs no read covers: a dashed frame, its words in it when they fit */
+		for (const Run &run : unreadRuns(i, rowIndex)) {
+			const int offset = row.base + run.from - int(b.addr);
+			const QRect frame = unreadRect(i, offset);
+			QPen dashed(unreadEdge(c), 1);
+			dashed.setDashPattern({ 3, 3 });
+			p.setPen(dashed);
+			p.setBrush(Qt::NoBrush);
+			p.drawRoundedRect(QRectF(frame).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+			const QString words = unreadWords(i, offset, frame.width());
+			if (words.isEmpty()) continue;
+			p.setFont(labels);
+			p.setPen(c.muted);
+			p.drawText(frame, Qt::AlignCenter, words);
+			p.setFont(font());
+		}
 		p.setRenderHint(QPainter::Antialiasing, false);
 		for (int column = 0; column < 16; column++) {
 			const int offset = row.base + column - int(b.addr);
 			if (offset >= b.size) break; /* after the block: the card's surface, nothing invented */
+			if (offset < 0 || !answered) continue; /* in a run, framed above */
 			const QRect rect(left + column * cell, y, cell, line);
-			if (offset < 0 || !answered) {
-				p.setPen(c.muted);
-				p.drawText(rect, Qt::AlignCenter, QStringLiteral("··"));
-				continue;
-			}
-			p.setPen(regAt(i, offset) >= 0 ? c.text : c.muted); /* a gap byte: read, but no register's */
+			p.setPen(byteColour(i, offset));
 			p.drawText(rect, Qt::AlignCenter, byteText(b.data[offset]));
 		}
 	}
 }
 
 /* One line per register, placed by the flow (relayout): its dot, its name, its value; each elided past its room (the
- * whole line is the tooltip). The selected register's line is bold; the hovered one is filled with its colour's tint
- * (the chip's own), its dot larger and its name bold, so the chip and its line light together. */
+ * whole line is the tooltip). The hovered and the selected register's lines are filled with its colour's tint (the
+ * chip's own), so the chip and its line light together; the hovered one's dot larger and its name bold, the selected
+ * one's name and value bold. */
 void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 	Q_UNUSED(at);
 	const ThemeColors &c = Theme::colors();
@@ -1139,7 +1331,7 @@ void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 		const QColor colour = card.colours[r].isValid() ? card.colours[r] : c.muted;
 		p.setRenderHint(QPainter::Antialiasing, true);
 		p.setPen(Qt::NoPen);
-		if (isHovered) {
+		if (isHovered || isSelected) {
 			p.setBrush(card.colours[r].isValid() ? chipFill(colour, c.surface, chipAlpha(dark)) : c.surface2);
 			p.drawRoundedRect(QRectF(rect).adjusted(-4, 1, 0, -1), 4, 4);
 		}
@@ -1161,24 +1353,6 @@ void DumpView::drawDecode(QPainter &p, int i, const QPoint &at) const {
 				QFontMetrics(valueFont).elidedText(decodeValue(d, raw), Qt::ElideRight, values));
 		p.setFont(font());
 	}
-}
-
-/* A byte that changed: a thin ring in the accent colour, fading over GLOW_MS as the Registers tab's value does. */
-void DumpView::drawGlow(QPainter &p, int i) const {
-	const QVector<qint64> times = changedMs_.value(readId(blocks_[i]));
-	if (times.isEmpty()) return;
-	const qint64 now = glowClock_.elapsed();
-	const QColor accent = Theme::colors().accent;
-	p.setRenderHint(QPainter::Antialiasing, true);
-	p.setBrush(Qt::NoBrush);
-	for (int offset = 0; offset < times.size(); offset++) {
-		if (now - times[offset] >= RegisterModel::GLOW_MS) continue;
-		QColor ring = accent;
-		ring.setAlphaF(float(glow(i, offset)));
-		p.setPen(QPen(ring, 1.5));
-		p.drawRoundedRect(QRectF(byteRect(i, offset)).adjusted(2.5, 3.5, -2.5, -3.5), 3, 3);
-	}
-	p.setRenderHint(QPainter::Antialiasing, false);
 }
 
 /* ------------------------------------------------------------------ the mouse and the keys */

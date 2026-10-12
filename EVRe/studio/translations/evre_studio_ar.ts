@@ -2008,10 +2008,6 @@ A note: right-click the chart where it goes, Add note here.</source>
         </translation>
     </message>
     <message>
-        <source>ok</source>
-        <translation>سليم</translation>
-    </message>
-    <message>
         <source>Start byte 0x7B (&quot;{&quot;): a frame is recognisable in a terminal dump</source>
         <translation>بايت البداية ⁦0x7B (&quot;{&quot;)⁩: يُعرف الإطار به في عرض الطرفية</translation>
     </message>
@@ -2179,6 +2175,29 @@ A note: right-click the chart where it goes, Add note here.</source>
     <message>
         <source>A write: sent once, not refreshed</source>
         <translation>كتابة: أُرسلت مرة واحدة ولا تُحدَّث</translation>
+    </message>
+    <message>
+        <source>payload</source>
+        <translation>الحمولة</translation>
+    </message>
+    <message>
+        <source>OK</source>
+        <translation>سليم</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n bytes not read</source>
+        <translation>
+            <numerusform>%n بايت غير مقروء</numerusform>
+            <numerusform>بايت واحد غير مقروء</numerusform>
+            <numerusform>بايتان غير مقروءين</numerusform>
+            <numerusform>%n بايتات غير مقروءة</numerusform>
+            <numerusform>%n بايتًا غير مقروء</numerusform>
+            <numerusform>%n بايت غير مقروء</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>not read</source>
+        <translation>غير مقروء</translation>
     </message>
 </context>
 <context>
@@ -2689,80 +2708,6 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
     <message>
         <source>Dump</source>
         <translation>عرض الذاكرة</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Dump&lt;/h2&gt;
-&lt;p&gt;The &lt;b&gt;Dump&lt;/b&gt; tab shows the device&apos;s bytes as the reads bring them: one &lt;b&gt;card&lt;/b&gt; per block the polling reads,
-in address order. Each card has the request the Studio sent (&lt;i&gt;→ REQUEST  READ 22 bytes @ 0xD000&lt;/i&gt;) and the reply
-(&lt;i&gt;← REPLY  12 ms ago&lt;/i&gt;), each broken down into the frame&apos;s fields: every byte of it named, START, SLAVE,
-FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;, &lt;i&gt;OFFSET 0xD000&lt;/i&gt;,
-&lt;i&gt;DATA 22 bytes ↓&lt;/i&gt;, &lt;i&gt;CRC ok&lt;/i&gt;: the reply&apos;s CRC was checked). The mouse on a field says what the protocol makes of
-it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row&apos;s address at its left.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Every register of the map is a &lt;b&gt;chip&lt;/b&gt;: its bytes tinted in its colour, a plotted one in its chart colour.
-Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
-the block that no register maps is plain grey hex; &lt;b&gt;··&lt;/b&gt; stands for a byte before the block in its row, or one
-with no reply yet (never an invented 00).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Fields&lt;/b&gt; (on by default): off, each frame is one line of bytes, and a byte&apos;s tooltip names its field.&lt;/li&gt;
-&lt;li&gt;A byte whose value changed glows a moment, as a value in the Registers tab does.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Follow&lt;/b&gt; shows each block&apos;s newest reply at the pace of &lt;i&gt;Show values&lt;/i&gt;; &lt;b&gt;Hold&lt;/b&gt; keeps the bytes shown.
-&lt;b&gt;Colour&lt;/b&gt;: &lt;b&gt;All registers&lt;/b&gt;, or &lt;b&gt;Plotted&lt;/b&gt; (only the plotted ones in colour, the others grey).&lt;/li&gt;
-&lt;li&gt;A card whose bytes are not live has an &lt;b&gt;amber&lt;/b&gt; stripe at its left edge, and its reply&apos;s label and tooltip say
-why: held, stale (not refreshed for longer than the Registers tab&apos;s stale limit), a failed read (the device&apos;s error
-answer shown, the last good bytes stay), the link closed, a manual read or a write. Held, or with the link closed, a
-banner
-over the cards says it once.&lt;/li&gt;
-&lt;li&gt;The mouse on a chip lights the register in its own colour, its chips and its decode line, and says the byte: its
-register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
-&lt;b&gt;click&lt;/b&gt; selects the register here and in the Registers tab; a &lt;b&gt;double-click&lt;/b&gt; goes there. The Registers tab&apos;s
-current row is selected here too, and its right-click menu has &lt;b&gt;Show in dump&lt;/b&gt;. With the cards in focus the
-&lt;b&gt;arrow keys&lt;/b&gt; move the selection, &lt;b&gt;Enter&lt;/b&gt; goes to the Registers tab, the &lt;b&gt;Menu&lt;/b&gt; key opens the menu.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Right-click&lt;/b&gt;, or the &lt;b&gt;Copy ▾&lt;/b&gt; button: Show in Registers, Plot / Unplot, Write… (with &lt;i&gt;Allow
-writes&lt;/i&gt;), and Copy: the register&apos;s bytes, the block as hex rows or as a C array, or its decoded values.&lt;/li&gt;
-&lt;li&gt;A &lt;b&gt;READ&lt;/b&gt; sent from the Monitor shows as a card at the top, until the next one; so does the last &lt;b&gt;write&lt;/b&gt;
-(from the Registers tab or the Monitor): its WRITE_ACK and the device&apos;s WRITE_ACK_RESP over the bytes written, or a
-WRITE, which is never answered. A running fast stream is a note (its records are on the Chart); auto send&apos;s frame shows as &lt;i&gt;← AUTO_SEND&lt;/i&gt; with its rate. On a bus the
-&lt;b&gt;Device&lt;/b&gt; list shows one device&apos;s cards at a time.&lt;/li&gt;
-&lt;li&gt;The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
-kept).&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;عرض الذاكرة&lt;/h2&gt;
-&lt;p&gt;يعرض لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt; بايتات الجهاز كما تأتي بها القراءات: &lt;b&gt;بطاقة&lt;/b&gt; لكل كتلة يقرؤها الاستطلاع،
-بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;→ طلب  قراءة 22 بايتًا عند 0xD000&lt;/i&gt;) والرد
-(&lt;i&gt;← رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
-وDATA وCRC وEND، ومعناه تحته (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;، &lt;i&gt;OFFSET 0xD000&lt;/i&gt;، &lt;i&gt;DATA 22 بايتًا ↓&lt;/i&gt;، &lt;i&gt;CRC سليم&lt;/i&gt;:
-فُحص CRC الرد). والفأرة على حقل تقول ما يعنيه في البروتوكول. وتحتها الحمولة شبكةً من 16 بايتًا في كل صف، بارتفاع سطر
-واحد، وعنوان الصف على يساره.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;كل مسجّل في الخريطة &lt;b&gt;شارة&lt;/b&gt;: بايتاته ملوّنة بلونه، والمسجّل المرسوم بلونه في المخطط. وبجانب الشبكة سطر لكل
-مسجّل: نقطته واسمه وقيمته كما يعرضها لسان المسجّلات. والبايت داخل الكتلة الذي لا يعرّفه أي مسجّل ست عشري رمادي
-عادي؛ و&lt;b&gt;··&lt;/b&gt; بايت قبل الكتلة في صفها، أو بايت لم يأتِ رده بعد (لا 00 مختلَق أبدًا).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الحقول&lt;/b&gt; (مفعّلة افتراضيًا): عند إيقافها يصير كل إطار سطرًا واحدًا من البايتات، ويسمّي تلميح البايت حقله.&lt;/li&gt;
-&lt;li&gt;البايت الذي تغيّرت قيمته يتوهّج لحظة، كما تتوهّج القيمة في لسان المسجّلات.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;متابعة&lt;/b&gt; تعرض أحدث رد لكل كتلة بوتيرة &lt;i&gt;عرض القيم&lt;/i&gt;؛ و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي البايتات المعروضة.
-&lt;b&gt;اللون&lt;/b&gt;: &lt;b&gt;كل المسجّلات&lt;/b&gt;، أو &lt;b&gt;المرسومة&lt;/b&gt; (المرسومة وحدها ملوّنة، والبقية رمادية).&lt;/li&gt;
-&lt;li&gt;للبطاقة التي ليست بايتاتها حية حافة &lt;b&gt;كهرمانية&lt;/b&gt; على طرفها الأيسر، ويقول عنوان ردها وتلميحها السبب: مثبّتة،
-أو قديمة (لم تُحدَّث مدة أطول من حدّ القِدم في لسان المسجّلات)، أو قراءة فاشلة (يُعرض رد الخطأ من الجهاز وتبقى آخر
-البايتات السليمة)، أو الوصلة مغلقة، أو قراءة يدوية أو كتابة. وعند التثبيت أو إغلاق الوصلة يقول ذلك شريط تنبيه فوق البطاقات مرة
-واحدة.&lt;/li&gt;
-&lt;li&gt;الفأرة على شارة تضيء المسجّل بلونه، شاراته وسطر قيمته، وتقول البايت: مسجّله، وأي بايت هو منه، وعنوانه، وقيمته؛
-والتلميح تحت الصف، لا فوق القيم أبدًا. &lt;b&gt;النقر&lt;/b&gt; يحدّد المسجّل هنا وفي لسان المسجّلات؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt;
-ينتقل إليه هناك. والصف الحالي في لسان المسجّلات يُحدَّد هنا أيضًا، وفي قائمة زره الأيمن &lt;b&gt;إظهار في عرض
-الذاكرة&lt;/b&gt;. وحين يكون التركيز على البطاقات تنقل &lt;b&gt;مفاتيح الأسهم&lt;/b&gt; التحديد، و&lt;b&gt;Enter&lt;/b&gt; ينتقل إلى لسان
-المسجّلات، ومفتاح &lt;b&gt;القائمة&lt;/b&gt; يفتح القائمة.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt;، أو زر &lt;b&gt;نسخ ▾&lt;/b&gt;: إظهار في المسجّلات، ورسم / إزالة من المخطط، وكتابة… (مع
-&lt;i&gt;السماح بالكتابة&lt;/i&gt;)، والنسخ: بايتات المسجّل، أو الكتلة صفوفًا ست عشرية أو مصفوفة C، أو قيمها المفكوكة.&lt;/li&gt;
-&lt;li&gt;قراءة &lt;b&gt;READ&lt;/b&gt; تُرسل من المراقبة تظهر بطاقةً في الأعلى، حتى القراءة التالية؛ وكذلك آخر &lt;b&gt;كتابة&lt;/b&gt;
-(من لسان المسجّلات أو من المراقبة): إطار WRITE_ACK ورد الجهاز WRITE_ACK_RESP فوق البايتات المكتوبة، أو إطار WRITE الذي
-لا يُجاب أبدًا. والتدفق السريع الجاري ملاحظة
-(سجلّاته في المخطط)؛ وإطار الإرسال التلقائي يظهر &lt;i&gt;← AUTO_SEND&lt;/i&gt; بمعدّله. وعلى ناقل تعرض قائمة
-&lt;b&gt;الجهاز&lt;/b&gt; بطاقات جهاز واحد في كل مرة.&lt;/li&gt;
-&lt;li&gt;لا يحتفظ اللسان بشيء ما دام لسان آخر معروضًا: تأتي بطاقاته من جديد مع الردود التالية (وتبقى آخر كتابة).&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
     </message>
     <message>
         <source>Monitor</source>
@@ -3783,6 +3728,86 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 تلغيه: أعمدة الملف، وكل قناة سريعة، والخطوط الرياضية، مجمّعةً، مع الكل ولا شيء وبحث حين تكثر؛ والخطوط الملغاة تبقى
 ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
 &lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Dump&lt;/h2&gt;
+&lt;p&gt;The &lt;b&gt;Dump&lt;/b&gt; tab shows the device&apos;s bytes as the reads bring them: one &lt;b&gt;card&lt;/b&gt; per block the polling reads,
+in address order. Each card has the request the Studio sent (&lt;i&gt;→ REQUEST  READ 22 bytes @ 0xD000&lt;/i&gt;) and the reply
+(&lt;i&gt;← REPLY  12 ms ago&lt;/i&gt;), each broken down into the frame&apos;s fields: every byte of it named, START, SLAVE,
+FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;, &lt;i&gt;OFFSET 0xD000&lt;/i&gt;,
+&lt;i&gt;DATA payload&lt;/i&gt; under a grey &lt;i&gt;22 bytes ↓&lt;/i&gt;, &lt;i&gt;CRC OK&lt;/i&gt;: the reply&apos;s CRC was checked). The mouse on a field says
+what the protocol makes of it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row&apos;s
+address at its left.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every register of the map is a &lt;b&gt;chip&lt;/b&gt;: its bytes tinted in its colour, a plotted one in its chart colour.
+Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
+the block that no register maps is plain grey hex. Bytes no read covers (before the block in its row, or a block with
+no reply yet) are empty cells in a &lt;b&gt;dashed frame&lt;/b&gt;, with &lt;i&gt;4 bytes not read&lt;/i&gt; or &lt;i&gt;no reply yet&lt;/i&gt; in it when
+it fits (never an invented 00).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Fields&lt;/b&gt; (on by default): off, each frame is one line of bytes, and a byte&apos;s tooltip names its field.&lt;/li&gt;
+&lt;li&gt;A byte whose value changed is written in the accent colour a moment, as a value in the Registers tab glows; not
+while the mouse is on a chip.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Follow&lt;/b&gt; shows each block&apos;s newest reply at the pace of &lt;i&gt;Show values&lt;/i&gt;; &lt;b&gt;Hold&lt;/b&gt; keeps the bytes shown.
+&lt;b&gt;Colour&lt;/b&gt;: &lt;b&gt;All registers&lt;/b&gt;, or &lt;b&gt;Plotted&lt;/b&gt; (only the plotted ones in colour, the others grey).&lt;/li&gt;
+&lt;li&gt;A card whose bytes are not live has an &lt;b&gt;amber&lt;/b&gt; stripe at its left edge, and its reply&apos;s label and tooltip say
+why: held, stale (not refreshed for longer than the Registers tab&apos;s stale limit), a failed read (the device&apos;s error
+answer shown, the last good bytes stay), the link closed, a manual read or a write. Held, or with the link closed, a
+banner
+over the cards says it once.&lt;/li&gt;
+&lt;li&gt;The mouse on a chip lights the register in its own colour, its chips filled stronger and outlined and its decode
+line filled, the rest as it was, and says the byte: its
+register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
+&lt;b&gt;click&lt;/b&gt; selects the register here and in the Registers tab (lit the same way, framed in blue); a
+&lt;b&gt;double-click&lt;/b&gt; goes there. The Registers tab&apos;s
+current row is selected here too, and its right-click menu has &lt;b&gt;Show in dump&lt;/b&gt;. With the cards in focus the
+&lt;b&gt;arrow keys&lt;/b&gt; move the selection, &lt;b&gt;Enter&lt;/b&gt; goes to the Registers tab, the &lt;b&gt;Menu&lt;/b&gt; key opens the menu.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Right-click&lt;/b&gt;, or the &lt;b&gt;Copy ▾&lt;/b&gt; button: Show in Registers, Plot / Unplot, Write… (with &lt;i&gt;Allow
+writes&lt;/i&gt;), and Copy: the register&apos;s bytes, the block as hex rows or as a C array, or its decoded values.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;READ&lt;/b&gt; sent from the Monitor shows as a card at the top, until the next one; so does the last &lt;b&gt;write&lt;/b&gt;
+(from the Registers tab or the Monitor): its WRITE_ACK and the device&apos;s WRITE_ACK_RESP over the bytes written, or a
+WRITE, which is never answered. A running fast stream is a note (its records are on the Chart); auto send&apos;s frame shows as &lt;i&gt;← AUTO_SEND&lt;/i&gt; with its rate. On a bus the
+&lt;b&gt;Device&lt;/b&gt; list shows one device&apos;s cards at a time.&lt;/li&gt;
+&lt;li&gt;The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
+kept).&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;عرض الذاكرة&lt;/h2&gt;
+&lt;p&gt;يعرض لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt; بايتات الجهاز كما تأتي بها القراءات: &lt;b&gt;بطاقة&lt;/b&gt; لكل كتلة يقرؤها الاستطلاع،
+بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;→ طلب  قراءة 22 بايتًا عند 0xD000&lt;/i&gt;) والرد
+(&lt;i&gt;← رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
+وDATA وCRC وEND، ومعناه تحته (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;، &lt;i&gt;OFFSET 0xD000&lt;/i&gt;، &lt;i&gt;DATA الحمولة&lt;/i&gt; تحت &lt;i&gt;22 بايتًا ↓&lt;/i&gt;
+الرمادية، &lt;i&gt;CRC سليم&lt;/i&gt;: فُحص CRC الرد). والفأرة على حقل تقول ما يعنيه في البروتوكول. وتحتها الحمولة شبكةً من 16 بايتًا في كل صف، بارتفاع سطر
+واحد، وعنوان الصف على يساره.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;كل مسجّل في الخريطة &lt;b&gt;شارة&lt;/b&gt;: بايتاته ملوّنة بلونه، والمسجّل المرسوم بلونه في المخطط. وبجانب الشبكة سطر لكل
+مسجّل: نقطته واسمه وقيمته كما يعرضها لسان المسجّلات. والبايت داخل الكتلة الذي لا يعرّفه أي مسجّل ست عشري رمادي
+عادي. والبايتات التي لا تغطيها قراءة (قبل الكتلة في صفها، أو كتلة لا رد لها بعد) خلايا فارغة في &lt;b&gt;إطار
+متقطع&lt;/b&gt;، فيه &lt;i&gt;4 بايتات غير مقروءة&lt;/i&gt; أو &lt;i&gt;لا رد بعد&lt;/i&gt; حين يتسع لذلك (لا 00 مختلَق أبدًا).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الحقول&lt;/b&gt; (مفعّلة افتراضيًا): عند إيقافها يصير كل إطار سطرًا واحدًا من البايتات، ويسمّي تلميح البايت حقله.&lt;/li&gt;
+&lt;li&gt;البايت الذي تغيّرت قيمته يُكتب بلون الإبراز لحظة، كما تتوهّج القيمة في لسان المسجّلات، إلا حين تكون الفأرة على شارة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;متابعة&lt;/b&gt; تعرض أحدث رد لكل كتلة بوتيرة &lt;i&gt;عرض القيم&lt;/i&gt;؛ و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي البايتات المعروضة.
+&lt;b&gt;اللون&lt;/b&gt;: &lt;b&gt;كل المسجّلات&lt;/b&gt;، أو &lt;b&gt;المرسومة&lt;/b&gt; (المرسومة وحدها ملوّنة، والبقية رمادية).&lt;/li&gt;
+&lt;li&gt;للبطاقة التي ليست بايتاتها حية حافة &lt;b&gt;كهرمانية&lt;/b&gt; على طرفها الأيسر، ويقول عنوان ردها وتلميحها السبب: مثبّتة،
+أو قديمة (لم تُحدَّث مدة أطول من حدّ القِدم في لسان المسجّلات)، أو قراءة فاشلة (يُعرض رد الخطأ من الجهاز وتبقى آخر
+البايتات السليمة)، أو الوصلة مغلقة، أو قراءة يدوية أو كتابة. وعند التثبيت أو إغلاق الوصلة يقول ذلك شريط تنبيه فوق البطاقات مرة
+واحدة.&lt;/li&gt;
+&lt;li&gt;الفأرة على شارة تضيء المسجّل بلونه، شاراته مملوءة أقوى ومحاطة بخط وسطر قيمته مملوء، والباقي كما كان، وتقول البايت: مسجّله، وأي بايت هو منه، وعنوانه، وقيمته؛
+والتلميح تحت الصف، لا فوق القيم أبدًا. &lt;b&gt;النقر&lt;/b&gt; يحدّد المسجّل هنا وفي لسان المسجّلات (يضيء بالطريقة نفسها، بإطار أزرق)؛ و&lt;b&gt;النقر المزدوج&lt;/b&gt;
+ينتقل إليه هناك. والصف الحالي في لسان المسجّلات يُحدَّد هنا أيضًا، وفي قائمة زره الأيمن &lt;b&gt;إظهار في عرض
+الذاكرة&lt;/b&gt;. وحين يكون التركيز على البطاقات تنقل &lt;b&gt;مفاتيح الأسهم&lt;/b&gt; التحديد، و&lt;b&gt;Enter&lt;/b&gt; ينتقل إلى لسان
+المسجّلات، ومفتاح &lt;b&gt;القائمة&lt;/b&gt; يفتح القائمة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt;، أو زر &lt;b&gt;نسخ ▾&lt;/b&gt;: إظهار في المسجّلات، ورسم / إزالة من المخطط، وكتابة… (مع
+&lt;i&gt;السماح بالكتابة&lt;/i&gt;)، والنسخ: بايتات المسجّل، أو الكتلة صفوفًا ست عشرية أو مصفوفة C، أو قيمها المفكوكة.&lt;/li&gt;
+&lt;li&gt;قراءة &lt;b&gt;READ&lt;/b&gt; تُرسل من المراقبة تظهر بطاقةً في الأعلى، حتى القراءة التالية؛ وكذلك آخر &lt;b&gt;كتابة&lt;/b&gt;
+(من لسان المسجّلات أو من المراقبة): إطار WRITE_ACK ورد الجهاز WRITE_ACK_RESP فوق البايتات المكتوبة، أو إطار WRITE الذي
+لا يُجاب أبدًا. والتدفق السريع الجاري ملاحظة
+(سجلّاته في المخطط)؛ وإطار الإرسال التلقائي يظهر &lt;i&gt;← AUTO_SEND&lt;/i&gt; بمعدّله. وعلى ناقل تعرض قائمة
+&lt;b&gt;الجهاز&lt;/b&gt; بطاقات جهاز واحد في كل مرة.&lt;/li&gt;
+&lt;li&gt;لا يحتفظ اللسان بشيء ما دام لسان آخر معروضًا: تأتي بطاقاته من جديد مع الردود التالية (وتبقى آخر كتابة).&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
