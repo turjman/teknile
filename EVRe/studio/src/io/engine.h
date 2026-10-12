@@ -219,9 +219,11 @@ public:
 		quint64 serial = 0;      /* moves at every block kept: a take sees which streams moved */
 	};
 	/* true when a block was kept since the last call: `dumps` is then every stream's newest (the streams that sent
-	 * one). false: nothing new, `dumps` untouched. Tests: the takes that found the lock held (the window waited). */
+	 * one). false: nothing new, `dumps` untouched. Tests: the takes that waited for the lock longer than
+	 * FAST_DUMP_WAIT_NS (the window waiting on the engine's work, not on its few assignments of a block). */
 	bool takeFastDumps(QVector<FastDump> &dumps);
 	int fastDumpLockMisses() const { return fastDumpLockMisses_; }
+	static constexpr qint64 FAST_DUMP_WAIT_NS = 200000; /* 0.2 ms */
 
 	/* in the engine thread (through post) */
 	/* generation: the window's number for this map. devices: the one device of a map (slave 0), or the devices

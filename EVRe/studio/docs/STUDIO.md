@@ -7950,8 +7950,9 @@ the tab and follows the window's direction.
   serial), under the lock it already takes for the chart's blocks: a few assignments and a reference count a block,
   about 3 900 blocks a second at a million records a second. A bad block or one of a newer kind is kept too (a dump
   is where a device's mistakes are seen). `takeFastDumps` copies one small struct per stream and no byte of a block;
-  it tries the lock first and counts a take that found it held (the tests hold that at 0). `setDump(false)` and
-  `setMap` empty it.
+  it tries the lock first and counts a take that then waited longer than 0.2 ms for it (`FAST_DUMP_WAIT_NS`; the
+  tests hold that at 0: meeting the lock held now and then costs microseconds). `setDump(false)` and `setMap` empty
+  it.
 - **The view** (`DumpView`, a `QAbstractScrollArea`) paints as `BitView` does: `ThemeColors`, no style sheet; the
   bytes, addresses, names and values in the monospace font, the labels, field names and meanings in the window's font
   a point smaller (`labelFont()`), the sentences in the window's font. Only the cards in view are painted. `relayout()`

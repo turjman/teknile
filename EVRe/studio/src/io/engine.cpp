@@ -230,12 +230,16 @@ bool IoEngine::takeDumps(QVector<DumpReply> &blocks) {
 	return true;
 }
 
-/* The lock tried first: a take that finds it held is counted (the tests hold it at 0 at a million records a second,
- * since the engine holds it only for the few assignments of a block kept). */
+/* The lock tried first: a take that finds it held and waits longer than FAST_DUMP_WAIT_NS for it is counted (the
+ * tests hold that at 0 at a million records a second). The engine holds it a few microseconds a block, for its
+ * assignments, so a take may meet it held now and then (one in 28 on a two-core CI machine): that costs microseconds;
+ * a long wait would be the window waiting on the engine's work. */
 bool IoEngine::takeFastDumps(QVector<FastDump> &dumps) {
 	if (!crossThreadMutex_.tryLock()) {
-		fastDumpLockMisses_++;
+		QElapsedTimer waited;
+		waited.start();
 		crossThreadMutex_.lock();
+		if (waited.nsecsElapsed() > FAST_DUMP_WAIT_NS) fastDumpLockMisses_++;
 	}
 	const bool moved = fastDumpsMoved_;
 	if (moved) {

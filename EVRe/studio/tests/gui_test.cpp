@@ -2482,12 +2482,13 @@ private:
 				if (dumpView->blocks()[c].data.constData() == window_.lastFastDumpData()) shared = true;
 			}
 			const int takes = window_.fastDumpTakes() - takes0, misses = window_.fastDumpLockMisses() - misses0;
-			std::printf("  the Dump at a million records a second: %d fast takes in 3 s, %d blocks shown, %d waits on the lock, "
-					"shared %d\n", takes, int(firsts.size()), misses, int(shared));
+			std::printf("  the Dump at a million records a second: %d fast takes in 3 s, %d blocks shown, %d waits over 0.2 ms "
+					"on the lock, shared %d\n", takes, int(firsts.size()), misses, int(shared));
 			check(takes >= 24 && takes <= 31 && int(firsts.size()) >= takes - 1 && misses == 0 && shared,
 					"fast speed: the Dump shown at a million records a second takes the newest block ten times a second (24 to "
 					"31 in 3 s), a new block each time, its bytes the engine's (shared, not copied), the window's thread never "
-					"waiting on the engine's lock");
+					"waiting on the engine's work (no wait over 0.2 ms for its lock: a block's few assignments cost "
+					"microseconds)");
 			tabs->setCurrentIndex(MainWindow::TabChart);
 		}
 		button->click();
