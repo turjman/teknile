@@ -6617,7 +6617,8 @@ The Dump tab's steps (chapter 37), after the Monitor's, against the fake device 
 - **Colours** (`dumpColours`): no two neighbouring chips alike; TEMPERATURE plotted takes its chart colour, unplotted
   the palette's again; Colour: Plotted greys SUPPLY_I and keeps TEMPERATURE's chart colour, saved in `dump/colour`;
   the byte text on every series colour's tint, at rest and lit (the lit text on the lit tint), and on a neutral chip,
-  at rest and lit, and a glowing byte's text on them, at least 4.5:1 in both themes; a chip's fill pixel (its top row too) is the tint and the pixel between two neighbours the card's surface:
+  at rest and lit, and a glowing byte's text on them, at least 4.5:1 in both themes; the glowing text at least 100
+  (the sum of the R, G and B steps) from the plain text in both themes, so a glow is seen; a chip's fill pixel (its top row too) is the tint and the pixel between two neighbours the card's surface:
   no edge line.
 - **Live** (`dumpLive`): Follow shows about 10 new replies a second at *Show values* 10; Hold takes none and paints
   nothing in 1 s while the table moves; fresh replies draw no stripe and no banner, held cards a 3 px amber stripe
@@ -6671,8 +6672,8 @@ The Dump tab's steps (chapter 37), after the Monitor's, against the fake device 
   title, the amber stripe, *read once*, the chips on it, the Monitor's line ending *(shown in the Dump)*; the next
   READ replaces it.
 - **Arabic** (`dumpArabic`): the tab *عرض الذاكرة*, the window right to left and the cards left to right; the field
-  names English and their meanings Arabic (*الحمولة* under the pill *22 بايتًا ↓*, *سليم*, *لا شيء*), the reply's arrow
-  at the right of its Arabic word; the window with the Dump shown and
+  names English and their meanings Arabic (*الحمولة* under the pill *22 بايتًا ↓*, *سليم*, *لا شيء*), the arrows
+  turned with the reading (*← طلب*, *→ رد*) and the reply's at the right of its Arabic word; the window with the Dump shown and
   Fields on at most 1280 px wide in English and Arabic.
 
 The auto send, bus and fast streams steps check the Dump too: the 0xD000 card is AUTO_SEND's (*← AUTO_SEND 100 /s*,
@@ -6693,7 +6694,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 676 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 677 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7758,11 +7759,13 @@ check box (on by default, kept in `dump/fields`) folds them: off, each frame is 
 00 FC A5 7D`, START, CRC and END muted, a reply's payload the pill) and hovering a byte shows its field's name and tooltip. One choice for the
 whole tab, so the cards stay alike.
 
-A byte whose value changed glows a moment: its text is written in the accent colour, fading back to its plain
+A byte whose value changed glows a moment: its text is written in the accent's hue, fading back to its plain
 colour over the Registers tab's `GLOW_MS` (700 ms), so the dump and the table pulse together. Not a ring round the
 cell: on a live device most bytes of a float change at every poll, and rings would read as bordered bytes. Such a byte
-glows all the time, so its colour is the accent made lighter (dark theme, `#CADCFF`) or deeper (light theme,
-`#1E4FBC`) as far as keeps 4.5:1 on every chip's tint (`DumpView::glowText`; the accent itself is 2.0 to 4.0:1 there).
+glows all the time, so its colour keeps 4.5:1 on every chip's tint (`DumpView::glowText`; the accent itself is 2.0
+to 4.0:1 there): in the light theme the accent made deeper (`#1E4FBC`, navy beside black text), in the dark theme a
+light cyan (`#78ECFF`). The dark theme's accent made lighter until it kept 4.5:1 was almost white (`#CADCFF` beside
+the text's `#E6E9EF`) and no glow could be seen; the cyan is as bright and differs from the text by its hue.
 While a register is hovered nothing glows, so the hover is the one mark on the grid, and a lit register's bytes are
 in the lit text, never the glow's. The glow's 50 ms timer runs only while a byte glows.
 
@@ -7861,8 +7864,9 @@ bus, its chips selected and scrolled into view (when the tab was hidden, at the 
 
 The cards are left to right in every language: the frames, the addresses, the bytes, the names and the values belong
 to the grid, not to the window. Each label and meaning is drawn in its own direction (an Arabic one right to left), at
-the left of its room; the field names stay English. The banner is a widget of the tab and follows the window's
-direction.
+the left of its room; the field names stay English. The labels' arrows turn with the reading: *← طلب* and *→ رد*,
+each arrow at the right of its word, the request's pointing the way the Arabic reads. The banner is a widget of
+the tab and follows the window's direction.
 
 ### 37.6 How it works
 

@@ -646,7 +646,7 @@ the block that no register maps is plain grey hex. Bytes no read covers (before 
 no reply yet) are empty cells in a <b>dashed frame</b>, with <i>4 bytes not read</i> or <i>no reply yet</i> in it when
 it fits (never an invented 00).</li>
 <li><b>Fields</b> (on by default): off, each frame is one line of bytes, and a byte's tooltip names its field.</li>
-<li>A byte whose value changed is written in the accent colour a moment, as a value in the Registers tab glows; not
+<li>A byte whose value changed is written in blue a moment (a light cyan in the dark theme), as a value in the Registers tab glows; not
 while the mouse is on a chip.</li>
 <li><b>Follow</b> shows each block's newest reply at the pace of <i>Show values</i>; <b>Hold</b> keeps the bytes shown.
 <b>Colour</b>: <b>All registers</b>, or <b>Plotted</b> (only the plotted ones in colour, the others grey).</li>

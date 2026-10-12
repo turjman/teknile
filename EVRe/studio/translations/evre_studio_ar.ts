@@ -1891,11 +1891,11 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
     <message>
         <source>← AUTO_SEND</source>
-        <translation>← AUTO_SEND</translation>
+        <translation>→ ‏AUTO_SEND</translation>
     </message>
     <message>
         <source>← REPLY</source>
-        <translation>← رد</translation>
+        <translation>→ رد</translation>
     </message>
     <message>
         <source>held %1</source>
@@ -2072,7 +2072,7 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
     <message>
         <source>→ REQUEST</source>
-        <translation>→ طلب</translation>
+        <translation>← طلب</translation>
     </message>
     <message numerus="yes">
         <source>READ %n bytes @ %1</source>
@@ -3748,7 +3748,7 @@ the block that no register maps is plain grey hex. Bytes no read covers (before 
 no reply yet) are empty cells in a &lt;b&gt;dashed frame&lt;/b&gt;, with &lt;i&gt;4 bytes not read&lt;/i&gt; or &lt;i&gt;no reply yet&lt;/i&gt; in it when
 it fits (never an invented 00).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Fields&lt;/b&gt; (on by default): off, each frame is one line of bytes, and a byte&apos;s tooltip names its field.&lt;/li&gt;
-&lt;li&gt;A byte whose value changed is written in the accent colour a moment, as a value in the Registers tab glows; not
+&lt;li&gt;A byte whose value changed is written in blue a moment (a light cyan in the dark theme), as a value in the Registers tab glows; not
 while the mouse is on a chip.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Follow&lt;/b&gt; shows each block&apos;s newest reply at the pace of &lt;i&gt;Show values&lt;/i&gt;; &lt;b&gt;Hold&lt;/b&gt; keeps the bytes shown.
 &lt;b&gt;Colour&lt;/b&gt;: &lt;b&gt;All registers&lt;/b&gt;, or &lt;b&gt;Plotted&lt;/b&gt; (only the plotted ones in colour, the others grey).&lt;/li&gt;
@@ -3777,8 +3777,8 @@ kept).&lt;/li&gt;
         <translation>
 &lt;h2&gt;عرض الذاكرة&lt;/h2&gt;
 &lt;p&gt;يعرض لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt; بايتات الجهاز كما تأتي بها القراءات: &lt;b&gt;بطاقة&lt;/b&gt; لكل كتلة يقرؤها الاستطلاع،
-بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;→ طلب  قراءة 22 بايتًا عند 0xD000&lt;/i&gt;) والرد
-(&lt;i&gt;← رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
+بترتيب العناوين. في كل بطاقة الطلب الذي أرسله الاستوديو (&lt;i&gt;← طلب  قراءة 22 بايتًا عند 0xD000&lt;/i&gt;) والرد
+(&lt;i&gt;→ رد  منذ 12 ms&lt;/i&gt;)، وكلاهما مفصّل إلى حقول الإطار: كل بايت منه مسمّى، START وSLAVE وFUNCTION وOFFSET وCOUNT
 وDATA وCRC وEND، ومعناه تحته (&lt;i&gt;FUNCTION READ_RESP&lt;/i&gt;، &lt;i&gt;OFFSET 0xD000&lt;/i&gt;، &lt;i&gt;DATA الحمولة&lt;/i&gt; تحت &lt;i&gt;22 بايتًا ↓&lt;/i&gt;
 الرمادية، &lt;i&gt;CRC سليم&lt;/i&gt;: فُحص CRC الرد). والفأرة على حقل تقول ما يعنيه في البروتوكول. وتحتها الحمولة شبكةً من 16 بايتًا في كل صف، بارتفاع سطر
 واحد، وعنوان الصف على يساره.&lt;/p&gt;
@@ -3788,7 +3788,7 @@ kept).&lt;/li&gt;
 عادي. والبايتات التي لا تغطيها قراءة (قبل الكتلة في صفها، أو كتلة لا رد لها بعد) خلايا فارغة في &lt;b&gt;إطار
 متقطع&lt;/b&gt;، فيه &lt;i&gt;4 بايتات غير مقروءة&lt;/i&gt; أو &lt;i&gt;لا رد بعد&lt;/i&gt; حين يتسع لذلك (لا 00 مختلَق أبدًا).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الحقول&lt;/b&gt; (مفعّلة افتراضيًا): عند إيقافها يصير كل إطار سطرًا واحدًا من البايتات، ويسمّي تلميح البايت حقله.&lt;/li&gt;
-&lt;li&gt;البايت الذي تغيّرت قيمته يُكتب بلون الإبراز لحظة، كما تتوهّج القيمة في لسان المسجّلات، إلا حين تكون الفأرة على شارة.&lt;/li&gt;
+&lt;li&gt;البايت الذي تغيّرت قيمته يُكتب بالأزرق لحظة (بسماوي فاتح في السمة الداكنة)، كما تتوهّج القيمة في لسان المسجّلات، إلا حين تكون الفأرة على شارة.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;متابعة&lt;/b&gt; تعرض أحدث رد لكل كتلة بوتيرة &lt;i&gt;عرض القيم&lt;/i&gt;؛ و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي البايتات المعروضة.
 &lt;b&gt;اللون&lt;/b&gt;: &lt;b&gt;كل المسجّلات&lt;/b&gt;، أو &lt;b&gt;المرسومة&lt;/b&gt; (المرسومة وحدها ملوّنة، والبقية رمادية).&lt;/li&gt;
 &lt;li&gt;للبطاقة التي ليست بايتاتها حية حافة &lt;b&gt;كهرمانية&lt;/b&gt; على طرفها الأيسر، ويقول عنوان ردها وتلميحها السبب: مثبّتة،

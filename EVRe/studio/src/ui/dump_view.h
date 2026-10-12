@@ -138,7 +138,7 @@ public:
 	double glow(int card, int offset) const;        /* how strongly a changed byte glows now: 1 just changed .. 0 */
 	bool glowing() const;                           /* the glow's timer runs (only while a byte glows) */
 	QColor byteColour(int card, int offset) const;  /* a byte's text now: plain, or toward glowText while it glows */
-	static QColor glowText(const ThemeColors &c, bool dark); /* a glowing byte's text: the accent, 4.5:1 on any chip */
+	static QColor glowText(const ThemeColors &c, bool dark); /* a glowing byte's text: in the accent's hue, 4.5:1 on any chip */
 	RegKey hovered() const { return hovered_; }
 
 	/* what is not live in card i, and why (empty: live): its amber stripe and the reply label's words */

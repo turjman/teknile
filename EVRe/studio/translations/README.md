@@ -24,6 +24,10 @@ one finished. The GUI test fails while a message is unfinished or empty, or when
 - The frame's field names START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END and the function codes' names
   (READ, READ_RESP, ERROR_RESP ...) are the protocol's words and stay in English, as units do; their meanings are
   translated (`OK` سليم, `none` لا شيء).
+- An arrow that says which way a frame goes turns with the reading: `→ REQUEST` is «← طلب» and `← REPLY` «→ رد»,
+  the request's arrow pointing the way its line reads, as in English. `← AUTO_SEND` is «→ AUTO_SEND» with the
+  character U+200F (a right-to-left mark; invisible in the file) before the name, so its arrow too sits at the
+  right and points as the reply's.
 - Numbers keep Western digits and a decimal point; units, symbols, register names, addresses, file names, code and the
   JSON keys stay as they are.
 - A number with a Latin prefix or unit beside an Arabic word is laid out piece by piece, right to left: "10.0 k" comes

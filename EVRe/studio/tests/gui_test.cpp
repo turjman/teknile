@@ -4188,6 +4188,23 @@ private:
 		check(readable, "Dump: the byte text on every colour's chip (tinted 34 % dark, 26 % light; lit 46 % with white text "
 				"and 50 %) and on a neutral one, at rest and lit, and a glowing byte's text on them: at least 4.5:1 in both themes");
 
+		/* A glow must be seen: the dark theme's accent made light enough for 4.5:1 was almost the text's white (202 220
+		 * 255 beside 230 233 239, 57 apart) and the owner's eye saw no byte glow. At full strength the glowing text is
+		 * at least 100 from the plain text in each theme. */
+		QString glowApart;
+		bool glowSeen = true;
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const int apart = colourDistance(DumpView::glowText(Theme::colors(), dark), Theme::colors().text);
+			glowApart += QStringLiteral(" %1 %2").arg(QLatin1String(dark ? "dark" : "light")).arg(apart);
+			if (apart < 100) glowSeen = false;
+		}
+		Theme::apply(*qApp, wasDark);
+		QApplication::processEvents();
+		if (!glowSeen) std::printf("     (the glowing text from the plain:%s)\n", qPrintable(glowApart));
+		check(glowSeen, "Dump: a glowing byte's text at full strength is at least 100 (R + G + B steps) from the plain text "
+				"in both themes: a light cyan in the dark theme, navy in the light one, so a glow is seen");
+
 		/* a chip is a fill without an edge: inside it the tint, between two neighbours the card's surface (SETPOINT's
 		 * bytes and FAN_SPEED's, which do not change, so no glow is near) */
 		QEvent leave(QEvent::Leave);
@@ -5447,6 +5464,13 @@ private:
 						&& tab->view()->payloadText(0, DumpView::Reply) == QStringLiteral("22 بايتًا ↓")
 						/* the arrow after the Arabic word, at its right, as the label drawn whole put it */
 						&& tab->view()->arrowRect(0, DumpView::Reply).left() > tab->view()->headRect(0, DumpView::Reply).left() + 12
+						&& tab->view()->arrowRect(0, DumpView::Request).left() > tab->view()->headRect(0, DumpView::Request).left() + 12
+						/* the arrows turned with the reading: the request's points the way the Arabic reads, as → does in
+						 * English; AUTO_SEND's name led by a right-to-left mark, so its arrow sits and points as the reply's */
+						&& QCoreApplication::translate("DumpView", "→ REQUEST").startsWith(QChar(0x2190))
+						&& QCoreApplication::translate("DumpView", "← REPLY").startsWith(QChar(0x2192))
+						&& QCoreApplication::translate("DumpView", "← AUTO_SEND").startsWith(QChar(0x2192))
+						&& QCoreApplication::translate("DumpView", "← AUTO_SEND").mid(1).isRightToLeft()
 						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Crc) == QStringLiteral("سليم")
 						&& tab->view()->fieldMeaning(0, DumpView::Request, DumpView::Data) == QStringLiteral("لا شيء")
 						&& tab->view()->fieldMeaning(0, DumpView::Reply, DumpView::Function) == QLatin1String("READ_RESP");
@@ -5480,8 +5504,9 @@ private:
 		std::printf("     (the window's minimum width with the Dump shown: %d px in English, %d in Arabic)\n", english, arabic);
 		check(english <= 1280 && arabic <= 1280 && named && leftToRight && meanings, "Dump, Arabic: the tab is عرض الذاكرة; "
 				"the window right to left, the cards left to right (addresses, bytes, names and values); the field names the "
-				"protocol's (DATA, CRC), their meanings Arabic (الحمولة under the pill 22 بايتًا ↓, سليم, لا شيء), the reply's "
-				"arrow at the right of its Arabic word; the window with the Dump shown and "
+				"protocol's (DATA, CRC), their meanings Arabic (الحمولة under the pill 22 بايتًا ↓, سليم, لا شيء), the arrows "
+				"turned with the reading (← طلب, → رد, → AUTO_SEND) and at the right of their Arabic words; the window with "
+				"the Dump shown and "
 				"Fields on at most 1280 px wide in English and in Arabic");
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
 	}

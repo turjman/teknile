@@ -160,10 +160,12 @@ QColor DumpView::byteColour(int card, int offset) const {
 }
 
 /* The accent itself is 2.0 to 3.2:1 on the dark theme's chips and 3.5 to 4.0:1 on the light one's, and a byte that
- * changes at every poll glows all the time: so the accent made lighter (dark) or deeper (light), as far as keeps
- * 4.5:1 on every chip's tint, as the byte's plain text does. */
+ * changes at every poll glows all the time: so 4.5:1 on every chip's tint, as the byte's plain text has. Light: the
+ * accent made deeper, navy beside black text. Dark: the accent made lighter until it kept 4.5:1 was almost white
+ * (202 220 255 beside the text's 230 233 239) and no eye saw a byte glow; a light cyan instead, the accent's blue
+ * turned toward green, is as bright (4.7:1 on the yellow chip, the lightest) and differs from the text by its hue. */
 QColor DumpView::glowText(const ThemeColors &c, bool dark) {
-	return dark ? blend(QColor(Qt::white), c.accent, 0.7) : blend(QColor(Qt::black), c.accent, 0.2);
+	return dark ? QColor(0x78, 0xEC, 0xFF) : blend(QColor(Qt::black), c.accent, 0.2);
 }
 
 bool DumpView::glowing() const {
