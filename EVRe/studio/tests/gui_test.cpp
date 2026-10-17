@@ -1575,9 +1575,13 @@ private:
 			const int gap = deviceInfo->y() - pill->geometry().bottom();
 			sidebar->showLinkError(QStringLiteral("COM10 not found"), QStringLiteral("x"));
 			QApplication::processEvents();
-			check(pill->text() == QStringLiteral("●  COM10 not found") && !pill->isCut() && pill->height() == oneLine
-							&& deviceInfo->y() - pill->geometry().bottom() == gap,
-					"serial, the pill: a reason that fits stays one line, as tall as \"Disconnected\"");
+			const bool fitsOneLine = pill->text() == QStringLiteral("●  COM10 not found") && !pill->isCut()
+					&& pill->height() == oneLine && deviceInfo->y() - pill->geometry().bottom() == gap;
+			if (!fitsOneLine)
+				std::printf("     (the pill: \"%s\", cut %d, %d px tall, one line %d, its hint %d; the gap %d, was %d)\n",
+						qPrintable(pill->text()), int(pill->isCut()), pill->height(), oneLine, pill->sizeHint().height(),
+						deviceInfo->y() - pill->geometry().bottom(), gap);
+			check(fitsOneLine, "serial, the pill: a reason that fits stays one line, as tall as \"Disconnected\"");
 			const QString lost = QStringLiteral("COM10 is gone: unplugged or reset?");
 			sidebar->showLinkError(lost, QStringLiteral("x"));
 			const bool grew = QTest::qWaitFor([&] { return pill->height() > oneLine; }, 1000);
