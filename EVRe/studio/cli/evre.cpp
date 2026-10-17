@@ -250,8 +250,9 @@ public:
 			opened = true;
 			loop.quit();
 		});
-		QObject::connect(link_.get(), &evre::Link::closed, &loop, [&](const QString &reason) {
-			why = reason;
+		QObject::connect(link_.get(), &evre::Link::closed, &loop, [&](const QString &reason, const QString &detail) {
+			/* a serial port's plain reason, and the system's text after it, as the Studio's Log has them */
+			why = detail.isEmpty() ? reason : QStringLiteral("%1 (%2)").arg(reason, detail);
 			loop.quit();
 		});
 		QTimer::singleShot(std::max(3000, timeout), &loop, &QEventLoop::quit);
