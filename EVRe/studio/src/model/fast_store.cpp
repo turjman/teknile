@@ -7,14 +7,42 @@
 #include <cstring>
 #include <limits>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 namespace fast {
 
 namespace {
+
+/* the whole pages in bytes from data discarded: their contents undefined, as freed memory's is, until written again */
+void discard(const void *data, qint64 bytes) {
+#ifdef Q_OS_WIN
+	constexpr quintptr PAGE = 4096;
+	const quintptr from = (quintptr(data) + PAGE - 1) & ~(PAGE - 1), to = (quintptr(data) + quintptr(bytes)) & ~(PAGE - 1);
+	if (to > from) DiscardVirtualMemory(reinterpret_cast<void *>(from), SIZE_T(to - from));
+#else
+	Q_UNUSED(data);
+	Q_UNUSED(bytes);
+#endif
+}
 
 uint16_t le16(const uint8_t *b) { return uint16_t(b[0] | (b[1] << 8)); }
 uint32_t le32(const uint8_t *b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24; }
 
 } // namespace
+
+void letPagesGo(const QByteArray &array) { discard(array.constData(), array.size()); }
+void letPagesGo(const QVector<double> &array) { discard(array.constData(), array.size() * qint64(sizeof(double))); }
+
+/* its pieces' pages too (a recording window's fast math line closed, a stream gone with the map): freed alone, the
+ * heap gave them back in one lump at a later free, in some chart's frame */
+Store::~Store() {
+	for (const QByteArray &piece : std::as_const(pieces_)) letPagesGo(piece);
+}
 
 void Store::reset(const StreamDef &def) {
 	timeVersion_++;

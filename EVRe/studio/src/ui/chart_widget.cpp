@@ -1047,13 +1047,21 @@ void ChartView::trimFast(fast::Store &store, int lines) {
 }
 
 /* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary of up to tens of MB at a
- * time), before the frame is painted: gigabytes go over a second or so, never a frame over budget */
+ * time), before the frame is painted: gigabytes go over a few seconds, never a frame over budget. Each with its pages
+ * given back first (fast::letPagesGo): freed alone, the heap kept them, and one free some frames later gave 110 MB
+ * back at once, 8 to 13 ms */
 void ChartView::releaseSome() {
 	if (released_.isEmpty()) return;
 	QElapsedTimer clock;
 	clock.start();
-	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.summaries.removeLast();
-	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) released_.pieces.removeLast();
+	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
+		fast::letPagesGo(released_.summaries.last());
+		released_.summaries.removeLast();
+	}
+	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
+		fast::letPagesGo(released_.pieces.last());
+		released_.pieces.removeLast();
+	}
 	/* emptied: their own arrays let go too (a list of thousands of pieces) */
 	if (released_.pieces.isEmpty()) released_.pieces = {};
 	if (released_.summaries.isEmpty()) released_.summaries = {};
@@ -2116,7 +2124,13 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 	return key;
 }
 
-ChartView::~ChartView() { pool_.waitForDone(); }
+ChartView::~ChartView() {
+	pool_.waitForDone();
+	/* what is still to be freed goes as each frame's slice does (releaseSome): a chart closed right after a RAM cut
+	 * left a gigabyte with the heap, and the next chart's frame paid for it */
+	for (const QByteArray &piece : std::as_const(released_.pieces)) fast::letPagesGo(piece);
+	for (const QVector<double> &summary : std::as_const(released_.summaries)) fast::letPagesGo(summary);
+}
 
 void ChartView::measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done) {
 	MeasureRequest request{ keys, std::move(done) };

@@ -4578,7 +4578,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
 | `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame; a fast math line's per record (`evaluateRecords`, 9.9) |
 | `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
-| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame; `fillFrom`: a fast math line's values over a recording's records), 23.11 |
+| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame; `letPagesGo`: an array's pages given back before it is freed, Windows; `fillFrom`: a fast math line's values over a recording's records), 23.11 |
 | `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record` and the engine beside a CSV; `fast::readRecording` / `Recording`: one read, the file mapped, into a mapped store (12.7); `recordingFileFor` (`run.csv` -> `run.ADC.evrs`), `recordingsBeside` |
 | `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
@@ -5690,8 +5690,13 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   freed by `releaseSome` at each `frame()`, for at most `RELEASE_NS` (3 ms) a frame. Freed in one go, a RAM cut from
   4 GB filled to 512 MB held the window's thread about 2 s (3.5 GB let go; on the test machine 1 GB to 256 MB took 74 ms
   in one append); freed on another thread, the frees held the heap and the memory's pages while the chart's threads
-  binned the memory strip, and the next paint took 30 to 50 ms. Now, 2 GB filled cut to 256 MB: the longest append
-  4.6 ms, `frame()` 10.8 ms (one summary's array freed), the paint 10.8 ms (26.2, *the RAM cut*).
+  binned the memory strip, and the next paint took 30 to 50 ms. Each array's pages are given back before it is freed
+  (`fast::letPagesGo`, Windows): the C runtime's heap kept what was freed into it, and some frames later one free gave
+  a lump of it back at once, 110 MB in 8 to 13 ms after a cut from 2 GB, and what a closed chart had left (830 MB) in
+  62 to 69 ms. Discarded first, such a lump takes 2 to 4 ms; discarding costs about 0.3 ms a MB more than the free, so
+  the memory goes over more frames (1.5 GB in about 4 s, 1.5 s before). A store destroyed and a chart closed discard
+  theirs too (closing a chart that holds 1.5 GB takes about 0.5 s longer). Now, 2 GB filled cut to 256 MB: the longest
+  append 5.2 ms, `frame()` 3.9 ms, the paint 13.6 ms (26.2, *the RAM cut*).
 - **Older records as summaries** (`ChartView::setFastSummaries`, the Chart tab's *Older samples*, 7.14). As the
   summaries are made, each 256 records' (and 4096's) lowest and highest record are copied into the piece's outline
   (`outlines_`: two records a row, each channel's bytes those of its own lowest or highest, so a falling scale

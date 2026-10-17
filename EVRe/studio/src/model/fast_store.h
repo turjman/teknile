@@ -49,6 +49,7 @@ public:
 
 	Store() = default;
 	explicit Store(const StreamDef &def) { reset(def); }
+	~Store();
 	void reset(const StreamDef &def); /* empty, for this stream */
 	const StreamDef &def() const { return def_; }
 	int recordSize() const { return recordSize_; }
@@ -174,5 +175,15 @@ private:
 	int epochBase_ = 0;                   /* epochs dropped from the front */
 	quint64 nextRecord_ = 0;              /* the number the next record would have, in the current start */
 };
+
+/* An array's pages given back to the system before the array is freed (Windows; elsewhere nothing). The C runtime's
+ * heap keeps what is freed into it, and later one free, of anything on any thread, gives a lump of it back at once:
+ * after a RAM cut from 2 GB the free of one piece gave 110 MB back in 8 to 13 ms, and what a closed chart had left
+ * (830 MB) in 62 to 69 ms, a frame held. Discarded as they are freed, the pages such a lump gives back have nothing
+ * behind them any more: 2 to 4 ms. Discarding costs more than the free alone (about 0.3 ms a MB), so what a frame
+ * frees in its slice (ChartView::releaseSome) takes more frames. Only whole pages of what the array holds: its header
+ * and the heap's bytes around it are not touched */
+void letPagesGo(const QByteArray &array);
+void letPagesGo(const QVector<double> &array);
 
 } // namespace fast
