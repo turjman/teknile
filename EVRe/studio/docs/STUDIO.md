@@ -3028,7 +3028,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 
 ### 14.4 Help, the theme and the language
 
-The foot of the sidebar holds two buttons, the language and the version line (*v1.0.0 · teknile*):
+The foot of the sidebar holds two buttons, the language and the version line (*v1.1.0 · teknile*):
 
 - **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
 - The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`).
@@ -5976,7 +5976,7 @@ its own.
 | `evre_fake_fast` | executable | `tests/fake_device_fast.cpp` + `evre_protocol` | depends on `evre_maps`: without a map argument it opens the example map beside it |
 
 The project defines no options of its own. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
-(where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.0.0)`. It reaches the code as
+(where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.1.0)`. It reaches the code as
 `EVRE_STUDIO_VERSION`, is shown in the sidebar's footer, and is printed by `--version`. AUTOMOC is on.
 
 The Studio's icon is the teknile mark (`packaging/icons/evre-studio.svg`, made from the logo's mark on its dark rounded

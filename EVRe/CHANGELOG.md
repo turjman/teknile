@@ -1,9 +1,22 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-10-18)
 
 ### EVRe Studio
 
+- The **Dump tab**: each block the Studio reads or writes, as the frames carry it. A card per block: the request and
+  the reply as strips of named fields (START, SLAVE, FUNCTION, OFFSET, COUNT, DATA, CRC, END) with CRC OK or not, then
+  the data as a hex grid where each register is a tinted chip, and the decoded values beside it; the mouse on a byte
+  lights its register. Follow and Hold; polls, writes, Auto send and a manual READ each get their card.
+- The Dump's grid has column labels `00` to `0F` over its bytes, so a row's address and a column give a byte's
+  address without counting; the byte under the mouse lights its row and its column.
+- A fast stream's newest block in the Dump tab: the reply nobody asked for, its header named (FIRST, COUNT, FLAGS with
+  LOST, SPARE), the first and last records with their values to one raw step, Show all, and Copy as hex, CSV or a C
+  array; the records lost since the last block shown are counted, never missed.
+- The trigger: a dashed line down from the T flag while the view is held on a crossing, in the watched line's colour
+  (a setting); it stays after a pan.
+- The trigger's line box shows only lines it holds: when the watched line leaves the chart, the box reads *choose a
+  line* and its tooltip says which line it waits for; plotted again, it comes back with its own level and edge.
 - The recording's window reads right: no fps on its info line (it is drawn only on a change); the totals' column
   reads *Whole file* and the line over the table *totals over the file (59.9 s)* (no Clear there); the legend shows
   each line's latest sample in the view, so a part zoomed into shows its own values; the focus on the chart at open;
@@ -12,6 +25,22 @@
   picture…, Export to CSV…, Open recording… and the recent recordings, until now on the chart's right-click alone.
 - The splitter between the chart and the measure table has a handle that shows (a grip, lit under the mouse, the
   resize cursor, a tooltip); its place is kept, the Chart tab's and a recording's window's apart.
+- A big RAM cut no longer holds a frame: the memory let go is given back to the system piece by piece, a big array
+  in slices across frames, and a closed chart's memory on a thread of its own (closing a chart that held 3.6 GB took
+  the window 2.2 s, now about 1 ms).
+- The spectrum's rate just under 10000 Hz is written whole, never *1e+04*.
+- Serial over USB CDC (a virtual COM port, where the baud rate is not the link's speed): Auto send is no longer slowed
+  to fit the baud rate. A **Link** row under Baud says which kind the port is (*Auto: USB CDC* or *Auto: UART*, from
+  its USB IDs; USB-to-UART cables and debug probes count as UART) and can be set by hand.
+- The serial card reads right: a port's long name is cut with "…" and shown whole in its tooltip and its list; a
+  failed or lost port says why in words (*COM10 is gone: unplugged or reset?*, *not found*, *busy or not allowed*),
+  whole on two lines when needed, with the system's text in the tooltip and the Log; the device's ID after a lost link
+  reads *last seen*; the Baud box takes any rate typed, 300 to 20000000, lists rates up to 12000000, and refuses what
+  is not a rate.
+
+### Docs
+
+- Pictures of the Studio, light and dark, in the README, the Studio's README and STUDIO.md.
 
 ## 1.0.0 (2026-10-09)
 
