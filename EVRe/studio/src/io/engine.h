@@ -109,6 +109,8 @@ public:
 	 * asked for, or the fastest of autoSendDividers() whose frames take at most AUTO_SEND_LINK_SHARE of the link
 	 * (the slowest when none does). Public for the tests. */
 	static int autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes);
+	/* tests: the baud rate Auto send is kept under on this link (0: none, TCP or USB CDC) */
+	qint32 autoSendBaudLimit() const { return serialBaudLimited_ ? serialBaud_ : 0; }
 
 	explicit IoEngine(QObject *parent = nullptr);
 	~IoEngine() override;
@@ -236,7 +238,9 @@ public:
 	void setMap(const QVector<RegDef> &defs, quint64 generation, const QString &deviceName,
 			const QVector<EngineDevice> &devices);
 	void connectTcp(const QString &host, quint16 port, const QString &token); /* token: empty = none */
-	void connectSerial(const QString &port, qint32 baud);
+	/* baudLimited: the baud rate is the link's real speed (a UART, a USB-to-UART bridge); false on USB CDC, which runs
+	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
+	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
 	void disconnectLink();
 	/* inFlight as the user set it; a bus on a serial link (RS-485: one transmitter at a time) always gets 1 */
 	void setLinkOptions(int slave, int timeoutMs, int inFlight);
@@ -270,7 +274,7 @@ public:
 signals:
 	/* `device` below: the device's slave as the table has it (RegDef::slave): 0 for the one device of a map */
 	void opened(const QString &link);
-	void closed(const QString &why);
+	void closed(const QString &why, const QString &detail); /* detail: the system's text, when why is a plain one */
 	void deviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
 	void loginRefused(int device, const QString &err); /* the device refused the token written to its login register */
 	void loginSkipped();                   /* a token was given, but no map declares a login register */
@@ -305,7 +309,7 @@ private:
 	/* the link */
 	void attach(evre::Link *link, const QString &token);
 	void onOpened();
-	void onClosed(const QString &why);
+	void onClosed(const QString &why, const QString &detail);
 	void sendLogin();
 	void readDeviceInfo();
 	uint8_t target(uint8_t tableSlave) const; /* where a request for a register of this device goes */
@@ -449,6 +453,8 @@ private:
 
 	/* AUTO_SEND */
 	qint32 serialBaud_ = 0;                      /* the link's baud rate; 0: not a serial link */
+	bool serialBaudLimited_ = true;              /* the baud rate is the link's real speed: a UART, a USB bridge; false
+	                                              * on USB CDC */
 	bool autoSendWanted_ = false;                /* asked for: switched on at every connect the device allows */
 	bool autoSendOn_ = false;                    /* switched on in the device: the frames are taken */
 	bool statusKnown_ = false, canAutoSend_ = false; /* the device's STATUS, read at connect */

@@ -667,8 +667,19 @@ void MainWindow::connectLink() {
 			return;
 		}
 		const qint32 baud = sidebar_->baud();
-		if (!retrying_) logEvent(LogLevel::Info, tr("opening %1 at %2").arg(port).arg(baud));
-		engine_->post([engine = engine_, port, baud] { engine->connectSerial(port, baud); });
+		/* an emptied box or a rate out of range would fail the open with a system text: said here, plainly */
+		if (baud < Sidebar::BAUD_MIN || baud > Sidebar::BAUD_MAX) {
+			wantConnected_ = false;
+			sidebar_->showLinkError(tr("Baud rate out of range: %1 to %2").arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
+			sidebar_->focusBaud();
+			return;
+		}
+		const bool baudLimited = sidebar_->serialBaudLimited();
+		if (!retrying_) {
+			logEvent(LogLevel::Info, (baudLimited ? tr("opening %1 at %2 (UART)")
+					: tr("opening %1 at %2 (USB CDC: the baud rate is ignored)")).arg(port).arg(baud));
+		}
+		engine_->post([engine = engine_, port, baud, baudLimited] { engine->connectSerial(port, baud, baudLimited); });
 	}
 	sidebar_->showConnecting();
 }
@@ -683,6 +694,7 @@ void MainWindow::retryConnect() {
 void MainWindow::disconnectLink() {
 	engine_->post([engine = engine_] { engine->disconnectLink(); });
 	connected_ = false;
+	markDeviceInfoLost();
 	offlineDevices_.clear();
 	registersTab_->setConnected(false);
 	dumpTab_->setConnected(false);
@@ -698,6 +710,7 @@ void MainWindow::onOpened(const QString &link) {
 	offlineDevices_.clear();
 	deviceInfo_.clear();
 	showDeviceInfo(); /* "not read yet" until the engine reads it */
+	deviceInfoAtOpen_ = deviceInfoHtml(isBus() ? selectedSlave() : 0);
 	registersTab_->setConnected(true);
 	dumpTab_->setConnected(true);
 	sidebar_->showConnected(link);
@@ -706,11 +719,13 @@ void MainWindow::onOpened(const QString &link) {
 	updateAutoSendOffer();	updateFastOffer();
 }
 
-void MainWindow::onClosed(const QString &why) {
+void MainWindow::onClosed(const QString &why, const QString &detail) {
 	const bool wasUp = connected_;
 	if (!why.isEmpty()) {
+		/* the plain reason, then the system's own text for whoever looks it up */
+		const QString both = detail.isEmpty() ? why : QStringLiteral("%1 (%2)").arg(why, detail);
 		logEvent(wasUp ? LogLevel::Error : LogLevel::Warning,
-				(wasUp ? tr("connection lost: %1") : tr("not connected: %1")).arg(why));
+				(wasUp ? tr("connection lost: %1") : tr("not connected: %1")).arg(both));
 	} else if (wasUp) {
 		logEvent(LogLevel::Info, tr("disconnected"));
 	}
@@ -722,8 +737,9 @@ void MainWindow::onClosed(const QString &why) {
 	updateFastOffer(); /* and the fast streams wanted: their buttons keep their state */
 	registersTab_->setConnected(false);
 	dumpTab_->setConnected(false);
+	markDeviceInfoLost();
 	if (why.isEmpty()) sidebar_->showDisconnected();
-	else sidebar_->showLinkError(why);
+	else sidebar_->showLinkError(why, detail);
 	if (wantConnected_ && sidebar_->autoReconnect()) {
 		reconnectTimer_.start(wasUp ? 500 : 2000);
 		sidebar_->showReconnecting();
@@ -761,6 +777,18 @@ void MainWindow::onDeviceInfo(int slave, bool ok, quint16 id, quint16 status, co
 
 void MainWindow::showDeviceInfo() { sidebar_->setDeviceInfo(deviceInfoHtml(isBus() ? selectedSlave() : 0)); }
 
+/* the link down: an ID read is kept but said to be old, so it is not taken for the device there now. A failed read
+ * or a refused token already tells the link's story, and stays */
+void MainWindow::markDeviceInfoLost() {
+	bool changed = false;
+	for (DeviceInfo &info : deviceInfo_) {
+		if (info.state != DeviceInfo::State::Read) continue;
+		info.state = DeviceInfo::State::Lost;
+		changed = true;
+	}
+	if (changed) showDeviceInfo();
+}
+
 /* "D2: " on a bus (whose it is), then the ID, or why it is not known; the map's own device ID compared now, so an
  * edit of the map shows at once */
 QString MainWindow::deviceInfoHtml(int slave) const {
@@ -773,9 +801,14 @@ QString MainWindow::deviceInfoHtml(int slave) const {
 	case DeviceInfo::State::TokenRefused:
 		return (who + tr("token refused: %1").arg(it->error)).toHtmlEscaped();
 	case DeviceInfo::State::Read:
+	case DeviceInfo::State::Lost:
 		break;
 	}
-	QString html = (who + tr("Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision)).toHtmlEscaped();
+	const QString id = it->state == DeviceInfo::State::Lost
+			? tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision)
+			: tr("Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision);
+	/* a narrow sidebar wraps it between its pieces only ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1") */
+	QString html = Sidebar::wholePieces(who + id).toHtmlEscaped();
 	const int index = deviceOfSlave(slave);
 	const uint16_t mapId = isBus() ? (index >= 0 ? deviceMap(index).deviceId : 0) : doc_->map().deviceId;
 	if (mapId && it->id != mapId)

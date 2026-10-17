@@ -3,7 +3,8 @@
  * window is not tall enough.
  *
  *  - Connection: TCP (host, port, a token for the map's login register) or
- *    a serial port (the ports found, the baud rate); the slave address, the
+ *    a serial port (the ports found, the baud rate, the Link: USB CDC or a
+ *    UART, told apart by the port's USB IDs or chosen); the slave address, the
  *    answer timeout, the requests in flight; Reconnect by itself; Connect,
  *    with the link's state (the pill) and the device's ID under it.
  *  - Devices on the link: one device (the map's) or a bus of several (BusPanel,
@@ -27,7 +28,7 @@
  * work. It reads the choices when it needs them (connecting, telling the
  * engine), is told of every change it must follow (the signals), and says
  * what to show (the show... functions). The link, the polling and the API
- * switches are kept in the settings ("link/...", "poll/interval", "api/on",
+ * switches are kept in the settings ("link/...", "link/serialKind" on every change, "poll/interval", "api/on",
  * "api/network"), Show values and the auto send rate too ("ui/valueRate",
  * "poll/autoSendHz", on every change); the token, the API write switches,
  * Auto send itself and the fast streams (they change the device) never are. */
@@ -76,7 +77,20 @@ public:
 	quint16 port() const;
 	QString token() const;       /* empty: none */
 	QString serialPort() const;  /* empty: none found */
-	qint32 baud() const;
+	qint32 baud() const;         /* 0: not a number (an emptied box) */
+	/* the rates the Baud box takes: 20000000 is the Map settings dialog's ceiling too */
+	static constexpr qint32 BAUD_MIN = 300, BAUD_MAX = 20000000;
+	void focusBaud();            /* a rate out of range at Connect: the box to type it in */
+	/* a USB CDC port (a board's own USB, a virtual COM port) runs at USB's speed whatever the baud rate says; a UART,
+	 * or a USB-to-UART bridge, really runs at it */
+	enum class SerialKind { Uart, UsbCdc };
+	/* told by the port's USB IDs (the description is anything: Windows names a CDC port after the device's own product
+	 * string): a bridge's vendor, or no USB IDs, is a UART; Linux's ttyUSB too, ttyACM is CDC; any other USB ID is CDC.
+	 * Unsure means a UART: the slower side, and the Link row can say otherwise */
+	static SerialKind serialKindOf(bool hasVid, quint16 vid, quint16 pid, const QString &portName);
+	/* the baud rate is the link's real speed (Auto send is kept under it): the Link row's choice, on Auto the
+	 * selected port's kind */
+	bool serialBaudLimited() const;
 	int slave() const;
 	void setSlave(int slave);
 	/* a bus: each device has its own slave address (the Devices card), the box only shows the selected one's */
@@ -87,17 +101,26 @@ public:
 	/* the serial ports found now; one with the map's USB IDs is named after its device, and chosen when
 	 * none was */
 	void refreshPorts(const DeviceMap &map);
+	/* one port of the list: "COM10 · <description> · 0483:5740" (the map's device name in place of the description
+	 * when mappedName is given), cut with "…" to the box, whole in its tooltip and in the list opened */
+	void addPort(const QString &name, const QString &description, bool hasVid, quint16 vid, quint16 pid,
+			const QString &mappedName);
 
 	/* the link's state: the Connect button and the pill under it. The pill is empty until the
 	 * window, once the sidebar is in it, calls showDisconnected() */
 	void showDisconnected();
 	void showConnecting();
 	void showConnected(const QString &link);
-	void showLinkError(const QString &why); /* the pill in red: the first 60 characters of why */
+	/* the pill in red: why, always whole, on two lines (or more) when it does not fit on one; detail: the system's own
+	 * text, on the tooltip's second line */
+	void showLinkError(const QString &why, const QString &detail = QString());
 	void showReconnecting();                /* the button stops the next try (the pill stays) */
 	/* under the pill: the device's ID, or why it is not known; always there, two lines tall (the window says "not read
 	 * yet" before there is one), so the card never changes height */
 	void setDeviceInfo(const QString &html);
+	/* the device line's pieces kept whole ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1"): every space a
+	 * no-break one but those after ":" and "·", so a narrow sidebar wraps it only between pieces (plain text in) */
+	static QString wholePieces(const QString &line);
 
 	/* the map card: its device and file; registers: how many the table holds now */
 	void showMap(const DeviceMap &map, int registers, bool modified);
@@ -183,6 +206,10 @@ signals:
 	void themeClicked();
 	void restartRequested(); /* Restart now: the language chosen applies at a start */
 
+protected:
+	/* the port box resized or its font changed: its labels cut again, its list and the Link row's widened again */
+	bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
 	/* building the cards, top to bottom */
 	QWidget *buildConnectionCard();
@@ -200,8 +227,12 @@ private:
 	void addFooter(QVBoxLayout *layout);
 
 	void setConnectButton(const QString &text, const QString &look); /* look: the theme's "primary" or "danger" */
-	/* the pill: "idle", "busy", "ok", "error"; shorter: shown whole in place of a text too long (ElidedLabel) */
-	void showLinkState(const QString &state, const QString &text, const QString &shorter = QString());
+	/* the pill: "idle", "busy", "ok", "error"; shorter: shown whole in place of a text too long (ElidedLabel);
+	 * toolTip: empty for the whole text */
+	void showLinkState(const QString &state, const QString &text, const QString &shorter = QString(),
+			const QString &toolTip = QString());
+	void elidePortLabels();              /* every port's label cut to the box's room (its whole text kept) */
+	void showSerialKind();               /* the Link row's Auto item and the port box's tooltip, for the port selected */
 	int savedInFlight(bool tcp) const;   /* In flight is kept per link type: TCP pipelines, a UART does not */
 	void showPollRate(const IoEngine::Stats &stats, bool connected);
 	QString slowPollReason(const IoEngine::Stats &stats) const; /* empty: not slower than asked */
@@ -218,11 +249,13 @@ private:
 	QLineEdit *host_, *token_;
 	QSpinBox *port_;
 	QComboBox *serialPort_, *baud_;
+	QComboBox *serialKind_;      /* the Link row: Auto, USB CDC, UART */
 	LimitSpinBox *slave_, *timeout_, *inFlight_;
 	QCheckBox *autoReconnect_;
 	QPushButton *connectButton_;
 	QPushButton *refreshButton_;  /* the serial ports looked for again */
-	ElidedLabel *linkState_;     /* the pill: one line, a long text cut in the middle, the whole of it in the tooltip */
+	/* the pill: one line, a long text cut in the middle, the whole of it in the tooltip; an error wraps, never cut */
+	ElidedLabel *linkState_;
 	QLabel *deviceInfo_;
 
 	/* the devices card, the map card */
