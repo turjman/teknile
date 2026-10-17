@@ -568,6 +568,7 @@ public:
 	int ramInUse() const { return limitMB_ > 0 ? std::min(ramMB_, limitMB_) : ramMB_; }
 	/* what the trims let go and is not freed yet (releaseSome), bytes: still taken, so counted as the chart's */
 	qint64 bytesReleasing() const;
+	void releaseLater(QVector<double> summary) { released_.summaries << std::move(summary); } /* tests: as a trim's */
 	/* the most samples a line keeps now: the RAM shared by the lines, at least 16 of the largest chunks, at most
 	 * MAX_POINTS */
 	qsizetype pointsPerLine() const;
@@ -1086,6 +1087,7 @@ private:
 	QColor stripTextColor_;
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
 	fast::Store::Released released_;       /* what the fast stores' trims let go, freed a slice a frame (releaseSome) */
+	qint64 summaryDiscarded_ = 0;          /* bytes of the first of released_.summaries discarded so far */
 	int ramMB_ = DEFAULT_RAM_MB;
 	int limitMB_ = 0;                      /* the free memory's limit on ramMB_ (setRamLimit); 0: none */
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */

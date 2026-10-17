@@ -49,6 +49,7 @@ public:
 
 	Store() = default;
 	explicit Store(const StreamDef &def) { reset(def); }
+	~Store();
 	void reset(const StreamDef &def); /* empty, for this stream */
 	const StreamDef &def() const { return def_; }
 	int recordSize() const { return recordSize_; }
@@ -174,5 +175,32 @@ private:
 	int epochBase_ = 0;                   /* epochs dropped from the front */
 	quint64 nextRecord_ = 0;              /* the number the next record would have, in the current start */
 };
+
+/* An array's pages given back to the system before the array is freed (Windows; elsewhere nothing). The C runtime's
+ * heap keeps what is freed into it, and later one free, of anything on any thread, gives a lump of it back at once:
+ * after a RAM cut from 2 GB the free of one piece gave 110 MB back in 8 to 13 ms, and what a closed chart had left
+ * (830 MB) in 62 to 69 ms, a frame held. Discarded as they are freed, the pages such a lump gives back have nothing
+ * behind them any more: 2 to 4 ms. Discarding costs more than the free alone (about 0.3 ms a MB), so what a frame
+ * frees in its slice (ChartView::releaseSome) takes more frames. Only whole pages of what the array holds (an array of
+ * doubles: all its room, the room at its front too): its header and the heap's bytes around it are not touched */
+void letPagesGo(const QByteArray &array);
+void letPagesGo(const QVector<double> &array);
+/* the same a slice at a time, for an array too large to discard within a frame (a summary of a 4 GB store: 64 MB,
+ * 20 to 24 ms): the next `most` bytes of its whole pages from `done` (bytes of them already discarded, moved on);
+ * false when none were left, so the caller frees it then */
+bool letPagesGo(const QVector<double> &array, qint64 &done, qint64 most);
+/* whether the room an array of doubles holds, as letPagesGo reads it from Qt's list, agrees with what the list tells
+ * (its values where they are, as many, its capacity) and holds them; when not, letPagesGo takes its values only.
+ * An array of raw data has no room of its own: false */
+bool roomKnown(const QVector<double> &array);
+/* letPagesGo on each, then freed, on a thread of its own (one, so frees never run side by side nor take the global
+ * pool's threads from an export or a recording's reading): for what is let go all at once (a store destroyed, what a
+ * closed chart had still to free), which no frame's slice will take */
+void letGoElsewhere(Store::Released gone);
+/* on quit (main.cpp, at aboutToQuit): what that thread still has is freed without its pages discarded first */
+void hurryLettingGo();
+/* waits up to ms (-1: as long as it takes) for that thread to be done: false if it is not (tests: frees never
+ * overlapping a timing check) */
+bool waitForLettingGo(int ms = -1);
 
 } // namespace fast
