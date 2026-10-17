@@ -61,6 +61,9 @@ protected:
 		QStyledItemDelegate::initStyleOption(option, index);
 		const QString full = index.data(FULL_LABEL_ROLE).toString();
 		if (!full.isEmpty()) option->text = ltrPiece(full);
+		/* the item under the mouse in the text colour, as the tables have it: the style sheet's selection is the accent
+		 * faded, and the palette's white on it could not be read in the light look */
+		option->palette.setColor(QPalette::HighlightedText, option->palette.color(QPalette::Text));
 	}
 };
 

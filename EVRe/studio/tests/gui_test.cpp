@@ -1281,6 +1281,77 @@ private:
 		fake.waitForFinished(3000);
 	}
 
+	/* EVRE_TEST_SHOT: the Connection card of a sidebar as wide as the window's, in English and Arabic, both themes
+	 * (<prefix>_serial_<card|list|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading USB CDC for
+	 * ST's IDs, a lost port's pill and the device line kept as last seen; the port list opened over the card (the two
+	 * grabs put together where they are on the screen: the list is a window of its own); the Baud box emptied with the
+	 * pill Connect gives then. A sidebar of its own: one made after the language is set has its texts */
+	void serialShots(const QSize &size) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			Sidebar card;
+			card.resize(size);
+			card.restoreLinkSettings(); /* as the window's: the link's fields shown with the choice made below */
+			auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+			auto *port = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
+			auto *baud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+			if (!pill || !port || !baud) break;
+			port->clear(); /* this computer's own ports out of the picture: the example's only */
+			card.addPort(QStringLiteral("COM10"), QStringLiteral("Example device virtual COM port with a long name"), true,
+					0x0483, 0x5740, QString());
+			card.addPort(QStringLiteral("COM11"), QStringLiteral("USB Serial Device"), true, 0x1234, 0x5678,
+					QStringLiteral("Example device"));
+			card.addPort(QStringLiteral("COM12"), QString(), false, 0, 0, QString());
+			card.useSerial(QStringLiteral("COM10:2000000"));
+			card.show();
+			const QString lost = QCoreApplication::translate("evre::SerialLink", "%1 is gone: unplugged or reset?")
+					.arg(QStringLiteral("COM10"));
+			card.setDeviceInfo(QCoreApplication::translate("MainWindow", "last seen: Device ID %1 · protocol rev %2")
+					.arg(addrText(0x1001)).arg(1).toHtmlEscaped());
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				card.themeChanged();
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				const auto save = [&](const QString &what, const QPixmap &picture) {
+					picture.save(prefix + QStringLiteral("_serial_%1_%2_%3.png").arg(what, code, theme));
+				};
+				baud->setCurrentText(QStringLiteral("2000000"));
+				card.showLinkError(lost, QStringLiteral("The system cannot find the file specified."));
+				QTest::qWait(100);
+				QWidget *box = docsCard(pill);
+				save(QStringLiteral("card"), box->grab());
+				port->showPopup();
+				QTest::qWait(200);
+				QWidget *list = port->view()->window();
+				const QRect boxAt(box->mapToGlobal(QPoint(0, 0)), box->size());
+				const QRect listAt(list->mapToGlobal(QPoint(0, 0)), list->size());
+				const QRect both = boxAt.united(listAt);
+				const qreal dpr = box->devicePixelRatioF();
+				QPixmap together(both.size() * dpr);
+				together.setDevicePixelRatio(dpr);
+				together.fill(Qt::transparent);
+				{
+					QPainter painter(&together);
+					painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
+					painter.drawPixmap(listAt.topLeft() - both.topLeft(), list->grab());
+				}
+				port->hidePopup();
+				save(QStringLiteral("list"), together);
+				baud->setCurrentText(QString());
+				card.showLinkError(QCoreApplication::translate("MainWindow", "Baud rate: a number, %1 to %2")
+						.arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
+				card.focusBaud();
+				QTest::qWait(100);
+				save(QStringLiteral("baud"), box->grab());
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+	}
+
 	/* The serial link as a first real board showed it: a USB CDC port (whose baud rate the hardware ignores) told from
 	 * a UART by its USB IDs, with the Link row to say otherwise, and Auto send capped only on a UART; a long port label
 	 * cut with an ellipsis (whole in the tooltip and the list opened); a lost or refused port said in plain words, the
@@ -1469,7 +1540,7 @@ private:
 		sidebar->addPort(QStringLiteral("COM11"), QStringLiteral("USB Serial Device"), true, 0x1234, 0x5678,
 				QStringLiteral("Example device"));
 		check(port->itemData(port->findData(QStringLiteral("COM11")), Qt::ToolTipRole).toString()
-						== QLatin1String("COM11 · Example device · 1234:5678"),
+						== QStringLiteral("COM11 · Example device · 1234:5678"),
 				"serial, the port list: a port of the map's USB IDs reads the map's device name");
 		const QSize windowWas = window_.size();
 		window_.resize(window_.minimumSize());
@@ -1542,19 +1613,7 @@ private:
 			check(restoredBaud == 115200, "serial, Baud: a saved link/baud that is no rate (\"abc\") restores as 115200");
 		}
 
-		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the card with the long port and a lost port */
-			port->setCurrentIndex(at);
-			sidebar->showLinkError(QStringLiteral("COM10 is gone: unplugged or reset?"),
-					QStringLiteral("The system cannot find the file specified."));
-			const bool wasDark = Theme::isDark();
-			for (const bool dark : { false, true }) {
-				Theme::apply(*qApp, dark);
-				QApplication::processEvents();
-				docsCard(pill)->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
-						+ QStringLiteral("_serial_card_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
-			}
-			Theme::apply(*qApp, wasDark);
-		}
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) serialShots(sidebar->size());
 
 		/* the fake device of the other steps again, over TCP */
 		sidebar->refreshPorts(DeviceMap());

@@ -6812,7 +6812,10 @@ and AUTO_SEND's card (`auto_send`); a fast stream's card (37.7) on known blocks,
 (`<prefix>_fastcard_en_<light|dark>.png`, `_fastcard_ar_light.png`), with Show all open
 (`<prefix>_fastcard_showall_en_<light|dark>.png`) and on a bus beside a poll card (`<prefix>_fastcard_bus_en_light.png`),
 and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`); the Connection card
-with a long port label cut and the pill *COM10 is gone: unplugged or reset?* (`<prefix>_serial_card_<light|dark>.png`).
+in English and Arabic, both themes: with a long port label cut, the pill *COM10 is gone: unplugged or reset?* and
+the device line as last seen (`<prefix>_serial_card_<en|ar>_<light|dark>.png`), with the port list opened over it
+(`<prefix>_serial_list_...`), and with the Baud box emptied and the pill Connect gives then
+(`<prefix>_serial_baud_...`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device
