@@ -1087,7 +1087,7 @@ private:
 	QColor stripTextColor_;
 	qsizetype movedThisFrame_ = 0;         /* samples moved by trims since the last frame() (dropExpired) */
 	fast::Store::Released released_;       /* what the fast stores' trims let go, freed a slice a frame (releaseSome) */
-	qint64 summaryDiscarded_ = 0;          /* bytes of the last of released_.summaries discarded so far */
+	qint64 summaryDiscarded_ = 0;          /* bytes of the first of released_.summaries discarded so far */
 	int ramMB_ = DEFAULT_RAM_MB;
 	int limitMB_ = 0;                      /* the free memory's limit on ramMB_ (setRamLimit); 0: none */
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */

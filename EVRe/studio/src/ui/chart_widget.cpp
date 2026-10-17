@@ -1051,14 +1051,15 @@ void ChartView::trimFast(fast::Store &store, int lines) {
  * before the frame is painted: gigabytes go over a few seconds, never a frame over budget. Each with its pages given
  * back first (fast::letPagesGo): freed alone, the heap kept them, and one free some frames later gave 110 MB back at
  * once, 8 to 13 ms. A summary's pages go a slice at a time, then it is freed: its size follows the store's (one
- * double for each 256 records), and a 4 GB store's 64 MB discarded in one go took about 20 ms */
+ * double for each 256 records), and a 4 GB store's 64 MB discarded in one go took about 20 ms. The summaries from the
+ * front: a trim appends its own at the end, while the first may be half discarded */
 void ChartView::releaseSome() {
 	if (released_.isEmpty()) return;
 	QElapsedTimer clock;
 	clock.start();
 	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
-		if (fast::letPagesGo(released_.summaries.last(), summaryDiscarded_, RELEASE_SLICE)) continue;
-		released_.summaries.removeLast();
+		if (fast::letPagesGo(released_.summaries.constFirst(), summaryDiscarded_, RELEASE_SLICE)) continue;
+		released_.summaries.removeFirst();
 		summaryDiscarded_ = 0;
 	}
 	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {

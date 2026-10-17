@@ -27,6 +27,7 @@
 #include <QTimer>
 #include <optional>
 
+#include "model/fast_store.h"
 #include "ui/help_dialog.h"
 #include "ui/language.h"
 #include "ui/main_window.h"
@@ -240,6 +241,9 @@ int main(int argc, char **argv) {
 	QApplication::setOrganizationName(QStringLiteral("teknile"));
 	QApplication::setApplicationName(QStringLiteral("EVReStudio"));
 	QApplication::setApplicationVersion(QStringLiteral(EVRE_STUDIO_VERSION));
+	/* at the quit, before the window and its charts close: what they hold is freed without its pages discarded first
+	 * (the system takes them back with the process), so a quit right after closing a big chart does not linger */
+	QObject::connect(&app, &QCoreApplication::aboutToQuit, [] { fast::hurryLettingGo(); });
 
 	const MainWindow::Startup startup = parseCommandLine(app);
 	const ScreenshotRequest screenshot = screenshotRequestFromEnvironment();

@@ -189,8 +189,18 @@ void letPagesGo(const QVector<double> &array);
  * 20 to 24 ms): the next `most` bytes of its whole pages from `done` (bytes of them already discarded, moved on);
  * false when none were left, so the caller frees it then */
 bool letPagesGo(const QVector<double> &array, qint64 &done, qint64 most);
-/* letPagesGo on each, then freed, on a thread of the pool: for what is let go all at once (a store destroyed, what a
+/* whether the room an array of doubles holds, as letPagesGo reads it from Qt's list, agrees with what the list tells
+ * (its values where they are, as many, its capacity) and holds them; when not, letPagesGo takes its values only.
+ * An array of raw data has no room of its own: false */
+bool roomKnown(const QVector<double> &array);
+/* letPagesGo on each, then freed, on a thread of its own (one, so frees never run side by side nor take the global
+ * pool's threads from an export or a recording's reading): for what is let go all at once (a store destroyed, what a
  * closed chart had still to free), which no frame's slice will take */
 void letGoElsewhere(Store::Released gone);
+/* on quit (main.cpp, at aboutToQuit): what that thread still has is freed without its pages discarded first */
+void hurryLettingGo();
+/* waits up to ms (-1: as long as it takes) for that thread to be done: false if it is not (tests: frees never
+ * overlapping a timing check) */
+bool waitForLettingGo(int ms = -1);
 
 } // namespace fast

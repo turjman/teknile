@@ -4560,7 +4560,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | File | Role |
 |---|---|
 | `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps copied beside them |
-| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid |
+| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`) |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` |
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
@@ -4578,7 +4578,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
 | `src/model/math_lines.h`,&nbsp;`.cpp` | `MathLine`, `MathLines`: formulas over registers, kept in the settings, evaluated per frame; a fast math line's per record (`evaluateRecords`, 9.9) |
 | `src/model/analysis.h`,&nbsp;`.cpp` | `analysis::`: `fft` (radix-2, our own), `histogram` (Freedman–Diaconis), `spectrum` (resampled, Welch, Hann) |
-| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame; `letPagesGo`: an array's pages given back before it is freed, Windows, a slice at a time for a big one; `letGoElsewhere`: a store's or a closed chart's arrays let go on a thread of the pool; `fillFrom`: a fast math line's values over a recording's records), 23.11 |
+| `src/model/fast_store.h`,&nbsp;`.cpp` | `fast::Store`: a fast stream's records as the chart keeps them (pieces of 65 536, segments, starts with their time marks, the summaries of every 256 and 4096 records; `dropFront` hands what it lets go to `Released` for the chart to free a slice a frame; `letPagesGo`: an array's pages given back before it is freed, Windows, a slice at a time for a big one; `roomKnown`: the room read from Qt's list checked against it; `letGoElsewhere`: a store's or a closed chart's arrays let go on a thread of their own, `hurryLettingGo` (at the quit), `waitForLettingGo` (tests); `fillFrom`: a fast math line's values over a recording's records), 23.11 |
 | `src/model/fast_recording.h`,&nbsp;`.cpp` | `fast::RecordingWriter`: a fast stream's recording, `.evrs` (pieces `EVRS`, `TIME`, `BLK `), written by `evre record` and the engine beside a CSV; `fast::readRecording` / `Recording`: one read, the file mapped, into a mapped store (12.7); `recordingFileFor` (`run.csv` -> `run.ADC.evrs`), `recordingsBeside` |
 | `src/model/recording_file.h`,&nbsp;`.cpp` | `recording::`: a recording's CSV read (`estimate`, `read`) and written (`write`, the chart's export), the notes beside it (`loadNotes`, `saveNotes`); `ChartNote` |
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
@@ -5697,16 +5697,22 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
   the memory goes over more frames (1.5 GB in about 4 s, 1.5 s before). A summary's array goes a slice at a time
   (`RELEASE_SLICE`, 4 MB, 1.3 to 2.6 ms), all its room: a handed array has its front removed, its values only its
   last few MB, and the room before them, left resident, took 3 to 4 ms to free; a store of 4 GB of one i16 channel
-  hands arrays of 64 MB, 20 to 24 ms to discard in one go. An array shared with a copy is never discarded (its pages
-  would read zeroed there). Measured, 3.6 GB of one i16 channel filled and cut to 256 MB (five runs): the longest
-  `frame()` 5.0 to 6.4 ms, none over 8 ms, all let go in 12 to 15 s. What a store destroyed or a chart closed still
-  holds (its pieces, outlines and summaries; what `released_` had left) goes to a thread of the pool
-  (`fast::letGoElsewhere`), which discards and frees it: the window's thread only hands it over. A chart closed with
-  3.6 GB held the window's thread 2.2 to 2.7 s while it discarded them itself; now 1 to 2 ms. The thread takes 3.4
-  to 4 s, and another chart meanwhile paints its frames in up to 29 to 38 ms (14 to 20 ms before it; the heap is
-  shared) where the window froze before; pausing the thread every 1 or 2 ms gave no steadier frames and took 14 to
-  24 s. Now, 2 GB filled cut to 256 MB: the longest append 5.2 ms, `frame()` 3.9 ms, the paint 13.6 ms (26.2, *the
-  RAM cut*); a 64 MB summary in 16 slices, a chart closed with 384 MB to free in under 20 ms (*a big summary let go*).
+  hands arrays of 64 MB, 20 to 24 ms to discard in one go. That room is read from Qt's list itself, and checked
+  against what the list tells (`fast::roomKnown`: its values' address, their count, its capacity): when they differ,
+  only the values are discarded, which can leave pages resident but never discard a live array's. The summaries go
+  from the front of what is to be freed: a trim appends its own at the end. An array shared with a copy is never
+  discarded (its pages would read zeroed there). Measured, 3.6 GB of one i16 channel filled and cut to 256 MB (five
+  runs): the longest `frame()` 5.0 to 6.4 ms, none over 8 ms, all let go in 12 to 15 s. What a store destroyed or a
+  chart closed still holds (its pieces, outlines and summaries; what `released_` had left) goes to a thread of its own
+  (`fast::letGoElsewhere`; one, so frees never run side by side and never take the global pool's threads from an
+  export or a recording's reading), which discards and frees it: the window's thread only hands it over; at the quit
+  it frees without discarding (the system takes the pages back with the process), and the program waits for it before
+  it ends. A chart closed with 3.6 GB held the window's thread 2.2 to 2.7 s while it discarded them itself; now 1 to 2
+  ms. The thread takes 3.4 to 4 s, and another chart meanwhile paints its frames in up to 29 to 38 ms (14 to 20 ms
+  before it; the heap is shared) where the window froze before; pausing the thread every 1 or 2 ms gave no steadier
+  frames and took 14 to 24 s. Now, 2 GB filled cut to 256 MB: the longest append 5.2 ms, `frame()` 3.9 ms, the paint
+  13.6 ms (26.2, *the RAM cut*); a 64 MB summary in 16 slices, a chart closed with 384 MB to free in under 20 ms (*a
+  big summary let go*).
 - **Older records as summaries** (`ChartView::setFastSummaries`, the Chart tab's *Older samples*, 7.14). As the
   summaries are made, each 256 records' (and 4096's) lowest and highest record are copied into the piece's outline
   (`outlines_`: two records a row, each channel's bytes those of its own lowest or highest, so a falling scale
@@ -6750,7 +6756,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 719 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 720 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

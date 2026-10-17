@@ -79,7 +79,6 @@
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextBrowser>
-#include <QThreadPool>
 #include <QTextDocument>
 #include <QTextLayout>
 #include <QTemporaryDir>
@@ -2266,6 +2265,7 @@ private:
 	 * two i16 (--fast-rate), both channels on the chart over a 10 s window, for 20 s: no record lost, no bad block,
 	 * none left unshown, and the chart's paint on average at most 8 ms a frame over the last 10 s */
 	void fastSpeed() {
+		(void) fast::waitForLettingGo(); /* a chart closed before with a fast store: its frees done, never under this one's times */
 		auto *sidebar = window_.findChild<Sidebar *>();
 		auto *chartTab = window_.findChild<ChartTab *>();
 		auto *tabs = window_.findChild<QTabWidget *>();
@@ -6342,6 +6342,7 @@ private:
 		/* the one tick for every card: Show values 2 a second, a fast card shown: ten ticks a second, the polls' replies
 		 * at their two beats, the fast blocks at each tick, one repaint a tick; every frame: a tick each frame, the fast
 		 * blocks still ten a second */
+		(void) fast::waitForLettingGo(); /* the fast streams' charts closed before: their frees done, never under the counts */
 		const int paceWas = pace->currentData().toInt();
 		pace->setCurrentIndex(pace->findData(2));
 		QTest::qWait(400);
@@ -10096,6 +10097,7 @@ private:
 	 * arithmetic of 100 min of two i16 channels at 1 MS/s in 512 MB; a RAM cut and the free memory's limit with the
 	 * tiers, no append, frame or paint over 20 ms */
 	static void chartFastTiers() {
+		(void) fast::waitForLettingGo(); /* a chart closed before with a fast store: its frees done, never under this one's times */
 		StreamDef def;
 		def.name = QStringLiteral("ADC");
 		for (const char *name : { "I", "V" }) {
@@ -10628,6 +10630,7 @@ private:
 	 * of 256 MB and 128 MB still to free hands them to a thread: its teardown under 20 ms (discarding took the window's
 	 * thread 0.65 ms a MB), the thread done within 10 s */
 	static void chartRamSlices() {
+		(void) fast::waitForLettingGo(); /* a chart closed before with a fast store: its frees done, never under this one's times */
 		constexpr qsizetype DOUBLES = 8 << 20; /* 64 MB */
 		QVector<double> big(DOUBLES, 1.0);
 		big.remove(0, DOUBLES - 4096); /* as a summary handed at a cut: its front removed, the room kept */
@@ -10696,7 +10699,7 @@ private:
 		delete closed;
 		const double teardownMs = teardown.nsecsElapsed() / 1e6;
 		teardown.restart();
-		const bool threadDone = QThreadPool::globalInstance()->waitForDone(10000);
+		const bool threadDone = fast::waitForLettingGo(10000);
 		const double threadMs = teardown.nsecsElapsed() / 1e6;
 		std::printf("     (a summary's pages: %d slices of 4 MB, %lld of %lld bytes; 4 x 64 MB let go in %d frames, the longest "
 				"frame() %.1f ms; a chart closed with %lld MB: %.1f ms, its thread %.0f ms after)\n", slices, (long long) done,
@@ -10706,6 +10709,22 @@ private:
 				"chart, a big summary let go: a 64 MB array's whole room discarded in 16 slices of 4 MB, an array shared with "
 				"a copy left alone; four let go by the frames, none over 20 ms, all within 5 s; a chart closed with 384 MB "
 				"to free hands it to a thread, its teardown under 20 ms");
+
+		/* the room as read from Qt's list checked against what the list tells: it agrees for an array full, with its
+		 * front removed, with room reserved and emptied keeping its room; an array of raw data has no room of its own,
+		 * so the read falls back to the values (and, not its own, it is left alone) */
+		QVector<double> full(1000, 1.0), front(1000, 1.0), reserved, emptied(1000, 1.0);
+		front.remove(0, 600);
+		reserved.reserve(5000);
+		reserved << 1.0;
+		emptied.clear();
+		static const double raw[512] = { 0, 3.0 };
+		const QVector<double> borrowed(QArrayDataPointer<double>::fromRawData(raw, 512));
+		fast::letPagesGo(borrowed);
+		check(fast::roomKnown(full) && fast::roomKnown(front) && fast::roomKnown(reserved) && fast::roomKnown(emptied)
+						&& emptied.capacity() >= 1000 && !fast::roomKnown(borrowed) && borrowed.at(1) == 3.0,
+				"chart, an array's room read from Qt's list and checked against it: it agrees for an array full, its front "
+				"removed, room reserved, emptied; an array of raw data (no room of its own) falls back to its values");
 	}
 
 	/* The RAM against the free memory (O-13): the budget is a cap, not a reservation. With less free than it, the chart
@@ -10715,6 +10734,7 @@ private:
 	 * ... free: keeps about ..." in the warn colour, the RAM box's tooltip and the memory strip's say why. The free
 	 * memory back: the RAM set again, nothing more trimmed */
 	void chartRamFree() {
+		(void) fast::waitForLettingGo(); /* a chart closed before with a fast store: its frees done, never under this one's times */
 		/* the effective budget: what is held and free less the reserve, within the floor and the RAM set */
 		const qint64 reserve = ChartTab::ramReserveMB();
 		const bool formula = ChartTab::effectiveRamMB(16384, 1000, 2048 + reserve) == 3048
