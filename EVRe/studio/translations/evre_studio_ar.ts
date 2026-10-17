@@ -2502,284 +2502,8 @@ A note: right-click the chart where it goes, Add note here.</source>
         <translation>الاتصال</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Connecting&lt;/h2&gt;
-&lt;h3&gt;TCP&lt;/h3&gt;
-&lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
-or another EVRe Studio&apos;s API (port 1219).
-A device that asks for a &lt;b&gt;token&lt;/b&gt; gets it from the token box: after connecting, the Studio writes it to
-the &lt;b&gt;login register&lt;/b&gt; the map declares (&lt;code&gt;&quot;login&quot;&lt;/code&gt;, see &lt;i&gt;Device maps&lt;/i&gt;). It is not stored.
-With no login register in the map the token is not sent, and the Log says so.&lt;/p&gt;
-&lt;h3&gt;Serial / USB&lt;/h3&gt;
-&lt;p&gt;Ports are listed with their USB IDs. A map that names its device&apos;s USB ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks
-that port with the device&apos;s name, and picks it by itself when no port was chosen before.
-Baud does not matter for USB CDC; it does for a real UART.
-A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&quot;Access denied&quot; otherwise).&lt;/p&gt;
-&lt;h3&gt;Options&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Slave&lt;/b&gt;: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
-On a bus each device has its own (below).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Timeout&lt;/b&gt;: how long an answer may take. Slow radio links need more.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt; (Polling): time between polls, down to 0.05 ms; &lt;b&gt;max&lt;/b&gt; (0) polls back to back.
-Type it, or use the arrows / wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09).
-0.25 ms is 4000 polls/s: the device and the link must keep up, the poll rate below says what they do,
-and &lt;i&gt;why&lt;/i&gt; when it is slower than asked (in amber).
-Polls run on their own thread: the window drawing never slows them, and CSV gets every one.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Show values&lt;/b&gt; (Polling): how often the numbers on screen change, in the table and in the chart&apos;s
-legend: 2, 5, &lt;b&gt;10&lt;/b&gt; (default) or 30 per second, or every frame. A number that changes at every frame
-cannot be read. The polls, the CSV file and the chart&apos;s lines are not slowed by it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: requests sent before their answers come. &lt;b&gt;1&lt;/b&gt; for a device on a UART;
-&lt;b&gt;4&lt;/b&gt; (default for TCP) pipelines them, so a poll of several blocks costs one round trip
-instead of one per block. Kept separately for TCP and serial.
-A poll is one read per block, so polls &lt;b&gt;overlap&lt;/b&gt; only with In flight ≥ 2 × blocks: with 3 blocks
-and In flight 4 there is one poll at a time and the rate is 1 / latency (≈ 200/s at 5 ms over Wi-Fi).
-Faster needs about &lt;i&gt;polls/s × latency&lt;/i&gt; polls at once: In flight 12 (4 polls) for ~800/s at 5 ms.
-More in &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Reconnect by itself&lt;/b&gt;: after a lost link, try again (0.5 s after a drop, every 2 s after a failed
-attempt).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Several devices on one link&lt;/h3&gt;
-&lt;p&gt;An RS-485 line or a gateway may carry several devices, each at its own slave address. &lt;b&gt;Devices on the
-link&lt;/b&gt; (sidebar): &lt;b&gt;New bus&lt;/b&gt; makes a bus of the map&apos;s device; &lt;b&gt;+ Device&lt;/b&gt; adds one (a name, a slave
-address, a map: several devices may share one); &lt;b&gt;Bus file &amp;gt; Save&lt;/b&gt; keeps it as a bus file
-(&lt;code&gt;evre-bus/1&lt;/code&gt;), opened again at the next start. A row of the list reads &lt;i&gt;D1 · slave 1 · map&lt;/i&gt;.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Every register is named after its device: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;, &lt;b&gt;D2_STATUS&lt;/b&gt;. The chart, math lines, CSV and
-the API use those names: any device&apos;s register by its name alone.&lt;/li&gt;
-&lt;li&gt;The Registers tab shows the device selected in the list, or &lt;b&gt;All devices&lt;/b&gt; (its own picker); the Map
-editor edits the selected device&apos;s map, says which devices share it, and &lt;b&gt;Live values from&lt;/b&gt; picks whose values
-its live line shows. Every picker shows a device as the list does: its dot (green answers, red offline, grey not
-connected), then &lt;i&gt;D1 · slave 1&lt;/i&gt;; a long name is cut, its row&apos;s tooltip has it whole.&lt;/li&gt;
-&lt;li&gt;A device with a token of its own: type it in its &lt;b&gt;Edit…&lt;/b&gt; dialog (never saved).&lt;/li&gt;
-&lt;li&gt;A device that misses %OFFLINE_MISSES% answers in a row is &lt;b&gt;offline&lt;/b&gt; (red dot): left out of the polls, asked
-again every %OFFLINE_RETRY_S% s, so the others keep their rate. Its timeouts are not logged again while it is offline;
-another device&apos;s are.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Broadcast&lt;/h3&gt;
-&lt;p&gt;Slave &lt;b&gt;0&lt;/b&gt; reaches every device at once, and none answers. The Studio sends one only when it means the same to
-every device: into the reserved bank&apos;s writable registers (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG, the
-messages) always; anywhere else only when every device on the link has the same map. Never one that switches
-CONFIG&apos;s AUTO_SEND on: every device would send by itself at once, over the others. &lt;b&gt;To all devices&lt;/b&gt; in quick
-write broadcasts the value typed, then reads every device back; the Monitor&apos;s Slave &lt;b&gt;0&lt;/b&gt; sends raw bytes; the
-&lt;b&gt;Broadcast&lt;/b&gt; menu of the Devices card keeps broadcasts by name in the bus file (&lt;i&gt;Stop all&lt;/i&gt;), each sent after a
-confirmation, then each device read back. They are offered while connected with &lt;b&gt;Allow writes&lt;/b&gt; on; a preset&apos;s
-tooltip says why when it is not.&lt;/p&gt;
-&lt;h3&gt;If it does not connect&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: wrong address, or this PC is not on that network.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;Connects, then drops after a few seconds&lt;/i&gt;: the server wants a token and it is missing or wrong, or the
-map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;Access denied&lt;/i&gt; (serial): another program holds the port.&lt;/li&gt;
-&lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
-or this link does not). Not an error.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;الاتصال&lt;/h2&gt;
-&lt;h3&gt;TCP&lt;/h3&gt;
-&lt;p&gt;المضيف والمنفذ لأي خادم EVRe عبر TCP: جهاز بمنفذ شبكة، أو بوابة TCP إلى جهاز،
-أو API لبرنامج EVRe Studio آخر (المنفذ 1219).
-الجهاز الذي يطلب &lt;b&gt;رمز دخول&lt;/b&gt; يأخذه من مربع رمز الدخول: بعد الاتصال يكتبه البرنامج في
-&lt;b&gt;مسجّل الدخول&lt;/b&gt; الذي تعلنه الخريطة (&lt;code&gt;&quot;login&quot;&lt;/code&gt;، انظر &lt;i&gt;خرائط الأجهزة&lt;/i&gt;). لا يُحفظ.
-إن لم يكن في الخريطة مسجّل دخول لا يُرسل الرمز، ويقول السجل ذلك.&lt;/p&gt;
-&lt;h3&gt;تسلسلي / USB&lt;/h3&gt;
-&lt;p&gt;تُعرض المنافذ مع معرّفات USB الخاصة بها. الخريطة التي تسمّي معرّف USB لجهازها (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) تعلّم
-ذلك المنفذ باسم الجهاز، وتختاره وحدها حين لم يُختر منفذ من قبل.
-معدّل البود لا يهم مع USB CDC؛ ويهم مع UART حقيقي.
-المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا «Access denied»).&lt;/p&gt;
-&lt;h3&gt;الخيارات&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
-على الناقل لكل جهاز عنوانه (أدناه).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المهلة&lt;/b&gt;: كم يجوز أن يستغرق الجواب. الوصلات الراديوية البطيئة تحتاج أكثر.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى ⁦0.05 ms⁩؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
-اكتبه، أو استخدم الأسهم / العجلة: تخطو بعُشر (10 → 9، 1 → 0.9 → … 0.1 → 0.09).
-⁦0.25 ms⁩ تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
-و&lt;i&gt;لماذا&lt;/i&gt; حين يكون أبطأ مما طُلب (بالكهرماني).
-تعمل الاستطلاعات على خيطها الخاص: رسم النافذة لا يبطئها أبدًا، وCSV يحصل على كل واحد.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع): كم مرة تتغير الأعداد على الشاشة، في الجدول وفي مفتاح
-المخطط: 2 أو 5 أو &lt;b&gt;10&lt;/b&gt; (افتراضيًا) أو 30 في الثانية، أو كل إطار. العدد الذي يتغير في كل إطار
-لا يُقرأ. ولا يُبطئ ذلك الاستطلاعات ولا ملف CSV ولا خطوط المخطط.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: طلبات تُرسل قبل وصول أجوبتها. &lt;b&gt;1&lt;/b&gt; لجهاز على UART؛
-و&lt;b&gt;4&lt;/b&gt; (افتراضي TCP) يتابعها، فيكلّف استطلاع عدة كتل رحلة ذهاب وإياب واحدة
-بدل واحدة لكل كتلة. يُحفظ منفصلًا لـ TCP وللتسلسلي.
-الاستطلاع قراءة واحدة لكل كتلة، فلا &lt;b&gt;تتداخل&lt;/b&gt; الاستطلاعات إلا مع «قيد الإرسال» ≥ 2 × الكتل: مع 3 كتل
-و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند ⁦5 ms⁩ عبر Wi-Fi).
-الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند ⁦5 ms⁩.
-المزيد في &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد ⁦0.5 s⁩ من الانقطاع، وكل ⁦2 s⁩ بعد محاولة
-فاشلة).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;عدة أجهزة على وصلة واحدة&lt;/h3&gt;
-&lt;p&gt;قد يحمل خط RS-485 أو بوابة عدة أجهزة، لكل منها عنوان تابع خاص. &lt;b&gt;الأجهزة على
-الوصلة&lt;/b&gt; (الشريط الجانبي): &lt;b&gt;ناقل جديد&lt;/b&gt; يصنع ناقلًا من جهاز الخريطة؛ و&lt;b&gt;+ جهاز&lt;/b&gt; يضيف واحدًا (اسم، وعنوان
-تابع، وخريطة: يجوز لعدة أجهزة أن تتشارك واحدة)؛ و&lt;b&gt;ملف الناقل &amp;gt; حفظ&lt;/b&gt; يحفظه ملف ناقل
-(&lt;code&gt;evre-bus/1&lt;/code&gt;)، يُفتح من جديد عند التشغيل التالي. يُقرأ صف في القائمة هكذا: &lt;i&gt;D1 · التابع 1 · الخريطة&lt;/i&gt;.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;يُسمّى كل مسجّل باسم جهازه: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;، &lt;b&gt;D2_STATUS&lt;/b&gt;. المخطط والخطوط الرياضية وCSV و
-API تستخدم هذه الأسماء: مسجّل أي جهاز باسمه وحده.&lt;/li&gt;
-&lt;li&gt;يعرض لسان المسجّلات الجهاز المحدّد في القائمة، أو &lt;b&gt;كل الأجهزة&lt;/b&gt; (له منتقٍ خاص)؛ ومحرر الخريطة
-يحرّر خريطة الجهاز المحدّد، ويقول أي الأجهزة تتشاركها، و&lt;b&gt;القيم الحية من&lt;/b&gt; تختار من تُعرض قيمه
-في سطره الحي. كل منتقٍ يعرض الجهاز كما تعرضه القائمة: نقطته (خضراء يجيب، حمراء غير متصل، رمادية غير
-متصل بعد)، ثم &lt;i&gt;D1 · التابع 1&lt;/i&gt;؛ والاسم الطويل يُقصّ، وتلميح صفه يحمله كاملًا.&lt;/li&gt;
-&lt;li&gt;جهاز له رمز دخول خاص: اكتبه في حوار &lt;b&gt;تحرير…&lt;/b&gt; الخاص به (لا يُحفظ أبدًا).&lt;/li&gt;
-&lt;li&gt;الجهاز الذي يفوته %OFFLINE_MISSES% أجوبة متتالية يصير &lt;b&gt;غير متصل&lt;/b&gt; (نقطة حمراء): يُخرج من الاستطلاعات، ويُسأل
-من جديد كل %OFFLINE_RETRY_S% s، فيحافظ الباقون على معدّلهم. لا تُسجَّل مهلاته من جديد ما دام غير متصل؛
-أما مهلات غيره فتُسجَّل.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;البث&lt;/h3&gt;
-&lt;p&gt;التابع &lt;b&gt;0&lt;/b&gt; يصل إلى كل جهاز معًا، ولا يجيب أحد. يرسل البرنامج بثًا فقط حين يعني الشيء نفسه
-لكل جهاز: إلى مسجّلات البنك المحجوز القابلة للكتابة (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG،
-الرسائل) دائمًا؛ وإلى أي مكان آخر فقط حين يكون لكل جهاز على الوصلة الخريطة نفسها. ولا يرسل أبدًا ما يفعّل
-AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فورًا، فوق البقية. &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; في الكتابة
-السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقبة يرسل بايتات خامًا؛ وقائمة
-&lt;b&gt;البث&lt;/b&gt; في بطاقة الأجهزة تحفظ بثوثًا بأسمائها في ملف الناقل (&lt;i&gt;أوقف الكل&lt;/i&gt;)، كل منها يُرسل بعد
-تأكيد، ثم يُقرأ كل جهاز للتحقق. تُعرض ما دام متصلًا و&lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّل؛ وتلميح البث المحفوظ
-يقول لماذا حين لا يُعرض.&lt;/p&gt;
-&lt;h3&gt;إن لم يتصل&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: عنوان خاطئ، أو هذا الحاسوب ليس على تلك الشبكة.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;يتصل، ثم ينقطع بعد ثوانٍ&lt;/i&gt;: الخادم يريد رمز دخول وهو مفقود أو خاطئ، أو ليس في
-الخريطة &lt;code&gt;&quot;login&quot;&lt;/code&gt; لإرساله إليه (انظر السجل).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;Access denied&lt;/i&gt; (تسلسلي): برنامج آخر يمسك المنفذ.&lt;/li&gt;
-&lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
-أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
-    </message>
-    <message>
         <source>Polling &amp; speed</source>
         <translation>الاستطلاع والسرعة</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Polling &amp;amp; speed&lt;/h2&gt;
-&lt;p&gt;A &lt;b&gt;poll&lt;/b&gt; reads every register of the map once. The registers are not asked one by one: they are
-merged into a few &lt;b&gt;block reads&lt;/b&gt;, and the sidebar says how many: &lt;i&gt;15 registers in 3 reads&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;How the reads are made&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;Registers in the same &lt;b&gt;256-byte page&lt;/b&gt; (the same high byte of the address: 0xA0.., 0xD0..) with
-gaps of &lt;b&gt;8 bytes or less&lt;/b&gt; between them become &lt;b&gt;one read&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.&lt;/li&gt;
-&lt;li&gt;If the device still refuses a block, it is split into single registers; an address it does not have is
-dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again.&lt;/li&gt;
-&lt;li&gt;Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → &lt;b&gt;Read now&lt;/b&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;The number of reads comes from the map&apos;s layout, not from a setting. Registers in the same 256-byte page
-with gaps of at most 8 bytes are read together, so a map whose registers sit in three separate address ranges
-needs three reads per poll. The example map (&lt;code&gt;maps/example_device.json&lt;/code&gt;) is one:
-&lt;code&gt;0xA000–0xA006&lt;/code&gt; (protocol: DEVICE_ID, STATUS, CONFIG…), &lt;code&gt;0xD000–0xD015&lt;/code&gt; (UPTIME … PRESSURE)
-and &lt;code&gt;0xD080–0xD087&lt;/code&gt; (SETPOINT … MOTOR_SPEED); the last two share a page, but more than 8 bytes lie
-between them.&lt;/p&gt;
-&lt;h3&gt;What sets the rate&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt;: the poll you ask for (10 ms = 100 polls/s, 1 ms = 1000/s, &lt;b&gt;max&lt;/b&gt; = back to back).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Latency&lt;/b&gt; (status bar): how long one answer takes: well under 1 ms on USB or this PC, 1–5 ms over Wi-Fi.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: how many requests may wait for their answers at once. A poll is one request per read, so
-polls can overlap only when In flight covers several of them: &lt;i&gt;polls at once = In flight ÷ reads&lt;/i&gt;.
-With 3 reads and In flight 4, one poll at a time: the rate is 1 ÷ latency (1000/s at 1 ms, 200/s at 5 ms).
-In flight 12 lets 4 polls overlap: up to 4× that.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;When the polls are slower than asked, the status bar says why, in amber (hover it for the whole text):&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;Slower than asked: a poll is 36 reads, sent 1 at a time…&lt;/i&gt; or &lt;i&gt;…In flight 4 runs 1 poll at once…&lt;/i&gt;:
-raise &lt;b&gt;In flight&lt;/b&gt; to the number it suggests.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;Slower than asked: … ms per answer is the link&apos;s limit&lt;/i&gt;: In flight is already high enough; the link or the
-device is the limit (a longer interval, or fewer registers in the map).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;… on the serial link …&lt;/i&gt;: a serial link answers one request at a time; a longer interval, fewer registers, or
-a faster baud rate.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Measured: 4000 polls/s to a fast test device on this PC. Over a link with several ms per answer the rate
-follows the rule above, polls at once ÷ latency: one poll at a time at 5 ms per answer is about 200 polls/s.
-A &lt;b&gt;serial&lt;/b&gt; port (a UART) takes one request at a time: keep In flight at &lt;b&gt;1&lt;/b&gt; there. In flight is kept
-separately for TCP and serial.&lt;/p&gt;
-&lt;p&gt;Polls run on their own thread: the window, the chart and the table never slow them, and the CSV and the
-chart get every poll.&lt;/p&gt;
-&lt;h3&gt;Auto send&lt;/h3&gt;
-&lt;p&gt;A device whose STATUS has &lt;b&gt;CAP_AUTO_SEND&lt;/b&gt; can send its read-only block (0xD000 on) by itself, with no
-request and no answer time. Tick &lt;b&gt;Auto send&lt;/b&gt; in the polling card and pick a rate: the 16 the device makes
-exactly, 8000 Hz ÷ (prescaler + 1), from 4000 Hz down to 40 Hz (the prescaler is the device timer&apos;s reload, never 0;
-default 100 Hz; the rate is remembered, the tick is not: it changes the device). Not offered, the greyed list says why
-(&lt;i&gt;not connected&lt;/i&gt;, &lt;i&gt;not offered&lt;/i&gt;, &lt;i&gt;not on a bus&lt;/i&gt;). No frame within 2 s (a gateway that does not pass
-them on): it is switched off again, the Log says so, and the registers are polled.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;The Studio writes CONFIG: AUTO_SEND (bit 3) and the prescaler, MSG_ENABLE kept, SYS_RESET and DFU 0.&lt;/li&gt;
-&lt;li&gt;Each frame fills the table and is one chart point and &lt;b&gt;one CSV row&lt;/b&gt;; the polls read only the rest.
-The sidebar shows both, frames and polls a second: &lt;i&gt;Auto send 99.8/s · 10.0 polls/s&lt;/i&gt;.&lt;/li&gt;
-&lt;li&gt;CONFIG is read every 100 ms meanwhile, even with Poll off, so the device&apos;s host watchdog stays fed. If the
-device clears it by itself (a reset), the Log says so once and the box unticks.&lt;/li&gt;
-&lt;li&gt;On a &lt;b&gt;serial&lt;/b&gt; link the frames may take at most 70% of the link: a faster rate is lowered, and the Log
-says so.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Disconnect&lt;/b&gt; (and closing the Studio) switches it off on the device first. After a lost link it is switched
-on again by itself.&lt;/li&gt;
-&lt;li&gt;One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
-that switches AUTO_SEND on is refused.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;الاستطلاع والسرعة&lt;/h2&gt;
-&lt;p&gt;&lt;b&gt;الاستطلاع&lt;/b&gt; يقرأ كل مسجّل في الخريطة مرة واحدة. لا تُسأل المسجّلات واحدًا واحدًا: تُدمج في
-بضع &lt;b&gt;قراءات كتل&lt;/b&gt;، ويقول الشريط الجانبي كم عددها: &lt;i&gt;15 مسجّلًا في 3 قراءات&lt;/i&gt;.&lt;/p&gt;
-&lt;h3&gt;كيف تُصنع القراءات&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;المسجّلات في &lt;b&gt;الصفحة نفسها من 256 بايت&lt;/b&gt; (البايت الأعلى نفسه من العنوان: 0xA0..، 0xD0..) بفجوات
-&lt;b&gt;8 بايت أو أقل&lt;/b&gt; بينها تصير &lt;b&gt;قراءة واحدة&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;القراءة لا تعبر صفحة أبدًا: كثيرًا ما تحفظ الأجهزة بنوكًا منفصلة هناك، وبعضها يرفض قراءة عبرها.&lt;/li&gt;
-&lt;li&gt;إن ظل الجهاز يرفض كتلة، تُقسم إلى مسجّلات مفردة؛ والعنوان الذي لا يملكه
-يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد.&lt;/li&gt;
-&lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;قراءة الآن&lt;/b&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;عدد القراءات يأتي من ترتيب الخريطة، لا من إعداد. المسجّلات في الصفحة نفسها من 256 بايت
-بفجوات 8 بايت على الأكثر تُقرأ معًا، فالخريطة التي تقع مسجّلاتها في ثلاثة نطاقات عناوين منفصلة
-تحتاج ثلاث قراءات لكل استطلاع. خريطة المثال (&lt;code&gt;maps/example_device.json&lt;/code&gt;) واحدة منها:
-&lt;code&gt;0xA000–0xA006&lt;/code&gt; (البروتوكول: DEVICE_ID، STATUS، CONFIG…)، و&lt;code&gt;0xD000–0xD015&lt;/code&gt; (UPTIME … PRESSURE)
-و&lt;code&gt;0xD080–0xD087&lt;/code&gt; (SETPOINT … MOTOR_SPEED)؛ الأخيران يتشاركان صفحة، لكن بينهما أكثر من 8
-بايت.&lt;/p&gt;
-&lt;h3&gt;ما الذي يحدد المعدّل&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt;: الاستطلاع الذي تطلبه (⁦10 ms⁩ = 100 استطلاع/ث، ⁦1 ms⁩ = 1000/ث، &lt;b&gt;أقصى&lt;/b&gt; = بلا فاصل).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;زمن الاستجابة&lt;/b&gt; (شريط الحالة): كم يستغرق الجواب الواحد: أقل بكثير من ⁦1 ms⁩ عبر USB أو على هذا الحاسوب، و1–⁦5 ms⁩ عبر Wi-Fi.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: كم طلبًا يجوز أن ينتظر أجوبته معًا. الاستطلاع طلب واحد لكل قراءة، فلا
-تتداخل الاستطلاعات إلا حين يغطي «قيد الإرسال» عدة منها: &lt;i&gt;الاستطلاعات معًا = قيد الإرسال ÷ القراءات&lt;/i&gt;.
-مع 3 قراءات و«قيد الإرسال» 4، استطلاع واحد في كل مرة: المعدّل 1 ÷ زمن الاستجابة (1000/ث عند ⁦1 ms⁩، و200/ث عند ⁦5 ms⁩).
-«قيد الإرسال» 12 يتيح تداخل 4 استطلاعات: حتى 4× ذلك.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;حين تكون الاستطلاعات أبطأ مما طُلب، يقول شريط الحالة لماذا، بالكهرماني (مرّر الفأرة فوقه للنص كله):&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;أبطأ مما طُلب: الاستطلاع 36 قراءة، تُرسل 1 في كل مرة…&lt;/i&gt; أو &lt;i&gt;…«قيد الإرسال» 4 يشغّل استطلاعًا واحدًا معًا…&lt;/i&gt;:
-ارفع &lt;b&gt;قيد الإرسال&lt;/b&gt; إلى العدد الذي يقترحه.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;أبطأ مما طُلب: … ms لكل جواب هو حد الوصلة&lt;/i&gt;: «قيد الإرسال» عالٍ بما يكفي؛ الوصلة أو
-الجهاز هو الحد (فاصل أطول، أو مسجّلات أقل في الخريطة).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;… على الوصلة التسلسلية …&lt;/i&gt;: الوصلة التسلسلية تجيب طلبًا واحدًا في كل مرة؛ فاصل أطول، أو مسجّلات أقل، أو
-معدّل بود أسرع.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;المقيس: 4000 استطلاع/ث إلى جهاز اختبار سريع على هذا الحاسوب. عبر وصلة بعدة ms لكل جواب يتبع المعدّل
-القاعدة أعلاه، الاستطلاعات معًا ÷ زمن الاستجابة: استطلاع واحد في كل مرة عند ⁦5 ms⁩ لكل جواب نحو 200 استطلاع/ث.
-المنفذ &lt;b&gt;التسلسلي&lt;/b&gt; (UART) يأخذ طلبًا واحدًا في كل مرة: أبقِ «قيد الإرسال» على &lt;b&gt;1&lt;/b&gt; هناك. و«قيد الإرسال» يُحفظ
-منفصلًا لـ TCP وللتسلسلي.&lt;/p&gt;
-&lt;p&gt;تعمل الاستطلاعات على خيطها الخاص: النافذة والمخطط والجدول لا تبطئها أبدًا، ويحصل CSV و
-المخطط على كل استطلاع.&lt;/p&gt;
-&lt;h3&gt;الإرسال التلقائي&lt;/h3&gt;
-&lt;p&gt;الجهاز الذي يحمل STATUS فيه &lt;b&gt;CAP_AUTO_SEND&lt;/b&gt; يستطيع إرسال كتلته للقراءة فقط (من 0xD000) من تلقاء نفسه، بلا
-طلب ولا زمن جواب. فعّل &lt;b&gt;الإرسال التلقائي&lt;/b&gt; في بطاقة الاستطلاع واختر معدّلًا: الـ16 التي يصنعها الجهاز
-تمامًا، ⁦8000 Hz⁩ ÷ (المقسّم + 1)، من ⁦4000 Hz⁩ نزولًا إلى ⁦40 Hz⁩ (المقسّم هو قيمة إعادة تحميل مؤقت الجهاز، وليس 0 أبدًا؛
-الافتراضي ⁦100 Hz⁩؛ يُتذكَّر المعدّل، لا التفعيل: إنه يغيّر الجهاز). حين لا يُعرض، تقول القائمة الرمادية لماذا
-(&lt;i&gt;غير متصل&lt;/i&gt;، &lt;i&gt;غير معروض&lt;/i&gt;، &lt;i&gt;ليس على ناقل&lt;/i&gt;). لا إطار خلال ⁦2 s⁩ (بوابة لا تمرّرها):
-يُعطَّل من جديد، ويقول السجل ذلك، وتُستطلع المسجّلات.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;يكتب البرنامج CONFIG: ‏AUTO_SEND (البت 3) والمقسّم، مع إبقاء MSG_ENABLE، وSYS_RESET وDFU على 0.&lt;/li&gt;
-&lt;li&gt;كل إطار يملأ الجدول وهو نقطة على المخطط و&lt;b&gt;صف CSV واحد&lt;/b&gt;؛ والاستطلاعات تقرأ الباقي فقط.
-يعرض الشريط الجانبي كليهما، الإطارات والاستطلاعات في الثانية: &lt;i&gt;الإرسال التلقائي 99.8/s · 10.0 استطلاع/ث&lt;/i&gt;.&lt;/li&gt;
-&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ في الأثناء، حتى مع تعطيل الاستطلاع، فيبقى مراقب المضيف في الجهاز مُغذّى. إن
-مسحه الجهاز من تلقاء نفسه (إعادة تشغيل)، يقول السجل ذلك مرة ويُلغى تفعيل المربع.&lt;/li&gt;
-&lt;li&gt;على وصلة &lt;b&gt;تسلسلية&lt;/b&gt; لا يجوز أن تأخذ الإطارات أكثر من 70% من الوصلة: يُخفَّض المعدّل الأسرع، ويقول
-السجل ذلك.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يعطّله على الجهاز أولًا. وبعد فقد الوصلة يُفعَّل
-من جديد تلقائيًا.&lt;/li&gt;
-&lt;li&gt;جهاز واحد فقط: على الناقل يُعطَّل المربع (الأجهزة التي ترسل من تلقاء نفسها ستتصادم)، ويُرفض البث
-الذي يفعّل AUTO_SEND.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
     </message>
     <message>
         <source>Registers &amp; writes</source>
@@ -4020,6 +3744,301 @@ kept).&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>
+&lt;h2&gt;Connecting&lt;/h2&gt;
+&lt;h3&gt;TCP&lt;/h3&gt;
+&lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
+or another EVRe Studio&apos;s API (port 1219).
+A device that asks for a &lt;b&gt;token&lt;/b&gt; gets it from the token box: after connecting, the Studio writes it to
+the &lt;b&gt;login register&lt;/b&gt; the map declares (&lt;code&gt;&quot;login&quot;&lt;/code&gt;, see &lt;i&gt;Device maps&lt;/i&gt;). It is not stored.
+With no login register in the map the token is not sent, and the Log says so.&lt;/p&gt;
+&lt;h3&gt;Serial / USB&lt;/h3&gt;
+&lt;p&gt;Ports are listed as &lt;i&gt;COM10 · its description · 0483:5740&lt;/i&gt;: the name, the driver&apos;s description and the USB
+IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device&apos;s USB
+ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks that port with the device&apos;s name, and picks it by itself when no port was chosen before.
+A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy&lt;/i&gt; otherwise).&lt;/p&gt;
+&lt;p&gt;When a link fails or is lost, the pill says what happened in plain words (&lt;i&gt;COM10 is gone: unplugged or
+reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&apos;s own text, which the Log has too. The line under it keeps
+the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.&lt;/p&gt;
+&lt;h3&gt;Options&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
+connect. A UART must match the device; USB CDC ignores it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
+UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303: the baud rate is the real speed) by the port&apos;s USB IDs, and
+shows what it found (&lt;i&gt;Auto: USB CDC&lt;/i&gt;). Choose &lt;b&gt;USB CDC&lt;/b&gt; or &lt;b&gt;UART&lt;/b&gt; when it guesses wrong. On a UART,
+Auto send is kept under the baud rate.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Slave&lt;/b&gt;: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
+On a bus each device has its own (below).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Timeout&lt;/b&gt;: how long an answer may take. Slow radio links need more.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt; (Polling): time between polls, down to 0.05 ms; &lt;b&gt;max&lt;/b&gt; (0) polls back to back.
+Type it, or use the arrows / wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09).
+0.25 ms is 4000 polls/s: the device and the link must keep up, the poll rate below says what they do,
+and &lt;i&gt;why&lt;/i&gt; when it is slower than asked (in amber).
+Polls run on their own thread: the window drawing never slows them, and CSV gets every one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Show values&lt;/b&gt; (Polling): how often the numbers on screen change, in the table and in the chart&apos;s
+legend: 2, 5, &lt;b&gt;10&lt;/b&gt; (default) or 30 per second, or every frame. A number that changes at every frame
+cannot be read. The polls, the CSV file and the chart&apos;s lines are not slowed by it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: requests sent before their answers come. &lt;b&gt;1&lt;/b&gt; for a device on a UART;
+&lt;b&gt;4&lt;/b&gt; (default for TCP) pipelines them, so a poll of several blocks costs one round trip
+instead of one per block. Kept separately for TCP and serial.
+A poll is one read per block, so polls &lt;b&gt;overlap&lt;/b&gt; only with In flight ≥ 2 × blocks: with 3 blocks
+and In flight 4 there is one poll at a time and the rate is 1 / latency (≈ 200/s at 5 ms over Wi-Fi).
+Faster needs about &lt;i&gt;polls/s × latency&lt;/i&gt; polls at once: In flight 12 (4 polls) for ~800/s at 5 ms.
+More in &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Reconnect by itself&lt;/b&gt;: after a lost link, try again (0.5 s after a drop, every 2 s after a failed
+attempt).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Several devices on one link&lt;/h3&gt;
+&lt;p&gt;An RS-485 line or a gateway may carry several devices, each at its own slave address. &lt;b&gt;Devices on the
+link&lt;/b&gt; (sidebar): &lt;b&gt;New bus&lt;/b&gt; makes a bus of the map&apos;s device; &lt;b&gt;+ Device&lt;/b&gt; adds one (a name, a slave
+address, a map: several devices may share one); &lt;b&gt;Bus file &amp;gt; Save&lt;/b&gt; keeps it as a bus file
+(&lt;code&gt;evre-bus/1&lt;/code&gt;), opened again at the next start. A row of the list reads &lt;i&gt;D1 · slave 1 · map&lt;/i&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every register is named after its device: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;, &lt;b&gt;D2_STATUS&lt;/b&gt;. The chart, math lines, CSV and
+the API use those names: any device&apos;s register by its name alone.&lt;/li&gt;
+&lt;li&gt;The Registers tab shows the device selected in the list, or &lt;b&gt;All devices&lt;/b&gt; (its own picker); the Map
+editor edits the selected device&apos;s map, says which devices share it, and &lt;b&gt;Live values from&lt;/b&gt; picks whose values
+its live line shows. Every picker shows a device as the list does: its dot (green answers, red offline, grey not
+connected), then &lt;i&gt;D1 · slave 1&lt;/i&gt;; a long name is cut, its row&apos;s tooltip has it whole.&lt;/li&gt;
+&lt;li&gt;A device with a token of its own: type it in its &lt;b&gt;Edit…&lt;/b&gt; dialog (never saved).&lt;/li&gt;
+&lt;li&gt;A device that misses %OFFLINE_MISSES% answers in a row is &lt;b&gt;offline&lt;/b&gt; (red dot): left out of the polls, asked
+again every %OFFLINE_RETRY_S% s, so the others keep their rate. Its timeouts are not logged again while it is offline;
+another device&apos;s are.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Broadcast&lt;/h3&gt;
+&lt;p&gt;Slave &lt;b&gt;0&lt;/b&gt; reaches every device at once, and none answers. The Studio sends one only when it means the same to
+every device: into the reserved bank&apos;s writable registers (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG, the
+messages) always; anywhere else only when every device on the link has the same map. Never one that switches
+CONFIG&apos;s AUTO_SEND on: every device would send by itself at once, over the others. &lt;b&gt;To all devices&lt;/b&gt; in quick
+write broadcasts the value typed, then reads every device back; the Monitor&apos;s Slave &lt;b&gt;0&lt;/b&gt; sends raw bytes; the
+&lt;b&gt;Broadcast&lt;/b&gt; menu of the Devices card keeps broadcasts by name in the bus file (&lt;i&gt;Stop all&lt;/i&gt;), each sent after a
+confirmation, then each device read back. They are offered while connected with &lt;b&gt;Allow writes&lt;/b&gt; on; a preset&apos;s
+tooltip says why when it is not.&lt;/p&gt;
+&lt;h3&gt;If it does not connect&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: wrong address, or this PC is not on that network.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;Connects, then drops after a few seconds&lt;/i&gt;: the server wants a token and it is missing or wrong, or the
+map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;COM10 is busy: another program holds it&lt;/i&gt; (serial): close the other program.&lt;/li&gt;
+&lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
+or this link does not). Not an error.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;الاتصال&lt;/h2&gt;
+&lt;h3&gt;TCP&lt;/h3&gt;
+&lt;p&gt;المضيف والمنفذ لأي خادم EVRe عبر TCP: جهاز بمنفذ شبكة، أو بوابة TCP إلى جهاز،
+أو API لبرنامج EVRe Studio آخر (المنفذ 1219).
+الجهاز الذي يطلب &lt;b&gt;رمز دخول&lt;/b&gt; يأخذه من مربع رمز الدخول: بعد الاتصال يكتبه البرنامج في
+&lt;b&gt;مسجّل الدخول&lt;/b&gt; الذي تعلنه الخريطة (&lt;code&gt;&quot;login&quot;&lt;/code&gt;، انظر &lt;i&gt;خرائط الأجهزة&lt;/i&gt;). لا يُحفظ.
+إن لم يكن في الخريطة مسجّل دخول لا يُرسل الرمز، ويقول السجل ذلك.&lt;/p&gt;
+&lt;h3&gt;تسلسلي / USB&lt;/h3&gt;
+&lt;p&gt;تُعرض المنافذ هكذا: &lt;i&gt;⁦COM10 · وصفه · 0483:5740⁩&lt;/i&gt;: الاسم، ووصف برنامج التشغيل، ومعرّفات USB.
+الاسم الطويل يُقطع بنقاط حذف: مرّر الفأرة فوقه، أو افتح القائمة، لتراه كله. الخريطة التي تسمّي معرّف USB لجهازها
+(&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) تعلّم ذلك المنفذ باسم الجهاز، وتختاره وحدها حين لم يُختر منفذ من قبل.
+المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا &lt;i&gt;⁦COM10⁩ مشغول&lt;/i&gt;).&lt;/p&gt;
+&lt;p&gt;حين تفشل الوصلة أو تُفقد، تقول الشارة ما حدث بكلمات بسيطة (&lt;i&gt;⁦COM10⁩ اختفى: فُصل أو أُعيد
+تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
+تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
+جديد.&lt;/p&gt;
+&lt;h3&gt;الخيارات&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
+لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
+من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303: معدّل البود هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
+ويعرض ما وجده (&lt;i&gt;تلقائي: USB CDC&lt;/i&gt;). اختر &lt;b&gt;USB CDC&lt;/b&gt; أو &lt;b&gt;UART&lt;/b&gt; حين يخطئ. على UART يبقى الإرسال التلقائي
+دون معدّل البود.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
+على الناقل لكل جهاز عنوانه (أدناه).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المهلة&lt;/b&gt;: كم يجوز أن يستغرق الجواب. الوصلات الراديوية البطيئة تحتاج أكثر.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى ⁦0.05 ms⁩؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
+اكتبه، أو استخدم الأسهم / العجلة: تخطو بعُشر (10 → 9، 1 → 0.9 → … 0.1 → 0.09).
+⁦0.25 ms⁩ تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
+و&lt;i&gt;لماذا&lt;/i&gt; حين يكون أبطأ مما طُلب (بالكهرماني).
+تعمل الاستطلاعات على خيطها الخاص: رسم النافذة لا يبطئها أبدًا، وCSV يحصل على كل واحد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع): كم مرة تتغير الأعداد على الشاشة، في الجدول وفي مفتاح
+المخطط: 2 أو 5 أو &lt;b&gt;10&lt;/b&gt; (افتراضيًا) أو 30 في الثانية، أو كل إطار. العدد الذي يتغير في كل إطار
+لا يُقرأ. ولا يُبطئ ذلك الاستطلاعات ولا ملف CSV ولا خطوط المخطط.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: طلبات تُرسل قبل وصول أجوبتها. &lt;b&gt;1&lt;/b&gt; لجهاز على UART؛
+و&lt;b&gt;4&lt;/b&gt; (افتراضي TCP) يتابعها، فيكلّف استطلاع عدة كتل رحلة ذهاب وإياب واحدة
+بدل واحدة لكل كتلة. يُحفظ منفصلًا لـ TCP وللتسلسلي.
+الاستطلاع قراءة واحدة لكل كتلة، فلا &lt;b&gt;تتداخل&lt;/b&gt; الاستطلاعات إلا مع «قيد الإرسال» ≥ 2 × الكتل: مع 3 كتل
+و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند ⁦5 ms⁩ عبر Wi-Fi).
+الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند ⁦5 ms⁩.
+المزيد في &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد ⁦0.5 s⁩ من الانقطاع، وكل ⁦2 s⁩ بعد محاولة
+فاشلة).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;عدة أجهزة على وصلة واحدة&lt;/h3&gt;
+&lt;p&gt;قد يحمل خط RS-485 أو بوابة عدة أجهزة، لكل منها عنوان تابع خاص. &lt;b&gt;الأجهزة على
+الوصلة&lt;/b&gt; (الشريط الجانبي): &lt;b&gt;ناقل جديد&lt;/b&gt; يصنع ناقلًا من جهاز الخريطة؛ و&lt;b&gt;+ جهاز&lt;/b&gt; يضيف واحدًا (اسم، وعنوان
+تابع، وخريطة: يجوز لعدة أجهزة أن تتشارك واحدة)؛ و&lt;b&gt;ملف الناقل &amp;gt; حفظ&lt;/b&gt; يحفظه ملف ناقل
+(&lt;code&gt;evre-bus/1&lt;/code&gt;)، يُفتح من جديد عند التشغيل التالي. يُقرأ صف في القائمة هكذا: &lt;i&gt;D1 · التابع 1 · الخريطة&lt;/i&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;يُسمّى كل مسجّل باسم جهازه: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;، &lt;b&gt;D2_STATUS&lt;/b&gt;. المخطط والخطوط الرياضية وCSV و
+API تستخدم هذه الأسماء: مسجّل أي جهاز باسمه وحده.&lt;/li&gt;
+&lt;li&gt;يعرض لسان المسجّلات الجهاز المحدّد في القائمة، أو &lt;b&gt;كل الأجهزة&lt;/b&gt; (له منتقٍ خاص)؛ ومحرر الخريطة
+يحرّر خريطة الجهاز المحدّد، ويقول أي الأجهزة تتشاركها، و&lt;b&gt;القيم الحية من&lt;/b&gt; تختار من تُعرض قيمه
+في سطره الحي. كل منتقٍ يعرض الجهاز كما تعرضه القائمة: نقطته (خضراء يجيب، حمراء غير متصل، رمادية غير
+متصل بعد)، ثم &lt;i&gt;D1 · التابع 1&lt;/i&gt;؛ والاسم الطويل يُقصّ، وتلميح صفه يحمله كاملًا.&lt;/li&gt;
+&lt;li&gt;جهاز له رمز دخول خاص: اكتبه في حوار &lt;b&gt;تحرير…&lt;/b&gt; الخاص به (لا يُحفظ أبدًا).&lt;/li&gt;
+&lt;li&gt;الجهاز الذي يفوته %OFFLINE_MISSES% أجوبة متتالية يصير &lt;b&gt;غير متصل&lt;/b&gt; (نقطة حمراء): يُخرج من الاستطلاعات، ويُسأل
+من جديد كل %OFFLINE_RETRY_S% s، فيحافظ الباقون على معدّلهم. لا تُسجَّل مهلاته من جديد ما دام غير متصل؛
+أما مهلات غيره فتُسجَّل.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;البث&lt;/h3&gt;
+&lt;p&gt;التابع &lt;b&gt;0&lt;/b&gt; يصل إلى كل جهاز معًا، ولا يجيب أحد. يرسل البرنامج بثًا فقط حين يعني الشيء نفسه
+لكل جهاز: إلى مسجّلات البنك المحجوز القابلة للكتابة (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG،
+الرسائل) دائمًا؛ وإلى أي مكان آخر فقط حين يكون لكل جهاز على الوصلة الخريطة نفسها. ولا يرسل أبدًا ما يفعّل
+AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فورًا، فوق البقية. &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; في الكتابة
+السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقبة يرسل بايتات خامًا؛ وقائمة
+&lt;b&gt;البث&lt;/b&gt; في بطاقة الأجهزة تحفظ بثوثًا بأسمائها في ملف الناقل (&lt;i&gt;أوقف الكل&lt;/i&gt;)، كل منها يُرسل بعد
+تأكيد، ثم يُقرأ كل جهاز للتحقق. تُعرض ما دام متصلًا و&lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّل؛ وتلميح البث المحفوظ
+يقول لماذا حين لا يُعرض.&lt;/p&gt;
+&lt;h3&gt;إن لم يتصل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: عنوان خاطئ، أو هذا الحاسوب ليس على تلك الشبكة.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;يتصل، ثم ينقطع بعد ثوانٍ&lt;/i&gt;: الخادم يريد رمز دخول وهو مفقود أو خاطئ، أو ليس في
+الخريطة &lt;code&gt;&quot;login&quot;&lt;/code&gt; لإرساله إليه (انظر السجل).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;⁦COM10⁩ مشغول: يمسكه برنامج آخر&lt;/i&gt; (تسلسلي): أغلق البرنامج الآخر.&lt;/li&gt;
+&lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
+أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Polling &amp;amp; speed&lt;/h2&gt;
+&lt;p&gt;A &lt;b&gt;poll&lt;/b&gt; reads every register of the map once. The registers are not asked one by one: they are
+merged into a few &lt;b&gt;block reads&lt;/b&gt;, and the sidebar says how many: &lt;i&gt;15 registers in 3 reads&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;How the reads are made&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;Registers in the same &lt;b&gt;256-byte page&lt;/b&gt; (the same high byte of the address: 0xA0.., 0xD0..) with
+gaps of &lt;b&gt;8 bytes or less&lt;/b&gt; between them become &lt;b&gt;one read&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.&lt;/li&gt;
+&lt;li&gt;If the device still refuses a block, it is split into single registers; an address it does not have is
+dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again.&lt;/li&gt;
+&lt;li&gt;Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → &lt;b&gt;Read now&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;The number of reads comes from the map&apos;s layout, not from a setting. Registers in the same 256-byte page
+with gaps of at most 8 bytes are read together, so a map whose registers sit in three separate address ranges
+needs three reads per poll. The example map (&lt;code&gt;maps/example_device.json&lt;/code&gt;) is one:
+&lt;code&gt;0xA000–0xA006&lt;/code&gt; (protocol: DEVICE_ID, STATUS, CONFIG…), &lt;code&gt;0xD000–0xD015&lt;/code&gt; (UPTIME … PRESSURE)
+and &lt;code&gt;0xD080–0xD087&lt;/code&gt; (SETPOINT … MOTOR_SPEED); the last two share a page, but more than 8 bytes lie
+between them.&lt;/p&gt;
+&lt;h3&gt;What sets the rate&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt;: the poll you ask for (10 ms = 100 polls/s, 1 ms = 1000/s, &lt;b&gt;max&lt;/b&gt; = back to back).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Latency&lt;/b&gt; (status bar): how long one answer takes: well under 1 ms on USB or this PC, 1–5 ms over Wi-Fi.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: how many requests may wait for their answers at once. A poll is one request per read, so
+polls can overlap only when In flight covers several of them: &lt;i&gt;polls at once = In flight ÷ reads&lt;/i&gt;.
+With 3 reads and In flight 4, one poll at a time: the rate is 1 ÷ latency (1000/s at 1 ms, 200/s at 5 ms).
+In flight 12 lets 4 polls overlap: up to 4× that.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;When the polls are slower than asked, the status bar says why, in amber (hover it for the whole text):&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;Slower than asked: a poll is 36 reads, sent 1 at a time…&lt;/i&gt; or &lt;i&gt;…In flight 4 runs 1 poll at once…&lt;/i&gt;:
+raise &lt;b&gt;In flight&lt;/b&gt; to the number it suggests.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;Slower than asked: … ms per answer is the link&apos;s limit&lt;/i&gt;: In flight is already high enough; the link or the
+device is the limit (a longer interval, or fewer registers in the map).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;… on the serial link …&lt;/i&gt;: a serial link answers one request at a time; a longer interval, fewer registers, or
+a faster baud rate on a UART (USB CDC ignores the baud rate).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Measured: 4000 polls/s to a fast test device on this PC. Over a link with several ms per answer the rate
+follows the rule above, polls at once ÷ latency: one poll at a time at 5 ms per answer is about 200 polls/s.
+A &lt;b&gt;serial&lt;/b&gt; port (a UART) takes one request at a time: keep In flight at &lt;b&gt;1&lt;/b&gt; there. In flight is kept
+separately for TCP and serial.&lt;/p&gt;
+&lt;p&gt;Polls run on their own thread: the window, the chart and the table never slow them, and the CSV and the
+chart get every poll.&lt;/p&gt;
+&lt;h3&gt;Auto send&lt;/h3&gt;
+&lt;p&gt;A device whose STATUS has &lt;b&gt;CAP_AUTO_SEND&lt;/b&gt; can send its read-only block (0xD000 on) by itself, with no
+request and no answer time. Tick &lt;b&gt;Auto send&lt;/b&gt; in the polling card and pick a rate: the 16 the device makes
+exactly, 8000 Hz ÷ (prescaler + 1), from 4000 Hz down to 40 Hz (the prescaler is the device timer&apos;s reload, never 0;
+default 100 Hz; the rate is remembered, the tick is not: it changes the device). Not offered, the greyed list says why
+(&lt;i&gt;not connected&lt;/i&gt;, &lt;i&gt;not offered&lt;/i&gt;, &lt;i&gt;not on a bus&lt;/i&gt;). No frame within 2 s (a gateway that does not pass
+them on): it is switched off again, the Log says so, and the registers are polled.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The Studio writes CONFIG: AUTO_SEND (bit 3) and the prescaler, MSG_ENABLE kept, SYS_RESET and DFU 0.&lt;/li&gt;
+&lt;li&gt;Each frame fills the table and is one chart point and &lt;b&gt;one CSV row&lt;/b&gt;; the polls read only the rest.
+The sidebar shows both, frames and polls a second: &lt;i&gt;Auto send 99.8/s · 10.0 polls/s&lt;/i&gt;.&lt;/li&gt;
+&lt;li&gt;CONFIG is read every 100 ms meanwhile, even with Poll off, so the device&apos;s host watchdog stays fed. If the
+device clears it by itself (a reset), the Log says so once and the box unticks.&lt;/li&gt;
+&lt;li&gt;On a &lt;b&gt;UART&lt;/b&gt; (&lt;b&gt;Link&lt;/b&gt; in the Connection card) the frames may take at most 70% of the baud rate: a faster rate
+is lowered, and the Log says so. &lt;b&gt;USB CDC&lt;/b&gt; ignores the baud rate: the rate asked for is kept, as on TCP.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Disconnect&lt;/b&gt; (and closing the Studio) switches it off on the device first. After a lost link it is switched
+on again by itself.&lt;/li&gt;
+&lt;li&gt;One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
+that switches AUTO_SEND on is refused.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;الاستطلاع والسرعة&lt;/h2&gt;
+&lt;p&gt;&lt;b&gt;الاستطلاع&lt;/b&gt; يقرأ كل مسجّل في الخريطة مرة واحدة. لا تُسأل المسجّلات واحدًا واحدًا: تُدمج في
+بضع &lt;b&gt;قراءات كتل&lt;/b&gt;، ويقول الشريط الجانبي كم عددها: &lt;i&gt;15 مسجّلًا في 3 قراءات&lt;/i&gt;.&lt;/p&gt;
+&lt;h3&gt;كيف تُصنع القراءات&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;المسجّلات في &lt;b&gt;الصفحة نفسها من 256 بايت&lt;/b&gt; (البايت الأعلى نفسه من العنوان: 0xA0..، 0xD0..) بفجوات
+&lt;b&gt;8 بايت أو أقل&lt;/b&gt; بينها تصير &lt;b&gt;قراءة واحدة&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;القراءة لا تعبر صفحة أبدًا: كثيرًا ما تحفظ الأجهزة بنوكًا منفصلة هناك، وبعضها يرفض قراءة عبرها.&lt;/li&gt;
+&lt;li&gt;إن ظل الجهاز يرفض كتلة، تُقسم إلى مسجّلات مفردة؛ والعنوان الذي لا يملكه
+يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد.&lt;/li&gt;
+&lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;قراءة الآن&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;عدد القراءات يأتي من ترتيب الخريطة، لا من إعداد. المسجّلات في الصفحة نفسها من 256 بايت
+بفجوات 8 بايت على الأكثر تُقرأ معًا، فالخريطة التي تقع مسجّلاتها في ثلاثة نطاقات عناوين منفصلة
+تحتاج ثلاث قراءات لكل استطلاع. خريطة المثال (&lt;code&gt;maps/example_device.json&lt;/code&gt;) واحدة منها:
+&lt;code&gt;0xA000–0xA006&lt;/code&gt; (البروتوكول: DEVICE_ID، STATUS، CONFIG…)، و&lt;code&gt;0xD000–0xD015&lt;/code&gt; (UPTIME … PRESSURE)
+و&lt;code&gt;0xD080–0xD087&lt;/code&gt; (SETPOINT … MOTOR_SPEED)؛ الأخيران يتشاركان صفحة، لكن بينهما أكثر من 8
+بايت.&lt;/p&gt;
+&lt;h3&gt;ما الذي يحدد المعدّل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt;: الاستطلاع الذي تطلبه (⁦10 ms⁩ = 100 استطلاع/ث، ⁦1 ms⁩ = 1000/ث، &lt;b&gt;أقصى&lt;/b&gt; = بلا فاصل).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;زمن الاستجابة&lt;/b&gt; (شريط الحالة): كم يستغرق الجواب الواحد: أقل بكثير من ⁦1 ms⁩ عبر USB أو على هذا الحاسوب، و1–⁦5 ms⁩ عبر Wi-Fi.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: كم طلبًا يجوز أن ينتظر أجوبته معًا. الاستطلاع طلب واحد لكل قراءة، فلا
+تتداخل الاستطلاعات إلا حين يغطي «قيد الإرسال» عدة منها: &lt;i&gt;الاستطلاعات معًا = قيد الإرسال ÷ القراءات&lt;/i&gt;.
+مع 3 قراءات و«قيد الإرسال» 4، استطلاع واحد في كل مرة: المعدّل 1 ÷ زمن الاستجابة (1000/ث عند ⁦1 ms⁩، و200/ث عند ⁦5 ms⁩).
+«قيد الإرسال» 12 يتيح تداخل 4 استطلاعات: حتى 4× ذلك.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;حين تكون الاستطلاعات أبطأ مما طُلب، يقول شريط الحالة لماذا، بالكهرماني (مرّر الفأرة فوقه للنص كله):&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;أبطأ مما طُلب: الاستطلاع 36 قراءة، تُرسل 1 في كل مرة…&lt;/i&gt; أو &lt;i&gt;…«قيد الإرسال» 4 يشغّل استطلاعًا واحدًا معًا…&lt;/i&gt;:
+ارفع &lt;b&gt;قيد الإرسال&lt;/b&gt; إلى العدد الذي يقترحه.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;أبطأ مما طُلب: … ms لكل جواب هو حد الوصلة&lt;/i&gt;: «قيد الإرسال» عالٍ بما يكفي؛ الوصلة أو
+الجهاز هو الحد (فاصل أطول، أو مسجّلات أقل في الخريطة).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;… على الوصلة التسلسلية …&lt;/i&gt;: الوصلة التسلسلية تجيب طلبًا واحدًا في كل مرة؛ فاصل أطول، أو مسجّلات أقل، أو
+معدّل بود أسرع على UART (‏USB CDC يتجاهل معدّل البود).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;المقيس: 4000 استطلاع/ث إلى جهاز اختبار سريع على هذا الحاسوب. عبر وصلة بعدة ms لكل جواب يتبع المعدّل
+القاعدة أعلاه، الاستطلاعات معًا ÷ زمن الاستجابة: استطلاع واحد في كل مرة عند ⁦5 ms⁩ لكل جواب نحو 200 استطلاع/ث.
+المنفذ &lt;b&gt;التسلسلي&lt;/b&gt; (UART) يأخذ طلبًا واحدًا في كل مرة: أبقِ «قيد الإرسال» على &lt;b&gt;1&lt;/b&gt; هناك. و«قيد الإرسال» يُحفظ
+منفصلًا لـ TCP وللتسلسلي.&lt;/p&gt;
+&lt;p&gt;تعمل الاستطلاعات على خيطها الخاص: النافذة والمخطط والجدول لا تبطئها أبدًا، ويحصل CSV و
+المخطط على كل استطلاع.&lt;/p&gt;
+&lt;h3&gt;الإرسال التلقائي&lt;/h3&gt;
+&lt;p&gt;الجهاز الذي يحمل STATUS فيه &lt;b&gt;CAP_AUTO_SEND&lt;/b&gt; يستطيع إرسال كتلته للقراءة فقط (من 0xD000) من تلقاء نفسه، بلا
+طلب ولا زمن جواب. فعّل &lt;b&gt;الإرسال التلقائي&lt;/b&gt; في بطاقة الاستطلاع واختر معدّلًا: الـ16 التي يصنعها الجهاز
+تمامًا، ⁦8000 Hz⁩ ÷ (المقسّم + 1)، من ⁦4000 Hz⁩ نزولًا إلى ⁦40 Hz⁩ (المقسّم هو قيمة إعادة تحميل مؤقت الجهاز، وليس 0 أبدًا؛
+الافتراضي ⁦100 Hz⁩؛ يُتذكَّر المعدّل، لا التفعيل: إنه يغيّر الجهاز). حين لا يُعرض، تقول القائمة الرمادية لماذا
+(&lt;i&gt;غير متصل&lt;/i&gt;، &lt;i&gt;غير معروض&lt;/i&gt;، &lt;i&gt;ليس على ناقل&lt;/i&gt;). لا إطار خلال ⁦2 s⁩ (بوابة لا تمرّرها):
+يُعطَّل من جديد، ويقول السجل ذلك، وتُستطلع المسجّلات.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;يكتب البرنامج CONFIG: ‏AUTO_SEND (البت 3) والمقسّم، مع إبقاء MSG_ENABLE، وSYS_RESET وDFU على 0.&lt;/li&gt;
+&lt;li&gt;كل إطار يملأ الجدول وهو نقطة على المخطط و&lt;b&gt;صف CSV واحد&lt;/b&gt;؛ والاستطلاعات تقرأ الباقي فقط.
+يعرض الشريط الجانبي كليهما، الإطارات والاستطلاعات في الثانية: &lt;i&gt;الإرسال التلقائي 99.8/s · 10.0 استطلاع/ث&lt;/i&gt;.&lt;/li&gt;
+&lt;li&gt;يُقرأ CONFIG كل ⁦100 ms⁩ في الأثناء، حتى مع تعطيل الاستطلاع، فيبقى مراقب المضيف في الجهاز مُغذّى. إن
+مسحه الجهاز من تلقاء نفسه (إعادة تشغيل)، يقول السجل ذلك مرة ويُلغى تفعيل المربع.&lt;/li&gt;
+&lt;li&gt;على &lt;b&gt;UART&lt;/b&gt; (&lt;b&gt;الوصلة&lt;/b&gt; في بطاقة الاتصال) لا يجوز أن تأخذ الإطارات أكثر من 70% من معدّل البود: يُخفَّض
+المعدّل الأسرع، ويقول السجل ذلك. و&lt;b&gt;USB CDC&lt;/b&gt; يتجاهل معدّل البود: يبقى المعدّل المطلوب، كما على TCP.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قطع الاتصال&lt;/b&gt; (وإغلاق البرنامج) يعطّله على الجهاز أولًا. وبعد فقد الوصلة يُفعَّل
+من جديد تلقائيًا.&lt;/li&gt;
+&lt;li&gt;جهاز واحد فقط: على الناقل يُعطَّل المربع (الأجهزة التي ترسل من تلقاء نفسها ستتصادم)، ويُرفض البث
+الذي يفعّل AUTO_SEND.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -4196,10 +4215,6 @@ kept).&lt;/li&gt;
     <message>
         <source>No serial port</source>
         <translation>لا منفذ تسلسلي</translation>
-    </message>
-    <message>
-        <source>opening %1 at %2</source>
-        <translation>يفتح %1 عند %2</translation>
     </message>
     <message>
         <source>connected: %1</source>
@@ -4703,6 +4718,22 @@ kept).&lt;/li&gt;
     <message>
         <source>%1 is hidden on the Registers tab by its search or groups</source>
         <translation>⁦%1⁩ مخفي في لسان المسجّلات ببحثه أو مجموعاته</translation>
+    </message>
+    <message>
+        <source>Baud rate: a number, %1 to %2</source>
+        <translation>معدّل البود: عدد من %1 إلى %2</translation>
+    </message>
+    <message>
+        <source>opening %1 at %2 (UART)</source>
+        <translation>يفتح %1 عند %2 (UART)</translation>
+    </message>
+    <message>
+        <source>opening %1 at %2 (USB CDC: the baud rate is ignored)</source>
+        <translation>يفتح %1 عند %2 (USB CDC: يُتجاهل معدّل البود)</translation>
+    </message>
+    <message>
+        <source>last seen: Device ID %1 · protocol rev %2</source>
+        <translation>آخر ظهور: معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
     </message>
 </context>
 <context>
@@ -7276,6 +7307,25 @@ Right-click the table to remove them again.</source>
     </message>
 </context>
 <context>
+    <name>SerialLink</name>
+    <message>
+        <source>%1 is busy: another program holds it</source>
+        <translation>⁦%1⁩ مشغول: يمسكه برنامج آخر</translation>
+    </message>
+    <message>
+        <source>%1 is gone: unplugged or reset?</source>
+        <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
+    </message>
+    <message>
+        <source>%1 did not open</source>
+        <translation>لم يُفتح ⁦%1⁩</translation>
+    </message>
+</context>
+<context>
     <name>Sidebar</name>
     <message>
         <source>registers · live charts · CSV</source>
@@ -7398,12 +7448,6 @@ The device and the link set the real limit: see the poll rate below.</source>
     <message>
         <source>%1 Hz</source>
         <translation>⁦%1 Hz⁩</translation>
-    </message>
-    <message>
-        <source>The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.
-On a serial link a rate the link cannot carry beside the polls is lowered (the Log says so).</source>
-        <translation>المعدّلات التي يصنعها الجهاز تمامًا: ⁦8000 Hz⁩ / (المقسّم + 1)، من ⁦4000 Hz⁩ إلى ⁦40 Hz⁩.
-على وصلة تسلسلية يُخفَّض معدّل لا تحمله الوصلة بجانب الاستطلاعات (ويقول السجل ذلك).</translation>
     </message>
     <message>
         <source>not connected</source>
@@ -7768,6 +7812,52 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <source>The rate the device&apos;s %1 said when last read</source>
         <translation>المعدّل الذي ذكره %1 في الجهاز عند آخر قراءة</translation>
     </message>
+    <message>
+        <source>type a rate</source>
+        <translation>اكتب معدّلًا</translation>
+    </message>
+    <message>
+        <source>Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).</source>
+        <translation>اختر معدّلًا أو اكتب أي معدّل، من %1 إلى %2. يُتجاهل على USB CDC (انظر «الوصلة»).</translation>
+    </message>
+    <message>
+        <source>Auto: UART</source>
+        <translation>تلقائي: UART</translation>
+    </message>
+    <message>
+        <source>USB CDC</source>
+        <translation>USB CDC</translation>
+    </message>
+    <message>
+        <source>USB CDC: full speed, baud ignored</source>
+        <translation>USB CDC: سرعة كاملة، ويُتجاهل البود</translation>
+    </message>
+    <message>
+        <source>UART</source>
+        <translation>UART</translation>
+    </message>
+    <message>
+        <source>UART: Auto send kept under the baud rate</source>
+        <translation>UART: يبقى الإرسال التلقائي دون معدّل البود</translation>
+    </message>
+    <message>
+        <source>Link</source>
+        <translation>الوصلة</translation>
+    </message>
+    <message>
+        <source>The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.
+On a UART a rate the link cannot carry beside the polls is lowered (the Log says so); USB CDC takes it as asked (Link).</source>
+        <translation>المعدّلات التي يصنعها الجهاز تمامًا: ⁦8000 Hz⁩ / (المقسّم + 1)، من ⁦4000 Hz⁩ إلى ⁦40 Hz⁩.
+على UART يُخفَّض معدّل لا تحمله الوصلة بجانب الاستطلاعات (ويقول السجل ذلك)؛ وUSB CDC يأخذه كما طُلب («الوصلة»).</translation>
+    </message>
+    <message>
+        <source>Auto: USB CDC</source>
+        <translation>تلقائي: USB CDC</translation>
+    </message>
+    <message>
+        <source>A USB CDC port runs at USB&apos;s speed whatever the baud rate says; a UART, or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303), really runs at the baud rate, so Auto send is kept to 70% of it. Auto tells them apart by the port&apos;s USB IDs.</source>
+        <translation>منفذ USB CDC يعمل بسرعة USB أيًّا كان معدّل البود؛ أما UART، أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303)، فيعمل فعلًا بمعدّل البود، فيبقى الإرسال التلقائي عند 70% منه. و«تلقائي» يميّز بينهما بمعرّفات USB للمنفذ.</translation>
+    </message>
 </context>
 <context>
     <name>TcpLink</name>
@@ -7797,6 +7887,25 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>timeout (%1 ms)</source>
         <translation>مهلة (⁦%1 ms⁩)</translation>
+    </message>
+</context>
+<context>
+    <name>evre::SerialLink</name>
+    <message>
+        <source>%1 is busy: another program holds it</source>
+        <translation>⁦%1⁩ مشغول: يمسكه برنامج آخر</translation>
+    </message>
+    <message>
+        <source>%1 is gone: unplugged or reset?</source>
+        <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
+    </message>
+    <message>
+        <source>%1 did not open</source>
+        <translation>لم يُفتح ⁦%1⁩</translation>
     </message>
 </context>
 <context>

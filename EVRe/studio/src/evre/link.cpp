@@ -87,9 +87,10 @@ SerialLink::SerialLink(const QString &port, qint32 baud, QObject *parent)
 	connect(serial_, &QSerialPort::readyRead, this, [this] { emit received(serial_->readAll()); });
 	connect(serial_, &QSerialPort::errorOccurred, this, [this](QSerialPort::SerialPortError error) {
 		if (!losesPort(error)) return;
-		const QString why = serial_->errorString();
-		if (serial_->isOpen()) serial_->close();
-		emit closed(why);
+		const QString detail = serial_->errorString();
+		const bool wasOpen = serial_->isOpen();
+		if (wasOpen) serial_->close();
+		emit closed(plainReason(error, portName_, wasOpen, detail), detail);
 	});
 }
 
@@ -101,7 +102,7 @@ void SerialLink::open() {
 	serial_->setStopBits(QSerialPort::OneStop);
 	serial_->setFlowControl(QSerialPort::NoFlowControl);
 	if (!serial_->open(QIODevice::ReadWrite)) {
-		emit closed(serial_->errorString());
+		emit closed(plainReason(serial_->error(), portName_, false, serial_->errorString()), serial_->errorString());
 		return;
 	}
 	serial_->setDataTerminalReady(true); /* USB CDC devices often wait for DTR */
@@ -128,6 +129,25 @@ void SerialLink::flush(int ms) {
 
 QString SerialLink::describe() const {
 	return QStringLiteral("%1 @ %2").arg(portName_).arg(baud_);
+}
+
+/* The system's texts differ by system and say what failed, not what happened: Windows' usbser.sys reports a board
+ * unplugged or reset as a resource error, an absent port as "file not found". A refused baud rate and the like fail
+ * the open with a text only the system has: it stays in the detail (the tooltip, the Log). */
+QString SerialLink::plainReason(QSerialPort::SerialPortError error, const QString &port, bool wasOpen,
+		const QString &systemText) {
+	switch (error) {
+	case QSerialPort::PermissionError: return tr("%1 is busy: another program holds it").arg(port);
+	case QSerialPort::DeviceNotFoundError:
+	case QSerialPort::ResourceError:
+	case QSerialPort::OpenError:
+		if (wasOpen && error != QSerialPort::OpenError) return tr("%1 is gone: unplugged or reset?").arg(port);
+		if (!wasOpen && error != QSerialPort::ResourceError) return tr("%1 not found").arg(port);
+		break;
+	default: break;
+	}
+	if (!wasOpen) return tr("%1 did not open").arg(port);
+	return QStringLiteral("%1: %2").arg(port, systemText);
 }
 
 } // namespace evre

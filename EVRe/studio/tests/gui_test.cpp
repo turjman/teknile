@@ -72,6 +72,7 @@
 #include <QTabBar>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QStyleOptionComboBox>
 #include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTableView>
@@ -104,6 +105,7 @@
 #include <tuple>
 
 #include "evre/frame.h"
+#include "evre/link.h"
 #include "io/engine.h"
 #include "io/reg_table.h"
 #include "model/bus_file.h"
@@ -640,6 +642,7 @@ public:
 		dumpFastCard();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
+		serialKind(); /* it ends connected to the fake device as before, over TCP */
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
@@ -1276,6 +1279,292 @@ private:
 				"auto send: done, the window polls the fake device of the other steps again");
 		fake.kill();
 		fake.waitForFinished(3000);
+	}
+
+	/* The serial link as a first real board showed it: a USB CDC port (whose baud rate the hardware ignores) told from
+	 * a UART by its USB IDs, with the Link row to say otherwise, and Auto send capped only on a UART; a long port label
+	 * cut with an ellipsis (whole in the tooltip and the list opened); a lost or refused port said in plain words, the
+	 * system's text in the tooltip and the Log; the device's ID kept as "last seen" while the link is down; the Baud
+	 * box's validator, list and texts. No real port: the ports opened here do not exist */
+	void serialKind() {
+		using Kind = Sidebar::SerialKind;
+		check(Sidebar::serialKindOf(false, 0, 0, QStringLiteral("COM1")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x0403, 0x6001, QStringLiteral("COM5")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x04D8, 0x00DF, QStringLiteral("COM6")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x04D8, 0x1234, QStringLiteral("COM7")) == Kind::UsbCdc
+						&& Sidebar::serialKindOf(true, 0x0483, 0x5740, QStringLiteral("COM10")) == Kind::UsbCdc
+						&& Sidebar::serialKindOf(true, 0x1234, 0x0001, QStringLiteral("ttyUSB0")) == Kind::Uart
+						&& Sidebar::serialKindOf(false, 0, 0, QStringLiteral("ttyACM0")) == Kind::UsbCdc,
+				"serial: the kind by the port's USB IDs: none, FTDI, MCP2221 a UART; another Microchip ID, ST's VCP a USB CDC; "
+				"Linux's ttyUSB a UART, ttyACM a USB CDC");
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *kind = window_.findChild<QComboBox *>(QStringLiteral("serialKind"));
+		auto *baud = window_.findChild<QComboBox *>(QStringLiteral("baud"));
+		auto *port = window_.findChild<QComboBox *>(QStringLiteral("serialPort"));
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		auto *deviceInfo = window_.findChild<QLabel *>(QStringLiteral("deviceInfo"));
+		QCheckBox *reconnectBox = nullptr;
+		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
+			if (b->text() == QLatin1String("Reconnect by itself")) reconnectBox = b;
+		const bool found = sidebar && kind && baud && baud->lineEdit() && port && pill && deviceInfo && reconnectBox
+				&& kind->count() == 3;
+		check(found, "serial: the Link row (Auto, USB CDC, UART), the Baud box, the port box, the pill and the device line");
+		if (!found) return;
+
+		/* the device line: the ID read, kept as "last seen" while the link is down, cleared by the next connect */
+		const bool read = QTest::qWaitFor([&] {
+			return deviceInfo->text().startsWith(QLatin1String("Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+		}, 5000);
+		const QString idLine = deviceInfo->text().section(QStringLiteral("<br>"), 0, 0);
+		const int infoHeight = deviceInfo->height();
+		if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
+		QApplication::processEvents();
+		const QString lostText = deviceInfo->text();
+		const bool lastSeen = read && lostText.startsWith(QStringLiteral("last seen: ") + idLine);
+		if (!lastSeen) std::printf("     (the device line: \"%s\", then \"%s\")\n", qPrintable(idLine), qPrintable(lostText));
+		check(lastSeen && deviceInfo->height() == infoHeight,
+				"serial, the device line: \"Device ID 0x1001 · protocol rev 1\"; after Disconnect \"last seen: Device ID ...\", "
+				"the line as tall as before");
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		const bool readAgain = QTest::qWaitFor([&] { return deviceInfo->text().startsWith(idLine); }, 5000);
+		check(readAgain && window_.deviceInfoAtOpen() == QLatin1String("Device ID not read yet"),
+				"serial, the device line: Connect clears it (\"Device ID not read yet\" at the open), then the ID read again "
+				"without \"last seen\"");
+
+		/* the Link row: Auto for the port selected, or chosen; kept in link/serialKind */
+		const bool reconnectWas = reconnectBox->isChecked();
+		reconnectBox->setChecked(false);
+		if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
+		QApplication::processEvents();
+		const int sidebarWidth = sidebar->width();
+		sidebar->useSerial(QStringLiteral("FAKE1:2000000"));
+		QApplication::processEvents();
+		check(kind->currentIndex() == 0 && kind->itemText(0) == QLatin1String("Auto: UART") && sidebar->serialBaudLimited()
+						&& sidebar->baud() == 2000000,
+				"serial, Link: Auto by default; a port without USB IDs reads \"Auto: UART\", the baud rate a limit");
+		kind->setCurrentIndex(1);
+		const bool cdcFree = !sidebar->serialBaudLimited();
+		kind->setCurrentIndex(2);
+		check(cdcFree && sidebar->serialBaudLimited(),
+				"serial, Link: \"USB CDC\" chosen, the baud rate is no limit; \"UART\" chosen, it is");
+		bool restored = false;
+		{
+			Sidebar fresh;
+			fresh.restoreLinkSettings();
+			auto *freshKind = fresh.findChild<QComboBox *>(QStringLiteral("serialKind"));
+			restored = freshKind && freshKind->currentData().toString() == QLatin1String("uart");
+		}
+		kind->setCurrentIndex(0);
+		check(restored && QSettings().value(QStringLiteral("link/serialKind")).toString() == QLatin1String("auto"),
+				"serial, Link: the choice saved at once (link/serialKind) and restored by a new sidebar");
+		const int longest = kind->fontMetrics().horizontalAdvance(QStringLiteral("UART: Auto send kept under the baud rate"));
+		check(kind->toolTip().contains(QLatin1String("USB-to-UART bridge (FTDI, CP210x, CH340, PL2303)"))
+						&& kind->mapTo(sidebar, QPoint(0, 0)).x() == baud->mapTo(sidebar, QPoint(0, 0)).x()
+						&& kind->width() == baud->width() && kind->view()->minimumWidth() >= longest,
+				"serial, Link: its tooltip says what tells USB CDC from a UART; its box and Baud's start and end at the same "
+				"place; its list opens wide enough for the whole of each choice");
+
+		/* the Log's connect line says which it is: the fake port fails to open, the line comes first */
+		const QLatin1String uartText("opening FAKE1 at 2000000 (UART)");
+		const QLatin1String cdcText("opening FAKE1 at 2000000 (USB CDC: the baud rate is ignored)");
+		const int uartBefore = int(logText().count(uartText)), cdcBefore = int(logText().count(cdcText));
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		(void) QTest::qWaitFor([&] { return pill->property("state").toString() == QLatin1String("error"); }, 3000);
+		const bool uartLine = logText().count(uartText) > uartBefore;
+		kind->setCurrentIndex(1);
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		const bool cdcLine = QTest::qWaitFor([&] { return logText().count(cdcText) > cdcBefore; }, 3000);
+		(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Connect")) != nullptr; }, 3000);
+		kind->setCurrentIndex(0);
+		check(uartLine && cdcLine, "serial: the Log's connect line says \"(UART)\" on Auto for a port without USB IDs, "
+				"\"(USB CDC: the baud rate is ignored)\" with USB CDC chosen");
+
+		/* the engine: Auto send kept under the baud rate on a UART only */
+		{
+			IoEngine engine;
+			QSignalSpy closed(&engine, &IoEngine::closed);
+			engine.connectSerial(QStringLiteral("NOSUCHPORT"), 2000000, false);
+			const qint32 cdc = engine.autoSendBaudLimit();
+			engine.connectSerial(QStringLiteral("NOSUCHPORT"), 2000000, true);
+			const qint32 uart = engine.autoSendBaudLimit();
+			engine.connectTcp(QStringLiteral("127.0.0.1"), 1, QString());
+			const qint32 tcp = engine.autoSendBaudLimit();
+			const bool plain = !closed.isEmpty() && closed.first().value(0).toString() == QLatin1String("NOSUCHPORT not found")
+					&& !closed.first().value(1).toString().isEmpty();
+			engine.disconnectLink();
+			check(cdc == 0 && uart == 2000000 && tcp == 0 && plain,
+					"serial, the engine: Auto send kept under 2000000 baud on a UART, not at all on USB CDC (nor TCP); a port "
+					"not found closes with the plain reason and the system's text");
+		}
+
+		/* the error pill: plain words, the system's text in the tooltip */
+		check(evre::SerialLink::plainReason(QSerialPort::ResourceError, QStringLiteral("COM10"), true)
+								== QLatin1String("COM10 is gone: unplugged or reset?")
+						&& evre::SerialLink::plainReason(QSerialPort::DeviceNotFoundError, QStringLiteral("COM10"), false)
+								== QLatin1String("COM10 not found")
+						&& evre::SerialLink::plainReason(QSerialPort::PermissionError, QStringLiteral("COM10"), false)
+								== QLatin1String("COM10 is busy: another program holds it")
+						&& evre::SerialLink::plainReason(QSerialPort::UnsupportedOperationError, QStringLiteral("COM10"), false)
+								== QLatin1String("COM10 did not open")
+						&& evre::SerialLink::plainReason(QSerialPort::OpenError, QStringLiteral("COM10"), true, QStringLiteral("x"))
+								== QLatin1String("COM10: x"),
+				"serial, plain reasons: a port lost \"is gone: unplugged or reset?\", absent \"not found\", held \"is busy\", a "
+				"refused open \"did not open\", anything else the system's text after the port");
+		sidebar->useSerial(QStringLiteral("NOSUCHPORT"));
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		const bool failed = QTest::qWaitFor([&] {
+			return pill->toolTip().startsWith(QLatin1String("NOSUCHPORT not found\n"));
+		}, 3000);
+		QApplication::processEvents();
+		const QString tipDetail = pill->toolTip().section(QLatin1Char('\n'), 1);
+		check(failed && pill->text() == QStringLiteral("●  NOSUCHPORT not found") && !pill->isCut()
+						&& pill->fontMetrics().horizontalAdvance(pill->text()) <= pill->contentsRect().width()
+						&& !tipDetail.trimmed().isEmpty(),
+				"serial, the pill: a port that is not there reads \"● NOSUCHPORT not found\" whole; its tooltip adds the "
+				"system's text on a second line");
+		check(logText().contains(QStringLiteral("not connected: NOSUCHPORT not found (%1)").arg(tipDetail)),
+				"serial, the Log: \"not connected: NOSUCHPORT not found (\" and the system's text");
+		{
+			sidebar->showLinkError(QStringLiteral("COM10 is gone: unplugged or reset?"), QStringLiteral("x"));
+			const int frame = pill->width() - pill->contentsRect().width();
+			pill->setFixedWidth(pill->fontMetrics().horizontalAdvance(QStringLiteral("●  COM10 is gone")) + frame + 6);
+			QApplication::processEvents();
+			const QString narrow = pill->text();
+			pill->setMinimumWidth(0);
+			pill->setMaximumWidth(QWIDGETSIZE_MAX);
+			QApplication::processEvents();
+			check(narrow == QStringLiteral("●  COM10 is gone")
+							&& pill->toolTip() == QStringLiteral("COM10 is gone: unplugged or reset?\nx"),
+					"serial, the pill too narrow for the whole reason: \"● COM10 is gone\", whole, never cut in the middle; "
+					"the tooltip has the reason and the system's text");
+		}
+
+		/* the port list: a long label cut with an ellipsis to the box, whole in the tooltip and the list opened */
+		const QString longDescription = QStringLiteral("Example device virtual COM port with a long name");
+		sidebar->addPort(QStringLiteral("COM10"), longDescription, true, 0x0483, 0x5740, QString());
+		const QString full = QStringLiteral("COM10 · %1 · 0483:5740").arg(longDescription);
+		port->setCurrentIndex(port->findData(QStringLiteral("COM10")));
+		QApplication::processEvents();
+		const auto room = [&] {
+			QStyleOptionComboBox option;
+			option.initFrom(port);
+			option.editable = false;
+			return port->style()->subControlRect(QStyle::CC_ComboBox, &option, QStyle::SC_ComboBoxEditField, port).width() - 2;
+		};
+		const int at = port->currentIndex();
+		const QString shown = port->itemText(at);
+		const int advance = port->fontMetrics().horizontalAdvance(shown);
+		if (!shown.endsWith(QChar(0x2026)) || advance > room())
+			std::printf("     (the port's label \"%s\": %d px in %d px)\n", qPrintable(shown), advance, room());
+		check(longDescription.size() == 48 && shown.endsWith(QChar(0x2026)) && advance <= room()
+						&& port->itemData(at, Qt::ToolTipRole).toString() == full && port->toolTip() == full
+						&& kind->itemText(0) == QLatin1String("Auto: USB CDC"),
+				"serial, the port list: a 48-character description cut with \"…\" to the box; the tooltip \"COM10 · "
+				"<description> · 0483:5740\" whole; Auto reads \"Auto: USB CDC\" for ST's IDs");
+		check(port->view()->minimumWidth() >= port->fontMetrics().horizontalAdvance(full) && sidebar->width() == sidebarWidth,
+				"serial, the port list: the list opens wider than the box, every label whole; the sidebar no wider");
+		sidebar->addPort(QStringLiteral("COM12"), QString(), false, 0, 0, QString());
+		const QString shortShown = port->itemText(port->findData(QStringLiteral("COM12")));
+		check(shortShown == QLatin1String("COM12"), "serial, the port list: a short label is shown whole, no ellipsis");
+		sidebar->addPort(QStringLiteral("COM11"), QStringLiteral("USB Serial Device"), true, 0x1234, 0x5678,
+				QStringLiteral("Example device"));
+		check(port->itemData(port->findData(QStringLiteral("COM11")), Qt::ToolTipRole).toString()
+						== QLatin1String("COM11 · Example device · 1234:5678"),
+				"serial, the port list: a port of the map's USB IDs reads the map's device name");
+		const QSize windowWas = window_.size();
+		window_.resize(window_.minimumSize());
+		port->setFixedWidth(port->width() - 60);
+		QApplication::processEvents();
+		const QString narrower = port->itemText(at);
+		const bool cutAgain = narrower.endsWith(QChar(0x2026)) && narrower.size() < shown.size()
+				&& port->fontMetrics().horizontalAdvance(narrower) <= room();
+		QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+		port->setFixedWidth(port->width() + 1);
+		QApplication::processEvents();
+		const bool isolated = port->itemText(at).startsWith(QChar(0x2066)) && port->itemText(at).endsWith(QChar(0x2069));
+		QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+		port->setMinimumWidth(0);
+		port->setMaximumWidth(QWIDGETSIZE_MAX);
+		window_.resize(windowWas);
+		QApplication::processEvents();
+		check(cutAgain, "serial, the port list: the box made narrower (the window at its minimum), the label is cut again "
+				"to its room");
+		check(isolated && !port->itemText(at).startsWith(QChar(0x2066)),
+				"serial, the port list: right to left (Arabic) the label is one left-to-right piece");
+
+		/* the Baud box: digits only, a list up to 12 M, its texts; a rate out of range does not connect */
+		QLineEdit *edit = baud->lineEdit();
+		check(baud->count() == 11 && baud->itemText(6) == QLatin1String("2000000")
+						&& baud->itemText(10) == QLatin1String("12000000"),
+				"serial, Baud: 11 rates listed, 9600 to 12000000");
+		check(baud->toolTip() == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
+						&& edit->placeholderText() == QLatin1String("type a rate"),
+				"serial, Baud: the tooltip says any rate 300 to 20000000 can be typed; emptied, it reads \"type a rate\"");
+		baud->setCurrentText(QStringLiteral("115200"));
+		edit->selectAll();
+		QTest::keyClicks(edit, QStringLiteral("abc"));
+		const QString afterLetters = edit->text();
+		edit->selectAll();
+		QTest::keyClicks(edit, QStringLiteral("20000001"));
+		const QString afterTooBig = edit->text();
+		edit->selectAll();
+		QTest::keyClicks(edit, QStringLiteral("3000000"));
+		const QString afterGood = edit->text();
+		if (afterLetters != QLatin1String("115200") || afterTooBig != QLatin1String("2000000"))
+			std::printf("     (Baud typed: \"%s\", \"%s\", \"%s\")\n", qPrintable(afterLetters), qPrintable(afterTooBig),
+					qPrintable(afterGood));
+		check(afterLetters == QLatin1String("115200") && afterTooBig == QLatin1String("2000000")
+						&& afterGood == QLatin1String("3000000") && sidebar->baud() == 3000000,
+				"serial, Baud: letters are refused, a digit past 20000000 too; 3000000 is taken");
+		baud->setCurrentText(QString());
+		const qsizetype opensBefore = logText().count(QLatin1String("opening "));
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		QApplication::processEvents();
+		QWidget *focused = window_.focusWidget();
+		check(pill->fullText() == QStringLiteral("●  Baud rate: a number, 300 to 20000000")
+						&& logText().count(QLatin1String("opening ")) <= opensBefore
+						&& buttonWithText(QStringLiteral("Connect")) && focused && (focused == baud || baud->isAncestorOf(focused)),
+				"serial, Baud emptied: Connect does not open, the pill says \"Baud rate: a number, 300 to 20000000\", the box "
+				"has the focus");
+		baud->setCurrentText(QStringLiteral("115200"));
+		{
+			QSettings settings;
+			const QVariant savedBaud = settings.value(QStringLiteral("link/baud"));
+			settings.setValue(QStringLiteral("link/baud"), QStringLiteral("abc"));
+			qint32 restoredBaud = 0;
+			{
+				Sidebar fresh;
+				fresh.restoreLinkSettings();
+				restoredBaud = fresh.baud();
+			}
+			if (savedBaud.isValid()) settings.setValue(QStringLiteral("link/baud"), savedBaud);
+			else settings.remove(QStringLiteral("link/baud"));
+			check(restoredBaud == 115200, "serial, Baud: a saved link/baud that is no rate (\"abc\") restores as 115200");
+		}
+
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: the card with the long port and a lost port */
+			port->setCurrentIndex(at);
+			sidebar->showLinkError(QStringLiteral("COM10 is gone: unplugged or reset?"),
+					QStringLiteral("The system cannot find the file specified."));
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				QApplication::processEvents();
+				docsCard(pill)->grab().save(qEnvironmentVariable("EVRE_TEST_SHOT")
+						+ QStringLiteral("_serial_card_%1.png").arg(dark ? QStringLiteral("dark") : QStringLiteral("light")));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+
+		/* the fake device of the other steps again, over TCP */
+		sidebar->refreshPorts(DeviceMap());
+		reconnectBox->setChecked(reconnectWas);
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		startup.connect = true;
+		window_.applyStartup(startup);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"serial: done, the window polls the fake device of the other steps again over TCP");
 	}
 
 	/* Fast EVRe, part 5.1: the sidebar's Fast streams card for a map with streams (maps/example_fast.json), against
@@ -3035,6 +3324,16 @@ private:
 		}, 3000);
 		check(infoAtOpen && d1Read && d2Read && deviceInfo->height() == infoHeight,
 				"bus: the device's ID under the pill: there from the start, D1's, then D2's; the card keeps its height");
+		/* the link down: D2's ID kept, said to be old; the bus connected again for the checks after */
+		if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
+		QApplication::processEvents();
+		const bool d2LastSeen = deviceInfo && deviceInfo->text().startsWith(QLatin1String("D2: last seen: Device ID "));
+		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
+		const bool d2Again = deviceInfo && QTest::qWaitFor([&] {
+			return deviceInfo->text().startsWith(QLatin1String("D2: Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+		}, 5000);
+		check(d2LastSeen && d2Again, "bus: after Disconnect the line reads \"D2: last seen: Device ID ...\"; connected again, "
+				"D2's ID read anew");
 		/* the Map editor says whose map it is, and whose live values it shows */
 		auto *banner = window_.findChild<QWidget *>(QStringLiteral("mapDevices"));
 		auto *live = window_.findChild<QComboBox *>(QStringLiteral("liveDevice"));

@@ -501,12 +501,20 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 | Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
 | port | the&nbsp;ports&nbsp;found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
-| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, or any rate typed. |
+| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* |
+| Link | Auto,&nbsp;USB&nbsp;CDC,&nbsp;UART;&nbsp;default&nbsp;Auto | What the port is: a USB CDC port or a UART. **Auto** tells them apart by the port's USB IDs and says what it found (*Auto: USB CDC*, *Auto: UART*); **USB CDC** (*full speed, baud ignored*) and **UART** (*Auto send kept under the baud rate*) say it outright. Saved at once (`link/serialKind`). |
 
 - **Port settings.** The port is opened at 8 data bits, no parity, one stop bit and no flow control. After opening, the Studio sets **DTR** on (many USB CDC devices send nothing until DTR is set) and clears the port's buffers. RTS is left as the driver sets it.
-- **The port list.** A USB port is listed as `COM7  · <description>  1234:abcd`: the port name, the driver's description, and the USB vendor and product IDs in hex. A port without USB IDs shows its description, if it has one. With no port at all, the list shows *no ports found*.
+- **The port list.** A USB port is listed as `COM10 · <description> · 0483:5740`: the port name, the driver's description, and the USB vendor and product IDs in hex, single spaces and a dot before each part. A port without USB IDs shows its description, if it has one. With no port at all, the list shows *no ports found*. A label longer than the box (Windows names a board's own USB port after its product string, so it can be anything) is cut with an ellipsis, never mid-word at the box's edge; the box's tooltip has the whole label, and the list opens as wide as its longest label, every port whole. A long label never widens the sidebar. In Arabic the label is one left-to-right piece.
 - **The map's USB IDs.** If the loaded map declares `"usb": { "vid", "pid" }` (see 16.2), a port with exactly those IDs is listed with the map's device name in place of the driver's description. The Studio picks that port by itself only when no port was selected before. This happens, for example, when the list said *no ports found* until the device was plugged in and the refresh button was clicked.
-- **Baud rate.** For USB CDC the baud rate usually does not matter, but for a real UART it must match the device.
+- **Baud rate.** For USB CDC the baud rate does not matter, but for a real UART it must match the device. A rate out of 300 to 20000000, or an empty box, does not connect (3.5). A rate the driver refuses comes back as *COM10 did not open*, the system's text in the pill's tooltip and in the Log (3.8).
+- **USB CDC or UART.** A USB CDC port (a board's own USB, a virtual COM port) runs at USB's speed whatever the baud rate says: the hardware ignores the number. A UART, or a USB-to-UART bridge, really runs at the baud rate. The difference matters to Auto send (13.8), which a UART must leave room for. On **Auto** the Studio decides by the port's USB IDs, not by its description (Windows names a CDC port after the device's own product string):
+  - no USB vendor ID (a motherboard's COM port, Linux's `ttyS`): a UART;
+  - a USB-to-UART bridge by its vendor ID: FTDI `0x0403`, Silicon Labs `0x10C4` (CP210x), WCH `0x1A86` (CH340, CH343), Prolific `0x067B` (PL2303), Microchip `0x04D8` with the product `0x00DF` or `0x00DD` (MCP2200, MCP2221): a UART (the baud rate is real on the bridge's far side);
+  - on Linux a `ttyUSB` name: a UART (a vendor's bridge driver); `ttyACM`: USB CDC;
+  - any other USB ID (Windows' *USB Serial Device*, a vendor's VCP driver, ST's `0483:5740`): USB CDC.
+
+  Unsure means a UART: the slower side. When Auto guesses wrong, choose **USB CDC** or **UART** in the Link row. In flight's rule is the same for both: a bus on a serial link gets In flight 1 (3.9), since a USB CDC board in front of an RS-485 bus still has one transmitter at a time behind it.
 - **One program per port.** A serial port can be open in one program only. See 15.5.
 - **No token.** The token is sent only over TCP.
 
@@ -556,7 +564,9 @@ The retries do not log *connecting to …* again. Each failure logs *not connect
 
 With **Reconnect by itself** off, a lost or failed link stays down until you click Connect.
 
-A serial link with no port selected fails at once. The pill shows *No serial port*.
+A serial link with no port selected fails at once. The pill shows *No serial port*. A Baud box emptied, or a rate
+out of 300 to 20000000, does not connect either: the pill shows *Baud rate: a number, 300 to 20000000* and the box
+gets the focus. While the Studio waits to try again, the pill stays red with the last reason (3.8).
 
 ### 3.6 The token and the map's login register
 
@@ -604,7 +614,7 @@ the card never changes height.
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
-| the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason, cut in the middle when it is longer than the pill; the tooltip and the Log have it in full. |
+| the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, its part before the colon is shown whole (*COM10 is gone*); only what still does not fit is cut in the middle. The tooltip and the Log have it in full. |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/state-pills-dark.png">
@@ -613,7 +623,23 @@ the card never changes height.
 
 *The pill under the button in its four states: Disconnected (no tint), Connecting (amber), Connected (green) and Connection refused (red).*
 
-The device line under the pill keeps its last text after a disconnect, until the next device ID answer or login error replaces it.
+A serial port's reason is the Studio's own, in plain words: the system's text says what failed, not what happened
+(Windows' *The system cannot find the file specified.* was cut to *The system ca... file specified.*). The system's
+text is the second line of the pill's tooltip, and the Log has both: *connection lost: COM10 is gone: unplugged or
+reset? (The system cannot find the file specified.)*.
+
+| Pill | When | Meaning |
+|---|---|---|
+| *COM10&nbsp;is&nbsp;gone:&nbsp;unplugged&nbsp;or&nbsp;reset?* | the&nbsp;port&nbsp;went&nbsp;while&nbsp;open | The device was unplugged, or reset (a USB CDC board leaves and comes back). With Reconnect by itself on, the Studio tries again until it is back (15.5). |
+| *COM10&nbsp;not&nbsp;found* | at&nbsp;the&nbsp;open | No such port: a wrong name, or the device is not plugged in. |
+| *COM10&nbsp;is&nbsp;busy:&nbsp;another&nbsp;program&nbsp;holds&nbsp;it* | at&nbsp;the&nbsp;open | Another program has the port open (15.5); on Linux also a missing permission. |
+| *COM10&nbsp;did&nbsp;not&nbsp;open* | at&nbsp;the&nbsp;open | Any other failure, a baud rate the driver refuses among them: the tooltip has the system's text. |
+| *Baud&nbsp;rate:&nbsp;a&nbsp;number,&nbsp;300&nbsp;to&nbsp;20000000* | at&nbsp;Connect | The Baud box is empty or out of range: nothing is opened (3.5). |
+
+The device line under the pill keeps the device's ID while the link is down, said to be old: *last seen: Device ID
+0x1001 · protocol rev 1* (on a bus *D2: last seen: ...*), in the same muted colour, with the map's warning under it
+as before. The next connect clears it (*Device ID not read yet*) until the device answers again. A failed read or a
+refused token keeps its text: that already says what happened.
 
 ### 3.9 Several devices on one link (a bus)
 
@@ -671,7 +697,8 @@ its state's dot (green: answers, red: offline, grey: not connected), then *D1 ·
 name is cut), the whole name and the state in words in the row's tooltip. A device chosen in any of them is selected everywhere.
 Selecting a device with another map asks first when the map edited has unsaved changes. The Slave box of the
 Connection card shows the selected device's address and is read-only: each device has its own, in the bus file; the
-line under the pill names the device (*D1: Device ID 0x1001 · protocol rev 1*, or *D2: Device ID not read yet*
+line under the pill names the device (*D1: Device ID 0x1001 · protocol rev 1*, *D2: last seen: Device ID 0x1001 ·
+protocol rev 1* while the link is down, or *D2: Device ID not read yet*
 until it is read); it is always two lines tall, so the card does not move. On a bus the Map settings' Slave box is
 disabled too. On a bus the Monitor names the devices
 in place of its Slave number, with *Broadcast · slave 0* after them, and starts at the selected device. The chart, the
@@ -2789,7 +2816,7 @@ What the Studio does:
 - **The polls** read everything else (CONFIG, the writable registers, the messages): the registers the last frame covered leave the blocks (13.3); until the first frame, everything is polled, and the polls give the chart points and the CSV rows, so a device that
 never sends a frame still gives samples. From the first frame on, a poll gives no chart point and no CSV row: the frames do. Poll and its interval work as before, for the rest.
 - **The device's host watchdog:** while on, CONFIG is read every 100 ms whatever the polling is (Poll off, or nothing left to poll), so a device that stops its actuators after 2 s without a request never does. A read that finds AUTO_SEND cleared (the device reset, or another client wrote CONFIG) is logged once, *the device stopped auto send (reset?)*; the box unticks and the Studio does not switch it on again by itself.
-- **A serial link:** the frames may take at most 70% of the link (rate x (frame data + 10 bytes) <= 0.7 x baud / 10), so the polls and the heartbeat still get through. A faster rate asked for is cut to the fastest rate of the list that fits, and the Log says so: *auto send at 250 Hz, not 4000 Hz: 4000 frames of 32 bytes a second would take more than 70% of the serial link at 115200 baud*. TCP takes the rate asked for.
+- **A UART or a USB bridge:** the frames may take at most 70% of the link (rate x (frame data + 10 bytes) <= 0.7 x baud / 10), so the polls and the heartbeat still get through. A faster rate asked for is cut to the fastest rate of the list that fits, and the Log says so: *auto send at 250 Hz, not 4000 Hz: 4000 frames of 32 bytes a second would take more than 70% of the serial link at 115200 baud*. A USB CDC port takes the rate asked for, as TCP: its baud rate is a number the hardware ignores, and 4000 frames of 32 bytes a second are 128 kB/s, a tenth of USB full speed. Which one the port is: the Link row (3.2), Auto by the port's USB IDs. The Log's connect line says it: *opening COM10 at 2000000 (USB CDC: the baud rate is ignored)*, or *opening COM10 at 115200 (UART)*.
 - **Off:** unticking it, **Disconnect** and closing the window clear AUTO_SEND: (CONFIG & `0x0004`) | (prescaler << 8). On Disconnect and close the WRITE goes straight on the link and is flushed before the link closes; on TCP, what the device still sends is then read until it is quiet (at most 100 ms, `Link::drain`): closed with bytes unread, the connection was reset rather than ended, and the device dropped the off it had not read yet and went on sending (a GUI check failed now and then, 2026-10-05). It goes whenever the device may still be sending: from the WRITE that switched it on until the device acknowledged an off, so a Disconnect right after unticking (the off still under way) clears it too. A lost link cannot send it; the device's own watchdog is then the safety. Disconnect also unticks the box.
 - **No frames:** when not one frame has come 2 s after the device took AUTO_SEND, something between the Studio and the device does not pass them on (a gateway that answers requests from its own copy of the device and streams nothing). The Studio switches it off again (on the device too), unticks the box, says so in the Log (*no frame came in 2 s ...*), and the registers are polled as before.
 - **Not offered:** the box is greyed and its rate list says why in a word or two in place of a rate: *not connected*, *not offered* (the device's STATUS has no CAP_AUTO_SEND) or *not on a bus*. The box's tooltip has the whole reason; the rate chosen is kept and comes back with the offer.
@@ -2956,7 +2983,8 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `link/host` | `127.0.0.1` | on&nbsp;close | TCP host. |
 | `link/port` | `1210` | on&nbsp;close | TCP port. |
 | `link/serial` | empty | on&nbsp;close | Serial port name. |
-| `link/baud` | `115200` | on&nbsp;close | Baud rate. |
+| `link/baud` | `115200` | on&nbsp;close | Baud rate: a number 300 to 20000000; anything else is read as 115200. |
+| `link/serialKind` | `auto` | on&nbsp;change | The Link row (3.2): `auto` (by the port's USB IDs), `cdc` (USB CDC: Auto send not kept under the baud rate) or `uart`. |
 | `link/timeout` | `500` | on&nbsp;close | Answer timeout, ms. |
 | `link/reconnect` | `true` | on&nbsp;close | Reconnect by itself. |
 | `link/inflightTcp` | `4` | on&nbsp;change | In flight for TCP. |
@@ -3126,11 +3154,14 @@ The device refused its address for good: code 3 (permission denied), 4 (offset o
 
 ### 15.5 The serial port cannot be opened (*Access denied*, *Permission denied*, busy)
 
-A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port.
+The pill says *COM10 is busy: another program holds it* (the system's text, *Access denied* or *Permission denied*,
+is in its tooltip and in the Log). A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port.
 
 On Linux, your user also needs permission for the device file. On many distributions this means being a member of the `dialout` group. Log out and in again after adding the group.
 
-A port that disappears while connected (a USB device that is unplugged or resets) closes the link. With *Reconnect by itself* on, the Studio tries again every 2 s until the port is back.
+A port that disappears while connected (a USB device that is unplugged or resets) closes the link: the pill says
+*COM10 is gone: unplugged or reset?*. With *Reconnect by itself* on, the Studio tries again every 2 s until the port
+is back; meanwhile a try that finds no port says *COM10 not found*.
 
 ### 15.6 The device resets when the Studio connects over serial, or it answers only after connecting twice
 
@@ -3142,6 +3173,7 @@ Read the amber hint under the poll rate (13.6):
 
 - It suggests an In flight value: set it, if the link allows pipelining (TCP usually does, a UART does not).
 - It says the link takes *n* ms per answer: the link or the device is the limit. Use a longer interval, or fewer registers in the map.
+- It says *... at a time on the serial link*: a serial link answers one request at a time. A faster baud rate helps on a UART only; on USB CDC the baud rate changes nothing (3.2), the answer time is the device's.
 
 With no hint, look at the status bar's latency and the number of blocks. Reorganising the map so that registers sit close together in one bank makes fewer reads per poll.
 
@@ -4383,8 +4415,10 @@ poll get the same time. Math lines rely on this to pair their inputs (9.6, 23.8)
    options (slave, timeout, In flight) and the polling state (on, interval).
    - TCP: it logs `connecting to <host>:<port>`, followed by ` (with a token)` when the token box is not empty. It
      then posts `connectTcp(host, port, token)`.
-   - Serial: an empty port list stops here, and the pill shows "No serial port". Otherwise it logs
-     `opening <port> at <baud>` and posts `connectSerial(port, baud)`.
+   - Serial: an empty port list stops here, and the pill shows "No serial port"; so does a baud rate out of 300 to
+     20000000 ("Baud rate: a number, 300 to 20000000", the box focused). Otherwise it logs
+     `opening <port> at <baud> (UART)` or `... (USB CDC: the baud rate is ignored)` and posts
+     `connectSerial(port, baud, baudLimited)` (`Sidebar::serialBaudLimited()`: the Link row, on Auto the port's kind).
 
    The pill shows "Connecting…" and the button shows "Cancel". While the window reconnects by itself
    (`retrying_`), the "connecting to" line is not logged again.
@@ -4393,7 +4427,8 @@ poll get the same time. Math lines rely on this to pair their inputs (9.6, 23.8)
    queue and the parser and starts the keep-alive timer. Then it calls `open()`.
    - `TcpLink` calls `connectToHost`. On `connected` it turns Nagle off (`LowDelayOption`) and emits `opened()`.
    - `SerialLink` opens the port at 8N1 without flow control, sets DTR (USB CDC devices often wait for it), clears
-     the buffers and emits `opened()`. A port that cannot be opened emits `closed(errorString)` at once.
+     the buffers and emits `opened()`. A port that cannot be opened emits `closed(why, detail)` at once: a plain
+     reason (`SerialLink::plainReason`) and the system's `errorString`.
 4. **Opened.** `IoEngine::onOpened()`:
    1. sets `connected_` and clears every value in the table (`clearValues()`), so nothing old is shown as fresh;
    2. rebuilds the blocks (the "unavailable" marks were cleared as well);
@@ -4419,9 +4454,11 @@ poll get the same time. Math lines rely on this to pair their inputs (9.6, 23.8)
    pill (the revision is STATUS bits 7:0) and logs it. If the map names another device (`"device_id"` set and
    different), it adds `the map is for 0x....` in the warning colour and logs a warning. A failed read shows and
    logs `DEVICE_ID not read: <reason>`.
-7. **Lost link.** The link emits `closed(why)`, with an empty `why` when the Studio asked for the close.
-   `IoEngine::onClosed` drops the link and passes `closed(why)` on. The window logs `connection lost: <why>` if the
-   link was up, or the warning `not connected: <why>` if it never came up. It shows the reason in the pill. If
+7. **Lost link.** The link emits `closed(why, detail)`, with an empty `why` when the Studio asked for the close
+   (`detail`: the system's text, when `why` is a serial port's plain reason). `IoEngine::onClosed` drops the link
+   and passes both on. The window logs `connection lost: <why> (<detail>)` if the link was up, or the warning
+   `not connected: <why> (<detail>)` if it never came up. It shows the reason in the pill, the detail in its
+   tooltip, and marks every device ID read as old (`markDeviceInfoLost`: *last seen: ...*). If
    Connect is still wanted and "Reconnect by itself" is ticked, it tries again after 500 ms (the link was up) or
    2000 ms (it never came up). While it waits, the button shows "Stop reconnecting".
 
@@ -4562,7 +4599,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps copied beside them |
 | `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
-| `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` |
+| `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
@@ -4648,14 +4685,18 @@ error codes 1, 2, 3, 4, 5 and 12 (18.3). `hex()` formats bytes for the monitor.
 
 **`link.h` / `link.cpp`.** `Link` is the interface: `open()`, `close()`, `isOpen()`, `send()`, `flush(ms)` (what was
 sent goes out before a close), `drain(ms)` (what still comes is read and dropped before a close) and `describe()`, and
-the signals `opened()`, `closed(why)` and `received(bytes)`. `why` is empty for a close that was asked for.
+the signals `opened()`, `closed(why, detail)` and `received(bytes)`. `why` is empty for a close that was asked for;
+`detail` is the system's own text when `why` is a plain reason of the Studio's (the serial link), else empty.
 
 - `TcpLink` turns Nagle off at connect. It does not report a remote close twice. A failed connect is reported
   through `errorOccurred`, and a close while connected through `disconnected`. Its `drain` reads until the device
   is quiet for 20 ms, at most the time given: closed with bytes unread, the connection is reset rather than ended
   (13.8).
 - `SerialLink` reports the errors after which the port is gone (`ResourceError`, `PermissionError`,
-  `DeviceNotFoundError`, `OpenError`) as `closed(why)`.
+  `DeviceNotFoundError`, `OpenError`), and an open that fails, as `closed(why, detail)`: `why` from the static
+  `plainReason(error, port, wasOpen, systemText)` (*COM10 is gone: unplugged or reset?*, *COM10 not found*,
+  *COM10 is busy: another program holds it*, *COM10 did not open*, else *COM10: <system text>*; 3.8), `detail` the
+  port's `errorString()`.
 
 The socket or port is the link's child, so it lives in the link's thread.
 
@@ -4685,14 +4726,15 @@ pass-through checks compare frames byte for byte (chapter 26).
 
 **`IoEngine`** (see chapters 19 – 21 for the flows).
 
-- Called through `post()`: `setMap`, `connectTcp`, `connectSerial`, `disconnectLink`, `setLinkOptions`,
+- Called through `post()`: `setMap`, `connectTcp`, `connectSerial(port, baud, baudLimited)` (baudLimited: Auto send
+  kept under the baud rate, false on USB CDC), `disconnectLink`, `setLinkOptions`,
   `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord` (with the streams not logged), `stopRecord`, `write`, `read`,
   `setMonitor`, `setDump` (the Dump tab shown: each block's latest reply kept, 37.6), `apiStart`, `apiStop`, `apiSetWrites`.
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
   (19.3), so the window waits until the engine has stopped.
 - Called from any thread: `table()`, `now()`, `stats()`, `takeSamples()`, `takeFrames(dropped)`, `takeDumps(blocks)` (every block's `DumpReply` when one moved), and the static
   `autoSendDividers()` (the 18 prescalers + 1 of 13.8) and `autoSendPrescalerFor(prescaler, baud, streamBytes)` (the
-  serial link's cap, public for the tests).
+  serial link's cap, public for the tests); `autoSendBaudLimit()` (tests: the baud rate the cap uses, 0 for none).
 - AUTO_SEND's signals: `autoSendSet(on, hz, err)` (switched, or not and why), `autoSendSlowed(why)` (a serial link
   cut the rate), `autoSendStopped()` (CONFIG shows it cleared). `Stats::autoSend` and `Stats::autoSendHz` give the
   sidebar its rate line.
@@ -4864,8 +4906,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
-| `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)`; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
 | `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`; signals `writeRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
@@ -5813,7 +5855,8 @@ where.
 ### 24.3 A link type
 
 1. Derive from `evre::Link`. Implement `open`, `close`, `isOpen`, `send` and `describe`, and emit `opened`,
-   `closed(why)` (empty `why` for a close that was asked for) and `received`. Make the transport object the link's
+   `closed(why, detail)` (empty `why` for a close that was asked for; `detail` the system's text when `why` is a
+   plain reason of your own) and `received`. Make the transport object the link's
    child.
 2. Add `IoEngine::connectX(...)`, which calls `attach(new XLink(...), token)`. The window posts `connectX`, so it
    runs in the I/O thread and the link is created there.
@@ -6114,6 +6157,20 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   device killed and started again: after the reconnect bit 3 and prescaler 79 are set again by themselves; the
   device's CONFIG cleared by another client: the Log says *the device stopped auto send (reset?)* once, the box
   unticks, it stays off. The window then connects back to the Python fake device.
+- **The serial link** (`serialKind`, after Auto send). No real port: the ports opened do not exist. The kind by the
+  USB IDs (`Sidebar::serialKindOf`: none, FTDI and MCP2221 a UART; another Microchip ID and ST's VCP USB CDC; Linux's
+  `ttyUSB` a UART, `ttyACM` USB CDC); the device line read from the Python fake device, *last seen: ...* after
+  Disconnect at the same height, *Device ID not read yet* at the next open, then the ID again; the Link row (Auto
+  reads *Auto: UART* for a port without IDs, USB CDC no limit, UART a limit, saved in `link/serialKind` and restored
+  by a new sidebar, its tooltip, its box aligned with Baud's, its list wide enough); the Log's connect line with
+  *(UART)* and *(USB CDC: the baud rate is ignored)*; an `IoEngine` of its own (`autoSendBaudLimit`: 0 on USB CDC and
+  TCP, 2000000 on a UART; the plain reason and the system's text in `closed`); `SerialLink::plainReason`'s cases;
+  *NOSUCHPORT not found* whole in the pill with the system's text on its tooltip's second line and in the Log; a
+  pill too narrow showing *COM10 is gone* whole; a 48-character port description cut with an ellipsis to the box, the
+  tooltip whole, the list opened wider, the sidebar no wider, a short label whole, the map's device name, the label
+  cut again in a narrower box and one left-to-right piece right to left; the Baud box (11 rates to 12000000, its
+  tooltip and placeholder, letters and a digit past 20000000 refused, 3000000 taken, emptied: no open, the pill's
+  text, the focus; a saved `abc` restored as 115200). It ends connected to the Python fake device over TCP.
 - **A bus** (`busDevices`, before the login steps). It starts `evre_fake_fast` beside the test on port 1226 as two
   devices of this map (slaves 1 and 2) and writes two bus files in a temporary folder. With the first (D1, D2): the
   table holds both devices' registers named `D1_` and `D2_` and shows the selected one; selecting D2 shows its
@@ -6735,7 +6792,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 717 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 744 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6754,7 +6811,8 @@ answers (a refused read, a timed-out one, one with no reply yet: `answers`), the
 and AUTO_SEND's card (`auto_send`); a fast stream's card (37.7) on known blocks, I_LOAD hovered with its tooltip
 (`<prefix>_fastcard_en_<light|dark>.png`, `_fastcard_ar_light.png`), with Show all open
 (`<prefix>_fastcard_showall_en_<light|dark>.png`) and on a bus beside a poll card (`<prefix>_fastcard_bus_en_light.png`),
-and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`).
+and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`); the Connection card
+with a long port label cut and the pill *COM10 is gone: unplugged or reset?* (`<prefix>_serial_card_<light|dark>.png`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device

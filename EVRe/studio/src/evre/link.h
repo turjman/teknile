@@ -8,10 +8,10 @@
 #pragma once
 
 #include <QObject>
+#include <QSerialPort>
 #include <QString>
 
 class QTcpSocket;
-class QSerialPort;
 
 namespace evre {
 
@@ -32,7 +32,9 @@ public:
 
 signals:
 	void opened();
-	void closed(const QString &why); /* why is empty when close() was asked for */
+	/* why is empty when close() was asked for; detail: the system's own words for it, when why is ours (the serial
+	 * link's plain reasons), else empty */
+	void closed(const QString &why, const QString &detail = QString());
 	void received(const QByteArray &bytes);
 };
 
@@ -67,6 +69,11 @@ public:
 	void send(const QByteArray &bytes) override;
 	void flush(int ms) override;
 	QString describe() const override;
+	/* what a port's error means in plain words: the system's text ("The system cannot find the file specified.") says
+	 * little to someone who just unplugged a board. wasOpen: the port was open (lost) or was being opened.
+	 * systemText: the error's own text, kept for what has no plain words */
+	static QString plainReason(QSerialPort::SerialPortError error, const QString &port, bool wasOpen,
+			const QString &systemText = QString());
 
 private:
 	QString portName_;

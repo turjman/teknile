@@ -95,6 +95,8 @@ public:
 	fast::TriggerWatch engineFastWatch(int stream) const;
 	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
 	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
+	/* tests: the device line as the last connect left it, before any answer (it passes too fast to be seen) */
+	QString deviceInfoAtOpen() const { return deviceInfoAtOpen_; }
 	/* tests: the Dump tab's ticks (one repaint each), the takes of the polls' replies and of the fast streams' newest
 	 * blocks, the fast takes that found the engine's lock held, and the data of the last fast block taken (shared with
 	 * the engine's, not copied) */
@@ -138,12 +140,13 @@ private:
 	void retryConnect();          /* Reconnect by itself, after a lost link */
 	void disconnectLink();
 	void onOpened(const QString &link);
-	void onClosed(const QString &why);
+	void onClosed(const QString &why, const QString &detail);
 	/* slave: the device's table slave (0: the one device of a map) */
 	void onDeviceInfo(int slave, bool ok, quint16 id, quint16 status, const QString &err);
 	void onDeviceOnline(int slave, bool online); /* a device of a bus stopped answering, or answers again */
 	/* under the pill: what is known of the shown device's ID, built when shown (the amber of the look now) */
 	void showDeviceInfo();
+	void markDeviceInfoLost(); /* the link down: every ID read becomes "last seen" */
 	QString deviceInfoHtml(int slave) const;
 	/* AUTO_SEND: the sidebar's choice to the engine, and whether the box may be ticked (one device whose STATUS has
 	 * CAP_AUTO_SEND) */
@@ -287,12 +290,14 @@ private:
 	QSet<uint8_t> offlineDevices_;      /* the slaves of the devices that stopped answering */
 	/* per device's table slave: what its DEVICE_ID read gave; none: not read yet. The text is made when shown */
 	struct DeviceInfo {
-		enum class State { Read, NotRead, TokenRefused } state = State::Read;
+		/* Lost: read, then the link went down (the ID kept, shown as last seen) */
+		enum class State { Read, NotRead, TokenRefused, Lost } state = State::Read;
 		quint16 id = 0;
 		int revision = 0;
 		QString error;          /* NotRead, TokenRefused: why */
 	};
 	QHash<int, DeviceInfo> deviceInfo_;
+	QString deviceInfoAtOpen_;          /* tests: deviceInfoAtOpen() */
 	int autoSendCap_ = -1;              /* the one device's STATUS has CAP_AUTO_SEND: 1, 0, -1 not read yet */
 	bool autoSendAsked_ = false;        /* the engine was last told: on */
 	int autoSendHz_ = 0;                /* the device sends at this rate: on and taken; 0: off */

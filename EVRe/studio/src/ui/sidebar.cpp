@@ -2,12 +2,14 @@
 /* The sidebar: see sidebar.h. */
 #include "ui/sidebar.h"
 
+#include <QAbstractItemView>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
 #include <QDir>
 #include <QDoubleSpinBox>
+#include <QEvent>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
@@ -22,6 +24,10 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStyle>
+#include <QStyleOptionComboBox>
+#include <QStyledItemDelegate>
+#include <QValidator>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -36,6 +42,58 @@
 #include "ui/value_pace.h"
 
 static const QString NOT_LOGGED_KEY = QStringLiteral("fast/notLogged"); /* the streams whose Log is off, by name */
+static const QString SERIAL_KIND_KEY = QStringLiteral("link/serialKind"); /* auto, cdc or uart */
+
+namespace {
+
+/* a port's item: its whole label (the box shows it cut to its room), and its kind (Sidebar::SerialKind) */
+constexpr int FULL_LABEL_ROLE = Qt::UserRole + 1;
+constexpr int SERIAL_KIND_ROLE = Qt::UserRole + 2;
+
+/* the list opened: each item's whole label, not the cut one the box shows; left to right in Arabic too (a port name,
+ * a product string and hex are one piece) */
+class FullLabels : public QStyledItemDelegate {
+public:
+	using QStyledItemDelegate::QStyledItemDelegate;
+
+protected:
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
+		QStyledItemDelegate::initStyleOption(option, index);
+		const QString full = index.data(FULL_LABEL_ROLE).toString();
+		if (!full.isEmpty()) option->text = ltrPiece(full);
+	}
+};
+
+/* Only what can become a rate is typed: digits, and never a number past the top. QIntValidator alone lets
+ * "20000001" in (a number of the top's length, on its way to one in range, it says) and takes the locale's group
+ * separators, which baud() would not read. Under the bottom stays typeable: "3" on the way to "300000" */
+class BaudValidator : public QIntValidator {
+public:
+	explicit BaudValidator(QObject *parent) : QIntValidator(Sidebar::BAUD_MIN, Sidebar::BAUD_MAX, parent) {}
+	State validate(QString &input, int &pos) const override {
+		(void) pos;
+		if (input.isEmpty()) return Intermediate;
+		for (const QChar c : input)
+			if (c < QLatin1Char('0') || c > QLatin1Char('9')) return Invalid;
+		if (input.size() > 8) return Invalid; /* past 20000000 whatever the digits */
+		const qint64 value = input.toLongLong();
+		if (value > top()) return Invalid;
+		return value < bottom() ? Intermediate : Acceptable;
+	}
+};
+
+/* the list opened as wide as its longest label (whole, as the delegate draws it), with the box's padding and arrow:
+ * wider than the box when a label is */
+void widenList(QComboBox *box) {
+	int widest = 0;
+	for (int i = 0; i < box->count(); i++) {
+		const QString full = box->itemData(i, FULL_LABEL_ROLE).toString();
+		widest = std::max(widest, box->fontMetrics().horizontalAdvance(full.isEmpty() ? box->itemText(i) : full));
+	}
+	box->view()->setMinimumWidth(widest + 2 * 8 + 20);
+}
+
+} // namespace
 
 Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 	setObjectName(QStringLiteral("sideScroll"));
@@ -127,6 +185,13 @@ QWidget *Sidebar::buildTcpFields() {
 
 QWidget *Sidebar::buildSerialFields() {
 	serialPort_ = new QComboBox;
+	serialPort_->setObjectName(QStringLiteral("serialPort"));
+	/* a long label (a board names its port after its product) never widens the sidebar: it is cut to the box with
+	 * "…", whole in the tooltip and in the list opened, which opens as wide as its longest label */
+	serialPort_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+	serialPort_->setMinimumContentsLength(12);
+	serialPort_->setItemDelegate(new FullLabels(serialPort_));
+	serialPort_->installEventFilter(this);
 	refreshButton_ = new QPushButton;
 	refreshButton_->setObjectName(QStringLiteral("refreshPorts"));
 	refreshButton_->setIcon(refreshIcon(Theme::colors().text));
@@ -135,9 +200,36 @@ QWidget *Sidebar::buildSerialFields() {
 	refreshButton_->setToolTip(tr("Look for ports again"));
 	connect(refreshButton_, &QPushButton::clicked, this, &Sidebar::refreshPortsClicked);
 	baud_ = new QComboBox;
+	baud_->setObjectName(QStringLiteral("baud"));
 	baud_->setEditable(true);
+	/* the list is a hint of what can be typed, not a limit: 12 M is an FTDI bridge's top */
 	baud_->addItems({ QStringLiteral("9600"), QStringLiteral("57600"), QStringLiteral("115200"),
-		QStringLiteral("230400"), QStringLiteral("460800"), QStringLiteral("921600"), QStringLiteral("2000000") });
+		QStringLiteral("230400"), QStringLiteral("460800"), QStringLiteral("921600"), QStringLiteral("2000000"),
+		QStringLiteral("3000000"), QStringLiteral("4000000"), QStringLiteral("6000000"), QStringLiteral("12000000") });
+	baud_->setValidator(new BaudValidator(baud_));
+	baud_->lineEdit()->setPlaceholderText(tr("type a rate"));
+	baud_->setToolTip(tr("Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).")
+			.arg(BAUD_MIN).arg(BAUD_MAX));
+	/* USB CDC or a UART: Auto from the port's USB IDs, or chosen. The box shows a short text; the list opened says
+	 * what each choice does */
+	serialKind_ = new QComboBox;
+	serialKind_->setObjectName(QStringLiteral("serialKind"));
+	serialKind_->setItemDelegate(new FullLabels(serialKind_));
+	serialKind_->addItem(tr("Auto: UART"), QStringLiteral("auto"));
+	serialKind_->addItem(tr("USB CDC"), QStringLiteral("cdc"));
+	serialKind_->setItemData(1, tr("USB CDC: full speed, baud ignored"), FULL_LABEL_ROLE);
+	serialKind_->addItem(tr("UART"), QStringLiteral("uart"));
+	serialKind_->setItemData(2, tr("UART: Auto send kept under the baud rate"), FULL_LABEL_ROLE);
+	const QString kindHelp = tr("A USB CDC port runs at USB's speed whatever the baud rate says; a UART, or a "
+			"USB-to-UART bridge (FTDI, CP210x, CH340, PL2303), really runs at the baud rate, so Auto send is kept to "
+			"70% of it. Auto tells them apart by the port's USB IDs.");
+	serialKind_->setToolTip(kindHelp);
+	connect(serialKind_, &QComboBox::currentIndexChanged, this, [this](int index) {
+		if (index >= 0) QSettings().setValue(SERIAL_KIND_KEY, serialKind_->itemData(index));
+	});
+	connect(serialPort_, &QComboBox::currentIndexChanged, this, &Sidebar::showSerialKind);
+	widenList(serialKind_);
+	serialKind_->installEventFilter(this);
 	auto *fields = new QWidget;
 	auto *layout = new QVBoxLayout(fields);
 	layout->setContentsMargins(0, 0, 0, 0);
@@ -145,10 +237,16 @@ QWidget *Sidebar::buildSerialFields() {
 	portRow->addWidget(serialPort_, 1);
 	portRow->addWidget(refreshButton_);
 	layout->addLayout(portRow);
-	auto *baudRow = new QHBoxLayout;
-	baudRow->addWidget(mutedLabel(tr("Baud")));
-	baudRow->addWidget(baud_, 1);
-	layout->addLayout(baudRow);
+	/* Baud and Link in a grid: their boxes start at the same place whatever the labels' lengths (Arabic too) */
+	auto *rows = new QGridLayout;
+	rows->setColumnStretch(1, 1);
+	rows->addWidget(mutedLabel(tr("Baud")), 0, 0);
+	rows->addWidget(baud_, 0, 1);
+	QLabel *kindLabel = mutedLabel(tr("Link"));
+	kindLabel->setToolTip(kindHelp);
+	rows->addWidget(kindLabel, 1, 0);
+	rows->addWidget(serialKind_, 1, 1);
+	layout->addLayout(rows);
 	return fields;
 }
 
@@ -290,7 +388,8 @@ QWidget *Sidebar::buildPollingCard() {
 	}
 	setAutoSendHz(QSettings().value(QStringLiteral("poll/autoSendHz"), 100).toInt());
 	rateHelp_ = tr("The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.\n"
-			"On a serial link a rate the link cannot carry beside the polls is lowered (the Log says so).");
+			"On a UART a rate the link cannot carry beside the polls is lowered (the Log says so); USB CDC takes it "
+			"as asked (Link).");
 	connect(autoSend_, &QCheckBox::toggled, this, &Sidebar::autoSendChanged);
 	connect(autoSendRate_, &QComboBox::currentIndexChanged, this, [this](int index) {
 		if (index < 0) return; /* not offered: the list shows why, the rate is kept */
@@ -462,7 +561,15 @@ void Sidebar::restoreLinkSettings() {
 	inFlight_->setValue(savedInFlight(tcpButton_->isChecked()));
 	host_->setText(settings.value(QStringLiteral("link/host"), QStringLiteral("127.0.0.1")).toString());
 	port_->setValue(settings.value(QStringLiteral("link/port"), 1210).toInt());
-	baud_->setCurrentText(settings.value(QStringLiteral("link/baud"), QStringLiteral("115200")).toString());
+	/* a rate saved by hand, or by an older version, that is no number in range would fail every open */
+	const qint32 savedBaud = settings.value(QStringLiteral("link/baud"), QStringLiteral("115200")).toString().toInt();
+	baud_->setCurrentText(savedBaud >= BAUD_MIN && savedBaud <= BAUD_MAX ? QString::number(savedBaud)
+			: QStringLiteral("115200"));
+	{
+		const QSignalBlocker blocker(serialKind_); /* restored, not chosen: nothing to save */
+		const int kind = serialKind_->findData(settings.value(SERIAL_KIND_KEY, QStringLiteral("auto")).toString());
+		serialKind_->setCurrentIndex(std::max(0, kind));
+	}
 	interval_->setValue(settings.value(QStringLiteral("poll/interval"), 100.0).toDouble());
 	timeout_->setValue(settings.value(QStringLiteral("link/timeout"), 500).toInt());
 	autoReconnect_->setChecked(settings.value(QStringLiteral("link/reconnect"), true).toBool());
@@ -513,7 +620,7 @@ void Sidebar::useSerial(const QString &portBaud) {
 	const QStringList parts = portBaud.split(QLatin1Char(':'));
 	int index = serialPort_->findData(parts.value(0));
 	if (index < 0) {
-		serialPort_->addItem(parts.value(0), parts.value(0));
+		addPort(parts.value(0), QString(), false, 0, 0, QString());
 		index = serialPort_->count() - 1;
 	}
 	serialPort_->setCurrentIndex(index);
@@ -546,6 +653,44 @@ QString Sidebar::serialPort() const { return serialPort_->currentData().toString
 
 qint32 Sidebar::baud() const { return baud_->currentText().toInt(); }
 
+void Sidebar::focusBaud() {
+	serialButton_->setChecked(true);
+	baud_->setFocus(Qt::OtherFocusReason);
+	baud_->lineEdit()->selectAll();
+}
+
+Sidebar::SerialKind Sidebar::serialKindOf(bool hasVid, quint16 vid, quint16 pid, const QString &portName) {
+	/* the USB-to-UART bridges: the baud rate is real on the bridge's far side. MCP2200 and MCP2221 are CDC ACM devices,
+	 * so they come before Linux's ttyACM name */
+	if (hasVid) {
+		switch (vid) {
+		case 0x0403: /* FTDI */
+		case 0x10C4: /* Silicon Labs CP210x */
+		case 0x1A86: /* WCH CH340, CH343 */
+		case 0x067B: /* Prolific PL2303 */
+			return SerialKind::Uart;
+		case 0x04D8: /* Microchip: only its MCP2200 and MCP2221 are bridges */
+			if (pid == 0x00DF || pid == 0x00DD) return SerialKind::Uart;
+			break;
+		default: break;
+		}
+	}
+	/* Linux: ttyUSB is a vendor's bridge driver, ttyACM the CDC class driver */
+	const QString name = portName.mid(portName.lastIndexOf(QLatin1Char('/')) + 1);
+	if (name.startsWith(QLatin1String("ttyUSB"))) return SerialKind::Uart;
+	if (name.startsWith(QLatin1String("ttyACM"))) return SerialKind::UsbCdc;
+	/* no USB IDs: a motherboard's COM port (ttyS); any other USB port: Windows' usbser.sys, a vendor's VCP */
+	return hasVid ? SerialKind::UsbCdc : SerialKind::Uart;
+}
+
+bool Sidebar::serialBaudLimited() const {
+	const QString kind = serialKind_->currentData().toString();
+	if (kind == QLatin1String("cdc")) return false;
+	if (kind == QLatin1String("uart")) return true;
+	const QVariant port = serialPort_->currentData(SERIAL_KIND_ROLE);
+	return !port.isValid() || SerialKind(port.toInt()) == SerialKind::Uart;
+}
+
 int Sidebar::slave() const { return slave_->value(); }
 
 void Sidebar::setSlave(int slave) { slave_->setValue(slave); }
@@ -564,24 +709,80 @@ bool Sidebar::autoReconnect() const { return autoReconnect_->isChecked(); }
 
 void Sidebar::refreshPorts(const DeviceMap &map) {
 	const QString keep = serialPort_->currentData().toString();
-	serialPort_->clear();
-	for (const QSerialPortInfo &port : QSerialPortInfo::availablePorts()) {
-		const bool mapped = map.usbVid && port.hasVendorIdentifier() && port.vendorIdentifier() == map.usbVid
-				&& port.productIdentifier() == map.usbPid;
-		QString label = port.portName();
-		if (port.hasVendorIdentifier()) {
-			label += QStringLiteral("  · %1").arg(mapped ? map.device : port.description());
-			label += QStringLiteral("  %1:%2").arg(port.vendorIdentifier(), 4, 16, QLatin1Char('0'))
-					.arg(port.productIdentifier(), 4, 16, QLatin1Char('0'));
-		} else if (!port.description().isEmpty()) {
-			label += QStringLiteral("  · %1").arg(port.description());
+	{
+		const QSignalBlocker blocker(serialPort_); /* the port chosen is known once the list is whole */
+		serialPort_->clear();
+		for (const QSerialPortInfo &port : QSerialPortInfo::availablePorts()) {
+			const bool mapped = map.usbVid && port.hasVendorIdentifier() && port.vendorIdentifier() == map.usbVid
+					&& port.productIdentifier() == map.usbPid;
+			addPort(port.portName(), port.description(), port.hasVendorIdentifier(), port.vendorIdentifier(),
+					port.productIdentifier(), mapped ? map.device : QString());
+			if (mapped && keep.isEmpty()) serialPort_->setCurrentIndex(serialPort_->count() - 1);
 		}
-		serialPort_->addItem(label, port.portName());
-		if (mapped && keep.isEmpty()) serialPort_->setCurrentIndex(serialPort_->count() - 1);
+		if (serialPort_->count() == 0) serialPort_->addItem(tr("no ports found"), QString());
+		const int index = serialPort_->findData(keep);
+		if (index >= 0) serialPort_->setCurrentIndex(index);
 	}
-	if (serialPort_->count() == 0) serialPort_->addItem(tr("no ports found"), QString());
-	const int index = serialPort_->findData(keep);
-	if (index >= 0) serialPort_->setCurrentIndex(index);
+	showSerialKind();
+}
+
+void Sidebar::addPort(const QString &name, const QString &description, bool hasVid, quint16 vid, quint16 pid,
+		const QString &mappedName) {
+	/* single spaces and a dot before each part: the old "COM10  · name  0483:5740" read as two labels */
+	QStringList parts{ name };
+	const QString what = hasVid && !mappedName.isEmpty() ? mappedName : description;
+	if (!what.isEmpty()) parts << what;
+	if (hasVid)
+		parts << QStringLiteral("%1:%2").arg(vid, 4, 16, QLatin1Char('0')).arg(pid, 4, 16, QLatin1Char('0'));
+	const QString label = parts.join(QStringLiteral(" · "));
+	serialPort_->addItem(label, name);
+	const int index = serialPort_->count() - 1;
+	serialPort_->setItemData(index, label, FULL_LABEL_ROLE);
+	serialPort_->setItemData(index, label, Qt::ToolTipRole);
+	serialPort_->setItemData(index, int(serialKindOf(hasVid, vid, pid, name)), SERIAL_KIND_ROLE);
+	widenList(serialPort_);
+	elidePortLabels();
+	showSerialKind();
+}
+
+/* The box clips its text at its edge, mid-word ("Example device virtual C"): each label is cut here to the room the box
+ * gives its text, so an ellipsis ends what does not fit. The whole label stays in FULL_LABEL_ROLE */
+void Sidebar::elidePortLabels() {
+	QStyleOptionComboBox option;
+	option.initFrom(serialPort_);
+	option.editable = false;
+	const QRect field = serialPort_->style()->subControlRect(QStyle::CC_ComboBox, &option,
+			QStyle::SC_ComboBoxEditField, serialPort_);
+	const int room = std::max(0, field.width() - 2); /* the label is drawn a pixel in from each side */
+	const QFontMetrics metrics = serialPort_->fontMetrics();
+	for (int i = 0; i < serialPort_->count(); i++) {
+		const QString full = serialPort_->itemData(i, FULL_LABEL_ROLE).toString();
+		if (full.isEmpty()) continue;
+		const QString shown = ltrPiece(metrics.elidedText(full, Qt::ElideRight, room));
+		if (serialPort_->itemText(i) != shown) serialPort_->setItemText(i, shown);
+	}
+}
+
+/* the Link row's Auto says what Auto finds for the port selected; the port box's tooltip is its whole label */
+void Sidebar::showSerialKind() {
+	const QVariant kind = serialPort_->currentData(SERIAL_KIND_ROLE);
+	const bool cdc = kind.isValid() && SerialKind(kind.toInt()) == SerialKind::UsbCdc;
+	serialKind_->setItemText(0, cdc ? tr("Auto: USB CDC") : tr("Auto: UART"));
+	serialPort_->setToolTip(serialPort_->currentData(FULL_LABEL_ROLE).toString());
+}
+
+/* the labels measured again whenever what they are measured by changes: the box's width, or its font (the style sheet
+ * sets it when the box is polished, and again at a theme switch) */
+bool Sidebar::eventFilter(QObject *watched, QEvent *event) {
+	const QEvent::Type type = event->type();
+	const bool font = type == QEvent::FontChange || type == QEvent::StyleChange || type == QEvent::Polish;
+	if (watched == serialPort_ && (type == QEvent::Resize || font)) {
+		elidePortLabels();
+		if (font) widenList(serialPort_);
+	} else if (watched == serialKind_ && font) {
+		widenList(serialKind_);
+	}
+	return QScrollArea::eventFilter(watched, event);
 }
 
 void Sidebar::showDisconnected() {
@@ -599,9 +800,13 @@ void Sidebar::showConnected(const QString &link) {
 	setConnectButton(tr("Disconnect"), QStringLiteral("danger"));
 }
 
-void Sidebar::showLinkError(const QString &why) {
+/* A plain reason has its gist before ": " ("COM10 is gone: unplugged or reset?"): shown alone when the whole does not
+ * fit, so a narrow pill never cuts the port's name in the middle. The system's text is for the tooltip */
+void Sidebar::showLinkError(const QString &why, const QString &detail) {
 	setConnectButton(tr("Connect"), QStringLiteral("primary"));
-	showLinkState(QStringLiteral("error"), why); /* cut to the pill, the whole reason in its tooltip */
+	const int colon = int(why.indexOf(QLatin1String(": ")));
+	showLinkState(QStringLiteral("error"), why, colon > 0 ? why.left(colon) : QString(),
+			detail.isEmpty() ? QString() : why + QLatin1Char('\n') + detail);
 }
 
 void Sidebar::showReconnecting() { setConnectButton(tr("Stop reconnecting"), QStringLiteral("primary")); }
@@ -614,10 +819,10 @@ void Sidebar::setConnectButton(const QString &text, const QString &look) {
 	repolish(connectButton_);
 }
 
-void Sidebar::showLinkState(const QString &state, const QString &text, const QString &shorter) {
+void Sidebar::showLinkState(const QString &state, const QString &text, const QString &shorter, const QString &toolTip) {
 	linkState_->setProperty("state", state);
 	const QString dot = QStringLiteral("●  ");
-	linkState_->setFullText(dot + text, QString(), shorter.isEmpty() ? QString() : dot + shorter);
+	linkState_->setFullText(dot + text, toolTip, shorter.isEmpty() ? QString() : dot + shorter);
 	repolish(linkState_);
 }
 
