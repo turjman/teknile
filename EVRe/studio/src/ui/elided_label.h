@@ -37,6 +37,7 @@ protected:
 
 private:
 	void fit();
+	void wrapLines(bool on); /* word wrap and the height for width on or off, only for a text that does not fit */
 	QString full_, toolTip_, shorter_;
 	bool cut_ = false;
 	bool wraps_ = false;

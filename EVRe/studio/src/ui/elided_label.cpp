@@ -26,15 +26,21 @@ void ElidedLabel::setElideMode(Qt::TextElideMode mode) {
 	fit();
 }
 
-/* wrapped, the label's height follows its width (QLabel's height for width), and it may be taller than one line */
 void ElidedLabel::setWraps(bool wraps) {
 	if (wraps == wraps_) return;
 	wraps_ = wraps;
-	setWordWrap(wraps);
-	QSizePolicy policy(QSizePolicy::Ignored, wraps ? QSizePolicy::Preferred : QSizePolicy::Fixed);
-	policy.setHeightForWidth(wraps);
-	setSizePolicy(policy);
 	fit();
+}
+
+/* wrapped, the label's height follows its width (QLabel's height for width), and it may be taller than one line. Only
+ * a text that does not fit is wrapped: a wrapped label of one line can be a pixel or two taller than an unwrapped one
+ * (Linux's fonts), and a short reason must not move the card */
+void ElidedLabel::wrapLines(bool on) {
+	if (on == wordWrap()) return;
+	setWordWrap(on);
+	QSizePolicy policy(QSizePolicy::Ignored, on ? QSizePolicy::Preferred : QSizePolicy::Fixed);
+	policy.setHeightForWidth(on);
+	setSizePolicy(policy);
 }
 
 void ElidedLabel::resizeEvent(QResizeEvent *event) {
@@ -69,6 +75,7 @@ void ElidedLabel::fit() {
 	const int room = std::max(0, contentsRect().width() - 2 * margin());
 	cut_ = width > room && !full_.isEmpty();
 	setToolTip(toolTip_.isEmpty() ? plain : toolTip_);
+	wrapLines(wraps_ && cut_ && !rich);
 	if (!cut_) {
 		QLabel::setText(full_);
 		return;
