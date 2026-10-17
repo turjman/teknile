@@ -1282,10 +1282,10 @@ private:
 	}
 
 	/* EVRE_TEST_SHOT: the Connection card of a sidebar as wide as the window's, in English and Arabic, both themes
-	 * (<prefix>_serial_<card|list|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading USB CDC for
-	 * ST's IDs, a lost port's pill and the device line kept as last seen; the port list opened over the card (the two
-	 * grabs put together where they are on the screen: the list is a window of its own); the Baud box emptied with the
-	 * pill Connect gives then. A sidebar of its own: one made after the language is set has its texts */
+	 * (<prefix>_serial_<card|list|link|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading USB CDC
+	 * for ST's IDs, a lost port's pill and the device line kept as last seen; the port list, then the Link row's, opened
+	 * over the card (the two grabs put together where they are on the screen: the list is a window of its own); the Baud
+	 * box emptied with the pill Connect gives then. A sidebar of its own: one made after the language is set has its texts */
 	void serialShots(const QSize &size) {
 		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
 		const bool wasDark = Theme::isDark();
@@ -1297,7 +1297,8 @@ private:
 			auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
 			auto *port = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
 			auto *baud = card.findChild<QComboBox *>(QStringLiteral("baud"));
-			if (!pill || !port || !baud) break;
+			auto *kind = card.findChild<QComboBox *>(QStringLiteral("serialKind"));
+			if (!pill || !port || !baud || !kind) break;
 			port->clear(); /* this computer's own ports out of the picture: the example's only */
 			card.addPort(QStringLiteral("COM10"), QStringLiteral("Example device virtual COM port with a long name"), true,
 					0x0483, 0x5740, QString());
@@ -1322,25 +1323,29 @@ private:
 				QTest::qWait(100);
 				QWidget *box = docsCard(pill);
 				save(QStringLiteral("card"), box->grab());
-				port->showPopup();
-				QTest::qWait(200);
-				QWidget *list = port->view()->window();
-				const QRect boxAt(box->mapToGlobal(QPoint(0, 0)), box->size());
-				const QRect listAt(list->mapToGlobal(QPoint(0, 0)), list->size());
-				const QRect both = boxAt.united(listAt);
-				const qreal dpr = box->devicePixelRatioF();
-				QPixmap together(both.size() * dpr);
-				together.setDevicePixelRatio(dpr);
-				together.fill(Qt::transparent);
-				{
-					QPainter painter(&together);
-					painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
-					painter.drawPixmap(listAt.topLeft() - both.topLeft(), list->grab());
-				}
-				port->hidePopup();
-				save(QStringLiteral("list"), together);
+				const auto opened = [&](QComboBox *combo) {
+					combo->showPopup();
+					QTest::qWait(200);
+					QWidget *list = combo->view()->window();
+					const QRect boxAt(box->mapToGlobal(QPoint(0, 0)), box->size());
+					const QRect listAt(list->mapToGlobal(QPoint(0, 0)), list->size());
+					const QRect both = boxAt.united(listAt);
+					const qreal dpr = box->devicePixelRatioF();
+					QPixmap together(both.size() * dpr);
+					together.setDevicePixelRatio(dpr);
+					together.fill(Qt::transparent);
+					{
+						QPainter painter(&together);
+						painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
+						painter.drawPixmap(listAt.topLeft() - both.topLeft(), list->grab());
+					}
+					combo->hidePopup();
+					return together;
+				};
+				save(QStringLiteral("list"), opened(port));
+				save(QStringLiteral("link"), opened(kind));
 				baud->setCurrentText(QString());
-				card.showLinkError(QCoreApplication::translate("MainWindow", "Baud rate: a number, %1 to %2")
+				card.showLinkError(QCoreApplication::translate("MainWindow", "Baud rate out of range: %1 to %2")
 						.arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
 				card.focusBaud();
 				QTest::qWait(100);
@@ -1368,6 +1373,17 @@ private:
 						&& Sidebar::serialKindOf(false, 0, 0, QStringLiteral("ttyACM0")) == Kind::UsbCdc,
 				"serial: the kind by the port's USB IDs: none, FTDI, MCP2221 a UART; another Microchip ID, ST's VCP a USB CDC; "
 				"Linux's ttyUSB a UART, ttyACM a USB CDC");
+		check(Sidebar::serialKindOf(true, 0x0483, 0x374B, QStringLiteral("COM8")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x0483, 0x374E, QStringLiteral("COM8")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x0483, 0x3754, QStringLiteral("COM8")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x1366, 0x1015, QStringLiteral("COM8")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x0D28, 0x0204, QStringLiteral("ttyACM0")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x2E8A, 0x000C, QStringLiteral("ttyACM0")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x2E8A, 0x000A, QStringLiteral("ttyACM0")) == Kind::UsbCdc
+						&& Sidebar::serialKindOf(true, 0x2341, 0x0043, QStringLiteral("COM8")) == Kind::Uart
+						&& Sidebar::serialKindOf(true, 0x2341, 0x8036, QStringLiteral("COM8")) == Kind::UsbCdc,
+				"serial: a debug probe's port is a UART (ST-Link V2-1 and V3, J-Link, DAPLink, the Raspberry Pi Debug "
+				"Probe), so is an Arduino Uno's or Mega's 16U2 bridge; a Pico's and a Leonardo's own USB stay USB CDC");
 		auto *sidebar = window_.findChild<Sidebar *>();
 		auto *kind = window_.findChild<QComboBox *>(QStringLiteral("serialKind"));
 		auto *baud = window_.findChild<QComboBox *>(QStringLiteral("baud"));
@@ -1474,12 +1490,12 @@ private:
 						&& evre::SerialLink::plainReason(QSerialPort::DeviceNotFoundError, QStringLiteral("COM10"), false)
 								== QLatin1String("COM10 not found")
 						&& evre::SerialLink::plainReason(QSerialPort::PermissionError, QStringLiteral("COM10"), false)
-								== QLatin1String("COM10 is busy: another program holds it")
+								== QLatin1String("COM10 is busy or not allowed: another program holds it, or you have no permission for it")
 						&& evre::SerialLink::plainReason(QSerialPort::UnsupportedOperationError, QStringLiteral("COM10"), false)
 								== QLatin1String("COM10 did not open")
 						&& evre::SerialLink::plainReason(QSerialPort::OpenError, QStringLiteral("COM10"), true, QStringLiteral("x"))
 								== QLatin1String("COM10: x"),
-				"serial, plain reasons: a port lost \"is gone: unplugged or reset?\", absent \"not found\", held \"is busy\", a "
+				"serial, plain reasons: a port lost \"is gone: unplugged or reset?\", absent \"not found\", held or refused \"is busy or not allowed\", a "
 				"refused open \"did not open\", anything else the system's text after the port");
 		sidebar->useSerial(QStringLiteral("NOSUCHPORT"));
 		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
@@ -1562,6 +1578,27 @@ private:
 				"to its room");
 		check(isolated && !port->itemText(at).startsWith(QChar(0x2066)),
 				"serial, the port list: right to left (Arabic) the label is one left-to-right piece");
+		{
+			/* the lists opened, as their delegate lays an item out: initStyleOption is protected, reached through a
+			 * pointer to the member named in a class that makes it public (a virtual call: the box's own delegate) */
+			struct Peek : QStyledItemDelegate {
+				using QStyledItemDelegate::initStyleOption;
+			};
+			const auto layOut = [](QComboBox *box, int row) {
+				QStyleOptionViewItem option;
+				auto *delegate = qobject_cast<QStyledItemDelegate *>(box->itemDelegate());
+				if (delegate) (delegate->*(&Peek::initStyleOption))(&option, box->model()->index(row, 0));
+				return option.text;
+			};
+			QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+			const QString portItem = layOut(port, at);
+			const QString linkItem = layOut(kind, 1);
+			QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+			check(portItem == QChar(0x2066) + full + QChar(0x2069)
+							&& linkItem == QLatin1String("USB CDC: full speed, baud ignored"),
+					"serial, the lists opened right to left (Arabic): a port's whole label one left-to-right piece; the Link "
+					"row's sentences not, they run right to left as the other texts");
+		}
 
 		/* the Baud box: digits only, a list up to 12 M, its texts; a rate out of range does not connect */
 		QLineEdit *edit = baud->lineEdit();
@@ -1592,10 +1629,10 @@ private:
 		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
 		QApplication::processEvents();
 		QWidget *focused = window_.focusWidget();
-		check(pill->fullText() == QStringLiteral("●  Baud rate: a number, 300 to 20000000")
+		check(pill->fullText() == QStringLiteral("●  Baud rate out of range: 300 to 20000000")
 						&& logText().count(QLatin1String("opening ")) <= opensBefore
 						&& buttonWithText(QStringLiteral("Connect")) && focused && (focused == baud || baud->isAncestorOf(focused)),
-				"serial, Baud emptied: Connect does not open, the pill says \"Baud rate: a number, 300 to 20000000\", the box "
+				"serial, Baud emptied: Connect does not open, the pill says \"Baud rate out of range: 300 to 20000000\", the box "
 				"has the focus");
 		baud->setCurrentText(QStringLiteral("115200"));
 		{

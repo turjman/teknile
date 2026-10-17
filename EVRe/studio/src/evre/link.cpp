@@ -137,7 +137,10 @@ QString SerialLink::describe() const {
 QString SerialLink::plainReason(QSerialPort::SerialPortError error, const QString &port, bool wasOpen,
 		const QString &systemText) {
 	switch (error) {
-	case QSerialPort::PermissionError: return tr("%1 is busy: another program holds it").arg(port);
+	/* Linux reports a port held by another program (EBUSY) and a user without the right to it (EACCES, not in
+	 * dialout) as the same error: the reason names both */
+	case QSerialPort::PermissionError:
+		return tr("%1 is busy or not allowed: another program holds it, or you have no permission for it").arg(port);
 	case QSerialPort::DeviceNotFoundError:
 	case QSerialPort::ResourceError:
 	case QSerialPort::OpenError:

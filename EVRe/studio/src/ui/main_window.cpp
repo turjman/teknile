@@ -670,7 +670,7 @@ void MainWindow::connectLink() {
 		/* an emptied box or a rate out of range would fail the open with a system text: said here, plainly */
 		if (baud < Sidebar::BAUD_MIN || baud > Sidebar::BAUD_MAX) {
 			wantConnected_ = false;
-			sidebar_->showLinkError(tr("Baud rate: a number, %1 to %2").arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
+			sidebar_->showLinkError(tr("Baud rate out of range: %1 to %2").arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
 			sidebar_->focusBaud();
 			return;
 		}

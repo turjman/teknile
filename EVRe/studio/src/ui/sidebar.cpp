@@ -50,21 +50,25 @@ namespace {
 constexpr int FULL_LABEL_ROLE = Qt::UserRole + 1;
 constexpr int SERIAL_KIND_ROLE = Qt::UserRole + 2;
 
-/* the list opened: each item's whole label, not the cut one the box shows; left to right in Arabic too (a port name,
- * a product string and hex are one piece) */
+/* the list opened: each item's whole label, not the cut one the box shows. A port's label is left to right in Arabic
+ * too (a port name, a product string and hex are one piece); the Link row's are translated sentences, which run right
+ * to left as every other text does */
 class FullLabels : public QStyledItemDelegate {
 public:
-	using QStyledItemDelegate::QStyledItemDelegate;
+	FullLabels(bool ltr, QObject *parent) : QStyledItemDelegate(parent), ltr_(ltr) {}
 
 protected:
 	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
 		QStyledItemDelegate::initStyleOption(option, index);
 		const QString full = index.data(FULL_LABEL_ROLE).toString();
-		if (!full.isEmpty()) option->text = ltrPiece(full);
+		if (!full.isEmpty()) option->text = ltr_ ? ltrPiece(full) : full;
 		/* the item under the mouse in the text colour, as the tables have it: the style sheet's selection is the accent
 		 * faded, and the palette's white on it could not be read in the light look */
 		option->palette.setColor(QPalette::HighlightedText, option->palette.color(QPalette::Text));
 	}
+
+private:
+	bool ltr_;
 };
 
 /* Only what can become a rate is typed: digits, and never a number past the top. QIntValidator alone lets
@@ -193,7 +197,7 @@ QWidget *Sidebar::buildSerialFields() {
 	 * "…", whole in the tooltip and in the list opened, which opens as wide as its longest label */
 	serialPort_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
 	serialPort_->setMinimumContentsLength(12);
-	serialPort_->setItemDelegate(new FullLabels(serialPort_));
+	serialPort_->setItemDelegate(new FullLabels(true, serialPort_));
 	serialPort_->installEventFilter(this);
 	refreshButton_ = new QPushButton;
 	refreshButton_->setObjectName(QStringLiteral("refreshPorts"));
@@ -217,7 +221,7 @@ QWidget *Sidebar::buildSerialFields() {
 	 * what each choice does */
 	serialKind_ = new QComboBox;
 	serialKind_->setObjectName(QStringLiteral("serialKind"));
-	serialKind_->setItemDelegate(new FullLabels(serialKind_));
+	serialKind_->setItemDelegate(new FullLabels(false, serialKind_));
 	serialKind_->addItem(tr("Auto: UART"), QStringLiteral("auto"));
 	serialKind_->addItem(tr("USB CDC"), QStringLiteral("cdc"));
 	serialKind_->setItemData(1, tr("USB CDC: full speed, baud ignored"), FULL_LABEL_ROLE);
@@ -664,16 +668,30 @@ void Sidebar::focusBaud() {
 
 Sidebar::SerialKind Sidebar::serialKindOf(bool hasVid, quint16 vid, quint16 pid, const QString &portName) {
 	/* the USB-to-UART bridges: the baud rate is real on the bridge's far side. MCP2200 and MCP2221 are CDC ACM devices,
-	 * so they come before Linux's ttyACM name */
+	 * so they come before Linux's ttyACM name. A debug probe's virtual COM port is a bridge too, to the target's UART,
+	 * though it carries the probe maker's IDs: read as USB CDC, Auto send would flood a board at 115200 */
 	if (hasVid) {
 		switch (vid) {
 		case 0x0403: /* FTDI */
 		case 0x10C4: /* Silicon Labs CP210x */
 		case 0x1A86: /* WCH CH340, CH343 */
 		case 0x067B: /* Prolific PL2303 */
+		case 0x1366: /* Segger J-Link */
 			return SerialKind::Uart;
 		case 0x04D8: /* Microchip: only its MCP2200 and MCP2221 are bridges */
 			if (pid == 0x00DF || pid == 0x00DD) return SerialKind::Uart;
+			break;
+		case 0x0483: /* ST: the ST-Link V2-1 and V3 probes are bridges; 5740 and the rest a chip's own USB */
+			if (pid == 0x374B || pid == 0x374E || pid == 0x374F || (pid >= 0x3752 && pid <= 0x3754)) return SerialKind::Uart;
+			break;
+		case 0x0D28: /* Arm DAPLink */
+			if (pid == 0x0204) return SerialKind::Uart;
+			break;
+		case 0x2E8A: /* Raspberry Pi: its Debug Probe is a bridge, a Pico's own USB is not */
+			if (pid == 0x000C) return SerialKind::Uart;
+			break;
+		case 0x2341: /* Arduino: the Uno and the Mega 2560 talk through a 16U2 (or 8U2) bridge */
+			if (pid == 0x0043 || pid == 0x0001 || pid == 0x0042 || pid == 0x0010) return SerialKind::Uart;
 			break;
 		default: break;
 		}

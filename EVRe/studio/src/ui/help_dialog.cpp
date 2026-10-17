@@ -72,7 +72,7 @@ With no login register in the map the token is not sent, and the Log says so.</p
 <p>Ports are listed as <i>COM10 · its description · 0483:5740</i>: the name, the driver's description and the USB
 IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device's USB
 ID (<code>"usb"</code>) marks that port with the device's name, and picks it by itself when no port was chosen before.
-A port can be open in <b>one program</b> only: close other tools first (<i>COM10 is busy</i> otherwise).</p>
+A port can be open in <b>one program</b> only: close other tools first (<i>COM10 is busy or not allowed</i> otherwise).</p>
 <p>When a link fails or is lost, the pill says what happened in plain words (<i>COM10 is gone: unplugged or
 reset?</i>, <i>COM10 not found</i>); hover it for the system's own text, which the Log has too. The line under it keeps
 the device's ID as <i>last seen: Device ID …</i> while the link is down, until the next connect reads it again.</p>
@@ -81,7 +81,8 @@ the device's ID as <i>last seen: Device ID …</i> while the link is down, until
 <li><b>Baud</b> (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
 connect. A UART must match the device; USB CDC ignores it.</li>
 <li><b>Link</b> (serial): <b>Auto</b> tells a USB CDC port (a board's own USB: full speed, the baud rate ignored) from a
-UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303: the baud rate is the real speed) by the port's USB IDs, and
+UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe's port such as ST-Link's or J-Link's: the baud
+rate is the real speed) by the port's USB IDs, and
 shows what it found (<i>Auto: USB CDC</i>). Choose <b>USB CDC</b> or <b>UART</b> when it guesses wrong. On a UART,
 Auto send is kept under the baud rate.</li>
 <li><b>Slave</b>: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
@@ -136,7 +137,8 @@ tooltip says why when it is not.</p>
 <li><i>Connection timed out</i>: wrong address, or this PC is not on that network.</li>
 <li><i>Connects, then drops after a few seconds</i>: the server wants a token and it is missing or wrong, or the
 map has no <code>"login"</code> to send it to (see the Log).</li>
-<li><i>COM10 is busy: another program holds it</i> (serial): close the other program.</li>
+<li><i>COM10 is busy or not allowed: another program holds it, or you have no permission for it</i> (serial): close
+the other program; on Linux, add your user to the <code>dialout</code> group.</li>
 <li>Registers "not available": the device refused the address (a register the map has and this device
 or this link does not). Not an error.</li>
 </ul>

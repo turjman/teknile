@@ -3757,7 +3757,7 @@ With no login register in the map the token is not sent, and the Log says so.&lt
 &lt;p&gt;Ports are listed as &lt;i&gt;COM10 · its description · 0483:5740&lt;/i&gt;: the name, the driver&apos;s description and the USB
 IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device&apos;s USB
 ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks that port with the device&apos;s name, and picks it by itself when no port was chosen before.
-A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy&lt;/i&gt; otherwise).&lt;/p&gt;
+A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy or not allowed&lt;/i&gt; otherwise).&lt;/p&gt;
 &lt;p&gt;When a link fails or is lost, the pill says what happened in plain words (&lt;i&gt;COM10 is gone: unplugged or
 reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&apos;s own text, which the Log has too. The line under it keeps
 the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.&lt;/p&gt;
@@ -3766,7 +3766,8 @@ the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the li
 &lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
 connect. A UART must match the device; USB CDC ignores it.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
-UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303: the baud rate is the real speed) by the port&apos;s USB IDs, and
+UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
+rate is the real speed) by the port&apos;s USB IDs, and
 shows what it found (&lt;i&gt;Auto: USB CDC&lt;/i&gt;). Choose &lt;b&gt;USB CDC&lt;/b&gt; or &lt;b&gt;UART&lt;/b&gt; when it guesses wrong. On a UART,
 Auto send is kept under the baud rate.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Slave&lt;/b&gt;: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
@@ -3821,7 +3822,8 @@ tooltip says why when it is not.&lt;/p&gt;
 &lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: wrong address, or this PC is not on that network.&lt;/li&gt;
 &lt;li&gt;&lt;i&gt;Connects, then drops after a few seconds&lt;/i&gt;: the server wants a token and it is missing or wrong, or the
 map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;COM10 is busy: another program holds it&lt;/i&gt; (serial): close the other program.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;COM10 is busy or not allowed: another program holds it, or you have no permission for it&lt;/i&gt; (serial): close
+the other program; on Linux, add your user to the &lt;code&gt;dialout&lt;/code&gt; group.&lt;/li&gt;
 &lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
 or this link does not). Not an error.&lt;/li&gt;
 &lt;/ul&gt;
@@ -3838,7 +3840,7 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;p&gt;تُعرض المنافذ هكذا: &lt;i&gt;⁦COM10 · وصفه · 0483:5740⁩&lt;/i&gt;: الاسم، ووصف برنامج التشغيل، ومعرّفات USB.
 الاسم الطويل يُقطع بنقاط حذف: مرّر الفأرة فوقه، أو افتح القائمة، لتراه كله. الخريطة التي تسمّي معرّف USB لجهازها
 (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) تعلّم ذلك المنفذ باسم الجهاز، وتختاره وحدها حين لم يُختر منفذ من قبل.
-المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا &lt;i&gt;⁦COM10⁩ مشغول&lt;/i&gt;).&lt;/p&gt;
+المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا &lt;i&gt;⁦COM10⁩ مشغول أو ممنوع&lt;/i&gt;).&lt;/p&gt;
 &lt;p&gt;حين تفشل الوصلة أو تُفقد، تقول الشارة ما حدث بكلمات بسيطة (&lt;i&gt;⁦COM10⁩ اختفى: فُصل أو أُعيد
 تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
 تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
@@ -3848,7 +3850,8 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
 لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
-من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303: معدّل البود هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
+من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
+هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
 ويعرض ما وجده (&lt;i&gt;تلقائي: USB CDC&lt;/i&gt;). اختر &lt;b&gt;USB CDC&lt;/b&gt; أو &lt;b&gt;UART&lt;/b&gt; حين يخطئ. على UART يبقى الإرسال التلقائي
 دون معدّل البود.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
@@ -3903,7 +3906,8 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
 &lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: عنوان خاطئ، أو هذا الحاسوب ليس على تلك الشبكة.&lt;/li&gt;
 &lt;li&gt;&lt;i&gt;يتصل، ثم ينقطع بعد ثوانٍ&lt;/i&gt;: الخادم يريد رمز دخول وهو مفقود أو خاطئ، أو ليس في
 الخريطة &lt;code&gt;&quot;login&quot;&lt;/code&gt; لإرساله إليه (انظر السجل).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;⁦COM10⁩ مشغول: يمسكه برنامج آخر&lt;/i&gt; (تسلسلي): أغلق البرنامج الآخر.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;⁦COM10⁩ مشغول أو ممنوع: يمسكه برنامج آخر، أو ليس لك إذن به&lt;/i&gt; (تسلسلي): أغلق
+البرنامج الآخر؛ وعلى Linux أضف مستخدمك إلى المجموعة &lt;code&gt;dialout&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
 أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
 &lt;/ul&gt;
@@ -4720,8 +4724,8 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
         <translation>⁦%1⁩ مخفي في لسان المسجّلات ببحثه أو مجموعاته</translation>
     </message>
     <message>
-        <source>Baud rate: a number, %1 to %2</source>
-        <translation>معدّل البود: عدد من %1 إلى %2</translation>
+        <source>Baud rate out of range: %1 to %2</source>
+        <translation>معدّل البود خارج المدى: من %1 إلى %2</translation>
     </message>
     <message>
         <source>opening %1 at %2 (UART)</source>
@@ -7309,8 +7313,8 @@ Right-click the table to remove them again.</source>
 <context>
     <name>SerialLink</name>
     <message>
-        <source>%1 is busy: another program holds it</source>
-        <translation>⁦%1⁩ مشغول: يمسكه برنامج آخر</translation>
+        <source>%1 is busy or not allowed: another program holds it, or you have no permission for it</source>
+        <translation>⁦%1⁩ مشغول أو ممنوع: يمسكه برنامج آخر، أو ليس لك إذن به</translation>
     </message>
     <message>
         <source>%1 is gone: unplugged or reset?</source>
@@ -7892,8 +7896,8 @@ On a UART a rate the link cannot carry beside the polls is lowered (the Log says
 <context>
     <name>evre::SerialLink</name>
     <message>
-        <source>%1 is busy: another program holds it</source>
-        <translation>⁦%1⁩ مشغول: يمسكه برنامج آخر</translation>
+        <source>%1 is busy or not allowed: another program holds it, or you have no permission for it</source>
+        <translation>⁦%1⁩ مشغول أو ممنوع: يمسكه برنامج آخر، أو ليس لك إذن به</translation>
     </message>
     <message>
         <source>%1 is gone: unplugged or reset?</source>

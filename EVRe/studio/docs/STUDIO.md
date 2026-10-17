@@ -511,6 +511,7 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 - **USB CDC or UART.** A USB CDC port (a board's own USB, a virtual COM port) runs at USB's speed whatever the baud rate says: the hardware ignores the number. A UART, or a USB-to-UART bridge, really runs at the baud rate. The difference matters to Auto send (13.8), which a UART must leave room for. On **Auto** the Studio decides by the port's USB IDs, not by its description (Windows names a CDC port after the device's own product string):
   - no USB vendor ID (a motherboard's COM port, Linux's `ttyS`): a UART;
   - a USB-to-UART bridge by its vendor ID: FTDI `0x0403`, Silicon Labs `0x10C4` (CP210x), WCH `0x1A86` (CH340, CH343), Prolific `0x067B` (PL2303), Microchip `0x04D8` with the product `0x00DF` or `0x00DD` (MCP2200, MCP2221): a UART (the baud rate is real on the bridge's far side);
+  - a debug probe's virtual COM port, a bridge to the target board's UART though it carries the probe maker's IDs: ST-Link V2-1 and V3 (`0483` with the product `374B`, `374E`, `374F`, `3752` to `3754`), Segger J-Link (`0x1366`), Arm DAPLink (`0D28:0204`), the Raspberry Pi Debug Probe (`2E8A:000C`); and an Arduino Uno's or Mega 2560's 16U2 bridge (`2341` with `0043`, `0001`, `0042`, `0010`): a UART;
   - on Linux a `ttyUSB` name: a UART (a vendor's bridge driver); `ttyACM`: USB CDC;
   - any other USB ID (Windows' *USB Serial Device*, a vendor's VCP driver, ST's `0483:5740`): USB CDC.
 
@@ -565,8 +566,8 @@ The retries do not log *connecting to …* again. Each failure logs *not connect
 With **Reconnect by itself** off, a lost or failed link stays down until you click Connect.
 
 A serial link with no port selected fails at once. The pill shows *No serial port*. A Baud box emptied, or a rate
-out of 300 to 20000000, does not connect either: the pill shows *Baud rate: a number, 300 to 20000000* and the box
-gets the focus. While the Studio waits to try again, the pill stays red with the last reason (3.8).
+out of 300 to 20000000, does not connect either: the pill shows *Baud rate out of range: 300 to 20000000* (where it
+is too narrow, *Baud rate out of range*) and the box gets the focus. While the Studio waits to try again, the pill stays red with the last reason (3.8).
 
 ### 3.6 The token and the map's login register
 
@@ -632,9 +633,9 @@ reset? (The system cannot find the file specified.)*.
 |---|---|---|
 | *COM10&nbsp;is&nbsp;gone:&nbsp;unplugged&nbsp;or&nbsp;reset?* | the&nbsp;port&nbsp;went&nbsp;while&nbsp;open | The device was unplugged, or reset (a USB CDC board leaves and comes back). With Reconnect by itself on, the Studio tries again until it is back (15.5). |
 | *COM10&nbsp;not&nbsp;found* | at&nbsp;the&nbsp;open | No such port: a wrong name, or the device is not plugged in. |
-| *COM10&nbsp;is&nbsp;busy:&nbsp;another&nbsp;program&nbsp;holds&nbsp;it* | at&nbsp;the&nbsp;open | Another program has the port open (15.5); on Linux also a missing permission. |
+| *COM10&nbsp;is&nbsp;busy&nbsp;or&nbsp;not&nbsp;allowed* | at&nbsp;the&nbsp;open | *...: another program holds it, or you have no permission for it*. Another program has the port open, or (on Linux) your user may not open it (15.5): the system gives both the same error. |
 | *COM10&nbsp;did&nbsp;not&nbsp;open* | at&nbsp;the&nbsp;open | Any other failure, a baud rate the driver refuses among them: the tooltip has the system's text. |
-| *Baud&nbsp;rate:&nbsp;a&nbsp;number,&nbsp;300&nbsp;to&nbsp;20000000* | at&nbsp;Connect | The Baud box is empty or out of range: nothing is opened (3.5). |
+| *Baud&nbsp;rate&nbsp;out&nbsp;of&nbsp;range* | at&nbsp;Connect | *...: 300 to 20000000*. The Baud box is empty (read as 0) or out of range: nothing is opened (3.5). |
 
 The device line under the pill keeps the device's ID while the link is down, said to be old: *last seen: Device ID
 0x1001 · protocol rev 1* (on a bus *D2: last seen: ...*), in the same muted colour, with the map's warning under it
@@ -3154,8 +3155,8 @@ The device refused its address for good: code 3 (permission denied), 4 (offset o
 
 ### 15.5 The serial port cannot be opened (*Access denied*, *Permission denied*, busy)
 
-The pill says *COM10 is busy: another program holds it* (the system's text, *Access denied* or *Permission denied*,
-is in its tooltip and in the Log). A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port.
+The pill says *COM10 is busy or not allowed: another program holds it, or you have no permission for it* (the
+system's text, *Access denied* or *Permission denied*, is in its tooltip and in the Log). A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port.
 
 On Linux, your user also needs permission for the device file. On many distributions this means being a member of the `dialout` group. Log out and in again after adding the group.
 
@@ -4416,7 +4417,7 @@ poll get the same time. Math lines rely on this to pair their inputs (9.6, 23.8)
    - TCP: it logs `connecting to <host>:<port>`, followed by ` (with a token)` when the token box is not empty. It
      then posts `connectTcp(host, port, token)`.
    - Serial: an empty port list stops here, and the pill shows "No serial port"; so does a baud rate out of 300 to
-     20000000 ("Baud rate: a number, 300 to 20000000", the box focused). Otherwise it logs
+     20000000 ("Baud rate out of range: 300 to 20000000", the box focused). Otherwise it logs
      `opening <port> at <baud> (UART)` or `... (USB CDC: the baud rate is ignored)` and posts
      `connectSerial(port, baud, baudLimited)` (`Sidebar::serialBaudLimited()`: the Link row, on Auto the port's kind).
 
@@ -4695,7 +4696,7 @@ the signals `opened()`, `closed(why, detail)` and `received(bytes)`. `why` is em
 - `SerialLink` reports the errors after which the port is gone (`ResourceError`, `PermissionError`,
   `DeviceNotFoundError`, `OpenError`), and an open that fails, as `closed(why, detail)`: `why` from the static
   `plainReason(error, port, wasOpen, systemText)` (*COM10 is gone: unplugged or reset?*, *COM10 not found*,
-  *COM10 is busy: another program holds it*, *COM10 did not open*, else *COM10: <system text>*; 3.8), `detail` the
+  *COM10 is busy or not allowed: ...*, *COM10 did not open*, else *COM10: <system text>*; 3.8), `detail` the
   port's `errorString()`.
 
 The socket or port is the link's child, so it lives in the link's thread.
@@ -6159,7 +6160,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   unticks, it stays off. The window then connects back to the Python fake device.
 - **The serial link** (`serialKind`, after Auto send). No real port: the ports opened do not exist. The kind by the
   USB IDs (`Sidebar::serialKindOf`: none, FTDI and MCP2221 a UART; another Microchip ID and ST's VCP USB CDC; Linux's
-  `ttyUSB` a UART, `ttyACM` USB CDC); the device line read from the Python fake device, *last seen: ...* after
+  `ttyUSB` a UART, `ttyACM` USB CDC; the debug probes and an Arduino's 16U2 a UART, a Pico's and a Leonardo's own USB
+  USB CDC); the device line read from the Python fake device, *last seen: ...* after
   Disconnect at the same height, *Device ID not read yet* at the next open, then the ID again; the Link row (Auto
   reads *Auto: UART* for a port without IDs, USB CDC no limit, UART a limit, saved in `link/serialKind` and restored
   by a new sidebar, its tooltip, its box aligned with Baud's, its list wide enough); the Log's connect line with
@@ -6168,7 +6170,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   *NOSUCHPORT not found* whole in the pill with the system's text on its tooltip's second line and in the Log; a
   pill too narrow showing *COM10 is gone* whole; a 48-character port description cut with an ellipsis to the box, the
   tooltip whole, the list opened wider, the sidebar no wider, a short label whole, the map's device name, the label
-  cut again in a narrower box and one left-to-right piece right to left; the Baud box (11 rates to 12000000, its
+  cut again in a narrower box and one left-to-right piece right to left; the lists opened right to left (a port's
+  label one left-to-right piece, the Link row's sentences not); the Baud box (11 rates to 12000000, its
   tooltip and placeholder, letters and a digit past 20000000 refused, 3000000 taken, emptied: no open, the pill's
   text, the focus; a saved `abc` restored as 115200). It ends connected to the Python fake device over TCP.
 - **A bus** (`busDevices`, before the login steps). It starts `evre_fake_fast` beside the test on port 1226 as two
@@ -6792,7 +6795,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 744 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 746 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6814,7 +6817,7 @@ and AUTO_SEND's card (`auto_send`); a fast stream's card (37.7) on known blocks,
 and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`); the Connection card
 in English and Arabic, both themes: with a long port label cut, the pill *COM10 is gone: unplugged or reset?* and
 the device line as last seen (`<prefix>_serial_card_<en|ar>_<light|dark>.png`), with the port list opened over it
-(`<prefix>_serial_list_...`), and with the Baud box emptied and the pill Connect gives then
+(`<prefix>_serial_list_...`), with the Link row's list opened (`<prefix>_serial_link_...`), and with the Baud box emptied and the pill Connect gives then
 (`<prefix>_serial_baud_...`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
