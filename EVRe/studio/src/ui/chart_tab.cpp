@@ -26,12 +26,15 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMetaMethod>
+#include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QStyle>
+#include <QStyledItemDelegate>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <QWidgetAction>
@@ -48,6 +51,7 @@
 #endif
 
 #include "ui/chart_widget.h"
+#include "ui/elided_label.h"
 #include "ui/event_log.h"
 #include "ui/math_line_dialog.h"
 #include "ui/recording_window.h"
@@ -59,7 +63,7 @@ namespace {
 constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF_LOG) */
 
 /* the shortest Window that can be typed; shorter views are only reached with the wheel */
-constexpr double MIN_TYPED_WINDOW = 0.01;
+constexpr double MIN_TYPED_WINDOW = 1e-5; /* 10 us: a fast line's single records */
 /* the measurements while the cursors move: at most this often (ChartTab::measureSoon) */
 constexpr int MEASURE_FOLLOW_MS = 100;
 
@@ -77,7 +81,7 @@ QString areaUnit(const QString &unit, bool hours) {
 	if (unit == QLatin1String("W")) return hours ? QStringLiteral("Wh") : QStringLiteral("J");
 	if (unit == QLatin1String("A")) return hours ? QStringLiteral("Ah") : QStringLiteral("A·s");
 	if (unit == QLatin1String("mA")) return hours ? QStringLiteral("mAh") : QStringLiteral("mA·s");
-	if (unit.isEmpty()) return hours ? QStringLiteral("·h") : QStringLiteral("·s");
+	if (unit.isEmpty()) return hours ? QStringLiteral("h") : QStringLiteral("s"); /* a plain number times a time: a time */
 	return unit + (hours ? QStringLiteral("·h") : QStringLiteral("·s"));
 }
 
@@ -95,6 +99,31 @@ qint64 physicalMemoryMB() {
 	const long pages = sysconf(_SC_PHYS_PAGES), pageSize = sysconf(_SC_PAGE_SIZE);
 	return pages > 0 && pageSize > 0 ? qint64(pages) * pageSize / (1024 * 1024) : 0;
 #endif
+}
+
+/* the memory free now, MB (what can be taken without paging others' to disk); -1: not known */
+qint64 availableMemoryMB() {
+#ifdef Q_OS_WIN
+	MEMORYSTATUSEX status;
+	status.dwLength = sizeof(status);
+	return GlobalMemoryStatusEx(&status) ? qint64(status.ullAvailPhys / (1024 * 1024)) : -1;
+#else
+	QFile file(QStringLiteral("/proc/meminfo"));
+	if (!file.open(QIODevice::ReadOnly)) return -1;
+	for (QByteArray line = file.readLine(); !line.isEmpty(); line = file.readLine())
+		if (line.startsWith("MemAvailable:")) { /* "MemAvailable:   12345678 kB" */
+			bool ok = false;
+			const qint64 kilobytes = line.mid(13).trimmed().split(' ').value(0).toLongLong(&ok);
+			return ok ? kilobytes / 1024 : -1;
+		}
+	return -1;
+#endif
+}
+
+/* "512 MB", "2.1 GB": one piece ("MB 512" in Arabic without it) */
+QString megabytesText(qint64 megabytes) {
+	return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(std::max<qint64>(megabytes, 0))
+					 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
 }
 
 /* the most the chart's samples may take: three quarters of this computer's memory (16 GB when not known) */
@@ -129,6 +158,123 @@ QComboBox *lengthBox(const QList<double> &presets) {
 	return box;
 }
 
+/* The trigger's row: one line while the room holds all its controls and some of the state, else two lines (the line,
+ * edge, level, Find level and mode on the first; the hold-off, position, Arm / Force, Off and the state on the
+ * second), so no control is hidden or squeezed and the main window's narrowest stays 1280 px in every language and
+ * with every font (a single line asked 1332 px on Linux's fonts, 1367 in Arabic). Both parts are nested layouts of
+ * this one widget, so the controls keep one parent whichever line they are on */
+class TriggerRow : public QWidget {
+public:
+	/* the least room the state is given beside the controls before the row takes two lines */
+	static constexpr int STATE_ROOM = 160;
+
+	TriggerRow() {
+		auto *lines = new QVBoxLayout(this);
+		lines->setContentsMargins(0, 0, 0, 0);
+		lines->setSpacing(6);
+		first_ = new QHBoxLayout;
+		second_ = new QHBoxLayout;
+		early_ = new QHBoxLayout;
+		tail_ = new QHBoxLayout;
+		for (QHBoxLayout *line : { first_, second_, early_, tail_ }) {
+			line->setContentsMargins(0, 0, 0, 0);
+			line->setSpacing(6);
+		}
+		lines->addLayout(first_);
+		lines->addLayout(second_); /* empty on one line: no room taken, no spacing */
+		first_->addLayout(early_);
+		first_->insertLayout(1, tail_, 1);
+		first_->addStretch(); /* two lines: the first ends where its controls do */
+	}
+	QHBoxLayout *early() const { return early_; }
+	QHBoxLayout *tail() const { return tail_; }
+	/* as narrow as the wider of the two lines: the window may be that narrow, and the row then takes two */
+	QSize minimumSizeHint() const override {
+		QSize size = QWidget::minimumSizeHint();
+		size.setWidth(std::max(early_->minimumSize().width(), tail_->minimumSize().width()));
+		return size;
+	}
+
+protected:
+	/* a control shown or hidden (Arm / Force by the mode) changes what one line needs */
+	bool event(QEvent *event) override {
+		if (event->type() == QEvent::LayoutRequest) arrange();
+		return QWidget::event(event);
+	}
+	void resizeEvent(QResizeEvent *event) override {
+		arrange();
+		QWidget::resizeEvent(event);
+	}
+
+private:
+	void arrange() {
+		/* the tail's hidden controls counted as shown, so Force / Arm coming and going with the mode's state never moves
+		 * the row between one line and two (the chart's height would jump with it) */
+		int oneLine = early_->sizeHint().width() + first_->spacing() + tail_->sizeHint().width() + STATE_ROOM;
+		for (int i = 0; i < tail_->count(); i++)
+			if (QWidget *control = tail_->itemAt(i)->widget(); control && control->isHidden())
+				oneLine += std::max(control->sizeHint().width(), control->minimumWidth()) + tail_->spacing();
+		const bool two = width() < oneLine;
+		if (two == two_) return;
+		two_ = two;
+		(two ? first_ : second_)->removeItem(tail_);
+		tail_->setParent(nullptr); /* a layout is added to another only without a parent */
+		if (two) second_->addLayout(tail_, 1);
+		else first_->insertLayout(1, tail_, 1);
+	}
+
+	QHBoxLayout *first_, *second_, *early_, *tail_;
+	bool two_ = false;
+};
+
+/* The handle between the chart and the measurements: the style sheet's handles are transparent, and an empty gap was
+ * not seen as something to drag. A line across with a grip in its middle; under the mouse a highlight, the grip in the
+ * accent colour (the resize cursor is the splitter's own) */
+class MeasureSplitHandle : public QSplitterHandle {
+public:
+	MeasureSplitHandle(Qt::Orientation orientation, QSplitter *parent) : QSplitterHandle(orientation, parent) {
+		setAttribute(Qt::WA_Hover);
+	}
+	bool lit() const { return lit_; }
+
+protected:
+	bool event(QEvent *event) override {
+		if (event->type() == QEvent::Enter || event->type() == QEvent::Leave) {
+			lit_ = event->type() == QEvent::Enter;
+			update();
+		}
+		return QSplitterHandle::event(event);
+	}
+	void paintEvent(QPaintEvent *) override {
+		const ThemeColors &c = Theme::colors();
+		QPainter p(this);
+		p.setRenderHint(QPainter::Antialiasing);
+		const QRectF area = rect();
+		if (lit_) {
+			QColor glow = c.accent;
+			glow.setAlpha(48);
+			p.fillRect(area, glow);
+		}
+		const double y = area.center().y();
+		p.fillRect(QRectF(area.left(), y - 0.5, area.width(), 1), c.border);
+		p.setPen(Qt::NoPen);
+		p.setBrush(lit_ ? c.accent : c.muted);
+		p.drawRoundedRect(QRectF(area.center().x() - GRIP_W / 2, y - 1.5, GRIP_W, 3), 1.5, 1.5);
+	}
+
+private:
+	static constexpr double GRIP_W = 36;
+	bool lit_ = false;
+};
+
+class MeasureSplitter : public QSplitter {
+public:
+	using QSplitter::QSplitter;
+
+protected:
+	QSplitterHandle *createHandle() override { return new MeasureSplitHandle(orientation(), this); }
+};
+
 } // namespace
 
 ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
@@ -138,6 +284,7 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	layout->setSpacing(8);
 	/* two rows over the chart: the axes, then what to do */
 	layout->addLayout(buildAxesRow());
+	layout->addLayout(noteRow_);
 	layout->addLayout(buildActionsRow());
 	layout->addWidget(buildTriggerRow());
 
@@ -146,19 +293,36 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	const qint64 epoch = QDateTime::currentMSecsSinceEpoch() - qint64(std::llround(clock() * 1000.0));
 	chart_->setClock(std::move(clock), epoch);
 
-	/* the measurements under the chart: the splitter between them moves */
-	auto *split = new QSplitter(Qt::Vertical);
+	/* the measurements under the chart: the splitter between them moves, its place kept under the tab's own settings
+	 * (the Chart tab's and a recording's window's apart) */
+	auto *split = new MeasureSplitter(Qt::Vertical);
+	split->setObjectName(QStringLiteral("chartSplit"));
 	split->addWidget(chart_);
 	split->addWidget(buildMeasurements());
 	split->setStretchFactor(0, 4);
 	split->setStretchFactor(1, 1);
 	split->setChildrenCollapsible(false);
+	split->setHandleWidth(9);
 	split->setSizes({ 600, 170 });
+	split->handle(1)->setToolTip(tr("Drag: the room of the chart and of the measurements under it (kept)"));
+	const QByteArray splitAt = QSettings().value(settingKey("measureSplit")).toByteArray();
+	if (!splitAt.isEmpty()) split->restoreState(splitAt);
+	connect(split, &QSplitter::splitterMoved, this,
+			[this, split] { QSettings().setValue(settingKey("measureSplit"), split->saveState()); });
 	layout->addWidget(split, 1);
 
 	connectControls();
 	restoreSettings();
 	mathLines_.load(settingKey("math")); /* compiled and drawn once the map's registers come (setRegisters) */
+
+	/* the free memory: a cheap reading, often enough for the chart to let its oldest go before the computer pages */
+	freeWatch_.setInterval(FREE_WATCH_MS);
+	connect(&freeWatch_, &QTimer::timeout, this, &ChartTab::watchFreeMemory);
+	freeWatch_.start();
+	bool testFree = false;
+	const int testFreeMB = qEnvironmentVariableIntValue("EVRE_TEST_FREE_MB", &testFree);
+	if (testFree) setTestFreeMemory(testFreeMB);
+	else watchFreeMemory();
 
 	perfLogPath_ = qEnvironmentVariable("EVRE_PERF_LOG");
 	if (!perfLogPath_.isEmpty()) {
@@ -171,19 +335,26 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 }
 
 /* One line of the timing aid: frames a second, the paint's average and longest, its stages a frame on average (ms),
- * the binnings (a held view whose lines are reused bins none), the measurements' time and count, polls a second */
+ * the binnings (a held view whose lines are reused bins none), the measurements' time and count, polls a second, the
+ * fast lines' records a second, and the columns of fast lines binned a frame (a live view keeps the columns it
+ * shares with the frame before) */
 void ChartTab::writePerfLine() {
 	const ChartView::PerfStats p = chart_->view()->takePerfStats();
 	const double seconds = std::max(1e-3, perfClock_.restart() / 1000.0);
 	const double frames = std::max(1, p.frames);
 	const QString line = QStringLiteral("%1 %2 fps %3 paint %4 max %5 ms | bin %6 lines %7 segments %8 present %9 "
-			"marks %10 strip %11 legend %12 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s\n")
+			"marks %10 strip %11 legend %12 grid %21 ms | binned %13/%14 | measure %15 ms x %16 threads %17 ms | polls %18/s "
+			"fast %19/s columns %20 | math %22 ms\n")
 			.arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")), group_)
 			.arg(p.frames / seconds, 0, 'f', 1).arg(p.paintSum / frames, 0, 'f', 2).arg(p.paintMax, 0, 'f', 2)
 			.arg(p.bin / frames, 0, 'f', 2).arg(p.lines / frames, 0, 'f', 2).arg(p.segments / frames, 0, 'f', 2)
 			.arg(p.present / frames, 0, 'f', 2).arg(p.marks / frames, 0, 'f', 2).arg(p.strip / frames, 0, 'f', 2)
 			.arg(p.legend / frames, 0, 'f', 2).arg(p.binnings).arg(p.frames).arg(measureMs_, 0, 'f', 2)
-			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0);
+			.arg(measuresTimed_).arg(measureThreadMs_, 0, 'f', 2).arg(double(pollsSince_) / seconds, 0, 'f', 0)
+			.arg(double(fastSince_) / seconds, 0, 'f', 0).arg(double(p.fastColumns) / frames, 0, 'f', 1)
+			.arg(p.grid / frames, 0, 'f', 2).arg(fastMathMs_, 0, 'f', 2);
+	fastSince_ = 0;
+	fastMathMs_ = 0;
 	measureThreadMs_ = 0;
 	measureMs_ = 0;
 	measuresTimed_ = 0;
@@ -223,6 +394,12 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 			"most), or the min and max typed (both above 0); values of 0 or less sit on the bottom edge. Log and "
 			"Normalise exclude each other.");
 	yMode_->setToolTip(yModeTip_);
+	/* Lanes: the lane the Y range row applies to, chosen here as well as by a click on the chart (hidden without) */
+	yLane_ = new QComboBox;
+	yLane_->setObjectName(QStringLiteral("yLane"));
+	yLane_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+	yLane_->setToolTip(tr("The lane these Y settings apply to · or click a lane's values on the chart"));
+	yLane_->hide();
 	yMin_ = new QLineEdit;
 	yMax_ = new QLineEdit;
 	yMin_->setObjectName(QStringLiteral("yMin"));
@@ -254,17 +431,33 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	for (int megabytes : { 512, 1024, 2048, 4096, 8192, 16384 })
 		if (megabytes <= maxRamMB()) ram_->addItem(ramText(megabytes), megabytes);
 	ram_->setMinimumWidth(88); /* "1536 MB" */
-	/* it takes the room the row leaves, elided there (refreshStatus): its text changes and must not move the row */
+	/* it takes the room the row leaves (refreshStatus elides it there), or a line of its own under the row when that
+	 * room cannot hold its widest text (arrangeRamNote): its text changes and must not move the row */
 	ramNeed_ = new QLabel;
 	ramNeed_->setObjectName(QStringLiteral("ramNeed"));
 	ramNeed_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
 	ramNeed_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-	ramNeed_->setToolTip(tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
-			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"memory full\"."));
-	ram_->setToolTip(tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
-			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
-			"memory strip says \"memory full\". At most three quarters of this computer's memory (%1 GB).")
-			.arg(maxRamMB() / 1024.0, 0, 'f', 1));
+	ramNeedTip_ = (tr("The memory the chart's samples need to keep the Memory set, at the rates the lines come "
+			"now.\nMore than RAM: the oldest go sooner, and the memory strip says \"RAM budget reached\" in orange. A "
+			"recording's file keeps every sample, whatever the chart keeps.\nLess memory free than the RAM set: the "
+			"chart keeps within what is free, and this says \"only ... free\" in orange.") + QLatin1Char('\n')
+			+ tr("Fast lines with Older samples, summaries: the whole Memory is kept while their summaries fit, and this "
+					"says how much keeps its samples whole: \"keeps 100 min · 79 s in full\"."));
+	ramNeed_->setToolTip(ramNeedTip_);
+	/* the RAM box's tooltip: once the chart is made, with the free memory (watchFreeMemory) */
+	older_ = new QComboBox;
+	older_->setObjectName(QStringLiteral("chartOlder"));
+	older_->addItem(tr("summaries"), true);
+	older_->addItem(tr("kept"), false);
+	older_->setToolTip(tr("A fast line's samples older than its share of the RAM holds whole.\nSummaries (the default): "
+			"the newest stay whole, the older only as the lowest and highest of each 256 (1/128 of the room), so the "
+			"Memory is kept far longer: 100 min of two channels at 1 MS/s in 512 MB, with samples for the newest 79 s. "
+			"Zoomed in they are drawn as bars; their mean, RMS, area, histogram and spectrum need samples.\nKept: every "
+			"sample whole, the oldest go when the RAM is full.\nA recording's file keeps every sample either way."));
+	olderLabel_ = mutedLabel(tr("Older samples"));
+	olderLabel_->setToolTip(older_->toolTip());
+	olderLabel_->hide(); /* with fast streams only (setFastStreams) */
+	older_->hide();
 
 	/* the first row: what is shown and kept (Window, Memory, RAM and what the lines need), the Y range */
 	auto *row = new QHBoxLayout;
@@ -280,15 +473,24 @@ QHBoxLayout *ChartTab::buildAxesRow() {
 	row->addWidget(ramLabel_);
 	row->addWidget(ram_);
 	row->addSpacing(6);
+	row->addWidget(olderLabel_);
+	row->addWidget(older_);
+	row->addSpacing(6);
 	row->addWidget(ramNeed_, 1);
 	row->addSpacing(12);
-	row->addWidget(mutedLabel(tr("Y range")));
+	yRangeLabel_ = mutedLabel(tr("Y range"));
+	row->addWidget(yRangeLabel_);
+	row->addWidget(yLane_);
 	row->addWidget(yMode_);
 	row->addSpacing(4);
 	row->addWidget(mutedLabel(tr("min")));
 	row->addWidget(yMin_);
 	row->addWidget(mutedLabel(tr("max")));
 	row->addWidget(yMax_);
+	axesRow_ = row;
+	ramNoteAt_ = row->indexOf(ramNeed_);
+	noteRow_ = new QHBoxLayout; /* empty while the note is on the first row: no room taken, no spacing */
+	noteRow_->setSpacing(0);
 	return row;
 }
 
@@ -299,12 +501,13 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	holdButton_->setIconSize(QSize(14, 14));
 	holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
 	{
-		/* as wide as the longer of its two labels, whatever the state */
-		holdButton_->setText(tr("Live"));
-		const QSize live = holdButton_->sizeHint();
-		holdButton_->setText(tr("Hold"));
-		const QSize hold = holdButton_->sizeHint();
-		holdButton_->setFixedSize(std::max(live.width(), hold.width()) + 8, std::max(live.height(), hold.height()));
+		/* as wide as the longest of its labels (Run and Stop while the trigger is on), whatever the state */
+		QSize most;
+		for (const QString &label : { tr("Live"), tr("Run"), tr("Stop"), tr("Hold") }) {
+			holdButton_->setText(label);
+			most = most.expandedTo(holdButton_->sizeHint());
+		}
+		holdButton_->setFixedSize(most.width() + 8, most.height());
 	}
 	holdButton_->setToolTip(tr("Hold the view where it is (the memory keeps filling). Live: follow now again.\n"
 			"Dragging the chart holds it too."));
@@ -312,7 +515,9 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	cursorsButton_->setObjectName(QStringLiteral("cursors"));
 	cursorsButton_->setCheckable(true);
 	cursorsButton_->setToolTip(tr("On: a click on the chart places cursor A, then B; drag them.\n"
-			"The measurements under the chart then cover A → B instead of the view."));
+			"The measurements under the chart then cover A → B instead of the view.\n"
+			"With the grid in divisions (windows under 1 s) the cursors keep their place on the grid while the wave "
+			"moves under them;\nShift while dragging snaps them to a tenth of a division."));
 	clearCursorsButton_ = new QPushButton(tr("Clear cursors"));
 	measureButton_ = new QPushButton(tr("Measure"));
 	measureButton_->setObjectName(QStringLiteral("measure"));
@@ -356,19 +561,67 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	foldAll_->setObjectName(QStringLiteral("chartFoldAll"));
 	openAll_ = displayMenu->addAction(tr("Open all lanes"));
 	openAll_->setObjectName(QStringLiteral("chartOpenAll"));
+	/* every lane back to Auto at once: a lane's range set long ago is easy to miss among many */
+	allAuto_ = displayMenu->addAction(tr("All lanes: Auto"));
+	allAuto_->setObjectName(QStringLiteral("chartAllLanesAuto"));
+	allAuto_->setToolTip(tr("Every lane's Y range back to Auto (linear): the lanes tagged Manual or Log"));
 	foldAll_->setVisible(false); /* until Lanes is on (showLaneActions) */
 	openAll_->setVisible(false);
+	allAuto_->setVisible(false);
 	connect(displayMenu, &QMenu::aboutToShow, this, &ChartTab::showLaneActions);
 	trigger_ = displayMenu->addAction(tr("Trigger"));
 	trigger_->setObjectName(QStringLiteral("chartTrigger"));
 	trigger_->setCheckable(true);
-	trigger_->setToolTip(tr("Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 20 % of the "
-			"window.\nSingle: the first crossing; Normal: each one, armed again once the view is full."));
+	trigger_->setToolTip(tr("Hold the chart when a line crosses a level, as an oscilloscope: the crossing at 50 % of the "
+			"window (or where its mark is set).") + QLatin1Char('\n')
+			+ tr("Auto: holds on each crossing; when none comes for a window's length after the hold-off, it runs live "
+			"until the next. Normal: holds on each crossing and stays held until the next one, however long. Single: "
+			"holds on the first crossing and stops; Arm for another.")
+			+ QLatin1Char('\n') + tr("While it is on, Hold / Live is Run / Stop. A line's chip (click or right-click): Trigger "
+			"on this line. Off: the row's Off, this entry or the chip's entry unticked."));
+	/* the trigger's instant across the plot while it holds on a crossing (ChartView::setTriggerInstant) */
+	triggerInstant_ = displayMenu->addAction(tr("Trigger line"));
+	triggerInstant_->setObjectName(QStringLiteral("chartTriggerLine"));
+	triggerInstant_->setCheckable(true);
+	triggerInstant_->setToolTip(tr("While the chart holds on a crossing, a faint dashed line runs down from the T above the "
+			"plot to the time axis, across every lane: the trigger's instant on every wave. Off: the T alone."));
+	/* a live view under 100 ms with the trigger off locks on its busiest line by itself (ChartView::setShortLock) */
+	shortLock_ = displayMenu->addAction(tr("Lock short windows"));
+	shortLock_->setObjectName(QStringLiteral("chartShortLock"));
+	shortLock_->setCheckable(true);
+	shortLock_->setToolTip(tr("Below a 100 ms window, a live chart with the trigger off holds on each rising crossing of "
+			"the busiest line's middle (a fast line first, else the one with the most samples in the window), so a wave "
+			"stands still instead of blurring (\"Auto (short window)\"; \"Auto · free running\" while it does not cross). "
+			"Your own trigger takes over when it is on; Hold ends it."));
 	hoverValues_ = displayMenu->addAction(tr("Hover values"));
 	hoverValues_->setObjectName(QStringLiteral("chartHoverValues"));
 	hoverValues_->setCheckable(true);
 	hoverValues_->setToolTip(tr("The box of every line's value beside the mouse over the chart.\n"
 			"Off: the crosshair's line and its dots only (the box covers the cursors' tags)."));
+	/* the time grid: clock times (moving with the data), a scope's fixed divisions, or each where it reads best */
+	displayMenu->addSeparator();
+	auto *gridTitle = new QWidgetAction(displayMenu);
+	auto *gridLabel = new QLabel(tr("Time grid"));
+	gridLabel->setObjectName(QStringLiteral("menuTitle"));
+	gridTitle->setDefaultWidget(gridLabel);
+	displayMenu->addAction(gridTitle);
+	timeGridChoices_ = new QActionGroup(displayMenu);
+	auto addGrid = [&](const QString &text, const QString &tip, ChartView::TimeGrid grid, const char *name) {
+		QAction *action = displayMenu->addAction(text);
+		action->setObjectName(QLatin1String(name));
+		action->setCheckable(true);
+		action->setData(int(grid));
+		action->setToolTip(tip);
+		timeGridChoices_->addAction(action);
+	};
+	addGrid(tr("Auto (divisions below 1 s)"), tr("Divisions below a 1 s window, clock times from there"),
+			ChartView::TimeGrid::Auto, "chartTimeGridAuto");
+	addGrid(tr("Clock times"), tr("Lines and labels at clock times (14:03:12.345): they move with the data"),
+			ChartView::TimeGrid::Clock, "chartTimeGridClock");
+	addGrid(tr("Divisions"), tr("10 fixed divisions across the view, as an oscilloscope's: the grid stands still, only the "
+			"data moves. Labels count from the right edge (-8 ms ... 0), or from T while the trigger holds the view; "
+			"\"1 ms/div\" and the clock time at 0 at the axis's right end"), ChartView::TimeGrid::Divisions,
+			"chartTimeGridDivisions");
 	/* who draws the lines: the adapters found, by name (none without Direct3D). Under a title of its own: a
 	 * section's text is not drawn by the style (only its line), and "CPU" alone says little */
 	displayMenu->addSeparator();
@@ -391,6 +644,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 				adapter.dedicated ? ChartView::Drawing::Dedicated : ChartView::Drawing::Internal);
 	addChoice(tr("CPU"), ChartView::Drawing::Cpu);
 	setButtonMenu(displayButton_, displayMenu);
+	fileButton_ = makeFileButton("chartFile");
 	auto *row = new QHBoxLayout;
 	row->setSpacing(6);
 	row->addWidget(holdButton_);
@@ -401,6 +655,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	row->addWidget(mathButton_);
 	row->addSpacing(12);
 	row->addWidget(displayButton_);
+	row->addWidget(fileButton_);
 	row->addSpacing(12);
 	row->addWidget(chartInfo_, 1); /* the room the buttons leave */
 	row->addSpacing(12);
@@ -420,6 +675,7 @@ QWidget *ChartTab::buildMeasurements() {
 	layout->addWidget(measureInfo_);
 	measures_ = new QTableWidget(0, MEASURE_COLUMNS);
 	measures_->setObjectName(QStringLiteral("measures"));
+	measures_->setItemDelegate(ltrCells(measures_)); /* names, numbers and units: "-3.000 V" in Arabic too */
 	measures_->setHorizontalHeaderLabels({ tr("Line"), tr("at A"), tr("at B"), tr("B − A"), tr("Min"), tr("Max"),
 			tr("Mean"), tr("RMS"), tr("Std dev"), tr("Peak-peak"), tr("Area ∫ dt"), tr("Area / 3600"), tr("Since Clear") });
 	measures_->horizontalHeaderItem(ColStd)->setToolTip(tr("The standard deviation over the range, time-weighted as the "
@@ -474,9 +730,19 @@ void ChartTab::connectControls() {
 	connect(memory_, &QComboBox::activated, this, [this] { applyMemoryText(); });
 	connect(memory_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyMemoryText);
 	connect(ram_, &QComboBox::activated, this, [this] { applyRamText(); });
+	connect(older_, &QComboBox::activated, this, [this] {
+		const bool summaries = older_->currentData().toBool();
+		QSettings().setValue(settingKey("fastOlder"), summaries ? QStringLiteral("summaries") : QStringLiteral("kept"));
+		chart_->view()->setFastSummaries(summaries && !recording_);
+		refreshStatus();
+	});
 	connect(drawingChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
 		QSettings().setValue(settingKey("drawing"), action->data().toInt());
 		applyDrawing(action->data().toInt());
+	});
+	connect(timeGridChoices_, &QActionGroup::triggered, this, [this](QAction *action) {
+		QSettings().setValue(settingKey("timeGrid"), action->data().toInt());
+		chart_->view()->setTimeGrid(ChartView::TimeGrid(action->data().toInt()));
 	});
 	connect(view, &ChartView::drawingFailed, this, [this](const QString &why) {
 		/* a card that fails while the settings are restored fails before the window listens: told then, in
@@ -501,6 +767,17 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
+		ChartView *view = chart_->view();
+		const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+		if (lane >= 0) { /* Lanes: the current lane's range, as its menu sets it */
+			const double lo = view->laneYLo(lane), hi = view->laneYHi(lane);
+			if (mode == YLog) normalize_->setChecked(false); /* Log and Normalise exclude each other */
+			view->setLaneYLog(lane, mode == YLog);
+			if (mode == YAuto) view->setLaneYAuto(lane);
+			else if (mode == YManual) view->setLaneYManual(lane, lo, hi); /* from what is shown now */
+			showYRange(false);
+			return;
+		}
 		if (mode == YLog) {
 			normalize_->setChecked(false); /* Log and Normalise exclude each other */
 			chart_->setYLog(true);         /* a Manual range kept when it is above 0, else Auto */
@@ -514,6 +791,11 @@ void ChartTab::connectControls() {
 	for (QLineEdit *field : { yMin_, yMax_ })
 		connect(field, &QLineEdit::editingFinished, this, &ChartTab::applyYFields);
 	connect(chart_, &ChartWidget::yChangedByUser, this, [this] { showYRange(); });
+	/* a held view's frame: Auto's boxes show its range at once (a recording's window opened showed "0" and "1", the
+	 * range before its first frame, until the status's next turn) */
+	connect(view, &ChartView::yRangesShown, this, [this] {
+		if (lanes_->isChecked() || chart_->yAuto()) showYRange(false);
+	});
 	connect(normalize_, &QAction::toggled, this, [this](bool on) {
 		if (on && chart_->yLog()) { /* Log and Normalise exclude each other: the scale linear, its range kept */
 			chart_->setYLog(false);
@@ -530,6 +812,7 @@ void ChartTab::connectControls() {
 		QSettings().setValue(settingKey("lanes"), on);
 		showLaneActions();
 		showYControls();
+		showYRange(false); /* the current lane's range, or the plot's again */
 		showDisplayState();
 	});
 	connect(view, &ChartView::laneMenuRequested, this, &ChartTab::showLaneMenu);
@@ -546,26 +829,71 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 	connect(view, &ChartView::triggered, this, &ChartTab::showTriggerState);
-	connect(view, &ChartView::triggerLevelChanged, this, [this](double level) {
-		triggerLevel_->setText(QString::number(level, 'g', 6));
-		QSettings().setValue(settingKey("triggerLevel"), level);
+	connect(view, &ChartView::triggerRunChanged, this, &ChartTab::showTriggerState);
+	connect(view, &ChartView::fastTriggerChanged, this, [this] {
+		int stream = -1;
+		const fast::TriggerWatch watch = chart_->view()->fastTriggerWatch(stream);
+		if (stream < MathLines::FAST_STREAM) {
+			mathScanStream_ = -1;
+			mathScan_.set(fast::TriggerWatch());
+			emit fastTriggerChanged(stream, watch);
+			return;
+		}
+		/* a fast math line: its records are made here, so its crossings are looked for here, the first paired with its
+		 * newest record (as the engine pairs a stream's waiting blocks with the window's newest) */
+		mathScanStream_ = stream;
+		mathScan_.set(watch);
+		const fast::Store *store = chart_->view()->fastStore(stream);
+		QByteArray newest;
+		if (store && store->size() > 0) {
+			const float value = float(store->value(0, store->size() - 1));
+			newest = QByteArray(reinterpret_cast<const char *>(&value), sizeof value);
+		}
+		mathScan_.pairWith(fastMathDef(stream - MathLines::FAST_STREAM), newest);
+		emit fastTriggerChanged(-1, fast::TriggerWatch());
+	});
+	connect(view, &ChartView::triggerPositionChanged, this, [this](double fraction) { /* its mark dragged */
+		const QSignalBlocker quiet(triggerPosition_);
+		triggerPosition_->setValue(int(std::lround(fraction * 100)));
+		QSettings().setValue(settingKey("triggerPosition"), fraction);
+	});
+	connect(view, &ChartView::triggerSettingsChanged, this, [this] { /* dragged, or the edge clicked on the chart */
+		showLineSettings();
+		saveTriggerSettings();
 	});
 	connect(view, &ChartView::laneYChanged, this, [this] {
 		QSettings().setValue(settingKey("laneY"), chart_->view()->laneScales());
+		showYRange(false);
+		showLaneActions(); /* All lanes: Auto enabled while a lane is not */
+	});
+	connect(yLane_, &QComboBox::activated, view, &ChartView::setCurrentLane); /* as a click on its value labels */
+	connect(view, &ChartView::currentLaneChanged, this, [this] { /* the toolbar's Y range: that lane's at once */
+		showYControls();
+		showYRange(false);
 	});
 	connect(view, &ChartView::laneFoldsChanged, this, [this] {
 		QSettings().setValue(settingKey("lanesFolded"), chart_->view()->foldedLanes());
 		showLaneActions();
+		showYControls(); /* the lane list marks the folded */
 	});
 	connect(view, &ChartView::laneHeightsChanged, this, [this] {
 		QSettings().setValue(settingKey("laneHeights"), chart_->view()->laneHeights());
 	});
 	connect(foldAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(true); });
 	connect(openAll_, &QAction::triggered, this, [view] { view->setAllLanesFolded(false); });
+	connect(allAuto_, &QAction::triggered, this, [view] { view->setAllLanesYAuto(); });
 	connect(smooth_, &QAction::toggled, this, [this](bool on) {
 		chart_->setSmooth(on);
 		QSettings().setValue(settingKey("smooth"), on);
 		showDisplayState();
+	});
+	connect(shortLock_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setShortLock(on);
+		QSettings().setValue(settingKey("autoShortWindows"), on);
+	});
+	connect(triggerInstant_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setTriggerInstant(on);
+		QSettings().setValue(settingKey("triggerInstantLine"), on);
 	});
 	connect(hoverValues_, &QAction::toggled, this, [this](bool on) {
 		chart_->view()->setHoverValues(on);
@@ -573,16 +901,15 @@ void ChartTab::connectControls() {
 		showDisplayState();
 	});
 
-	/* Hold and Live: the same button, the same size; only its text and colour change */
-	connect(holdButton_, &QPushButton::clicked, this, [this] { chart_->setLive(!chart_->live()); });
-	connect(view, &ChartView::liveChanged, this, [this](bool live) {
-		/* the icons: the same size, drawn (the font's pause and play glyphs are not) */
-		holdButton_->setText(live ? tr("Hold") : tr("Live"));
-		holdButton_->setIcon(live ? mediaIcon(MediaIcon::Pause, Theme::colors().text)
-				: mediaIcon(MediaIcon::Play, QColor(Qt::white)));
-		holdButton_->setProperty("live", live);
-		repolish(holdButton_);
+	/* Hold and Live, Run and Stop while the trigger is on: the same button, the same size; only its text and colour
+	 * change. A Hold that the next crossing undid was no Hold: with the trigger on, Stop disarms it */
+	connect(holdButton_, &QPushButton::clicked, this, [this] {
+		ChartView *view = chart_->view();
+		if (!view->triggerOn()) chart_->setLive(!chart_->live());
+		else if (view->triggerRunning()) view->stopRun();
+		else view->runTrigger();
 	});
+	connect(view, &ChartView::liveChanged, this, &ChartTab::showHoldButton);
 
 	/* the measurements are optional: off by default, remembered. The cursors are for
 	 * measuring: ticking them shows the measurements, hiding those takes the cursors away. */
@@ -638,6 +965,11 @@ void ChartTab::restoreSettings() {
 	const int ram = settings.value(settingKey("ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
 	chart_->view()->setRamBudget(std::clamp(ram, int(ChartView::MIN_RAM_MB), maxRamMB()));
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
+	{
+		const bool summaries = settings.value(settingKey("fastOlder")).toString() != QLatin1String("kept");
+		older_->setCurrentIndex(summaries ? 0 : 1);
+		chart_->view()->setFastSummaries(summaries && !recording_);
+	}
 	chart_->setWindow(settings.value(settingKey("window"), 30.0).toDouble());
 	window_->setEditText(secondsText(chart_->window()));
 	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
@@ -645,9 +977,34 @@ void ChartTab::restoreSettings() {
 	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
 	chart_->view()->setFoldedLanes(settings.value(settingKey("lanesFolded")).toStringList());
 	chart_->view()->setLaneHeights(settings.value(settingKey("laneHeights")).toStringList());
+	/* each line's trigger level and edge; saved before they were kept per line: the one level of the line saved */
+	QStringList triggerLevels = settings.value(settingKey("triggerLevels")).toStringList();
+	const QString oldLine = settings.value(settingKey("triggerLine")).toString();
+	if (!settings.contains(settingKey("triggerLevels")) && !oldLine.isEmpty() && settings.contains(settingKey("triggerLevel")))
+		triggerLevels << QStringLiteral("%1\t%2\t%3").arg(oldLine,
+				QString::number(settings.value(settingKey("triggerLevel")).toDouble(), 'g', QLocale::FloatingPointShortest))
+				.arg(settings.value(settingKey("triggerEdge"), 0).toInt());
+	chart_->view()->setTriggerSettingsTexts(triggerLevels);
+	chart_->view()->setTriggerHoldoff(settings.value(settingKey("triggerHoldoff"), -1.0).toDouble());
+	showHoldoff();
+	chart_->view()->setTriggerPosition(settings.value(settingKey("triggerPosition"), ChartView::TRIGGER_AT).toDouble());
+	{
+		const QSignalBlocker quiet(triggerPosition_);
+		triggerPosition_->setValue(int(std::lround(chart_->view()->triggerPosition() * 100)));
+	}
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
+	triggerInstant_->setChecked(settings.value(settingKey("triggerInstantLine"), true).toBool());
+	chart_->view()->setTriggerInstant(triggerInstant_->isChecked());
+	shortLock_->setChecked(settings.value(settingKey("autoShortWindows"), true).toBool());
+	chart_->view()->setShortLock(shortLock_->isChecked());
+	{
+		const int grid = std::clamp(settings.value(settingKey("timeGrid"), int(ChartView::TimeGrid::Auto)).toInt(),
+				int(ChartView::TimeGrid::Auto), int(ChartView::TimeGrid::Divisions));
+		for (QAction *action : timeGridChoices_->actions()) action->setChecked(action->data().toInt() == grid);
+		chart_->view()->setTimeGrid(ChartView::TimeGrid(grid));
+	}
 	chart_->setYLog(settings.value(settingKey("yLog"), false).toBool());
 	if (!settings.value(settingKey("yAuto"), true).toBool()) {
 		chart_->setYManual(settings.value(settingKey("yMin"), 0.0).toDouble(),
@@ -664,19 +1021,32 @@ void ChartTab::restoreSettings() {
 
 void ChartTab::setRecording(qint64 epochMs, double t0, double t1, int ramMB, int columns) {
 	recording_ = true;
+	recordingSpan_ = t1 - t0;
 	chart_->view()->setRecording(true);
 	chart_->setClock(clock_, epochMs);
 	/* nothing comes after the file: no Live, no memory to set, nothing to clear */
-	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, ramNeed_,
-				clearButton_, removeAllButton_ })
+	for (QWidget *w : std::initializer_list<QWidget *>{ holdButton_, memoryLabel_, memory_, ramLabel_, ram_, olderLabel_,
+				older_, ramNeed_, clearButton_, removeAllButton_, fileButton_ /* its own beside Lines */ })
 		w->hide();
+	chart_->view()->setFastSummaries(false); /* its file is mapped whole: every record kept */
+	/* the room the memory's need took: the row's groups stay packed (else every box and label shared it, "min" far
+	 * from its box, as if it were the list's) */
+	arrangeRamNote(); /* back on the first row, where its place is */
+	axesRow_->insertStretch(axesRow_->indexOf(ramNeed_), 1);
 	{
 		const QSignalBlocker quiet(smooth_);
 		smooth_->setChecked(false);
 	}
-	smooth_->setEnabled(false);
+	smooth_->setVisible(false); /* always off: nothing comes late to a file */
 	chart_->setSmooth(false);
+	/* no Clear to count from: the totals are the whole file's (the same sums, from its first sample) */
+	measures_->horizontalHeaderItem(ColTotal)->setText(tr("Whole file"));
+	measures_->horizontalHeaderItem(ColTotal)->setToolTip(tr("The area under the line over the whole file, in hours "
+			"(W → Wh, A → Ah), whatever part is in view. A gap of more than 1 s between two samples is not bridged."));
+	for (QAction *column : measureColumns_->actions())
+		if (column->data().toInt() == ColTotal) column->setText(tr("Whole file"));
 	trigger_->setVisible(false); /* nothing comes after the file to cross a level */
+	triggerInstant_->setVisible(false); /* no crossing to hold on */
 	chart_->view()->setRamBudget(ramMB);
 	chart_->setMemory(std::max(1.0, t1 - t0));
 	registerLimit_ = columns;
@@ -701,16 +1071,267 @@ void ChartTab::plotField(const RegDef &def, const BitField &field) {
 	const QVector<MathLine> &lines = mathLines_.lines();
 	for (int i = 0; i < lines.size(); i++) {
 		if (lines[i].name != name) continue;
+		if (!lines[i].active() && !roomForLine()) return;
 		mathLines_.setOn(i, true);
 		rebuildMath();
 		return;
 	}
+	if (!roomForLine()) return;
 	MathLine line;
 	line.name = name;
 	line.formula = QStringLiteral("bits(%1, %2, %3)").arg(def.name).arg(field.lsb).arg(field.width);
 	mathLines_.add(line);
 	rebuildMath();
 	emit logged(LogLevel::Info, tr("math line %1 = %2").arg(line.name, line.formula));
+}
+
+void ChartTab::setFastStreams(const QVector<StreamDef> &streams) {
+	ChartView *view = chart_->view();
+	/* a stream changed or gone: its lines go (the window ticks them again) */
+	for (int i = 0; i < fastStreams_.size(); i++) {
+		const bool same = i < streams.size() && streams[i].name == fastStreams_[i].name
+				&& streams[i].addr == fastStreams_[i].addr && streams[i].recordSize() == fastStreams_[i].recordSize();
+		if (same) continue;
+		for (int c = 0; c < fastStreams_[i].channels.size(); c++) view->removeSeries(ChartView::fastKey(i, c));
+		if (i >= streams.size()) view->removeFastStream(i);
+	}
+	const QStringList channelsBefore = fastChannelNames();
+	fastStreams_ = streams;
+	olderLabel_->setVisible(!streams.isEmpty() && !recording_); /* Older samples: of fast lines only */
+	older_->setVisible(!streams.isEmpty() && !recording_);
+	arrangeRamNote(); /* Older samples takes room from the note, and its texts are longer */
+	for (int i = 0; i < streams.size(); i++) view->setFastStream(i, streams[i]);
+	if (fastChannelNames() != channelsBefore) rebuildMath(); /* a formula over a channel compiles now, or no longer */
+	applyFastFed();
+}
+
+void ChartTab::setFastFed(int stream, bool fed) {
+	if (fed != fastUnfed_.contains(stream)) return;
+	if (fed) fastUnfed_.remove(stream);
+	else fastUnfed_.insert(stream);
+	applyFastFed();
+}
+
+/* A stream's lines and the fast math lines computed from it stop together: the math line's records are the stream's */
+void ChartTab::applyFastFed() {
+	ChartView *view = chart_->view();
+	for (int i = 0; i < fastStreams_.size(); i++)
+		view->setFastStopped(i, !recording_ && fastUnfed_.contains(i), fastStreams_[i].name);
+	const QVector<MathLine> &lines = mathLines_.lines();
+	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		const int stream = i < lines.size() && lines[i].fast() ? lines[i].stream : -1;
+		const bool stopped = !recording_ && stream >= 0 && stream < fastStreams_.size() && fastUnfed_.contains(stream);
+		view->setFastStopped(MathLines::fastStream(i), stopped, stopped ? fastStreams_[stream].name : QString());
+	}
+}
+
+QStringList ChartTab::fastChannelNames() const {
+	QStringList names;
+	for (const StreamDef &stream : fastStreams_)
+		for (const StreamChannel &channel : stream.channels)
+			names << stream.name + QLatin1Char('.') + channel.name + QLatin1Char(' ') + typeName(channel.type);
+	return names;
+}
+
+void ChartTab::plotFastChannel(int stream, int channel, bool on) {
+	if (stream < 0 || stream >= fastStreams_.size() || channel < 0 || channel >= fastStreams_[stream].channels.size()) return;
+	const int key = ChartView::fastKey(stream, channel);
+	if (!on) {
+		chart_->removeSeries(key);
+		return;
+	}
+	if (fastPlotted(stream, channel)) return;
+	const StreamChannel &c = fastStreams_[stream].channels[channel];
+	const QVector<QColor> &palette = Theme::colors().series;
+	chart_->addSeries(key, fastStreams_[stream].name + QLatin1Char('.') + c.name, c.unit, palette[nextColor_++ % palette.size()]);
+}
+
+bool ChartTab::fastPlotted(int stream, int channel) const {
+	const int key = ChartView::fastKey(stream, channel);
+	for (const ChartView::Info &line : chart_->view()->lines())
+		if (line.key == key) return true;
+	return false;
+}
+
+int ChartTab::fastLines() const {
+	int n = 0;
+	for (const ChartView::Info &line : chart_->view()->lines()) n += ChartView::isFastKey(line.key) && !isFastMathKey(line.key);
+	return n;
+}
+
+int ChartTab::mathLinesShown() const {
+	int n = 0;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		n += isFastMathKey(line.key) || (!ChartView::isFastKey(line.key) && line.key >= MathLines::FIRST_CHART_KEY);
+	return n;
+}
+
+int ChartTab::lineCount() const { return int(chart_->view()->lines().size()); }
+
+QString ChartTab::lineCapText() {
+	return tr("At most %1 lines on the chart, registers, math and fast lines together: untick one first")
+			.arg(RegisterModel::MAX_PLOTTED);
+}
+
+bool ChartTab::roomForLine() {
+	if (lineCount() < RegisterModel::MAX_PLOTTED) return true;
+	emit statusMessage(lineCapText(), 6000);
+	return false;
+}
+
+void ChartTab::appendFast(int stream, quint64 first, int count, const QByteArray &records, bool newStart, quint64 lost,
+		bool marked, quint64 markRecord, double markTime, double markPeriod, const QVector<fast::Crossing> &crossings) {
+	ChartView *view = chart_->view();
+	const qint64 at = view->appendFast(stream, first, count, records, newStart, lost);
+	if (marked) view->markFast(stream, markRecord, markTime, markPeriod);
+	if (!crossings.isEmpty()) view->fastCrossings(stream, at, crossings); /* their times from the mark */
+	fastSince_ += quint64(std::max(0, count));
+	if (newStart || !streamStarts_.contains(stream)) streamStarts_[stream]++;
+	if (marked) streamMarks_[stream] = { markRecord, markTime, markPeriod };
+	if (mathLines_.activeCount() > 0) appendFastMath(stream, first, count, records, newStart, lost, marked);
+}
+
+/* Each fast math line over this stream: its values for the block's records, at their numbers (so at their times), into
+ * its store; a record whose result is no number is left out (the line breaks there, as over lost records). A line
+ * whose registers have not all been polled yet has nothing to hold: the block is not computed for it */
+void ChartTab::appendFastMath(int stream, quint64 first, int count, const QByteArray &records, bool newStart,
+		quint64 lost, bool marked) {
+	if (stream < 0 || stream >= fastStreams_.size() || count <= 0) return;
+	const StreamDef &def = fastStreams_[stream];
+	if (records.size() < qsizetype(count) * def.recordSize()) return;
+	ChartView *view = chart_->view();
+	const QVector<MathLine> &lines = mathLines_.lines();
+	QElapsedTimer timed;
+	timed.start();
+	QVector<float> values;
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const MathLine &line = lines[i];
+		const int chartStream = MathLines::fastStream(i);
+		const fast::Store *store = view->fastStore(chartStream);
+		if (!line.active() || line.stream != stream || !store) continue;
+		QVarLengthArray<double, 16> held(line.inputs.size());
+		bool known = true;
+		for (int k = 0; k < line.inputs.size() && known; k++) {
+			if (line.channels[k] >= 0) continue;
+			const auto it = held_.constFind(line.inputs[k]);
+			known = it != held_.constEnd() && !it->isEmpty();
+			if (known) held[k] = it->constLast().y();
+		}
+		if (!known) continue;
+		FastMathState &state = fastMath_[i];
+		if (state.store != store) state = { store, 0 };
+		/* its first records, or the first of a start it has not seen: a start of its own, laid on the stream's mark */
+		const bool newEpoch = state.start != streamStarts_.value(stream);
+		state.start = streamStarts_.value(stream);
+		values.resize(count);
+		line.evaluateRecords(def, records.constData(), count, held.data(), values.data());
+		const fast::Store::Mark mark = streamMarks_.value(stream);
+		const StreamDef mathDef = mathScanStream_ == chartStream ? fastMathDef(i) : StreamDef();
+		bool firstRun = true;
+		for (int k = 0; k < count;) {
+			if (std::isnan(values[k])) {
+				k++;
+				continue;
+			}
+			int end = k;
+			while (end < count && !std::isnan(values[end])) end++;
+			const QByteArray run(reinterpret_cast<const char *>(values.constData() + k), qsizetype(end - k) * 4);
+			const bool start = firstRun && (newStart || newEpoch);
+			const quint64 runLost = k == 0 ? lost : 0;
+			const qint64 at = view->appendFast(chartStream, first + quint64(k), end - k, run, start, runLost);
+			if (firstRun && (newEpoch || marked) && streamMarks_.contains(stream))
+				view->markFast(chartStream, mark.record, mark.time, mark.period);
+			firstRun = false;
+			if (!mathDef.channels.isEmpty() && at >= 0) {
+				fast::BlockTaken taken;
+				taken.first = first + quint64(k);
+				taken.count = end - k;
+				taken.newStart = start;
+				taken.lost = k == 0 ? lost : 1; /* after a record left out: not paired across it */
+				QVector<fast::Crossing> crossings;
+				mathScan_.scan(mathDef, taken, run.constData(), { mark.record, mark.time }, mark.period, crossings);
+				if (!crossings.isEmpty()) view->fastCrossings(chartStream, at, crossings);
+			}
+			k = end;
+		}
+	}
+	const qint64 ns = timed.nsecsElapsed();
+	fastMathNs_ += ns;
+	fastMathMs_ += double(ns) / 1e6;
+}
+
+StreamDef ChartTab::fastMathDef(int line) const {
+	StreamDef def;
+	if (line < 0 || line >= mathLines_.lines().size()) return def;
+	const MathLine &math = mathLines_.lines()[line];
+	const StreamDef source = math.stream >= 0 && math.stream < fastStreams_.size() ? fastStreams_[math.stream] : StreamDef();
+	/* named for what it is computed from: another formula, name or stream is another store (its records start afresh) */
+	def.name = QStringLiteral("%1\t%2\t%3\t%4").arg(math.name, math.unit, math.formula, source.name);
+	def.rate = source.rate;
+	StreamChannel channel;
+	channel.name = math.name;
+	channel.type = RegType::F32;
+	channel.unit = math.unit;
+	def.channels = { channel };
+	def.size = fast::HEADER + 4;
+	return def;
+}
+
+bool ChartTab::addMathLine(const MathLine &line) {
+	if (!roomForLine()) return false;
+	mathLines_.add(line);
+	rebuildMath();
+	return true;
+}
+
+void ChartTab::removeMathLine(int line) {
+	if (line < 0 || line >= mathLines_.lines().size()) return;
+	mathLines_.remove(line);
+	rebuildMath();
+}
+
+void ChartTab::fillFastMath() {
+	ChartView *view = chart_->view();
+	const QVector<MathLine> &lines = mathLines_.lines();
+	QElapsedTimer timed;
+	timed.start();
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const MathLine &line = lines[i];
+		const fast::Store *source = line.fast() ? view->fastStore(line.stream) : nullptr;
+		if (!line.active() || !source || !view->fastStore(MathLines::fastStream(i))) continue;
+		/* each register's samples, and the one at or before the record now (records come in time order) */
+		QVector<const QVector<QPointF> *> samples(line.inputs.size(), nullptr);
+		QVector<qsizetype> at(line.inputs.size(), 0);
+		bool known = true;
+		for (int k = 0; k < line.inputs.size(); k++) {
+			if (line.channels[k] >= 0) continue;
+			const auto it = held_.constFind(line.inputs[k]);
+			known = known && it != held_.constEnd() && !it->isEmpty();
+			if (known) samples[k] = &*it;
+		}
+		if (!known) continue;
+		QVarLengthArray<double, 16> values(line.inputs.size());
+		auto store = std::make_shared<fast::Store>(fastMathDef(i));
+		store->fillFrom(*source, [&](qsizetype r, char *record) {
+			const double t = source->timeAt(r);
+			for (int k = 0; k < line.inputs.size(); k++) {
+				if (line.channels[k] >= 0) {
+					values[k] = source->value(line.channels[k], r);
+					continue;
+				}
+				const QVector<QPointF> &points = *samples[k];
+				while (at[k] + 1 < points.size() && points[at[k] + 1].x() <= t) at[k]++;
+				values[k] = points[at[k]].y();
+			}
+			const float value = float(line.expr.eval(values.data()));
+			std::memcpy(record, &value, sizeof value);
+			return std::isfinite(value);
+		});
+		view->setFastStore(MathLines::fastStream(i), store);
+		fastMath_[i] = { store.get(), streamStarts_.value(line.stream) };
+	}
+	held_.clear(); /* the next feed brings them again */
+	fastMathNs_ += timed.nsecsElapsed();
 }
 
 void ChartTab::clearLines() {
@@ -728,6 +1349,17 @@ void ChartTab::frame(const MathLines::Samples &samples) {
 		polls = std::max(polls, it.value().size());
 	}
 	pollsSince_ += polls;
+	/* the registers a fast math line reads, held for its records: the last polled value (a recording: every sample) */
+	for (const MathLine &line : mathLines_.lines()) {
+		if (!line.active() || !line.fast()) continue;
+		for (int k = 0; k < line.inputs.size(); k++) {
+			const auto it = samples.constFind(line.inputs[k]);
+			if (line.channels[k] >= 0 || it == samples.constEnd() || it->isEmpty()) continue;
+			QVector<QPointF> &kept = held_[line.inputs[k]];
+			if (recording_) kept += *it;
+			else kept = { it->constLast() };
+		}
+	}
 	if (!mathLines_.isEmpty())
 		mathLines_.evaluate(samples, [this](int key, double time, double value) { chart_->append(key, time, value); });
 	chart_->frame();
@@ -742,17 +1374,24 @@ void ChartTab::setShown(bool shown) {
 }
 
 QString ChartTab::infoText(int width) const {
-	int registers = 0, math = 0;
+	int registers = 0, math = 0, fast = 0;
 	for (const ChartView::Info &line : chart_->view()->lines())
-		(line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
+		(isFastMathKey(line.key) ? math : ChartView::isFastKey(line.key) ? fast
+				: line.key >= MathLines::FIRST_CHART_KEY ? math : registers)++;
 	/* the parts in their places, and the order they go in when the line is narrow: a part cut in the middle ("32/64
 	 * plotted · 60 fp…") said less than the parts left whole */
-	enum Part { Count, Plotted, Math, Fps, PaintTime, Delay, Drawer, PARTS };
+	enum Part { Count, Plotted, Math, Fast, Fps, PaintTime, Delay, Drawer, PARTS };
 	QString parts[PARTS];
-	parts[Count] = QStringLiteral("%1/%2").arg(registers).arg(registerLimit_);
+	/* every line of every kind against what the chart may hold now: the registers' limit is what the rate and the
+	 * other lines leave of the one cap */
+	parts[Count] = QStringLiteral("%1/%2").arg(registers + math + fast).arg(registerLimit_ + math + fast);
 	parts[Plotted] = tr(" plotted");
 	if (math > 0) parts[Math] = tr(" · %1 math").arg(math);
-	parts[Fps] = tr(" · %1 fps").arg(chart_->fps(), 0, 'f', 0);
+	if (fast > 0) parts[Fast] = tr(" · %1 fast").arg(fast);
+	/* a held view paints only what changes: no frame in the last second is not "0 fps", nothing is drawn. A
+	 * recording's window has frames only on a change: a rate says nothing there */
+	const double fps = chart_->fps();
+	if (!recording_) parts[Fps] = fps > 0 ? tr(" · %1 fps").arg(fps, 0, 'f', 0) : tr(" · idle");
 	parts[PaintTime] = tr(" · %1 ms").arg(chart_->paintMs(), 0, 'f', 1);
 	if (smooth_->isChecked()) parts[Delay] = tr(" · delay %1 ms").arg(chart_->delayMs(), 0, 'f', 0);
 	parts[Drawer] = chart_->view()->drawsOnGpu() ? tr(" · GPU") : tr(" · CPU");
@@ -763,7 +1402,7 @@ QString ChartTab::infoText(int width) const {
 	};
 	if (width < 0) return joined();
 	const QFontMetrics metrics = chartInfo_->fontMetrics();
-	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Count }) {
+	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast, Count }) {
 		if (metrics.horizontalAdvance(joined()) <= width) break;
 		parts[drop].clear();
 	}
@@ -771,21 +1410,32 @@ QString ChartTab::infoText(int width) const {
 }
 
 QString ChartTab::infoTip() const {
-	return tr("Plotted: the registers on the chart / as many as it may hold at the rate the samples come (64,000 samples "
-			"a second: 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math lines; frames drawn per second, time to "
-			"draw one, the smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
+	if (recording_)
+		return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold (the "
+				"file's columns, 64 lines at most); the math and fast lines among them; the time to draw the chart once; "
+				"and who draws the lines (GPU or CPU). A recording's chart is drawn only when something in it changes, so "
+				"no frame rate is given. When the line is narrow, the time to draw and the word \"plotted\" go first.");
+	return tr("Plotted: the lines on the chart, registers, math and fast lines together / as many as it may hold: 64 "
+			"lines at most, and the registers as many as the rate the samples come allows (64,000 samples a second: 64 up "
+			"to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz); the math and fast lines among them; frames drawn in the last second "
+			"(idle: none, nothing changed: a held view is drawn only when something in it does), time to draw one, the "
+			"smoothing delay; and who draws the lines (GPU or CPU). When the line is narrow, the time to "
 			"draw, the word \"plotted\" and the delay go first.");
 }
 
 /* ---------------------------------------------------------------- the trigger */
 
 QWidget *ChartTab::buildTriggerRow() {
-	triggerRow_ = new QWidget;
+	auto *rowWidget = new TriggerRow;
+	triggerRow_ = rowWidget;
 	triggerRow_->setObjectName(QStringLiteral("triggerRow"));
 	triggerLine_ = new QComboBox;
 	triggerLine_->setObjectName(QStringLiteral("triggerLine"));
-	triggerLine_->setToolTip(tr("The line watched: a register or a math line on the chart"));
+	triggerLine_->setToolTip(tr("The line watched: a register, a math line or a fast line on the chart"));
+	/* shown while no line in the list is chosen (the one watched gone from the chart, or no line plotted) */
+	triggerLine_->setPlaceholderText(tr("choose a line"));
 	triggerLine_->setMinimumWidth(140);
+	triggerLine_->setIconSize(QSize(10, 10)); /* each line's colour dot, as on its chip */
 	triggerEdge_ = new QComboBox;
 	triggerEdge_->setObjectName(QStringLiteral("triggerEdge"));
 	triggerEdge_->addItem(tr("Rising"), int(ChartView::TriggerEdge::Rising));
@@ -802,49 +1452,134 @@ QWidget *ChartTab::buildTriggerRow() {
 	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
 	triggerMode_ = new QComboBox;
 	triggerMode_->setObjectName(QStringLiteral("triggerMode"));
+	triggerMode_->addItem(tr("Auto"), int(ChartView::TriggerMode::Auto));
 	triggerMode_->addItem(tr("Normal"), int(ChartView::TriggerMode::Normal));
 	triggerMode_->addItem(tr("Single"), int(ChartView::TriggerMode::Single));
-	triggerMode_->setToolTip(tr("Normal: holds on each crossing, armed again once the view is full; Single: holds on the "
-			"first, Arm for the next"));
+	triggerMode_->setToolTip(tr("Auto: holds on each crossing; when none comes for a window's length after the hold-off, "
+			"it runs live until the next. Normal: holds on each crossing and stays held until the next one, however long. "
+			"Single: holds on the first crossing and stops; Arm for another."));
+	/* the hold-off: the window's length by default (a picture per window), or a time typed */
+	triggerHoldoff_ = new QComboBox;
+	triggerHoldoff_->setObjectName(QStringLiteral("triggerHoldoff"));
+	triggerHoldoff_->setEditable(true);
+	triggerHoldoff_->setInsertPolicy(QComboBox::NoInsert);
+	triggerHoldoff_->addItem(tr("window"), -1.0);
+	for (double seconds : { 0.0, 0.001, 0.01, 0.1, 1.0 })
+		triggerHoldoff_->addItem(seconds > 0 ? secondsText(seconds) : ltrPiece(QStringLiteral("0 s")), seconds);
+	triggerHoldoff_->setMinimumWidth(90);
+	triggerHoldoff_->setToolTip(tr("Hold-off: after a crossing, no other counts for this long (0 to 10 s); window: the "
+			"window's length, one picture a window. Armed again when it has passed and the view is full"));
+	triggerPosition_ = new QSpinBox;
+	triggerPosition_->setObjectName(QStringLiteral("triggerPosition"));
+	triggerPosition_->setRange(0, int(std::lround(ChartView::TRIGGER_AT_MAX * 100)));
+	triggerPosition_->setSuffix(QStringLiteral(" %"));
+	triggerPosition_->setToolTip(tr("Where the crossing sits in the window, from its left (0 to 90 %): the mark under the "
+			"chart, which can be dragged"));
 	triggerArm_ = new QPushButton(tr("Arm"));
 	triggerArm_->setObjectName(QStringLiteral("triggerArm"));
-	triggerArm_->setToolTip(tr("Wait for the next crossing"));
-	triggerState_ = mutedLabel(QString());
+	triggerArm_->setToolTip(tr("Wait for one more crossing"));
+	{
+		/* Arm or Force (showTriggerState), plain or primary: as wide as the widest, so the row keeps its length */
+		QSize most;
+		for (const bool primary : { false, true }) {
+			triggerArm_->setProperty("primary", primary);
+			repolish(triggerArm_);
+			for (const QString &label : { tr("Arm"), tr("Force") }) {
+				triggerArm_->setText(label);
+				most = most.expandedTo(triggerArm_->sizeHint());
+			}
+		}
+		triggerArm_->setProperty("primary", false);
+		repolish(triggerArm_);
+		triggerArm_->setText(tr("Arm"));
+		triggerArm_->setFixedWidth(most.width());
+	}
+	triggerArm_->setVisible(false); /* Single, and Force while Normal waits (showTriggerState) */
+	/* the level halfway in what the line shows: the same rule as a line watched for the first time (midRange) */
+	triggerFind_ = new QPushButton(tr("Find level"));
+	triggerFind_->setObjectName(QStringLiteral("triggerFindLevel"));
+	triggerFind_->setToolTip(tr("Set the level halfway between the line's lowest and highest in view"));
+	triggerState_ = new ElidedLabel;
 	triggerState_->setObjectName(QStringLiteral("triggerState"));
-	auto *row = new QHBoxLayout(triggerRow_);
-	row->setContentsMargins(0, 0, 0, 0);
-	row->setSpacing(6);
+	triggerUnit_ = new QLabel;
+	triggerUnit_->setObjectName(QStringLiteral("triggerUnit"));
+	/* the place's label named, apart from the hold-off's box: "hold-off [window] at [20 %]" read as one phrase */
+	auto *positionLabel = mutedLabel(tr("position"));
+	positionLabel->setToolTip(tr("Where the crossing sits in the window; or drag the T ▼ flag above the chart"));
+	/* what is watched and how on the first part, when and the buttons with the state after (TriggerRow: two lines
+	 * when one does not fit) */
+	QHBoxLayout *row = rowWidget->early();
 	row->addWidget(mutedLabel(tr("Trigger")));
 	row->addWidget(triggerLine_);
 	row->addWidget(triggerEdge_);
 	row->addWidget(mutedLabel(tr("level")));
 	row->addWidget(triggerLevel_);
+	row->addWidget(triggerUnit_);
+	row->addWidget(triggerFind_);
 	row->addWidget(triggerMode_);
+	row = rowWidget->tail();
+	row->addWidget(mutedLabel(tr("hold-off")));
+	row->addWidget(triggerHoldoff_);
+	row->addSpacing(6);
+	row->addWidget(positionLabel);
+	row->addWidget(triggerPosition_);
 	row->addWidget(triggerArm_);
+	/* the row can end what it shows: Off unticks Display -> Trigger, so the menu, the chip's entry and the row agree.
+	 * Beside the other buttons, not at the row's far end where the state's room pushed it (the owner: too far away) */
+	triggerOff_ = new QPushButton(tr("Off"));
+	triggerOff_->setObjectName(QStringLiteral("triggerOff"));
+	triggerOff_->setToolTip(tr("Turn the trigger off (as Display → Trigger)"));
+	triggerOff_->setCursor(Qt::PointingHandCursor);
+	row->addWidget(triggerOff_);
 	row->addSpacing(8);
 	row->addWidget(triggerState_, 1);
 	triggerRow_->hide();
 
 	const QSettings settings;
-	triggerLevel_->setText(QString::number(settings.value(settingKey("triggerLevel"), 0.0).toDouble(), 'g', 6));
-	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(settings.value(settingKey("triggerEdge"), 0).toInt())));
 	triggerMode_->setCurrentIndex(std::max(0, triggerMode_->findData(settings.value(settingKey("triggerMode"), 1).toInt())));
-	for (QComboBox *box : { triggerLine_, triggerEdge_, triggerMode_ })
+	/* another line: its own level and edge in the boxes, then armed on it */
+	connect(triggerLine_, &QComboBox::activated, this, [this] {
+		showLineSettings();
+		applyTrigger();
+	});
+	for (QComboBox *box : { triggerEdge_, triggerMode_ })
 		connect(box, &QComboBox::activated, this, &ChartTab::applyTrigger);
+	connect(triggerHoldoff_, &QComboBox::activated, this, &ChartTab::applyHoldoffText);
+	connect(triggerHoldoff_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyHoldoffText);
+	connect(triggerPosition_, &QSpinBox::valueChanged, this, [this](int percent) {
+		if (std::lround(chart_->view()->triggerPosition() * 100) == percent) return; /* the mark dragged: shown here */
+		chart_->view()->setTriggerPosition(percent / 100.0);
+		QSettings().setValue(settingKey("triggerPosition"), percent / 100.0);
+	});
 	connect(triggerLevel_, &QLineEdit::editingFinished, this, [this] {
 		bool ok = false;
 		const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
-		if (!ok) {
-			triggerLevel_->setText(QString::number(chart_->view()->triggerLevel(), 'g', 6));
+		const int key = triggerLine_->currentData().toInt();
+		if (!ok || triggerLine_->currentIndex() < 0) {
+			showLineSettings();
 			return;
 		}
-		chart_->view()->setTriggerLevel(level);
-		QSettings().setValue(settingKey("triggerLevel"), level);
+		ChartView *view = chart_->view();
+		if (view->triggerOn() && view->triggerKey() == key) view->setTriggerLevel(level);
+		else view->setTriggerSettings(key, { level, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()) });
+		saveTriggerSettings();
 	});
 	connect(triggerArm_, &QPushButton::clicked, this, [this] {
-		chart_->view()->armTrigger();
+		if (triggerArm_->property("force").toBool()) chart_->view()->forceTrigger();
+		else chart_->view()->armTrigger();
 		showTriggerState();
 	});
+	connect(triggerFind_, &QPushButton::clicked, this, [this] {
+		if (triggerLine_->currentIndex() < 0) return;
+		const int key = triggerLine_->currentData().toInt();
+		ChartView *view = chart_->view();
+		const double level = view->midRange(key);
+		if (view->triggerOn() && view->triggerKey() == key) view->setTriggerLevel(level);
+		else view->setTriggerSettings(key, { level, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()) });
+		showLineSettings();
+		saveTriggerSettings();
+	});
+	connect(triggerOff_, &QPushButton::clicked, this, [this] { trigger_->setChecked(false); });
 	return triggerRow_;
 }
 
@@ -855,11 +1590,81 @@ void ChartTab::fillTriggerLines() {
 	triggerLine_->clear();
 	triggerKeys_.clear();
 	for (const ChartView::Info &line : chart_->view()->lines()) {
-		triggerLine_->addItem(noMnemonic(line.name), line.key);
+		triggerLine_->addItem(stateDot(line.color, triggerLine_->devicePixelRatioF()), noMnemonic(line.name), line.key);
 		triggerKeys_ << line.key;
 	}
+	/* the line chosen gone (removed from the chart): none, never another line in its place (the chart would hold on a
+	 * line nobody chose, and the one saved would be overwritten). The closed box shows only what its list holds: the gone
+	 * name there read as chosen while the open list did not hold it, so "choose a line", and the tooltip says which line
+	 * it waits for (chosen again when it is back) */
 	const int index = triggerLine_->findText(noMnemonic(chosen));
-	triggerLine_->setCurrentIndex(index >= 0 ? index : 0);
+	triggerLine_->setCurrentIndex(index >= 0 ? index : chosen.isEmpty() ? 0 : -1);
+	showLineSettings();
+	if (triggerLine_->currentIndex() < 0)
+		triggerLine_->setToolTip(chosen.isEmpty() ? tr("The line watched: a register, a math line or a fast line on the chart")
+				: tr("%1 is not on the chart: plot it again, or choose another line").arg(ltrPiece(noMnemonic(chosen))));
+}
+
+/* the boxes show the line chosen's own level and edge (kept by its name; a line never set: its mid-range) */
+void ChartTab::showLineSettings() {
+	/* "choose a line" muted, a prompt, not read as a line of that name; a line chosen in the text's colour */
+	const bool prompt = triggerLine_->currentIndex() < 0;
+	if (triggerLine_->property("prompt").toBool() != prompt) {
+		triggerLine_->setProperty("prompt", prompt);
+		repolish(triggerLine_);
+	}
+	if (prompt) { /* no line chosen: no level or unit of a line the box does not hold */
+		triggerLevel_->clear();
+		triggerUnit_->clear();
+		triggerUnit_->hide();
+		return;
+	}
+	/* a line chosen: the usual tooltip again (fillTriggerLines names the gone one while none is) */
+	triggerLine_->setToolTip(tr("The line watched: a register, a math line or a fast line on the chart"));
+	const ChartView::TriggerSettings settings = chart_->view()->triggerSettings(triggerLine_->currentData().toInt());
+	triggerLevel_->setText(ChartView::levelText(settings.level));
+	/* the unit beside the box: the level is in it, as the tag on the chart writes it */
+	QString unit;
+	for (const ChartView::Info &line : chart_->view()->lines())
+		if (line.key == triggerLine_->currentData().toInt()) unit = line.unit;
+	triggerUnit_->setText(unit);
+	triggerUnit_->setVisible(!unit.isEmpty());
+	triggerEdge_->setCurrentIndex(std::max(0, triggerEdge_->findData(int(settings.edge))));
+}
+
+/* the hold-off picked or typed: "window", or a time ("50 ms", "0"), 0 to 10 s */
+void ChartTab::applyHoldoffText() {
+	const int preset = triggerHoldoff_->findText(triggerHoldoff_->currentText());
+	double seconds = preset >= 0 ? triggerHoldoff_->itemData(preset).toDouble() : parseSeconds(triggerHoldoff_->currentText());
+	if (preset < 0 && seconds < 0) { /* not a time: back to what is in effect */
+		showHoldoff();
+		return;
+	}
+	if (seconds >= 0) seconds = std::min(seconds, ChartView::MAX_HOLDOFF);
+	chart_->view()->setTriggerHoldoff(seconds);
+	QSettings().setValue(settingKey("triggerHoldoff"), chart_->view()->triggerHoldoff());
+	showHoldoff();
+}
+
+void ChartTab::showHoldoff() {
+	const double seconds = chart_->view()->triggerHoldoff();
+	triggerHoldoff_->setEditText(seconds < 0 ? triggerHoldoff_->itemText(0) : seconds > 0 ? secondsText(seconds)
+			: ltrPiece(QStringLiteral("0 s")));
+}
+
+void ChartTab::saveTriggerSettings() {
+	QSettings().setValue(settingKey("triggerLevels"), chart_->view()->triggerSettingsTexts());
+}
+
+void ChartTab::triggerOnLine(int key) {
+	if (!trigger_->isVisible()) return; /* a recording: nothing comes after the file */
+	fillTriggerLines();
+	const int index = triggerLine_->findData(key);
+	if (index < 0) return;
+	triggerLine_->setCurrentIndex(index);
+	showLineSettings();
+	if (trigger_->isChecked()) applyTrigger();
+	else trigger_->setChecked(true); /* the row shown, armed on the line (its toggle) */
 }
 
 void ChartTab::applyTrigger() {
@@ -867,31 +1672,97 @@ void ChartTab::applyTrigger() {
 	bool ok = false;
 	const double level = QLocale::c().toDouble(triggerLevel_->text().trimmed(), &ok);
 	if (triggerLine_->currentIndex() < 0) {
-		chart_->view()->stopTrigger();
+		if (chart_->view()->triggerOn()) chart_->view()->stopTrigger();
 	} else {
-		chart_->view()->setTrigger(triggerLine_->currentData().toInt(), ok ? level : 0,
-				ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
+		/* the box shows the line's level to 6 digits: it is written back only when it says another (typed), so a level
+		 * dragged to 0.1234567 stays as it is through a change of the mode or an Arm */
+		const int key = triggerLine_->currentData().toInt();
+		const double kept = chart_->view()->triggerSettings(key).level;
+		const bool typed = ok && triggerLevel_->text().trimmed() != ChartView::levelText(kept);
+		chart_->view()->setTrigger(key, typed ? level : kept, ChartView::TriggerEdge(triggerEdge_->currentData().toInt()),
 				ChartView::TriggerMode(triggerMode_->currentData().toInt()));
 		QSettings settings;
 		settings.setValue(settingKey("triggerLine"), chart_->view()->lines().value(triggerLine_->currentIndex()).name);
-		settings.setValue(settingKey("triggerEdge"), triggerEdge_->currentData().toInt());
 		settings.setValue(settingKey("triggerMode"), triggerMode_->currentData().toInt());
+		saveTriggerSettings();
 	}
 	showTriggerState();
 }
 
+/* The same state as the chart's corner (ChartView::triggerPhase), in its words, changing only when it does: no
+ * crossing's time and no number while crossings keep coming (a time rewritten at each, then a rate of them changing
+ * its digits, made the text dance; neither reference scope shows a rate). Single's crossing is one: its time stays */
 QString ChartTab::triggerState() const {
 	const ChartView *view = chart_->view();
 	if (!view->triggerOn()) return trigger_->isChecked() ? tr("no line to watch") : QString();
-	if (view->triggerArmed()) return tr("armed: waiting for a crossing");
-	const double at = view->triggeredAt();
-	const QString when = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(at * 1000)))
-			.toString(QStringLiteral("HH:mm:ss.zzz"));
-	return triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single)
-			? tr("triggered at %1 · Arm for the next").arg(when) : tr("triggered at %1").arg(when);
+	switch (view->triggerPhase()) {
+	case ChartView::TriggerPhase::Off: return QString();
+	case ChartView::TriggerPhase::Stopped: return tr("Stopped · Run to arm");
+	case ChartView::TriggerPhase::FreeRunning: return tr("Auto · free running");
+	case ChartView::TriggerPhase::Waiting: /* a level the line does not reach says so: it would wait for ever */
+		if (!view->triggerStoppedName().isEmpty()) return view->triggerStateText(); /* "Normal · waiting (ADC stopped)" */
+		return view->triggerLevelBeyondLine() > 0 ? tr("waiting: level above the line's range")
+				: view->triggerLevelBeyondLine() < 0 ? tr("waiting: level below the line's range")
+				/* Normal back to waiting after a capture: when it was, a fixed time (a counter would run all the
+				 * while, which the state's rule forbids); it changes with the state alone */
+				: view->triggerMode() == ChartView::TriggerMode::Normal && std::isfinite(view->triggeredAt())
+				? tr("Normal · waiting, last at %1", "the time of the last crossing held").arg(QDateTime::fromMSecsSinceEpoch(
+						view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000))).toString(QStringLiteral("HH:mm:ss")))
+				: tr("waiting for a crossing");
+	case ChartView::TriggerPhase::Triggered: return view->triggerStateText(); /* "Normal · triggered", as the corner */
+	case ChartView::TriggerPhase::Done: {
+		const qint64 ms = view->epochMs() + qint64(std::llround(view->triggeredAt() * 1000));
+		return tr("Single · complete at %1").arg(QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")));
+	}
+	}
+	return QString();
 }
 
-void ChartTab::showTriggerState() { triggerState_->setText(triggerState()); }
+void ChartTab::showTriggerState() {
+	const QString text = triggerState();
+	if (triggerState_->fullText() != text) triggerState_->setFullText(text);
+	/* Arm only where it does something: Single, the primary button while Single holds its crossing. While Normal or
+	 * Single waits it is Force (a scope's Force Trigger), one button for both, so the row keeps its length */
+	const ChartView::TriggerPhase phase = chart_->view()->triggerPhase();
+	const bool single = triggerMode_->currentData().toInt() == int(ChartView::TriggerMode::Single);
+	const bool force = phase == ChartView::TriggerPhase::Waiting
+			&& triggerMode_->currentData().toInt() != int(ChartView::TriggerMode::Auto);
+	triggerArm_->setVisible(single || force);
+	if (triggerArm_->property("force").toBool() != force) {
+		triggerArm_->setProperty("force", force);
+		triggerArm_->setText(force ? tr("Force") : tr("Arm"));
+		triggerArm_->setToolTip(force ? tr("Hold the view now, as if the line crossed") : tr("Wait for one more crossing"));
+	}
+	const bool primary = phase == ChartView::TriggerPhase::Done;
+	if (triggerArm_->property("primary").toBool() != primary) {
+		triggerArm_->setProperty("primary", primary);
+		repolish(triggerArm_);
+	}
+	showHoldButton();
+}
+
+void ChartTab::showHoldButton() {
+	const ChartView *view = chart_->view();
+	const bool trigger = view->triggerOn();
+	const bool running = trigger ? view->triggerRunning() : chart_->live();
+	const QString text = trigger ? (running ? tr("Stop") : tr("Run")) : running ? tr("Hold") : tr("Live");
+	/* stopped by the user: in the warn colour, as the state corner's "Stopped · Run to arm" (one state, one colour) */
+	const bool stopped = trigger && view->triggerPhase() == ChartView::TriggerPhase::Stopped;
+	if (holdButton_->text() == text && holdButton_->property("live").toBool() == running
+			&& holdButton_->property("stopped").toBool() == stopped)
+		return;
+	holdButton_->setText(text);
+	/* the icons: the same size, drawn (the font's pause and play glyphs are not) */
+	holdButton_->setIcon(running ? mediaIcon(MediaIcon::Pause, Theme::colors().text)
+			: mediaIcon(MediaIcon::Play, stopped ? Theme::colors().warn : QColor(Qt::white)));
+	holdButton_->setProperty("stopped", stopped);
+	holdButton_->setToolTip(trigger ? tr("The trigger is on. Stop: no crossing counts, the picture and its T stay. Run: "
+			"armed again in its mode, from now.\nDragging the chart stops it too.")
+			: tr("Hold the view where it is (the memory keeps filling). Live: follow now again.\n"
+				"Dragging the chart holds it too."));
+	holdButton_->setProperty("live", running);
+	repolish(holdButton_);
+}
 
 void ChartTab::refreshStatus() {
 	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
@@ -899,20 +1770,27 @@ void ChartTab::refreshStatus() {
 	chartInfo_->setText(info);
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
-	if (chart_->yAuto()) showYRange(false);
+	if (lanes_->isChecked()) showYControls(); /* the current lane's unit: its lines may have gone */
+	if (lanes_->isChecked() || chart_->yAuto()) showYRange(false); /* Auto (a lane's too) follows what is shown */
 	if (trigger_->isChecked()) { /* the lines may have changed; the state moves on (Normal armed again) */
 		QVector<int> keys;
 		for (const ChartView::Info &line : chart_->view()->lines()) keys << line.key;
-		if (keys != triggerKeys_) {
+		if (keys != triggerKeys_) { /* the line watched gone: the trigger stops ("no line to watch"); back: armed again */
 			fillTriggerLines();
-			if (chart_->view()->triggerKey() != triggerLine_->currentData().toInt()) applyTrigger();
+			const int wanted = triggerLine_->currentIndex() >= 0 ? triggerLine_->currentData().toInt() : -1;
+			if (chart_->view()->triggerKey() != wanted) applyTrigger();
 		}
 		showTriggerState();
 	}
 	bool over = false;
+	double kept = -1, samples = -1;
+	if (!chart_->view()->fastTiers(kept, samples)) kept = samples = -1;
+	QString full;
 	const QString need = shown_ ? ramNeedText(chart_->view()->bytesNeeded(), chart_->view()->ramBudget(),
-			chart_->memory(), over) : QString();
+			chart_->memory(), over, chart_->view()->ramLimit(), freeMB_, kept, samples, &full) : QString();
 	ramNeed_->setText(ramNeed_->fontMetrics().elidedText(need, Qt::ElideRight, ramNeed_->contentsRect().width()));
+	const QString needTip = full.isEmpty() ? ramNeedTip_ : full + QStringLiteral("\n\n") + ramNeedTip_;
+	if (ramNeed_->toolTip() != needTip) ramNeed_->setToolTip(needTip);
 	if (ramNeed_->property("warn").toBool() != over) {
 		ramNeed_->setProperty("warn", over);
 		ramNeed_->style()->unpolish(ramNeed_);
@@ -920,24 +1798,142 @@ void ChartTab::refreshStatus() {
 	}
 }
 
-QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over) {
+QString ChartTab::ramNeedText(qint64 bytesNeeded, int ramMB, double memorySeconds, bool &over, int limitMB,
+		qint64 freeMB, double tieredKept, double tieredSamples, QString *full) {
 	over = false;
+	if (full) full->clear();
 	if (bytesNeeded <= 0) return {};
 	constexpr double MB = 1024.0 * 1024.0;
 	const double megabytes = double(bytesNeeded) / MB;
-	const QString size = megabytes < 1024 ? QStringLiteral("%1 MB").arg(std::max(1.0, std::round(megabytes)), 0, 'f', 0)
-			: QStringLiteral("%1 GB").arg(megabytes / 1024, 0, 'f', 1);
+	/* one piece: "MB 122" in Arabic without it */
+	const QString size = ltrPiece(megabytes < 1024
+					? QStringLiteral("%1 MB").arg(std::max(1.0, std::round(megabytes)), 0, 'f', 0)
+					: QStringLiteral("%1 GB").arg(megabytes / 1024, 0, 'f', 1));
+	/* in whole minutes from 2 min, else whole seconds */
+	const auto keptText = [](double kept) {
+		return secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept));
+	};
+	const bool tiers = tieredSamples >= 0; /* fast lines' older samples as summaries: the tiers say what is kept */
+	/* the row's room at the main window's narrowest holds the short text whole; the sentence goes in the tooltip */
+	const auto said = [full](const QString &text, const QString &sentence) {
+		if (full) *full = sentence.isEmpty() ? text : sentence;
+		return text;
+	};
+	if (limitMB > 0 && limitMB < ramMB) { /* the free memory, not the RAM set, limits what is kept: said first */
+		over = true;
+		if (tiers)
+			return said(tr("only %1 free: keeps %2 · %3 in full").arg(megabytesText(freeMB), keptText(tieredKept),
+								keptText(tieredSamples)),
+					tr("only %1 free: keeps about %2, the newest %3 with every sample and the rest as summaries")
+							.arg(megabytesText(freeMB), keptText(tieredKept), keptText(tieredSamples)));
+		return said(tr("only %1 free: keeps about %2").arg(megabytesText(freeMB),
+				keptText(memorySeconds * std::min(1.0, limitMB / megabytes))), {});
+	}
 	over = megabytes > ramMB;
-	if (!over) return tr("needs %1").arg(size);
-	const double kept = memorySeconds * ramMB / megabytes; /* in whole minutes from 2 min, else whole seconds */
-	return tr("needs %1, keeps %2").arg(size, secondsText(kept >= 120 ? std::round(kept / 60) * 60 : std::round(kept)));
+	if (!over) return said(tr("needs %1").arg(size), {});
+	if (tiers)
+		return said(tr("keeps %1 · %2 in full").arg(keptText(tieredKept), keptText(tieredSamples)),
+				tr("needs %1 for every sample; keeps %2, the newest %3 with every sample and the rest as summaries")
+						.arg(size, keptText(tieredKept), keptText(tieredSamples)));
+	return said(tr("needs %1, keeps %2").arg(size, keptText(memorySeconds * ramMB / megabytes)), {});
+}
+
+void ChartTab::resizeEvent(QResizeEvent *event) {
+	arrangeRamNote();
+	QWidget::resizeEvent(event);
+}
+
+/* The note beside RAM stays on the first row while the room the row's controls leave holds the widest text it can
+ * show; else it takes a line of its own under the row (the main window's narrowest left it 24 px, with Older samples
+ * shown), so it is never cut. Decided by the width and Older samples alone, not by the text shown: the chart's height
+ * does not move when the note's numbers change. A recording has no note: it stays in its place there */
+void ChartTab::arrangeRamNote() {
+	const bool below = !recording_ && width() < axesRow_->sizeHint().width() + ramNoteRoom();
+	if (below == ramNoteBelow_) return;
+	ramNoteBelow_ = below;
+	if (below) {
+		axesRow_->removeWidget(ramNeed_);
+		axesRow_->insertStretch(ramNoteAt_, 1); /* the row's groups as they were */
+		noteRow_->addWidget(ramNeed_, 1);
+	} else {
+		noteRow_->removeWidget(ramNeed_);
+		delete axesRow_->takeAt(ramNoteAt_);
+		axesRow_->insertWidget(ramNoteAt_, ramNeed_, 1);
+	}
+}
+
+/* the widest of the note's texts, with long numbers ("100.0 GB", "100 min"), in this language and font; those of
+ * summaries only with Older samples shown */
+int ChartTab::ramNoteRoom() const {
+	constexpr qint64 GB = qint64(1024) * 1024 * 1024;
+	const QFontMetrics metrics = ramNeed_->fontMetrics();
+	bool over = false;
+	int most = 0;
+	const bool tiers = !older_->isHidden();
+	for (const QString &text : { ramNeedText(qint64(100) * GB, 512, 1200000, over),
+				 ramNeedText(qint64(100) * GB, 2048, 1200000, over, 1024, 2150),
+				 tiers ? ramNeedText(qint64(100) * GB, 512, 6000, over, 0, -1, 6000, 100) : QString(),
+				 tiers ? ramNeedText(qint64(100) * GB, 2048, 6000, over, 1024, 2150, 6000, 100) : QString() })
+		most = std::max(most, metrics.horizontalAdvance(text));
+	return most + 12;
+}
+
+qint64 ChartTab::ramReserveMB() {
+	return std::max<qint64>(1024, physicalMemoryMB() / 10);
+}
+
+int ChartTab::effectiveRamMB(int chosenMB, qint64 heldMB, qint64 freeMB) {
+	if (freeMB < 0) return chosenMB;
+	return int(std::clamp<qint64>(heldMB + freeMB - ramReserveMB(), RAM_FLOOR_MB, std::max(chosenMB, RAM_FLOOR_MB)));
+}
+
+/* The free memory against the RAM set. What the chart holds counts as its own (what its trims let go and is not freed
+ * yet too: else every reading before the frees would lower the limit again). The free memory moves all the time: a
+ * new limit only for a step worth a trim (a twentieth, 64 MB at least), or on and off, so the lines are not trimmed
+ * a little at every reading */
+void ChartTab::watchFreeMemory() {
+	ChartView *view = chart_->view();
+	constexpr qint64 MiB = 1024 * 1024;
+	const qint64 held = view->bytesHeld() + view->bytesReleasing();
+	freeMB_ = testFreeMB_ >= 0 ? std::max<qint64>(0, testFreeMB_ + (testHeldAt_ - held) / MiB) : availableMemoryMB();
+	const int effective = effectiveRamMB(view->ramBudget(), held / MiB, freeMB_);
+	const int limit = effective < view->ramBudget() ? effective : 0, now = view->ramLimit();
+	if ((limit == 0) != (now == 0) || std::abs(limit - now) >= std::max(64, now / 20)) view->setRamLimit(limit);
+	const QString tip = ramTip();
+	if (ram_->toolTip() != tip) ram_->setToolTip(tip);
+}
+
+void ChartTab::setTestFreeMemory(qint64 megabytes) {
+	testFreeMB_ = megabytes;
+	testHeldAt_ = chart_->view()->bytesHeld() + chart_->view()->bytesReleasing();
+	watchFreeMemory();
+}
+
+QString ChartTab::ramTip() const {
+	QString tip = tr("The most memory the chart's samples take, all the lines together (2 GB by default). Pick one "
+			"or type any size: 3000, 3000 MB, 3 GB.\nWith many fast lines the Memory holds less than asked, and the "
+			"memory strip says \"RAM budget reached\": the chart lets the oldest go, a recording's file keeps every "
+			"sample. At most three quarters of this computer's memory (%1 GB).")
+			.arg(maxRamMB() / 1024.0, 0, 'f', 1);
+	if (freeMB_ < 0) return tip;
+	const ChartView *view = chart_->view();
+	tip += QStringLiteral("\n\n");
+	if (view->ramLimit() > 0)
+		tip += tr("Free now: %1, so the chart keeps within %2 of the %3 set: its oldest go before the computer pages "
+				"to disk (which slows everything).").arg(megabytesText(freeMB_), megabytesText(view->ramInUse()),
+				megabytesText(view->ramBudget()));
+	else
+		tip += tr("Free now: %1. With less free than the RAM set, the chart keeps within what is free.")
+				.arg(megabytesText(freeMB_));
+	return tip;
 }
 
 void ChartTab::themeChanged() {
 	chart_->update();
 	showYRange(false); /* the Auto boxes' grey */
-	/* the pause icon is drawn in the theme's text colour */
-	if (chart_->live()) holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
+	/* the pause icon is drawn in the theme's text colour, a stopped trigger's Run in its warn colour */
+	if (holdButton_->property("live").toBool()) holdButton_->setIcon(mediaIcon(MediaIcon::Pause, Theme::colors().text));
+	else if (holdButton_->property("stopped").toBool()) holdButton_->setIcon(mediaIcon(MediaIcon::Play, Theme::colors().warn));
 }
 
 /* ----------------------------------------------------------------- the axes */
@@ -959,6 +1955,22 @@ QString ChartTab::yFieldText(double value, bool manual) {
 	/* Auto: four digits, but the whole part always (17420, not 1.742e+04, which the six-digit field cut to ".742e+04") */
 	const int whole = std::abs(value) >= 1 ? int(std::floor(std::log10(std::abs(value)))) + 1 : 1;
 	return QString::number(value, 'g', manual ? 6 : std::clamp(whole, 4, 6));
+}
+
+/* as yFieldText, but with fewer digits when that does not fit the box: a number cut at its left edge ("3001e+06" of
+ * 2.53001e+06) reads as another number */
+QString ChartTab::yFieldShown(const QLineEdit *field, double value, bool manual) {
+	QString text = yFieldText(value, manual);
+	const QMargins margins = field->textMargins();
+	const int frame = field->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, field);
+	const int room = field->width() - 2 * frame - 4 - margins.left() - margins.right(); /* 2 px of QLineEdit's own a side */
+	const QFontMetrics metrics = field->fontMetrics();
+	for (int digits = 5; digits >= 1 && metrics.horizontalAdvance(text) > room; digits--) {
+		text = QString::number(value, 'g', digits);
+		text.replace(QLatin1String("e+0"), QLatin1String("e")).replace(QLatin1String("e-0"), QLatin1String("e-"))
+				.replace(QLatin1String("e+"), QLatin1String("e")); /* 2.53e6: the box's validator and the C locale read it */
+	}
+	return text;
 }
 
 void ChartTab::applyDrawing(int choice) {
@@ -1007,6 +2019,7 @@ void ChartTab::applyRamText() {
 	if (typed > 0) {
 		chart_->view()->setRamBudget(std::clamp(typed, int(ChartView::MIN_RAM_MB), maxRamMB()));
 		QSettings().setValue(settingKey("ramMB"), chart_->view()->ramBudget());
+		watchFreeMemory(); /* the limit against the new RAM at once */
 	}
 	ram_->setEditText(ramText(chart_->view()->ramBudget()));
 }
@@ -1025,18 +2038,22 @@ void ChartTab::applyMemoryText() {
 }
 
 void ChartTab::showYRange(bool save) {
-	const bool manual = !chart_->yAuto();
-	const int mode = chart_->yLog() ? YLog : manual ? YManual : YAuto;
+	/* Lanes: the current lane's range (saved with the lanes' ranges, chart/laneY); without, the plot's */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	const bool manual = lane >= 0 ? !view->laneYAuto(lane) : !chart_->yAuto();
+	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
+	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldText(chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldText(chart_->yHi(), manual));
+	if (!yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (!yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
 		yMin_->setStyleSheet(look);
 		yMax_->setStyleSheet(look);
 	}
-	if (!save) return;
+	if (!save || lane >= 0) return;
 	QSettings settings;
 	settings.setValue(settingKey("yAuto"), !manual);
 	settings.setValue(settingKey("yLog"), chart_->yLog());
@@ -1054,9 +2071,22 @@ void ChartTab::applyYFields() {
 		showYRange();
 		return;
 	}
+	ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	if (lane >= 0) { /* Lanes: the current lane's range */
+		const bool laneManual = !view->laneYAuto(lane);
+		if (yMin_->text().trimmed() == yFieldShown(yMin_, view->laneYLo(lane), laneManual)
+				&& yMax_->text().trimmed() == yFieldShown(yMax_, view->laneYHi(lane), laneManual))
+			return; /* no change */
+		if (low > high) std::swap(low, high);
+		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
+		view->setLaneYManual(lane, low, high); /* refused on the Log scale at 0 or below: the fields back */
+		showYRange(false);
+		return;
+	}
 	const bool manual = !chart_->yAuto();
-	if (yMin_->text().trimmed() == yFieldText(chart_->yLo(), manual)
-			&& yMax_->text().trimmed() == yFieldText(chart_->yHi(), manual))
+	if (yMin_->text().trimmed() == yFieldShown(yMin_, chart_->yLo(), manual)
+			&& yMax_->text().trimmed() == yFieldShown(yMax_, chart_->yHi(), manual))
 		return; /* no change */
 	if (low > high) std::swap(low, high);
 	if (high - low < 1e-12) high = chart_->yLog() ? low * 10 : low + 1;
@@ -1155,6 +2185,8 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 	/* the cells written with the table's updates off: one repaint when they are all in, not one per cell */
 	measures_->setUpdatesEnabled(false);
 	const QString none = QStringLiteral("—");
+	const QString needsSamples = tr("Needs samples: in this range the fast line keeps only summaries, the lowest and "
+			"highest of each 256 samples (Older samples, beside RAM): its min, max and p2p are theirs");
 	measures_->setRowCount(int(lines.size()));
 	for (int row = 0; row < lines.size(); row++) {
 		const ChartView::Info &line = lines[row];
@@ -1167,12 +2199,14 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			std::isfinite(s.atA) && std::isfinite(s.atB) ? measureText(s.atB - s.atA) + unit : none,
 			s.ok ? measureText(s.min) + unit : none,
 			s.ok ? measureText(s.max) + unit : none,
-			s.ok ? measureText(s.mean) + unit : none,
-			s.ok ? measureText(s.rms) + unit : none,
-			s.ok ? measureText(s.std) + unit : none,
+			s.ok && std::isfinite(s.mean) ? measureText(s.mean) + unit : none, /* NaN: over summaries only */
+			s.ok && std::isfinite(s.rms) ? measureText(s.rms) + unit : none,
+			s.ok && std::isfinite(s.std) ? measureText(s.std) + unit : none,
 			s.ok ? measureText(s.p2p) + unit : none,
-			s.ok ? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
-			s.ok ? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral) + QStringLiteral(" ") + areaUnit(line.unit, false) : none,
+			s.ok && std::isfinite(s.integral)
+					? measureText(s.integral / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 			std::isfinite(s.total) ? measureText(s.total / 3600.0) + QStringLiteral(" ") + areaUnit(line.unit, true) : none,
 		};
 		for (int column = 0; column < cells.size(); column++) {
@@ -1186,6 +2220,10 @@ void ChartTab::fillMeasures(const QVector<ChartView::Info> &lines, const QVector
 			}
 			if (item->text() != cells[column]) item->setText(cells[column]);
 			if (column == 0 && item->foreground().color() != line.color) item->setForeground(line.color);
+			const bool samplesOnly = column == ColAtA || column == ColAtB || column == ColDiff || column == ColMean
+					|| column == ColRms || column == ColStd || column == ColArea || column == ColAreaHours;
+			const QString tip = s.summaries && samplesOnly && cells[column] == none ? needsSamples : QString();
+			if (item->toolTip() != tip) item->setToolTip(tip);
 		}
 	}
 	/* the table shown again (one repaint), and the time the update took for the timing aid */
@@ -1223,6 +2261,14 @@ QString ChartTab::measuredRangeText() const {
 	QString text;
 	if (cursors) {
 		text = tr("Measured between the cursors: A → B = %1 s").arg(measureText(std::fabs(view->cursorB() - view->cursorA())));
+		/* held on a trigger's crossing: each cursor from T as well (U-7, as a scope's cursors read); on the grid where
+		 * each sits, from T or from the right edge (U-19: the same text while the wave moves under them) */
+		QString a = view->cursorPlaceText(0), b = view->cursorPlaceText(1);
+		if (a.isEmpty() || b.isEmpty()) {
+			a = view->fromTText(view->cursorA());
+			b = view->fromTText(view->cursorB());
+		}
+		if (!a.isEmpty()) text += tr(" · A: %1 · B: %2", "the cursors' times from the trigger's crossing").arg(a, b);
 	} else {
 		const QString hint = cursorsButton_->isChecked()
 				? tr(" (place cursor %1 on the chart)")
@@ -1231,7 +2277,9 @@ QString ChartTab::measuredRangeText() const {
 		text = tr("Measured over the view: %1 s%2").arg(measureText(t1 - t0), hint);
 	}
 	const double since = view->totalsSince();
-	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
+	if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal) && recording_) /* no Clear: the whole file */
+		text += tr(" · totals over the file (%1)").arg(durationText(recordingSpan_));
+	else if (std::isfinite(since) && !measures_->isColumnHidden(ColTotal)) {
 		const QDateTime at = QDateTime::fromMSecsSinceEpoch(view->epochMs() + qint64(std::llround(since * 1000)));
 		text += tr(" · totals since %1 (%2)").arg(at.toString(QStringLiteral("HH:mm:ss")),
 				durationText(std::max(0.0, view->timeNow() - since)));
@@ -1256,14 +2304,35 @@ void ChartTab::showSpan(double t0, double t1) {
 }
 
 void ChartTab::showYControls() {
-	/* lanes: each its own range (its menu); normalised: the min and max mean nothing, the list offers Log */
-	const bool lanes = lanes_->isChecked();
-	yMode_->setEnabled(!lanes);
-	yMin_->setEnabled(!lanes && !normalize_->isChecked());
-	yMax_->setEnabled(!lanes && !normalize_->isChecked());
-	const QString why = tr("Lanes: each lane has its own Y range: right-click its values");
-	if (lanes) yMode_->setToolTip(why);
-	else if (yMode_->toolTip() == why) yMode_->setToolTip(yModeTip_);
+	/* lanes: the current lane's range, chosen in the list beside "Y range" (every lane by its unit, in the chart's
+	 * order, a folded one marked); normalised: the min and max mean nothing, the list offers Log */
+	const ChartView *view = chart_->view();
+	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
+	yMin_->setEnabled(!normalize_->isChecked());
+	yMax_->setEnabled(!normalize_->isChecked());
+	/* set only when they change: the info line's refresh calls this twice a second with Lanes on */
+	QStringList units;
+	for (int k = 0; lane >= 0 && k < view->laneCount(); k++) {
+		const QString unit = view->laneLabel(k).isEmpty() ? tr("no unit") : view->laneLabel(k);
+		units << (view->laneFolded(k) ? tr("%1 (folded)").arg(unit) : unit);
+	}
+	QStringList listed;
+	for (int k = 0; k < yLane_->count(); k++) listed << yLane_->itemText(k);
+	{
+		const QSignalBlocker quiet(yLane_);
+		if (listed != units) {
+			yLane_->clear();
+			yLane_->addItems(units);
+		}
+		if (lane >= 0 && yLane_->currentIndex() != lane) yLane_->setCurrentIndex(lane);
+	}
+	if (yLane_->isHidden() != (lane < 0)) yLane_->setHidden(lane < 0);
+	QString tip = yModeTip_;
+	if (lane >= 0)
+		tip = tr("Lanes: the Y range of the current lane (%1, its unit name lit). A click on another lane's value labels "
+				"chooses it; its tag (Manual, Log) or a double-click there sets it back to Auto.").arg(units.value(lane))
+				+ QStringLiteral("\n\n") + yModeTip_;
+	if (yMode_->toolTip() != tip) yMode_->setToolTip(tip);
 }
 
 void ChartTab::showLaneActions() {
@@ -1272,8 +2341,10 @@ void ChartTab::showLaneActions() {
 	const int folded = view->foldedLaneCount();
 	foldAll_->setVisible(on);
 	openAll_->setVisible(on);
+	allAuto_->setVisible(on);
 	foldAll_->setEnabled(on && folded < view->laneCount());
 	openAll_->setEnabled(on && folded > 0);
+	allAuto_->setEnabled(on && !view->allLanesYAuto());
 }
 
 void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
@@ -1282,7 +2353,13 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	laneMenu_ = new QMenu(this);
 	laneMenu_->setObjectName(QStringLiteral("laneMenu"));
 	const QString units = view->laneLabel(lane).isEmpty() ? tr("no unit") : view->laneLabel(lane);
-	laneMenu_->addSection(tr("Lane %1: Y range").arg(noMnemonic(units)));
+	/* its title as a muted label, as the Display menu's: the style draws a section as a bare line, without its text */
+	auto *title = new QWidgetAction(laneMenu_);
+	auto *titleLabel = new QLabel(tr("Lane %1: Y range").arg(units));
+	titleLabel->setObjectName(QStringLiteral("menuTitle"));
+	titleLabel->setTextFormat(Qt::PlainText);
+	title->setDefaultWidget(titleLabel);
+	laneMenu_->addAction(title);
 	QAction *autoRange = laneMenu_->addAction(tr("Auto"), this, [view, lane] { view->setLaneYAuto(lane); });
 	autoRange->setCheckable(true);
 	autoRange->setChecked(view->laneYAuto(lane));
@@ -1296,6 +2373,8 @@ void ChartTab::showLaneMenu(int lane, const QPoint &globalPos) {
 	});
 	log->setCheckable(true);
 	log->setChecked(view->laneYLog(lane));
+	QAction *allAuto = laneMenu_->addAction(tr("All lanes: Auto"), this, [view] { view->setAllLanesYAuto(); });
+	allAuto->setEnabled(!view->allLanesYAuto());
 	laneMenu_->addSeparator();
 	const bool folded = view->laneFolded(lane);
 	laneMenu_->addAction(folded ? tr("Open lane") : tr("Fold lane"), this, [view, lane, folded] {
@@ -1322,6 +2401,27 @@ void ChartTab::showLineMenu(int key, const QPoint &globalPos) {
 	QAction *spectrum = lineMenu_->addAction(tr("Spectrum of %1").arg(noMnemonic(name)), this,
 			[this, key] { openAnalysis(AnalysisWindow::Kind::Spectrum, key); });
 	spectrum->setToolTip(tr("Which frequencies it holds, %1").arg(over));
+	bool only = false; /* a fast line kept as summaries only there: nothing to count or transform */
+	if (chart_->view()->summariesIn(key, t0, t1, &only) && only)
+		for (QAction *action : { histogram, spectrum }) {
+			action->setEnabled(false);
+			action->setToolTip(tr("Needs samples: %1 the fast line keeps only summaries, the lowest and highest of each "
+					"256 samples (Older samples, beside RAM)").arg(over));
+		}
+	if (trigger_->isVisible()) { /* not in a recording's window */
+		lineMenu_->addSeparator();
+		/* ticked for the line watched: unticking it turns the trigger off (Display -> Trigger, so all three agree) */
+		QAction *watch = lineMenu_->addAction(tr("Trigger on this line"));
+		watch->setObjectName(QStringLiteral("triggerOnLine"));
+		watch->setCheckable(true);
+		watch->setChecked(trigger_->isChecked() && chart_->view()->triggerKey() == key);
+		connect(watch, &QAction::triggered, this, [this, key](bool on) {
+			if (on) triggerOnLine(key);
+			else trigger_->setChecked(false);
+		});
+		watch->setToolTip(tr("Hold the chart when %1 crosses its level: the level a dashed line in its lane, to drag")
+				.arg(noMnemonic(name)));
+	}
 	lineMenu_->popup(globalPos);
 }
 
@@ -1334,9 +2434,16 @@ AnalysisWindow *ChartTab::openAnalysis(AnalysisWindow::Kind kind, int key) {
 	bool cursors;
 	view->range(t0, t1, cursors);
 	QVector<double> times, values;
-	view->lineSamples(key, t0, t1, times, values);
-	const QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
-	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window());
+	/* a fast line's spectrum: its longest part without a gap (even steps; nothing measured across a gap) */
+	const bool whole = view->lineSamples(key, t0, t1, times, values, kind == AnalysisWindow::Kind::Spectrum);
+	QString span = (cursors ? tr("A → B, %1") : tr("the view, %1")).arg(durationText(t1 - t0));
+	if (view->summariesIn(key, t0, t1) && times.size() >= 2) /* the older part kept as summaries only: said */
+		span = tr("%1: its newest %2, older kept as summaries").arg(span, durationText(times.last() - times.first()));
+	else if (!whole && times.size() >= 2) /* a fast line's records, not all of them: say which part */
+		span = (kind == AnalysisWindow::Kind::Spectrum ? tr("%1: %2 of it without a gap") : tr("%1: its first %2"))
+					   .arg(span, durationText(times.last() - times.first()));
+	auto *analysis = new AnalysisWindow(kind, info.name, info.unit, info.color, span, times, values, window(),
+			ChartView::isFastKey(key) && kind == AnalysisWindow::Kind::Spectrum); /* its part without a gap: even */
 	analysis->show();
 	return analysis;
 }
@@ -1366,6 +2473,7 @@ void ChartTab::editLaneRange(int lane) {
 		if (lowOk && highOk && view->setLaneYManual(lane, lo, hi)) dialog.accept();
 		else note->setText(view->laneYLog(lane) ? tr("Two numbers, both above 0 (Log)") : tr("Two numbers, min below max"));
 	});
+	noWindowAnimation(&dialog);
 	dialog.exec();
 }
 
@@ -1377,32 +2485,74 @@ void ChartTab::showChartMenu(const QPoint &globalPos, double time) {
 	chartMenu_->setObjectName(QStringLiteral("chartMenu"));
 	chartMenu_->setToolTipsVisible(true);
 	chartMenu_->addAction(tr("Copy picture"), this, &ChartTab::copyPicture);
-	chartMenu_->addAction(tr("Save picture…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
-		if (file.isEmpty()) return;
-		if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
-		else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
-	});
-	double t0, t1;
-	bool cursors;
-	chart_->view()->range(t0, t1, cursors);
-	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, [this] {
-		const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
-				.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
-		const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
-		if (!file.isEmpty()) exportCsv(file);
-	});
-	exportAction->setToolTip(cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
-			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)"));
+	chartMenu_->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture);
+	QAction *exportAction = chartMenu_->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setToolTip(exportTip());
 	exportAction->setEnabled(!job_);
 	chartMenu_->addAction(tr("Add note here"), this, [this, time] { addNoteAt(time); });
 	chartMenu_->addSeparator();
 	chartMenu_->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); });
 	RecordingWindow::fillRecentMenu(chartMenu_->addMenu(tr("Recent recordings")),
-			[this](const QString &file) { emit openRecordingRequested(file); });
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
 	chartMenu_->popup(globalPos);
+}
+
+QPushButton *ChartTab::makeFileButton(const char *name) {
+	auto *button = new QPushButton(tr("File"));
+	button->setObjectName(QLatin1String(name));
+	button->setCursor(Qt::PointingHandCursor);
+	button->setToolTip(tr("Copy picture, Save picture…, Export to CSV… (the view, or A → B with both cursors placed), "
+			"Open recording… and the recent recordings: the same as the chart's right-click.\nA note: right-click the "
+			"chart where it goes, Add note here."));
+	auto *menu = new QMenu(button);
+	menu->setToolTipsVisible(true);
+	setButtonMenu(button, menu);
+	/* made again at each opening: the export's tooltip and state, the recent list */
+	connect(menu, &QMenu::aboutToShow, this, [this, menu] { fillFileMenu(menu); });
+	return button;
+}
+
+void ChartTab::fillFileMenu(QMenu *menu) {
+	menu->clear();
+	for (QObject *child : menu->children()) /* the recent list's submenu of the last opening */
+		if (qobject_cast<QMenu *>(child)) child->deleteLater();
+	menu->addAction(tr("Copy picture"), this, &ChartTab::copyPicture)->setObjectName(QStringLiteral("fileCopyPicture"));
+	menu->addAction(tr("Save picture…"), this, &ChartTab::askSavePicture)->setObjectName(QStringLiteral("fileSavePicture"));
+	QAction *exportAction = menu->addAction(tr("Export to CSV…"), this, &ChartTab::askExportCsv);
+	exportAction->setObjectName(QStringLiteral("fileExportCsv"));
+	exportAction->setToolTip(exportTip());
+	exportAction->setEnabled(!job_);
+	menu->addSeparator();
+	menu->addAction(tr("Open recording…"), this, [this] { emit openRecordingRequested(QString()); })
+			->setObjectName(QStringLiteral("fileOpenRecording"));
+	RecordingWindow::fillRecentMenu(menu->addMenu(tr("Recent recordings")),
+			[this](const QString &file) { emit openRecordingRequested(file); },
+			[this](const QString &text) { emit statusMessage(text, 5000); });
+}
+
+void ChartTab::askSavePicture() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/chart_%1.png")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Save picture"), suggested, tr("PNG (*.png)"));
+	if (file.isEmpty()) return;
+	if (savePicture(file)) emit logged(LogLevel::Info, tr("chart picture saved to %1").arg(QDir::toNativeSeparators(file)));
+	else emit logged(LogLevel::Error, tr("chart picture not saved to %1").arg(QDir::toNativeSeparators(file)));
+}
+
+void ChartTab::askExportCsv() {
+	const QString suggested = QDir::homePath() + QStringLiteral("/evre_export_%1.csv")
+			.arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
+	const QString file = QFileDialog::getSaveFileName(this, tr("Export to CSV"), suggested, tr("CSV (*.csv)"));
+	if (!file.isEmpty()) exportCsv(file);
+}
+
+QString ChartTab::exportTip() const {
+	double t0, t1;
+	bool cursors;
+	chart_->view()->range(t0, t1, cursors);
+	return cursors ? tr("The samples between the cursors, A → B, of every line on the chart")
+			: tr("The samples of the view, of every line on the chart (place cursors A and B for a part of it)");
 }
 
 QImage ChartTab::picture() const { return chart_->view()->grab().toImage(); } /* grab(): drawn by the CPU */
@@ -1432,6 +2582,7 @@ bool ChartTab::exportCsv(const QString &file) {
 	exportProgress_->setMinimumDuration(400); /* a quick one shows nothing */
 	exportProgress_->setAutoClose(false);
 	exportProgress_->setAutoReset(false);
+	noWindowAnimation(exportProgress_);
 	connect(exportProgress_, &QProgressDialog::canceled, this, &ChartTab::cancelExport);
 	const qint64 epoch = view->epochMs();
 	QThreadPool::globalInstance()->start([job, lines = std::move(lines), epoch] {
@@ -1478,19 +2629,25 @@ void ChartTab::exportDone() {
 
 void ChartTab::addNoteAt(double time) {
 	const QDateTime at = QDateTime::fromMSecsSinceEpoch(chart_->view()->epochMs() + qint64(std::llround(time * 1000)));
-	bool ok = false;
-	const QString text = QInputDialog::getText(this, tr("Add note"),
-			tr("A note at %1:").arg(at.toString(QStringLiteral("HH:mm:ss.zzz"))), QLineEdit::Normal, QString(), &ok);
-	if (ok && !text.trimmed().isEmpty()) chart_->view()->addNote(time, text.trimmed());
+	/* QInputDialog::getText's dialog, made here to have no close animation */
+	QInputDialog ask(this);
+	ask.setWindowTitle(tr("Add note"));
+	ask.setLabelText(tr("A note at %1:").arg(at.toString(QStringLiteral("HH:mm:ss.zzz"))));
+	noWindowAnimation(&ask);
+	const QString text = ask.exec() == QDialog::Accepted ? ask.textValue() : QString();
+	if (!text.trimmed().isEmpty()) chart_->view()->addNote(time, text.trimmed());
 }
 
 void ChartTab::editNote(int index) {
 	const QVector<ChartNote> &notes = chart_->view()->notes();
 	if (index < 0 || index >= notes.size()) return;
-	bool ok = false;
-	const QString text = QInputDialog::getText(this, tr("Edit note"), tr("The note's text (empty: removed):"),
-			QLineEdit::Normal, notes[index].text, &ok);
-	if (!ok) return;
+	QInputDialog ask(this); /* as Add note's */
+	ask.setWindowTitle(tr("Edit note"));
+	ask.setLabelText(tr("The note's text (empty: removed):"));
+	ask.setTextValue(notes[index].text);
+	noWindowAnimation(&ask);
+	if (ask.exec() != QDialog::Accepted) return;
+	const QString text = ask.textValue();
 	if (text.trimmed().isEmpty()) chart_->view()->removeNote(index);
 	else chart_->view()->setNoteText(index, text.trimmed());
 }
@@ -1498,28 +2655,60 @@ void ChartTab::editNote(int index) {
 /* ----------------------------------------------------------- the math lines */
 
 void ChartTab::rebuildMath() {
-	mathLines_.compile(registers_);
+	mathLines_.compile(registers_, fastStreams_);
 	drawMathLines();
 	rebuildMathMenu();
 	emit mathRegistersChanged(); /* the registers the formulas read are sampled too */
 }
 
 void ChartTab::drawMathLines() {
-	for (int i = 0; i < MathLines::MAX_DRAWN; i++) chart_->removeSeries(MathLines::chartKey(i));
+	ChartView *view = chart_->view();
 	const QVector<MathLine> &lines = mathLines_.lines();
+	/* a fast math line drawn as it is stays as it is: its records (its store) and the trigger's watch on it go on */
+	QVector<bool> kept(MathLines::MAX_DRAWN, false);
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		const fast::Store *store = view->fastStore(MathLines::fastStream(i));
+		kept[i] = lines[i].active() && lines[i].fast() && store && store->def().name == fastMathDef(i).name
+				&& fastMathDrawn(i);
+	}
+	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		chart_->removeSeries(MathLines::chartKey(i));
+		if (kept[i]) continue;
+		chart_->removeSeries(fastMathKey(i));
+		view->removeFastStream(MathLines::fastStream(i));
+		fastMath_.remove(i);
+	}
 	const QVector<QColor> &palette = Theme::colors().series;
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
-		if (!lines[i].active()) continue;
+		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
+		 * another map), the registers already on it stay */
+		if (kept[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
-		chart_->addSeries(MathLines::chartKey(i), QStringLiteral("ƒ %1").arg(lines[i].name), lines[i].unit, color);
+		const QString name = QStringLiteral("ƒ %1").arg(lines[i].name);
+		if (lines[i].fast()) { /* its records in a store of their own, made as its stream's blocks come */
+			view->setFastStream(MathLines::fastStream(i), fastMathDef(i));
+			chart_->addSeries(fastMathKey(i), name, lines[i].unit, color);
+		} else {
+			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
+		}
 	}
+	applyFastFed(); /* a fast math line over a stopped stream: stopped with it */
+}
+
+bool ChartTab::fastMathDrawn(int line) const {
+	const int key = fastMathKey(line);
+	for (const ChartView::Info &info : chart_->view()->lines())
+		if (info.key == key) return true;
+	return false;
 }
 
 void ChartTab::rebuildMathMenu() {
 	QMenu *menu = mathButton_->menu();
 	menu->clear();
-	menu->addAction(tr("New math line…"), this, [this] { editMathLine(-1); });
+	menu->addAction(tr("New math line…"), this, [this] {
+		if (roomForLine()) editMathLine(-1); /* refused before its formula is typed */
+	});
 	const QVector<MathLine> &lines = mathLines_.lines();
 	if (!lines.isEmpty()) menu->addSeparator();
 	for (int i = 0; i < lines.size(); i++) {
@@ -1531,18 +2720,28 @@ void ChartTab::rebuildMathMenu() {
 		shown->setCheckable(true);
 		shown->setChecked(line.on);
 		shown->setEnabled(line.error.isEmpty());
-		connect(shown, &QAction::toggled, this, [this, i](bool on) {
+		connect(shown, &QAction::toggled, this, [this, i, shown](bool on) {
+			if (on && !roomForLine()) {
+				const QSignalBlocker blocker(shown);
+				shown->setChecked(false);
+				return;
+			}
 			mathLines_.setOn(i, on);
 			rebuildMath();
 		});
 		sub->addAction(tr("Edit…"), this, [this, i] { editMathLine(i); });
-		sub->addAction(tr("Remove"), this, [this, i] {
-			mathLines_.remove(i);
-			rebuildMath();
-		});
+		sub->addAction(tr("Remove"), this, [this, i] { removeMathLine(i); });
 	}
 	const int active = mathLines_.activeCount();
 	mathButton_->setText(active ? tr("ƒ  Math (%1)").arg(active) : tr("ƒ  Math"));
+}
+
+bool ChartTab::setMathLineShown(int line, bool on) {
+	if (line < 0 || line >= mathLines_.lines().size()) return false;
+	if (on && !mathLines_.lines()[line].active() && !roomForLine()) return false;
+	mathLines_.setOn(line, on);
+	rebuildMath();
+	return true;
 }
 
 void ChartTab::editMathLine(int line) {
@@ -1551,8 +2750,11 @@ void ChartTab::editMathLine(int line) {
 	start.unit = QStringLiteral("W");
 	if (line >= 0) start = mathLines_.lines()[line];
 	MathLineDialog dialog(start, line >= 0, registers_, window()); /* over the window, as its other dialogs */
+	dialog.setFastStreams(fastStreams_); /* a formula over one stream's channels is a fast math line */
 	if (dialog.exec() != QDialog::Accepted) return;
-	const MathLine edited = dialog.result();
+	MathLine edited = dialog.result();
+	/* an edit that would draw a line more (it was off or did not compile) past the cap: kept, but not shown */
+	if (line >= 0 && edited.active() && !mathLines_.lines()[line].active() && !roomForLine()) edited.on = false;
 	if (line >= 0) mathLines_.replace(line, edited);
 	else mathLines_.add(edited);
 	rebuildMath();

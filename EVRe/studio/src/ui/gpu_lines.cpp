@@ -2,6 +2,8 @@
 /* The chart's plot on a graphics card: see gpu_lines.h. */
 #include "ui/gpu_lines.h"
 
+#include <utility>
+
 #include <QColor>
 #include <QHash>
 #include <QObject>
@@ -68,6 +70,9 @@ QString hresultText(const QString &what, HRESULT hr) {
 
 struct GpuLines::Impl {
 	QString name;
+	int dropped = 0;       /* frames let go: the system still busy (present) */
+	QSize presented;       /* the last frame's that reached the layer */
+	bool dropNext = false; /* tests: the next frame let go as if the system were busy */
 #ifdef Q_OS_WIN
 	ComPtr<ID3D11Device> device;
 	ComPtr<ID3D11DeviceContext> context;
@@ -452,8 +457,10 @@ bool GpuLines::present(WId window, const QRect &pixels, const Frame &frame, QStr
 		return fail(hresultText(QStringLiteral("GetBuffer"), hr));
 	c->ResolveSubresource(buffer.Get(), 0, d.msaa.Get(), 0, PIXEL_FORMAT);
 	d.drawn = true;
-	hr = d.swapChain->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
-	if (FAILED(hr) && hr != DXGI_ERROR_WAS_STILL_DRAWING) return fail(hresultText(QStringLiteral("Present"), hr));
+	hr = std::exchange(d.dropNext, false) ? DXGI_ERROR_WAS_STILL_DRAWING : d.swapChain->Present(0, DXGI_PRESENT_DO_NOT_WAIT);
+	if (hr == DXGI_ERROR_WAS_STILL_DRAWING) d.dropped++;
+	else if (FAILED(hr)) return fail(hresultText(QStringLiteral("Present"), hr));
+	else d.presented = size;
 	return true;
 }
 
@@ -479,6 +486,12 @@ bool GpuLines::setShown(bool shown, QString &error) {
 }
 
 bool GpuLines::shown() const { return d_->shown; }
+
+int GpuLines::droppedFrames() const { return d_->dropped; }
+
+QSize GpuLines::presentedSize() const { return d_->presented; }
+
+void GpuLines::dropNextFrame() { d_->dropNext = true; }
 
 /* the last frame: resolved again from its antialiased target (it holds until the next frame), copied to memory the
  * processor reads, and waited for: under the layer while it is not shown yet (the chart paints it), and for tests */
@@ -528,6 +541,12 @@ bool GpuLines::setShown(bool, QString &error) {
 }
 
 bool GpuLines::shown() const { return false; }
+
+int GpuLines::droppedFrames() const { return 0; }
+
+QSize GpuLines::presentedSize() const { return QSize(); }
+
+void GpuLines::dropNextFrame() {}
 
 QImage GpuLines::lastPicture() { return QImage(); }
 

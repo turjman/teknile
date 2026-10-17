@@ -46,6 +46,7 @@ it quickly under the table (a value, its enum list, its bits drawn as in a datas
 <li><b>Chart</b>: like an oscilloscope: memory depth apart from the view, <b>Hold</b> / <b>Live</b>, <b>Measure</b>
 (min, max, mean, RMS, the area under a line: W → Wh), <b>Cursors</b> A and B, <b>ƒ Math</b> lines (SUPPLY_V *
 SUPPLY_I), and <b>Display</b>: how the lines are drawn, by a graphics card when the computer has one.</li>
+<li><b>Dump</b>: the device's bytes as the reads bring them, each register a coloured chip, decoded beside.</li>
 <li><b>Monitor</b>: every frame sent and received, raw reads and writes.</li>
 <li><b>Map editor</b>: make a map from nothing or change one, check it, and export it (a specification, a C header,
 a Python module).</li>
@@ -198,6 +199,77 @@ on again by itself.</li>
 that switches AUTO_SEND on is refused.</li>
 </ul>
 )HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Fast streams"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
+<h2>Fast streams</h2>
+<p>A device that takes samples on its own clock (a current at 100 000 samples a second, say) can send them in
+numbered <b>blocks</b>, with no request and no answer time: <b>Fast EVRe</b>, a layer above the protocol. Each block
+says the number of its first sample, so every sample lost on the way is counted, never filled in.</p>
+<p>The map describes the streams, in <code>"streams"</code>: where the blocks come from (a window of the device bank),
+how fast, the register that switches the stream, and what one sample holds (its channels):</p>
+%CODE%"streams": [
+  { "name": "ADC", "addr": "0xDC00", "size": 1024, "rate": 10000,
+    "rate_reg": "ADC_RATE", "enable": "ADC_STREAM",
+    "channels": [ { "name": "I_LOAD", "type": "i16", "unit": "A", "scale": 0.0005 },
+                  { "name": "V_BUS", "type": "i16", "unit": "V", "scale": 0.001 } ] } ]</pre>
+<p>In the Map editor they are on <b>Map settings…</b>, the <b>Streams</b> page: each stream's window, rate and
+channels, the map's checks under them. <code>evre check --writes</code> switches each on for 2 s and checks its START,
+its numbers and its rate; Python reads one live with <code>dev.stream('ADC')</code>.</p>
+<p>A map with streams shows the <b>Fast streams</b> card in the sidebar, a row for each:</p>
+<ul>
+<li>Each stream's row is headed by one line: its name, then what it is, <i>· 2 channels · 1 MS/s</i> (the rate
+measured while it runs; while off the rate set, <i>10 kS/s set</i>), and its <b>Log</b> tick. <b>▶ Start stream</b> writes 1 to the stream's enable register (after
+reading its rate register, if the map names one); the button turns red, <b>■ Stop stream</b>, which writes 0. A
+stream without an enable register is only
+listened to. Not remembered: every stream is off at every start.</li>
+<li>Under it: the samples a second as the Studio's clock measures them, with the correction in parts in a million
+(<i>10.0 k samples/s (+32 ppm)</i>), and the samples lost (<i>lost 1 024</i>, in amber).</li>
+<li>CONFIG is read every 100 ms while a stream runs, even with Poll off, so the device's host watchdog stays fed.</li>
+<li><b>Disconnect</b> (and closing the Studio) switches every stream off on the device first. After a lost link it
+is switched on again by itself.</li>
+<li>No block within 2 s: switched off again, and the Log says so. A device that stops a stream by itself (a reset)
+is told once in the Log.</li>
+<li>One device only: on a bus the card is greyed (a device sending by itself would collide with the others).</li>
+<li>The Monitor names a block <i>READ_RESP (fast stream ADC)</i>; the <b>Dump</b> tab shows the newest block.</li>
+</ul>
+<p>Under the stream, each channel has a <b>Plot</b> tick and its newest value. Ticked, the channel is a line on the
+chart, <i>ADC.I_LOAD</i>, like a register's: its legend chip, its lane, the crosshair, the cursors. Every sample
+keeps its own time: a view of an hour shows the lowest and highest sample of each pixel column, so a spike of one
+sample in millions is never hidden, and zoomed in (down to 10 µs: the wheel, or type <code>50 us</code> in Window)
+each sample is a point of its own. Where samples were lost the line breaks; the mouse over the gap says how many.
+The samples are kept as they came, a few bytes each, within the chart's RAM, where a fast line counts as one line.</p>
+<p><b>A stopped stream</b> keeps its samples on the chart (zoom, measure, export), but nothing of it looks live: the
+chart's top right says <i>ADC stopped · last record 14:03:12.345</i>, its lines' values in the legend are greyed
+(their tooltip says when it stopped), and a live view goes on with the clock, so its lines move out to the left; a
+short window's lock rests, and your trigger on it waits, <i>Normal · waiting (ADC stopped)</i>. <b>▶ Start
+stream</b> takes all of it away at once.</p>
+<p><b>Long memory</b>: <b>Older samples</b>, beside RAM on the Chart tab (with fast streams only). <i>summaries</i>
+(the default): past what its share of the RAM holds, a fast line keeps its older samples only as the lowest and
+highest of each 256 (1/128 of the room), the newest whole, so the Memory is kept far longer: 100 min of two channels
+at a million samples a second in 512 MB, with samples for the newest 79 s. Zoomed out that part draws as before;
+zoomed in, each summary is a bar from its lowest to its highest, the chart's top right says <i>summaries: samples for
+the newest 79 s</i>, and the memory strip shades that part. There <b>Measure</b> gives min, max and peak-peak, and —
+for the mean, RMS, std dev and area (the tooltip says why); the histogram and spectrum take the samples kept whole;
+the trigger watches the samples as they come, never the summaries. <i>kept</i>: every sample whole, the oldest go
+when the RAM is full. A recording keeps every sample either way.</p>
+<p>A fast line is measured as any line: its row in <b>Measure</b> (nothing across a gap; a cursor in a gap reads —),
+its total since Clear, its histogram and spectrum (the spectrum takes the samples as they are, over the longest part
+without a gap), the trigger and Export to CSV (a row per sample).</p>
+<p><b>Fast math lines</b>: a formula over the channels of one stream, <code>ADC.I_LOAD * ADC.V_BUS</code> in W, is
+computed for every sample of that stream at its own time (<b>ƒ Math → New math line…</b>; the dialog says <i>computed
+for every record of stream ADC</i>). A register in it is held at its last polled value. It is drawn, measured,
+triggered and exported as a fast line, and one of the chart's lines. Channels of two streams are refused: two
+streams, two clocks.</p>
+<p><b>Recorded</b>: while <b>Record CSV</b> runs, each stream that sends and has its <b>Log</b> ticked (beside its
+name, on by default; a whole stream or none: each block carries all its channels) is written beside the CSV as it came,
+<code>run.csv</code> and <code>run.ADC.evrs</code>. <b>Open recording</b> opens the CSV with them on one time axis, or a
+<code>.evrs</code> alone; the file is mapped, not read into memory, so a recording larger than the RAM opens, and one
+cut off opens up to its last whole piece. The CSV's rows and a stream's samples end a few milliseconds apart
+(each is written as it comes): a fast line ends where its samples end, and the line above the recording's chart says
+so. Python reads one with <code>evre.read_recording</code>.
+<code>evre record</code> (the command-line tool) writes a stream's blocks to a <code>.evrs</code> file as they came.
+Not to be mixed up with <b>Auto send</b> (the read-only block at a timer's rate, the <i>Polling &amp; speed</i>
+page) or the API's <code>stream</code> command (values at a period for an API client).</p>
+)HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Registers & writes"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Registers &amp; writes</h2>
 <p>One row per register: address, name, <b>value</b> (bold), unit, <b>decoded</b> bit fields or enum name,
@@ -261,8 +333,11 @@ says what holds the view or changes its reading (held, Y log or manual, cursors,
 it drops its hints first (Live to follow, click / drag), never runs over the legend, and its tooltip has it whole.</p>
 <p><b>How many lines</b>: the chart takes 64,000 samples a second, so 64 registers at 1000 polls a second, 32 at
 2000, 16 at 4000 (with <i>Auto send</i>, at its rate). Past that a Plot tick is refused, and when the rate goes up
-the lines plotted last come off; the status bar and the Log say which. The info line shows how many are on the chart
-of how many it may hold: <i>32/64 plotted</i>.</p>
+the lines plotted last come off; the status bar and the Log say which. <b>One cap of 64 lines</b> holds for every
+kind: registers, math lines and fast stream channels (the <i>Fast streams</i> page) count together, and a 65th of
+any kind (a Plot, a channel's tick, a field, <i>New math line…</i>, a math line's <i>Shown</i>) is refused with the
+same words in the status bar. A fast channel is one of the 64 lines, not of the samples a second. The info line
+shows how many lines are on the chart of how many it may hold: <i>32/64 plotted</i>.</p>
 <h3>The first row: what is shown and kept</h3>
 <ul>
 <li><b>Window</b>: how much time is shown. Pick one, or type any length: <code>45</code> (seconds),
@@ -271,13 +346,18 @@ zooms it, around the mouse when held.</li>
 <li><b>Memory</b>: how much is kept (as an oscilloscope's memory depth), <b>Window</b> the part shown: keep 1 min,
 look at 10 s. <b>Drag</b> the chart to look back through the memory, or click / drag on the <b>memory strip</b> under it
 (the whole memory depth, the view marked; while it fills up, the data grows from the right and the strip says how
-much is kept).</li>
+much is kept). Drag its box, or at a short window the handle drawn on it; the <b>wheel</b> over it moves the view a
+window earlier or later.</li>
 <li><b>RAM</b>: the most memory the samples of all the lines take together (2 GB by default; pick one or type any
-size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says <i>memory full</i>:
-the oldest eighth goes at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
+size, 3000 or 3 GB). With many fast lines the memory holds less than asked, and the strip says so in amber:
+<i>RAM budget reached: keeping the last 4.0 min of 30.0 min</i>, and while a recording runs <i>· the recording
+keeps everything</i> (the chart lets the oldest go, the recording's file keeps every sample). The oldest eighth goes
+at a time, so the time kept steps down by an eighth and fills up again (12 min, 10.5, 12).
 Beside it, a note says what the lines need for the Memory set (<i>needs 1.4 GB</i>), in amber with what fits when that
-is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The Studio itself takes about 150 MB more than the RAM
-set.</li>
+is more than the RAM (<i>needs 2.8 GB, keeps 22 min</i>). The RAM is a cap, not a reservation: with less memory free
+than it, the chart keeps within what is free (leaving 1 GB, or a tenth of the computer's memory), so its oldest go
+before the computer pages to disk, and the note says so in amber (<i>only 2.1 GB free: keeps about 40 s</i>). The
+Studio itself takes about 150 MB more than the RAM set.</li>
 <li><b>Y range</b>: <b>Auto</b> follows what is shown (grows at once, shrinks gently: no jumping), or
 <b>Manual</b> with the min and max typed beside it (typing one sets Manual). <b>Ctrl + wheel</b> zooms Y
 around the mouse; a <b>double-click</b> goes back to Auto. <b>Log</b>: a logarithmic scale, a line at each decade
@@ -288,12 +368,17 @@ each other: choosing one turns the other off.</li>
 <h3>The second row: what to do</h3>
 <ul>
 <li><b>Hold</b> stops the view where it is (the memory keeps filling); <b>▶ Live</b> follows now again. Dragging
-holds too.</li>
+holds too. While the trigger is on, the same button is <b>Stop</b> / <b>▶ Run</b> (below).</li>
 <li><b>Measure</b> shows the measurements under the chart (below). <b>Cursors</b> on (turns Measure on): click the
 chart for cursor <b>A</b>, again for <b>B</b>, drag them. A bar between their tags at the top of the plot says the
 time between them (<i>3.525 ms</i>, <i>12.35 s</i>, <i>1 min 23.4 s</i>); with a cursor off the view it ends at the
-plot's edge, and when the cursors are too close for the text, the text stands beside the tags. <b>Clear cursors</b>
-removes them, and so does turning <b>Cursors</b> off.</li>
+plot's edge, and when the cursors are too close for the text, the text stands beside the tags. A tag's tooltip gives
+its clock time; while the trigger holds the view on a crossing, how far from <b>T</b> too (<i>T -0.250 ms</i>), as an
+oscilloscope's cursors read, and so does the line over the measurements (<i>A: T -0.250 ms · B: T +1.750 ms</i>).
+Below a 1 s window (the grid in divisions) the cursors sit on the grid: each keeps its place while the wave moves
+under it, its tooltip and the line say where (<i>A: -7.000 ms</i>, from the right edge, or from T), the measurements
+take the samples under them, and <b>Shift</b> while dragging snaps a cursor to a tenth of a division.
+<b>Clear cursors</b> removes them, and so does turning <b>Cursors</b> off.</li>
 <li><b>ƒ Math</b>: lines made from a formula (below).</li>
 <li><b>Display</b>, a menu of how the lines are drawn (its tooltip says what is on): <b>Normalise</b>, every line
 scaled to its own range, to compare shapes of different units; <b>Lanes</b>, a plot per unit stacked under each other,
@@ -301,9 +386,12 @@ a line between two lanes, each at least 80 px high: when they do not fit they sc
 the bar at the right); a click on a lane's ▾ (above its unit name) or on its unit name folds it into a strip of its
 lines and their values, a click on the strip opens it again, and <b>Fold all lanes</b> / <b>Open all lanes</b> under
 Lanes do it for all; drag the line between two lanes to make the one above taller or lower (a double-click on it: all
-equal again); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
-Auto, Manual…, Log or Fold lane, Ctrl + wheel over it
-zooms it, a double-click sets it to Auto; one time axis, the cursors, notes and crosshair across them all;
+equal again; the lanes always fill the plot, none lower than 80 px); each lane has its own Y range: a click on a lane's ⋯ (under its ▾), or a right-click on its values, gives
+Auto, Manual…, Log, All lanes: Auto or Fold lane, Ctrl + wheel over it
+zooms it, a double-click sets it to Auto; a lane not in Auto has a <i>Manual</i> (amber) or <i>Log</i> tag at the top of
+its values, and a click on the tag sets it back to Auto; a click on a lane's values makes it the current lane, whose
+range the Y range row shows and sets (the list after <i>Y range</i> chooses it too: <i>Y range [A ▾]</i>), and <b>All lanes: Auto</b> under Lanes sets them all back;
+one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; <b>Hover values</b> (on by default): the box of values beside the mouse, off to see
@@ -321,29 +409,66 @@ always answers.</li>
 <li><b>Clear</b> empties the lines and the memory and starts the totals again; <b>Remove all</b> takes every register
 off the chart.</li>
 </ul>
-<p>The time labels are the clock time and move with the lines; the crosshair shows the time and how long ago. Long
-windows and fast lines are drawn from min/max summaries, so they cost no more than short ones.</p>
+<p>From a 1 s window up the time labels are the clock time and move with the lines. Below 1 s the time axis is an
+oscilloscope's: 10 fixed divisions whose lines stand still while the wave moves, labelled by their offset from the
+right edge (<i>-8 ms</i> … <i>0</i>), or from <b>T</b> while the trigger holds the view on a crossing (<i>0</i> under
+it, <i>+4 ms</i>). Above the plot, at the right of the legend's row, <i>1 ms/div · 14:03:12.345</i> says a division's length and the clock time
+at 0; the wheel steps the window through 1, 2 and 5 per division. <b>Display → Time grid</b>: Auto (divisions below
+1 s), Clock times or Divisions. The crosshair shows the time and how long ago (held on a crossing: how far from T, <i>T +1.234 ms</i>). Long windows and fast lines are drawn
+from min/max summaries, so they cost no more than short ones.</p>
 <h3>Measurements</h3>
 <p><b>Measure</b> (off by default) shows a table under the chart, for every line: the value at cursor <b>A</b> and
 <b>B</b>, <b>B − A</b>, and over A → B (or over the view without cursors) the <b>min</b>, <b>max</b>, <b>mean</b>,
 <b>RMS</b>, the <b>standard deviation</b> (the ripple, whatever the level: 12 V with 1 mV of ripple reads 0.707 mV),
 <b>peak to peak</b> and the <b>area under the line</b> (∫ value dt, by trapezoids between the samples): a power in
-<b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. The splitter above the
-table moves. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
+<b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. Drag the handle
+between the chart and the table (a grip, lit under the mouse) for more rows or a taller chart; its place is kept. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
 <p><b>Since Clear</b>: each line's total since the chart's <b>Clear</b>, in Wh, Ah or unit·h, summed from every sample
 as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
 nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
-<h3>Histogram, spectrum, trigger</h3>
-<p><b>Right-click a line's chip</b> in the legend: <b>Histogram</b> (how its values spread, bins by the
+<h3>Histogram and spectrum</h3>
+<p><b>Click a line's chip</b> in the legend (its <b>▾</b>) or right-click it: <b>Histogram</b> (how its values spread, bins by the
 Freedman–Diaconis rule) or <b>Spectrum</b> (which frequencies it holds, as amplitudes in its unit: a 2 V sine reads
 2 V; resampled to even steps, Welch with a Hann window, up to half the rate), over A → B or the view, in a window of
 its own with a readout under the mouse, a picture and CSV.</p>
-<p><b>Display → Trigger</b>: a row to pick a line, Rising / Falling / Either, a level (a dashed line on the chart you
-can drag) and <b>Normal</b> (holds on each crossing, armed again once the view is full) or <b>Single</b> (the first;
-<b>Arm</b> for the next). The chart holds with the crossing at 20 % of the window and a <b>T</b> over it; the
-measurements, export and pictures take that view. <b>Live</b> follows now again.</p>
+<h3>Trigger</h3>
+<p><b>Click a line's chip → Trigger on this line</b> (or <b>Display → Trigger</b>): the chart holds when that
+line crosses its level, as an oscilloscope. The level is a dashed line in the line's lane from its <b>T▸</b> marker
+left of the chart to its tab right of it, <i>0.4 A ↑</i> (the level in the line's unit and the edge), so nothing
+covers the newest samples; their pointers are solid while the picture held crossed this level. <b>Drag</b> the
+marker, the tab or the line to move the level; <b>click</b> the tab's arrow (↑ ↓ ↕) for rising, falling or either;
+their tooltips name the line. A level beyond the lane's range stays on its edge, dotted, their pointers ▲ or ▼ and
+<i>(above range)</i> in their tooltips. Each line keeps its own level and edge.</p>
+<p><b>Auto</b> holds on each crossing; when none comes for a window's length after the hold-off, it runs live until
+the next. <b>Normal</b> holds on each crossing and stays held until the next one, however long. <b>Single</b> holds on
+the first crossing and stops; <b>Arm</b> for another. Normal and Single wait on a still picture; only Auto rolls.
+While they wait, <b>Force</b> (in Arm's place) holds the view now, as if the line crossed; Normal waiting after a
+capture says when the last one was. <b>Find level</b> puts the level halfway between the line's lowest and highest
+in view. The
+<b>hold-off</b> (the window's length by default, 0 to
+10 s) is the time after a crossing in which no other counts. The <b>T ▼</b> flag above the chart, its arrow over
+the crossing, is its place in the window (its tooltip says when the line crossed and at what level), 50 % by default: drag it (0 to 90 %), double-click it for 50 % again.
+While the view holds a crossing, a faint dashed line runs down from the T through the chart and every lane, so the
+instant is read on every wave; <b>Display → Trigger line</b> turns it off. In a window under a second the next
+picture shows once it is whole, so a repeating wave stands still. A fast line's crossing is found as its blocks come.
+The row under the actions sets the same; the measurements, export and pictures take the view held.</p>
+<p>While the trigger is on, <b>Hold</b> / <b>Live</b> is <b>Stop</b> / <b>Run</b>: <b>Stop</b> holds the picture
+and its T, no crossing counts (the button's <b>Run</b> is amber while stopped); <b>Run</b> arms again in the mode,
+from now. Dragging the chart stops it too. The row
+and the chart's top right say the same state (<i>Normal · waiting</i>, <i>Normal · triggered</i>, <i>Stopped · Run
+to arm</i> ...), and change only when it does, with no number while it runs; while the view still fills after the
+crossing, a faint line marks where the data ends.</p>
+<p><b>Short windows lock by themselves</b>: below a 100 ms window a live chart with the trigger off holds on each
+rising crossing of its busiest line's middle (a fast line first, else the one with the most samples in the window; a
+line with fewer than 20 there is not watched) (<i>Auto (short window)</i>; <i>Auto · free running</i> while it does not
+cross; a blue badge in the corner), so a wave stands still instead of blurring. Your trigger takes over when it is on, Hold ends it, and
+<b>Display → Lock short windows</b> turns it off.</p>
+<p><b>Off</b> in the row turns the trigger off, as unticking <b>Display → Trigger</b> or the chip's
+<b>Trigger on this line</b>, which is ticked for the line watched. A line watched that leaves the chart stops the
+trigger (<i>no line to watch</i>; the row's list says <i>choose a line</i>, its tooltip names the line awaited); it
+arms again when the line comes back, never on another line by itself.</p>
 <h3>Math lines</h3>
 <p><b>ƒ Math → New math line…</b>: a name, a unit and a formula over register names, e.g. <code>SUPPLY_V *
 SUPPLY_I</code> in W (the power; its area is the energy). <code>+ − * / ^ ( )</code>, <code>pi</code>, and abs sqrt
@@ -353,11 +478,15 @@ a list offers the registers (with their units) and functions: Up and Down pick, 
 a function goes in as <code>name()</code>, the cursor inside. It is drawn and measured like
 a register, from the same polls; the registers it reads are sampled for it even when they are not plotted. Kept for
 the next start; the menu shows, edits and removes them.</p>
+<p>A formula over the channels of one fast stream (<code>ADC.I_LOAD * ADC.V_BUS</code>) is computed for every sample
+of that stream, a register in it held at its last polled value: see <i>Fast streams</i>.</p>
 <h3>CSV</h3>
 <p><b>● Record CSV</b> asks for a file, then writes one row per poll (one per frame with <i>Auto send</i>):
 <code>time_s</code> (since start), <code>datetime</code>, then every register ticked <b>Log</b> (all by default), as
 the values shown (scaled). Columns are fixed when the recording starts. <b>■ Stop recording</b> closes the file.</p>
-<h3>Right-click on the chart</h3>
+<h3>Right-click on the chart, and File ▾</h3>
+<p>The same items but <b>Add note here</b> are on the <b>File ▾</b> button (right of <b>Display</b>; beside
+<b>Lines</b> in a recording's window). A note needs its place: right-click the chart where it goes.</p>
 <ul>
 <li><b>Copy picture</b>, <b>Save picture…</b> (PNG): the chart as shown, drawn by the CPU.</li>
 <li><b>Export to CSV…</b>: the samples of every line over the view, or between the cursors A → B when both are
@@ -367,8 +496,14 @@ double-click it to edit, click it and press <b>Delete</b> to remove it. While re
 the file (<code>run.csv.notes.json</code>), and an export takes the notes of its span.</li>
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
-own; the live chart goes on. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
-registers' value names and fields are matched by name: <b>Lines</b> plots a register's field.</li>
+own; the live chart goes on. There the legend shows each line's latest value <i>in the view</i> (zoomed into a part,
+that part's), the info line has no fps (the chart is drawn only on a change), and the totals' column reads <b>Whole
+file</b>: there is no Clear. A file bigger than the chart's RAM asks to keep its last part. With a map loaded, its
+registers' value names and fields are matched by name. <b>Lines</b> (top right, <i>Lines 8/11</i>) ticks each
+line on or off: the file's columns, each fast channel and the math lines, grouped, with All, None and a search when
+they are many; the lines unticked stay off in the next recording opened. Under it, a register's fields. A recent
+recording whose file is gone is greyed, <i>(not found)</i>: a click takes it off the list; <b>Clear the list</b> empties
+it.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Device maps"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
@@ -412,6 +547,8 @@ first, and a device with EVRe Guard refuses it (15).</li>
 <li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms),
 <b>groups</b> (notes per group), and on a field <b>access</b> and <b>desc</b>.</li>
 <li><b>extends</b>: <code>"base.json"</code> makes the map an overlay that changes another one.</li>
+<li><b>streams</b> (top level, optional): a device's fast streams, each its window, rate, switches and channels
+(the <i>Fast streams</i> page).</li>
 <li>Keys the Studio does not know are kept. <code>docs/evre-map-1.schema.json</code> describes the format.</li>
 </ul>
 <p>Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
@@ -437,7 +574,7 @@ a bytes or f32 register, <i>Values</i> with several selected) has a warning sign
 page, for why.</li>
 <li><b>Checks</b> under the table: names used twice, registers sharing bytes, fields past the bits, min above
 max… Click one to go there.</li>
-<li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups.</li>
+<li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the <i>Streams</i> page).</li>
 <li><b>Export</b>: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
 the device, and the <i>device table</i> for firmware on the EVRe library (the images, their addresses checked, a
 bind function; library 1.0 needs every read-only register below the writable ones), the <i>device table for
@@ -453,7 +590,7 @@ register is edited, as long as it is read the same way.</p>
 the Studio's one queue, so clients and the Studio never collide on the port.</p>
 <table cellpadding="4">
 <tr><td><b>1219</b></td><td>EVRe pass-through: the same frames as the device. Existing EVRe clients work
-unchanged.</td></tr>
+unchanged, a fast stream's blocks included (below).</td></tr>
 <tr><td><b>1220</b></td><td>JSON lines by register name: send one JSON object per line, get one back.</td></tr>
 </table>
 <p>Only this PC can connect, unless <b>Network</b> is ticked.
@@ -476,6 +613,17 @@ to the slave it names.</p>
 {"cmd":"broadcast","name":"D1_SPEED","value":0}  every device at once, then each read back</pre>
 <p>Add <code>"id"</code> to any request: it comes back in the answer. Errors: <code>{"ok":false,"error":"..."}</code>.
 Names are the map's (any case), or an address such as <code>"0xD00C"</code>.</p>
+<h3>Fast streams</h3>
+<p><code>list</code> also names the map's fast streams (<code>"streams"</code>: each one's rate, on or off, and
+channels). A channel is named <code>STREAM.CHANNEL</code>: <code>get</code> gives its newest record's value, and that
+record's time in <code>"times"</code>; <code>stream</code> sends a line of its min, max and mean every
+<code>period_ms</code> (10 at least; else <code>ms</code>), a line of its own kind beside the registers' samples. The
+stream must be on in the Studio (<b>Fast streams</b>, or <code>--fast</code>); none of it needs a write switch.</p>
+%CODE%{"cmd":"stream","names":["ADC.I_LOAD"],"period_ms":100}
+   -> {"t":1790170000.2,"fast":{"ADC.I_LOAD":{"n":1000,"min":-6.5,"max":6.5,"mean":0.01,"first":53000}}}</pre>
+<p>The raw records: on port 1219, write 1 to the stream's enable register, as to the device, and its blocks come as the
+device sends them; 0 ends them. While the Studio streams it, nothing is written to the device. A recording's
+<code>.evrs</code> file holds them too (<code>evre.read_recording</code> in Python).</p>
 <h3>MATLAB</h3>
 %CODE%c = tcpclient("127.0.0.1", 1220);
 configureTerminator(c, "LF");
@@ -487,11 +635,60 @@ r.values.SUPPLY_V</pre>
 s = socket.create_connection(("127.0.0.1", 1220)); f = s.makefile("rw")
 f.write(json.dumps({"cmd": "get", "names": ["SUPPLY_V"]}) + "\n"); f.flush()
 print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
+<p>The <code>evre</code> package beside the Studio's source has a client for it: <code>evre.connect_studio()</code>
+(<code>get</code>, <code>stream</code>, <code>fast_stream</code>).</p>
 <h3>LabVIEW</h3>
 <p><i>TCP Open Connection</i> (127.0.0.1, 1220) → <i>TCP Write</i> the JSON text plus <code>\n</code> →
 <i>TCP Read</i> in <b>CRLF</b> mode → <i>Unflatten From JSON</i> into a cluster
 (e.g. <code>ok</code> boolean, <code>values</code> cluster with a <code>SUPPLY_V</code> double).</p>
 <p>Full examples: <code>examples/</code> next to the program's source.</p>
+)HTML") },
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Dump"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
+<h2>Dump</h2>
+<p>The <b>Dump</b> tab shows the device's bytes as the reads bring them: one <b>card</b> per block the polling reads,
+in address order. Each card has the request the Studio sent (<i>→ REQUEST  READ 22 bytes @ 0xD000</i>) and the reply
+(<i>← REPLY  12 ms ago</i>), each broken down into the frame's fields: every byte of it named, START, SLAVE,
+FUNCTION, OFFSET, COUNT, DATA, CRC and END, with its meaning under it (<i>FUNCTION READ_RESP</i>, <i>OFFSET 0xD000</i>,
+<i>DATA payload</i> under a grey <i>22 bytes ↓</i>, <i>CRC OK</i>: the reply's CRC was checked). The mouse on a field says
+what the protocol makes of it. Under them, the payload as a grid of 16 bytes a row, one line high, with the row's
+address at its left and each column's offset over it (00 to 0F): a byte's address is its row's plus its column's.</p>
+<ul>
+<li>Every register of the map is a <b>chip</b>: its bytes tinted in its colour, a plotted one in its chart colour.
+Beside the grid, one line per register: its dot, its name and its value as the Registers tab shows it. A byte inside
+the block that no register maps is plain grey hex. Bytes no read covers (before the block in its row, or a block with
+no reply yet) are empty cells in a <b>dashed frame</b>, with <i>4 bytes not read</i> or <i>no reply yet</i> in it when
+it fits (never an invented 00).</li>
+<li><b>Fields</b> (on by default): off, each frame is one line of bytes, and a byte's tooltip names its field.</li>
+<li>A byte whose value changed is written in blue a moment (a light cyan in the dark theme), as a value in the Registers tab glows; not
+while the mouse is on a chip.</li>
+<li><b>Follow</b> shows each block's newest reply at the pace of <i>Show values</i>; <b>Hold</b> keeps the bytes shown.
+<b>Colour</b>: <b>All registers</b>, or <b>Plotted</b> (only the plotted ones in colour, the others grey).</li>
+<li>A card whose bytes are not live has an <b>amber</b> stripe at its left edge, and its reply's label and tooltip say
+why: held, stale (not refreshed for longer than the Registers tab's stale limit), a failed read (the device's error
+answer shown, the last good bytes stay), the link closed, a manual read or a write. Held, or with the link closed, a
+banner
+over the cards says it once.</li>
+<li>The mouse on a chip lights the register in its own colour, its chips filled stronger and outlined and its decode
+line filled, the rest as it was, lights the byte's column offset and its row's address, and says the byte: its
+register, which byte of it, its address, its value; the tooltip sits under the row, never over the values. A
+<b>click</b> selects the register here and in the Registers tab (lit the same way, framed in blue); a
+<b>double-click</b> goes there. The Registers tab's
+current row is selected here too, and its right-click menu has <b>Show in dump</b>. With the cards in focus the
+<b>arrow keys</b> move the selection, <b>Enter</b> goes to the Registers tab, the <b>Menu</b> key opens the menu.</li>
+<li><b>Right-click</b>, or the <b>Copy ▾</b> button: Show in Registers, Plot / Unplot, Write… (with <i>Allow
+writes</i>), and Copy: the register's bytes, the block as hex rows or as a C array, or its decoded values.</li>
+<li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one; so does the last <b>write</b>
+(from the Registers tab or the Monitor): its WRITE_ACK and the device's WRITE_ACK_RESP over the bytes written, or a
+WRITE, which is never answered. Auto send's frame shows as <i>← AUTO_SEND</i> with its rate. On a bus the
+<b>Device</b> list shows one device's cards at a time.</li>
+<li>A running <b>fast stream</b> has a card of its own: its newest block, at most ten times a second whatever
+<i>Show values</i> says. The frame's fields, the block's header (FIRST, COUNT, FLAGS, SPARE), then the first three
+records and the last, each channel's bytes a chip and its value beside it, and <b>Show all ▾</b> for the whole
+block. Records lost or a stopped stream in amber; <b>Hold</b> keeps the block shown. The mouse on a channel lights
+it in every row. Copy gives the block as hex or a C array, or the records as CSV.</li>
+<li>The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
+kept).</li>
+</ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Monitor</h2>
@@ -505,6 +702,7 @@ to say it arrived; READ it to see.</p>
 <p><b>Slave</b>: the device it goes to (on a bus, the devices by name). <b>0 (broadcast)</b>, or <i>Broadcast · slave
 0</i> on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see <b>Connecting</b>), which every device
 takes and none answers. A device chosen again gets back the function chosen before.</p>
+<p>A READ's answer also shows at the top of the <b>Dump</b> tab, decoded by the map.</p>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Log & pop-ups"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Log &amp; pop-ups</h2>
@@ -519,7 +717,7 @@ loaded, CSV recordings, the API server.</p>
 <b>Open folder</b> shows it.</li>
 <li><b>Show info</b> off: only warnings and errors in the tab (the file keeps everything).</li>
 <li><b>Pop-ups</b>: warnings and errors also pop up for a few seconds (5 s, an error 8 s) in the free space
-right of the tabs, where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
+beside the tabs (right of them, or left of them in Arabic), where they cover nothing; <i>Show in Log</i> opens the tab and closes the pop-up. They do not
 block anything. When the window is too narrow for them there, the status bar shows them instead.</li>
 </ul>
 <p>No spam: the same line again and again (a reconnect every 2 s) is counted, not repeated; the same message
@@ -529,7 +727,7 @@ others that came while it was up. All of them are in the Log; hover the pop-up f
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Command line"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Command line</h2>
 %CODE%EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]</pre>
 <ul>
 <li>A server token comes from the environment variable <code>EVRE_TOKEN</code>, never from the command line.</li>
@@ -540,6 +738,8 @@ poll rate, is left off, and the Log says which.</li>
 <li><code>--inflight n</code> sets <b>In flight</b> (requests sent before their answers come), as typing it in
 the box does.</li>
 <li><code>--record</code> starts a CSV recording at once: every poll, as with the button.</li>
+<li><code>--fast</code> starts those fast streams once connected, as their <b>Start stream</b> does: for a script that
+reads them through the API. A name the map has no stream of is left, and the Log says which.</li>
 <li><code>--api-writes</code> is the same as ticking <i>Allow API writes</i>; <code>--api-writes-danger</code> also
 the ⚠ switch.</li>
 </ul>
@@ -550,21 +750,31 @@ the ⚠ switch.</li>
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
 cancels · right-click: the menu of the row and the table</td></tr>
-<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
+<tr><td><b>Dump</b></td><td><b>Click</b> a chip or a decode line: the register selected (in the Registers tab too) ·
+<b>double-click</b>: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on <b>Copy ▾</b> too)</td></tr>
+<tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
-<b>click</b> places A, then B, a <b>drag</b> moves the nearer</td></tr>
+<b>click</b> places A, then B, a <b>drag</b> moves the nearer (below 1 s with <b>Shift</b>: to a tenth of a
+division); the mouse on a cursor's tag: its time (from T while the trigger holds the view)</td></tr>
 <tr><td><b>Legend</b></td><td><b>Wheel</b> over it, its <b>bar</b> or its <b>arrows</b> scroll it when the lines do not
 all fit</td></tr>
-<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds</td></tr>
-<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording</td></tr>
+<tr><td><b>Memory strip</b></td><td><b>Click</b> / <b>drag</b>: the view goes there, and holds (drag its box or
+handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
+<tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording (all but the note on
+<b>File ▾</b> too)</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
 <b>Delete</b> to remove</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
-<tr><td><b>Legend</b></td><td><b>Right-click</b> a line's chip: its Histogram or Spectrum</td></tr>
-<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's dashed line</td></tr>
+<tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
+Spectrum, Trigger on this line</td></tr>
+<tr><td><b>Trigger</b></td><td><b>Drag</b> its level's T▸ marker (left of the chart), tab (right of it) or dashed line · <b>click</b> the tab's
+arrow: rising, falling, either · <b>drag</b> the T ▼ flag above the chart: where the crossing sits · <b>double-click</b>
+it: 50 %</td></tr>
 <tr><td><b>Lanes</b></td><td><b>Click</b> a lane's ⋯ or <b>right-click</b> its values: its Y range (Auto, Manual…,
-Log), Fold lane ·
-<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it: Auto ·
+Log, All lanes: Auto), Fold lane · <b>click</b> its values: the current lane (the Y range row) · <b>click</b> its
+Manual or Log tag: Auto ·
+<b>wheel</b> over the values scrolls the lanes · <b>Ctrl + wheel</b> zooms the lane · <b>double-click</b> it or its
+values: Auto ·
 <b>click</b> its ▾ or unit name: fold it, the strip: open it · <b>drag</b> the line between two lanes: their heights
 (<b>double-click</b> it: equal)</td></tr>
 <tr><td><b>Map editor</b></td><td><b>Ctrl+Z</b> / <b>Ctrl+Y</b> undo / redo · <b>Ctrl+D</b> duplicate · <b>Ctrl+C</b> /

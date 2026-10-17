@@ -52,9 +52,45 @@
       "description": "notes on a group, by its name"
     },
     "extends": { "type": "string", "description": "an overlay: the map it changes, relative to this file" },
-    "registers": { "type": "array", "items": { "$ref": "#/$defs/register" } }
+    "registers": { "type": "array", "items": { "$ref": "#/$defs/register" } },
+    "streams": { "type": ["array", "null"], "items": { "$ref": "#/$defs/stream" }, "description": "Fast EVRe: the device's sample streams" }
   },
   "$defs": {
+    "stream": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "unique among the map's streams and registers" },
+        "addr": {
+          "description": "the window's first address, in the device bank 0xD000..0xDFFF",
+          "oneOf": [
+            { "type": "string", "pattern": "^\\s*0[xX][dD][0-9A-Fa-f]{3}\\s*$" },
+            { "type": "integer", "minimum": 53248, "maximum": 57343 }
+          ]
+        },
+        "size": { "type": "integer", "minimum": 9, "maximum": 4096, "description": "the window's bytes: the largest block, its 8-byte header included" },
+        "rate": { "type": "number", "exclusiveMinimum": 0, "description": "records a second, as the device is built" },
+        "rate_reg": { "type": ["string", "null"], "description": "a register whose shown value is the rate now" },
+        "enable": { "type": ["string", "null"], "description": "a writable register: 1 starts the stream, 0 stops it" },
+        "group": { "type": ["string", "null"] },
+        "desc": { "type": ["string", "null"] },
+        "notes": { "type": ["string", "null"] },
+        "channels": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/channel" } }
+      },
+      "required": ["name", "addr", "size", "rate", "channels"]
+    },
+    "channel": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "unique in its stream; the line is STREAM.CHANNEL" },
+        "type": { "enum": ["u8", "i8", "u16", "i16", "u32", "i32", "f32", "uint8_t", "int8_t", "uint16_t", "int16_t", "uint32_t", "int32_t", "float"], "description": "a number: never bytes" },
+        "unit": { "type": ["string", "null"] },
+        "scale": { "type": ["number", "null"], "description": "shown = raw x scale + offset" },
+        "offset": { "type": ["number", "null"] },
+        "decimals": { "type": ["integer", "null"], "minimum": -1, "maximum": 15 },
+        "desc": { "type": ["string", "null"] }
+      },
+      "required": ["name"]
+    },
     "word": {
       "description": "a 16-bit number: \"0xD004\", \"53252\" or 53252",
       "oneOf": [

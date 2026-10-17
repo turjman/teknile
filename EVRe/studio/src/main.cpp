@@ -3,7 +3,7 @@
  * Device maps are JSON (maps/). Live values, charts, CSV recording.
  *
  *   EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
- *              [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+ *              [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect]
  *              [--interval ms] [--inflight n] [--record file.csv] [--api] [--api-writes] [--api-writes-danger]
  *   The token, if the server needs one, from the environment: EVRE_TOKEN.
  *
@@ -15,6 +15,8 @@
 #include <QComboBox>
 #include <QCommandLineParser>
 #include <QDialog>
+#include <QDialogButtonBox>
+#include <QLineEdit>
 #include <QProcess>
 #include <QPushButton>
 #include <QScrollArea>
@@ -25,6 +27,7 @@
 #include <QTimer>
 #include <optional>
 
+#include "model/fast_store.h"
 #include "ui/help_dialog.h"
 #include "ui/language.h"
 #include "ui/main_window.h"
@@ -50,7 +53,7 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	const QCommandLineOption plot(QStringLiteral("plot"), QStringLiteral("Registers to chart."),
 			QStringLiteral("NAME,NAME"));
 	const QCommandLineOption tab(QStringLiteral("tab"), QStringLiteral("Tab to show."),
-			QStringLiteral("registers|chart|monitor|map"));
+			QStringLiteral("registers|chart|dump|monitor|map"));
 	const QCommandLineOption interval(QStringLiteral("interval"),
 			QStringLiteral("Poll interval, ms (0.25 = 4000/s, 0 = as fast as possible)."), QStringLiteral("ms"));
 	const QCommandLineOption inFlight(QStringLiteral("inflight"), QStringLiteral("Requests in flight (pipelining)."),
@@ -58,13 +61,15 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	const QCommandLineOption record(QStringLiteral("record"), QStringLiteral("Record every poll to this CSV file."),
 			QStringLiteral("file.csv"));
 	const QCommandLineOption connectAtStart(QStringLiteral("connect"), QStringLiteral("Connect at start."));
+	const QCommandLineOption fastAtStart(QStringLiteral("fast"), QStringLiteral("Fast streams to start once connected."),
+			QStringLiteral("NAME,NAME"));
 	const QCommandLineOption api(QStringLiteral("api"), QStringLiteral("Serve the API (EVRe :1219, JSON :1220)."));
 	const QCommandLineOption apiWrites(QStringLiteral("api-writes"),
 			QStringLiteral("Allow API clients to write (not the danger registers)."));
 	const QCommandLineOption apiWritesDanger(QStringLiteral("api-writes-danger"),
 			QStringLiteral("Allow API clients to write the danger registers too."));
-	parser.addOptions({ tcp, serial, map, bus, plot, tab, interval, inFlight, record, connectAtStart, api, apiWrites,
-			apiWritesDanger });
+	parser.addOptions({ tcp, serial, map, bus, plot, tab, interval, inFlight, record, connectAtStart, fastAtStart, api,
+			apiWrites, apiWritesDanger });
 	parser.process(app);
 
 	MainWindow::Startup startup;
@@ -75,6 +80,7 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 	startup.tab = parser.value(tab);
 	startup.plot = parser.value(plot).split(QLatin1Char(','), Qt::SkipEmptyParts);
 	startup.connect = parser.isSet(connectAtStart);
+	startup.fast = parser.value(fastAtStart).split(QLatin1Char(','), Qt::SkipEmptyParts);
 	startup.interval = parser.isSet(interval) ? parser.value(interval).toDouble() : -1; /* 0.25 = 4000/s, 0 = max */
 	startup.record = parser.value(record);
 	startup.inFlight = parser.value(inFlight).toInt();
@@ -181,6 +187,10 @@ void saveMapEditorPicture(QWidget &window, const QString &path, bool withFields)
 void saveDialogPicture(const QWidget &window, const QString &path, const QString &button) {
 	QTimer::singleShot(400, [path] {
 		if (auto *dialog = qobject_cast<QDialog *>(QApplication::activeModalWidget())) {
+			/* the focus off a text box: no caret in the picture */
+			if (qobject_cast<QLineEdit *>(dialog->focusWidget()))
+				if (auto *buttons = dialog->findChild<QDialogButtonBox *>(); buttons && !buttons->buttons().isEmpty())
+					buttons->buttons().constFirst()->setFocus();
 			dialog->grab().save(path);
 			dialog->reject();
 		}
@@ -231,6 +241,9 @@ int main(int argc, char **argv) {
 	QApplication::setOrganizationName(QStringLiteral("teknile"));
 	QApplication::setApplicationName(QStringLiteral("EVReStudio"));
 	QApplication::setApplicationVersion(QStringLiteral(EVRE_STUDIO_VERSION));
+	/* at the quit, before the window and its charts close: what they hold is freed without its pages discarded first
+	 * (the system takes them back with the process), so a quit right after closing a big chart does not linger */
+	QObject::connect(&app, &QCoreApplication::aboutToQuit, [] { fast::hurryLettingGo(); });
 
 	const MainWindow::Startup startup = parseCommandLine(app);
 	const ScreenshotRequest screenshot = screenshotRequestFromEnvironment();

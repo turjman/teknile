@@ -36,6 +36,7 @@ host                                   device
 | Folder | What |
 |---|---|
 | [`lib/`](lib/) | The device-side library: `EVRe.h`, `EVRe.cpp`. `ports/stm32h7/malloc_lock.c` is an optional heap lock for newlib on Cortex-M7. |
+| [`lib/fast/`](lib/fast/) | Fast EVRe, a layer above the protocol (not part of it): a device sends samples taken on its own clock in numbered blocks, as `READ_RESP` frames of a window of the device bank that nobody asked for; `evre_fast.h` builds a block's frame around the records where they lie (no copy, no heap). The chapter "Fast EVRe" of `docs/PROTOCOL.md` says the rest; the Studio plots, measures, triggers on and records the streams (`.evrs`), and `evre record` writes one. |
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The protocol: frame, function codes, CRC, register model, reserved bank, messages, errors, test vectors, device API, host notes, conformance checklist. |
 | [`studio/`](studio/) | **EVRe Studio**, the desktop tool (C++17, Qt 6). |
 | [`studio/docs/MAP_FORMAT.md`](studio/docs/MAP_FORMAT.md) | The register map format `evre-map/1`: the contract for any tool that reads or writes maps, and its [JSON Schema](studio/docs/evre-map-1.schema.json). |
@@ -138,7 +139,7 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])
 | `tests/run_lib_tests.py` | The library and EVRe Guard on a PC: the 1.0 transcript of 12 000+ frames through the 1.1 builds, the features and decisions, every public name, the warnings (`python tests/run_lib_tests.py`, run in `EVRe`). |
 | `studio/tests/fake_device.py` | A fake EVRe device over TCP, from any map, with moving values. |
 | `studio/tests/gui_test.cpp` | EVRe Studio's window driven by QtTest against the fake device: writes, read-back, change-while-editing, ⚠ confirmation, stale values, a bus, auto send, the Map editor, the chart (on a graphics card too). |
-| `studio/tests/api_test.py` | The API server end to end, in its three write modes, JSON and pass-through. |
+| `studio/tests/api_test.py` | The API server end to end, in its three write modes, JSON and pass-through, and a fast stream through both. |
 | `studio/tests/map_test.cpp`, `cli_test.py`, `sim_test.py`, `device_table_test.py`, `guard_table_test.py`, `schema_test.py` | The map files and exports, `evre`, `evre-sim`, the device table and EVRe Guard's table compiled with the library, the JSON Schema. |
 | `studio/python/tests` | The Python package against `evre-sim`. |
 | `studio/tests/evre_probe.cpp` | The Studio's protocol core against a real device, read only. |

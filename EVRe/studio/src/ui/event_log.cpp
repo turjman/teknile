@@ -214,6 +214,19 @@ Notice::Notice(QTabWidget *tabs, QWidget *window) : QLabel(window), tabs_(tabs),
 	});
 	hideTimer_->setSingleShot(true);
 	connect(hideTimer_, &QTimer::timeout, this, &Notice::dismiss);
+	tabs_->tabBar()->installEventFilter(this); /* its room follows the tabs: their widths change with the language */
+}
+
+bool Notice::eventFilter(QObject *watched, QEvent *event) {
+	if (watched == tabs_->tabBar() && (event->type() == QEvent::Move || event->type() == QEvent::Resize)) place();
+	return QLabel::eventFilter(watched, event);
+}
+
+/* the direction or the language changed: placed again once the tabs are laid out anew (after this event) */
+void Notice::changeEvent(QEvent *event) {
+	QLabel::changeEvent(event);
+	if (event->type() == QEvent::LayoutDirectionChange || event->type() == QEvent::LanguageChange)
+		QTimer::singleShot(0, this, &Notice::place);
 }
 
 void Notice::dismiss() {
@@ -237,15 +250,18 @@ void Notice::post(LogLevel level, const QString &text) {
 	place();
 }
 
-/* In the tab bar's row, right of the tabs: nothing of any tab is there, so it
- * covers nothing, whatever the tab and the window size. One line, elided. */
+/* In the tab bar's row, beside the tabs: right of them, and in right-to-left (Arabic) left of them, where the tabs
+ * leave the row free (the room counted left to right only, it stayed over the window's own controls there). Nothing
+ * of any tab is there, so it covers nothing, whatever the tab and the window size. One line, elided. */
 void Notice::place() {
 	if (text_.isEmpty() || !hideTimer_->isActive()) return;
 	QWidget *window = parentWidget();
 	const QTabBar *bar = tabs_->tabBar();
-	const QPoint barEnd = bar->mapTo(window, QPoint(bar->width(), 0));
-	const int left = barEnd.x() + 20;
-	const int right = tabs_->mapTo(window, QPoint(tabs_->width(), 0)).x();
+	const bool mirrored = tabs_->layoutDirection() == Qt::RightToLeft;
+	const QPoint barStart = bar->mapTo(window, QPoint(0, 0));
+	const int tabsLeft = tabs_->mapTo(window, QPoint(0, 0)).x();
+	const int left = mirrored ? tabsLeft : barStart.x() + bar->width() + 20;
+	const int right = mirrored ? barStart.x() - 20 : tabsLeft + tabs_->width();
 	const int rowHeight = bar->height();
 
 	const ThemeColors &c = Theme::colors();
@@ -272,12 +288,14 @@ void Notice::place() {
 						   "<a href='log' style='color:%6'>%7</a>")
 					.arg(edge.name(), tag, shown.toHtmlEscaped(), c.muted.name(), more.toHtmlEscaped(),
 							c.accent.name(), link));
+	/* the level's edge where the text begins: the right in right-to-left */
 	setStyleSheet(QStringLiteral("QLabel#notice { background:%1; color:%2; border:1px solid %3;"
-								 " border-left:4px solid %4; border-radius:7px; padding:0px 12px; }")
-						  .arg(c.surface2.name(), c.text.name(), c.border.name(), edge.name()));
+								 " border-%5:4px solid %4; border-radius:7px; padding:0px 12px; }")
+						  .arg(c.surface2.name(), c.text.name(), c.border.name(), edge.name(),
+								  mirrored ? QStringLiteral("right") : QStringLiteral("left")));
 	const int height = std::max(24, std::min(rowHeight - 6, plainMetrics.height() + 12));
 	const int width = std::min(right - left, sizeHint().width());
-	setGeometry(right - width, barEnd.y() + (rowHeight - height) / 2, width, height);
+	setGeometry(mirrored ? left : right - width, barStart.y() + (rowHeight - height) / 2, width, height);
 	show();
 	raise();
 }

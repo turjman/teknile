@@ -17,6 +17,7 @@
  *   evre write LINK --map MAP NAME=VALUE... [--force]    written, then read back
  *   evre check LINK --map MAP [--writes] [--force]       does the device answer as its map says?
  *   evre broadcast LINK --map MAP|--bus BUS NAME=VALUE [--force]   to every device at once, then each read back
+ *   evre record LINK --map MAP --stream NAME -o FILE [--seconds S]  a fast stream's blocks into a .evrs file
  *
  *   --bus BUS in place of --map MAP: several devices on one link (a bus file, evre-bus/1). Their registers are
  *   named after their devices (D1_SPEED, D2_SPEED) and each request goes to its device's slave.
@@ -32,6 +33,7 @@
  * Exit codes: 0 done, 1 the device or the map said no (an error, a refusal, a
  * timeout), 2 the command line or a file is wrong. */
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
@@ -41,13 +43,17 @@
 #include <QJsonObject>
 #include <QTimer>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
+#include <functional>
 #include <memory>
 
 #include "evre/master.h"
 #include "evre/registers.h"
+#include "io/fast_stream.h"
 #include "model/bus_file.h"
 #include "model/device_map.h"
+#include "model/fast_recording.h"
 #include "model/map_export.h"
 
 namespace {
@@ -79,6 +85,7 @@ const char *USAGE = R"(usage:
   evre write LINK --map MAP NAME=VALUE... [--force]
   evre check LINK --map MAP [--writes] [--force]
   evre broadcast LINK --map MAP|--bus BUS NAME=VALUE [--force]
+  evre record LINK --map MAP --stream NAME -o FILE [--seconds S]
 read, dump, watch, write: --bus BUS in place of --map MAP (registers named D1_NAME, D2_NAME, ...)
 LINK: --tcp HOST:PORT | --serial PORT[:BAUD]; also --slave N, --timeout MS, --json
 the login token (if the map has a login register): EVRE_TOKEN)";
@@ -88,9 +95,9 @@ the login token (if the map has a login register): EVRE_TOKEN)";
 struct Args {
 	QString command;
 	QStringList positional;
-	QString tcp, serial, map, bus, to, prefix, output, addr, lib;
+	QString tcp, serial, map, bus, to, prefix, output, addr, lib, stream;
 	int count = -1, slave = -1, timeoutMs = -1;
-	double intervalMs = 500;
+	double intervalMs = 500, seconds = -1;
 	bool force = false, writes = false, check = false;
 };
 
@@ -132,6 +139,8 @@ bool parseArgs(const QStringList &argv, Args &a, QString &why) {
 		else if (arg == QLatin1String("--lib")) ok = value(a.lib);
 		else if (arg == QLatin1String("-o") || arg == QLatin1String("--output")) ok = value(a.output);
 		else if (arg == QLatin1String("--addr")) ok = value(a.addr);
+		else if (arg == QLatin1String("--stream")) ok = value(a.stream);
+		else if (arg == QLatin1String("--seconds")) ok = number(a.seconds);
 		else if (arg == QLatin1String("--count")) ok = number(a.count);
 		else if (arg == QLatin1String("--slave")) ok = number(a.slave);
 		else if (arg == QLatin1String("--timeout")) ok = number(a.timeoutMs);
@@ -310,6 +319,8 @@ public:
 	}
 
 	QString describe() const { return link_ ? link_->describe() : QString(); }
+	evre::Master &master() { return master_; }
+	evre::Link *link() { return link_.get(); }
 
 private:
 	std::unique_ptr<evre::Link> link_;
@@ -534,15 +545,31 @@ int cmdInfo(const Args &a) {
 		if (status & cap.first) has << QLatin1String(cap.second);
 	const bool mismatch = !a.map.isEmpty() && map.deviceId && map.deviceId != id;
 	if (jsonOutput) {
-		outJson({ { QStringLiteral("link"), session.describe() }, { QStringLiteral("device_id"), addrText(id) },
+		QJsonArray streams;
+		for (const StreamDef &stream : map.streams)
+			streams.append(QJsonDocument::fromJson(streamToJson(stream)).object());
+		QJsonObject info{ { QStringLiteral("link"), session.describe() }, { QStringLiteral("device_id"), addrText(id) },
 				{ QStringLiteral("revision"), status & evre::STATUS_REVISION_MASK }, { QStringLiteral("capabilities"), QJsonArray::fromStringList(has) },
-				{ QStringLiteral("config"), addrText(config) }, { QStringLiteral("map_matches"), !mismatch } });
+				{ QStringLiteral("config"), addrText(config) }, { QStringLiteral("map_matches"), !mismatch } };
+		if (!map.streams.isEmpty()) info.insert(QStringLiteral("streams"), streams);
+		outJson(info);
 	} else {
 		out(QStringLiteral("link          %1").arg(session.describe()));
 		out(QStringLiteral("device ID     %1%2").arg(addrText(id), mismatch ? QStringLiteral("  (the map is for %1)").arg(addrText(map.deviceId)) : QString()));
 		out(QStringLiteral("protocol rev  %1").arg(status & evre::STATUS_REVISION_MASK));
 		out(QStringLiteral("capabilities  %1").arg(has.isEmpty() ? QStringLiteral("-") : has.join(QStringLiteral(", "))));
 		out(QStringLiteral("config        %1").arg(addrText(config)));
+		/* the map's fast streams (Fast EVRe): where their blocks come from, how fast, what a record holds */
+		for (const StreamDef &stream : map.streams) {
+			QStringList channels;
+			for (const StreamChannel &c : stream.channels)
+				channels << c.name + (c.unit.isEmpty() ? QString() : QStringLiteral(" [%1]").arg(c.unit))
+						+ QLatin1Char(' ') + typeName(c.type);
+			out(QStringLiteral("fast stream   %1: window %2, %3 bytes, %4 records/s, %5 records a block; %6%7")
+					.arg(stream.name, addrText(stream.addr)).arg(stream.size).arg(stream.rate)
+					.arg(stream.recordsPerBlock()).arg(channels.join(QStringLiteral(", ")),
+							stream.enable.isEmpty() ? QString() : QStringLiteral("; enable %1").arg(stream.enable)));
+		}
 	}
 	return mismatch ? 1 : 0;
 }
@@ -812,6 +839,224 @@ int cmdBroadcast(const Args &a) {
 
 /* Does the device answer as its map says? Reads only, unless --writes: then each writable register is
  * written with the value it holds (nothing changes) and read back; danger registers only with --force. */
+/* Ctrl+C during evre record: the stream is switched off and the file closed, not left running */
+volatile std::sig_atomic_t interrupted = 0;
+
+/* A fast stream (Fast EVRe) into a .evrs file (model/fast_recording.h): its enable register written 1, every block
+ * from the device's slave at the stream's window checked by the block's rules and written as it came, a time mark
+ * before the first block of every start and about one a second, CONFIG read every 100 ms meanwhile (the device's
+ * host watchdog), then the enable written 0. Ends after --seconds, at Ctrl+C, or when no block came in 2 s. */
+int cmdRecord(const Args &a) {
+	if (a.map.isEmpty() || a.stream.isEmpty() || a.output.isEmpty()) {
+		err(QStringLiteral("record LINK --map MAP --stream NAME -o FILE [--seconds S]"));
+		return 2;
+	}
+	DeviceMap map;
+	if (!loadMap(a.map, map)) return 2;
+	const StreamDef *stream = nullptr;
+	for (const StreamDef &s : map.streams)
+		if (s.name.compare(a.stream, Qt::CaseInsensitive) == 0) stream = &s;
+	if (!stream) {
+		QStringList names;
+		for (const StreamDef &s : map.streams) names << s.name;
+		err(QStringLiteral("no stream %1 in %2 (%3)").arg(a.stream, a.map,
+				names.isEmpty() ? QStringLiteral("it has none") : names.join(QStringLiteral(", "))));
+		return 2;
+	}
+	for (const MapIssue &issue : checkMap(map))
+		if (issue.error && issue.reg < 0 && issue.text.contains(stream->name)) {
+			err(QStringLiteral("%1: %2").arg(a.map, issue.text));
+			return 2;
+		}
+	const RegDef *enable = map.registerNamed(stream->enable);
+	Session session;
+	if (!session.open(a, &map)) return 1;
+	/* the rate the device was set to, where the map names its register */
+	double rate = stream->rate;
+	if (const RegDef *rateReg = map.registerNamed(stream->rateReg)) {
+		const evre::Result r = session.read(rateReg->addr, uint16_t(rateReg->size));
+		if (r.ok && r.data.size() == rateReg->size && decodeNumber(*rateReg, r.data) > 0) rate = decodeNumber(*rateReg, r.data);
+	}
+	fast::FastStream state;
+	state.reset(*stream, rate);
+	fast::RecordingWriter writer;
+	QString why;
+	if (!writer.open(a.output, map.device, *stream, QDateTime::currentDateTime(), why)) {
+		err(QStringLiteral("%1: %2").arg(a.output, why));
+		return 2;
+	}
+	evre::Master &master = session.master();
+	QElapsedTimer clock;
+	clock.start();
+	bool writeFailed = false;
+	QObject::connect(&master, &evre::Master::unsolicited, &master, [&](const evre::Frame &frame) {
+		if (frame.fn != evre::READ_RESP || frame.slave != master.slave() || frame.addr != stream->addr
+				|| frame.data.size() != frame.cnt)
+			return;
+		fast::BlockTaken taken;
+		if (state.take(frame.data, double(clock.nsecsElapsed()) / 1e9, taken) != fast::BlockCheck::Ok) return;
+		if (taken.newMark) writeFailed |= !writer.mark(state.clock().mark().record, state.clock().mark().time);
+		writeFailed |= !writer.block(frame.data);
+	});
+	/* the host watchdog: CONFIG every 100 ms, one under way at most */
+	bool heartbeatPending = false;
+	QTimer heartbeat;
+	heartbeat.setInterval(100);
+	QObject::connect(&heartbeat, &QTimer::timeout, &heartbeat, [&] {
+		if (heartbeatPending) return;
+		heartbeatPending = true;
+		master.readFrom(master.slave(), evre::CONFIG, 2, [&](const evre::Result &) { heartbeatPending = false; });
+	});
+	heartbeat.start();
+	if (enable) {
+		QByteArray one;
+		encodeValue(*enable, QStringLiteral("1"), one, why);
+		const evre::Result r = session.write(enable->addr, one);
+		if (!r.ok) {
+			err(QStringLiteral("%1 not written: %2").arg(enable->name, r.message));
+			return 1;
+		}
+	}
+	std::signal(SIGINT, [](int) { interrupted = 1; });
+	QEventLoop loop;
+	QString stopped;
+	QTimer watch;
+	watch.setInterval(50);
+	QObject::connect(&watch, &QTimer::timeout, &loop, [&] {
+		const double elapsed = double(clock.elapsed()) / 1000.0;
+		if (interrupted) stopped = QStringLiteral("interrupted");
+		else if (a.seconds > 0 && elapsed >= a.seconds) stopped = QStringLiteral("done");
+		else if (state.blocks == 0 && elapsed >= 2.0) stopped = QStringLiteral("no block came in 2 s");
+		else if (writeFailed) stopped = QStringLiteral("%1: %2").arg(a.output, writer.errorString());
+		else if (session.link() && !session.link()->isOpen()) stopped = QStringLiteral("the link closed");
+		if (!stopped.isEmpty()) loop.quit();
+	});
+	watch.start();
+	loop.exec();
+	heartbeat.stop();
+	if (enable && session.link() && session.link()->isOpen()) {
+		QByteArray zero;
+		encodeValue(*enable, QStringLiteral("0"), zero, why);
+		session.write(enable->addr, zero);
+	}
+	writer.close();
+	const double seconds = double(clock.elapsed()) / 1000.0;
+	const bool ok = state.blocks > 0 && !writeFailed && stopped != QLatin1String("the link closed");
+	if (jsonOutput) {
+		outJson({ { QStringLiteral("file"), a.output }, { QStringLiteral("stream"), stream->name },
+				{ QStringLiteral("records"), double(state.records) }, { QStringLiteral("blocks"), double(state.blocks) },
+				{ QStringLiteral("lost"), double(state.lost) }, { QStringLiteral("bad_blocks"), double(state.badBlocks) },
+				{ QStringLiteral("newer_blocks"), double(state.newerBlocks) }, { QStringLiteral("starts"), double(state.starts) },
+				{ QStringLiteral("seconds"), seconds }, { QStringLiteral("rate"), state.clock().rate() },
+				{ QStringLiteral("ppm"), state.clock().ppm() }, { QStringLiteral("stopped"), stopped } });
+	} else {
+		out(QStringLiteral("%1: %2 records in %3 blocks, %4 lost, %5 bad, %6 of a newer kind, %7 s; %8 records/s (%9 ppm); %10")
+				.arg(stream->name).arg(state.records).arg(state.blocks).arg(state.lost).arg(state.badBlocks)
+				.arg(state.newerBlocks).arg(seconds, 0, 'f', 1).arg(state.clock().rate(), 0, 'f', 1)
+				.arg(state.clock().ppm(), 0, 'f', 0).arg(stopped));
+	}
+	if (!stopped.isEmpty() && stopped != QLatin1String("done") && stopped != QLatin1String("interrupted")) err(stopped);
+	return ok ? 0 : 1;
+}
+
+/* A fast stream checked (evre check --writes): switched on for CHECK_STREAM_S (its enable written 1, CONFIG read every
+ * 100 ms meanwhile): the first block comes within 2 s and says START; the numbers follow (none lost, no restart, no
+ * bad block); the rate, from the first block's arrival to the last's, within 2 % of the rate the device was set to
+ * (its rate_reg, else the map's); switched off, no block comes 300 ms after the 0 was taken. */
+void checkStream(Session &session, const DeviceMap &map, const StreamDef &stream,
+		const std::function<void(const char *, const QString &, const QString &)> &report) {
+	constexpr double CHECK_STREAM_S = 2.0, RATE_TOLERANCE = 0.02;
+	const RegDef *enable = map.registerNamed(stream.enable);
+	double rate = stream.rate;
+	if (const RegDef *rateReg = map.registerNamed(stream.rateReg)) {
+		const evre::Result r = session.read(rateReg->addr, uint16_t(rateReg->size));
+		if (r.ok && r.data.size() == rateReg->size && decodeNumber(*rateReg, r.data) > 0) rate = decodeNumber(*rateReg, r.data);
+	}
+	fast::FastStream state;
+	state.reset(stream, rate);
+	evre::Master &master = session.master();
+	QElapsedTimer clock;
+	clock.start();
+	qint64 firstMs = -1, lastMs = -1, firstCount = 0, afterStop = 0;
+	bool started = false, stopping = false;
+	qint64 stoppedMs = -1;
+	QMetaObject::Connection blocks = QObject::connect(&master, &evre::Master::unsolicited, &master, [&](const evre::Frame &frame) {
+		if (frame.fn != evre::READ_RESP || frame.slave != master.slave() || frame.addr != stream.addr) return;
+		if (stopping) {
+			if (stoppedMs >= 0 && clock.elapsed() > stoppedMs + 300) afterStop++;
+			return;
+		}
+		fast::BlockTaken taken;
+		if (state.take(frame.data, double(clock.nsecsElapsed()) / 1e9, taken) != fast::BlockCheck::Ok) return;
+		if (firstMs < 0) {
+			firstMs = clock.elapsed();
+			firstCount = taken.count;
+			started = frame.data.size() > 6 && (uint8_t(frame.data[6]) & fast::FLAG_START);
+		}
+		lastMs = clock.elapsed();
+	});
+	bool heartbeatPending = false;
+	QTimer heartbeat;
+	heartbeat.setInterval(100);
+	QObject::connect(&heartbeat, &QTimer::timeout, &heartbeat, [&] {
+		if (heartbeatPending) return;
+		heartbeatPending = true;
+		master.readFrom(master.slave(), evre::CONFIG, 2, [&](const evre::Result &) { heartbeatPending = false; });
+	});
+	heartbeat.start();
+	QString why;
+	const auto writeEnable = [&](const char *value) {
+		if (!enable) return true;
+		QByteArray bytes;
+		encodeValue(*enable, QLatin1String(value), bytes, why);
+		const evre::Result r = session.write(enable->addr, bytes);
+		if (!r.ok) why = r.message;
+		return r.ok;
+	};
+	const auto wait = [](int ms) {
+		QEventLoop loop;
+		QTimer::singleShot(ms, &loop, &QEventLoop::quit);
+		loop.exec();
+	};
+	const qint64 onMs = clock.elapsed();
+	if (!writeEnable("1")) {
+		report("FAIL", stream.name, QStringLiteral("not switched on: %1 not written: %2").arg(enable->name, why));
+		heartbeat.stop();
+		QObject::disconnect(blocks);
+		return;
+	}
+	wait(int(CHECK_STREAM_S * 1000));
+	stopping = true;
+	writeEnable("0");
+	stoppedMs = clock.elapsed();
+	wait(enable ? 600 : 0);
+	heartbeat.stop();
+	QObject::disconnect(blocks);
+
+	if (firstMs < 0) {
+		report("FAIL", stream.name, QStringLiteral("no block in %1 s%2").arg(CHECK_STREAM_S)
+				.arg(enable ? QStringLiteral(" after %1 was written 1").arg(enable->name) : QStringLiteral(" (the map names no enable)")));
+		return;
+	}
+	report(started ? "PASS" : "FAIL", stream.name, started
+			? QStringLiteral("starts: the first block %1 ms after the enable, START set").arg(firstMs - onMs)
+			: QStringLiteral("starts, but the first block does not say START"));
+	const bool follow = state.lost == 0 && state.starts == 1 && state.badBlocks == 0 && state.newerBlocks == 0;
+	report(follow ? "PASS" : "FAIL", stream.name, QStringLiteral("%1 records in %2 blocks: %3 lost, %4 restart(s), %5 bad, "
+			"%6 of a newer kind").arg(state.records).arg(state.blocks).arg(state.lost).arg(state.starts - 1)
+			.arg(state.badBlocks).arg(state.newerBlocks) + (follow ? QStringLiteral(": the numbers follow") : QString()));
+	const double span = double(lastMs - firstMs) / 1000.0;
+	const double measured = span > 0 ? double(state.records + state.lost - quint64(firstCount)) / span : 0;
+	const bool near = rate > 0 && std::fabs(measured - rate) <= RATE_TOLERANCE * rate;
+	report(near ? "PASS" : "FAIL", stream.name, (near ? QStringLiteral("%1 records/s, within %2 % of %3 records/s")
+					: QStringLiteral("%1 records/s, not within %2 % of %3 records/s"))
+			.arg(measured, 0, 'f', 0).arg(RATE_TOLERANCE * 100).arg(rate));
+	if (enable)
+		report(afterStop == 0 ? "PASS" : "FAIL", stream.name, afterStop == 0
+				? QStringLiteral("stops: no block 300 ms after %1 was written 0").arg(enable->name)
+				: QStringLiteral("does not stop: %1 block(s) 300 ms after %2 was written 0").arg(afterStop).arg(enable->name));
+}
+
 int cmdCheck(const Args &a) {
 	if (a.map.isEmpty()) {
 		err(QStringLiteral("check LINK --map MAP [--writes] [--force]"));
@@ -896,9 +1141,13 @@ int cmdCheck(const Args &a) {
 		}
 		report(level, def.name, text);
 	}
+	/* the streams: switching one on writes to the device, so with --writes only */
+	if (a.writes)
+		for (const StreamDef &stream : map.streams) checkStream(session, map, stream, report);
 	if (!jsonOutput)
 		out(QStringLiteral("%1 passed, %2 warning(s), %3 failed%4").arg(passes).arg(warnings).arg(fails)
-				.arg(a.writes ? QString() : QStringLiteral(" (reads only; --writes also checks the writable registers)")));
+				.arg(a.writes ? QString() : QStringLiteral(" (reads only; --writes also checks the writable registers and "
+						"the fast streams)")));
 	return fails ? 1 : 0;
 }
 
@@ -928,6 +1177,7 @@ int main(int argc, char **argv) {
 	if (a.command == QLatin1String("write")) return cmdWrite(a);
 	if (a.command == QLatin1String("check")) return cmdCheck(a);
 	if (a.command == QLatin1String("broadcast")) return cmdBroadcast(a);
+	if (a.command == QLatin1String("record")) return cmdRecord(a);
 	err(QStringLiteral("unknown command %1").arg(a.command));
 	std::fputs(USAGE, stderr);
 	std::fputc('\n', stderr);

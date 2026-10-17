@@ -11,9 +11,11 @@
 #include <QTimer>
 #include <algorithm>
 #include <chrono>
+#include <tuple>
 
 #include "api/api_server.h"
 #include "model/bus_file.h"
+#include "model/fast_recording.h"
 #include "evre/frame.h"
 
 #ifdef Q_OS_WIN
@@ -57,6 +59,12 @@ QString csvCell(const RegValue &v) {
 	return v.def.isNumeric() ? QString::number(decodeNumber(v.def, v.raw), 'g', 9) : QString::fromLatin1(v.raw.toHex());
 }
 
+/* a block's place in the Dump tab's store: its device and address; AUTO_SEND's frame apart from a polled read at the
+ * same address */
+quint32 dumpKey(uint8_t slave, uint16_t addr, bool autoSend) {
+	return (autoSend ? 1u << 24 : 0u) | (quint32(slave) << 16) | addr;
+}
+
 } // namespace
 
 /* The ticker woke at or after `deadline`: how many periods are due, that one and every later one already past, and
@@ -83,6 +91,23 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 	api_->linkName = [this] { return link_ ? link_->describe() : QString(); };
 	api_->deviceName = [this] { return deviceName_; };
 	api_->broadcastRefusal = [this](uint16_t addr, const QByteArray &bytes) { return broadcastRefusal(addr, bytes); };
+	/* the streams for the API: asked on this thread, so the runs are read where they are written */
+	api_->fastStreams = [this] {
+		QVector<ApiServer::FastState> states;
+		for (const FastRun &run : std::as_const(fastRuns_)) {
+			ApiServer::FastState state;
+			state.def = run.def;
+			state.enable = run.enableReg;
+			state.on = run.on;
+			const fast::FastClock &clock = run.state.clock();
+			state.rate = run.on && clock.started() && clock.nominalRate() > 0 ? clock.nominalRate() : run.def.rate;
+			state.hasRecord = run.on && run.state.records > 0 && !run.lastRecord.isEmpty();
+			state.newest = run.lastRecord;
+			state.newestTime = double(clockEpochMs_) / 1000.0 + run.lastRecordTime;
+			states.push_back(state);
+		}
+		return states;
+	};
 	statsTimer_ = new QTimer(this);
 	statsTimer_->setInterval(250);
 	connect(statsTimer_, &QTimer::timeout, this, &IoEngine::updateStats);
@@ -104,9 +129,15 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 		if (monitorOn_) monitorLine("TX", raw, QString());
 	});
 	connect(master_, &evre::Master::frameReceived, this, [this](const QByteArray &raw, const QString &what) {
-		if (monitorOn_) monitorLine("RX", raw, what);
+		if (!monitorOn_) return;
+		const int stream = fastStreamOfRaw(raw);
+		monitorLine("RX", raw, stream >= 0 ? tr("READ_RESP (fast stream %1)").arg(fastRuns_[stream].def.name) : what);
 	});
+	fastWatch_ = new QTimer(this);
+	fastWatch_->setInterval(500);
+	connect(fastWatch_, &QTimer::timeout, this, &IoEngine::watchFast);
 	clock_.start();
+	clockEpochMs_ = QDateTime::currentMSecsSinceEpoch();
 	rateClock_.start();
 #ifdef Q_OS_WIN
 	/* Windows ticks timers every 15.6 ms unless a program asks for better; a
@@ -140,6 +171,46 @@ QHash<RegKey, QVector<QPointF>> IoEngine::takeSamples() {
 	return out;
 }
 
+void IoEngine::setFastTrigger(int stream, const fast::TriggerWatch &watch) {
+	for (int i = 0; i < fastRuns_.size(); i++) fastRuns_[i].trigger.set(i == stream ? watch : fast::TriggerWatch());
+	if (stream < 0 || stream >= fastRuns_.size()) return;
+	FastRun &run = fastRuns_[stream];
+	QMutexLocker lock(&crossThreadMutex_);
+	rescanWaiting(run.trigger, run.def, stream, fastBlocks_, run.state.clock().mark(), run.state.clock().period());
+}
+
+fast::TriggerWatch IoEngine::fastTriggerWatch(int stream) const {
+	return stream >= 0 && stream < fastRuns_.size() ? fastRuns_[stream].trigger.watch() : fast::TriggerWatch();
+}
+
+/* A frame's blocks wait for the window (more when its thread was held): scanned only for the watch before, a crossing
+ * in them after the window's newest record was lost to the new one. The times come from the clock as it is now: they
+ * only decide which crossings count, and the window takes each one's time from its own store. */
+void IoEngine::rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+		const fast::FastClock::Mark &mark, double period) {
+	bool first = true;
+	for (FastBlock &block : blocks) {
+		if (block.stream != stream) continue;
+		block.crossings.clear();
+		/* a block taken under another layout of the stream (the map loaded again) is not read with this one */
+		if (block.count <= 0 || block.records.size() < qsizetype(block.count) * def.recordSize()) continue;
+		if (first) scan.pairWith(def, block.before); /* the record before it is the window's newest */
+		first = false;
+		fast::BlockTaken taken;
+		taken.first = block.first;
+		taken.count = block.count;
+		taken.newStart = block.newStart;
+		taken.lost = block.lost;
+		scan.scan(def, taken, block.records.constData(), mark, period, block.crossings);
+	}
+}
+
+QVector<IoEngine::FastBlock> IoEngine::takeFastBlocks() {
+	QMutexLocker lock(&crossThreadMutex_);
+	fastQueued_ = 0;
+	return std::exchange(fastBlocks_, {});
+}
+
 QStringList IoEngine::takeFrames(int &dropped) {
 	QMutexLocker lock(&crossThreadMutex_);
 	dropped = monitorLinesDropped_;
@@ -147,6 +218,152 @@ QStringList IoEngine::takeFrames(int &dropped) {
 	QStringList out;
 	out.swap(monitorLines_);
 	return out;
+}
+
+bool IoEngine::takeDumps(QVector<DumpReply> &blocks) {
+	QMutexLocker lock(&crossThreadMutex_);
+	if (!dumpsMoved_) return false;
+	dumpsMoved_ = false;
+	blocks = dumps_.values();
+	if (lastWrite_.write) blocks << lastWrite_;
+	lock.unlock();
+	std::sort(blocks.begin(), blocks.end(), [](const DumpReply &a, const DumpReply &b) {
+		return std::tie(a.slave, a.addr, a.autoSend) < std::tie(b.slave, b.addr, b.autoSend);
+	});
+	return true;
+}
+
+/* The lock tried first: a take that finds it held and waits longer than FAST_DUMP_WAIT_NS for it is counted (the
+ * tests hold that at 0 at a million records a second). The engine holds it a few microseconds a block, for its
+ * assignments, so a take may meet it held now and then (one in 28 on a two-core CI machine): that costs microseconds;
+ * a long wait would be the window waiting on the engine's work. */
+bool IoEngine::takeFastDumps(QVector<FastDump> &dumps) {
+	if (!crossThreadMutex_.tryLock()) {
+		QElapsedTimer waited;
+		waited.start();
+		crossThreadMutex_.lock();
+		if (waited.nsecsElapsed() > FAST_DUMP_WAIT_NS) fastDumpLockMisses_++;
+	}
+	const bool moved = fastDumpsMoved_;
+	if (moved) {
+		dumps.clear();
+		for (const FastDump &dump : std::as_const(fastDumps_))
+			if (dump.serial != 0) dumps << dump;
+		fastDumpsMoved_ = false;
+	}
+	crossThreadMutex_.unlock();
+	return moved;
+}
+
+/* Hidden, the tab keeps nothing: the store is emptied, and the next takeDumps says so (an empty set); the fast blocks
+ * go too (the tab clears its own) */
+void IoEngine::setDump(bool on) {
+	dumpOn_ = on;
+	if (on) return;
+	QMutexLocker lock(&crossThreadMutex_);
+	dumpsMoved_ = !dumps_.isEmpty() || dumpsMoved_;
+	dumps_.clear();
+	fastDumps_.clear();
+	fastDumpsMoved_ = false;
+}
+
+/* A block for the Dump tab, under the lock: a few assignments and the frame's data shared (a reference count, the
+ * block before released), whatever the rate. A good block's numbers are the rules' (64 bits); a bad one's the
+ * header's as it came, read here (rare). */
+void IoEngine::keepFastDump(int stream, const evre::Frame &frame, fast::BlockCheck check, const fast::BlockTaken &taken) {
+	FastDump dump;
+	dump.stream = stream;
+	dump.slave = frame.slave;
+	dump.addr = frame.addr;
+	dump.data = frame.data;
+	dump.check = check;
+	dump.time = now();
+	dump.lostTotal = fastRuns_[stream].state.lost;
+	dump.start = fastRuns_[stream].starts;
+	if (check == fast::BlockCheck::Ok) {
+		dump.first = taken.first;
+		dump.count = taken.count;
+		dump.lost = taken.lost;
+		dump.newStart = taken.newStart;
+	} else {
+		fast::BlockHeader header;
+		(void) fast::fastBlock(frame.data, fastRuns_[stream].def.recordSize(), header);
+		dump.first = header.first;
+		dump.count = header.count;
+	}
+	if (frame.data.size() >= fast::HEADER) {
+		dump.flags = uint8_t(frame.data[6]);
+		dump.spare = uint8_t(frame.data[7]);
+	}
+	if (fastDumps_.size() <= stream) fastDumps_.resize(stream + 1);
+	dump.serial = ++fastDumpSerial_;
+	fastDumps_[stream] = std::move(dump);
+	fastDumpsMoved_ = true;
+}
+
+/* A block's answer: its bytes when good; an error keeps the last good bytes and says what went wrong. */
+void IoEngine::keepDump(const Block &block, const evre::Result &r) {
+	QMutexLocker lock(&crossThreadMutex_);
+	DumpReply &reply = dumps_[dumpKey(block.slave, block.addr, false)];
+	reply.slave = block.slave;
+	reply.wireSlave = target(block.slave);
+	reply.addr = block.addr;
+	reply.size = block.size;
+	reply.single = block.single;
+	reply.time = now();
+	reply.version = ++dumpVersion_;
+	reply.errorCode = r.ok ? 0 : r.error;
+	reply.timedOut = !r.ok && r.timedOut;
+	if (r.ok) {
+		reply.data = r.data;
+		reply.error.clear();
+	} else {
+		reply.error = r.message;
+	}
+	dumpsMoved_ = true;
+}
+
+/* The last write, for the Dump's write card: its bytes, how it went out and what came back (a WRITE_ACK's answer or
+ * the device's refusal; a WRITE has none). Kept with the tab hidden too: the write was made on another tab. */
+void IoEngine::keepWrite(uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack, const evre::Result &r) {
+	QMutexLocker lock(&crossThreadMutex_);
+	DumpReply &reply = lastWrite_;
+	reply = DumpReply();
+	reply.write = true;
+	reply.ack = ack;
+	reply.slave = tableSlave(slave);
+	reply.wireSlave = slave;
+	reply.addr = addr;
+	reply.size = uint16_t(bytes.size());
+	reply.data = bytes;
+	reply.time = now();
+	reply.version = ++dumpVersion_;
+	reply.errorCode = r.ok ? 0 : r.error;
+	reply.timedOut = !r.ok && r.timedOut;
+	if (!r.ok) reply.error = r.message;
+	dumpsMoved_ = true;
+}
+
+/* The replies of blocks no longer read go with them: a merged block split into singles, a register refused for good,
+ * another map, AUTO_SEND switched off. */
+void IoEngine::pruneDumps() {
+	if (!dumpOn_) return;
+	QMutexLocker lock(&crossThreadMutex_);
+	for (auto it = dumps_.begin(); it != dumps_.end();) {
+		const DumpReply &reply = it.value();
+		const bool read = reply.autoSend
+				? autoSendOn_ && reply.addr == streamAddr_ && reply.size == streamCount_
+				: std::any_of(blocks_.begin(), blocks_.end(), [&reply](const Block &b) {
+						  return b.slave == reply.slave && b.addr == reply.addr && b.size == reply.size
+								  && b.single == reply.single;
+					  });
+		if (read) {
+			++it;
+		} else {
+			it = dumps_.erase(it);
+			dumpsMoved_ = true;
+		}
+	}
 }
 
 /* the text is made here, off the window's thread */
@@ -168,6 +385,13 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		const QVector<EngineDevice> &devices) {
 	table_.setDefs(defs, generation);
 	deviceName_ = deviceName;
+	{
+		QMutexLocker lock(&crossThreadMutex_); /* the Dump's last write was the map before's */
+		dumpsMoved_ = dumpsMoved_ || lastWrite_.write;
+		lastWrite_ = DumpReply();
+		fastDumps_.clear(); /* and its fast blocks, by the streams' numbers before */
+		fastDumpsMoved_ = false;
+	}
 	const uint8_t oneDevice = isBus() ? 0 : target(0); /* where the one device was, before the new devices */
 	devices_ = devices;
 	/* Several devices now: none may send by itself. The window switched it off already; this makes sure, and when
@@ -178,6 +402,52 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		stopStream();
 		if (connected_ && canAutoSend_ && oneDevice != 0) applyAutoSend(oneDevice);
 	}
+	/* Fast EVRe: the one device's streams, each wish and state kept by name; a stream gone from the map is switched
+	 * off on the device first (on a bus there are none: the window switched them off before) */
+	QVector<FastRun> runs;
+	if (!isBus() && !devices_.isEmpty() && devices_[0].map) {
+		const DeviceMap &map = *devices_[0].map;
+		for (const StreamDef &def : map.streams) {
+			FastRun run;
+			for (const FastRun &old : std::as_const(fastRuns_))
+				if (old.def.name == def.name) run = old;
+			/* another layout: the trigger's watch and the record kept were for the one before (the window watches
+			 * again once it has the new streams) */
+			if (run.def.addr != def.addr || run.def.recordSize() != def.recordSize()) {
+				run.state.reset(def);
+				run.starts++;
+				run.trigger = fast::TriggerScan();
+				run.lastRecord.clear();
+			}
+			run.def = def;
+			const RegDef *enable = map.registerNamed(def.enable), *rate = map.registerNamed(def.rateReg);
+			run.enableReg = enable ? *enable : RegDef();
+			run.rateReg = rate ? *rate : RegDef();
+			runs.push_back(run);
+		}
+	}
+	for (const FastRun &old : std::as_const(fastRuns_)) {
+		const bool kept = std::any_of(runs.begin(), runs.end(), [&](const FastRun &r) { return r.def.name == old.def.name; });
+		if (kept || !connected_ || !old.deviceMaySend || !old.enable() || oneDevice == 0) continue;
+		QByteArray zero;
+		QString why;
+		if (encodeValue(old.enableReg, QStringLiteral("0"), zero, why)) master_->writeTo(oneDevice, old.enableReg.addr, zero);
+	}
+	/* the blocks still waiting for the window go with their stream's number: one whose number is now another stream's,
+	 * or the same stream in another layout, is dropped (its crossings, read by the new run, would be another's) */
+	{
+		QMutexLocker lock(&crossThreadMutex_);
+		const auto stale = [&](const FastBlock &block) {
+			if (block.stream < 0 || block.stream >= runs.size() || block.stream >= fastRuns_.size()) return true;
+			const StreamDef &was = fastRuns_[block.stream].def, &now = runs[block.stream].def;
+			return was.name != now.name || was.addr != now.addr || was.recordSize() != now.recordSize();
+		};
+		for (const FastBlock &block : std::as_const(fastBlocks_))
+			if (stale(block)) fastQueued_ -= block.records.size();
+		fastBlocks_.removeIf(stale);
+	}
+	fastRuns_ = runs;
+	if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
 	QStringList names;
 	if (isBus())
 		for (const EngineDevice &device : devices_) names << device.name;
@@ -285,6 +555,7 @@ void IoEngine::disconnectLink() {
 			link_->drain(100); /* its last frames read: closed with bytes unread, TCP dropped the off on the way */
 			deviceMaySend_ = false;
 		}
+		if (link_->isOpen()) sendFastOffs();
 		if (link_->isOpen()) link_->close();
 		link_.release()->deleteLater();
 	}
@@ -298,6 +569,13 @@ void IoEngine::disconnectLink() {
 	retryPending_ = false; /* cancelled with the link */
 	streamAddr_ = streamCount_ = 0;
 	streamRows_.clear();
+	/* the fast streams' wishes stay too: switched on again at the next connect */
+	for (FastRun &run : fastRuns_) {
+		run.on = run.deviceMaySend = false;
+		run.request++;
+		run.takenMs = -1;
+	}
+	fastWatch_->stop();
 	updateStats();
 }
 
@@ -315,6 +593,9 @@ void IoEngine::onOpened() {
 	emit opened(link_->describe());
 	sendLogin();
 	readDeviceInfo();
+	/* the fast streams wanted (a reconnect): on again, after the login */
+	for (int i = 0; i < fastRuns_.size(); i++)
+		if (fastRuns_[i].wanted) applyFast(i);
 	resumePolling();
 	updateStats();
 }
@@ -548,6 +829,7 @@ void IoEngine::rebuildBlocks() {
 	}
 	layoutGeneration_++;
 	pollsUnderWay_.clear();
+	pruneDumps();
 }
 
 int IoEngine::maxPollsUnderWay() const {
@@ -600,6 +882,11 @@ void IoEngine::onBlockResult(quint64 layout, quint64 pollId, const Block &block,
 	} else {
 		for (int row : block.rows) table_.setError(row, r.message, false); /* a timeout or the link: next poll */
 	}
+	/* kept for the Dump tab while the block is still read as it was (not split, not refused for good) */
+	if (dumpOn_ && std::any_of(blocks_.begin(), blocks_.end(), [&block](const Block &b) {
+			return b.slave == block.slave && b.addr == block.addr && b.size == block.size && b.single == block.single;
+		}))
+		keepDump(block, r);
 	auto it = pollsUnderWay_.find(pollId);
 	if (it != pollsUnderWay_.end() && --it.value() <= 0) {
 		pollsUnderWay_.erase(it);
@@ -637,6 +924,7 @@ void IoEngine::onBlockRefused(const Block &block, const evre::Result &r) {
 	const auto it = std::find_if(blocks_.begin(), blocks_.end(),
 			[&block](const Block &b) { return b.single && b.slave == block.slave && b.addr == block.addr; });
 	if (it != blocks_.end()) blocks_.erase(it);
+	pruneDumps();
 }
 
 /* a merged block -> one block per register, in its place (unless the answer
@@ -658,6 +946,7 @@ void IoEngine::splitBlock(const Block &block) {
 		single.single = true;
 		blocks_.insert(at + i, single);
 	}
+	pruneDumps();
 }
 
 /* every block of a poll answered: a point per plotted register, a CSV row (with AUTO_SEND on and its frames coming,
@@ -695,9 +984,15 @@ void IoEngine::updateStats() {
 		pollHz = pollsSinceRate_ / elapsed;
 		framesHz = framesSinceRate_ / elapsed;
 		pollsSinceRate_ = framesSinceRate_ = 0;
+		for (FastRun &run : fastRuns_) {
+			run.recordsHz = connected_ && run.on ? double(run.recordsSinceRate) / elapsed : 0;
+			run.recordsSinceRate = 0;
+		}
 		rateClock_.restart();
 	}
 	if (csvFile_->isOpen()) csvStream_.flush();
+	for (FastRun &run : fastRuns_)
+		if (run.writer) run.writer->flush();
 	const auto &rows = table_.rows();
 	QMutexLocker lock(&crossThreadMutex_);
 	stats_.master = master_->stats();
@@ -715,6 +1010,25 @@ void IoEngine::updateStats() {
 	stats_.jsonPort = api_->jsonPort();
 	stats_.apiClients = api_->clientCount();
 	stats_.apiRequests = api_->requests();
+	stats_.fast.resize(fastRuns_.size());
+	for (int i = 0; i < fastRuns_.size(); i++) {
+		const FastRun &run = fastRuns_[i];
+		Stats::Fast &f = stats_.fast[i];
+		f.name = run.def.name;
+		f.wanted = run.wanted;
+		f.on = connected_ && run.on;
+		f.rate = run.state.clock().started() ? run.state.clock().rate() : 0;
+		f.ppm = run.state.clock().started() ? run.state.clock().ppm() : 0;
+		f.setRate = run.setRate;
+		f.recordsHz = run.recordsHz;
+		f.records = run.state.records;
+		f.blocks = run.state.blocks;
+		f.lost = run.state.lost;
+		f.badBlocks = run.state.badBlocks;
+		f.newerBlocks = run.state.newerBlocks;
+		f.starts = run.state.starts;
+		f.notShown = run.notShown;
+	}
 }
 
 /* ---------------------------------------------------------------- AUTO_SEND */
@@ -834,7 +1148,7 @@ void IoEngine::noFrames() {
 
 void IoEngine::stopStream() {
 	autoSendOn_ = false;
-	heartbeatTimer_->stop();
+	if (!anyFastOn()) heartbeatTimer_->stop(); /* a fast stream still needs it */
 	firstFrameTimer_->stop();
 	if (streamCount_ == 0) return;
 	streamAddr_ = streamCount_ = 0;
@@ -846,6 +1160,13 @@ void IoEngine::stopStream() {
  * table and it is a sample tick (chart points, a CSV row). Anything else (a late answer) is ignored. When it covers
  * other registers than the last one, the polls are laid out again without them. */
 void IoEngine::onUnsolicited(const evre::Frame &frame) {
+	/* a fast stream's block, recognised first: by its slave and its window */
+	const int stream = fastStreamOf(frame);
+	if (stream >= 0) {
+		api_->passBlock(fastRuns_[stream].def.name, frame); /* to the pass-through clients that asked, as it came */
+		takeBlock(stream, frame);
+		return;
+	}
 	if (!autoSendOn_ || isBus() || frame.fn != evre::READ_RESP || frame.slave != target(0)
 			|| frame.addr != evre::READ_ONLY_BLOCK || frame.cnt == 0 || frame.data.size() != frame.cnt)
 		return;
@@ -860,17 +1181,29 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 		const RegDef &d = rows[row].def;
 		table_.setRaw(row, frame.data.mid(d.addr - streamAddr_, d.size));
 	}
+	if (dumpOn_) {
+		QMutexLocker lock(&crossThreadMutex_);
+		DumpReply &reply = dumps_[dumpKey(0, frame.addr, true)];
+		reply.wireSlave = frame.slave;
+		reply.addr = frame.addr;
+		reply.size = frame.cnt;
+		reply.data = frame.data;
+		reply.time = now();
+		reply.version = ++dumpVersion_;
+		reply.autoSend = true;
+		dumpsMoved_ = true;
+	}
 	framesSinceRate_++;
 	const double t = now();
 	appendSamples(t);
 	writeCsvRow(t);
 }
 
-/* Every HEARTBEAT_MS while AUTO_SEND is on: CONFIG read, whatever the polling is (Poll off, or every register in the
- * frames), so the device's host watchdog sees a request. AUTO_SEND found cleared (the device reset, or someone wrote
- * CONFIG): said once, and not switched on again by itself. */
+/* Every HEARTBEAT_MS while AUTO_SEND or a fast stream is on: CONFIG read, whatever the polling is (Poll off, or every
+ * register in the frames), so the device's host watchdog sees a request. AUTO_SEND found cleared (the device reset,
+ * or someone wrote CONFIG): said once, and not switched on again by itself. */
 void IoEngine::heartbeat() {
-	if (!connected_ || !autoSendOn_ || heartbeatPending_) return;
+	if (!connected_ || (!autoSendOn_ && !anyFastOn()) || heartbeatPending_) return;
 	heartbeatPending_ = true;
 	const quint64 request = autoSendRequest_;
 	master_->readFrom(target(0), evre::CONFIG, 2, [this, request](const evre::Result &r) {
@@ -899,11 +1232,310 @@ int IoEngine::streamBytes() const {
 	return end - evre::READ_ONLY_BLOCK;
 }
 
+/* ---------------------------------------------------------------- Fast EVRe */
+
+/* the wish is kept whatever the link: connected, it goes to the device at once */
+void IoEngine::setFastStream(int stream, bool on) {
+	if (stream < 0 || stream >= fastRuns_.size()) return;
+	FastRun &run = fastRuns_[stream];
+	run.wanted = on;
+	if (!connected_) return;
+	if (on && isBus()) {
+		fastFailed(stream, true, tr("not with several devices on the link: their blocks would collide"));
+		return;
+	}
+	applyFast(stream);
+}
+
+bool IoEngine::anyFastOn() const {
+	return std::any_of(fastRuns_.begin(), fastRuns_.end(), [](const FastRun &run) { return run.on; });
+}
+
+/* On: its rate register read (the rate the device was set to; else the map's), then its enable written 1 with
+ * WRITE_ACK. The blocks are taken from just before the write: the first may come ahead of its answer. A stream
+ * without an enable is the device's own business: it is listened to at once. Off: the blocks ignored at once, the
+ * enable written 0. */
+void IoEngine::applyFast(int stream) {
+	FastRun &run = fastRuns_[stream];
+	const quint64 request = ++run.request;
+	const bool on = run.wanted && !isBus();
+	const uint8_t slave = target(0);
+	const QString name = run.def.name;
+	auto switchOn = [this, stream, name, request, slave](double rate) {
+		FastRun *asked = fastRunAsked(stream, name, request);
+		if (!asked) return;
+		FastRun &run = *asked;
+		run.state.reset(run.def, rate);
+		run.starts++;
+		run.notShown = 0;
+		run.on = true;
+		run.newerSaid = run.silenceAsked = false;
+		run.lastBlockMs = run.takenMs = -1;
+		heartbeatTimer_->start();
+		fastWatch_->start();
+		const RegDef *enable = run.enable();
+		if (!enable) {
+			run.takenMs = clock_.elapsed();
+			emit fastStreamSet(stream, true, rate, QString());
+			return;
+		}
+		QByteArray one;
+		QString why;
+		encodeValue(*enable, QStringLiteral("1"), one, why);
+		run.deviceMaySend = true;
+		master_->writeTo(slave, enable->addr, one, [this, stream, name, request, rate](const evre::Result &w) {
+			FastRun *asked = fastRunAsked(stream, name, request);
+			if (!asked) return;
+			FastRun &run = *asked;
+			if (!w.ok) {
+				fastFailed(stream, true, tr("%1 not written: %2").arg(run.enableReg.name, w.message));
+				return;
+			}
+			run.takenMs = clock_.elapsed(); /* the first block must come FIRST_FRAME_MS from now */
+			emit fastStreamSet(stream, true, rate, QString());
+		});
+	};
+	if (!on) {
+		const bool wasOn = run.on;
+		run.on = false;
+		run.takenMs = -1;
+		if (!anyFastOn()) fastWatch_->stop();
+		if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+		const RegDef *enable = run.enable();
+		if (!enable || !(run.deviceMaySend || wasOn)) {
+			emit fastStreamSet(stream, false, 0, QString());
+			return;
+		}
+		QByteArray zero;
+		QString why;
+		encodeValue(*enable, QStringLiteral("0"), zero, why);
+		master_->writeTo(slave, enable->addr, zero, [this, stream, name, request](const evre::Result &w) {
+			FastRun *asked = fastRunAsked(stream, name, request);
+			if (!asked) return;
+			if (w.ok) asked->deviceMaySend = false; /* the device took the off */
+			emit fastStreamSet(stream, false, 0, w.ok ? QString() : w.message);
+		});
+		return;
+	}
+	const RegDef *rate = run.rate();
+	if (!rate) {
+		switchOn(run.def.rate);
+		return;
+	}
+	master_->readFrom(slave, rate->addr, uint16_t(rate->size), [this, stream, name, request, switchOn](const evre::Result &r) {
+		FastRun *asked = fastRunAsked(stream, name, request);
+		if (!asked) return;
+		const double hz = r.ok && r.data.size() == asked->rateReg.size ? decodeNumber(asked->rateReg, r.data) : 0;
+		if (hz > 0) asked->setRate = hz; /* the card's header says it while the stream is off */
+		switchOn(hz > 0 ? hz : asked->def.rate);
+	});
+}
+
+IoEngine::FastRun *IoEngine::fastRunAsked(int stream, const QString &name, quint64 request) {
+	if (stream < 0 || stream >= fastRuns_.size()) return nullptr;
+	FastRun &run = fastRuns_[stream];
+	return run.def.name == name && run.request == request ? &run : nullptr;
+}
+
+void IoEngine::fastFailed(int stream, bool on, const QString &why) {
+	FastRun &run = fastRuns_[stream];
+	if (on) {
+		run.wanted = run.on = false;
+		run.takenMs = -1;
+		run.request++;
+		if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+	}
+	emit fastStreamSet(stream, on, 0, why);
+}
+
+/* an unasked READ_RESP from the one device at a stream's window */
+int IoEngine::fastStreamOf(const evre::Frame &frame) const {
+	if (fastRuns_.isEmpty() || isBus() || frame.fn != evre::READ_RESP || frame.slave != target(0)) return -1;
+	for (int i = 0; i < fastRuns_.size(); i++)
+		if (fastRuns_[i].def.addr == frame.addr) return i;
+	return -1;
+}
+
+int IoEngine::fastStreamOfRaw(const QByteArray &raw) const {
+	if (raw.size() < 7) return -1;
+	evre::Frame frame;
+	frame.slave = uint8_t(raw[1]);
+	frame.fn = uint8_t(raw[2]);
+	frame.addr = evre::littleEndian16(raw, 3);
+	return fastStreamOf(frame);
+}
+
+/* A block, by the block's rules: counted, laid on the clock (now()'s seconds). A stream not on (switched off, its
+ * last blocks still coming) takes none. */
+void IoEngine::takeBlock(int stream, const evre::Frame &frame) {
+	FastRun &run = fastRuns_[stream];
+	if (!connected_ || !run.on || frame.data.size() != frame.cnt) return;
+	fast::BlockTaken taken;
+	const fast::BlockCheck check = run.state.take(frame.data, now(), taken);
+	if (check == fast::BlockCheck::NewerKind && !run.newerSaid) {
+		run.newerSaid = true;
+		emit fastStreamNote(stream, tr("fast stream %1: blocks of a newer kind (a flag or a spare byte this Studio does "
+				"not know): none of their samples is used").arg(run.def.name), false);
+	}
+	if (check != fast::BlockCheck::Ok) {
+		if (dumpOn_) {
+			QMutexLocker lock(&crossThreadMutex_);
+			keepFastDump(stream, frame, check, taken);
+		}
+		return;
+	}
+	if (csvFile_->isOpen() && !fastNotLogged_.contains(run.def.name)) recordBlock(stream, taken, frame.data);
+	FastBlock block;
+	block.stream = stream;
+	block.first = taken.first;
+	block.count = taken.count;
+	block.newStart = taken.newStart;
+	block.lost = taken.lost;
+	block.records = frame.data.mid(fast::HEADER);
+	const int size = run.def.recordSize();
+	if (taken.lost == 0 && !taken.newStart) block.before = run.lastRecord;
+	if (size > 0 && block.records.size() >= qsizetype(taken.count) * size)
+		run.lastRecord = block.records.mid(qsizetype(taken.count - 1) * size, size);
+	if (taken.newMark) {
+		block.marked = true;
+		block.markRecord = run.state.clock().mark().record;
+		block.markTime = run.state.clock().mark().time;
+		block.markPeriod = run.state.clock().period();
+	}
+	/* the API: its newest record, and its JSON streams' periods */
+	if (taken.count > 0) run.lastRecordTime = run.state.clock().timeOf(taken.first + quint64(taken.count) - 1);
+	if (size > 0 && block.records.size() >= qsizetype(taken.count) * size)
+		api_->fastRecords(run.def, taken.first, taken.count, block.records.constData());
+	/* the chart's trigger: its crossing found here, as the block comes, so the window holds on it at the next frame */
+	run.trigger.scan(run.def, taken, frame.data.constData() + fast::HEADER, run.state.clock().mark(),
+			run.state.clock().period(), block.crossings);
+	{
+		QMutexLocker lock(&crossThreadMutex_);
+		if (dumpOn_) keepFastDump(stream, frame, check, taken); /* the Dump tab's newest, under the same lock */
+		fastQueued_ += block.records.size();
+		fastBlocks_.push_back(std::move(block));
+		/* a window that does not take them: the oldest go, counted; a start or a mark they carried goes on with the
+		 * next, so the chart still lays what follows on the clock */
+		qsizetype gone = 0;
+		while (fastQueued_ > FAST_QUEUE_BYTES && fastBlocks_.size() - gone > 1) {
+			const FastBlock &old = fastBlocks_[gone];
+			FastBlock &next = fastBlocks_[gone + 1];
+			fastQueued_ -= old.records.size();
+			if (old.stream < fastRuns_.size()) fastRuns_[old.stream].notShown += quint64(old.count);
+			/* its trigger crossing never reaches the window: the scan waits for the next one instead */
+			if (old.stream < fastRuns_.size() && !old.crossings.isEmpty())
+				fastRuns_[old.stream].trigger.dropped(old.crossings.last());
+			if (next.stream == old.stream) {
+				next.newStart = next.newStart || old.newStart;
+				next.before.clear(); /* the window never has the record before it */
+				if (old.marked && !next.marked) {
+					next.marked = true;
+					next.markRecord = old.markRecord;
+					next.markTime = old.markTime;
+					next.markPeriod = old.markPeriod;
+				}
+			}
+			gone++;
+		}
+		if (gone > 0) fastBlocks_.remove(0, gone);
+	}
+	run.lastBlockMs = clock_.elapsed();
+	run.silenceAsked = false;
+	run.recordsSinceRate += quint64(taken.count);
+}
+
+/* The CSV records: the block as it came into its stream's file beside the CSV, made at its first block with a time
+ * mark before it (the clock's newest: the reader lays the records from there), then a mark whenever the clock makes
+ * one. A file that cannot be written is said once and left. */
+void IoEngine::recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data) {
+	FastRun &run = fastRuns_[stream];
+	if (run.writeFailed) return;
+	bool marked = taken.newMark;
+	if (!run.writer) {
+		run.writer = std::make_shared<fast::RecordingWriter>();
+		run.recordedBlocks = 0;
+		QString err;
+		const QString file = fast::recordingFileFor(csvFile_->fileName(), run.def.name);
+		if (!run.writer->open(file, deviceName_, run.def, QDateTime::currentDateTime(), err, now())) {
+			run.writeFailed = true;
+			run.writer.reset();
+			emit fastStreamNote(stream, tr("fast stream %1 not recorded: %2: %3").arg(run.def.name, file, err), false);
+			return;
+		}
+		marked = true;
+	}
+	bool ok = true;
+	if (marked) ok = run.writer->mark(run.state.clock().mark().record, run.state.clock().mark().time);
+	ok = ok && run.writer->block(data);
+	if (!ok) {
+		run.writeFailed = true;
+		emit fastStreamNote(stream, tr("fast stream %1: its recording stopped: %2").arg(run.def.name, run.writer->errorString()), false);
+		run.writer.reset();
+		return;
+	}
+	run.recordedBlocks++;
+}
+
+/* Every 500 ms while a stream is on. No block FIRST_FRAME_MS after the device took the enable: something between does
+ * not pass them on, or the device does not stream; off again, and said. A stream that sent and went silent as long:
+ * its enable read once; 0 (a reset, another host) stops it here too, not switched on again by itself. */
+void IoEngine::watchFast() {
+	if (!connected_) return;
+	const qint64 now = clock_.elapsed();
+	for (int i = 0; i < fastRuns_.size(); i++) {
+		FastRun &run = fastRuns_[i];
+		if (!run.on || run.takenMs < 0) continue;
+		if (run.lastBlockMs < 0 && now - run.takenMs >= FIRST_FRAME_MS) {
+			const QString why = tr("no block came in %1 s: the device does not stream, or something between the Studio "
+					"and it (a gateway) does not pass the blocks on").arg(FIRST_FRAME_MS / 1000);
+			run.wanted = false;
+			applyFast(i); /* the off to the device */
+			emit fastStreamNote(i, tr("fast stream %1 switched off: %2").arg(run.def.name, why), true);
+			continue;
+		}
+		if (run.lastBlockMs < 0 || now - run.lastBlockMs < FIRST_FRAME_MS || run.silenceAsked || !run.enable()) continue;
+		run.silenceAsked = true;
+		const quint64 request = run.request;
+		const QString name = run.def.name;
+		master_->readFrom(target(0), run.enableReg.addr, uint16_t(run.enableReg.size), [this, i, name, request](const evre::Result &r) {
+			FastRun *asked = fastRunAsked(i, name, request);
+			if (!asked) return;
+			FastRun &run = *asked;
+			if (!run.on || !r.ok || r.data.size() != run.enableReg.size) return;
+			if (decodeNumber(run.enableReg, r.data) != 0) return; /* still on: a slow stream, or a pause */
+			run.wanted = run.on = run.deviceMaySend = false;
+			run.request++;
+			if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
+			emit fastStreamNote(i, tr("the device stopped fast stream %1 (%2 reads 0: a reset?)").arg(run.def.name,
+					run.enableReg.name), true);
+		});
+	}
+}
+
+/* Before the link closes: every stream that may be sending told 0, in a WRITE sent straight on the link and flushed,
+ * the link drained, as AUTO_SEND's off */
+void IoEngine::sendFastOffs() {
+	bool sent = false;
+	for (FastRun &run : fastRuns_) {
+		if (!run.deviceMaySend || !run.enable()) continue;
+		QByteArray zero;
+		QString why;
+		if (!encodeValue(run.enableReg, QStringLiteral("0"), zero, why)) continue;
+		link_->send(evre::build(target(0), evre::WRITE, run.enableReg.addr, uint16_t(zero.size()), zero));
+		run.deviceMaySend = false;
+		sent = true;
+	}
+	if (!sent) return;
+	link_->flush(200);
+	link_->drain(100);
+}
+
 /* ---------------------------------------------------------------------- CSV */
 
 /* the columns: time_s, datetime, then each register asked for that the map has */
-void IoEngine::startRecord(const QString &file, const QVector<RegKey> &cols) {
+void IoEngine::startRecord(const QString &file, const QVector<RegKey> &cols, const QStringList &notLogged) {
 	stopRecord();
+	fastNotLogged_ = notLogged;
 	csvFile_->setFileName(file);
 	if (!csvFile_->open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
 		emit recordStarted(false, csvFile_->errorString());
@@ -939,6 +1571,17 @@ void IoEngine::writeCsvRow(double t) {
 }
 
 void IoEngine::stopRecord() {
+	for (int i = 0; i < fastRuns_.size(); i++) { /* the streams' files beside it */
+		FastRun &run = fastRuns_[i];
+		run.writeFailed = false;
+		if (!run.writer) continue;
+		const qint64 bytes = run.writer->bytes();
+		run.writer->close();
+		run.writer.reset();
+		emit fastRecorded(tr("fast stream %1 recorded: %2 (%3 blocks, %4 MB)").arg(run.def.name,
+				fast::recordingFileFor(csvFile_->fileName(), run.def.name)).arg(run.recordedBlocks)
+				.arg(double(bytes) / (1024 * 1024), 0, 'f', 1));
+	}
 	if (!csvFile_->isOpen()) return;
 	csvStream_.flush();
 	const QString file = csvFile_->fileName();
@@ -955,15 +1598,19 @@ void IoEngine::write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray 
 		return;
 	}
 	if (!ack) {
-		master_->writeNoAckTo(slave, addr, bytes, [this, id](const evre::Result &r) { emit writeDone(id, r.ok, r.message); });
+		master_->writeNoAckTo(slave, addr, bytes, [this, id, slave, addr, bytes](const evre::Result &r) {
+			keepWrite(slave, addr, bytes, false, r);
+			emit writeDone(id, r.ok, r.message);
+		});
 		return;
 	}
 	/* with one device, a write to another slave (the Monitor) is not that device's: no read back into the table */
 	const bool ours = isBus() || slave == master_->slave();
-	master_->writeTo(slave, addr, bytes, [this, id, ours, table = tableSlave(slave), addr, size = int(bytes.size())](
+	master_->writeTo(slave, addr, bytes, [this, id, ours, table = tableSlave(slave), addr, bytes, slave](
 			const evre::Result &r) {
+		keepWrite(slave, addr, bytes, true, r);
 		emit writeDone(id, r.ok, r.message);
-		if (r.ok && ours) readBack(table, addr, size);
+		if (r.ok && ours) readBack(table, addr, int(bytes.size()));
 	});
 }
 

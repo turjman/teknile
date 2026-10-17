@@ -1,0 +1,206 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* A fast stream's records as the chart keeps them (Fast EVRe, FAST_PLAN.md section 8.2): the records as they came,
+ * a few bytes each (two i16 channels: 4 bytes, not the 23 a polled sample takes), in pieces of PIECE records; the
+ * starts and gaps as a short list; and for each channel summaries at two levels, made as the records come: the
+ * min, max, sum and sum of squares of every SMALL and every LARGE records. A view of an hour and one of 100 us then
+ * cost the same: the work follows the pixels, not the records.
+ *
+ *   index i (0 .. size() - 1): the records kept, oldest first; dropped() + i is the record's place since the store
+ *   began (it never moves: summaries and bins are counted on it)
+ *
+ *   a segment: records that follow one another with nothing lost; a gap (records lost) or a new start of the stream
+ *   begins the next. An epoch: the records of one start, laid on the host's clock by its time marks (the record
+ *   number and its time, and the period from there on, io/fast_stream.h FastClock): between two marks, and after the
+ *   last, the time is the mark's plus the records since it times its period.
+ *
+ * Trimming drops whole pieces from the front (dropFront). The store is written by one thread (the window's, between
+ * frames) and read by any number while nobody writes (the chart's threads, binning).
+ *
+ * Older records as summaries only (the chart's "Older samples: summaries", SCOPE_PLAN.md section 10): dropRecords lets
+ * the records of the oldest whole pieces go and keeps their outline, made as the records came: for every SMALL and
+ * every LARGE records a min record and a max record (each channel's bytes in them those of its record with the lowest
+ * and the highest value), 1/128 of the records' size. Records 0 .. recordsFrom() - 1 are kept so: their times stay,
+ * their values and sums read NaN, their min and max come from the outline (whole SMALL records: a range is widened to
+ * them).
+ */
+#pragma once
+
+#include <QByteArray>
+#include <QVector>
+#include <cstdint>
+#include <functional>
+#include <memory>
+
+#include "model/device_map.h"
+
+namespace fast {
+
+class Store {
+public:
+	static constexpr qsizetype PIECE = 65536; /* records per piece: what a trim drops at least */
+	static constexpr qsizetype SMALL = 256;   /* the summaries' two levels */
+	static constexpr qsizetype LARGE = 4096;
+
+	struct Mark {
+		quint64 record = 0;  /* the record's number in its start */
+		double time = 0;     /* its time, seconds of the host's clock */
+		double period = 0;   /* seconds a record from there on */
+	};
+
+	Store() = default;
+	explicit Store(const StreamDef &def) { reset(def); }
+	~Store();
+	void reset(const StreamDef &def); /* empty, for this stream */
+	const StreamDef &def() const { return def_; }
+	int recordSize() const { return recordSize_; }
+	int channels() const { return int(def_.channels.size()); }
+
+	/* Records in: count records (count x recordSize() bytes) numbered from `first` in their start; newStart: a new
+	 * start (the first block, a restart: a new epoch), lost: records missing before them (a new segment). */
+	void append(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost);
+	/* the same, the records left where they are (a recording's file mapped into memory, which must outlive the store):
+	 * only the summaries and the lists are made. A store is filled one way or the other; it is not trimmed. */
+	void appendMapped(quint64 first, qsizetype count, const char *records, bool newStart, quint64 lost);
+	bool mapped() const { return !spans_.isEmpty(); }
+	void keep(std::shared_ptr<void> owner) { owner_ = std::move(owner); } /* mapped: what holds the records' memory */
+	/* values computed from another store's records (a fast math line over a recording): this store emptied, then for
+	 * each record i of `source` compute(i, record) writes recordSize() bytes, laid at that record's place and time
+	 * (its gaps and starts too); false leaves record i out (a result that is no number), so the line breaks there */
+	void fillFrom(const Store &source, const std::function<bool(qsizetype i, char *record)> &compute);
+	/* a time mark of the current start (FastClock::mark and its period) */
+	void mark(quint64 record, double time, double period);
+	void clear();
+	/* the memory a trim lets go, when the caller frees it elsewhere (Released) */
+	struct Released {
+		QVector<QByteArray> pieces;
+		QVector<QVector<double>> summaries;
+		bool isEmpty() const { return pieces.isEmpty() && summaries.isEmpty(); }
+	};
+	/* the oldest whole pieces, as many as fit in `records` (none of the records after the last whole piece). gone: the
+	 * pieces and the summaries' old arrays handed there instead of freed here, so the caller frees them a slice at a
+	 * time (a RAM budget cut let 3.5 GB go and held the window's thread 2 s); the store is the same either way */
+	void dropFront(qsizetype records, Released *gone = nullptr);
+	/* the records of the oldest whole pieces that still hold them, as many as fit in `records` (never the newest piece),
+	 * their outline kept: from then on they are summaries only. gone: as dropFront's */
+	void dropRecords(qsizetype records, Released *gone = nullptr);
+	qsizetype recordsFrom() const { return recordsFrom_; } /* the first record still kept whole; before it summaries */
+
+	qsizetype size() const { return size_; }
+	qint64 dropped() const { return dropped_; }
+	/* counts up whenever the times of records already kept can change (a clear, a new start, a start's shift):
+	 * bins made from them before are stale then. A new mark changes only the times after it, so it does not count */
+	int timeVersion() const { return timeVersion_; }
+	/* what the newest start's times are shifted by (Epoch::shift): the stream's clock gives them without it */
+	double newestShift() const { return epochs_.isEmpty() ? 0 : epochs_.last().shift; }
+	qint64 bytes() const;                 /* the memory held now: pieces, summaries, the lists */
+	double bytesPerRecord() const;        /* a record's share: its bytes (not when mapped) and its summaries' */
+	double bytesPerSummary() const;       /* the same once its record has gone: its share of the outline */
+	bool hasTime() const;                 /* a mark has come: the records have times */
+
+	/* a record's time; its channel's shown value (raw x scale + offset), NaN before recordsFrom(); i in 0 .. size() - 1 */
+	double timeAt(qsizetype i) const;
+	double value(int channel, qsizetype i) const;
+	/* the first record at or after t (size(): none), the first after t */
+	qsizetype lowerBound(double t) const;
+	qsizetype upperBound(double t) const;
+	/* the record after the last one of i's segment (a gap or a new start follows it, or the end) */
+	qsizetype segmentEnd(qsizetype i) const;
+	/* i begins a segment after a gap or a new start (the oldest record kept begins none) */
+	bool startsAfterGap(qsizetype i) const;
+	/* the records lost just before i, where i begins a segment after a gap; -1: a new start of the stream (its
+	 * numbers begin again, what was lost cannot be counted) */
+	qint64 lostBefore(qsizetype i) const;
+	qsizetype gaps() const { return segments_.size() - 1; } /* tests */
+
+	/* over records i0 .. i1 - 1 of a channel, from the summaries where they cover whole pieces of it; before
+	 * recordsFrom() the min and max from the outline (the SMALL records around i0 whole), the sums NaN */
+	void minMax(int channel, qsizetype i0, qsizetype i1, double &lo, double &hi) const;
+	void sums(int channel, qsizetype i0, qsizetype i1, double &sum, double &sumSquares) const;
+
+private:
+	struct Segment {
+		qint64 begin = 0;   /* its first record, counted since the store began */
+		quint64 record = 0; /* that record's number in its start */
+		int epoch = 0;
+	};
+	struct Epoch {
+		QVector<Mark> marks; /* by record */
+		double shift = 0;    /* added to its times: a start never begins before the one before ended */
+	};
+	struct Summary {
+		QVector<double> min, max, sum, squares; /* one per full chunk, from chunk `first` on */
+		qint64 first = 0;
+	};
+	struct Channel {
+		int offset = 0;     /* its bytes in a record */
+		int size = 0;       /* how many */
+		RegType type = RegType::I16;
+		double scale = 1, offset0 = 0;
+		Summary small, large;
+	};
+
+	const char *recordAt(qsizetype i) const;
+	void begin(quint64 first, qsizetype count, bool newStart, quint64 lost); /* the lists for records coming in */
+	void put(const char *records, qsizetype count); /* records into the pieces (not mapped) */
+	double decode(const Channel &c, const char *record) const;
+	int segmentOf(qint64 absolute) const;
+	qsizetype bound(double t, bool strict) const;
+	double timeOfRecord(int epoch, double record) const;
+	void summarize();                     /* the chunks the newest records completed */
+	/* the outline's row of SMALL chunk `chunk` (large: of LARGE chunk), counted since the store began: its min record,
+	 * then its max record */
+	char *outlineRow(qint64 chunk, bool large);
+	const char *outlineRow(qint64 chunk, bool large) const;
+	void dropSummaries(Released *gone);   /* the summaries of what is before the records kept */
+
+	StreamDef def_;
+	int recordSize_ = 0;
+	QVector<Channel> channels_;
+	QVector<QByteArray> pieces_;          /* each PIECE records (the last filling); empty before recordsFrom_ */
+	QVector<QByteArray> outlines_;        /* each piece's outline: OUTLINE_ROWS rows of two records (not mapped) */
+	qsizetype recordsFrom_ = 0;           /* the first record kept whole: a multiple of PIECE */
+	static constexpr qsizetype OUTLINE_ROWS = PIECE / SMALL + PIECE / LARGE;
+	struct Span {
+		const char *data = nullptr;
+		qsizetype begin = 0, count = 0;   /* its first record's index, its records */
+	};
+	QVector<Span> spans_;                 /* mapped: where each block's records lie */
+	QVector<int> spanOfChunk_;            /* mapped: the span of each SMALL records' first, so finding one is short */
+	std::shared_ptr<void> owner_;
+	qint64 dropped_ = 0;
+	qsizetype size_ = 0;
+	int timeVersion_ = 0;
+	QVector<Segment> segments_;
+	QVector<Epoch> epochs_;               /* each start's marks */
+	int epochBase_ = 0;                   /* epochs dropped from the front */
+	quint64 nextRecord_ = 0;              /* the number the next record would have, in the current start */
+};
+
+/* An array's pages given back to the system before the array is freed (Windows; elsewhere nothing). The C runtime's
+ * heap keeps what is freed into it, and later one free, of anything on any thread, gives a lump of it back at once:
+ * after a RAM cut from 2 GB the free of one piece gave 110 MB back in 8 to 13 ms, and what a closed chart had left
+ * (830 MB) in 62 to 69 ms, a frame held. Discarded as they are freed, the pages such a lump gives back have nothing
+ * behind them any more: 2 to 4 ms. Discarding costs more than the free alone (about 0.3 ms a MB), so what a frame
+ * frees in its slice (ChartView::releaseSome) takes more frames. Only whole pages of what the array holds (an array of
+ * doubles: all its room, the room at its front too): its header and the heap's bytes around it are not touched */
+void letPagesGo(const QByteArray &array);
+void letPagesGo(const QVector<double> &array);
+/* the same a slice at a time, for an array too large to discard within a frame (a summary of a 4 GB store: 64 MB,
+ * 20 to 24 ms): the next `most` bytes of its whole pages from `done` (bytes of them already discarded, moved on);
+ * false when none were left, so the caller frees it then */
+bool letPagesGo(const QVector<double> &array, qint64 &done, qint64 most);
+/* whether the room an array of doubles holds, as letPagesGo reads it from Qt's list, agrees with what the list tells
+ * (its values where they are, as many, its capacity) and holds them; when not, letPagesGo takes its values only.
+ * An array of raw data has no room of its own: false */
+bool roomKnown(const QVector<double> &array);
+/* letPagesGo on each, then freed, on a thread of its own (one, so frees never run side by side nor take the global
+ * pool's threads from an export or a recording's reading): for what is let go all at once (a store destroyed, what a
+ * closed chart had still to free), which no frame's slice will take */
+void letGoElsewhere(Store::Released gone);
+/* on quit (main.cpp, at aboutToQuit): what that thread still has is freed without its pages discarded first */
+void hurryLettingGo();
+/* waits up to ms (-1: as long as it takes) for that thread to be done: false if it is not (tests: frees never
+ * overlapping a timing check) */
+bool waitForLettingGo(int ms = -1);
+
+} // namespace fast

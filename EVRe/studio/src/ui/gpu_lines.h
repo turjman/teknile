@@ -82,6 +82,12 @@ public:
 	 * size), and presents it: on the screen at once while the layer is shown. False: the card failed (it is closed
 	 * then, its layer gone, and `error` says why). */
 	bool present(WId window, const QRect &pixels, const Frame &frame, QString &error);
+	/* the frames present() let go because the system was still busy with the one before: the layer kept its last one
+	 * (a held chart paints again, ChartView::plotOnGpu); the size of the last frame that reached the layer; tests: the
+	 * next frame let go as if the system were busy */
+	int droppedFrames() const;
+	QSize presentedSize() const;
+	void dropNextFrame();
 	/* the layer over the window, or not (the window's own pixels there): at the screen's next refresh. False: the card
 	 * failed (closed, as present) */
 	bool setShown(bool shown, QString &error);

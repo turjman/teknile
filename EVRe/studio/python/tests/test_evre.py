@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The evre package (unittest): frames, the map, and a device - evre-sim serving the example map.
+"""The evre package (unittest): frames, the map, a device - evre-sim serving the example map - a fast stream's
+recording (one made here, and one `evre record` writes from evre_fake_fast), and EVRe Studio's JSON API (a canned
+one here; the Studio's own in tests/api_test.py fast).
 
     python -m unittest discover -s python/tests          (from EVRe Studio's folder)
     EVRE_BUILD=<build folder>: where evre-sim is; without it the device tests are skipped
 """
 import json
+import math
 import os
 import shutil
 import socket
@@ -12,6 +15,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -210,6 +214,85 @@ class Answers(unittest.TestCase):
         self.assertEqual(refused.exception.code, 3)
 
 
+class _FakeStudio(threading.Thread):
+    """EVRe Studio's JSON port as the Studio answers, canned: one client, the answers of STUDIO.md 17.3"""
+    STREAMS = [{'name': 'ADC', 'rate': 10000, 'on': True, 'channels': [
+        {'name': 'ADC.I_LOAD', 'type': 'i16', 'unit': 'A'}, {'name': 'ADC.V_BUS', 'type': 'i16', 'unit': 'V'}]}]
+
+    def __init__(self):
+        super().__init__(daemon=True)
+        self.server = socket.socket()
+        self.server.bind(('127.0.0.1', 0))
+        self.server.listen(1)
+        self.port = self.server.getsockname()[1]
+
+    def run(self):
+        conn, _ = self.server.accept()
+        f = conn.makefile('rw', encoding='utf-8', newline='\n')
+
+        def send(obj):
+            f.write(json.dumps(obj) + '\n')
+            f.flush()
+        for text in f:
+            q = json.loads(text)
+            if q['cmd'] == 'list':
+                send({'ok': True, 'registers': [{'name': 'SUPPLY_V'}], 'streams': self.STREAMS})
+            elif q['cmd'] == 'get' and 'OFF.X' in q['names']:
+                send({'ok': False, 'error': 'fast stream OFF is off'})
+            elif q['cmd'] == 'get':
+                send({'ok': True, 'values': {n: 0.5 for n in q['names']},
+                      'times': {n: 1790000000.25 for n in q['names'] if '.' in n}})
+            elif q['cmd'] == 'stream':
+                send({'ok': True, 'streaming': len(q['names']), 'fast': 1, 'period_ms': q.get('period_ms', q['ms'])})
+                send({'t': 1.0, 'values': {'SUPPLY_V': 12.0}})
+                send({'t': 1.1, 'fast': {'ADC.I_LOAD': {'n': 2, 'min': -1.0, 'max': 1.0, 'mean': 0.0, 'first': 10}}})
+                send({'t': 1.2, 'fast': {'ADC.I_LOAD': {'n': 0, 'min': None, 'max': None, 'mean': None}}})
+            elif q['cmd'] == 'stop':
+                send({'t': 1.3, 'values': {'SUPPLY_V': 12.1}})  # a sample read before the stop, sent after it
+                send({'ok': True})
+        conn.close()
+
+
+class StudioApi(unittest.TestCase):
+    """evre.studio against a canned JSON port: the calls, the fast channels' lines, a refusal"""
+
+    def setUp(self):
+        fake = _FakeStudio()
+        fake.start()
+        self.studio = evre.connect_studio('127.0.0.1', fake.port)
+
+    def tearDown(self):
+        self.studio.close()
+
+    def test_streams_and_values(self):
+        streams = self.studio.streams()
+        self.assertEqual([c['name'] for c in streams[0]['channels']], ['ADC.I_LOAD', 'ADC.V_BUS'])
+        self.assertEqual(self.studio.get('SUPPLY_V', 'ADC.I_LOAD'), {'SUPPLY_V': 0.5, 'ADC.I_LOAD': 0.5})
+        self.assertEqual(self.studio.fast_value('ADC.I_LOAD'), (0.5, 1790000000.25))
+        with self.assertRaises(evre.EvreError) as off:
+            self.studio.get('OFF.X')
+        self.assertIn('is off', str(off.exception))
+
+    def test_stream_lines(self):
+        lines = []
+        for line in self.studio.stream(['SUPPLY_V', 'ADC.I_LOAD'], ms=50, period_ms=100):
+            lines.append(line)
+            if len(lines) == 3:
+                break
+        self.assertEqual(lines[0], evre.Line(1.0, {'SUPPLY_V': 12.0}, None))
+        self.assertEqual(lines[1].fast['ADC.I_LOAD'], evre.Summary(2, -1.0, 1.0, 0.0, 10))
+        self.assertEqual(lines[2].fast['ADC.I_LOAD'], evre.Summary(0, None, None, None, None))
+        self.assertEqual(self.studio.get('SUPPLY_V'), {'SUPPLY_V': 0.5})  # the stop's late sample was dropped
+
+    def test_fast_stream(self):
+        got = []
+        for t, summary in self.studio.fast_stream(['ADC.I_LOAD'], period_ms=100):
+            got.append((t, summary['ADC.I_LOAD'].n))
+            if len(got) == 2:
+                break
+        self.assertEqual(got, [(1.1, 2), (1.2, 0)])
+
+
 BUILD = os.environ.get('EVRE_BUILD')
 SIM = os.path.join(BUILD or '', 'evre-sim.exe' if os.name == 'nt' else 'evre-sim')
 
@@ -367,3 +450,126 @@ class LoginRequired(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def _piece(name, body):
+    return name + struct.pack('<I', len(body)) + body
+
+
+def _block(first, values, flags=0):
+    """a block of the example fast stream: records of two i16"""
+    return struct.pack('<IHBB', first, len(values), flags, 0) + b''.join(struct.pack('<hh', a, b) for a, b in values)
+
+
+class Recordings(unittest.TestCase):
+    """a .evrs made here: the head, the numbers across a gap and the 32-bit wrap, a new start, the times, a cut"""
+
+    def make(self, path, cut=0):
+        stream = {'name': 'ADC', 'addr': '0xDC00', 'size': 1024, 'rate': 1000,
+                  'channels': [{'name': 'I_LOAD', 'type': 'i16', 'unit': 'A', 'scale': 0.5},
+                               {'name': 'V_BUS', 'type': 'i16', 'unit': 'V'}]}
+        head = json.dumps({'format': 'evre-fast-rec/1', 'device': 'example', 'stream': stream,
+                           'start': '2026-10-05T12:00:00.000', 'start_s': 3.0}).encode()
+        data = _piece(b'EVRS', head)
+        first = 0xFFFFFFFE  # two before the wrap
+        data += _piece(b'TIME', struct.pack('<Qd', first, 10.0))
+        data += _piece(b'BLK ', _block(first, [(2, 20), (4, 40), (6, 60)], 0x01))   # 3 records over the wrap
+        data += _piece(b'XTRA', b'skipped')
+        data += _piece(b'BLK ', _block(4, [(8, 80)], 0x02))                        # records 2, 3 lost (LOST)
+        data += _piece(b'TIME', struct.pack('<Qd', 0x100000004, 10.006))
+        data += _piece(b'BLK ', _block(5, [(10, 100)], 0x00))
+        data += _piece(b'TIME', struct.pack('<Qd', 0, 20.0))
+        data += _piece(b'BLK ', _block(0, [(12, 120), (14, 140)], 0x01))          # a new start
+        data += _piece(b'BLK ', _block(7, [(1, 1)])[:-1])                          # a bad block (one byte short)
+        with open(path, 'wb') as fh:
+            fh.write(data[:len(data) - cut] if cut else data)
+
+    def test_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'run.ADC.evrs')
+            self.make(path)
+            rec = evre.read_recording(path)
+            self.assertEqual((rec.device, rec.stream['name'], rec.start_s), ('example', 'ADC', 3.0))
+            self.assertEqual(rec.numbers, [0xFFFFFFFE, 0xFFFFFFFF, 0x100000000, 0x100000004, 0x100000005, 0, 1])
+            self.assertEqual(rec.values['I_LOAD'], [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
+            self.assertEqual(rec.values['V_BUS'], [20, 40, 60, 80, 100, 120, 140])
+            self.assertEqual((rec.gaps, rec.lost, rec.starts), ([(3, 3)], 3, [0, 5]))
+            self.assertEqual((rec.blocks, rec.bad_blocks, rec.cut), (4, 1, False))
+            # 6 ms between the marks over 6 records: 1 ms a record; the new start from its own mark at the map's rate
+            for got, want in zip(rec.times, [10.0, 10.001, 10.002, 10.006, 10.007, 20.0, 20.001]):
+                self.assertAlmostEqual(got, want, places=9)
+
+    def test_cut_and_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'cut.evrs')
+            self.make(path, cut=3)  # inside the last piece
+            rec = evre.read_recording(path)
+            self.assertTrue(rec.cut)
+            self.assertEqual(rec.blocks, 4)
+            other = os.path.join(tmp, 'run.csv')
+            with open(other, 'w') as fh:
+                fh.write('time_s,datetime\n')
+            with self.assertRaises(ValueError):
+                evre.read_recording(other)
+
+
+EVRE = os.path.join(BUILD or '', 'evre.exe' if os.name == 'nt' else 'evre')
+FAST_MAP = os.path.join(HERE, '..', '..', 'maps', 'example_fast.json')
+FAST_PORT = 1216
+
+
+@unittest.skipUnless(BUILD and os.path.exists(FAST) and os.path.exists(EVRE),
+                     'EVRE_BUILD does not name a build folder with evre and evre_fake_fast')
+class RecordedStream(unittest.TestCase):
+    """evre_fake_fast's stream (every 5th block lost) live with dev.stream, and written by evre record and read back:
+    the device's waves, the gaps counted"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fake = subprocess.Popen([FAST, str(FAST_PORT), FAST_MAP, 'example-token', '--fast-lose', '5'],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', FAST_PORT), 0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fake.kill()
+        cls.fake.wait()
+
+    def check_waves(self, numbers, values, rate):
+        for i in range(0, len(numbers), 97):  # the fake device's waves (FastSource::wave): 50 and 100 Hz
+            t = numbers[i] / rate
+            self.assertAlmostEqual(values['I_LOAD'][i], round(13000 * math.sin(2 * math.pi * 50 * t)) * 0.0005)
+            self.assertAlmostEqual(values['V_BUS'][i], round(13000 * math.sin(2 * math.pi * 100 * t + 1)) * 0.001)
+
+    def test_live(self):
+        """dev.stream: switched on, its blocks for a second (numbers, gaps, the waves), switched off at the end"""
+        with evre.connect_tcp('127.0.0.1', FAST_PORT, FAST_MAP, token='example-token') as dev:
+            blocks = list(dev.stream('adc', seconds=1))
+            self.assertEqual(dev['ADC_STREAM'], 0)
+        self.assertGreater(len(blocks), 20)
+        self.assertTrue(blocks[0].new_start)
+        self.assertGreater(sum(b.lost for b in blocks), 0)  # every 5th block not sent
+        for a, b in zip(blocks, blocks[1:]):
+            self.assertEqual(b.first, a.first + a.count + b.lost)
+        numbers = [b.first + k for b in blocks for k in range(b.count)]
+        values = {name: [v for b in blocks for v in b.values[name]] for name in ('I_LOAD', 'V_BUS')}
+        self.check_waves(numbers, values, 10000)
+
+    def test_record_and_read(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'adc.evrs')
+            done = subprocess.run([EVRE, 'record', '--tcp', '127.0.0.1:%d' % FAST_PORT, '--map', FAST_MAP,
+                                   '--stream', 'ADC', '-o', path, '--seconds', '1'], capture_output=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+            rec = evre.read_recording(path)
+        self.assertGreater(len(rec.numbers), 5000)
+        self.assertEqual(len(rec.times), len(rec.numbers))
+        self.assertGreater(rec.lost, 0)
+        self.assertEqual(rec.lost, sum(n for _, n in rec.gaps))
+        self.check_waves(rec.numbers, rec.values, rec.stream['rate'])
+        self.assertTrue(all(b > a for a, b in zip(rec.times, rec.times[1:])))

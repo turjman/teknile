@@ -87,7 +87,13 @@ public:
 	Notice(QTabWidget *tabs, QWidget *window);
 
 	void post(LogLevel level, const QString &text);
-	void place(); /* again after the window changed size */
+	/* again after the window changed size; by itself when the tab bar moves or changes size, the direction (Arabic:
+	 * the tabs on the right, the room on their left) or the language changes */
+	void place();
+
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override;
+	void changeEvent(QEvent *event) override;
 
 signals:
 	void showLogClicked();

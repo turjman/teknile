@@ -9,7 +9,6 @@
 namespace {
 
 constexpr int REPAINT_MS = 50;   /* the view is told of new values at most this often */
-constexpr qint64 GLOW_MS = 700;  /* a changed value glows this long, fading out */
 constexpr int GLOW_ALPHA = 90;   /* how strongly it starts */
 
 /* "0x00ab": an address as the tooltip shows it and the search box matches it
@@ -158,7 +157,7 @@ int RegisterModel::plotLimitFor(double samplesPerSecond) {
 }
 
 void RegisterModel::setPlotLimit(int limit) {
-	plotLimit_ = std::clamp(limit, 1, MAX_PLOTTED);
+	plotLimit_ = std::clamp(limit, 0, MAX_PLOTTED); /* 0: the other lines hold every place of MAX_PLOTTED */
 	QStringList off;
 	while (plottedCount() > plotLimit_) {
 		int newest = -1;

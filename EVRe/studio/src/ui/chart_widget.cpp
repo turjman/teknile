@@ -14,6 +14,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QStackedWidget>
+#include <QStyleHints>
 #include <QThread>
 #include <QToolTip>
 #include <QTimer>
@@ -35,9 +36,28 @@ namespace {
 constexpr double AXIS_W = 64;              /* the value labels, left of the plot */
 constexpr double LEGEND_H = 44;            /* the legend chips and the state, above the plot */
 constexpr double RIGHT_PAD = 18;
+/* The trigger on (the user's): a margin right of the plot for the level's tab, a column left of it (between the value
+ * labels and the plot) for the level's marker and a strip above it, under the legend, for the position's flag, so
+ * none lies over the data (the owner: a handle over the newest samples and a mark between the plot and the time
+ * labels read badly). The tab starts past the lanes' scroll bar (LANE_BAR_X + LANE_BAR_W), so the two never meet; all
+ * lie outside the card's layer (2 px around the plot), their points on its edge or beyond */
+constexpr double TRIGGER_TAB_X = 15;       /* the tab's left (its point), right of the plot */
+constexpr double TRIGGER_TAB_W = 80;       /* "0.4 A", "-2.5 V", "100 mA" whole before the edge's part */
+constexpr double TRIGGER_TAB_H = 24;       /* the grab area of the tab and the marker, about three times the old handle's */
+constexpr double TRIGGER_TAB_BUTTON = 18;  /* its edge part, at its right end */
+constexpr double TRIGGER_PAD = TRIGGER_TAB_X + TRIGGER_TAB_W + 3; /* the right pad with the trigger on */
+/* The marks are one family (the owner: one finished look): boxes of one height, corners, border and font, each joined
+ * to a pointer of one size in the line's colour */
+constexpr double TRIGGER_MARK_H = 18;      /* a mark's box: the chart's small font with even room above and below */
+constexpr double TRIGGER_MARK_W = 16;      /* a box with a T: the flag and the level's marker */
+constexpr double TRIGGER_POINT = 5;        /* a pointer's depth */
+constexpr double TRIGGER_POINT_W = 10;     /* and its base */
+constexpr double TRIGGER_LEFT_W = TRIGGER_MARK_W + TRIGGER_POINT; /* the level's marker, its point 2 px left of the plot */
+constexpr double TRIGGER_STRIP_H = 26;     /* the flag's strip: 1 px under the legend, its box, its point, 2 px to the plot */
 constexpr double TIME_AXIS_H = 30;         /* the time labels, under the plot */
 constexpr double OVERVIEW_H = 30;          /* the memory strip, under the time labels */
 constexpr double BOTTOM_PAD = 8;
+constexpr double LANE_FIT_SLACK = 0.01;   /* px: lanes that fill the plot fit, their sum's rounding past it ignored */
 constexpr double CARD_RADIUS = 10;
 constexpr double LEGEND_TOP = 12;          /* the row of the legend and the state */
 constexpr double LEGEND_ROW_H = 22;
@@ -48,6 +68,11 @@ constexpr double LANE_UNIT_W = 18;         /* a lane's unit name, rotated, left 
 constexpr double LANE_BUTTON_H = 16;      /* the fold button at the top of an open lane's unit column */
 constexpr double LANE_BUTTON_GAP = 2;      /* between the fold button and the lane's menu button under it */
 constexpr double LANE_NAME_MIN = 24;       /* the menu button only with room left for a short unit name ("°C") */
+constexpr double RANGE_TAG_H = 14;         /* a lane's range tag ("Manual", "Log") at the top of its value labels */
+constexpr double BADGE_PAD = 6;            /* the short window's lock badge: its text's margin either side */
+constexpr double BADGE_GAP = 8;            /* between the state's other words and the badge */
+constexpr double DIVISION_PAD = 6;         /* the time/div readout's box: its text's margin either side */
+constexpr double DIVISION_GAP = 10;        /* between the time/div readout and the state's text */
 constexpr double LANE_WHEEL_STEP = 40;     /* pixels per wheel notch over the lanes' value labels */
 constexpr double LANE_BAR_X = 6;           /* the lanes' scroll bar: this far right of the plot, in its right pad */
 constexpr double LANE_BAR_W = 6;
@@ -57,6 +82,7 @@ constexpr double FOLDED_ITEM_GAP = 14;     /* between the items of a folded stri
 constexpr double CHIP_GAP = 6;             /* between two chips */
 constexpr double CHIP_TEXT_LEFT = 20;      /* a chip's text starts after its dot */
 constexpr double CHIP_PAD_RIGHT = 8;
+constexpr double CHIP_BUTTON_W = 16;       /* the chip's menu button ("▾") at its right end, after CHIP_PAD_RIGHT */
 constexpr double LEGEND_BAR_Y = 37;        /* the legend's scroll bar, under the chips, inside LEGEND_H */
 constexpr double LEGEND_BAR_H = 4;
 constexpr double LEGEND_BAR_GRIP = 5;      /* the bar takes clicks this far above and below it */
@@ -67,9 +93,10 @@ constexpr double READOUT_ROW_H = 18;       /* a line of the crosshair's box */
 constexpr double DOT_PICTURE = 9;          /* the crosshair's dot picture: a 3.5 radius dot and its edge */
 constexpr int Y_TICKS = 5;                 /* about this many value grid lines */
 constexpr double TIME_LABEL_SPACING = 140; /* about one time label per this many pixels */
+constexpr qint64 DIVISION_CLOCK_MS = 500;  /* the divisions' readout: its clock time while live, at most this often */
 
 /* the view (the longest: ChartView::MAX_SPAN) */
-constexpr double MIN_WINDOW = 0.001;  /* seconds */
+constexpr double MIN_WINDOW = 1e-5;   /* seconds: 10 us, a fast line's single records */
 constexpr double MIN_MEMORY = 1;      /* seconds */
 constexpr double ZOOM_STEP = 1.25;    /* per wheel notch */
 constexpr double LIVE_SNAP = 0.002;   /* a held view this close to now (of the view) is live again */
@@ -82,6 +109,8 @@ constexpr double LINE_WIDTH = 1.5;   /* logical pixels */
 constexpr double Y_MARGIN = 0.08;    /* free space above and below the lines, of the range */
 constexpr double FLAT_RANGE = 1e-12; /* a line's own range narrower than this: it is flat */
 constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little faded */
+constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
+constexpr qint64 RELEASE_SLICE = 4 << 20; /* bytes of a summary's pages discarded at a time (1.3 to 2.6 ms) */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
@@ -90,6 +119,7 @@ constexpr qsizetype TRIM_PER_FRAME = 4000000; /* samples moved by trims in a fra
 constexpr double BUDGET_SAMPLE_MS = 30;        /* a slow paint spends at most this (or twice the frames' average) */
 constexpr int LAYER_AFTER_FRAMES = 2;          /* the card's layer shown after this many frames under it (paintFrame) */
 constexpr qint64 FRAMES_STOPPED_MS = 250;      /* no frame() this long: a change is painted at once (refresh) */
+constexpr int DROPPED_AGAIN_MS = 16;            /* a held view's card frame let go: painted again after this */
 
 /* the notes' tags: at the bottom of the plot, the text cut to this width at most */
 constexpr double NOTE_TAG_H = 16;
@@ -133,19 +163,27 @@ QString widestChartNumber() {
 	return QStringLiteral("-0.000e+00");
 }
 
-/* a length of time for the memory strip: seconds, minutes or hours */
+/* a length of time for the memory strip: seconds, minutes or hours (one piece in Arabic: ltrPiece) */
 QString formatDuration(double seconds) {
-	if (seconds < 120) return QStringLiteral("%1 s").arg(seconds, 0, 'f', 0);
-	if (seconds < 7200) return QStringLiteral("%1 min").arg(seconds / 60, 0, 'f', 1);
-	return QStringLiteral("%1 h").arg(seconds / 3600, 0, 'f', 1);
+	if (seconds < 120) return ltrPiece(QStringLiteral("%1 s").arg(seconds, 0, 'f', 0));
+	if (seconds < 7200) return ltrPiece(QStringLiteral("%1 min").arg(seconds / 60, 0, 'f', 1));
+	return ltrPiece(QStringLiteral("%1 h").arg(seconds / 3600, 0, 'f', 1));
 }
 
 QDateTime wallClock(qint64 epochMsAtZero, double t) {
 	return QDateTime::fromMSecsSinceEpoch(epochMsAtZero + qint64(std::llround(t * 1000)));
 }
 
-/* a time grid label, as precise as the grid step needs */
+/* a time grid label, as precise as the grid step needs: below a millisecond (a fast line's records) the microseconds
+ * after the milliseconds, "14:03:12.345678" */
 QString timeLabel(qint64 epochMsAtZero, double t, double step) {
+	if (step < 1e-3) {
+		const qint64 micro = epochMsAtZero * 1000 + qint64(std::llround(t * 1e6));
+		const qint64 ms = micro >= 0 ? micro / 1000 : (micro - 999) / 1000;
+		const QString label = QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"))
+				+ QStringLiteral("%1").arg(micro - ms * 1000, 3, 10, QLatin1Char('0'));
+		return step >= 1e-5 ? label.chopped(1) : label; /* tens of microseconds: five decimals */
+	}
 	const QDateTime at = wallClock(epochMsAtZero, t);
 	if (step >= 1) return at.toString(QStringLiteral("HH:mm:ss"));
 	if (step >= 0.1) return at.toString(QStringLiteral("HH:mm:ss.z"));
@@ -166,12 +204,36 @@ QFont labelFont() {
 	return font;
 }
 
+/* a lane's range tag: smaller than the value labels, so "Manual" fits their column beside the lane's buttons */
+QFont tagFont() {
+	QFont font = QGuiApplication::font();
+	font.setPointSizeF(7.5);
+	return font;
+}
+
 /* the Log scale's lines at 2..9 of a decade: the grid's colour, fainter */
 QColor faintGrid() {
 	QColor faint = Theme::colors().grid;
 	faint.setAlphaF(faint.alphaF() * 0.45);
 	return faint;
 }
+
+/* the trigger's "now" edge: muted text, half seen, so it reads over the grid and under the lines in both themes */
+QColor nowEdgeColor() {
+	QColor edge = Theme::colors().muted;
+	edge.setAlphaF(0.55);
+	return edge;
+}
+
+/* The trigger's instant line: its line's colour, as the T flag's pointer and the level's line (one family), not the
+ * crosshair's grey (the crosshair put at T was taken for a trigger line); faint, so the waves stay in front of it */
+QColor instantColor(QColor line) {
+	line.setAlphaF(0.6);
+	return line;
+}
+/* its dashes, flat ended: more gap than ink (2 on, 3 off), where the crosshair's are more ink than gap (4 on, 2 off) and
+ * the cursors', the notes' and the level's longer (4.8 on, 2.4 off) */
+constexpr double INSTANT_DASH = 2, INSTANT_GAP = 3;
 
 /* a range too narrow to scale into: one unit around it */
 void widenFlatRange(double &lo, double &hi) {
@@ -262,6 +324,9 @@ ChartView::ChartView(QWidget *parent) : QWidget(parent) {
 	pool_.setMaxThreadCount(std::clamp(QThread::idealThreadCount() - 3, 1, 8));
 	pool_.setExpiryTimeout(-1);
 	opener_.setMaxThreadCount(1);
+	framesStopped_ = new QTimer(this);
+	framesStopped_->setSingleShot(true);
+	connect(framesStopped_, &QTimer::timeout, this, &ChartView::refresh);
 }
 
 /* job(i) for every i, taken in turn by the pool's threads and this one. This one waits for the jobs taken, never for
@@ -309,6 +374,19 @@ void ChartView::addSeries(int key, const QString &name, const QString &unit, con
 		s.totalV = kept->v;
 	}
 	keptTotals_.remove(key);
+	if (isFastKey(key)) { /* a fast stream's channel: its records are its stream's */
+		const int stream = (key - FIRST_FAST_KEY) / 256;
+		s.fast = fastStores_.value(stream);
+		s.channel = (key - FIRST_FAST_KEY) % 256;
+		if (!s.fast || s.channel >= s.fast->channels()) return;
+		s.totalTo = s.fast->dropped() + s.fast->size(); /* its total from the records that come now */
+		if (s.fast->mapped()) { /* a recording's: its total over all of it */
+			s.total = 0;
+			s.totalT = NAN;
+			s.totalTo = 0;
+			sumFast(s);
+		}
+	}
 	series_.insert(key, s);
 	seriesGeneration_++;
 	capped_ = false;
@@ -321,12 +399,16 @@ void ChartView::removeSeries(int key) {
 	if (it != series_.constEnd()) keptTotals_.insert(key, { it->name, it->unit, it->total, it->totalT, it->totalV });
 	series_.remove(key);
 	seriesGeneration_++;
+	/* the engine stops looking for the crossings of a fast line that is gone (fastTriggerWatch: none) */
+	if (trigger_.on && key == trigger_.key) postWatch();
 	forgetRanges();
 	refresh();
 }
 
 void ChartView::clearSeries() {
+	const bool watched = trigger_.on && series_.contains(trigger_.key);
 	series_.clear();
+	if (watched) postWatch();
 	keptTotals_.clear(); /* another set of lines: the totals from 0 */
 	totalsSince_ = NAN;
 	seriesGeneration_++;
@@ -345,8 +427,20 @@ void ChartView::clearData() {
 		s.total = 0;
 		s.totalT = NAN;
 	}
+	for (const auto &store : std::as_const(fastStores_))
+		if (!store->mapped()) store->clear(); /* a recording's stays: nothing comes after the file */
+	for (Series &s : series_) {
+		s.totalTo = 0;
+		if (s.fast && s.fast->mapped()) sumFast(s);
+	}
 	keptTotals_.clear();
 	totalsSince_ = NAN; /* the first sample from now on */
+	/* the trigger: a crossing waiting for its view lay in what went. The engine is armed again: its next crossing may
+	 * pair a block's first record with one cleared here, which the view cannot hold on (fastCrossings) */
+	if (trigger_.on) {
+		trigger_.pending = NAN;
+		postWatch();
+	}
 	seriesGeneration_++;
 	capped_ = false;
 	forgetRanges();
@@ -368,14 +462,23 @@ void ChartView::prepareTile(const QPainter &p, const QRect &device, QImage &imag
 }
 
 qint64 ChartView::bytesNeeded() const {
-	double samples = 0;
+	double samples = 0, fastBytes = 0;
+	QSet<const fast::Store *> counted;
 	for (const Series &s : series_) {
+		if (s.fast) { /* a fast stream once, all its channels in its records */
+			const fast::Store &store = *s.fast;
+			if (counted.contains(&store) || store.size() < 2 || !store.hasTime()) continue;
+			counted.insert(&store);
+			const double rate = double(store.size() - 1) / std::max(1e-9, store.timeAt(store.size() - 1) - store.timeAt(0));
+			fastBytes += rate * memory_ * store.bytesPerRecord();
+			continue;
+		}
 		const qsizetype n = s.times.size();
 		if (n < 2 || s.times.back() <= s.times.front()) continue;
 		const double rate = double(n - 1) / (s.times.back() - s.times.front());
 		samples += std::min(rate * memory_, double(MAX_POINTS));
 	}
-	return qint64(samples * BYTES_PER_SAMPLE);
+	return qint64(samples * BYTES_PER_SAMPLE + fastBytes);
 }
 
 qint64 ChartView::bytesHeld() const {
@@ -384,12 +487,76 @@ qint64 ChartView::bytesHeld() const {
 		bytes += qint64(s.times.capacity() + s.values.capacity()) * qint64(sizeof(double));
 		for (const QVector<Chunk> &level : s.chunks) bytes += qint64(level.capacity()) * qint64(sizeof(Chunk));
 	}
+	for (const auto &store : fastStores_) bytes += store->bytes();
 	return bytes;
 }
 
 qsizetype ChartView::pointsKept(int key) const {
 	const auto it = series_.find(key);
+	if (it != series_.end() && it->fast) return it->fast->size();
 	return it == series_.end() ? 0 : it->times.size();
+}
+
+void ChartView::setFastSummaries(bool on) {
+	if (fastSummaries_ == on) return;
+	fastSummaries_ = on;
+	capped_ = false; /* the lines past their new share say so again at their next records */
+	refresh();
+}
+
+ChartView::Tiers ChartView::tiers(double rate, double memory, double share, double perRecord, double perSummary) {
+	Tiers out;
+	if (rate <= 0 || memory <= 0 || perRecord <= perSummary) return out;
+	out.kept = out.samples = memory;
+	if (rate * memory * perRecord <= share) return out; /* every record whole */
+	out.kept = std::min(memory, share / perSummary / rate);
+	out.summaryBytes = out.kept * rate * perSummary;
+	out.samples = std::max(0.0, (share - out.summaryBytes) / (perRecord - perSummary) / rate);
+	return out;
+}
+
+bool ChartView::fastTiers(double &kept, double &samples) const {
+	kept = samples = memory_;
+	if (!fastSummaries_) return false;
+	bool any = false;
+	QSet<const fast::Store *> counted;
+	for (const Series &s : series_) {
+		if (!s.fast) continue;
+		const fast::Store &store = *s.fast;
+		if (counted.contains(&store) || store.mapped() || store.size() < 2 || !store.hasTime()) continue;
+		counted.insert(&store);
+		int lines = 0;
+		for (const Series &t : series_) lines += t.fast == s.fast;
+		const double rate = double(store.size() - 1) / std::max(1e-9, store.timeAt(store.size() - 1) - store.timeAt(0));
+		const double share = double(ramInUse()) * 1024 * 1024 / double(series_.size()) * lines;
+		const Tiers t = tiers(rate, memory_, share, store.bytesPerRecord(), store.bytesPerSummary());
+		if (t.samples >= memory_) continue;
+		any = true;
+		kept = std::min(kept, t.kept);
+		samples = std::min(samples, t.samples);
+	}
+	return any;
+}
+
+bool ChartView::summariesBefore(double &t) const {
+	bool any = false;
+	for (const Series &s : series_) {
+		if (!s.fast || s.fast->recordsFrom() <= 0 || s.fast->recordsFrom() >= s.fast->size() || !s.fast->hasTime()) continue;
+		const double from = s.fast->timeAt(s.fast->recordsFrom());
+		t = any ? std::max(t, from) : from;
+		any = true;
+	}
+	return any;
+}
+
+bool ChartView::summariesIn(int key, double t0, double t1, bool *only) const {
+	if (only) *only = false;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast || it->fast->recordsFrom() <= 0) return false;
+	const fast::Store &store = *it->fast;
+	if (store.lowerBound(t0) >= store.recordsFrom()) return false;
+	if (only) *only = store.upperBound(t1) <= store.recordsFrom();
+	return true;
 }
 
 void ChartView::setRamBudget(int megabytes) {
@@ -398,9 +565,60 @@ void ChartView::setRamBudget(int megabytes) {
 	refresh();
 }
 
+void ChartView::setRamLimit(int megabytes) {
+	megabytes = std::max(megabytes, 0);
+	if (limitMB_ == megabytes) return;
+	const int before = ramInUse();
+	limitMB_ = megabytes;
+	if (ramInUse() == before) return;
+	capped_ = false; /* as for a budget changed: the lines past their new share say so again at their next sample */
+	refresh();
+}
+
+qint64 ChartView::bytesReleasing() const {
+	qint64 bytes = 0;
+	for (const QByteArray &piece : released_.pieces) bytes += piece.capacity();
+	for (const QVector<double> &summary : released_.summaries) bytes += qint64(summary.capacity()) * qint64(sizeof(double));
+	return bytes;
+}
+
+void ChartView::setRecordingOn(bool on) {
+	if (recordingOn_ == on) return;
+	recordingOn_ = on;
+	refresh();
+}
+
+/* the memory strip's tooltip: what it is and does, and with the RAM budget reached what that means */
+QString ChartView::memoryStripTip() const {
+	QString tip = tr("The memory: all the time the chart keeps (Memory), the view a box on it. Click or drag: the view "
+			"goes there · Wheel: a window earlier or later");
+	double since = 0;
+	if (summariesBefore(since)) /* the shaded part */
+		tip += QStringLiteral("\n\n") + tr("Older samples: summaries. The shaded part keeps only the lowest and highest "
+				"value of each 256 samples of the fast lines (drawn as bars when zoomed in; their mean, RMS and area read "
+				"\"—\"): samples for the newest %1.").arg(formatDuration(std::max(0.0, clockNow() - since)));
+	if (!capped_) return tip;
+	double k0, k1;
+	memorySpan(k0, k1);
+	tip += QStringLiteral("\n\n") + tr("RAM budget reached: the chart keeps its samples within the RAM set on the first "
+			"row, so it keeps the last %1 of the Memory's %2 and lets the oldest go.")
+			.arg(formatDuration(std::max(0.0, k1 - k0)), formatDuration(memory_));
+	if (ramInUse() < ramMB_) { /* one piece each: "MB 512" in Arabic without it */
+		const auto size = [](int megabytes) {
+			return ltrPiece(megabytes < 1024 ? QStringLiteral("%1 MB").arg(megabytes)
+							 : QStringLiteral("%1 GB").arg(megabytes / 1024.0, 0, 'f', 1));
+		};
+		tip += QLatin1Char('\n') + tr("The free memory limits the budget now: the chart keeps within %1 of the %2 set, so "
+				"the computer does not page to disk.").arg(size(ramInUse()), size(ramMB_));
+	}
+	tip += QLatin1Char('\n') + (recordingOn_ ? tr("The recording running keeps every sample: its file holds them all.")
+			: tr("A recording keeps every sample: its file holds what the chart lets go."));
+	return tip;
+}
+
 qsizetype ChartView::pointsPerLine() const {
 	const qsizetype lines = std::max<qsizetype>(1, series_.size());
-	const qsizetype total = qsizetype(ramMB_) * 1024 * 1024 / BYTES_PER_SAMPLE;
+	const qsizetype total = qsizetype(ramInUse()) * 1024 * 1024 / BYTES_PER_SAMPLE;
 	return std::clamp<qsizetype>(total / lines, qsizetype(CHUNK_SIZE[LEVELS - 1]) * 16, MAX_POINTS);
 }
 
@@ -456,11 +674,13 @@ void ChartView::appendNow(int key, double t, double v) {
 	}
 	/* the trigger: this line crossing the level since it was armed, at the time straight between the two samples */
 	if (trigger_.armed && key == trigger_.key && !s.times.isEmpty() && t > trigger_.armedFrom && t > s.times.back()) {
-		const double pt = s.times.back(), pv = s.values.back(), level = trigger_.level;
+		const TriggerSettings watched = watchedSettings(); /* a short window's lock: its own */
+		const double pt = s.times.back(), pv = s.values.back(), level = watched.level;
 		const bool up = pv < level && v >= level, down = pv > level && v <= level;
-		const TriggerEdge edge = trigger_.edge;
-		if ((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down))
-			fireTrigger(v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t);
+		const TriggerEdge edge = watched.edge;
+		const double at = v != pv ? pt + (level - pv) / (v - pv) * (t - pt) : t;
+		if (((edge != TriggerEdge::Falling && up) || (edge != TriggerEdge::Rising && down)) && at > trigger_.armedFrom)
+			crossed(at, t);
 	}
 	const qsizetype limit = pointsPerLine();
 	dropExpired(s, t, limit);
@@ -500,6 +720,355 @@ void ChartView::addChunks(Series &s, qsizetype limit) {
 		roomForOne(s.chunks[level], limit / CHUNK_SIZE[level] + 1, s.spread);
 		s.chunks[level].push_back(chunk);
 	}
+}
+
+/* ----------------------------------------------------------- the fast lines */
+
+void ChartView::setFastStream(int stream, const StreamDef &def) {
+	const std::shared_ptr<fast::Store> kept = fastStores_.value(stream);
+	if (kept && kept->def().name == def.name && kept->def().addr == def.addr && kept->recordSize() == def.recordSize()
+			&& kept->channels() == def.channels.size())
+		return;
+	auto store = std::make_shared<fast::Store>(def);
+	fastStores_.insert(stream, store);
+	for (auto it = series_.begin(); it != series_.end(); ++it)
+		if (isFastKey(it.key()) && (it.key() - FIRST_FAST_KEY) / 256 == stream) it->fast = store;
+	/* a watched line's records start again in the new store: the engine is armed again from them */
+	if (trigger_.on && isFastKey(trigger_.key) && (trigger_.key - FIRST_FAST_KEY) / 256 == stream) {
+		trigger_.pending = NAN;
+		postWatch();
+	}
+	seriesGeneration_++;
+	refresh();
+}
+
+/* A stream gone from the map leaves no store behind: the same stream in a map loaded later starts afresh, not on the
+ * records and times of a link that has long gone */
+void ChartView::setFastStopped(int stream, bool stopped, const QString &name) {
+	if (stopped ? fastStopped_.value(stream, QStringLiteral("\n")) == name : !fastStopped_.contains(stream)) return;
+	if (stopped) fastStopped_.insert(stream, name);
+	else fastStopped_.remove(stream);
+	fastStoppedGen_++;
+	refresh();
+}
+
+bool ChartView::lineStopped(int key) const {
+	return !recording_ && isFastKey(key) && fastStopped_.contains(streamOf(key));
+}
+
+bool ChartView::lineResting(int key) const {
+	if (!isFastKey(key)) return false;
+	if (lineStopped(key)) return true;
+	const double newest = newestTime(key);
+	return std::isfinite(newest) && clockNow() - newest > std::max(REST_AFTER, 2 * window_);
+}
+
+double ChartView::fastNewest(int stream) const {
+	const auto it = fastStores_.constFind(stream);
+	if (it == fastStores_.constEnd() || !*it || (*it)->size() == 0 || !(*it)->hasTime()) return NAN;
+	return (*it)->timeAt((*it)->size() - 1);
+}
+
+QString ChartView::triggerStoppedName() const {
+	if (!trigger_.on || trigger_.automatic || !lineStopped(trigger_.key)) return QString();
+	return fastStopped_.value(streamOf(trigger_.key));
+}
+
+QString ChartView::stoppedTip(int key) const {
+	if (!lineStopped(key)) return QString();
+	const double newest = fastNewest(streamOf(key));
+	const QString name = fastStopped_.value(streamOf(key));
+	if (!std::isfinite(newest)) return tr("%1 stopped: no record yet").arg(name);
+	return tr("%1 stopped at %2: the value is its last record's").arg(name, ltrPiece(timeLabel(epochMs_, newest, 1e-3)));
+}
+
+/* one part per stream (a fast math line's stream says its source's name, once), with the time of its newest record
+ * kept; a stream none of whose lines is on the chart, or with no record, says nothing */
+QStringList ChartView::stoppedParts(bool whole) const {
+	QStringList names;
+	QVector<double> newest;
+	for (auto it = series_.constBegin(); it != series_.constEnd() && !recording_; ++it) {
+		if (!lineStopped(it.key())) continue;
+		const int stream = streamOf(it.key());
+		const double t = fastNewest(stream);
+		if (!std::isfinite(t)) continue;
+		const QString name = fastStopped_.value(stream);
+		const qsizetype at = names.indexOf(name);
+		if (at < 0) {
+			names << name;
+			newest << t;
+		} else {
+			newest[at] = std::max(newest[at], t);
+		}
+	}
+	QStringList parts;
+	for (qsizetype i = 0; i < names.size(); i++)
+		parts << (whole ? tr("%1 stopped · last record %2", "a fast stream's name; the time of its newest record")
+								  .arg(names[i], ltrPiece(timeLabel(epochMs_, newest[i], 1e-3)))
+						: tr("%1 stopped", "a fast stream's name").arg(names[i]));
+	return parts;
+}
+
+void ChartView::removeFastStream(int stream) {
+	if (!fastStores_.remove(stream)) return;
+	seriesGeneration_++;
+	refresh();
+}
+
+void ChartView::clearFastStreams() {
+	const bool watched = trigger_.on && isFastKey(trigger_.key) && series_.contains(trigger_.key);
+	for (auto it = series_.begin(); it != series_.end();) {
+		if (it->fast) it = series_.erase(it);
+		else ++it;
+	}
+	fastStores_.clear();
+	if (watched) postWatch();
+	seriesGeneration_++;
+	refresh();
+}
+
+const fast::Store *ChartView::fastStore(int stream) const { return fastStores_.value(stream).get(); }
+
+void ChartView::setFastStore(int stream, std::shared_ptr<fast::Store> store) {
+	fastStores_.insert(stream, store);
+	for (auto it = series_.begin(); it != series_.end(); ++it) {
+		if (!isFastKey(it.key()) || (it.key() - FIRST_FAST_KEY) / 256 != stream) continue;
+		it->fast = store;
+		it->total = 0;
+		it->totalT = NAN;
+		it->totalTo = 0;
+		sumFast(*it);
+	}
+	seriesGeneration_++;
+	forgetRanges();
+	refresh();
+}
+
+QVector<ChartView::BinInfo> ChartView::lastBins(int key) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return out;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &*it) continue;
+		for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap, bin.bar });
+	}
+	return out;
+}
+
+QVector<ChartView::BinInfo> ChartView::freshBins(int key) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast || lastBinKey_.size() < 3) return out;
+	return freshBins(key, lastBinKey_[0], lastBinKey_[1], lastBinKey_[2]);
+}
+
+QVector<ChartView::BinInfo> ChartView::freshBins(int key, double t0, double t1, double columns) const {
+	QVector<BinInfo> out;
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd() || !it->fast) return out;
+	BinnedLine line;
+	binFast(*it, t0, t1, columns, line, nullptr);
+	for (const Bin &bin : line.bins) out.push_back({ bin.t0, bin.t1, bin.min, bin.max, bin.count, bin.gap, bin.bar });
+	return out;
+}
+
+/* A block's records into its stream's store, kept while one of its lines is on the chart; the legend's values from
+ * the newest record */
+qint64 ChartView::appendFast(int stream, quint64 first, qsizetype count, const QByteArray &records, bool newStart,
+		quint64 lost) {
+	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
+	if (!store || count <= 0 || records.size() < count * store->recordSize()) return -1;
+	int lines = 0;
+	for (const Series &s : std::as_const(series_)) lines += s.fast == store;
+	if (lines == 0) return -1;
+	const qint64 at = store->dropped() + store->size();
+	store->append(first, count, records.constData(), newStart, lost);
+	for (Series &s : series_)
+		if (s.fast == store) sumFast(s); /* before a trim: every record counts */
+	trimFast(*store, lines);
+	const qsizetype newest = store->size() - 1;
+	for (Series &s : series_) {
+		if (s.fast != store || newest < 0) continue;
+		s.last = store->value(s.channel, newest);
+		s.hasLast = true;
+	}
+	return at;
+}
+
+void ChartView::markFast(int stream, quint64 record, double time, double period) {
+	const std::shared_ptr<fast::Store> store = fastStores_.value(stream);
+	if (!store) return;
+	const double shift = store->newestShift();
+	store->mark(record, time, period);
+	for (Series &s : series_)
+		if (s.fast == store) sumFast(s); /* the first block's records have times from the first mark on */
+	/* a new start shifted after the one before: the engine's clock is not, so it is given the arm in its own terms */
+	const auto watched = series_.constFind(trigger_.key);
+	if (trigger_.on && store->newestShift() != shift && watched != series_.constEnd() && watched->fast == store) postWatch();
+}
+
+/* The crossings the engine found (fast::TriggerScan, with the same level, edge and re-arm as here), each at the time
+ * this store gives its record: the view holds on them as on a polled line's crossing. One found for an older arm is
+ * not used. One for this arm that the view cannot hold on (its record before is not in the store, as after a Clear,
+ * or it lies at or before the crossing held on) is not dropped silently: the engine counted it (Single stopped there,
+ * Normal waits its re-arm), so the engine is armed again */
+void ChartView::fastCrossings(int stream, qint64 first, const QVector<fast::Crossing> &crossings) {
+	const auto it = series_.constFind(trigger_.key);
+	if (!trigger_.on || it == series_.constEnd() || !it->fast || it->fast != fastStores_.value(stream)) return;
+	const fast::Store &store = *it->fast;
+	bool unused = false;
+	for (const fast::Crossing &crossing : crossings) {
+		if (crossing.serial != watchSerial_ || !trigger_.armed) continue;
+		const qsizetype i = qsizetype(first - store.dropped()) + crossing.record;
+		if (first < 0 || i < 1 || i >= store.size() || !store.hasTime()) {
+			unused = true;
+			continue;
+		}
+		const double before = store.timeAt(i - 1), time = before + crossing.fraction * (store.timeAt(i) - before);
+		if (std::isfinite(trigger_.at) && time <= trigger_.at) {
+			unused = true;
+			continue;
+		}
+		crossed(time, store.timeAt(store.size() - 1));
+	}
+	if (unused) postWatch();
+}
+
+fast::TriggerWatch ChartView::fastTriggerWatch(int &stream) const {
+	stream = -1;
+	fast::TriggerWatch watch;
+	const auto it = series_.constFind(trigger_.key);
+	if (!trigger_.on || it == series_.constEnd() || !it->fast) return watch;
+	stream = (trigger_.key - FIRST_FAST_KEY) / 256;
+	const TriggerSettings watched = watchedSettings();
+	watch.on = trigger_.armed;
+	watch.channel = it->channel;
+	watch.level = watched.level;
+	watch.edge = int(watched.edge);
+	watch.from = trigger_.armedFrom - it->fast->newestShift(); /* on the stream's clock (TriggerWatch::from) */
+	watch.rearm = trigger_.mode == TriggerMode::Single ? -1 : std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	watch.serial = watchSerial_;
+	return watch;
+}
+
+void ChartView::postWatch() {
+	watchDue_ = false;
+	watchSerial_++;
+	emit fastTriggerChanged();
+}
+
+namespace {
+/* the trapezoids of a fast line's records i0 .. i1 - 1, each segment apart (nothing across a gap): a segment's
+ * records are evenly spaced, so its trapezoids are dt x (sum - (first + last) / 2), the sums from the summaries.
+ * shifted: the same of (value - shift), for the standard deviation (statsOf's reason) */
+struct Trapezoids {
+	double area = 0, areaOfSquares = 0, shifted = 0, shiftedSquares = 0, span = 0;
+};
+Trapezoids trapezoids(const fast::Store &store, int channel, qsizetype i0, qsizetype i1, double shift) {
+	Trapezoids out;
+	for (qsizetype k = i0; k < i1;) {
+		const qsizetype e = std::min(store.segmentEnd(k), i1);
+		const qsizetype n = e - k;
+		if (n >= 2) {
+			double sum, squares;
+			store.sums(channel, k, e, sum, squares);
+			const double f = store.value(channel, k), l = store.value(channel, e - 1);
+			const double duration = store.timeAt(e - 1) - store.timeAt(k), dt = duration / double(n - 1);
+			const double sumShifted = sum - double(n) * shift;
+			const double squaresShifted = squares - 2 * shift * sum + double(n) * shift * shift;
+			const double fs = f - shift, ls = l - shift;
+			out.area += dt * (sum - 0.5 * (f + l));
+			out.areaOfSquares += dt * (squares - 0.5 * (f * f + l * l));
+			out.shifted += dt * (sumShifted - 0.5 * (fs + ls));
+			out.shiftedSquares += dt * (squaresShifted - 0.5 * (fs * fs + ls * ls));
+			out.span += duration;
+		}
+		k = e;
+	}
+	return out;
+}
+} // namespace
+
+/* A fast line's total since Clear: the trapezoids from its last summed record to its newest with a time (the
+ * memory's trims lose nothing: summed as they come), none across a gap */
+void ChartView::sumFast(Series &s) {
+	const fast::Store &store = *s.fast;
+	if (!store.hasTime() || store.size() == 0) return;
+	const qint64 end = store.dropped() + store.size();
+	if (s.totalTo >= end) return;
+	/* joined to the last; never from summaries only (a store given whole, as a recording's, has none) */
+	const qsizetype from = qsizetype(std::max<qint64>(store.recordsFrom(), s.totalTo - 1 - store.dropped()));
+	if (end - store.dropped() - from >= 2) s.total += trapezoids(store, s.channel, from, end - store.dropped(), 0).area;
+	s.totalT = store.timeAt(store.size() - 1);
+	s.totalV = store.value(s.channel, store.size() - 1);
+	if (std::isnan(totalsSince_)) totalsSince_ = store.timeAt(from);
+	s.totalTo = end;
+}
+
+/* What is older than `memory` goes, about a twentieth at a time (as a polled line's), and from a sixteenth short of
+ * its lines' share of the RAM down to seven eighths of it; the store drops whole pieces. With older samples as
+ * summaries (fastSummaries_), the share holds the summaries of all that is kept and the newest records whole: past it,
+ * the oldest pieces' records go a piece at a time (a ring, not an eighth at once), their summaries kept; only when the
+ * summaries themselves outgrow the share does the oldest go, as without. What they held is not freed
+ * here but a slice at each frame (releaseSome): the RAM cut from 4 GB to 512 MB with a fast line filled let 3.5 GB
+ * go, and freeing it in one go held the window's thread about 2 s. Freed on another thread instead, the frees held
+ * the heap and the memory's pages while the chart's threads binned, and a paint took 30 to 50 ms. The store itself
+ * is at its new size at once, the same for every frame after: only the freeing waits, of memory nothing reads */
+void ChartView::trimFast(fast::Store &store, int lines) {
+	if (store.size() == 0 || !store.hasTime()) return;
+	fast::Store::Released gone;
+	const double newest = store.timeAt(store.size() - 1);
+	if (newest - store.timeAt(0) > memory_ * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory_), &gone);
+	const double share = double(ramInUse()) * 1024 * 1024 / double(std::max<qsizetype>(1, series_.size())) * lines;
+	if (fastSummaries_ && !store.mapped()) {
+		const double summary = store.bytesPerSummary();
+		const double piece = double(fast::Store::PIECE) * (store.bytesPerRecord() - summary); /* a piece's records */
+		/* two pieces of records kept whole at least: the newest, and the one filling */
+		if (double(store.size()) * summary + 2 * piece >= share - share / 16) {
+			const qsizetype most = qsizetype(std::max(0.0, (share * 7 / 8 - 2 * piece) / summary));
+			store.dropFront(store.size() - most, &gone);
+			capped_ = true;
+		}
+		/* by what it holds (its summaries' arrays keep the room freed at their front until refitted): the pieces of
+		 * records over the share go */
+		for (double over = double(store.bytes()) - share; over > 0; over = double(store.bytes()) - share) {
+			const qsizetype before = store.recordsFrom();
+			store.dropRecords(qsizetype(std::ceil(over / piece)) * fast::Store::PIECE, &gone);
+			if (store.recordsFrom() == before) break; /* the newest piece alone: kept */
+		}
+	} else {
+		const qsizetype most = qsizetype(share / store.bytesPerRecord());
+		if (store.size() >= most - most / 16) {
+			store.dropFront(store.size() - most + most / 8, &gone);
+			capped_ = true;
+		}
+	}
+	released_.pieces += std::move(gone.pieces);
+	released_.summaries += std::move(gone.summaries);
+}
+
+/* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary's next RELEASE_SLICE),
+ * before the frame is painted: gigabytes go over a few seconds, never a frame over budget. Each with its pages given
+ * back first (fast::letPagesGo): freed alone, the heap kept them, and one free some frames later gave 110 MB back at
+ * once, 8 to 13 ms. A summary's pages go a slice at a time, then it is freed: its size follows the store's (one
+ * double for each 256 records), and a 4 GB store's 64 MB discarded in one go took about 20 ms. The summaries from the
+ * front: a trim appends its own at the end, while the first may be half discarded */
+void ChartView::releaseSome() {
+	if (released_.isEmpty()) return;
+	QElapsedTimer clock;
+	clock.start();
+	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
+		if (fast::letPagesGo(released_.summaries.constFirst(), summaryDiscarded_, RELEASE_SLICE)) continue;
+		released_.summaries.removeFirst();
+		summaryDiscarded_ = 0;
+	}
+	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
+		fast::letPagesGo(released_.pieces.last());
+		released_.pieces.removeLast();
+	}
+	/* emptied: their own arrays let go too (a list of thousands of pieces) */
+	if (released_.pieces.isEmpty()) released_.pieces = {};
+	if (released_.summaries.isEmpty()) released_.summaries = {};
 }
 
 /* The memory: what is older than `memory` goes, about a twentieth at a time (it
@@ -547,14 +1116,16 @@ void ChartView::frame() {
 	const double sinceLastMs = framesCome_.isValid() ? framesCome_.nsecsElapsed() / 1e6 : 0;
 	framesCome_.restart();
 	movedThisFrame_ = 0; /* the trims' turn: the samples of this frame were appended before */
-	/* Normal: armed again once the view after the last crossing is full */
-	if (trigger_.on && trigger_.mode == TriggerMode::Normal && !trigger_.armed && std::isfinite(trigger_.at)) {
-		const double full = trigger_.at + (1 - TRIGGER_AT) * window_;
-		if (clockNow() >= full) {
-			trigger_.armed = true;
-			trigger_.armedFrom = full;
-		}
-	}
+	releaseSome();
+	if (watchDue_) postWatch(); /* a drag's change to the engine, once a frame */
+	updateShortLock();
+	if (trigger_.on) firePending(newestTime(trigger_.key)); /* a crossing's view full now: shown */
+	/* Auto: held by a crossing, and no other for as long as "triggered" lasts (triggeredSpan), by the samples' time as
+	 * the arm (a fast line's records come a block late: by the clock, a short window ran live at every other frame):
+	 * the view runs live, as the state says "free running" from then on. A view the user held or moved stays */
+	if (trigger_.on && trigger_.mode == TriggerMode::Auto && trigger_.armed && !live_ && trigger_.holding
+			&& triggerTime() >= std::max(trigger_.armedFrom + window_, lastCrossing() + triggeredSpan()))
+		setLive(true);
 	if (valuePacer_.due(valueClock_.elapsed())) {
 		for (Series &s : series_) {
 			s.shown = s.last;
@@ -586,7 +1157,13 @@ void ChartView::FrameBudget::spent(double paintMs) {
  * painted the chart past the display's rate and past the frame budget (with 64 lines on a card: 35 frames a second
  * where 60 were drawn, and the Smooth delay up as frames came between the samples) */
 void ChartView::refresh() {
-	if (framesCome_.isValid() && framesCome_.elapsed() < FRAMES_STOPPED_MS) return; /* the next frame paints it */
+	/* the next frame paints it; a recording's window has frames only while it is fed (and the frames may stop), so
+	 * when none came by FRAMES_STOPPED_MS it is painted then: a change just after a feed (the samples a measurement
+	 * held back, the card opened) stayed off the screen until something else painted */
+	if (framesCome_.isValid() && framesCome_.elapsed() < FRAMES_STOPPED_MS) {
+		if (!framesStopped_->isActive()) framesStopped_->start(int(FRAMES_STOPPED_MS - framesCome_.elapsed()) + 1);
+		return;
+	}
 	paintSoon();
 }
 
@@ -600,23 +1177,48 @@ void ChartView::setValuesPerSecond(int perSecond) {
 }
 
 void ChartView::setWindow(double seconds) {
-	window_ = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
-	if (window_ > memory_) setMemory(window_); /* the view must fit in the memory */
+	const double window = std::clamp(seconds, MIN_WINDOW, MAX_SPAN);
+	if (window > memory_) setMemory(window); /* the view must fit in the memory */
+	putWindow(window);
 	refresh();
+}
+
+/* The trigger's next crossing counts after the view's fill and the hold-off (the window's length by default), from the
+ * last crossing: both follow the new length, here and in the engine. The wheel, a span shown and a smaller memory
+ * change it too */
+void ChartView::putWindow(double seconds) {
+	if (seconds == window_) return;
+	window_ = seconds;
+	if (!trigger_.on) return;
+	const double last = std::isfinite(trigger_.pending) ? trigger_.pending : trigger_.at;
+	if (trigger_.armed && std::isfinite(last) && trigger_.mode != TriggerMode::Single)
+		trigger_.armedFrom = last + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	postWatch();
 }
 
 void ChartView::setMemory(double seconds) {
 	const double clamped = std::clamp(seconds, MIN_MEMORY, MAX_SPAN);
 	if (clamped == memory_) return;
 	memory_ = clamped;
-	if (window_ > memory_) window_ = memory_;
+	if (window_ > memory_) putWindow(memory_);
 	emit memoryChanged(memory_);
 	refresh();
 }
 
 void ChartView::setLive(bool on) {
+	/* Hold over a short window's lock: the lock ends and the view stays as it is shown, held, until Live */
+	if (!on && trigger_.automatic) {
+		endShortLock();
+		holdAsShown();
+		emit liveChanged(false);
+		refresh();
+		return;
+	}
 	if (on == live_) return;
 	if (!on) viewEnd_ = lastViewEnd_; /* hold what is shown */
+	/* Live: a crossing waiting for its view must not pull the view back to it; held: by the user, not the trigger */
+	if (on) trigger_.pending = NAN;
+	trigger_.holding = false;
 	live_ = on;
 	emit liveChanged(live_);
 	refresh();
@@ -625,69 +1227,471 @@ void ChartView::setLive(bool on) {
 void ChartView::showSpan(double t0, double t1) {
 	const double span = std::clamp(t1 - t0, MIN_WINDOW, MAX_SPAN);
 	if (span > memory_) setMemory(span);
-	window_ = std::min(span, memory_);
+	putWindow(std::min(span, memory_));
+	const bool unlocked = trigger_.automatic; /* the user's view: a short window's lock ends, a trigger that runs stops */
+	if (unlocked) endShortLock();
+	else if (trigger_.on && trigger_.armed) stopRun();
 	viewEnd_ = t1;
-	if (live_) {
+	trigger_.holding = false;
+	if (live_ || unlocked) {
 		live_ = false;
 		emit liveChanged(false);
 	}
 	refresh();
 }
 
-void ChartView::setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode) {
+void ChartView::setTrigger(int key, TriggerMode mode) {
+	const QString name = lineName(key);
+	if (!triggerSettings_.contains(name)) triggerSettings_.insert(name, triggerSettings(key)); /* its mid-range, kept */
+	/* stopped: the row's line, edge or mode change what Run arms, not the picture, which stays until Run (as the edge
+	 * symbol on the chart leaves it); only another line's T goes, as it marked a crossing of the line no longer watched */
+	if (trigger_.on && trigger_.stopped) {
+		if (key != trigger_.key) trigger_.at = NAN;
+		trigger_.key = key;
+		trigger_.mode = mode;
+		postWatch();
+		emit triggerRunChanged();
+		refresh();
+		return;
+	}
 	trigger_.on = true;
+	trigger_.automatic = false; /* the user's trigger takes over from a short window's lock */
 	trigger_.key = key;
-	trigger_.level = level;
-	trigger_.edge = edge;
 	trigger_.mode = mode;
-	trigger_.at = NAN;
+	trigger_.at = trigger_.pending = NAN;
 	armTrigger();
 }
 
-void ChartView::stopTrigger() {
-	trigger_.on = trigger_.armed = false;
-	trigger_.at = NAN;
+void ChartView::setTrigger(int key, double level, TriggerEdge edge, TriggerMode mode) {
+	setTriggerSettings(key, { level, edge });
+	setTrigger(key, mode);
+}
+
+/* the middle of what the line shows in the view (its range as last binned), else its newest value: a level that
+ * lies on the line, where a level of 0 may be far off it */
+double ChartView::midRange(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return 0;
+	for (const BinnedLine &line : lastBinned_)
+		if (line.series == &*it && line.lo <= line.hi) return (line.lo + line.hi) / 2;
+	return it->hasLast ? it->last : 0;
+}
+
+ChartView::TriggerSettings ChartView::triggerSettings(int key) const {
+	const auto kept = triggerSettings_.constFind(lineName(key));
+	if (kept != triggerSettings_.constEnd()) return *kept;
+	return { midRange(key), TriggerEdge::Rising };
+}
+
+void ChartView::setTriggerSettings(int key, const TriggerSettings &settings) {
+	triggerSettings_.insert(lineName(key), settings);
+	if (trigger_.on && key == trigger_.key) {
+		trigger_.pending = NAN; /* found by the settings before */
+		postWatch();
+	}
 	refresh();
 }
 
-/* from the line's newest sample on: a crossing already in the memory does not count */
-void ChartView::armTrigger() {
+ChartView::TriggerSettings ChartView::watchedSettings() const {
+	if (trigger_.automatic) return lockSettings_; /* a short window's lock: not the line's own, which stay the user's */
+	return trigger_.on ? triggerSettings_.value(lineName(trigger_.key)) : TriggerSettings();
+}
+
+ChartView::TriggerSettings &ChartView::watchedSettingsRef() {
+	return trigger_.automatic ? lockSettings_ : triggerSettings_[lineName(trigger_.key)];
+}
+
+QString ChartView::lineName(int key) const {
+	const auto it = series_.constFind(key);
+	return it != series_.constEnd() ? it->name : QString();
+}
+
+QStringList ChartView::triggerSettingsTexts() const {
+	QStringList texts;
+	for (auto it = triggerSettings_.constBegin(); it != triggerSettings_.constEnd(); ++it)
+		if (!it.key().isEmpty())
+			texts << QStringLiteral("%1\t%2\t%3").arg(it.key(), QString::number(it->level, 'g', QLocale::FloatingPointShortest))
+					.arg(int(it->edge));
+	texts.sort(); /* the same settings, the same text */
+	return texts;
+}
+
+void ChartView::setTriggerSettingsTexts(const QStringList &texts) {
+	for (const QString &text : texts) {
+		const QStringList parts = text.split(QLatin1Char('\t'));
+		bool ok = false;
+		const double level = parts.value(1).toDouble(&ok);
+		const int edge = parts.value(2).toInt();
+		if (parts.size() < 3 || parts[0].isEmpty() || !ok || !std::isfinite(level) || edge < 0 || edge > 2) continue;
+		triggerSettings_.insert(parts[0], { level, TriggerEdge(edge) });
+	}
+	refresh();
+}
+
+void ChartView::stopTrigger() {
+	trigger_.on = trigger_.armed = trigger_.stopped = trigger_.automatic = false;
+	trigger_.at = trigger_.pending = NAN;
+	postWatch();
+	emit triggerRunChanged();
+	refresh();
+}
+
+/* From the line's newest sample on: a crossing already in the memory does not count. Normal and Auto keep the last
+ * crossing's hold-off (an Arm reset it to now and took a crossing inside it), except after a Stop: a scope's Stop
+ * clears its hold-off, so Run counts the first crossing at once. Only Auto rolls while it waits: Normal and Single
+ * hold the picture they have (the last capture, or the view as it is), as a scope waiting in Normal shows its last
+ * trace, so the chart says it waits instead of rolling as Auto does */
+void ChartView::armTrigger(bool keepHoldoff) {
 	if (!trigger_.on) return;
 	trigger_.armed = true;
+	trigger_.stopped = false;
+	trigger_.pending = NAN;
 	const auto it = series_.constFind(trigger_.key);
 	trigger_.armedFrom = it != series_.constEnd() && !it->times.isEmpty() ? it->times.back()
-			: -std::numeric_limits<double>::infinity();
+			: it != series_.constEnd() && it->fast && it->fast->size() > 0 && it->fast->hasTime()
+				? it->fast->timeAt(it->fast->size() - 1) : -std::numeric_limits<double>::infinity();
+	trigger_.since = trigger_.armedFrom;
+	if (keepHoldoff && trigger_.mode != TriggerMode::Single && std::isfinite(trigger_.at))
+		trigger_.armedFrom = std::max(trigger_.armedFrom,
+				trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_));
+	if (trigger_.mode == TriggerMode::Auto) {
+		if (!live_) setLive(true);
+	} else if (live_) {
+		holdAsShown();
+	}
+	postWatch();
+	emit triggerRunChanged();
 	refresh();
 }
 
-void ChartView::setTriggerLevel(double level) {
-	trigger_.level = level;
-	refresh();
-}
-
-/* the view holds with the crossing at TRIGGER_AT of it: what comes after fills its right part as it arrives */
-void ChartView::fireTrigger(double time) {
-	trigger_.at = time;
-	trigger_.armed = false;
-	viewEnd_ = time + (1 - TRIGGER_AT) * window_;
+/* the view held as it is shown (the smoothed end the last frame drew), not by a crossing */
+void ChartView::holdAsShown() {
+	viewEnd_ = isVisible() && lastViewEnd_ > 0 ? lastViewEnd_ : liveEnd();
+	trigger_.holding = false;
 	if (live_) {
 		live_ = false;
 		emit liveChanged(false);
 	}
-	emit triggered(time);
+}
+
+/* Stop: no crossing counts any more, the one waiting for its view is dropped (it would move the view later), and the
+ * picture stays with its T, live or held, until Run */
+void ChartView::stopRun() {
+	if (!trigger_.on) return;
+	trigger_.armed = false;
+	trigger_.stopped = true;
+	trigger_.pending = NAN;
+	if (live_) holdAsShown();
+	postWatch();
+	emit triggerRunChanged();
 	refresh();
 }
 
-void ChartView::lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values) const {
+void ChartView::runTrigger() { armTrigger(false); } /* from now: the hold-off went with the Stop */
+
+/* at the trigger's now (the watched line's newest sample), as fireTrigger holds on a crossing: Normal counts the next
+ * after it as after a crossing, Single is complete. A fast line's engine is armed again from there */
+void ChartView::forceTrigger() {
+	if (triggerPhase() != TriggerPhase::Waiting || trigger_.mode == TriggerMode::Auto) return;
+	trigger_.pending = NAN;
+	fireTrigger(triggerTime());
+	postWatch();
+}
+
+ChartView::TriggerPhase ChartView::triggerPhase() const {
+	if (!trigger_.on) return TriggerPhase::Off;
+	if (trigger_.stopped) return TriggerPhase::Stopped;
+	if (!trigger_.armed) return TriggerPhase::Done;
+	/* its line's stream stopped: no crossing comes, and one on the old records is not "triggered" */
+	if (!triggerStoppedName().isEmpty()) return TriggerPhase::Waiting;
+	if (trigger_.mode == TriggerMode::Auto && live_) return TriggerPhase::FreeRunning;
+	/* "triggered" until no crossing has come for triggeredSpan: not "waiting" for the moment between a crossing's
+	 * hold-off and the next, which flipped the state at every crossing of a short window */
+	const double last = lastCrossing();
+	if (std::isfinite(last) && last > trigger_.since && triggerTime() < last + triggeredSpan()) return TriggerPhase::Triggered;
+	return TriggerPhase::Waiting;
+}
+
+double ChartView::lastCrossing() const {
+	if (std::isnan(trigger_.pending)) return trigger_.at;
+	return std::isnan(trigger_.at) ? trigger_.pending : std::max(trigger_.at, trigger_.pending);
+}
+
+/* the next crossing counts after the hold-off and the view's fill; one window more without any and it has stopped
+ * coming. At a short window that is a few ms, less than a polled line's gaps: a second at least */
+double ChartView::triggeredSpan() const {
+	return std::max(TRIGGERED_AT_LEAST, std::max(holdoffSeconds(), (1 - triggerPosition_) * window_) + window_);
+}
+
+/* the user's trigger only: a short window's lock shows no fill (nothing of the trigger is drawn for it) */
+bool ChartView::triggerCapturing() const {
+	return triggerMarked() && trigger_.holding && !live_ && std::isfinite(trigger_.at) && triggerTime() < viewEnd_;
+}
+
+void ChartView::setShortLock(bool on) {
+	shortLockOn_ = on;
+	updateShortLock();
+	refresh();
+}
+
+qsizetype ChartView::samplesInWindow(const Series &s) const {
+	if (s.fast) {
+		const fast::Store &store = *s.fast;
+		if (store.size() == 0 || !store.hasTime()) return 0;
+		return store.size() - store.lowerBound(store.timeAt(store.size() - 1) - window_);
+	}
+	if (s.times.isEmpty()) return 0;
+	return s.times.end() - std::lower_bound(s.times.begin(), s.times.end(), s.times.back() - window_);
+}
+
+/* the first fast line with SHORT_LOCK_SAMPLES in the window (the keys put fast lines after the others), else the line
+ * with the most there; -1: none has that many */
+int ChartView::busiestLine() const {
+	int busiest = -1;
+	qsizetype most = SHORT_LOCK_SAMPLES - 1;
+	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		if (lineResting(it.key())) continue; /* its records stopped: crossings of old ones would hold the view */
+		const qsizetype n = samplesInWindow(*it);
+		if (it->fast && n >= SHORT_LOCK_SAMPLES) return it.key();
+		if (n > most) {
+			most = n;
+			busiest = it.key();
+		}
+	}
+	return busiest;
+}
+
+/* The lock wanted: on, a live view (or one the lock holds), shorter than SHORT_LOCK_WINDOW, the user's trigger off and a
+ * line to watch: the busiest (busiestLine), chosen again only when the lines change or the one watched has too few
+ * samples in the window, so the lock does not move from line to line at each frame. A line at rest (lineResting: its
+ * stream stopped) is not watched: the lock ends, the view runs live, and it locks again once records come. It is Auto's own work on a line
+ * (the crossings as samples come), nothing binned of its own. Its level is taken again once a second while it runs
+ * free, as a line drifting away from it would never lock again */
+void ChartView::updateShortLock() {
+	if (trigger_.on && !trigger_.automatic) return; /* the user's trigger */
+	bool wanted = shortLockOn_ && !recording_ && (live_ || trigger_.automatic) && window_ < SHORT_LOCK_WINDOW
+			&& !series_.isEmpty();
+	if (wanted) {
+		const auto watched = series_.constFind(lockKey_);
+		if (lockGeneration_ != seriesGeneration_ || watched == series_.constEnd()
+				|| samplesInWindow(*watched) < SHORT_LOCK_SAMPLES || lineResting(lockKey_)) {
+			lockKey_ = busiestLine();
+			lockGeneration_ = seriesGeneration_;
+		}
+		wanted = lockKey_ >= 0;
+	}
+	if (!wanted) {
+		if (!trigger_.automatic) return;
+		endShortLock();
+		if (!live_) setLive(true); /* a longer window, the setting off, no line busy enough: live, as before the lock */
+		return;
+	}
+	const int first = lockKey_;
+	if (trigger_.automatic && trigger_.key == first) {
+		if (live_ && triggerTime() >= lockTakenAt_ + TRIGGERED_AT_LEAST) {
+			lockTakenAt_ = triggerTime();
+			const double level = midRange(first);
+			if (level != lockSettings_.level) {
+				lockSettings_.level = level;
+				postWatch();
+			}
+		}
+		return;
+	}
+	trigger_ = Trigger(); /* on, or on another line (the one before removed, a busier one added) */
+	trigger_.on = trigger_.automatic = true;
+	trigger_.key = first;
+	trigger_.mode = TriggerMode::Auto;
+	lockSettings_ = { midRange(first), TriggerEdge::Rising };
+	lockTakenAt_ = triggerTime();
+	armTrigger(false);
+}
+
+void ChartView::endShortLock() {
+	if (!trigger_.automatic) return;
+	trigger_ = Trigger();
+	postWatch();
+	emit triggerRunChanged();
+}
+
+void ChartView::setTriggerLevel(double level) {
+	if (!trigger_.on) return;
+	watchedSettingsRef().level = level;
+	trigger_.pending = NAN;
+	postWatch();
+	refresh();
+}
+
+/* A short window held on a full view shows the next crossing's view once it is full too: a repeating wave stands still,
+ * as on a scope, where each crossing showed its view half drawn, filling, until the next replaced it (at 60 frames a
+ * second and a 10 ms window, a new half-drawn picture at nearly every frame). The next crossing still counts from this
+ * one (armedFrom: the engine's rule). The first crossing, Single, and a window of a second or more hold at once, the
+ * view filling as the samples come. */
+void ChartView::crossed(double time, double newest) {
+	firePending(newest);
+	const double fill = (1 - triggerPosition_) * window_;
+	const bool steady = trigger_.mode != TriggerMode::Single && !live_ && std::isfinite(trigger_.at) && window_ < STEADY_WINDOW;
+	if (steady && !(newest >= time + fill)) {
+		if (std::isnan(trigger_.pending)) trigger_.pending = time;
+		trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
+		return;
+	}
+	fireTrigger(time);
+}
+
+void ChartView::firePending(double newest) {
+	if (std::isnan(trigger_.pending) || !(newest >= trigger_.pending + (1 - triggerPosition_) * window_)) return;
+	const double time = trigger_.pending;
+	trigger_.pending = NAN;
+	fireTrigger(time);
+}
+
+double ChartView::newestTime(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return NAN;
+	if (it->fast) return it->fast->size() > 0 && it->fast->hasTime() ? it->fast->timeAt(it->fast->size() - 1) : NAN;
+	return it->times.isEmpty() ? NAN : it->times.back();
+}
+
+bool ChartView::triggerArmed() const { return trigger_.on && trigger_.armed && triggerTime() >= trigger_.armedFrom; }
+
+/* the trigger's now: the watched line's newest sample's time, as its arm and hold-off are (the samples come a poll or
+ * a block after their time); the clock's before the first */
+double ChartView::triggerTime() const {
+	const double newest = newestTime(trigger_.key);
+	return std::isnan(newest) ? clockNow() : newest;
+}
+
+double ChartView::holdoffSeconds() const { return triggerHoldoff_ < 0 ? window_ : triggerHoldoff_; }
+
+void ChartView::setTriggerHoldoff(double seconds) {
+	triggerHoldoff_ = seconds < 0 ? -1 : std::min(seconds, MAX_HOLDOFF);
+	trigger_.pending = NAN;
+	if (trigger_.on && trigger_.armed && std::isfinite(trigger_.at) && trigger_.mode != TriggerMode::Single)
+		trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	if (trigger_.on) postWatch();
+	refresh();
+}
+
+void ChartView::setTriggerPosition(double fraction) {
+	if (placeTrigger(fraction) && trigger_.on) postWatch();
+	refresh();
+}
+
+bool ChartView::placeTrigger(double fraction) {
+	const double place = std::clamp(fraction, 0.0, TRIGGER_AT_MAX);
+	if (place == triggerPosition_) return false;
+	triggerPosition_ = place;
+	trigger_.pending = NAN;
+	if (trigger_.on && std::isfinite(trigger_.at)) {
+		if (!live_) viewEnd_ = trigger_.at + (1 - triggerPosition_) * window_; /* held on it: the crossing moves along */
+		if (trigger_.armed && trigger_.mode != TriggerMode::Single)
+			trigger_.armedFrom = trigger_.at + std::max(holdoffSeconds(), (1 - triggerPosition_) * window_);
+	}
+	return true;
+}
+
+/* One state in the words of the row: no time held, no countdown, nothing that changes at each crossing or frame */
+QString ChartView::triggerStateText() const {
+	/* a short window's lock: an aid, not the user's trigger, so neither its mode's words nor a state to act on */
+	if (trigger_.automatic)
+		return !trigger_.on ? QString() : triggerPhase() == TriggerPhase::Triggered ? tr("Auto (short window)")
+				: tr("Auto · free running");
+	const QString mode = trigger_.mode == TriggerMode::Auto ? tr("Auto") : trigger_.mode == TriggerMode::Normal
+			? tr("Normal") : tr("Single");
+	/* Normal and Auto keep re-arming: "capturing after T" came and went at every crossing of a short window, so the
+	 * text danced; the now edge shows the fill. Single captures once: its "capturing after T" stays until it is full */
+	const bool capturing = triggerCapturing();
+	switch (triggerPhase()) {
+	case TriggerPhase::Off: return QString();
+	case TriggerPhase::Stopped: return tr("Stopped · Run to arm");
+	case TriggerPhase::FreeRunning: return tr("Auto · free running");
+	case TriggerPhase::Waiting:
+		if (const QString stopped = triggerStoppedName(); !stopped.isEmpty())
+			return tr("%1 · waiting (%2 stopped)", "the trigger's mode; the fast stream of its line").arg(mode, stopped);
+		return tr("%1 · waiting", "the trigger's mode, waiting for a crossing").arg(mode);
+	case TriggerPhase::Triggered: return tr("%1 · triggered", "the trigger's mode").arg(mode);
+	case TriggerPhase::Done:
+		return capturing ? tr("Single · complete, capturing after T") : live_ ? tr("Single · complete · Arm to wait")
+				: tr("Single · complete");
+	}
+	return QString();
+}
+
+void ChartView::setTriggerEdge(TriggerEdge edge) {
+	if (!trigger_.on) return;
+	watchedSettingsRef().edge = edge;
+	trigger_.pending = NAN;
+	postWatch();
+	refresh();
+}
+
+/* the view holds with the crossing at its place in the window: what comes after fills its right part as it arrives.
+ * Single waits for Arm; Normal and Auto count the next crossing once the hold-off has passed and the view is full */
+void ChartView::fireTrigger(double time) {
+	trigger_.at = time;
+	trigger_.atLevel = watchedSettings().level;
+	trigger_.atEdge = watchedSettings().edge;
+	triggerHolds_++;
+	const double fill = (1 - triggerPosition_) * window_;
+	if (trigger_.mode == TriggerMode::Single) trigger_.armed = false;
+	else trigger_.armedFrom = std::max(trigger_.armedFrom, time + std::max(holdoffSeconds(), fill));
+	viewEnd_ = time + fill;
+	if (live_) {
+		live_ = false;
+		emit liveChanged(false);
+	}
+	trigger_.holding = true;
+	emit triggered(time);
+	if (trigger_.mode == TriggerMode::Single) emit triggerRunChanged(); /* stopped by its crossing: Run */
+	refresh();
+}
+
+bool ChartView::lineSamples(int key, double t0, double t1, QVector<double> &times, QVector<double> &values,
+		bool withoutGap) const {
 	times.clear();
 	values.clear();
 	const auto it = series_.constFind(key);
-	if (it == series_.constEnd()) return;
+	if (it == series_.constEnd()) return true;
+	if (it->fast) return fastSamples(*it, t0, t1, MAX_POINTS, withoutGap, times, values);
 	const qsizetype i0 = std::lower_bound(it->times.begin(), it->times.end(), t0) - it->times.begin();
 	const qsizetype i1 = std::upper_bound(it->times.begin(), it->times.end(), t1) - it->times.begin();
-	if (i1 <= i0) return;
+	if (i1 <= i0) return true;
 	times = it->times.mid(i0, i1 - i0);
 	values = it->values.mid(i0, i1 - i0);
+	return true;
+}
+
+bool ChartView::fastSamples(const Series &s, double t0, double t1, qsizetype most, bool withoutGap, QVector<double> &times,
+		QVector<double> &values) {
+	const fast::Store &store = *s.fast;
+	if (store.size() == 0 || !store.hasTime()) return true;
+	qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+	const qsizetype all = i1 - i0;
+	i0 = std::clamp(i0, store.recordsFrom(), std::max(i1, store.recordsFrom())); /* kept as summaries: no values */
+	if (withoutGap) { /* the longest segment's part in the range */
+		qsizetype best0 = i0, best1 = i0;
+		for (qsizetype k = i0; k < i1;) {
+			const qsizetype e = std::min(store.segmentEnd(k), i1);
+			if (e - k > best1 - best0) {
+				best0 = k;
+				best1 = e;
+			}
+			k = e;
+		}
+		i0 = best0;
+		i1 = best1;
+	}
+	i1 = std::min(i1, i0 + most);
+	const bool whole = i1 - i0 == all;
+	if (i1 <= i0) return whole;
+	times.resize(i1 - i0);
+	values.resize(i1 - i0);
+	for (qsizetype i = i0; i < i1; i++) {
+		times[i - i0] = store.timeAt(i);
+		values[i - i0] = store.value(s.channel, i);
+	}
+	return whole;
 }
 
 int ChartView::chipAt(const QPointF &pos) const {
@@ -698,6 +1702,14 @@ int ChartView::chipAt(const QPointF &pos) const {
 	for (qsizetype i = 0; i < legend.chips.size() && i < keys.size(); i++)
 		if (legend.chips[i].translated(-offset, 0).contains(pos)) return keys[i];
 	return -1;
+}
+
+QRectF ChartView::chipButtonRect(int key) const {
+	const qsizetype i = series_.keys().indexOf(key);
+	const QVector<QRectF> chips = legendChips();
+	if (i < 0 || i >= chips.size()) return QRectF();
+	const QRectF &chip = chips[i];
+	return QRectF(chip.right() - CHIP_BUTTON_W - 3, chip.center().y() - 8, CHIP_BUTTON_W, 16);
 }
 
 void ChartView::showLastValues() {
@@ -712,11 +1724,16 @@ void ChartView::showLastValues() {
 QVector<recording::Line> ChartView::samples(double t0, double t1) const {
 	QVector<recording::Line> out;
 	for (const Series &s : series_) {
-		const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
-		const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		recording::Line line;
 		line.name = s.name;
 		line.unit = s.unit;
+		if (s.fast) { /* its records, each a row (two channels of a stream share their rows) */
+			fastSamples(s, t0, t1, MAX_POINTS, false, line.times, line.values);
+			out << line;
+			continue;
+		}
+		const qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
+		const qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		if (i1 > i0) {
 			line.times = s.times.mid(i0, i1 - i0);
 			line.values = s.values.mid(i0, i1 - i0);
@@ -775,17 +1792,26 @@ void ChartView::setSmooth(bool on) {
 	refresh();
 }
 
-void ChartView::holdAt(double end) {
+void ChartView::holdAt(double end, bool user) {
 	double m0, m1;
 	memorySpan(m0, m1);
 	const double liveEdge = liveEnd();
+	/* asked before the clamp: a view still capturing after T ends past now, and its clamp to now is not the user's */
+	const bool moved = end != viewEnd();
+	if (user && !moved && !live_) return; /* a press that does not move the view changes nothing */
 	end = std::clamp(end, std::min(m0 + window_, liveEdge), liveEdge);
+	/* the user moved the view: a trigger that runs would move it back at its next crossing, so it stops (a scope's
+	 * Stop); a press that does not move it stops nothing */
+	const bool unlocked = user && trigger_.automatic && moved; /* a short window's lock ends (as Hold) */
+	if (unlocked) endShortLock();
+	else if (user && trigger_.on && trigger_.armed && moved) stopRun();
 	if (end >= liveEdge - window_ * LIVE_SNAP) { /* back at now: live again */
 		setLive(true);
 		return;
 	}
 	viewEnd_ = end;
-	if (live_) {
+	trigger_.holding = false; /* the user's: Auto leaves it */
+	if (live_ || unlocked) {
 		live_ = false;
 		emit liveChanged(false);
 	}
@@ -795,8 +1821,10 @@ void ChartView::holdAt(double end) {
 void ChartView::memorySpan(double &m0, double &m1) const {
 	m1 = liveEnd();
 	m0 = m1;
-	for (const Series &s : series_)
+	for (const Series &s : series_) {
 		if (!s.times.isEmpty()) m0 = std::min(m0, s.times.front());
+		if (s.fast && s.fast->size() > 0 && s.fast->hasTime()) m0 = std::min(m0, s.fast->timeAt(0));
+	}
 	m0 = std::max(m0, m1 - memory_);
 }
 
@@ -830,6 +1858,7 @@ double ChartView::total(int key) const {
 
 void ChartView::clearCursors() {
 	cursorA_ = cursorB_ = NAN;
+	cursorPlace_[0] = cursorPlace_[1] = NAN;
 	emit cursorsChanged();
 	refresh();
 }
@@ -837,12 +1866,36 @@ void ChartView::clearCursors() {
 void ChartView::setCursors(double a, double b) {
 	cursorA_ = a;
 	cursorB_ = b;
+	/* their places in the picture shown: on the grid they stay there (a live view's next frame moves on under them) */
+	const double start = shownStart();
+	cursorPlace_[0] = (a - start) / window_;
+	cursorPlace_[1] = (b - start) / window_;
 	emit cursorsChanged();
 	refresh();
 }
 
+double ChartView::shownStart() const { return (live_ && lastViewEnd_ != 0 ? lastViewEnd_ : viewEnd()) - window_; }
+
+/* Each frame, before anything reads them: on the grid a cursor's time is the one at its place in this frame's view;
+ * the frame after the grid gives way to clock times converts the same way once, and from then on the time is kept and
+ * its place follows it (where a switch back to the grid finds it) */
+void ChartView::placeCursors(const Axes &axes) {
+	const bool grid = cursorsOnGrid();
+	double *times[2] = { &cursorA_, &cursorB_ };
+	for (int k = 0; k < 2; k++) {
+		if (grid || cursorsGridPainted_) /* a place of 1 is the right edge exactly: its tag is drawn there */
+			*times[k] = !std::isfinite(cursorPlace_[k]) ? NAN
+					: cursorPlace_[k] == 1 ? axes.t1 : axes.t0 + cursorPlace_[k] * axes.span;
+		else
+			cursorPlace_[k] = (*times[k] - axes.t0) / axes.span;
+	}
+	cursorsGridPainted_ = grid;
+}
+
 QRectF ChartView::plotRect() const {
-	return QRectF(rect()).adjusted(AXIS_W, LEGEND_H, -RIGHT_PAD, -(TIME_AXIS_H + OVERVIEW_H + BOTTOM_PAD));
+	const bool marked = triggerMarked(); /* the trigger's marks: room of their own, beside the data */
+	return QRectF(rect()).adjusted(AXIS_W + (marked ? TRIGGER_LEFT_W : 0), LEGEND_H + (marked ? TRIGGER_STRIP_H : 0), -(marked ? TRIGGER_PAD : RIGHT_PAD),
+			-(TIME_AXIS_H + OVERVIEW_H + BOTTOM_PAD));
 }
 
 QRectF ChartView::overviewRect() const {
@@ -873,8 +1926,15 @@ void ChartView::updateDelay(double frameDt) {
 	constexpr double NONE = -std::numeric_limits<double>::max();
 	if (!smooth_) return;
 	double newest = NONE;
-	for (const Series &s : series_)
+	for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
+		const Series &s = *it;
 		if (!s.times.isEmpty()) newest = std::max(newest, s.times.back());
+		/* a stream stopped (or silent): the view follows the clock from where it was, at its pace, and the lines move
+		 * out to the left, as polled lines after Disconnect; following its newest record (the blocks' delay hidden)
+		 * held a stopped stream's last records in view as if they were live */
+		if (s.fast && s.fast->size() > 0 && s.fast->hasTime() && !lineResting(it.key()))
+			newest = std::max(newest, s.fast->timeAt(s.fast->size() - 1));
+	}
 	if (newest == NONE) return; /* no samples yet */
 	const double gap = clockNow() - newest;
 	if (gap < 0 || gap > MAX_GAP) return;
@@ -913,7 +1973,8 @@ ChartView::Stats ChartView::stats(int key) const {
 	double t0, t1;
 	bool cursors;
 	range(t0, t1, cursors);
-	if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
+	if (it->fast) result = statsOfFast(*it->fast, it->channel, t0, t1, cursorA_, cursorB_);
+	else if (!it->times.isEmpty()) result = statsOf(it->times, it->values, t0, t1, cursorA_, cursorB_);
 	result.total = std::isnan(it->totalT) ? NAN : it->total;
 	return result;
 }
@@ -958,6 +2019,51 @@ ChartView::Stats ChartView::statsOf(const QVector<double> &times, const QVector<
 	return result;
 }
 
+double ChartView::fastValueAt(const fast::Store &store, int channel, double t) {
+	if (!std::isfinite(t) || store.size() == 0 || !store.hasTime()) return NAN;
+	const qsizetype k = store.lowerBound(t);
+	if (k >= store.size()) return NAN;
+	const double tb = store.timeAt(k);
+	if (tb == t) return store.value(channel, k);
+	if (k == 0 || store.startsAfterGap(k)) return NAN; /* before the first, or in a gap: not measured */
+	const double ta = store.timeAt(k - 1), va = store.value(channel, k - 1), vb = store.value(channel, k);
+	return tb > ta ? va + (vb - va) * (t - ta) / (tb - ta) : vb;
+}
+
+/* the same as statsOf, from the summaries: what it costs follows the segments and the summaries' chunks, not the
+ * records (an hour at a million a second within a frame) */
+ChartView::Stats ChartView::statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b) {
+	Stats result;
+	result.atA = fastValueAt(store, channel, a);
+	result.atB = fastValueAt(store, channel, b);
+	if (store.size() == 0 || !store.hasTime()) return result;
+	const qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+	if (i1 - i0 < 1) return result;
+	store.minMax(channel, i0, i1, result.min, result.max);
+	result.n = int(std::min<qsizetype>(i1 - i0, std::numeric_limits<int>::max()));
+	if (i0 < store.recordsFrom()) { /* summaries only in it: their min and max; a mean, an area need every record */
+		result.p2p = result.max - result.min;
+		result.mean = result.rms = result.std = result.integral = NAN;
+		result.summaries = true;
+		result.ok = true;
+		return result;
+	}
+	const double shift = store.value(channel, i0);
+	const Trapezoids sums = trapezoids(store, channel, i0, i1, shift);
+	result.integral = sums.area;
+	result.p2p = result.max - result.min;
+	if (sums.span > 0) {
+		result.mean = sums.area / sums.span;
+		result.rms = std::sqrt(std::max(0.0, sums.areaOfSquares / sums.span));
+		const double shiftedMean = sums.shifted / sums.span;
+		result.std = std::sqrt(std::max(0.0, sums.shiftedSquares / sums.span - shiftedMean * shiftedMean));
+	} else {
+		result.mean = result.rms = shift;
+	}
+	result.ok = true;
+	return result;
+}
+
 /* each line's on a thread of the chart's: 64 lines over minutes of samples took tens of ms on one */
 QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursorsOnly) const {
 	if (!cursorsOnly) const_cast<ChartView *>(this)->fullStatsSync_++; /* the window thread waits for these */
@@ -968,7 +2074,14 @@ QVector<ChartView::Stats> ChartView::stats(const QVector<int> &keys, bool cursor
 			return;
 		}
 		const auto it = series_.find(keys[i]);
-		if (it == series_.end() || it->times.isEmpty()) return;
+		if (it == series_.end()) return;
+		if (it->fast) {
+			all[i].total = std::isnan(it->totalT) ? NAN : it->total;
+			all[i].atA = fastValueAt(*it->fast, it->channel, cursorA_);
+			all[i].atB = fastValueAt(*it->fast, it->channel, cursorB_);
+			return;
+		}
+		if (it->times.isEmpty()) return;
 		all[i].total = std::isnan(it->totalT) ? NAN : it->total;
 		all[i].atA = valueAt(it->times, it->values, cursorA_);
 		all[i].atB = valueAt(it->times, it->values, cursorB_);
@@ -993,6 +2106,17 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 			continue;
 		}
 		const Series &s = *it;
+		if (s.fast) { /* its records in the range, counted since its store began; with the cursors one either side */
+			const fast::Store &store = *s.fast;
+			qsizetype i0 = store.lowerBound(t0), i1 = store.upperBound(t1);
+			if (cursors) {
+				i0 = std::max<qsizetype>(0, i0 - 1);
+				i1 = std::min<qsizetype>(store.size(), i1 + 1);
+			}
+			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			if (i0 < store.recordsFrom()) key << double(store.dropped() + store.recordsFrom()); /* records go to summaries */
+			continue;
+		}
 		qsizetype i0 = std::lower_bound(s.times.begin(), s.times.end(), t0) - s.times.begin();
 		qsizetype i1 = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin();
 		if (cursors) {
@@ -1004,7 +2128,12 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 	return key;
 }
 
-ChartView::~ChartView() { pool_.waitForDone(); }
+ChartView::~ChartView() {
+	pool_.waitForDone();
+	/* what is still to be freed goes as each frame's slice does (releaseSome): a chart closed right after a RAM cut
+	 * left a gigabyte with the heap, and the next chart's frame paid for it. On a thread: the window's goes on */
+	fast::letGoElsewhere(std::move(released_));
+}
 
 void ChartView::measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done) {
 	MeasureRequest request{ keys, std::move(done) };
@@ -1042,20 +2171,21 @@ void ChartView::startMeasure(MeasureRequest request) {
 	for (qsizetype i = 0; i < n; i++) {
 		const auto it = series_.constFind(request.keys[i]);
 		if (it == series_.constEnd()) continue;
+		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
+		if (it->fast) { /* from its summaries, here: cheap, and its store is written by this thread between frames */
+			job->out[i] = statsOfFast(*it->fast, it->channel, job->t0, job->t1, job->a, job->b);
+			continue;
+		}
 		job->times[i] = it->times;
 		job->values[i] = it->values;
-		job->totals[i] = std::isnan(it->totalT) ? NAN : it->total;
 	}
 	job->request = std::move(request);
-	measuring_ = true;
 	job->clock.start();
-	if (n == 0) {
-		QMetaObject::invokeMethod(this, [this, job] {
-			measuring_ = false;
-			job->request.done(job->out, 0);
-		}, Qt::QueuedConnection);
+	if (n == 0) { /* no arrays shared with the threads: the samples meanwhile go in (a recording's, as it opens) */
+		QMetaObject::invokeMethod(this, [job] { job->request.done(job->out, 0); }, Qt::QueuedConnection);
 		return;
 	}
+	measuring_ = true;
 	job->left = int(n);
 	for (qsizetype i = 0; i < n; i++)
 		pool_.start([this, job, i] {
@@ -1071,7 +2201,10 @@ void ChartView::startMeasure(MeasureRequest request) {
 				measuring_ = false;
 				const QVector<HeldSample> held = std::exchange(heldSamples_, {});
 				for (const HeldSample &sample : held) appendNow(sample.key, sample.t, sample.v);
-				if (!held.isEmpty()) refresh();
+				/* a recording's window: no frames show the legend's values, they follow here (its feed showed them
+				 * without these) */
+				if (!held.isEmpty() && recording_) showLastValues();
+				else if (!held.isEmpty()) refresh();
 				job->request.done(job->out, ms);
 				if (measureNext_ && !measuring_) {
 					measureNext_ = false;
@@ -1088,8 +2221,14 @@ bool ChartView::event(QEvent *e) {
 		mouseX_ = -1;
 		hoverLane_ = -1;
 		hoverMenu_ = -1;
+		hoverTag_ = -1;
 		hoverBar_ = false;
 		hoverSeparator_ = -1;
+		hoverEdge_ = false;
+		hoverMark_ = false;
+		hoverMemoryHandle_ = false;
+		hoverLevel_ = false;
+		hoverChip_ = -1;
 		refresh();
 	}
 	if (e->type() == QEvent::ToolTip) { /* the lanes' own: their buttons, strips and value labels */
@@ -1107,10 +2246,32 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	const QPointF pos = e->position();
 	pressedLanes_ = false;
 	if (pressLegend(pos)) return;
-	/* the trigger's level: dragged */
-	if (trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
-			&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right()) {
+	/* a line's chip: its menu, under the chip (the right-click's menu, reached without a right-click) */
+	const int chip = chipAt(pos);
+	if (chip >= 0) {
+		const QRectF rect = legendChips().value(series_.keys().indexOf(chip));
+		emit lineMenuRequested(chip, mapToGlobal(QPoint(int(rect.left()), int(rect.bottom()) + 2)));
+		return;
+	}
+	/* the trigger's level tag: its edge symbol takes the next edge; the rest of it, as the level's line, drags the
+	 * level (held where it was taken: the level does not jump to the mouse) */
+	if (trigger_.on && triggerEdgeButton_.contains(pos)) {
+		TriggerSettings &watched = watchedSettingsRef();
+		watched.edge = TriggerEdge((int(watched.edge) + 1) % 3);
+		trigger_.pending = NAN;
+		postWatch();
+		emit triggerSettingsChanged();
+		refresh();
+		return;
+	}
+	/* the marker left of the plot, the tab right of it and the line between move the one level */
+	if (trigger_.on && std::isfinite(triggerLineY_) && (triggerLevelTag_.contains(pos) || triggerLevelMark_.contains(pos)
+			|| (std::fabs(pos.y() - triggerLineY_) <= 4 && pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right()))) {
 		drag_ = Drag::Level;
+		levelGrab_ = pos.y() - triggerLineY_;
+		/* an off-scale level is drawn on the lane's edge, whose value is not the level: it keeps its value until the
+		 * mouse has moved a drag's distance up or down (a press to read its tag, a sideways jitter, changes nothing) */
+		dragStartY_ = triggerOffScale_ != 0 ? pos.y() : NAN;
 		return;
 	}
 	/* a note's tag: chosen (Delete removes it) and dragged */
@@ -1123,19 +2284,28 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 		drag_ = Drag::Note;
 		return;
 	}
-	/* on (or just by) the memory strip: the view goes there */
+	/* the trigger's place in the window: its mark dragged along the time labels */
+	if (trigger_.on && triggerMark_.contains(pos)) {
+		drag_ = Drag::Position;
+		positionGrab_ = pos.x() - triggerMark_.center().x(); /* moved from where it was taken: no jump to the mouse */
+		return;
+	}
+	/* on (or just by) the memory strip: the view goes there; taken by its box or handle, it follows the mouse from
+	 * where it was, no jump */
 	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
 		drag_ = Drag::Overview;
+		overviewGrab_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos) ? pos.x() - memoryViewX_ : 0;
 		mouseMoveEvent(e);
 		return;
 	}
+	if (pressLaneLabels(pos)) return; /* not the lanes' own press: a double-click on the labels sets Auto */
 	if (pressLanes(pos)) { /* the lanes' scroll bar, a unit name, a folded strip: no cursor, no pan */
 		pressedLanes_ = true;
 		return;
 	}
 	if (!plotRect().contains(pos)) return;
 	if (cursorMode_) {
-		pickCursor(pos.x());
+		pickCursor(pos.x(), e->modifiers() & Qt::ShiftModifier);
 		return;
 	}
 	drag_ = Drag::Pan;
@@ -1179,7 +2349,8 @@ bool ChartView::pressLanes(const QPointF &pos) {
 	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
 	const bool folded = lanesShown_[lane].folded;
 	if (!folded && pos.x() >= LANE_UNIT_W) return false;
-	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button */
+	if (laneMenuButtonAt(pos) == lane) { /* its menu button: the lane's menu, under the button; the lane current */
+		setCurrentLane(lane);
 		const QRectF menu = laneMenuButtonRect(lane);
 		emit laneMenuRequested(lane, mapToGlobal(QPoint(int(menu.left()), int(menu.bottom()) + 1)));
 		return true;
@@ -1188,15 +2359,62 @@ bool ChartView::pressLanes(const QPointF &pos) {
 	return true;
 }
 
+/* Lanes: a press on an open lane's value labels makes it the current lane (the toolbar's Y range shows and sets it);
+ * one on its range tag sets it back to Auto too */
+bool ChartView::pressLaneLabels(const QPointF &pos) {
+	if (!lanes_) return false;
+	const QRectF plot = plotRect();
+	if (pos.x() < LANE_UNIT_W || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return false;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0 || lanesShown_[lane].folded) return false;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	if (pos.y() < shown.top() || pos.y() > shown.bottom()) return false; /* between two lanes */
+	setCurrentLane(lane);
+	if (rangeTagAt(pos) == lane) {
+		laneScales_[lanesShown_[lane].key].log = false; /* the tag gone: Auto on the linear scale */
+		hoverTag_ = -1;
+		setLaneYAuto(lane);
+	}
+	return true;
+}
+
 /* cursor mode: a click places A, then B, then moves the nearer of the two */
-void ChartView::pickCursor(double x) {
-	const double t = timeAtX(x);
+void ChartView::pickCursor(double x, bool snap) {
+	/* on the grid the nearer by where it is drawn: a live view's times moved on since */
+	const QRectF plot = plotRect();
+	const auto xOf = [&](int k) {
+		return cursorsOnGrid() ? plot.left() + cursorPlace_[k] * plot.width() : xAtTime(k == 0 ? cursorA_ : cursorB_);
+	};
 	if (!std::isfinite(cursorA_)) drag_ = Drag::CurA;
 	else if (!std::isfinite(cursorB_)) drag_ = Drag::CurB;
-	else drag_ = std::fabs(xAtTime(cursorA_) - x) <= std::fabs(xAtTime(cursorB_) - x) ? Drag::CurA : Drag::CurB;
-	(drag_ == Drag::CurA ? cursorA_ : cursorB_) = t;
+	else drag_ = std::fabs(xOf(0) - x) <= std::fabs(xOf(1) - x) ? Drag::CurA : Drag::CurB;
+	putCursor(drag_ == Drag::CurA ? 0 : 1, x, snap);
 	emit cursorsChanged();
 	refresh();
+}
+
+/* On the grid a place in the picture shown (its time from it), Shift's snap counted from the grid's 0 (the right edge,
+ * or T) as the division lines are, so a snapped cursor sits on a line or a tenth between two; on clock times a time,
+ * as before, its place following at the next frame */
+void ChartView::putCursor(int k, double x, bool snap) {
+	double &time = k == 0 ? cursorA_ : cursorB_;
+	if (!cursorsOnGrid()) {
+		time = timeAtX(x);
+		return;
+	}
+	const QRectF plot = plotRect();
+	const double start = shownStart();
+	double place = (std::clamp(x, plot.left(), plot.right()) - plot.left()) / plot.width();
+	if (snap) {
+		constexpr double STEP = 1.0 / (DIVISIONS * 10);
+		const double zero = timesFromT(start, start + window_) ? (trigger_.at - start) / window_ : 1.0;
+		place = zero + std::round((place - zero) / STEP) * STEP;
+		if (place > 1 + 1e-9) place -= STEP; /* the step past an edge: the last one inside */
+		if (place < -1e-9) place += STEP;
+		place = std::clamp(place, 0.0, 1.0);
+	}
+	cursorPlace_[k] = place;
+	time = place == 1 ? start + window_ : start + place * window_;
 }
 
 void ChartView::mouseMoveEvent(QMouseEvent *e) {
@@ -1211,20 +2429,33 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		/* the strip spans the whole memory depth, filled or not */
 		const double m1 = liveEnd(), m0 = m1 - memory_;
 		const QRectF strip = overviewRect();
-		const double t = m0 + std::clamp((pos.x() - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
+		const double t = m0 + std::clamp((pos.x() - overviewGrab_ - strip.left()) / strip.width(), 0.0, 1.0) * (m1 - m0);
 		holdAt(t + window_ / 2); /* the view centred where the mouse is */
 		break;
 	}
 	case Drag::CurA:
 	case Drag::CurB:
-		(drag_ == Drag::CurA ? cursorA_ : cursorB_) = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
+		putCursor(drag_ == Drag::CurA ? 0 : 1, std::clamp(pos.x(), plot.left(), plot.right()),
+				e->modifiers() & Qt::ShiftModifier);
 		emit cursorsChanged();
 		break;
-	case Drag::Level: {
-		const double at = triggerAxes_.value(std::clamp(pos.y(), triggerLane_.top(), triggerLane_.bottom()));
-		trigger_.level = normalized_ ? triggerLo_ + at * (triggerHi_ - triggerLo_) : at;
+	case Drag::Level: { /* the engine watches the new level from the next frame on, not after the release */
+		if (std::isfinite(dragStartY_)) {
+			if (std::fabs(pos.y() - dragStartY_) < QGuiApplication::styleHints()->startDragDistance()) break;
+			dragStartY_ = NAN;
+		}
+		const double at = triggerAxes_.value(std::clamp(pos.y() - levelGrab_, triggerLane_.top(), triggerLane_.bottom()));
+		const double level = normalized_ ? triggerLo_ + at * (triggerHi_ - triggerLo_) : at;
+		if (level != watchedSettingsRef().level) {
+			watchedSettingsRef().level = level;
+			trigger_.pending = NAN;
+			watchDue_ = true;
+		}
 		break;
 	}
+	case Drag::Position:
+		if (placeTrigger((pos.x() - positionGrab_ - plot.left()) / plot.width())) watchDue_ = true;
+		break;
 	case Drag::Note:
 		if (selectedNote_ >= 0 && selectedNote_ < notes_.size())
 			notes_[selectedNote_].time = timeAtX(std::clamp(pos.x(), plot.left(), plot.right()));
@@ -1264,13 +2495,30 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 		const bool onLaneBar = laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos);
 		hoverMenu_ = onLanes ? laneMenuButtonAt(pos) : -1; /* the menu button highlighted, not the fold's */
 		hoverLane_ = onLanes && hoverMenu_ < 0 ? lane : -1; /* its button drawn highlighted */
+		/* an open lane's value labels take a click (the lane current, its tag: Auto): a hand, the tag lit */
+		const bool onLabels = lane >= 0 && !onLanes && !lanesShown_[lane].folded && pos.x() >= LANE_UNIT_W
+				&& pos.x() < plot.left() && laneVisible(lanesShown_[lane].axes.rect, plot).contains(QPointF(plot.left(), pos.y()));
+		hoverTag_ = onLabels ? rangeTagAt(pos) : -1;
 		hoverBar_ = onLaneBar;
 		hoverSeparator_ = separatorAt(pos); /* a drag there resizes: lit, and the resize cursor */
-		if (hoverSeparator_ >= 0) {
+		/* the trigger's level tab and marker: a hand, both lit, the tab's edge part lit more */
+		const bool onLevelTag = trigger_.on && (triggerLevelTag_.contains(pos) || triggerLevelMark_.contains(pos));
+		hoverEdge_ = trigger_.on && triggerEdgeButton_.contains(pos);
+		hoverMark_ = trigger_.on && triggerMark_.contains(pos);
+		hoverMemoryHandle_ = memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos);
+		/* both lit over them and over the level's line (the line drags as they do) */
+		const bool onLevelLine = trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
+				&& pos.x() >= triggerLane_.left() && pos.x() <= triggerLane_.right();
+		hoverLevel_ = onLevelTag || onLevelLine;
+		/* a line's chip: a hand, its "▾" lit (a click opens its menu) */
+		hoverChip_ = onLegendBar ? -1 : chipAt(pos);
+		if (hoverSeparator_ >= 0 && !onLevelTag) {
 			setCursor(Qt::SizeVerCursor);
 			break;
 		}
-		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLaneBar ? Qt::PointingHandCursor
+		setCursor(overviewRect().contains(pos) || onLegendBar || onLanes || onLabels || onLaneBar || onLevelTag || hoverMark_
+						|| hoverChip_ >= 0
+						? Qt::PointingHandCursor
 				: noteAtPoint(pos) >= 0 ? Qt::SizeHorCursor
 				: trigger_.on && std::isfinite(triggerLineY_) && std::fabs(pos.y() - triggerLineY_) <= 4
 						&& plot.contains(pos) ? Qt::SizeVerCursor
@@ -1283,6 +2531,8 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 
 void ChartView::mouseReleaseEvent(QMouseEvent *) {
 	const bool cursorLetGo = draggingCursor(), noteLetGo = drag_ == Drag::Note, levelLetGo = drag_ == Drag::Level;
+	if (watchDue_) postWatch(); /* the drag's last change, now */
+	if (drag_ == Drag::Position) emit triggerPositionChanged(triggerPosition_);
 	const bool borderLetGo = drag_ == Drag::LaneBorder;
 	drag_ = Drag::None;
 	if (borderLetGo) {
@@ -1291,7 +2541,7 @@ void ChartView::mouseReleaseEvent(QMouseEvent *) {
 		return; /* the resize cursor stays while the mouse is on the separator */
 	}
 	if (noteLetGo) emit notesChanged();
-	if (levelLetGo) emit triggerLevelChanged(trigger_.level);
+	if (levelLetGo) emit triggerSettingsChanged();
 	setCursor(cursorMode_ ? Qt::SizeHorCursor : Qt::OpenHandCursor);
 	if (cursorLetGo) emit cursorsChanged(); /* measured in full now: while dragged, A and B alone followed it */
 }
@@ -1302,9 +2552,15 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 	if (wheelLegend(e)) return;
 	const double notches = e->angleDelta().y() / 120.0;
 	if (notches == 0) return;
+	/* over the memory strip: the view a window earlier (up) or later (down), held, as a pan by the whole view */
+	const QPointF pos = e->position();
+	if (overviewRect().adjusted(0, -4, 0, 4).contains(pos)) {
+		holdAt(viewEnd() - notches * window_);
+		e->accept();
+		return;
+	}
 	/* lanes: over their value labels (or the scroll bar), the wheel scrolls them; with Ctrl, it stays the lane's zoom */
 	const QRectF plot = plotRect();
-	const QPointF pos = e->position();
 	if (lanes_ && !(e->modifiers() & Qt::ControlModifier) && pos.y() >= plot.top() && pos.y() <= plot.bottom()
 			&& (pos.x() < plot.left() || pos.x() > plot.right())) {
 		scrollLanesTo(laneScroll() - notches * LANE_WHEEL_STEP);
@@ -1316,7 +2572,26 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 		zoomY(factor, e->position().y());
 		if (lanes_) emit laneYChanged();
 		else emit yChangedByUser();
+	} else if (divisionsShown() || (timeGrid_ == TimeGrid::Auto && window_ * factor < DIVISIONS_BELOW)) {
+		/* divisions: a notch is the next window of 1, 2 or 5 per division, as a scope's time/div knob, so the readout
+		 * and the labels stay round (a window typed is kept as typed). Part notches (a touchpad's) add up to one; Auto
+		 * leaves the divisions at DIVISIONS_BELOW, and from there the wheel zooms as before */
+		if (wheelNotches_ * notches < 0) wheelNotches_ = 0;
+		wheelNotches_ += notches;
+		const int steps = int(wheelNotches_);
+		wheelNotches_ -= steps;
+		if (steps != 0) {
+			double target = window_;
+			for (int i = 0; i < std::abs(steps); i++) {
+				const bool stepping = timeGrid_ == TimeGrid::Divisions || target < DIVISIONS_BELOW
+						|| (steps > 0 && target * std::pow(ZOOM_STEP, -1) < DIVISIONS_BELOW);
+				target = stepping ? divisionWindow(target, steps > 0) : target * ZOOM_STEP;
+			}
+			zoomTime(target / window_, e->position().x());
+			emit windowChangedByUser(window_);
+		}
 	} else {
+		wheelNotches_ = 0;
 		zoomTime(factor, e->position().x());
 		emit windowChangedByUser(window_);
 	}
@@ -1327,15 +2602,28 @@ void ChartView::wheelEvent(QWheelEvent *e) {
 void ChartView::zoomTime(double factor, double mouseX) {
 	const double newWindow = std::clamp(window_ * factor, MIN_WINDOW, memory_);
 	if (live_) { /* live: the right edge stays at now */
-		window_ = newWindow;
+		putWindow(newWindow);
 		return;
 	}
-	/* held: zoom around the time under the mouse */
+	/* held: zoom around the time under the mouse; held by the trigger, still the trigger's (Auto runs on) */
 	const QRectF plot = plotRect();
 	const double at = timeAtX(std::clamp(mouseX, plot.left(), plot.right()));
 	const double fraction = (at - (viewEnd_ - window_)) / window_;
-	window_ = newWindow;
-	holdAt(at + (1 - fraction) * newWindow);
+	const bool holding = trigger_.holding;
+	putWindow(newWindow);
+	if (holding && std::isfinite(trigger_.at)) {
+		/* the trigger's view stays its own: a view still capturing after T ends past now, and holdAt's clamp to now
+		 * would take it live (Normal rolling while armed, Single's capture gone). It may end as far past now as the
+		 * crossing's own view at this window */
+		double m0, m1;
+		memorySpan(m0, m1);
+		const double top = std::max(liveEnd(), trigger_.at + (1 - triggerPosition_) * newWindow);
+		viewEnd_ = std::clamp(at + (1 - fraction) * newWindow, std::min(m0 + newWindow, top), top);
+		refresh();
+		return;
+	}
+	holdAt(at + (1 - fraction) * newWindow, false);
+	trigger_.holding = holding && !live_;
 }
 
 /* around the value under the mouse; the Y range becomes Manual */
@@ -1360,6 +2648,12 @@ void ChartView::zoomY(double factor, double mouseY) {
 }
 
 void ChartView::mouseDoubleClickEvent(QMouseEvent *e) {
+	/* the crossing's place back to the default, as a scope's position knob pressed (the row's box is the other way) */
+	if (trigger_.on && triggerMark_.contains(e->position())) {
+		setTriggerPosition(TRIGGER_AT);
+		emit triggerPositionChanged(triggerPosition_);
+		return;
+	}
 	const int note = noteAtPoint(e->position());
 	if (note >= 0) { /* a note's tag: its text edited (the Chart tab asks) */
 		emit noteEditRequested(note);
@@ -1470,19 +2764,22 @@ ChartView::LegendLayout ChartView::legendLayout(const QRectF &plot) const {
 		for (const Series &s : series_) {
 			const double unit = s.unit.isEmpty() ? 0 : metrics.horizontalAdvance(QLatin1Char(' ') + s.unit);
 			chipWidths_ << CHIP_TEXT_LEFT + metrics.horizontalAdvance(s.name) + nameGap + chipValueRoom_ + unit
-					+ CHIP_PAD_RIGHT;
+					+ CHIP_PAD_RIGHT + CHIP_BUTTON_W;
 		}
 		chipsGeneration_ = seriesGeneration_;
 		chipsFont_ = font.key();
 		chipMeasures_++;
 	}
-	/* the chips end where the state's text begins, so neither lies under the other */
+	/* the chips end where the corner begins (the time/div readout, else the state's text), so none lies under another */
 	int variant = -1;
 	double stateWidth = 0;
 	fitState(plot.width(), variant, stateWidth);
+	const double readout = divisionReadoutWidth();
+	double corner = variant >= 0 ? stateWidth : 0;
+	if (readout > 0) corner += readout + (variant >= 0 ? DIVISION_GAP : 0);
 	LegendLayout legend;
-	legend.viewport = QRectF(plot.left(), LEGEND_TOP,
-			std::max(0.0, plot.width() - (variant >= 0 ? stateWidth + STATE_GAP : 0)), LEGEND_ROW_H);
+	legend.viewport = QRectF(plot.left(), LEGEND_TOP, std::max(0.0, plot.width() - (corner > 0 ? corner + STATE_GAP : 0)),
+			LEGEND_ROW_H);
 	legend.valueRoom = chipValueRoom_;
 	double x = legend.viewport.left();
 	for (const double w : std::as_const(chipWidths_)) {
@@ -1540,7 +2837,28 @@ void ChartView::setLegendScroll(double pixels) {
 
 QString ChartView::legendValue(int key) const {
 	const auto it = series_.constFind(key);
-	return it != series_.constEnd() && it->hasShown ? chartNumber(it->shown) : QString();
+	double value = 0;
+	return it != series_.constEnd() && chipValue(*it, viewEnd() - window_, viewEnd(), value) ? chartNumber(value)
+			: QString();
+}
+
+bool ChartView::chipValue(const Series &s, double t0, double t1, double &value) const {
+	if (recording_) return latestInView(s, t0, t1, value);
+	value = s.shown;
+	return s.hasShown;
+}
+
+bool ChartView::latestInView(const Series &s, double t0, double t1, double &value) const {
+	if (s.fast) {
+		const qsizetype k = s.fast->upperBound(t1) - 1;
+		if (k < s.fast->recordsFrom() || s.fast->timeAt(k) < t0) return false;
+		value = s.fast->value(s.channel, k);
+		return true;
+	}
+	const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
+	if (k < 0 || s.times[k] < t0) return false;
+	value = s.values[k];
+	return true;
 }
 
 /* ------------------------------------------------------------------ drawing */
@@ -1591,6 +2909,7 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.t0 = axes.t1 - window_;
 	axes.span = window_;
 	axes.columns = std::max(1.0, axes.rect.width());
+	placeCursors(axes); /* on the grid: the times under them in this view */
 	QElapsedTimer stage; /* the timing aid's stages (perf_) */
 	stage.start();
 	const QVector<BinnedLine> binned = viewBins(axes);
@@ -1613,6 +2932,14 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	}
 	lanesShown_ = plots;
 	lastAxes_ = plots.first().axes;
+	if (!live_) { /* held: the toolbar's Y boxes follow this frame's ranges (yRangesShown), only when they changed */
+		QVector<double> ranges{ y_.lo, y_.hi };
+		for (const YScale &scale : std::as_const(laneScales_)) ranges << scale.lo << scale.hi;
+		if (ranges != rangesShown_) {
+			rangesShown_ = ranges;
+			QTimer::singleShot(0, this, &ChartView::yRangesShown);
+		}
+	}
 
 	/* On a card (on the screen, with lines): the plot (grid, lines, cursors, crosshair) is drawn by it into its layer
 	 * over the window, and the chart paints what is around it. While the layer is not shown yet (the chart shown
@@ -1631,10 +2958,23 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		under = gpu_->lastPicture();
 		framesUnder_++;
 	}
+	stage.restart();
 	drawCard(p);
 	drawGrid(p, plots, axes, !onCard);
+	perf_.grid += stage.nsecsElapsed() / 1e6;
 	if (!onCard) {
 		drawCursorSpan(p, axes);
+		/* the trigger's instant over the grid and under the lines, as the card's layer */
+		triggerInstantLine_ = instantLine(axes, p.device()->devicePixelRatioF());
+		if (!triggerInstantLine_.isNull()) {
+			p.save();
+			QPen pen(instantColor(series_.value(trigger_.key).color), 1);
+			pen.setDashPattern({ INSTANT_DASH, INSTANT_GAP });
+			pen.setCapStyle(Qt::FlatCap);
+			p.setPen(pen);
+			p.drawLine(triggerInstantLine_);
+			p.restore();
+		}
 		stage.restart();
 		if (!live_ && lineReuse_) {
 			drawLinesPicture(p, plots, binned); /* held: drawn again only when they change */
@@ -1644,7 +2984,15 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		}
 		perf_.lines += stage.nsecsElapsed() / 1e6;
 		stage.restart();
-		/* the marks' lines, the folded strips over them, then the marks' tags (as the card: its pictures over all) */
+		/* the now edges, the marks' lines over them (the card: the edges' layer before the marks'), the folded strips
+		 * over those, then the marks' tags (as the card: its pictures over all) */
+		nowEdges_ = nowEdgeLines(plots);
+		if (!nowEdges_.isEmpty()) {
+			p.save();
+			p.setPen(QPen(nowEdgeColor(), 1));
+			p.drawLines(nowEdges_);
+			p.restore();
+		}
 		drawNotes(p, axes, Marks::Lines);
 		drawTrigger(p, plots, binned, Marks::Lines);
 		drawCursors(p, axes, Marks::Lines);
@@ -1657,7 +3005,13 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 		under.setDevicePixelRatio(devicePixelRatioF());
 		p.drawImage((QPointF(layerPixels_.topLeft()) - layerOrigin_) / devicePixelRatioF(), under);
 	}
-	drawLaneBar(p); /* in the right pad, outside the card's layer */
+	stage.restart();
+	drawTriggerTab(p); /* in the right pad, outside the card's layer, under the lanes' bar */
+	drawLaneBar(p);
+	perf_.grid += stage.nsecsElapsed() / 1e6;
+	stage.restart();
+	drawTriggerMark(p, axes); /* the flag, in the strip above the plot, outside the layer too */
+	perf_.marks += stage.nsecsElapsed() / 1e6;
 	stage.restart();
 	drawMemoryStrip(p, axes);
 	perf_.strip += stage.nsecsElapsed() / 1e6;
@@ -1667,7 +3021,9 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	stage.restart();
 	if (!onCard) drawCrosshair(p, axes, plots, binned);
 	perf_.marks += stage.nsecsElapsed() / 1e6;
+	stage.restart();
 	drawState(p, axes);
+	perf_.grid += stage.nsecsElapsed() / 1e6;
 	if (onScreen && gpu_ && onCard != gpu_->shown() && (!onCard || framesUnder_ >= LAYER_AFTER_FRAMES))
 		QTimer::singleShot(0, this, [this, shown = onCard] { /* after this frame is on the window */
 			if (!gpu_ || gpu_->shown() == shown || (shown && (!isVisible() || series_.isEmpty()))) return;
@@ -1684,7 +3040,8 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 }
 
 ChartView::PerfStats ChartView::takePerfStats() {
-	const PerfStats taken = perf_;
+	PerfStats taken = perf_;
+	taken.fastColumns = fastColumnsBinned_.exchange(0);
 	perf_ = PerfStats();
 	return taken;
 }
@@ -1696,6 +3053,14 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 	QVector<double> key{ axes.t0, axes.t1, axes.columns, double(seriesGeneration_) };
 	key.reserve(4 + 2 * series_.size());
 	for (const Series &s : series_) {
+		if (s.fast) { /* a fast line: its records in view, numbered since its store began */
+			const fast::Store &store = *s.fast;
+			const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(axes.t0) - 1);
+			const qsizetype i1 = std::min(store.size(), store.upperBound(axes.t1) + 1);
+			key << double(store.dropped() + i0) << double(store.dropped() + i1);
+			if (i0 < store.recordsFrom()) key << double(store.dropped() + store.recordsFrom()); /* records go to summaries */
+			continue;
+		}
 		if (s.times.isEmpty()) {
 			key << -1 << -1;
 			continue;
@@ -1706,13 +3071,53 @@ QVector<ChartView::BinnedLine> ChartView::viewBins(const Axes &axes) {
 				std::upper_bound(s.times.begin(), s.times.end(), axes.t1) - s.times.begin() + 1);
 		key << double(s.dropped + i0) << double(s.dropped + i1);
 	}
-	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) return lastBinned_;
-	lastBinned_ = binView(axes);
+	if (lineReuse_ && key == lastBinKey_ && lastBinned_.size() == series_.size()) {
+		binPending(axes);
+		return lastBinned_;
+	}
+	/* the view a crossing waited for: its fast lines' bins made while it filled (binPending) are kept, all but the
+	 * columns at its ends (binView takes the last bins given of a line) */
+	QVector<BinnedLine> previous = lastBinned_;
+	if (!pendingBinned_.isEmpty()
+			&& pendingKey_ == QVector<double>{ axes.t0, axes.t1, axes.columns, double(seriesGeneration_) })
+		previous += pendingBinned_;
+	pendingBinned_.clear();
+	pendingKey_.clear();
+	lastBinned_ = binView(axes, previous);
 	lastBinKey_ = key;
 	binnings_++;
 	binnedVersion_++;
 	perf_.binnings++;
 	return lastBinned_;
+}
+
+/* A short window holds a view only once it is full (crossed): the next crossing's view fills behind the one shown, and
+ * the frame that showed it binned all of it at once (a whole view of each fast line, every 100 ms at a 100 ms window:
+ * that frame came late). While the view shown stands, the waiting view's fast lines are binned here as their records
+ * come, its complete columns kept from frame to frame as a held view filling keeps them (binFast), so the frame that
+ * shows it bins only what came since. A polled line keeps one binning of its own (Series::viewBins), the view
+ * shown's: binned when shown, as before (a few samples a column). */
+void ChartView::binPending(const Axes &axes) {
+	if (!trigger_.on || std::isnan(trigger_.pending)) return;
+	Axes next = axes;
+	next.t1 = trigger_.pending + (1 - triggerPosition_) * window_; /* as fireTrigger holds it */
+	next.t0 = next.t1 - window_;
+	const QVector<double> key{ next.t0, next.t1, next.columns, double(seriesGeneration_) };
+	QVector<const Series *> lines;
+	for (const Series &s : series_)
+		if (s.fast) lines << &s;
+	/* its bins of the frame before, or the view shown's: a column both views share is the same bin (binFast) */
+	QVector<BinnedLine> previous = lastBinned_;
+	if (key == pendingKey_) previous += pendingBinned_;
+	QVector<BinnedLine> binned(lines.size());
+	inParallel(lines.size(), [&](qsizetype i) {
+		const BinnedLine *before = nullptr;
+		for (const BinnedLine &line : std::as_const(previous))
+			if (line.series == lines[i]) before = &line;
+		binFast(*lines[i], next.t0, next.t1, next.columns, binned[i], before);
+	});
+	pendingBinned_ = binned;
+	pendingKey_ = key;
 }
 
 QString ChartView::linesKey(const QVector<Lane> &plots, qreal dpr) const {
@@ -1762,6 +3167,10 @@ void ChartView::drawLinesPicture(QPainter &p, const QVector<Lane> &plots, const 
  * of samples costs what a short one does. */
 void ChartView::binSeries(const Series &s, double t0, double t1, double columns, bool overview,
 		BinnedLine &out) const {
+	if (s.fast) { /* the memory strip: binned whole (a strip of 60 px) */
+		binFast(s, t0, t1, columns, out, nullptr);
+		return;
+	}
 	out.series = &s;
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
@@ -1785,6 +3194,27 @@ void ChartView::binSeries(const Series &s, double t0, double t1, double columns,
 		out.lo = std::min(out.lo, bin.min);
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
+	}
+	rangeAtEdges(out, t0, t1);
+}
+
+void ChartView::rangeAtEdges(BinnedLine &out, double t0, double t1) {
+	const auto take = [&out](double v) {
+		out.lo = std::min(out.lo, v);
+		out.hi = std::max(out.hi, v);
+		if (v > 0) out.posLo = std::min(out.posLo, v);
+	};
+	/* the line's value at t between bin a's end and bin b's start */
+	const auto at = [](const Bin &a, const Bin &b, double t) {
+		if (b.t0 <= a.t1) return b.first;
+		return a.last + (b.first - a.last) * (t - a.t1) / (b.t0 - a.t1);
+	};
+	const QVector<Bin> &bins = out.bins;
+	for (qsizetype k = 0; k + 1 < bins.size(); k++) {
+		const Bin &a = bins[k], &b = bins[k + 1];
+		if (b.gap) continue;
+		if (a.t1 < t0 && b.t0 > t0) take(at(a, b, t0));
+		if (a.t1 < t1 && b.t0 > t1) take(at(a, b, t1));
 	}
 }
 
@@ -1828,7 +3258,12 @@ void ChartView::binRange(const Series &s, qsizetype i0, qsizetype i1, double col
  * when they do not hold: another column width (window, size), the lines changed, or the view starts before them
  * (held, dragged back). Chunks start on fixed sample numbers, so the bins come out as binned at once, give or take
  * where a chunk at a column's edge falls (less than half a column). */
-void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out) const {
+void ChartView::binViewSeries(const Series &s, double t0, double t1, double columns, BinnedLine &out,
+		const BinnedLine *previous) const {
+	if (s.fast) { /* from its summaries: what a column costs does not grow with its records */
+		binFast(s, t0, t1, columns, out, previous);
+		return;
+	}
 	out.series = &s;
 	out.bins.clear();
 	out.lo = std::numeric_limits<double>::max();
@@ -1862,6 +3297,7 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 	while (top >= 0 && perColumn <= 2.0 * CHUNK_SIZE[top]) top--;
 	QVector<Bin> fresh;
 	binRange(s, kept.binnedTo - s.dropped, i1, columnSeconds, top, fresh);
+	polledColumnsBinned_ += fresh.size();
 	out.bins.reserve(kept.bins.size() + fresh.size());
 	out.bins = kept.bins;
 	out.bins += fresh;
@@ -1876,15 +3312,165 @@ void ChartView::binViewSeries(const Series &s, double t0, double t1, double colu
 		out.hi = std::max(out.hi, bin.max);
 		out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
 	}
+	rangeAtEdges(out, t0, t1);
+}
+
+/* A fast line's bins: for each column on absolute time its records, found by their times (the store inverts its
+ * clock), their first, last, min and max (the min and max from the summaries: the work follows the columns, not the
+ * records, and a spike of one record is in every column's max that holds it). A column where few records lie keeps
+ * each at its own time (toPolyline: one or two in a bin). A gap ends a column's bin early, and the bin after it says
+ * so: the line is not drawn across. */
+/* A column is a whole number of columnSeconds from time 0, so the last frame's bins of the columns this frame
+ * shares are the same bins: a live view, which moves by a column or two a frame, keeps them and bins only the
+ * columns at its ends (the first and the last bin of a frame may be part of a column: never kept). Kept bins hold
+ * their records' numbers, so a trim that dropped them, a clear, a new start or a shift of a start (the store's
+ * timeVersion) and another column width start afresh. */
+void ChartView::binFast(const Series &s, double t0, double t1, double columns, BinnedLine &out, const BinnedLine *previous)
+		const {
+	out.series = &s;
+	out.bins.clear();
+	out.lo = std::numeric_limits<double>::max();
+	out.hi = -out.lo;
+	out.posLo = std::numeric_limits<double>::infinity();
+	const fast::Store &store = *s.fast;
+	out.columnSeconds = (t1 - t0) / columns;
+	out.timeVersion = store.timeVersion();
+	out.wholeFrom = store.dropped() + store.recordsFrom();
+	if (store.size() == 0 || !store.hasTime() || t1 <= t0) return;
+	const double columnSeconds = out.columnSeconds;
+	const qsizetype i0 = std::max<qsizetype>(0, store.lowerBound(t0) - 1);
+	const qsizetype i1 = std::min(store.size(), store.upperBound(t1) + 1);
+	if (i1 <= i0) return;
+	out.bins.reserve(int(std::min<qsizetype>(i1 - i0, qsizetype(columns) * 2 + 4)));
+	qint64 binned = 0;
+	/* the records from i to end into bins, as the loop always did */
+	auto binRecords = [&](qsizetype i, qsizetype end) {
+		while (i < end) {
+			const double ti = store.timeAt(i);
+			const qint64 column = qint64(std::floor(ti / columnSeconds));
+			qsizetype j = std::min(store.segmentEnd(i), end);
+			j = std::min(j, store.lowerBound(double(column + 1) * columnSeconds));
+			if (j <= i) j = i + 1;
+			Bin bin;
+			bin.column = column;
+			bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
+			bin.firstSample = qsizetype(store.dropped()) + i;
+			bin.t0 = ti;
+			bin.t1 = j - 1 == i ? ti : store.timeAt(j - 1);
+			bin.first = store.value(s.channel, i);
+			bin.last = store.value(s.channel, j - 1);
+			store.minMax(s.channel, i, j, bin.min, bin.max);
+			bin.gap = i > i0 && store.startsAfterGap(i);
+			out.bins.push_back(bin);
+			binned++;
+			i = j;
+		}
+	};
+	/* Records kept as summaries only (before whole): a summary of SMALL records at a time, in the column of its first
+	 * record (its min and max are the records' own, so a column of SMALL records or more is binned as from them). A
+	 * column it holds no first record of, zoomed in past one a column, gets it again as a bar: the summary drawn over
+	 * every column it covers, up to the next one's */
+	const qsizetype whole = store.recordsFrom();
+	auto binSummaries = [&](qsizetype i, qsizetype end) {
+		constexpr qsizetype SMALL = fast::Store::SMALL;
+		i -= i % SMALL; /* to its summary's first (dropped() is a whole number of them) */
+		const qint64 firstShown = qint64(std::floor(t0 / columnSeconds)) - 1;
+		const qint64 lastShown = qint64(std::floor(t1 / columnSeconds)) + 1;
+		qsizetype before = -1; /* the bin before's first record */
+		while (i < end) {
+			const double ti = store.timeAt(i);
+			const qint64 column = qint64(std::floor(ti / columnSeconds));
+			qsizetype j = store.lowerBound(double(column + 1) * columnSeconds);
+			j = std::min(end, (j + SMALL - 1) / SMALL * SMALL);
+			if (j <= i) j = std::min(end, i + SMALL);
+			Bin bin;
+			bin.column = column;
+			bin.count = int(std::min<qsizetype>(j - i, std::numeric_limits<int>::max()));
+			bin.firstSample = qsizetype(store.dropped()) + i;
+			bin.t0 = ti;
+			bin.t1 = store.timeAt(j - 1);
+			store.minMax(s.channel, i, j, bin.min, bin.max);
+			bin.first = bin.last = (bin.min + bin.max) / 2; /* their values are gone: the line runs through the middle */
+			/* a segment begun since the bin before (a gap inside a summary breaks the line at the next bin) */
+			bin.gap = i > i0 && (before >= 0 ? store.segmentEnd(before) <= i : store.startsAfterGap(i));
+			out.bins.push_back(bin);
+			binned++;
+			before = i;
+			const qint64 next = j < store.size() ? qint64(std::floor(store.timeAt(j) / columnSeconds)) : column + 1;
+			const qint64 barTo = std::min({ next - 1, qint64(std::floor(bin.t1 / columnSeconds)), lastShown });
+			if (barTo > column) {
+				Bin bar;
+				store.minMax(s.channel, j - 1, j, bar.min, bar.max); /* the last summary's: the one that goes on */
+				bar.first = bar.last = (bar.min + bar.max) / 2;
+				bar.firstSample = qsizetype(store.dropped()) + j;
+				bar.bar = true;
+				for (qint64 k = std::max(column + 1, firstShown); k <= barTo; k++) {
+					bar.column = k;
+					bar.t0 = bar.t1 = (double(k) + 0.5) * columnSeconds;
+					out.bins.push_back(bar);
+				}
+			}
+			i = j;
+		}
+	};
+	/* records from i to end, those before whole as summaries */
+	auto binSpan = [&](qsizetype i, qsizetype end) {
+		if (i < whole) binSummaries(i, std::min(end, whole));
+		binRecords(std::max(i, whole), end);
+	};
+	/* the kept bins: whole columns of the last frame (not its first or last bin) inside this frame's columns, with
+	 * their records still kept, made with the same column width over the same times; those of summaries only while
+	 * the records kept whole began where they did */
+	qsizetype keep0 = -1, keep1 = -1; /* previous->bins[keep0 .. keep1) */
+	if (previous && previous->series == &s && previous->columnSeconds == columnSeconds
+			&& previous->timeVersion == store.timeVersion() && previous->bins.size() >= 3) {
+		const qint64 c0 = qint64(std::floor(t0 / columnSeconds)), c1 = qint64(std::floor(t1 / columnSeconds));
+		const qint64 firstColumn = previous->bins.first().column, lastColumn = previous->bins.last().column;
+		for (qsizetype k = 1; k + 1 < previous->bins.size(); k++) {
+			const Bin &b = previous->bins[k];
+			const qsizetype from = qsizetype(b.firstSample - store.dropped()); /* its records, as indexes now */
+			const bool inside = b.column > firstColumn && b.column < lastColumn && b.column >= c0 && b.column <= c1
+					&& from >= i0 && from + b.count <= i1 /* inside what this frame bins: its ends stay partial bins */
+					&& (from >= whole || previous->wholeFrom == out.wholeFrom);
+			if (inside && keep0 < 0) keep0 = k;
+			if (inside) keep1 = k + 1;
+			if (!inside && keep0 >= 0) break; /* one run: the kept bins stay contiguous in records */
+		}
+	}
+	if (keep0 < 0) {
+		binSpan(i0, i1);
+	} else {
+		const Bin &firstKept = previous->bins[keep0], &lastKept = previous->bins[keep1 - 1];
+		const qsizetype keptFrom = qsizetype(firstKept.firstSample - store.dropped());
+		const qsizetype keptTo = qsizetype(lastKept.firstSample - store.dropped()) + lastKept.count;
+		binSpan(i0, std::min(keptFrom, i1));              /* before the kept columns */
+		for (qsizetype k = keep0; k < keep1; k++) out.bins.push_back(previous->bins[k]);
+		binSpan(std::max(keptTo, i0), i1);                /* the newest columns */
+	}
+	fastColumnsBinned_ += binned;
+	for (const Bin &bin : out.bins) {
+		if (bin.t1 >= t0 && bin.t0 <= t1) { /* the range of what lies inside the span */
+			out.lo = std::min(out.lo, bin.min);
+			out.hi = std::max(out.hi, bin.max);
+			out.posLo = std::min(out.posLo, smallestPositive(bin.min, bin.first, bin.last, bin.max));
+		}
+	}
+	rangeAtEdges(out, t0, t1);
 }
 
 /* every line binned for the view, in the order of series_, on the chart's threads */
-QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes) const {
+QVector<ChartView::BinnedLine> ChartView::binView(const Axes &axes, const QVector<BinnedLine> &previous) const {
 	QVector<const Series *> lines;
 	lines.reserve(series_.size());
 	for (const Series &s : series_) lines << &s;
 	QVector<BinnedLine> binned(lines.size());
-	inParallel(lines.size(), [&](qsizetype i) { binViewSeries(*lines[i], axes.t0, axes.t1, axes.columns, binned[i]); });
+	inParallel(lines.size(), [&](qsizetype i) {
+		/* the last frame's bins of the same line, for the columns both frames share */
+		const BinnedLine *before = nullptr;
+		for (const BinnedLine &line : previous)
+			if (line.series == lines[i]) before = &line;
+		binViewSeries(*lines[i], axes.t0, axes.t1, axes.columns, binned[i], before);
+	});
 	return binned;
 }
 
@@ -1948,22 +3534,36 @@ QVector<ChartView::Lane> ChartView::plotLayout() const {
 }
 
 /* The open lanes share what the folded ones and the gaps leave by their weights (a lane dragged taller has a weight
- * over 1, the one below it under), as equal shares do when all are 1; when that is under LANE_MIN_H each, the equal
- * share is LANE_MIN_H and the lanes go on below the plot (scrolled) */
+ * over 1, the one below it under), as equal shares do when all are 1. A lane whose share would be under LANE_MIN_H is
+ * held there and the others share what is left, again by their weights, so the lanes still fill the plot exactly: a
+ * lane held at the minimum took its 80 px on top of the shares, and the last lane ran below the plot, cut and scrolled.
+ * Only when even LANE_MIN_H each does not fit are they all LANE_MIN_H, going on below the plot (scrolled). unit: the
+ * pixels of a weight of 1 for the lanes not held (the drag of a border turns heights into weights by it) */
 void ChartView::laneHeights(const QVector<Lane> &lanes, double plotHeight, QVector<double> &heights, double &unit) const {
 	int folded = 0;
-	double weights = 0;
-	for (const Lane &lane : lanes) {
-		if (lane.folded) folded++;
-		else weights += laneWeights_.value(lane.key, 1.0);
-	}
+	for (const Lane &lane : lanes) folded += lane.folded;
 	const int open = int(lanes.size()) - folded;
 	const double gaps = LANE_GAP * std::max<qsizetype>(0, lanes.size() - 1);
-	const double share = open > 0 ? std::max(LANE_MIN_H, (plotHeight - gaps - folded * LANE_FOLDED_H) / open) : 0;
-	unit = open > 0 && weights > 0 ? share * open / weights : share;
+	const double room = plotHeight - gaps - folded * LANE_FOLDED_H; /* what the open lanes share */
+	const bool scrolled = open > 0 && room <= open * LANE_MIN_H;
+	QVector<bool> held(lanes.size(), scrolled);
+	unit = LANE_MIN_H;
+	for (bool more = !scrolled && open > 0; more;) {
+		double weights = 0, left = room;
+		for (qsizetype k = 0; k < lanes.size(); k++) {
+			if (lanes[k].folded) continue;
+			if (held[k]) left -= LANE_MIN_H;
+			else weights += laneWeights_.value(lanes[k].key, 1.0);
+		}
+		if (weights <= 0) break;
+		unit = left / weights;
+		more = false;
+		for (qsizetype k = 0; k < lanes.size(); k++)
+			if (!lanes[k].folded && !held[k] && unit * laneWeights_.value(lanes[k].key, 1.0) < LANE_MIN_H) held[k] = more = true;
+	}
 	heights.resize(lanes.size());
 	for (qsizetype k = 0; k < lanes.size(); k++)
-		heights[k] = lanes[k].folded ? LANE_FOLDED_H : std::max(LANE_MIN_H, unit * laneWeights_.value(lanes[k].key, 1.0));
+		heights[k] = lanes[k].folded ? LANE_FOLDED_H : held[k] ? LANE_MIN_H : unit * laneWeights_.value(lanes[k].key, 1.0);
 }
 
 QStringList ChartView::laneHeights() const {
@@ -2015,7 +3615,11 @@ double ChartView::laneContentHeight() const {
 	return plots.last().axes.rect.bottom() - plots.first().axes.rect.top();
 }
 
-double ChartView::maxLaneScroll() const { return std::max(0.0, laneContentHeight() - plotRect().height()); }
+/* the shares add up to the plot's height but for the rounding of their sum: under LANE_FIT_SLACK past it they fit */
+double ChartView::maxLaneScroll() const {
+	const double over = laneContentHeight() - plotRect().height();
+	return over > LANE_FIT_SLACK ? over : 0.0;
+}
 
 double ChartView::laneScroll() const { return std::clamp(laneScroll_, 0.0, maxLaneScroll()); }
 
@@ -2041,10 +3645,82 @@ void ChartView::laneButtons(const QRectF &shown, QRectF *fold, QRectF *menu) {
 	*menu = shown.bottom() - top >= LANE_BUTTON_H + LANE_NAME_MIN ? QRectF(0, top, LANE_UNIT_W, LANE_BUTTON_H) : QRectF();
 }
 
+QRectF ChartView::rangeTag(const Lane &lane, const QRectF &shown, QString *text) const {
+	const YScale scale = laneScales_.value(lane.key);
+	if (lane.folded || (scale.autoRange && !scale.log) || shown.height() < RANGE_TAG_H + 6) return QRectF();
+	const QString words = scale.log ? tr("Log") : tr("Manual");
+	if (text) *text = words;
+	/* in the value labels' column (the trigger's marker keeps its own right of it), its text whole when it fits */
+	const double left = LANE_UNIT_W + 1, right = plotRect().left() - 2 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+	const double width = std::min(right - left, std::ceil(QFontMetricsF(tagFont()).horizontalAdvance(words)) + 6);
+	return QRectF(left, shown.top() + 1, width, RANGE_TAG_H);
+}
+
+QRectF ChartView::laneRangeTagRect(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QRectF();
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return shown.isEmpty() ? QRectF() : rangeTag(plots[lane], shown);
+}
+
+QString ChartView::laneRangeTagText(int lane) const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || lane < 0 || lane >= plots.size()) return QString();
+	QString text;
+	const QRectF shown = laneVisible(plots[lane].axes.rect, plotRect());
+	return !shown.isEmpty() && !rangeTag(plots[lane], shown, &text).isEmpty() ? text : QString();
+}
+
+int ChartView::rangeTagAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!lanes_ || pos.x() >= plot.left() || pos.y() < plot.top() || pos.y() > plot.bottom()) return -1;
+	const int lane = laneAtY(pos.y());
+	if (lane < 0) return -1;
+	const QRectF shown = laneVisible(lanesShown_[lane].axes.rect, plot);
+	return !shown.isEmpty() && rangeTag(lanesShown_[lane], shown).adjusted(-1, -1, 1, 1).contains(pos) ? lane : -1;
+}
+
+bool ChartView::allLanesYAuto() const {
+	if (!lanes_) return true;
+	for (const Lane &lane : plotLayout()) {
+		const YScale scale = laneScales_.value(lane.key);
+		if (!scale.autoRange || scale.log) return false;
+	}
+	return true;
+}
+
+void ChartView::setAllLanesYAuto() {
+	if (!lanes_ || allLanesYAuto()) return;
+	for (const Lane &lane : plotLayout()) {
+		YScale &scale = laneScales_[lane.key];
+		scale.autoRange = true;
+		scale.log = false;
+		scale.initialized = false;
+	}
+	emit laneYChanged();
+	refresh();
+}
+
+int ChartView::currentLane() const {
+	const QVector<Lane> plots = plotLayout();
+	if (!lanes_ || plots.isEmpty()) return -1;
+	for (int k = 0; k < plots.size(); k++)
+		if (plots[k].key == currentLane_) return k;
+	return 0; /* none chosen, or its unit gone: the first */
+}
+
+void ChartView::setCurrentLane(int lane) {
+	const QString key = laneKey(lane);
+	if (!lanes_ || lane < 0 || lane >= laneCount() || lane == currentLane()) return;
+	currentLane_ = key;
+	emit currentLaneChanged();
+	refresh();
+}
+
 /* the track: as tall as the plot, in the right pad; the handle: the plot's share of the lanes, where the scroll is */
 QRectF ChartView::laneScrollBarRect() const {
 	const QRectF plot = plotRect();
-	if (!lanes_ || laneContentHeight() <= plot.height()) return QRectF();
+	if (!lanes_ || laneContentHeight() <= plot.height() + LANE_FIT_SLACK) return QRectF();
 	return QRectF(plot.right() + LANE_BAR_X, plot.top(), LANE_BAR_W, plot.height());
 }
 
@@ -2160,11 +3836,63 @@ void ChartView::setAllLanesFolded(bool folded) {
 /* where the lanes take a click or the wheel, what it does: the fold button and the unit name fold, a strip opens,
  * the value labels scroll (when the lanes do not fit), zoom and have the lane's menu */
 QString ChartView::toolTipAt(const QPointF &pos) const {
+	if (stateBadge_.contains(pos)) /* the short window's lock: what it is and where it is turned off */
+		return tr("The view locks on the busiest line's crossings at windows under 100 ms · Display → Lock short "
+				"windows turns it off");
 	if (stateRect_.contains(pos)) return stateFull_; /* the state corner: its whole text */
+	if (memoryHandle_.adjusted(-2, -4, 2, 4).contains(pos))
+		return tr("The view: drag it along the memory · Wheel: a window earlier or later");
+	if (overviewRect().contains(pos)) return memoryStripTip();
+	if (divisionRect_.contains(pos))
+		return (divisionFromT_ ? tr("A division of the grid (10 across the view) and the clock time at 0, the trigger's "
+							 "crossing (T): the labels count from T.")
+							   : tr("A division of the grid (10 across the view) and the clock time at 0, the right "
+							 "edge: the labels count from there."))
+				+ QLatin1Char('\n') + tr("Wheel over the chart: the next window of 1, 2 or 5 per division.");
+	/* a cursor's tag: its time, and while the view is held on a trigger's crossing how far from T (U-7, as a scope's
+	 * cursors read); the tag itself stays a letter, so the bar between the two keeps its room */
+	for (int k = 0; k < 2; k++) {
+		const double t = k == 0 ? cursorA_ : cursorB_;
+		if (!std::isfinite(t) || t < lastAxes_.t0 || t > lastAxes_.t1) continue;
+		const double x = lastAxes_.x(t);
+		if (!QRectF(x - 9, lastAxes_.rect.top() - 2, 18, 16).contains(pos)) continue;
+		const QString name = k == 0 ? QStringLiteral("A") : QStringLiteral("B");
+		const QString at = timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3);
+		/* on the grid its place first ("Cursor B at T +1.750 ms"), the time under it now after, and what keeps it there */
+		const QString place = cursorPlaceText(k);
+		if (!place.isEmpty())
+			return tr("Cursor %1 at %2 · %3").arg(name, place, at) + QLatin1Char('\n')
+					+ tr("On the grid: it keeps its place while the wave moves under it · Shift while dragging: a tenth "
+						 "of a division");
+		const QString fromT = fromTText(t);
+		return fromT.isEmpty() ? tr("Cursor %1 at %2").arg(name, at) : tr("Cursor %1 at %2 · %3").arg(name, at, fromT);
+	}
+	if (const int chip = chipAt(pos); chip >= 0) { /* a recording's window has no trigger (nothing comes after the file) */
+		const QString click = recording_ ? tr("Click or right-click: Histogram, Spectrum")
+										 : tr("Click or right-click: Histogram, Spectrum, Trigger on this line");
+		const QString stopped = stoppedTip(chip); /* its value greyed: why */
+		return stopped.isEmpty() ? click : stopped + QLatin1Char('\n') + click;
+	}
+	/* the flag: the crossing it stands over in words, when there is one, then what it does */
+	if (trigger_.on && triggerMark_.contains(pos)) {
+		const QString point = triggerPointText();
+		const QString drag = tr("Drag: where the crossing sits in the window · Double-click: back to %1 %")
+				.arg(int(std::lround(TRIGGER_AT * 100)));
+		return point.isEmpty() ? drag : point + QLatin1Char('\n') + drag;
+	}
+	/* the tab and the marker: the level's words first ("I_LOAD 0.4 A, rising", "(above range)" off scale), then what
+	 * each does */
+	if (trigger_.on && triggerLevelTag_.contains(pos))
+		return triggerTagLabel() + QLatin1Char('\n')
+				+ tr("Drag: the trigger level · Click the arrow: the edge (rising, falling, either)");
+	if (trigger_.on && triggerLevelMark_.contains(pos))
+		return triggerTagLabel() + QLatin1Char('\n') + tr("Drag: the trigger level · the edge: in the Trigger row");
 	const QRectF plot = plotRect();
 	if (laneScrollBarRect().adjusted(-LANE_BAR_GRIP, 0, LANE_BAR_GRIP, 0).contains(pos))
 		return tr("Scroll the lanes: drag the handle, or click above or below it for a page");
 	if (separatorAt(pos) >= 0) return tr("Drag: this lane's height · Double-click: equal heights");
+	const QString gap = fastGapAt(pos);
+	if (!gap.isEmpty()) return gap;
 	if (!lanes_ || pos.y() < plot.top() || pos.y() > plot.bottom() || pos.x() > plot.right()) return QString();
 	const int lane = laneAtY(pos.y());
 	if (lane < 0) return QString();
@@ -2174,10 +3902,50 @@ QString ChartView::toolTipAt(const QPointF &pos) const {
 	if (laneMenuButtonAt(pos) == lane) return tr("Y range and lane options");
 	if (pos.x() < LANE_UNIT_W) return tr("Fold lane");
 	if (pos.x() >= plot.left()) return QString();
+	if (rangeTagAt(pos) == lane) { /* its range in words, and what the click does */
+		const YScale scale = laneScales_.value(lanesShown_[lane].key);
+		const QString unit = lanesShown_[lane].label;
+		const QString range = tr("%1 to %2").arg(chartNumber(laneYLo(lane)), chartNumber(laneYHi(lane)))
+				+ (unit.isEmpty() ? QString() : QLatin1Char(' ') + unit);
+		return scale.log ? (scale.autoRange ? tr("This lane's Y scale is logarithmic · Click: back to Auto")
+						: tr("This lane's Y scale is logarithmic, manual: %1 · Click: back to Auto").arg(range))
+				: tr("This lane's Y range is manual: %1 · Click: back to Auto").arg(range);
+	}
 	QStringList parts;
 	if (maxLaneScroll() > 0) parts << tr("Wheel: scroll the lanes");
-	parts << tr("Ctrl + wheel: zoom this lane") << tr("Right-click: its Y range and Fold lane");
+	parts << tr("Ctrl + wheel: zoom this lane") << tr("Click: its Y range in the toolbar") << tr("Double-click: Auto")
+			<< tr("Right-click: its Y range and Fold lane");
 	return parts.join(QStringLiteral(" · "));
+}
+
+/* a fast line's gap under the mouse (3 px either side): how many records were lost there, or that the stream
+ * started again; lanes: the lines of the lane under the mouse */
+QString ChartView::fastGapAt(const QPointF &pos) const {
+	const QRectF plot = plotRect();
+	if (!plot.contains(pos) || lanesShown_.isEmpty()) return QString();
+	QString unit;
+	bool anyUnit = !lanes_;
+	if (lanes_) {
+		const int lane = laneAtY(pos.y());
+		if (lane < 0 || lanesShown_[lane].folded) return QString();
+		unit = lanesShown_[lane].key;
+	}
+	const Axes &axes = lastAxes_;
+	const double perPixel = axes.span / std::max(1.0, axes.rect.width());
+	const double t = axes.t0 + (pos.x() - axes.rect.left()) * perPixel, reach = 3 * perPixel;
+	QStringList parts;
+	for (const Series &s : series_) {
+		if (!s.fast || (!anyUnit && s.unit != unit) || s.fast->size() < 2) continue;
+		const fast::Store &store = *s.fast;
+		const qsizetype j = store.lowerBound(t - reach);
+		if (j >= store.size()) continue;
+		const qsizetype k = j > 0 && store.startsAfterGap(j) ? j : store.segmentEnd(j);
+		if (k <= 0 || k >= store.size() || store.timeAt(k - 1) > t + reach || store.timeAt(k) < t - reach) continue;
+		const qint64 lost = store.lostBefore(k);
+		parts << (lost < 0 ? tr("%1: the stream started again here").arg(s.name)
+						   : tr("%1: %n sample(s) lost here", nullptr, int(std::min<qint64>(lost, INT_MAX))).arg(s.name));
+	}
+	return parts.join(QLatin1Char('\n'));
 }
 
 /* a line in the middle of each gap between two lanes, where it lies in the plot: the lanes read as plots of their own */
@@ -2233,6 +4001,30 @@ bool ChartView::laneYAuto(int lane) const { return laneScales_.value(laneKey(lan
 bool ChartView::laneYLog(int lane) const { return laneScales_.value(laneKey(lane)).log; }
 double ChartView::laneYLo(int lane) const { return laneScales_.value(laneKey(lane)).lo; }
 double ChartView::laneYHi(int lane) const { return laneScales_.value(laneKey(lane)).hi; }
+
+double ChartView::drawnTo(int key) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return NAN;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		const Bin &b = line.bins.last();
+		if (b.count <= 2 && !b.bar) return b.count == 2 ? b.t1 : b.t0;
+		return (double(b.column) + 0.5) * lastAxes_.columnSeconds(); /* as toPolyline draws it */
+	}
+	return NAN;
+}
+
+bool ChartView::drawnRange(int key, double &lo, double &hi) const {
+	const auto it = series_.constFind(key);
+	if (it == series_.constEnd()) return false;
+	for (const BinnedLine &line : lastBinned_) {
+		if (line.series != &it.value() || line.bins.isEmpty()) continue;
+		lo = line.lo;
+		hi = line.hi;
+		return true;
+	}
+	return false;
+}
 
 double ChartView::laneYOfValue(int lane, double value) const {
 	return lane >= 0 && lane < lanesShown_.size() ? lanesShown_[lane].axes.y(value) : NAN;
@@ -2376,12 +4168,73 @@ void ChartView::drawCard(QPainter &p) const {
 	}
 }
 
-/* The value grid and its labels, then the time grid at fixed wall-clock times,
- * so it moves with the data. Crisp 1 px lines: no antialiasing. */
+bool ChartView::divisionsShown() const {
+	return timeGrid_ == TimeGrid::Divisions || (timeGrid_ == TimeGrid::Auto && window_ < DIVISIONS_BELOW);
+}
+
+void ChartView::setTimeGrid(TimeGrid grid) {
+	timeGrid_ = grid;
+	wheelNotches_ = 0;
+	refresh();
+}
+
+/* the next window of 1, 2 or 5 per division below (in) or above `window` */
+double ChartView::divisionWindow(double window, bool in) {
+	const double magnitude = std::pow(10.0, std::floor(std::log10(window / DIVISIONS)));
+	double best = in ? 0 : INFINITY;
+	for (double decade : { 0.1, 1.0, 10.0 })
+		for (double m : { 1.0, 2.0, 5.0 }) {
+			const double w = m * magnitude * decade * DIVISIONS;
+			if (in && w < window * (1 - 1e-9)) best = std::max(best, w);
+			if (!in && w > window * (1 + 1e-9)) best = std::min(best, w);
+		}
+	return best;
+}
+
+/* the times count from T while the view is held on a trigger's crossing in view (a scope's time 0 at the trigger);
+ * live, held by the user or with the crossing out of view, from the right edge */
+bool ChartView::timesFromT(double t0, double t1) const {
+	return triggerMarked() && !live_ && std::isfinite(trigger_.at) && trigger_.at >= t0 && trigger_.at <= t1;
+}
+
+/* The value grid and its labels, then the time grid: at fixed wall-clock times, so it moves with the data, or
+ * divisions that stand still (divisionsShown). Crisp 1 px lines: no antialiasing. */
 ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 	GridTicks ticks;
-	ticks.timeStep = niceTimeStep(window_, std::max(2, int(axes.columns / TIME_LABEL_SPACING)));
-	for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) ticks.times << t;
+	if (divisionsShown()) {
+		/* 0 at the right edge or at T, a line every tenth of the plot from there. The places as fractions of the plot
+		 * from 0's, rounded to a millionth of a pixel: the view's times are large numbers of seconds, and their
+		 * rounding would move a line on a pixel's edge by a pixel now and then */
+		ticks.divisions = true;
+		ticks.division = ticks.timeStep = window_ / DIVISIONS;
+		ticks.fromT = timesFromT(axes.t0, axes.t1);
+		ticks.zero = ticks.fromT ? trigger_.at : axes.t1;
+		const auto stable = [](double x) { return std::round(x * 1e6) / 1e6; };
+		const double perDivision = axes.rect.width() / DIVISIONS;
+		const double zeroX = stable(axes.x(ticks.zero));
+		const int first = int(std::ceil((axes.rect.left() - zeroX) / perDivision - 1e-6));
+		const int last = int(std::floor((axes.rect.right() - zeroX) / perDivision + 1e-6));
+		for (int k = first; k <= last; k++) {
+			const double x = stable(zeroX + k * perDivision);
+			ticks.times << ticks.zero + k * ticks.division;
+			ticks.timeX << x;
+			ticks.offsets << k;
+			if (x > axes.rect.left() + 0.5 && x < axes.rect.right() - 0.5) ticks.lineX << x;
+		}
+	} else {
+		int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
+		ticks.timeStep = niceTimeStep(window_, target);
+		/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
+		const QFontMetricsF labels(smallFont());
+		while (ticks.timeStep < 1e-3 && target > 2
+				&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
+			ticks.timeStep = niceTimeStep(window_, --target);
+		for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) {
+			ticks.times << t;
+			ticks.timeX << axes.x(t);
+		}
+		ticks.lineX = ticks.timeX;
+	}
 	if (axes.log) {
 		/* a line at each decade, faint ones at 2..9 of it while a decade is tall enough; over less than two decades
 		 * those are labelled too where they have room */
@@ -2453,6 +4306,7 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		for (double dx : { -4.0, 0.0, 4.0 }) p.drawEllipse(QPointF(cx + dx, cy), 1.5, 1.5);
 		p.restore();
 	};
+	const int current = lanes_ && plots.size() > 1 ? currentLane() : -1; /* lit: one lane of several */
 	for (int index = 0; index < plots.size(); index++) {
 		const Lane &lane = plots[index];
 		const Axes &a = lane.axes;
@@ -2464,6 +4318,8 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			continue;
 		}
 		const GridTicks values = gridTicks(a);
+		QString tagText;
+		const QRectF tag = lanes_ ? rangeTag(lane, shown, &tagText) : QRectF();
 		p.save();
 		const auto label = [&](double v) {
 			const QString text = a.log ? chartLogLabel(v) : chartAxisLabel(v, values.valueStep, normalized_);
@@ -2474,10 +4330,16 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 				if (shown.height() < 16) return;
 				top = std::clamp(top, shown.top(), shown.bottom() - 16);
 			}
+			const double left = lanes_ ? LANE_UNIT_W : 2; /* lanes: their units up the left edge */
+			/* the trigger on: right of them its level's marker has a column of its own, so it covers none */
+			const double right = plot.left() - 6 - (triggerMarked() ? TRIGGER_LEFT_W : 0);
+			/* none under the lane's range tag: a label there would be half covered */
+			if (!tag.isEmpty() && top < tag.bottom() + 1
+					&& right - QFontMetricsF(p.font()).horizontalAdvance(text) < tag.right() + 2)
+				return;
 			valueLabels_ << text;
 			p.setPen(c.muted);
-			const double left = lanes_ ? LANE_UNIT_W : 2; /* lanes: their units up the left edge */
-			valueLabelRects_ << QRectF(left, top, plot.left() - 6 - left, 16);
+			valueLabelRects_ << QRectF(left, top, right - left, 16);
 			p.drawText(valueLabelRects_.last(), Qt::AlignRight | Qt::AlignVCenter, text);
 		};
 		const auto inView = [&shown](double y) { return y >= shown.top() - 1 && y <= shown.bottom() + 1; };
@@ -2498,10 +4360,10 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			}
 			label(v);
 		}
-		for (double t : ticks.times) {
+		for (double x : ticks.lineX) {
 			if (!lines) break;
 			p.setPen(QPen(c.grid, 1));
-			p.drawLine(QPointF(axes.x(t), shown.top()), QPointF(axes.x(t), shown.bottom()));
+			p.drawLine(QPointF(x, shown.top()), QPointF(x, shown.bottom()));
 		}
 		if (lanes_) { /* its fold button and its menu's, then its unit up the left edge of its labels, in the part in view
 		               * (a click on the unit name folds it too) */
@@ -2511,7 +4373,26 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 			if (!menu.isEmpty()) menuButton(index, menu);
 			const double nameTop = menu.isEmpty() ? button.bottom() : menu.bottom();
 			const QRectF name(0, nameTop, LANE_UNIT_W, shown.bottom() - nameTop);
-			p.setPen(c.text);
+			if (!tag.isEmpty()) { /* Manual in the warn colour (a range that does not follow), Log in the accent */
+				const QColor ink = laneScales_.value(lane.key).log ? c.accent : c.warn;
+				QColor fill = ink;
+				fill.setAlphaF(index == hoverTag_ ? 0.32 : 0.16);
+				p.save();
+				p.setRenderHint(QPainter::Antialiasing, true);
+				p.setPen(Qt::NoPen);
+				p.setBrush(fill);
+				p.drawRoundedRect(tag, 4, 4);
+				/* a longer word (Arabic's "Log") a little smaller rather than cut; cut only below 6 pt */
+				QFont font = tagFont();
+				while (font.pointSizeF() > 6 && QFontMetricsF(font).horizontalAdvance(tagText) > tag.width() - 4)
+					font.setPointSizeF(font.pointSizeF() - 0.5);
+				p.setFont(font);
+				p.setPen(ink);
+				p.drawText(tag, Qt::AlignCenter, QFontMetricsF(font).elidedText(tagText, Qt::ElideRight, tag.width() - 2));
+				p.restore();
+			}
+			/* the current lane's unit lit: the one the toolbar's Y range shows (only with more than one lane) */
+			p.setPen(index == current ? c.accent : c.text);
 			p.translate(LANE_UNIT_W / 2, name.center().y());
 			p.rotate(-90);
 			const QString units = lane.label.isEmpty() ? tr("no unit") : lane.label;
@@ -2529,12 +4410,147 @@ void ChartView::drawGrid(QPainter &p, const QVector<Lane> &plots, const Axes &ax
 		p.setPen(QPen(gaps[i] == hoverSeparator_ ? c.accent : c.control, 1));
 		p.drawLine(QPointF(LANE_UNIT_W, laneSeparators_[i]), QPointF(plot.right(), laneSeparators_[i]));
 	}
-	for (double t : ticks.times) {
-		const double x = axes.x(t);
-		p.setPen(c.muted);
-		p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, timeLabel(epochMs_, t, ticks.timeStep));
+	timeLabels_.clear();
+	timeLabelX_.clear();
+	timeGridX_ = ticks.lineX;
+	divisionText_.clear();
+	divisionRect_ = QRectF();
+	if (ticks.divisions) {
+		drawDivisionLabels(p, ticks, axes);
+	} else {
+		const QFontMetricsF metrics(p.font());
+		for (qsizetype i = 0; i < ticks.times.size(); i++) {
+			const double x = ticks.timeX[i];
+			const QString label = timeLabel(epochMs_, ticks.times[i], ticks.timeStep);
+			const double half = metrics.horizontalAdvance(label) / 2;
+			if (x - half < 0 || x + half > width()) continue; /* never cut at the chart's edge: that one left out */
+			p.setPen(c.muted);
+			timeLabels_ << label;
+			timeLabelX_ << x;
+			p.drawText(QRectF(x - 60, plot.bottom() + 6, 120, 16), Qt::AlignCenter, label);
+		}
 	}
 	p.setRenderHint(QPainter::Antialiasing, true);
+}
+
+namespace {
+
+/* an offset on the divisions' axis, in the unit the window is written in ("-8 ms", "+4 ms", "0"); one piece in
+ * Arabic, its unit beside its number */
+/* the unit a window's offsets are written in: µs below 1 ms, ms below 1 s, s below 2 min, then min and h */
+QString windowUnit(double window, double &scale) {
+	scale = window < 1e-3 ? 1e-6 : window < 1 ? 1e-3 : window < 120 ? 1 : window < 7200 ? 60 : 3600;
+	return window < 1e-3 ? QStringLiteral("µs") : window < 1 ? QStringLiteral("ms")
+			: window < 120 ? QStringLiteral("s") : window < 7200 ? QStringLiteral("min") : QStringLiteral("h");
+}
+
+QString offsetText(double seconds, double window) {
+	if (std::fabs(seconds) < window * 1e-9) return QStringLiteral("0");
+	double scale;
+	const QString unit = windowUnit(window, scale);
+	const double v = std::round(seconds / scale * 1e6) / 1e6; /* no 0.30000000004 from k times a division */
+	return ltrPiece(QStringLiteral("%1%2 %3").arg(v > 0 ? QStringLiteral("+") : QString(), QString::number(v, 'g', 7), unit));
+}
+
+/* a division's length in its own unit ("1 ms", "200 µs", "2.5 s") */
+QString divisionLength(double seconds) {
+	const double scale = seconds < 1e-3 ? 1e-6 : seconds < 1 ? 1e-3 : seconds < 60 ? 1 : seconds < 3600 ? 60 : 3600;
+	const QString unit = seconds < 1e-3 ? QStringLiteral("µs") : seconds < 1 ? QStringLiteral("ms")
+			: seconds < 60 ? QStringLiteral("s") : seconds < 3600 ? QStringLiteral("min") : QStringLiteral("h");
+	return QStringLiteral("%1 %2").arg(QString::number(seconds / scale, 'g', 4), unit);
+}
+
+} // namespace
+
+double ChartView::timeOrigin() const {
+	const double t1 = viewEnd();
+	return timesFromT(t1 - window_, t1) ? trigger_.at : NAN;
+}
+
+/* three decimals in the window's unit: a cursor or the mouse a pixel apart reads apart at any width up to 4K */
+QString ChartView::fromTText(double t) const {
+	const double origin = timeOrigin();
+	if (!std::isfinite(origin) || !std::isfinite(t)) return QString();
+	double scale;
+	const QString unit = windowUnit(window_, scale);
+	/* a hair before T reads "T +0.000", not "T -0.000": a negative zero is no place */
+	const double raw = (t - origin) / scale, v = std::fabs(raw) < 5e-4 ? 0.0 : raw;
+	return ltrPiece(QStringLiteral("T %1%2 %3").arg(v >= 0 ? QStringLiteral("+") : QString(), QString::number(v, 'f', 3), unit));
+}
+
+/* on the grid: from T as fromTText, else from the right edge as the division labels count ("-3.200 ms"), from the
+ * place itself, so a live view's text does not change from frame to frame */
+QString ChartView::cursorPlaceText(int k) const {
+	const double place = cursorPlace_[k & 1], t = (k & 1) == 0 ? cursorA_ : cursorB_;
+	if (!cursorsOnGrid() || !std::isfinite(place) || !std::isfinite(t)) return QString();
+	const QString fromT = fromTText(t);
+	if (!fromT.isEmpty()) return fromT;
+	double scale;
+	const QString unit = windowUnit(window_, scale);
+	const double v = (place - 1) * window_ / scale;
+	return ltrPiece(QStringLiteral("%1 %2").arg(QString::number(std::fabs(v) < 5e-4 ? 0.0 : v, 'f', 3), unit));
+}
+
+/* "1 ms/div · 14:03:12.345": the division and the clock time at 0, as precise as the division needs. Live, its clock
+ * time is written again at most every DIVISION_CLOCK_MS: a number rewritten at every frame reads as noise */
+QString ChartView::divisionReadoutText(const GridTicks &ticks) const {
+	const QString key = QStringLiteral("%1|%2").arg(ticks.division, 0, 'g', 17).arg(ticks.fromT);
+	const bool following = live();
+	if (!following || key != divisionClockKey_ || !divisionClockAge_.isValid()
+			|| divisionClockAge_.elapsed() >= DIVISION_CLOCK_MS) {
+		divisionClock_ = timeLabel(epochMs_, ticks.zero, ticks.division);
+		divisionClockKey_ = key;
+		divisionClockAge_.start();
+	}
+	return ltrPiece(QStringLiteral("%1/div · %2").arg(divisionLength(ticks.division), divisionClock_));
+}
+
+/* the readout's box in the state corner: as wide as its text with every digit a 0, so the legend's end does not move
+ * when the clock time's digits change; 0 without divisions */
+double ChartView::divisionReadoutWidth() const {
+	if (!divisionsShown()) return 0;
+	const double division = window_ / DIVISIONS;
+	QString text = QStringLiteral("%1/div · %2").arg(divisionLength(division), timeLabel(epochMs_, viewEnd(), division));
+	for (QChar &ch : text)
+		if (ch.isDigit()) ch = QLatin1Char('0');
+	return std::ceil(QFontMetricsF(labelFont()).horizontalAdvance(text)) + 2 * DIVISION_PAD;
+}
+
+/* The divisions' labels, each its offset from 0 (every 1, 2 or 5 divisions, 0 always, as many as have room). The
+ * readout is only made here: drawState draws it in the row above the plot, so no label is left out for it (the owner:
+ * it hid the "-2 ms" label) */
+void ChartView::drawDivisionLabels(QPainter &p, const GridTicks &ticks, const Axes &axes) const {
+	const ThemeColors &c = Theme::colors();
+	const QRectF &plot = axes.rect;
+	const QFontMetricsF metrics(p.font());
+	QStringList texts;
+	double widest = 0;
+	for (int k : ticks.offsets) {
+		texts << offsetText(k * ticks.division, window_);
+		widest = std::max(widest, metrics.horizontalAdvance(texts.last()));
+	}
+	const double perDivision = plot.width() / DIVISIONS;
+	int every = 1;
+	for (int step : { 1, 2, 5, 10 }) {
+		every = step;
+		if (step * perDivision >= widest + 16) break;
+	}
+	QVector<qsizetype> shown;
+	for (qsizetype i = 0; i < texts.size(); i++) {
+		const double half = metrics.horizontalAdvance(texts[i]) / 2;
+		if (ticks.offsets[i] % every != 0 || ticks.timeX[i] - half < 0 || ticks.timeX[i] + half > width()) continue;
+		shown << i;
+	}
+	divisionText_ = divisionReadoutText(ticks);
+	divisionFromT_ = ticks.fromT;
+	const double top = plot.bottom() + 6;
+	for (qsizetype i : std::as_const(shown)) {
+		const double x = ticks.timeX[i];
+		p.setPen(c.muted);
+		timeLabels_ << texts[i];
+		timeLabelX_ << x;
+		p.drawText(QRectF(x - 60, top, 120, 16), Qt::AlignCenter, texts[i]);
+	}
 }
 
 /* the span between the cursors, shaded behind the lines */
@@ -2570,6 +4586,27 @@ void ChartView::strokePolyline(QPainter &p, const QPolygonF &poly, const QColor 
 		if (std::fabs(j - middle) >= 0.51) drawShifted(0, (j - middle) * devicePixel); /* the row covers the middle */
 }
 
+/* the pieces of a polyline between its breaks, each a stroke; a piece of one point (a lone record between two gaps) a
+ * dot */
+void ChartView::strokePieces(QPainter &p, const QPolygonF &poly, const QVector<qsizetype> &breaks, qsizetype from,
+		qsizetype to, const QColor &color, bool thin, qreal dpr) {
+	if (breaks.isEmpty()) {
+		if (to - from >= 1) strokePolyline(p, from == 0 && to == poly.size() ? poly : QPolygonF(poly.mid(from, to - from)), color,
+				thin, dpr);
+		return;
+	}
+	qsizetype start = from;
+	auto next = std::upper_bound(breaks.begin(), breaks.end(), from);
+	while (start < to) {
+		const qsizetype end = next == breaks.end() ? to : std::min(to, *next);
+		QPolygonF piece = poly.mid(start, end - start);
+		if (piece.size() == 1) piece << piece.first() + QPointF(0.01, 0); /* a dot: a stroke of no length draws nothing */
+		strokePolyline(p, piece, color, thin, dpr);
+		start = end;
+		if (next != breaks.end()) ++next;
+	}
+}
+
 /* A line's bins as a polyline. A column with one or two samples keeps them at
  * their exact times (smooth at slow polls); a fuller one becomes a vertical
  * stroke at the column's centre: its first value, the min and the max (the
@@ -2585,16 +4622,21 @@ void ChartView::strokePolyline(QPainter &p, const QPolygonF &poly, const QColor 
  * column, not four. */
 template <typename MapX, typename MapY>
 QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, MapX x, MapY y,
-		QVector<QRectF> *bands, double bandWidth, double pixel) {
+		QVector<QRectF> *bands, double bandWidth, double pixel, QVector<qsizetype> *breaks) {
 	QPolygonF poly;
 	poly.reserve(bins.size() * 4);
-	const auto put = [&poly](const QPointF &point) {
+	qsizetype piece = 0; /* where the piece being drawn began: a level run or a point is never merged across a break */
+	const auto put = [&poly, &piece](const QPointF &point) {
 		const qsizetype n = poly.size();
-		if (n >= 2 && poly[n - 1].y() == point.y() && poly[n - 2].y() == point.y()) poly[n - 1] = point;
-		else if (n == 0 || poly[n - 1] != point) poly << point;
+		if (n - piece >= 2 && poly[n - 1].y() == point.y() && poly[n - 2].y() == point.y()) poly[n - 1] = point;
+		else if (n == piece || poly[n - 1] != point) poly << point;
 	};
 	for (const Bin &b : bins) {
-		if (b.count <= 2) {
+		if (b.gap && breaks && !poly.isEmpty()) { /* a fast line's gap: the next point begins a new piece */
+			piece = poly.size();
+			breaks->push_back(piece);
+		}
+		if (b.count <= 2 && !b.bar) {
 			put(QPointF(x(b.t0), y(b.first)));
 			if (b.count == 2) put(QPointF(x(b.t1), y(b.last)));
 			continue;
@@ -2621,9 +4663,30 @@ QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, 
 }
 
 /* a line's bars, plain fills, antialiased: an edge on half a pixel is the same partly covered pixel whether it is
- * drawn here or on a stripe (without, the two rounded it to different sides) */
-void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color) {
+ * drawn here or on a stripe (without, the two rounded it to different sides). crisp (a fast line, a bar in nearly
+ * every column): each bar snapped to whole device pixels and filled without antialiasing, the same pixels here and on
+ * a stripe (a stripe lies on whole device pixels), at a fraction of the cost (two such lines took 9 ms antialiased;
+ * fillRect without antialiasing is the raster engine's fastest path, drawRects went through its general one) */
+void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp) {
 	if (count <= 0) return;
+	if (crisp) {
+		/* snapped in the device's pixels, then back into p's coordinates: whole device pixels each way (the device's
+		 * transform holds the widget's place in the window too, which drawing in it would count twice) */
+		const QTransform toDevice = p.deviceTransform(), back = toDevice.inverted();
+		QVector<QRectF> rects;
+		rects.reserve(count);
+		for (qsizetype k = 0; k < count; k++) {
+			const QRectF d = toDevice.mapRect(bands[k]);
+			const double x0 = std::round(d.left()), x1 = std::max(x0 + 1, std::round(d.right()));
+			const double y0 = std::round(d.top()), y1 = std::max(y0 + 1, std::round(d.bottom()));
+			rects.push_back(back.mapRect(QRectF(QPointF(x0, y0), QPointF(x1, y1))));
+		}
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, false);
+		for (const QRectF &r : std::as_const(rects)) p.fillRect(r, color);
+		p.restore();
+		return;
+	}
 	p.save();
 	p.setPen(Qt::NoPen);
 	p.setBrush(color);
@@ -2659,6 +4722,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	const double bandWidth = std::max(2, int(std::lround(LINE_WIDTH * dpr))) / dpr;
 	QVector<QPolygonF> polys(lines.size());
 	QVector<QVector<QRectF>> bands(lines.size());
+	QVector<QVector<qsizetype>> breaks(lines.size()); /* a fast line's gaps */
 	inParallel(lines.size(), [&](qsizetype i) {
 		const BinnedLine &line = lines[i];
 		if (line.bins.isEmpty() || !axesOf[i]) return;
@@ -2667,7 +4731,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
-		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr);
+		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr, &breaks[i]);
 	});
 	/* a line that is mostly bars (fast and noisy): its polyline only joins them, one stroke is enough; five over the
 	 * whole height of each column cost the most of a frame */
@@ -2684,8 +4748,8 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		for (qsizetype i = 0; i < lines.size(); i++) {
 			if (!axesOf[i]) continue;
 			p.setClipRect(clipOf(i));
-			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color);
-			if (!polys[i].isEmpty()) strokePolyline(p, polys[i], lines[i].series->color, thin[i], dpr);
+			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color, lines[i].series->fast != nullptr);
+			if (!polys[i].isEmpty()) strokePieces(p, polys[i], breaks[i], 0, polys[i].size(), lines[i].series->color, thin[i], dpr);
 		}
 		p.restore();
 		return;
@@ -2722,13 +4786,13 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 			const QVector<QRectF> &bars = bands[i]; /* in x order too: the ones that reach the stripe */
 			const qsizetype first = std::lower_bound(bars.begin(), bars.end(), rect.left(), bandBefore) - bars.begin();
 			const qsizetype last = std::upper_bound(bars.begin(), bars.end(), rect.right(), bandAfter) - bars.begin();
-			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color);
+			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color, lines[i].series->fast != nullptr);
 			const QPolygonF &poly = polys[i]; /* its x never falls: the part in the stripe, a point either side */
 			const qsizetype from = std::max<qsizetype>(
 					0, std::lower_bound(poly.begin(), poly.end(), rect.left() - REACH, beforeX) - poly.begin() - 1);
 			const qsizetype to = std::min<qsizetype>(
 					poly.size(), std::upper_bound(poly.begin(), poly.end(), rect.right() + REACH, afterX) - poly.begin() + 1);
-			if (to - from >= 1) strokePolyline(ip, poly.mid(from, to - from), lines[i].series->color, thin[i], dpr);
+			if (to - from >= 1) strokePieces(ip, poly, breaks[i], from, to, lines[i].series->color, thin[i], dpr);
 		}
 		ip.end();
 		image.setDevicePixelRatio(dpr);
@@ -2831,8 +4895,8 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			const float y = float(std::floor(map(QPointF(0, a.y(v))).y()) + grid.widthPx / 2);
 			grid.segments.push_back({ float(topLeft.x()), y, float(bottomRight.x()), y, gridRgba });
 		}
-		for (double t : ticks.times) {
-			const float x = float(std::floor(map(QPointF(axes.x(t), 0)).x()) + grid.widthPx / 2);
+		for (double tx : ticks.lineX) {
+			const float x = float(std::floor(map(QPointF(tx, 0)).x()) + grid.widthPx / 2);
 			grid.segments.push_back({ x, laneTop, x, laneBottom, gridRgba });
 		}
 	}
@@ -2859,6 +4923,16 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 			span.segments.push_back({ float(map(QPointF(xa, 0)).x()), y, float(map(QPointF(xb, 0)).x()), y, gpuColor(shade) });
 			frame.layers << span;
 		}
+	}
+	/* the trigger's instant: a layer over the grid and under the lines, dashed as the CPU's pen (2 on, 3 off, flat ends) */
+	triggerInstantLine_ = instantLine(axes, dpr);
+	if (!triggerInstantLine_.isNull()) {
+		GpuLines::Layer instant;
+		instant.widthPx = float(dpr);
+		instant.caps = false;
+		dashes(instant.segments, map(triggerInstantLine_.p1()), map(triggerInstantLine_.p2()), INSTANT_DASH * dpr,
+				INSTANT_GAP * dpr, gpuColor(instantColor(series_.value(trigger_.key).color)));
+		frame.layers << instant;
 	}
 	/* the lines: as thick as the CPU's, its copies one device pixel each; each in its plot (lanes: cut to its lane's
 	 * part in the plot; none for a folded lane or one out of view) */
@@ -2887,19 +4961,29 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range */
 		if (normalized_) widenFlatRange(lo, hi);
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
-		const QPolygonF poly = toPolyline(line.bins, axes.columnSeconds(), x, y, nullptr, 0, 1 / dpr);
+		QVector<qsizetype> breaks; /* a fast line's gaps: no segment across them */
+		const QPolygonF poly = toPolyline(line.bins, axes.columnSeconds(), x, y, nullptr, 0, 1 / dpr, &breaks);
 		const quint32 rgba = gpuColor(line.series->color);
 		QVector<GpuLines::Segment> &segments = parts[i];
 		segments.resize(std::max<qsizetype>(1, poly.size() - 1));
 		/* scale and shift as arithmetic, not a transform per point */
 		float x0 = float(poly[0].x() * dpr + dx), y0 = float(poly[0].y() * dpr + dy);
 		if (poly.size() == 1) segments[0] = { x0, y0, x0, y0, rgba };
+		qsizetype made = 0, nextBreak = 0;
 		for (qsizetype k = 1; k < poly.size(); k++) {
 			const float x1 = float(poly[k].x() * dpr + dx), y1 = float(poly[k].y() * dpr + dy);
-			segments[k - 1] = { x0, y0, x1, y1, rgba };
+			if (nextBreak < breaks.size() && breaks[nextBreak] == k) {
+				nextBreak++;
+				/* a lone point between two gaps: a dot, as the CPU's */
+				if (k + 1 >= poly.size() || (nextBreak < breaks.size() && breaks[nextBreak] == k + 1))
+					segments[made++] = { x1, y1, x1 + 0.01f, y1, rgba };
+			} else {
+				segments[made++] = { x0, y0, x1, y1, rgba };
+			}
 			x0 = x1;
 			y0 = y1;
 		}
+		if (poly.size() > 1) segments.resize(made);
 		if (!lanes_) return; /* the layer's edge cuts the one plot */
 		const float top = float(shownOf[i].top() * dpr + dy) - lineWidth, bottom = float(shownOf[i].bottom() * dpr + dy) + lineWidth;
 		qsizetype kept = 0;
@@ -2928,6 +5012,17 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (plot.folded && !shown.isEmpty())
 			frame.sprites.push_back({ foldedPicture(plot, shown, axes.t0, axes.t1, dpr), whole(shown.topLeft()) });
 	}
+	/* the now edges: a layer under the marks' (the cursors', the notes', the level's), as the CPU draws them */
+	nowEdges_ = nowEdgeLines(plots);
+	if (!nowEdges_.isEmpty()) {
+		GpuLines::Layer edges;
+		edges.widthPx = float(dpr);
+		for (const QLineF &edge : std::as_const(nowEdges_)) {
+			const QPointF a = map(edge.p1()), b = map(edge.p2());
+			edges.segments.push_back({ float(a.x()), float(a.y()), float(b.x()), float(b.y()), gpuColor(nowEdgeColor()) });
+		}
+		frame.layers << edges;
+	}
 	/* the cursors: dashed as the CPU's pen (1.2 px: dashes of 4.8, gaps of 2.4), a tag each */
 	GpuLines::Layer marks;
 	marks.widthPx = float(1.2 * dpr);
@@ -2950,15 +5045,17 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 				gpuColor(c.warn));
 		frame.sprites.push_back({ notePicture(i, noteTags_[i], dpr), whole(noteTags_[i].topLeft()) });
 	}
-	/* the trigger: its level dashed in its line's colour, its marker */
+	/* the trigger: its level dashed in its line's colour, its tag, its marker */
 	double levelY;
-	QRectF levelLane, tag;
-	if (triggerGeometry(plots, lines, levelY, levelLane, tag)) {
+	QRectF levelLane, tag, levelTag;
+	if (triggerGeometry(plots, lines, levelY, levelLane, tag, levelTag)) {
 		const QColor color = series_.value(trigger_.key).color;
-		/* as the CPU's pen (1.2 px, Qt::DashLine: dashes of 4.8, gaps of 2.4), the cursors and the notes */
-		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)), 4.8 * dpr,
-				2.4 * dpr, gpuColor(color));
-		if (!tag.isEmpty()) frame.sprites.push_back({ triggerPicture(dpr), whole(tag.topLeft()) });
+		/* as the CPU's pen (1.2 px, Qt::DashLine: dashes of 4.8, gaps of 2.4), the cursors and the notes; off scale its
+		 * Qt::DotLine with flat ends (dots of 1.2, gaps of 2.4) */
+		const bool dotted = triggerOffScale_ != 0;
+		dashes(marks.segments, map(QPointF(levelLane.left(), levelY)), map(QPointF(levelLane.right(), levelY)),
+				(dotted ? 1.2 : 4.8) * dpr, 2.4 * dpr, gpuColor(color));
+		/* its marker and tab lie outside the layer: the CPU draws them (drawTriggerTab), as the flag */
 	}
 	frame.layers << marks;
 	spanBar_ = spanBar(axes);
@@ -2983,6 +5080,13 @@ bool ChartView::plotOnGpu(const Axes &axes, const QVector<Lane> &plots, const QV
 	presenting.start();
 	const bool presented = gpu_->present(top->winId(), pixels, frame, error);
 	perf_.present += presenting.nsecsElapsed() / 1e6;
+	/* A frame the system let go (still busy with the one before): the layer keeps the last that reached it. Live, the
+	 * next frame comes anyway; held, none comes, and after a resize the layer stayed at its old size, the window's own
+	 * plot beside it blank (the black bar of a recording's window made bigger): a frame again, at the next refresh */
+	if (presented && gpu_->droppedFrames() != droppedSeen_) {
+		droppedSeen_ = gpu_->droppedFrames();
+		if (!live_) QTimer::singleShot(DROPPED_AGAIN_MS, this, [this] { paintSoon(); });
+	}
 	if (presented) return true;
 	gpu_.reset(); /* the CPU draws, from this frame on, and paints all of the plot at the next (its layer is gone) */
 	emit drawingFailed(error);
@@ -3051,11 +5155,11 @@ QVector<ChartView::FoldedItem> ChartView::foldedItems(const Lane &lane, double t
 	for (int i : lane.lines) {
 		const Series &s = *byIndex[i];
 		QString value;
+		double v = 0;
 		if (live_) {
 			if (s.hasShown) value = chartNumber(s.shown);
-		} else {
-			const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
-			if (k >= 0 && s.times[k] >= t0) value = chartNumber(s.values[k]);
+		} else if (latestInView(s, t0, t1, v)) {
+			value = chartNumber(v);
 		}
 		QString text = s.name;
 		if (!value.isEmpty()) text += QLatin1Char(' ') + value + (s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit);
@@ -3184,17 +5288,23 @@ void ChartView::drawCursors(QPainter &p, const Axes &axes, Marks part) const {
 }
 
 /* The trigger's level line in its line's plot (kept within it, so it can be dragged when the range does not reach it),
- * and its marker at the crossing, at the top of the plot, when the crossing is in view */
+ * its tab in the margin right of the plot at the line's height, and its T at the crossing, on the level crossed (the
+ * owner: the T belongs against the level's line, not at the plot's top), when the crossing is in view */
 bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<BinnedLine> &lines, double &levelY,
-		QRectF &lane, QRectF &tag) const {
+		QRectF &lane, QRectF &tag, QRectF &levelTag) const {
 	triggerLineY_ = NAN;
-	triggerTag_ = QRectF();
-	tag = QRectF();
-	if (!trigger_.on) return false;
+	triggerTag_ = triggerLevelTag_ = triggerEdgeButton_ = triggerTabFull_ = triggerLevelMark_ = triggerMarkFull_ = QRectF();
+	triggerTagText_.clear();
+	tag = levelTag = QRectF();
+	triggerOffScale_ = triggerBeyond_ = 0;
+	if (!triggerMarked()) return false; /* off, or a short window's lock: nothing of it drawn */
 	int index = 0;
 	for (auto it = series_.constBegin(); it != series_.constEnd() && it.key() != trigger_.key; ++it) index++;
 	if (index >= lines.size()) return false;
 	const QRectF all = plotRect();
+	const double level = watchedSettings().level;
+	/* a level the line does not reach in view: Normal waits for ever, and the row says why */
+	if (lines[index].lo <= lines[index].hi) triggerBeyond_ = level > lines[index].hi ? 1 : level < lines[index].lo ? -1 : 0;
 	for (const Lane &plot : plots) {
 		if (!plot.lines.contains(index)) continue;
 		const Axes &a = plot.axes;
@@ -3203,52 +5313,367 @@ bool ChartView::triggerGeometry(const QVector<Lane> &plots, const QVector<Binned
 		if (plot.folded || shown.isEmpty()) return false;
 		double lo = lines[index].lo, hi = lines[index].hi;
 		if (normalized_) widenFlatRange(lo, hi);
-		levelY = std::clamp(normalized_ ? a.y((trigger_.level - lo) / (hi - lo)) : a.y(trigger_.level), shown.top(),
-				shown.bottom());
+		/* beyond the lane's range the line is pinned to its edge, so it can be dragged back, but drawn otherwise (dotted,
+		 * ▲ or ▼): read as in range it hid why Normal never fired. The range is not widened for it */
+		const double y = normalized_ ? a.y((level - lo) / (hi - lo)) : a.y(level);
+		triggerOffScale_ = y < a.rect.top() - 0.5 ? 1 : y > a.rect.bottom() + 0.5 ? -1 : 0;
+		levelY = std::clamp(y, shown.top(), shown.bottom());
 		lane = shown;
 		triggerLineY_ = levelY;
 		triggerLane_ = lane;
 		triggerAxes_ = a;
 		triggerLo_ = lo;
 		triggerHi_ = hi;
-		if (std::isfinite(trigger_.at) && trigger_.at >= a.t0 && trigger_.at <= a.t1) {
-			tag = QRectF(a.x(trigger_.at) - 7, all.top() - 2, 14, 16);
+		/* where the line crossed (the flag's x; no longer drawn there: the flag above and the marks at the plot's sides
+		 * show it): at the crossing's time on the level it crossed, kept inside the lane's part in view */
+		if (std::isfinite(trigger_.at) && trigger_.at >= a.t0 && trigger_.at <= a.t1 && shown.height() >= 16) {
+			const double at = normalized_ ? a.y((trigger_.atLevel - lo) / (hi - lo)) : a.y(trigger_.atLevel);
+			const double top = std::round(std::clamp(at - 8, shown.top(), shown.bottom() - 16));
+			tag = QRectF(a.x(trigger_.at) - 7, top, 14, 16);
 			triggerTag_ = tag;
+		}
+		/* the level's tab in the margin right of the plot and its marker in the column left of it, at the line's
+		 * height within its lane: cut as the lane is where the lane is scrolled partly out of view (levelTag: the
+		 * part in view, which takes the mouse). On whole pixels, as every picture */
+		const double top = std::round(std::clamp(levelY - TRIGGER_TAB_H / 2, a.rect.top(), a.rect.bottom() - TRIGGER_TAB_H));
+		triggerMarkFull_ = QRectF(all.left() - 2 - TRIGGER_LEFT_W, top, TRIGGER_LEFT_W, TRIGGER_TAB_H);
+		triggerLevelMark_ = triggerMarkFull_.intersected(QRectF(triggerMarkFull_.left(), shown.top(), TRIGGER_LEFT_W,
+				shown.height()));
+		triggerTabFull_ = QRectF(std::round(all.right() + TRIGGER_TAB_X), top, TRIGGER_TAB_W, TRIGGER_TAB_H);
+		const QRectF band(triggerTabFull_.left(), shown.top(), TRIGGER_TAB_W, shown.height());
+		levelTag = triggerTabFull_.intersected(band);
+		if (!levelTag.isEmpty()) {
+			triggerTagText_ = triggerTabLabel() + QLatin1Char(' ') + edgeSymbol();
+			triggerLevelTag_ = levelTag;
+			triggerEdgeButton_ = QRectF(triggerTabFull_.right() - TRIGGER_TAB_BUTTON, triggerTabFull_.top(), TRIGGER_TAB_BUTTON,
+					TRIGGER_TAB_H).intersected(band);
 		}
 		return true;
 	}
 	return false;
 }
 
+/* A view held on a crossing fills as the samples come: its right part is empty until they do, which read as missing
+ * data. A faint edge at the newest sample's time in every lane in view says where the data ends now (both paths draw
+ * these lines) */
+QVector<QLineF> ChartView::nowEdgeLines(const QVector<Lane> &plots) const {
+	QVector<QLineF> edges;
+	if (!triggerCapturing()) return edges;
+	const double now = triggerTime();
+	const QRectF all = plotRect();
+	for (const Lane &plot : plots) {
+		const Axes &a = plot.axes;
+		if (plot.folded || now < a.t0 || now > a.t1) continue;
+		const QRectF shown = lanes_ ? laneVisible(a.rect, all) : a.rect;
+		if (shown.isEmpty()) continue;
+		const double x = a.x(now);
+		edges << QLineF(x, shown.top(), x, shown.bottom());
+	}
+	return edges;
+}
+
+/* Only while a held view shows a crossing of the level as set (the T solid on it): waiting for a first crossing, rolling
+ * free in Auto or after a change of the level, the T marks no instant. A view the user panned still shows the crossing
+ * with its T solid, so the line stays as the flag does (not only while the trigger holds the view: a pan dropped it,
+ * a zoom kept it). The plot's height, one line across the lanes and their gaps (as the cursors' lines), on a device
+ * pixel's middle so its dashes are crisp at 100 % */
+QLineF ChartView::instantLine(const Axes &axes, qreal dpr) const {
+	if (!triggerInstant_ || !triggerMarked() || live_ || !triggerHandleSolid()) return QLineF();
+	if (trigger_.at < axes.t0 || trigger_.at > axes.t1) return QLineF();
+	const double x = (std::floor(axes.x(trigger_.at) * dpr) + 0.5) / dpr;
+	return QLineF(x, axes.rect.top(), x, axes.rect.bottom());
+}
+
+void ChartView::setTriggerInstant(bool on) {
+	triggerInstant_ = on;
+	refresh();
+}
+
 void ChartView::drawTrigger(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, Marks part) const {
 	double levelY;
-	QRectF lane, tag;
-	if (!triggerGeometry(plots, lines, levelY, lane, tag)) return;
+	QRectF lane, tag, levelTag;
+	if (!triggerGeometry(plots, lines, levelY, lane, tag, levelTag)) return;
 	p.save();
-	p.setPen(QPen(series_.value(trigger_.key).color, 1.2, Qt::DashLine));
+	/* off scale dotted (flat ends: the card's dots are as long as the CPU's), else dashed */
+	QPen pen(series_.value(trigger_.key).color, 1.2, triggerOffScale_ != 0 ? Qt::DotLine : Qt::DashLine);
+	if (triggerOffScale_ != 0) pen.setCapStyle(Qt::FlatCap);
+	p.setPen(pen);
 	if (part == Marks::Lines) p.drawLine(QPointF(lane.left(), levelY), QPointF(lane.right(), levelY));
-	else if (!tag.isEmpty()) p.drawImage(tag.topLeft(), triggerPicture(p.device()->devicePixelRatioF()));
 	p.restore();
 }
 
-/* the marker: a "T" in a tag of the line's colour */
-const QImage &ChartView::triggerPicture(qreal dpr) const {
+namespace {
+/* where a mark's pointer is: none (a level off scale), under its box (the flag), right of it (the level's marker) or
+ * left of it (the tab) */
+enum class MarkPointer { None, Down, Right, Left };
+
+/* a mark's border in device pixels, whole ones (1 px at rest, 2 lit, as the cursors' tags) */
+int markPen(qreal dpr, bool lit) {
+	return std::max(1, int(std::lround((lit ? 2 : 1) * dpr)));
+}
+
+/* The trigger's marks are one family: the flag above the plot, the level's marker left of it and its tab right of it
+ * (the owner: one finished look). A box TRIGGER_MARK_H high, its corners, border and fill alike (lit: the border
+ * stronger on the theme's border colour), joined to a pointer of one size in the line's colour as one outline (solid:
+ * filled in it; hollow: its outline only). Drawn in device pixels with the box's edges on whole ones, so the outlines
+ * are crisp at 225 % as at 100 %; `at` is the tip along its side (device pixels from the picture's top, Right and
+ * Left), kept where the side is straight. The caller writes in `box` (logical pixels) */
+QImage markPicture(qreal dpr, const QColor &color, double boxWidth, MarkPointer pointer, double at, bool solid, bool lit,
+		QRectF &box) {
+	const ThemeColors &c = Theme::colors();
+	const int w = 2 * int(std::lround(boxWidth * dpr / 2)), h = int(std::lround(TRIGGER_MARK_H * dpr));
+	const int depth = int(std::lround(TRIGGER_POINT * dpr)), half = int(std::lround(TRIGGER_POINT_W / 2 * dpr));
+	const int pen = markPen(dpr, lit);
+	const bool side = pointer == MarkPointer::Right || pointer == MarkPointer::Left;
+	const int left = pointer == MarkPointer::Left ? depth : 0;
+	QImage image(QSize(w + (side ? depth : 0), h + (pointer == MarkPointer::Down ? depth : 0)),
+			QImage::Format_ARGB32_Premultiplied);
+	image.fill(Qt::transparent);
+	{
+		QPainter p(&image);
+		p.setRenderHint(QPainter::Antialiasing);
+		const double edge = pen / 2.0, radius = 4 * dpr;
+		QPainterPath outline;
+		outline.addRoundedRect(QRectF(left, 0, w, h).adjusted(edge, edge, -edge, -edge), radius, radius);
+		/* the triangle's base inside the border, so the union draws no line across it */
+		const double tip = std::clamp(at, double(half + pen), double(h - half - pen));
+		QPolygonF triangle;
+		if (pointer == MarkPointer::Down)
+			triangle << QPointF(w / 2.0 - half, h - pen) << QPointF(w / 2.0 + half, h - pen) << QPointF(w / 2.0, h + depth - edge);
+		else if (pointer == MarkPointer::Right)
+			triangle << QPointF(w - pen, tip - half) << QPointF(w - pen, tip + half) << QPointF(w + depth - edge, tip);
+		else if (pointer == MarkPointer::Left)
+			triangle << QPointF(depth + pen, tip - half) << QPointF(depth + pen, tip + half) << QPointF(edge, tip);
+		QPainterPath pointed;
+		pointed.addPolygon(triangle);
+		pointed.closeSubpath();
+		if (!triangle.isEmpty()) outline = outline.united(pointed);
+		p.fillPath(outline, lit ? c.border : c.surface2);
+		if (!triangle.isEmpty() && solid) p.fillPath(pointed, color);
+		p.strokePath(outline, QPen(color, pen, Qt::SolidLine, Qt::FlatCap, Qt::RoundJoin));
+	}
+	image.setDevicePixelRatio(dpr);
+	box = QRectF(left / dpr, 0, w / dpr, h / dpr);
+	return image;
+}
+
+/* a level beyond its lane's range: ▲ or ▼ in the box where the pointer was (it points at no level), solid or hollow as
+ * the pointer */
+void drawOffScale(QPainter &p, QPointF centre, int offScale, bool solid, const QColor &color, const QColor &fill) {
+	const double s = offScale > 0 ? -1 : 1;
+	const QPointF triangle[3] = { { centre.x(), centre.y() + s * TRIGGER_POINT / 2 },
+			{ centre.x() - 4, centre.y() - s * TRIGGER_POINT / 2 }, { centre.x() + 4, centre.y() - s * TRIGGER_POINT / 2 } };
+	p.setPen(QPen(color, 1));
+	p.setBrush(solid ? color : fill);
+	p.drawPolygon(triangle, 3);
+}
+} // namespace
+
+/* The level's marks outside the plot and outside the card's layer (the CPU draws them on both paths, from the rects
+ * the frame's geometry gave): the "T▸" marker left of the plot and the tab right of it, each cut to its lane's part in
+ * view, their points at the level's height, and the level's dashed line carried on to their points across the gaps */
+void ChartView::drawTriggerTab(QPainter &p) const {
+	if (!std::isfinite(triggerLineY_) || (triggerLevelTag_.isEmpty() && triggerLevelMark_.isEmpty())) return;
+	const qreal dpr = p.device()->devicePixelRatioF();
+	/* both pictures on whole device pixels, their boxes in the middle of their grab areas */
+	const double top = std::round((triggerTabFull_.top() + (TRIGGER_TAB_H - TRIGGER_MARK_H) / 2) * dpr);
+	const double at = triggerLineY_ * dpr - top;
+	p.save();
+	QPen pen(series_.value(trigger_.key).color, 1.2, triggerOffScale_ != 0 ? Qt::DotLine : Qt::DashLine);
+	if (triggerOffScale_ != 0) pen.setCapStyle(Qt::FlatCap);
+	if (!triggerLevelMark_.isEmpty()) {
+		const QImage &mark = levelMarkPicture(dpr, at);
+		const double right = std::round(triggerMarkFull_.right() * dpr);
+		const QPointF corner((right - mark.width()) / dpr, top / dpr);
+		p.setPen(pen);
+		p.drawLine(QPointF(right / dpr, triggerLineY_), QPointF(triggerLane_.left(), triggerLineY_));
+		p.setClipRect(triggerLevelMark_); /* a lane scrolled: the marker cut as the lane is */
+		p.drawImage(corner, mark);
+		p.setClipping(false);
+	}
+	if (!triggerLevelTag_.isEmpty()) {
+		const double left = std::round(triggerTabFull_.left() * dpr);
+		p.setPen(pen);
+		p.drawLine(QPointF(triggerLane_.right(), triggerLineY_), QPointF(left / dpr, triggerLineY_));
+		p.setClipRect(triggerLevelTag_);
+		p.drawImage(QPointF(left / dpr, top / dpr), levelTagPicture(dpr, at));
+	}
+	p.restore();
+}
+
+/* The level's marker left of the plot: "T▸", a T in the family's box, its point at the line's height touching the
+ * card's layer where the dashed line starts; lit with the tab (they move the one level). Solid while the view holds a
+ * crossing of this level, hollow after a change of it; off scale ▲ or ▼ in the box */
+const QImage &ChartView::levelMarkPicture(qreal dpr, double at) const {
 	const QColor color = series_.value(trigger_.key).color;
-	const QString key = QStringLiteral("%1|%2").arg(dpr).arg(color.name());
+	const bool solid = triggerHandleSolid(), lit = hoverLevel_ || drag_ == Drag::Level, off = triggerOffScale_ != 0;
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(dpr).arg(color.name()).arg(Theme::isDark()).arg(lit)
+			.arg(solid).arg(triggerOffScale_).arg(at, 0, 'f', 2);
+	if (key == levelMarkKey_) return levelMarkImage_;
+	levelMarkKey_ = key;
+	QRectF box;
+	/* off scale the box takes its point's room: as wide as the marker always is */
+	levelMarkImage_ = markPicture(dpr, color, off ? TRIGGER_LEFT_W : TRIGGER_MARK_W, off ? MarkPointer::None
+			: MarkPointer::Right, at, solid, lit, box);
+	const ThemeColors &c = Theme::colors();
+	QPainter p(&levelMarkImage_);
+	p.setRenderHint(QPainter::Antialiasing);
+	p.setPen(c.text);
+	p.setFont(labelFont());
+	p.drawText(QRectF(box.left(), box.top(), off ? 12 : TRIGGER_MARK_W, box.height()), Qt::AlignCenter, QStringLiteral("T"));
+	if (off) drawOffScale(p, QPointF(box.right() - 6, box.center().y()), triggerOffScale_, solid, color, lit ? c.border : c.surface2);
+	return levelMarkImage_;
+}
+
+/* the flag: a T in the family's box over its pointer, solid (it marks a place, not a level), lit under the mouse */
+const QImage &ChartView::flagPicture(qreal dpr) const {
+	const QColor color = series_.value(trigger_.key).color;
+	const bool lit = hoverMark_ || drag_ == Drag::Position;
+	const QString key = QStringLiteral("%1|%2|%3|%4").arg(dpr).arg(color.name()).arg(Theme::isDark()).arg(lit);
 	if (key == triggerImageKey_) return triggerImage_;
 	triggerImageKey_ = key;
-	triggerImage_ = QImage((QSizeF(14, 16) * dpr).toSize(), QImage::Format_ARGB32_Premultiplied);
-	triggerImage_.setDevicePixelRatio(dpr);
-	triggerImage_.fill(Qt::transparent);
+	QRectF box;
+	triggerImage_ = markPicture(dpr, color, TRIGGER_MARK_W, MarkPointer::Down, 0, true, lit, box);
 	QPainter p(&triggerImage_);
-	p.setRenderHint(QPainter::Antialiasing);
-	p.setPen(Qt::NoPen);
-	p.setBrush(color);
-	p.drawRoundedRect(QRectF(0, 0, 14, 16), 4, 4);
-	p.setPen(Qt::white);
+	p.setPen(Theme::colors().text);
 	p.setFont(labelFont());
-	p.drawText(QRectF(0, 0, 14, 16), Qt::AlignCenter, QStringLiteral("T"));
+	p.drawText(box, Qt::AlignCenter, QStringLiteral("T"));
 	return triggerImage_;
+}
+
+QString ChartView::triggerPointText() const {
+	const auto it = series_.constFind(trigger_.key);
+	if (it == series_.constEnd() || !std::isfinite(trigger_.at)) return QString();
+	const QString value = it->unit.isEmpty() ? levelText(trigger_.atLevel)
+			: levelText(trigger_.atLevel) + QLatin1Char(' ') + it->unit;
+	const QString edge = trigger_.atEdge == TriggerEdge::Rising ? tr("rising")
+			: trigger_.atEdge == TriggerEdge::Falling ? tr("falling") : tr("rising or falling");
+	const QString time = QDateTime::fromMSecsSinceEpoch(epochMs_ + qint64(std::llround(trigger_.at * 1000)))
+			.toString(QStringLiteral("HH:mm:ss.zzz"));
+	return tr("Trigger point: %1 crossed %2, %3, at %4", "the T's tooltip: the line, the level with its unit, the edge, "
+			"the time").arg(it->name, value, edge, time);
+}
+
+bool ChartView::triggerHandleSolid() const {
+	return trigger_.on && std::isfinite(trigger_.at) && watchedSettings().level == trigger_.atLevel;
+}
+
+QString ChartView::levelText(double level) {
+	return QString::number(level, 'g', 6);
+}
+
+/* The crossing's place in the window: a flag in the strip above the plot, right over where the line crossed (with no
+ * crossing in view, the place in the window): a T in the family's box over its pointer, the point on the card's
+ * layer's top (2 px over the plot, so the layer hides none of it) at that x. A "T ▾" side by side did not point at
+ * its place (the owner: the T over the arrow); a bare triangle between the plot and the time labels was not seen as a
+ * control. The whole takes the mouse and is lit under it. On whole device pixels, its middle on the crossing's */
+void ChartView::drawTriggerMark(QPainter &p, const Axes &axes) const {
+	triggerMark_ = QRectF();
+	if (!triggerMarked()) return;
+	const qreal dpr = p.device()->devicePixelRatioF();
+	const double x = !triggerTag_.isEmpty() ? triggerTag_.center().x() : axes.rect.left() + triggerPosition_ * axes.rect.width();
+	const QImage &flag = flagPicture(dpr);
+	const QSizeF size = flag.deviceIndependentSize();
+	const double left = (std::round(x * dpr) - flag.width() / 2) / dpr; /* its width is even: the point on a pixel's edge */
+	const double top = std::round((axes.rect.top() - 2) * dpr) / dpr - size.height();
+	triggerMark_ = QRectF(QPointF(left, top), size);
+	p.drawImage(triggerMark_.topLeft(), flag);
+}
+
+/* the level in words, the tab's tooltip: the line, the level in its unit and the edge ("(above range)" off scale) */
+QString ChartView::triggerTagLabel() const {
+	const auto it = series_.constFind(trigger_.key);
+	if (it == series_.constEnd()) return QString();
+	const TriggerSettings watched = watchedSettings();
+	const QString value = it->unit.isEmpty() ? levelText(watched.level) : levelText(watched.level) + QLatin1Char(' ') + it->unit;
+	const QString edge = watched.edge == TriggerEdge::Rising ? tr("rising")
+			: watched.edge == TriggerEdge::Falling ? tr("falling") : tr("either");
+	const QString label = tr("%1 %2, %3", "the trigger's level tag: the line, its level with its unit, the edge")
+			.arg(it->name, value, edge);
+	return triggerOffScale_ > 0 ? tr("▲ %1 (above range)", "the level's tag, the level above its lane's range").arg(label)
+			: triggerOffScale_ < 0 ? tr("▼ %1 (below range)", "the level's tag, the level below its lane's range").arg(label)
+			: label;
+}
+
+/* the level as one helper writes it (levelText: as set) in the line's unit: a number and a symbol, not words (the
+ * marker left of the plot carries the T) */
+QString ChartView::triggerTabLabel() const {
+	const auto it = series_.constFind(trigger_.key);
+	if (it == series_.constEnd()) return QString();
+	const QString value = levelText(watchedSettings().level);
+	return it->unit.isEmpty() ? value : value + QLatin1Char(' ') + it->unit;
+}
+
+QString ChartView::edgeSymbol() const {
+	const TriggerEdge edge = watchedSettings().edge;
+	return edge == TriggerEdge::Rising ? QStringLiteral("↑") : edge == TriggerEdge::Falling ? QStringLiteral("↓")
+			: QStringLiteral("↕");
+}
+
+/* The level's tab: "0.4 A" and the edge (↑ ↓ ↕) in one shape of the family, its point at the line's height its left
+ * side: the level in the middle of its part, the edge's part at the right end behind a thin divider, lit more under
+ * the mouse as a button (the owner: no box in a box). The whole lit under the mouse and while dragged; the point solid
+ * while the view holds a crossing of this level and hollow after a change of it (as a scope's level mark), off scale
+ * ▲ or ▼ in the box. The same picture whichever draws the plot */
+const QImage &ChartView::levelTagPicture(qreal dpr, double at) const {
+	const ThemeColors &c = Theme::colors();
+	const QColor color = series_.value(trigger_.key).color;
+	const bool solid = triggerHandleSolid(), lit = hoverLevel_ || drag_ == Drag::Level, off = triggerOffScale_ != 0;
+	const QString label = triggerTabLabel();
+	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(dpr).arg(color.name()).arg(label, edgeSymbol())
+			.arg(hoverEdge_).arg(Theme::isDark()).arg(lit).arg(solid).arg(triggerOffScale_)
+			+ QStringLiteral("|%1").arg(at, 0, 'f', 2);
+	if (key == levelTagKey_) return levelTagImage_;
+	levelTagKey_ = key;
+	QRectF box;
+	levelTagImage_ = markPicture(dpr, color, off ? TRIGGER_TAB_W : TRIGGER_TAB_W - TRIGGER_POINT, off ? MarkPointer::None
+			: MarkPointer::Left, at, solid, lit, box);
+	QPainter p(&levelTagImage_);
+	p.setRenderHint(QPainter::Antialiasing);
+	const double pen = markPen(dpr, lit) / dpr;
+	/* the divider on whole device pixels, one device pixel per logical one */
+	const int thin = std::max(1, int(std::lround(dpr)));
+	const double divider = (std::round((box.right() - TRIGGER_TAB_BUTTON) * dpr) + (thin % 2 ? 0.5 : 0)) / dpr;
+	const QRectF button(divider, box.top(), box.right() - divider, box.height());
+	if (hoverEdge_) {
+		QPainterPath inside, part;
+		inside.addRoundedRect(box.adjusted(pen, pen, -pen, -pen), 4 - pen / 2, 4 - pen / 2);
+		part.addRect(button);
+		QColor strong = c.text;
+		strong.setAlphaF(0.22);
+		p.fillPath(inside.intersected(part), strong);
+	}
+	QColor line = color;
+	line.setAlphaF(0.6);
+	p.setPen(QPen(line, thin / dpr));
+	p.drawLine(QPointF(divider, box.top() + pen + 2), QPointF(divider, box.bottom() - pen - 2));
+	if (off) drawOffScale(p, QPointF(box.left() + 8, box.center().y()), triggerOffScale_, solid, color, lit ? c.border : c.surface2);
+	p.setPen(c.text);
+	p.setFont(labelFont());
+	const QRectF text(box.left() + (off ? 14 : 4), box.top(), divider - box.left() - (off ? 14 : 4) - 4, box.height());
+	p.drawText(text, Qt::AlignCenter, QFontMetricsF(labelFont()).elidedText(label, Qt::ElideRight, text.width() + 1));
+	/* the edge drawn as lines, not as the font's arrow: a font's ↑ ↓ ↕ sits off the middle of its own box (the owner
+	 * saw it right of the centre), so the stem and the heads are placed on the button's centre */
+	const QPointF mid = button.center();
+	const double half = std::min(button.height() / 2 - pen - 3, 6.5), head = 3;
+	const TriggerEdge edge = watchedSettings().edge;
+	QPainterPath arrow;
+	arrow.moveTo(mid.x(), mid.y() - half);
+	arrow.lineTo(mid.x(), mid.y() + half);
+	if (edge != TriggerEdge::Falling) {
+		arrow.moveTo(mid.x() - head, mid.y() - half + head);
+		arrow.lineTo(mid.x(), mid.y() - half);
+		arrow.lineTo(mid.x() + head, mid.y() - half + head);
+	}
+	if (edge != TriggerEdge::Rising) {
+		arrow.moveTo(mid.x() - head, mid.y() + half - head);
+		arrow.lineTo(mid.x(), mid.y() + half);
+		arrow.lineTo(mid.x() + head, mid.y() + half - head);
+	}
+	p.setPen(QPen(c.text, 1.3, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+	p.setBrush(Qt::NoBrush);
+	p.drawPath(arrow);
+	return levelTagImage_;
 }
 
 /* a note's tag at the bottom of the plot, its left edge on the note's line (its right edge when the plot ends) */
@@ -3412,12 +5837,27 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 	strip.t0 = strip.t1 - memory_;
 	strip.span = strip.t1 - strip.t0;
 	strip.columns = std::max(1.0, box.width());
+	/* a fast line's records kept as summaries only: that part of the memory shaded, so where its samples begin shows */
+	double since = 0;
+	const bool tiers = strip.t1 > strip.t0 && summariesBefore(since);
+	if (tiers) {
+		QColor shade = c.border;
+		shade.setAlpha(150);
+		double k0, k1; /* from the oldest kept */
+		memorySpan(k0, k1);
+		const double x0 = std::clamp(strip.x(k0), box.left() + 1, box.right() - 1);
+		const double x1 = std::clamp(strip.x(since), x0, box.right() - 1);
+		p.fillRect(QRectF(QPointF(x0, box.top() + 1), QPointF(x1, box.bottom() - 1)), shade);
+		p.fillRect(QRectF(x1 - 0.5, box.top() + 1, 1, box.height() - 2), c.muted); /* where the samples begin */
+	}
 	if (strip.t1 > strip.t0) {
-		/* the lines: drawn again when the data has moved a pixel on the strip, or the lines or its size changed */
+		/* the lines: drawn again when the data has moved a pixel on the strip but at most once a second (its lines
+		 * bin the whole memory: 15 times a second for a minute's strip, a frame's worth each), or when the lines or
+		 * its size changed */
 		const QRect device = p.deviceTransform().mapRect(box).toAlignedRect();
 		if (stripImage_.size() != device.size() || stripImage_.devicePixelRatio() != p.device()->devicePixelRatioF()
 				|| stripGeneration_ != seriesGeneration_ || stripMemory_ != memory_ || stripLog_ != logShown() || strip.t1 < stripEnd_
-				|| strip.t1 - stripEnd_ >= strip.columnSeconds()) {
+				|| strip.t1 - stripEnd_ >= std::max(strip.columnSeconds(), STRIP_REDRAW_S)) {
 			QTransform world;
 			prepareTile(p, device, stripImage_, world, stripAt_);
 			QPainter ip(&stripImage_);
@@ -3433,24 +5873,84 @@ void ChartView::drawMemoryStrip(QPainter &p, const Axes &axes) {
 			stripGeneration_ = seriesGeneration_;
 		}
 		p.drawImage(stripAt_, stripImage_);
-		/* the view on it */
+		/* the view on it; at a short window (10 ms of an hour) the box is a sliver no mouse can take, so a handle
+		 * MEMORY_HANDLE_W wide is drawn over it, centred on the view, with two grip lines: it drags as the box does.
+		 * The mouse over either lights it */
 		const double va = std::max(strip.x(axes.t0), box.left()), vb = std::min(strip.x(axes.t1), box.right());
+		const QRectF view(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2);
+		memoryViewX_ = strip.x((axes.t0 + axes.t1) / 2);
 		QColor fill = c.accent;
-		fill.setAlpha(45);
+		fill.setAlpha(hoverMemoryHandle_ ? 90 : 45);
 		p.setPen(QPen(c.accent, 1.2));
 		p.setBrush(fill);
-		p.drawRoundedRect(QRectF(va, box.top() + 1, std::max(3.0, vb - va), box.height() - 2), 3, 3);
-		/* still filling: how much is kept, in the empty part when there is room */
+		p.drawRoundedRect(view, 3, 3);
+		memoryHandle_ = view;
+		if (view.width() < MEMORY_HANDLE_W) {
+			const double left = std::clamp(memoryViewX_ - MEMORY_HANDLE_W / 2, box.left(), box.right() - MEMORY_HANDLE_W);
+			memoryHandle_ = QRectF(left, view.top(), MEMORY_HANDLE_W, view.height());
+			fill.setAlpha(hoverMemoryHandle_ ? 150 : 90);
+			p.setBrush(fill);
+			p.drawRoundedRect(memoryHandle_, 3, 3);
+			p.setPen(QPen(hoverMemoryHandle_ ? c.text : c.surface2, 1));
+			const double mid = memoryHandle_.center().x(), y0 = memoryHandle_.center().y() - 5, y1 = y0 + 10;
+			p.drawLine(QPointF(mid - 1.5, y0), QPointF(mid - 1.5, y1));
+			p.drawLine(QPointF(mid + 1.5, y0), QPointF(mid + 1.5, y1));
+		}
+		/* still filling: how much is kept, in the empty part when there is room. The RAM budget reached: in the warn
+		 * colour and in words that say what it is, the chart letting the oldest go while a recording's file keeps them
+		 * all ("memory full" while recording read as data lost); the longest words that fit, whole */
 		double k0, k1;
 		memorySpan(k0, k1);
 		const double emptyW = strip.x(k0) - box.left();
+		stripText_.clear();
 		if (k1 - k0 < memory_ * 0.98 && emptyW > 150) {
+			const QString kept = formatDuration(k1 - k0), memory = formatDuration(memory_);
+			QStringList texts;
+			if (!capped_) {
+				if (tiers)
+					texts << tr("filling: %1 of %2 kept (samples for the newest %3)")
+									 .arg(kept, memory, formatDuration(std::max(0.0, clockNow() - since)));
+				texts << tr("filling: %1 of %2 kept").arg(kept, memory);
+			} else {
+				if (recordingOn_)
+					texts << tr("RAM budget reached: keeping the last %1 of %2 · the recording keeps everything")
+									 .arg(kept, memory);
+				texts << tr("RAM budget reached: keeping the last %1 of %2").arg(kept, memory) << tr("RAM budget reached");
+			}
 			p.setFont(smallFont());
-			p.setPen(c.muted);
+			const QFontMetricsF metrics(p.font());
+			for (const QString &text : std::as_const(texts)) {
+				if (metrics.horizontalAdvance(text) > emptyW - 16) continue;
+				stripText_ = text;
+				break;
+			}
+			stripTextColor_ = capped_ ? c.warn : c.muted;
+			p.setPen(stripTextColor_);
 			p.drawText(QRectF(box.left() + 8, box.top(), emptyW - 16, box.height()), Qt::AlignLeft | Qt::AlignVCenter,
-					capped_ ? tr("memory full: %1 of %2 kept (%3 lines)")
-									.arg(formatDuration(k1 - k0), formatDuration(memory_)).arg(series_.size())
-							: tr("filling: %1 of %2 kept").arg(formatDuration(k1 - k0), formatDuration(memory_)));
+					stripText_);
+		} else if (tiers && !capped_) {
+			/* full, older samples as summaries: the words on a label of their own (the lines under it covered, not
+			 * written over), at the end of the strip the view's box is not at */
+			const QString newest = formatDuration(std::max(0.0, clockNow() - since));
+			const QStringList texts{ tr("keeps %1 (samples for the newest %2)").arg(formatDuration(k1 - k0), newest),
+				tr("samples for the newest %1").arg(newest) };
+			p.setFont(smallFont());
+			const QFontMetricsF metrics(p.font());
+			for (const QString &text : texts) {
+				const double w = std::ceil(metrics.horizontalAdvance(text)) + 14;
+				if (w > box.width() * 0.45) continue;
+				QRectF label(box.left() + 6, box.top() + 3, w, box.height() - 6);
+				if (label.adjusted(-6, 0, 6, 0).intersects(memoryHandle_)) label.moveRight(box.right() - 6);
+				if (label.adjusted(-6, 0, 6, 0).intersects(memoryHandle_)) break;
+				p.setPen(QPen(c.border, 1));
+				p.setBrush(c.surface2);
+				p.drawRoundedRect(label, 4, 4);
+				stripText_ = text;
+				stripTextColor_ = c.muted;
+				p.setPen(stripTextColor_);
+				p.drawText(label, Qt::AlignCenter, text);
+				break;
+			}
 		}
 	}
 	p.setFont(smallFont());
@@ -3484,12 +5984,14 @@ void ChartView::drawMemoryLines(QPainter &p, const Axes &strip) const {
 		color.setAlpha(STRIP_ALPHA);
 		const auto x = [&line](double t) { return line.x(t); };
 		const auto y = [&line](double v) { return line.y(v); };
-		strokePolyline(p, toPolyline(binned.bins, strip.columnSeconds(), x, y), color, true, 1);
+		QVector<qsizetype> breaks; /* a fast line's gaps */
+		const QPolygonF poly = toPolyline(binned.bins, strip.columnSeconds(), x, y, nullptr, 0, 0, &breaks);
+		strokePieces(p, poly, breaks, 0, poly.size(), color, true, 1);
 	}
 }
 
 /* The legend: a chip per line across the top with its latest value (taken at
- * the values' pace by frame()), each at a fixed place beside the state. Chips
+ * the values' pace by frame(); a recording's, the latest in the view), each at a fixed place beside the state. Chips
  * that do not fit are reached with the
  * scroll bar under them; with no line yet, a hint in the plot. */
 void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
@@ -3505,8 +6007,11 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 	 * values' pace, not at every frame (drawn at every frame it took 1.3 ms at 4K) */
 	const qreal dpr = p.device()->devicePixelRatioF();
 	const QRectF area(legend.viewport.left(), LEGEND_TOP, legend.viewport.width(), LEGEND_BAR_Y + LEGEND_BAR_H + 1 - LEGEND_TOP);
-	const QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
-			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark());
+	QString key = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9").arg(seriesGeneration_).arg(valuesTick_).arg(offset)
+			.arg(area.width()).arg(area.left()).arg(dpr).arg(Theme::isDark()).arg(hoverChip_).arg(fastStoppedGen_);
+	/* a recording's values are the view's: made again when the view moves */
+	if (recording_) key += QLatin1Char('|') + QString::number(axes.t0, 'g', 17) + QLatin1Char('|')
+			+ QString::number(axes.t1, 'g', 17);
 	if (key != legendKey_ || legendImage_.isNull()) {
 		legendKey_ = key;
 		legendBuilds_++;
@@ -3522,10 +6027,10 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 		lp.setClipRect(legend.viewport.adjusted(more && offset > 0 ? LEGEND_ARROW_W : 0, 0,
 				more && offset < legend.maxScroll() ? -LEGEND_ARROW_W : 0, 0));
 		qsizetype i = 0;
-		for (const Series &s : series_) {
+		for (auto it = series_.constBegin(); it != series_.constEnd(); ++it) {
 			const QRectF chip = legend.chips[i++].translated(-offset, 0);
 			if (chip.right() >= legend.viewport.left() && chip.left() <= legend.viewport.right())
-				drawChip(lp, s, chip, legend.valueRoom);
+				drawChip(lp, *it, chip, legend.valueRoom, it.key() == hoverChip_, lineStopped(it.key()), axes.t0, axes.t1);
 		}
 		lp.setClipping(false);
 		if (legend.maxScroll() > 0) drawLegendBar(lp, legend, offset);
@@ -3534,22 +6039,34 @@ void ChartView::drawLegend(QPainter &p, const Axes &axes) const {
 }
 
 /* one chip: the line's dot and name on the left; its value right-aligned in
- * the room every value gets, then the unit, so only the digits change */
-void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom) const {
+ * the room every value gets, then the unit, so only the digits change; at the right end its menu button ("▾", the
+ * lanes' fold button's shape), stronger while the mouse is on the chip: the whole chip opens the menu. A stopped
+ * stream's line: its value (the last record's) greyed, as nothing comes after it */
+void ChartView::drawChip(QPainter &p, const Series &s, const QRectF &chip, double valueRoom, bool hovered,
+		bool stopped, double t0, double t1) const {
 	const ThemeColors &c = Theme::colors();
 	p.setPen(Qt::NoPen);
 	p.setBrush(c.surface2);
 	p.drawRoundedRect(chip, LEGEND_ROW_H / 2, LEGEND_ROW_H / 2);
 	p.setBrush(s.color);
 	p.drawEllipse(QPointF(chip.left() + 11, chip.center().y()), 4, 4);
+	const QRectF button(chip.right() - CHIP_BUTTON_W - 3, chip.center().y() - 8, CHIP_BUTTON_W, 16);
+	const double cx = button.center().x(), cy = button.center().y();
+	const QPointF open[3] = { { cx - 4, cy - 2 }, { cx + 4, cy - 2 }, { cx, cy + 3 } };
+	p.setBrush(hovered ? c.border : c.surface);
+	p.drawRoundedRect(button, 6, 6);
+	p.setBrush(hovered ? c.text : c.muted);
+	p.drawPolygon(open, 3);
 	p.setPen(c.text);
-	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT, 0);
+	const QRectF text = chip.adjusted(CHIP_TEXT_LEFT, 0, -CHIP_PAD_RIGHT - CHIP_BUTTON_W, 0);
 	p.drawText(text, Qt::AlignVCenter | Qt::AlignLeft, s.name);
-	if (!s.hasShown) return;
+	double shown = 0;
+	if (!chipValue(s, t0, t1, shown)) return;
+	if (stopped) p.setPen(c.muted);
 	const QString unit = s.unit.isEmpty() ? QString() : QLatin1Char(' ') + s.unit;
 	const double unitW = QFontMetricsF(p.font()).horizontalAdvance(unit);
 	const QRectF value(text.right() - unitW - valueRoom, chip.top(), valueRoom, chip.height());
-	p.drawText(value, Qt::AlignVCenter | Qt::AlignRight, chartNumber(s.shown));
+	p.drawText(value, Qt::AlignVCenter | Qt::AlignRight, chartNumber(shown));
 	if (!unit.isEmpty())
 		p.drawText(QRectF(value.right(), chip.top(), unitW, chip.height()), Qt::AlignVCenter | Qt::AlignLeft, unit);
 }
@@ -3602,20 +6119,43 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 		if (!axesOf[i]) continue;
 		const Axes &lineAxes = *axesOf[i];
 		const Series &s = *line.series;
-		if (s.times.isEmpty()) continue;
-		const qsizetype k = nearestIndex(s.times, t);
-		if (std::fabs(s.times[k] - t) > window_ / READOUT_REACH) continue;
-		const double v = s.values[k];
+		double sampleTime, v;
+		if (s.fast) { /* a fast line: the record nearest the mouse */
+			const fast::Store &store = *s.fast;
+			if (store.size() == 0 || !store.hasTime()) continue;
+			qsizetype k = std::min(store.lowerBound(t), store.size() - 1);
+			if (k > 0 && std::fabs(store.timeAt(k - 1) - t) < std::fabs(store.timeAt(k) - t)) k--;
+			sampleTime = store.timeAt(k);
+			v = store.value(s.channel, k);
+			if (k < store.recordsFrom()) { /* kept as its summary: the range of the 256 records it lies in, no dot */
+				double lo, hi;
+				store.minMax(s.channel, k, k + 1, lo, hi);
+				if (std::fabs(sampleTime - t) <= window_ / READOUT_REACH && remake && hoverValues_)
+					rows.push_back({ s.name, chartNumber(lo) + QStringLiteral(" … ") + chartNumber(hi), s.unit, s.color });
+				continue;
+			}
+		} else {
+			if (s.times.isEmpty()) continue;
+			const qsizetype k = nearestIndex(s.times, t);
+			sampleTime = s.times[k];
+			v = s.values[k];
+		}
+		if (std::fabs(sampleTime - t) > window_ / READOUT_REACH) continue;
 		if (remake && hoverValues_) rows.push_back({ s.name, chartNumber(v), s.unit, s.color });
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
 		widenFlatRange(lo, hi);
 		const double y = normalized_ ? lineAxes.y((v - lo) / (hi - lo)) : lineAxes.y(v);
 		if (lanes_ && (y < plot.top() - 1 || y > plot.bottom() + 1)) continue; /* scrolled away: in the box, no dot */
-		out.dots.push_back({ QPointF(axes.x(s.times[k]), y), s.color });
+		out.dots.push_back({ QPointF(axes.x(sampleTime), y), s.color });
 	}
 	if (remake) {
-		const QString timeText = QStringLiteral("%1   -%2 s").arg(
-				wallClock(epochMs_, t).toString(QStringLiteral("HH:mm:ss.zzz")), chartNumber(clockNow() - t));
+		/* a view under 10 ms (fast lines): the microseconds too. Held on a trigger's crossing, beside the clock time how
+		 * far it is from T (U-7: a scope reads times from its trigger point), not how long ago */
+		const QString clock = timeLabel(epochMs_, t, window_ < 0.01 ? 1e-6 : 1e-3);
+		const QString fromT = fromTText(t);
+		const QString timeText = fromT.isEmpty() ? QStringLiteral("%1   -%2 s").arg(clock, chartNumber(clockNow() - t))
+												 : QStringLiteral("%1   %2").arg(clock, fromT);
+		readoutTime_ = timeText;
 		readout_ = rows.isEmpty() ? QImage() : readoutPicture(plot.height(), timeText, rows, dpr);
 		readoutTick_ = valuesTick_;
 		readoutMouseX_ = mouseX_;
@@ -3702,8 +6242,10 @@ const ChartView::ReadoutBase &ChartView::readoutBase(double plotHeight, const QV
 	base.gap = metrics.horizontalAdvance(QStringLiteral("  "));
 	base.valueRoom = metrics.horizontalAdvance(widestChartNumber());
 	base.columnW = 20 + base.nameW + base.gap + base.valueRoom + base.unitW + 10;
-	/* the time row as wide as it can get, so it does not move the box either */
-	const double timeW = metrics.horizontalAdvance(QStringLiteral("00:00:00.000   -%1 s").arg(widestChartNumber()));
+	/* the time row as wide as it can get, so it does not move the box either: how long ago, or from T (to the
+	 * microsecond, three decimals in the window's unit) */
+	const double timeW = std::max(metrics.horizontalAdvance(QStringLiteral("00:00:00.000   -%1 s").arg(widestChartNumber())),
+			metrics.horizontalAdvance(QStringLiteral("00:00:00.000000   T -000.000 µs")));
 	base.width = std::max(timeW + 30, columns * base.columnW + 4);
 	const double h = (rowsShown + 1) * READOUT_ROW_H + 10;
 
@@ -3786,17 +6328,36 @@ int ChartView::readoutRowsPerColumn(double plotHeight) {
 }
 
 /* The state corner's texts: the whole, then shortened in turn until one fits (fitState): "Live to follow" goes, then
- * the cursors' "click / drag", then "manual" of a manual Log Y; the time held and the trigger's state stay. With
+ * the cursors' "click / drag", then "manual" of a manual Log Y, then the summaries' span ("summaries: samples for the
+ * newest 79 s", a view reaching back into a fast line's records kept as summaries only, drawn as bars when zoomed
+ * in), then a stopped stream's last record ("ADC stopped · last record 14:03:12.345" to "ADC stopped"); the time held,
+ * the stopped streams' names and the trigger's state stay. With
  * measuring, the time held is written as the widest number, so the room kept for it does not change with its digits
  * (the legend's end would follow them). */
 QStringList ChartView::stateVariants(bool measuring) const {
-	QString held[2], y[2], cursors[2], trigger;
-	if (!live_ && !recording_) { /* a trigger holds a view that ends after now: it fills as the samples come */
+	QString held[2], summaries[2], y[2], cursors[2], trigger;
+	const QString dot = QStringLiteral("  ·  ");
+	/* a stopped stream's lines look live no longer: said first, muted */
+	const QString stopped[2] = { stoppedParts(true).join(dot), stoppedParts(false).join(dot) };
+	/* the trigger on: its state alone (a held time, "filling" or "Live to follow" read as a hold of the user's while the
+	 * trigger holds the view, and the time held rewrote itself at every frame), after the streams stopped */
+	if (triggerMarked()) {
+		const QString state = triggerStateText();
+		if (stopped[0].isEmpty()) return QStringList(4, state);
+		return { stopped[0] + dot + state, stopped[1] + dot + state, stopped[1] + dot + state, stopped[1] + dot + state };
+	}
+	/* a short window's lock holds the view on its crossings, yet follows now: no "held" (its words come last) */
+	if (!live_ && !recording_ && !trigger_.automatic) { /* a trigger holds a view that ends after now: it fills as the samples come */
 		const double behind = clockNow() - viewEnd();
 		const QString number = measuring ? QStringLiteral("0.000e+00") : chartNumber(std::fabs(behind));
 		held[0] = behind >= 0 ? tr("held: -%1 s · Live to follow").arg(number)
 				: tr("held: filling, %1 s to come · Live to follow").arg(number);
 		held[1] = behind >= 0 ? tr("held: -%1 s").arg(number) : tr("held: filling");
+	}
+	double since = 0;
+	if (summariesBefore(since) && viewEnd() - window_ < since) {
+		summaries[0] = tr("summaries: samples for the newest %1").arg(formatDuration(std::max(0.0, clockNow() - since)));
+		summaries[1] = tr("summaries");
 	}
 	if (lanes_) {
 		/* each lane its own Y range; their buttons show the fold */
@@ -3806,17 +6367,17 @@ QStringList ChartView::stateVariants(bool measuring) const {
 	} else if (!y_.autoRange && !normalized_) {
 		y[0] = y[1] = tr("Y manual");
 	}
-	if (cursorMode_) {
-		cursors[0] = tr("cursors: click / drag");
+	if (cursorMode_) { /* on the grid Shift's snap is said too (U-19) */
+		cursors[0] = cursorsOnGrid() ? tr("cursors: click / drag, Shift snaps") : tr("cursors: click / drag");
 		cursors[1] = tr("cursors");
 	}
-	if (trigger_.on) trigger = trigger_.armed ? tr("trigger: armed") : std::isfinite(trigger_.at) ? tr("triggered")
-			: tr("trigger: Arm");
+	trigger = triggerStateText();
 	QStringList variants;
-	for (int stage = 0; stage < 4; stage++) {
-		QStringList parts{ held[stage >= 1], y[stage >= 3], cursors[stage >= 2], trigger };
+	for (int stage = 0; stage < 6; stage++) {
+		QStringList parts{ held[stage >= 1], stopped[stage >= 5], summaries[stage >= 4], y[stage >= 3], cursors[stage >= 2],
+			trigger };
 		parts.removeAll(QString());
-		variants << parts.join(QStringLiteral("  ·  "));
+		variants << parts.join(dot);
 	}
 	return variants;
 }
@@ -3829,16 +6390,29 @@ void ChartView::fitState(double plotWidth, int &variant, double &width) const {
 	const QStringList variants = stateVariants(true);
 	if (variants.first().isEmpty()) return;
 	const QFontMetricsF metrics(labelFont());
+	/* the time/div readout keeps its place left of the state, inside the same share: the state's parts go first */
+	const double readout = divisionReadoutWidth();
+	const double readoutRoom = readout > 0 ? readout + DIVISION_GAP : 0;
 	const double legendMin = (chipWidths_.isEmpty() ? 0 : chipWidths_.first()) + 2 * LEGEND_ARROW_W + STATE_GAP;
-	const double most = std::max(0.0, plotWidth - legendMin);
-	const double room = std::min(plotWidth * STATE_SHARE, most);
+	const double most = std::max(0.0, plotWidth - legendMin - readoutRoom);
+	const double room = std::min(plotWidth * STATE_SHARE - readoutRoom, most);
 	for (qsizetype i = 0; i < variants.size(); i++) {
-		width = std::ceil(metrics.horizontalAdvance(variants[i]));
+		width = std::ceil(stateWidth(variants[i]));
 		variant = int(i);
 		if (width <= room) return;
 	}
 	if (width <= most) return; /* the shortest, whole, past its share */
 	width = most;              /* a chart too narrow even for that: it ends with "…" (drawState) */
+}
+
+double ChartView::stateWidth(const QString &text) const {
+	const QFontMetricsF metrics(labelFont());
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	if (badge.isEmpty() || !text.endsWith(badge)) return metrics.horizontalAdvance(text);
+	QString rest = text.chopped(badge.size());
+	if (rest.endsWith(QStringLiteral("  ·  "))) rest.chop(5);
+	return (rest.isEmpty() ? 0 : metrics.horizontalAdvance(rest) + BADGE_GAP) + metrics.horizontalAdvance(badge)
+			+ 2 * BADGE_PAD;
 }
 
 /* the state, top right: held, manual Y, cursor mode, the trigger; as much of it as fits, the whole in its tooltip */
@@ -3850,35 +6424,87 @@ void ChartView::drawState(QPainter &p, const Axes &axes) const {
 	stateFull_ = texts.first();
 	stateText_.clear();
 	stateRect_ = QRectF();
+	stateBadge_ = QRectF();
+	const ThemeColors &c = Theme::colors();
+	/* the time/div readout (made with the time labels): in this row, left of the state, alone at the right end without
+	 * one; one left-to-right piece in Arabic too */
+	const double readout = divisionReadoutWidth();
+	divisionRect_ = QRectF();
+	if (readout > 0 && !divisionText_.isEmpty()) {
+		const double right = variant >= 0 ? axes.rect.right() - width - DIVISION_GAP : axes.rect.right();
+		divisionRect_ = QRectF(std::round(right - readout), LEGEND_TOP + 2, readout, LEGEND_ROW_H - 4);
+		p.save();
+		p.setFont(labelFont());
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(QPen(c.border, 1));
+		p.setBrush(c.surface2);
+		p.drawRoundedRect(divisionRect_.adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+		p.setPen(c.text);
+		p.drawText(divisionRect_, Qt::AlignCenter, divisionText_);
+		p.restore();
+	}
 	if (variant < 0) return;
 	const QFontMetricsF metrics(labelFont());
 	stateText_ = texts[variant];
+	const bool whole = stateWidth(stateText_) <= width + 0.5;
 	if (metrics.horizontalAdvance(stateText_) > width) stateText_ = metrics.elidedText(stateText_, Qt::ElideRight, width);
 	stateRect_ = QRectF(axes.rect.right() - width, LEGEND_TOP, width, LEGEND_ROW_H);
-	const ThemeColors &c = Theme::colors();
 	p.save();
 	p.setFont(labelFont());
-	p.setPen(!live_ ? c.warn : c.muted);
+	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
+	/* the short window's lock: the view's state, not the user's trigger nor a stop; a badge in the accent colour (the
+	 * Live button's), on a tint of it, at the end the words are read to (the right; in Arabic the left) */
+	const QString badge = trigger_.automatic ? triggerStateText() : QString();
+	QRectF textRoom = stateRect_;
+	if (!badge.isEmpty() && whole && stateText_.endsWith(badge)) {
+		const double badgeWidth = metrics.horizontalAdvance(badge) + 2 * BADGE_PAD;
+		stateBadge_ = QRectF(rightToLeft ? stateRect_.left() : stateRect_.right() - badgeWidth, stateRect_.top() + 2,
+				badgeWidth, stateRect_.height() - 4);
+		QColor tint = c.accent;
+		tint.setAlphaF(Theme::isDark() ? 0.22 : 0.14);
+		p.save();
+		p.setRenderHint(QPainter::Antialiasing, true);
+		p.setPen(Qt::NoPen);
+		p.setBrush(tint);
+		p.drawRoundedRect(stateBadge_, 4, 4);
+		p.setPen(c.accent);
+		p.drawText(stateBadge_, Qt::AlignCenter, badge);
+		p.restore();
+		stateText_.chop(badge.size());
+		if (stateText_.endsWith(QStringLiteral("  ·  "))) stateText_.chop(5);
+		textRoom = rightToLeft ? stateRect_.adjusted(badgeWidth + BADGE_GAP, 0, 0, 0)
+				: stateRect_.adjusted(0, 0, -(badgeWidth + BADGE_GAP), 0);
+		if (stateText_.isEmpty()) {
+			stateText_ = badge;
+			p.restore();
+			return;
+		}
+	}
+	p.setPen((trigger_.on ? trigger_.stopped : !live_) ? c.warn : c.muted); /* the trigger on: amber for Stopped only */
 	/* words, not the chart's time: read in the language's direction (Arabic from the right, its first part rightmost),
 	 * still at the chart's right end; right to left, a mark either side of each dot keeps a part's Latin end ("s") and
 	 * the next part's Latin start ("Y") from running together into one left-to-right run */
-	const bool rightToLeft = QGuiApplication::layoutDirection() == Qt::RightToLeft;
 	p.setLayoutDirection(QGuiApplication::layoutDirection());
 	const QString dot = QStringLiteral("  ·  ");
-	p.drawText(stateRect_, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
+	p.drawText(textRoom, Qt::AlignRight | Qt::AlignAbsolute | Qt::AlignVCenter,
 			rightToLeft ? QString(stateText_).replace(dot, QChar(0x200F) + dot + QChar(0x200F)) : stateText_);
+	if (!stateBadge_.isEmpty()) stateText_ += dot + badge; /* tests read the words, the badge's too */
 	p.restore();
 }
 
-/* the paint time as a running average; the frames counted over each second */
+/* the paint time as a running average; the frames of the last second */
 void ChartView::updatePaintStats(double paintMs) {
 	paintMs_ = paintMs_ * 0.9 + paintMs * 0.1;
-	fpsFrames_++;
-	if (fpsClock_.elapsed() >= 1000) {
-		fps_ = fpsFrames_ * 1000.0 / double(fpsClock_.elapsed());
-		fpsFrames_ = 0;
-		fpsClock_.restart();
-	}
+	const qint64 now = fpsClock_.elapsed();
+	paintTimes_.push_back(now);
+	while (paintTimes_.front() < now - 1000) paintTimes_.pop_front();
+}
+
+double ChartView::fps() const {
+	const qint64 since = fpsClock_.elapsed() - 1000;
+	int frames = 0;
+	for (auto it = paintTimes_.rbegin(); it != paintTimes_.rend() && *it >= since; ++it) frames++;
+	return frames;
 }
 
 /* -------------------------------------------------------------- ChartWidget */

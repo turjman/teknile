@@ -26,6 +26,16 @@
  * every HEARTBEAT_MS keeps the device's host watchdog fed whatever the polling
  * is, and tells when the device stopped sending (a reset).
  *
+ * Fast EVRe (one device only, setFastStream): the map's "streams" are sample streams the device sends in numbered
+ * blocks, READ_RESP frames nobody asked for at each stream's window (io/fast_stream.h). A block is recognised by its
+ * slave and its window before the AUTO_SEND test, checked by the block's rules and counted; the clock's fit lays
+ * it on now()'s time. A stream is switched by its map's enable register (1 on, 0 off, WRITE_ACK; its rate_reg read
+ * first); one without an enable is only listened to. While one is on, CONFIG is read every HEARTBEAT_MS as for
+ * AUTO_SEND. Disconnect switches every stream off first, the way it clears AUTO_SEND; a lost link keeps the wish,
+ * and the stream is switched on again after the reconnect. No block FIRST_FRAME_MS after the enable was taken: off
+ * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.) The chart's trigger on a
+ * channel (setFastTrigger) is looked for in each block as it comes, and its crossings go with the block.
+ *
  * Every QObject the engine uses is its child (or is made in its thread), so
  * moveToThread() takes them all along: a timer left in the window's thread
  * could not be started from the engine's.
@@ -50,10 +60,14 @@
 
 #include "evre/master.h"
 #include "evre/registers.h"
+#include "io/fast_stream.h"
 #include "io/reg_table.h"
 
 class ApiServer;
 class QFile;
+namespace fast {
+class RecordingWriter;
+}
 class QTimer;
 
 /* The poll ticker woke at or after `deadline`: the periods due (that one and every later one already past, which a
@@ -121,13 +135,100 @@ public:
 		quint64 apiRequests = 0;
 		bool autoSend = false;   /* the device sends by itself: pollHz is then the polls of the rest */
 		double autoSendHz = 0;   /* its frames a second, measured as pollHz is */
+		/* Fast EVRe: each stream of the map, in its order (none on a bus) */
+		struct Fast {
+			QString name;
+			bool wanted = false;  /* asked for: switched on at every connect */
+			bool on = false;      /* switched on in the device (or listened to): its blocks are taken */
+			double rate = 0;      /* records a second as the clock's fit has it; 0 before the first block */
+			double ppm = 0;       /* the fit's correction against the rate the device was set to */
+			double setRate = 0;   /* the rate its rate_reg gave when last read (0: none read; the map's holds) */
+			double recordsHz = 0; /* records that came a second, measured as pollHz is */
+			quint64 records = 0, blocks = 0, lost = 0, badBlocks = 0, newerBlocks = 0, starts = 0;
+			quint64 notShown = 0; /* records the window did not take in time (FAST_QUEUE_BYTES) */
+		};
+		QVector<Fast> fast;
 	};
 	Stats stats() const;
 	/* the samples of the plotted registers since the last call, every poll, by register key */
 	QHash<RegKey, QVector<QPointF>> takeSamples();
+	/* Fast EVRe: the blocks taken since the last call, for the chart (the window takes them once a frame). Capped at
+	 * FAST_QUEUE_BYTES: past it the oldest go, counted in Stats::Fast::notShown (a window that stalls loses them on
+	 * the chart only). */
+	static constexpr qint64 FAST_QUEUE_BYTES = 64ll * 1024 * 1024;
+	struct FastBlock {
+		int stream = 0;
+		quint64 first = 0;       /* the number of its first record in its start (64 bits) */
+		int count = 0;
+		bool newStart = false;   /* a new start of the stream: a new epoch of times */
+		quint64 lost = 0;        /* records lost before it */
+		QByteArray records;      /* count records, as they came */
+		bool marked = false;     /* a time mark came with it: */
+		quint64 markRecord = 0;
+		double markTime = 0, markPeriod = 0;
+		QVector<fast::Crossing> crossings; /* the chart's trigger crossing in it (setFastTrigger) */
+		QByteArray before;       /* the record before it, when it follows that one (nothing lost, the same start) */
+	};
+	QVector<FastBlock> takeFastBlocks();
+	/* the blocks of `stream` still waiting for the window, scanned again for a new watch (their crossings for the
+	 * one before are of no use): the window armed from its newest record, which comes before them. Public for the
+	 * tests. */
+	static void rescanWaiting(fast::TriggerScan &scan, const StreamDef &def, int stream, QVector<FastBlock> &blocks,
+			const fast::FastClock::Mark &mark, double period);
 	/* the monitor's lines since the last call (when monitoring), and how many
 	 * were dropped: at thousands of frames a second only the newest are kept */
 	QStringList takeFrames(int &dropped);
+	/* The Dump tab: each block's latest reply as the polls (and AUTO_SEND's frames) bring it, the newest winning;
+	 * kept only while setDump is on (the tab shown), so a hidden tab costs the I/O thread nothing. The payload is
+	 * the one onBlockResult matched to its block; the tab rebuilds the frames' header and CRC from it with
+	 * evre::build (the same bytes as on the wire). A fast stream's blocks come as FastDump, the newest of each. */
+	struct DumpReply {
+		uint8_t slave = 0;       /* the device's, as the table has it (RegDef::slave) */
+		uint8_t wireSlave = 0;   /* where the request went (and the reply came from) */
+		uint16_t addr = 0, size = 0;
+		QByteArray data;         /* the payload last answered; empty: no answer yet */
+		double time = 0;         /* when it came, on now()'s clock */
+		quint64 version = 0;     /* moves at every answer, good or not */
+		bool single = false;     /* one register of a block the device refused merged */
+		bool autoSend = false;   /* AUTO_SEND's frame, nobody asked for it */
+		QString error;           /* the last answer's error, the bytes then the last good ones; empty: fine */
+		uint8_t errorCode = 0;   /* the last answer's ERROR_RESP code (the tab rebuilds that frame); 0: none came */
+		bool timedOut = false;   /* the last read had no answer in time */
+		bool write = false;      /* the last WRITE sent (its bytes in data), not a read: the Dump's write card */
+		bool ack = false;        /* that write was a WRITE_ACK (answered), not a WRITE (never answered) */
+	};
+	/* true when a reply moved (or a block went) since the last call: `blocks` is then every block's, in address
+	 * order (the whole set, so the tab also sees the blocks gone: a split, a register refused for good, another
+	 * map). false: nothing new, `blocks` untouched. */
+	bool takeDumps(QVector<DumpReply> &blocks);
+	/* The Dump tab's newest block of each fast stream, kept as it came while setDump is on (bad ones too: a dump is
+	 * where a device's mistakes are seen). Its data is the frame's, shared and never written, so a take copies no
+	 * byte of a block; the tab takes them at most ten times a second, whatever the blocks' rate. */
+	struct FastDump {
+		int stream = 0;
+		uint8_t slave = 0;       /* the frame's */
+		uint16_t addr = 0;       /* the stream's window: where its blocks come */
+		QByteArray data;         /* the frame's data: the 8-byte header and the records */
+		quint64 first = 0;       /* its first record in 64 bits (BlockTaken::first); a bad block: the wire's 32 */
+		int count = 0;           /* the header's count */
+		uint8_t flags = 0, spare = 0;
+		quint64 lost = 0;        /* records lost before it (by the numbers) */
+		/* the stream's records lost so far (the sidebar's count, Stats::Fast::lost) as this block was kept, and the
+		 * number of the start that count runs from (FastRun::starts): the tab takes one block in four or so, and
+		 * says what was lost since the block it showed before, whichever blocks the losses were in */
+		quint64 lostTotal = 0;
+		quint64 start = 0;
+		bool newStart = false;
+		fast::BlockCheck check = fast::BlockCheck::Ok;
+		double time = 0;         /* when it came, on now()'s clock */
+		quint64 serial = 0;      /* moves at every block kept: a take sees which streams moved */
+	};
+	/* true when a block was kept since the last call: `dumps` is then every stream's newest (the streams that sent
+	 * one). false: nothing new, `dumps` untouched. Tests: the takes that waited for the lock longer than
+	 * FAST_DUMP_WAIT_NS (the window waiting on the engine's work, not on its few assignments of a block). */
+	bool takeFastDumps(QVector<FastDump> &dumps);
+	int fastDumpLockMisses() const { return fastDumpLockMisses_; }
+	static constexpr qint64 FAST_DUMP_WAIT_NS = 200000; /* 0.2 ms */
 
 	/* in the engine thread (through post) */
 	/* generation: the window's number for this map. devices: the one device of a map (slave 0), or the devices
@@ -143,13 +244,21 @@ public:
 	/* AUTO_SEND on or off at 8000 / (prescaler + 1) Hz, on the one device (never on a bus). Kept: switched on
 	 * again after a reconnect, once the device's STATUS says it can. Answered by autoSendSet. */
 	void setAutoSend(bool on, int prescaler);
+	/* Fast EVRe: the chart's trigger on a channel of a stream (-1: on none), looked for in each block as it comes */
+	void setFastTrigger(int stream, const fast::TriggerWatch &watch);
+	fast::TriggerWatch fastTriggerWatch(int stream) const; /* what it watches on a stream now (the tests) */
+	/* Fast EVRe: the map's stream (its index in DeviceMap::streams) on or off, on the one device (never on a bus).
+	 * Kept: switched on again after a reconnect. Answered by fastStreamSet. */
+	void setFastStream(int stream, bool on);
 	void setPlotted(const QVector<RegKey> &keys);
-	void startRecord(const QString &file, const QVector<RegKey> &cols);
+	/* notLogged: the fast streams whose Log is off (the sidebar's): not written beside the CSV */
+	void startRecord(const QString &file, const QVector<RegKey> &cols, const QStringList &notLogged = {});
 	void stopRecord();
 	/* slave: where the request goes, 1 to 255; evre::BROADCAST (0) for a broadcast WRITE (no acknowledge) */
 	void write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack);
 	void read(quint64 id, uint8_t slave, uint16_t addr, uint16_t count, bool intoTable);
 	void setMonitor(bool on) { monitorOn_ = on; }
+	void setDump(bool on); /* the Dump tab shown: its replies kept (takeDumps); hidden: none kept, and none taken */
 	void apiStart(quint16 evrePort, quint16 jsonPort, bool network);
 	void apiStop();
 	void apiSetWrites(bool writes, bool danger);
@@ -175,6 +284,13 @@ signals:
 	void autoSendSet(bool on, int hz, const QString &err);
 	void autoSendSlowed(const QString &why); /* a serial link: a slower rate than asked, and why */
 	void autoSendStopped();                  /* CONFIG shows AUTO_SEND cleared (the device reset?): not wanted any more */
+	/* Fast EVRe: a stream switched on (the device took its enable; rate: the records a second it was set to) or off;
+	 * err not empty: it was not, and is no longer wanted */
+	void fastStreamSet(int stream, bool on, double rate, const QString &err);
+	/* something to say of a stream: blocks of a newer kind (once), the device stopped it (no longer wanted) */
+	void fastStreamNote(int stream, const QString &text, bool stopped);
+	/* a stream's recording beside the CSV, closed: what it holds (the Log, as information) */
+	void fastRecorded(const QString &text);
 
 private:
 	/* one read of a poll: registers of one device close together, read at once */
@@ -219,6 +335,10 @@ private:
 	void appendSamples(double t);
 	void writeCsvRow(double t);
 	void readBack(uint8_t tableSlave, uint16_t addr, int writtenSize);
+	/* the Dump tab's store (with dumpOn_): a block's answer kept, and the replies of blocks no longer read dropped */
+	void keepDump(const Block &block, const evre::Result &r);
+	void keepWrite(uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack, const evre::Result &r);
+	void pruneDumps();
 
 	/* AUTO_SEND */
 	/* the state wanted to the device at slave: CONFIG read, then written */
@@ -230,6 +350,47 @@ private:
 	void noFrames(); /* FIRST_FRAME_MS after AUTO_SEND was taken, and no frame came */
 	int streamBytes() const;                      /* the data bytes of a frame: the last one's, else the map's block */
 	QByteArray configBytes(bool on, int prescaler) const;
+
+	/* Fast EVRe */
+	struct FastRun {
+		StreamDef def;
+		const RegDef *enable() const { return enableReg.name.isEmpty() ? nullptr : &enableReg; }
+		const RegDef *rate() const { return rateReg.name.isEmpty() ? nullptr : &rateReg; }
+		RegDef enableReg, rateReg;  /* the map's registers it names; no name: none */
+		fast::FastStream state;
+		fast::TriggerScan trigger;  /* the chart's trigger, when it watches one of its channels */
+		QByteArray lastRecord;      /* the last block's last record (FastBlock::before) */
+		double lastRecordTime = 0;  /* its time on the stream's clock (now()'s seconds): the API's newest record */
+		double setRate = 0;         /* its rate_reg's value when last read at a Start; 0: none read */
+		bool wanted = false;
+		bool on = false;            /* its blocks are taken (set before the enable's answer: the first may come first) */
+		bool deviceMaySend = false; /* the enable written 1, and no 0 acknowledged since: Disconnect sends the 0 */
+		quint64 request = 0;        /* +1 at every switch: answers to an older one are ignored */
+		qint64 takenMs = -1;        /* when the device took the enable (clock_); -1: not yet */
+		qint64 lastBlockMs = -1;    /* when the last good block came */
+		bool newerSaid = false;     /* blocks of a newer kind: said once */
+		bool silenceAsked = false;  /* no block for a while: its enable read once */
+		quint64 recordsSinceRate = 0;
+		double recordsHz = 0;
+		quint64 notShown = 0;
+		quint64 starts = 0;         /* +1 at every state.reset: its counts begin again (FastDump::start) */
+		/* while the CSV records: its blocks as they came beside it (run.csv -> run.ADC.evrs), opened at the first */
+		std::shared_ptr<fast::RecordingWriter> writer;
+		bool writeFailed = false;
+		qint64 recordedBlocks = 0;
+	};
+	void recordBlock(int stream, const fast::BlockTaken &taken, const QByteArray &data);
+	void applyFast(int stream);                    /* the wanted state to the device: rate_reg read, enable written */
+	void fastFailed(int stream, bool on, const QString &why);
+	/* the run an answer is for, when it is still there and at the same switch; nullptr: the map was loaded again
+	 * meanwhile (fewer streams, or another at its place), or it was switched since */
+	FastRun *fastRunAsked(int stream, const QString &name, quint64 request);
+	bool anyFastOn() const;
+	int fastStreamOf(const evre::Frame &frame) const; /* the stream whose block this is; -1: none */
+	int fastStreamOfRaw(const QByteArray &raw) const; /* the same from a frame's bytes (the Monitor) */
+	void takeBlock(int stream, const evre::Frame &frame);
+	void watchFast();                              /* every 500 ms: the first block, and a stream gone silent */
+	void sendFastOffs();                           /* Disconnect: each stream that may send told 0, straight */
 
 	/* the poll clock: a thread that sleeps to each deadline and wakes the
 	 * engine. Qt's timers tick at ~15.6 ms on Windows outside the GUI thread;
@@ -284,6 +445,7 @@ private:
 	QElapsedTimer clock_, rateClock_;
 	QVector<RegKey> plottedKeys_;
 	bool monitorOn_ = false;
+	bool dumpOn_ = false;
 
 	/* AUTO_SEND */
 	qint32 serialBaud_ = 0;                      /* the link's baud rate; 0: not a serial link */
@@ -306,10 +468,16 @@ private:
 	QTimer *firstFrameTimer_;
 	bool heartbeatPending_ = false;              /* one CONFIG read under way at most */
 
+	/* Fast EVRe: the map's streams (none on a bus) */
+	QVector<FastRun> fastRuns_;
+	QTimer *fastWatch_;
+	qint64 clockEpochMs_ = 0;  /* the wall clock when clock_ started: the API gives times in seconds since 1970 */
+
 	/* CSV recording */
 	QFile *csvFile_;
 	QTextStream csvStream_;
 	QVector<RegKey> csvColumns_;                 /* by register key */
+	QStringList fastNotLogged_;                  /* the streams not written beside it, by name */
 	quint64 csvRows_ = 0;
 
 	/* what the other threads take, under crossThreadMutex_ */
@@ -318,4 +486,18 @@ private:
 	QHash<RegKey, QVector<QPointF>> samples_;
 	QStringList monitorLines_;
 	int monitorLinesDropped_ = 0;
+	QHash<quint32, DumpReply> dumps_;            /* by dumpKey (engine.cpp) */
+	/* the last write (its `write` set once one went): kept whether the Dump is shown or not, since a write is made on
+	 * another tab (the Registers tab, the Monitor); one record, the next write replacing it, another map clearing it */
+	DumpReply lastWrite_;
+	quint64 dumpVersion_ = 0;
+	bool dumpsMoved_ = false;                    /* since the last takeDumps */
+	QVector<FastBlock> fastBlocks_;
+	qint64 fastQueued_ = 0;                      /* the bytes in fastBlocks_ */
+	QVector<FastDump> fastDumps_;                /* by stream; only while dumpOn_ */
+	quint64 fastDumpSerial_ = 0;
+	bool fastDumpsMoved_ = false;                /* since the last takeFastDumps */
+	int fastDumpLockMisses_ = 0;                 /* the window's thread only (takeFastDumps) */
+
+	void keepFastDump(int stream, const evre::Frame &frame, fast::BlockCheck check, const fast::BlockTaken &taken);
 };

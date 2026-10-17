@@ -174,9 +174,12 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 #cardTitle { color: %MUTED%; font-size: 8pt; font-weight: 700; letter-spacing: 1px; }
 QLabel#guardHeading { font-size: 9pt; font-weight: 700; border-style: solid; border-color: %BORDER%;
   border-width: 0 0 1px 0; padding-bottom: 3px; margin-top: 8px; }
-#muted, #chartInfo, #measureInfo { color: %MUTED%; }
+#muted, #chartInfo, #measureInfo, #triggerUnit, #fastStreamAbout { color: %MUTED%; }
+QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
+QLabel#dumpBanner { color: %WARN%; padding: 0 2px; }
+QFrame#dumpBannerLine { background: %WARN%; border: none; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;
   padding: 10px 18px; font-weight: 600; }
 QLabel[chip="true"] { background: %BG%; border: 1px solid %BORDER%; border-radius: 6px; padding: 1px 8px;
@@ -187,7 +190,9 @@ QLabel#liveDot[state="warn"] { background: %WARN%; }
 QLabel#liveDot[state="none"] { background: %MUTED%; }
 )"
 		/* input boxes; spin boxes without their arrow buttons. The edge in the accent while focused, and while the mouse
-		 * is over one, as a button's (the rules after them keep a disabled, read-only or out-of-range edge) */
+		 * is over one, as a button's (the rules after them keep a disabled, read-only or out-of-range edge). The trigger's
+		 * line box with no line chosen: its "choose a line" muted, a prompt (the style sheet draws a combo's text in Text,
+		 * not in the placeholder colour QComboBox asks for) */
 		R"(
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {
   background: %BG%; border: 1px solid %CONTROL%; border-radius: 7px; padding: 5px 8px;
@@ -198,6 +203,7 @@ QSpinBox[outOfRange="true"] { border-color: %WARN%; }
 QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled { border-color: %BORDER%;
   color: %MUTED%; }
 QLineEdit:read-only { border-color: %BORDER%; color: %MUTED%; }
+QComboBox#triggerLine[prompt="true"] { color: %MUTED%; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { min-height: 20px; max-height: 20px; }
 QAbstractItemView QLineEdit, QAbstractItemView QSpinBox, QAbstractItemView QDoubleSpinBox,
 QAbstractItemView QComboBox, QComboBox QLineEdit { min-height: 0px; max-height: 16777215px; }
@@ -218,6 +224,9 @@ QPushButton#primary { background: %AFILL%; border: 1px solid %AFILL%; color: whi
   padding: 7px 11px; }
 QPushButton#primary:hover { background: %AFILLH%; border-color: %AFILLH%; }
 QPushButton#hold[live="false"] { background: %AFILL%; border-color: %AFILL%; color: white; }
+QPushButton#hold[stopped="true"] { background: %WARNA%; border-color: %WARN%; color: %WARN%; }
+QPushButton#triggerArm[primary="true"] { background: %AFILL%; border-color: %AFILL%; color: white; font-weight: 600; }
+QPushButton#triggerArm[primary="true"]:hover { background: %AFILLH%; border-color: %AFILLH%; }
 QPushButton#danger { background: %BFILL%; border: 1px solid %BFILL%; color: white; font-weight: 600;
   padding: 7px 11px; }
 QPushButton[segment="true"] { border-radius: 0; padding: 6px 10px; }
@@ -295,6 +304,10 @@ QMenu::indicator:non-exclusive { border-radius: 4px; border: 1px solid %CONTROL%
 QMenu::indicator:non-exclusive:checked { background: %AFILL%; border-color: %AFILL%; %TICK% }
 QMenu::indicator:exclusive:checked { %MENUTICK% }
 QMenu QLabel#menuTitle { color: %MUTED%; font-weight: 600; padding: 4px 18px 2px 18px; }
+QMenu QPushButton#recentMissing { color: %MUTED%; background: transparent; border: none; border-radius: 5px;
+	padding: 6px 18px; text-align: left; }
+QMenu QPushButton#recentMissing:hover { background: %ACCENTA%; color: %TEXT%; }
+QMenu QLabel#linesGroup { color: %MUTED%; font-weight: 600; padding: 2px 0; }
 QMessageBox { background: %S1%; }
 QSplitter::handle { background: transparent; }
 )"

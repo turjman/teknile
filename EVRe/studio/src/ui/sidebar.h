@@ -15,6 +15,11 @@
  *    sends its read-only block by itself; one device only); Show values (how
  *    often the numbers on screen change, value_pace.h); Record CSV, and Open
  *    recording beside it (a file, or one of the last ones).
+ *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Log tick (written beside a CSV recording
+ *    or not, kept by the stream's name in "fast/notLogged"), its Start / Stop button, its samples a second
+ *    as the clock's fit has them with the correction, the samples lost, and a Plot tick for each of its channels with
+ *    its newest value (the channels' rows are here, not in the Registers tab: they are no registers). One device only,
+ *    as Auto send.
  *  - API server: Serve API, Network, Allow API writes (and the ⚠ registers).
  *  - Help and the theme, then the version.
  *
@@ -24,8 +29,8 @@
  * what to show (the show... functions). The link, the polling and the API
  * switches are kept in the settings ("link/...", "poll/interval", "api/on",
  * "api/network"), Show values and the auto send rate too ("ui/valueRate",
- * "poll/autoSendHz", on every change); the token, the API write switches and
- * Auto send itself (it changes the device) never are. */
+ * "poll/autoSendHz", on every change); the token, the API write switches,
+ * Auto send itself and the fast streams (they change the device) never are. */
 #pragma once
 
 #include <QScrollArea>
@@ -112,6 +117,33 @@ public:
 	/* offered or not; why: the box's tooltip when not; shortWhy: a word or two the greyed rate list shows instead of a
 	 * rate ("not offered") */
 	void setAutoSendOffered(bool offered, const QString &why, const QString &shortWhy = QString());
+	/* Fast EVRe: a row for each of the map's streams (the card hidden when it has none) */
+	void setFastStreams(const QVector<StreamDef> &streams);
+	int fastStreamCount() const { return int(fastRows_.size()); }
+	bool fastOn(int stream) const;
+	void setFastOn(int stream, bool on);  /* the button's state, without fastStreamToggled: the device's, not a choice */
+	/* offered or not; why: the buttons' tooltip when not; shortWhy: a word or two shown in place of the rate */
+	void setFastOffered(bool offered, const QString &why, const QString &shortWhy);
+	/* for the tests: the card, a stream's button and its two numbers */
+	QWidget *fastCard() const { return fastCard_; }
+	QPushButton *fastButton(int stream) const;
+	QString fastRateText(int stream) const;
+	QString fastLostText(int stream) const;
+	QString fastRateTip(int stream) const; /* tests: the rate's tooltip (the counts) */
+	/* a channel's Plot tick (the chart's line STREAM.CHANNEL), set without fastPlotToggled; all off */
+	void setFastPlot(int stream, int channel, bool on);
+	bool fastPlot(int stream, int channel) const;
+	void clearFastPlots();
+	void setFastPlotsEnabled(bool enabled, const QString &why = QString()); /* a bus: no fast line (why: the tooltip) */
+	QCheckBox *fastPlotBox(int stream, int channel) const; /* tests */
+	/* a stream's rate as the map gives it, one left-to-right piece: "1 MS/s", "10 kS/s", "500 S/s" (units as they are) */
+	static QString streamRateText(double hz, int digits = 4);
+	/* a stream's Log tick: recorded beside the CSV or not (on by default); the streams with it off, by name */
+	QCheckBox *fastLogBox(int stream) const;
+	QStringList fastNotLogged() const;
+	/* the channels' newest values, at the values' pace (NaN: none yet) */
+	void showFastValues(int stream, const QVector<double> &values);
+	QString fastValueText(int stream, int channel) const; /* tests */
 	void setRecording(bool recording);   /* the record button: start or stop */
 	void showRecordSaved(const QString &file, quint64 rows);
 	bool apiNetwork() const;
@@ -137,11 +169,14 @@ signals:
 	void timingChanged();          /* the interval or the timeout: how old a value may get before it is greyed */
 	void valuePaceChanged();       /* Show values: how often the numbers on screen change */
 	void autoSendChanged();        /* Auto send ticked or not, or its rate changed */
+	void fastStreamToggled(int stream, bool on); /* a fast stream's Start or Stop pressed */
+	void fastPlotToggled(int stream, int channel, bool on); /* a channel's Plot tick */
 	void openMapClicked();
 	void newMapClicked();
 	void saveMapClicked(bool saveAs);
 	void recordClicked();
 	void openRecordingClicked(const QString &file); /* empty: choose one */
+	void statusMessage(const QString &text, int ms); /* for the status bar (a recent recording taken off its list) */
 	void apiServeChanged(bool on); /* Serve API; Network switched while serving: on again, with it */
 	void apiWritesChanged();       /* Allow API writes, or including ⚠ registers */
 	void helpClicked();
@@ -158,6 +193,9 @@ private:
 	QWidget *buildBusCard();
 	QWidget *buildMapCard();
 	QWidget *buildPollingCard();
+	QWidget *buildFastCard();
+	void showFastStats(const IoEngine::Stats &stats, bool connected);
+	void showFastButton(int stream);    /* its text, look and tooltip for its state */
 	QWidget *buildApiCard();
 	void addFooter(QVBoxLayout *layout);
 
@@ -204,6 +242,31 @@ private:
 	QPushButton *recordButton_;
 	QPushButton *openRecording_;  /* its menu: Open a file…, the last recordings */
 	QLabel *recordInfo_;
+
+	/* the fast streams card */
+	struct FastRow {
+		StreamDef def;
+		QLabel *title = nullptr;  /* the stream's name, heading its row */
+		ElidedLabel *about = nullptr; /* beside it, muted: "· 2 channels · 1 MS/s" */
+		QString channelsTip;      /* the header's tooltip after its first line: the channels and the description */
+		bool aboutMeasured = false; /* the header says the measured rate (else the rate set) */
+		qint64 aboutMs = -1;      /* when it last changed the measured rate: at most once a second */
+		QCheckBox *log = nullptr; /* recorded beside the CSV or not */
+		QPushButton *button = nullptr;
+		QLabel *rate = nullptr;   /* the samples a second and the correction; not offered: why, in a word or two */
+		QLabel *lost = nullptr;   /* the samples lost */
+		QVector<QCheckBox *> plots; /* a channel's Plot tick */
+		QVector<QLabel *> values;   /* its newest value */
+		bool on = false;
+	};
+	QWidget *fastCard_;
+	QVBoxLayout *fastRowsLayout_;
+	QVector<FastRow> fastRows_;
+	/* a stream's header: "· 2 channels · 1 MS/s" with the measured rate (3 digits), or "· 2 channels · 10 kS/s set"
+	 * with the rate set (the device's rate register as last read, else the map's) */
+	void showFastAbout(int stream, double hz, bool measured, bool fromDevice = false);
+	bool fastOffered_ = false;
+	QString fastWhy_, fastShortWhy_;
 
 	/* the API card */
 	QCheckBox *apiServe_, *apiNetwork_, *apiWrites_, *apiDanger_;

@@ -61,6 +61,17 @@ int typeSize(RegType type) {
 	return 0;
 }
 
+int StreamDef::recordSize() const {
+	int bytes = 0;
+	for (const StreamChannel &channel : channels) bytes += typeSize(channel.type);
+	return bytes;
+}
+
+int StreamDef::recordsPerBlock() const {
+	const int record = recordSize();
+	return record > 0 && size > 8 ? (size - 8) / record : 0;
+}
+
 QString typeName(RegType type) {
 	switch (type) {
 	case RegType::U8: return QStringLiteral("u8");

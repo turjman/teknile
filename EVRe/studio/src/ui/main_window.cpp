@@ -32,6 +32,7 @@
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
 #include "ui/chart_widget.h"
+#include "ui/dump_tab.h"
 #include "ui/elided_label.h"
 #include "ui/event_log.h"
 #include "ui/frame_clock.h"
@@ -49,6 +50,10 @@ namespace {
 
 constexpr int STATUS_INTERVAL_MS = 500;
 constexpr qint64 READ_ERROR_LOG_MS = 5000; /* a register's read errors: one line in the log per 5 s at most */
+/* a sync appends the fast streams' blocks for this long at most: about half a 60 Hz frame, the rest is the chart's
+ * paint (its FrameBudget) and the other events */
+constexpr qint64 FAST_APPEND_NS = 8000000;
+constexpr qint64 FAST_HELD_MS = 50; /* no sync for this long (three frames): the window's thread was held */
 
 /* a bus file (model/bus_file.h) and not a map: its "format" is "evre-bus/..." */
 bool isBusFile(const QString &path) {
@@ -155,12 +160,29 @@ void MainWindow::applyStartup(const Startup &startup) {
 		logEvent(LogLevel::Warning, tr("--plot: %1 registers left off the chart: %2 at most at this rate")
 				.arg(leftOff).arg(model_->plotLimit()));
 	if (startup.tab == QLatin1String("chart")) tabs_->setCurrentIndex(TabChart);
+	else if (startup.tab == QLatin1String("dump")) tabs_->setCurrentIndex(TabDump);
 	else if (startup.tab == QLatin1String("monitor")) tabs_->setCurrentIndex(TabMonitor);
 	else if (startup.tab == QLatin1String("map")) tabs_->setCurrentIndex(TabMap);
 	if (startup.interval >= 0) sidebar_->setPollInterval(startup.interval);
 	if (startup.inFlight > 0) sidebar_->setInFlight(startup.inFlight);
 	if (!startup.record.isEmpty()) startRecord(startup.record);
 	sidebar_->tickApiSwitches(startup.api, startup.apiWrites, startup.apiDanger);
+	/* as Start in the Fast streams card: wanted now, switched on once connected (an API client's data, from a script) */
+	QStringList noStream;
+	for (const QString &name : startup.fast) {
+		const QVector<StreamDef> &streams = doc_->map().streams;
+		int stream = -1;
+		for (int i = 0; i < streams.size() && !isBus(); i++)
+			if (streams[i].name.compare(name.trimmed(), Qt::CaseInsensitive) == 0) stream = i;
+		if (stream < 0) {
+			noStream << name.trimmed();
+			continue;
+		}
+		sidebar_->setFastOn(stream, true);
+		engine_->post([engine = engine_, stream] { engine->setFastStream(stream, true); });
+	}
+	if (!noStream.isEmpty())
+		logEvent(LogLevel::Warning, tr("--fast: no such fast stream in the map: %1").arg(noStream.join(QStringLiteral(", "))));
 	if (startup.connect) {
 		wantConnected_ = true;
 		connectLink();
@@ -210,9 +232,17 @@ bool restartWanted = false;
 
 bool MainWindow::restartAsked() { return restartWanted; }
 
+fast::TriggerWatch MainWindow::engineFastWatch(int stream) const {
+	fast::TriggerWatch watch;
+	QMetaObject::invokeMethod(engine_, [&watch, engine = engine_, stream] { watch = engine->fastTriggerWatch(stream); },
+			Qt::BlockingQueuedConnection);
+	return watch;
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls()) {
-		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)) {
+		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
+					|| url.toLocalFile().endsWith(QLatin1String(".evrs"), Qt::CaseInsensitive))) {
 			event->acceptProposedAction();
 			return;
 		}
@@ -221,7 +251,8 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event) {
 
 void MainWindow::dropEvent(QDropEvent *event) {
 	for (const QUrl &url : event->mimeData()->urls())
-		if (url.isLocalFile() && url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive))
+		if (url.isLocalFile() && (url.toLocalFile().endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)
+					|| url.toLocalFile().endsWith(QLatin1String(".evrs"), Qt::CaseInsensitive)))
 			openRecording(url.toLocalFile());
 	event->acceptProposedAction();
 }
@@ -273,6 +304,12 @@ void MainWindow::startEngine() {
 	connect(engine_, &IoEngine::recordStopped, this, &MainWindow::onRecordStopped);
 	connect(engine_, &IoEngine::apiStarted, this, &MainWindow::onApiStarted);
 	connect(engine_, &IoEngine::autoSendSet, this, &MainWindow::onAutoSendSet);
+	connect(engine_, &IoEngine::fastStreamSet, this, &MainWindow::onFastStreamSet);
+	connect(engine_, &IoEngine::fastStreamNote, this, [this](int stream, const QString &text, bool stopped) {
+		if (stopped) sidebar_->setFastOn(stream, false);
+		logEvent(LogLevel::Warning, text);
+	});
+	connect(engine_, &IoEngine::fastRecorded, this, [this](const QString &text) { logEvent(LogLevel::Info, text); });
 	connect(engine_, &IoEngine::autoSendSlowed, this, [this](const QString &why) { logEvent(LogLevel::Warning, why); });
 	/* the device cleared it by itself (a reset, or another client): said once, not switched on again */
 	connect(engine_, &IoEngine::autoSendStopped, this, [this] {
@@ -297,6 +334,8 @@ void MainWindow::buildWindow() {
 	tabs_ = new QTabWidget;
 	tabs_->addTab(buildRegistersTab(), tr("Registers"));
 	tabs_->addTab(buildChartTab(), tr("Chart"));
+	tabs_->addTab(buildDumpTab(), tr("Dump"));
+	tabs_->setTabToolTip(TabDump, tr("The bytes of every read, decoded by the map"));
 	tabs_->addTab(buildMonitorTab(), tr("Monitor"));
 	tabs_->addTab(buildMapTab(), tr("Map editor"));
 	buildEventLog();
@@ -323,6 +362,10 @@ void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::timingChanged, this, &MainWindow::updateStaleAfter);
 	connect(sidebar_, &Sidebar::valuePaceChanged, this, &MainWindow::applyValuePace);
 	connect(sidebar_, &Sidebar::autoSendChanged, this, &MainWindow::pushAutoSend);
+	connect(sidebar_, &Sidebar::fastStreamToggled, this, [this](int stream, bool on) {
+		engine_->post([engine = engine_, stream, on] { engine->setFastStream(stream, on); });
+	});
+	connect(sidebar_, &Sidebar::fastPlotToggled, this, &MainWindow::onFastPlotToggled);
 	connect(sidebar_, &Sidebar::openMapClicked, this, &MainWindow::openMap);
 	connect(sidebar_, &Sidebar::newMapClicked, this, &MainWindow::newMap);
 	connect(sidebar_, &Sidebar::saveMapClicked, this, &MainWindow::saveMap);
@@ -386,9 +429,14 @@ QWidget *MainWindow::buildRegistersTab() {
 	connect(registersTab_, &RegistersTab::statusMessage, this, [this](const QString &text, int ms) {
 		statusBar()->showMessage(text, ms);
 	});
+	connect(sidebar_, &Sidebar::statusMessage, this, [this](const QString &text, int ms) {
+		statusBar()->showMessage(text, ms);
+	});
 	connect(model_, &RegisterModel::plotLimitReached, this, [this] {
 		const long rate = std::lround(sampleRateHz()); /* 0: not polling, no rate to name */
-		const QString text = rate > 0
+		/* the chart full of lines of every kind, or the registers at what the rate allows */
+		const QString text = chartTab_->lineCount() >= RegisterModel::MAX_PLOTTED ? ChartTab::lineCapText()
+				: rate > 0
 				? tr("At most %1 registers on the chart at %2 samples a second: untick one first").arg(model_->plotLimit())
 						.arg(rate)
 				: tr("At most %1 registers on the chart: untick one first").arg(model_->plotLimit());
@@ -408,12 +456,61 @@ QWidget *MainWindow::buildRegistersTab() {
 QWidget *MainWindow::buildChartTab() {
 	chartTab_ = new ChartTab([engine = engine_] { return engine->now(); }); /* the samples' time base */
 	connect(chartTab_, &ChartTab::mathRegistersChanged, this, &MainWindow::pushPlotted);
+	/* a math line shown or gone: the registers get what is left of the one cap */
+	connect(chartTab_, &ChartTab::mathRegistersChanged, this, [this] {
+		if (sidebar_) updatePlotLimit();
+	});
+	connect(chartTab_, &ChartTab::statusMessage, this, [this](const QString &text, int ms) {
+		statusBar()->showMessage(text, ms);
+	});
 	connect(chartTab_, &ChartTab::unplotAllRequested, this, &MainWindow::unplotAll);
 	connect(chartTab_, &ChartTab::logged, this, &MainWindow::logEvent);
 	connect(chartTab_, &ChartTab::openRecordingRequested, this, &MainWindow::openRecording);
 	connect(chartTab_, &ChartTab::notesChanged, this, &MainWindow::saveRecordingNotes);
+	/* the trigger on a fast line: its crossings looked for by the engine, in each block as it comes */
+	connect(chartTab_, &ChartTab::fastTriggerChanged, this, [this](int stream, const fast::TriggerWatch &watch) {
+		engine_->post([engine = engine_, stream, watch] { engine->setFastTrigger(stream, watch); });
+	});
 	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) { chartTab_->setShown(tab == TabChart); });
 	return chartTab_;
+}
+
+QWidget *MainWindow::buildDumpTab() {
+	dumpTab_ = new DumpTab(model_);
+	dumpTab_->view()->setClock([engine = engine_] { return engine->now(); }); /* the replies' times */
+	dumpTab_->view()->setRegisters(model_->definitions());
+	connect(dumpTab_, &DumpTab::dumpWanted, this, [this](bool on) {
+		engine_->post([engine = engine_, on] { engine->setDump(on); });
+	});
+	/* a click: the Registers tab's current row, without going there; a double-click or Show in Registers: there */
+	connect(dumpTab_, &DumpTab::registerPicked, this, [this](RegKey key, bool switchTab) {
+		const int row = rowOfKey(key);
+		if (row < 0) return;
+		if (switchTab) tabs_->setCurrentIndex(TabRegisters);
+		if (!registersTab_->selectRow(row))
+			statusBar()->showMessage(tr("%1 is hidden on the Registers tab by its search or groups")
+					.arg(model_->rows()[row].def.name), 4000);
+	});
+	connect(dumpTab_, &DumpTab::writeRequested, this, [this](RegKey key) {
+		const int row = rowOfKey(key);
+		if (row < 0) return;
+		tabs_->setCurrentIndex(TabRegisters);
+		if (!registersTab_->editValue(row))
+			statusBar()->showMessage(tr("%1 is hidden on the Registers tab by its search or groups")
+					.arg(model_->rows()[row].def.name), 4000);
+	});
+	/* the Registers tab's current register is the Dump's selected one; Show in dump goes there */
+	connect(registersTab_, &RegistersTab::currentRegisterChanged, this, [this](int row) {
+		dumpTab_->view()->select(row >= 0 && row < model_->rows().size() ? regKey(model_->rows()[row].def)
+																		 : DumpView::NO_REGISTER);
+	});
+	connect(registersTab_, &RegistersTab::showInDumpRequested, this, [this](int row) {
+		if (row < 0 || row >= model_->rows().size()) return;
+		tabs_->setCurrentIndex(TabDump);
+		dumpTab_->showRegister(regKey(model_->rows()[row].def));
+	});
+	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) { dumpTab_->setShown(tab == TabDump); });
+	return dumpTab_;
 }
 
 QWidget *MainWindow::buildMonitorTab() {
@@ -492,6 +589,7 @@ void MainWindow::connectModel() {
 		pushMap();
 		updateMapInfo();
 		chartTab_->setRegisters(model_->definitions());
+		dumpTab_->view()->setRegisters(model_->definitions());
 	});
 }
 
@@ -537,10 +635,11 @@ void MainWindow::toggleConnect() {
 	if (wantConnected_) {
 		wantConnected_ = false;
 		reconnectTimer_.stop();
-		disconnectLink(); /* the engine clears AUTO_SEND on the device before it closes the link */
+		disconnectLink(); /* the engine clears AUTO_SEND and the fast streams on the device before it closes the link */
 		/* Disconnect asked for: auto send is not switched on again at the next connect (a lost link keeps it) */
 		sidebar_->setAutoSendOn(false);
 		pushAutoSend();
+		stopFastStreams();
 	} else {
 		wantConnected_ = true;
 		connectLink();
@@ -586,10 +685,11 @@ void MainWindow::disconnectLink() {
 	connected_ = false;
 	offlineDevices_.clear();
 	registersTab_->setConnected(false);
+	dumpTab_->setConnected(false);
 	sidebar_->showDisconnected();
 	showBus();
 	autoSendCap_ = -1;
-	updateAutoSendOffer();
+	updateAutoSendOffer();	updateFastOffer();
 }
 
 void MainWindow::onOpened(const QString &link) {
@@ -600,10 +700,11 @@ void MainWindow::onOpened(const QString &link) {
 	deviceInfo_.clear();
 	showDeviceInfo(); /* "not read yet" until the engine reads it */
 	registersTab_->setConnected(true);
+	dumpTab_->setConnected(true);
 	sidebar_->showConnected(link);
 	showBus();
 	autoSendCap_ = -1; /* until STATUS is read */
-	updateAutoSendOffer();
+	updateAutoSendOffer();	updateFastOffer();
 }
 
 void MainWindow::onClosed(const QString &why) {
@@ -619,7 +720,9 @@ void MainWindow::onClosed(const QString &why) {
 	showBus();
 	autoSendCap_ = -1; /* a lost link keeps Auto send ticked: the engine switches it on again after a reconnect */
 	updateAutoSendOffer();
+	updateFastOffer(); /* and the fast streams wanted: their buttons keep their state */
 	registersTab_->setConnected(false);
+	dumpTab_->setConnected(false);
 	if (why.isEmpty()) sidebar_->showDisconnected();
 	else sidebar_->showLinkError(why);
 	if (wantConnected_ && sidebar_->autoReconnect()) {
@@ -724,6 +827,68 @@ void MainWindow::onAutoSendSet(bool on, int hz, const QString &err) {
 	logEvent(LogLevel::Error, tr("auto send not switched on: %1").arg(err));
 }
 
+/* ---------------------------------------------------------------- Fast EVRe */
+
+/* the card's rows: the map's streams (the one device's; on a bus the selected device's map, greyed) */
+void MainWindow::showFastStreams() {
+	sidebar_->setFastStreams(doc_->map().streams);
+	/* the chart's stores and the Dump's cards: the one device's streams; a bus has none */
+	chartTab_->setFastStreams(isBus() ? QVector<StreamDef>() : doc_->map().streams);
+	if (dumpTab_) dumpTab_->setStreams(isBus() ? QVector<StreamDef>() : doc_->map().streams);
+	for (int i = 0; i < doc_->map().streams.size(); i++)
+		for (int c = 0; c < doc_->map().streams[i].channels.size(); c++)
+			sidebar_->setFastPlot(i, c, !isBus() && chartTab_->fastPlotted(i, c));
+	updateFastOffer();
+}
+
+/* a fast line counts as one of the chart's lines (RegisterModel::MAX_PLOTTED, with the registers and the math lines),
+ * not in the polled samples' rate */
+void MainWindow::onFastPlotToggled(int stream, int channel, bool on) {
+	if (on && !chartTab_->fastPlotted(stream, channel) && chartTab_->lineCount() >= RegisterModel::MAX_PLOTTED) {
+		sidebar_->setFastPlot(stream, channel, false);
+		statusBar()->showMessage(ChartTab::lineCapText(), 6000);
+		return;
+	}
+	chartTab_->plotFastChannel(stream, channel, on);
+	updatePlotLimit();
+}
+
+void MainWindow::updateFastOffer() {
+	QString why, shortWhy;
+	if (isBus()) {
+		why = tr("Not with several devices on the link: a device sending by itself would collide with the others.");
+		shortWhy = tr("not on a bus");
+	} else if (!connected_) {
+		why = tr("Offered once connected.");
+		shortWhy = tr("not connected");
+	}
+	sidebar_->setFastOffered(why.isEmpty(), why, shortWhy);
+	sidebar_->setFastPlotsEnabled(!isBus(), why);
+}
+
+void MainWindow::stopFastStreams() {
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++) {
+		if (!sidebar_->fastOn(i)) continue;
+		sidebar_->setFastOn(i, false);
+		engine_->post([engine = engine_, i] { engine->setFastStream(i, false); });
+	}
+}
+
+void MainWindow::onFastStreamSet(int stream, bool on, double rate, const QString &err) {
+	const QString name = stream < doc_->map().streams.size() ? doc_->map().streams[stream].name : QString::number(stream);
+	if (err.isEmpty()) {
+		logEvent(LogLevel::Info, on ? tr("fast stream %1 on: %2 samples a second").arg(name).arg(rate)
+									: tr("fast stream %1 off").arg(name));
+		return;
+	}
+	if (!on) {
+		logEvent(LogLevel::Warning, tr("fast stream %1 not switched off: %2").arg(name, err));
+		return;
+	}
+	sidebar_->setFastOn(stream, false);
+	logEvent(LogLevel::Error, tr("fast stream %1 not switched on: %2").arg(name, err));
+}
+
 void MainWindow::onDeviceOnline(int slave, bool online) {
 	if (online) {
 		offlineDevices_.remove(uint8_t(slave));
@@ -757,6 +922,7 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 		rememberedBus_.clear(); /* a map chosen: one device, the next start too */
 	}
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({}); /* another map: nothing of the one before stays plotted or kept */
 	const bool wasBus = isBus();
 	clearBus();                 /* one device: the map's */
@@ -819,6 +985,7 @@ void MainWindow::newMap() {
 	map.device = tr("New device");
 	map.regs = reservedRegisters();
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({});
 	const bool wasBus = isBus();
 	clearBus();
@@ -851,6 +1018,7 @@ void MainWindow::showMapSettings() {
 void MainWindow::updateMapInfo() {
 	const int registers = isBus() ? int(doc_->map().regs.size()) : int(model_->rows().size());
 	sidebar_->showMap(doc_->map(), registers, doc_->isModified());
+	showFastStreams();
 }
 
 /* the map edited gives way to another (a device selected, a bus opened): its unsaved changes saved or dropped */
@@ -911,7 +1079,9 @@ double MainWindow::sampleRateHz() const {
 }
 
 void MainWindow::updatePlotLimit() {
-	model_->setPlotLimit(RegisterModel::plotLimitFor(sampleRateHz()));
+	/* the fast and math lines are lines too: the registers get what is left of MAX_PLOTTED */
+	model_->setPlotLimit(std::min(RegisterModel::plotLimitFor(sampleRateHz()),
+			std::max(0, RegisterModel::MAX_PLOTTED - chartTab_->fastLines() - chartTab_->mathLinesShown())));
 	chartTab_->setRegisterLimit(model_->plotLimit());
 }
 
@@ -943,8 +1113,9 @@ void MainWindow::updateStaleAfter() {
 	const double interval = sidebar_->pollIntervalMs();
 	const int perSecond = valuePacer_.perSecond();
 	const qint64 copyGapMs = perSecond > 0 ? 1000 / perSecond : 0;
-	model_->setStaleAfterMs(copyGapMs
-			+ std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs()));
+	const qint64 staleAfterMs = copyGapMs + std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs());
+	model_->setStaleAfterMs(staleAfterMs);
+	dumpTab_->view()->setStaleAfterMs(staleAfterMs); /* the Dump's replies are stale when the table's values are */
 }
 
 void MainWindow::applyValuePace() {
@@ -976,8 +1147,25 @@ void MainWindow::sync() {
 	QVector<RegValue> values;
 	quint64 generation = 0;
 	qint64 nowMs = 0;
-	const bool copyValues = valuePacer_.due(valueClock_.elapsed());
+	const qint64 elapsedMs = valueClock_.elapsed();
+	const bool copyValues = valuePacer_.due(elapsedMs);
 	if (copyValues) engine_->table().snapshot(values, generation, nowMs);
+	/* The Dump tab, one tick for all its cards. Its pace is the values' (their beats are its ticks), or ten a second
+	 * while it has fast cards and Show values is slower: then a beat is latched and its replies taken at the next tick
+	 * (their ages are measured at the paint, so they stay true). The fast blocks are taken at most ten times a
+	 * second, met at the frame closest to 100 ms (as ValuePacer meets its period), not at every tick of a faster
+	 * pace: one tick and two pacers would give twenty half-updates a second. Hidden, the tab is not ticked. */
+	if (copyValues) dumpValuesPending_ = true;
+	if (dumpTab_->shown()) {
+		const bool fast = dumpWantsFast();
+		const int pace = valuePacer_.perSecond();
+		const int tabPace = fast && pace != ValuePace::EVERY_FRAME && pace < FAST_DUMP_PER_SECOND ? FAST_DUMP_PER_SECOND : pace;
+		if (dumpPacer_.perSecond() != tabPace) dumpPacer_.setPerSecond(tabPace);
+		const bool tick = tabPace == pace ? copyValues : dumpPacer_.due(elapsedMs);
+		const bool fastDue = fast && dumpTab_->wantsReplies()
+				&& (!fastDumpClock_.isValid() || fastDumpClock_.elapsed() >= 1000 / FAST_DUMP_PER_SECOND - 8);
+		if (tick) syncDump(dumpValuesPending_, fastDue);
+	}
 	if (copyValues && generation == mapGeneration_ && values.size() == model_->rows().size()) {
 		for (int row = 0; row < values.size(); row++) {
 			const RegValue &value = values[row];
@@ -988,12 +1176,177 @@ void MainWindow::sync() {
 					value.valid ? nowMs - value.updatedMs : 0);
 		}
 	}
+	/* the fast streams' blocks into the chart; each stream's newest record for its channels' values in the sidebar.
+	 * At most FAST_APPEND_NS of them a sync: while a title bar's button is pressed (a dialog closed with its X)
+	 * Windows' loop holds this thread, the blocks pile up, and the first frame after it paid for the whole pile
+	 * (700 ms of a million records a second: about 2.8 MB, the frame 30 to 70 ms late). A frame now paints with what
+	 * it has, and the rest follows over the next frames, in the order they came. The rest is held to the engine's
+	 * FAST_QUEUE_BYTES: past it the blocks are appended now, whatever the time (nothing is dropped here, as before) */
+	const bool restLeft = !fastRest_.isEmpty();
+	for (IoEngine::FastBlock &block : engine_->takeFastBlocks()) {
+		fastRestBytes_ += block.records.size();
+		fastRest_.push_back(std::move(block));
+	}
+	/* The chart paints first, then takes the rest: the first sync after the thread was held appends none (the frame
+	 * asked for now shows the view moved on, the pile follows), and a sync whose tick came before the frame the sync
+	 * before asked for was painted appends none either (Qt's paint request waits behind the events posted meanwhile):
+	 * 8 ms of blocks there only put that frame off (the first paint done 33 ms after the hold, not 25). One sync waits,
+	 * never two in a row: a chart that does not paint (hidden, or over its FrameBudget) still takes the rest. */
+	const qint64 sinceSyncMs = fastSyncClock_.isValid() ? fastSyncClock_.restart() : 0;
+	if (!fastSyncClock_.isValid()) fastSyncClock_.start();
+	const int paints = chartTab_->view()->paints();
+	const bool waitForPaint = !fastWaited_ && chartTab_->view()->isVisible()
+			&& ((restLeft && paints == fastPaints_) || sinceSyncMs > FAST_HELD_MS);
+	fastPaints_ = paints;
+	fastWaited_ = waitForPaint;
+	QElapsedTimer appending;
+	appending.start();
+	qsizetype taken = 0;
+	while (taken < fastRest_.size()) {
+		if (fastRestBytes_ <= IoEngine::FAST_QUEUE_BYTES
+				&& (waitForPaint || (taken > 0 && appending.nsecsElapsed() >= FAST_APPEND_NS)))
+			break;
+		const IoEngine::FastBlock &block = fastRest_[taken++];
+		fastRestBytes_ -= block.records.size();
+		chartTab_->appendFast(block.stream, block.first, block.count, block.records, block.newStart, block.lost,
+				block.marked, block.markRecord, block.markTime, block.markPeriod, block.crossings);
+		const QVector<StreamDef> &streams = doc_->map().streams;
+		if (block.count <= 0 || block.stream >= streams.size() || isBus()) continue;
+		const StreamDef &def = streams[block.stream];
+		const int size = def.recordSize();
+		if (size <= 0 || block.records.size() < block.count * size) continue;
+		const char *last = block.records.constData() + (block.count - 1) * size;
+		QVector<double> &values = fastValues_[block.stream];
+		values.resize(def.channels.size());
+		int offset = 0;
+		for (int c = 0; c < def.channels.size(); c++) {
+			values[c] = fast::channelValue(def.channels[c], last + offset);
+			offset += typeSize(def.channels[c].type);
+		}
+	}
+	fastRest_.remove(0, taken);
+	if (!fastRest_.isEmpty()) fastSyncsLeftOver_++;
+	/* a stream stopped, or the link down: its lines on the chart say so, and look live no longer */
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++)
+		chartTab_->setFastFed(i, connected_ && !isBus() && sidebar_->fastOn(i));
+	if (copyValues)
+		for (auto it = fastValues_.constBegin(); it != fastValues_.constEnd(); ++it) sidebar_->showFastValues(it.key(), it.value());
 	/* samples, and the chart moves on */
 	chartTab_->frame(engine_->takeSamples());
 	/* frames for the monitor */
 	int dropped = 0;
 	const QStringList frames = engine_->takeFrames(dropped);
 	monitorTab_->addFrames(frames, dropped);
+}
+
+bool MainWindow::dumpWantsFast() const {
+	if (isBus()) return false;
+	if (dumpTab_->hasFastCards()) return true;
+	for (int i = 0; i < sidebar_->fastStreamCount(); i++)
+		if (sidebar_->fastOn(i)) return true;
+	return false;
+}
+
+int MainWindow::fastDumpLockMisses() const { return engine_->fastDumpLockMisses(); }
+
+/* A tick of the Dump tab: the replies that moved (only while it is shown and not held: the engine keeps them only
+ * then), each fast stream's newest block (its data shared with the engine's: no byte copied), the streams switched
+ * on, and the chart's colour of each plotted register and channel, so its chips, its dot and its line agree. One
+ * repaint moves every card: Qt folds the repaints the new blocks ask for into the tick's. */
+void MainWindow::syncDump(bool values, bool fast) {
+	dumpTicks_++;
+	QVector<IoEngine::DumpReply> replies;
+	if (values) dumpValuesPending_ = false;
+	if (values && dumpTab_->wantsReplies()) pollDumpTakes_++;
+	if (values && dumpTab_->wantsReplies() && engine_->takeDumps(replies)) {
+		QVector<DumpBlock> blocks;
+		blocks.reserve(replies.size());
+		for (const IoEngine::DumpReply &r : replies) {
+			DumpBlock b;
+			b.kind = r.write ? DumpBlock::Write : r.autoSend ? DumpBlock::AutoSend : DumpBlock::Read;
+			b.ack = r.ack;
+			b.slave = r.slave;
+			b.wireSlave = r.wireSlave;
+			b.addr = r.addr;
+			b.size = r.size;
+			b.data = r.data;
+			b.time = r.time;
+			b.version = r.version;
+			b.single = r.single;
+			b.error = r.error;
+			b.errorCode = r.errorCode;
+			b.timedOut = r.timedOut;
+			b.rate = r.autoSend ? autoSendHz_ : 0;
+			const int device = isBus() ? deviceOfSlave(r.slave) : -1;
+			if (device >= 0) b.device = bus_.devices[device].name;
+			blocks << b;
+		}
+		dumpTab_->applyDumps(blocks);
+	}
+	const QVector<StreamDef> &streamDefs = doc_->map().streams;
+	QVector<IoEngine::FastDump> dumps;
+	if (fast) {
+		fastDumpClock_.start();
+		fastDumpTakes_++;
+	}
+	if (fast && engine_->takeFastDumps(dumps)) {
+		const qint64 wallNow = QDateTime::currentMSecsSinceEpoch();
+		const double engineNow = engine_->now();
+		QVector<DumpBlock> blocks;
+		for (const IoEngine::FastDump &d : dumps) {
+			if (d.stream < 0 || d.stream >= streamDefs.size()) continue;
+			DumpBlock b;
+			b.kind = DumpBlock::FastStream;
+			b.stream = streamDefs[d.stream].name;
+			b.streamIndex = d.stream;
+			b.wireSlave = d.slave;
+			b.addr = d.addr;
+			b.size = uint16_t(d.data.size());
+			b.data = d.data;
+			b.time = d.time;
+			b.wallMs = wallNow - qint64((engineNow - d.time) * 1000.0);
+			b.version = d.serial;
+			b.first = d.first;
+			b.count = d.count;
+			b.flags = d.flags;
+			b.spare = d.spare;
+			b.lost = d.lost;
+			b.lostTotal = d.lostTotal;
+			b.start = d.start;
+			b.newStart = d.newStart;
+			b.check = int(d.check);
+			blocks << b;
+		}
+		if (!dumps.isEmpty()) lastFastDumpData_ = dumps.first().data.constData();
+		dumpTab_->applyFastDumps(blocks);
+	}
+	QVector<DumpBlock> notes;
+	const QVector<StreamDef> &streams = doc_->map().streams;
+	for (int i = 0; !isBus() && i < std::min(int(streams.size()), sidebar_->fastStreamCount()); i++) {
+		if (!sidebar_->fastOn(i)) continue;
+		DumpBlock note;
+		note.kind = DumpBlock::FastStream;
+		note.addr = streams[i].addr;
+		note.stream = streams[i].name;
+		notes << note;
+	}
+	dumpTab_->setStreamNotes(notes);
+	QHash<RegKey, QColor> colours;
+	QHash<int, QColor> fastColours; /* by the view's key of a channel: 256 x its stream + its index */
+	for (const ChartView::Info &line : chartTab_->view()->lines()) {
+		if (!ChartView::isFastKey(line.key) && line.key < MathLines::FIRST_CHART_KEY) colours.insert(RegKey(line.key), line.color);
+		if (ChartView::isFastKey(line.key)) fastColours.insert(line.key - ChartView::fastKey(0, 0), line.color);
+	}
+	dumpTab_->view()->setColours(colours);
+	dumpTab_->view()->setFastColours(fastColours);
+	dumpTab_->tick();
+}
+
+int MainWindow::rowOfKey(RegKey key) const {
+	const QVector<RegisterModel::Row> &rows = model_->rows();
+	for (int i = 0; i < rows.size(); i++)
+		if (regKey(rows[i].def) == key) return i;
+	return -1;
 }
 
 /* before the table takes the new value: reads of the register started failing, or work again */
@@ -1097,9 +1450,25 @@ bool MainWindow::confirmDangerWrite(const RegDef &def, const QString &text, cons
 	return confirmed(this, tr("Confirm write"), question, tr("Write"));
 }
 
+/* its answer in the Monitor, and as a card at the top of the Dump tab (the map's chips and decode on it) */
 void MainWindow::sendRawRead(quint8 slave, quint16 addr, quint16 count) {
-	engineRead(slave, addr, count, false, [this, addr](bool ok, const QByteArray &data, const QString &message, double ms) {
-		monitorTab_->showAnswer(addr, ok, data, message, ms);
+	engineRead(slave, addr, count, false, [this, slave, addr, count](bool ok, const QByteArray &data,
+			const QString &message, double ms) {
+		const bool inDump = ok && data.size() == count;
+		if (inDump) {
+			DumpBlock b;
+			b.kind = DumpBlock::Manual;
+			b.slave = isBus() ? slave : 0; /* one device: its map's registers are slave 0's */
+			b.wireSlave = slave;
+			b.addr = addr;
+			b.size = count;
+			b.data = data;
+			b.time = engine_->now();
+			const int device = isBus() ? deviceOfSlave(slave) : -1;
+			if (device >= 0) b.device = bus_.devices[device].name;
+			dumpTab_->showManualRead(b);
+		}
+		monitorTab_->showAnswer(addr, ok, data, message, ms, inDump);
 	});
 }
 
@@ -1138,6 +1507,15 @@ void MainWindow::onPlotChanged(int row, bool on) {
 
 void MainWindow::unplotAll() {
 	for (int row = 0; row < model_->rows().size(); row++) model_->setPlot(row, false);
+	/* and the fast lines */
+	const QVector<StreamDef> &streams = doc_->map().streams;
+	for (int i = 0; i < streams.size(); i++)
+		for (int c = 0; c < streams[i].channels.size(); c++) {
+			if (!chartTab_->fastPlotted(i, c)) continue;
+			chartTab_->plotFastChannel(i, c, false);
+			sidebar_->setFastPlot(i, c, false);
+		}
+	updatePlotLimit();
 }
 
 /* -------------------------------------------------------------- CSV recording */
@@ -1161,7 +1539,8 @@ void MainWindow::startRecord(const QString &file) {
 		columns << regKey(row.def);
 	}
 	recordFile_ = file;
-	engine_->post([engine = engine_, file, columns] { engine->startRecord(file, columns); });
+	const QStringList notLogged = sidebar_->fastNotLogged(); /* each stream's Log in the Fast streams card */
+	engine_->post([engine = engine_, file, columns, notLogged] { engine->startRecord(file, columns, notLogged); });
 }
 
 void MainWindow::stopRecord() {
@@ -1178,6 +1557,7 @@ void MainWindow::onRecordStarted(bool ok, const QString &err) {
 	recording_ = true;
 	recordFrom_ = engine_->now();
 	sidebar_->setRecording(true);
+	chartTab_->view()->setRecordingOn(true); /* the memory strip: the file keeps what the chart lets go */
 	RecordingWindow::remember(recordFile_);
 }
 
@@ -1195,6 +1575,7 @@ void MainWindow::onRecordStopped(const QString &file, quint64 rows) {
 	saveRecordingNotes(); /* the last time, with the notes as they are now */
 	recording_ = false;
 	sidebar_->setRecording(false);
+	chartTab_->view()->setRecordingOn(false);
 	sidebar_->showRecordSaved(file, rows);
 	logEvent(LogLevel::Info, tr("CSV recording stopped: %1 rows in %2").arg(rows).arg(QDir::toNativeSeparators(file)));
 }
@@ -1285,6 +1666,7 @@ void MainWindow::toggleTheme() {
 	showBus(); /* the devices' dots in the new look */
 	showDeviceInfo(); /* its amber too */
 	chartTab_->themeChanged();
+	for (RecordingWindow *window : RecordingWindow::windows()) window->chartTab()->themeChanged(); /* theirs too */
 }
 
 void MainWindow::showHelp() {

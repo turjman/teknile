@@ -33,11 +33,13 @@
 #include <QVector>
 #include <functional>
 
+#include "io/engine.h"
 #include "model/bus_file.h"
 #include "model/device_map.h"
 #include "ui/value_pace.h"
 
 class ChartTab;
+class DumpTab;
 class ElidedLabel;
 class EventLog;
 class MapDocument;
@@ -53,13 +55,14 @@ class RegisterModel;
 class RegistersTab;
 class Sidebar;
 struct RegValue;
+namespace fast { struct TriggerWatch; }
 enum class LogLevel;
 
 class MainWindow : public QMainWindow {
 	Q_OBJECT
 public:
 	/* the main tabs, in their order */
-	enum Tab { TabRegisters, TabChart, TabMonitor, TabMap, TabLog };
+	enum Tab { TabRegisters, TabChart, TabDump, TabMonitor, TabMap, TabLog };
 
 	/* what the command line asks for (main.cpp), applied once the window is shown */
 	struct Startup {
@@ -70,6 +73,7 @@ public:
 		QString tab;             /* registers, chart, monitor or map */
 		QStringList plot;        /* register names to chart */
 		bool connect = false;
+		QStringList fast;        /* fast streams to start (their names), as Start does: on once connected */
 		double interval = -1;    /* poll interval, ms (0 = as fast as possible); < 0 = as saved */
 		QString record;          /* CSV file to record into from the start */
 		int inFlight = 0;        /* requests in flight; 0 = as saved */
@@ -87,6 +91,20 @@ public:
 	void openRecording(const QString &file);
 	/* Restart now (the language): true when the window closed for it; main() then starts the program again */
 	static bool restartAsked();
+	/* tests: what the engine's fast trigger watches on a stream now, asked on its thread after what was posted to it */
+	fast::TriggerWatch engineFastWatch(int stream) const;
+	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
+	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
+	/* tests: the Dump tab's ticks (one repaint each), the takes of the polls' replies and of the fast streams' newest
+	 * blocks, the fast takes that found the engine's lock held, and the data of the last fast block taken (shared with
+	 * the engine's, not copied) */
+	int dumpTicks() const { return dumpTicks_; }
+	int pollDumpTakes() const { return pollDumpTakes_; }
+	int fastDumpTakes() const { return fastDumpTakes_; }
+	int fastDumpLockMisses() const;
+	const char *lastFastDumpData() const { return lastFastDumpData_; }
+	/* the Dump tab's fast streams take their newest block at most this often, whatever Show values says */
+	static constexpr int FAST_DUMP_PER_SECOND = 10;
 
 protected:
 	void closeEvent(QCloseEvent *event) override;
@@ -105,6 +123,7 @@ private:
 	void connectSidebar();        /* its choices and buttons, to the engine and the map */
 	QWidget *buildRegistersTab(); /* its writes, reads and map edits go through the window */
 	QWidget *buildChartTab();     /* wired to the engine and the table */
+	QWidget *buildDumpTab();      /* the engine's replies, the Registers tab's register */
 	QWidget *buildMonitorTab();   /* its requests are sent through the engine */
 	QWidget *buildMapTab();       /* the map made and changed, through the document */
 	void buildEventLog();         /* the Log tab and the pop-up beside the tabs */
@@ -131,6 +150,19 @@ private:
 	void pushAutoSend();
 	void updateAutoSendOffer();
 	void onAutoSendSet(bool on, int hz, const QString &err);
+	/* Fast EVRe: the map's streams in the sidebar's card, offered with one device connected */
+	void showFastStreams();
+	void updateFastOffer();
+	void onFastStreamSet(int stream, bool on, double rate, const QString &err);
+	void stopFastStreams(); /* Disconnect asked for: no stream switched on again at the next connect */
+	void onFastPlotToggled(int stream, int channel, bool on); /* a channel's Plot tick: its line, within the lines' limit */
+	QHash<int, QVector<double>> fastValues_; /* each stream's newest record, its channels' values */
+	QVector<IoEngine::FastBlock> fastRest_;  /* blocks taken from the engine and not yet appended, in their order */
+	qint64 fastRestBytes_ = 0;
+	int fastSyncsLeftOver_ = 0;
+	int fastPaints_ = 0;      /* the chart's paints at the last sync */
+	bool fastWaited_ = false; /* the last sync left the rest for the chart's paint */
+	QElapsedTimer fastSyncClock_; /* since the last sync */
 	void refreshPorts();          /* the sidebar's serial ports, the map's device named among them */
 
 	/* the map */
@@ -189,6 +221,11 @@ private:
 	/* once per display frame: the engine's values into the table, its samples into the chart,
 	 * its frames into the monitor */
 	void sync();
+	/* a tick of the Dump tab, shown: the engine's replies (values: a beat of Show values came since the last tick), the
+	 * fast streams' newest blocks (fast), the streams switched on, the chart's colours, then one repaint */
+	void syncDump(bool values, bool fast);
+	bool dumpWantsFast() const; /* a fast stream switched on, or a fast card shown */
+	int rowOfKey(RegKey key) const; /* the register's row in the table; -1: none */
 	void logReadStateChange(int row, const RegValue &value); /* reads of a register fail, or work again */
 
 	/* writes */
@@ -267,6 +304,14 @@ private:
 	quint64 mapGeneration_ = 0;         /* which map the engine's values belong to */
 	QVector<quint64> copiedVersions_;   /* per row, the engine's version copied last */
 	ValuePacer valuePacer_;             /* when the next copy is due: at the pace chosen for the values */
+	/* The Dump tab's one tick for every card: at the values' beats, or ten a second while it has fast cards and Show
+	 * values is slower; a beat of the values is latched until the next tick, the fast blocks taken at most ten times
+	 * a second (fastDumpClock_) */
+	ValuePacer dumpPacer_;
+	bool dumpValuesPending_ = false;
+	QElapsedTimer fastDumpClock_;
+	int dumpTicks_ = 0, pollDumpTakes_ = 0, fastDumpTakes_ = 0;
+	const char *lastFastDumpData_ = nullptr;
 	QElapsedTimer valueClock_;
 	QHash<int, qint64> readErrorLoggedMs_; /* per row: when its last read error was logged */
 	QSet<int> loginRequiredLogged_;        /* devices (RegDef::slave) whose "login required" this connection logged */
@@ -301,6 +346,7 @@ private:
 	RegistersTab *registersTab_ = nullptr;
 	MapEditorTab *mapTab_ = nullptr;
 	ChartTab *chartTab_ = nullptr;
+	DumpTab *dumpTab_ = nullptr;
 	MonitorTab *monitorTab_ = nullptr;
 	EventLog *eventLog_ = nullptr;         /* the Log tab */
 	Notice *notice_ = nullptr;             /* the pop-up, in the free space right of the tabs */

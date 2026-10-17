@@ -71,7 +71,7 @@ Every change comes with its tests, and all of them pass on Linux and Windows (`.
 | EVRe&nbsp;Guard&nbsp;table | `python studio/tests/guard_table_test.py build [--skip m32,arm-none-eabi-g++,avr-g++]` (needs `g++`; finds `lib/` and `lib/guard`) |
 | Python&nbsp;package | `EVRE_BUILD=build python -m unittest discover -s studio/python/tests` |
 | the&nbsp;window | `python studio/tests/fake_device.py &` then `build/evre_gui_test` |
-| the&nbsp;API | the Studio with `--api` against the fake device, then `python studio/tests/api_test.py readonly` |
+| the&nbsp;API | the Studio with `--api` against the fake device, then `python studio/tests/api_test.py readonly`; the fast streams: `python studio/tests/api_test.py fast build` (it starts its own) |
 
 The GUI and API tests write registers, a danger register included: run them only against the fake device or
 `evre-sim`, never a real one.

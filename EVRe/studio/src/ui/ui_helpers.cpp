@@ -20,19 +20,31 @@
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QStyle>
+#include <QStyledItemDelegate>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
 
-QString secondsText(double seconds) {
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dwmapi.h>
+#endif
+
+namespace {
+
+QString secondsPlain(double seconds) {
 	const auto number = [](double v) { return QString::number(v, 'g', 4); };
+	if (seconds < 1e-3) return QStringLiteral("%1 µs").arg(number(seconds * 1e6));
 	if (seconds < 1) return QStringLiteral("%1 ms").arg(number(seconds * 1000));
 	if (seconds < 60 || std::fmod(seconds, 60) != 0) return QStringLiteral("%1 s").arg(number(seconds));
 	if (seconds < 3600 || std::fmod(seconds, 3600) != 0) return QStringLiteral("%1 min").arg(number(seconds / 60));
 	return QStringLiteral("%1 h").arg(number(seconds / 3600));
 }
 
-QString durationText(double seconds) {
+QString durationPlain(double seconds) {
 	const double s = std::fabs(seconds);
 	/* 4 significant digits, in the first unit where they stay below 1000 (999.96 ms is "1 s", not "1000 ms") */
 	const auto below = [](double v, double limit) { return QString::number(v, 'g', 4).toDouble() < limit; };
@@ -46,13 +58,41 @@ QString durationText(double seconds) {
 	return QStringLiteral("%1 h %2 min").arg(minutes / 60).arg(minutes % 60, 2, 10, QLatin1Char('0'));
 }
 
+} // namespace
+
+QString ltrPiece(const QString &text) {
+	if (text.isEmpty() || !QGuiApplication::isRightToLeft()) return text;
+	return QChar(0x2066) + text + QChar(0x2069);
+}
+
+namespace {
+
+class LtrCells : public QStyledItemDelegate {
+public:
+	using QStyledItemDelegate::QStyledItemDelegate;
+	QString displayText(const QVariant &value, const QLocale &locale) const override {
+		return ltrPiece(QStyledItemDelegate::displayText(value, locale));
+	}
+};
+
+} // namespace
+
+QStyledItemDelegate *ltrCells(QObject *parent) { return new LtrCells(parent); }
+
+QString secondsText(double seconds) { return ltrPiece(secondsPlain(seconds)); }
+
+QString durationText(double seconds) { return ltrPiece(durationPlain(seconds)); }
+
 double parseSeconds(const QString &text) {
-	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(ms|s|sec|m|min|h)?\\s*$"),
+	static const QRegularExpression length(QStringLiteral("^\\s*([0-9]*[.,]?[0-9]+)\\s*(us|µs|ms|s|sec|m|min|h)?\\s*$"),
 			QRegularExpression::CaseInsensitiveOption);
-	const QRegularExpressionMatch match = length.match(text);
+	QString plain = text;
+	plain.remove(QChar(0x2066)).remove(QChar(0x2069)); /* the isolates of a right-to-left window's own texts */
+	const QRegularExpressionMatch match = length.match(plain);
 	if (!match.hasMatch()) return -1;
 	const double value = match.captured(1).replace(QLatin1Char(','), QLatin1Char('.')).toDouble();
 	const QString unit = match.captured(2).toLower();
+	if (unit == QLatin1String("us") || unit == QStringLiteral("µs")) return value / 1e6;
 	if (unit == QLatin1String("ms")) return value / 1000;
 	if (unit == QLatin1String("m") || unit == QLatin1String("min")) return value * 60;
 	if (unit == QLatin1String("h")) return value * 3600;
@@ -107,6 +147,14 @@ bool confirmed(QWidget *parent, const QString &title, const QString &html, const
 	box.setDefaultButton(QMessageBox::Cancel);
 	box.exec();
 	return box.clickedButton() == go;
+}
+
+void noWindowAnimation(QWidget *dialog) {
+	dialog->setProperty("noAnimation", true);
+#ifdef Q_OS_WIN
+	const BOOL disabled = TRUE; /* winId: the dialog's window made now, so the attribute is there before it shows */
+	DwmSetWindowAttribute(HWND(dialog->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &disabled, sizeof disabled);
+#endif
 }
 
 void repolish(QWidget *widget) {

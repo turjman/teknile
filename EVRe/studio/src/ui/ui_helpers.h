@@ -15,19 +15,31 @@ class QIcon;
 class QMenu;
 class QLabel;
 class QLayout;
+class QObject;
 class QPushButton;
+class QStyledItemDelegate;
 class QWidget;
 
 /* --------------------------------------------------------------------- text */
 
-/* a time length as the chart's Window and Memory boxes show it: "500 ms", "30 s", "2 min", "1.5 h" */
+/* a number and its unit as one left-to-right piece in a right-to-left window: between U+2066 and U+2069 (an isolate,
+ * invisible), so the Arabic around it does not split it ("s 0.886", "MB 122"); left to right, the text as it is */
+QString ltrPiece(const QString &text);
+
+/* a table's or a column's cells drawn as ltrPiece ("-3.000 V", "°C" in Arabic, not "V 3.000-" and "C°"): only
+ * the drawn text, the cell's data stays plain, so a cell copied (Ctrl+C) carries no isolate */
+QStyledItemDelegate *ltrCells(QObject *parent);
+
+/* a time length as the chart's Window and Memory boxes show it: "50 µs", "500 ms", "30 s", "2 min", "1.5 h" (one piece:
+ * ltrPiece) */
 QString secondsText(double seconds);
 
 /* a span of time as read off the chart: "123 µs", "3.525 ms", "12.35 s" (4 significant digits below a minute),
- * "1 min 23.4 s", "2 h 05 min"; the sign is dropped */
+ * "1 min 23.4 s", "2 h 05 min"; the sign is dropped (one piece: ltrPiece) */
 QString durationText(double seconds);
 
-/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "3 min", "1 h"; <= 0 if it is not one */
+/* a time length as typed: "45" (seconds), "2.5 s", "500 ms", "50 us" (or µs), "3 min", "1 h"; <= 0 if it is not one
+ * (ltrPiece's isolates passed over) */
 double parseSeconds(const QString &text);
 
 /* text from the map on a button, a check box or a menu: "&" would mark a
@@ -57,6 +69,11 @@ void setButtonMenu(QPushButton *button, QMenu *menu);
 
 /* a warning with Cancel (the default) and one button that goes ahead: true when that one was clicked */
 bool confirmed(QWidget *parent, const QString &title, const QString &html, const QString &goAhead);
+
+/* a modal dialog over the window without the compositor's (DWM's) open and close animations on Windows: closed with
+ * its title bar's X, a dialog fades out while the window's live chart waits behind it (STUDIO.md 27). It also marks
+ * the dialog (the property "noAnimation", for the tests); nothing else on Linux. Called where the dialog is made. */
+void noWindowAnimation(QWidget *dialog);
 
 /* the style sheet again, after a change of the object name or of a property it selects on */
 void repolish(QWidget *widget);

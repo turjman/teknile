@@ -20,6 +20,7 @@
 #include "ui/bus_panel.h"
 #include "ui/bus_preset_dialog.h"
 #include "ui/chart_tab.h"
+#include "ui/dump_tab.h"
 #include "ui/event_log.h"
 #include "ui/map_editor_tab.h"
 #include "ui/monitor_tab.h"
@@ -136,6 +137,7 @@ bool MainWindow::loadBus(const QString &file, bool remember) {
 		return false;
 	}
 	chartTab_->clearLines();
+	sidebar_->clearFastPlots(); /* the fast lines went with the others */
 	model_->setDefinitions({}); /* another set of devices: nothing of the one before stays plotted or kept */
 	bus_ = loaded;
 	busModified_ = false;
@@ -319,6 +321,8 @@ void MainWindow::onBusChanged() {
 		pushAutoSend();
 	}
 	updateAutoSendOffer();
+	if (isBus()) stopFastStreams();
+	updateFastOffer();
 	const uint8_t shown = isBus() ? bus_.devices[selectedDevice_].slave : 0;
 	if (!isBus()) allDevices_ = false;
 	model_->setSelectedDevice(shown);
@@ -327,6 +331,7 @@ void MainWindow::onBusChanged() {
 	sidebar_->setSlaveEditable(!isBus());
 	if (isBus()) sidebar_->setSlave(shown);
 	monitorTab_->setSlave(selectedSlave());
+	dumpTab_->setSlave(selectedSlave());
 	pushLinkOptions();
 	if (isBus()) {
 		registersTab_->setBroadcastRule([this](const RegDef &def) { return broadcastRefusal(def.addr, def.size); });
@@ -348,6 +353,7 @@ void MainWindow::showBus() {
 	const int shown = isBus() ? bus_.devices[selectedDevice_].slave : 0;
 	registersTab_->setDevices(devices, allDevices_ ? -1 : shown);
 	monitorTab_->setDevices(devices);
+	dumpTab_->setDevices(devices);
 	if (!isBus()) {
 		mapTab_->showDevices(QString(), QString(), {}, 0);
 		return;

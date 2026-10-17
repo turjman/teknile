@@ -51,6 +51,18 @@ FormulaCompleter::FormulaCompleter(QLineEdit *box, const QVector<RegDef> &regist
 	connect(completer_, qOverload<const QModelIndex &>(&QCompleter::activated), this, &FormulaCompleter::accept);
 }
 
+void FormulaCompleter::addStreams(const QVector<StreamDef> &streams) {
+	for (const StreamDef &stream : streams) {
+		for (const StreamChannel &channel : stream.channels) {
+			if (channel.type == RegType::Bytes) continue; /* as MathLine::compile takes them */
+			QStringList detail;
+			if (!channel.unit.isEmpty()) detail << channel.unit;
+			detail << tr("fast, every record of %1").arg(stream.name);
+			all_.push_back({ stream.name + QLatin1Char('.') + channel.name, detail.join(QStringLiteral(" · ")), false });
+		}
+	}
+}
+
 int FormulaCompleter::wordStart(const QString &text, int cursor) {
 	cursor = std::clamp(cursor, 0, int(text.size()));
 	int start = cursor;
