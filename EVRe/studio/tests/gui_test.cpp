@@ -1415,8 +1415,10 @@ private:
 		if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
 		QApplication::processEvents();
 		const QString lostText = deviceInfo->text();
-		const bool lastSeen = read && lostText.startsWith(QStringLiteral("last seen: ") + idLine);
-		if (!lastSeen) std::printf("     (the device line: \"%s\", then \"%s\")\n", qPrintable(idLine), qPrintable(lostText));
+		const bool lastSeen = read && spaced(lostText).startsWith(QStringLiteral("last seen: ") + spaced(idLine));
+		if (!lastSeen || deviceInfo->height() != infoHeight)
+			std::printf("     (the device line: \"%s\", then \"%s\"; %d px, then %d)\n", qPrintable(spaced(idLine)),
+					qPrintable(spaced(lostText)), infoHeight, deviceInfo->height());
 		check(lastSeen && deviceInfo->height() == infoHeight,
 				"serial, the device line: \"Device ID 0x1001 · protocol rev 1\"; after Disconnect \"last seen: Device ID ...\", "
 				"the line as tall as before");
@@ -7219,11 +7221,17 @@ private:
 					&& pill->fontMetrics().horizontalAdvance(shown) <= pill->contentsRect().width();
 			const QString reason = QStringLiteral("Connection refused by 192.168.100.254:12090 after three tries, see the Log "
 					"tab for the whole story");
+			/* this reason has no ": " to put its gist on a line of its own: the label's word wrap takes it onto more lines */
+			const int oneLine = pill->height();
 			sidebar->showLinkError(reason);
+			const bool taller = QTest::qWaitFor([&] { return pill->height() > oneLine; }, 1000);
 			QApplication::processEvents();
 			const bool reasonWhole = pill->toolTip().endsWith(QLatin1String("the whole story")) && !pill->isCut()
-					&& pill->text().contains(QLatin1Char('\n'))
+					&& taller && pill->wordWrap()
 					&& QString(pill->text()).replace(QLatin1Char('\n'), QLatin1Char(' ')) == QStringLiteral("●  ") + reason;
+			if (!longKept || !reasonWhole)
+				std::printf("     (the address \"%s\"; the reason \"%s\", cut %d, %d px, then %d)\n", qPrintable(shown),
+						qPrintable(pill->text()), int(pill->isCut()), oneLine, pill->height());
 			sidebar->showConnected(connectedText.mid(connectedText.indexOf(QStringLiteral("· ")) + 2));
 			QApplication::processEvents();
 			check(longKept && reasonWhole,
