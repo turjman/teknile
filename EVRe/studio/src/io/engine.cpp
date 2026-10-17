@@ -516,8 +516,9 @@ void IoEngine::connectTcp(const QString &host, quint16 port, const QString &toke
 }
 
 /* the baud rate before the link opens (it may say so at once): the AUTO_SEND rate must leave room for the polls */
-void IoEngine::connectSerial(const QString &port, qint32 baud) {
+void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited) {
 	serialBaud_ = baud;
+	serialBaudLimited_ = baudLimited;
 	applyInFlight();
 	attach(new evre::SerialLink(port, baud), QString());
 }
@@ -597,9 +598,9 @@ void IoEngine::onOpened() {
 	updateStats();
 }
 
-void IoEngine::onClosed(const QString &why) {
+void IoEngine::onClosed(const QString &why, const QString &detail) {
 	disconnectLink();
-	emit closed(why);
+	emit closed(why, detail);
 }
 
 /* each device's token (its own, else the link's), UTF-8, cut or zero-padded to the size of its login register */
@@ -1072,13 +1073,14 @@ QByteArray IoEngine::configBytes(bool on, int prescaler) const {
 	return bytes;
 }
 
-/* the wanted state to the device: CONFIG read (its MSG_ENABLE is kept), then written with WRITE_ACK. On a serial link
- * the rate is cut to what leaves room for the polls. */
+/* the wanted state to the device: CONFIG read (its MSG_ENABLE is kept), then written with WRITE_ACK. On a UART (or a
+ * USB bridge) the rate is cut to what leaves room for the polls; USB CDC's baud rate is a number the hardware ignores,
+ * so it is not cut there: 4000 frames of 32 bytes are a tenth of USB full speed. */
 void IoEngine::applyAutoSend(uint8_t slave) {
 	const bool on = autoSendWanted_ && !isBus();
 	const quint64 request = ++autoSendRequest_;
 	int prescaler = autoSendPrescaler_;
-	if (on && serialBaud_ > 0) {
+	if (on && serialBaud_ > 0 && serialBaudLimited_) {
 		prescaler = autoSendPrescalerFor(autoSendPrescaler_, serialBaud_, streamBytes());
 		if (prescaler != autoSendPrescaler_)
 			emit autoSendSlowed(tr("auto send at %1 Hz, not %2 Hz: %2 frames of %3 bytes a second would take more than "
