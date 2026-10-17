@@ -69,12 +69,22 @@ A device that asks for a <b>token</b> gets it from the token box: after connecti
 the <b>login register</b> the map declares (<code>"login"</code>, see <i>Device maps</i>). It is not stored.
 With no login register in the map the token is not sent, and the Log says so.</p>
 <h3>Serial / USB</h3>
-<p>Ports are listed with their USB IDs. A map that names its device's USB ID (<code>"usb"</code>) marks
-that port with the device's name, and picks it by itself when no port was chosen before.
-Baud does not matter for USB CDC; it does for a real UART.
-A port can be open in <b>one program</b> only: close other tools first ("Access denied" otherwise).</p>
+<p>Ports are listed as <i>COM10 · its description · 0483:5740</i>: the name, the driver's description and the USB
+IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device's USB
+ID (<code>"usb"</code>) marks that port with the device's name, and picks it by itself when no port was chosen before.
+A port can be open in <b>one program</b> only: close other tools first (<i>COM10 is busy or not allowed</i> otherwise).</p>
+<p>When a link fails or is lost, the pill says what happened in plain words (<i>COM10 is gone: unplugged or
+reset?</i>, <i>COM10 not found</i>); hover it for the system's own text, which the Log has too. The line under it keeps
+the device's ID as <i>last seen: Device ID …</i> while the link is down, until the next connect reads it again.</p>
 <h3>Options</h3>
 <ul>
+<li><b>Baud</b> (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
+connect. A UART must match the device; USB CDC ignores it.</li>
+<li><b>Link</b> (serial): <b>Auto</b> tells a USB CDC port (a board's own USB: full speed, the baud rate ignored) from a
+UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe's port such as ST-Link's or J-Link's: the baud
+rate is the real speed) by the port's USB IDs, and
+shows what it found (<i>Auto: USB CDC</i>). Choose <b>USB CDC</b> or <b>UART</b> when it guesses wrong. On a UART,
+Auto send is kept under the baud rate.</li>
 <li><b>Slave</b>: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
 On a bus each device has its own (below).</li>
 <li><b>Timeout</b>: how long an answer may take. Slow radio links need more.</li>
@@ -127,7 +137,8 @@ tooltip says why when it is not.</p>
 <li><i>Connection timed out</i>: wrong address, or this PC is not on that network.</li>
 <li><i>Connects, then drops after a few seconds</i>: the server wants a token and it is missing or wrong, or the
 map has no <code>"login"</code> to send it to (see the Log).</li>
-<li><i>Access denied</i> (serial): another program holds the port.</li>
+<li><i>COM10 is busy or not allowed: another program holds it, or you have no permission for it</i> (serial): close
+the other program; on Linux, add your user to the <code>dialout</code> group.</li>
 <li>Registers "not available": the device refused the address (a register the map has and this device
 or this link does not). Not an error.</li>
 </ul>
@@ -167,7 +178,7 @@ raise <b>In flight</b> to the number it suggests.</li>
 <li><i>Slower than asked: … ms per answer is the link's limit</i>: In flight is already high enough; the link or the
 device is the limit (a longer interval, or fewer registers in the map).</li>
 <li><i>… on the serial link …</i>: a serial link answers one request at a time; a longer interval, fewer registers, or
-a faster baud rate.</li>
+a faster baud rate on a UART (USB CDC ignores the baud rate).</li>
 </ul>
 <p>Measured: 4000 polls/s to a fast test device on this PC. Over a link with several ms per answer the rate
 follows the rule above, polls at once ÷ latency: one poll at a time at 5 ms per answer is about 200 polls/s.
@@ -188,8 +199,8 @@ them on): it is switched off again, the Log says so, and the registers are polle
 The sidebar shows both, frames and polls a second: <i>Auto send 99.8/s · 10.0 polls/s</i>.</li>
 <li>CONFIG is read every 100 ms meanwhile, even with Poll off, so the device's host watchdog stays fed. If the
 device clears it by itself (a reset), the Log says so once and the box unticks.</li>
-<li>On a <b>serial</b> link the frames may take at most 70% of the link: a faster rate is lowered, and the Log
-says so.</li>
+<li>On a <b>UART</b> (<b>Link</b> in the Connection card) the frames may take at most 70% of the baud rate: a faster rate
+is lowered, and the Log says so. <b>USB CDC</b> ignores the baud rate: the rate asked for is kept, as on TCP.</li>
 <li><b>Disconnect</b> (and closing the Studio) switches it off on the device first. After a lost link it is switched
 on again by itself.</li>
 <li>One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
