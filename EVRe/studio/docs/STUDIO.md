@@ -607,15 +607,17 @@ A map without `device_id` (or with 0) is not checked.
 The pill is a dot and the state, on a tint with round ends and no edge: a state, not a second button. *Disconnected*
 has no tint at all. The pill is one line and its tooltip has the whole text. An address is never cut: when
 *Connected · 192.168.0.254:1209* is longer than the pill, it shows *192.168.0.254:1209* alone (green, with the dot).
-Only what still does not fit, a long reason or a long host name, is cut in the middle. The device line under it is always there, two lines tall, so
-the card never changes height.
+Only what still does not fit, a long host name, is cut in the middle. A reason is never cut: when it is longer than
+the pill, the pill takes two lines (or more), the part up to the colon on the first (*COM10 is gone:*) and the rest
+under it (*unplugged or reset?*). The device line under it is always there, two lines tall, so the card changes
+height only while a reason takes more than one line.
 
 | Pill | Colour | Meaning |
 |---|---|---|
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
-| the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, its part before the colon is shown whole (*COM10 is gone*); only what still does not fit is cut in the middle. The tooltip and the Log have it in full. |
+| the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, it is shown whole on two lines (or more), never cut. The tooltip adds the system's text, and the Log has both. |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/state-pills-dark.png">
@@ -640,7 +642,8 @@ reset? (The system cannot find the file specified.)*.
 The device line under the pill keeps the device's ID while the link is down, said to be old: *last seen: Device ID
 0x1001 · protocol rev 1* (on a bus *D2: last seen: ...*), in the same muted colour, with the map's warning under it
 as before. The next connect clears it (*Device ID not read yet*) until the device answers again. A failed read or a
-refused token keeps its text: that already says what happened.
+refused token keeps its text: that already says what happened. In a narrow sidebar the line wraps only after
+*last seen:* or a *·*, so *Device ID 0x1001* and *protocol rev 1* stay whole, in Arabic too.
 
 ### 3.9 Several devices on one link (a bus)
 
@@ -4625,7 +4628,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection, devices, map, polling and recording, fast streams, and API cards; link settings |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
-| `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone) |
+| `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon) |
 | `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
 | `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
 | `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
@@ -4908,7 +4911,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)`; signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
 | `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`; signals `writeRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
@@ -6167,8 +6170,11 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   by a new sidebar, its tooltip, its box aligned with Baud's, its list wide enough); the Log's connect line with
   *(UART)* and *(USB CDC: the baud rate is ignored)*; an `IoEngine` of its own (`autoSendBaudLimit`: 0 on USB CDC and
   TCP, 2000000 on a UART; the plain reason and the system's text in `closed`); `SerialLink::plainReason`'s cases;
-  *NOSUCHPORT not found* whole in the pill with the system's text on its tooltip's second line and in the Log; a
-  pill too narrow showing *COM10 is gone* whole; a 48-character port description cut with an ellipsis to the box, the
+  *NOSUCHPORT not found* whole in the pill with the system's text on its tooltip's second line and in the Log; at
+  the sidebar's width a short reason one line, *COM10 is gone: unplugged or reset?* whole on two lines (*COM10 is
+  gone:* on the first), the pill a line taller and the device line moved down with it; the device line's pieces kept
+  whole (no-break spaces; at any narrower width it wraps only after *last seen:* or a *·*, the bus's *D2: ...* form
+  and the Arabic too); a 48-character port description cut with an ellipsis to the box, the
   tooltip whole, the list opened wider, the sidebar no wider, a short label whole, the map's device name, the label
   cut again in a narrower box and one left-to-right piece right to left; the lists opened right to left (a port's
   label one left-to-right piece, the Link row's sentences not); the Baud box (11 rates to 12000000, its
@@ -6795,7 +6801,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 746 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 748 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

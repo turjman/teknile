@@ -26,6 +26,17 @@ void ElidedLabel::setElideMode(Qt::TextElideMode mode) {
 	fit();
 }
 
+/* wrapped, the label's height follows its width (QLabel's height for width), and it may be taller than one line */
+void ElidedLabel::setWraps(bool wraps) {
+	if (wraps == wraps_) return;
+	wraps_ = wraps;
+	setWordWrap(wraps);
+	QSizePolicy policy(QSizePolicy::Ignored, wraps ? QSizePolicy::Preferred : QSizePolicy::Fixed);
+	policy.setHeightForWidth(wraps);
+	setSizePolicy(policy);
+	fit();
+}
+
 void ElidedLabel::resizeEvent(QResizeEvent *event) {
 	QLabel::resizeEvent(event);
 	fit();
@@ -60,6 +71,13 @@ void ElidedLabel::fit() {
 	setToolTip(toolTip_.isEmpty() ? plain : toolTip_);
 	if (!cut_) {
 		QLabel::setText(full_);
+		return;
+	}
+	if (wraps_ && !rich) {
+		/* whole, on as many lines as it takes: the gist alone on the first when there is one */
+		cut_ = false;
+		const int colon = int(full_.indexOf(QLatin1String(": ")));
+		QLabel::setText(colon > 0 ? full_.left(colon + 1) + QLatin1Char('\n') + full_.mid(colon + 2) : full_);
 		return;
 	}
 	/* the shorter text whole when it fits; cut only when even it does not */

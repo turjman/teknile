@@ -111,13 +111,16 @@ public:
 	void showDisconnected();
 	void showConnecting();
 	void showConnected(const QString &link);
-	/* the pill in red: why (shown whole, or its part before ": " when it does not fit); detail: the system's own text,
-	 * on the tooltip's second line */
+	/* the pill in red: why, always whole, on two lines (or more) when it does not fit on one; detail: the system's own
+	 * text, on the tooltip's second line */
 	void showLinkError(const QString &why, const QString &detail = QString());
 	void showReconnecting();                /* the button stops the next try (the pill stays) */
 	/* under the pill: the device's ID, or why it is not known; always there, two lines tall (the window says "not read
 	 * yet" before there is one), so the card never changes height */
 	void setDeviceInfo(const QString &html);
+	/* the device line's pieces kept whole ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1"): every space a
+	 * no-break one but those after ":" and "·", so a narrow sidebar wraps it only between pieces (plain text in) */
+	static QString wholePieces(const QString &line);
 
 	/* the map card: its device and file; registers: how many the table holds now */
 	void showMap(const DeviceMap &map, int registers, bool modified);
@@ -251,7 +254,8 @@ private:
 	QCheckBox *autoReconnect_;
 	QPushButton *connectButton_;
 	QPushButton *refreshButton_;  /* the serial ports looked for again */
-	ElidedLabel *linkState_;     /* the pill: one line, a long text cut in the middle, the whole of it in the tooltip */
+	/* the pill: one line, a long text cut in the middle, the whole of it in the tooltip; an error wraps, never cut */
+	ElidedLabel *linkState_;
 	QLabel *deviceInfo_;
 
 	/* the devices card, the map card */

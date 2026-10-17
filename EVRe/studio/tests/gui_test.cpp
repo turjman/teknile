@@ -90,6 +90,7 @@
 #include <QThread>
 #include <QTimer>
 #include <QToolTip>
+#include <QTranslator>
 #include <QUndoStack>
 #include <QWheelEvent>
 #include <QWidgetAction>
@@ -454,6 +455,11 @@ QString groupName(const QCheckBox *box) {
 /* and back: a name as a check box or a button shows it */
 QString doubleAmpersands(QString text) {
 	return text.replace(QStringLiteral("&"), QStringLiteral("&&"));
+}
+
+/* the device line with plain spaces: its pieces are kept whole with no-break ones (Sidebar::wholePieces) */
+QString spaced(QString text) {
+	return text.replace(QChar::Nbsp, QLatin1Char(' '));
 }
 
 /* the chart's key of the line with this name, -1 if none is drawn */
@@ -1309,8 +1315,8 @@ private:
 			card.show();
 			const QString lost = QCoreApplication::translate("evre::SerialLink", "%1 is gone: unplugged or reset?")
 					.arg(QStringLiteral("COM10"));
-			card.setDeviceInfo(QCoreApplication::translate("MainWindow", "last seen: Device ID %1 · protocol rev %2")
-					.arg(addrText(0x1001)).arg(1).toHtmlEscaped());
+			card.setDeviceInfo(Sidebar::wholePieces(QCoreApplication::translate("MainWindow",
+					"last seen: Device ID %1 · protocol rev %2").arg(addrText(0x1001)).arg(1)).toHtmlEscaped());
 			for (const bool dark : { false, true }) {
 				Theme::apply(*qApp, dark);
 				card.themeChanged();
@@ -1400,7 +1406,8 @@ private:
 
 		/* the device line: the ID read, kept as "last seen" while the link is down, cleared by the next connect */
 		const bool read = QTest::qWaitFor([&] {
-			return deviceInfo->text().startsWith(QLatin1String("Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+			return spaced(deviceInfo->text()).startsWith(QLatin1String("Device ID "))
+					&& spaced(deviceInfo->text()).contains(QLatin1String("protocol rev"));
 		}, 5000);
 		const QString idLine = deviceInfo->text().section(QStringLiteral("<br>"), 0, 0);
 		const int infoHeight = deviceInfo->height();
@@ -1412,6 +1419,51 @@ private:
 		check(lastSeen && deviceInfo->height() == infoHeight,
 				"serial, the device line: \"Device ID 0x1001 · protocol rev 1\"; after Disconnect \"last seen: Device ID ...\", "
 				"the line as tall as before");
+		{
+			/* laid out at every width from its widest piece to its whole, a line ends only at a ":" or a "·": never in
+			 * "Device ID 0x1001" or "protocol rev 1". The label's own text, the bus's form and the Arabic */
+			const QString shown = lostText.section(QStringLiteral("<br>"), 0, 0);
+			QTranslator arabic;
+			const bool arabicLoaded = arabic.load(QStringLiteral(":/i18n/evre_studio_ar.qm"));
+			const QString arabicLine = arabic.translate("MainWindow", "last seen: Device ID %1 · protocol rev %2")
+					.arg(addrText(0x1001)).arg(1);
+			const QFont font = deviceInfo->font();
+			const QFontMetrics metrics(font);
+			const auto breaksBetweenPieces = [&](const QString &line, bool rtl) {
+				int widest = 0;
+				for (const QString &piece : line.split(QLatin1Char(' ')))
+					widest = std::max(widest, metrics.horizontalAdvance(piece));
+				const int whole = metrics.horizontalAdvance(line);
+				bool ok = widest + 2 < whole;
+				for (int width = widest + 2; ok && width < whole; width += 4) {
+					QTextLayout layout(line, font);
+					QTextOption option;
+					option.setWrapMode(QTextOption::WordWrap);
+					option.setTextDirection(rtl ? Qt::RightToLeft : Qt::LeftToRight);
+					layout.setTextOption(option);
+					layout.beginLayout();
+					QStringList lines;
+					for (QTextLine at = layout.createLine(); at.isValid(); at = layout.createLine()) {
+						at.setLineWidth(width);
+						lines << line.mid(at.textStart(), at.textLength()).trimmed();
+					}
+					layout.endLayout();
+					ok = lines.size() > 1;
+					for (int i = 0; ok && i + 1 < lines.size(); i++)
+						ok = lines[i].endsWith(QLatin1Char(':')) || lines[i].endsWith(QChar(0x00B7));
+					if (!ok) std::printf("     (at %d px: \"%s\")\n", width, qPrintable(lines.join(QStringLiteral(" | "))));
+				}
+				return ok;
+			};
+			check(shown.contains(QStringLiteral("Device") + QChar(QChar::Nbsp) + QStringLiteral("ID"))
+							&& shown.contains(QStringLiteral("protocol") + QChar(QChar::Nbsp) + QStringLiteral("rev"))
+							&& breaksBetweenPieces(shown, false)
+							&& breaksBetweenPieces(Sidebar::wholePieces(QStringLiteral("D2: ") + spaced(shown)), false)
+							&& arabicLoaded && arabicLine.contains(QChar(0x00B7)) && breaksBetweenPieces(Sidebar::wholePieces(arabicLine), true),
+					"serial, the device line kept whole: its pieces' spaces are no-break ones, so at any narrower width it "
+					"wraps only after \"last seen:\" or a \"·\", never inside \"Device ID 0x1001\" or \"protocol rev 1\" (the "
+					"bus's \"D2: ...\" and the Arabic too)");
+		}
 		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
 		const bool readAgain = QTest::qWaitFor([&] { return deviceInfo->text().startsWith(idLine); }, 5000);
 		check(readAgain && window_.deviceInfoAtOpen() == QLatin1String("Device ID not read yet"),
@@ -1512,18 +1564,35 @@ private:
 		check(logText().contains(QStringLiteral("not connected: NOSUCHPORT not found (%1)").arg(tipDetail)),
 				"serial, the Log: \"not connected: NOSUCHPORT not found (\" and the system's text");
 		{
-			sidebar->showLinkError(QStringLiteral("COM10 is gone: unplugged or reset?"), QStringLiteral("x"));
-			const int frame = pill->width() - pill->contentsRect().width();
-			pill->setFixedWidth(pill->fontMetrics().horizontalAdvance(QStringLiteral("●  COM10 is gone")) + frame + 6);
+			/* at the sidebar's width: a short reason one line, as tall as Disconnected; a long one whole on two, its gist
+			 * on the first, the card taller by a line while it is shown and the device line moved down, not covered */
+			sidebar->showDisconnected();
 			QApplication::processEvents();
-			const QString narrow = pill->text();
-			pill->setMinimumWidth(0);
-			pill->setMaximumWidth(QWIDGETSIZE_MAX);
+			const int oneLine = pill->height();
+			const int gap = deviceInfo->y() - pill->geometry().bottom();
+			sidebar->showLinkError(QStringLiteral("COM10 not found"), QStringLiteral("x"));
 			QApplication::processEvents();
-			check(narrow == QStringLiteral("●  COM10 is gone")
+			check(pill->text() == QStringLiteral("●  COM10 not found") && !pill->isCut() && pill->height() == oneLine
+							&& deviceInfo->y() - pill->geometry().bottom() == gap,
+					"serial, the pill: a reason that fits stays one line, as tall as \"Disconnected\"");
+			const QString lost = QStringLiteral("COM10 is gone: unplugged or reset?");
+			sidebar->showLinkError(lost, QStringLiteral("x"));
+			const bool grew = QTest::qWaitFor([&] { return pill->height() > oneLine; }, 1000);
+			QApplication::processEvents();
+			const QFontMetrics metrics = pill->fontMetrics();
+			const bool tooLong = metrics.horizontalAdvance(QStringLiteral("●  ") + lost) > pill->contentsRect().width();
+			const int grown = pill->height() - oneLine;
+			const bool twoLines = pill->text() == QStringLiteral("●  COM10 is gone:\nunplugged or reset?")
+					&& QString(pill->text()).replace(QLatin1Char('\n'), QLatin1Char(' ')) == QStringLiteral("●  ") + lost
+					&& !pill->isCut() && grown >= metrics.height() - 2 && grown <= metrics.lineSpacing() + 4;
+			if (!twoLines || !tooLong)
+				std::printf("     (the pill: \"%s\", %d px tall, one line %d, room %d px)\n", qPrintable(pill->text()), pill->height(),
+						oneLine, pill->contentsRect().width());
+			check(grew && tooLong && twoLines && deviceInfo->y() - pill->geometry().bottom() == gap
 							&& pill->toolTip() == QStringLiteral("COM10 is gone: unplugged or reset?\nx"),
-					"serial, the pill too narrow for the whole reason: \"● COM10 is gone\", whole, never cut in the middle; "
-					"the tooltip has the reason and the system's text");
+					"serial, the pill at the sidebar's width: \"● COM10 is gone:\" and \"unplugged or reset?\" under it, the whole "
+					"reason, nothing cut; a line taller, the device line moved down with it; the tooltip has the reason and the "
+					"system's text");
 		}
 
 		/* the port list: a long label cut with an ellipsis to the box, whole in the tooltip and the list opened */
@@ -3374,7 +3443,7 @@ private:
 		check(cellShows(valueCell(table_, d1u8), QStringLiteral("11"), 5000) && !valueCell(table_, d2u8).isValid(),
 				"bus: D1 selected: its values, polled from slave 1");
 		const bool d1Read = deviceInfo && QTest::qWaitFor([&] {
-			return deviceInfo->text().startsWith(QLatin1String("D1: ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+			return deviceInfo->text().startsWith(QLatin1String("D1: ")) && spaced(deviceInfo->text()).contains(QLatin1String("protocol rev"));
 		}, 3000);
 		if (devices) devices->setCurrentRow(1);
 		check(cellShows(valueCell(table_, d2u8), QStringLiteral("22"), 5000) && !valueCell(table_, d1u8).isValid(),
@@ -3416,17 +3485,18 @@ private:
 		}
 		/* D2's ID comes from its own read after the switch: waited for, not taken at once (a slow run failed here) */
 		const bool d2Read = deviceInfo && QTest::qWaitFor([&] {
-			return deviceInfo->text().startsWith(QLatin1String("D2: ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+			return deviceInfo->text().startsWith(QLatin1String("D2: ")) && spaced(deviceInfo->text()).contains(QLatin1String("protocol rev"));
 		}, 3000);
 		check(infoAtOpen && d1Read && d2Read && deviceInfo->height() == infoHeight,
 				"bus: the device's ID under the pill: there from the start, D1's, then D2's; the card keeps its height");
 		/* the link down: D2's ID kept, said to be old; the bus connected again for the checks after */
 		if (QPushButton *button = buttonWithText(QStringLiteral("Disconnect"))) button->click();
 		QApplication::processEvents();
-		const bool d2LastSeen = deviceInfo && deviceInfo->text().startsWith(QLatin1String("D2: last seen: Device ID "));
+		const bool d2LastSeen = deviceInfo && spaced(deviceInfo->text()).startsWith(QLatin1String("D2: last seen: Device ID "));
 		if (QPushButton *button = buttonWithText(QStringLiteral("Connect"))) button->click();
 		const bool d2Again = deviceInfo && QTest::qWaitFor([&] {
-			return deviceInfo->text().startsWith(QLatin1String("D2: Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+			return spaced(deviceInfo->text()).startsWith(QLatin1String("D2: Device ID "))
+					&& spaced(deviceInfo->text()).contains(QLatin1String("protocol rev"));
 		}, 5000);
 		check(d2LastSeen && d2Again, "bus: after Disconnect the line reads \"D2: last seen: Device ID ...\"; connected again, "
 				"D2's ID read anew");
@@ -3734,7 +3804,8 @@ private:
 		check(cellShows(valueCell(table_, u8), QString::number(other_.readU8(regs_.u8.addr)), 5000),
 				"bus: closed, the window polls the one device again");
 		check(deviceInfo && QTest::qWaitFor([&] {
-			return deviceInfo->text().startsWith(QLatin1String("Device ID ")) && deviceInfo->text().contains(QLatin1String("protocol rev"));
+			return spaced(deviceInfo->text()).startsWith(QLatin1String("Device ID "))
+					&& spaced(deviceInfo->text()).contains(QLatin1String("protocol rev"));
 		}, 3000),
 				"bus: closed, the device's ID under the pill again, without a device's name before it");
 		fake.kill();
@@ -7116,7 +7187,7 @@ private:
 		check(!pollTwice, "the status bar does not repeat the sidebar's poll rate");
 
 		/* the link state: a dot and the state, not a second button; no empty line under it */
-		auto *pill = window_.findChild<QLabel *>(QStringLiteral("pill"));
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
 		check(pill && pill->text().startsWith(QStringLiteral("●")), "the link state: a dot and the state");
 		/* round ends in every state: Qt squares the corners when the radius (12) is more than half the height */
 		if (auto *sidebar = window_.findChild<Sidebar *>(); sidebar && pill) {
@@ -7143,15 +7214,18 @@ private:
 			const bool longKept = shown.contains(QLatin1String("192.168.100.254:12090"))
 					&& pill->toolTip().contains(QStringLiteral("Connected · 192.168.100.254:12090"))
 					&& pill->fontMetrics().horizontalAdvance(shown) <= pill->contentsRect().width();
-			sidebar->showLinkError(QStringLiteral("Connection refused by 192.168.100.254:12090 after three tries, see the Log tab for the whole story"));
+			const QString reason = QStringLiteral("Connection refused by 192.168.100.254:12090 after three tries, see the Log "
+					"tab for the whole story");
+			sidebar->showLinkError(reason);
 			QApplication::processEvents();
-			const bool reasonWhole = pill->toolTip().endsWith(QLatin1String("the whole story"))
-					&& pill->fontMetrics().horizontalAdvance(pill->text()) <= pill->contentsRect().width();
+			const bool reasonWhole = pill->toolTip().endsWith(QLatin1String("the whole story")) && !pill->isCut()
+					&& pill->text().contains(QLatin1Char('\n'))
+					&& QString(pill->text()).replace(QLatin1Char('\n'), QLatin1Char(' ')) == QStringLiteral("●  ") + reason;
 			sidebar->showConnected(connectedText.mid(connectedText.indexOf(QStringLiteral("· ")) + 2));
 			QApplication::processEvents();
 			check(longKept && reasonWhole,
 					"the link state: a long address is shown whole (Connected gives way), the tooltip has all; a long reason "
-					"fits, whole in the tooltip");
+					"is shown whole on more lines, nothing cut");
 		}
 
 		/* the log: one line per event; the map loaded once at start */

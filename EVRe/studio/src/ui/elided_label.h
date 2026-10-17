@@ -5,7 +5,8 @@
  * fits, and as plain text cut when it does not. It is one line tall even when
  * empty, so a text that comes, goes or grows moves nothing around it. The
  * status bar's hint, the Map editor's banner, the Devices card's line, the
- * problems in the bus dialogs and the link state pill are ones. */
+ * problems in the bus dialogs and the link state pill are ones. Set to wrap
+ * (setWraps), it is as many lines as its text takes instead: the pill's error. */
 #pragma once
 
 #include <QLabel>
@@ -24,6 +25,11 @@ public:
 	/* where a text too long is cut: at the end (the default), or in the middle (both ends stay: the pill's
 	 * "Connected · host:port" keeps its port) */
 	void setElideMode(Qt::TextElideMode mode);
+	/* wraps: a text too long goes onto more lines, never cut, and the label is as tall as they are (the pill's
+	 * error: the whole reason is the news). The first line ends at the text's first ": " (a reason's gist, then the
+	 * rest), further breaks fall between words. Off again: one line, cut */
+	void setWraps(bool wraps);
+	bool wraps() const { return wraps_; }
 
 protected:
 	void resizeEvent(QResizeEvent *event) override;
@@ -33,5 +39,6 @@ private:
 	void fit();
 	QString full_, toolTip_, shorter_;
 	bool cut_ = false;
+	bool wraps_ = false;
 	Qt::TextElideMode mode_ = Qt::ElideRight;
 };

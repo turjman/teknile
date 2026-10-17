@@ -807,7 +807,8 @@ QString MainWindow::deviceInfoHtml(int slave) const {
 	const QString id = it->state == DeviceInfo::State::Lost
 			? tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision)
 			: tr("Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision);
-	QString html = (who + id).toHtmlEscaped();
+	/* a narrow sidebar wraps it between its pieces only ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1") */
+	QString html = Sidebar::wholePieces(who + id).toHtmlEscaped();
 	const int index = deviceOfSlave(slave);
 	const uint16_t mapId = isBus() ? (index >= 0 ? deviceMap(index).deviceId : 0) : doc_->map().deviceId;
 	if (mapId && it->id != mapId)

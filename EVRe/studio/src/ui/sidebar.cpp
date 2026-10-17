@@ -313,7 +313,8 @@ QVBoxLayout *Sidebar::buildLinkState() {
 	linkState_ = new ElidedLabel;
 	linkState_->setObjectName(QStringLiteral("pill"));
 	/* a long address is never cut: "Connected · " gives way first (the green and the dot still say it, the tooltip
-	 * has the whole text). Only what still does not fit (a long reason, a long host name) is cut, in the middle */
+	 * has the whole text). Only what still does not fit (a long host name) is cut, in the middle; an error's reason
+	 * wraps instead (showLinkState) */
 	linkState_->setElideMode(Qt::ElideMiddle);
 	linkState_->setAlignment(Qt::AlignCenter);
 	deviceInfo_ = mutedLabel(QString());
@@ -821,18 +822,26 @@ void Sidebar::showConnected(const QString &link) {
 	setConnectButton(tr("Disconnect"), QStringLiteral("danger"));
 }
 
-/* A plain reason has its gist before ": " ("COM10 is gone: unplugged or reset?"): shown alone when the whole does not
- * fit, so a narrow pill never cuts the port's name in the middle. The system's text is for the tooltip */
+/* The reason is the news: shown whole, its gist ("COM10 is gone:") on the first line and the rest under it when it does
+ * not fit on one, so nothing of it is only in the tooltip. The system's text is for the tooltip */
 void Sidebar::showLinkError(const QString &why, const QString &detail) {
 	setConnectButton(tr("Connect"), QStringLiteral("primary"));
-	const int colon = int(why.indexOf(QLatin1String(": ")));
-	showLinkState(QStringLiteral("error"), why, colon > 0 ? why.left(colon) : QString(),
-			detail.isEmpty() ? QString() : why + QLatin1Char('\n') + detail);
+	showLinkState(QStringLiteral("error"), why, QString(), detail.isEmpty() ? QString() : why + QLatin1Char('\n') + detail);
 }
 
 void Sidebar::showReconnecting() { setConnectButton(tr("Stop reconnecting"), QStringLiteral("primary")); }
 
 void Sidebar::setDeviceInfo(const QString &html) { deviceInfo_->setText(html); }
+
+/* a wrap inside a piece ("protocol | rev 1") splits what reads as one thing; after a ":" or a "·" it falls between two
+ * (the space before a "·" is a no-break one too, so the "·" ends its line) */
+QString Sidebar::wholePieces(const QString &line) {
+	QString kept = line;
+	for (int i = 0; i < kept.size(); i++)
+		if (kept[i] == QLatin1Char(' ') && !(i > 0 && (kept[i - 1] == QLatin1Char(':') || kept[i - 1] == QChar(0x00B7))))
+			kept[i] = QChar::Nbsp;
+	return kept;
+}
 
 void Sidebar::setConnectButton(const QString &text, const QString &look) {
 	connectButton_->setText(text);
@@ -842,6 +851,8 @@ void Sidebar::setConnectButton(const QString &text, const QString &look) {
 
 void Sidebar::showLinkState(const QString &state, const QString &text, const QString &shorter, const QString &toolTip) {
 	linkState_->setProperty("state", state);
+	/* an error grows the card while it is shown; every other state is one line */
+	linkState_->setWraps(state == QLatin1String("error"));
 	const QString dot = QStringLiteral("●  ");
 	linkState_->setFullText(dot + text, toolTip, shorter.isEmpty() ? QString() : dot + shorter);
 	repolish(linkState_);
