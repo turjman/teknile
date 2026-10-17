@@ -13132,6 +13132,27 @@ private:
 		}
 		for (AnalysisWindow *w : chart.tab.findChildren<AnalysisWindow *>()) w->close();
 		chart.tab.hide();
+		/* the rate as measured, just off 10000 Hz: four digits rounded 9999.7 up to "1e+04"; whole from 9999.5 on */
+		QStringList rates;
+		bool whole = true;
+		for (const double rate : { 9999.7, 9999.4, 10000.0, 12345.6 }) {
+			QVector<double> times, values;
+			for (int i = 0; i < 4096; i++) {
+				times << i / rate;
+				values << std::sin(2 * M_PI * 1000 * i / rate);
+			}
+			const AnalysisWindow even(AnalysisWindow::Kind::Spectrum, QStringLiteral("WAVE"), QStringLiteral("V"), Qt::blue,
+					QStringLiteral("the view"), times, values, nullptr, true);
+			const QString text = even.summary();
+			const qsizetype at = text.indexOf(QLatin1String(" samples at "));
+			rates << (at < 0 ? text : text.mid(at + 12, text.indexOf(QLatin1String(" Hz"), at) - at - 12));
+			whole = whole && !text.contains(QLatin1String("e+"));
+		}
+		std::printf("     (the rates written: %s)\n", qPrintable(rates.join(QStringLiteral(", "))));
+		check(whole && rates == QStringList({ QStringLiteral("10000"), QStringLiteral("9999"), QStringLiteral("10000"),
+										QStringLiteral("12346") }),
+				"analysis, spectrum: a rate just off 10000 Hz is written whole (9999.7 as 10000, 9999.4 as 9999, 12345.6 as "
+				"12346), never 1e+04");
 	}
 
 	/* The trigger: the view holds on a crossing with it at 20 % of the window and a marker; Normal holds on each and is

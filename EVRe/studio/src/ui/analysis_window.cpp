@@ -30,9 +30,10 @@ constexpr double LEFT = 64, TOP = 30, RIGHT = 18, BOTTOM = 30;
 constexpr double MARGIN = 0.08;     /* over the tallest bar or peak */
 constexpr double LOG_DECADES = 6;   /* the spectrum's log scale: this far under its peak */
 
-/* four significant digits; whole numbers up to ten million as they are (a fast line's 10000 Hz, not 1e+04) */
+/* four significant digits; whole numbers up to ten million as they are (a fast line's 10000 Hz, not 1e+04), from
+ * what four digits round up to 10000: a rate measured at 9999.7 Hz is written 10000, not 1e+04 */
 QString number(double v) {
-	return std::fabs(v) >= 1e4 && std::fabs(v) < 1e7 ? QString::number(v, 'f', 0) : QString::number(v, 'g', 4);
+	return std::fabs(v) >= 9999.5 && std::fabs(v) < 1e7 ? QString::number(v, 'f', 0) : QString::number(v, 'g', 4);
 }
 
 /* 1, 2, 5 x 10^n steps, about `target` of them over span */
