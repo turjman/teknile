@@ -6,6 +6,10 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <memory>
+#include <type_traits>
+
+#include <QThreadPool>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -18,30 +22,93 @@ namespace fast {
 
 namespace {
 
-/* the whole pages in bytes from data discarded: their contents undefined, as freed memory's is, until written again */
-void discard(const void *data, qint64 bytes) {
+constexpr quintptr PAGE = 4096;
+
+/* the whole pages of bytes from data: the first's address, the bytes they span */
+quintptr firstPage(const void *data) { return (quintptr(data) + PAGE - 1) & ~(PAGE - 1); }
+qint64 pageBytes(const void *data, qint64 bytes) {
+	const quintptr from = firstPage(data), to = (quintptr(data) + quintptr(bytes)) & ~(PAGE - 1);
+	return to > from ? qint64(to - from) : 0;
+}
+
+/* bytes of whole pages from `from` discarded: their contents undefined, as freed memory's is, until written again */
+void discardPages(quintptr from, qint64 bytes) {
 #ifdef Q_OS_WIN
-	constexpr quintptr PAGE = 4096;
-	const quintptr from = (quintptr(data) + PAGE - 1) & ~(PAGE - 1), to = (quintptr(data) + quintptr(bytes)) & ~(PAGE - 1);
-	if (to > from) DiscardVirtualMemory(reinterpret_cast<void *>(from), SIZE_T(to - from));
+	if (bytes > 0) DiscardVirtualMemory(reinterpret_cast<void *>(from), SIZE_T(bytes));
 #else
-	Q_UNUSED(data);
+	Q_UNUSED(from);
 	Q_UNUSED(bytes);
 #endif
 }
+
+void discard(const void *data, qint64 bytes) { discardPages(firstPage(data), pageBytes(data, bytes)); }
+
+/* the room an array of doubles holds: its values, the room after them and the room before them. A summary handed at
+ * a cut has its front removed, which only moves where its values begin: they are its last few MB, and the 60 MB
+ * before them, left resident, took 3 to 4 ms to free. Qt's list tells that room only to itself; it is read through
+ * the list's one member, the array's pointer, which a standard-layout class's first member may be read as */
+const QArrayDataPointer<double> &pointerOf(const QVector<double> &array) {
+	static_assert(std::is_standard_layout_v<QVector<double>> && sizeof(QVector<double>) == sizeof(QArrayDataPointer<double>));
+	return reinterpret_cast<const QArrayDataPointer<double> &>(array);
+}
+const double *roomOf(const QVector<double> &array) { return array.constData() - pointerOf(array).freeSpaceAtBegin(); }
+qint64 roomBytes(const QVector<double> &array) { return pointerOf(array).constAllocatedCapacity() * qint64(sizeof(double)); }
 
 uint16_t le16(const uint8_t *b) { return uint16_t(b[0] | (b[1] << 8)); }
 uint32_t le32(const uint8_t *b) { return uint32_t(b[0]) | uint32_t(b[1]) << 8 | uint32_t(b[2]) << 16 | uint32_t(b[3]) << 24; }
 
 } // namespace
 
-void letPagesGo(const QByteArray &array) { discard(array.constData(), array.size()); }
-void letPagesGo(const QVector<double> &array) { discard(array.constData(), array.size() * qint64(sizeof(double))); }
+/* an array shared with a copy (none is today: the pieces and summaries are moved, never copied) would read zeroed
+ * pages there: it is left alone, as is one holding no memory of its own */
+void letPagesGo(const QByteArray &array) {
+	if (array.isDetached()) discard(array.constData(), array.size());
+}
+void letPagesGo(const QVector<double> &array) {
+	if (array.isDetached()) discard(roomOf(array), roomBytes(array));
+}
+
+bool letPagesGo(const QVector<double> &array, qint64 &done, qint64 most) {
+	if (!array.isDetached()) return false;
+	const qint64 left = pageBytes(roomOf(array), roomBytes(array)) - done;
+	if (left <= 0) return false;
+	const qint64 step = std::min(left, std::max(qint64(PAGE), most & ~qint64(PAGE - 1)));
+	discardPages(firstPage(roomOf(array)) + quintptr(done), step);
+	done += step;
+	return true;
+}
+
+/* On a thread of the pool: discarding is about 0.65 ms a MB on the thread that does it, and a chart closed with a
+ * 3.6 GB store held the window's thread 2.2 to 2.7 s. Held by a shared pointer, so the arrays are never copied on the
+ * way (a copy would leave them shared, and shared ones are not discarded) */
+void letGoElsewhere(Store::Released gone) {
+	if (gone.isEmpty()) return;
+	auto held = std::make_shared<Store::Released>(std::move(gone));
+	QThreadPool::globalInstance()->start([held] {
+		for (QByteArray &piece : held->pieces) {
+			letPagesGo(piece);
+			piece = QByteArray();
+		}
+		for (QVector<double> &summary : held->summaries) {
+			letPagesGo(summary);
+			summary = QVector<double>();
+		}
+		*held = {};
+	});
+}
 
 /* its pieces' pages too (a recording window's fast math line closed, a stream gone with the map): freed alone, the
- * heap gave them back in one lump at a later free, in some chart's frame */
+ * heap gave them back in one lump at a later free, in some chart's frame. On a thread (letGoElsewhere), its outlines
+ * and summaries with them: the window's thread only hands them over (a 3.6 GB store: 1 to 2 ms; freeing the summaries
+ * there alone took about 20 ms) */
 Store::~Store() {
-	for (const QByteArray &piece : std::as_const(pieces_)) letPagesGo(piece);
+	Released gone{ std::move(pieces_), {} };
+	gone.pieces += std::move(outlines_);
+	for (Channel &c : channels_)
+		for (Summary *summary : { &c.small, &c.large })
+			for (QVector<double> *v : { &summary->min, &summary->max, &summary->sum, &summary->squares })
+				gone.summaries << std::move(*v);
+	letGoElsewhere(std::move(gone));
 }
 
 void Store::reset(const StreamDef &def) {

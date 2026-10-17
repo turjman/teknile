@@ -79,6 +79,7 @@
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextBrowser>
+#include <QThreadPool>
 #include <QTextDocument>
 #include <QTextLayout>
 #include <QTemporaryDir>
@@ -569,6 +570,7 @@ public:
 		chartInfoLine();
 		chartOneCap();
 		chartRamCut();
+		chartRamSlices();
 		chartRamFree();
 		chartFastTiers();
 		chartFastSummariesShown();
@@ -10615,6 +10617,95 @@ private:
 						&& perf.frames >= 50,
 				"chart, the RAM budget cut with a filled fast store (2 GB to 256 MB): the store at its new share from the next "
 				"block on; no append, frame or paint over 20 ms (the memory let go a slice a frame)");
+	}
+
+	/* A big summary let go a slice a frame: a summary has one double for each 256 records, so a 4 GB store of one i16
+	 * channel hands 64 MB arrays to the chart at a cut, and one discarded in one go took 20 to 24 ms (the 2 GB check
+	 * above hands 16 MB ones). Such an array's pages go in 16 slices of 4 MB, its whole room (a handed array's front is
+	 * removed, its values only the last few kept), then nothing is left; a copy shared with another holder is left
+	 * alone (its pages would read zeroed there); four of them let go by the chart's frames: no frame() over 20 ms, all
+	 * gone within 5 s, over more than one frame where pages are discarded (Windows). A chart closed with a fast store
+	 * of 256 MB and 128 MB still to free hands them to a thread: its teardown under 20 ms (discarding took the window's
+	 * thread 0.65 ms a MB), the thread done within 10 s */
+	static void chartRamSlices() {
+		constexpr qsizetype DOUBLES = 8 << 20; /* 64 MB */
+		QVector<double> big(DOUBLES, 1.0);
+		big.remove(0, DOUBLES - 4096); /* as a summary handed at a cut: its front removed, the room kept */
+		qint64 done = 0;
+		int slices = 0;
+		while (fast::letPagesGo(big, done, 4 << 20) && slices < 100) slices++;
+		const qint64 pages = qint64(DOUBLES) * 8 - 4096; /* its whole pages: the first may begin past its data's start */
+		QVector<double> shared(DOUBLES, 2.0), copy = shared;
+		qint64 sharedDone = 0;
+		const bool leftAlone = !fast::letPagesGo(shared, sharedDone, 4 << 20) && sharedDone == 0;
+		fast::letPagesGo(copy);
+		const bool copyKept = copy.size() == DOUBLES && copy.at(DOUBLES / 2) == 2.0 && shared.at(DOUBLES - 1) == 2.0;
+		copy.clear();
+
+		double frameMax = 0;
+		int frames = 0;
+		qint64 held = 0, left = 0;
+		{
+			ChartView view;
+			view.resize(400, 200);
+			for (int i = 0; i < 4; i++) view.releaseLater(QVector<double>(DOUBLES, double(i)));
+			held = view.bytesReleasing();
+			QElapsedTimer all;
+			all.start();
+			while (view.bytesReleasing() > 0 && all.elapsed() < 5000) {
+				QElapsedTimer one;
+				one.start();
+				view.frame();
+				frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
+				frames++;
+			}
+			left = view.bytesReleasing();
+		}
+#ifdef Q_OS_WIN
+		const bool overFrames = frames > 4;
+#else
+		const bool overFrames = frames >= 1;
+#endif
+
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		auto *closed = new ChartView;
+		double now = 100;
+		closed->setClock([&now] { return now; }, 0);
+		closed->setMemory(3600);
+		closed->setFastStream(0, def);
+		closed->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16(i % 1000);
+		for (quint64 first = 0; first < 1024 * BLOCK; first += BLOCK) {
+			closed->appendFast(0, first, BLOCK, records, first == 0, 0);
+			now = 100.0 + (first + BLOCK) * 1e-6;
+			closed->markFast(0, first + BLOCK, now, 1e-6);
+		}
+		for (int i = 0; i < 2; i++) closed->releaseLater(QVector<double>(DOUBLES, double(i)));
+		const qint64 closing = closed->fastStore(0)->bytes() + closed->bytesReleasing();
+		QElapsedTimer teardown;
+		teardown.start();
+		delete closed;
+		const double teardownMs = teardown.nsecsElapsed() / 1e6;
+		teardown.restart();
+		const bool threadDone = QThreadPool::globalInstance()->waitForDone(10000);
+		const double threadMs = teardown.nsecsElapsed() / 1e6;
+		std::printf("     (a summary's pages: %d slices of 4 MB, %lld of %lld bytes; 4 x 64 MB let go in %d frames, the longest "
+				"frame() %.1f ms; a chart closed with %lld MB: %.1f ms, its thread %.0f ms after)\n", slices, (long long) done,
+				(long long) qint64(DOUBLES) * 8, frames, frameMax, (long long) (closing >> 20), teardownMs, threadMs);
+		check(slices == 16 && done >= pages && leftAlone && copyKept && held >= 4ll * DOUBLES * 8 && left == 0
+						&& frameMax < 20 && overFrames && closing >= 384ll * 1024 * 1024 && teardownMs < 20 && threadDone,
+				"chart, a big summary let go: a 64 MB array's whole room discarded in 16 slices of 4 MB, an array shared with "
+				"a copy left alone; four let go by the frames, none over 20 ms, all within 5 s; a chart closed with 384 MB "
+				"to free hands it to a thread, its teardown under 20 ms");
 	}
 
 	/* The RAM against the free memory (O-13): the budget is a cap, not a reservation. With less free than it, the chart

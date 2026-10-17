@@ -110,6 +110,7 @@ constexpr double Y_MARGIN = 0.08;    /* free space above and below the lines, of
 constexpr double FLAT_RANGE = 1e-12; /* a line's own range narrower than this: it is flat */
 constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little faded */
 constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
+constexpr qint64 RELEASE_SLICE = 4 << 20; /* bytes of a summary's pages discarded at a time (1.3 to 2.6 ms) */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
@@ -1046,17 +1047,19 @@ void ChartView::trimFast(fast::Store &store, int lines) {
 	released_.summaries += std::move(gone.summaries);
 }
 
-/* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary of up to tens of MB at a
- * time), before the frame is painted: gigabytes go over a few seconds, never a frame over budget. Each with its pages
- * given back first (fast::letPagesGo): freed alone, the heap kept them, and one free some frames later gave 110 MB
- * back at once, 8 to 13 ms */
+/* what the trims let go, freed for at most RELEASE_NS a frame (a piece of 256 KB, a summary's next RELEASE_SLICE),
+ * before the frame is painted: gigabytes go over a few seconds, never a frame over budget. Each with its pages given
+ * back first (fast::letPagesGo): freed alone, the heap kept them, and one free some frames later gave 110 MB back at
+ * once, 8 to 13 ms. A summary's pages go a slice at a time, then it is freed: its size follows the store's (one
+ * double for each 256 records), and a 4 GB store's 64 MB discarded in one go took about 20 ms */
 void ChartView::releaseSome() {
 	if (released_.isEmpty()) return;
 	QElapsedTimer clock;
 	clock.start();
 	while (!released_.summaries.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
-		fast::letPagesGo(released_.summaries.last());
+		if (fast::letPagesGo(released_.summaries.last(), summaryDiscarded_, RELEASE_SLICE)) continue;
 		released_.summaries.removeLast();
+		summaryDiscarded_ = 0;
 	}
 	while (!released_.pieces.isEmpty() && clock.nsecsElapsed() < RELEASE_NS) {
 		fast::letPagesGo(released_.pieces.last());
@@ -2127,9 +2130,8 @@ QVector<double> ChartView::measureKey(const QVector<int> &keys) const {
 ChartView::~ChartView() {
 	pool_.waitForDone();
 	/* what is still to be freed goes as each frame's slice does (releaseSome): a chart closed right after a RAM cut
-	 * left a gigabyte with the heap, and the next chart's frame paid for it */
-	for (const QByteArray &piece : std::as_const(released_.pieces)) fast::letPagesGo(piece);
-	for (const QVector<double> &summary : std::as_const(released_.summaries)) fast::letPagesGo(summary);
+	 * left a gigabyte with the heap, and the next chart's frame paid for it. On a thread: the window's goes on */
+	fast::letGoElsewhere(std::move(released_));
 }
 
 void ChartView::measureAsync(const QVector<int> &keys, std::function<void(const QVector<Stats> &, double)> done) {

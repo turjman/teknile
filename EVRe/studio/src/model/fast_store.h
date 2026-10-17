@@ -181,9 +181,16 @@ private:
  * after a RAM cut from 2 GB the free of one piece gave 110 MB back in 8 to 13 ms, and what a closed chart had left
  * (830 MB) in 62 to 69 ms, a frame held. Discarded as they are freed, the pages such a lump gives back have nothing
  * behind them any more: 2 to 4 ms. Discarding costs more than the free alone (about 0.3 ms a MB), so what a frame
- * frees in its slice (ChartView::releaseSome) takes more frames. Only whole pages of what the array holds: its header
- * and the heap's bytes around it are not touched */
+ * frees in its slice (ChartView::releaseSome) takes more frames. Only whole pages of what the array holds (an array of
+ * doubles: all its room, the room at its front too): its header and the heap's bytes around it are not touched */
 void letPagesGo(const QByteArray &array);
 void letPagesGo(const QVector<double> &array);
+/* the same a slice at a time, for an array too large to discard within a frame (a summary of a 4 GB store: 64 MB,
+ * 20 to 24 ms): the next `most` bytes of its whole pages from `done` (bytes of them already discarded, moved on);
+ * false when none were left, so the caller frees it then */
+bool letPagesGo(const QVector<double> &array, qint64 &done, qint64 most);
+/* letPagesGo on each, then freed, on a thread of the pool: for what is let go all at once (a store destroyed, what a
+ * closed chart had still to free), which no frame's slice will take */
+void letGoElsewhere(Store::Released gone);
 
 } // namespace fast
