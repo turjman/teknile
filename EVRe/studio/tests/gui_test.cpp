@@ -11153,6 +11153,7 @@ private:
 			now = 100.0 + (first + BLOCK) * 1e-6;
 			view->markFast(0, first + BLOCK, now, 1e-6);
 		}
+		(void) host.grab(); /* a first frame: Hold keeps the view last shown */
 		view->setLive(false); /* the same view in both pictures */
 		view->setDrawThreads(1);
 		const QImage one = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
