@@ -11155,6 +11155,7 @@ private:
 		}
 		(void) host.grab(); /* a first frame: Hold keeps the view last shown */
 		view->setLive(false); /* the same view in both pictures */
+		view->setLineReuse(false); /* each picture's lines drawn afresh: a held view reuses the last frame's (23.6) */
 		view->setDrawThreads(1);
 		const QImage one = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
 		const int oneStripes = view->stripesDrawn();
