@@ -11182,9 +11182,12 @@ private:
 		qsizetype tall = 0; /* columns whose bar spans most of the range: the bars fill the plot */
 		for (const ChartView::BinInfo &bin : bins)
 			if (bin.max - bin.min > 0.75 * (hi - lo)) tall++;
+		/* the stripes at most: the chart's pool (the CPU's threads less three, 1 to 8) and the window's thread */
+		const int drawers = std::clamp(QThread::idealThreadCount() - 3, 1, 8) + 1;
 		std::printf("     (a fast line's full-height bars, %d x %d device pixels: %lld of %lld columns tall, %d stripes "
-				"(%d with one thread); against one thread: worst channel difference %d, %d pixels above 3)\n", one.width(),
-				one.height(), (long long) tall, (long long) bins.size(), stripes, oneStripes, worst, differ);
+				"(%d with one thread; %d threads here, %d drawing at most); against one thread: worst channel difference %d, "
+				"%d pixels above 3)\n", one.width(), one.height(), (long long) tall, (long long) bins.size(), stripes,
+				oneStripes, QThread::idealThreadCount(), drawers, worst, differ);
 		check(bins.size() > 500 && hi > lo && tall >= bins.size() * 9 / 10 && oneStripes == 1 && stripes >= 2
 						&& one.size() == many.size() && differ <= 200 && worst <= 32,
 				"chart, a fast line's bars the whole plot high: drawn on threads in stripes by their pixels (few points), the "
