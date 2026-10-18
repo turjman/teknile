@@ -1350,7 +1350,9 @@ private:
 					const qreal dpr = box->devicePixelRatioF();
 					QPixmap together(both.size() * dpr);
 					together.setDevicePixelRatio(dpr);
-					together.fill(Qt::transparent);
+					/* the corners outside the card and the list in the window's colour, as round them in the window: a dark card
+					 * with white corners would read as another theme */
+					together.fill(box->palette().color(QPalette::Window));
 					{
 						QPainter painter(&together);
 						painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
