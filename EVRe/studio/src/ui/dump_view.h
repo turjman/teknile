@@ -151,6 +151,10 @@ public:
 	bool fields() const { return fields_; }
 	void setClock(std::function<double()> now);     /* the seconds DumpBlock::time is on */
 	void setStaleAfterMs(qint64 ms);                /* a reply older than this is stale (the Registers tab's) */
+	/* one frame's repaint, the ages and the newest bytes drawn. Qt merges update() calls until its paint request is
+	 * delivered, so two ticks the window's thread takes in one event pass share one paint (the newer bytes): the paint
+	 * settles every tick asked before it, and the tests count the merged ones instead of a paint each */
+	void tick();
 	void select(RegKey key);                        /* its chips framed, its decode line bold */
 	RegKey selected() const { return selected_; }
 	/* scrolled so the register's first chip is in view; a register no card holds yet: when its card comes */
@@ -233,6 +237,9 @@ public:
 	QString payloadText(int card, Side side) const;  /* the pill's words, "22 bytes ↓"; empty: no payload pill */
 	int paintCount() const { return paints_; }
 	int glowRepaints() const { return glowRepaints_; } /* the glow's own repaints, while a byte fades (tests) */
+	int ticksMerged() const { return ticksMerged_; }  /* ticks that shared an earlier tick's paint (tests) */
+	/* ticks asked but not painted yet: at most the last one, awaiting its paint; more is a card left stale (tests) */
+	int ticksUnpainted() const { return ticksAsked_ - ticksPainted_; }
 
 	/* Fast streams: their definitions (the map's, by index: DumpBlock::streamIndex), and the chart's colour of each
 	 * plotted channel by ChartView::fastKey (its chips and dot take it; the others the palette's) */
@@ -442,6 +449,9 @@ private:
 	int nameChars_ = NAME_CHARS; /* the widest name of the tab, at most NAME_CHARS, plus two */
 	int paints_ = 0;
 	int glowRepaints_ = 0;
+	int ticksAsked_ = 0;   /* tick() calls */
+	int ticksPainted_ = 0; /* the ticks a paint has drawn (ticksAsked_ when it began) */
+	int ticksMerged_ = 0;
 	bool drawnDark_ = true;
 	/* fast stream cards */
 	QVector<StreamDef> streams_;
