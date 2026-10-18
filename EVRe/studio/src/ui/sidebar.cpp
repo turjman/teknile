@@ -215,6 +215,9 @@ QWidget *Sidebar::buildSerialFields() {
 		QStringLiteral("3000000"), QStringLiteral("4000000"), QStringLiteral("6000000"), QStringLiteral("12000000") });
 	baud_->setValidator(new BaudValidator(baud_));
 	baud_->lineEdit()->setPlaceholderText(tr("type a rate"));
+	/* the number is written left to right: its placeholder and the text cursor sit with it at the left in Arabic too
+	 * (AlignAbsolute, else right to left turns the left into the right) */
+	baud_->lineEdit()->setAlignment(Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter);
 	baud_->setToolTip(tr("Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).")
 			.arg(BAUD_MIN).arg(BAUD_MAX));
 	/* USB CDC or a UART: Auto from the port's USB IDs, or chosen. The box shows a short text; the list opened says

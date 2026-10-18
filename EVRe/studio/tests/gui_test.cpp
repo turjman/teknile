@@ -1314,6 +1314,13 @@ private:
 			card.addPort(QStringLiteral("COM12"), QString(), false, 0, 0, QString());
 			card.useSerial(QStringLiteral("COM10:2000000"));
 			card.show();
+			/* where the window has its sidebar: at the screen's right edge in Arabic. A list wider than its box opens from
+			 * the box's left edge, so there the screen's edge brings it back over the card, as in the window */
+			if (code == QLatin1String("ar") && card.screen()) {
+				const QRect screen = card.screen()->availableGeometry();
+				card.move(screen.right() + 1 - card.frameGeometry().width(), screen.top());
+				QTest::qWait(100);
+			}
 			const QString lost = QCoreApplication::translate("evre::SerialLink", "%1 is gone: unplugged or reset?")
 					.arg(QStringLiteral("COM10"));
 			card.setDeviceInfo(Sidebar::wholePieces(QCoreApplication::translate("MainWindow",
@@ -1327,6 +1334,8 @@ private:
 				};
 				baud->setCurrentText(QStringLiteral("2000000"));
 				card.showLinkError(lost, QStringLiteral("The system cannot find the file specified."));
+				/* the previous theme's Baud picture left the focus there: no ring on the Baud box in the card's picture */
+				if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
 				QTest::qWait(100);
 				QWidget *box = docsCard(pill);
 				save(QStringLiteral("card"), box->grab());
@@ -1724,6 +1733,52 @@ private:
 			if (savedBaud.isValid()) settings.setValue(QStringLiteral("link/baud"), savedBaud);
 			else settings.remove(QStringLiteral("link/baud"));
 			check(restoredBaud == 115200, "serial, Baud: a saved link/baud that is no rate (\"abc\") restores as 115200");
+		}
+		/* in Arabic too the Baud box's number, placeholder and text cursor sit at the left: the number is written left to
+		 * right, and a placeholder at the right with the cursor at the left read as two things. The placeholder's ink is
+		 * found by grabbing the box with and without it (device pixels, so the margin is scaled by the grab's ratio) */
+		{
+			language::apply(*qApp, QStringLiteral("ar"));
+			bool absoluteLeft = false;
+			int inkFrom = -1, inkTo = -1, width = 0;
+			qreal dpr = 1;
+			{
+				Sidebar arabic;
+				arabic.resize(sidebar->size());
+				arabic.useSerial(QStringLiteral("COM10:115200"));
+				arabic.show();
+				auto *arabicBaud = arabic.findChild<QComboBox *>(QStringLiteral("baud"));
+				if (arabicBaud && arabicBaud->lineEdit()) {
+					QLineEdit *line = arabicBaud->lineEdit();
+					arabicBaud->setCurrentText(QString());
+					QTest::qWait(100);
+					const Qt::Alignment alignment = line->alignment();
+					absoluteLeft = arabic.isRightToLeft() && alignment.testFlag(Qt::AlignAbsolute)
+							&& alignment.testFlag(Qt::AlignLeft);
+					const QImage with = line->grab().toImage();
+					const QString hint = line->placeholderText();
+					line->setPlaceholderText(QString());
+					const QImage without = line->grab().toImage();
+					line->setPlaceholderText(hint);
+					width = std::min(with.width(), without.width());
+					dpr = with.devicePixelRatio();
+					for (int x = 0; x < width; x++)
+						for (int y = 0; y < std::min(with.height(), without.height()); y++)
+							if (with.pixel(x, y) != without.pixel(x, y)) {
+								if (inkFrom < 0) inkFrom = x;
+								inkTo = x;
+								break;
+							}
+				}
+			}
+			language::apply(*qApp, QStringLiteral("en"));
+			QTest::qWait(100);
+			const bool atLeft = inkFrom >= 0 && inkFrom <= qRound(12 * dpr) && inkFrom < width - 1 - inkTo;
+			if (!absoluteLeft || !atLeft)
+				std::printf("     (Arabic Baud box: absolute left %d, placeholder ink x %d to %d of %d, ratio %.2f)\n",
+						absoluteLeft ? 1 : 0, inkFrom, inkTo, width, dpr);
+			check(absoluteLeft && atLeft, "serial, Baud in Arabic: aligned left absolutely (not turned by right to left), "
+					"the emptied box's placeholder drawn at the left, where the cursor and the number are");
 		}
 
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) serialShots(sidebar->size());
