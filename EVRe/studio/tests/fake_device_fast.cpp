@@ -3,7 +3,7 @@
  * Studio itself at thousands of polls a second (the Python one answers a
  * request in ~100 us and becomes the bottleneck).
  *
- *   evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]...
+ *   evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]... [--login-required]
  *                  [--fast-lose N] [--fast-ppm P] [--fast-first K] [--fast-rate R]
  *                     default 1210, maps/example_device.json, example-token
  *
@@ -26,6 +26,12 @@
  * answer, as every WRITE here. The login is checked, never required. A read
  * of the login register returns the last token written to it, accepted or
  * refused.
+ *
+ * --login-required: the login is required, as a device with EVRe Guard part 1
+ * does. Until the token is written (by any client: the session is the
+ * device's), every request but a write over the login register is refused
+ * with ERROR_RESP 13 (login required), a WRITE silently; a refused token
+ * closes the session again.
  *
  * CONFIG (0xA004) holds what was written, with HEARTBEAT (bit 0) set as a
  * read sees it. AUTO_SEND, per connection: a write of CONFIG with bit 3 set
@@ -70,14 +76,15 @@ namespace {
 constexpr int MEMORY_SIZE = 0x10000;
 constexpr char PERMISSION_DENIED = 3;   /* the ERROR_RESP code for a wrong token */
 constexpr char OFFSET_OUT_OF_RANGE = 4; /* the ERROR_RESP code for an address in no register */
+constexpr char LOGIN_REQUIRED = 13;     /* the ERROR_RESP code for a request without a session (--login-required) */
 constexpr uint16_t CONFIG = evre::CONFIG, STREAM_START = evre::READ_ONLY_BLOCK;
 constexpr uint16_t HEARTBEAT = evre::CONFIG_HEARTBEAT, AUTO_SEND = evre::CONFIG_AUTO_SEND;
 const char *const DEFAULT_TOKEN = "example-token"; /* the token accepted, unless another is given */
 
 class FakeDevice {
 public:
-	FakeDevice(const DeviceMap &map, uint8_t slave, const QString &token, double rateOverride)
-		: map_(map), slave_(slave) {
+	FakeDevice(const DeviceMap &map, uint8_t slave, const QString &token, bool loginRequired, double rateOverride)
+		: map_(map), slave_(slave), loginRequired_(loginRequired && map.loginAddr != 0) {
 		for (const RegDef &r : map.regs)
 			for (int i = 0; i < r.size && r.addr + i < MEMORY_SIZE; i++) covered_[r.addr + i] = true;
 		if (map.loginAddr != 0) {
@@ -116,6 +123,8 @@ public:
 	}
 	void clear(const RegDef &r) { std::fill_n(memory_.begin() + r.addr, r.size, uint8_t(0)); }
 	uint16_t config() const { return uint16_t(memory_[CONFIG] | (memory_[CONFIG + 1] << 8)); }
+	/* G-25: a device with a login sends nothing of its own (blocks, AUTO_SEND) while no session is open */
+	bool sendsOwnFrames() const { return !loginRequired_ || loggedIn_; }
 
 	/* one AUTO_SEND frame: the read-only block now, as a READ_RESP nobody asked for; empty when the map has none */
 	QByteArray streamFrame() {
@@ -130,6 +139,11 @@ public:
 	QByteArray answer(const evre::Frame &request) {
 		const uint8_t slave = slave_;
 		const uint16_t addr = request.addr, count = request.cnt;
+		const bool write = request.fn == evre::WRITE || request.fn == evre::WRITE_ACK;
+		if (loginRequired_ && !loggedIn_ && !(write && touchesLogin(addr, count))) {
+			if (request.fn == evre::WRITE) return {};
+			return evre::build(slave, evre::ERROR_RESP, addr, count, QByteArray(1, LOGIN_REQUIRED));
+		}
 		if (!covered(addr, count)) {
 			if (request.fn == evre::WRITE) return {};
 			return evre::build(slave, evre::ERROR_RESP, addr, count, QByteArray(1, OFFSET_OUT_OF_RANGE));
@@ -140,7 +154,6 @@ public:
 			return evre::build(slave, evre::READ_RESP, addr, count,
 					QByteArray(reinterpret_cast<const char *>(&memory_[addr]), count));
 		}
-		const bool write = request.fn == evre::WRITE || request.fn == evre::WRITE_ACK;
 		if (write && touchesLogin(addr, count)) return logIn(request);
 		if (write) {
 			const size_t written = size_t(std::min<qsizetype>(request.data.size(), count));
@@ -162,6 +175,7 @@ private:
 		const bool whole = request.addr == map_.loginAddr && request.cnt == map_.loginSize
 				&& request.data.size() == map_.loginSize;
 		if (whole) std::memcpy(&memory_[request.addr], request.data.constData(), size_t(map_.loginSize));
+		loggedIn_ = whole && request.data == token_;
 		if (request.fn == evre::WRITE) return {};
 		if (!whole || request.data != token_)
 			return evre::build(slave_, evre::ERROR_RESP, request.addr, request.cnt, QByteArray(1, PERMISSION_DENIED));
@@ -194,6 +208,8 @@ private:
 
 	const DeviceMap map_;
 	const uint8_t slave_;
+	const bool loginRequired_;
+	bool loggedIn_ = false;
 	QByteArray token_; /* what a login must write: the token, cut or zero-padded to the login size */
 	int streamEnd_ = STREAM_START; /* the end of the block AUTO_SEND sends */
 	std::vector<uint8_t> memory_ = std::vector<uint8_t>(MEMORY_SIZE);
@@ -223,6 +239,12 @@ public:
 		timer_->setTimerType(Qt::PreciseTimer);
 		QObject::connect(timer_, &QTimer::timeout, timer_, [this, socket, device] {
 			const qint64 due = clock_.nsecsElapsed() * hz_ / 1000000000LL;
+			/* D-50, as the reference device: AUTO_SEND pauses while no session is open, its CONFIG bit kept, and
+			 * goes on in the next session; the frames due meanwhile are skipped, not sent in a burst */
+			if (!device->sendsOwnFrames()) {
+				sent_ = due;
+				return;
+			}
 			QByteArray out;
 			for (int i = 0; sent_ < due && i < 100; i++, sent_++) out += device->streamFrame();
 			sent_ = std::max(sent_, due - 100); /* far behind (a stall): not made up in a burst */
@@ -288,6 +310,18 @@ void serve(QTcpSocket *socket, Devices &devices) {
 			out += answerOnBus(devices, request);
 			for (size_t i = 0; i < devices.size(); i++) {
 				FakeDevice *device = devices[i].get();
+				if (!device->sendsOwnFrames()) {
+					/* a session closed by a wrong token stops the streams started inside it, and a refused request
+					 * does not keep a stream's watchdog fed; AUTO_SEND only pauses (D-50: the Stream's timer) */
+					if (const auto &sender = (*senders)[i]) {
+						const QVector<StreamDef> &defs = device->map().streams;
+						for (int s = 0; s < defs.size(); s++) {
+							sender->enable(s, false);
+							if (const RegDef *enable = device->map().registerNamed(defs[s].enable)) device->clear(*enable);
+						}
+					}
+					continue;
+				}
 				if (const auto &sender = (*senders)[i]) {
 					if (request.slave == device->slave()) sender->heard();
 					const QVector<StreamDef> &defs = device->map().streams;
@@ -315,11 +349,14 @@ int main(int argc, char **argv) {
 	QStringList positional;
 	int slave = -1;                    /* the first device's: -1 = its map's */
 	QVector<QPair<int, QString>> nodes; /* --node SLAVE=MAP */
+	bool loginRequired = false;
 	const QStringList args = app.arguments();
 	for (int i = 1; i < args.size(); i++) {
 		const QString &a = args[i];
 		const QString value = i + 1 < args.size() ? args[i + 1] : QString();
-		if (a == QLatin1String("--slave")) {
+		if (a == QLatin1String("--login-required")) {
+			loginRequired = true;
+		} else if (a == QLatin1String("--slave")) {
 			slave = value.toInt();
 			i++;
 		} else if (a == QLatin1String("--fast-lose")) {
@@ -364,8 +401,9 @@ int main(int argc, char **argv) {
 			std::printf("slave %d: a device address is 1 to 255 (0 is the broadcast)\n", address);
 			return 2;
 		}
-		devices.push_back(std::make_unique<FakeDevice>(map, uint8_t(address), token, fastOptions.rate));
-		const QString login = map.loginAddr != 0 ? QStringLiteral(", login at %1").arg(addrText(map.loginAddr)) : QString();
+		devices.push_back(std::make_unique<FakeDevice>(map, uint8_t(address), token, loginRequired, fastOptions.rate));
+		const QString login = map.loginAddr != 0 ? QStringLiteral(", login at %1%2").arg(addrText(map.loginAddr),
+				loginRequired ? QStringLiteral(", required") : QString()) : QString();
 		const QString streams = map.streams.isEmpty() ? QString() : QStringLiteral(", %1 fast streams").arg(map.streams.size());
 		std::printf("%s slave %d: %s (%d registers%s%s)\n", devices.size() == 1 ? "device" : "  and", address,
 				qPrintable(map.device), int(map.regs.size()), qPrintable(login), qPrintable(streams));

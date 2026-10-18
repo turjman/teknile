@@ -10,16 +10,17 @@ USART, I²C, SPI, RS-485, USB CDC or TCP/IP.
 | Property | Value |
 |---|---|
 | Protocol&nbsp;revision | **1** (reported in `STATUS[7:0]`) |
-| Implementation | C++, two files, no dependencies beyond `stdint` / `stdlib` |
+| Library | **1.1** (`EVRE_LIB_VERSION` `0x0101`); what changed since 1.0: [Migrating from 1.0](#migrating-from-10) |
+| Implementation | C++11, two files, no dependencies beyond the C and C++ standard headers |
 | Footprint | ~3 kB of code; heap optional |
 | Status | in production across 100+ devices since 2023 |
 
 ```
 host                                   device
- │   { 01 AA 00 D0 CC 00 … }            │   READ 204 registers at 0xD000
- ├─────────────────────────────────────►│
- │   { 01 AB 00 D0 CC 00 <204 B> … }    │   the device's entire state, one reply
- ◄─────────────────────────────────────┤
+ |   { 01 AA 00 D0 CC 00 ... }          |   READ 204 registers at 0xD000
+ +------------------------------------->|
+ |   { 01 AB 00 D0 CC 00 <204 B> ... }  |   the device's entire state, one reply
+ <-------------------------------------+
 ```
 
 ---
@@ -27,26 +28,28 @@ host                                   device
 ## Contents
 
 1. [Why it exists](#why-it-exists)
-2. [Quick start](#quick-start)
-3. [Frame](#frame)
-4. [Function codes](#function-codes)
-5. [CRC](#crc)
-6. [Register model](#register-model)
-7. [Reserved bank — 0xA000](#reserved-bank--0xa000)
-8. [Messages](#messages)
-9. [Errors](#errors)
-10. [Broadcast](#broadcast)
-11. [Framing on a byte stream](#framing-on-a-byte-stream)
-12. [Test vectors](#test-vectors)
-13. [Device API](#device-api)
-14. [Adding a device](#adding-a-device)
-15. [Host implementation](#host-implementation)
-16. [Fast EVRe](#fast-evre)
-17. [Patterns](#patterns)
-18. [Pitfalls](#pitfalls)
-19. [Conformance checklist](#conformance-checklist)
-20. [Build options](#build-options)
-21. [Roadmap — v2](#roadmap--v2)
+2. [Layers: EVRe and EVRe Guard](#layers-evre-and-evre-guard)
+3. [Quick start](#quick-start)
+4. [Frame](#frame)
+5. [Function codes](#function-codes)
+6. [CRC](#crc)
+7. [Register model](#register-model)
+8. [Reserved bank — 0xA000](#reserved-bank--0xa000)
+9. [Messages](#messages)
+10. [Errors](#errors)
+11. [Broadcast](#broadcast)
+12. [Framing on a byte stream](#framing-on-a-byte-stream)
+13. [Test vectors](#test-vectors)
+14. [Device API](#device-api)
+15. [Adding a device](#adding-a-device)
+16. [Host implementation](#host-implementation)
+17. [Fast EVRe](#fast-evre)
+18. [Patterns](#patterns)
+19. [Pitfalls](#pitfalls)
+20. [Conformance checklist](#conformance-checklist)
+21. [Build options](#build-options)
+22. [Migrating from 1.0](#migrating-from-10)
+23. [Roadmap — v2](#roadmap--v2)
 
 ---
 
@@ -74,6 +77,44 @@ CRC, so the *same bytes* work on every link. There is no RTU/ASCII/TCP split.
 
 ---
 
+## Layers: EVRe and EVRe Guard
+
+EVRe is a **transport**: it moves bytes between a host and a device's address
+space and never asks what they mean. A float, a setting, a token: to EVRe they
+are bytes at an address. Meaning lives in the layer above, which a device uses
+or not; the protocol is the same either way.
+
+```
++---------------------------------------------------------------+
+| the map (evre-map/1): what each register is - names, types,   |
+|   units, limits, value names, fields, login. For the tools.   |
++---------------------------------------------------------------+
+| EVRe Guard (optional, in the device): who may read and write  |
+|   part 1: login with a token, lockout against brute force,    |
+|           idle logout                                         |
+|   part 2: register checks, a const table made from the map:   |
+|           size, type, raw limits, the values that always pass |
++-------------------------------+-------------------------------+
+                                |  bytes up, a verdict down
+                                |  (READ_HANDLER, WRITE_HANDLER)
++-------------------------------v-------------------------------+
+| EVRe: frames, CRC, slave, READ / WRITE / ACK / ERROR, the     |
+|   reserved bank, messages, an address space of readable and   |
+|   writable bytes (a pointer table or ranges)                  |
++---------------------------------------------------------------+
+```
+
+The rule for every change: **nothing that interprets data goes into EVRe.**
+The library may learn *where* bytes are and *whether* they may be read or
+written; *what they are* belongs to EVRe Guard, the map, or the device. The
+library even reserves codes for the layer above, `LOGIN_REQUIRED` and
+`VALUE_REFUSED`, without knowing what a login or a limit is: only a handler
+returns them. It tells a handler which
+frame it runs for (`RX_SLAVE_ID`, library 1.1: a broadcast or not), because
+that is framing, not meaning.
+
+---
+
 ## Quick start
 
 **Device side** — three calls:
@@ -81,14 +122,14 @@ CRC, so the *same bytes* work on every link. There is no RTU/ASCII/TCP split.
 ```c
 #include "EVRe.h"
 
-base_t dev;
+evre_base_t dev;
 
-uint8_t protocolConfigure(base_t *d) {      /* override the weak default */
+uint8_t protocolConfigure(evre_base_t *d) {      /* override the weak default: exactly this signature */
     d->SALVE_ID_REG = 1;
     d->DEVICE_ID    = 0x2001;
     d->DEVICE_REG_READ_MAX  = 0xD0EC;
     d->DEVICE_REG_WRITE_MIN = 0xD0CC;
-    d->D000 = new uint8_t*[(d->DEVICE_REG_READ_MAX + 1) & 0x0FFF];
+    d->D000 = new uint8_t*[d->DEVICE_REG_READ_MAX - 0xD000 + 1];   /* entry k: 0xD000 + k */
     uint8_t *p = (uint8_t *) &my_registers;                  /* a packed struct */
     for (uint16_t i = 0; i < sizeof(my_registers); ++i) d->D000[i] = &p[i];
     return NO_ERROR;
@@ -103,7 +144,7 @@ if (len) transmit(txBuf, len);               /* reply, or an error frame */
 ```
 
 **Host side** — see [Host implementation](#host-implementation) for a complete
-Python client in ~40 lines.
+Python client in ~80 lines.
 
 ---
 
@@ -119,14 +160,41 @@ Python client in ~40 lines.
 | `1` | **Slave ID** — `0` is [broadcast](#broadcast) |
 | `2` | **Function code** |
 | `3..4` | **Register offset**, little endian |
-| `5..6` | **Number of registers**, little endian |
-| `7 …` | **Data**, *n* = number of registers |
+| `5..6` | **Number of registers** (`REG_CNT`), little endian |
+| `7 …` | **Data**, *n* bytes (below) |
 | `len-3` | **CRC** low byte |
 | `len-2` | **CRC** high byte |
 | `len-1` | **End** — `0x7D` (`}`) |
 
-`len = 10 + n`. Smallest frame is **10 bytes**. Every multi-byte field is
-**little endian**, on the wire and in the registers.
+`len = 10 + n`. The number of data bytes *n* comes from the function code, not
+from the number of registers alone:
+
+| Function | *n* | Frame&nbsp;length | The number of registers is |
+|---|---|---|---|
+| `READ` | 0 | 10 | the count asked for |
+| `READ_RESP`,&nbsp;`WRITE`,&nbsp;`WRITE_ACK` | `REG_CNT` | 10&nbsp;+&nbsp;`REG_CNT` | the count of data bytes |
+| `WRITE_ACK_RESP` | 0 | 10 | the write's count, echoed |
+| `ERROR_RESP` | 1 | 11 | the request's count, echoed |
+
+Smallest frame is **10 bytes**. A frame of a function code the library
+decodes, at any other length, is refused with code 12; an unknown code or an
+`ERROR_RESP` is code 2 whatever its length. One under 10 bytes is dropped as a
+bad frame (code 1). A framer that expects `10 + REG_CNT` bytes for every frame
+waits for bytes that never come after a `READ`, a `WRITE_ACK_RESP` or an
+`ERROR_RESP`.
+
+Every multi-byte field is **little endian**, on the wire and in the registers.
+The library builds the header and the CRC byte by byte, so they are little
+endian on any CPU; the registers it sends as they lie in memory (see
+[Build options](#build-options), porting).
+
+**A count of 0** is a valid request. `READ` x0 is answered with a 10-byte
+`READ_RESP` and `WRITE_ACK` x0 with a `WRITE_ACK_RESP`. The offset is still
+checked (`READ 0xA106` x0 is code 4), the handlers are asked, `HEARTBEAT` is
+set, and nothing is stored: a write of no bytes at `MSG_CNT` does not clear
+the queue. With `ACCEPT_BROADCAST_D000` 0, the default, a broadcast of no
+bytes into the device bank is refused like any other
+([Broadcast](#broadcast)); with 1 it is taken, as a unicast one is.
 
 The delimiters are `{` and `}` deliberately: a frame is recognisable at a
 glance in a terminal or a logic-analyser dump.
@@ -139,22 +207,22 @@ glance in a terminal or a logic-analyser dump.
 |---|---|---|---|---|
 | `0xAA` | `READ` | →&nbsp;slave | none | `READ_RESP` |
 | `0xAB` | `READ_RESP` | →&nbsp;master | *n*&nbsp;bytes | — |
-| `0xEA` | `WRITE` | →&nbsp;slave | *n*&nbsp;bytes | *nothing* |
+| `0xEA` | `WRITE` | →&nbsp;slave | *n*&nbsp;bytes | *nothing* (`ERROR_RESP` if refused) |
 | `0xEB` | `WRITE_ACK` | →&nbsp;slave | *n*&nbsp;bytes | `WRITE_ACK_RESP` |
 | `0xEC` | `WRITE_ACK_RESP` | →&nbsp;master | none | — |
 | `0xEE` | `ERROR_RESP` | →&nbsp;master | 1&nbsp;byte | — |
 
 ```
-READ        →  ├── READ  ──────────►│
-               │◄── READ_RESP ──────┤
+READ        >  +-- READ  ---------->|
+               |<-- READ_RESP ------+
 
-WRITE       →  ├── WRITE ──────────►│      (nothing comes back)
+WRITE       >  +-- WRITE ---------->|      (nothing comes back)
 
-WRITE_ACK   →  ├── WRITE_ACK ──────►│
-               │◄── WRITE_ACK_RESP ─┤
+WRITE_ACK   >  +-- WRITE_ACK ------>|
+               |<-- WRITE_ACK_RESP -+
 
-rejected    →  ├── anything ───────►│
-               │◄── ERROR_RESP ─────┤
+rejected    >  +-- anything ------->|
+               |<-- ERROR_RESP -----+
 ```
 
 `WRITE` is fire-and-forget: use it for high-rate set points where a lost
@@ -167,6 +235,19 @@ frame arrived with a valid CRC and was applied; a rejected write answers with
 
 `READ_RESP` may also be *sent* by a device that was not asked — that is how
 unsolicited streaming works.
+
+**Responses are for the host** (library 1.1). A device refuses a `READ_RESP`
+or a `WRITE_ACK_RESP` sent to it (code 2) and does not answer, so a host cannot
+overwrite registers with a `READ_RESP`, the read-only ones included. A host
+that decodes a device's answers into a copy of it sets `ACCEPT_READ_RESP` on
+that copy: see [A host's mirror](#a-hosts-mirror-library-11). The library
+decodes no `ERROR_RESP` (code 2, silent), a mirror's included: a host reads its
+code byte, `DATAx(0)`, itself.
+
+A broadcast (slave 0) is built for `WRITE` only: `encodePacket` refuses any
+other function with code 2 (library 1.1), since every device would refuse it.
+A broadcast `WRITE` into the device bank is built all the same: the encoder
+cannot know which devices take one ([Broadcast](#broadcast)).
 
 ---
 
@@ -225,9 +306,12 @@ Two banks, selected by the **top nibble** of the address:
 | Bank | Range | Contents |
 |---|---|---|
 | `0xA000` | `0xA000`&nbsp;–&nbsp;`0xA105` | Reserved — identical on every EVRe device |
-| `0xD000` | `0xD000`&nbsp;–&nbsp;device&nbsp;max | Device registers |
+| `0xD000` | `0xD000`&nbsp;–&nbsp;device&nbsp;max&nbsp;(`0xDFFF`&nbsp;at&nbsp;most) | Device registers |
 
-Any other address is rejected. A request may **not cross a bank boundary**.
+Any other address is rejected with code 3, for a read as well as a write
+(library 1.1; before it, a write there was acknowledged and dropped). A request
+may **not cross a bank boundary**: it belongs to the bank of its first
+register, and one that runs past that bank's end gets code 5.
 
 ### Permissions
 
@@ -238,12 +322,43 @@ readable:  bank start        .. REG_READ_MAX
 writable:  REG_WRITE_MIN     .. REG_READ_MAX
 ```
 
+| Bank | `REG_READ_MAX` | `REG_WRITE_MIN` | A write ends at |
+|---|---|---|---|
+| `0xA000` | `0xA105` | `0xA004`&nbsp;(`CONFIG`) | the last queued message, `0xA006 + MSG_CNT` |
+| `0xD000` | `DEVICE_REG_READ_MAX` (above `0xDFFF` taken as `0xDFFF`, library 1.1) | `DEVICE_REG_WRITE_MIN` (0 by default: the whole bank writable) | `DEVICE_REG_READ_MAX` |
+
 So a device's map is laid out **read-only first, then read-write**. This is
 not a limitation to work around — it is what lets a host read the entire
 read-only block, whatever mixture of types it contains, in one request.
 
-A write starting below the boundary is refused **in its entirety**, even if
-part of the range would have been writable.
+A request is judged by its start first, then by its end:
+
+- a read that starts outside the readable area gets code 4;
+- a write that starts outside the writable area gets code 3, and is refused
+  **in its entirety**, even if part of the range would have been writable;
+- either one that runs past the end gets code 5.
+
+### Ranges (library 1.1)
+
+A device can describe its bank as a few **ranges** instead of a pointer per
+byte: each range is a run of addresses served from one block of memory, and is
+read-only or read-write.
+
+```c
+typedef struct evre_range { uint16_t start, len; uint8_t *base; uint8_t writable; } evre_range_t;
+```
+
+The same rules apply range by range. A read may cross adjacent ranges, but not
+a gap: code 4 if it starts in no range, 5 if it runs into a gap or past the
+last range. A write gets code 3 if it starts in no range or touches a read-only
+range, and 5 if it runs into a gap or past the last range (a read-only range
+before the gap is judged first). Nothing is stored in either case. With the two
+ranges `[0xD000, REG_WRITE_MIN)` read-only and `[REG_WRITE_MIN, REG_READ_MAX]`
+read-write a device answers exactly as with the pointer table. Nothing changes
+on the wire: a host cannot tell which one a device uses.
+
+Read-only first, read-write after is still the layout to prefer: it keeps the
+whole state readable, and every setting writable, in one request each.
 
 ---
 
@@ -255,7 +370,11 @@ part of the range would have been writable.
 | `0xA002` | `STATUS` | R | 2 |
 | `0xA004` | `CONFIG` | RW | 2 |
 | `0xA006` | `MSG_CNT` | RW | 1 |
-| `0xA007` | `MSG_BUFFER` | RW | 255 |
+| `0xA007` | `MSG_BUFFER` | RW,&nbsp;up&nbsp;to&nbsp;`MSG_CNT` | 255 |
+
+The five lie one after the other in `evre_base_t`, and the library reads and
+writes them in place (library 1.1). A write to `MSG_CNT` or `MSG_BUFFER` is an
+act, not data: see [Messages](#messages).
 
 ### STATUS — protocol revision and capabilities
 
@@ -265,11 +384,31 @@ Read it once and you know what the device supports, instead of assuming:
 |---|---|
 | `[7:0]` | protocol revision (`1`) |
 | `[8]` | `CAP_ERROR_FRAME` — answers rejects with `ERROR_RESP` |
-| `[9]` | `CAP_BROADCAST` — accepts slave 0 |
+| `[9]` | `CAP_BROADCAST` — accepts slave 0 (for `WRITE`; into the device bank only with bit 14) |
 | `[10]` | `CAP_MSG` — message queue implemented |
 | `[11]` | `CAP_AUTO_SEND` — periodic unsolicited frames |
 | `[12]` | `CAP_DFU` — firmware update entry |
 | `[13]` | `CAP_STATIC` — no-heap entry points available |
+| `[14]` | `CAP_BROADCAST_D000` — the device bank takes a broadcast `WRITE` (library 1.1, see [Broadcast](#broadcast); a host's mirror serves the bit its device reported) |
+
+`protocolInit()` sets `[7:0]` and bits 8, 9, 10 and 13 (`0x2701`). A device
+adds bits 11 and 12 in `protocolConfigure()` for what it implements (the device
+of the [test vectors](#test-vectors) reports `0x3F01`).
+
+Bit 14 is the library's (library 1.1). Each time `STATUS`'s high byte goes
+out, in a `READ` answered or in a `READ_RESP` the device builds from its
+registers, the library sets the bit exactly when `ACCEPT_BROADCAST_D000` is
+1, whatever the field held, and writes the field to match. So a device may
+change the setting at any time. With it, a device reports `0x6701` from its
+first read of `STATUS` (the test-vector device `0x7F01`). Until `STATUS` next
+goes out, the field itself may still hold the old bit.
+
+A host's mirror (`ACCEPT_READ_RESP` 1) is the exception: the library never
+refreshes its bit 14. Its `STATUS` is its device's, bit 14 included, as the
+last `READ_RESP` stored it, and a `READ` the mirror answers and a `READ_RESP`
+it builds carry that bit, whatever the mirror's own `ACCEPT_BROADCAST_D000`
+says. Before the first `READ_RESP` of `STATUS` it holds what `protocolInit()`
+left there ([A host's mirror](#a-hosts-mirror-library-11)).
 
 This is what lets one host library talk to a mixed fleet: a device without DFU
 simply reports the bit clear. **Read `STATUS` before using any optional
@@ -281,11 +420,25 @@ feature.**
 |---|---|---|---|---|---|---|
 | AUTO_SEND&nbsp;prescaler | — | `DFU` | `AUTO_SEND` | `MSG_ENABLE` | `SYS_RESET` | `HEARTBEAT` |
 
-- **`HEARTBEAT`** is set by the *device* on every accepted packet. Read it to
-  confirm the link is alive.
+The library stores what a host writes to `CONFIG` and sets `HEARTBEAT`. It
+writes no other bit and acts on none: the rest are the device's to read and
+act on. `protocolInit()` does not touch `CONFIG`: it is 0 until the device or a
+host writes it.
+
+- **`HEARTBEAT`** is set by the library for every accepted request: a `READ`,
+  a `WRITE` (a broadcast one too) or a `WRITE_ACK`, a write the handler took
+  itself (`EVRE_HANDLED`) included. It is set last, after the answer is built:
+  a `READ` of `CONFIG` shows it as it was before that `READ`, and a write to
+  `CONFIG` cannot clear it, so a host cannot clear it at all. The device's
+  application clears it. A refused frame does not set it (a `READ` refused
+  only because its answer does not fit included), the encoder never does, and
+  neither does a response a mirror takes (library 1.1), so a mirror's `CONFIG`
+  is the device's, bit 0 too. Read it to confirm the link is alive.
 - **`SYS_RESET`**, **`DFU`** — device actions, if advertised in `STATUS`.
-- **`MSG_ENABLE`** — enables the message queue.
-- **`AUTO_SEND`** — periodic unsolicited `READ_RESP` of the read-only block.
+- **`MSG_ENABLE`** — enables the message queue. The device checks it before it
+  calls `addMsg()`; the library queues either way.
+- **`AUTO_SEND`** — periodic unsolicited `READ_RESP` of the read-only block,
+  which the device builds with `encodePacketInto()` from its own registers.
 
 ```
 Freq = 8000 / (prescaler + 1)        prescaler = 8000 / Freq - 1
@@ -302,8 +455,10 @@ rates are 4000 Hz (prescaler 1) down to 40 Hz (`0xC7`). A device that receives
 | `0x09` | `0x0908` | 800 Hz |
 | `0x13` | `0x1308` | 400 Hz |
 | `0x27` | `0x2708` | 200 Hz |
-| `0x4F` | `0x4F08` | 100 Hz (default) |
+| `0x4F` | `0x4F08` | 100 Hz (a common default) |
 | `0xC7` | `0xC708` | 40 Hz |
+
+The default prescaler is the device's to set.
 
 Measured on an STM32H750 at 100 / 200 / 40 Hz commanded: **100.16 / 199.87 /
 39.98 Hz**.
@@ -312,16 +467,40 @@ Measured on an STM32H750 at 100 / 200 / 40 Hz commanded: **100.16 / 199.87 /
 
 ## Messages
 
-A device-to-host event queue: up to 255 one-byte codes. Enabled by
-`CONFIG.MSG_ENABLE`.
+A device-to-host event queue: up to 255 one-byte codes, `1` to `0xFF`. The
+device queues them with `addMsg()` while `CONFIG.MSG_ENABLE` is set.
 
 - `MSG_CNT` — how many are queued.
-- `MSG_BUFFER[0 .. MSG_CNT-1]` — the codes.
-- Writing **any** value to `MSG_CNT` clears the queue.
+- `MSG_BUFFER[0 .. MSG_CNT-1]` — the codes; `0` marks an empty slot. Past
+  `MSG_CNT` the buffer reads `0` (library 1.1: an ack or a clear zeroes what it
+  frees), so a host that reads the whole buffer never sees a code again that is
+  already gone.
+- Writing **any** value to `MSG_CNT` clears the queue. The handlers of the
+  messages it discards do **not** run: `MSG_ACK_HANDLER[0]` runs instead,
+  once, and finds the queue already empty.
 - Writing to `MSG_BUFFER[i]` **acknowledges** message *i*: the device runs its
-  handler, removes it and compacts the buffer.
+  handler (`MSG_ACK_HANDLER[code]`, one slot for every code, `0xFF` included,
+  library 1.1), removes it and compacts the buffer. The value written does not
+  matter. An index at or past `MSG_CNT` is refused (code 5).
+- **A write that covers `MSG_CNT` is a clear, and nothing more** (library
+  1.1). The slots lie after `MSG_CNT`, so the rest of such a write is slot
+  bytes, and they do nothing: no ack handler runs and no slot changes. The
+  write acts exactly as `MSG_CNT` alone: `MSG_ACK_HANDLER[0]` runs once, and a
+  message it queues is kept. `CONFIG` bytes before `MSG_CNT` in the same write
+  are stored as usual. The write is still checked first, up to the last queued
+  message (code 5 past it), and a write that fails does nothing. (1.0 went on
+  and acknowledged the slots. The clear left the old codes in the buffer, so
+  the handlers of the messages it had just discarded ran after all, and a
+  message that `MSG_ACK_HANDLER[0]` had just queued was acknowledged before
+  any host saw it.)
+- The handlers run where the decoder runs, often an interrupt: keep them short.
+  One may queue a message itself; it is kept (if there is room: a full queue
+  is compacted only after the acks). `protocolInit()` clears all 256, so a
+  device sets them in `protocolConfigure()` or after `protocolInit()`.
 
-The codes themselves are device-specific; the mechanism is not.
+The codes themselves are device-specific; the mechanism is not. The queue has
+two writers, `addMsg()` and the decoder: [Message API](#message-api) says how
+they share it.
 
 **The invariant that matters:**
 
@@ -334,7 +513,7 @@ means index order matters:
 
 | Intent | How | |
 |---|---|---|
-| Ack&nbsp;everything | one&nbsp;write&nbsp;to&nbsp;`MSG_CNT` | ✔ |
+| Ack&nbsp;everything | one&nbsp;write&nbsp;to&nbsp;`MSG_CNT` | ✔ — `MSG_ACK_HANDLER[0]` runs, not the per-message handlers |
 | Ack&nbsp;a&nbsp;contiguous&nbsp;run | **one**&nbsp;write&nbsp;covering&nbsp;the&nbsp;range | ✔ — the device marks all, then compacts once |
 | Ack&nbsp;selectively | separate writes, **highest index first** | ✔ |
 | Ack&nbsp;selectively | separate writes, lowest index first | ✘ — indices shift under you |
@@ -345,7 +524,7 @@ The failing case, starting from `[0x02, 0x04, 0x0A]`:
 |---|---|
 | index&nbsp;0 | acks `0x02`, compacts → `[0x04, 0x0A]` |
 | index&nbsp;1 | index 1 is now `0x0A` — **wrong message acked** |
-| index&nbsp;2 | beyond `MSG_CNT` — refused |
+| index&nbsp;2 | beyond `MSG_CNT` — refused (code 5) |
 
 `0x04` is never acked and the host believes it was. Going high-to-low is
 always correct.
@@ -355,38 +534,96 @@ always correct.
 ## Errors
 
 A rejected request is answered with `ERROR_RESP` (`0xEE`), echoing the offset
-and count of the request plus one error byte:
+and count of the request plus one error byte. It is always 11 bytes:
 
 ```
 7B  <slave>  EE  <off_lo> <off_hi>  <cnt_lo> <cnt_hi>  <err>  <crc_lo> <crc_hi>  7D
 ```
 
-| Code | Name | Meaning |
-|---|---|---|
-| 0 | `NO_ERROR` | — |
-| 1 | `INVALID_PACKET_ERR` | CRC mismatch |
-| 2 | `FUNCTION_CODE_ERR` | unknown function code |
-| 3 | `PERMISSION_DENIED` | write below `REG_WRITE_MIN`, or unknown bank |
-| 4 | `REG_OFFSET_OUT_OF_RANGE` | start address outside the bank |
-| 5 | `REG_CNT_OUT_OF_RANGE` | `offset + count - 1` past the bank maximum |
-| 6 | `MEM_ALLOCATION_FAILED` | response buffer could not be allocated |
-| 7 | `SLAVE_ID_MISMATCHED` | addressed to another slave |
-| 8 | `MSG_BUFFER_FULL` | message queue full |
-| 9 | `MSG_NULL` | attempt to queue message value 0 |
-| 10 | `INSTANCE_IS_NULL` | internal |
-| 11 | `BUFFER_TOO_SMALL` | caller's buffer too small for the response |
-| 12 | `LENGTH_MISMATCH` | received length does not match the declared `REG_CNT` |
+| Code | Name | Meaning | On the wire |
+|---|---|---|---|
+| 0 | `NO_ERROR` | — | — |
+| 1 | `INVALID_PACKET_ERR` | a bad frame: none at all, under 10 bytes, a wrong start (`0x7B`) or end (`0x7D`) byte (library 1.1), a CRC mismatch | never from the library (it is silent); a handler's 1 is sent (1.1) |
+| 2 | `FUNCTION_CODE_ERR` | a function code the library does not decode, whatever the frame's length (1.1), `ERROR_RESP` included; a `READ_RESP` or `WRITE_ACK_RESP` sent to a device (1.1); a broadcast of anything but `WRITE`. From the encoder: any function but `READ`, `READ_RESP`, `WRITE` and `WRITE_ACK`, or a broadcast of anything but `WRITE` (1.1) | yes, for an unknown code |
+| 3 | `PERMISSION_DENIED` | a request to an unknown bank; a write that starts outside the writable area (below `REG_WRITE_MIN`, past `REG_READ_MAX`, in no range) or touches a read-only range; a broadcast into the device bank without `ACCEPT_BROADCAST_D000` (1.1); a handler's refusal (EVRe Guard: a failed login, a login by broadcast) | yes |
+| 4 | `REG_OFFSET_OUT_OF_RANGE` | a read (or a mirror's `READ_RESP`) that starts outside the readable area: past `REG_READ_MAX`, or in no range | yes |
+| 5 | `REG_CNT_OUT_OF_RANGE` | a request that starts well and runs past the end: `offset + count - 1` past `REG_READ_MAX`, into a gap or past the last range; a write to the reserved bank past the last queued message (`0xA006 + MSG_CNT`) | yes |
+| 6 | `MEM_ALLOCATION_FAILED` | `decodePacket` or `encodePacket` could not allocate (`decodePacket`: not even 11 bytes) | never |
+| 7 | `SLAVE_ID_MISMATCHED` | another&nbsp;slave's&nbsp;frame | never from the library (it is silent); a handler's 7 is sent (1.1) |
+| 8 | `MSG_BUFFER_FULL` | `addMsg`:&nbsp;255&nbsp;messages&nbsp;queued | never |
+| 9 | `MSG_NULL` | `addMsg`: the code 0, which marks an empty slot | never |
+| 10 | `INSTANCE_IS_NULL` | no&nbsp;device&nbsp;(a&nbsp;null&nbsp;`evre_base_t *`) | never |
+| 11 | `BUFFER_TOO_SMALL` | the caller's buffer cannot hold the answer: the `READ_RESP` or the `WRITE_ACK_RESP` (`decodePacketInto`), the frame (`encodePacketInto`) | yes, for a `READ` whose answer does not fit when 11 bytes do |
+| 12 | `LENGTH_MISMATCH` | a frame of a function code the library decodes is not 10 + *n* bytes, *n* from its function code ([Frame](#frame)) | yes |
+| 13 | `LOGIN_REQUIRED` | the device's access layer needs a login first: log in and retry (1.1). The library only reserves the code: a handler returns it (EVRe Guard, while no session is open) | from a handler |
+| 14 | `RANGE_TABLE_INVALID` | `protocolInit()`: the range table is not valid, and `protocolConfigure()` did not fail (its own code comes first) (1.1) | never |
+| 15 | `VALUE_REFUSED` | the device's layer above did not take a value; nothing was stored: outside the register's limits or its closed set, a bit set that must be 0, NaN or an infinity (EVRe Guard's register checks). The library only reserves the code: a handler returns it | from a handler |
 
-**Three cases stay silent, deliberately:**
+"Yes" means in an `ERROR_RESP`, under the rules of
+[When a device is silent](#when-a-device-is-silent) below. A handler may return
+any code, and it goes out as it is. Every value is fixed: the codes are in
+other programs' tables. A new code is appended, below `0xFF`.
 
-| Case | Why |
+### The order of the checks
+
+A frame that is wrong in two ways gets the code of the first check it fails.
+The order is part of the protocol:
+
+| # | Check | Code | Answered |
+|---|---|---|---|
+| 1 | a&nbsp;device&nbsp;(`evre_base_t *`&nbsp;not&nbsp;null) | 10 | no |
+| 2 | a frame, 10 bytes or more, start `0x7B` and end `0x7D` (1.1), then the CRC | 1 | no |
+| 3 | the slave id is 0 (broadcast) or ours | 7 | no |
+| 4 | a&nbsp;broadcast&nbsp;is&nbsp;a&nbsp;`WRITE` | 2 | no |
+| 5 | a function code the library decodes: `READ`, `WRITE`, `WRITE_ACK`, `READ_RESP`, `WRITE_ACK_RESP` (1.1: before the length) | 2 | yes; an `ERROR_RESP`, no |
+| 6 | the&nbsp;length&nbsp;is&nbsp;10&nbsp;+&nbsp;*n* | 12 | yes; a response, no |
+| 7 | the&nbsp;function's&nbsp;own&nbsp;checks,&nbsp;below | 2&nbsp;to&nbsp;5,&nbsp;11,&nbsp;a&nbsp;handler's | yes, unless a broadcast or a response |
+
+The function's own checks, in order:
+
+| Function | Checks, then what is done |
 |---|---|
-| CRC&nbsp;mismatch | If the CRC is bad, the slave-ID field cannot be trusted either. Answering could put several slaves on the bus at once. |
-| Slave&nbsp;ID&nbsp;mismatch | It was never ours to answer. |
-| The request was itself a response | Two devices trading `ERROR_RESP` would never stop. |
+| `READ` | the bank (3), the start (4), the end (5); room for the answer (11); the read handler. Then the answer is built. |
+| `WRITE`,&nbsp;`WRITE_ACK` | for a broadcast into the device bank, `ACCEPT_BROADCAST_D000` (3, 1.1); the bank (3), the start (3), the end (5); for a `WRITE_ACK`, room for the ack (11: silent, since no `ERROR_RESP` fits either); the write handler. Then the data are stored, and then a `WRITE_ACK` is answered. |
+| `READ_RESP` | `ACCEPT_READ_RESP` (2); the bank (3), the start (4), the end (5); the write handler. Then the bytes are copied. |
+| `WRITE_ACK_RESP` | `ACCEPT_READ_RESP` (2); the bank (3). Nothing is stored and no handler is asked. |
 
-So a host that times out is looking at a CRC error, a wrong address, or a dead
-link — and anything else names itself.
+Last, for an accepted `READ`, `WRITE` or `WRITE_ACK`, `HEARTBEAT` is set.
+
+So the CRC comes before the slave id: a damaged frame for another slave is
+code 1, not 7. The function code comes before the length (library 1.1): an
+unknown code is 2 whatever its size. The broadcast rule comes before the
+bank's limits (library 1.1): a broadcast `WRITE` of the right length into the
+device bank of a device with `ACCEPT_BROADCAST_D000` 0 is 3 whatever its
+offset and count, 0 bytes too, and no handler hears of it. And the room comes
+before the handler (library 1.1): a handler acts only on a frame that can be
+answered.
+
+### When a device is silent
+
+Silence is decided by the frame, never by the error code (library 1.1). A
+device does not answer:
+
+| Case | Code | Why |
+|---|---|---|
+| A bad frame: none at all, under 10 bytes, a wrong start or end byte, a CRC mismatch | 1 | If the frame is bad, the slave-ID field cannot be trusted either. Answering could put several slaves on the bus at once. |
+| Slave&nbsp;ID&nbsp;mismatch | 7 | It was never ours to answer. |
+| A&nbsp;broadcast,&nbsp;accepted&nbsp;or&nbsp;refused | any | Every slave heard it. |
+| A response (`READ_RESP`, `WRITE_ACK_RESP`, `ERROR_RESP`), taken or refused | any | Two devices trading `ERROR_RESP` would never stop. |
+| An&nbsp;accepted&nbsp;`WRITE` | 0 | Fire-and-forget. |
+
+Every other refusal is answered with its code, a handler's included, whatever
+code the handler returns (1 and 7 too, library 1.1). Two more silences are the
+device's own, not the frame's:
+
+- its transmit buffer holds less than the 11 bytes of an `ERROR_RESP`;
+- `decodePacket` finds not even 11 bytes of heap: it returns
+  `MEM_ALLOCATION_FAILED` and decodes nothing, so a `WRITE` in that frame is
+  lost.
+
+So a host that times out is looking at a bad frame, a wrong address, a
+broadcast, a device out of memory, or a dead link — and anything else names
+itself.
 
 ---
 
@@ -394,18 +631,53 @@ link — and anything else names itself.
 
 **Slave ID `0` addresses every slave.** No slave answers it, so only `WRITE`
 is accepted; `READ` and `WRITE_ACK` would make every device transmit at once.
-`0` must never be used as a real device address.
+`0` must never be used as a real device address: a device left at
+`SALVE_ID_REG` 0 hears only broadcasts, and answers nothing.
 
-Useful for a synchronised set point across several boards in one frame, or a
-single stop command that reaches every device in the same millisecond instead
-of N sequential round-trips.
+**By default a broadcast reaches the reserved bank only** (library 1.1):
+`CONFIG`, the queue's clear and its acks. A broadcast `WRITE` into the device
+bank (`0xD000`..`0xDFFF`) is refused with code 3, whatever its count, 0 bytes
+too: before the bank's limits are checked, before a handler is asked, before
+a byte is stored. It is silent, as every broadcast is. The reason: anyone on
+the link can send one, and every device obeys it at once.
+
+A device whose bank must take broadcasts sets **`ACCEPT_BROADCAST_D000 = 1`**,
+at any time. Its device bank then takes a broadcast `WRITE` as 1.0 did, under
+the same checks as a unicast one. That is what a broadcast is for: a
+synchronised set point across several boards in one frame, or a single stop
+command that reaches every device in the same millisecond instead of N
+sequential round-trips. Code that builds against 1.0 and 1.1 alike:
+
+```c
+#if defined(EVRE_LIB_VERSION) && EVRE_LIB_VERSION >= 0x0101
+    dev.ACCEPT_BROADCAST_D000 = 1;
+#endif
+```
+
+A host tells the two kinds of device apart by `STATUS` bit 14,
+`CAP_BROADCAST_D000`: the library sets it exactly when the device bank takes
+a broadcast ([STATUS](#status--protocol-revision-and-capabilities)). A host's
+mirror keeps the bit its device reported and passes it on as it is: the
+mirror's own `ACCEPT_BROADCAST_D000` never changes it
+([A host's mirror](#a-hosts-mirror-library-11)). The encoder builds a
+broadcast `WRITE` into the device bank either way: it cannot know the setting
+of every device that hears it.
+
+While a handler runs, `RX_SLAVE_ID` holds the frame's slave id, `BROADCAST_ID`
+(0) for a broadcast (library 1.1). EVRe Guard uses it: it never takes a login
+by broadcast ([EVRe Guard](#evre-guard-library-11)).
+
+A broadcast is never answered, accepted or refused: a host that must know it
+landed reads it back from each device.
 
 ---
 
 ## Framing on a byte stream
 
 On a packet link (USB, framed SPI) one frame is one transfer and there is
-nothing to do.
+nothing to do: the library checks the start and end bytes itself (1.1), and
+drops a frame with a wrong one as it drops a bad CRC. Two frames in one
+transfer are both dropped: the CRC is checked at the end of the transfer.
 
 On a raw byte stream, **frame by length, never by scanning for `0x7D`.** The
 delimiters are not escaped, and `0x7B`/`0x7D` occur inside ordinary float data
@@ -413,11 +685,18 @@ all the time. The header gives you the length:
 
 ```
 1. scan forward for 0x7B
-2. read bytes 5..6 -> REG_CNT; expected length = 10 + REG_CNT
+2. read bytes 2 and 5..6 -> FN_CODE, REG_CNT
+   expected length = 10 + n, where n = REG_CNT for READ_RESP, WRITE, WRITE_ACK
+                                     n = 1       for ERROR_RESP
+                                     n = 0       for READ, WRITE_ACK_RESP, any other code
 3. check byte[len-1] == 0x7D and verify the CRC over len-3
 4. pass -> frame accepted
    fail -> advance ONE byte past that 0x7B and go to 1
 ```
+
+A device's framer only sees requests (`READ` 10 bytes, `WRITE` and
+`WRITE_ACK` 10 + `REG_CNT`); a host's only answers (`READ_RESP` 10 +
+`REG_CNT`, `WRITE_ACK_RESP` 10, `ERROR_RESP` 11).
 
 This resynchronises after any corruption, and keeps the delimiters doing what
 they are good at: making frames visible to a human.
@@ -428,6 +707,12 @@ they are good at: making frames visible to a human.
 
 Real frames, slave 1, CRCs computed with the algorithm above. Use them to
 validate a new implementation before touching hardware.
+
+The answers are those of this device: `DEVICE_ID` `0x2001`; `STATUS`
+`0x3F01` (the library's `0x2701` with `CAP_AUTO_SEND` and `CAP_DFU`;
+`ACCEPT_BROADCAST_D000` left at 0);
+`0xD000..0xD00F` read-only, with the float `12.5` at `0xD000`;
+`0xD010..0xD01F` read-write; three messages queued before #13.
 
 | # | Meaning | Bytes |
 |---|---|---|
@@ -440,30 +725,47 @@ validate a new implementation before touching hardware.
 | 7 | `WRITE`&nbsp;`0xD010`&nbsp;×2&nbsp;=&nbsp;`1000` | `7B 01 EA 10 D0 02 00 E8 03 A7 2D 7D` |
 | 8 | `WRITE_ACK`,&nbsp;same | `7B 01 EB 10 D0 02 00 E8 03 72 B2 7D` |
 | 9 | `WRITE_ACK_RESP` | `7B 01 EC 10 D0 02 00 5D CC 7D` |
-| 10 | `ERROR_RESP`, `PERMISSION_DENIED` at `0xD000` | `7B 01 EE 00 D0 01 00 03 3D 18 7D` |
-| 11 | `WRITE_ACK` CONFIG = `0x4F08` (AUTO_SEND 100 Hz) | `7B 01 EB 04 A0 02 00 08 4F 6C 94 7D` |
-| 12 | **Broadcast** `WRITE` `0xD010` ×2 = 0 (slave 0) | `7B 00 EA 10 D0 02 00 00 00 DA B9 7D` |
+| 10 | `ERROR_RESP`, `PERMISSION_DENIED` at `0xD000`: the answer to a `WRITE_ACK` (or a `WRITE`) of `0xD000` ×1 | `7B 01 EE 00 D0 01 00 03 3D 18 7D` |
+| 11 | `WRITE_ACK`&nbsp;CONFIG&nbsp;=&nbsp;`0x4F08`&nbsp;(AUTO_SEND&nbsp;100&nbsp;Hz) | `7B 01 EB 04 A0 02 00 08 4F 6C 94 7D` |
+| 12 | **Broadcast**&nbsp;`WRITE`&nbsp;`0xD010`&nbsp;×2&nbsp;=&nbsp;0&nbsp;(slave&nbsp;0) | `7B 00 EA 10 D0 02 00 00 00 DA B9 7D` |
 | 13 | `READ`&nbsp;MSG_CNT,&nbsp;`0xA006`&nbsp;×1 | `7B 01 AA 06 A0 01 00 6C 14 7D` |
-| 14 | `WRITE_ACK` ack messages 0–2 in one write | `7B 01 EB 07 A0 03 00 00 00 00 C0 F9 7D` |
+| 14 | `WRITE_ACK`&nbsp;ack&nbsp;messages&nbsp;0–2&nbsp;in&nbsp;one&nbsp;write | `7B 01 EB 07 A0 03 00 00 00 00 C0 F9 7D` |
+| 15 | `WRITE_ACK_RESP`&nbsp;to&nbsp;#11 | `7B 01 EC 04 A0 02 00 C8 FD 7D` |
+| 16 | `READ_RESP`&nbsp;to&nbsp;#13&nbsp;→&nbsp;3&nbsp;queued | `7B 01 AB 06 A0 01 00 03 B6 6F 7D` |
+| 17 | `WRITE_ACK_RESP`&nbsp;to&nbsp;#14 | `7B 01 EC 07 A0 03 00 DD C1 7D` |
 
 Note #6: `00 00 48 41` is IEEE-754 `12.5` little endian. Note #14: one write
-covering three indices is the correct way to ack a run.
+covering three indices is the correct way to ack a run. #7 and #12 are not
+answered. #12 is applied only by a device with `ACCEPT_BROADCAST_D000` 1
+(library 1.1), which reports `STATUS` `0x7F01`, not #4's `0x3F01`; the
+device of these vectors refuses it, silently (code 3), and stores nothing.
+The answers (#2, #4, #6, #9, #10, #15 to #17) are the device's decoder's to
+build; the library's encoder builds the requests and a `READ_RESP` from the
+device's own registers, and refuses `WRITE_ACK_RESP` and `ERROR_RESP` (code
+2). Sent to a device, #9 and #10 are refused, silently (code 2).
 
 ---
 
 ## Device API
 
-```c
-uint8_t protocolInit(base_t *device);
-uint8_t protocolConfigure(base_t *device);   /* weak; override per device */
+The device's state is an `evre_base_t` (`struct evre_base`). The 1.0 name
+`base_t` is kept as an alias, and so is the 1.0 spelling `SALVE_ID_REG` (1.1
+adds `SLAVE_ID_REG`, the same byte), so existing code compiles unchanged, but
+for the one name of 1.0 that is gone: the struct tag. Code that writes
+`struct protocol_base` writes `base_t` now (`protocol_base` without `struct`
+still compiles; see [Migrating from 1.0](#migrating-from-10)).
 
-uint8_t decodePacket(base_t *device, uint8_t *PACKET, uint16_t pSize,
+```c
+uint8_t protocolInit(evre_base_t *device);
+uint8_t protocolConfigure(evre_base_t *device);   /* weak; override per device */
+
+uint8_t decodePacket(evre_base_t *device, uint8_t *PACKET, uint16_t pSize,
                      uint8_t **RESPONSE, uint16_t *rSize);
-uint8_t encodePacket(base_t *device, uint8_t slaveId, uint8_t fnCode,
+uint8_t encodePacket(evre_base_t *device, uint8_t slaveId, uint8_t fnCode,
                      uint16_t regOffset, uint16_t regCount, uint8_t *pData,
                      uint8_t **PACKET, uint16_t *pSize);
 
-uint8_t addMsg(base_t *device, uint8_t MSG);
+uint8_t addMsg(evre_base_t *device, uint8_t MSG);
 uint16_t GetCrc16(const uint8_t *pData, int nLength);
 ```
 
@@ -471,22 +773,61 @@ uint16_t GetCrc16(const uint8_t *pData, int nLength);
 (including `ERROR_RESP`). `encodePacket` builds a request, or a `READ_RESP`
 for unsolicited sending. Both allocate; the caller frees.
 
+How much (library 1.1): `decodePacket` allocates 11 bytes, enough for every
+answer but a `READ_RESP`. Only a `READ` that is ours (10 bytes, our slave id,
+good delimiters and CRC) gets 10 + its count, one bank (`0x1000`) at most, so
+line noise or another slave's frame never costs more. If the heap cannot hold
+that, it takes 11 bytes after all, and the host still hears why:
+`BUFFER_TOO_SMALL` for a `READ` that passes the library's checks, its own code
+(5 for a `READ` past the bank) for one that fails them. With not even 11 bytes
+it returns `MEM_ALLOCATION_FAILED` and decodes nothing. `encodePacket`
+allocates the frame it builds (10 bytes for a `READ`, 10 + count for the
+others) before it checks the request.
+
+### The encoder
+
+`encodePacket` and `encodePacketInto` build a `READ`, `WRITE` or `WRITE_ACK`
+(a request), or a `READ_RESP` (the device's own frame). The answers are the
+decoder's to build: `WRITE_ACK_RESP`, `ERROR_RESP` and any other code get
+code 2.
+
+- It checks the request against the caller's own `evre_base_t`, as the
+  decoder would: a host gives its mirror the device's map, and for an ack the
+  device's `MSG_CNT` (a mirror learns it from a `READ` of `0xA006`).
+- With `pData` set it copies the data from there; `pData` may already lie in
+  `outBuf`, at `DATAx(0)`. With `pData` `nullptr` it takes them from the
+  caller's own registers: that is how a device streams (`AUTO_SEND`).
+- It asks no handler and sets no `HEARTBEAT`: the device decides what it
+  sends.
+- A `READ_RESP` it builds from the registers carries `STATUS` bit 14 as
+  `ACCEPT_BROADCAST_D000` says, as the decoder's answer does (library 1.1);
+  a mirror's carries the bit its device reported.
+- It builds no broadcast but a `WRITE` (library 1.1), and builds that one
+  into either bank.
+
 ### No-heap use
 
 Identical behaviour, caller-supplied buffer, **no allocation at all** — safe
 to call from an interrupt:
 
 ```c
-uint8_t decodePacketInto(base_t *device, uint8_t *PACKET, uint16_t pSize,
+uint8_t decodePacketInto(evre_base_t *device, uint8_t *PACKET, uint16_t pSize,
                          uint8_t *outBuf, uint16_t outMax, uint16_t *outLen);
-uint8_t encodePacketInto(base_t *device, uint8_t slaveId, uint8_t fnCode,
+uint8_t encodePacketInto(evre_base_t *device, uint8_t slaveId, uint8_t fnCode,
                          uint16_t regOffset, uint16_t regCount, uint8_t *pData,
                          uint8_t *outBuf, uint16_t outMax, uint16_t *outLen);
 ```
 
-`*outLen` is the number of bytes written, `0` when the function produces no
-response. Returns `BUFFER_TOO_SMALL` if `outMax` is not enough. The allocating
-forms above are thin wrappers around these.
+`*outLen` is the number of bytes written. It is set to `0` first, on every
+call (library 1.1), and stays `0` when the function produces no response, so
+`if (len) transmit(...)` never sends an old answer again. `outLen` must not be
+null. Returns `BUFFER_TOO_SMALL` if `outMax` is not enough; the room is
+checked before a handler is asked (library 1.1), so a handler acts only on a
+frame that can be answered. The allocating forms above are thin wrappers around
+these. Build with `-ffunction-sections -fdata-sections` and link with
+`-Wl,--gc-sections` (the STM32CubeIDE default): then the allocating forms, and
+the heap with them, leave the image. The decoder needs about 120 bytes of
+stack on a Cortex-M7 (`-Os`, with what it calls), plus what a handler uses.
 
 Decoding straight into the transmit buffer removes both the allocation and the
 copy:
@@ -497,6 +838,13 @@ decodePacketInto(&dev, rx, rxLen, txBuf, sizeof(txBuf), &len);
 if (len) transmit(txBuf, len);
 ```
 
+**In place.** The frame and the answer may even share one buffer
+(`outBuf == PACKET`), for every function code (library 1.1), if it holds the
+larger of the two, and 11 bytes at least for an `ERROR_RESP`. The header is
+read first, a refused frame changes nothing, and a `WRITE_ACK` is answered only
+after its data are stored. (1.0 built the ack first, and in place stored its
+CRC and end byte as the first three data bytes.)
+
 ### Message API
 
 ```c
@@ -504,23 +852,444 @@ addMsg(&dev, MY_MSG_RAIL_FAULT);        /* queue an event */
 dev.MSG_ACK_HANDLER[MY_MSG_RAIL_FAULT] = on_rail_fault_acked;   /* optional */
 ```
 
+`addMsg` returns `NO_ERROR`, `MSG_NULL` for the code 0, or `MSG_BUFFER_FULL`
+when 255 are queued. `MSG_ACK_HANDLER[0]` runs once when a host clears the
+queue (any write that covers `MSG_CNT`), `MSG_ACK_HANDLER[code]` when it
+acknowledges that code.
+
+The queue has two writers: `addMsg`, and the decoder when a host acknowledges
+or clears. They must not preempt each other: `addMsg` takes two steps (the
+code, then the count), and an ack in between loses a message or queues one
+twice. A device that calls `addMsg` from its main loop while it decodes in an
+interrupt defines `EVRE_LOCK()` and `EVRE_UNLOCK()` for the whole build
+(library 1.1, empty by default). The library then takes the lock around
+`addMsg`'s body and around the decoder's clear and compaction of the queue.
+It never nests the two, and never runs a handler, or any other code, while it
+holds the lock, so a lock that saves the interrupt mask in a local variable
+works. The longest hold is the compaction of a full queue: a loop over up to
+255 slots and a memset of up to 255 bytes, a few thousand cycles (a few
+microseconds on a Cortex-M7 at 480 MHz, tens of microseconds on a Cortex-M0
+at 48 MHz). `EVRe.cpp` must see the two macros: define them on the command
+line, or in a header given to the compiler with `-include`. With CMSIS on a
+Cortex-M, in that header (after the device's CMSIS header):
+
+```c
+#define EVRE_LOCK()   uint32_t evre_primask = __get_PRIMASK(); __disable_irq()
+#define EVRE_UNLOCK() __set_PRIMASK(evre_primask)
+```
+
+The device's own writes to `STATUS`, `CONFIG` and `MSG_*` need the same care:
+mask the decoder's interrupt around them. `STATUS` too since library 1.1,
+because the decoder writes its bit 14
+([STATUS](#status--protocol-revision-and-capabilities)). The rule behind it:
+calls on one device must not preempt each other (`decodePacket`,
+`encodePacket`, `addMsg`, and the device's own writes).
+
+A lock that masks every interrupt, as the lines above do, also covers an
+`addMsg` from an interrupt that preempts the decoder. Outside the lock such a
+message lands above every slot the frame being decoded can acknowledge, and a
+write that clears the queue acknowledges nothing (library 1.1), so no frame
+acknowledges it by mistake. An ack run leaves it queued. A clear keeps it if
+it lands after the clear, and clears it with the rest if it lands before, like
+any message queued before a clear. A lock that masks less covers only the
+contexts it masks.
+
+### Ranges and handlers (library 1.1)
+
+Optional. A device that sets none of them still sees what 1.1 changes for
+every device ([Migrating from 1.0](#migrating-from-10)): among them, a
+`READ_RESP` sent to it is refused, a write to an unknown bank is refused
+with code 3, and so is a broadcast into its device bank, unless it sets
+`ACCEPT_BROADCAST_D000`.
+
+```c
+static const evre_range_t bank[] = {
+    { 0xD000, sizeof(my_readonly_struct),  (uint8_t *) &my_readonly_struct,  0 },
+    { 0xD000 + sizeof(my_readonly_struct), sizeof(my_readwrite_struct),
+      (uint8_t *) &my_readwrite_struct, 1 },
+};
+dev->D_RANGES = bank;          /* in place of D000, READ_MAX and WRITE_MIN */
+dev->D_RANGE_CNT = 2;
+
+dev->READ_HANDLER  = on_read;  /* evre_read_handler_t:  uint8_t (evre_base_t *, uint16_t off, uint16_t cnt) */
+dev->WRITE_HANDLER = on_write; /* evre_write_handler_t: uint8_t (evre_base_t *, uint16_t off, const uint8_t *data, uint16_t cnt) */
+```
+
+- **Ranges** are sorted by address, do not overlap, lie inside
+  `0xD000..0xDFFF`, and each has memory (`base` not null) and at least one
+  byte. `protocolInit()` checks the table, whatever `protocolConfigure()`
+  returned. For one that fails it sets `D_RANGE_CNT` to 0, so a bad table
+  serves nothing even to a caller that ignores the code: every request to the
+  device bank is refused (4 for a read, 3 for a write). It returns
+  `protocolConfigure()`'s own code when that failed, else
+  `RANGE_TABLE_INVALID` (14) for a bad table, else `NO_ERROR`. A table of no
+  ranges is valid, and serves nothing. Set the table before `protocolInit()`
+  or in `protocolConfigure()`: a table set later is never checked, and the
+  library relies on a checked table. `writable` is 0 for read-only, 1 for
+  read-write. The members keep this order, because tables are written
+  positionally; a new one would go at the end. A range costs 12 bytes on a
+  32-bit MCU (24 on a 64-bit host), in flash as `const`, instead of 4 bytes
+  of RAM per register byte, and a read is one `memcpy` per range.
+- **The handlers.** The read handler is asked before a `READ` is answered. The
+  write handler is asked before a `WRITE` or a `WRITE_ACK` is stored, and
+  before a mirror stores a `READ_RESP` (it stores data too). Either bank. They
+  are asked once the library's own checks have passed and there is room for
+  the answer ([the order of the checks](#the-order-of-the-checks)), so a
+  handler acts only on a frame that will be answered. They get the offset, the
+  count and, for a write, the bytes as they came: they decide what the bytes
+  mean. A refused frame, a `WRITE_ACK_RESP` and the device's own frames
+  (`encodePacket`, AUTO_SEND) are never asked, nor is a broadcast into the
+  device bank that `ACCEPT_BROADCAST_D000` refuses. While a handler runs,
+  `RX_SLAVE_ID` holds the frame's slave id, `BROADCAST_ID` (0) for a
+  broadcast: every slave heard that one. The decoder sets it just before it
+  asks a handler; outside a handler it holds the id of the last frame a
+  handler was asked about. Their answer:
+
+  | The handler returns | From the read handler | From the write handler |
+  |---|---|---|
+  | `NO_ERROR` | answered | stored, then a `WRITE_ACK` is acknowledged |
+  | `EVRE_HANDLED` (`0xFF`) | as `NO_ERROR` (1.1): answered from the bank | accepted and **not stored**: the handler took care of it (a login token, for example, is never stored); a `WRITE_ACK` is acknowledged |
+  | any other code | refused with that code: nothing answered but an `ERROR_RESP`, nothing stored | the same |
+
+  A refusal is answered like any other
+  ([When a device is silent](#when-a-device-is-silent)): with its code, 1 and
+  7 included (library 1.1), unless the frame is a broadcast or a response. A
+  handler returns a code from `ERR_CODE_ENUM`: 3 for "no", 13
+  (`LOGIN_REQUIRED`) for "log in first".
+- The handlers run where `decodePacket` runs, often an interrupt: keep them
+  short.
+- A write to the slave id itself (a device that maps `SALVE_ID_REG` into its
+  bank) is acknowledged under the old id, the one the host is listening for
+  (library 1.1).
+- **EVRe Guard** (`lib/guard/evre_guard.h`) is a ready pair of handlers: see
+  [EVRe Guard](#evre-guard-library-11) below.
+- **The reserved bank** is read and written in place: `DEVICE_ID`, `STATUS`,
+  `CONFIG`, `MSG_CNT` and `MSG_BUFFER` lie one after the other in `evre_base_t`
+  (the library checks it when it is compiled). No pointer table: 1 KB of RAM
+  and the one allocation `protocolInit()` made are gone. `A000` is no longer
+  used: it is always `nullptr`.
+- **The pointer table** (`D000`): a `DEVICE_REG_READ_MAX` above `0xDFFF` is
+  taken as `0xDFFF` (library 1.1): the bank ends there.
+
+### EVRe Guard (library 1.1)
+
+`lib/guard/evre_guard.h` is a ready pair of handlers, a layer above the
+protocol: a login with a token, a lockout against brute force, an idle
+logout. A device uses it or not; the protocol is the same either way.
+
+- **The login.** Before it only `DEVICE_ID` and `STATUS` (`0xA000..0xA003`)
+  and the spans in `open_reads` can be read, and only the login register
+  written. A login is a write of exactly `login_size` bytes (32 at most) to
+  `login_addr`. The token is compared in constant time and never stored (the
+  handler answers `EVRE_HANDLED`). Log in with a `WRITE_ACK`: only its answer
+  tells the host how the login went. Give each device a token of its own: a
+  token seen on the link then opens one device, not all of them. Put the
+  login register in a writable range of its own: in a session, a block write
+  that runs over it is refused, and the session goes on.
+- **The answers.** `LOGIN_REQUIRED` (13) while no session is open, to every
+  other request the library itself would take (its own checks come first).
+  `PERMISSION_DENIED` (3) for a login that failed, whatever the reason (a
+  wrong token, a partial one, an attempt during a lockout), for a login by
+  broadcast, and for every request while its config is bad
+  (`evre_guard_init()` refuses the config, and the guard fails closed).
+- **Brute force.** After `free_attempts` wrong tokens every attempt is
+  refused, the right token too, for `lockout_ms`; each further failure doubles
+  it, up to `lockout_max_ms`. A good login clears the count.
+  `evre_guard_restore()` gives back a count of wrong tokens kept in
+  non-volatile memory, so a reset hands out no free attempts.
+- **A session** ends with `evre_guard_logout()`, a login attempt that fails,
+  or `idle_logout_ms` without a read or a write.
+- **No login by broadcast.** With `ACCEPT_BROADCAST_D000` 0, the default, the
+  library refuses a broadcast into the device bank before the guard is asked,
+  a login included ([Broadcast](#broadcast)). With 1 the guard skips a
+  broadcast write that touches the login register, and it has no effect at
+  all: it logs nobody in, the right token neither, counts no failure, starts
+  no lockout, ends no session, counts as no activity, and its bytes are not
+  stored (3, silent as every broadcast). A broadcast is never answered and can
+  never log in, so it is no channel to guess a token by; and one frame cannot
+  lock out, or log out, every device on the link. Every other broadcast write
+  that reaches the guard needs an open session, as a unicast one does (13,
+  silent), in either bank: a broadcast never goes past the guard. With 0, a
+  broadcast into the device bank never gets that far (3, from the library),
+  session or not.
+- **The device's own frames are its own to stop** (library 1.1, D-50). The
+  handlers are asked about requests only, never about a frame the device sends
+  by itself (`AUTO_SEND`, a stream of blocks). So a device with a login sends
+  by itself only while `evre_guard_logged_in()` says a session is open, and
+  stops when the session ends, an idle logout included: otherwise its
+  read-only block goes to a host that never logged in. A host that only
+  listens keeps no session open, as the idle time runs on: it goes on asking
+  (EVRe Studio reads `CONFIG` every 100 ms while it streams).
+- **The session belongs to the link**, not to a host: while a session is
+  open, a broadcast from anyone on the link reaches that device, as a unicast
+  write would. Behind a gateway that puts several clients on one link, the
+  gateway authenticates its own clients.
+- **The clock is the device's**, and has 64 bits: `now_ms` returns
+  milliseconds that count up and never go back, so it never wraps. At every
+  read, every write it takes up (not a skipped broadcast login) and
+  `evre_guard_logged_in()` the guard looks at it: the time since the newest
+  value it has seen comes off the lockout and goes onto the session's idle
+  time. The looks may be any time apart, and any `uint32_t` limit works,
+  `0xFFFFFFFF` too. A value not newer than the newest one seen counts as no
+  time: a late read, or a clock set back, and then time stands still until
+  the clock catches up. On a 32-bit MCU a timer tick adds to a 64-bit
+  counter, and `now_ms` reads it without tearing: twice, until both reads
+  agree, or with interrupts masked. The value must be whole from the main
+  loop and from the decoder's context alike, so no reader may run in the
+  middle of the tick's add. `now_ms` is also called under `EVRE_LOCK` (by
+  `evre_guard_logged_in()`): if it masks interrupts, it saves and restores
+  the mask, never a plain enable, and it takes no lock of its own.
+- **Where to call it.** The handlers run where the decoder runs.
+  `evre_guard_logged_in()`, `evre_guard_logout()` and `evre_guard_restore()`
+  follow `addMsg`'s rule ([Message API](#message-api)): call them where the
+  decoder runs, or from the main loop with `EVRE_LOCK()` and `EVRE_UNLOCK()`
+  defined. They take the lock, because each update changes several fields,
+  and a handler that ran in the middle of one would leave them out of step.
+
+The clock, the config and the wiring, in the device:
+
+```c
+static volatile uint64_t ms64;
+void tick_1ms(void) { ms64 = ms64 + 1; }   /* the 1 ms SysTick, above the decoder's priority */
+static uint64_t now64(void) {
+    uint64_t a, b;
+    do { a = ms64; b = ms64; } while (a != b);   /* a tick between the two halves: read again */
+    return a;
+}
+
+static uint8_t token[16];            /* the device's own token, filled from its own storage at start-up */
+static const evre_guard_span_t open_reads[] = { { 0xD000, 4 } };   /* readable before a login */
+static const evre_guard_config_t guard_config = {
+    0xD010, 16, token,           /* login_addr, login_size, token */
+    open_reads, 1,               /* open_reads, n_open_reads */
+    3, 1000, 60000,              /* free_attempts, lockout_ms, lockout_max_ms */
+    300000,                      /* idle_logout_ms */
+    now64,                       /* now_ms */
+};
+
+static evre_guard_t guard;
+static uint8_t onRead(evre_base_t *d, uint16_t off, uint16_t cnt) {
+    (void) d;
+    return evre_guard_read(&guard, off, cnt);
+}
+static uint8_t onWrite(evre_base_t *d, uint16_t off, const uint8_t *data, uint16_t cnt) {
+    return evre_guard_write(&guard, d, off, data, cnt);  /* d as the handler got it */
+}
+
+/* at start-up, after protocolInit() */
+if (evre_guard_init(&guard, &guard_config) != NO_ERROR) { /* a bad config: the guard refuses everything */ }
+evre_guard_restore(&guard, saved_failures, now64());     /* optional */
+dev.READ_HANDLER  = onRead;
+dev.WRITE_HANDLER = onWrite;
+
+/* in the main loop: the device's own frames (AUTO_SEND) only while a session is open */
+const bool sending = (dev.CONFIG & (1U << AUTO_SEND)) != 0 && evre_guard_logged_in(&guard) != 0;
+```
+
+`evre_guard_write` takes the device as the write handler got it: its
+`RX_SLAVE_ID` tells a broadcast. A null device is refused (3). A device that
+calls `evre_guard_write` from its own code, with a device whose `RX_SLAVE_ID`
+is 0, has every login treated as a broadcast: that fails closed.
+
+#### Register checks (EVRe Guard part 2)
+
+`lib/guard/evre_guard_desc.h` checks the values a host writes. It runs in the
+write handler, after the login and before the library stores a byte, and
+reads a const table made from the device's map (`evre export MAP --to
+guard`). For each register a host may write, the table says where it is, its
+size and type, its raw limits and the values that always pass (the map's
+specials). The check walks every register a frame touches and gives one
+verdict for the whole frame: one bad register refuses it, and nothing is
+stored.
+
+- **Refuse, never clamp.** The check never stores and never returns
+  `EVRE_HANDLED`: the library stores every byte of the frame or none. A
+  device that keeps its own clamps (and its state rules) keeps them behind the
+  check, as the second line ([Patterns](#patterns): treat writes as
+  requests).
+- **Two codes.** `VALUE_REFUSED` (15) for a whole register holding a value the
+  device does not take: outside min..max (and not a listed value), NaN or an
+  infinity, a value a closed register does not list, or a bit set that must
+  be 0. `PERMISSION_DENIED` (3) for a byte that cannot be written this
+  way: no entry covers it (a gap, a read-only register inside a writable
+  range, past the last entry), or only part of a number register. 3 is about
+  where, 15 about what. A bytes register (a name, a blob) may be written in
+  any part.
+- **The device bank only.** A write inside the reserved bank (`CONFIG`, the
+  queue's clear, the acks) is the library's and passes untouched.
+- **A bad table** (`evre_guard_check_init()` refused it, or never ran) refuses
+  every write to the device bank with 3 and lets the reserved bank through, so
+  a device whose release carries a bad table can still be reset and sent into
+  DFU over EVRe. Init refuses a table with a null pointer, an unknown type, a
+  size that is not the type's, entries out of order or overlapping, a list
+  that is not strictly ascending or holds NaN or -0.0, a limit outside the
+  type or min above max, a spare member that is not 0, an unknown flag, a
+  closed register with no listed value, bits that must be 0 on an f32 or
+  bytes register or past its width, and an entry that does not lie inside one
+  writable range of the device. Report its answer
+  loudly: a bad table is found at the first start on the bench.
+- **After the login.** `evre_guard_write_checked()` asks part 1 first and
+  the values only on its `NO_ERROR`: a host without a session gets 13 and
+  learns nothing about the limits. A refused value in a session still counts
+  as activity. A device without a login wires `evre_guard_check_write()`
+  alone.
+- **Mirrors** are refused: init fails, and a write is refused (3) whenever
+  `ACCEPT_READ_RESP` is set. A gateway that keeps a mirror passes its
+  device's 15 on.
+- **Broadcasts** (with `ACCEPT_BROADCAST_D000` 1) get the same checks; one
+  bad value drops the whole broadcast, silently, for every device.
+- **A closed set** (D-34, the map's `"closed"`): an entry with the flag
+  `EVRE_GUARD_CLOSED` takes only its listed values (the map's value names,
+  specials and an action's idle value), whatever its limits say. For an
+  integer register.
+- **Bits that must be 0** (D-35, the map's `"reserved_zero"`): an entry's
+  `zero_bits` are the bits no field covers; a value with one of them set is
+  refused before its limits are looked at. For an integer register.
+- **f32** is compared in integers: the bits of a finite float become a key
+  that sorts as the float does. The answer is exact on every target, whatever
+  the FPU's flush-to-zero mode; no FPU state is saved in the decoder's
+  interrupt, and no soft-float code comes in on an MCU without an FPU. -0.0
+  counts as +0.0, so a listed 0 takes it.
+- **The frame's bytes** are read one at a time, never through a cast pointer:
+  they lie at frame byte 7, at any alignment.
+- **What it does not check:** reads, read-only bits inside a writable
+  register, the effects of an action or a write-1-to-clear, state rules and
+  rules across registers, persistence, and frames the device sends by itself.
+- **Diagnostics.** The check counts its refusals and keeps the last one's
+  register and reason (`evre_guard_check_last()`, from the main loop, under
+  `EVRE_LOCK`): the wire says only 15 or 3 for the whole frame.
+- **Cost.** About 0.5 KB of code for the write check and 0.6 KB for init on
+  a Cortex-M7 at `-Os`; 24 B of flash per writable register, 4 B per listed
+  value, 12 B per table; 12 B of RAM; 56 B of the decoder's stack for the
+  check. One pass per register the frame touches: the worst frame is one
+  one-byte register per data byte, so a device measures its own worst frame
+  against its receive window.
+
+The answers on the wire, with part 2 (all of it is the library's behaviour;
+part 2 only chooses the code):
+
+| Case | Code | Answered&nbsp;or&nbsp;silent | Stored |
+|---|---|---|---|
+| a&nbsp;unicast&nbsp;`WRITE_ACK`,&nbsp;every&nbsp;register&nbsp;good | 0 | `WRITE_ACK_RESP` | all, and `HEARTBEAT` is set |
+| a&nbsp;unicast&nbsp;`WRITE`,&nbsp;every&nbsp;register&nbsp;good | 0 | silent | all, and `HEARTBEAT` is set |
+| a&nbsp;unicast&nbsp;`WRITE`&nbsp;or&nbsp;`WRITE_ACK`,&nbsp;one&nbsp;value&nbsp;bad | 15 | `ERROR_RESP`(15), echoing the request's offset and count; a plain `WRITE`'s refusal is answered too | none, and no `HEARTBEAT` |
+| only&nbsp;part&nbsp;of&nbsp;a&nbsp;number&nbsp;register | 3 | `ERROR_RESP`(3) | none |
+| a&nbsp;byte&nbsp;no&nbsp;entry&nbsp;covers | 3 | `ERROR_RESP`(3) | none |
+| part&nbsp;of&nbsp;a&nbsp;bytes&nbsp;register,&nbsp;the&nbsp;rest&nbsp;good | 0 | as&nbsp;the&nbsp;function | all |
+| the&nbsp;reserved&nbsp;bank | as&nbsp;without&nbsp;it | as&nbsp;without&nbsp;it | as without it |
+| with&nbsp;a&nbsp;login,&nbsp;no&nbsp;session | 13 | `ERROR_RESP`(13): part 1 answers, no value is looked at | none |
+| a&nbsp;login,&nbsp;or&nbsp;a&nbsp;write&nbsp;over&nbsp;the&nbsp;login&nbsp;register | as&nbsp;part&nbsp;1 | as&nbsp;part&nbsp;1 | as part 1 |
+| a&nbsp;broadcast,&nbsp;every&nbsp;register&nbsp;good | 0 | silent | all |
+| a&nbsp;broadcast,&nbsp;one&nbsp;register&nbsp;bad | 15&nbsp;or&nbsp;3 | silent | none, for the whole broadcast |
+| a&nbsp;bad&nbsp;or&nbsp;missing&nbsp;table | 3 | `ERROR_RESP`(3), for every write to the device bank; silent for a broadcast | none; the reserved bank works as without it |
+| a&nbsp;mirror | 3 | silent&nbsp;for&nbsp;a&nbsp;`READ_RESP` | none |
+| a&nbsp;refused&nbsp;`WRITE_ACK`,&nbsp;an&nbsp;output&nbsp;buffer&nbsp;of&nbsp;10&nbsp;B | 15&nbsp;or&nbsp;3 | silent (an `ERROR_RESP` needs 11 B) | none |
+| a&nbsp;`READ` | - | part&nbsp;2&nbsp;is&nbsp;not&nbsp;asked | - |
+| a&nbsp;frame&nbsp;the&nbsp;library&nbsp;refuses | as&nbsp;without&nbsp;it | part&nbsp;2&nbsp;is&nbsp;not&nbsp;asked | none |
+
+The wiring, with a login (`evre_guard_write_checked` puts it first):
+
+```c
+#include "evre_guard_desc.h"
+#include "example_guard.h"           /* evre export example.json --to guard */
+
+static evre_guard_t guard;           /* part 1, the login */
+static evre_guard_check_t check;     /* part 2, the values */
+
+static uint8_t onRead(evre_base_t *d, uint16_t off, uint16_t cnt) {
+    (void) d;
+    return evre_guard_read(&guard, off, cnt);
+}
+/* The login comes first: without a session no value is looked at. */
+static uint8_t onWrite(evre_base_t *d, uint16_t off, const uint8_t *data, uint16_t cnt) {
+    return evre_guard_write_checked(&guard, &check, d, off, data, cnt);
+}
+
+/* at start-up, after protocolInit() */
+if (evre_guard_init(&guard, &guard_config) != NO_ERROR) { /* a bad config: every request refused */ }
+if (evre_guard_check_init(&check, &example_table, &dev) != NO_ERROR) { /* a bad table: the device bank takes no write */ }
+dev.READ_HANDLER  = onRead;
+dev.WRITE_HANDLER = onWrite;   /* set even when a check failed: without it every write would land */
+```
+
+Without a login, the write handler is
+`return evre_guard_check_write(&check, d, off, data, cnt);` alone. In the main
+loop, `evre_guard_check_last(&check, &addr, &why)` gives the count of
+refusals, and the last one's register and reason, for the device's log.
+`evre_guard_write_checked` calls part 1, so a device without a login still
+builds `evre_guard.cpp`; with `-ffunction-sections` and `--gc-sections` the
+linker drops what it never calls. One check per decoder: a device with two
+links whose decoders run at different priorities gives each its own
+`evre_guard_check_t` (the table may be shared).
+
+### A host's mirror (library 1.1)
+
+A host that keeps a copy of a device's registers in an `evre_base_t` of its
+own, and decodes the device's answers into it, sets that copy up as the device
+is set up:
+
+- `SALVE_ID_REG`: the device's id;
+- the same map (`DEVICE_REG_READ_MAX` and `DEVICE_REG_WRITE_MIN`, or ranges),
+  with memory behind it;
+- **`ACCEPT_READ_RESP = 1`**. Without it every `READ_RESP` is refused (code
+  2) and nothing is stored: the mirror never learns anything. It is 0 by
+  default on purpose: a device must not let a host write its read-only
+  registers with a `READ_RESP`.
+
+Code that builds against 1.0 and 1.1 alike:
+
+```c
+#if defined(EVRE_LIB_VERSION) && EVRE_LIB_VERSION >= 0x0101
+    mirror.ACCEPT_READ_RESP = 1;
+#endif
+```
+
+What a mirror does with each answer:
+
+| Frame | What the mirror does |
+|---|---|
+| `READ_RESP` | checks it against its own read limits (3, 4, 5), asks its write handler, then copies the bytes as they came, into either bank: `STATUS` and `CONFIG` as the device reported them (bit 14 and bit 0 too), and `MSG_CNT` and `MSG_BUFFER` raw (no ack, no handler). No `HEARTBEAT`. |
+| `WRITE_ACK_RESP` | takes it as the news that the write landed: `NO_ERROR` for the reserved or the device bank, 3 for another. Only the bank is checked: the mirror's own permissions and queue say nothing about the device's. Nothing is stored, no handler is asked. |
+| `ERROR_RESP` | does not decode it (code 2): the host reads the code byte, `DATAx(0)`, itself. |
+
+None of them is ever answered. A mirror's decoder still answers a request (a
+host's own frame echoed back on a half-duplex link, say): a host does not send
+what its mirror builds.
+
+**A mirror's `STATUS` is its device's** (library 1.1). The library never
+refreshes a mirror's bit 14 (`CAP_BROADCAST_D000`): a `READ` the mirror
+answers, an echo of the host's own `READ` say, and a `READ_RESP` it builds
+from its registers carry the bit the device last reported, and the field
+keeps it, whatever the mirror's own `ACCEPT_BROADCAST_D000` says. Before the
+first `READ_RESP` of `STATUS` the mirror holds what `protocolInit()` left
+there, bit 14 clear unless the program set it. A program that answers
+clients of its own from a copy of a device's registers marks that copy a
+mirror for the same reason (`ACCEPT_READ_RESP = 1`), or its clients hear bit
+14 as the copy's own setting. The copy then also takes the `READ_RESP` and
+`WRITE_ACK_RESP` frames a client sends it, as the table above says.
+
 ---
 
 ## Adding a device
 
-Override the weak `protocolConfigure()`. `protocolInit()` has already built
-the reserved bank and set `STATUS`.
+Override the weak `protocolConfigure()`. `protocolInit()` has already set
+`STATUS` and cleared `MSG_ACK_HANDLER`; the reserved bank needs no setup
+(library 1.1).
 
 ```c
-uint8_t protocolConfigure(base_t *dev) {
+#include <new>
+
+uint8_t protocolConfigure(evre_base_t *dev) {
     dev->SALVE_ID_REG = 1;
     dev->DEVICE_ID    = 0x2001;
     dev->STATUS      |= CAP_AUTO_SEND;      /* what this device adds */
 
     dev->DEVICE_REG_READ_MAX  = 0xD0EC;     /* last register */
-    dev->DEVICE_REG_WRITE_MIN = 0xD0CC;     /* first writable one */
+    dev->DEVICE_REG_WRITE_MIN = 0xD0CC;     /* first writable one; 0, the default, makes all writable */
 
-    dev->D000 = new uint8_t*[(dev->DEVICE_REG_READ_MAX + 1) & 0x0FFF];
+    /* one entry per register, 0xD000 + k in entry k. Not (READ_MAX + 1) & 0x0FFF:
+     * that is 0 for a bank that runs to 0xDFFF. */
+    dev->D000 = new (std::nothrow) uint8_t*[dev->DEVICE_REG_READ_MAX - 0xD000 + 1];
     if (!dev->D000) return MEM_ALLOCATION_FAILED;
 
     uint8_t *ro = (uint8_t *) &my_readonly_struct;   /* packed */
@@ -535,6 +1304,31 @@ uint8_t protocolConfigure(base_t *dev) {
 }
 ```
 
+**The override is a contract.** It is exactly
+`uint8_t protocolConfigure(evre_base_t *device)` (`base_t *` is the same
+type), at global scope, with C++ linkage, and not weak. Anything else (a
+reference, a const pointer, a namespace) is another function: the weak
+default then runs without a word, `SALVE_ID_REG` stays 0, and the device
+answers nothing. `-Wmissing-declarations` makes the compiler say so.
+`extern "C"` does not compile in a file that includes `EVRe.h`. `D000` is the
+device's: the library reads and writes through it, and never allocates, frees
+or moves it.
+
+**`protocolInit()` does, in this order:** with `EVRE_CRC_TABLE_RUNTIME` 1,
+builds the CRC table; sets `A000` to `nullptr`; clears
+`MSG_ACK_HANDLER[0..255]`; sets `STATUS` to the protocol revision and the
+library's capability bits (all but bit 14, which is set as a device's
+`STATUS` goes out); calls `protocolConfigure()`, once, with the same pointer,
+on the calling thread; then, if `D_RANGES` is set, checks the range table,
+whatever `protocolConfigure()` returned, and sets `D_RANGE_CNT` to 0 if the
+table fails. It writes nothing else. It returns `protocolConfigure()`'s code when
+that is not `NO_ERROR`, else `RANGE_TABLE_INVALID` for a table that fails,
+else `NO_ERROR`. So a field may be set before `protocolInit()`
+(`SALVE_ID_REG`, `DEVICE_ID`, `ACCEPT_BROADCAST_D000`), in
+`protocolConfigure()` (`MSG_ACK_HANDLER` entries, `STATUS |=` the device's
+own bits, the range table), or after `protocolInit()` returns (anything but
+the range table, which is then not checked).
+
 Three things worth doing in a device's map:
 
 - Back it with **packed structs** rather than scattered variables. The layout
@@ -545,6 +1339,7 @@ Three things worth doing in a device's map:
 - **Bit-pack the booleans and small enumerations** into a few status words.
   Each register costs 4 bytes of pointer table, not one, so packing 24 flags
   into two words saves ~88 bytes of RAM as well as 22 bytes on every poll.
+  (With ranges, library 1.1, the pointer table is gone; the poll saving stays.)
 
 Writes land in the struct. Apply them from your main loop — compare against a
 shadow copy and push changes through whatever validated command layer the
@@ -575,6 +1370,12 @@ def crc16(d):
 READ, READ_RESP, WRITE, WRITE_ACK, WRITE_ACK_RESP, ERROR_RESP = (
     0xAA, 0xAB, 0xEA, 0xEB, 0xEC, 0xEE)
 
+def data_len(fn, count):
+    """the data bytes a frame carries: from its function code, not its count alone"""
+    if fn in (READ_RESP, WRITE, WRITE_ACK):
+        return count
+    return 1 if fn == ERROR_RESP else 0      # READ, WRITE_ACK_RESP: none
+
 def build(slave, fn, offset, count, data=b''):
     body = bytes([0x7B, slave, fn,
                   offset & 0xFF, offset >> 8,
@@ -582,17 +1383,8 @@ def build(slave, fn, offset, count, data=b''):
     c = crc16(body)
     return body + bytes([c & 0xFF, c >> 8, 0x7D])
 
-def parse(buf):
-    if len(buf) < 10 or buf[0] != 0x7B or buf[-1] != 0x7D:
-        raise ValueError("framing")
-    if crc16(buf[:-3]) != (buf[-3] | buf[-2] << 8):
-        raise ValueError("crc")
-    fn = buf[2]
-    off = buf[3] | buf[4] << 8
-    cnt = buf[5] | buf[6] << 8
-    if fn == ERROR_RESP:
-        raise RuntimeError("device error %d at 0x%04X count %d" % (buf[7], off, cnt))
-    return fn, off, cnt, buf[7:-3]
+class DeviceError(Exception):
+    pass
 
 class EVRe:
     def __init__(self, port, slave=1, timeout=0.05):
@@ -600,18 +1392,32 @@ class EVRe:
         self.s.dtr = True
         self.slave = slave
 
+    def _frame(self):
+        head = self.s.read(7)                 # header tells us the length
+        if len(head) < 7:
+            raise TimeoutError("no response")
+        n = data_len(head[2], head[5] | head[6] << 8)
+        buf = head + self.s.read(n + 3)
+        if len(buf) != n + 10 or buf[0] != 0x7B or buf[-1] != 0x7D \
+                or crc16(buf[:-3]) != (buf[-3] | buf[-2] << 8):
+            raise ValueError("framing")
+        return buf[1], buf[2], buf[3] | buf[4] << 8, buf[5] | buf[6] << 8, buf[7:-3]
+
     def _txn(self, fn, offset, count, data=b'', expect=True):
         self.s.reset_input_buffer()
         self.s.write(build(self.slave, fn, offset, count, data))
         if not expect:
-            return None
-        head = self.s.read(7)                 # header tells us the length
-        if len(head) < 7:
-            raise TimeoutError("no response")
-        n = head[5] | head[6] << 8
-        if head[2] == ERROR_RESP:
-            n = 1
-        return parse(head + self.s.read(n + 3))[3]
+            return None                       # a refused WRITE's ERROR_RESP is dropped next time
+        answer = READ_RESP if fn == READ else WRITE_ACK_RESP
+        for _ in range(16):
+            slave, rfn, roff, rcnt, rdata = self._frame()
+            if (slave, roff, rcnt) != (self.slave, offset, count):
+                continue                      # not ours: an AUTO_SEND frame, say
+            if rfn == ERROR_RESP:
+                raise DeviceError("device error %d at 0x%04X count %d" % (rdata[0], offset, count))
+            if rfn == answer:
+                return rdata
+        raise TimeoutError("no answer")
 
     def read(self, offset, count):
         return self._txn(READ, offset, count)
@@ -631,9 +1437,15 @@ value, = struct.unpack_from("<f", block, 0x0C)
 dev.write(0xD0CC, struct.pack("<f", 12.5))   # a set point, acknowledged
 ```
 
-Reading the 7-byte header first and then exactly `REG_CNT + 3` more bytes is
-the length-based framing from above — it never scans for `0x7D`, so payload
-bytes that happen to equal a delimiter cannot confuse it.
+Reading the 7-byte header first and then exactly its data bytes plus 3 (*n*
+from the function code, see [Frame](#frame)) is the length-based framing from
+above — it never scans for `0x7D`, so payload bytes that happen to equal a
+delimiter cannot confuse it. Every answer is matched against its request: a
+frame for another offset or count (an `AUTO_SEND` frame that came first) is
+skipped, and an `ERROR_RESP` for this request raises with its code.
+
+A host in C++ can use the library itself, with a mirror of the device:
+[A host's mirror](#a-hosts-mirror-library-11).
 
 ---
 
@@ -760,15 +1572,18 @@ protocol cannot bypass them.
 
 **Host watchdog.** If a device can move something, decide what happens when
 the host stops talking. A workable rule: once a host has been seen *and has
-changed something*, treat every accepted packet as a heartbeat
+changed something*, treat every accepted request as a heartbeat
 (`CONFIG.HEARTBEAT` is set on each one); after a timeout, stop the actuators
 and restore every writable register to the value it held before that host
 appeared. Restore through the same command layer a write uses. Be conservative
 about what else you undo — a lost link is a reason to stop moving, not a reason
-to power the system down.
+to power the system down. A response is not a request: since library 1.1 a
+`WRITE_ACK_RESP` echoed back to a device is refused and feeds no watchdog.
 
 **Read back what you wrote.** A value may be clamped rather than rejected. The
-matching read-only register tells you what was actually applied.
+matching read-only register tells you what was actually applied. A device with
+EVRe Guard's register checks refuses a value outside its limits instead
+(`VALUE_REFUSED`, 15): write with `WRITE_ACK` to hear it.
 
 ---
 
@@ -777,14 +1592,26 @@ matching read-only register tells you what was actually applied.
 | Pitfall | Consequence |
 |---|---|
 | Scanning for `0x7D` to find the frame end | payload bytes equal the delimiter; use the length |
-| Two frames in one packet-link transfer | the second is ignored |
+| Expecting `10 + REG_CNT` bytes for every frame | a `READ`, a `WRITE_ACK_RESP` or an `ERROR_RESP` never completes; *n* comes from the function code |
+| Two frames in one packet-link transfer | both are dropped, silently: the CRC is checked at the end of the transfer |
 | One frame split across two transfers | never decoded |
 | Crossing a bank boundary in one request | rejected |
-| A write starting below `REG_WRITE_MIN` | rejected **in full**, even the writable part |
+| A&nbsp;write&nbsp;starting&nbsp;below&nbsp;`REG_WRITE_MIN` | rejected **in full**, even the writable part |
+| `DEVICE_REG_WRITE_MIN`&nbsp;left&nbsp;at&nbsp;0 | the whole device bank is writable, the read-only block included |
 | Acking messages lowest-index first | silently acks the wrong ones |
+| Clearing the queue and acking slots in one write (1.1) | the slot bytes do nothing: it is the clear alone |
+| A broadcast set point or stop to a 1.1 device without `ACCEPT_BROADCAST_D000` | refused, silently: nothing moves. `STATUS` bit 14 tells which devices take it |
+| An EVRe Guard clock read in two halves without a retry | a torn value may jump 2^32 ms ahead: the session and the lockout end, and the guard's time then stands still until the clock catches up |
+| `addMsg` from the main loop while an interrupt decodes, without `EVRE_LOCK` | a message lost or queued twice |
+| `evre_guard_logged_in()`, `_logout()` or `_restore()` from the main loop while an interrupt decodes, without `EVRE_LOCK` | a lockout the interrupt just started can be cancelled, a session just opened can be closed |
+| A&nbsp;host's&nbsp;mirror&nbsp;without&nbsp;`ACCEPT_READ_RESP`&nbsp;(1.1) | every `READ_RESP` refused: the mirror never learns anything |
+| A program that answers its own clients' `READ`s from a copy of a device's registers, the copy not marked a mirror (1.1) | its clients hear `STATUS` bit 14 as the copy's own `ACCEPT_BROADCAST_D000`, not the device's |
+| A&nbsp;range&nbsp;table&nbsp;set&nbsp;after&nbsp;`protocolInit()` | never checked |
 | Assuming the low byte of an address is the register index | wrong once the map passes `0xnn FF` |
 | Casting a pointer into the response buffer | misaligned unless the map is ordered widest-first |
-| Assuming&nbsp;a&nbsp;write&nbsp;took&nbsp;effect | it may have been clamped — read it back |
+| Assuming&nbsp;a&nbsp;write&nbsp;took&nbsp;effect | it may have been clamped — read it back — or refused with 15 (EVRe Guard's register checks): write with `WRITE_ACK` |
+| Writing one byte of a float, or a block over bytes the map does not describe, to a device with EVRe Guard's register checks | refused with 3: a number is written whole, and a gap in a writable run takes no write (declare it as a `bytes` register if one must pass) |
+| A&nbsp;mirror&nbsp;wired&nbsp;to&nbsp;EVRe&nbsp;Guard's&nbsp;register&nbsp;checks | init refuses it, and every write is refused: the checks are for devices |
 | Using an optional feature without checking `STATUS` | works on one device, fails on the next |
 
 ---
@@ -794,20 +1621,43 @@ matching read-only register tells you what was actually applied.
 For a new host or device implementation:
 
 - [ ] CRC table first eight entries match `0x0000 0x1189 0x2312 0x329B …`
-- [ ] All 14 [test vectors](#test-vectors) encode and decode byte-exactly
+- [ ] Every frame of the [test vectors](#test-vectors) is built byte-exactly: a request by the host's encoder, an answer by the device's decoder, on the device described there (#7 and #12 get none)
 - [ ] CRC is computed over `len - 3`, not `len - 4`
 - [ ] Multi-byte fields are little endian on the wire
-- [ ] A frame with a corrupted CRC produces **no response**
+- [ ] A frame is framed by `10 + n`, *n* from its function code: `READ` and `WRITE_ACK_RESP` 10 bytes, `ERROR_RESP` 11
+- [ ] A frame with a corrupted CRC, or a wrong start or end byte, produces **no response**
 - [ ] A frame for another slave produces **no response**
-- [ ] An out-of-range offset produces `ERROR_RESP` code 4
-- [ ] An out-of-range count produces `ERROR_RESP` code 5
-- [ ] A write below `REG_WRITE_MIN` produces `ERROR_RESP` code 3
-- [ ] A frame whose length disagrees with `REG_CNT` produces code 12
-- [ ] Slave 0 with `WRITE` is applied and **not** answered
+- [ ] A read starting outside the readable area of its bank produces `ERROR_RESP` code 4 (an unknown bank: 3)
+- [ ] A request running past the bank's end produces `ERROR_RESP` code 5
+- [ ] A write starting below `REG_WRITE_MIN`, or to an unknown bank, produces `ERROR_RESP` code 3
+- [ ] A frame whose length is not `10 + n` produces code 12; an unknown function code or an `ERROR_RESP` produces code 2, whatever its length
+- [ ] Slave 0 with `WRITE` into the reserved bank is applied and **not** answered
+- [ ] Slave 0 with `WRITE` into the device bank is refused (code 3), stores nothing and is **not** answered; with `ACCEPT_BROADCAST_D000` 1 it is applied, and **not** answered (1.1)
 - [ ] Slave 0 with `READ` is **not** answered
-- [ ] `CONFIG.HEARTBEAT` is set by the device on every accepted frame
+- [ ] A `READ_RESP` or `WRITE_ACK_RESP` sent to a device is not stored and **not** answered
+- [ ] `CONFIG.HEARTBEAT` is set by the device on every accepted request, and on nothing else
 - [ ] A host never writes an `AUTO_SEND` prescaler of 0; a device takes a 0 as 1 or its default
-- [ ] `STATUS[7:0]` reports the protocol revision
+- [ ] `STATUS[7:0]` reports the protocol revision; bit 14 is set exactly when the device bank takes a broadcast (1.1)
+- [ ] Acknowledging message *i* leaves every index below *i* unchanged; past `MSG_CNT` the buffer reads 0
+- [ ] A write that covers `MSG_CNT` clears the queue and acknowledges nothing: `MSG_ACK_HANDLER[0]` runs once, and a message it queues is kept (1.1)
+
+For a device on library 1.1 with ranges or handlers:
+
+- [ ] Every frame of the checks above answers the same (ranges equivalent to the old boundary)
+- [ ] A read into a gap between ranges produces code 5; one starting in a gap code 4
+- [ ] A write starting in a gap or touching a read-only range produces code 3, one running into a gap code 5; nothing is stored
+- [ ] A frame the handlers refuse stores nothing and is answered with the handler's code, whatever it is (1 and 7 too), unless it is a broadcast or a response
+- [ ] A frame whose answer does not fit is refused (code 11) before a handler is asked
+- [ ] `EVRE_HANDLED` from the write handler: accepted, acknowledged, nothing stored
+- [ ] A handler sees `RX_SLAVE_ID` 0 for a broadcast and the device's id otherwise
+- [ ] With EVRe Guard, no broadcast logs in, fails a login or ends a session; without a session every other write is refused (13), a broadcast one silently. With `ACCEPT_BROADCAST_D000` 0 the library refuses a broadcast into the device bank first (3), session or not
+
+For a host:
+
+- [ ] Every answer is matched against its request (function, offset, count); an `AUTO_SEND` frame in between is skipped
+- [ ] An `ERROR_RESP` is read by its code byte, `DATAx(0)`
+- [ ] A mirror kept with the library sets `ACCEPT_READ_RESP = 1` (1.1)
+- [ ] `STATUS` is read before any optional feature is used; a broadcast into the device bank is relied on only where bit 14 is set (1.1)
 
 ---
 
@@ -815,11 +1665,105 @@ For a new host or device implementation:
 
 | Macro | Default | Effect |
 |---|---|---|
-| `EVRE_CRC_TABLE_RUNTIME` | `0` | `1` builds the CRC table in RAM at `protocolInit()` instead of holding it in flash: **512 B of flash freed, 512 B of RAM spent**. Behaviour is identical. Worth it when flash is the scarcer resource. |
+| `EVRE_CRC_TABLE_RUNTIME` | `0` | `1` builds the CRC table in RAM at `protocolInit()`, or at the first CRC before it (library 1.1: a host that only encodes), instead of holding it in flash: **about 430 B of flash freed, 513 B of RAM spent** (the builder costs flash too). Behaviour is identical. Worth it when flash is the scarcer resource. |
+| `EVRE_LOCK()`,&nbsp;`EVRE_UNLOCK()` | empty | a lock around `addMsg` and the decoder's work on the queue, for a device that calls `addMsg` from its main loop while it decodes in an interrupt (see [Message API](#message-api)), and around EVRe Guard's `evre_guard_logged_in()`, `_logout()` and `_restore()`, for a device that calls them from its main loop ([EVRe Guard](#evre-guard-library-11)). Defined for the whole build, since `EVRe.cpp` and `evre_guard.cpp` must see them. |
+| `EVRE_WEAK` | `__attribute__((weak))` | how `EVRe.cpp` marks its default `protocolConfigure()` weak. Another compiler defines it before it includes `EVRe.h` (IAR and Keil: `__weak`). Never on the declaration: every override would be weak too. On MinGW (Windows) an override of a weak function is not reliable: a program there sets the fields after `protocolInit()` instead. |
 
-`malloc_lock.c` is optional. It protects newlib's heap when the allocating API
-is used from more than one priority level; with the `*Into` functions it is
-unnecessary.
+`lib/ports/stm32h7/malloc_lock.c` is optional. It protects newlib's heap when
+the allocating API is used from more than one priority level; with the
+`*Into` functions it is unnecessary.
+
+**Porting.** The library is C++11 and needs only the standard headers
+(`stdint.h`, `stdbool.h`, `stddef.h`, `string.h`, `cstdlib`, `type_traits`).
+It builds without a warning under `-Wall -Wextra` at every optimisation level.
+It builds the frame's fields byte by byte, so the header and the CRC are right
+on any CPU. The registers it moves as they lie in memory: `DEVICE_ID`,
+`STATUS` and `CONFIG` are the CPU's own `uint16_t`, so the reserved bank is
+little endian only on a little-endian CPU (every current target is one), and a
+device on a big-endian CPU keeps its own registers little endian. `EVRe.h` may
+come before or after `<windows.h>` (library 1.1): its `NO_ERROR` macro is set
+aside around the enum.
+
+---
+
+## Migrating from 1.0
+
+Library 1.1 keeps every name of 1.0 with its value but one, the struct tag,
+and every 1.0 member of `evre_base_t` at its 1.0 offset. A 1.0 device or host
+compiles unchanged unless it writes `struct protocol_base`. What it must know:
+
+**The struct tag is `evre_base` now.** `struct protocol_base` is
+`struct evre_base`; `base_t` and `evre_base_t` name it, and so does
+`protocol_base` without `struct` (a typedef). Code that writes
+`struct protocol_base`, or declares it ahead, no longer compiles: write
+`base_t`. C++ has no alias for a tag, so this one cannot be kept.
+
+**The frame index macros and the bit macros mean what they say inside an
+expression.** `DATAx`, `CRC0`, `CRC1`, `END`, `getBit` and the others are
+parenthesised. In 1.0 `DATAx(0) + 1` was 7 (the `+ 1` went into the `?:`); it
+is 8 now. Code that uses them alone, as an index, sees no change.
+
+**Rebuild everything that includes `EVRe.h`.** The struct tag changed,
+`MSG_ACK_HANDLER` has 256 slots, and new members follow the 1.0 ones, so every
+object built against 1.0 is stale. Most fail to link, which is what you want.
+One that only defines `protocolConfigure()` links, and the weak default
+silently takes its place.
+
+**A host's mirror sets `ACCEPT_READ_RESP = 1`**, with the `#if` line of
+[A host's mirror](#a-hosts-mirror-library-11). Without it the mirror stores
+nothing.
+
+**A device that relied on broadcasts into its device bank sets
+`ACCEPT_BROADCAST_D000 = 1`** (a synchronised set point, one stop command for
+all), with the `#if` line of [Broadcast](#broadcast). Without it a broadcast
+reaches the reserved bank only, and one into `0xD000..0xDFFF` is refused,
+silently: nothing is stored. A host tells the two apart by `STATUS` bit 14.
+
+**`A000` is `nullptr`.** The reserved bank is served in place. A device that
+wrote `A000[k]` in `protocolConfigure()`, to redirect a reserved register, now
+writes through a null pointer. `delete[]` on `A000` stays harmless.
+
+**These frames are answered differently:**
+
+| Frame | 1.0 | 1.1 |
+|---|---|---|
+| a&nbsp;`READ_RESP`&nbsp;sent&nbsp;to&nbsp;a&nbsp;device | stored, the read-only registers and `DEVICE_ID` too; `HEARTBEAT` set | code 2, silent, nothing stored |
+| a&nbsp;`WRITE_ACK_RESP`&nbsp;sent&nbsp;to&nbsp;a&nbsp;device | accepted,&nbsp;`HEARTBEAT`&nbsp;set | code 2, silent |
+| a&nbsp;`WRITE`&nbsp;or&nbsp;`WRITE_ACK`&nbsp;to&nbsp;an&nbsp;unknown&nbsp;bank | accepted and dropped (a `WRITE_ACK` acknowledged) | `ERROR_RESP` 3 (a broadcast: code 3, silent) |
+| a broadcast `WRITE` into the device bank | stored,&nbsp;`HEARTBEAT`&nbsp;set | code 3, silent: nothing stored, no handler asked, no `HEARTBEAT`. As 1.0 with `ACCEPT_BROADCAST_D000` 1 |
+| one write that covers `MSG_CNT` and slots | the clear, then each slot acknowledged as the clear left it: the old codes were still there, so the handlers of the messages just discarded ran after all, and a message that `MSG_ACK_HANDLER[0]` had queued was acknowledged at once | the clear alone: `MSG_ACK_HANDLER[0]` once, a message it queues kept, the slot bytes do nothing |
+| a `READ` of `STATUS` (and the device's own `READ_RESP` of it) | the&nbsp;field&nbsp;as&nbsp;it&nbsp;is | bit 14 as `ACCEPT_BROADCAST_D000` says, whatever the device wrote there; the field follows. A mirror's (`ACCEPT_READ_RESP` 1): the field as it is, as in 1.0 |
+| a frame with a wrong start or end byte, its CRC good | answered | code 1, silent |
+| an unknown function code with data | `ERROR_RESP`&nbsp;12 | `ERROR_RESP` 2 |
+| an&nbsp;11-byte&nbsp;`ERROR_RESP` | code&nbsp;12 | code 2 (silent both times) |
+| `MSG_BUFFER` past `MSG_CNT`, after an ack or a clear | the&nbsp;old&nbsp;codes | 0 |
+| a&nbsp;`WRITE_ACK`&nbsp;decoded&nbsp;in&nbsp;place | the answer's CRC and end byte stored as the first three data bytes | the data stored |
+| an&nbsp;ack&nbsp;of&nbsp;message&nbsp;`0xFF` | a call through the pointer past `MSG_ACK_HANDLER` | `MSG_ACK_HANDLER[0xFF]` |
+| a&nbsp;mirror's&nbsp;`READ_RESP` | `HEARTBEAT`&nbsp;forced&nbsp;into&nbsp;the&nbsp;mirror's&nbsp;`CONFIG` | `CONFIG` as the device reported it |
+| a&nbsp;mirror's&nbsp;`WRITE_ACK_RESP` | checked against the mirror's own write limits and queue (3 or 5) | `NO_ERROR` for either bank |
+| a&nbsp;request&nbsp;past&nbsp;`0xDFFF`,&nbsp;`DEVICE_REG_READ_MAX`&nbsp;above&nbsp;it | wrapped to the table's start, or never ended | code 5: the bank ends at `0xDFFF` |
+| `decodePacket`&nbsp;of&nbsp;a&nbsp;`READ`&nbsp;with&nbsp;a&nbsp;large&nbsp;count | 10 + count allocated before any check; on a small heap `MEM_ALLOCATION_FAILED`, silent | 11 bytes unless the `READ` is ours; one bank at most |
+
+**And these calls:**
+
+| Call | 1.0 | 1.1 |
+|---|---|---|
+| `decodePacketInto` or `encodePacketInto` with no device, no frame or a short one | `*outLen`&nbsp;left&nbsp;as&nbsp;it&nbsp;was | `*outLen` 0 |
+| `encodePacket*`&nbsp;of&nbsp;a&nbsp;broadcast&nbsp;`READ`,&nbsp;`WRITE_ACK`&nbsp;or&nbsp;`READ_RESP` | built | code 2 |
+| `encodePacket*`&nbsp;of&nbsp;a&nbsp;write&nbsp;to&nbsp;an&nbsp;unknown&nbsp;bank | built | code 3 |
+| `GetCrc16`&nbsp;before&nbsp;`protocolInit()`,&nbsp;`EVRE_CRC_TABLE_RUNTIME`&nbsp;1 | wrong&nbsp;CRCs&nbsp;(an&nbsp;empty&nbsp;table) | the table built first |
+| `protocolInit()` | allocated 262 pointers for `A000` (1 KB), cleared 255 ack handlers | allocates nothing, clears 256 |
+
+**Also:** `crctab16` is one table, in `EVRe.cpp` (a device with a global
+`crctab16` of its own now clashes at link time). A program that used the
+header's `crctab16` alone now links `EVRe.cpp`. A loop over
+`sizeof(MSG_ACK_HANDLER) / sizeof(MSG_ACK_HANDLER[0])` runs 256 times. Codes
+13 (`LOGIN_REQUIRED`) and 14 (`RANGE_TABLE_INVALID`) are new; a device with
+EVRe Guard sends 13. `EVRe.h` and `<windows.h>` may come in either order.
+`STATUS` joins `CONFIG` and `MSG_*` among the device's own writes that must
+not preempt the decoder ([Message API](#message-api)): the decoder writes its
+bit 14. A 1.0 device that sets none of the new fields sees only the changes
+above.
 
 ---
 
@@ -828,10 +1772,12 @@ unnecessary.
 Known costs, deliberately not changed in v1 because they would break the
 device-side API:
 
-**Range-based register map.** Today `D000[]`/`A000[]` hold one pointer per
-register — **4 bytes of RAM for every byte of register**. A device with 237
-registers spends 948 B of pointers to address 237 B of data. Describing the map
-as a few ranges instead:
+**Range-based register map.** *Done in library 1.1: for the device bank as an
+option (see [Ranges](#ranges-library-11)), the pointer table staying; the
+reserved bank is served in place, without a table.* Before it,
+`D000[]`/`A000[]` held one pointer per register — **4 bytes of RAM for every
+byte of register**. A device with 237 registers spends 948 B of pointers to
+address 237 B of data. Describing the map as a few ranges instead:
 
 ```c
 typedef struct { uint16_t start, len; uint8_t *base; uint8_t writable; } evre_range_t;
@@ -839,8 +1785,7 @@ typedef struct { uint16_t start, len; uint8_t *base; uint8_t writable; } evre_ra
 
 collapses that to ~56 B for a typical device, and makes a bulk read a single
 `memcpy` instead of N indirect loads — so it is faster as well as smaller. It
-also allows per-range permissions. It changes `protocolConfigure()` for every
-device, which is why it waits for v2.
+also allows per-range permissions.
 
 **Stable message indices.** Acknowledging currently compacts the buffer, so
 indices shift (see [Messages](#messages)). Zeroing the slot in place and
@@ -851,5 +1796,5 @@ any order, at the cost of redefining `MSG_CNT` as "slots in use".
 
 ## Credits
 
-Protocol designed by **Ahmed Ragab**. In production across 100+ devices since
+Protocol designed by **Ahmed Ragab AbdulGhany**. In production across 100+ devices since
 2023.

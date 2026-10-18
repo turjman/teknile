@@ -1,5 +1,77 @@
 # Changelog
 
+## Not released yet: library 1.1 and EVRe Guard
+
+Made on the branch `evre-1.1`. It is not part of the Studio's 1.1.0 (the section below): it goes into the
+version after it. `docs/PROTOCOL.md` describes it, its "Migrating from 1.0" says what a device or a host
+must know, and `REVIEW.md` holds the review and its decisions.
+
+### Protocol and device library
+
+- Library 1.1 (`EVRE_LIB_VERSION` `0x0101`): every 1.0 name with its value but the struct tag (`struct evre_base`
+  now; `base_t` and `protocol_base` still name it), and every 1.0 member of `evre_base_t` at its 1.0 offset.
+  Rebuild everything that includes `EVRe.h`.
+- Ranges of readable and writable bytes in place of the pointer table (`D_RANGES`), checked by `protocolInit()`;
+  the reserved bank served in place (`A000` is `nullptr`).
+- A read handler and a write handler, asked before a request is answered or stored, with the frame's slave.
+- A host's mirror sets `ACCEPT_READ_RESP = 1`; a device that takes broadcasts into its bank sets
+  `ACCEPT_BROADCAST_D000 = 1`, and says so in `STATUS` bit 14.
+- Frames answered differently on purpose: a `READ_RESP` or `WRITE_ACK_RESP` sent to a device (code 2, silent), a
+  write to an unknown bank (code 3), a broadcast into the device bank of a device that takes none (code 3, silent),
+  a wrong start or end byte (code 1), an unknown function code (2), the queue zeroed past `MSG_CNT`, a `WRITE_ACK`
+  decoded in place, a request past `0xDFFF` (5).
+- A new code, 13 `LOGIN_REQUIRED`, which the library reserves and never returns itself.
+
+### EVRe Guard, part 1: the login
+
+- `lib/guard/evre_guard.*`, beside the library and optional: a token written to a login register opens a session;
+  without one every request is refused with 13; a lockout after wrong tokens, and a logout after an idle time.
+
+### EVRe Guard, part 2: the register checks
+
+- `lib/guard/evre_guard_desc.*`: a const table made from the map says, for each register a host may write, its
+  place, size, type, raw limits and the values that always pass. The check walks every register a frame touches,
+  after the login and before the library stores a byte: a value outside the limits, NaN or an infinity is refused
+  with the new code 15 `VALUE_REFUSED`; a byte no entry covers, or part of a number, with 3. Nothing is clamped,
+  nothing stored. A bad table refuses every write to the device bank and lets the reserved bank through.
+- `lib/EVRe.h` reserves 15 `VALUE_REFUSED`; the library never returns it.
+- Two additions to the table: the flag `EVRE_GUARD_CLOSED` (only the listed values pass, whatever the limits say)
+  and `zero_bits` (bits that must be 0); either refused with 15. The table's checks refuse an unknown flag, a closed
+  register with no listed value, and `zero_bits` past the register's width or on an `f32`.
+- A device sends its own frames only while `evre_guard_logged_in()` reports a session (PROTOCOL.md, the wiring
+  example).
+
+### The map format
+
+- A new optional register key, `past_limits`: `"refuse"` (the default) or `"clamp"`, what the device does with a
+  value past `min` or `max` (MAP_FORMAT.md 6.1, the schema, the Studio's model, editor, CSV and exports).
+- Two more: `closed` (only the value names, the specials and an action's idle value may be written) and
+  `reserved_zero` (the bits no field covers are written 0), in the same places.
+
+### The tools
+
+- `evre export MAP --to guard` and the Map editor's **Export > EVRe Guard table**: EVRe Guard's table (`.h` with the
+  typed raw limits, `.cpp` with the value list and the entries). `--check` compares with the files there and exits
+  1 when one is older than the map; it works for every export with `-o`.
+- The map check names what the Guard's table takes in place of the map's numbers (a limit past the type or between
+  raw steps), its export errors, `clamp` without limits, and a gap between two registers a host writes.
+- EVRe Studio, `evre`, the API and the Python package send a value past the limits of a register that clamps without
+  asking, never send NaN or an infinity, refuse a broadcast of part of a number, and name code 15 *value refused*.
+- `evre-sim --strict` answers as a device with the Guard: 15 for a value, 3 for part of a number, and clamps a
+  register that clamps; `closed` and `reserved_zero` are refused with 15.
+- The hosts ask before (the window) or refuse (the API, `evre`, the Python package) a value outside a closed set or
+  with a reserved bit set; the Guard table writes `EVRE_GUARD_CLOSED` and `zero_bits` from the two keys.
+- `evre export MAP --to table --lib 1.1` and the Map editor's **Export > Device table for library 1.1, with EVRe
+  Guard**: one image of the device bank served through ranges (one per run of read-only or writable registers, so
+  their order is free) and EVRe Guard's table from the same registers, each entry tied to its member of the image
+  by a `static_assert`. `--to table` alone writes the table for 1.0 as before, byte for byte.
+- The C header and the device table write an `f32` limit past the largest float as the largest (it was `inf`).
+- EVRe Studio, `evre` and the Python package name code 13 *login required*. A register refused with 13 is asked again
+  at the next poll (only 3, 4 and 5 mark it *not available*), and the Studio does not log in again by itself: the Log
+  says so once for the device.
+- `evre_fake_fast --login-required` plays a device whose login is required.
+- CI runs the library's suite (`tests/run_lib_tests.py`) on Linux and Windows.
+
 ## 1.1.0 (2026-10-18)
 
 ### EVRe Studio

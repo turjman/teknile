@@ -68,7 +68,8 @@ public:
 	void duplicateSelected();
 	void deleteSelected();
 
-	/* the map written as `kind`: "md", "h", "py" or "csv"; prefix: for the C and Python names */
+	/* the map written as `kind`: "md", "h", "py", "csv", "table" (the device table for library 1.0), "table11" (for
+	 * 1.1, with EVRe Guard) or "guard" (the .h, and the .cpp beside it); prefix: for the C and Python names */
 	bool exportTo(const QString &kind, const QString &file, const QString &prefix, QString &err);
 	/* the registers of a CSV file into the map: all of them instead of the map's, or added (the same
 	 * address: replaced) */

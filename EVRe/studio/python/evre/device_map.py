@@ -64,6 +64,10 @@ class Register:
         self.desc, self.notes = spec.get('desc', ''), spec.get('notes', '')
         self.scale, self.offset = float(spec.get('scale', 1)), float(spec.get('offset', 0))
         self.min, self.max = spec.get('min'), spec.get('max')
+        # "past_limits": "clamp": the device takes a value past min or max and clamps it (EVRe Guard lets it through)
+        self.clamps = str(spec.get('past_limits') or 'refuse').strip().lower() == 'clamp'
+        self.closed = bool(spec.get('closed', False))  # only the value names, specials and an action's idle value
+        self.reserved_zero = bool(spec.get('reserved_zero', False))  # the bits no field covers are written 0
         self.enum = {number_key(k): v for k, v in (spec.get('enum') or {}).items()}
         self.special = {float(number_key(k)): v for k, v in (spec.get('special') or {}).items()}
         self.fields = [Field(s) for s in spec.get('fields') or []]
@@ -103,9 +107,17 @@ class Register:
             return data
         if isinstance(value, str):
             value = self.value_of_name(value)
+        if not math.isfinite(value):  # no device takes NaN or an infinity (EVRe Guard refuses them, 15)
+            raise ValueError('%s: %s is not a finite number' % (self.name, value))
         raw = (value - self.offset) / (self.scale or 1)
         if self.type == 'f32':
-            return struct.pack('<f', raw)
+            try:
+                data = struct.pack('<f', raw)
+            except OverflowError:
+                data = b''
+            if not data or not math.isfinite(struct.unpack('<f', data)[0]):
+                raise ValueError('%s: %s is past the largest f32 value' % (self.name, value))
+            return data
         raw = int(round(raw))
         try:
             return struct.pack(TYPES[self.type][0], raw)
@@ -146,6 +158,25 @@ class Register:
         if self.max is not None and shown > self.max and not math.isclose(shown, self.max, rel_tol=1e-6):
             return 'above the maximum %s %s' % (self.max, self.unit)
         return None
+
+    def write_problem(self, data):
+        """why these bytes should not be sent, as a device with EVRe Guard would refuse them, or None: a value outside a
+        closed set, a bit no field covers set (reserved_zero), past min or max (not for a register that clamps)"""
+        shown, raw = self.decode(data), self.raw_int(data)
+        if self.type.startswith('i'):
+            raw = struct.unpack(TYPES[self.type][0], data[:self.size])[0]
+        if self.reserved_zero and self.fields:
+            covered = 0
+            for fl in self.fields:
+                covered |= fl.mask
+            if raw & ((1 << (8 * self.size)) - 1) & ~covered:
+                return "outside the fields' bits"
+        if self.closed:
+            idle = round(((self.default or 0) - self.offset) / (self.scale or 1))
+            if raw not in self.enum and not any(math.isclose(shown, v, rel_tol=1e-6, abs_tol=1e-9) for v in self.special) \
+                    and not (self.write_kind == 'action' and raw == idle):
+                return 'outside the closed set of values'
+        return None if self.clamps else self.limit_problem(shown)
 
 
 class DeviceMap:
