@@ -1081,7 +1081,7 @@ private:
 
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
-	mutable int stripesDrawn_ = 0;
+	mutable int stripesDrawn_ = 1;
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
 	bool fastSummaries_ = false;           /* older fast records as summaries only (setFastSummaries) */
 	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */

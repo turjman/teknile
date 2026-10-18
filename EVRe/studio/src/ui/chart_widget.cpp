@@ -4719,7 +4719,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 			clips[i] = shown.adjusted(-2, -2, 2, 2);
 		}
 	}
-	if (all.isEmpty()) return;
+	if (all.isEmpty()) {
+		stripesDrawn_ = 1;
+		return;
+	}
 	const QRectF clip = all.adjusted(-2, -2, 2, 2);
 	const auto clipOf = [&clips](qsizetype i) { return clips[i]; };
 	if (dpr <= 0) dpr = p.device()->devicePixelRatioF();

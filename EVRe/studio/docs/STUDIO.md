@@ -6702,6 +6702,9 @@ made up for the check:
   2 GB (as much as the machine fills in 20 s; about 1.8 GB in 4 s here), then RAM 256 MB: at the next block the store
   is at its new share; over 60 blocks, each with its `frame()` and a paint, no append, frame or paint over 20 ms. It
   prints the times (here: the longest append 4.6 ms, frame 10.8 ms, paint 10.8 ms).
+- **A fast line's bars on threads** (`chartFastBarsOnThreads`): a fast line whose bars fill the plot's height,
+  2400 x 1400 device pixels on any screen: one stripe on one thread, at least two with the drawing threads, the two
+  pictures the same (the many-lines measure). It prints the stripes and the threads.
 - **The free memory** (`chartRamFree`): `effectiveRamMB` (held and free less the reserve, the floor, the RAM set at
   most) and the note *only 2.1 GB free: keeps about 40 s*; then a Chart tab of its own, a fast line filled to its
   share of 512 MB and a free memory given that leaves the chart 256 MB: the store down to it at the next block, no
