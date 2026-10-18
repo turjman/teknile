@@ -708,6 +708,7 @@ void MainWindow::onOpened(const QString &link) {
 	logEvent(LogLevel::Info, tr("connected: %1").arg(link));
 	connected_ = true;
 	offlineDevices_.clear();
+	loginRequiredLogged_.clear();
 	deviceInfo_.clear();
 	showDeviceInfo(); /* "not read yet" until the engine reads it */
 	deviceInfoAtOpen_ = deviceInfoHtml(isBus() ? selectedSlave() : 0);
@@ -1388,6 +1389,17 @@ void MainWindow::logReadStateChange(int row, const RegValue &value) {
 	const qint64 now = QDateTime::currentMSecsSinceEpoch();
 	/* a bus: a device that does not answer is told of once (offline), not for each of its registers */
 	const bool deviceSilent = isBus() && value.error.startsWith(QLatin1String("timeout"));
+	/* a device that wants a login refuses every register with 13: told of once a connection, per device, with the way
+	 * out; the Studio does not log in again by itself */
+	if (value.error == evre::errorName(LOGIN_REQUIRED_CODE)) {
+		if (!loginRequiredLogged_.contains(was.def.slave)) {
+			loginRequiredLogged_.insert(was.def.slave);
+			logEvent(LogLevel::Error, deviceLabel(was.def.slave)
+					+ tr("login required: the device takes no request without a session. Give its token in the sidebar "
+						 "and connect again"));
+		}
+		return;
+	}
 	if (!value.error.isEmpty() && !deviceSilent && now - readErrorLoggedMs_.value(row, 0) > READ_ERROR_LOG_MS) {
 		readErrorLoggedMs_[row] = now;
 		const QString name = was.def.name, addr = addrText(was.def.addr);
@@ -1419,15 +1431,18 @@ void MainWindow::onWriteRequested(int row, const QString &text, const QByteArray
 		return;
 	}
 	/* past the map's min or max: only when the user says so (a special value is always allowed) */
-	const QString outside = def.isNumeric() ? limitProblem(def, decodeNumber(def, bytes)) : QString();
+	const QString outside = writeProblem(def, bytes);
 	if (!outside.isEmpty() && !confirmed(this, tr("Outside the map's limits"),
 			tr("<b>%1</b> = <b>%2</b> is %3 the map gives it.<br><br>The map may be stricter than the device, or the "
-			   "device may not take it. Write it anyway?").arg(def.name.toHtmlEscaped(), text.toHtmlEscaped(),
+			   "device may not take it (a device with EVRe Guard refuses it). Write it anyway?").arg(def.name.toHtmlEscaped(), text.toHtmlEscaped(),
 					outside.toHtmlEscaped()),
 			tr("Write anyway"))) {
 		logEvent(LogLevel::Info, tr("%1: write of %2 cancelled (%3)").arg(def.name, text, outside));
 		return;
 	}
+	if (def.clamps && def.isNumeric() && !limitProblem(def, decodeNumber(def, bytes)).isEmpty())
+		logEvent(LogLevel::Info, tr("%1 = %2 is past the map's limits: the device clamps it (\"past_limits\": \"clamp\")")
+				.arg(def.name, text));
 	if (def.danger && !confirmDangerWrite(def, text, bytes)) {
 		logEvent(LogLevel::Info, tr("%1: write of %2 cancelled at the confirmation").arg(def.name, text));
 		return;

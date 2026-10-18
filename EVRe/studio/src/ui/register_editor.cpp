@@ -39,7 +39,7 @@ namespace {
 /* one merge key per box: typing into it is one undo step */
 enum Key { KeyAddr = 1, KeyName, KeyType, KeySize, KeyUnit, KeyAccess, KeyWrite, KeyGroup, KeyDesc, KeyScale,
 	KeyOffset, KeyDecimals, KeyMin, KeyMax, KeyDefault, KeyPersist, KeyDanger, KeyHex, KeyNotes, KeyEnum, KeySpecial,
-	KeyFields, KeyPlot };
+	KeyFields, KeyPlot, KeyPastLimits, KeyClosed, KeyReservedZero };
 
 /* the pages, in their order */
 enum Page { PageGeneral, PageValues, PageFields, PageNotes };
@@ -53,6 +53,8 @@ QString numberText(double value) {
 }
 
 QString accessOf(const RegDef &def) { return accessText(def); }
+
+QString pastLimitsOf(const RegDef &def) { return def.clamps ? QStringLiteral("clamp") : QStringLiteral("refuse"); }
 
 QString writeOf(const RegDef &def) {
 	return MapTableModel::writeChoices().value(int(def.write));
@@ -321,6 +323,21 @@ QWidget *RegisterEditor::buildGeneral() {
 	min_ = new QLineEdit;
 	max_ = new QLineEdit;
 	default_ = new QLineEdit;
+	pastLimits_ = new QComboBox;
+	pastLimits_->setObjectName(QStringLiteral("pastLimits"));
+	pastLimits_->addItem(tr("refused: the device refuses a value past them"), QStringLiteral("refuse"));
+	pastLimits_->addItem(tr("clamped: the device takes it and clamps it"), QStringLiteral("clamp"));
+	pastLimits_->setToolTip(tr("What the device does with a value past min or max (\"past_limits\"). Refused: hosts "
+			"ask before they send one, and a device with EVRe Guard refuses it (value refused, 15). Clamped: hosts "
+			"send it as it is, and EVRe Guard checks only that it is a number of the type"));
+	closed_ = new QCheckBox(tr("closed: only its value names and special values"));
+	closed_->setObjectName(QStringLiteral("closedSet"));
+	closed_->setToolTip(tr("\"closed\": a host writes only the register's value names, its special values and, for an "
+			"action, its idle value; a device with EVRe Guard refuses any other value (15), whatever min and max say"));
+	reservedZero_ = new QCheckBox(tr("reserved_zero: bits no field covers are 0"));
+	reservedZero_->setObjectName(QStringLiteral("reservedZero"));
+	reservedZero_->setToolTip(tr("\"reserved_zero\": the bits no bit field covers must be written 0; a device with EVRe "
+			"Guard refuses a value with one of them set (15). For a register with bit fields"));
 	for (QLineEdit *box : { scale_, offset_, min_, max_, default_ }) box->setClearButtonEnabled(true);
 	min_->setPlaceholderText(tr("none"));
 	max_->setPlaceholderText(tr("none"));
@@ -356,9 +373,19 @@ QWidget *RegisterEditor::buildGeneral() {
 	form->addRow(tr("Min"), min_);
 	form->addRow(tr("Max"), max_);
 	form->addRow(tr("Default"), default_);
+	/* EVRe Guard's three rows close the form under a heading of their own: without it nothing said what they are
+	 * (theme: #guardHeading, the line under it in the border colour) */
+	auto *guardHeading = new QLabel(tr("EVRe Guard"));
+	guardHeading->setObjectName(QStringLiteral("guardHeading"));
+	guardHeading->setToolTip(tr("The device-side checks of EVRe Guard (library 1.1): what a device does with a value "
+			"past the limits, a closed set of values, and reserved bits"));
+	form->addRow(guardHeading);
+	form->addRow(tr("Past limits"), pastLimits_);
+	form->addRow(QString(), closed_);
+	form->addRow(QString(), reservedZero_);
 	auto *page = new QWidget;
 	page->setLayout(form);
-	/* in a scroll area: its 18 rows would make the window taller than a 768-line screen (theme: #formScroll) */
+	/* in a scroll area: its 23 rows would make the window taller than a 768-line screen (theme: #formScroll) */
 	auto *scroll = new QScrollArea;
 	scroll->setObjectName(QStringLiteral("formScroll"));
 	scroll->setWidget(page);
@@ -444,6 +471,10 @@ void RegisterEditor::connectBoxes() {
 			d.readable = access != QLatin1String("wo");
 		});
 	});
+	connect(pastLimits_, &QComboBox::activated, this, [this, step] {
+		const bool clamps = pastLimits_->currentData().toString() == QLatin1String("clamp");
+		apply(step(tr("Past limits")), KeyPastLimits, [clamps](RegDef &d) { d.clamps = clamps; });
+	});
 	connect(write_, &QComboBox::activated, this, [this, step] {
 		const WriteKind kind = WriteKind(write_->currentIndex());
 		apply(step(tr("Write")), KeyWrite, [kind](RegDef &d) { d.write = kind; });
@@ -499,6 +530,8 @@ void RegisterEditor::connectBoxes() {
 	flag(danger_, tr("Danger"), KeyDanger, &RegDef::danger);
 	flag(hex_, tr("Hex"), KeyHex, &RegDef::hex);
 	flag(plot_, tr("Plot"), KeyPlot, &RegDef::plottable);
+	flag(closed_, tr("Closed"), KeyClosed, &RegDef::closed);
+	flag(reservedZero_, tr("Reserved bits"), KeyReservedZero, &RegDef::reservedZero);
 	connect(notes_, &QPlainTextEdit::textChanged, this, [this, step] {
 		if (loading_) return;
 		const QString notes = notes_->toPlainText();
@@ -589,6 +622,7 @@ void RegisterEditor::reload() {
 	pick(type_, [](const RegDef &d) { return typeName(d.type); }, false);
 	pick(access_, accessOf, true);
 	pick(write_, writeOf, true);
+	pick(pastLimits_, pastLimitsOf, true);
 	if (!group_->lineEdit()->hasFocus()) {
 		group_->clear();
 		group_->addItems(doc_->groups());
@@ -618,6 +652,8 @@ void RegisterEditor::reload() {
 	tick(danger_, &RegDef::danger);
 	tick(hex_, &RegDef::hex);
 	tick(plot_, &RegDef::plottable);
+	tick(closed_, &RegDef::closed);
+	tick(reservedZero_, &RegDef::reservedZero);
 
 	/* names and fields: one register at a time; fields: an integer one. Otherwise the page says why (showGates) */
 	/* two lines each: what is wrong, then what is needed */

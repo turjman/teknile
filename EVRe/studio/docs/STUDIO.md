@@ -269,6 +269,8 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [32.4 CSV and Import CSV](#324-csv-and-import-csv)
     - [32.5 The JSON Schema](#325-the-json-schema)
     - [32.6 Device table for the EVRe library](#326-device-table-for-the-evre-library)
+    - [32.7 EVRe Guard table](#327-evre-guard-table)
+    - [32.8 Device table for library 1.1](#328-device-table-for-library-11)
   - [33. Overlays](#33-overlays)
   - [34. The `evre` command-line tool](#34-the-evre-command-line-tool)
     - [34.1 `evre check`: does the device answer as its map says?](#341-evre-check-does-the-device-answer-as-its-map-says)
@@ -321,7 +323,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Writes | Only when *Allow writes* is on. Registers marked danger ask first. Every write is read back, and a write asks first when the value changed while you were editing. |
 | Quick&nbsp;write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
 | Map&nbsp;editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
-| Export | The map as a Markdown specification, a C header, a Python module, CSV, or the device table for firmware on the EVRe library; CSV back in; a JSON Schema of the format (chapter 32). |
+| Export | The map as a Markdown specification, a C header, a Python module, CSV, the device table for firmware on the EVRe library (1.0, or 1.1 with EVRe Guard), or EVRe Guard's table; CSV back in; a JSON Schema of the format (chapter 32). |
 | Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto or Manual Y, Normalise and Smooth. |
 | Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS, standard deviation, peak to peak and area over A..B or over the view, and the total since Clear. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). Columns shown or hidden by a right-click on the header. |
 | Math&nbsp;lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
@@ -585,6 +587,7 @@ Some devices, or the TCP gateway in front of them, answer only after the client 
 - **A token but no login register.** The Log shows the warning *the map declares no login register: the token was not sent*.
 - **A refused login.** When the write fails (an error answer, or a timeout), the Log shows the error *token refused: <reason>*, and it pops up. For example: *token refused: permission denied*. The line under the pill shows it too, until the answer to the device ID read replaces that line.
 - **No token.** Nothing is written, whatever the map says.
+- **A device that requires the login.** A device with EVRe Guard's login (library 1.1) refuses every other request with code 13 until a token is accepted, and after an idle time without requests. The registers then show *error*, the Log says once *login required: the device takes no request without a session. Give its token in the sidebar and connect again*, and the Studio does not log in again by itself (18.3).
 
 Only a TCP link sends the token. A serial link never does.
 
@@ -1068,6 +1071,10 @@ Two points to know:
 
 A value that cannot be encoded is not written. The Log shows the error *NAME: text not written: reason*, for example *FAN_SPEED: 300 not written: 300 is out of range for u8 (0 … 255)*, or *…: not a number: "abc"*.
 
+NaN and the infinities are never written, whatever the register, and neither is an `f32` past the largest float
+(`1e39`): *SETPOINT: nan not written: not a finite number: "nan"*. No device takes them; a device with EVRe Guard
+refuses them (15).
+
 ### 5.3 Read-modify-write
 
 The bit view writes one bit or one field at a time, but the device only knows whole registers. The Studio therefore takes the value the device holds now, changes only that field's bits, and writes the whole register. The other bits stay as the device had them.
@@ -1180,9 +1187,15 @@ Two write paths do not show this dialog:
 A write from the window goes through these steps in order:
 
 1. Changed while editing? Ask (6.2).
-2. Encode the text for the register's type (5.2). A value that cannot be encoded is logged as an error and not written.
+2. Encode the text for the register's type (5.2). A value that cannot be encoded (NaN or an infinity among them) is
+   logged as an error and not written.
 3. Past the map's `min` or `max`? Ask *Outside the map's limits*, with **Write anyway** and **Cancel** (Cancel is
-   the default). A special value is never outside them. The API refuses such a write instead (17.3).
+   the default). A special value is never outside them. The API refuses such a write instead (17.3). A register
+   with `"past_limits": "clamp"` is not asked about: the device clamps the value, and the Log says so. A device with
+   EVRe Guard refuses a value past the limits of any other register with 15 (*value refused*, 18.3), even after
+   **Write anyway**. The same question comes for a register with `"closed": true` and a value it does not list
+   (*outside the closed set of values*), and for one with `"reserved_zero": true` and a bit no field covers set
+   (*outside the fields' bits*): a device with EVRe Guard refuses those with 15 too.
 4. A danger register? Ask (6.3).
 5. Write with acknowledgement (`WRITE_ACK`).
 6. If the device acknowledged the write, read the register back. The table shows the answer, and the next polls keep reading it.
@@ -3304,6 +3317,9 @@ Unknown keys are kept: a save writes them back as they were (16.9).
 | `danger` | boolean | `false` | Every write from the window asks first (6.3), and API clients also need *including ⚠ registers* (17.2). |
 | `decimals` | number | automatic | The shown value with this many decimals (0 – 15). |
 | `min`,&nbsp;`max` | number | none | The shown value's limits for writes, in shown units: the window asks before writing past them, the API refuses (6.4). |
+| `past_limits` | string | `"refuse"` | What the device does with a value past `min` or `max`: `"refuse"` it (a device with EVRe Guard answers 15, *value refused*), or `"clamp"` it: the device takes any value of the type and clamps it, so the window, the API, `evre` and the Python package send such a value without asking, and the Log says the device clamps it. EVRe Guard's table (32.7) gives a clamping register the type's full range. |
+| `closed` | boolean | `false` | Only the register's value names (`enum`), its specials and, for an action, its idle value may be written; the window asks before any other value, the API, `evre` and the Python package refuse it, and a device with EVRe Guard answers 15, whatever `min` and `max` say. For an integer register with value names. |
+| `reserved_zero` | boolean | `false` | The bits no field covers must be written 0: the window asks before a value with one set, the API, `evre` and the Python package refuse it, a device with EVRe Guard answers 15. For an integer register with `fields`. |
 | `default` | number&nbsp;or&nbsp;string | none | The value after a reset, in shown units, or one of the register's value names. The quick-write panel's **Default** writes it. |
 | `special` | object | none | Names of single values of a number, in shown units: `{ "-1": "not measured" }`. Decoded shows the name, a write may always set them (31.2). |
 | `enum` | object | none | Names of values (16.6). |
@@ -3989,9 +4005,13 @@ How the Studio uses them:
 | 4 | offset&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
 | 5 | count&nbsp;out&nbsp;of&nbsp;range | **refused for good** |
 | 12 | length&nbsp;mismatch | the register shows *error*, and is tried again |
+| 13 | login&nbsp;required | the registers show *error*, and are tried again at every poll; a merged block is not split; the Log says it once for the device |
+| 15 | value&nbsp;refused | a write: the device's EVRe Guard did not take the value (past its limits, outside its closed set, a bit set that must be 0, NaN or an infinity); nothing was stored. The Log shows *write refused: …: value refused* |
 | other | `error <n>` | the register shows *error*, and is tried again |
 
-An error answer to a merged block always splits the block first (13.4). Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
+An error answer to a merged block splits the block first (13.4), except code 13: a device with EVRe Guard's login refuses every request without a session, so the code says nothing about the addresses. Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
+
+A device that answers 13 wants a login (3.6). The Studio sends the token once, when it connects, and does not log in again by itself: a refused token, or a session the device closed after an idle time, stays so until you give the token and connect again. The Log says *login required: the device takes no request without a session* once for each device and connection. The registers are still asked at every poll, so a session another client opens (through a gateway, say) brings the values at the next poll.
 
 ### 18.4 CRC
 
@@ -4613,7 +4633,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
 | `src/model/json_doc.h`,&nbsp;`.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence` |
-| `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV and device table export, CSV import, `identifier` |
+| `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV, device table (`exportDeviceTable`, `exportDeviceTable11`) and EVRe Guard table export, CSV import, `identifier` |
 | `src/model/map_document.h`,&nbsp;`.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
 | `src/model/bus_file.h`,&nbsp;`.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
 | `src/model/expr.h`,&nbsp;`.cpp` | `Expr`: the formula parser (recursive descent to postfix) and its stack machine |
@@ -4672,6 +4692,9 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `python/tests/test_evre.py` | the Python package (unittest), with a session against `evre-sim`, a bus on `evre_fake_fast`, and fast streams' recordings: one made by hand (the numbers across a gap and the 32-bit wrap, a new start, the times from the marks, a bad block, a cut, a CSV refused) and one `evre record` writes from `evre_fake_fast` losing every 5th block (the device's waves, the gaps); the same stream live with `dev.stream` (its blocks for a second, the numbers and gaps, the waves, switched off at the end) |
 | `tests/cli_test.py` | `evre` end to end, against its own fake device on port 1212 |
 | `tests/schema_test.py` | the maps against `docs/evre-map-1.schema.json` (needs the `jsonschema` package) |
+| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and the Guard, and driven |
+| `tests/golden/example_device_table.h` | the device table of `maps/example_device.json`, as `--to table` must write it byte for byte |
+| `tests/golden/example_device_table_11.h` | the same for library 1.1, as `--to table --lib 1.1` must write it (32.8) |
 | `docs/evre-map-1.schema.json` | the JSON Schema of `evre-map/1` |
 | `tests/api_test.py` | the API end to end, in three modes, and the fast streams in a mode of their own |
 | `tests/fake_device.py` | a fake EVRe device over TCP (Python, standard library only) |
@@ -6058,12 +6081,13 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
 | `tests/fake_login_test.py` | the login of both fake devices, and the probe's | the build folder (`evre_fake_fast`, `evre_probe`) | only to the fake devices' login register |
 | `evre_map_test` | the map files, the exports (26.7) | nothing; `gcc` and `python` on PATH compile and import the exports | only its own temporary folder |
-| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; a map's streams in `info` and `validate`, `record` (34.2), `check --writes` on a stream (34.1) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232 and with the fast map on 1238, itself | yes, to its own fake devices |
-| `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict, login, persist, a fast stream (its enable, rate register, `evre record`, watchdog, test aids) | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
-| `tests/schema_test.py` | the maps against the JSON Schema; a stream's keys and refusals; MAP_FORMAT.md's stream keys against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
+| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; the name of code 13; a map's streams in `info` and `validate`, `record` (34.2), `check --writes` on a stream (34.1) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232, and on 1238 with `--login-required` and (after it) with the fast map, itself | yes, to its own fake devices |
+| `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict (15, 3, a register that clamps), login, persist, a fast stream (its enable, rate register, `evre record`, watchdog, test aids) | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
+| `tests/schema_test.py` | the maps against the JSON Schema; `past_limits`, `closed` and `reserved_zero`; a stream's keys and refusals; MAP_FORMAT.md's register and stream keys and 16.3 against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `evre_fast_test` | Fast EVRe without a window (26.9): the block's rules, a fuzz, the clock's fit, the fake devices' source | nothing | no |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` (26.9) | the build folder (`evre_fast_test`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib`), SKIP without | only its own temporary folder |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
+| `tests/guard_table_test.py` | the EVRe Guard table export (32.7) compiled with the library and EVRe Guard, driven at every limit's edges, a closed set and reserved bits; the typed constants; `keep_limits` and the Guard agreeing; a struct tied to the C header; the export errors; `--check`; `--to table` against `tests/golden/example_device_table.h`; the device table for library 1.1 (32.8) driven with the same vectors, an entry moved off its member failing the build, against `tests/golden/example_device_table_11.h`; the build matrix (`--skip` names a cross-compiler that is not there) | the build folder (`evre`); `g++` and the library with `guard/` for the compile part, SKIP without | only its own temporary folder |
 
 **The rule: the GUI test and the API test write only to a fake device.** They write registers of the device bank
 and set a register marked danger. Never point them at a real device. `evre_probe` is the only test program meant for
@@ -6077,8 +6101,8 @@ Settings stay apart from the user's:
 
 A script that runs the tests should stop only the processes it started, by their process id, never by name or
 window title. A user may have the Studio open at the same time. The tests use the fixed ports 1210, 1211 (the fake devices'
-login test), 1219 and 1220, and the GUI test's own 1226 (a bus), 1236 (auto send) and 1240 (fast streams), so only one
-test run can be active on a machine at a time.
+login test), 1219 and 1220, and the GUI test's own 1226 (a bus), 1236 (auto send), 1240 (fast streams) and 1242 (login
+required), so only one test run can be active on a machine at a time.
 
 ### 26.2 The GUI test
 
@@ -6156,8 +6180,13 @@ The steps run in order. Each leaves the window and the device as the next step e
     refused it, and the Log shows *token refused: permission denied*. The Monitor logs the frames meanwhile (its
     frames cleared once the old link is silent): the first frame sent on the new link is the login, a `WRITE_ACK`
     of the whole login register (3.6)
-19. the map file: `"login"` saved and loaded again unchanged, and left out by a map that has none
-20. the login skipped: the other client writes a marker to the login register (refused, but kept by the fake
+19. the login required (`loginRequired`): `errorName` names 13 *login required*; `evre_fake_fast --login-required`
+    started on port 1242 and the window connected with a wrong token: the token is refused once, then every register
+    shows *error* (13), none is marked *not available*, the Log says *login required* once for the device, and no
+    second token goes out; another client logs in, and the next polls bring the values (still asked). The window then
+    connects back to the Python fake device
+20. the map file: `"login"` saved and loaded again unchanged, and left out by a map that has none
+21. the login skipped: the other client writes a marker to the login register (refused, but kept by the fake
     device), then the window is started again with the same map without its `"login"` (a temporary copy) and the
     token still set; the Log shows *the map declares no login register: the token was not sent*, and the device's
     login register still holds the marker (nothing was written)
@@ -6210,7 +6239,7 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   Registers tab's All devices shows both devices' registers; the three device pickers show D2 alike (its dot,
   *D2 · slave 2*, its state) and many names are written in short; a math line reads registers of both; the Monitor
   names the devices in place of its Slave number, and a broadcast from it (*Broadcast · slave 0*) reaches both devices; a broadcast preset made in its dialog and sent from the Broadcast menu
-  reaches both; Auto send is disabled, its tooltip says why. With the second (D1, D2 with another device ID, D9 at a
+  reaches both; a broadcast past the map's max asks first (*Outside the map's limits*), and Cancel sends nothing; Auto send is disabled, its tooltip says why. With the second (D1, D2 with another device ID, D9 at a
   slave nobody answers): a broadcast into the device bank is refused, one into CONFIG (0xA004) is sent, one into
   CONFIG with AUTO_SEND set is refused and nothing sent; D9 goes offline (the
   Log, the card, in words too) while D1 is still polled. Close bus gives one device again, and the window connects
@@ -6411,6 +6440,20 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   handle at least 7 px high with a grip, its picture lit under the mouse, the resize cursor and a tooltip; dragged
   160 px up (the mouse's events on the handle), the chart that much shorter, more than 3 rows of the table in view,
   its place saved (`recording/measureSplit`, `chart/measureSplit`) and restored in a new window or tab.
+
+**EVRe Guard's key** (`guardKeys`, after the step of the limits): `errorName` names 15 *value refused*; the
+register editor's *Past limits* choice has two items (refused, clamped) and a tooltip naming EVRe Guard; on the u8
+register it reads *refused*, and *clamped* sets `"past_limits": "clamp"` in one undo step, the Registers table
+following; then a value 5 past its max is written without the question, and the Log says the device clamps it;
+undo: refused again; the broadcast check refuses one byte of the 16-bit danger register (*writes only part of*) and
+lets both go; the *closed* and *reserved_zero* boxes, off, with tooltips naming EVRe Guard; *closed* ticked on the
+u8 register sets `"closed": true` in one undo step, the Registers table following, and 3 (inside min and max, but
+not listed) asks first, *outside the closed set of values*, Cancel writes nothing; undo: open again; the heading
+*EVRe Guard* (`guardHeading`, with a tooltip) shown on the General page, a row across both columns below *Default*
+and above *Past limits*, and the three Guard rows the last of the form; Export: the
+EVRe Guard table's `.h` and, beside it, its `.cpp` that includes it, and the item in the Export menu; the device
+table for library 1.1 (the bank on ranges, the Guard's entries tied to the image) and its item; *nan* typed
+into an `f32` register: the pop-up *not a finite number*, nothing sent.
 
 **Lanes** (`chartLanes`, on a Chart tab of its own): eight lines of four units (two each, V around 12, A around
 0.5, W around 6, none around 100): four lanes in that order, of equal height, stacked, each with its own Auto range
@@ -6822,7 +6865,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 751 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 772 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6932,7 +6975,7 @@ It starts `evre_fake_fast` on port 1246 with `maps/example_fast.json` and an EVR
   device answers every client, logged in or not. A read of the login register returns the last token written to
   it, accepted or refused, so a test can see what arrived.
 
-`evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]...` (default 1210,
+`evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]... [--login-required]` (default 1210,
 `maps/example_device.json` beside the executable and `example-token`) does the same in C++, for measuring the Studio
 at thousands of polls a second, and plays several devices on one link: each `--node` adds a device with its own
 slave address, map and memory on the same port. It differs from the Python device in these points:
@@ -6963,11 +7006,16 @@ slave address, map and memory on the same port. It differs from the Python devic
   `tests/fake_device.py` serves no stream. A device more than a second behind (a stall) drops what it could not
   send, and its next block says LOST.
 - With a map that has no `device_id`, it reports DEVICE_ID 0, where the Python device reports `0x0001`.
+- `--login-required` makes it a device whose login is required, as one with EVRe Guard's login: until the token is
+  written (by any client, the session is the device's), every request but a write over the login register is
+  refused with ERROR_RESP 13 (*login required*), a WRITE silently; a refused token closes the session again. The GUI
+  test's login required step, `cli_test.py` and the Python package's tests use it on ports of their own.
 
 Both answer only their own slave address (`--slave`, else the map's `"slave"`): a frame for another slave gets no
 answer, as on a bus. A broadcast (slave 0) WRITE is taken and not answered; any other broadcast is dropped.
 
-The API test runs against the Python device only, the GUI test too except its bus and auto send steps, which start
+The API test runs against the Python device only, the GUI test too except its bus, auto send and login required
+steps, which start
 `evre_fake_fast` on ports of their own. `tests/fake_login_test.py` checks the login of
 both devices the same way, so they cannot drift apart unnoticed:
 
@@ -7315,13 +7363,16 @@ it *not modified* again.
 
 The right side shows the selected register in full, over four pages. With no register selected it shows a note in
 the middle instead, in the warning colour: *No register selected*, and how to pick one. The General page scrolls
-when the window is short: its 18 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
+when the window is short: its 23 rows set no minimum height, so the window fits a 1280 x 720 screen. An empty box
 shows its hint (*none*, *none: a number or a value name*), with any register selected.
 
 **General**: address, name, type, size, unit, access, write behaviour, group, description; *persist* (kept across a
 reset), *danger* (confirm every write), *show in hex*, *plot* (a line on the chart: untick for a value that does not
 change with time, `"plot": false`); scale and offset (shown = raw × scale + offset); decimals
-(*auto*, or a fixed number); min, max and default.
+(*auto*, or a fixed number); min, max and default; then, under a heading **EVRe Guard**, past limits, *closed* and
+*reserved_zero*, which close the form. These three rows say what a device with EVRe Guard (library 1.1) checks on
+its side, not how the Studio shows the value: the heading, a bold line with a rule under it in the border colour,
+says so, and its tooltip names the three checks.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/map-form-dark.png">
@@ -7334,6 +7385,15 @@ change with time, `"plot": false`); scale and offset (shown = raw × scale + off
   special value is always allowed.
 - **Default** is the value after a reset (with *persist*: the factory value): a number, or one of the register's
   value names. The quick-write panel writes it with **Default** (5.1).
+- **Past limits** (`"past_limits"`) says what the device does with a value past min or max: *refused: the device
+  refuses a value past them* (the default: a device with EVRe Guard answers 15), or *clamped: the device takes it
+  and clamps it*: then the window, the API, `evre` and the Python package send such a value without asking, and the
+  Log says the device clamps it. Its tooltip says both. EVRe Guard's table gives a clamping register the type's full
+  range (32.7).
+- **closed** (`"closed"`): only the value names, the specials and, for an action, its idle value may be written; any
+  other value asks first, and a device with EVRe Guard refuses it (15), whatever min and max say.
+- **reserved_zero** (`"reserved_zero"`): the bits no bit field covers must be written 0; a value with one set asks
+  first, and a device with EVRe Guard refuses it (15). For a register with bit fields.
 
 **Values** and **Bit fields**: chapter 31. **Notes**: longer text on the register, as long as needed, Markdown
 allowed. It goes into the export (chapter 32).
@@ -7374,6 +7434,9 @@ register (a finding on the map itself opens the Map settings). With nothing foun
 | a default outside min … max; danger or a write behaviour on a read-only register | warning |
 | a writable field in a read-only register | warning |
 | a format that is not `evre-map/…`; a USB vendor ID without a product ID | warning |
+| EVRe Guard's table (32.7): a special that is not a whole raw value of the type; no raw value left between min and max; more than 255 listed values | error |
+| EVRe Guard's table: a limit past the type or between raw steps (the table takes the type's end, or the next step inward); `"past_limits": "clamp"` without min or max; `past_limits`, `closed` or `reserved_zero` in the reserved bank; a value name outside min … max of a closed register; an action without a default (0 is its idle value); `reserved_zero` without fields; a gap between two registers a host writes (a block write across it is refused) | warning |
+| EVRe Guard's table: `closed` on an `f32` or without value names; `closed` or `reserved_zero` on a `bytes` register | error |
 
 The checks never stop a save: a map under construction may be incomplete.
 
@@ -7513,7 +7576,7 @@ The whole map as a document an engineer (or an AI agent) can implement the devic
 | Macro | Value |
 |---|---|
 | `P_NAME_ADDR`,&nbsp;`P_NAME_SIZE` | the address, the size in bytes |
-| `P_NAME_MIN`,&nbsp;`_MAX`,&nbsp;`_DEFAULT` | in shown units: an integer, or a `float` literal (`3.65f`) for an `f32` |
+| `P_NAME_MIN`,&nbsp;`_MAX`,&nbsp;`_DEFAULT` | in shown units: an integer, or a `float` literal (`3.65f`) for an `f32`; past the largest float (`1e39`), the largest |
 | `P_NAME_<VALUE>` | each value name's number; special values marked `/* special */` |
 | `P_NAME_<FIELD>_POS`,&nbsp;`_MSK` | each field's position and mask, `P_NAME_<FIELD>_<VALUE>` its values |
 | `P_DEVICE_ID`, `P_LOGIN_ADDR`, `P_LOGIN_SIZE` | the map's device ID and login |
@@ -7592,6 +7655,67 @@ makes everything from DEVICE_REG_WRITE_MIN on writable. Move it below 0xD010, or
 `tests/device_table_test.py` exports a map with every kind of register, compiles the header with the library and
 `-Wall -Wextra -Werror`, and runs it: reads and writes through `decodePacketInto()`, the boundary, the limits (26.1).
 
+### 32.7 EVRe Guard table
+
+For a device with EVRe Guard's register checks (`lib/guard/evre_guard_desc.h` in the EVRe repository; PROTOCOL.md,
+"Register checks"): the const table the device's write handler checks every host write against. **Export > EVRe
+Guard table (C++: .h and .cpp)...** in the Map editor (the `.h` chosen, the `.cpp` beside it), or
+`evre export MAP --to guard [--prefix P] [-o FILE]` (`FILE.h` and `FILE.cpp`; without `-o`, `MAP_guard` where it
+runs). Add `--check` in the device's build: it exports again and compares with the files there, exit 1 when one
+differs, so a table older than its map fails the build. `--check` works for every export with `-o` (`--to h` too).
+
+| Part | What |
+|---|---|
+| `p_table` | the table, in the `.cpp`, `extern` in the `.h`: an entry for each register a host writes (`rw`, `wo`, or a `rw` or `w1c` field) in `0xD000..0xDFFF`, in address order. The reserved bank and the map's login register get none |
+| an&nbsp;entry | the address, size and type; the flags (`EVRE_GUARD_CLOSED` for `"closed"`, else `0u`); the raw limits as bits (an unsigned value, a signed one sign-extended, an `f32` as its IEEE 754 bits) with the shown values in a comment; the listed values (the specials; for a closed register its value names and an action's idle value too); `zero_bits`, the bits that must be 0 (`"reserved_zero"`: the bits no field covers, else 0) |
+| `P_NAME_RAW_MIN`,&nbsp;`_MAX` | in the `.h`: the map's limits in raw units, typed (`constexpr int16_t`), for the device's own clamps and `static_assert`s; a clamping register keeps them though its entry has the type's full range |
+| the&nbsp;format&nbsp;check | `#error` unless `EVRE_GUARD_TABLE_FORMAT` is 1 |
+
+How the map's numbers become the table's (MAP_FORMAT.md 6.1): raw = (shown − offset) / scale, `min` and `max`
+swapped for a negative scale; an integer's limits rounded inward (`ceil`, `floor`), an `f32`'s to the nearest float,
+the one a host makes of the same number; a limit past the type, or left out, is the type's end; each special a whole
+raw value of the type (or a finite `f32`), `-0` listed as `0`. A `w1c` register has no limits, a `bytes` register its
+span only. The export stops, and names the register, for a special that is not a whole raw value, no raw value left
+between `min` and `max`, more than 255 listed values, a writable register outside the bank, two that overlap, or no
+register a host writes. The Map editor's checks list the same, and where the table takes another value than the map
+(a limit past the type or between raw steps), `clamp` without limits, the Guard's keys in the reserved bank, and a gap
+between two registers a host writes: a device with EVRe Guard refuses a block write across it, so declare the gap as
+a `bytes` register if one must pass.
+
+A device with its own memory layout ties its structs to the map with `static_assert`s against the C header's
+`_ADDR` and `_SIZE` (32.2): the guard table and the header come from the same map, and `--check` keeps both fresh.
+`tests/guard_table_test.py` exports a map with every case, compiles it with the library and the Guard, drives it
+through `decodePacketInto()` at every limit's edges, and checks the rest of this section (26.1).
+
+### 32.8 Device table for library 1.1
+
+For firmware on library 1.1 with EVRe Guard's register checks: one C++ header that serves the map's device bank
+through a range table and checks every host write. **Export > Device table for library 1.1, with EVRe Guard
+(C++)...** in the Map editor, or `evre export MAP --to table --lib 1.1 [--prefix P] [-o FILE] [--check]`. Without
+`--lib`, or with `--lib 1.0`, `--to table` writes the table of 32.6, unchanged.
+
+| Part | What |
+|---|---|
+| `P_READ_MAX`,&nbsp;`P_SIZE`,&nbsp;`P_RANGES` | the bank's last byte, the image's size, the number of ranges; also `P_ID`, `P_SLAVE` |
+| `p_image_t` | one image of the device bank: a packed struct with a member per register in address order, gaps as `_gap_...`, the defaults as start values in raw units; a `static_assert` per member and on the size |
+| `p_bind(dev, &image)` | the range table (a static array, no heap): one range per run of read-only or writable registers, pointing into the image; the slave address and `DEVICE_ID`. Return it from `protocolConfigure()`: `protocolInit()` checks a range table only then |
+| `P_NAME_RAW_MIN`,&nbsp;`_MAX` | the map's limits in raw units, typed, as in 32.7 |
+| `p_guard_table()` | EVRe Guard's table, the same entries as `--to guard` (32.7) from the same registers, in an inline function (one table for the whole program); each entry tied to its member by a `static_assert` on its address and size, so an entry off its member names the register in the build's error |
+| `p_check_init(&check, &dev)` | `evre_guard_check_init()` with that table, after `protocolInit()` |
+
+With ranges the rule of 32.6 goes: a read-only register may come after a writable one, each run gets a range of
+its own. A gap between two writable registers is in their range (the Guard refuses a write to it, 3); any other gap
+is read-only, as the boundary of 1.0 made it. So a map that 32.6 can serve is served the same way here, and the
+Guard does what `keep_limits` did: a write past the limits is refused (15), not put back. The comment on top lists
+what the map says and neither the library nor the Guard does: the clamps of `"past_limits": "clamp"` (the typed
+limits are there for them), action registers, write-1-to-clear, read-only bits of a writable register, write-only
+registers, persistence, the login (EVRe Guard part 1). A map without a register a host writes gets no Guard table.
+The export stops for a register outside the bank, two that overlap, or one the Guard's table cannot hold (32.7).
+
+`tests/guard_table_test.py` exports its test map this way (which 32.6 refuses: a read-only register comes after
+writable ones), builds a device with part 1's login on it, and drives it with every vector of the Guard table's
+test: each answer as on the device with hand-made ranges (26.1).
+
 ## 33. Overlays
 
 A map can **extend** another: `"extends": "base.json"` (the path relative to this file). The overlay's settings
@@ -7631,7 +7755,8 @@ from a terminal. It is built with the Studio (`build/evre`, `evre.exe` on Window
 
 ```
 evre validate MAP...                        the Map editor's checks (30.6); exit 1 if one is an error
-evre export MAP --to md|h|py|csv|table      the exports of chapter 32  [--prefix P] [-o FILE]
+evre export MAP --to md|h|py|csv|table|guard   the exports of chapter 32  [--prefix P] [-o FILE] [--check]
+                                            [--lib 1.0|1.1]: the device table for that library (32.6, 32.8)
 evre info  LINK [--map MAP]                 DEVICE_ID, protocol revision, capabilities, CONFIG; the map's streams
 evre read  LINK --map MAP NAME...           values, by name (any case) or 0x address
 evre read  LINK --addr 0xD000 --count N     raw bytes, no map needed
@@ -7762,7 +7887,7 @@ The device does what its map says:
 | `"write": "action"` | holds the value written 200 ms, then reads back idle (its default, else 0) |
 | `"write": "w1c"`, a field `"access": "w1c"` | a 1 written clears the bit, a 0 leaves it; such bits start set, like a latched fault |
 | a field `"access": "ro"` in a writable register | keeps its bits whatever is written |
-| `min`,&nbsp;`max`&nbsp;with&nbsp;`--strict` | a value past them is refused (ERROR_RESP 3) |
+| `min`,&nbsp;`max`&nbsp;with&nbsp;`--strict` | as a device with EVRe Guard's register checks: a value past them (a special aside), NaN or an infinity is refused with ERROR_RESP 15 (*value refused*), a write of part of a number with 3; a register with `"past_limits": "clamp"` takes a value past them and is set to the limit it passed; `"closed"` and `"reserved_zero"` are refused with 15 as the Guard refuses them |
 | `login` | a write of the whole login register is accepted with the token (`--token`, default `example-token`), else refused; `--require-login`: nothing else is written on a connection before its login |
 | `persist`&nbsp;with&nbsp;`--state FILE` | those registers are kept in FILE (JSON) across restarts |
 | an&nbsp;address&nbsp;in&nbsp;no&nbsp;register | ERROR_RESP 4 (offset out of range); a READ of a stream's window too |

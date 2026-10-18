@@ -12,6 +12,7 @@
 #include <QSaveFile>
 #include <QSet>
 #include <algorithm>
+#include <cmath>
 
 #include "evre/registers.h"
 
@@ -210,6 +211,12 @@ QString broadcastRefusal(const QVector<const DeviceMap *> &maps, uint16_t addr, 
 	if (!writableInMap(*maps.front(), addr, count))
 		return QObject::tr("%1 .. %2 is not all writable registers of the map")
 				.arg(addrText(addr), addrText(uint16_t(end - 1)));
+	/* a number is written whole: a device with EVRe Guard refuses part of one (3) */
+	for (const RegDef &def : maps.front()->regs)
+		if (def.isNumeric() && int(def.addr) < end && addr < int(def.addr) + def.size
+				&& (def.addr < addr || int(def.addr) + def.size > end))
+			return QObject::tr("%1 .. %2 writes only part of %3: a device with EVRe Guard refuses it")
+					.arg(addrText(addr), addrText(uint16_t(end - 1)), def.name);
 	return {};
 }
 
@@ -221,5 +228,10 @@ QString broadcastRefusal(const QVector<const DeviceMap *> &maps, uint16_t addr, 
 	if (at >= 0 && at < bytes.size() && (uint8_t(bytes[at]) & evre::CONFIG_AUTO_SEND))
 		return QObject::tr("a broadcast must not switch AUTO_SEND on: every device would send by itself at once, over "
 						   "the others");
+	/* NaN or an infinity in an f32: no device takes it (EVRe Guard refuses it, 15) */
+	for (const RegDef &def : maps.front()->regs)
+		if (def.type == RegType::F32 && def.addr >= addr && int(def.addr) + 4 <= int(addr) + bytes.size()
+				&& !std::isfinite(decodeNumber(def, bytes.mid(def.addr - addr, 4))))
+			return QObject::tr("%1 is not a finite number: no device takes it").arg(def.name);
 	return {};
 }

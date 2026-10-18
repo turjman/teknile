@@ -46,6 +46,7 @@
 #include <QCompleter>
 #include <QElapsedTimer>
 #include <QFocusEvent>
+#include <QFormLayout>
 #include <QFrame>
 #include <QHeaderView>
 #include <QHelpEvent>
@@ -148,6 +149,7 @@ constexpr quint16 FAKE_DEVICE_PORT = 1210;
 constexpr quint16 FAKE_BUS_PORT = 1226; /* evre_fake_fast as several devices on one link, started by the bus step */
 constexpr quint16 FAKE_AUTO_SEND_PORT = 1236; /* evre_fake_fast as one device that can AUTO_SEND, the auto send step */
 constexpr quint16 FAKE_FAST_PORT = 1240;      /* evre_fake_fast with maps/example_fast.json: the fast streams step */
+constexpr quint16 FAKE_LOGIN_PORT = 1242;     /* evre_fake_fast --login-required, the login required step */
 constexpr uint16_t PROTOCOL_CONFIG = 0xA004;  /* the EVRe protocol's CONFIG register */
 constexpr int MSG_ENABLE_MASK = 0x4;           /* its MSG_ENABLE flag, bit 2 */
 constexpr int DIALOG_WAIT_MS = 10000;         /* how long a step waits for the dialog it brings */
@@ -628,6 +630,7 @@ public:
 		mapEditor();
 		mapStreamsPage();
 		limitsAndFields();
+		guardKeys();
 		pollingSurvivesEdits();
 		uiAudit();
 		hoverEdges();
@@ -656,6 +659,7 @@ public:
 		fastStopped(); /* the same */
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
+		loginRequired(); /* it ends connected to the fake device as before */
 		tokenWithoutLoginRegister(); /* the last check: the window keeps a map without the login */
 		docsPictures(); /* EVRE_DOCS_SHOT only: the docs' pictures, no check */
 		return true;
@@ -732,6 +736,13 @@ private:
 	/* waits until the device holds value in the u8 / the danger register */
 	bool u8Becomes(int value) {
 		return QTest::qWaitFor([&] { return other_.readU8(regs_.u8.addr) == value; }, 3000);
+	}
+	/* waits until the Registers table shows what the device holds in the u8 register. A value written past the
+	 * window (other_) shows at the next poll; an editor opened before it starts from the old value, and that poll,
+	 * landing before Enter, brings "Value changed while editing" in place of the question a step waits for */
+	bool u8Shown() {
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		return cellShows(u8Cell_, QString::number(other_.readU8(regs_.u8.addr)));
 	}
 	bool dangerBecomes(int value) {
 		return QTest::qWaitFor([&] { return other_.readI16(regs_.danger.addr) == value; }, 3000);
@@ -3738,6 +3749,18 @@ private:
 		fan55 = menuAction(QStringLiteral("Fan 55"));
 		check(blockedOff && fan55 && fan55->isEnabled(),
 				"bus: with Allow writes off a preset is disabled, its tooltip says why; on again, it is offered");
+		/* a broadcast past the map's limits asks first, as a write does (the same check: limits, a closed set, the bits
+		 * no field covers); Cancel sends nothing */
+		auto *registersTab = window_.findChild<RegistersTab *>();
+		const int d1Row = regRow(d1u8);
+		const RegDef d1Def = d1Row >= 0 ? model_->rows()[d1Row].def : RegDef();
+		const QString past = d1Def.hasMax() ? QString::number(qint64(d1Def.max) + 1) : QString();
+		const QString pastTitle = registersTab && d1Row >= 0 && !past.isEmpty()
+				? answerDialog(QStringLiteral("Cancel"), [&] { emit registersTab->broadcastRequested(d1Row, past); }) : QString();
+		QTest::qWait(300);
+		check(pastTitle == QLatin1String("Outside the map's limits") && one.readU8(regs_.u8.addr) == 55
+						&& two.readU8(regs_.u8.addr) == 55,
+				"bus: a broadcast past the map's max asks first (\"Outside the map's limits\"), Cancel sends nothing");
 		/* Remove: the preset leaves the menu, the bus is modified */
 		QAction *removeFan = nullptr;
 		if (QAction *removeMenu = menuAction(QStringLiteral("Remove")); removeMenu && removeMenu->menu())
@@ -7855,6 +7878,177 @@ private:
 					"Plot a field: a line of its own on the chart (bits of the register)");
 		} else {
 			check(false, "the map's CONFIG register (0xA004) has bit fields");
+		}
+	}
+
+	/* EVRe Guard's key in the Map editor and in the writes: the register editor's "Past limits" choice (refused or
+	 * clamped) with its tooltip, saved as "past_limits" and undone; a register that clamps written past its max
+	 * without the question, the Log saying the device clamps it; NaN never sent; the Guard table exported from the
+	 * Map editor, both files, and the device table for library 1.1; errorName 15; the "closed" and "reserved_zero"
+	 * boxes, and a closed register's write asking first. */
+	void guardKeys() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *editorTab = window_.findChild<MapEditorTab *>();
+		auto *choice = window_.findChild<QComboBox *>(QStringLiteral("pastLimits"));
+		check(evre::errorName(15) == QLatin1String("value refused"), "errorName: 15 is \"value refused\"");
+		check(doc && tabs && editorTab && choice && choice->count() == 2 && choice->toolTip().contains(QLatin1String("EVRe Guard")),
+				"Map editor: the register editor's \"Past limits\" choice (refused, clamped) with a tooltip that says what each does");
+		if (!doc || !tabs || !editorTab || !choice) return;
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		editorTab->selectRegister(u8Uid);
+		QApplication::processEvents();
+		const bool refusing = choice->currentData().toString() == QLatin1String("refuse");
+		const int steps = doc->undoStack()->index(); /* steps undone before may wait above it: index, not count */
+		choice->setCurrentIndex(choice->findData(QStringLiteral("clamp")));
+		emit choice->activated(choice->currentIndex());
+		const bool inDoc = doc->reg(u8Uid)->clamps && doc->undoStack()->index() == steps + 1
+				&& doc->map().toJson(doc->map().path).contains("\"past_limits\": \"clamp\"");
+		const bool inTable = QTest::qWaitFor([&] { return model_->rows()[regRow(regs_.u8.name)].def.clamps; }, 2000);
+		if (!refusing || !inDoc || !inTable)
+			std::printf("  refused before: %d, in the map: %d, in the Registers table: %d\n", refusing, inDoc, inTable);
+		check(refusing && inDoc && inTable, "Past limits: refused by default; clamped sets \"past_limits\": \"clamp\" on the register, one "
+				"undo step, the Registers table follows");
+
+		/* a write past the max of a register that clamps: sent as it is, no question, the Log says why */
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const bool shownFirst = u8Shown(); /* the step before set the device back to 0 past the window */
+		const RegDef u8 = model_->rows()[regRow(regs_.u8.name)].def;
+		if (u8.hasMax()) {
+			const int past = int(u8.max) + 5;
+			if (!shownFirst) std::printf("  clamps: the table shows %s, the device holds %d\n",
+					qPrintable(u8Cell_.data().toString()), other_.readU8(regs_.u8.addr));
+			QLineEdit *editor = typeInto(u8Cell_, QString::number(past));
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			check(u8Becomes(past) && logText().contains(QLatin1String("the device clamps it")),
+					"a register that clamps: a value past its max is written without the question, the Log says the "
+					"device clamps it");
+			other_.writeU8(regs_.u8.addr, 0);
+			(void) u8Becomes(0);
+		}
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		doc->undoStack()->undo();
+		check(!doc->reg(u8Uid)->clamps, "undo: refused again");
+
+		/* "closed" and "reserved_zero": two boxes with tooltips; a closed register without the value written asks */
+		auto *closedBox = window_.findChild<QCheckBox *>(QStringLiteral("closedSet"));
+		auto *reservedBox = window_.findChild<QCheckBox *>(QStringLiteral("reservedZero"));
+		check(closedBox && reservedBox && closedBox->toolTip().contains(QLatin1String("EVRe Guard"))
+				&& reservedBox->toolTip().contains(QLatin1String("EVRe Guard")) && !closedBox->isChecked() && !reservedBox->isChecked(),
+				"Map editor: the \"closed\" and \"reserved_zero\" boxes, off by default, with tooltips that say what EVRe Guard does");
+		if (closedBox && reservedBox) {
+			editorTab->selectRegister(u8Uid);
+			QApplication::processEvents();
+			const int before = doc->undoStack()->index();
+			closedBox->click();
+			const bool closedSaved = doc->reg(u8Uid)->closed && doc->undoStack()->index() == before + 1
+					&& doc->map().toJson(doc->map().path).contains("\"closed\": true");
+			const bool followed = QTest::qWaitFor([&] { return model_->rows()[regRow(regs_.u8.name)].def.closed; }, 2000);
+			check(closedSaved && followed, "closed: ticked sets \"closed\": true on the register, one undo step, the "
+					"Registers table follows");
+			/* the u8 register has no value names: 3 is inside min and max, yet outside its closed set */
+			tabs->setCurrentIndex(MainWindow::TabRegisters);
+			const bool shown = u8Shown(); /* the clamps step set the device back to 0 past the window */
+			const QString shownBefore = u8Cell_.data().toString();
+			const int heldBefore = other_.readU8(regs_.u8.addr);
+			const QString title = enterAnswering(typeInto(u8Cell_, QStringLiteral("3")), QStringLiteral("Cancel"));
+			const int held = other_.readU8(regs_.u8.addr);
+			const QString log = logText();
+			const bool said = log.contains(QLatin1String("outside the closed set of values"));
+			if (!shown || title != QLatin1String("Outside the map's limits") || held == 3 || !said)
+				std::printf("  closed register: the table showed %s, the device held %d before; the box: \"%s\", the "
+						"device holds %d, the Log says it: %d; the Log ends: %s\n", qPrintable(shownBefore), heldBefore,
+						qPrintable(title), held, said,
+						qPrintable(log.section(QLatin1Char('\n'), -3).replace(QLatin1Char('\n'), QLatin1String(" | "))));
+			check(title == QLatin1String("Outside the map's limits") && held != 3 && said,
+					"a closed register: a value it does not list asks first (\"outside the closed set of values\"), "
+					"Cancel writes nothing");
+			tabs->setCurrentIndex(MainWindow::TabMap);
+			doc->undoStack()->undo();
+			check(!doc->reg(u8Uid)->closed, "undo: open again");
+		}
+		/* the three Guard rows close the General form under a heading of their own, "Default" above it */
+		{
+			auto *heading = window_.findChild<QLabel *>(QStringLiteral("guardHeading"));
+			auto *pages = window_.findChild<QTabWidget *>(QStringLiteral("editorPages"));
+			if (pages) pages->setCurrentIndex(0);
+			editorTab->selectRegister(u8Uid);
+			QApplication::processEvents();
+			auto *form = heading && heading->parentWidget() ? qobject_cast<QFormLayout *>(heading->parentWidget()->layout()) : nullptr;
+			int row = -1;
+			QFormLayout::ItemRole role = QFormLayout::LabelRole;
+			if (form) form->getWidgetPosition(heading, &row, &role);
+			const auto rowOf = [&](QWidget *widget) {
+				int at = -1;
+				QFormLayout::ItemRole itsRole = QFormLayout::LabelRole;
+				if (form && widget) form->getWidgetPosition(widget, &at, &itsRole);
+				return at;
+			};
+			QLayoutItem *defaultLabel = form && row > 0 ? form->itemAt(row - 1, QFormLayout::LabelRole) : nullptr;
+			QLayoutItem *defaultBox = form && row > 0 ? form->itemAt(row - 1, QFormLayout::FieldRole) : nullptr;
+			auto *defaultName = defaultLabel ? qobject_cast<QLabel *>(defaultLabel->widget()) : nullptr;
+			QWidget *defaultField = defaultBox ? defaultBox->widget() : nullptr;
+			const bool shown = heading && heading->isVisible() && heading->text() == QLatin1String("EVRe Guard")
+					&& heading->toolTip().contains(QLatin1String("EVRe Guard"));
+			const bool rows = form && role == QFormLayout::SpanningRole && defaultName
+					&& defaultName->text() == QLatin1String("Default") && rowOf(choice) == row + 1
+					&& rowOf(closedBox) == row + 2 && rowOf(reservedBox) == row + 3 && form->rowCount() == row + 4;
+			const bool placed = rows && defaultField && choice && defaultField->y() < heading->y() && heading->y() < choice->y();
+			if (!shown || !rows || !placed)
+				std::printf("  heading shown: %d, its row %d of %d, rows in order: %d, below Default and above Past limits: %d\n",
+						shown, row, form ? form->rowCount() : -1, rows, placed);
+			check(shown && rows && placed, "Map editor: an \"EVRe Guard\" heading (with a tooltip) over Past limits, closed and "
+					"reserved_zero, which close the General form; Default above it");
+		}
+		/* the broadcast check of the window's map: part of a number is refused, as a device with EVRe Guard refuses it */
+		const QString part = broadcastRefusal({ &doc->map() }, regs_.danger.addr, 1);
+		check(part.contains(QLatin1String("only part of")) && broadcastRefusal({ &doc->map() }, regs_.danger.addr, 2).isEmpty(),
+				"broadcast check: one byte of the 16-bit danger register refused (\"writes only part of\"), both bytes may go");
+
+		/* the Guard table from the Map editor: the .h chosen, the .cpp beside it */
+		{
+			QTemporaryDir folder;
+			const QString header = folder.filePath(QStringLiteral("map_guard.h"));
+			QString err;
+			const bool ok = editorTab->exportTo(QStringLiteral("guard"), header, QString(), err);
+			QFile cpp(folder.filePath(QStringLiteral("map_guard.cpp")));
+			const bool both = ok && QFileInfo(header).size() > 200 && cpp.open(QIODevice::ReadOnly)
+					&& cpp.readAll().contains("#include \"map_guard.h\"");
+			const QMenu *menu = nullptr;
+			for (QMenu *m : window_.findChildren<QMenu *>())
+				for (QAction *action : m->actions())
+					if (action->text().startsWith(QLatin1String("EVRe Guard table"))) menu = m;
+			check(both && menu, "Export: the EVRe Guard table (C++), its .h and its .cpp beside it; in the Export menu");
+			/* the device table for library 1.1: one file, the bank on ranges and the Guard's entries tied to the image */
+			const QString table11 = folder.filePath(QStringLiteral("map_table.h"));
+			const bool ok11 = editorTab->exportTo(QStringLiteral("table11"), table11, QString(), err);
+			QFile file11(table11);
+			const QByteArray text11 = ok11 && file11.open(QIODevice::ReadOnly) ? file11.readAll() : QByteArray();
+			bool inMenu = false;
+			for (QMenu *m : window_.findChildren<QMenu *>())
+				for (QAction *action : m->actions())
+					if (action->text().startsWith(QLatin1String("Device table for library 1.1"))) inMenu = true;
+			check(text11.contains("dev->D_RANGES = ranges;") && text11.contains("_guard_table()")
+					&& text11.contains("its entry is its member") && inMenu,
+					"Export: the device table for library 1.1 (ranges, the Guard's entries tied to the image); in the Export menu");
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+
+		/* NaN is never sent: an f32 register written "nan" */
+		const int voltsRow = [this] {
+			for (int i = 0; i < model_->rows().size(); i++)
+				if (model_->rows()[i].def.type == RegType::F32 && model_->rows()[i].def.rw) return i;
+			return -1;
+		}();
+		if (voltsRow >= 0) {
+			const RegDef f32 = model_->rows()[voltsRow].def;
+			QLineEdit *editor = typeInto(valueCell(table_, f32.name), QStringLiteral("nan"));
+			if (editor) QTest::keyClick(editor, Qt::Key_Return);
+			check(QTest::qWaitFor([&] { return noticeShown("not a finite number"); }, 2000),
+					"NaN into an f32 register: \"not a finite number\", nothing sent");
+		} else {
+			check(false, "the map has a writable f32 register (the example map: SETPOINT)");
 		}
 	}
 
@@ -19248,6 +19442,60 @@ private:
 			monitor.logFrames->setChecked(false);
 			monitor.clear->click();
 		}
+	}
+
+	/* A device that requires a login (evre_fake_fast --login-required) and the wrong token in the box: the token is
+	 * refused (3), then every register is refused with 13. The Log names the code ("login required") once for the
+	 * device, the registers show an error and are not marked "not available": they are asked again at every poll, and
+	 * the Studio does not log in again by itself. Once another client opens the device's session, the next polls bring
+	 * the values. evre::errorName knows 13. */
+	void loginRequired() {
+		const QLatin1String requiredText("login required: the device takes no request without a session");
+		check(evre::errorName(13) == QLatin1String("login required")
+						&& evre::errorName(14) == QLatin1String("error 14"),
+				"errorName: 13 is \"login required\"; a code it does not know is still \"error <n>\"");
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_LOGIN_PORT), map_.path, QString::fromLatin1(fakeDeviceToken),
+						QStringLiteral("--login-required") });
+		OtherClient device;
+		const bool started = fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device.open(FAKE_LOGIN_PORT, map_.slave); }, 5000);
+		check(started && map_.loginAddr != 0 && device.read(0xA000, 2).isEmpty(),
+				"login required: the fake device (evre_fake_fast --login-required) started, and refuses a read");
+		if (!started || map_.loginAddr == 0) return;
+		const int refusedBefore = int(logText().count(tokenRefusedText));
+		qputenv("EVRE_TOKEN", wrongToken); /* the startup fills the token box from it */
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_LOGIN_PORT);
+		startup.connect = true;
+		window_.applyStartup(startup);
+		const int row = regRow(regs_.u8.name);
+		auto rowError = [&] { return row >= 0 ? model_->rows()[row].error : QString(); };
+		const bool refused = QTest::qWaitFor([&] {
+			return rowError() == QLatin1String("login required") && logText().contains(requiredText);
+		}, 5000);
+		QTest::qWait(1500); /* many polls, each refused with 13 */
+		const bool notGone = row >= 0 && !model_->rows()[row].unavailable
+				&& std::none_of(model_->rows().begin(), model_->rows().end(),
+						[](const RegisterModel::Row &r) { return r.unavailable; });
+		check(refused && notGone && logText().count(requiredText) == 1,
+				"login required (13): the registers show the error, none is marked \"not available\"; the Log says "
+				"\"login required\" once for the device");
+		check(int(logText().count(tokenRefusedText)) == refusedBefore + 1,
+				"login required: the Studio sent the token once, at connecting, and does not log in again by itself");
+		const bool loggedIn = device.write(map_.loginAddr, loginBytes(fakeDeviceToken, map_.loginSize));
+		const bool written = loggedIn && device.writeU8(regs_.u8.addr, 42);
+		check(written && cellShows(valueCell(table_, regs_.u8.name), QStringLiteral("42"), 5000) && rowError().isEmpty(),
+				"login required: still asked at every poll; once a session is open (another client logged in), the "
+				"values come");
+		qputenv("EVRE_TOKEN", fakeDeviceToken);
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		window_.applyStartup(startup);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"login required: done, the window polls the fake device of the other steps again");
+		fake.kill();
+		fake.waitForFinished(3000);
 	}
 
 	/* the token set, but a map without "login": nothing is sent, the Log warns. The window

@@ -275,6 +275,8 @@ QPushButton *MapEditorTab::buildExportButton() {
 	menu->addAction(tr("CSV (a sheet)…"), this, [this] { exportAsked(QStringLiteral("csv")); });
 	menu->addSeparator();
 	menu->addAction(tr("Device table for the EVRe library (C++)…"), this, [this] { exportAsked(QStringLiteral("table")); });
+	menu->addAction(tr("Device table for library 1.1, with EVRe Guard (C++)…"), this, [this] { exportAsked(QStringLiteral("table11")); });
+	menu->addAction(tr("EVRe Guard table (C++: .h and .cpp)…"), this, [this] { exportAsked(QStringLiteral("guard")); });
 	setButtonMenu(button, menu);
 	return button;
 }
@@ -507,9 +509,29 @@ bool MapEditorTab::exportTo(const QString &kind, const QString &file, const QStr
 	options.prefix = prefix;
 	const DeviceMap &map = doc_->map();
 	QByteArray text;
-	if (kind == QLatin1String("table")) {
+	if (kind == QLatin1String("guard")) {
+		/* two files: the .h chosen, and the .cpp beside it */
+		QByteArray header;
 		QStringList problems;
-		if (!exportDeviceTable(map, options, text, problems)) {
+		const QFileInfo info(file);
+		const QString base = info.path() + QLatin1Char('/') + info.completeBaseName();
+		if (!exportGuard(map, options, info.completeBaseName() + QStringLiteral(".h"), header, text, problems)) {
+			err = tr("This map has no EVRe Guard table yet:") + QStringLiteral("\n\n- ") + problems.join(QStringLiteral("\n- "));
+			return false;
+		}
+		for (const auto &one : { qMakePair(base + QStringLiteral(".h"), header), qMakePair(base + QStringLiteral(".cpp"), text) }) {
+			QFile out(one.first);
+			if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(one.second) != one.second.size()) {
+				err = out.errorString();
+				return false;
+			}
+		}
+		return true;
+	}
+	if (kind == QLatin1String("table") || kind == QLatin1String("table11")) {
+		QStringList problems;
+		const bool lib11 = kind == QLatin1String("table11");
+		if (!(lib11 ? exportDeviceTable11(map, options, text, problems) : exportDeviceTable(map, options, text, problems))) {
 			err = tr("The EVRe library cannot serve this map as it is:") + QStringLiteral("\n\n- ")
 					+ problems.join(QStringLiteral("\n- "));
 			return false;
@@ -532,18 +554,23 @@ void MapEditorTab::exportAsked(const QString &kind) {
 	const QString folder = map.path.isEmpty() ? QDir::homePath() : QFileInfo(map.path).absolutePath();
 	QString base = map.path.isEmpty() ? identifier(map.device).toLower() : QFileInfo(map.path).completeBaseName();
 	if (kind == QLatin1String("py")) base = identifier(base).toLower(); /* a module name Python can import */
-	const bool table = kind == QLatin1String("table");
+	const bool table = kind == QLatin1String("table") || kind == QLatin1String("table11"), guard = kind == QLatin1String("guard");
 	if (table) base += QStringLiteral("_table");
+	if (guard) base += QStringLiteral("_guard");
 	const QString filter = kind == QLatin1String("md") ? tr("Markdown (*.md)") : kind == QLatin1String("h") ? tr("C header (*.h)")
-			: table ? tr("C++ header (*.h)") : kind == QLatin1String("py") ? tr("Python (*.py)") : tr("CSV (*.csv)");
+			: table ? tr("C++ header (*.h)") : guard ? tr("C++ header, and its .cpp beside it (*.h)")
+			: kind == QLatin1String("py") ? tr("Python (*.py)") : tr("CSV (*.csv)");
 	const QString file = QFileDialog::getSaveFileName(this, tr("Export the map"),
-			folder + QLatin1Char('/') + base + QLatin1Char('.') + (table ? QStringLiteral("h") : kind), filter);
+			folder + QLatin1Char('/') + base + QLatin1Char('.') + (table || guard ? QStringLiteral("h") : kind), filter);
 	if (file.isEmpty()) return;
 	QString prefix;
-	if (kind == QLatin1String("h") || kind == QLatin1String("py") || table) {
+	if (kind == QLatin1String("h") || kind == QLatin1String("py") || table || guard) {
 		bool ok = false;
 		prefix = QInputDialog::getText(this, tr("Export the map"),
-				table ? tr("A prefix for the names (MYDEV makes mydev_rw_t and MYDEV_WRITE_MIN), or empty for the device's name:")
+				guard ? tr("A prefix for the names (MYDEV makes mydev_table and MYDEV_SPEED_RAW_MIN), or empty for the device's name:")
+				: kind == QLatin1String("table11")
+						? tr("A prefix for the names (MYDEV makes mydev_image_t and mydev_bind), or empty for the device's name:")
+				: table ? tr("A prefix for the names (MYDEV makes mydev_rw_t and MYDEV_WRITE_MIN), or empty for the device's name:")
 						: tr("A prefix for the names (MYDEV makes MYDEV_SPEED_ADDR), or empty for none:"),
 				QLineEdit::Normal, QString(), &ok);
 		if (!ok) return;

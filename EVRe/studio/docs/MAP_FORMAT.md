@@ -8,6 +8,10 @@ This document is the format's contract, for anyone who writes a tool that reads 
 [`evre-map-1.schema.json`](evre-map-1.schema.json) says the same in a form tools can check. How EVRe Studio uses a
 map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 
+The map is the layer above the protocol: EVRe itself moves bytes and never interprets them (PROTOCOL.md,
+"Layers"). Everything a map says (types, units, limits, value names, the login) is for the tools and for EVRe
+Guard on the device, never for the protocol.
+
 ## 1. The file
 
 - JSON (RFC 8259), UTF-8. A UTF-8 byte order mark is allowed and should be kept by a tool that rewrites the file.
@@ -46,6 +50,13 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `registers` | array | `[]` | the registers (section 4) |
 | `streams` | array | none | the device's sample streams, Fast EVRe (section 9) |
 
+For a device with EVRe Guard, the login's `size` is the guard's `login_size` (1 – 32): the token goes in as one
+write of exactly that many bytes, to the map's `slave`. A login by broadcast (slave 0) never logs in. While no
+session is open such a device answers `LOGIN_REQUIRED` (13) to every request the library itself would take, but a
+read of DEVICE_ID, STATUS or its open reads and the login itself, and `PERMISSION_DENIED` (3) to a login that
+failed (PROTOCOL.md, "EVRe Guard"). The library's own checks come first: a request it refuses keeps its code (3,
+4 or 5). A broadcast is never answered.
+
 ## 4. A register
 
 | Key | Type | Default | Meaning |
@@ -67,6 +78,9 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `scale`,&nbsp;`offset` | numbers | `1`,&nbsp;`0` | shown = raw × scale + offset |
 | `decimals` | integer&nbsp;−1&nbsp;–&nbsp;15 | automatic | the shown value's decimals |
 | `min`,&nbsp;`max` | numbers | none | the shown value's limits for a write (section 6) |
+| `past_limits` | `"refuse"`,&nbsp;`"clamp"` | `"refuse"` | what the device does with a value past `min` or `max`: `refuse` it (a device with EVRe Guard answers 15), or `clamp`: take any value of the type and clamp it (section 6.1) |
+| `closed` | boolean | `false` | `true`: only the register's `enum` values, its `special` values and, for a `write: "action"` register, its idle value (its `default`, else 0) may be written. Integers only (section 6.1) |
+| `reserved_zero` | boolean | `false` | `true`, on a register with `fields`: the bits no field covers must be written 0 (section 6.1) |
 | `default` | number&nbsp;or&nbsp;string | none | the value after a reset (with `persist`: the factory value); a number in shown units, or one of the register's `enum` or `special` names |
 | `special` | object | none | names for single values of a number, keyed by shown value: `{ "-1": "not measured" }` |
 | `enum` | object | none | names of raw values: `{ "0": "off", "0x10": "boost" }` (keys decimal or `0x` hex) |
@@ -123,6 +137,47 @@ Fields are for integer types; they stay inside the register's bits and should no
 - `write: "action"` registers are written to trigger; reading them back shows their idle value, not what was written.
 - `write: "w1c"` (or a `w1c` field): a host writes 1 to the bits to clear and 0 elsewhere, not a read-modify-write
   of the value it read.
+- `past_limits: "clamp"`: the device takes any value of the type and clamps it to `min` .. `max` itself, so a host
+  sends a value past them as it is (EVRe Studio says in its Log that the device clamps it). `"refuse"`, the default:
+  a host asks before it sends a value past them, and a device with EVRe Guard refuses one.
+- NaN and the infinities are never sent: no `f32` register takes them.
+
+### 6.1 What EVRe Guard checks
+
+A device with EVRe Guard's register checks (PROTOCOL.md, "Register checks") holds a table made from its map
+(`evre export MAP --to guard`): an entry for each register a host writes (`access` `rw` or `wo`, or a field with
+`rw` or `w1c`) in `0xD000` .. `0xDFFF`. The reserved bank and the map's `login` register get no entry. It refuses a
+write, and stores nothing, when:
+
+| Case | Code |
+|---|---|
+| a&nbsp;value&nbsp;past&nbsp;`min`&nbsp;or&nbsp;`max`&nbsp;(not&nbsp;a&nbsp;`special`) | 15, `VALUE_REFUSED`; not with `past_limits: "clamp"` |
+| NaN&nbsp;or&nbsp;an&nbsp;infinity&nbsp;in&nbsp;an&nbsp;`f32` | 15, always |
+| a&nbsp;value&nbsp;outside&nbsp;a&nbsp;`closed`&nbsp;set | 15, whatever `min` and `max` say |
+| a&nbsp;bit&nbsp;no&nbsp;field&nbsp;covers,&nbsp;with&nbsp;`reserved_zero` | 15 |
+| only&nbsp;part&nbsp;of&nbsp;a&nbsp;number&nbsp;register | 3: a number is written whole; any part of a `bytes` register may be written |
+| a&nbsp;byte&nbsp;no&nbsp;register&nbsp;covers | 3: a gap between registers, a read-only register inside a writable run, past the last one |
+
+How the table takes the map's numbers, and how a host makes its raw value, so the two agree at the limit:
+
+- raw = (shown − `offset`) / `scale`; with a negative `scale`, `min` and `max` change places.
+- An integer register's limits are rounded inward: `ceil` of the raw `min`, `floor` of the raw `max` (with a slack
+  of 1e-9). A limit past the type is the type's end. A host rounds a value to the nearest raw step.
+- An `f32` register's limits are the nearest float to the raw limit, the same float a host makes of the map's
+  number; past the largest `f32`, the largest. A host sends the nearest float of the value.
+- A limit the map leaves out is the type's end.
+- Each `special` always passes: for an integer it must be a whole raw value of the type, for an `f32` a finite
+  value (`-0` is listed as `0`). More than 255 of them is an error: use `min` and `max`.
+- `closed` lists the `enum` values too, and for an `action` register its idle value, so a block write of what was
+  read back passes. `closed` without an `enum`, or on an `f32` or `bytes` register, is an error.
+- `reserved_zero` makes the bits no field covers bits that must be 0; it needs `fields`.
+- A `w1c` register has no limits; a `bytes` register only its span.
+
+The map check says where the table differs from the map: a limit past the type or between raw steps, `clamp` with
+no `min` or `max`, an `enum` value of a `closed` register outside `min` .. `max`, an `action` register in a closed
+set without a `default` (0 is taken as idle), `past_limits`, `closed` or `reserved_zero` in the reserved bank, and a
+gap between two registers a host writes. A block
+write across such a gap is refused; declare the gap as a `bytes` register if one must pass.
 
 ## 7. Overlays
 

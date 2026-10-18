@@ -83,6 +83,32 @@ class Maps(unittest.TestCase):
         with self.assertRaises(ValueError):
             fan.encode(300)
 
+    def test_guard_rules(self):
+        """what a device with EVRe Guard refuses is not sent: NaN and the infinities, an f32 past the largest float;
+        a register that clamps (past_limits) takes a value past its limits; code 15 has its name"""
+        setpoint = self.map['SETPOINT']  # f32, -20 .. 120
+        for bad in (float('nan'), float('inf'), -float('inf'), 1e39):
+            with self.assertRaises(ValueError):
+                setpoint.encode(bad)
+        self.assertEqual(len(setpoint.encode(3.4e38)), 4)
+        self.assertIn('maximum', setpoint.write_problem(struct.pack('<f', 150)))
+        clamped = evre.Register({'addr': '0xD000', 'name': 'S', 'type': 'i16', 'access': 'rw', 'min': -100,
+                                            'max': 100, 'past_limits': 'clamp'})
+        self.assertTrue(clamped.clamps and not setpoint.clamps)
+        self.assertIsNone(clamped.write_problem(struct.pack('<h', 150)))
+        self.assertIn('maximum', clamped.limit_problem(150))
+        self.assertEqual(frame.ERRORS[15], 'value refused')
+        # a closed set (its value names, an action's idle value) and the bits no field covers (reserved_zero)
+        mode = evre.Register({'addr': '0xD001', 'name': 'CMD', 'type': 'u8', 'access': 'rw', 'write': 'action',
+                              'closed': True, 'enum': {'1': 'go', '2': 'stop'}})
+        self.assertIsNone(mode.write_problem(b'\x01'))
+        self.assertIsNone(mode.write_problem(b'\x00'))  # idle: its default, else 0
+        self.assertIn('closed set', mode.write_problem(b'\x03'))
+        bits = evre.Register({'addr': '0xD002', 'name': 'CTRL', 'type': 'u8', 'access': 'rw', 'reserved_zero': True,
+                              'fields': [{'name': 'MODE', 'bits': '1:0'}]})
+        self.assertIsNone(bits.write_problem(b'\x03'))
+        self.assertIn('bits', bits.write_problem(b'\x04'))
+
     def test_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:
             # the base beside the overlay, extended by a relative path (no relative path joins two drives)
@@ -130,6 +156,13 @@ class BusFiles(unittest.TestCase):
             self.bus([{'name': 'D1', 'slave': 0, 'map': os.path.abspath(MAP)}])
         with self.assertRaises(evre.EvreError):  # no map
             self.bus([{'name': 'D1', 'slave': 1}])
+
+    def test_broadcast_part_of_a_number(self):
+        """a device with EVRe Guard refuses part of a number: a broadcast of one is never sent"""
+        bus = self.bus([{'name': 'D1', 'slave': 1, 'map': os.path.abspath(MAP)}])
+        self.assertIsNone(bus.broadcast_refusal(0xD080, 4))   # SETPOINT, f32, whole
+        self.assertIn('only part of SETPOINT', bus.broadcast_refusal(0xD080, 2))
+        self.assertIn('only part of SETPOINT', bus.broadcast_refusal(0xD082, 3))
 
     def test_empty_bus(self):
         bus = self.bus([])
@@ -378,6 +411,41 @@ class BusOverTcp(unittest.TestCase):
             self.assertEqual(bus['D2'].device_id(), 0x1001)
         with self.assertRaises(evre.EvreError):
             evre.connect_bus_tcp('127.0.0.1', BUS_PORT, self.bus_file, token='example-token', tokens={'D2': 'wrong-token'})
+
+
+LOGIN_PORT = 1216
+
+
+@unittest.skipUnless(BUILD and os.path.exists(FAST), 'EVRE_BUILD does not name a build folder with evre_fake_fast')
+class LoginRequired(unittest.TestCase):
+    """a device that requires a login (evre_fake_fast --login-required): code 13, named "login required" """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.fake = subprocess.Popen([FAST, str(LOGIN_PORT), MAP, 'example-token', '--login-required'],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for _ in range(50):
+            try:
+                socket.create_connection(('127.0.0.1', LOGIN_PORT), 0.2).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.fake.kill()
+        cls.fake.wait()
+
+    def test_name(self):
+        self.assertEqual(frame.ERRORS[13], 'login required')
+
+    def test_without_and_with_a_session(self):
+        with evre.connect_tcp('127.0.0.1', LOGIN_PORT, MAP) as dev:
+            with self.assertRaisesRegex(evre.EvreError, 'login required') as caught:
+                dev.read_raw(0xA000, 2)
+            self.assertEqual(caught.exception.code, 13)
+        with evre.connect_tcp('127.0.0.1', LOGIN_PORT, MAP, token='example-token') as dev:
+            self.assertEqual(dev.device_id(), 0x1001)
 
 
 if __name__ == '__main__':

@@ -141,6 +141,8 @@ map has no <code>"login"</code> to send it to (see the Log).</li>
 the other program; on Linux, add your user to the <code>dialout</code> group.</li>
 <li>Registers "not available": the device refused the address (a register the map has and this device
 or this link does not). Not an error.</li>
+<li><i>login required</i> in the Log, every register <i>error</i>: the device wants a login and has no session. Give
+its token and connect again: the Studio sends the token once, when it connects, and never again by itself.</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Polling & speed"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
@@ -153,7 +155,8 @@ merged into a few <b>block reads</b>, and the sidebar says how many: <i>15 regis
 gaps of <b>8 bytes or less</b> between them become <b>one read</b>.</li>
 <li>A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.</li>
 <li>If the device still refuses a block, it is split into single registers; an address it does not have is
-dropped (<i>not available</i>) and not asked again.</li>
+dropped (<i>not available</i>) and not asked again. A block refused with <i>login required</i> is not split: it is
+asked again at the next poll.</li>
 <li>Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → <b>Read now</b>.</li>
 </ul>
 <p>The number of reads comes from the map's layout, not from a setting. Registers in the same 256-byte page
@@ -546,6 +549,12 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 <b>write</b>: <code>action</code> or <code>w1c</code>; <b>persist</b>: kept across a reset.</li>
 <li><b>min</b> / <b>max</b> / <b>default</b> (shown units), <b>decimals</b>; <b>special</b>:
 <code>{ "-1": "not measured" }</code>, names for single values of a number.</li>
+<li><b>past_limits</b>: <code>"clamp"</code> = the device takes a value past min or max and clamps it, so it is
+written without asking; <code>"refuse"</code> (the default) = it is asked first, and a device with EVRe Guard refuses
+it (<i>value refused</i>, 15). NaN and the infinities are never written.</li>
+<li><b>closed</b>: <code>true</code> = only the value names, the specials and an action's idle value may be
+written; <b>reserved_zero</b>: <code>true</code> = the bits no field covers are written 0. Any other value is asked
+first, and a device with EVRe Guard refuses it (15).</li>
 <li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms),
 <b>groups</b> (notes per group), and on a field <b>access</b> and <b>desc</b>.</li>
 <li><b>extends</b>: <code>"base.json"</code> makes the map an overlay that changes another one.</li>
@@ -566,7 +575,8 @@ cell set in one of them is set in all (a bulk edit). The red or amber dot: what 
 <li><b>+ Register</b>, <b>Duplicate</b> (Ctrl+D), <b>Delete</b> (Del); Ctrl+C / Ctrl+V copy and paste registers as
 JSON, also between maps.</li>
 <li><b>The form</b> at the right: <i>General</i> (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, default), <i>Values</i> (value names, special values; <i>Paste lines</i> takes "0 off"),
+scale, decimals, min, max, default, and under the heading <i>EVRe Guard</i> what the device checks: past limits,
+closed, reserved_zero), <i>Values</i> (value names, special values; <i>Paste lines</i> takes "0 off"),
 <i>Bit fields</i> (drag across bits to make a field, click one to edit it), <i>Notes</i>. The card over them shows
 the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
 amber past a limit, grey without one; hover it for a long value in full).
@@ -578,8 +588,9 @@ max… Click one to go there.</li>
 <li><b>Map settings…</b>: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the <i>Streams</i> page).</li>
 <li><b>Export</b>: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
 the device, and the <i>device table</i> for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones). <b>Import CSV…</b> reads a
-sheet back.</li>
+bind function; library 1.0 needs every read-only register below the writable ones), the <i>device table for
+library 1.1</i> (one image on ranges, in any order, with EVRe Guard's table tied to it), and the <i>EVRe Guard
+table</i> a device checks every host write against (its .h and .cpp). <b>Import CSV…</b> reads a sheet back.</li>
 </ul>
 <p>On the Registers tab, <b>+ Register</b> and <i>Edit definition…</i> come here. The live values stay while a
 register is edited, as long as it is read the same way.</p>

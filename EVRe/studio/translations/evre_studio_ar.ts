@@ -2763,150 +2763,6 @@ SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ب
     </message>
     <message>
         <source>
-&lt;h2&gt;Device maps (JSON)&lt;/h2&gt;
-&lt;p&gt;A map lists a device&apos;s registers. &lt;b&gt;Open…&lt;/b&gt; / &lt;b&gt;Save&lt;/b&gt; / &lt;b&gt;Save as…&lt;/b&gt; / &lt;b&gt;New&lt;/b&gt;; it is made and
-changed on the &lt;b&gt;Map editor&lt;/b&gt; tab (its own help page). The file is plain JSON, and a save changes it only where
-it was edited:&lt;/p&gt;
-%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
-  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
-  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
-  &quot;registers&quot;: [
-    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
-      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
-    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
-      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
-                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
-    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
-      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
-    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
-  ] }&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;, or &lt;code&gt;bytes&lt;/code&gt; with &lt;code&gt;&quot;size&quot;&lt;/code&gt;. Little
-endian.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: shown = raw × scale + offset (writes are converted back).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; shows the value in hex.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = confirm every write, and API clients need the ⚠ switch.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = a fixed value (an ID, a command): no Plot box, left out by Plot shown.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (top level): the device&apos;s USB VID/PID, to mark and pick its port.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (top level, optional): the register the token box is written to after connecting, and its size in
-bytes (the token is cut or padded with zeros to it). Without it, no token is sent.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt;, &lt;code&gt;rw&lt;/code&gt;, or &lt;code&gt;wo&lt;/code&gt; (written only, never polled);
-&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
-&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
-&lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (top level, optional): a device&apos;s fast streams, each its window, rate, switches and channels
-(the &lt;i&gt;Fast streams&lt;/i&gt; page).&lt;/li&gt;
-&lt;li&gt;Keys the Studio does not know are kept. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; describes the format.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
-A block the device refuses is split; an address it refuses is dropped.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;خرائط الأجهزة (JSON)&lt;/h2&gt;
-&lt;p&gt;الخريطة تسرد مسجّلات الجهاز. &lt;b&gt;فتح…&lt;/b&gt; / &lt;b&gt;حفظ&lt;/b&gt; / &lt;b&gt;حفظ باسم…&lt;/b&gt; / &lt;b&gt;جديد&lt;/b&gt;؛ وتُصنع
-وتُغيَّر في لسان &lt;b&gt;محرر الخريطة&lt;/b&gt; (له صفحة مساعدة خاصة). الملف JSON عادي، والحفظ لا يغيّره إلا حيث
-حُرّر:&lt;/p&gt;
-%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
-  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
-  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
-  &quot;registers&quot;: [
-    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
-      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
-    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
-      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
-                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
-    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
-      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
-    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
-  ] }&lt;/pre&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;، أو &lt;code&gt;bytes&lt;/code&gt; مع &lt;code&gt;&quot;size&quot;&lt;/code&gt;. ترتيب
-little endian.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: المعروض = الخام × scale + offset (وتُحوَّل الكتابات بالعكس).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; يعرض القيمة بالست عشري.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = أكّد كل كتابة، وعملاء API يحتاجون مفتاح ⚠.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «رسم المعروض».&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (في المستوى الأعلى): VID/PID الخاصان بـ USB للجهاز، لتعليم منفذه واختياره.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (في المستوى الأعلى، اختياري): المسجّل الذي يُكتب فيه مربع رمز الدخول بعد الاتصال، وحجمه
-بالبايت (يُقصّ الرمز أو يُكمَّل بالأصفار إليه). بدونه لا يُرسل رمز دخول.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt; أو &lt;code&gt;rw&lt;/code&gt; أو &lt;code&gt;wo&lt;/code&gt; (يُكتب فقط، لا يُستطلع أبدًا)؛
-&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
-&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
-و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (المستوى الأعلى، اختياري): التدفقات السريعة للجهاز، لكل منها نافذته ومعدّله ومفاتيحه
-وقنواته (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;).&lt;/li&gt;
-&lt;li&gt;المفاتيح التي لا يعرفها البرنامج تُحفظ. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; يصف الصيغة.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;المسجّلات المتقاربة تُقرأ في طلب واحد (الصفحة نفسها من 256 بايت، فجوات حتى 8 بايت).
-الكتلة التي يرفضها الجهاز تُقسم؛ والعنوان الذي يرفضه يُسقط.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Map editor&lt;/h2&gt;
-&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
-cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
-JSON, also between maps.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
-scale, decimals, min, max, default), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
-&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
-the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
-amber past a limit, grey without one; hover it for a long value in full).
-With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
-a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
-page, for why.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
-max… Click one to go there.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the &lt;i&gt;Streams&lt;/i&gt; page).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
-the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
-bind function; the library needs every read-only register below the writable ones). &lt;b&gt;Import CSV…&lt;/b&gt; reads a
-sheet back.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
-register is edited, as long as it is read the same way.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
-&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
-(Ctrl+Y).&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
-التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
-JSON، وبين الخرائط أيضًا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
-المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
-&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
-الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
-كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
-وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
-bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
-الصفحة، لتعرف لماذا.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
-أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها، والتدفقات السريعة (صفحة &lt;i&gt;التدفقات&lt;/i&gt;).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
-و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
-ربط؛ والمكتبة تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ
-جدولًا عائدًا.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
-يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;Log &amp;amp; pop-ups&lt;/h2&gt;
 &lt;p&gt;The &lt;b&gt;Log&lt;/b&gt; tab lists what happened, with the time: connecting, connected, lost (and why), the
 device ID, a token refused, every &lt;b&gt;write&lt;/b&gt; (register, value, bytes, address) and its result: written,
@@ -3746,6 +3602,166 @@ kept).&lt;/li&gt;
     </message>
     <message>
         <source>
+&lt;h2&gt;Device maps (JSON)&lt;/h2&gt;
+&lt;p&gt;A map lists a device&apos;s registers. &lt;b&gt;Open…&lt;/b&gt; / &lt;b&gt;Save&lt;/b&gt; / &lt;b&gt;Save as…&lt;/b&gt; / &lt;b&gt;New&lt;/b&gt;; it is made and
+changed on the &lt;b&gt;Map editor&lt;/b&gt; tab (its own help page). The file is plain JSON, and a save changes it only where
+it was edited:&lt;/p&gt;
+%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
+  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
+  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
+  &quot;registers&quot;: [
+    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
+      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
+    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
+      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
+                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
+    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
+      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
+    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
+  ] }&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;, or &lt;code&gt;bytes&lt;/code&gt; with &lt;code&gt;&quot;size&quot;&lt;/code&gt;. Little
+endian.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: shown = raw × scale + offset (writes are converted back).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; shows the value in hex.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = confirm every write, and API clients need the ⚠ switch.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = a fixed value (an ID, a command): no Plot box, left out by Plot shown.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (top level): the device&apos;s USB VID/PID, to mark and pick its port.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (top level, optional): the register the token box is written to after connecting, and its size in
+bytes (the token is cut or padded with zeros to it). Without it, no token is sent.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt;, &lt;code&gt;rw&lt;/code&gt;, or &lt;code&gt;wo&lt;/code&gt; (written only, never polled);
+&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
+&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;past_limits&lt;/b&gt;: &lt;code&gt;&quot;clamp&quot;&lt;/code&gt; = the device takes a value past min or max and clamps it, so it is
+written without asking; &lt;code&gt;&quot;refuse&quot;&lt;/code&gt; (the default) = it is asked first, and a device with EVRe Guard refuses
+it (&lt;i&gt;value refused&lt;/i&gt;, 15). NaN and the infinities are never written.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;closed&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = only the value names, the specials and an action&apos;s idle value may be
+written; &lt;b&gt;reserved_zero&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = the bits no field covers are written 0. Any other value is asked
+first, and a device with EVRe Guard refuses it (15).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
+&lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (top level, optional): a device&apos;s fast streams, each its window, rate, switches and channels
+(the &lt;i&gt;Fast streams&lt;/i&gt; page).&lt;/li&gt;
+&lt;li&gt;Keys the Studio does not know are kept. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; describes the format.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Registers close together are read in one request (same 256-byte page, gaps up to 8 bytes).
+A block the device refuses is split; an address it refuses is dropped.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;خرائط الأجهزة (JSON)&lt;/h2&gt;
+&lt;p&gt;الخريطة تسرد مسجّلات الجهاز. &lt;b&gt;فتح…&lt;/b&gt; / &lt;b&gt;حفظ&lt;/b&gt; / &lt;b&gt;حفظ باسم…&lt;/b&gt; / &lt;b&gt;جديد&lt;/b&gt;؛ وتُصنع
+وتُغيَّر في لسان &lt;b&gt;محرر الخريطة&lt;/b&gt; (له صفحة مساعدة خاصة). الملف JSON عادي، والحفظ لا يغيّره إلا حيث
+حُرّر:&lt;/p&gt;
+%CODE%{ &quot;format&quot;: &quot;evre-map/1&quot;, &quot;device&quot;: &quot;My device&quot;, &quot;device_id&quot;: &quot;0x1001&quot;, &quot;slave&quot;: 1,
+  &quot;usb&quot;: { &quot;vid&quot;: &quot;0x1234&quot;, &quot;pid&quot;: &quot;0xABCD&quot; },
+  &quot;login&quot;: { &quot;addr&quot;: &quot;0xF000&quot;, &quot;size&quot;: 16 },
+  &quot;registers&quot;: [
+    { &quot;addr&quot;: &quot;0xD004&quot;, &quot;name&quot;: &quot;SUPPLY_V&quot;, &quot;type&quot;: &quot;f32&quot;, &quot;unit&quot;: &quot;V&quot;,
+      &quot;access&quot;: &quot;ro&quot;, &quot;group&quot;: &quot;Power&quot;, &quot;desc&quot;: &quot;supply voltage&quot; },
+    { &quot;addr&quot;: &quot;0xD010&quot;, &quot;name&quot;: &quot;STATE&quot;, &quot;type&quot;: &quot;u16&quot;, &quot;access&quot;: &quot;ro&quot;,
+      &quot;fields&quot;: [ { &quot;name&quot;: &quot;MODE&quot;, &quot;bits&quot;: &quot;1:0&quot;,
+                    &quot;values&quot;: { &quot;0&quot;: &quot;idle&quot;, &quot;1&quot;: &quot;run&quot;, &quot;2&quot;: &quot;fault&quot; } } ] },
+    { &quot;addr&quot;: &quot;0xD085&quot;, &quot;name&quot;: &quot;LED_MODE&quot;, &quot;type&quot;: &quot;u8&quot;, &quot;access&quot;: &quot;rw&quot;,
+      &quot;enum&quot;: { &quot;0&quot;: &quot;off&quot;, &quot;1&quot;: &quot;on&quot;, &quot;2&quot;: &quot;blink&quot; } },
+    { &quot;addr&quot;: &quot;0xD086&quot;, &quot;name&quot;: &quot;MOTOR_SPEED&quot;, &quot;type&quot;: &quot;i16&quot;, &quot;access&quot;: &quot;rw&quot;, &quot;danger&quot;: true }
+  ] }&lt;/pre&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;type&lt;/b&gt;: &lt;code&gt;u8 i8 u16 i16 u32 i32 f32&lt;/code&gt;، أو &lt;code&gt;bytes&lt;/code&gt; مع &lt;code&gt;&quot;size&quot;&lt;/code&gt;. ترتيب
+little endian.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;scale&lt;/b&gt; / &lt;b&gt;offset&lt;/b&gt;: المعروض = الخام × scale + offset (وتُحوَّل الكتابات بالعكس).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;format&lt;/b&gt;: &lt;code&gt;&quot;hex&quot;&lt;/code&gt; يعرض القيمة بالست عشري.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;danger&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = أكّد كل كتابة، وعملاء API يحتاجون مفتاح ⚠.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;plot&lt;/b&gt;: &lt;code&gt;false&lt;/code&gt; = قيمة ثابتة (معرّف، أمر): بلا مربع «رسم»، ويتجاوزه «رسم المعروض».&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;usb&lt;/b&gt; (في المستوى الأعلى): VID/PID الخاصان بـ USB للجهاز، لتعليم منفذه واختياره.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;login&lt;/b&gt; (في المستوى الأعلى، اختياري): المسجّل الذي يُكتب فيه مربع رمز الدخول بعد الاتصال، وحجمه
+بالبايت (يُقصّ الرمز أو يُكمَّل بالأصفار إليه). بدونه لا يُرسل رمز دخول.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;access&lt;/b&gt;: &lt;code&gt;ro&lt;/code&gt; أو &lt;code&gt;rw&lt;/code&gt; أو &lt;code&gt;wo&lt;/code&gt; (يُكتب فقط، لا يُستطلع أبدًا)؛
+&lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
+&lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;past_limits&lt;/b&gt;: &lt;code&gt;&quot;clamp&quot;&lt;/code&gt; = الجهاز يقبل قيمة خارج الأدنى أو الأعلى ويقصّها إلى الحد، فتُكتب
+دون سؤال؛ &lt;code&gt;&quot;refuse&quot;&lt;/code&gt; (الافتراضي) = يُسأل أولًا، والجهاز الذي فيه EVRe Guard يرفضها
+(&lt;i&gt;value refused&lt;/i&gt;، 15). ولا تُكتب NaN واللانهايات أبدًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;closed&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = لا يُكتب إلا أسماء القيم والقيم الخاصة وقيمة السكون لمسجّل الأمر؛
+&lt;b&gt;reserved_zero&lt;/b&gt;: &lt;code&gt;true&lt;/code&gt; = البتات التي لا يغطيها حقل تُكتب 0. وأي قيمة أخرى يُسأل عنها
+أولًا، والجهاز الذي فيه EVRe Guard يرفضها (15).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
+و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (المستوى الأعلى، اختياري): التدفقات السريعة للجهاز، لكل منها نافذته ومعدّله ومفاتيحه
+وقنواته (صفحة &lt;i&gt;التدفقات السريعة&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;المفاتيح التي لا يعرفها البرنامج تُحفظ. &lt;code&gt;docs/evre-map-1.schema.json&lt;/code&gt; يصف الصيغة.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;المسجّلات المتقاربة تُقرأ في طلب واحد (الصفحة نفسها من 256 بايت، فجوات حتى 8 بايت).
+الكتلة التي يرفضها الجهاز تُقسم؛ والعنوان الذي يرفضه يُسقط.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Map editor&lt;/h2&gt;
+&lt;p&gt;Make a map from nothing, or change one. Every change is an undo step: &lt;b&gt;Undo&lt;/b&gt; (Ctrl+Z), &lt;b&gt;Redo&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;The table&lt;/b&gt;: one row per register, edited in place (double-click or type). With several rows selected, a
+cell set in one of them is set in all (a bulk edit). The red or amber dot: what the checks found.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ Register&lt;/b&gt;, &lt;b&gt;Duplicate&lt;/b&gt; (Ctrl+D), &lt;b&gt;Delete&lt;/b&gt; (Del); Ctrl+C / Ctrl+V copy and paste registers as
+JSON, also between maps.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;The form&lt;/b&gt; at the right: &lt;i&gt;General&lt;/i&gt; (type, access, write behaviour, group, persist, danger, plot,
+scale, decimals, min, max, default, and under the heading &lt;i&gt;EVRe Guard&lt;/i&gt; what the device checks: past limits,
+closed, reserved_zero), &lt;i&gt;Values&lt;/i&gt; (value names, special values; &lt;i&gt;Paste lines&lt;/i&gt; takes &quot;0 off&quot;),
+&lt;i&gt;Bit fields&lt;/i&gt; (drag across bits to make a field, click one to edit it), &lt;i&gt;Notes&lt;/i&gt;. The card over them shows
+the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
+amber past a limit, grey without one; hover it for a long value in full).
+With no register selected, a note in the middle says so. A page the register cannot have (&lt;i&gt;Bit fields&lt;/i&gt; of
+a bytes or f32 register, &lt;i&gt;Values&lt;/i&gt; with several selected) has a warning sign on its tab: hover it, or open the
+page, for why.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Checks&lt;/b&gt; under the table: names used twice, registers sharing bytes, fields past the bits, min above
+max… Click one to go there.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Map settings…&lt;/b&gt;: device, IDs, slave, USB, login, protocol, notes on the map and its groups, and the fast streams (the &lt;i&gt;Streams&lt;/i&gt; page).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Export&lt;/b&gt;: a Markdown specification, a C header, a Python module or CSV, for whoever implements or uses
+the device, and the &lt;i&gt;device table&lt;/i&gt; for firmware on the EVRe library (the images, their addresses checked, a
+bind function; library 1.0 needs every read-only register below the writable ones), the &lt;i&gt;device table for
+library 1.1&lt;/i&gt; (one image on ranges, in any order, with EVRe Guard&apos;s table tied to it), and the &lt;i&gt;EVRe Guard
+table&lt;/i&gt; a device checks every host write against (its .h and .cpp). &lt;b&gt;Import CSV…&lt;/b&gt; reads a sheet back.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On the Registers tab, &lt;b&gt;+ Register&lt;/b&gt; and &lt;i&gt;Edit definition…&lt;/i&gt; come here. The live values stay while a
+register is edited, as long as it is read the same way.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;محرر الخريطة&lt;/h2&gt;
+&lt;p&gt;اصنع خريطة من لا شيء، أو غيّر واحدة. كل تغيير خطوة تراجع: &lt;b&gt;تراجع&lt;/b&gt; (Ctrl+Z)، &lt;b&gt;إعادة&lt;/b&gt;
+(Ctrl+Y).&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;الجدول&lt;/b&gt;: صف لكل مسجّل، يُحرّر في مكانه (نقر مزدوج أو كتابة). مع تحديد عدة صفوف، الخلية
+التي تُضبط في أحدها تُضبط فيها كلها (تحرير جماعي). النقطة الحمراء أو الكهرمانية: ما وجدته الفحوص.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;+ مسجّل&lt;/b&gt;، &lt;b&gt;تكرار&lt;/b&gt; (Ctrl+D)، &lt;b&gt;حذف&lt;/b&gt; (Del)؛ وCtrl+C / Ctrl+V تنسخان المسجّلات وتلصقانها بصيغة
+JSON، وبين الخرائط أيضًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;النموذج&lt;/b&gt; على الجانب: &lt;i&gt;عام&lt;/i&gt; (النوع، الوصول، سلوك الكتابة، المجموعة، persist، danger، plot،
+المعامل، المنازل العشرية، الأدنى، الأعلى، الافتراضي، وتحت العنوان &lt;i&gt;EVRe Guard&lt;/i&gt; ما يفحصه الجهاز: خارج الحدود،
+closed، reserved_zero)، &lt;i&gt;القيم&lt;/i&gt; (أسماء القيم، القيم الخاصة؛ و&lt;i&gt;لصق أسطر&lt;/i&gt; يأخذ &quot;0 off&quot;)،
+&lt;i&gt;حقول البتات&lt;/i&gt; (اسحب عبر البتات لتصنع حقلًا، وانقر على واحد لتحرّره)، &lt;i&gt;ملاحظات&lt;/i&gt;. البطاقة فوقها تعرض
+الاسم، والعنوان، والنوع، والوصول، والقيمة الحيّة مقروءة بالطريقة التي يُعرَّف بها (النقطة: خضراء مع قيمة،
+كهرمانية بعد حدّ، رمادية بلا قيمة؛ مرّر الفأرة فوقها لقيمة طويلة كاملة).
+وبلا مسجّل محدّد، تقول ملاحظة في الوسط ذلك. والصفحة التي لا يمكن أن تكون للمسجّل (&lt;i&gt;حقول البتات&lt;/i&gt; لمسجّل
+bytes أو f32، و&lt;i&gt;القيم&lt;/i&gt; مع تحديد عدة) عليها علامة تحذير في لسانها: مرّر الفأرة فوقها، أو افتح
+الصفحة، لتعرف لماذا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفحوص&lt;/b&gt; تحت الجدول: أسماء مستخدمة مرتين، مسجّلات تتشارك بايتات، حقول تتجاوز البتات، أدنى فوق
+أعلى… انقر على واحد لتذهب إليه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إعدادات الخريطة…&lt;/b&gt;: الجهاز، والمعرّفات، والتابع، وUSB، والدخول، والبروتوكول، وملاحظات على الخريطة ومجموعاتها، والتدفقات السريعة (صفحة &lt;i&gt;التدفقات&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;تصدير&lt;/b&gt;: مواصفة Markdown، أو ترويسة C، أو وحدة Python أو CSV، لمن ينفّذ الجهاز أو يستخدمه،
+و&lt;i&gt;جدول الجهاز&lt;/i&gt; لبرمجيات ثابتة على مكتبة EVRe (الصور، بعناوين مفحوصة، ودالة
+ربط؛ والمكتبة 1.0 تحتاج كل مسجّل للقراءة فقط تحت القابلة للكتابة)، و&lt;i&gt;جدول الجهاز للمكتبة
+1.1&lt;/i&gt; (صورة واحدة على نطاقات، بأي ترتيب، ومعها جدول EVRe Guard مربوطًا بها)، و&lt;i&gt;جدول EVRe Guard&lt;/i&gt; الذي يفحص به الجهاز
+كل كتابة من المضيف (ملفاه .h و .cpp). &lt;b&gt;استيراد CSV…&lt;/b&gt; يقرأ جدولًا عائدًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;في لسان المسجّلات، &lt;b&gt;+ مسجّل&lt;/b&gt; و&lt;i&gt;تحرير التعريف…&lt;/i&gt; يأتيان إلى هنا. وتبقى القيم الحية بينما
+يُحرَّر مسجّل، ما دام يُقرأ بالطريقة نفسها.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
 &lt;h2&gt;Connecting&lt;/h2&gt;
 &lt;h3&gt;TCP&lt;/h3&gt;
 &lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
@@ -3826,6 +3842,8 @@ map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log
 the other program; on Linux, add your user to the &lt;code&gt;dialout&lt;/code&gt; group.&lt;/li&gt;
 &lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
 or this link does not). Not an error.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;login required&lt;/i&gt; in the Log, every register &lt;i&gt;error&lt;/i&gt;: the device wants a login and has no session. Give
+its token and connect again: the Studio sends the token once, when it connects, and never again by itself.&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -3910,6 +3928,8 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
 البرنامج الآخر؛ وعلى Linux أضف مستخدمك إلى المجموعة &lt;code&gt;dialout&lt;/code&gt;.&lt;/li&gt;
 &lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
 أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;login required&lt;/i&gt; في السجل، وكل مسجّل &lt;i&gt;خطأ&lt;/i&gt;: الجهاز يريد تسجيل دخول وليست له جلسة. أعطِ
+رمز دخوله واتصل من جديد: يرسل الاستوديو رمز الدخول مرة واحدة عند الاتصال، ولا يعيده من تلقاء نفسه أبدًا.&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -3924,7 +3944,8 @@ merged into a few &lt;b&gt;block reads&lt;/b&gt;, and the sidebar says how many:
 gaps of &lt;b&gt;8 bytes or less&lt;/b&gt; between them become &lt;b&gt;one read&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;A read never crosses a page: devices often keep separate banks there, and some refuse a read across them.&lt;/li&gt;
 &lt;li&gt;If the device still refuses a block, it is split into single registers; an address it does not have is
-dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again.&lt;/li&gt;
+dropped (&lt;i&gt;not available&lt;/i&gt;) and not asked again. A block refused with &lt;i&gt;login required&lt;/i&gt; is not split: it is
+asked again at the next poll.&lt;/li&gt;
 &lt;li&gt;Byte arrays larger than 32 bytes (a message buffer) are not polled: right-click → &lt;b&gt;Read now&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;The number of reads comes from the map&apos;s layout, not from a setting. Registers in the same 256-byte page
@@ -3988,7 +4009,8 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 &lt;b&gt;8 بايت أو أقل&lt;/b&gt; بينها تصير &lt;b&gt;قراءة واحدة&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;القراءة لا تعبر صفحة أبدًا: كثيرًا ما تحفظ الأجهزة بنوكًا منفصلة هناك، وبعضها يرفض قراءة عبرها.&lt;/li&gt;
 &lt;li&gt;إن ظل الجهاز يرفض كتلة، تُقسم إلى مسجّلات مفردة؛ والعنوان الذي لا يملكه
-يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد.&lt;/li&gt;
+يُسقط (&lt;i&gt;غير متاح&lt;/i&gt;) ولا يُسأل من جديد. والكتلة المرفوضة بـ &lt;i&gt;login required&lt;/i&gt; لا تُقسم:
+تُسأل من جديد في الاستطلاع التالي.&lt;/li&gt;
 &lt;li&gt;مصفوفات البايتات الأكبر من 32 بايتًا (مخزن رسائل) لا تُستطلع: النقر بالزر الأيمن ← &lt;b&gt;قراءة الآن&lt;/b&gt;.&lt;/li&gt;
 &lt;/ul&gt;
 &lt;p&gt;عدد القراءات يأتي من ترتيب الخريطة، لا من إعداد. المسجّلات في الصفحة نفسها من 256 بايت
@@ -4147,6 +4169,10 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
     <message>
         <source>token refused: %1</source>
         <translation>رُفض رمز الدخول: %1</translation>
+    </message>
+    <message>
+        <source>login required: the device takes no request without a session. Give its token in the sidebar and connect again</source>
+        <translation>تسجيل الدخول مطلوب: لا يقبل الجهاز أي طلب دون جلسة. أعطِ رمز دخوله في الشريط الجانبي واتصل من جديد</translation>
     </message>
     <message>
         <source>the map declares no login register: the token was not sent</source>
@@ -4387,10 +4413,6 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
     <message>
         <source>Outside the map&apos;s limits</source>
         <translation>خارج حدود الخريطة</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; is %3 the map gives it.&lt;br&gt;&lt;br&gt;The map may be stricter than the device, or the device may not take it. Write it anyway?</source>
-        <translation>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; %3 الذي تعطيه الخريطة.&lt;br&gt;&lt;br&gt;قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز. أتكتبها مع ذلك؟</translation>
     </message>
     <message>
         <source>Write anyway</source>
@@ -4682,6 +4704,14 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
     <message>
         <source>%1: not every device took it: %2</source>
         <translation>%1: لم يقبله كل جهاز: %2</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; is %3 the map gives it.&lt;br&gt;&lt;br&gt;The map may be stricter than the device, or the device may not take it (a device with EVRe Guard refuses it). Write it anyway?</source>
+        <translation>&lt;b&gt;%1&lt;/b&gt; = &lt;b&gt;%2&lt;/b&gt; %3 الذي تعطيه الخريطة.&lt;br&gt;&lt;br&gt;قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز (الجهاز الذي فيه EVRe Guard يرفضها). أتكتبها مع ذلك؟</translation>
+    </message>
+    <message>
+        <source>%1 = %2 is past the map&apos;s limits: the device clamps it (&quot;past_limits&quot;: &quot;clamp&quot;)</source>
+        <translation>%1 = %2 خارج حدود الخريطة: الجهاز يقصّها إلى الحد (&quot;past_limits&quot;: &quot;clamp&quot;)</translation>
     </message>
     <message>
         <source>Not with several devices on the link: a device sending by itself would collide with the others.</source>
@@ -5065,6 +5095,30 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
     <message>
         <source>No room for them after the selection</source>
         <translation>لا مكان لها بعد التحديد</translation>
+    </message>
+    <message>
+        <source>EVRe Guard table (C++: .h and .cpp)…</source>
+        <translation>جدول EVRe Guard (C++: ملف .h و .cpp)…</translation>
+    </message>
+    <message>
+        <source>This map has no EVRe Guard table yet:</source>
+        <translation>ليس لهذه الخريطة جدول EVRe Guard بعد:</translation>
+    </message>
+    <message>
+        <source>C++ header, and its .cpp beside it (*.h)</source>
+        <translation>ترويسة C++، وملف .cpp بجانبها (*.h)</translation>
+    </message>
+    <message>
+        <source>A prefix for the names (MYDEV makes mydev_table and MYDEV_SPEED_RAW_MIN), or empty for the device&apos;s name:</source>
+        <translation>بادئة للأسماء (MYDEV تعطي mydev_table و MYDEV_SPEED_RAW_MIN)، أو فارغة لاسم الجهاز:</translation>
+    </message>
+    <message>
+        <source>Device table for library 1.1, with EVRe Guard (C++)…</source>
+        <translation>جدول الجهاز للمكتبة 1.1، مع EVRe Guard (C++)…</translation>
+    </message>
+    <message>
+        <source>A prefix for the names (MYDEV makes mydev_image_t and mydev_bind), or empty for the device&apos;s name:</source>
+        <translation>بادئة للأسماء (MYDEV تعطي mydev_image_t و mydev_bind)، أو فارغة لاسم الجهاز:</translation>
     </message>
 </context>
 <context>
@@ -6384,6 +6438,122 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <translation> · التابع %1</translation>
     </message>
     <message>
+        <source>not a finite number: &quot;%1&quot;</source>
+        <translation>ليس عددًا منتهيًا: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>%1 is past the largest f32 value</source>
+        <translation>%1 أكبر من أكبر قيمة f32</translation>
+    </message>
+    <message>
+        <source>%1: &quot;past_limits&quot;: &quot;clamp&quot; without min or max: there is nothing to clamp to</source>
+        <translation>%1: &quot;past_limits&quot;: &quot;clamp&quot; دون أدنى أو أعلى: لا حدّ يُقصّ إليه</translation>
+    </message>
+    <message>
+        <source>%1 .. %2, between %3 and %4, is no register: a device with EVRe Guard refuses a block write across it. Declare it as a bytes register if such a write must pass</source>
+        <translation>%1 .. %2، بين %3 و %4، ليس مسجّلًا: الجهاز الذي فيه EVRe Guard يرفض كتابة كتلة تعبره. صرّح به مسجّلَ bytes إن كان على كتابة كهذه أن تمرّ</translation>
+    </message>
+    <message>
+        <source>Past limits</source>
+        <translation>خارج الحدود</translation>
+    </message>
+    <message>
+        <source>the device takes a value past them and clamps it</source>
+        <translation>الجهاز يقبل قيمة خارجها ويقصّها إلى الحد</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is past the largest f32: taken as the type&apos;s end</source>
+        <translation>%1: قيمة %2 وهي %3 أكبر من أكبر f32: تؤخذ طرفَ النوع</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is not on a raw step: taken as %4</source>
+        <translation>%1: قيمة %2 وهي %3 ليست على خطوة خام: تؤخذ %4</translation>
+    </message>
+    <message>
+        <source>%1: the %2 %3 is outside the type %4: taken as the type&apos;s end</source>
+        <translation>%1: قيمة %2 وهي %3 خارج النوع %4: تؤخذ طرفَ النوع</translation>
+    </message>
+    <message>
+        <source>%1: no raw value is left between min and max</source>
+        <translation>%1: لا تبقى قيمة خام بين الأدنى والأعلى</translation>
+    </message>
+    <message>
+        <source>%1: the special value %2 is past the largest f32</source>
+        <translation>%1: القيمة الخاصة %2 أكبر من أكبر f32</translation>
+    </message>
+    <message>
+        <source>%1: the special value %2 is not a whole raw value of %3</source>
+        <translation>%1: القيمة الخاصة %2 ليست قيمة خام صحيحة من %3</translation>
+    </message>
+    <message>
+        <source>%1: more than 255 listed values: use min and max</source>
+        <translation>%1: أكثر من 255 قيمة مدرجة: استعمل الأدنى والأعلى</translation>
+    </message>
+    <message>
+        <source>no register a host writes in the device bank 0xD000..0xDFFF</source>
+        <translation>لا مسجّل يكتبه المضيف في بنك الجهاز 0xD000..0xDFFF</translation>
+    </message>
+    <message>
+        <source>%1 .. %2 writes only part of %3: a device with EVRe Guard refuses it</source>
+        <translation>%1 .. %2 يكتب جزءًا فقط من %3: الجهاز الذي فيه EVRe Guard يرفضه</translation>
+    </message>
+    <message>
+        <source>%1 is not a finite number: no device takes it</source>
+        <translation>%1 ليس عددًا منتهيًا: لا جهاز يقبله</translation>
+    </message>
+    <message>
+        <source>outside the fields&apos; bits</source>
+        <translation>خارج بتات الحقول</translation>
+    </message>
+    <message>
+        <source>outside the closed set of values</source>
+        <translation>خارج مجموعة القيم المغلقة</translation>
+    </message>
+    <message>
+        <source>%1: &quot;past_limits&quot;, &quot;closed&quot; or &quot;reserved_zero&quot; in the reserved bank: EVRe Guard&apos;s table leaves that bank to the library, so it does nothing on the device</source>
+        <translation>%1: &quot;past_limits&quot; أو &quot;closed&quot; أو &quot;reserved_zero&quot; في البنك المحجوز: جدول EVRe Guard يترك هذا البنك للمكتبة، فلا أثر له على الجهاز</translation>
+    </message>
+    <message>
+        <source>Closed</source>
+        <translation>مغلق</translation>
+    </message>
+    <message>
+        <source>only the value names and special values may be written</source>
+        <translation>لا يُكتب إلا أسماء القيم والقيم الخاصة</translation>
+    </message>
+    <message>
+        <source>Reserved bits</source>
+        <translation>البتات المحجوزة</translation>
+    </message>
+    <message>
+        <source>the bits no field covers must be written 0</source>
+        <translation>البتات التي لا يغطيها حقل تُكتب 0</translation>
+    </message>
+    <message>
+        <source>%1: &quot;closed&quot; or &quot;reserved_zero&quot; on a bytes register: it has no value</source>
+        <translation>%1: &quot;closed&quot; أو &quot;reserved_zero&quot; على مسجّل بايتات: لا قيمة له</translation>
+    </message>
+    <message>
+        <source>%1: &quot;closed&quot; on an f32 register: a closed set is for integers</source>
+        <translation>%1: &quot;closed&quot; على مسجّل f32: المجموعة المغلقة للأعداد الصحيحة</translation>
+    </message>
+    <message>
+        <source>%1: &quot;closed&quot; without value names: nothing could be written</source>
+        <translation>%1: &quot;closed&quot; بلا أسماء قيم: لا يمكن كتابة شيء</translation>
+    </message>
+    <message>
+        <source>%1: the value name %2 is outside min .. max: the closed set lets it through</source>
+        <translation>%1: اسم القيمة %2 خارج min .. max: المجموعة المغلقة تسمح به</translation>
+    </message>
+    <message>
+        <source>%1: an action register without a default: 0 is taken as its idle value</source>
+        <translation>%1: مسجّل أمر بلا قيمة افتراضية: تؤخذ 0 قيمةَ سكونه</translation>
+    </message>
+    <message>
+        <source>%1: &quot;reserved_zero&quot; without bit fields: no bit is reserved</source>
+        <translation>%1: &quot;reserved_zero&quot; بلا حقول بتات: لا بت محجوز</translation>
+    </message>
+    <message>
         <source>stream %1: &quot;%2&quot; is missing</source>
         <translation>التدفق %1: ينقصه &quot;%2&quot;</translation>
     </message>
@@ -7031,6 +7201,54 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>not a number: &quot;%1&quot;</source>
         <translation>ليس عددًا: &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <source>refused: the device refuses a value past them</source>
+        <translation>مرفوضة: الجهاز يرفض قيمة خارجها</translation>
+    </message>
+    <message>
+        <source>clamped: the device takes it and clamps it</source>
+        <translation>مقصوصة: الجهاز يقبلها ويقصّها إلى الحد</translation>
+    </message>
+    <message>
+        <source>What the device does with a value past min or max (&quot;past_limits&quot;). Refused: hosts ask before they send one, and a device with EVRe Guard refuses it (value refused, 15). Clamped: hosts send it as it is, and EVRe Guard checks only that it is a number of the type</source>
+        <translation>ما يفعله الجهاز بقيمة خارج الأدنى أو الأعلى (&quot;past_limits&quot;). مرفوضة: يسأل المضيف قبل أن يرسلها، والجهاز الذي فيه EVRe Guard يرفضها (value refused، 15). مقصوصة: يرسلها المضيف كما هي، ولا يتحقق EVRe Guard إلا من أنها عدد من النوع</translation>
+    </message>
+    <message>
+        <source>Past limits</source>
+        <translation>خارج الحدود</translation>
+    </message>
+    <message>
+        <source>closed: only its value names and special values</source>
+        <translation>closed: أسماء قيمه وقيمه الخاصة فقط</translation>
+    </message>
+    <message>
+        <source>&quot;closed&quot;: a host writes only the register&apos;s value names, its special values and, for an action, its idle value; a device with EVRe Guard refuses any other value (15), whatever min and max say</source>
+        <translation>&quot;closed&quot;: لا يكتب المضيف إلا أسماء قيم المسجّل وقيمه الخاصة، وقيمة السكون لمسجّل الأمر؛ والجهاز الذي فيه EVRe Guard يرفض أي قيمة أخرى (15) أيًّا كان min و max</translation>
+    </message>
+    <message>
+        <source>reserved_zero: bits no field covers are 0</source>
+        <translation>reserved_zero: البتات التي لا يغطيها حقل تساوي 0</translation>
+    </message>
+    <message>
+        <source>&quot;reserved_zero&quot;: the bits no bit field covers must be written 0; a device with EVRe Guard refuses a value with one of them set (15). For a register with bit fields</source>
+        <translation>&quot;reserved_zero&quot;: البتات التي لا يغطيها حقل بتات تُكتب 0؛ والجهاز الذي فيه EVRe Guard يرفض قيمة فيها واحد منها مضبوط (15). لمسجّل ذي حقول بتات</translation>
+    </message>
+    <message>
+        <source>Closed</source>
+        <translation>مغلق</translation>
+    </message>
+    <message>
+        <source>Reserved bits</source>
+        <translation>البتات المحجوزة</translation>
+    </message>
+    <message>
+        <source>EVRe Guard</source>
+        <translation>EVRe Guard</translation>
+    </message>
+    <message>
+        <source>The device-side checks of EVRe Guard (library 1.1): what a device does with a value past the limits, a closed set of values, and reserved bits</source>
+        <translation>فحوص EVRe Guard على الجهاز (المكتبة 1.1): ما يفعله الجهاز بقيمة خارج الحدود، ومجموعة القيم المغلقة، والبتات المحجوزة</translation>
     </message>
 </context>
 <context>
