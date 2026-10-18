@@ -737,6 +737,13 @@ private:
 	bool u8Becomes(int value) {
 		return QTest::qWaitFor([&] { return other_.readU8(regs_.u8.addr) == value; }, 3000);
 	}
+	/* waits until the Registers table shows what the device holds in the u8 register. A value written past the
+	 * window (other_) shows at the next poll; an editor opened before it starts from the old value, and that poll,
+	 * landing before Enter, brings "Value changed while editing" in place of the question a step waits for */
+	bool u8Shown() {
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		return cellShows(u8Cell_, QString::number(other_.readU8(regs_.u8.addr)));
+	}
 	bool dangerBecomes(int value) {
 		return QTest::qWaitFor([&] { return other_.readI16(regs_.danger.addr) == value; }, 3000);
 	}
@@ -7906,10 +7913,12 @@ private:
 
 		/* a write past the max of a register that clamps: sent as it is, no question, the Log says why */
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
-		u8Cell_ = valueCell(table_, regs_.u8.name);
+		const bool shownFirst = u8Shown(); /* the step before set the device back to 0 past the window */
 		const RegDef u8 = model_->rows()[regRow(regs_.u8.name)].def;
 		if (u8.hasMax()) {
 			const int past = int(u8.max) + 5;
+			if (!shownFirst) std::printf("  clamps: the table shows %s, the device holds %d\n",
+					qPrintable(u8Cell_.data().toString()), other_.readU8(regs_.u8.addr));
 			QLineEdit *editor = typeInto(u8Cell_, QString::number(past));
 			if (editor) QTest::keyClick(editor, Qt::Key_Return);
 			check(u8Becomes(past) && logText().contains(QLatin1String("the device clamps it")),
@@ -7940,10 +7949,19 @@ private:
 					"Registers table follows");
 			/* the u8 register has no value names: 3 is inside min and max, yet outside its closed set */
 			tabs->setCurrentIndex(MainWindow::TabRegisters);
-			u8Cell_ = valueCell(table_, regs_.u8.name);
+			const bool shown = u8Shown(); /* the clamps step set the device back to 0 past the window */
+			const QString shownBefore = u8Cell_.data().toString();
+			const int heldBefore = other_.readU8(regs_.u8.addr);
 			const QString title = enterAnswering(typeInto(u8Cell_, QStringLiteral("3")), QStringLiteral("Cancel"));
-			check(title == QLatin1String("Outside the map's limits") && other_.readU8(regs_.u8.addr) != 3
-					&& logText().contains(QLatin1String("outside the closed set of values")),
+			const int held = other_.readU8(regs_.u8.addr);
+			const QString log = logText();
+			const bool said = log.contains(QLatin1String("outside the closed set of values"));
+			if (!shown || title != QLatin1String("Outside the map's limits") || held == 3 || !said)
+				std::printf("  closed register: the table showed %s, the device held %d before; the box: \"%s\", the "
+						"device holds %d, the Log says it: %d; the Log ends: %s\n", qPrintable(shownBefore), heldBefore,
+						qPrintable(title), held, said,
+						qPrintable(log.section(QLatin1Char('\n'), -3).replace(QLatin1Char('\n'), QLatin1String(" | "))));
+			check(title == QLatin1String("Outside the map's limits") && held != 3 && said,
 					"a closed register: a value it does not list asks first (\"outside the closed set of values\"), "
 					"Cancel writes nothing");
 			tabs->setCurrentIndex(MainWindow::TabMap);
