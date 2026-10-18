@@ -123,6 +123,8 @@ public:
 	}
 	void clear(const RegDef &r) { std::fill_n(memory_.begin() + r.addr, r.size, uint8_t(0)); }
 	uint16_t config() const { return uint16_t(memory_[CONFIG] | (memory_[CONFIG + 1] << 8)); }
+	/* G-25: a device with a login sends nothing of its own (blocks, AUTO_SEND) while no session is open */
+	bool sendsOwnFrames() const { return !loginRequired_ || loggedIn_; }
 
 	/* one AUTO_SEND frame: the read-only block now, as a READ_RESP nobody asked for; empty when the map has none */
 	QByteArray streamFrame() {
@@ -302,6 +304,19 @@ void serve(QTcpSocket *socket, Devices &devices) {
 			out += answerOnBus(devices, request);
 			for (size_t i = 0; i < devices.size(); i++) {
 				FakeDevice *device = devices[i].get();
+				if (!device->sendsOwnFrames()) {
+					/* a session closed by a wrong token stops what was started inside it, and a refused request
+					 * does not keep a stream's watchdog fed */
+					if (const auto &sender = (*senders)[i]) {
+						const QVector<StreamDef> &defs = device->map().streams;
+						for (int s = 0; s < defs.size(); s++) {
+							sender->enable(s, false);
+							if (const RegDef *enable = device->map().registerNamed(defs[s].enable)) device->clear(*enable);
+						}
+					}
+					if (const std::shared_ptr<Stream> stream = streams->value(device)) stream->follow(0);
+					continue;
+				}
 				if (const auto &sender = (*senders)[i]) {
 					if (request.slave == device->slave()) sender->heard();
 					const QVector<StreamDef> &defs = device->map().streams;

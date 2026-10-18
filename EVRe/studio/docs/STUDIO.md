@@ -6081,7 +6081,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `evre_fake_fast` | a fast fake device, to measure the Studio itself | built&nbsp;with&nbsp;the&nbsp;project | serves writes |
 | `tests/fake_login_test.py` | the login of both fake devices, and the probe's | the build folder (`evre_fake_fast`, `evre_probe`) | only to the fake devices' login register |
 | `evre_map_test` | the map files, the exports (26.7) | nothing; `gcc` and `python` on PATH compile and import the exports | only its own temporary folder |
-| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; the name of code 13; a map's streams in `info` and `validate`, `record` (34.2), `check --writes` on a stream (34.1) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232, and on 1238 with `--login-required` and (after it) with the fast map, itself | yes, to its own fake devices |
+| `tests/cli_test.py` | `evre`: validate, export, info, read, dump, watch, write, the token, the refusals; `--bus` and `broadcast` on two devices; the name of code 13 and, with a login required, no frame of the device's own while no session is open; a map's streams in `info` and `validate`, `record` (34.2), `check --writes` on a stream (34.1) | the build folder; it starts `fake_device.py` on 1212, `evre_fake_fast` as two devices on 1232, and on 1238 with `--login-required` and (after it) with the fast map, itself | yes, to its own fake devices |
 | `tests/sim_test.py` | `evre-sim`: defaults, moving values, wo, ro, action, w1c, ro fields, strict (15, 3, a register that clamps), login, persist, a fast stream (its enable, rate register, `evre record`, watchdog, test aids) | the build folder (`evre-sim`, `evre`); it starts the simulator on 1213 itself | yes, to its own simulator |
 | `tests/schema_test.py` | the maps against the JSON Schema; `past_limits`, `closed` and `reserved_zero`; a stream's keys and refusals; MAP_FORMAT.md's register and stream keys and 16.3 against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `evre_fast_test` | Fast EVRe without a window (26.9): the block's rules, a fuzz, the clock's fit, the fake devices' source | nothing | no |
@@ -7008,7 +7008,9 @@ slave address, map and memory on the same port. It differs from the Python devic
 - With a map that has no `device_id`, it reports DEVICE_ID 0, where the Python device reports `0x0001`.
 - `--login-required` makes it a device whose login is required, as one with EVRe Guard's login: until the token is
   written (by any client, the session is the device's), every request but a write over the login register is
-  refused with ERROR_RESP 13 (*login required*), a WRITE silently; a refused token closes the session again. The GUI
+  refused with ERROR_RESP 13 (*login required*), a WRITE silently; a refused token closes the session again. While
+  no session is open it sends nothing of its own (G-25): a stream or AUTO_SEND started inside a session stops when
+  the session closes, its enable register is cleared, and a refused request does not feed its watchdog. The GUI
   test's login required step, `cli_test.py` and the Python package's tests use it on ports of their own.
 
 Both answer only their own slave address (`--slave`, else the map's `"slave"`): a frame for another slave gets no

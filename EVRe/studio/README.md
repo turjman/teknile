@@ -231,7 +231,7 @@ Part IV how to make one in the Map editor.
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the EVRe library as C++11 to 20 at -O0 to -Os and run, no heap, its stack, its frames through the Studio's parser, PROTOCOL.md's example block (44 checks; needs `g++` and the library) |
-| `tests/cli_test.py` | the `evre` command line end to end (56 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` (recorded, and checked by `evre check --writes`) and a device whose login is required |
+| `tests/cli_test.py` | the `evre` command line end to end (59 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` (recorded, and checked by `evre check --writes`) and a device whose login is required (which then sends nothing of its own) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes, a fast stream included (38 checks) |
 | `tests/device_table_test.py` | the device table export compiled with the EVRe library and run (24 checks; needs `g++` and the library) |
 | `tests/guard_table_test.py` | the EVRe Guard table export compiled with the library and the Guard, and driven at every limit's edges (174 checks; needs `g++` and the library) |

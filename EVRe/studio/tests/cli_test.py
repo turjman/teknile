@@ -109,6 +109,106 @@ def login_checks(opts, run):
     finally:
         fake.kill()
         fake.wait()
+    own_frames_checks(fast, port)
+
+
+def own_frames_checks(fast, port):
+    """G-25: a device whose login is required sends nothing of its own while no session is open: a stream and
+    AUTO_SEND started inside a session stop when a wrong token closes it, and do not start again by themselves
+    when a session opens again (the fast map with a login register, on plain sockets)"""
+    sys.dont_write_bytecode = True  # importing fake_device leaves no __pycache__ in tests/
+    from fake_device import ERROR_RESP, READ, READ_RESP, START, WRITE_ACK, WRITE_ACK_RESP, frame
+    login_addr, login_size, enable_addr, config_addr = 0xF000, 16, 0xD080, 0xA004
+    token = TOKEN.encode('utf-8') + bytes(login_size - len(TOKEN))
+    with tempfile.TemporaryDirectory() as tmp:
+        fast_map = os.path.join(tmp, 'fast_login.json')
+        doc = json.load(open(FAST_MAP, encoding='utf-8'))
+        doc['login'] = {'addr': '0x%04X' % login_addr, 'size': login_size}
+        with open(fast_map, 'w', encoding='utf-8') as f:
+            json.dump(doc, f)
+        fake = subprocess.Popen([fast, str(port), fast_map, TOKEN, '--login-required'],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        sock = None
+        try:
+            for _ in range(50):
+                try:
+                    sock = socket.create_connection(('127.0.0.1', port), 0.2)
+                    break
+                except OSError:
+                    time.sleep(0.1)
+            if sock is None:
+                check(False, 'login required, own frames: the fast fake did not start')
+                return
+            buf = [b'']
+
+            def take(seconds, until=None):
+                """the frames that come in for `seconds`, as (fn, addr, data); it stops at a frame `until` accepts"""
+                got, deadline = [], time.time() + seconds
+                while True:
+                    while True:
+                        b = buf[0]
+                        i = b.find(bytes([START]))
+                        if i < 0 or len(b) - i < 7:
+                            break
+                        b = b[i:]
+                        fn, addr, cnt = b[2], struct.unpack_from('<H', b, 3)[0], struct.unpack_from('<H', b, 5)[0]
+                        total = 10 + {READ_RESP: cnt, ERROR_RESP: 1}.get(fn, 0)
+                        if len(b) < total:
+                            buf[0] = b
+                            break
+                        got.append((fn, addr, b[7:total - 3]))
+                        buf[0] = b[total:]
+                        if until and until(got[-1]):
+                            return got
+                    left = deadline - time.time()
+                    if left <= 0:
+                        return got
+                    sock.settimeout(left)
+                    try:
+                        chunk = sock.recv(65536)
+                    except socket.timeout:
+                        return got
+                    if not chunk:
+                        return got
+                    buf[0] += chunk
+
+            def request(fn, addr, cnt, data=b''):
+                """the frames up to the answer, and the answer's (fn, data) ((None, b'') when none came in 3 s)"""
+                sock.sendall(frame(1, fn, addr, cnt, data))
+                got = take(3, lambda f: f[1] == addr and f[0] in (WRITE_ACK_RESP, ERROR_RESP, READ_RESP))
+                answer = got[-1] if got and got[-1][1] == addr else (None, addr, b'')
+                return got, (answer[0], answer[2])
+
+            def own(frames):
+                """the device's own frames among them: (the stream's blocks, AUTO_SEND frames)"""
+                blocks = sum(1 for fn, addr, _ in frames if fn == READ_RESP and 0xDC00 <= addr < 0xE000)
+                auto = sum(1 for fn, addr, _ in frames if fn == READ_RESP and addr == 0xD000)
+                return blocks, auto
+
+            _, logged = request(WRITE_ACK, login_addr, login_size, token)
+            _, stream_on = request(WRITE_ACK, enable_addr, 1, b'\x01')
+            # AUTO_SEND with the prescaler 79: 8000 / 80 = 100 frames a second
+            _, auto_on = request(WRITE_ACK, config_addr, 2, struct.pack('<H', 0x0008 | (79 << 8)))
+            blocks, auto = own(take(0.5))
+            check(logged[0] == stream_on[0] == auto_on[0] == WRITE_ACK_RESP and blocks > 0 and auto > 0,
+                  'login required, own frames: inside a session the stream\'s blocks (%d) and AUTO_SEND (%d) come'
+                  % (blocks, auto))
+            _, refused = request(WRITE_ACK, login_addr, login_size, b'not-the-token'.ljust(login_size, b'\0'))
+            blocks, auto = own(take(0.5))
+            check(refused[0] == ERROR_RESP and blocks == 0 and auto == 0,
+                  'login required, own frames: a wrong token closes the session, then no block and no AUTO_SEND '
+                  'frame in 0.5 s (%d, %d)' % (blocks, auto))
+            _, logged = request(WRITE_ACK, login_addr, login_size, token)
+            _, enable = request(READ, enable_addr, 1)
+            blocks, auto = own(take(0.5))
+            check(logged[0] == WRITE_ACK_RESP and enable == (READ_RESP, b'\x00') and blocks == 0 and auto == 0,
+                  'login required, own frames: logged in again, the enable register reads 0 and nothing starts by '
+                  'itself (%s, %d, %d)' % (enable, blocks, auto))
+        finally:
+            if sock is not None:
+                sock.close()
+            fake.kill()
+            fake.wait()
 
 
 def slave_checks(opts, run, lines_json):
