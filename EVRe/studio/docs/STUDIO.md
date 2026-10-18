@@ -7009,9 +7009,10 @@ slave address, map and memory on the same port. It differs from the Python devic
 - `--login-required` makes it a device whose login is required, as one with EVRe Guard's login: until the token is
   written (by any client, the session is the device's), every request but a write over the login register is
   refused with ERROR_RESP 13 (*login required*), a WRITE silently; a refused token closes the session again. While
-  no session is open it sends nothing of its own (G-25): a stream or AUTO_SEND started inside a session stops when
-  the session closes, its enable register is cleared, and a refused request does not feed its watchdog. The GUI
-  test's login required step, `cli_test.py` and the Python package's tests use it on ports of their own.
+  no session is open it sends nothing of its own (G-25): a stream started inside a session stops when it closes and
+  its enable register is cleared; Auto send pauses, its CONFIG bit kept, and goes on in the next session (D-50, as
+  the reference device); a refused request does not feed a stream's watchdog. The GUI test's login required step,
+  `cli_test.py` and the Python package's tests use it on ports of their own.
 
 Both answer only their own slave address (`--slave`, else the map's `"slave"`): a frame for another slave gets no
 answer, as on a bus. A broadcast (slave 0) WRITE is taken and not answered; any other broadcast is dropped.

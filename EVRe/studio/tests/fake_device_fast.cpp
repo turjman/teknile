@@ -239,6 +239,12 @@ public:
 		timer_->setTimerType(Qt::PreciseTimer);
 		QObject::connect(timer_, &QTimer::timeout, timer_, [this, socket, device] {
 			const qint64 due = clock_.nsecsElapsed() * hz_ / 1000000000LL;
+			/* D-50, as the reference device: AUTO_SEND pauses while no session is open, its CONFIG bit kept, and
+			 * goes on in the next session; the frames due meanwhile are skipped, not sent in a burst */
+			if (!device->sendsOwnFrames()) {
+				sent_ = due;
+				return;
+			}
 			QByteArray out;
 			for (int i = 0; sent_ < due && i < 100; i++, sent_++) out += device->streamFrame();
 			sent_ = std::max(sent_, due - 100); /* far behind (a stall): not made up in a burst */
@@ -305,8 +311,8 @@ void serve(QTcpSocket *socket, Devices &devices) {
 			for (size_t i = 0; i < devices.size(); i++) {
 				FakeDevice *device = devices[i].get();
 				if (!device->sendsOwnFrames()) {
-					/* a session closed by a wrong token stops what was started inside it, and a refused request
-					 * does not keep a stream's watchdog fed */
+					/* a session closed by a wrong token stops the streams started inside it, and a refused request
+					 * does not keep a stream's watchdog fed; AUTO_SEND only pauses (D-50: the Stream's timer) */
 					if (const auto &sender = (*senders)[i]) {
 						const QVector<StreamDef> &defs = device->map().streams;
 						for (int s = 0; s < defs.size(); s++) {
@@ -314,7 +320,6 @@ void serve(QTcpSocket *socket, Devices &devices) {
 							if (const RegDef *enable = device->map().registerNamed(defs[s].enable)) device->clear(*enable);
 						}
 					}
-					if (const std::shared_ptr<Stream> stream = streams->value(device)) stream->follow(0);
 					continue;
 				}
 				if (const auto &sender = (*senders)[i]) {

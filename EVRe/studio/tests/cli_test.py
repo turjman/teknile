@@ -113,9 +113,10 @@ def login_checks(opts, run):
 
 
 def own_frames_checks(fast, port):
-    """G-25: a device whose login is required sends nothing of its own while no session is open: a stream and
-    AUTO_SEND started inside a session stop when a wrong token closes it, and do not start again by themselves
-    when a session opens again (the fast map with a login register, on plain sockets)"""
+    """G-25: a device whose login is required sends nothing of its own while no session is open: a stream
+    started inside a session stops when a wrong token closes it (its enable register cleared) and stays off in the
+    next session; AUTO_SEND pauses, its CONFIG bit kept, and goes on in the next session (D-50, as the reference
+    device) (the fast map with a login register, on plain sockets)"""
     sys.dont_write_bytecode = True  # importing fake_device leaves no __pycache__ in tests/
     from fake_device import ERROR_RESP, READ, READ_RESP, START, WRITE_ACK, WRITE_ACK_RESP, frame
     login_addr, login_size, enable_addr, config_addr = 0xF000, 16, 0xD080, 0xA004
@@ -201,9 +202,9 @@ def own_frames_checks(fast, port):
             _, logged = request(WRITE_ACK, login_addr, login_size, token)
             _, enable = request(READ, enable_addr, 1)
             blocks, auto = own(take(0.5))
-            check(logged[0] == WRITE_ACK_RESP and enable == (READ_RESP, b'\x00') and blocks == 0 and auto == 0,
-                  'login required, own frames: logged in again, the enable register reads 0 and nothing starts by '
-                  'itself (%s, %d, %d)' % (enable, blocks, auto))
+            check(logged[0] == WRITE_ACK_RESP and enable == (READ_RESP, b'\x00') and blocks == 0 and auto > 0,
+                  'login required, own frames: logged in again, the stream stays off, enable 0; AUTO_SEND goes on '
+                  'by itself (%s, %d, %d)' % (enable, blocks, auto))
         finally:
             if sock is not None:
                 sock.close()
