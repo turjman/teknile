@@ -612,6 +612,7 @@ public:
 	/* tests: the memory the lines' arrays hold now, bytes (their room, not only the samples in it) */
 	qint64 bytesHeld() const;
 	void setDrawThreads(int threads) { drawThreads_ = threads; } /* for tests: 1 = this thread alone; 0 = all */
+	int stripesDrawn() const { return stripesDrawn_; } /* tests: the stripes of the last CPU paint's lines (1: none) */
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
 	/* The frame budget, a credit of the window thread's time: each frame() earns FRAME_SHARE of the time since the
@@ -1080,6 +1081,7 @@ private:
 
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
+	mutable int stripesDrawn_ = 1;
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
 	bool fastSummaries_ = false;           /* older fast records as summaries only (setFastSummaries) */
 	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */

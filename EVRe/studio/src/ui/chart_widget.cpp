@@ -112,6 +112,10 @@ constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little 
 constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
 constexpr qint64 RELEASE_SLICE = 4 << 20; /* bytes of a summary's pages discarded at a time (1.3 to 2.6 ms) */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
+/* the bars' device pixels that do the same, about 2 ms on one thread: a fast line's bars the whole plot high in every
+ * column are a few thousand points, but on a 1080 x 470 chart at 225 % 2 million pixels, and with the stroke joining
+ * them they took 8.5 ms (a column is a logical pixel, its bar 3 device pixels wide) */
+constexpr double BAR_PIXELS_PER_STRIPE = 5e5;
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
 constexpr double FRAME_SHARE = 0.6;            /* the chart's frames take at most this share of the thread */
@@ -4694,10 +4698,11 @@ void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, con
 	p.restore();
 }
 
-/* The lines, clipped to the plot (with room for their thickness). Many points:
- * the plot is cut into vertical stripes on whole device pixels, each drawn on a
- * thread into an image of its own (every line's part in it, a little past its
- * edges), then the stripes side by side: the same pixels as drawn on p. */
+/* The lines, clipped to the plot (with room for their thickness). Many points or
+ * many bars' pixels: the plot is cut into vertical stripes on whole device pixels,
+ * each drawn on a thread into an image of its own (every line's part in it, a
+ * little past its edges), then the stripes side by side: the same pixels as drawn
+ * on p. */
 void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector<BinnedLine> &lines, qreal dpr) const {
 	/* each line in its plot (lanes: its unit's), clipped to it with room for its thickness; lanes: to its part in the
 	 * plot, none for a folded lane or one scrolled out of view */
@@ -4714,7 +4719,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 			clips[i] = shown.adjusted(-2, -2, 2, 2);
 		}
 	}
-	if (all.isEmpty()) return;
+	if (all.isEmpty()) {
+		stripesDrawn_ = 1;
+		return;
+	}
 	const QRectF clip = all.adjusted(-2, -2, 2, 2);
 	const auto clipOf = [&clips](qsizetype i) { return clips[i]; };
 	if (dpr <= 0) dpr = p.device()->devicePixelRatioF();
@@ -4737,12 +4745,17 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	 * whole height of each column cost the most of a frame */
 	QVector<char> thin(lines.size());
 	qsizetype points = 0;
+	double barPixels = 0; /* the bars' area, a fill's cost: their points alone kept a full-height fast line on one thread */
 	for (qsizetype i = 0; i < lines.size(); i++) {
 		thin[i] = 2 * bands[i].size() > lines[i].bins.size();
 		points += polys[i].size() + 2 * bands[i].size();
+		for (const QRectF &band : std::as_const(bands[i])) barPixels += band.width() * band.height();
 	}
+	barPixels *= dpr * dpr;
 	const int threads = drawThreads_ > 0 ? drawThreads_ : pool_.maxThreadCount() + 1;
-	const int stripes = int(std::clamp<qsizetype>(points / POINTS_PER_STRIPE, 1, threads));
+	const int stripes = int(std::clamp<qsizetype>(
+			std::max(points / POINTS_PER_STRIPE, qsizetype(barPixels / BAR_PIXELS_PER_STRIPE)), 1, threads));
+	stripesDrawn_ = stripes;
 	if (stripes == 1) {
 		p.save();
 		for (qsizetype i = 0; i < lines.size(); i++) {

@@ -576,6 +576,7 @@ public:
 		chartLogScale();
 		chartInfoLine();
 		chartOneCap();
+		chartFastBarsOnThreads();
 		chartRamCut();
 		chartRamSlices();
 		chartRamFree();
@@ -11090,6 +11091,109 @@ private:
 				"record and shows no such choice");
 	}
 
+	/* the paints' stages from one PerfStats a paint: their sums (the averages) and each stage's longest, so a paint
+	 * over its limit names the stage that took the time */
+	struct PaintStages {
+		ChartView::PerfStats sum, longest;
+		void add(const ChartView::PerfStats &one) {
+			sum.frames += one.frames;
+			sum.paintSum += one.paintSum;
+			sum.paintMax = std::max(sum.paintMax, one.paintMax);
+			for (double ChartView::PerfStats::*stage : STAGES) {
+				sum.*stage += one.*stage;
+				longest.*stage = std::max(longest.*stage, one.*stage);
+			}
+		}
+		QByteArray text() const {
+			const char *names[] = { "bin", "grid", "lines", "marks", "strip", "legend" };
+			QStringList parts;
+			for (int k = 0; k < 6; k++)
+				parts << QStringLiteral("%1 %2/%3").arg(QLatin1String(names[k]))
+								 .arg(sum.frames ? sum.*STAGES[k] / sum.frames : 0.0, 0, 'f', 1)
+								 .arg(longest.*STAGES[k], 0, 'f', 1);
+			return QStringLiteral("stages on average/longest ms: %1").arg(parts.join(QStringLiteral(", "))).toLatin1();
+		}
+		static constexpr double ChartView::PerfStats::*STAGES[6] = { &ChartView::PerfStats::bin, &ChartView::PerfStats::grid,
+			&ChartView::PerfStats::lines, &ChartView::PerfStats::marks, &ChartView::PerfStats::strip,
+			&ChartView::PerfStats::legend };
+	};
+
+	/* A fast line's bars the whole plot high in every column, on the CPU: few points (a column's bar and its joins), but
+	 * 2 million device pixels on a 1080 x 470 chart at 225 %, and drawn on one thread they followed the PC's load. The
+	 * stripes count the bars' pixels too: a chart of 2400 x 1400 device pixels on any screen is drawn in stripes, and
+	 * the stripes give the same picture as one thread (crisp bars snapped to whole device pixels) */
+	static void chartFastBarsOnThreads() {
+		StreamDef def;
+		def.name = QStringLiteral("ADC");
+		for (const char *name : { "I", "V" }) {
+			StreamChannel channel;
+			channel.name = QString::fromLatin1(name);
+			channel.type = RegType::I16;
+			def.channels << channel;
+		}
+		QWidget host;
+		auto *view = new ChartView(&host);
+		/* the same device pixels on any screen: the logical size by the ratio */
+		const double dpr = view->devicePixelRatioF();
+		const QSize size(int(2400 / dpr), int(1400 / dpr));
+		host.resize(size + QSize(20, 10));
+		view->setGeometry(9, 5, size.width(), size.height());
+		double now = 100;
+		view->setClock([&now] { return now; }, 0);
+		view->setSmooth(false);
+		view->setMemory(60);
+		view->setWindow(0.2);
+		view->setFastStream(0, def);
+		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+		constexpr qsizetype BLOCK = 65536;
+		QByteArray records(BLOCK * 4, Qt::Uninitialized);
+		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
+		for (quint64 first = 0; first < 5 * BLOCK; first += BLOCK) {
+			view->appendFast(0, first, BLOCK, records, first == 0, 0);
+			now = 100.0 + (first + BLOCK) * 1e-6;
+			view->markFast(0, first + BLOCK, now, 1e-6);
+		}
+		(void) host.grab(); /* a first frame: Hold keeps the view last shown */
+		view->setLive(false); /* the same view in both pictures */
+		view->setLineReuse(false); /* each picture's lines drawn afresh: a held view reuses the last frame's (23.6) */
+		view->setDrawThreads(1);
+		const QImage one = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const int oneStripes = view->stripesDrawn();
+		view->setDrawThreads(0);
+		const QImage many = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
+		const int stripes = view->stripesDrawn();
+		int worst = 0, differ = 0;
+		for (int y = 0; y < one.height() && one.size() == many.size(); y++) {
+			const QRgb *a = reinterpret_cast<const QRgb *>(one.constScanLine(y));
+			const QRgb *b = reinterpret_cast<const QRgb *>(many.constScanLine(y));
+			for (int x = 0; x < one.width(); x++) {
+				const int d = std::max({ std::abs(qRed(a[x]) - qRed(b[x])), std::abs(qGreen(a[x]) - qGreen(b[x])),
+						std::abs(qBlue(a[x]) - qBlue(b[x])) });
+				worst = std::max(worst, d);
+				if (d > 3) differ++;
+			}
+		}
+		const QVector<ChartView::BinInfo> bins = view->lastBins(ChartView::fastKey(0, 0));
+		double lo = 0, hi = 0;
+		for (const ChartView::BinInfo &bin : bins) {
+			lo = std::min(lo, bin.min);
+			hi = std::max(hi, bin.max);
+		}
+		qsizetype tall = 0; /* columns whose bar spans most of the range: the bars fill the plot */
+		for (const ChartView::BinInfo &bin : bins)
+			if (bin.max - bin.min > 0.75 * (hi - lo)) tall++;
+		/* the stripes at most: the chart's pool (the CPU's threads less three, 1 to 8) and the window's thread */
+		const int drawers = std::clamp(QThread::idealThreadCount() - 3, 1, 8) + 1;
+		std::printf("     (a fast line's full-height bars, %d x %d device pixels: %lld of %lld columns tall, %d stripes "
+				"(%d with one thread; %d threads here, %d drawing at most); against one thread: worst channel difference %d, "
+				"%d pixels above 3)\n", one.width(), one.height(), (long long) tall, (long long) bins.size(), stripes,
+				oneStripes, QThread::idealThreadCount(), drawers, worst, differ);
+		check(bins.size() > 500 && hi > lo && tall >= bins.size() * 9 / 10 && oneStripes == 1 && stripes >= 2
+						&& one.size() == many.size() && differ <= 200 && worst <= 32,
+				"chart, a fast line's bars the whole plot high: drawn on threads in stripes by their pixels (few points), the "
+				"same picture as on one thread");
+	}
+
 	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of
 	 * 2 GB (as many as this machine fills in 20 s), then RAM set to 256 MB: at the next block the store is down to its
 	 * new share, and no block's append (its trim with it) and no paint takes over 20 ms. Letting gigabytes go took the
@@ -11136,6 +11240,7 @@ private:
 		double appendMax = 0, frameMax = 0;
 		const qint64 share = 256ll * 1024 * 1024;
 		bool down = false;
+		PaintStages stages;
 		for (int b = 0; b < 60; b++) {
 			QElapsedTimer one;
 			one.start();
@@ -11146,11 +11251,12 @@ private:
 			view->frame();
 			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
 			(void) host.grab();
+			stages.add(view->takePerfStats());
 		}
-		const ChartView::PerfStats perf = view->takePerfStats();
+		const ChartView::PerfStats perf = stages.sum;
 		std::printf("     (the RAM cut: %lld MB filled in %.1f s, cut to 256 MB: %lld MB kept; the longest append %.1f ms, "
-				"frame() %.1f ms, paint %.1f ms of %d)\n", (long long) (filled >> 20), fillS, (long long) (store->bytes() >> 20),
-				appendMax, frameMax, perf.paintMax, perf.frames);
+				"frame() %.1f ms, paint %.1f ms of %d; %s)\n", (long long) (filled >> 20), fillS,
+				(long long) (store->bytes() >> 20), appendMax, frameMax, perf.paintMax, perf.frames, stages.text().constData());
 		check(filled >= 512ll * 1024 * 1024 && down && appendMax < 20 && frameMax < 20 && perf.paintMax < 20
 						&& perf.frames >= 50,
 				"chart, the RAM budget cut with a filled fast store (2 GB to 256 MB): the store at its new share from the next "
@@ -11296,7 +11402,9 @@ private:
 		}
 		double now = 100;
 		ChartTab tab{ [&now] { return now; } };
-		tab.resize(1100, 560); /* the chart about as large as the RAM cut's (a paint's time follows its pixels) */
+		/* the chart about as large as the RAM cut's (a paint's time follows its pixels: on Windows the grab paints at
+		 * the screen's ratio, at 225 % five times the pixels of xvfb, the fast line's bars filled on the threads) */
+		tab.resize(1100, 560);
 		tab.show();
 		(void) QTest::qWaitForWindowExposed(&tab);
 		tab.setShown(true);
@@ -11332,6 +11440,7 @@ private:
 		const bool limited = std::abs(view->ramInUse() - LEFT) <= 2 && view->ramLimit() > 0 && view->ramBudget() == 512;
 		double appendMax = 0, frameMax = 0;
 		bool down = false;
+		PaintStages stages;
 		for (int b = 0; b < 60; b++) {
 			QElapsedTimer one;
 			one.start();
@@ -11342,9 +11451,10 @@ private:
 			view->frame();
 			frameMax = std::max(frameMax, one.nsecsElapsed() / 1e6);
 			(void) view->grab();
+			stages.add(view->takePerfStats());
 			if (b % 20 == 19) tab.watchFreeMemory(); /* the readings go on: what was let go came back as free */
 		}
-		const ChartView::PerfStats perf = view->takePerfStats();
+		const ChartView::PerfStats perf = stages.sum;
 		const bool stillLimited = std::abs(view->ramInUse() - LEFT) <= 4;
 		tab.refreshStatus();
 		auto *note = tab.findChild<QLabel *>(QStringLiteral("ramNeed"));
@@ -11357,9 +11467,9 @@ private:
 		const bool ramTip = tip.contains(QLatin1String("Free now: ")) && tip.contains(QLatin1String("of the 512 MB set"));
 		const bool stripTip = view->memoryStripTip().contains(QLatin1String("The free memory limits the budget now"));
 		std::printf("     (the free memory, a chart of %d x %d: %lld MB filled, %d MB left to it: %lld MB kept; the longest "
-				"append %.1f ms, frame() %.1f ms, paint %.1f ms of %d; \"%s\")\n", view->width(), view->height(),
-				(long long) (filled >> 20), view->ramInUse(),
-				(long long) (store->bytes() >> 20), appendMax, frameMax, perf.paintMax, perf.frames, qPrintable(noteText));
+				"append %.1f ms, frame() %.1f ms, paint %.1f ms of %d; %s; \"%s\")\n", view->width(), view->height(),
+				(long long) (filled >> 20), view->ramInUse(), (long long) (store->bytes() >> 20), appendMax, frameMax,
+				perf.paintMax, perf.frames, stages.text().constData(), qPrintable(noteText));
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* the note in its warn state, in both themes */
 			if (ram) ram->setEditText(QStringLiteral("512 MB")); /* the budget set on the view, shown as the box would */
 			for (const bool dark : { false, true }) {
