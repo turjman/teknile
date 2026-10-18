@@ -8038,7 +8038,10 @@ the tab and follows the window's direction.
   *Show values* says: at every frame the tab ticks every frame and the fast cards still change ten times a second;
   at two a second the polls' cards move twice a second and the fast cards ten times. Two pacers of ten a second on one
   clock would be a frame apart and give twenty half-updates a second, hence one. The glow's own 50 ms fading (37.1)
-  repaints only while a byte glows. Hidden, the tab is not ticked.
+  repaints only while a byte glows. Hidden, the tab is not ticked. Two ticks the window's thread takes in one event
+  pass share one repaint (Qt merges `update()` requests until its paint request is delivered), which draws the newer
+  tick's bytes; `DumpView::tick` counts the ticks a paint settles, so the checks count a merged tick as painted and
+  fail a tick left unpainted.
 - **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
   stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
   in 64 bits, count, flags, spare, the records lost before it, the stream's records lost so far and the start that

@@ -239,6 +239,11 @@ void DumpView::setFields(bool on) {
 void DumpView::setClock(std::function<double()> now) { now_ = std::move(now); }
 void DumpView::setStaleAfterMs(qint64 ms) { staleAfterMs_ = ms; }
 
+void DumpView::tick() {
+	ticksAsked_++;
+	viewport()->update();
+}
+
 void DumpView::select(RegKey key) {
 	if (key == selected_) return;
 	selected_ = key;
@@ -1173,6 +1178,13 @@ void DumpView::changeEvent(QEvent *e) {
 }
 
 void DumpView::paintEvent(QPaintEvent *) {
+	/* every tick asked since the last paint is drawn by this one; the ticks beyond the first came while Qt's paint
+	 * request was still pending (one event pass), so their update() merged into it: no picture of theirs was lost
+	 * from the screen, the newest bytes are what this paint draws */
+	if (ticksAsked_ > ticksPainted_) {
+		ticksMerged_ += ticksAsked_ - ticksPainted_ - 1;
+		ticksPainted_ = ticksAsked_;
+	}
 	paints_++;
 	QPainter p(viewport());
 	/* a painter starts in the application's direction: in Arabic "8634 ms" read "ms 8634". Each text in its own direction
