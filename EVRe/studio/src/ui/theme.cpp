@@ -176,6 +176,9 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
+QLabel#autoSendNote, QLabel#autoSendRates, QLabel#baudIgnored { color: %MUTED%; }
+QLabel#autoSendNote[warn="true"], QLabel#autoSendRates[warn="true"] { color: %WARN%; }
+QLabel#baudLabel { color: %MUTED%; }
 QLabel#dumpBanner { color: %WARN%; padding: 0 2px; }
 QFrame#dumpBannerLine { background: %WARN%; border: none; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;
@@ -202,6 +205,8 @@ QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabl
   color: %MUTED%; }
 QLineEdit:read-only { border-color: %BORDER%; color: %MUTED%; }
 QComboBox#triggerLine[prompt="true"] { color: %MUTED%; }
+QComboBox#baud[ignored="true"] QLineEdit { color: %MUTED%; }
+QComboBox#baud[ignored="true"] QLineEdit:focus { color: %TEXT%; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { min-height: 20px; max-height: 20px; }
 QAbstractItemView QLineEdit, QAbstractItemView QSpinBox, QAbstractItemView QDoubleSpinBox,
 QAbstractItemView QComboBox, QComboBox QLineEdit { min-height: 0px; max-height: 16777215px; }

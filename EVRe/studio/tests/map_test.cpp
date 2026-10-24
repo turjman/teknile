@@ -475,6 +475,50 @@ private slots:
 		QCOMPARE(again.usbVid, uint16_t(0x1209));
 	}
 
+	/* "auto_send" in "protocol", the device's frame rates: read, saved back with its keys, gone when neither is
+	 * given; an overlay's own "protocol" replaces the base's whole (its auto_send with it), one without keeps it */
+	void autoSendLimits() {
+		const char *text = R"JSON({ "format": "evre-map/1", "device": "Loop",
+  "protocol": { "transport": "serial", "baud": 115200, "auto_send": { "max_hz": 1000, "tick_hz": 1000 } },
+  "registers": [
+  { "addr": "0xD000", "name": "COUNT", "type": "u16" }
+] }
+)JSON";
+		DeviceMap map = loadText(QStringLiteral("loop.json"), text);
+		QCOMPARE(map.protocol.autoSendMaxHz, 1000);
+		QCOMPARE(map.protocol.autoSendTickHz, 1000);
+		QCOMPARE(map.protocol.autoSendMax(), 1000);
+		QCOMPARE(map.toJson(path(QStringLiteral("loop.json"))), QByteArray(text));
+		/* changed: both keys written, read back the same */
+		map.protocol.autoSendMaxHz = 500;
+		writeFile(path(QStringLiteral("loop2.json")), map.toJson(path(QStringLiteral("loop2.json"))));
+		DeviceMap again;
+		QString err;
+		QVERIFY2(again.load(path(QStringLiteral("loop2.json")), err), qPrintable(err));
+		QCOMPARE(again.protocol.autoSendMaxHz, 500);
+		QCOMPARE(again.protocol.autoSendTickHz, 1000);
+		QCOMPARE(again.protocol.baud, 115200);
+		/* neither given: no "auto_send" at all */
+		again.protocol.autoSendMaxHz = 0;
+		again.protocol.autoSendTickHz = 0;
+		const QByteArray none = again.toJson(path(QStringLiteral("loop2.json")));
+		QVERIFY2(!none.contains("auto_send") && none.contains("\"baud\": 115200"), none.constData());
+		/* a map without protocol: the defaults, a timer's 8000 Hz */
+		DeviceMap plain = loadText(QStringLiteral("plain.json"), R"({ "format": "evre-map/1", "registers": [] })");
+		QVERIFY(!plain.protocol.autoSendLimited() && plain.protocol.autoSendTick() == 8000 && plain.protocol.autoSendMax() == 8000);
+		/* overlays: one without "protocol" keeps the base's limits; one with its own protocol replaces them */
+		QDir(tmp_.path()).mkpath(QStringLiteral("loopbase"));
+		writeFile(path(QStringLiteral("loopbase/loop.json")), text);
+		DeviceMap keeps = loadText(QStringLiteral("keeps.json"),
+				R"({ "format": "evre-map/1", "extends": "loopbase/loop.json", "device": "Keeps", "registers": [] })");
+		QCOMPARE(keeps.protocol.autoSendMaxHz, 1000);
+		QCOMPARE(keeps.protocol.autoSendTickHz, 1000);
+		DeviceMap replaces = loadText(QStringLiteral("replaces.json"), R"({ "format": "evre-map/1", "extends": "loopbase/loop.json",
+  "protocol": { "transport": "tcp" }, "registers": [] })");
+		QCOMPARE(replaces.protocol.transport, QStringLiteral("tcp"));
+		QVERIFY(!replaces.protocol.autoSendLimited() && replaces.protocol.baud == 0);
+	}
+
 	/* the keys a specification needs: write behaviour, notes, persistence, protocol, group notes */
 	void specKeys() {
 		const char *text = R"JSON({ "format": "evre-map/1", "device": "Spec", "notes": "line 1\nline 2",

@@ -18,6 +18,7 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+#include "evre/registers.h"
 #include "model/map_document.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
@@ -140,6 +141,23 @@ QWidget *MapSettingsDialog::buildProtocol() {
 	tcpPort_ = numberBox(65535, tr("not given"));
 	timeout_ = numberBox(600000, tr("not given"));
 	timeout_->setSuffix(QStringLiteral(" ms"));
+	/* "auto_send": the rates the device really makes, so the Auto send list offers no rate that would never come */
+	autoSendMax_ = numberBox(evre::AUTO_SEND_BASE_HZ, tr("not given (the tick)"));
+	autoSendMax_->setObjectName(QStringLiteral("autoSendMax"));
+	autoSendMax_->setSuffix(QStringLiteral(" Hz"));
+	autoSendMax_->setToolTip(tr("The highest Auto send rate the device delivers, 40 to 8000 Hz. Not given: its tick's "
+			"rate."));
+	autoSendTick_ = numberBox(evre::AUTO_SEND_BASE_HZ, tr("not given (8000)"));
+	autoSendTick_->setObjectName(QStringLiteral("autoSendTick"));
+	autoSendTick_->setSuffix(QStringLiteral(" Hz"));
+	autoSendTick_->setToolTip(tr("The device's timing for Auto send, 40 to 8000 Hz: a frame period is a whole number of "
+			"its ticks. 8000 for a timer (every rate exact), 1000 for a main loop on a 1 ms tick."));
+	autoSendRates_ = new QLabel;
+	autoSendRates_->setObjectName(QStringLiteral("autoSendRates"));
+	autoSendRates_->setWordWrap(true);
+	autoSendRates_->setToolTip(tr("The rates the sidebar's Auto send list offers for this map"));
+	for (QSpinBox *box : { autoSendMax_, autoSendTick_ })
+		connect(box, &QSpinBox::valueChanged, this, &MapSettingsDialog::showAutoSendRates);
 	protocolNotes_ = new QPlainTextEdit;
 	protocolNotes_->setPlaceholderText(tr("Anything else the implementer of a host needs: framing on this link, "
 			"how often it may be polled, what happens on a lost link …"));
@@ -149,11 +167,28 @@ QWidget *MapSettingsDialog::buildProtocol() {
 	form->addRow(tr("Baud rate"), baud_);
 	form->addRow(tr("TCP port"), tcpPort_);
 	form->addRow(tr("Answer timeout"), timeout_);
+	form->addRow(tr("Auto send top rate"), autoSendMax_);
+	form->addRow(tr("Auto send tick"), autoSendTick_);
+	form->addRow(tr("Rates offered"), autoSendRates_);
 	form->addRow(tr("Byte order"), mutedLabel(tr("little endian (EVRe)")));
 	form->addRow(tr("Notes"), protocolNotes_);
 	auto *page = new QWidget;
 	page->setLayout(form);
+	showAutoSendRates();
 	return page;
+}
+
+/* the list the two boxes give, as they are typed: none is an error the checker names too */
+void MapSettingsDialog::showAutoSendRates() {
+	const std::vector<int> rates = evre::autoSendRatesFor(autoSendMax_->value(), autoSendTick_->value());
+	QStringList numbers;
+	for (const int hz : rates) numbers << QString::number(hz);
+	autoSendRates_->setText(rates.empty() ? tr("none: no offered rate has a period of whole ticks")
+										  : tr("%1 Hz").arg(numbers.join(QStringLiteral(", "))));
+	if (autoSendRates_->property("warn").toBool() != rates.empty()) {
+		autoSendRates_->setProperty("warn", rates.empty());
+		repolish(autoSendRates_);
+	}
 }
 
 QWidget *MapSettingsDialog::buildNotes() {
@@ -492,6 +527,8 @@ void MapSettingsDialog::load(const DeviceMap &map) {
 	baud_->setValue(map.protocol.baud);
 	tcpPort_->setValue(map.protocol.tcpPort);
 	timeout_->setValue(map.protocol.timeoutMs);
+	autoSendMax_->setValue(map.protocol.autoSendMaxHz);
+	autoSendTick_->setValue(map.protocol.autoSendTickHz);
 	protocolNotes_->setPlainText(map.protocol.notes);
 	notes_->setPlainText(map.notes);
 	/* the map's groups, and groups with notes that no register has any more */
@@ -533,6 +570,8 @@ bool MapSettingsDialog::store(DeviceMap &map, QString &why) const {
 	map.protocol.baud = baud_->value();
 	map.protocol.tcpPort = tcpPort_->value();
 	map.protocol.timeoutMs = timeout_->value();
+	map.protocol.autoSendMaxHz = autoSendMax_->value();
+	map.protocol.autoSendTickHz = autoSendTick_->value();
 	map.protocol.notes = protocolNotes_->toPlainText().trimmed();
 	map.notes = notes_->toPlainText().trimmed();
 	map.streams = streams_;

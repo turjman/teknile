@@ -301,7 +301,13 @@ private:
 	int autoSendCap_ = -1;              /* the one device's STATUS has CAP_AUTO_SEND: 1, 0, -1 not read yet */
 	bool autoSendAsked_ = false;        /* the engine was last told: on */
 	int autoSendHz_ = 0;                /* the device sends at this rate: on and taken; 0: off */
-	double measuredPollHz_ = 0;         /* the polls a second, as last measured (an interval of 0) */
+	QString autoSendSlowedWhy_;         /* the engine's sentence for the rate a UART lowered, until autoSendSet */
+	/* the serial link as it was opened (port empty: TCP): the kind is the one Connect used, a Link row changed while
+	 * connected changes the next connect only */
+	QString linkPort_;
+	qint32 linkBaud_ = 0;
+	bool linkBaudLimited_ = true;
+	double measuredPollHz_ = 0;        /* the polls a second, as last measured (an interval of 0) */
 
 	/* the engine, and copying its values (sync) */
 	IoEngine *engine_;

@@ -4,7 +4,7 @@
  * request in ~100 us and becomes the bottleneck).
  *
  *   evre_fake_fast [port] [map.json] [token] [--slave N] [--node SLAVE=MAP]...
- *                  [--fast-lose N] [--fast-ppm P] [--fast-first K] [--fast-rate R]
+ *                  [--fast-lose N] [--fast-ppm P] [--fast-first K] [--fast-rate R] [--tick-hz N]
  *                     default 1210, maps/example_device.json, example-token
  *
  * Serves a map's registers from 64 KiB: DEVICE_ID from the map, read-only
@@ -34,7 +34,9 @@
  * the first writable one) at 8000 / (prescaler + 1) Hz, the prescaler in bits
  * 15..8 (0 taken as 1, 4000 Hz, as some devices do: it is their timer's reload), unasked; a write with bit 3 clear
  * stops them. STATUS has
- * CAP_AUTO_SEND (bit 11).
+ * CAP_AUTO_SEND (bit 11). The test aid --tick-hz N plays a device that times its frames by a tick of N Hz (a main
+ * loop on a 1 ms tick: 1000) and not by a timer: a rate is rounded to N / n, at most N (4000 Hz asked gives 1000,
+ * 727 Hz gives 1000, 100 Hz gives 100); the default 8000 is a timer, every rate exact.
  *
  * Fast EVRe, per connection: a map's "streams" are served as their map says. A write of a stream's enable
  * register with a value that is not 0 starts it (a wave per channel, at the map's rate, in blocks sent when full
@@ -219,7 +221,7 @@ QByteArray answerOnBus(Devices &devices, const evre::Frame &request) {
  * asks for by then (a timer cannot tick every 125 us for 8000 Hz; the frames a second come out right all the same). */
 class Stream {
 public:
-	Stream(QTcpSocket *socket, FakeDevice *device) : timer_(new QTimer(socket)) {
+	Stream(QTcpSocket *socket, FakeDevice *device, int tickHz) : timer_(new QTimer(socket)), tickHz_(tickHz) {
 		timer_->setTimerType(Qt::PreciseTimer);
 		QObject::connect(timer_, &QTimer::timeout, timer_, [this, socket, device] {
 			const qint64 due = clock_.nsecsElapsed() * hz_ / 1000000000LL;
@@ -236,7 +238,9 @@ public:
 			return;
 		}
 		const int prescaler = (config >> evre::CONFIG_PRESCALER_SHIFT) & 0xFF;
-		hz_ = evre::AUTO_SEND_BASE_HZ / (std::max(prescaler, evre::AUTO_SEND_PRESCALER_MIN) + 1);
+		const int asked = evre::AUTO_SEND_BASE_HZ / (std::max(prescaler, evre::AUTO_SEND_PRESCALER_MIN) + 1);
+		/* a period of whole ticks: the nearest, never faster than one frame a tick */
+		hz_ = std::min(tickHz_, tickHz_ / std::max(1, int(std::lround(double(tickHz_) / asked))));
 		sent_ = 0;
 		clock_.start();
 		timer_->start(std::max(1, 1000 / hz_));
@@ -247,6 +251,7 @@ private:
 	QElapsedTimer clock_;
 	qint64 sent_ = 0;
 	int hz_ = 100;
+	int tickHz_; /* --tick-hz */
 };
 
 /* the request wrote CONFIG of this device (or of every device, a broadcast) */
@@ -264,6 +269,7 @@ bool writesRegister(const evre::Frame &request, const FakeDevice &device, const 
 }
 
 FastSource::Options fastOptions; /* --fast-...: the same for every stream */
+int autoSendTickHz = evre::AUTO_SEND_BASE_HZ; /* --tick-hz */
 
 /* each connection has its own parser, its own AUTO_SEND streams and its own fast streams; all answers to one read
  * of the socket go out in one send */
@@ -298,7 +304,7 @@ void serve(QTcpSocket *socket, Devices &devices) {
 				}
 				if (!writesConfig(request, *device)) continue;
 				std::shared_ptr<Stream> &stream = (*streams)[device];
-				if (!stream) stream = std::make_shared<Stream>(socket, device);
+				if (!stream) stream = std::make_shared<Stream>(socket, device, autoSendTickHz);
 				stream->follow(device->config());
 			}
 		}
@@ -333,6 +339,9 @@ int main(int argc, char **argv) {
 			i++;
 		} else if (a == QLatin1String("--fast-rate")) {
 			fastOptions.rate = value.toDouble();
+			i++;
+		} else if (a == QLatin1String("--tick-hz")) {
+			autoSendTickHz = std::clamp(value.toInt(), 1, evre::AUTO_SEND_BASE_HZ);
 			i++;
 		} else if (a == QLatin1String("--node")) {
 			const int eq = int(value.indexOf(QLatin1Char('=')));

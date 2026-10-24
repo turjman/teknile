@@ -310,13 +310,18 @@ void MainWindow::startEngine() {
 		logEvent(LogLevel::Warning, text);
 	});
 	connect(engine_, &IoEngine::fastRecorded, this, [this](const QString &text) { logEvent(LogLevel::Info, text); });
-	connect(engine_, &IoEngine::autoSendSlowed, this, [this](const QString &why) { logEvent(LogLevel::Warning, why); });
+	/* the Log says it; the polling card too, under the rate chosen, once autoSendSet says what was written */
+	connect(engine_, &IoEngine::autoSendSlowed, this, [this](const QString &why) {
+		autoSendSlowedWhy_ = why;
+		logEvent(LogLevel::Warning, why);
+	});
 	/* the device cleared it by itself (a reset, or another client): said once, not switched on again */
 	connect(engine_, &IoEngine::autoSendStopped, this, [this] {
 		autoSendAsked_ = false;
 		autoSendHz_ = 0;
 		updatePlotLimit();
 		sidebar_->setAutoSendOn(false);
+		sidebar_->setAutoSendTaken(0);
 		logEvent(LogLevel::Warning, tr("the device stopped auto send (reset?)"));
 	});
 }
@@ -650,6 +655,9 @@ void MainWindow::connectLink() {
 	disconnectLink();
 	pushLinkOptions();
 	pushPolling();
+	linkPort_.clear();
+	linkBaud_ = 0;
+	linkBaudLimited_ = true;
 	if (sidebar_->isTcp()) {
 		const QString host = sidebar_->host();
 		const quint16 port = sidebar_->port();
@@ -679,6 +687,9 @@ void MainWindow::connectLink() {
 			logEvent(LogLevel::Info, (baudLimited ? tr("opening %1 at %2 (UART)")
 					: tr("opening %1 at %2 (USB CDC: the baud rate is ignored)")).arg(port).arg(baud));
 		}
+		linkPort_ = port;
+		linkBaud_ = baud;
+		linkBaudLimited_ = baudLimited;
 		engine_->post([engine = engine_, port, baud, baudLimited] { engine->connectSerial(port, baud, baudLimited); });
 	}
 	sidebar_->showConnecting();
@@ -701,6 +712,7 @@ void MainWindow::disconnectLink() {
 	sidebar_->showDisconnected();
 	showBus();
 	autoSendCap_ = -1;
+	sidebar_->setAutoSendTaken(0);
 	updateAutoSendOffer();	updateFastOffer();
 }
 
@@ -713,7 +725,12 @@ void MainWindow::onOpened(const QString &link) {
 	deviceInfoAtOpen_ = deviceInfoHtml(isBus() ? selectedSlave() : 0);
 	registersTab_->setConnected(true);
 	dumpTab_->setConnected(true);
-	sidebar_->showConnected(link);
+	/* the Log keeps the baud rate (its open line says USB CDC ignores it); the pill names what the link is */
+	if (linkPort_.isEmpty())
+		sidebar_->showConnected(link);
+	else
+		sidebar_->showConnected(Sidebar::serialLinkText(linkPort_, linkBaud_, linkBaudLimited_), linkBaudLimited_
+				? QString() : tr("the baud rate %1 is ignored on USB CDC").arg(linkBaud_));
 	showBus();
 	autoSendCap_ = -1; /* until STATUS is read */
 	updateAutoSendOffer();	updateFastOffer();
@@ -733,6 +750,7 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 	offlineDevices_.clear();
 	showBus();
 	autoSendCap_ = -1; /* a lost link keeps Auto send ticked: the engine switches it on again after a reconnect */
+	sidebar_->setAutoSendTaken(0);
 	updateAutoSendOffer();
 	updateFastOffer(); /* and the fast streams wanted: their buttons keep their state */
 	registersTab_->setConnected(false);
@@ -845,6 +863,10 @@ void MainWindow::updateAutoSendOffer() {
 void MainWindow::onAutoSendSet(bool on, int hz, const QString &err) {
 	autoSendHz_ = on && err.isEmpty() ? hz : 0;
 	updatePlotLimit();
+	/* what was written, the yardstick of what comes; on a UART a lower rate than chosen is said with the Log's why */
+	if (err.isEmpty() || on)
+		sidebar_->setAutoSendTaken(autoSendHz_, linkBaudLimited_ ? linkBaud_ : 0, autoSendSlowedWhy_);
+	autoSendSlowedWhy_.clear();
 	if (err.isEmpty()) {
 		logEvent(LogLevel::Info, on ? tr("auto send on: the device sends its read-only block %1 times a second").arg(hz)
 									: tr("auto send off"));
@@ -1050,6 +1072,9 @@ void MainWindow::showMapSettings() {
 void MainWindow::updateMapInfo() {
 	const int registers = isBus() ? int(doc_->map().regs.size()) : int(model_->rows().size());
 	sidebar_->showMap(doc_->map(), registers, doc_->isModified());
+	/* the Auto send list from the one device's map (a bus keeps the list it had: Auto send is not offered there). The
+	 * engine has the map already (pushMap); asked again while on, so a UART's cap steps among the new rates */
+	if (!isBus() && sidebar_->setAutoSendLimits(doc_->map().protocol) && autoSendAsked_) pushAutoSend();
 	showFastStreams();
 }
 

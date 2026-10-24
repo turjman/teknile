@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace evre {
 
@@ -59,5 +60,24 @@ constexpr int AUTO_SEND_BASE_HZ = 8000;
 constexpr int AUTO_SEND_PRESCALER_MIN = 1;
 constexpr int AUTO_SEND_PRESCALER_DEFAULT = 0x4F; /* 100 Hz */
 constexpr int AUTO_SEND_MIN_HZ = 40;
+/* the prescaler + 1 of every rate the protocol's 8000 Hz gives in whole hertz, fastest first: 4000 Hz (2) down to
+ * 40 Hz (200). Here, not in the engine, so the map's checks and the Map settings list the same rates the Auto send
+ * list offers */
+constexpr int AUTO_SEND_DIVIDERS[] = { 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 };
+
+/* The rates of AUTO_SEND_DIVIDERS (Hz, fastest first) a device makes, by the limits its map gives ("auto_send"): at
+ * most maxHz, and a period of whole ticks at tickHz (tickHz % rate == 0: a main loop on a 1 ms tick makes 1000 Hz
+ * and 500 Hz, not 800 Hz). 0 is "not given": tickHz 8000 (a timer, every prescaler exact), maxHz = tickHz, so a map
+ * without limits gets all 16. The limits are the map's, not the protocol's: the protocol names every rate. */
+inline std::vector<int> autoSendRatesFor(int maxHz, int tickHz) {
+	const int tick = tickHz > 0 ? tickHz : AUTO_SEND_BASE_HZ;
+	const int most = maxHz > 0 ? maxHz : tick;
+	std::vector<int> rates;
+	for (const int divider : AUTO_SEND_DIVIDERS) {
+		const int hz = AUTO_SEND_BASE_HZ / divider;
+		if (hz <= most && tick % hz == 0) rates.push_back(hz);
+	}
+	return rates;
+}
 
 } // namespace evre
