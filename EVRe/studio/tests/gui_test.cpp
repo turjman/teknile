@@ -1543,8 +1543,13 @@ private:
 	void serialUsbCdcLook() {
 		const QString cdc = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
 		const QString uart = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
-		check(cdc == ltrPiece(QStringLiteral("COM13 · USB CDC")) && uart == ltrPiece(QStringLiteral("COM13 @ 115200"))
-						&& cdc.startsWith(QChar(0x2066)) && cdc.endsWith(QChar(0x2069)),
+		/* right to left (Arabic) each is between the isolate's two characters */
+		QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+		const QString cdcRtl = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
+		const QString uartRtl = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
+		QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+		check(cdc == QStringLiteral("COM13 · USB CDC") && uart == QLatin1String("COM13 @ 115200")
+						&& cdcRtl == QChar(0x2066) + cdc + QChar(0x2069) && uartRtl == QChar(0x2066) + uart + QChar(0x2069),
 				"serial, the pill: \"COM13 · USB CDC\" on USB CDC (no baud rate), \"COM13 @ 115200\" on a UART, each one "
 				"left-to-right piece");
 
@@ -1992,7 +1997,12 @@ private:
 		check(baud->count() == 11 && baud->itemText(6) == QLatin1String("2000000")
 						&& baud->itemText(10) == QLatin1String("12000000"),
 				"serial, Baud: 11 rates listed, 9600 to 12000000");
-		check(baud->toolTip() == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
+		/* read on a UART: on USB CDC (the ST port selected here) the tooltip says the number is ignored (serialUsbCdcLook) */
+		const int kindWas = kind->currentIndex();
+		kind->setCurrentIndex(2);
+		const QString uartTip = baud->toolTip();
+		kind->setCurrentIndex(kindWas);
+		check(uartTip == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
 						&& edit->placeholderText() == QLatin1String("type a rate"),
 				"serial, Baud: the tooltip says any rate 300 to 20000000 can be typed; emptied, it reads \"type a rate\"");
 		baud->setCurrentText(QStringLiteral("115200"));

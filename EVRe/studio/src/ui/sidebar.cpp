@@ -336,6 +336,7 @@ QVBoxLayout *Sidebar::buildLinkState() {
 	deviceInfo_->setObjectName(QStringLiteral("deviceInfo"));
 	deviceInfo_->setWordWrap(true);
 	deviceInfo_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+	deviceInfo_->installEventFilter(this); /* two lines tall in the font the style sheet gives it (eventFilter) */
 	deviceInfo_->setMinimumHeight(2 * deviceInfo_->fontMetrics().lineSpacing());
 	auto *rows = new QVBoxLayout;
 	rows->addWidget(connectButton_);
@@ -843,6 +844,12 @@ bool Sidebar::eventFilter(QObject *watched, QEvent *event) {
 		if (font) widenList(serialPort_);
 	} else if (watched == serialKind_ && font) {
 		widenList(serialKind_);
+	} else if (watched == deviceInfo_ && font) {
+		/* two lines as the label lays them out, in its own font: measured at construction, before the style sheet set
+		 * it, they were 2 px short, and a "last seen: ..." that wraps grew the line where the sidebar scrolls */
+		const int twoLines = deviceInfo_->fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft,
+				QStringLiteral("x\nx")).height();
+		if (deviceInfo_->minimumHeight() != twoLines) deviceInfo_->setMinimumHeight(twoLines);
 	}
 	return QScrollArea::eventFilter(watched, event);
 }
