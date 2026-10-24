@@ -5414,6 +5414,10 @@ set (&lt;i&gt;250 Hz on the device, not 1000 Hz: the UART at 115200 baud&lt;/i&g
         <translation>لا شيء: لا معدّل معروض زمنه عدد صحيح من النبضات</translation>
     </message>
     <message>
+        <source>none: a value is out of range (40 to 8000)</source>
+        <translation>لا شيء: قيمة خارج المدى (40 إلى 8000)</translation>
+    </message>
+    <message>
         <source>%1 Hz</source>
         <translation>⁦%1 Hz⁩</translation>
     </message>

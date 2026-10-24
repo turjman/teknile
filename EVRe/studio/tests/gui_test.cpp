@@ -1356,12 +1356,22 @@ private:
 			auto *offered = dialog.findChild<QLabel *>(QStringLiteral("autoSendRates"));
 			bool page = maxBox && tickBox && offered && maxBox->value() == 1000 && tickBox->value() == 1000
 					&& offered->text() == QLatin1String("1000, 500, 250, 200, 100, 50, 40 Hz") && !offered->property("warn").toBool();
-			QString none, whole;
+			QString none, whole, lowMax, lowTick;
+			bool lowWarned = false;
 			if (page) {
 				tickBox->setValue(125);
 				none = offered->text();
 				page = none.startsWith(QLatin1String("none: no offered rate has a period of whole ticks"))
 						&& offered->property("warn").toBool();
+				/* 1 to 39 can be typed (the boxes hold 0 to 8000): the reason is the range, not the ticks */
+				tickBox->setValue(1000);
+				maxBox->setValue(20);
+				lowMax = offered->text();
+				lowWarned = offered->property("warn").toBool();
+				maxBox->setValue(0);
+				tickBox->setValue(30);
+				lowTick = offered->text();
+				lowWarned = lowWarned && offered->property("warn").toBool();
 				maxBox->setValue(0);
 				tickBox->setValue(0);
 				whole = offered->text();
@@ -1379,6 +1389,12 @@ private:
 			check(page, "auto send limits, Map settings: Auto send top rate and tick loaded from the map and saved by OK; "
 					"Rates offered follows them as typed (seven rates at 1000 / 1000, \"none: ...\" in the warn colour at "
 					"tick 125, all 16 with neither given)");
+			const QString rangeText = QStringLiteral("none: a value is out of range (40 to 8000)");
+			if (lowMax != rangeText || lowTick != rangeText)
+				std::printf("     (top rate 20: \"%s\", tick 30: \"%s\")\n", qPrintable(lowMax), qPrintable(lowTick));
+			check(page && lowMax == rangeText && lowTick == rangeText && lowWarned,
+					"auto send limits, Map settings: a top rate of 20 Hz or a tick of 30 Hz typed: Rates offered says "
+					"\"none: a value is out of range (40 to 8000)\" in the warn colour, not the whole ticks");
 		}
 
 		/* the window's list by the map loaded: the limited copy, then the example map again */
@@ -1505,7 +1521,7 @@ private:
 		auto device = std::make_unique<OtherClient>();
 		const bool started = fake.waitForStarted(3000)
 				&& QTest::qWaitFor([&] { return device->open(FAKE_AUTO_SEND_PORT, map_.slave); }, 5000);
-		bool shortSaid = false, noneSaid = false;
+		bool shortSaid = false, noneSaid = false, editAsked = false, undoAsked = false, loadAsked = false;
 		QString seen;
 		if (started && load(exampleFile, FAKE_AUTO_SEND_PORT)) {
 			rate->setCurrentIndex(rate->findData(4000));
@@ -1513,8 +1529,41 @@ private:
 			const QRegularExpression delivers(QStringLiteral("^device delivers (9[5-9][0-9]|10[0-4][0-9])/s of 4000 Hz asked"));
 			shortSaid = QTest::qWaitFor([&] { return delivers.match(note->fullText()).hasMatch(); }, 9000);
 			seen = note->fullText();
-			box->setChecked(false);
+			/* the map's limits edited while Auto send is on (the step Map settings takes): the list moves to 1000 Hz
+			 * and the device is asked again at it (the engine has the map's rates by then); undone, 4000 Hz again */
+			auto config = [&] {
+				const QByteArray bytes = device->read(PROTOCOL_CONFIG, 2);
+				return bytes.size() == 2 ? int(uint8_t(bytes[0]) | (uint8_t(bytes[1]) << 8)) : -1;
+			};
+			auto configBecomes = [&](const std::function<bool(int)> &is) {
+				return QTest::qWaitFor([&] {
+					const int value = config();
+					return value >= 0 && is(value);
+				}, 3000);
+			};
+			if (auto *doc = window_.findChild<MapDocument *>(); doc && box->isChecked()) {
+				doc->edit(QStringLiteral("Map settings"), [](DeviceMap &map) {
+					map.protocol.autoSendMaxHz = 1000;
+					map.protocol.autoSendTickHz = 1000;
+				});
+				editAsked = configBecomes([&](int v) {
+					return rate->currentData().toInt() == 1000 && (v & 0x0008) && (v >> 8) == 7;
+				});
+				doc->undoStack()->undo();
+				undoAsked = configBecomes([&](int v) {
+					return rate->currentData().toInt() == 4000 && !doc->isModified() && (v & 0x0008) && (v >> 8) == 1;
+				});
+				if (!editAsked || !undoAsked) std::printf("     (CONFIG 0x%04x, the list at %d Hz)\n", config(),
+							rate->currentData().toInt());
+			}
+			/* the limited map loaded with the box left on at 4000 Hz: the list moves to 1000 Hz, and the device is
+			 * asked again with the prescaler of the new map's dividers (the engine's setMap before the new ask) */
 			if (load(limitedFile, FAKE_AUTO_SEND_PORT)) {
+				loadAsked = box->isChecked() && configBecomes([&](int v) {
+					return rate->currentData().toInt() == 1000 && (v & 0x0008) && (v >> 8) == 7;
+				});
+				if (!loadAsked) std::printf("     (loaded on: CONFIG 0x%04x, the list at %d Hz, the box %s)\n", config(),
+							rate->currentData().toInt(), box->isChecked() ? "on" : "off");
 				rate->setCurrentIndex(rate->findData(500));
 				rate->setCurrentIndex(rate->findData(1000));
 				box->setChecked(true);
@@ -1528,12 +1577,23 @@ private:
 		check(started && shortSaid && noneSaid,
 				"auto send limits, end to end (evre_fake_fast --tick-hz 1000): the example map at 4000 Hz: \"device delivers "
 				"1000/s of 4000 Hz asked\" under the row; the map with auto_send 1000 / 1000 at 1000 Hz: no note after 5 s");
+		check(started && editAsked && undoAsked,
+				"auto send limits, the map edited while Auto send is on at 4000 Hz: auto_send 1000 / 1000 moves the list to "
+				"1000 Hz and the device's CONFIG to prescaler 7; the edit undone, 4000 Hz and prescaler 1 again");
+		check(started && loadAsked,
+				"auto send limits, the map with auto_send 1000 / 1000 loaded while Auto send is on at 4000 Hz: the list "
+				"moves to 1000 Hz and the device is asked again, CONFIG with prescaler 7");
 		QTest::qWait(300); /* the off reaches the device */
 		fake.kill();
 		fake.waitForFinished(3000);
 
-		/* the example map and the fake device of the other steps again, the rate as before */
-		(void) load(exampleFile, FAKE_DEVICE_PORT);
+		/* the example map and the fake device of the other steps again, the rate as before. From a copy (the window
+		 * opens the command line's map only once) kept to the end of the run: this step's folder goes at its return,
+		 * and the window's map must still have its file for the later steps (Save, a bus made from it) */
+		static QTemporaryDir lasting;
+		const QString lastingFile = lasting.filePath(QStringLiteral("example_device.json"));
+		QFile::remove(lastingFile);
+		(void) (QFile::copy(map_.path, lastingFile) && load(lastingFile, FAKE_DEVICE_PORT));
 		rate->setCurrentIndex(rate->findData(100));
 		(void) cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000);
 	}

@@ -6221,7 +6221,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   (8000 / 8000 and none given: all 16; a 1 ms tick: 1000, 500, 250, 200, 100, 50, 40; tick 3000 the same; tick 125
   none; 1000 / 8000: the 13 up to 1000); the checker's four errors and its warning from maps made for them, none for
   the example map, 8000 / 8000 or 1000 / 1000; the Map settings' Protocol page (the two boxes loaded and saved by
-  OK, *Rates offered* following them, *none: ...* in the warn colour at tick 125). A copy of the example map with
+  OK, *Rates offered* following them, *none: ...* in the warn colour at tick 125, *none: a value is out of range (40 to
+  8000)* at a top rate of 20 Hz or a tick of 30 Hz). A copy of the example map with
   `auto_send` 1000 / 1000 in a temporary folder: the list holds its 7 rates, the example map 16, a new sidebar 16;
   4000 Hz saved shows 1000 Hz with *1000 Hz, not the saved 4000 Hz: the top rate this device makes (its map)* under
   the row, `poll/autoSendHz` still 4000 (the example map shows 4000 Hz again), the 1000 Hz shown picked: saved, the
@@ -6230,7 +6231,9 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   clock moved on by `Sidebar::shiftAutoSendClock`: 700 of 1000 for 2 s says *device delivers 700/s of 1000 Hz asked:
   ...* in the warn colour, nothing in the first 3 s nor after 1 s, 950 takes it away, Auto send off clears it. End to
   end, `evre_fake_fast --tick-hz 1000` on port 1236: the example map at 4000 Hz gets *device delivers 1000/s of 4000
-  Hz asked* within 9 s; the limited map at 1000 Hz no note after 5 s.
+  Hz asked* within 9 s; the map's limits edited to 1000 / 1000 while on: the list at 1000 Hz and CONFIG with
+  prescaler 7, undone: 4000 Hz and prescaler 1; the limited map loaded with the box left on: 1000 Hz and prescaler 7
+  again; at 1000 Hz no note after 5 s. The step ends on a copy of the example map kept to the end of the run.
 - **The serial link** (`serialKind`, after Auto send). No real port: the ports opened do not exist. The kind by the
   USB IDs (`Sidebar::serialKindOf`: none, FTDI and MCP2221 a UART; another Microchip ID and ST's VCP USB CDC; Linux's
   `ttyUSB` a UART, `ttyACM` USB CDC; the debug probes and an Arduino's 16U2 a UART, a Pico's and a Leonardo's own USB
@@ -6876,7 +6879,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 763 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 766 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7442,7 +7445,7 @@ The checks never stop a save: a map under construction may be incomplete.
 | Page | Boxes |
 |---|---|
 | Device | device name, description, device ID (checked when connecting, 3.7), slave address, USB vendor and product ID (mark its port, 3.2), login: the token register and its size (3.6) |
-| Protocol | transport (serial, tcp, usb, or several), baud rate, TCP port, answer timeout, **Auto send top rate** and **Auto send tick** (`protocol.auto_send`, 13.8: 40 to 8000 Hz, *not given (the tick)* and *not given (8000)* at 0) with **Rates offered** under them, the rates the two leave as they are typed (*1000, 500, 250, 200, 100, 50, 40 Hz*, or *none: no offered rate has a period of whole ticks* in the warn colour), notes; the byte order is always little endian |
+| Protocol | transport (serial, tcp, usb, or several), baud rate, TCP port, answer timeout, **Auto send top rate** and **Auto send tick** (`protocol.auto_send`, 13.8: 40 to 8000 Hz, *not given (the tick)* and *not given (8000)* at 0) with **Rates offered** under them, the rates the two leave as they are typed (*1000, 500, 250, 200, 100, 50, 40 Hz*, or *none: no offered rate has a period of whole ticks* in the warn colour, *none: a value is out of range (40 to 8000)* when 1 to 39 is typed), notes; the byte order is always little endian |
 | Notes | notes on the whole map, and a note per group |
 | Streams | the map's fast streams (Fast EVRe, 13.9, 16.13): the list on the left (**+&nbsp;Stream**, **Remove**), the selected one's name, its window (**Address** and **Size**), its rate in samples a second, its **Enable** and **Rate register** (the map's registers offered, any name typed), its description, and its channels in a table: name, type (`u8` … `i32`, `f32`), unit, scale, offset, decimals, description (**+&nbsp;Channel**, **Remove&nbsp;channel**) |
 

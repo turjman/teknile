@@ -183,8 +183,12 @@ void MapSettingsDialog::showAutoSendRates() {
 	const std::vector<int> rates = evre::autoSendRatesFor(autoSendMax_->value(), autoSendTick_->value());
 	QStringList numbers;
 	for (const int hz : rates) numbers << QString::number(hz);
-	autoSendRates_->setText(rates.empty() ? tr("none: no offered rate has a period of whole ticks")
-										  : tr("%1 Hz").arg(numbers.join(QStringLiteral(", "))));
+	/* a box holds 0 to 8000, so 1 to 39 can be typed: then no rate is left for that reason, not for the ticks */
+	const auto outOfRange = [](int hz) { return hz > 0 && hz < evre::AUTO_SEND_MIN_HZ; };
+	const bool range = outOfRange(autoSendMax_->value()) || outOfRange(autoSendTick_->value());
+	if (!rates.empty()) autoSendRates_->setText(tr("%1 Hz").arg(numbers.join(QStringLiteral(", "))));
+	else if (range) autoSendRates_->setText(tr("none: a value is out of range (40 to 8000)"));
+	else autoSendRates_->setText(tr("none: no offered rate has a period of whole ticks"));
 	if (autoSendRates_->property("warn").toBool() != rates.empty()) {
 		autoSendRates_->setProperty("warn", rates.empty());
 		repolish(autoSendRates_);
