@@ -13,7 +13,9 @@
  *    On a bus: the selected device's map.
  *  - Polling & recording: Poll and its interval, the poll rate reached (and,
  *    when it is slower than asked, why); Auto send and its rate (the device
- *    sends its read-only block by itself; one device only); Show values (how
+ *    sends its read-only block by itself; one device only; the rates its map
+ *    says it makes), and under it a note when what comes or what is asked is
+ *    not what was chosen; Show values (how
  *    often the numbers on screen change, value_pace.h); Record CSV, and Open
  *    recording beside it (a file, or one of the last ones).
  *  - Fast streams (Fast EVRe; only for a map with "streams"): each stream's Log tick (written beside a CSV recording
@@ -34,6 +36,7 @@
  * Auto send itself and the fast streams (they change the device) never are. */
 #pragma once
 
+#include <QElapsedTimer>
 #include <QScrollArea>
 #include <QString>
 
@@ -46,6 +49,7 @@ class LimitSpinBox;
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -110,7 +114,11 @@ public:
 	 * window, once the sidebar is in it, calls showDisconnected() */
 	void showDisconnected();
 	void showConnecting();
-	void showConnected(const QString &link);
+	/* note: a line the pill's tooltip adds under its text (the baud rate a USB CDC port ignores) */
+	void showConnected(const QString &link, const QString &note = QString());
+	/* a serial link as the pill names it, one left-to-right piece: "COM13 @ 115200" on a UART (baudLimited), where the
+	 * number is the link's speed, "COM13 · USB CDC" on USB CDC, where it is none */
+	static QString serialLinkText(const QString &port, qint32 baud, bool baudLimited);
 	/* the pill in red: why, always whole, on two lines (or more) when it does not fit on one; detail: the system's own
 	 * text, on the tooltip's second line */
 	void showLinkError(const QString &why, const QString &detail = QString());
@@ -131,10 +139,23 @@ public:
 	bool pollingOn() const;
 	double pollIntervalMs() const;       /* 0: as fast as possible */
 	int valuesPerSecond() const;         /* Show values: ValuePace::EVERY_FRAME (0) or per second */
-	/* Auto send: ticked, its rate (one of 8000 / IoEngine::autoSendDividers() Hz) */
+	/* Auto send: ticked, its rate (one of the list: the rates the map's device makes, evre::autoSendRatesFor) */
 	bool autoSendOn() const;
 	int autoSendHz() const;
-	void setAutoSendHz(int hz);          /* the nearest rate of the list */
+	/* the rate asked (saved, not written to the settings): the list shows it, or the nearest it has at or below */
+	void setAutoSendHz(int hz);
+	/* the list from the map's "auto_send" limits (MapProtocol() or a map without them: all 16 rates), the saved rate
+	 * shown as setAutoSendHz does, a note under the row while it is another; true when the list changed. Without
+	 * autoSendChanged: the window asks the engine again when Auto send is on */
+	bool setAutoSendLimits(const MapProtocol &protocol);
+	/* the rate the device was set to (after a UART's cap; 0: off or failed): what arrives is measured against it, and
+	 * on a UART (uartBaud, 0 otherwise) a lower one than chosen is said under the row, why its tooltip (the Log's) */
+	void setAutoSendTaken(int hz, qint32 uartBaud = 0, const QString &why = QString());
+	/* the measuring: under AUTO_SEND_SHARE of the rate for AUTO_SEND_SHORT_MS is said; nothing counts in the first
+	 * AUTO_SEND_SETTLE_MS after setAutoSendTaken */
+	static constexpr double AUTO_SEND_SHARE = 0.9;
+	static constexpr qint64 AUTO_SEND_SHORT_MS = 2000, AUTO_SEND_SETTLE_MS = 3000;
+	void shiftAutoSendClock(qint64 ms) { clockShiftMs_ += ms; } /* tests: the measuring's clock ms later */
 	void setAutoSendOn(bool on);         /* ticked or not, without autoSendChanged: the device's state, not a choice */
 	/* offered: the box can be ticked; why: when not, the tooltip says why (a bus, no CAP_AUTO_SEND) */
 	/* offered or not; why: the box's tooltip when not; shortWhy: a word or two the greyed rate list shows instead of a
@@ -233,8 +254,14 @@ private:
 			const QString &toolTip = QString());
 	void elidePortLabels();              /* every port's label cut to the box's room (its whole text kept) */
 	void showSerialKind();               /* the Link row's Auto item and the port box's tooltip, for the port selected */
+	void showBaudIgnored();              /* the Baud row faint, "ignored on USB CDC" beside, while Link means USB CDC */
 	int savedInFlight(bool tcp) const;   /* In flight is kept per link type: TCP pipelines, a UART does not */
 	void showPollRate(const IoEngine::Stats &stats, bool connected);
+	void showSavedRate();                /* the list at the saved rate, or the nearest at or below; the note if moved */
+	void pickRate(int index);            /* a rate chosen: saved */
+	void watchAutoSend(bool running, double hz); /* a reading of the frames a second against the rate taken */
+	void showAutoSendNote();             /* the note under the Auto send row: the first of its three that applies */
+	qint64 autoSendNowMs() const;
 	QString slowPollReason(const IoEngine::Stats &stats) const; /* empty: not slower than asked */
 public:
 	/* the In flight that lets enough polls overlap for wantHz (0: as fast as possible) at this latency, never
@@ -250,6 +277,10 @@ private:
 	QSpinBox *port_;
 	QComboBox *serialPort_, *baud_;
 	QComboBox *serialKind_;      /* the Link row: Auto, USB CDC, UART */
+	QLabel *baudLabel_;
+	ElidedLabel *baudIgnored_;   /* "ignored on USB CDC", in the Baud row's third column; hidden on a UART */
+	QGridLayout *serialRows_ = nullptr; /* Baud and Link */
+	QString baudHelp_;           /* the Baud box's tooltip on a UART */
 	LimitSpinBox *slave_, *timeout_, *inFlight_;
 	QCheckBox *autoReconnect_;
 	QPushButton *connectButton_;
@@ -270,7 +301,18 @@ private:
 	QCheckBox *autoSend_;
 	QComboBox *autoSendRate_;     /* the rates the device makes exactly, in Hz */
 	int rateIndex_ = 0;           /* the rate chosen: kept while the list shows why it is not offered */
+	int savedHz_ = 100;           /* the rate saved (poll/autoSendHz): the list may show a lower one, the map's */
+	bool autoSendLimited_ = false; /* the list is the map's limits', not all 16 */
 	QString rateHelp_;            /* the list's tooltip while offered (not offered: the reason) */
+	/* the note under the Auto send row and what it is made of */
+	ElidedLabel *autoSendNote_;
+	QString movedNote_;           /* the list shows another rate than the saved one: the map's */
+	QString capNote_, capWhy_;    /* the UART set a lower rate than chosen, and the Log's sentence */
+	QString shortfall_, shortfallWhy_; /* fewer frames come than were asked for */
+	int takenHz_ = 0;             /* the rate the device was set to; 0: off */
+	QElapsedTimer autoSendClock_;
+	qint64 clockShiftMs_ = 0;     /* tests */
+	qint64 takenAtMs_ = 0, underSinceMs_ = -1;
 	QComboBox *valuePace_;        /* Show values */
 	QPushButton *recordButton_;
 	QPushButton *openRecording_;  /* its menu: Open a file…, the last recordings */

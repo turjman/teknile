@@ -391,6 +391,11 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 	}
 	const uint8_t oneDevice = isBus() ? 0 : target(0); /* where the one device was, before the new devices */
 	devices_ = devices;
+	/* the rates the one device makes, by its map: a serial link's cap steps down among these only. The window asks
+	 * again (setAutoSend) when they change while Auto send is on */
+	autoSendDividers_ = !isBus() && !devices_.isEmpty() && devices_[0].map
+			? autoSendDividersFor(devices_[0].map->protocol) : autoSendDividers();
+	if (autoSendDividers_.isEmpty()) autoSendDividers_ = autoSendDividers(); /* limits the checker refuses */
 	/* Several devices now: none may send by itself. The window switched it off already; this makes sure, and when
 	 * the device was sending, it is told so (a WRITE of CONFIG, not only its frames ignored): left on, its frames
 	 * would collide with the other devices' answers. */
@@ -1026,21 +1031,31 @@ void IoEngine::updateStats() {
 /* ---------------------------------------------------------------- AUTO_SEND */
 
 const QVector<int> &IoEngine::autoSendDividers() {
-	/* 8000 Hz / divider for the prescalers 1..199 that give whole rates: 4000 Hz down to 40 Hz */
-	static const QVector<int> dividers = { 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 };
+	static const QVector<int> dividers(std::begin(evre::AUTO_SEND_DIVIDERS), std::end(evre::AUTO_SEND_DIVIDERS));
 	return dividers;
 }
 
-/* a frame is the data and 10 bytes around it (7B, slave, function, offset, count, CRC, 7D); a UART byte is 10 bits */
+QVector<int> IoEngine::autoSendDividersFor(const MapProtocol &protocol) {
+	QVector<int> dividers;
+	for (const int hz : evre::autoSendRatesFor(protocol.autoSendMaxHz, protocol.autoSendTickHz))
+		dividers << evre::AUTO_SEND_BASE_HZ / hz;
+	return dividers;
+}
+
 int IoEngine::autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes) {
-	if (baud <= 0) return prescaler;
+	return autoSendPrescalerFor(prescaler, baud, streamBytes, autoSendDividers());
+}
+
+/* a frame is the data and 10 bytes around it (7B, slave, function, offset, count, CRC, 7D); a UART byte is 10 bits */
+int IoEngine::autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes, const QVector<int> &dividers) {
+	if (baud <= 0 || dividers.isEmpty()) return prescaler;
 	const double room = AUTO_SEND_LINK_SHARE * baud / 10.0; /* bytes a second */
 	const int frame = streamBytes + 10;
 	auto fits = [&](int divider) { return double(evre::AUTO_SEND_BASE_HZ) / divider * frame <= room; };
 	if (fits(prescaler + 1)) return prescaler;
-	for (const int divider : autoSendDividers())
+	for (const int divider : dividers)
 		if (divider > prescaler + 1 && fits(divider)) return divider - 1;
-	return autoSendDividers().last() - 1;
+	return dividers.last() - 1;
 }
 
 /* the wish is kept whatever the link: connected, it goes to the device at once (on: once STATUS allows it) */
@@ -1081,7 +1096,7 @@ void IoEngine::applyAutoSend(uint8_t slave) {
 	const quint64 request = ++autoSendRequest_;
 	int prescaler = autoSendPrescaler_;
 	if (on && serialBaud_ > 0 && serialBaudLimited_) {
-		prescaler = autoSendPrescalerFor(autoSendPrescaler_, serialBaud_, streamBytes());
+		prescaler = autoSendPrescalerFor(autoSendPrescaler_, serialBaud_, streamBytes(), autoSendDividers_);
 		if (prescaler != autoSendPrescaler_)
 			emit autoSendSlowed(tr("auto send at %1 Hz, not %2 Hz: %2 frames of %3 bytes a second would take more than "
 					"%4% of the serial link at %5 baud").arg(evre::AUTO_SEND_BASE_HZ / (prescaler + 1))

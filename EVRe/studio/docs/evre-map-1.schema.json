@@ -40,6 +40,14 @@
             "baud": { "type": "integer", "minimum": 0 },
             "tcp_port": { "type": "integer", "minimum": 0, "maximum": 65535 },
             "timeout_ms": { "type": "integer", "minimum": 0 },
+            "auto_send": {
+              "type": ["object", "null"],
+              "properties": {
+                "max_hz": { "type": "integer", "minimum": 40, "maximum": 8000, "description": "the highest frame rate the device delivers" },
+                "tick_hz": { "type": "integer", "minimum": 40, "maximum": 8000, "description": "its timing resolution: a frame period is whole ticks (8000 a timer, 1000 a 1 ms loop)" }
+              },
+              "description": "the Auto send rates the device makes: those at most max_hz whose period is whole ticks"
+            },
             "notes": { "type": "string" }
           }
         },

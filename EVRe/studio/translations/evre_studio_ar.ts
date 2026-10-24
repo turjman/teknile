@@ -2794,7 +2794,7 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 &lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; or &lt;code&gt;w1c&lt;/code&gt;; &lt;b&gt;persist&lt;/b&gt;: kept across a reset.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (shown units), &lt;b&gt;decimals&lt;/b&gt;; &lt;b&gt;special&lt;/b&gt;:
 &lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;, names for single values of a number.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms),
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (a register, the map), &lt;b&gt;protocol&lt;/b&gt; (transport, baud, tcp_port, timeout_ms, auto_send),
 &lt;b&gt;groups&lt;/b&gt; (notes per group), and on a field &lt;b&gt;access&lt;/b&gt; and &lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; makes the map an overlay that changes another one.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (top level, optional): a device&apos;s fast streams, each its window, rate, switches and channels
@@ -2836,7 +2836,7 @@ little endian.&lt;/li&gt;
 &lt;b&gt;write&lt;/b&gt;: &lt;code&gt;action&lt;/code&gt; أو &lt;code&gt;w1c&lt;/code&gt;؛ &lt;b&gt;persist&lt;/b&gt;: يبقى بعد إعادة التشغيل.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;min&lt;/b&gt; / &lt;b&gt;max&lt;/b&gt; / &lt;b&gt;default&lt;/b&gt; (بالوحدات المعروضة)، و&lt;b&gt;decimals&lt;/b&gt;؛ &lt;b&gt;special&lt;/b&gt;:
 &lt;code&gt;{ &quot;-1&quot;: &quot;not measured&quot; }&lt;/code&gt;، أسماء لقيم مفردة من عدد.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms)،
+&lt;li&gt;&lt;b&gt;notes&lt;/b&gt; (لمسجّل، وللخريطة)، و&lt;b&gt;protocol&lt;/b&gt; (transport، baud، tcp_port، timeout_ms، auto_send)،
 و&lt;b&gt;groups&lt;/b&gt; (ملاحظات لكل مجموعة)، وعلى الحقل &lt;b&gt;access&lt;/b&gt; و&lt;b&gt;desc&lt;/b&gt;.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;extends&lt;/b&gt;: &lt;code&gt;&quot;base.json&quot;&lt;/code&gt; يجعل الخريطة طبقة تغيّر خريطة أخرى.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;streams&lt;/b&gt; (المستوى الأعلى، اختياري): التدفقات السريعة للجهاز، لكل منها نافذته ومعدّله ومفاتيحه
@@ -3760,11 +3760,14 @@ ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks that port with the device&ap
 A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy or not allowed&lt;/i&gt; otherwise).&lt;/p&gt;
 &lt;p&gt;When a link fails or is lost, the pill says what happened in plain words (&lt;i&gt;COM10 is gone: unplugged or
 reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&apos;s own text, which the Log has too. The line under it keeps
-the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.&lt;/p&gt;
+the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.
+Connected, the pill names the link: &lt;i&gt;COM13 @ 115200&lt;/i&gt; on a UART, &lt;i&gt;COM13 · USB CDC&lt;/i&gt; on USB CDC, where the
+baud rate means nothing (the Log keeps the number).&lt;/p&gt;
 &lt;h3&gt;Options&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
-connect. A UART must match the device; USB CDC ignores it.&lt;/li&gt;
+connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
+&lt;i&gt;ignored on USB CDC&lt;/i&gt; stands beside it; the box stays editable, for a UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
 UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
 rate is the real speed) by the port&apos;s USB IDs, and
@@ -3844,11 +3847,12 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;p&gt;حين تفشل الوصلة أو تُفقد، تقول الشارة ما حدث بكلمات بسيطة (&lt;i&gt;⁦COM10⁩ اختفى: فُصل أو أُعيد
 تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
 تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
-جديد.&lt;/p&gt;
+جديد. وعند الاتصال تسمّي الشارة الوصلة: &lt;i&gt;⁦COM13 @ 115200⁩&lt;/i&gt; على UART، و&lt;i&gt;⁦COM13 · USB CDC⁩&lt;/i&gt; على USB CDC، حيث لا يعني معدّل البود شيئًا (ويُبقي السجل الرقم).&lt;/p&gt;
 &lt;h3&gt;الخيارات&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
-لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله.&lt;/li&gt;
+لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وبجانبه
+&lt;i&gt;مُتجاهَل على USB CDC&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
 من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
 هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
@@ -3976,6 +3980,14 @@ is lowered, and the Log says so. &lt;b&gt;USB CDC&lt;/b&gt; ignores the baud rat
 on again by itself.&lt;/li&gt;
 &lt;li&gt;One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
 that switches AUTO_SEND on is refused.&lt;/li&gt;
+&lt;li&gt;A device on a main loop makes fewer rates than a timer: on a 1 ms tick at most 1000 frames a second, others only as
+1000 ÷ n. Its map can say so (&lt;code&gt;&quot;auto_send&quot;: { &quot;max_hz&quot;: 1000, &quot;tick_hz&quot;: 1000 }&lt;/code&gt; in its &lt;code&gt;protocol&lt;/code&gt;,
+or the Map settings&apos; Protocol page): the list then offers only the rates it makes (1000, 500, 250, 200, 100, 50, 40 Hz).
+A saved rate it does not make shows as the nearest below it; the saved one comes back with a map that allows it.&lt;/li&gt;
+&lt;li&gt;The line under the rate says what differs: fewer frames than asked for 2 s (&lt;i&gt;device delivers 727/s of 1000 Hz
+asked …&lt;/i&gt;, in amber: the device&apos;s limit, the link or this PC&apos;s load; hover it for the numbers), a lower rate a UART
+set (&lt;i&gt;250 Hz on the device, not 1000 Hz: the UART at 115200 baud&lt;/i&gt;), or the saved rate the map moved
+(&lt;i&gt;1000 Hz, not the saved 4000 Hz …&lt;/i&gt;).&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -4040,6 +4052,14 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 من جديد تلقائيًا.&lt;/li&gt;
 &lt;li&gt;جهاز واحد فقط: على الناقل يُعطَّل المربع (الأجهزة التي ترسل من تلقاء نفسها ستتصادم)، ويُرفض البث
 الذي يفعّل AUTO_SEND.&lt;/li&gt;
+&lt;li&gt;الجهاز الذي يعمل بحلقة رئيسية يصنع معدّلات أقل من المؤقت: على نبضة ⁦1 ms⁩ ألف إطار في الثانية على الأكثر، وغيرها
+فقط بصيغة 1000 ÷ n. وتستطيع خريطته أن تقول ذلك (&lt;code&gt;&quot;auto_send&quot;: { &quot;max_hz&quot;: 1000, &quot;tick_hz&quot;: 1000 }&lt;/code&gt; في
+&lt;code&gt;protocol&lt;/code&gt; الخاص بها، أو صفحة البروتوكول في إعدادات الخريطة): فلا تعرض القائمة حينها إلا المعدّلات التي يصنعها
+(1000، 500، 250، 200، 100، 50، ⁦40 Hz⁩). والمعدّل المحفوظ الذي لا يصنعه يظهر بأقرب معدّل أدنى منه؛ ويعود المحفوظ مع
+خريطة تسمح به.&lt;/li&gt;
+&lt;li&gt;يقول السطر تحت المعدّل ما يختلف: إطارات أقل من المطلوب لمدة ⁦2 s⁩ (&lt;i&gt;يرسل الجهاز ⁦727/s⁩ من ⁦1000 Hz⁩ المطلوبة …&lt;/i&gt;، بالكهرماني: حدّ الجهاز أو الوصلة أو حِمل هذا الحاسوب؛ مرّر الفأرة فوقه للأرقام)، أو
+معدّلًا أدنى ضبطه UART (&lt;i&gt;⁦250 Hz⁩ على الجهاز، لا ⁦1000 Hz⁩: الـUART على ⁦115200⁩ بود&lt;/i&gt;)، أو المعدّل المحفوظ الذي نقلته
+الخريطة (&lt;i&gt;⁦1000 Hz⁩، لا المحفوظ ⁦4000 Hz⁩ …&lt;/i&gt;).&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -4739,6 +4759,10 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
         <source>last seen: Device ID %1 · protocol rev %2</source>
         <translation>آخر ظهور: معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
     </message>
+    <message>
+        <source>the baud rate %1 is ignored on USB CDC</source>
+        <translation>معدّل البود ⁦%1⁩ مُتجاهَل على USB CDC</translation>
+    </message>
 </context>
 <context>
     <name>MapEditorTab</name>
@@ -5352,6 +5376,46 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
     <message>
         <source>A new channel, after the others in a sample</source>
         <translation>قناة جديدة، بعد القنوات الأخرى في العينة</translation>
+    </message>
+    <message>
+        <source>not given (the tick)</source>
+        <translation>غير معطى (النبضة)</translation>
+    </message>
+    <message>
+        <source>The highest Auto send rate the device delivers, 40 to 8000 Hz. Not given: its tick&apos;s rate.</source>
+        <translation>أعلى معدّل للإرسال التلقائي يرسله الجهاز، من 40 إلى ⁦8000 Hz⁩. غير معطى: معدّل نبضته.</translation>
+    </message>
+    <message>
+        <source>not given (8000)</source>
+        <translation>غير معطى (8000)</translation>
+    </message>
+    <message>
+        <source>The device&apos;s timing for Auto send, 40 to 8000 Hz: a frame period is a whole number of its ticks. 8000 for a timer (every rate exact), 1000 for a main loop on a 1 ms tick.</source>
+        <translation>توقيت الجهاز للإرسال التلقائي، من 40 إلى ⁦8000 Hz⁩: زمن الإطار عدد صحيح من نبضاته. 8000 للمؤقت (كل معدّل دقيق)، و1000 لحلقة رئيسية على نبضة ⁦1 ms⁩.</translation>
+    </message>
+    <message>
+        <source>The rates the sidebar&apos;s Auto send list offers for this map</source>
+        <translation>المعدّلات التي تعرضها قائمة الإرسال التلقائي في الشريط الجانبي لهذه الخريطة</translation>
+    </message>
+    <message>
+        <source>Auto send top rate</source>
+        <translation>أعلى معدّل للإرسال التلقائي</translation>
+    </message>
+    <message>
+        <source>Auto send tick</source>
+        <translation>نبضة الإرسال التلقائي</translation>
+    </message>
+    <message>
+        <source>Rates offered</source>
+        <translation>المعدّلات المعروضة</translation>
+    </message>
+    <message>
+        <source>none: no offered rate has a period of whole ticks</source>
+        <translation>لا شيء: لا معدّل معروض زمنه عدد صحيح من النبضات</translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation>⁦%1 Hz⁩</translation>
     </message>
 </context>
 <context>
@@ -6514,6 +6578,22 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>| Byte | Channel | Type | Unit | Scale | Offset | Description |</source>
         <translation>| البايت | القناة | النوع | الوحدة | المعامل | الإزاحة | الوصف |</translation>
+    </message>
+    <message>
+        <source>auto_send: %1 %2 is out of range (40 to 8000)</source>
+        <translation>auto_send: ⁦%1 %2⁩ خارج المدى (40 إلى 8000)</translation>
+    </message>
+    <message>
+        <source>auto_send: max_hz %1 is above tick_hz %2: a device sends at most one frame a tick</source>
+        <translation>auto_send: ⁦max_hz %1⁩ أعلى من ⁦tick_hz %2⁩: يرسل الجهاز إطارًا واحدًا على الأكثر في كل نبضة</translation>
+    </message>
+    <message>
+        <source>auto_send: no offered rate has a period of whole ticks at tick_hz %1 (8000 for a timer, 1000 for a 1 ms loop)</source>
+        <translation>auto_send: لا معدّل معروض زمنه عدد صحيح من النبضات عند ⁦tick_hz %1⁩ (8000 للمؤقت، و1000 لحلقة ⁦1 ms⁩)</translation>
+    </message>
+    <message>
+        <source>auto_send: max_hz %1 is not a rate the Studio offers; the top rate offered is %2 Hz</source>
+        <translation>auto_send: ⁦max_hz %1⁩ ليس معدّلًا يعرضه البرنامج؛ أعلى معدّل معروض ⁦%2 Hz⁩</translation>
     </message>
 </context>
 <context>
@@ -7849,18 +7929,60 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>الوصلة</translation>
     </message>
     <message>
-        <source>The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.
-On a UART a rate the link cannot carry beside the polls is lowered (the Log says so); USB CDC takes it as asked (Link).</source>
-        <translation>المعدّلات التي يصنعها الجهاز تمامًا: ⁦8000 Hz⁩ / (المقسّم + 1)، من ⁦4000 Hz⁩ إلى ⁦40 Hz⁩.
-على UART يُخفَّض معدّل لا تحمله الوصلة بجانب الاستطلاعات (ويقول السجل ذلك)؛ وUSB CDC يأخذه كما طُلب («الوصلة»).</translation>
-    </message>
-    <message>
         <source>Auto: USB CDC</source>
         <translation>تلقائي: USB CDC</translation>
     </message>
     <message>
         <source>A USB CDC port runs at USB&apos;s speed whatever the baud rate says; a UART, or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303), really runs at the baud rate, so Auto send is kept to 70% of it. Auto tells them apart by the port&apos;s USB IDs.</source>
         <translation>منفذ USB CDC يعمل بسرعة USB أيًّا كان معدّل البود؛ أما UART، أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303)، فيعمل فعلًا بمعدّل البود، فيبقى الإرسال التلقائي عند 70% منه. و«تلقائي» يميّز بينهما بمعرّفات USB للمنفذ.</translation>
+    </message>
+    <message>
+        <source>The baud rate is ignored on USB CDC: the port runs at USB&apos;s speed whatever the number says. It matters on a UART (Link).</source>
+        <translation>يُتجاهل معدّل البود على USB CDC: يعمل المنفذ بسرعة USB أيًّا كان الرقم. وهو مهمّ على UART («الوصلة»).</translation>
+    </message>
+    <message>
+        <source>ignored on USB CDC</source>
+        <translation>مُتجاهَل على USB CDC</translation>
+    </message>
+    <message>
+        <source>%1 · USB CDC</source>
+        <translation>%1 · USB CDC</translation>
+    </message>
+    <message>
+        <source>On a UART a rate the link cannot carry beside the polls is lowered (the Log says so); USB CDC takes it as asked (Link).</source>
+        <translation>على UART يُخفَّض معدّل لا تحمله الوصلة بجانب الاستطلاعات (ويقول السجل ذلك)؛ وUSB CDC يأخذه كما طُلب («الوصلة»).</translation>
+    </message>
+    <message>
+        <source>The rates this device makes: %1 Hz (its map: at most %2 Hz, a %3 Hz tick).</source>
+        <translation>المعدّلات التي يصنعها هذا الجهاز: ⁦%1 Hz⁩ (خريطته: ⁦%2 Hz⁩ على الأكثر، ونبضة ⁦%3 Hz⁩).</translation>
+    </message>
+    <message>
+        <source>The rates the device makes exactly: 8000 Hz / (prescaler + 1), 4000 Hz to 40 Hz.</source>
+        <translation>المعدّلات التي يصنعها الجهاز تمامًا: ⁦8000 Hz⁩ / (المقسّم + 1)، من ⁦4000 Hz⁩ إلى ⁦40 Hz⁩.</translation>
+    </message>
+    <message>
+        <source>A map can declare the device&apos;s limits (&quot;auto_send&quot; in its protocol section): only the rates it makes are then offered.</source>
+        <translation>تستطيع الخريطة أن تصرّح بحدود الجهاز (&quot;auto_send&quot; في قسم protocol منها): فلا تُعرض حينها إلا المعدّلات التي يصنعها.</translation>
+    </message>
+    <message>
+        <source>%1 Hz, not the saved %2 Hz: the top rate this device makes (its map)</source>
+        <translation>⁦%1 Hz⁩، لا المحفوظ ⁦%2 Hz⁩: أعلى معدّل يصنعه هذا الجهاز (خريطته)</translation>
+    </message>
+    <message>
+        <source>%1 Hz, not the saved %2 Hz: a rate this device does not make (its map)</source>
+        <translation>⁦%1 Hz⁩، لا المحفوظ ⁦%2 Hz⁩: معدّل لا يصنعه هذا الجهاز (خريطته)</translation>
+    </message>
+    <message>
+        <source>%1 Hz on the device, not %2 Hz: the UART at %3 baud</source>
+        <translation>⁦%1 Hz⁩ على الجهاز، لا ⁦%2 Hz⁩: الـUART على ⁦%3⁩ بود</translation>
+    </message>
+    <message>
+        <source>device delivers %1/s of %2 Hz asked: its limit, the link or the PC&apos;s load</source>
+        <translation>يرسل الجهاز ⁦%1/s⁩ من ⁦%2 Hz⁩ المطلوبة: حدّه أو الوصلة أو حِمل الحاسوب</translation>
+    </message>
+    <message>
+        <source>Asked %1 Hz (CONFIG written with prescaler %2); %3 frames a second came over the last 2 s, more than 10% under. The device&apos;s timer or loop may not make this rate (its map can say so: &quot;auto_send&quot;), the link may drop frames, or this PC is too busy to read them.</source>
+        <translation>طُلب ⁦%1 Hz⁩ (كُتب CONFIG بالمقسّم %2)؛ ووصل %3 إطارًا في الثانية خلال آخر ⁦2 s⁩، أي أقل بأكثر من 10%. قد لا يصنع مؤقت الجهاز أو حلقته هذا المعدّل (تستطيع خريطته أن تقول ذلك: &quot;auto_send&quot;)، وقد تُسقط الوصلة إطارات، أو أن هذا الحاسوب أكثر انشغالًا من أن يقرأها.</translation>
     </message>
 </context>
 <context>
