@@ -4823,10 +4823,11 @@ private:
 					counts.merged, counts.unpainted, counts.polls);
 			check((pace > 0 ? counts.ticks >= 3 * pace / 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
 							&& counts.polls == counts.ticks && counts.paints + counts.merged >= counts.ticks - 1
-							&& counts.paints <= counts.ticks + counts.glows + 1 && counts.unpainted <= 1,
+							&& counts.merged <= counts.ticks / 10 && counts.paints <= counts.ticks + counts.glows + 1
+							&& counts.unpainted <= 1,
 					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (15 to 22 in 2 s at 10 a second, "
-					"the frames as a busy PC keeps them), one repaint a tick (two ticks in one event pass share it), none left "
-					"unpainted, the replies taken at each");
+					"the frames as a busy PC keeps them), one repaint a tick (two ticks in one event pass share it, at most a "
+					"tenth of them), none left unpainted, the replies taken at each");
 		}
 
 		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
@@ -6890,16 +6891,17 @@ private:
 				slow.merged, slow.unpainted, slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.merged,
 				every.unpainted, every.fasts);
 		check(slow.ticks >= 18 && slow.ticks <= 22 && slow.polls >= 3 && slow.polls <= 5 && slow.fasts >= 18 && slow.fasts <= 22
-						&& slow.paints + slow.merged >= slow.ticks - 1 && slow.paints <= slow.ticks + slow.glows + 1
-						&& slow.unpainted <= 1,
+						&& slow.paints + slow.merged >= slow.ticks - 1 && slow.merged <= slow.ticks / 10
+						&& slow.paints <= slow.ticks + slow.glows + 1 && slow.unpainted <= 1,
 				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each, "
-				"two ticks in one event pass share it, none left unpainted), the polls' replies taken at their two beats, the "
-				"fast block at every tick");
+				"two ticks in one event pass share it, at most a tenth of them, none left unpainted), the polls' replies taken "
+				"at their two beats, the fast block at every tick");
 		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10
-						&& every.paints + every.merged >= every.ticks - 1 && every.paints <= every.ticks + every.glows + 1
-						&& every.unpainted <= 1,
+						&& every.paints + every.merged >= every.ticks - 1 && every.merged <= every.ticks / 10
+						&& every.paints <= every.ticks + every.glows + 1 && every.unpainted <= 1,
 				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each, two "
-				"ticks in one event pass share it, none left unpainted), the fast block still taken at most ten times a second");
+				"ticks in one event pass share it, at most a tenth of them, none left unpainted), the fast block still taken "
+				"at most ten times a second");
 
 		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
 		tabs->setCurrentIndex(MainWindow::TabChart);

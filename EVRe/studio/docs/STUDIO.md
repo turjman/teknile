@@ -8041,7 +8041,7 @@ the tab and follows the window's direction.
   repaints only while a byte glows. Hidden, the tab is not ticked. Two ticks the window's thread takes in one event
   pass share one repaint (Qt merges `update()` requests until its paint request is delivered), which draws the newer
   tick's bytes; `DumpView::tick` counts the ticks a paint settles, so the checks count a merged tick as painted and
-  fail a tick left unpainted.
+  fail a tick left unpainted, or more than a tenth of the ticks merged (a view stalled mid-window would merge many).
 - **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
   stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
   in 64 bits, count, flags, spare, the records lost before it, the stream's records lost so far and the start that
