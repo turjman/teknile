@@ -1653,6 +1653,132 @@ private:
 				"serial, the Baud row on USB CDC (Auto for a CDC port, or chosen): its label and number muted (\"ignored\"), "
 				"\"ignored on USB CDC\" beside, one tooltip on the three, the box still editable and as wide as Link's; on a "
 				"UART (Auto for a port without USB IDs, or chosen) as before");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) autoSendLimitsShots(sidebar->size());
+	}
+
+	/* EVRE_TEST_SHOT: Auto send's limits and the USB CDC look, in English (both themes) and Arabic (light), each
+	 * <prefix>_autosend_<what>_<en|ar>_<light|dark>.png: the Polling card of a map with auto_send 1000 / 1000 with its
+	 * list opened (rates), its note for the saved 4000 Hz (moved), for a UART's cap (cap) and for frames that do not
+	 * come (short, the warn colour); the Map settings' Protocol page (protocol) and with a tick of 30 typed (range); the
+	 * Connection card on a USB CDC port, connected (cdc). Sidebars and dialogs of their own, made after the language */
+	void autoSendLimitsShots(const QSize &size) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		MapProtocol limitedProtocol;
+		limitedProtocol.autoSendMaxHz = 1000;
+		limitedProtocol.autoSendTickHz = 1000;
+		DeviceMap limitedDoc = map_;
+		limitedDoc.protocol.autoSendMaxHz = 1000;
+		limitedDoc.protocol.autoSendTickHz = 1000;
+		/* a box and its list opened, put together where they are on the screen (the list is a window of its own) */
+		const auto opened = [](QWidget *box, QComboBox *combo) {
+			combo->showPopup();
+			QTest::qWait(200);
+			QWidget *list = combo->view()->window();
+			const QRect boxAt(box->mapToGlobal(QPoint(0, 0)), box->size());
+			const QRect listAt(list->mapToGlobal(QPoint(0, 0)), list->size());
+			const QRect both = boxAt.united(listAt);
+			const qreal dpr = box->devicePixelRatioF();
+			QPixmap together(both.size() * dpr);
+			together.setDevicePixelRatio(dpr);
+			together.fill(Qt::transparent);
+			{
+				QPainter painter(&together);
+				painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
+				painter.drawPixmap(listAt.topLeft() - both.topLeft(), list->grab());
+			}
+			combo->hidePopup();
+			return together;
+		};
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			for (const bool dark : { false, true }) {
+				if (dark && code == QLatin1String("ar")) continue;
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				const auto save = [&](const QString &what, const QPixmap &picture) {
+					picture.save(prefix + QStringLiteral("_autosend_%1_%2_%3.png").arg(what, code, theme));
+				};
+				{
+					Sidebar card;
+					card.resize(size);
+					card.restoreLinkSettings();
+					auto *rate = card.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+					if (!rate) break;
+					card.show();
+					if (code == QLatin1String("ar") && card.screen()) { /* where the window has its sidebar */
+						const QRect screen = card.screen()->availableGeometry();
+						card.move(screen.right() + 1 - card.frameGeometry().width(), screen.top());
+					}
+					card.themeChanged();
+					card.setAutoSendOffered(true, QString());
+					card.setAutoSendHz(4000);
+					(void) card.setAutoSendLimits(limitedProtocol);
+					QTest::qWait(150);
+					QWidget *box = docsCard(rate);
+					save(QStringLiteral("moved"), box->grab());
+					card.setAutoSendHz(1000);
+					QTest::qWait(100);
+					save(QStringLiteral("rates"), opened(box, rate));
+					card.setAutoSendOn(true);
+					card.setAutoSendTaken(100, 115200, QStringLiteral("auto send at 100 Hz, not 1000 Hz"));
+					QTest::qWait(100);
+					save(QStringLiteral("cap"), box->grab());
+					/* 700 frames a second of 1000 Hz asked, past the settling and the 2 s under */
+					IoEngine::Stats stats;
+					stats.autoSend = true;
+					stats.autoSendHz = 700;
+					card.setAutoSendTaken(1000);
+					for (const qint64 step : { 0, 2500, 1000, 1000, 1000 }) {
+						card.shiftAutoSendClock(step);
+						card.showStats(stats, true);
+					}
+					QTest::qWait(100);
+					save(QStringLiteral("short"), box->grab());
+				}
+				{
+					MapDocument doc;
+					doc.reset(limitedDoc);
+					MapSettingsDialog dialog(&doc);
+					dialog.show();
+					(void) QTest::qWaitForWindowExposed(&dialog);
+					auto *pages = dialog.findChild<QTabWidget *>();
+					auto *tickBox = dialog.findChild<QSpinBox *>(QStringLiteral("autoSendTick"));
+					if (pages && tickBox) {
+						for (int i = 0; i < pages->count(); i++)
+							if (pages->widget(i)->isAncestorOf(tickBox)) pages->setCurrentIndex(i);
+						QTest::qWait(150);
+						save(QStringLiteral("protocol"), dialog.grab());
+						tickBox->setValue(30);
+						QTest::qWait(100);
+						save(QStringLiteral("range"), dialog.grab());
+					}
+					dialog.reject();
+				}
+				{
+					Sidebar card;
+					card.resize(size);
+					card.restoreLinkSettings();
+					auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+					auto *port = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
+					if (!pill || !port) break;
+					port->clear(); /* this computer's own ports out of the picture */
+					card.addPort(QStringLiteral("COM13"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740,
+							QStringLiteral("Example device"));
+					card.useSerial(QStringLiteral("COM13:115200"));
+					card.show();
+					card.themeChanged();
+					card.showConnected(Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, false),
+							QCoreApplication::translate("MainWindow", "the baud rate %1 is ignored on USB CDC").arg(115200));
+					if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
+					QTest::qWait(150);
+					save(QStringLiteral("cdc"), docsCard(pill)->grab());
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
 	}
 
 	/* EVRE_TEST_SHOT: the Connection card of a sidebar as wide as the window's, in English and Arabic, both themes
