@@ -100,6 +100,21 @@ void widenList(QComboBox *box) {
 	box->view()->setMinimumWidth(widest + 2 * 8 + 20);
 }
 
+/* the box as wide as its widest short text needs, whichever it shows now: a box measured while it read "Auto: UART"
+ * cut "Auto: USB CDC" mid-word once a CDC port was chosen ("Auto: USB C"). The style's own size for that text (the
+ * style sheet's padding and the arrow) */
+void fitWidest(QComboBox *box, const QStringList &texts) {
+	int widest = 0;
+	for (const QString &text : texts) widest = std::max(widest, box->fontMetrics().horizontalAdvance(text));
+	QStyleOptionComboBox option;
+	option.initFrom(box);
+	option.editable = false;
+	option.frame = true;
+	const QSize size = box->style()->sizeFromContents(QStyle::CT_ComboBox, &option,
+			QSize(widest + 2, box->fontMetrics().height()), box); /* the text is drawn a pixel in from each side */
+	if (box->minimumWidth() != size.width()) box->setMinimumWidth(size.width());
+}
+
 } // namespace
 
 Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
@@ -220,7 +235,8 @@ QWidget *Sidebar::buildSerialFields() {
 	baud_->lineEdit()->setAlignment(Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter);
 	baudHelp_ = tr("Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).").arg(BAUD_MIN).arg(BAUD_MAX);
 	baud_->setToolTip(baudHelp_);
-	/* on USB CDC the row says the number does not matter: the number muted as its label, "ignored on USB CDC" beside
+	baud_->lineEdit()->installEventFilter(this); /* typed in: the number in the text colour (eventFilter) */
+	/* on USB CDC the row says the number does not matter: the number muted as its label, "ignored on USB CDC" under it
 	 * (showBaudIgnored). The box stays a box to type in: the number is kept for a UART */
 	baudLabel_ = mutedLabel(tr("Baud"));
 	baudLabel_->setObjectName(QStringLiteral("baudLabel"));
@@ -260,12 +276,14 @@ QWidget *Sidebar::buildSerialFields() {
 	rows->setColumnStretch(1, 1);
 	rows->addWidget(baudLabel_, 0, 0);
 	rows->addWidget(baud_, 0, 1);
-	/* a third column for "ignored on USB CDC": both boxes give it the same room, so they still end together */
-	rows->addWidget(baudIgnored_, 0, 2);
+	/* "ignored on USB CDC" on a line of its own under the Baud box, as wide as the boxes: a third column beside them
+	 * was too narrow for it (cut, "ignored on U...", in Arabic even on two lines) and took the room the Link box needs
+	 * for "Auto: USB CDC". Hidden on a UART, the line goes */
+	rows->addWidget(baudIgnored_, 1, 1);
 	QLabel *kindLabel = mutedLabel(tr("Link"));
 	kindLabel->setToolTip(kindHelp);
-	rows->addWidget(kindLabel, 1, 0);
-	rows->addWidget(serialKind_, 1, 1);
+	rows->addWidget(kindLabel, 2, 0);
+	rows->addWidget(serialKind_, 2, 1);
 	layout->addLayout(rows);
 	serialRows_ = rows;
 	showBaudIgnored();
@@ -406,10 +424,12 @@ QWidget *Sidebar::buildPollingCard() {
 	autoSend_->setEnabled(false);
 	autoSendRate_ = new QComboBox;
 	autoSendRate_->setObjectName(QStringLiteral("autoSendRate"));
-	/* under the row, what is asked against what comes: one line always there (the card keeps its height), cut with
-	 * "…" in a narrow sidebar, the whole in its tooltip */
+	/* under the row, what is asked against what comes: two lines always there (the card keeps its height), cut with
+	 * "…" only when even they are too short, the whole in its tooltip */
 	autoSendNote_ = new ElidedLabel;
 	autoSendNote_->setObjectName(QStringLiteral("autoSendNote"));
+	autoSendNote_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+	autoSendNote_->setLines(2);
 	autoSendClock_.start();
 	setAutoSendLimits(MapProtocol()); /* every rate until a map says otherwise */
 	setAutoSendHz(QSettings().value(QStringLiteral("poll/autoSendHz"), 100).toInt());
@@ -804,11 +824,17 @@ void Sidebar::elidePortLabels() {
 	}
 }
 
+/* the Link box never narrower than any of its short texts, Auto's two included (fitWidest) */
+void Sidebar::fitKindBox() {
+	fitWidest(serialKind_, { tr("Auto: UART"), tr("Auto: USB CDC"), serialKind_->itemText(1), serialKind_->itemText(2) });
+}
+
 /* the Link row's Auto says what Auto finds for the port selected; the port box's tooltip is its whole label */
 void Sidebar::showSerialKind() {
 	const QVariant kind = serialPort_->currentData(SERIAL_KIND_ROLE);
 	const bool cdc = kind.isValid() && SerialKind(kind.toInt()) == SerialKind::UsbCdc;
 	serialKind_->setItemText(0, cdc ? tr("Auto: USB CDC") : tr("Auto: UART"));
+	fitKindBox();
 	serialPort_->setToolTip(serialPort_->currentData(FULL_LABEL_ROLE).toString());
 	showBaudIgnored();
 }
@@ -829,7 +855,6 @@ void Sidebar::showBaudIgnored() {
 			"It matters on a UART (Link).");
 	baudIgnored_->setFullText(tr("ignored on USB CDC"), help);
 	baudIgnored_->setVisible(ignored);
-	serialRows_->setColumnStretch(2, ignored ? 1 : 0);
 	baudLabel_->setToolTip(ignored ? help : QString());
 	baud_->setToolTip(ignored ? help : baudHelp_);
 }
@@ -844,6 +869,14 @@ bool Sidebar::eventFilter(QObject *watched, QEvent *event) {
 		if (font) widenList(serialPort_);
 	} else if (watched == serialKind_ && font) {
 		widenList(serialKind_);
+		fitKindBox();
+	} else if (serialRows_ && watched == baud_->lineEdit() && (type == QEvent::FocusIn || type == QEvent::FocusOut)) {
+		/* a number muted on USB CDC reads as not there while it is typed: in the text colour meanwhile */
+		const bool typing = type == QEvent::FocusIn;
+		if (baud_->property("typing").toBool() != typing) {
+			baud_->setProperty("typing", typing);
+			repolish(baud_);
+		}
 	} else if (watched == deviceInfo_ && font) {
 		/* two lines as the label lays them out, in its own font: measured at construction, before the style sheet set
 		 * it, they were 2 px short, and a "last seen: ..." that wraps grew the line where the sidebar scrolls */
@@ -983,8 +1016,8 @@ void Sidebar::showSavedRate() {
 	movedNote_.clear();
 	if (autoSendLimited_ && shown != savedHz_)
 		movedNote_ = (rateIndex_ == 0 && savedHz_ > shown
-							 ? tr("%1 Hz, not the saved %2 Hz: the top rate this device makes (its map)")
-							 : tr("%1 Hz, not the saved %2 Hz: a rate this device does not make (its map)"))
+							 ? tr("%1 Hz: the saved %2 Hz is over the map's top rate")
+							 : tr("%1 Hz: the saved %2 Hz is not one of the map's rates"))
 							 .arg(shown).arg(savedHz_);
 	showAutoSendNote();
 }
@@ -1004,7 +1037,7 @@ void Sidebar::setAutoSendTaken(int hz, qint32 uartBaud, const QString &why) {
 	underSinceMs_ = -1;
 	shortfall_.clear();
 	capNote_ = hz > 0 && uartBaud > 0 && hz < autoSendHz()
-			? tr("%1 Hz on the device, not %2 Hz: the UART at %3 baud").arg(hz).arg(autoSendHz()).arg(uartBaud)
+			? tr("%1 Hz: the UART at %3 baud caps the %2 Hz asked").arg(hz).arg(autoSendHz()).arg(uartBaud)
 			: QString();
 	capWhy_ = capNote_.isEmpty() ? QString() : why;
 	showAutoSendNote();
@@ -1030,7 +1063,7 @@ void Sidebar::watchAutoSend(bool running, double hz) {
 	} else {
 		if (underSinceMs_ < 0) underSinceMs_ = now;
 		if (now - underSinceMs_ >= AUTO_SEND_SHORT_MS) {
-			shortfall_ = tr("device delivers %1/s of %2 Hz asked: its limit, the link or the PC's load")
+			shortfall_ = tr("only %1/s of %2 Hz: the device, the link or the PC's load")
 					.arg(qRound(hz)).arg(takenHz_);
 			shortfallWhy_ = tr("Asked %1 Hz (CONFIG written with prescaler %2); %3 frames a second came over the last "
 					"2 s, more than 10% under. The device's timer or loop may not make this rate (its map can say so: "

@@ -48,12 +48,14 @@
 #include <QFocusEvent>
 #include <QFrame>
 #include <QHeaderView>
+#include <QHash>
 #include <QHelpEvent>
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QGlyphRun>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -1432,6 +1434,8 @@ private:
 		const bool limitedLoaded = written && load(limitedFile, FAKE_DEVICE_PORT);
 		const QVector<int> limitedList = listed();
 		const QString moved = note->fullText();
+		const bool movedWhole = !note->isCut();
+		const int movedHeight = note->height();
 		const bool kept = QSettings().value(QStringLiteral("poll/autoSendHz")).toInt() == 4000;
 		const bool exampleLoaded = load(exampleFile, FAKE_DEVICE_PORT);
 		const QVector<int> exampleList = listed();
@@ -1444,7 +1448,7 @@ private:
 		check(limitedLoaded && limitedList == loop && exampleLoaded && exampleList == all && freshCount == 16,
 				"auto send limits: the list holds the map's rates (7 with auto_send 1000 / 1000), all 16 with the example "
 				"map, and all 16 with no map");
-		const bool movedNote = moved == QLatin1String("1000 Hz, not the saved 4000 Hz: the top rate this device makes (its map)");
+		const bool movedNote = moved == QLatin1String("1000 Hz: the saved 4000 Hz is over the map's top rate");
 		if (!movedNote || !back) std::printf("     (the note: \"%s\")\n", qPrintable(moved));
 		/* picked as shown: taken as the choice, saved, the note gone */
 		(void) load(limitedFile, FAKE_DEVICE_PORT);
@@ -1453,7 +1457,7 @@ private:
 		check(movedNote && kept && back && movedAgain && note->fullText().isEmpty() && !note->property("warn").toBool()
 						&& QSettings().value(QStringLiteral("poll/autoSendHz")).toInt() == 1000,
 				"auto send limits: 4000 Hz saved, a map with a 1000 Hz top: the list shows 1000 Hz, the note under it says "
-				"\"1000 Hz, not the saved 4000 Hz: the top rate this device makes (its map)\", poll/autoSendHz stays 4000 "
+				"\"1000 Hz: the saved 4000 Hz is over the map's top rate\", poll/autoSendHz stays 4000 "
 				"(the example map shows 4000 Hz again); 1000 Hz picked: saved, the note gone");
 
 		/* a UART's cap steps among the device's rates: 1000 Hz of 42-byte frames on 115200 baud */
@@ -1468,11 +1472,33 @@ private:
 		sidebar->setAutoSendTaken(100, 115200, why);
 		const QString capText = note->fullText(), capTip = note->toolTip();
 		const bool capMuted = !note->property("warn").toBool() && note->isVisibleTo(sidebar);
+		const bool capWhole = !note->isCut() && note->text() == capText;
 		sidebar->setAutoSendTaken(0);
-		check(capText == QLatin1String("100 Hz on the device, not 1000 Hz: the UART at 115200 baud") && capTip == why
+		check(capText == QLatin1String("100 Hz: the UART at 115200 baud caps the 1000 Hz asked") && capTip == why
 						&& capMuted && note->fullText().isEmpty(),
-				"auto send limits: a rate a UART lowered is said under the row (\"100 Hz on the device, not 1000 Hz: the UART "
-				"at 115200 baud\", muted, the Log's sentence its tooltip), gone when Auto send goes off");
+				"auto send limits: a rate a UART lowered is said under the row (\"100 Hz: the UART at 115200 baud caps the "
+				"1000 Hz asked\", muted, the Log's sentence its tooltip), gone when Auto send goes off");
+		/* two lines always (the card keeps its height): a text that fits them whole, a longer one cut at the end of the
+		 * second with the whole in its tooltip */
+		{
+			const int twoLines = note->fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft,
+					QStringLiteral("x\nx")).height();
+			const QString tooLong = QStringList(24, QStringLiteral("rate")).join(QLatin1Char(' '));
+			note->setFullText(tooLong);
+			const bool longCut = note->isCut() && note->text().endsWith(QChar(0x2026)) && note->toolTip() == tooLong
+					&& note->height() == movedHeight;
+			note->setFullText(QString());
+			const int emptyHeight = note->height();
+			sidebar->setAutoSendTaken(0); /* the sidebar's own note again */
+			if (!movedWhole || !capWhole || !longCut || movedHeight != twoLines || emptyHeight != movedHeight)
+				std::printf("     (the note: whole %d %d, long cut %d, heights %d %d of two lines %d, width %d)\n",
+						movedWhole, capWhole, longCut, movedHeight, emptyHeight, twoLines, note->width());
+			check(note->lines() == 2 && movedWhole && capWhole && longCut && movedHeight == twoLines
+							&& emptyHeight == movedHeight,
+					"auto send limits, the note under the row: two lines tall with a text, with none and with a long one; "
+					"the map's and the UART's notes whole at the sidebar's width, a text longer than two lines cut with "
+					"\"…\" at the end of the second, the whole in its tooltip");
+		}
 
 		/* what arrives, measured: fed the engine's numbers, the clock moved on by the test */
 		IoEngine::Stats stats;
@@ -1506,11 +1532,11 @@ private:
 		sidebar->setAutoSendTaken(0);
 		sidebar->showStats(IoEngine::Stats(), true);
 		if (shortText.isEmpty()) std::printf("     (settling %d, not yet %d)\n", settling, notYet);
-		check(settling && notYet && shortText == QLatin1String("device delivers 700/s of 1000 Hz asked: its limit, the link "
-						"or the PC's load") && warned && shortTip.startsWith(QLatin1String("Asked 1000 Hz (CONFIG written with "
+		check(settling && notYet && shortText == QLatin1String("only 700/s of 1000 Hz: the device, the link or the PC's load")
+						&& warned && shortTip.startsWith(QLatin1String("Asked 1000 Hz (CONFIG written with "
 						"prescaler 7); 700 frames a second came over the last 2 s")) && cleared && again && offClears,
-				"auto send limits, measured: 700 frames a second of 1000 Hz asked for 2 s: \"device delivers 700/s of 1000 Hz "
-				"asked: ...\" in the warn colour, the numbers in its tooltip; nothing in the first 3 s nor after 1 s; 950 "
+				"auto send limits, measured: 700 frames a second of 1000 Hz asked for 2 s: \"only 700/s of 1000 Hz: the "
+				"device, ...\" in the warn colour, the numbers in its tooltip; nothing in the first 3 s nor after 1 s; 950 "
 				"takes it away; Auto send off clears it");
 
 		/* end to end: a device on a 1 ms tick asked for 4000 Hz delivers 1000; with its map's limits it is asked 1000 */
@@ -1526,7 +1552,7 @@ private:
 		if (started && load(exampleFile, FAKE_AUTO_SEND_PORT)) {
 			rate->setCurrentIndex(rate->findData(4000));
 			box->setChecked(true);
-			const QRegularExpression delivers(QStringLiteral("^device delivers (9[5-9][0-9]|10[0-4][0-9])/s of 4000 Hz asked"));
+			const QRegularExpression delivers(QStringLiteral("^only (9[5-9][0-9]|10[0-4][0-9])/s of 4000 Hz:"));
 			shortSaid = QTest::qWaitFor([&] { return delivers.match(note->fullText()).hasMatch(); }, 9000);
 			seen = note->fullText();
 			/* the map's limits edited while Auto send is on (the step Map settings takes): the list moves to 1000 Hz
@@ -1575,8 +1601,8 @@ private:
 		}
 		if (!shortSaid || !noneSaid) std::printf("     (the note: \"%s\")\n", qPrintable(seen));
 		check(started && shortSaid && noneSaid,
-				"auto send limits, end to end (evre_fake_fast --tick-hz 1000): the example map at 4000 Hz: \"device delivers "
-				"1000/s of 4000 Hz asked\" under the row; the map with auto_send 1000 / 1000 at 1000 Hz: no note after 5 s");
+				"auto send limits, end to end (evre_fake_fast --tick-hz 1000): the example map at 4000 Hz: \"only 1000/s of "
+				"4000 Hz\" under the row; the map with auto_send 1000 / 1000 at 1000 Hz: no note after 5 s");
 		check(started && editAsked && undoAsked,
 				"auto send limits, the map edited while Auto send is on at 4000 Hz: auto_send 1000 / 1000 moves the list to "
 				"1000 Hz and the device's CONFIG to prescaler 7; the edit undone, 4000 Hz and prescaler 1 again");
@@ -1599,7 +1625,7 @@ private:
 	}
 
 	/* The serial link on USB CDC: the pill names the link, not a baud rate nobody uses, and the Baud row says it is
-	 * ignored (muted, "ignored on USB CDC" beside), still a box to type in for a UART */
+	 * ignored (muted, "ignored on USB CDC" under the box), still a box to type in for a UART */
 	void serialUsbCdcLook() {
 		const QString cdc = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
 		const QString uart = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
@@ -1625,7 +1651,12 @@ private:
 		}
 		sidebar->addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
 		sidebar->addPort(QStringLiteral("COM91"), QString(), false, 0, 0, QString());
+		/* the widths as the layout gives them: the serial fields are hidden here (the window is on TCP), and a hidden
+		 * layout is not run by itself when the Link box's minimum grows */
+		QString widths;
 		auto muted = [&] {
+			if (QLayout *fields = kind->parentWidget() ? kind->parentWidget()->layout() : nullptr) fields->activate();
+			widths += QStringLiteral(" %1/%2").arg(kind->width()).arg(baud->width());
 			return label->property("ignored").toBool() && baud->property("ignored").toBool() && !ignoredNote->isHidden()
 					&& ignoredNote->fullText() == QLatin1String("ignored on USB CDC") && baud->isEnabled() && baud->isEditable()
 					&& baud->toolTip() == label->toolTip() && ignoredNote->toolTip() == baud->toolTip()
@@ -1636,11 +1667,50 @@ private:
 			return !label->property("ignored").toBool() && !baud->property("ignored").toBool() && ignoredNote->isHidden()
 					&& baud->toolTip().startsWith(QLatin1String("Pick a rate or type any rate"));
 		};
+		/* the number as painted, against the box's own background (its most common colour): its strongest pixel no
+		 * further from it than the muted colour is, or clearly further (the text colour). A rule for the box's line edit
+		 * alone was not used: the number stayed in the text colour on USB CDC */
+		const ThemeColors &colours = Theme::colors();
+		auto inkStep = [&] {
+			const QImage image = baud->lineEdit()->grab().toImage().convertToFormat(QImage::Format_RGB32);
+			QHash<QRgb, int> counts;
+			for (int y = 0; y < image.height(); y++)
+				for (int x = 0; x < image.width(); x++) counts[image.pixel(x, y)]++;
+			QRgb back = 0;
+			int most = -1;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				if (it.value() > most) {
+					most = it.value();
+					back = it.key();
+				}
+			int step = 0;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				step = std::max(step, std::abs(qGray(it.key()) - qGray(back)));
+			return std::pair<int, int>(step, std::abs(qGray(colours.muted.rgb()) - qGray(back)));
+		};
+		auto sendFocus = [&](QEvent::Type type) {
+			QFocusEvent event(type, Qt::OtherFocusReason);
+			QApplication::sendEvent(baud->lineEdit(), &event);
+		};
+		if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
 		kind->setCurrentIndex(0);
 		port->setCurrentIndex(port->findData(QStringLiteral("COM90")));
 		const bool autoCdc = muted();
+		const auto [cdcStep, mutedStep] = inkStep();
+		sendFocus(QEvent::FocusIn); /* typed in: the text colour while it is */
+		const int typingStep = inkStep().first;
+		sendFocus(QEvent::FocusOut);
+		const int againStep = inkStep().first;
 		port->setCurrentIndex(port->findData(QStringLiteral("COM91")));
 		const bool autoUart = plain();
+		const int uartStep = inkStep().first;
+		const bool paintedMuted = cdcStep <= mutedStep + 12 && againStep <= mutedStep + 12 && uartStep > mutedStep + 20
+				&& typingStep > mutedStep + 20;
+		if (!paintedMuted)
+			std::printf("     (the Baud number's grey step from its background: USB CDC %d, typed %d, after %d, UART %d; "
+					"the muted colour's %d)\n", cdcStep, typingStep, againStep, uartStep, mutedStep);
+		check(paintedMuted, "serial, the Baud number as painted: in the muted colour on USB CDC (no further from its "
+				"background than the muted colour), in the text colour while it is typed in and on a UART");
 		kind->setCurrentIndex(1);
 		const bool chosenCdc = muted();
 		port->setCurrentIndex(port->findData(QStringLiteral("COM90")));
@@ -1649,10 +1719,75 @@ private:
 		kind->setCurrentIndex(0);
 		port->removeItem(port->findData(QStringLiteral("COM90")));
 		port->removeItem(port->findData(QStringLiteral("COM91")));
+		if (!autoCdc || !autoUart || !chosenCdc || !chosenUart)
+			std::printf("     (Auto CDC %d, Auto UART %d, CDC %d, UART %d; Link/Baud widths%s; label %d, box %d, note shown %d "
+					"\"%s\")\n", autoCdc, autoUart, chosenCdc, chosenUart, qPrintable(widths),
+					label->property("ignored").toBool(), baud->property("ignored").toBool(), !ignoredNote->isHidden(),
+					qPrintable(ignoredNote->fullText()));
 		check(autoCdc && autoUart && chosenCdc && chosenUart,
 				"serial, the Baud row on USB CDC (Auto for a CDC port, or chosen): its label and number muted (\"ignored\"), "
-				"\"ignored on USB CDC\" beside, one tooltip on the three, the box still editable and as wide as Link's; on a "
+				"\"ignored on USB CDC\" under the box, one tooltip on the three, the box still editable and as wide as Link's; on a "
 				"UART (Auto for a port without USB IDs, or chosen) as before");
+
+		/* the Link box never cuts "Auto: USB CDC" (it read "Auto: USB C": measured while it read "Auto: UART", a note
+		 * beside took the rest), and "ignored on USB CDC" is whole on its line under the Baud box; in English and in
+		 * Arabic (longer). A sidebar of its own for each, made after the language */
+		bool linkWhole = true;
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			Sidebar card;
+			card.resize(sidebar->size());
+			card.restoreLinkSettings();
+			/* shown on a port without USB IDs first ("Auto: UART"), as the window starts: the box was measured then */
+			card.addPort(QStringLiteral("COM91"), QString(), false, 0, 0, QString());
+			card.useSerial(QStringLiteral("COM91:115200"));
+			card.show();
+			QTest::qWait(100);
+			auto *cardKind = card.findChild<QComboBox *>(QStringLiteral("serialKind"));
+			auto *cardBaud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+			auto *cardNote = card.findChild<ElidedLabel *>(QStringLiteral("baudIgnored"));
+			if (!cardKind || !cardBaud || !cardNote) {
+				linkWhole = false;
+				continue;
+			}
+			/* on a UART the note's line goes whole: Link one row gap under Baud, as the note is on USB CDC */
+			const int uartGap = cardKind->y() - cardBaud->geometry().bottom();
+			card.addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
+			card.useSerial(QStringLiteral("COM90:115200"));
+			QTest::qWait(100);
+			QStyleOptionComboBox option;
+			option.initFrom(cardKind);
+			const QRect field = cardKind->style()->subControlRect(QStyle::CC_ComboBox, &option,
+					QStyle::SC_ComboBoxEditField, cardKind);
+			const int needs = cardKind->fontMetrics().horizontalAdvance(cardKind->currentText());
+			const bool whole = field.width() - 2 >= needs && cardKind->currentIndex() == 0 && !cardNote->isHidden()
+					&& !cardNote->isCut() && cardNote->text() == cardNote->fullText()
+					&& cardNote->y() >= cardBaud->geometry().bottom() && cardNote->geometry().bottom() <= cardKind->y()
+					&& std::abs(cardNote->x() - cardBaud->x()) <= 1
+					&& cardNote->y() - cardBaud->geometry().bottom() == uartGap;
+			if (!whole)
+				std::printf("     (%s: \"%s\" needs %d px of %d; the note \"%s\" cut %d, shown %d, at %d,%d to %d, Baud "
+						"at %d,%d to %d, Link from %d; on a UART Link %d px under Baud)\n", qPrintable(code),
+						qPrintable(cardKind->currentText()), needs, field.width() - 2, qPrintable(cardNote->text()),
+						cardNote->isCut() ? 1 : 0, cardNote->isHidden() ? 0 : 1, cardNote->x(), cardNote->y(),
+						cardNote->geometry().bottom(), cardBaud->x(), cardBaud->y(), cardBaud->geometry().bottom(), cardKind->y(),
+						uartGap);
+			linkWhole = linkWhole && whole;
+		}
+		/* in Arabic a rate with "/s" is one left-to-right piece: "700/s", not "s/700" */
+		const QString arabicStats = QCoreApplication::translate("Sidebar", "Auto send %1/s · %2 polls/s");
+		const QString arabicPace = QCoreApplication::translate("Sidebar", "%1 / s");
+		const QString arabicShort = QCoreApplication::translate("Sidebar",
+				"only %1/s of %2 Hz: the device, the link or the PC's load");
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(100);
+		check(linkWhole, "serial, USB CDC in a narrow sidebar: the Link box whole (\"Auto: USB CDC\", never \"Auto: USB C\"), "
+				"\"ignored on USB CDC\" whole on its line under the Baud box, in English and in Arabic");
+		const QString isolatedRate = QChar(0x2066) + QStringLiteral("%1/s") + QChar(0x2069);
+		check(arabicStats.contains(isolatedRate) && arabicShort.contains(isolatedRate)
+						&& arabicPace == QChar(0x2066) + QStringLiteral("%1 / s") + QChar(0x2069),
+				"Arabic, a rate per second as one left-to-right piece (between U+2066 and U+2069): the Polling card's "
+				"\"Auto send 700/s\", the note's \"700/s\" and Show values' \"10 / s\", not \"s/700\"");
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) autoSendLimitsShots(sidebar->size());
 	}
 
@@ -2086,9 +2221,13 @@ private:
 			check(fitsOneLine, "serial, the pill: a reason that fits stays one line, as tall as \"Disconnected\"");
 			const QString lost = QStringLiteral("COM10 is gone: unplugged or reset?");
 			sidebar->showLinkError(lost, QStringLiteral("x"));
-			const bool grew = QTest::qWaitFor([&] { return pill->height() > oneLine; }, 1000);
-			QApplication::processEvents();
+			/* grown by its line and the device line moved down with it: the layouts above the pill take a few event
+			 * passes (the card's, the sidebar's, its scroll area's), and a pixel or two may come first */
 			const QFontMetrics metrics = pill->fontMetrics();
+			const bool grew = QTest::qWaitFor([&] {
+				return pill->height() - oneLine >= metrics.height() - 2 && deviceInfo->y() - pill->geometry().bottom() == gap;
+			}, 1000);
+			QApplication::processEvents();
 			const bool tooLong = metrics.horizontalAdvance(QStringLiteral("●  ") + lost) > pill->contentsRect().width();
 			const int grown = pill->height() - oneLine;
 			const bool twoLines = pill->text() == QStringLiteral("●  COM10 is gone:\nunplugged or reset?")

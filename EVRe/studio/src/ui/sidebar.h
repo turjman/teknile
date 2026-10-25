@@ -254,6 +254,7 @@ private:
 			const QString &toolTip = QString());
 	void elidePortLabels();              /* every port's label cut to the box's room (its whole text kept) */
 	void showSerialKind();               /* the Link row's Auto item and the port box's tooltip, for the port selected */
+	void fitKindBox();                   /* the Link box as wide as its widest short text */
 	void showBaudIgnored();              /* the Baud row faint, "ignored on USB CDC" beside, while Link means USB CDC */
 	int savedInFlight(bool tcp) const;   /* In flight is kept per link type: TCP pipelines, a UART does not */
 	void showPollRate(const IoEngine::Stats &stats, bool connected);
@@ -278,7 +279,7 @@ private:
 	QComboBox *serialPort_, *baud_;
 	QComboBox *serialKind_;      /* the Link row: Auto, USB CDC, UART */
 	QLabel *baudLabel_;
-	ElidedLabel *baudIgnored_;   /* "ignored on USB CDC", in the Baud row's third column; hidden on a UART */
+	ElidedLabel *baudIgnored_;   /* "ignored on USB CDC", on a line of its own under the Baud box; hidden on a UART */
 	QGridLayout *serialRows_ = nullptr; /* Baud and Link */
 	QString baudHelp_;           /* the Baud box's tooltip on a UART */
 	LimitSpinBox *slave_, *timeout_, *inFlight_;

@@ -3767,7 +3767,7 @@ baud rate means nothing (the Log keeps the number).&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
 connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
-&lt;i&gt;ignored on USB CDC&lt;/i&gt; stands beside it; the box stays editable, for a UART.&lt;/li&gt;
+&lt;i&gt;ignored on USB CDC&lt;/i&gt; stands under it; the box stays editable, for a UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
 UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
 rate is the real speed) by the port&apos;s USB IDs, and
@@ -3851,7 +3851,7 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;h3&gt;الخيارات&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
-لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وبجانبه
+لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وتحته
 &lt;i&gt;مُتجاهَل على USB CDC&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
 من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
@@ -3984,10 +3984,10 @@ that switches AUTO_SEND on is refused.&lt;/li&gt;
 1000 ÷ n. Its map can say so (&lt;code&gt;&quot;auto_send&quot;: { &quot;max_hz&quot;: 1000, &quot;tick_hz&quot;: 1000 }&lt;/code&gt; in its &lt;code&gt;protocol&lt;/code&gt;,
 or the Map settings&apos; Protocol page): the list then offers only the rates it makes (1000, 500, 250, 200, 100, 50, 40 Hz).
 A saved rate it does not make shows as the nearest below it; the saved one comes back with a map that allows it.&lt;/li&gt;
-&lt;li&gt;The line under the rate says what differs: fewer frames than asked for 2 s (&lt;i&gt;device delivers 727/s of 1000 Hz
-asked …&lt;/i&gt;, in amber: the device&apos;s limit, the link or this PC&apos;s load; hover it for the numbers), a lower rate a UART
-set (&lt;i&gt;250 Hz on the device, not 1000 Hz: the UART at 115200 baud&lt;/i&gt;), or the saved rate the map moved
-(&lt;i&gt;1000 Hz, not the saved 4000 Hz …&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;The two lines under the rate say what differs: fewer frames than asked for 2 s (&lt;i&gt;only 727/s of 1000 Hz …&lt;/i&gt;,
+in amber: the device&apos;s limit, the link or this PC&apos;s load; hover it for the numbers), a lower rate a UART set
+(&lt;i&gt;250 Hz: the UART at 115200 baud caps the 1000 Hz asked&lt;/i&gt;), or the saved rate the map moved
+(&lt;i&gt;1000 Hz: the saved 4000 Hz is over the map&apos;s top rate&lt;/i&gt;).&lt;/li&gt;
 &lt;/ul&gt;
 </source>
         <translation>
@@ -4057,9 +4057,9 @@ set (&lt;i&gt;250 Hz on the device, not 1000 Hz: the UART at 115200 baud&lt;/i&g
 &lt;code&gt;protocol&lt;/code&gt; الخاص بها، أو صفحة البروتوكول في إعدادات الخريطة): فلا تعرض القائمة حينها إلا المعدّلات التي يصنعها
 (1000، 500، 250، 200، 100، 50، ⁦40 Hz⁩). والمعدّل المحفوظ الذي لا يصنعه يظهر بأقرب معدّل أدنى منه؛ ويعود المحفوظ مع
 خريطة تسمح به.&lt;/li&gt;
-&lt;li&gt;يقول السطر تحت المعدّل ما يختلف: إطارات أقل من المطلوب لمدة ⁦2 s⁩ (&lt;i&gt;يرسل الجهاز ⁦727/s⁩ من ⁦1000 Hz⁩ المطلوبة …&lt;/i&gt;، بالكهرماني: حدّ الجهاز أو الوصلة أو حِمل هذا الحاسوب؛ مرّر الفأرة فوقه للأرقام)، أو
-معدّلًا أدنى ضبطه UART (&lt;i&gt;⁦250 Hz⁩ على الجهاز، لا ⁦1000 Hz⁩: الـUART على ⁦115200⁩ بود&lt;/i&gt;)، أو المعدّل المحفوظ الذي نقلته
-الخريطة (&lt;i&gt;⁦1000 Hz⁩، لا المحفوظ ⁦4000 Hz⁩ …&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;يقول السطران تحت المعدّل ما يختلف: إطارات أقل من المطلوب لمدة ⁦2 s⁩ (&lt;i&gt;⁦727/s⁩ فقط من ⁦1000 Hz⁩ …&lt;/i&gt;، بالكهرماني: حدّ الجهاز أو الوصلة أو حِمل هذا الحاسوب؛ مرّر الفأرة فوقه للأرقام)، أو
+معدّلًا أدنى ضبطه UART (&lt;i&gt;⁦250 Hz⁩: الـUART على ⁦115200⁩ بود يحدّ ⁦1000 Hz⁩ المطلوبة&lt;/i&gt;)، أو المعدّل المحفوظ الذي نقلته
+الخريطة (&lt;i&gt;⁦1000 Hz⁩: المحفوظ ⁦4000 Hz⁩ فوق أعلى معدّل في الخريطة&lt;/i&gt;).&lt;/li&gt;
 &lt;/ul&gt;
 </translation>
     </message>
@@ -7547,7 +7547,7 @@ The device and the link set the real limit: see the poll rate below.</source>
     </message>
     <message>
         <source>%1 / s</source>
-        <translation>%1 / s</translation>
+        <translation>⁦%1 / s⁩</translation>
     </message>
     <message>
         <source>How often the values in the Registers table and in the chart&apos;s legend change.
@@ -7719,7 +7719,7 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
     <message>
         <source>Auto send %1/s · %2 polls/s</source>
-        <translation>الإرسال التلقائي %1/s · ‏%2 استطلاع/ث</translation>
+        <translation>الإرسال التلقائي ⁦%1/s⁩ · ‏%2 استطلاع/ث</translation>
     </message>
     <message>
         <source>%1 polls/s, %2 registers in %3 reads</source>
@@ -7969,20 +7969,20 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>تستطيع الخريطة أن تصرّح بحدود الجهاز (&quot;auto_send&quot; في قسم protocol منها): فلا تُعرض حينها إلا المعدّلات التي يصنعها.</translation>
     </message>
     <message>
-        <source>%1 Hz, not the saved %2 Hz: the top rate this device makes (its map)</source>
-        <translation>⁦%1 Hz⁩، لا المحفوظ ⁦%2 Hz⁩: أعلى معدّل يصنعه هذا الجهاز (خريطته)</translation>
+        <source>%1 Hz: the saved %2 Hz is over the map&apos;s top rate</source>
+        <translation>⁦%1 Hz⁩: المحفوظ ⁦%2 Hz⁩ فوق أعلى معدّل في الخريطة</translation>
     </message>
     <message>
-        <source>%1 Hz, not the saved %2 Hz: a rate this device does not make (its map)</source>
-        <translation>⁦%1 Hz⁩، لا المحفوظ ⁦%2 Hz⁩: معدّل لا يصنعه هذا الجهاز (خريطته)</translation>
+        <source>%1 Hz: the saved %2 Hz is not one of the map&apos;s rates</source>
+        <translation>⁦%1 Hz⁩: المحفوظ ⁦%2 Hz⁩ ليس من معدّلات الخريطة</translation>
     </message>
     <message>
-        <source>%1 Hz on the device, not %2 Hz: the UART at %3 baud</source>
-        <translation>⁦%1 Hz⁩ على الجهاز، لا ⁦%2 Hz⁩: الـUART على ⁦%3⁩ بود</translation>
+        <source>%1 Hz: the UART at %3 baud caps the %2 Hz asked</source>
+        <translation>⁦%1 Hz⁩: الـUART على ⁦%3⁩ بود يحدّ ⁦%2 Hz⁩ المطلوبة</translation>
     </message>
     <message>
-        <source>device delivers %1/s of %2 Hz asked: its limit, the link or the PC&apos;s load</source>
-        <translation>يرسل الجهاز ⁦%1/s⁩ من ⁦%2 Hz⁩ المطلوبة: حدّه أو الوصلة أو حِمل الحاسوب</translation>
+        <source>only %1/s of %2 Hz: the device, the link or the PC&apos;s load</source>
+        <translation>⁦%1/s⁩ فقط من ⁦%2 Hz⁩: الجهاز أو الوصلة أو حِمل الحاسوب</translation>
     </message>
     <message>
         <source>Asked %1 Hz (CONFIG written with prescaler %2); %3 frames a second came over the last 2 s, more than 10% under. The device&apos;s timer or loop may not make this rate (its map can say so: &quot;auto_send&quot;), the link may drop frames, or this PC is too busy to read them.</source>
