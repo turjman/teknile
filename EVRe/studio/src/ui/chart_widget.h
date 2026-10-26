@@ -612,6 +612,15 @@ public:
 	/* tests: the memory the lines' arrays hold now, bytes (their room, not only the samples in it) */
 	qint64 bytesHeld() const;
 	void setDrawThreads(int threads) { drawThreads_ = threads; } /* for tests: 1 = this thread alone; 0 = all */
+	int stripesDrawn() const { return stripesDrawn_; } /* tests: the stripes of the last CPU paint's lines (1: none) */
+	/* tests: a fast line's bars merged over the rows they share (on by default; off: each bar filled alone, the same
+	 * pixels), and the rows the last CPU paint's bars filled (after merging: what the stripes are counted from) */
+	void setBarMerge(bool on) { barMerge_ = on; }
+	qint64 barRowsDrawn() const { return barRowsDrawn_; }
+	/* tests: the stroke a fast line's bars hide left out (on by default; off: drawn, at most 1 in a channel of
+	 * difference inside the bars), and the segments the last CPU paint left out */
+	void setHiddenStroke(bool on) { hiddenStroke_ = on; }
+	qsizetype strokeSegmentsHidden() const { return segmentsHidden_; }
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
 	/* The frame budget, a credit of the window thread's time: each frame() earns FRAME_SHARE of the time since the
@@ -1061,7 +1070,20 @@ private:
 	/* the polyline's points from .. to - 1 as strokes, broken where `breaks` says */
 	static void strokePieces(QPainter &p, const QPolygonF &poly, const QVector<qsizetype> &breaks, qsizetype from,
 			qsizetype to, const QColor &color, bool thin, qreal dpr);
-	static void fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp = false);
+	/* a crisp bar in the device's pixels, x0 .. x1 - 1 and y0 .. y1 - 1 */
+	struct DeviceBar {
+		int x0, x1, y0, y1;
+	};
+	/* a fast line's bars as fillBands fills them: snapped to whole pixels of `toDevice`, and with `merge` (an opaque
+	 * colour only) x-contiguous ones merged over the rows they share (mergeBars) */
+	static QVector<DeviceBar> crispBars(const QTransform &toDevice, const QRectF *bands, qsizetype count, bool merge);
+	static void mergeBars(const QVector<DeviceBar> &bars, QVector<DeviceBar> &out, int passes);
+	/* a thin polyline over its line's bars (snapped, in x order): the segments the bars hide left out, the polyline
+	 * broken there (breaks as toPolyline's); the segments left out */
+	static qsizetype leaveOutHidden(const QTransform &toDevice, const QVector<DeviceBar> &bars, QPolygonF &poly,
+			QVector<qsizetype> &breaks);
+	static void fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp = false,
+			bool merge = false);
 	void updatePaintStats(double paintMs);
 
 	QMap<int, Series> series_;
@@ -1080,6 +1102,7 @@ private:
 
 	mutable QThreadPool pool_;
 	mutable QVector<QImage> stripeImages_; /* the plot's stripes, kept for the next frame */
+	mutable int stripesDrawn_ = 1;
 	bool capped_ = false;                  /* the samples' budget, not the memory, limits what is kept */
 	bool fastSummaries_ = false;           /* older fast records as summaries only (setFastSummaries) */
 	bool recordingOn_ = false;             /* a recording runs (setRecordingOn) */
@@ -1091,6 +1114,10 @@ private:
 	int ramMB_ = DEFAULT_RAM_MB;
 	int limitMB_ = 0;                      /* the free memory's limit on ramMB_ (setRamLimit); 0: none */
 	int drawThreads_ = 0;                  /* the stripes at most; 0: one per thread */
+	bool barMerge_ = true;                 /* a fast line's bars merged over shared rows (setBarMerge) */
+	mutable qint64 barRowsDrawn_ = 0;
+	bool hiddenStroke_ = true;             /* the stroke the bars hide left out (setHiddenStroke) */
+	mutable qsizetype segmentsHidden_ = 0;
 	Drawing drawing_ = Drawing::Cpu;
 	std::unique_ptr<GpuLines> gpu_;        /* drawing the plot; null: the CPU does */
 	/* a card being opened on a thread of its own (setDrawing); a later choice lets it go when it is ready. Destroyed
