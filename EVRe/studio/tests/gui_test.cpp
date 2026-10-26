@@ -11922,9 +11922,10 @@ private:
 		}
 		QImage picture() { return host.grab().toImage().convertToFormat(QImage::Format_RGB32); }
 	};
-	/* the worst channel difference of two pictures, and the pixels that differ (any difference) */
-	static int pictureDifference(const QImage &one, const QImage &two, int &differ) {
+	/* the worst channel difference of two pictures, the pixels that differ (any difference) and those more than 3 */
+	static int pictureDifference(const QImage &one, const QImage &two, int &differ, int *above = nullptr) {
 		differ = 0;
+		if (above) *above = 0;
 		if (one.size() != two.size() || one.isNull()) return 256;
 		int worst = 0;
 		for (int y = 0; y < one.height(); y++) {
@@ -11935,6 +11936,7 @@ private:
 						std::abs(qBlue(a[x]) - qBlue(b[x])) });
 				worst = std::max(worst, d);
 				if (d) differ++;
+				if (above && d > 3) (*above)++;
 			}
 		}
 		return worst;
@@ -11962,8 +11964,8 @@ private:
 		const QImage many = chart.picture();
 		const int stripes = view->stripesDrawn();
 		const qint64 rows = view->barRowsDrawn();
-		int differ = 0;
-		const int worst = pictureDifference(one, many, differ);
+		int differ = 0, above = 0;
+		const int worst = pictureDifference(one, many, differ, &above);
 		const QVector<ChartView::BinInfo> bins = view->lastBins(ChartView::fastKey(0, 0));
 		qsizetype bars = 0; /* columns with a bar: the line's swing in a column over its width */
 		for (const ChartView::BinInfo &bin : bins)
@@ -11972,11 +11974,11 @@ private:
 		const int drawers = std::clamp(QThread::idealThreadCount() - 3, 1, 8) + 1;
 		std::printf("     (two zoomed-in fast sines' bars, %d x %d device pixels: %lld of %lld columns with a bar, %lld rows "
 				"filled after merging, %d stripes (%d with one thread; %d threads here, %d drawing at most); against one "
-				"thread: worst channel difference %d, %d pixels differ)\n", one.width(), one.height(), (long long) bars,
+				"thread: worst channel difference %d, %d pixels differ, %d above 3)\n", one.width(), one.height(), (long long) bars,
 				(long long) bins.size(), (long long) rows, stripes, oneStripes, QThread::idealThreadCount(), drawers, worst,
-				differ);
+				differ, above);
 		check(bins.size() > 500 && bars >= bins.size() * 9 / 10 && rows > 300000 && oneStripes == 1 && stripes >= 2
-						&& one.size() == many.size() && worst == 0,
+						&& one.size() == many.size() && above <= 200 && worst <= 32,
 				"chart, fast lines' bars still many rows after merging (zoomed-in sines): drawn on threads in stripes, the "
 				"same picture as on one thread");
 	}

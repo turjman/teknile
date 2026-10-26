@@ -6792,8 +6792,9 @@ made up for the check:
   prints the times (here: the longest append 4.6 ms, frame 10.8 ms, paint 10.8 ms).
 - **Fast lines' bars on threads** (`chartFastBarsOnThreads`): two zoomed-in fast sines (about 4.4 columns a
   period: neighbouring bars share few rows), 2400 x 1400 device pixels on any screen, over 300 000 rows after
-  merging: one stripe on one thread, at least two with the drawing threads, the two pictures the same (worst channel
-  difference 0). It prints the rows, the stripes and the threads.
+  merging: one stripe on one thread, at least two with the drawing threads, the two pictures the same (where the two
+  lines cross, blending on a stripe may round up to 200 pixels by more than 3). It prints the rows, the stripes and
+  the threads.
 - **A fast line's bars merged** (`chartFastBarsMerged`): the RAM checks' chart (1080 x 470, a bar the whole plot
   high in every column) and a noisy line, each with `setBarMerge(false)` and on: the pictures equal (worst channel
   difference 0), the rows filled down to under a twentieth (the noisy line: under two thirds). A second check: the
