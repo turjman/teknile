@@ -233,6 +233,14 @@ QWidget *Sidebar::buildSerialFields() {
 	/* the number is written left to right: its placeholder and the text cursor sit with it at the left in Arabic too
 	 * (AlignAbsolute, else right to left turns the left into the right) */
 	baud_->lineEdit()->setAlignment(Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter);
+	/* the opened list's rates at the left as the box's number, also a rate typed and added with Enter: in Arabic a list
+	 * at the right under a number at the left read as two columns */
+	const auto alignRates = [this](const QModelIndex &, int first, int last) {
+		for (int i = first; i <= last; i++)
+			baud_->setItemData(i, int(Qt::AlignLeft | Qt::AlignAbsolute | Qt::AlignVCenter), Qt::TextAlignmentRole);
+	};
+	alignRates(QModelIndex(), 0, baud_->count() - 1);
+	connect(baud_->model(), &QAbstractItemModel::rowsInserted, this, alignRates);
 	baudHelp_ = tr("Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).").arg(BAUD_MIN).arg(BAUD_MAX);
 	baud_->setToolTip(baudHelp_);
 	baud_->lineEdit()->installEventFilter(this); /* typed in: the number in the text colour (eventFilter) */

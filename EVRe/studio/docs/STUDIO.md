@@ -501,7 +501,7 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 | Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
 | port | the&nbsp;ports&nbsp;found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
-| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* While the Link row means USB CDC, the number is muted, like its label, and *ignored on USB CDC* stands under it (below). |
+| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too, and so do the rates in the list opened; the rate selected there is in the text colour on the pale accent, in both looks. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* While the Link row means USB CDC, the number is muted, like its label, and *ignored on USB CDC* stands under it (below). |
 | Link | Auto,&nbsp;USB&nbsp;CDC,&nbsp;UART;&nbsp;default&nbsp;Auto | What the port is: a USB CDC port or a UART. **Auto** tells them apart by the port's USB IDs and says what it found (*Auto: USB CDC*, *Auto: UART*); **USB CDC** (*full speed, baud ignored*) and **UART** (*Auto send kept under the baud rate*) say it outright. Saved at once (`link/serialKind`). |
 
 - **Port settings.** The port is opened at 8 data bits, no parity, one stop bit and no flow control. After opening, the Studio sets **DTR** on (many USB CDC devices send nothing until DTR is set) and clears the port's buffers. RTS is left as the driver sets it.
@@ -6255,7 +6255,10 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   cut again in a narrower box and one left-to-right piece right to left; the lists opened right to left (a port's
   label one left-to-right piece, the Link row's sentences not); the Baud box (11 rates to 12000000, its
   tooltip and placeholder, letters and a digit past 20000000 refused, 3000000 taken, emptied: no open, the pill's
-  text, the focus; a saved `abc` restored as 115200; in Arabic aligned left, the placeholder drawn at the left). It ends connected to the Python fake device over TCP.
+  text, the focus; a saved `abc` restored as 115200; in Arabic aligned left, the placeholder drawn at the left, the
+  list's rates aligned left, a rate typed and added with Enter too, one drawn at the left of its row; the list opened
+  in both looks, its selected rate 4.5:1 on its row, read from the drawn row). It ends connected to the Python fake
+  device over TCP.
 - **USB CDC's look** (`serialUsbCdcLook`, after the serial link). `Sidebar::serialLinkText`: *COM13 · USB CDC* and
   *COM13 @ 115200*, each one left-to-right piece. The Baud row with two ports added (ST's VCP and one without USB
   IDs): on Auto for the CDC port and with USB CDC chosen, the label and the box `ignored`, *ignored on USB CDC*
@@ -6888,7 +6891,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 770 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 772 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6910,7 +6913,8 @@ and AUTO_SEND's card (`auto_send`); a fast stream's card (37.7) on known blocks,
 and the window with the running stream's card (`<prefix>_fastcard_live_en_<light|dark>.png`); the Connection card
 in English and Arabic, both themes: with a long port label cut, the pill *COM10 is gone: unplugged or reset?* and
 the device line as last seen (`<prefix>_serial_card_<en|ar>_<light|dark>.png`), with the port list opened over it
-(`<prefix>_serial_list_...`), with the Link row's list opened (`<prefix>_serial_link_...`), and with the Baud box emptied and the pill Connect gives then
+(`<prefix>_serial_list_...`), with the Link row's list opened (`<prefix>_serial_link_...`), with the Baud box's rates
+opened (`<prefix>_serial_rates_...`), and with the Baud box emptied and the pill Connect gives then
 (`<prefix>_serial_baud_...`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
@@ -8108,7 +8112,10 @@ the tab and follows the window's direction.
   *Show values* says: at every frame the tab ticks every frame and the fast cards still change ten times a second;
   at two a second the polls' cards move twice a second and the fast cards ten times. Two pacers of ten a second on one
   clock would be a frame apart and give twenty half-updates a second, hence one. The glow's own 50 ms fading (37.1)
-  repaints only while a byte glows. Hidden, the tab is not ticked.
+  repaints only while a byte glows. Hidden, the tab is not ticked. Two ticks the window's thread takes in one event
+  pass share one repaint (Qt merges `update()` requests until its paint request is delivered), which draws the newer
+  tick's bytes; `DumpView::tick` counts the ticks a paint settles, so the checks count a merged tick as painted and
+  fail a tick left unpainted, or more than a tenth of the ticks merged (a view stalled mid-window would merge many).
 - **The fast blocks' store.** In `takeBlock` (the engine's thread), while the tab is shown, the engine keeps each
   stream's newest block as a `FastDump` (the frame's data, shared with the frame and never written; its first record
   in 64 bits, count, flags, spare, the records lost before it, the stream's records lost so far and the start that
