@@ -501,7 +501,7 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 | Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
 | port | the&nbsp;ports&nbsp;found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
-| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too, and so do the rates in the list opened; the rate selected there is in the text colour on the pale accent, in both looks. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* While the Link row means USB CDC, the number is muted, like its label, and *ignored on USB CDC* stands under it (below). |
+| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too, and so do the rates in the list opened; the rate selected there is in the text colour on the pale accent, in both looks. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Not used on USB CDC (see Link).* While the Link row means USB CDC, the number is muted, like its label, and *USB CDC: the baud rate is not used* stands right under the box (below). |
 | Link | Auto,&nbsp;USB&nbsp;CDC,&nbsp;UART;&nbsp;default&nbsp;Auto | What the port is: a USB CDC port or a UART. **Auto** tells them apart by the port's USB IDs and says what it found (*Auto: USB CDC*, *Auto: UART*); **USB CDC** (*full speed, baud ignored*) and **UART** (*Auto send kept under the baud rate*) say it outright. Saved at once (`link/serialKind`). |
 
 - **Port settings.** The port is opened at 8 data bits, no parity, one stop bit and no flow control. After opening, the Studio sets **DTR** on (many USB CDC devices send nothing until DTR is set) and clears the port's buffers. RTS is left as the driver sets it.
@@ -509,7 +509,10 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 - **The map's USB IDs.** If the loaded map declares `"usb": { "vid", "pid" }` (see 16.2), a port with exactly those IDs is listed with the map's device name in place of the driver's description. The Studio picks that port by itself only when no port was selected before. This happens, for example, when the list said *no ports found* until the device was plugged in and the refresh button was clicked.
 - **Baud rate.** For USB CDC the baud rate does not matter, but for a real UART it must match the device. While the
   Link row means USB CDC (chosen, or Auto for the port selected), the Baud row says so: the number is muted, like the
-  label, and a line of its own under the box reads *ignored on USB CDC* (on a UART the line goes). The Link box is
+  label, and a line of its own right under the box reads *USB CDC: the baud rate is not used* (on a UART the line
+  goes). The line belongs to the Baud row: it is a small gap (at most 3 px) under the box, at the box's leading edge
+  (left; right in Arabic), and the usual row gap follows it before the Link row, so it never reads as a note of its
+  own or as Link's. The Link box is
   never narrower than its widest short text, so *Auto: USB CDC* is never cut. The label, the box and that
   text share one tooltip: *The baud rate is ignored on USB CDC: the port runs at USB's speed whatever the number says.
   It matters on a UART (Link).* The box stays a box to type in, with its frame and arrow, and its number is in the text
@@ -6261,14 +6264,16 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   device over TCP.
 - **USB CDC's look** (`serialUsbCdcLook`, after the serial link). `Sidebar::serialLinkText`: *COM13 · USB CDC* and
   *COM13 @ 115200*, each one left-to-right piece. The Baud row with two ports added (ST's VCP and one without USB
-  IDs): on Auto for the CDC port and with USB CDC chosen, the label and the box `ignored`, *ignored on USB CDC*
-  shown, one tooltip on the three, the box enabled, editable and as wide as Link's; on Auto for the other port and
+  IDs): on Auto for the CDC port and with USB CDC chosen, the label and the box `ignored`, *USB CDC: the baud rate is
+  not used* shown, one tooltip on the three, the box enabled, editable and as wide as Link's; on Auto for the other port and
   with UART chosen, as before. The number as painted (the line edit grabbed, its strongest pixel's grey step from the
   box's background): no further than the muted colour's on USB CDC, clearly further while typed in (a focus-in sent to
   it) and on a UART. A sidebar of its own in English and in Arabic with ST's port: the Link box's text field as wide
-  as *Auto: USB CDC* (the card shown first on a port without USB IDs, then ST's port chosen), *ignored on USB CDC*
-  whole on its line between the Baud box and the Link box, one row gap under Baud as Link is on a UART (the line gone
-  whole there). The pill's long reason waits for the layouts above it (a few event passes) before it is measured. The Arabic of *Auto send %1/s*,
+  as *Auto: USB CDC* (the card shown first on a port without USB IDs, then ST's port chosen), the note whole on its
+  line between the Baud box and the Link box; its text *USB CDC: the baud rate is not used* (in Arabic its translation);
+  closer under the Baud box than over the Link box, with the row gap of a UART (the line gone whole there) before
+  Link, and at the Baud box's left edge (in Arabic its right edge, the text drawn at the right), measured from the
+  widgets' geometries. The pill's long reason waits for the layouts above it (a few event passes) before it is measured. The Arabic of *Auto send %1/s*,
   the note's *%1/s* and Show values' *%1 / s*: each rate between U+2066 and U+2069.
 - **A bus** (`busDevices`, before the login steps). It starts `evre_fake_fast` beside the test on port 1226 as two
   devices of this map (slaves 1 and 2) and writes two bus files in a temporary folder. With the first (D1, D2): the
@@ -6891,7 +6896,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 772 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 774 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
