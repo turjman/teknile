@@ -3767,7 +3767,7 @@ baud rate means nothing (the Log keeps the number).&lt;/p&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
 connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
-&lt;i&gt;ignored on USB CDC&lt;/i&gt; stands under it; the box stays editable, for a UART.&lt;/li&gt;
+&lt;i&gt;USB CDC: the baud rate is not used&lt;/i&gt; stands right under the box; the box stays editable, for a UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
 UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
 rate is the real speed) by the port&apos;s USB IDs, and
@@ -3851,8 +3851,8 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;h3&gt;الخيارات&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
-لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وتحته
-&lt;i&gt;مُتجاهَل على USB CDC&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
+لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وتحت المربع مباشرة
+&lt;i&gt;USB CDC: معدّل البود غير مستخدم&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
 من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
 هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
@@ -7905,8 +7905,8 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>اكتب معدّلًا</translation>
     </message>
     <message>
-        <source>Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).</source>
-        <translation>اختر معدّلًا أو اكتب أي معدّل، من %1 إلى %2. يُتجاهل على USB CDC (انظر «الوصلة»).</translation>
+        <source>Pick a rate or type any rate, %1 to %2. Not used on USB CDC (see Link).</source>
+        <translation>اختر معدّلًا أو اكتب أي معدّل، من %1 إلى %2. غير مستخدم على USB CDC (انظر «الوصلة»).</translation>
     </message>
     <message>
         <source>Auto: UART</source>
@@ -7945,8 +7945,8 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>يُتجاهل معدّل البود على USB CDC: يعمل المنفذ بسرعة USB أيًّا كان الرقم. وهو مهمّ على UART («الوصلة»).</translation>
     </message>
     <message>
-        <source>ignored on USB CDC</source>
-        <translation>مُتجاهَل على USB CDC</translation>
+        <source>USB CDC: the baud rate is not used</source>
+        <translation>USB CDC: معدّل البود غير مستخدم</translation>
     </message>
     <message>
         <source>%1 · USB CDC</source>

@@ -82,7 +82,7 @@ baud rate means nothing (the Log keeps the number).</p>
 <ul>
 <li><b>Baud</b> (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
 connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
-<i>ignored on USB CDC</i> stands under it; the box stays editable, for a UART.</li>
+<i>USB CDC: the baud rate is not used</i> stands right under the box; the box stays editable, for a UART.</li>
 <li><b>Link</b> (serial): <b>Auto</b> tells a USB CDC port (a board's own USB: full speed, the baud rate ignored) from a
 UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe's port such as ST-Link's or J-Link's: the baud
 rate is the real speed) by the port's USB IDs, and
