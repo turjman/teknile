@@ -1289,10 +1289,11 @@ private:
 	}
 
 	/* EVRE_TEST_SHOT: the Connection card of a sidebar as wide as the window's, in English and Arabic, both themes
-	 * (<prefix>_serial_<card|list|link|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading USB CDC
-	 * for ST's IDs, a lost port's pill and the device line kept as last seen; the port list, then the Link row's, opened
-	 * over the card (the two grabs put together where they are on the screen: the list is a window of its own); the Baud
-	 * box emptied with the pill Connect gives then. A sidebar of its own: one made after the language is set has its texts */
+	 * (<prefix>_serial_<card|list|link|rates|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading
+	 * USB CDC for ST's IDs, a lost port's pill and the device line kept as last seen; the port list, then the Link row's
+	 * and the Baud box's rates, opened over the card (the two grabs put together where they are on the screen: the list
+	 * is a window of its own); the Baud box emptied with the pill Connect gives then. A sidebar of its own: one made after
+	 * the language is set has its texts */
 	void serialShots(const QSize &size) {
 		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
 		const bool wasDark = Theme::isDark();
@@ -1349,7 +1350,9 @@ private:
 					const qreal dpr = box->devicePixelRatioF();
 					QPixmap together(both.size() * dpr);
 					together.setDevicePixelRatio(dpr);
-					together.fill(Qt::transparent);
+					/* the corners outside the card and the list in the window's colour, as round them in the window: a dark card
+					 * with white corners would read as another theme */
+					together.fill(box->palette().color(QPalette::Window));
 					{
 						QPainter painter(&together);
 						painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
@@ -1360,6 +1363,7 @@ private:
 				};
 				save(QStringLiteral("list"), opened(port));
 				save(QStringLiteral("link"), opened(kind));
+				save(QStringLiteral("rates"), opened(baud));
 				baud->setCurrentText(QString());
 				card.showLinkError(QCoreApplication::translate("MainWindow", "Baud rate out of range: %1 to %2")
 						.arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
@@ -1742,6 +1746,8 @@ private:
 			bool absoluteLeft = false;
 			int inkFrom = -1, inkTo = -1, width = 0;
 			qreal dpr = 1;
+			bool itemsLeft = false, typedLeft = false;
+			int rateFrom = -1, rateTo = -1, rateWidth = 0;
 			{
 				Sidebar arabic;
 				arabic.resize(sidebar->size());
@@ -1769,6 +1775,52 @@ private:
 								inkTo = x;
 								break;
 							}
+					/* the opened list's rates at the left too: each item aligned left absolutely, a rate typed and added
+					 * with Enter as well, and a rate's ink in the left of its row. The row is 230400's (not the current
+					 * one); its background is its most common colour, and its edges are left out: a row under the mouse
+					 * has a frame there, which is no digit */
+					const auto absolute = [&](int i) {
+						const int value = arabicBaud->itemData(i, Qt::TextAlignmentRole).toInt();
+						return (value & Qt::AlignLeft) && (value & Qt::AlignAbsolute);
+					};
+					itemsLeft = arabicBaud->count() == 11;
+					for (int i = 0; i < arabicBaud->count(); i++) itemsLeft = itemsLeft && absolute(i);
+					arabicBaud->setCurrentText(QStringLiteral("115200"));
+					arabicBaud->showPopup();
+					QTest::qWait(200);
+					QAbstractItemView *view = arabicBaud->view();
+					const QImage list = view->viewport()->grab().toImage();
+					const qreal listDpr = list.devicePixelRatio();
+					const QRect row = view->visualRect(arabicBaud->model()->index(3, 0));
+					const int edge = int(std::ceil(2 * listDpr));
+					const QRect rowPx = QRect(qRound(row.x() * listDpr), qRound(row.y() * listDpr),
+							qRound(row.width() * listDpr), qRound(row.height() * listDpr)).adjusted(edge, edge, -edge, -edge);
+					rateWidth = rowPx.width();
+					if (rowPx.width() > 0 && rowPx.height() > 0 && rowPx.bottom() < list.height()
+							&& rowPx.right() < list.width()) {
+						QHash<QRgb, int> colours;
+						for (int x = rowPx.left(); x <= rowPx.right(); x++)
+							for (int y = rowPx.top(); y <= rowPx.bottom(); y++) colours[list.pixel(x, y)]++;
+						QRgb background = 0;
+						int most = 0;
+						for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+							if (it.value() > most) {
+								most = it.value();
+								background = it.key();
+							}
+						for (int x = 0; x < rowPx.width(); x++)
+							for (int y = rowPx.top(); y <= rowPx.bottom(); y++)
+								if (list.pixel(rowPx.left() + x, y) != background) {
+									if (rateFrom < 0) rateFrom = x;
+									rateTo = x;
+									break;
+								}
+					}
+					arabicBaud->hidePopup();
+					line->setText(QStringLiteral("250000"));
+					QTest::keyClick(line, Qt::Key_Return);
+					const int typed = arabicBaud->findText(QStringLiteral("250000"));
+					typedLeft = arabicBaud->count() == 12 && typed >= 0 && absolute(typed);
 				}
 			}
 			language::apply(*qApp, QStringLiteral("en"));
@@ -1779,6 +1831,64 @@ private:
 						absoluteLeft ? 1 : 0, inkFrom, inkTo, width, dpr);
 			check(absoluteLeft && atLeft, "serial, Baud in Arabic: aligned left absolutely (not turned by right to left), "
 					"the emptied box's placeholder drawn at the left, where the cursor and the number are");
+			const bool rateAtLeft = rateFrom >= 0 && rateFrom < rateTo && rateFrom < rateWidth - 1 - rateTo;
+			if (!itemsLeft || !typedLeft || !rateAtLeft)
+				std::printf("     (Arabic Baud list: items left %d, typed rate left %d, 230400's ink x %d to %d of %d)\n",
+						itemsLeft ? 1 : 0, typedLeft ? 1 : 0, rateFrom, rateTo, rateWidth);
+			check(itemsLeft && typedLeft && rateAtLeft, "serial, Baud in Arabic: the opened list's rates aligned left "
+					"absolutely as the box's number, a rate typed and added with Enter too, and drawn at the left of their rows");
+		}
+		/* the opened Baud list's selected rate readable in both looks: in the text colour on the selection's pale accent,
+		 * not the palette's white (near-white on pale blue in the light look). Read from the drawn row: its strongest pixel
+		 * against the row's most common colour, 4.5:1; the row's edges left out (a row under the mouse has a frame) */
+		{
+			const bool wasDark = Theme::isDark();
+			double worst = 21;
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				Sidebar card;
+				card.resize(sidebar->size());
+				card.useSerial(QStringLiteral("COM10:115200"));
+				card.show();
+				card.themeChanged();
+				auto *cardBaud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+				if (!cardBaud) {
+					worst = 0;
+					continue;
+				}
+				cardBaud->showPopup();
+				QTest::qWait(200);
+				QAbstractItemView *view = cardBaud->view();
+				const QImage list = view->viewport()->grab().toImage();
+				const qreal listDpr = list.devicePixelRatio();
+				const QRect row = view->visualRect(view->currentIndex());
+				const int edge = int(std::ceil(2 * listDpr));
+				const QRect rowPx = QRect(qRound(row.x() * listDpr), qRound(row.y() * listDpr), qRound(row.width() * listDpr),
+						qRound(row.height() * listDpr)).adjusted(edge, edge, -edge, -edge).intersected(list.rect());
+				double best = 0;
+				if (view->currentIndex().isValid() && !rowPx.isEmpty()) {
+					QHash<QRgb, int> colours;
+					for (int x = rowPx.left(); x <= rowPx.right(); x++)
+						for (int y = rowPx.top(); y <= rowPx.bottom(); y++) colours[list.pixel(x, y)]++;
+					QRgb background = 0;
+					int most = 0;
+					for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+						if (it.value() > most) {
+							most = it.value();
+							background = it.key();
+						}
+					for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+						best = std::max(best, contrast(QColor(it.key()), QColor(background)));
+				}
+				cardBaud->hidePopup();
+				if (best < 4.5)
+					std::printf("     (the Baud list's selected rate, %s: %.2f:1 on its row)\n", dark ? "dark" : "light", best);
+				worst = std::min(worst, best);
+			}
+			Theme::apply(*qApp, wasDark);
+			if (auto *own = window_.findChild<Sidebar *>()) own->themeChanged();
+			check(worst >= 4.5, "serial, the Baud list opened: the selected rate in the text colour on the selection, 4.5:1 "
+					"in both looks (it was near-white on pale blue in the light look)");
 		}
 
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) serialShots(sidebar->size());

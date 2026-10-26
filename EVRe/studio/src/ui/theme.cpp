@@ -207,7 +207,8 @@ QAbstractItemView QLineEdit, QAbstractItemView QSpinBox, QAbstractItemView QDoub
 QAbstractItemView QComboBox, QComboBox QLineEdit { min-height: 0px; max-height: 16777215px; }
 QComboBox::drop-down { border: none; width: 20px; }
 %COMBOARROW%
-QComboBox QAbstractItemView { background: %S2%; border: 1px solid %BORDER%; selection-background-color: %ACCENTA%; }
+QComboBox QAbstractItemView { background: %S2%; border: 1px solid %BORDER%; selection-background-color: %ACCENTA%;
+  selection-color: %TEXT%; }
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 0; border: none; }
 )"
