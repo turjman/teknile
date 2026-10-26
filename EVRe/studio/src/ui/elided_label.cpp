@@ -32,6 +32,35 @@ void ElidedLabel::setWraps(bool wraps) {
 	fit();
 }
 
+void ElidedLabel::setLines(int lines) {
+	lines_ = std::max(1, lines);
+	setWordWrap(lines_ > 1);
+	if (lines_ == 1) setMaximumHeight(QWIDGETSIZE_MAX);
+	keepHeight();
+	fit();
+}
+
+/* the lines' height as the label lays them out in its own font (the style sheet sets it when the label is polished, and
+ * again at a theme switch): counted before, it was a pixel or two short of what the font then took */
+void ElidedLabel::keepHeight() {
+	if (lines_ == 1) {
+		setMinimumHeight(fontMetrics().height());
+		return;
+	}
+	QStringList rows;
+	for (int i = 0; i < lines_; i++) rows << QStringLiteral("x");
+	const QMargins margins = contentsMargins();
+	setFixedHeight(fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft, rows.join(QLatin1Char('\n'))).height()
+			+ margins.top() + margins.bottom() + 2 * margin());
+}
+
+/* laid out as QLabel lays out a wrapped text: within the room across, and in no more lines than the label has */
+bool ElidedLabel::fitsLines(const QString &text, int room) const {
+	if (room <= 0) return false;
+	const QRect needs = fontMetrics().boundingRect(QRect(0, 0, room, 100000), Qt::AlignLeft | Qt::TextWordWrap, text);
+	return needs.width() <= room && needs.height() <= contentsRect().height() - 2 * margin();
+}
+
 /* wrapped, the label's height follows its width (QLabel's height for width), and it may be taller than one line. Only
  * a text that does not fit is wrapped: a wrapped label of one line can be a pixel or two taller than an unwrapped one
  * (Linux's fonts), and a short reason must not move the card */
@@ -51,7 +80,7 @@ void ElidedLabel::resizeEvent(QResizeEvent *event) {
 void ElidedLabel::changeEvent(QEvent *event) {
 	QLabel::changeEvent(event);
 	if (event->type() == QEvent::FontChange || event->type() == QEvent::StyleChange) {
-		setMinimumHeight(fontMetrics().height());
+		keepHeight();
 		fit();
 	}
 }
@@ -73,8 +102,25 @@ void ElidedLabel::fit() {
 		width = fontMetrics().horizontalAdvance(full_);
 	}
 	const int room = std::max(0, contentsRect().width() - 2 * margin());
-	cut_ = width > room && !full_.isEmpty();
 	setToolTip(toolTip_.isEmpty() ? plain : toolTip_);
+	if (lines_ > 1 && !rich) {
+		/* whole on the lines there are, or as many whole words as fit with "…" after them */
+		cut_ = !full_.isEmpty() && !fitsLines(full_, room);
+		QString shown = full_;
+		if (cut_) {
+			shown = QString(QChar(0x2026));
+			for (int at = int(full_.lastIndexOf(QLatin1Char(' '))); at > 0; at = int(full_.lastIndexOf(QLatin1Char(' '), at - 1))) {
+				const QString part = full_.left(at).trimmed() + QChar(0x2026);
+				if (fitsLines(part, room)) {
+					shown = part;
+					break;
+				}
+			}
+		}
+		QLabel::setText(shown);
+		return;
+	}
+	cut_ = width > room && !full_.isEmpty();
 	wrapLines(wraps_ && cut_ && !rich);
 	if (!cut_) {
 		QLabel::setText(full_);

@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.2.0 (2026-10-26)
+
+### The map format `evre-map/1`
+
+- `protocol.auto_send` (optional): the Auto send rates the device makes, `{ "max_hz": 1000, "tick_hz": 1000 }`.
+  `max_hz` is the highest frame rate it delivers, `tick_hz` its timing resolution (a frame period is a whole number
+  of ticks); both 40 to 8000. A device on a 1 ms tick declares 1000 / 1000; a device on an 8 kHz timer 8000 / 8000 or
+  nothing. Without it every rate is offered, as before. The checker refuses a value out of range, a `max_hz` over
+  `tick_hz` and limits that leave no rate, and warns when `max_hz` is not a rate the Studio offers.
+
+### EVRe Studio
+
+- Auto send offers only the rates the device makes, from its map: a device on a 1 ms tick gets 1000, 500, 250, 200,
+  100, 50 and 40 Hz. A saved rate the map no longer allows falls to the next one below, never to a faster one, and the
+  note under the rate says why. With a UART's baud limit too, the lower of the two wins and the note names it.
+- What is asked against what comes: when the frames received stay more than 10 % under the rate asked for 2 s, the
+  note says *device delivers 700/s of 1000 Hz asked* in the warn colour, with the likely causes (the device's limit,
+  the link, the PC's load); it waits 3 s after a start or a rate change. It works for maps that declare nothing.
+- The Map editor's Protocol page: **Auto send top rate** and **Auto send tick**, and a live **Rates offered** row
+  (*none: a value is out of range (40 to 8000)* when a value is too small). A change while Auto send is on asks the
+  device again at a rate the new limits allow.
+- Over USB CDC the connected pill reads *COM13 · USB CDC* (the baud rate means nothing there); a UART keeps
+  *COM13 @ 115200*. While the link is USB CDC the Baud row is muted, with *ignored on USB CDC* under it; it stays
+  editable for a switch to UART.
+- In Arabic the Baud box's number, its placeholder and the text cursor sit at the left, and so do the rates in its
+  list opened; the selected rate in that list is readable in the light theme. Rates per second (*700/s*) read the
+  right way round in Arabic.
+- The GUI test's Dump tick checks count the ticks Qt draws together in one paint (two ticks in one frame show the
+  newer data) and fail on a tick never drawn, instead of failing now and then on a busy PC.
+
 ## 1.1.0 (2026-10-18)
 
 ### EVRe Studio

@@ -87,6 +87,14 @@ def main():
     ]
     for what, change in refusals:
         check(bool(list(validator.iter_errors(stream_map(change)))), 'refused: ' + what)
+    # protocol.auto_send, the device's Auto send limits: integers 40 to 8000, null or left out for none
+    def protocol_map(auto_send):
+        return {'format': 'evre-map/1', 'registers': [], 'protocol': {'transport': 'serial', 'auto_send': auto_send}}
+    check(not list(validator.iter_errors(protocol_map({'max_hz': 1000, 'tick_hz': 1000}))), 'auto_send 1000 / 1000 is valid')
+    check(not list(validator.iter_errors(protocol_map(None))), 'auto_send null is valid')
+    for what, auto_send in (('max_hz above 8000', {'max_hz': 9000}), ('tick_hz below 40', {'tick_hz': 20}),
+                            ('a max_hz that is no integer', {'max_hz': 'fast'}), ('a tick_hz of 1000.5', {'tick_hz': 1000.5})):
+        check(bool(list(validator.iter_errors(protocol_map(auto_send)))), 'refused: auto_send with ' + what)
     # the keys MAP_FORMAT.md lists are the schema's
     defs = schema['$defs']
     for section, name in (('A stream:', 'stream'), ('A channel:', 'channel')):

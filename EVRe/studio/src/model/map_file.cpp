@@ -250,6 +250,9 @@ bool parseSettings(const QJsonObject &root, DeviceMap &map, QString &err) {
 	map.protocol.tcpPort = protocol.value(QLatin1String("tcp_port")).toInt(0);
 	map.protocol.timeoutMs = protocol.value(QLatin1String("timeout_ms")).toInt(0);
 	map.protocol.notes = protocol.value(QLatin1String("notes")).toString();
+	const QJsonObject autoSend = protocol.value(QLatin1String("auto_send")).toObject();
+	map.protocol.autoSendMaxHz = autoSend.value(QLatin1String("max_hz")).toInt(0);
+	map.protocol.autoSendTickHz = autoSend.value(QLatin1String("tick_hz")).toInt(0);
 	map.groupNotes.clear();
 	const QJsonObject groups = root.value(QLatin1String("groups")).toObject();
 	for (auto it = groups.begin(); it != groups.end(); ++it) {
@@ -584,6 +587,12 @@ Value settingsJson(const DeviceMap &map) {
 		if (p.baud) add(protocol, QStringLiteral("baud"), num(p.baud));
 		if (p.tcpPort) add(protocol, QStringLiteral("tcp_port"), num(p.tcpPort));
 		if (p.timeoutMs) add(protocol, QStringLiteral("timeout_ms"), num(p.timeoutMs));
+		if (p.autoSendLimited()) {
+			Value autoSend = Value::makeObject();
+			if (p.autoSendMaxHz) add(autoSend, QStringLiteral("max_hz"), num(p.autoSendMaxHz));
+			if (p.autoSendTickHz) add(autoSend, QStringLiteral("tick_hz"), num(p.autoSendTickHz));
+			add(protocol, QStringLiteral("auto_send"), autoSend);
+		}
 		if (!p.notes.isEmpty()) add(protocol, QStringLiteral("notes"), str(p.notes));
 		add(json, QStringLiteral("protocol"), protocol);
 	}

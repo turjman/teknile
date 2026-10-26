@@ -94,7 +94,17 @@ struct MapProtocol {
 	int tcpPort = 0;
 	int timeoutMs = 0;
 	QString notes;
-	bool isEmpty() const { return transport.isEmpty() && !baud && !tcpPort && !timeoutMs && notes.isEmpty(); }
+	/* "auto_send": the frame rates the device really makes (0 = not given). maxHz: the highest; tickHz: its timing
+	 * resolution, a frame period being whole ticks (a 1 ms main loop: 1000). The Auto send list offers only those
+	 * (evre::autoSendRatesFor) */
+	int autoSendMaxHz = 0;
+	int autoSendTickHz = 0;
+	int autoSendTick() const { return autoSendTickHz > 0 ? autoSendTickHz : 8000; }  /* not given: a timer */
+	int autoSendMax() const { return autoSendMaxHz > 0 ? autoSendMaxHz : autoSendTick(); }
+	bool autoSendLimited() const { return autoSendMaxHz > 0 || autoSendTickHz > 0; } /* the map gives either */
+	bool isEmpty() const {
+		return transport.isEmpty() && !baud && !tcpPort && !timeoutMs && notes.isEmpty() && !autoSendLimited();
+	}
 };
 
 /* A field of a register: `width` bits from `lsb` up, and names for some of its values. */

@@ -75,11 +75,14 @@ ID (<code>"usb"</code>) marks that port with the device's name, and picks it by 
 A port can be open in <b>one program</b> only: close other tools first (<i>COM10 is busy or not allowed</i> otherwise).</p>
 <p>When a link fails or is lost, the pill says what happened in plain words (<i>COM10 is gone: unplugged or
 reset?</i>, <i>COM10 not found</i>); hover it for the system's own text, which the Log has too. The line under it keeps
-the device's ID as <i>last seen: Device ID …</i> while the link is down, until the next connect reads it again.</p>
+the device's ID as <i>last seen: Device ID …</i> while the link is down, until the next connect reads it again.
+Connected, the pill names the link: <i>COM13 @ 115200</i> on a UART, <i>COM13 · USB CDC</i> on USB CDC, where the
+baud rate means nothing (the Log keeps the number).</p>
 <h3>Options</h3>
 <ul>
 <li><b>Baud</b> (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
-connect. A UART must match the device; USB CDC ignores it.</li>
+connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
+<i>ignored on USB CDC</i> stands under it; the box stays editable, for a UART.</li>
 <li><b>Link</b> (serial): <b>Auto</b> tells a USB CDC port (a board's own USB: full speed, the baud rate ignored) from a
 UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe's port such as ST-Link's or J-Link's: the baud
 rate is the real speed) by the port's USB IDs, and
@@ -205,6 +208,14 @@ is lowered, and the Log says so. <b>USB CDC</b> ignores the baud rate: the rate 
 on again by itself.</li>
 <li>One device only: on a bus the box is disabled (devices sending by themselves would collide), and a broadcast
 that switches AUTO_SEND on is refused.</li>
+<li>A device on a main loop makes fewer rates than a timer: on a 1 ms tick at most 1000 frames a second, others only as
+1000 ÷ n. Its map can say so (<code>"auto_send": { "max_hz": 1000, "tick_hz": 1000 }</code> in its <code>protocol</code>,
+or the Map settings' Protocol page): the list then offers only the rates it makes (1000, 500, 250, 200, 100, 50, 40 Hz).
+A saved rate it does not make shows as the nearest below it; the saved one comes back with a map that allows it.</li>
+<li>The two lines under the rate say what differs: fewer frames than asked for 2 s (<i>only 727/s of 1000 Hz …</i>,
+in amber: the device's limit, the link or this PC's load; hover it for the numbers), a lower rate a UART set
+(<i>250 Hz: the UART at 115200 baud caps the 1000 Hz asked</i>), or the saved rate the map moved
+(<i>1000 Hz: the saved 4000 Hz is over the map's top rate</i>).</li>
 </ul>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Fast streams"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
@@ -546,7 +557,7 @@ bytes (the token is cut or padded with zeros to it). Without it, no token is sen
 <b>write</b>: <code>action</code> or <code>w1c</code>; <b>persist</b>: kept across a reset.</li>
 <li><b>min</b> / <b>max</b> / <b>default</b> (shown units), <b>decimals</b>; <b>special</b>:
 <code>{ "-1": "not measured" }</code>, names for single values of a number.</li>
-<li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms),
+<li><b>notes</b> (a register, the map), <b>protocol</b> (transport, baud, tcp_port, timeout_ms, auto_send),
 <b>groups</b> (notes per group), and on a field <b>access</b> and <b>desc</b>.</li>
 <li><b>extends</b>: <code>"base.json"</code> makes the map an overlay that changes another one.</li>
 <li><b>streams</b> (top level, optional): a device's fast streams, each its window, rate, switches and channels

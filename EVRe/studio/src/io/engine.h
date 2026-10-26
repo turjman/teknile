@@ -103,12 +103,17 @@ public:
 	static constexpr int HEARTBEAT_MS = 100;
 	static constexpr int FIRST_FRAME_MS = 2000;  /* AUTO_SEND on and no frame by then: off again, polled */
 	static constexpr double AUTO_SEND_LINK_SHARE = 0.7;
-	/* the prescaler + 1 of every rate the device makes exactly (8000 Hz divided evenly), fastest first */
+	/* the prescaler + 1 of every rate the protocol names (8000 Hz divided evenly), fastest first:
+	 * evre::AUTO_SEND_DIVIDERS */
 	static const QVector<int> &autoSendDividers();
+	/* the prescaler + 1 of the rates a device makes by its map's limits (evre::autoSendRatesFor), fastest first */
+	static QVector<int> autoSendDividersFor(const MapProtocol &protocol);
 	/* the prescaler to use on a serial link at baud (0: not serial) for frames of streamBytes data bytes: the one
-	 * asked for, or the fastest of autoSendDividers() whose frames take at most AUTO_SEND_LINK_SHARE of the link
-	 * (the slowest when none does). Public for the tests. */
+	 * asked for, or the fastest of `dividers` (the device's rates; without them autoSendDividers()) whose frames
+	 * take at most AUTO_SEND_LINK_SHARE of the link (the slowest when none does). So the cap never picks a rate the
+	 * device does not make: a 1 ms loop at 1000 Hz on 115200 baud goes to 100 Hz, not 160. Public for the tests. */
 	static int autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes);
+	static int autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes, const QVector<int> &dividers);
 	/* tests: the baud rate Auto send is kept under on this link (0: none, TCP or USB CDC) */
 	qint32 autoSendBaudLimit() const { return serialBaudLimited_ ? serialBaud_ : 0; }
 
@@ -460,6 +465,7 @@ private:
 	bool statusKnown_ = false, canAutoSend_ = false; /* the device's STATUS, read at connect */
 	int autoSendPrescaler_ = 79;                 /* as asked (100 Hz) */
 	int autoSendUsed_ = 79;                      /* as written: slower on a busy serial link */
+	QVector<int> autoSendDividers_ = autoSendDividers(); /* the rates the one device makes (its map's limits, setMap) */
 	/* AUTO_SEND written on, and no off acknowledged since: the device may be sending. Unlike autoSendOn_ (cleared at
 	 * once when it is switched off, the frames ignored from then), it stays set until the device took the off, so a
 	 * Disconnect in between still sends it */

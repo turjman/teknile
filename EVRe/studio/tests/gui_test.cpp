@@ -48,12 +48,14 @@
 #include <QFocusEvent>
 #include <QFrame>
 #include <QHeaderView>
+#include <QHash>
 #include <QHelpEvent>
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QGlyphRun>
 #include <QLabel>
+#include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMenu>
@@ -650,7 +652,9 @@ public:
 		dumpFastCard();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
+		autoSendLimits(); /* the same */
 		serialKind(); /* it ends connected to the fake device as before, over TCP */
+		serialUsbCdcLook();
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
@@ -1289,11 +1293,636 @@ private:
 		fake.waitForFinished(3000);
 	}
 
+	/* Auto send and the device's own limits (the map's protocol.auto_send): the list holds only the rates the device
+	 * makes, a saved rate it does not is shown as the nearest at or below (the setting kept), a UART's cap steps among
+	 * those rates, and the note under the row says what is asked against what comes. A device on a 1 ms tick is played
+	 * by evre_fake_fast --tick-hz 1000; the limited map is a copy of the example map with auto_send 1000 / 1000 */
+	void autoSendLimits() {
+		auto rates = [](int maxHz, int tickHz) {
+			const std::vector<int> r = evre::autoSendRatesFor(maxHz, tickHz);
+			return QVector<int>(r.begin(), r.end());
+		};
+		const QVector<int> all{ 4000, 2000, 1600, 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 };
+		const QVector<int> loop{ 1000, 500, 250, 200, 100, 50, 40 };
+		check(rates(8000, 8000) == all && rates(0, 0) == all && rates(1000, 1000) == loop && rates(0, 1000) == loop
+						&& rates(2000, 2000) == QVector<int>{ 2000, 1000, 500, 400, 250, 200, 100, 80, 50, 40 }
+						&& rates(1000, 8000) == QVector<int>{ 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 }
+						&& rates(0, 3000) == loop && rates(0, 125).isEmpty(),
+				"auto send limits: the rates offered are those at most max_hz with a period of whole ticks (8000 / 8000 "
+				"and none given: all 16; a 1 ms tick: 1000, 500, 250, 200, 100, 50, 40; tick 3000 the same; tick 125 none)");
+
+		/* the checker: the five findings, each from a map made for it; none from the example map nor from a timer's or a
+		 * 1 ms loop's limits */
+		auto findings = [](int maxHz, int tickHz) {
+			DeviceMap map;
+			map.slave = 1;
+			map.protocol.autoSendMaxHz = maxHz;
+			map.protocol.autoSendTickHz = tickHz;
+			QStringList out;
+			for (const MapIssue &issue : checkMap(map))
+				if (issue.text.startsWith(QLatin1String("auto_send:")))
+					out << (issue.error ? QStringLiteral("E ") : QStringLiteral("W ")) + issue.text;
+			return out;
+		};
+		QStringList exampleFindings;
+		for (const MapIssue &issue : checkMap(map_))
+			if (issue.text.startsWith(QLatin1String("auto_send:"))) exampleFindings << issue.text;
+		const bool checked = findings(20, 0) == QStringList{ QStringLiteral("E auto_send: max_hz 20 is out of range (40 to 8000)") }
+				&& findings(0, 9000) == QStringList{ QStringLiteral("E auto_send: tick_hz 9000 is out of range (40 to 8000)") }
+				&& findings(2000, 1000) == QStringList{ QStringLiteral("E auto_send: max_hz 2000 is above tick_hz 1000: a "
+						"device sends at most one frame a tick") }
+				&& findings(0, 125) == QStringList{ QStringLiteral("E auto_send: no offered rate has a period of whole ticks "
+						"at tick_hz 125 (8000 for a timer, 1000 for a 1 ms loop)") }
+				&& findings(900, 1000) == QStringList{ QStringLiteral("W auto_send: max_hz 900 is not a rate the Studio "
+						"offers; the top rate offered is 500 Hz") }
+				&& findings(8000, 8000).isEmpty() && findings(1000, 1000).isEmpty() && exampleFindings.isEmpty();
+		if (!checked)
+			std::printf("     (findings: %s | %s | %s | %s | %s)\n", qPrintable(findings(20, 0).join(';')),
+					qPrintable(findings(0, 9000).join(';')), qPrintable(findings(2000, 1000).join(';')),
+					qPrintable(findings(0, 125).join(';')), qPrintable(findings(900, 1000).join(';')));
+		check(checked, "auto send limits, the checker: max_hz or tick_hz out of 40 to 8000, max_hz above tick_hz, a tick "
+				"that leaves no rate (errors), a max_hz between two rates (a warning); nothing for the example map, 8000 / "
+				"8000 or 1000 / 1000");
+
+		/* the Map settings' Protocol page: the two boxes load and save, the rates they leave follow them as typed */
+		{
+			DeviceMap limitedDoc = map_;
+			limitedDoc.protocol.autoSendMaxHz = 1000;
+			limitedDoc.protocol.autoSendTickHz = 1000;
+			MapDocument doc;
+			doc.reset(limitedDoc);
+			MapSettingsDialog dialog(&doc);
+			dialog.show();
+			(void) QTest::qWaitForWindowExposed(&dialog);
+			auto *maxBox = dialog.findChild<QSpinBox *>(QStringLiteral("autoSendMax"));
+			auto *tickBox = dialog.findChild<QSpinBox *>(QStringLiteral("autoSendTick"));
+			auto *offered = dialog.findChild<QLabel *>(QStringLiteral("autoSendRates"));
+			bool page = maxBox && tickBox && offered && maxBox->value() == 1000 && tickBox->value() == 1000
+					&& offered->text() == QLatin1String("1000, 500, 250, 200, 100, 50, 40 Hz") && !offered->property("warn").toBool();
+			QString none, whole, lowMax, lowTick;
+			bool lowWarned = false;
+			if (page) {
+				tickBox->setValue(125);
+				none = offered->text();
+				page = none.startsWith(QLatin1String("none: no offered rate has a period of whole ticks"))
+						&& offered->property("warn").toBool();
+				/* 1 to 39 can be typed (the boxes hold 0 to 8000): the reason is the range, not the ticks */
+				tickBox->setValue(1000);
+				maxBox->setValue(20);
+				lowMax = offered->text();
+				lowWarned = offered->property("warn").toBool();
+				maxBox->setValue(0);
+				tickBox->setValue(30);
+				lowTick = offered->text();
+				lowWarned = lowWarned && offered->property("warn").toBool();
+				maxBox->setValue(0);
+				tickBox->setValue(0);
+				whole = offered->text();
+				page = page && whole.startsWith(QLatin1String("4000, 2000, 1600")) && whole.endsWith(QLatin1String("50, 40 Hz"))
+						&& maxBox->text() == QLatin1String("not given (the tick)")
+						&& tickBox->text() == QLatin1String("not given (8000)");
+				maxBox->setValue(500);
+				tickBox->setValue(1000);
+				dialog.accept();
+				page = page && doc.map().protocol.autoSendMaxHz == 500 && doc.map().protocol.autoSendTickHz == 1000;
+			}
+			if (!page)
+				std::printf("     (the Protocol page: \"%s\", then \"%s\", then \"%s\")\n",
+						offered ? qPrintable(offered->text()) : "no label", qPrintable(none), qPrintable(whole));
+			check(page, "auto send limits, Map settings: Auto send top rate and tick loaded from the map and saved by OK; "
+					"Rates offered follows them as typed (seven rates at 1000 / 1000, \"none: ...\" in the warn colour at "
+					"tick 125, all 16 with neither given)");
+			const QString rangeText = QStringLiteral("none: a value is out of range (40 to 8000)");
+			if (lowMax != rangeText || lowTick != rangeText)
+				std::printf("     (top rate 20: \"%s\", tick 30: \"%s\")\n", qPrintable(lowMax), qPrintable(lowTick));
+			check(page && lowMax == rangeText && lowTick == rangeText && lowWarned,
+					"auto send limits, Map settings: a top rate of 20 Hz or a tick of 30 Hz typed: Rates offered says "
+					"\"none: a value is out of range (40 to 8000)\" in the warn colour, not the whole ticks");
+		}
+
+		/* the window's list by the map loaded: the limited copy, then the example map again */
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *box = window_.findChild<QCheckBox *>(QStringLiteral("autoSend"));
+		auto *rate = window_.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+		auto *note = window_.findChild<ElidedLabel *>(QStringLiteral("autoSendNote"));
+		if (!sidebar || !box || !rate || !note) {
+			check(false, "auto send limits: the sidebar, the Auto send box, its rate list and the note under it");
+			return;
+		}
+		QTemporaryDir folder;
+		DeviceMap limited = map_;
+		limited.protocol.autoSendMaxHz = 1000;
+		limited.protocol.autoSendTickHz = 1000;
+		const QString limitedFile = folder.filePath(QStringLiteral("limited.json"));
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		QString error;
+		const bool written = limited.save(limitedFile, error) && QFile::copy(map_.path, exampleFile);
+		auto load = [&](const QString &file, quint16 port) {
+			MainWindow::Startup startup;
+			startup.map = file;
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(port);
+			startup.connect = true;
+			window_.applyStartup(startup);
+			return QTest::qWaitFor([&] { return box->isEnabled(); }, 5000);
+		};
+		auto listed = [&] {
+			QVector<int> hz;
+			for (int i = 0; i < rate->count(); i++) hz << rate->itemData(i).toInt();
+			return hz;
+		};
+		QSettings().setValue(QStringLiteral("poll/autoSendHz"), 4000);
+		sidebar->setAutoSendHz(4000);
+		const bool limitedLoaded = written && load(limitedFile, FAKE_DEVICE_PORT);
+		const QVector<int> limitedList = listed();
+		const QString moved = note->fullText();
+		const bool movedWhole = !note->isCut();
+		const int movedHeight = note->height();
+		const bool kept = QSettings().value(QStringLiteral("poll/autoSendHz")).toInt() == 4000;
+		const bool exampleLoaded = load(exampleFile, FAKE_DEVICE_PORT);
+		const QVector<int> exampleList = listed();
+		const bool back = rate->currentData().toInt() == 4000 && note->fullText().isEmpty();
+		int freshCount = -1;
+		{
+			Sidebar fresh; /* no map yet */
+			if (auto *freshRate = fresh.findChild<QComboBox *>(QStringLiteral("autoSendRate"))) freshCount = freshRate->count();
+		}
+		check(limitedLoaded && limitedList == loop && exampleLoaded && exampleList == all && freshCount == 16,
+				"auto send limits: the list holds the map's rates (7 with auto_send 1000 / 1000), all 16 with the example "
+				"map, and all 16 with no map");
+		const bool movedNote = moved == QLatin1String("1000 Hz: the saved 4000 Hz is over the map's top rate");
+		if (!movedNote || !back) std::printf("     (the note: \"%s\")\n", qPrintable(moved));
+		/* picked as shown: taken as the choice, saved, the note gone */
+		(void) load(limitedFile, FAKE_DEVICE_PORT);
+		const bool movedAgain = !note->fullText().isEmpty() && rate->currentData().toInt() == 1000;
+		emit rate->activated(rate->currentIndex());
+		check(movedNote && kept && back && movedAgain && note->fullText().isEmpty() && !note->property("warn").toBool()
+						&& QSettings().value(QStringLiteral("poll/autoSendHz")).toInt() == 1000,
+				"auto send limits: 4000 Hz saved, a map with a 1000 Hz top: the list shows 1000 Hz, the note under it says "
+				"\"1000 Hz: the saved 4000 Hz is over the map's top rate\", poll/autoSendHz stays 4000 "
+				"(the example map shows 4000 Hz again); 1000 Hz picked: saved, the note gone");
+
+		/* a UART's cap steps among the device's rates: 1000 Hz of 42-byte frames on 115200 baud */
+		const QVector<int> loopDividers = IoEngine::autoSendDividersFor(limited.protocol);
+		check(IoEngine::autoSendPrescalerFor(7, 115200, 32) == 49 && IoEngine::autoSendPrescalerFor(7, 115200, 32, loopDividers) == 79
+						&& loopDividers == QVector<int>({ 8, 16, 32, 40, 80, 160, 200 }),
+				"auto send limits: a UART's cap stays in the device's list: 1000 Hz on 115200 baud goes to 160 Hz with all "
+				"16 rates, to 100 Hz with a 1 ms tick's (it cannot make 160)");
+
+		/* the cap said under the row, muted, the Log's sentence its tooltip; gone with Auto send off */
+		const QString why = QStringLiteral("auto send at 100 Hz, not 1000 Hz: the Log's sentence");
+		sidebar->setAutoSendTaken(100, 115200, why);
+		const QString capText = note->fullText(), capTip = note->toolTip();
+		const bool capMuted = !note->property("warn").toBool() && note->isVisibleTo(sidebar);
+		const bool capWhole = !note->isCut() && note->text() == capText;
+		sidebar->setAutoSendTaken(0);
+		check(capText == QLatin1String("100 Hz: the UART at 115200 baud caps the 1000 Hz asked") && capTip == why
+						&& capMuted && note->fullText().isEmpty(),
+				"auto send limits: a rate a UART lowered is said under the row (\"100 Hz: the UART at 115200 baud caps the "
+				"1000 Hz asked\", muted, the Log's sentence its tooltip), gone when Auto send goes off");
+		/* two lines always (the card keeps its height): a text that fits them whole, a longer one cut at the end of the
+		 * second with the whole in its tooltip */
+		{
+			const int twoLines = note->fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft,
+					QStringLiteral("x\nx")).height();
+			const QString tooLong = QStringList(24, QStringLiteral("rate")).join(QLatin1Char(' '));
+			note->setFullText(tooLong);
+			const bool longCut = note->isCut() && note->text().endsWith(QChar(0x2026)) && note->toolTip() == tooLong
+					&& note->height() == movedHeight;
+			note->setFullText(QString());
+			const int emptyHeight = note->height();
+			sidebar->setAutoSendTaken(0); /* the sidebar's own note again */
+			if (!movedWhole || !capWhole || !longCut || movedHeight != twoLines || emptyHeight != movedHeight)
+				std::printf("     (the note: whole %d %d, long cut %d, heights %d %d of two lines %d, width %d)\n",
+						movedWhole, capWhole, longCut, movedHeight, emptyHeight, twoLines, note->width());
+			check(note->lines() == 2 && movedWhole && capWhole && longCut && movedHeight == twoLines
+							&& emptyHeight == movedHeight,
+					"auto send limits, the note under the row: two lines tall with a text, with none and with a long one; "
+					"the map's and the UART's notes whole at the sidebar's width, a text longer than two lines cut with "
+					"\"…\" at the end of the second, the whole in its tooltip");
+		}
+
+		/* what arrives, measured: fed the engine's numbers, the clock moved on by the test */
+		IoEngine::Stats stats;
+		stats.autoSend = true;
+		stats.autoSendHz = 700;
+		sidebar->setAutoSendTaken(1000);
+		sidebar->showStats(stats, true);
+		sidebar->shiftAutoSendClock(2500);
+		sidebar->showStats(stats, true);
+		const bool settling = note->fullText().isEmpty(); /* the first 3 s count for nothing */
+		sidebar->shiftAutoSendClock(1000);
+		sidebar->showStats(stats, true); /* under since now */
+		sidebar->shiftAutoSendClock(1000);
+		sidebar->showStats(stats, true);
+		const bool notYet = note->fullText().isEmpty(); /* 1 s under: not yet */
+		sidebar->shiftAutoSendClock(1000);
+		sidebar->showStats(stats, true);
+		const QString shortText = note->fullText(), shortTip = note->toolTip();
+		const bool warned = note->property("warn").toBool();
+		stats.autoSendHz = 950;
+		sidebar->showStats(stats, true);
+		const bool cleared = note->fullText().isEmpty() && !note->property("warn").toBool();
+		stats.autoSendHz = 700;
+		sidebar->showStats(stats, true);
+		sidebar->shiftAutoSendClock(2000);
+		sidebar->showStats(stats, true);
+		const bool again = !note->fullText().isEmpty();
+		stats.autoSend = false;
+		sidebar->showStats(stats, true);
+		const bool offClears = note->fullText().isEmpty();
+		sidebar->setAutoSendTaken(0);
+		sidebar->showStats(IoEngine::Stats(), true);
+		if (shortText.isEmpty()) std::printf("     (settling %d, not yet %d)\n", settling, notYet);
+		check(settling && notYet && shortText == QLatin1String("only 700/s of 1000 Hz: the device, the link or the PC's load")
+						&& warned && shortTip.startsWith(QLatin1String("Asked 1000 Hz (CONFIG written with "
+						"prescaler 7); 700 frames a second came over the last 2 s")) && cleared && again && offClears,
+				"auto send limits, measured: 700 frames a second of 1000 Hz asked for 2 s: \"only 700/s of 1000 Hz: the "
+				"device, ...\" in the warn colour, the numbers in its tooltip; nothing in the first 3 s nor after 1 s; 950 "
+				"takes it away; Auto send off clears it");
+
+		/* end to end: a device on a 1 ms tick asked for 4000 Hz delivers 1000; with its map's limits it is asked 1000 */
+		QProcess fake;
+		fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+				{ QString::number(FAKE_AUTO_SEND_PORT), map_.path, QString::fromLatin1(fakeDeviceToken),
+					QStringLiteral("--tick-hz"), QStringLiteral("1000") });
+		auto device = std::make_unique<OtherClient>();
+		const bool started = fake.waitForStarted(3000)
+				&& QTest::qWaitFor([&] { return device->open(FAKE_AUTO_SEND_PORT, map_.slave); }, 5000);
+		bool shortSaid = false, noneSaid = false, editAsked = false, undoAsked = false, loadAsked = false;
+		QString seen;
+		if (started && load(exampleFile, FAKE_AUTO_SEND_PORT)) {
+			rate->setCurrentIndex(rate->findData(4000));
+			box->setChecked(true);
+			const QRegularExpression delivers(QStringLiteral("^only (9[5-9][0-9]|10[0-4][0-9])/s of 4000 Hz:"));
+			shortSaid = QTest::qWaitFor([&] { return delivers.match(note->fullText()).hasMatch(); }, 9000);
+			seen = note->fullText();
+			/* the map's limits edited while Auto send is on (the step Map settings takes): the list moves to 1000 Hz
+			 * and the device is asked again at it (the engine has the map's rates by then); undone, 4000 Hz again */
+			auto config = [&] {
+				const QByteArray bytes = device->read(PROTOCOL_CONFIG, 2);
+				return bytes.size() == 2 ? int(uint8_t(bytes[0]) | (uint8_t(bytes[1]) << 8)) : -1;
+			};
+			auto configBecomes = [&](const std::function<bool(int)> &is) {
+				return QTest::qWaitFor([&] {
+					const int value = config();
+					return value >= 0 && is(value);
+				}, 3000);
+			};
+			if (auto *doc = window_.findChild<MapDocument *>(); doc && box->isChecked()) {
+				doc->edit(QStringLiteral("Map settings"), [](DeviceMap &map) {
+					map.protocol.autoSendMaxHz = 1000;
+					map.protocol.autoSendTickHz = 1000;
+				});
+				editAsked = configBecomes([&](int v) {
+					return rate->currentData().toInt() == 1000 && (v & 0x0008) && (v >> 8) == 7;
+				});
+				doc->undoStack()->undo();
+				undoAsked = configBecomes([&](int v) {
+					return rate->currentData().toInt() == 4000 && !doc->isModified() && (v & 0x0008) && (v >> 8) == 1;
+				});
+				if (!editAsked || !undoAsked) std::printf("     (CONFIG 0x%04x, the list at %d Hz)\n", config(),
+							rate->currentData().toInt());
+			}
+			/* the limited map loaded with the box left on at 4000 Hz: the list moves to 1000 Hz, and the device is
+			 * asked again with the prescaler of the new map's dividers (the engine's setMap before the new ask) */
+			if (load(limitedFile, FAKE_AUTO_SEND_PORT)) {
+				loadAsked = box->isChecked() && configBecomes([&](int v) {
+					return rate->currentData().toInt() == 1000 && (v & 0x0008) && (v >> 8) == 7;
+				});
+				if (!loadAsked) std::printf("     (loaded on: CONFIG 0x%04x, the list at %d Hz, the box %s)\n", config(),
+							rate->currentData().toInt(), box->isChecked() ? "on" : "off");
+				rate->setCurrentIndex(rate->findData(500));
+				rate->setCurrentIndex(rate->findData(1000));
+				box->setChecked(true);
+				QTest::qWait(5000);
+				noneSaid = box->isChecked() && note->fullText().isEmpty();
+				if (!noneSaid) seen += QStringLiteral(" | ") + note->fullText();
+				box->setChecked(false);
+			}
+		}
+		if (!shortSaid || !noneSaid) std::printf("     (the note: \"%s\")\n", qPrintable(seen));
+		check(started && shortSaid && noneSaid,
+				"auto send limits, end to end (evre_fake_fast --tick-hz 1000): the example map at 4000 Hz: \"only 1000/s of "
+				"4000 Hz\" under the row; the map with auto_send 1000 / 1000 at 1000 Hz: no note after 5 s");
+		check(started && editAsked && undoAsked,
+				"auto send limits, the map edited while Auto send is on at 4000 Hz: auto_send 1000 / 1000 moves the list to "
+				"1000 Hz and the device's CONFIG to prescaler 7; the edit undone, 4000 Hz and prescaler 1 again");
+		check(started && loadAsked,
+				"auto send limits, the map with auto_send 1000 / 1000 loaded while Auto send is on at 4000 Hz: the list "
+				"moves to 1000 Hz and the device is asked again, CONFIG with prescaler 7");
+		QTest::qWait(300); /* the off reaches the device */
+		fake.kill();
+		fake.waitForFinished(3000);
+
+		/* the example map and the fake device of the other steps again, the rate as before. From a copy (the window
+		 * opens the command line's map only once) kept to the end of the run: this step's folder goes at its return,
+		 * and the window's map must still have its file for the later steps (Save, a bus made from it) */
+		static QTemporaryDir lasting;
+		const QString lastingFile = lasting.filePath(QStringLiteral("example_device.json"));
+		QFile::remove(lastingFile);
+		(void) (QFile::copy(map_.path, lastingFile) && load(lastingFile, FAKE_DEVICE_PORT));
+		rate->setCurrentIndex(rate->findData(100));
+		(void) cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000);
+	}
+
+	/* The serial link on USB CDC: the pill names the link, not a baud rate nobody uses, and the Baud row says it is
+	 * ignored (muted, "ignored on USB CDC" under the box), still a box to type in for a UART */
+	void serialUsbCdcLook() {
+		const QString cdc = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
+		const QString uart = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
+		/* right to left (Arabic) each is between the isolate's two characters */
+		QGuiApplication::setLayoutDirection(Qt::RightToLeft);
+		const QString cdcRtl = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
+		const QString uartRtl = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
+		QGuiApplication::setLayoutDirection(Qt::LeftToRight);
+		check(cdc == QStringLiteral("COM13 · USB CDC") && uart == QLatin1String("COM13 @ 115200")
+						&& cdcRtl == QChar(0x2066) + cdc + QChar(0x2069) && uartRtl == QChar(0x2066) + uart + QChar(0x2069),
+				"serial, the pill: \"COM13 · USB CDC\" on USB CDC (no baud rate), \"COM13 @ 115200\" on a UART, each one "
+				"left-to-right piece");
+
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *kind = window_.findChild<QComboBox *>(QStringLiteral("serialKind"));
+		auto *baud = window_.findChild<QComboBox *>(QStringLiteral("baud"));
+		auto *port = window_.findChild<QComboBox *>(QStringLiteral("serialPort"));
+		auto *label = window_.findChild<QLabel *>(QStringLiteral("baudLabel"));
+		auto *ignoredNote = window_.findChild<ElidedLabel *>(QStringLiteral("baudIgnored"));
+		if (!sidebar || !kind || !baud || !port || !label || !ignoredNote) {
+			check(false, "serial, the Baud row: its label, box and \"ignored on USB CDC\"");
+			return;
+		}
+		sidebar->addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
+		sidebar->addPort(QStringLiteral("COM91"), QString(), false, 0, 0, QString());
+		/* the widths as the layout gives them: the serial fields are hidden here (the window is on TCP), and a hidden
+		 * layout is not run by itself when the Link box's minimum grows */
+		QString widths;
+		auto muted = [&] {
+			if (QLayout *fields = kind->parentWidget() ? kind->parentWidget()->layout() : nullptr) fields->activate();
+			widths += QStringLiteral(" %1/%2").arg(kind->width()).arg(baud->width());
+			return label->property("ignored").toBool() && baud->property("ignored").toBool() && !ignoredNote->isHidden()
+					&& ignoredNote->fullText() == QLatin1String("ignored on USB CDC") && baud->isEnabled() && baud->isEditable()
+					&& baud->toolTip() == label->toolTip() && ignoredNote->toolTip() == baud->toolTip()
+					&& baud->toolTip().startsWith(QLatin1String("The baud rate is ignored on USB CDC"))
+					&& kind->width() == baud->width();
+		};
+		auto plain = [&] {
+			return !label->property("ignored").toBool() && !baud->property("ignored").toBool() && ignoredNote->isHidden()
+					&& baud->toolTip().startsWith(QLatin1String("Pick a rate or type any rate"));
+		};
+		/* the number as painted, against the box's own background (its most common colour): its strongest pixel no
+		 * further from it than the muted colour is, or clearly further (the text colour). A rule for the box's line edit
+		 * alone was not used: the number stayed in the text colour on USB CDC */
+		const ThemeColors &colours = Theme::colors();
+		auto inkStep = [&] {
+			const QImage image = baud->lineEdit()->grab().toImage().convertToFormat(QImage::Format_RGB32);
+			QHash<QRgb, int> counts;
+			for (int y = 0; y < image.height(); y++)
+				for (int x = 0; x < image.width(); x++) counts[image.pixel(x, y)]++;
+			QRgb back = 0;
+			int most = -1;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				if (it.value() > most) {
+					most = it.value();
+					back = it.key();
+				}
+			int step = 0;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				step = std::max(step, std::abs(qGray(it.key()) - qGray(back)));
+			return std::pair<int, int>(step, std::abs(qGray(colours.muted.rgb()) - qGray(back)));
+		};
+		auto sendFocus = [&](QEvent::Type type) {
+			QFocusEvent event(type, Qt::OtherFocusReason);
+			QApplication::sendEvent(baud->lineEdit(), &event);
+		};
+		if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
+		kind->setCurrentIndex(0);
+		port->setCurrentIndex(port->findData(QStringLiteral("COM90")));
+		const bool autoCdc = muted();
+		const auto [cdcStep, mutedStep] = inkStep();
+		sendFocus(QEvent::FocusIn); /* typed in: the text colour while it is */
+		const int typingStep = inkStep().first;
+		sendFocus(QEvent::FocusOut);
+		const int againStep = inkStep().first;
+		port->setCurrentIndex(port->findData(QStringLiteral("COM91")));
+		const bool autoUart = plain();
+		const int uartStep = inkStep().first;
+		const bool paintedMuted = cdcStep <= mutedStep + 12 && againStep <= mutedStep + 12 && uartStep > mutedStep + 20
+				&& typingStep > mutedStep + 20;
+		if (!paintedMuted)
+			std::printf("     (the Baud number's grey step from its background: USB CDC %d, typed %d, after %d, UART %d; "
+					"the muted colour's %d)\n", cdcStep, typingStep, againStep, uartStep, mutedStep);
+		check(paintedMuted, "serial, the Baud number as painted: in the muted colour on USB CDC (no further from its "
+				"background than the muted colour), in the text colour while it is typed in and on a UART");
+		kind->setCurrentIndex(1);
+		const bool chosenCdc = muted();
+		port->setCurrentIndex(port->findData(QStringLiteral("COM90")));
+		kind->setCurrentIndex(2);
+		const bool chosenUart = plain();
+		kind->setCurrentIndex(0);
+		port->removeItem(port->findData(QStringLiteral("COM90")));
+		port->removeItem(port->findData(QStringLiteral("COM91")));
+		if (!autoCdc || !autoUart || !chosenCdc || !chosenUart)
+			std::printf("     (Auto CDC %d, Auto UART %d, CDC %d, UART %d; Link/Baud widths%s; label %d, box %d, note shown %d "
+					"\"%s\")\n", autoCdc, autoUart, chosenCdc, chosenUart, qPrintable(widths),
+					label->property("ignored").toBool(), baud->property("ignored").toBool(), !ignoredNote->isHidden(),
+					qPrintable(ignoredNote->fullText()));
+		check(autoCdc && autoUart && chosenCdc && chosenUart,
+				"serial, the Baud row on USB CDC (Auto for a CDC port, or chosen): its label and number muted (\"ignored\"), "
+				"\"ignored on USB CDC\" under the box, one tooltip on the three, the box still editable and as wide as Link's; on a "
+				"UART (Auto for a port without USB IDs, or chosen) as before");
+
+		/* the Link box never cuts "Auto: USB CDC" (it read "Auto: USB C": measured while it read "Auto: UART", a note
+		 * beside took the rest), and "ignored on USB CDC" is whole on its line under the Baud box; in English and in
+		 * Arabic (longer). A sidebar of its own for each, made after the language */
+		bool linkWhole = true;
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			Sidebar card;
+			card.resize(sidebar->size());
+			card.restoreLinkSettings();
+			/* shown on a port without USB IDs first ("Auto: UART"), as the window starts: the box was measured then */
+			card.addPort(QStringLiteral("COM91"), QString(), false, 0, 0, QString());
+			card.useSerial(QStringLiteral("COM91:115200"));
+			card.show();
+			QTest::qWait(100);
+			auto *cardKind = card.findChild<QComboBox *>(QStringLiteral("serialKind"));
+			auto *cardBaud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+			auto *cardNote = card.findChild<ElidedLabel *>(QStringLiteral("baudIgnored"));
+			if (!cardKind || !cardBaud || !cardNote) {
+				linkWhole = false;
+				continue;
+			}
+			/* on a UART the note's line goes whole: Link one row gap under Baud, as the note is on USB CDC */
+			const int uartGap = cardKind->y() - cardBaud->geometry().bottom();
+			card.addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
+			card.useSerial(QStringLiteral("COM90:115200"));
+			QTest::qWait(100);
+			QStyleOptionComboBox option;
+			option.initFrom(cardKind);
+			const QRect field = cardKind->style()->subControlRect(QStyle::CC_ComboBox, &option,
+					QStyle::SC_ComboBoxEditField, cardKind);
+			const int needs = cardKind->fontMetrics().horizontalAdvance(cardKind->currentText());
+			const bool whole = field.width() - 2 >= needs && cardKind->currentIndex() == 0 && !cardNote->isHidden()
+					&& !cardNote->isCut() && cardNote->text() == cardNote->fullText()
+					&& cardNote->y() >= cardBaud->geometry().bottom() && cardNote->geometry().bottom() <= cardKind->y()
+					&& std::abs(cardNote->x() - cardBaud->x()) <= 1
+					&& cardNote->y() - cardBaud->geometry().bottom() == uartGap;
+			if (!whole)
+				std::printf("     (%s: \"%s\" needs %d px of %d; the note \"%s\" cut %d, shown %d, at %d,%d to %d, Baud "
+						"at %d,%d to %d, Link from %d; on a UART Link %d px under Baud)\n", qPrintable(code),
+						qPrintable(cardKind->currentText()), needs, field.width() - 2, qPrintable(cardNote->text()),
+						cardNote->isCut() ? 1 : 0, cardNote->isHidden() ? 0 : 1, cardNote->x(), cardNote->y(),
+						cardNote->geometry().bottom(), cardBaud->x(), cardBaud->y(), cardBaud->geometry().bottom(), cardKind->y(),
+						uartGap);
+			linkWhole = linkWhole && whole;
+		}
+		/* in Arabic a rate with "/s" is one left-to-right piece: "700/s", not "s/700" */
+		const QString arabicStats = QCoreApplication::translate("Sidebar", "Auto send %1/s · %2 polls/s");
+		const QString arabicPace = QCoreApplication::translate("Sidebar", "%1 / s");
+		const QString arabicShort = QCoreApplication::translate("Sidebar",
+				"only %1/s of %2 Hz: the device, the link or the PC's load");
+		language::apply(*qApp, QStringLiteral("en"));
+		QTest::qWait(100);
+		check(linkWhole, "serial, USB CDC in a narrow sidebar: the Link box whole (\"Auto: USB CDC\", never \"Auto: USB C\"), "
+				"\"ignored on USB CDC\" whole on its line under the Baud box, in English and in Arabic");
+		const QString isolatedRate = QChar(0x2066) + QStringLiteral("%1/s") + QChar(0x2069);
+		check(arabicStats.contains(isolatedRate) && arabicShort.contains(isolatedRate)
+						&& arabicPace == QChar(0x2066) + QStringLiteral("%1 / s") + QChar(0x2069),
+				"Arabic, a rate per second as one left-to-right piece (between U+2066 and U+2069): the Polling card's "
+				"\"Auto send 700/s\", the note's \"700/s\" and Show values' \"10 / s\", not \"s/700\"");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) autoSendLimitsShots(sidebar->size());
+	}
+
+	/* EVRE_TEST_SHOT: Auto send's limits and the USB CDC look, in English (both themes) and Arabic (light), each
+	 * <prefix>_autosend_<what>_<en|ar>_<light|dark>.png: the Polling card of a map with auto_send 1000 / 1000 with its
+	 * list opened (rates), its note for the saved 4000 Hz (moved), for a UART's cap (cap) and for frames that do not
+	 * come (short, the warn colour); the Map settings' Protocol page (protocol) and with a tick of 30 typed (range); the
+	 * Connection card on a USB CDC port, connected (cdc). Sidebars and dialogs of their own, made after the language */
+	void autoSendLimitsShots(const QSize &size) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		MapProtocol limitedProtocol;
+		limitedProtocol.autoSendMaxHz = 1000;
+		limitedProtocol.autoSendTickHz = 1000;
+		DeviceMap limitedDoc = map_;
+		limitedDoc.protocol.autoSendMaxHz = 1000;
+		limitedDoc.protocol.autoSendTickHz = 1000;
+		/* a box and its list opened, put together where they are on the screen (the list is a window of its own) */
+		const auto opened = [](QWidget *box, QComboBox *combo) {
+			combo->showPopup();
+			QTest::qWait(200);
+			QWidget *list = combo->view()->window();
+			const QRect boxAt(box->mapToGlobal(QPoint(0, 0)), box->size());
+			const QRect listAt(list->mapToGlobal(QPoint(0, 0)), list->size());
+			const QRect both = boxAt.united(listAt);
+			const qreal dpr = box->devicePixelRatioF();
+			QPixmap together(both.size() * dpr);
+			together.setDevicePixelRatio(dpr);
+			together.fill(Qt::transparent);
+			{
+				QPainter painter(&together);
+				painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
+				painter.drawPixmap(listAt.topLeft() - both.topLeft(), list->grab());
+			}
+			combo->hidePopup();
+			return together;
+		};
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			for (const bool dark : { false, true }) {
+				if (dark && code == QLatin1String("ar")) continue;
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				const auto save = [&](const QString &what, const QPixmap &picture) {
+					picture.save(prefix + QStringLiteral("_autosend_%1_%2_%3.png").arg(what, code, theme));
+				};
+				{
+					Sidebar card;
+					card.resize(size);
+					card.restoreLinkSettings();
+					auto *rate = card.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+					if (!rate) break;
+					card.show();
+					if (code == QLatin1String("ar") && card.screen()) { /* where the window has its sidebar */
+						const QRect screen = card.screen()->availableGeometry();
+						card.move(screen.right() + 1 - card.frameGeometry().width(), screen.top());
+					}
+					card.themeChanged();
+					card.setAutoSendOffered(true, QString());
+					card.setAutoSendHz(4000);
+					(void) card.setAutoSendLimits(limitedProtocol);
+					QTest::qWait(150);
+					QWidget *box = docsCard(rate);
+					save(QStringLiteral("moved"), box->grab());
+					card.setAutoSendHz(1000);
+					QTest::qWait(100);
+					save(QStringLiteral("rates"), opened(box, rate));
+					card.setAutoSendOn(true);
+					card.setAutoSendTaken(100, 115200, QStringLiteral("auto send at 100 Hz, not 1000 Hz"));
+					QTest::qWait(100);
+					save(QStringLiteral("cap"), box->grab());
+					/* 700 frames a second of 1000 Hz asked, past the settling and the 2 s under */
+					IoEngine::Stats stats;
+					stats.autoSend = true;
+					stats.autoSendHz = 700;
+					card.setAutoSendTaken(1000);
+					for (const qint64 step : { 0, 2500, 1000, 1000, 1000 }) {
+						card.shiftAutoSendClock(step);
+						card.showStats(stats, true);
+					}
+					QTest::qWait(100);
+					save(QStringLiteral("short"), box->grab());
+				}
+				{
+					MapDocument doc;
+					doc.reset(limitedDoc);
+					MapSettingsDialog dialog(&doc);
+					dialog.show();
+					(void) QTest::qWaitForWindowExposed(&dialog);
+					auto *pages = dialog.findChild<QTabWidget *>();
+					auto *tickBox = dialog.findChild<QSpinBox *>(QStringLiteral("autoSendTick"));
+					if (pages && tickBox) {
+						for (int i = 0; i < pages->count(); i++)
+							if (pages->widget(i)->isAncestorOf(tickBox)) pages->setCurrentIndex(i);
+						QTest::qWait(150);
+						save(QStringLiteral("protocol"), dialog.grab());
+						tickBox->setValue(30);
+						QTest::qWait(100);
+						save(QStringLiteral("range"), dialog.grab());
+					}
+					dialog.reject();
+				}
+				{
+					Sidebar card;
+					card.resize(size);
+					card.restoreLinkSettings();
+					auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+					auto *port = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
+					if (!pill || !port) break;
+					port->clear(); /* this computer's own ports out of the picture */
+					card.addPort(QStringLiteral("COM13"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740,
+							QStringLiteral("Example device"));
+					card.useSerial(QStringLiteral("COM13:115200"));
+					card.show();
+					card.themeChanged();
+					card.showConnected(Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, false),
+							QCoreApplication::translate("MainWindow", "the baud rate %1 is ignored on USB CDC").arg(115200));
+					if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
+					QTest::qWait(150);
+					save(QStringLiteral("cdc"), docsCard(pill)->grab());
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+	}
+
 	/* EVRE_TEST_SHOT: the Connection card of a sidebar as wide as the window's, in English and Arabic, both themes
-	 * (<prefix>_serial_<card|list|link|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading USB CDC
-	 * for ST's IDs, a lost port's pill and the device line kept as last seen; the port list, then the Link row's, opened
-	 * over the card (the two grabs put together where they are on the screen: the list is a window of its own); the Baud
-	 * box emptied with the pill Connect gives then. A sidebar of its own: one made after the language is set has its texts */
+	 * (<prefix>_serial_<card|list|link|rates|baud>_<en|ar>_<light|dark>.png): a long port cut with "…", Auto reading
+	 * USB CDC for ST's IDs, a lost port's pill and the device line kept as last seen; the port list, then the Link row's
+	 * and the Baud box's rates, opened over the card (the two grabs put together where they are on the screen: the list
+	 * is a window of its own); the Baud box emptied with the pill Connect gives then. A sidebar of its own: one made after
+	 * the language is set has its texts */
 	void serialShots(const QSize &size) {
 		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
 		const bool wasDark = Theme::isDark();
@@ -1350,7 +1979,9 @@ private:
 					const qreal dpr = box->devicePixelRatioF();
 					QPixmap together(both.size() * dpr);
 					together.setDevicePixelRatio(dpr);
-					together.fill(Qt::transparent);
+					/* the corners outside the card and the list in the window's colour, as round them in the window: a dark card
+					 * with white corners would read as another theme */
+					together.fill(box->palette().color(QPalette::Window));
 					{
 						QPainter painter(&together);
 						painter.drawPixmap(boxAt.topLeft() - both.topLeft(), box->grab());
@@ -1361,6 +1992,7 @@ private:
 				};
 				save(QStringLiteral("list"), opened(port));
 				save(QStringLiteral("link"), opened(kind));
+				save(QStringLiteral("rates"), opened(baud));
 				baud->setCurrentText(QString());
 				card.showLinkError(QCoreApplication::translate("MainWindow", "Baud rate out of range: %1 to %2")
 						.arg(Sidebar::BAUD_MIN).arg(Sidebar::BAUD_MAX));
@@ -1594,9 +2226,13 @@ private:
 			check(fitsOneLine, "serial, the pill: a reason that fits stays one line, as tall as \"Disconnected\"");
 			const QString lost = QStringLiteral("COM10 is gone: unplugged or reset?");
 			sidebar->showLinkError(lost, QStringLiteral("x"));
-			const bool grew = QTest::qWaitFor([&] { return pill->height() > oneLine; }, 1000);
-			QApplication::processEvents();
+			/* grown by its line and the device line moved down with it: the layouts above the pill take a few event
+			 * passes (the card's, the sidebar's, its scroll area's), and a pixel or two may come first */
 			const QFontMetrics metrics = pill->fontMetrics();
+			const bool grew = QTest::qWaitFor([&] {
+				return pill->height() - oneLine >= metrics.height() - 2 && deviceInfo->y() - pill->geometry().bottom() == gap;
+			}, 1000);
+			QApplication::processEvents();
 			const bool tooLong = metrics.horizontalAdvance(QStringLiteral("●  ") + lost) > pill->contentsRect().width();
 			const int grown = pill->height() - oneLine;
 			const bool twoLines = pill->text() == QStringLiteral("●  COM10 is gone:\nunplugged or reset?")
@@ -1691,7 +2327,12 @@ private:
 		check(baud->count() == 11 && baud->itemText(6) == QLatin1String("2000000")
 						&& baud->itemText(10) == QLatin1String("12000000"),
 				"serial, Baud: 11 rates listed, 9600 to 12000000");
-		check(baud->toolTip() == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
+		/* read on a UART: on USB CDC (the ST port selected here) the tooltip says the number is ignored (serialUsbCdcLook) */
+		const int kindWas = kind->currentIndex();
+		kind->setCurrentIndex(2);
+		const QString uartTip = baud->toolTip();
+		kind->setCurrentIndex(kindWas);
+		check(uartTip == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
 						&& edit->placeholderText() == QLatin1String("type a rate"),
 				"serial, Baud: the tooltip says any rate 300 to 20000000 can be typed; emptied, it reads \"type a rate\"");
 		baud->setCurrentText(QStringLiteral("115200"));
@@ -1743,6 +2384,8 @@ private:
 			bool absoluteLeft = false;
 			int inkFrom = -1, inkTo = -1, width = 0;
 			qreal dpr = 1;
+			bool itemsLeft = false, typedLeft = false;
+			int rateFrom = -1, rateTo = -1, rateWidth = 0;
 			{
 				Sidebar arabic;
 				arabic.resize(sidebar->size());
@@ -1770,6 +2413,52 @@ private:
 								inkTo = x;
 								break;
 							}
+					/* the opened list's rates at the left too: each item aligned left absolutely, a rate typed and added
+					 * with Enter as well, and a rate's ink in the left of its row. The row is 230400's (not the current
+					 * one); its background is its most common colour, and its edges are left out: a row under the mouse
+					 * has a frame there, which is no digit */
+					const auto absolute = [&](int i) {
+						const int value = arabicBaud->itemData(i, Qt::TextAlignmentRole).toInt();
+						return (value & Qt::AlignLeft) && (value & Qt::AlignAbsolute);
+					};
+					itemsLeft = arabicBaud->count() == 11;
+					for (int i = 0; i < arabicBaud->count(); i++) itemsLeft = itemsLeft && absolute(i);
+					arabicBaud->setCurrentText(QStringLiteral("115200"));
+					arabicBaud->showPopup();
+					QTest::qWait(200);
+					QAbstractItemView *view = arabicBaud->view();
+					const QImage list = view->viewport()->grab().toImage();
+					const qreal listDpr = list.devicePixelRatio();
+					const QRect row = view->visualRect(arabicBaud->model()->index(3, 0));
+					const int edge = int(std::ceil(2 * listDpr));
+					const QRect rowPx = QRect(qRound(row.x() * listDpr), qRound(row.y() * listDpr),
+							qRound(row.width() * listDpr), qRound(row.height() * listDpr)).adjusted(edge, edge, -edge, -edge);
+					rateWidth = rowPx.width();
+					if (rowPx.width() > 0 && rowPx.height() > 0 && rowPx.bottom() < list.height()
+							&& rowPx.right() < list.width()) {
+						QHash<QRgb, int> colours;
+						for (int x = rowPx.left(); x <= rowPx.right(); x++)
+							for (int y = rowPx.top(); y <= rowPx.bottom(); y++) colours[list.pixel(x, y)]++;
+						QRgb background = 0;
+						int most = 0;
+						for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+							if (it.value() > most) {
+								most = it.value();
+								background = it.key();
+							}
+						for (int x = 0; x < rowPx.width(); x++)
+							for (int y = rowPx.top(); y <= rowPx.bottom(); y++)
+								if (list.pixel(rowPx.left() + x, y) != background) {
+									if (rateFrom < 0) rateFrom = x;
+									rateTo = x;
+									break;
+								}
+					}
+					arabicBaud->hidePopup();
+					line->setText(QStringLiteral("250000"));
+					QTest::keyClick(line, Qt::Key_Return);
+					const int typed = arabicBaud->findText(QStringLiteral("250000"));
+					typedLeft = arabicBaud->count() == 12 && typed >= 0 && absolute(typed);
 				}
 			}
 			language::apply(*qApp, QStringLiteral("en"));
@@ -1780,6 +2469,64 @@ private:
 						absoluteLeft ? 1 : 0, inkFrom, inkTo, width, dpr);
 			check(absoluteLeft && atLeft, "serial, Baud in Arabic: aligned left absolutely (not turned by right to left), "
 					"the emptied box's placeholder drawn at the left, where the cursor and the number are");
+			const bool rateAtLeft = rateFrom >= 0 && rateFrom < rateTo && rateFrom < rateWidth - 1 - rateTo;
+			if (!itemsLeft || !typedLeft || !rateAtLeft)
+				std::printf("     (Arabic Baud list: items left %d, typed rate left %d, 230400's ink x %d to %d of %d)\n",
+						itemsLeft ? 1 : 0, typedLeft ? 1 : 0, rateFrom, rateTo, rateWidth);
+			check(itemsLeft && typedLeft && rateAtLeft, "serial, Baud in Arabic: the opened list's rates aligned left "
+					"absolutely as the box's number, a rate typed and added with Enter too, and drawn at the left of their rows");
+		}
+		/* the opened Baud list's selected rate readable in both looks: in the text colour on the selection's pale accent,
+		 * not the palette's white (near-white on pale blue in the light look). Read from the drawn row: its strongest pixel
+		 * against the row's most common colour, 4.5:1; the row's edges left out (a row under the mouse has a frame) */
+		{
+			const bool wasDark = Theme::isDark();
+			double worst = 21;
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				Sidebar card;
+				card.resize(sidebar->size());
+				card.useSerial(QStringLiteral("COM10:115200"));
+				card.show();
+				card.themeChanged();
+				auto *cardBaud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+				if (!cardBaud) {
+					worst = 0;
+					continue;
+				}
+				cardBaud->showPopup();
+				QTest::qWait(200);
+				QAbstractItemView *view = cardBaud->view();
+				const QImage list = view->viewport()->grab().toImage();
+				const qreal listDpr = list.devicePixelRatio();
+				const QRect row = view->visualRect(view->currentIndex());
+				const int edge = int(std::ceil(2 * listDpr));
+				const QRect rowPx = QRect(qRound(row.x() * listDpr), qRound(row.y() * listDpr), qRound(row.width() * listDpr),
+						qRound(row.height() * listDpr)).adjusted(edge, edge, -edge, -edge).intersected(list.rect());
+				double best = 0;
+				if (view->currentIndex().isValid() && !rowPx.isEmpty()) {
+					QHash<QRgb, int> colours;
+					for (int x = rowPx.left(); x <= rowPx.right(); x++)
+						for (int y = rowPx.top(); y <= rowPx.bottom(); y++) colours[list.pixel(x, y)]++;
+					QRgb background = 0;
+					int most = 0;
+					for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+						if (it.value() > most) {
+							most = it.value();
+							background = it.key();
+						}
+					for (auto it = colours.cbegin(); it != colours.cend(); ++it)
+						best = std::max(best, contrast(QColor(it.key()), QColor(background)));
+				}
+				cardBaud->hidePopup();
+				if (best < 4.5)
+					std::printf("     (the Baud list's selected rate, %s: %.2f:1 on its row)\n", dark ? "dark" : "light", best);
+				worst = std::min(worst, best);
+			}
+			Theme::apply(*qApp, wasDark);
+			if (auto *own = window_.findChild<Sidebar *>()) own->themeChanged();
+			check(worst >= 4.5, "serial, the Baud list opened: the selected rate in the text colour on the selection, 4.5:1 "
+					"in both looks (it was near-white on pale blue in the light look)");
 		}
 
 		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) serialShots(sidebar->size());
@@ -4819,13 +5566,16 @@ private:
 		 * own fading aside), the replies taken at each */
 		{
 			const DumpCounts counts = dumpCounts(view, 2000);
-			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d poll takes)\n",
-					pace, counts.ticks, counts.paints, counts.glows, counts.polls);
+			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d ticks merged into "
+					"the next's paint, %d unpainted, %d poll takes)\n", pace, counts.ticks, counts.paints, counts.glows,
+					counts.merged, counts.unpainted, counts.polls);
 			check((pace > 0 ? counts.ticks >= 3 * pace / 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
-							&& counts.polls == counts.ticks && counts.paints >= counts.ticks - 1
-							&& counts.paints <= counts.ticks + counts.glows + 1,
+							&& counts.polls == counts.ticks && counts.paints + counts.merged >= counts.ticks - 1
+							&& counts.merged <= counts.ticks / 10 && counts.paints <= counts.ticks + counts.glows + 1
+							&& counts.unpainted <= 1,
 					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (15 to 22 in 2 s at 10 a second, "
-					"the frames as a busy PC keeps them), one repaint a tick, the replies taken at each");
+					"the frames as a busy PC keeps them), one repaint a tick (two ticks in one event pass share it, at most a "
+					"tenth of them), none left unpainted, the replies taken at each");
 		}
 
 		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
@@ -6760,17 +7510,21 @@ private:
 				"كتلة ↓, عرض الكل ▾, the loss line), the records left to right");
 	}
 
-	/* the Dump tab's ticks, repaints, takes and glow repaints over ms, the mouse off the view */
+	/* the Dump tab's ticks, repaints, takes and glow repaints over ms, the mouse off the view. Two ticks the window's
+	 * thread takes in one event pass share one paint (Qt merges update() until its paint request is delivered), so a
+	 * check counts paints + merged against the ticks; unpainted is the ticks still waiting for a paint at the end (at
+	 * most the last one: more is a card left stale) */
 	struct DumpCounts {
-		int ticks = 0, paints = 0, glows = 0, polls = 0, fasts = 0;
+		int ticks = 0, paints = 0, glows = 0, polls = 0, fasts = 0, merged = 0, unpainted = 0;
 	};
 	DumpCounts dumpCounts(DumpView *view, int ms) {
 		dumpMouseTo(view, QPoint(-20, -20));
 		const DumpCounts before { window_.dumpTicks(), view->paintCount(), view->glowRepaints(), window_.pollDumpTakes(),
-			window_.fastDumpTakes() };
+			window_.fastDumpTakes(), view->ticksMerged() };
 		QTest::qWait(ms);
 		return { window_.dumpTicks() - before.ticks, view->paintCount() - before.paints, view->glowRepaints() - before.glows,
-			window_.pollDumpTakes() - before.polls, window_.fastDumpTakes() - before.fasts };
+			window_.pollDumpTakes() - before.polls, window_.fastDumpTakes() - before.fasts, view->ticksMerged() - before.merged,
+			view->ticksUnpainted() };
 	}
 
 	/* The fast card live (the fast streams step, the stream running at 10 000 records a second): the card of the newest
@@ -6879,17 +7633,23 @@ private:
 		QTest::qWait(400);
 		const DumpCounts every = dumpCounts(view, 2000);
 		pace->setCurrentIndex(pace->findData(paceWas));
-		std::printf("     (the Dump's tick in 2 s: Show values 2/s: %d ticks, %d paints (%d of the glow), %d poll takes, %d fast "
-				"takes; every frame: %d ticks, %d paints (%d of the glow), %d fast takes)\n", slow.ticks, slow.paints, slow.glows,
-				slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.fasts);
+		std::printf("     (the Dump's tick in 2 s: Show values 2/s: %d ticks, %d paints (%d of the glow), %d ticks merged into the "
+				"next's paint, %d unpainted, %d poll takes, %d fast takes; every frame: %d ticks, %d paints (%d of the glow), %d "
+				"ticks merged into the next's paint, %d unpainted, %d fast takes)\n", slow.ticks, slow.paints, slow.glows,
+				slow.merged, slow.unpainted, slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.merged,
+				every.unpainted, every.fasts);
 		check(slow.ticks >= 18 && slow.ticks <= 22 && slow.polls >= 3 && slow.polls <= 5 && slow.fasts >= 18 && slow.fasts <= 22
-						&& slow.paints >= slow.ticks - 1 && slow.paints <= slow.ticks + slow.glows + 1,
-				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each), "
-				"the polls' replies taken at their two beats, the fast block at every tick");
-		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10 && every.paints >= every.ticks - 2
-						&& every.paints <= every.ticks + every.glows + 1,
-				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each), the "
-				"fast block still taken at most ten times a second");
+						&& slow.paints + slow.merged >= slow.ticks - 1 && slow.merged <= slow.ticks / 10
+						&& slow.paints <= slow.ticks + slow.glows + 1 && slow.unpainted <= 1,
+				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each, "
+				"two ticks in one event pass share it, at most a tenth of them, none left unpainted), the polls' replies taken "
+				"at their two beats, the fast block at every tick");
+		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10
+						&& every.paints + every.merged >= every.ticks - 1 && every.merged <= every.ticks / 10
+						&& every.paints <= every.ticks + every.glows + 1 && every.unpainted <= 1,
+				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each, two "
+				"ticks in one event pass share it, at most a tenth of them, none left unpainted), the fast block still taken "
+				"at most ten times a second");
 
 		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
 		tabs->setCurrentIndex(MainWindow::TabChart);

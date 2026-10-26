@@ -6,7 +6,10 @@
  * empty, so a text that comes, goes or grows moves nothing around it. The
  * status bar's hint, the Map editor's banner, the Devices card's line, the
  * problems in the bus dialogs and the link state pill are ones. Set to wrap
- * (setWraps), it is as many lines as its text takes instead: the pill's error. */
+ * (setWraps), it is as many lines as its text takes instead: the pill's error.
+ * Set to a number of lines (setLines), it is always that tall and wraps its
+ * text between words into them, cut at the end of the last: a note under a row
+ * that must not move the card (Auto send's) or a short one beside two rows. */
 #pragma once
 
 #include <QLabel>
@@ -30,6 +33,11 @@ public:
 	 * rest), further breaks fall between words. Off again: one line, cut */
 	void setWraps(bool wraps);
 	bool wraps() const { return wraps_; }
+	/* lines: plain text on up to that many lines, between words, and the label always as tall as all of them (a text
+	 * that comes, goes or grows moves nothing); what does not fit in them is cut at the end of the last ("…").
+	 * 1, the default: one line */
+	void setLines(int lines);
+	int lines() const { return lines_; }
 
 protected:
 	void resizeEvent(QResizeEvent *event) override;
@@ -38,8 +46,11 @@ protected:
 private:
 	void fit();
 	void wrapLines(bool on); /* word wrap and the height for width on or off, only for a text that does not fit */
+	void keepHeight();       /* one line's height at least; with setLines, exactly the lines' */
+	bool fitsLines(const QString &text, int room) const;
 	QString full_, toolTip_, shorter_;
 	bool cut_ = false;
 	bool wraps_ = false;
+	int lines_ = 1;
 	Qt::TextElideMode mode_ = Qt::ElideRight;
 };
