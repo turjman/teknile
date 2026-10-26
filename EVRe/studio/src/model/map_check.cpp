@@ -3,6 +3,8 @@
  * under the registers, errors first. */
 #include "model/device_map.h"
 
+#include "evre/registers.h"
+
 #include <QMap>
 #include <QObject>
 #include <algorithm>
@@ -17,6 +19,33 @@ QVector<MapIssue> checkMap(const DeviceMap &map) {
 	if ((map.usbVid == 0) != (map.usbPid == 0)) warning(-1, QObject::tr("usb: a vendor or a product ID alone"));
 	if (map.slave == 0)
 		error(-1, QObject::tr("slave 0 is the broadcast address, which no device answers: a device has 1 to 255"));
+
+	/* "auto_send": the limits are checked by the rates they leave, not by their numbers alone: 125 divides 8000 and
+	 * leaves none, 3000 divides nothing and leaves seven */
+	const MapProtocol &protocol = map.protocol;
+	bool limitsInRange = true;
+	for (const auto &[key, hz] : { std::pair{ QStringLiteral("max_hz"), protocol.autoSendMaxHz },
+				 std::pair{ QStringLiteral("tick_hz"), protocol.autoSendTickHz } })
+		if (hz != 0 && (hz < evre::AUTO_SEND_MIN_HZ || hz > evre::AUTO_SEND_BASE_HZ)) {
+			error(-1, QObject::tr("auto_send: %1 %2 is out of range (40 to 8000)").arg(key).arg(hz));
+			limitsInRange = false;
+		}
+	if (limitsInRange && protocol.autoSendLimited()) {
+		const std::vector<int> rates = evre::autoSendRatesFor(protocol.autoSendMaxHz, protocol.autoSendTickHz);
+		if (protocol.autoSendMax() > protocol.autoSendTick())
+			error(-1, QObject::tr("auto_send: max_hz %1 is above tick_hz %2: a device sends at most one frame a tick")
+					.arg(protocol.autoSendMax()).arg(protocol.autoSendTick()));
+		else if (rates.empty())
+			error(-1, QObject::tr("auto_send: no offered rate has a period of whole ticks at tick_hz %1 (8000 for a timer, "
+					"1000 for a 1 ms loop)").arg(protocol.autoSendTick()));
+		/* the top offered is the highest rate at or below max_hz: a max_hz between two rates reads as a promise the
+		 * list does not keep. At or above the protocol's 4000 Hz a device only makes more than is asked of it (8000 /
+		 * 8000 is a timer's): no warning */
+		else if (protocol.autoSendMaxHz && protocol.autoSendMaxHz != rates.front()
+				&& protocol.autoSendMaxHz < evre::AUTO_SEND_BASE_HZ / evre::AUTO_SEND_DIVIDERS[0])
+			warning(-1, QObject::tr("auto_send: max_hz %1 is not a rate the Studio offers; the top rate offered is %2 Hz")
+					.arg(protocol.autoSendMaxHz).arg(rates.front()));
+	}
 
 	QMap<QString, int> names;
 	for (int i = 0; i < map.regs.size(); i++) {

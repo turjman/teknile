@@ -40,11 +40,27 @@ map is in [STUDIO.md](STUDIO.md), chapter 16 and Part IV.
 | `slave` | integer 1 – 255 (0 is the broadcast address) | `1` | the slave address |
 | `usb` | `{ "vid", "pid" }` | none | the device's USB vendor and product ID (16-bit numbers) |
 | `login` | `{ "addr", "size" }` | none | after connecting, a token is written to `addr` (not 0) as UTF-8, cut or zero-padded to `size` bytes (1 – 65535, default 16) |
-| `protocol` | object | none | how the device is reached: `transport` (`"serial"`, `"tcp"`, `"usb"`, or several: `"serial, tcp"`), `baud`, `tcp_port`, `timeout_ms` (integers), `notes` |
+| `protocol` | object | none | how the device is reached: `transport` (`"serial"`, `"tcp"`, `"usb"`, or several: `"serial, tcp"`), `baud`, `tcp_port`, `timeout_ms` (integers), `auto_send` (`{ "max_hz", "tick_hz" }`: the Auto send rates the device makes, below), `notes` |
 | `groups` | object | none | notes per group: `{ "Power": { "notes": "…" } }` |
 | `extends` | string | none | an overlay: the path of the map this one changes, relative to this file (section 7) |
 | `registers` | array | `[]` | the registers (section 4) |
 | `streams` | array | none | the device's sample streams, Fast EVRe (section 9) |
+
+**Auto send limits.** AUTO_SEND (PROTOCOL.md) names the rates 8000 / (prescaler + 1) Hz, 4000 Hz to 40 Hz. A device
+whose frames are timed by a timer at 8000 Hz makes each exactly; one that sends from a main loop on a 1 ms tick makes
+at most 1000 frames a second, and other rates only as 1000 / n. `protocol.auto_send` says which the device makes, so a
+host offers only those:
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `max_hz` | integer&nbsp;40&nbsp;–&nbsp;8000 | `tick_hz` | the highest frame rate the device delivers |
+| `tick_hz` | integer&nbsp;40&nbsp;–&nbsp;8000 | `8000` | the device's timing resolution: a frame period is a whole number of ticks (8000: a timer, every prescaler exact) |
+
+A rate r = 8000 / (prescaler + 1) is offered when r <= `max_hz` and `tick_hz` % r == 0. With
+`{ "max_hz": 1000, "tick_hz": 1000 }` (a 1 ms main loop) that is 1000, 500, 250, 200, 100, 50 and 40 Hz. Limits that
+leave no rate (`tick_hz` 125), or a `max_hz` above `tick_hz`, are errors of the map; a `max_hz` under 4000 between two
+rates is a warning (the top rate offered is the one below it). Without `auto_send` every rate is offered. The limits
+are the map's, a layer above the protocol: the device is asked as before.
 
 ## 4. A register
 
@@ -130,7 +146,7 @@ A map with `"extends": "<path>"` changes another map (its base), which is read f
 8 levels at most):
 
 1. The overlay's top-level keys replace the base's; `null` removes the base's key. `registers` and `extends`
-   are not copied.
+   are not copied. An object key is replaced whole: an overlay that adds `auto_send` writes the whole `protocol`.
 2. Each overlay register is matched by `addr` to a base register:
    - found, with `"remove": true`: the base register goes;
    - found: its keys replace the base register's keys, `null` removes one (`addr` itself stays);
@@ -165,6 +181,13 @@ A status register with fields and a command register:
               { "name": "FAULT", "bits": "8", "access": "w1c" } ] },
 { "addr": "0xD0F0", "name": "COMMAND", "type": "u8", "access": "wo", "write": "action", "danger": true,
   "group": "System", "enum": { "1": "start", "2": "stop" } }
+```
+
+How a device on a 1 ms main loop is reached, with its Auto send limits:
+
+```json
+"protocol": { "transport": "serial", "baud": 115200,
+              "auto_send": { "max_hz": 1000, "tick_hz": 1000 } }
 ```
 
 `maps/example_device.json` in EVRe Studio is a complete map of the fake test device.

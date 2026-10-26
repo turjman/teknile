@@ -176,6 +176,9 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
+QLabel#autoSendNote, QLabel#autoSendRates, QLabel#baudIgnored { color: %MUTED%; }
+QLabel#autoSendNote[warn="true"], QLabel#autoSendRates[warn="true"] { color: %WARN%; }
+QLabel#baudLabel { color: %MUTED%; }
 QLabel#dumpBanner { color: %WARN%; padding: 0 2px; }
 QFrame#dumpBannerLine { background: %WARN%; border: none; }
 QLabel#editorEmpty { color: %WARN%; background: %WARNA%; border: 1px solid %WARN%; border-radius: 10px;
@@ -190,7 +193,9 @@ QLabel#liveDot[state="none"] { background: %MUTED%; }
 		/* input boxes; spin boxes without their arrow buttons. The edge in the accent while focused, and while the mouse
 		 * is over one, as a button's (the rules after them keep a disabled, read-only or out-of-range edge). The trigger's
 		 * line box with no line chosen: its "choose a line" muted, a prompt (the style sheet draws a combo's text in Text,
-		 * not in the placeholder colour QComboBox asks for) */
+		 * not in the placeholder colour QComboBox asks for). The Baud box's number muted on USB CDC: a rule for an editable
+		 * combo's line edit is not used (it takes the combo's colours) and :focus never reaches a palette, so the rule is
+		 * on the box, and "typing" (Sidebar, while its line edit has the focus) gives the text colour back */
 		R"(
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {
   background: %BG%; border: 1px solid %CONTROL%; border-radius: 7px; padding: 5px 8px;
@@ -202,6 +207,8 @@ QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabl
   color: %MUTED%; }
 QLineEdit:read-only { border-color: %BORDER%; color: %MUTED%; }
 QComboBox#triggerLine[prompt="true"] { color: %MUTED%; }
+QComboBox#baud[ignored="true"] { color: %MUTED%; }
+QComboBox#baud[ignored="true"][typing="true"] { color: %TEXT%; }
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox { min-height: 20px; max-height: 20px; }
 QAbstractItemView QLineEdit, QAbstractItemView QSpinBox, QAbstractItemView QDoubleSpinBox,
 QAbstractItemView QComboBox, QComboBox QLineEdit { min-height: 0px; max-height: 16777215px; }

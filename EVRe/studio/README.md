@@ -116,7 +116,8 @@ EVRe is a protocol of **teknile**.
   holds the chart on a level crossing, Auto, Normal or Single, as an oscilloscope.
 - **Math lines:** formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers.
 - **Auto send:** a device that can sends its read-only block by itself at a set rate; each frame is one chart
-  point and one CSV row.
+  point and one CSV row. Its map can say which rates the device really makes (`protocol.auto_send`), and only those
+  are offered; under the rate the sidebar says when fewer frames come than were asked for, and why less was asked.
 - **Fast streams** (Fast EVRe): a device that samples on its own clock sends numbered blocks; the sidebar starts
   and stops a map's streams, shows the samples a second fitted to the Studio's clock and counts every sample lost.
   Their channels are lines on the chart, from an hour down to single samples 10 µs apart, a spike of one sample
@@ -225,7 +226,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (754 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (772 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
 | `evre_map_test` | the map files without a window (25 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |

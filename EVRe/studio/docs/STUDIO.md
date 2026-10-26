@@ -501,13 +501,20 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 | Field | Range&nbsp;/&nbsp;default | Meaning |
 |---|---|---|
 | port | the&nbsp;ports&nbsp;found | Every serial port the operating system lists. The refresh button beside it (a circular arrow) looks for ports again. |
-| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too, and so do the rates in the list opened; the rate selected there is in the text colour on the pale accent, in both looks. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* |
+| Baud | editable&nbsp;list,&nbsp;default&nbsp;`115200` | 9600, 57600, 115200, 230400, 460800, 921600, 2000000, 3000000, 4000000, 6000000, 12000000 (an FTDI bridge's top), or any rate typed from 300 to 20000000. The list is a hint, not a limit. Only digits can be typed, and never a number past 20000000; emptied, the box reads *type a rate*. The number, the placeholder and the text cursor sit at the left, in Arabic too, and so do the rates in the list opened; the rate selected there is in the text colour on the pale accent, in both looks. Its tooltip: *Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).* While the Link row means USB CDC, the number is muted, like its label, and *ignored on USB CDC* stands under it (below). |
 | Link | Auto,&nbsp;USB&nbsp;CDC,&nbsp;UART;&nbsp;default&nbsp;Auto | What the port is: a USB CDC port or a UART. **Auto** tells them apart by the port's USB IDs and says what it found (*Auto: USB CDC*, *Auto: UART*); **USB CDC** (*full speed, baud ignored*) and **UART** (*Auto send kept under the baud rate*) say it outright. Saved at once (`link/serialKind`). |
 
 - **Port settings.** The port is opened at 8 data bits, no parity, one stop bit and no flow control. After opening, the Studio sets **DTR** on (many USB CDC devices send nothing until DTR is set) and clears the port's buffers. RTS is left as the driver sets it.
 - **The port list.** A USB port is listed as `COM10 · <description> · 0483:5740`: the port name, the driver's description, and the USB vendor and product IDs in hex, single spaces and a dot before each part. A port without USB IDs shows its description, if it has one. With no port at all, the list shows *no ports found*. A label longer than the box (Windows names a board's own USB port after its product string, so it can be anything) is cut with an ellipsis, never mid-word at the box's edge; the box's tooltip has the whole label, and the list opens as wide as its longest label, every port whole. A long label never widens the sidebar. In Arabic the label is one left-to-right piece.
 - **The map's USB IDs.** If the loaded map declares `"usb": { "vid", "pid" }` (see 16.2), a port with exactly those IDs is listed with the map's device name in place of the driver's description. The Studio picks that port by itself only when no port was selected before. This happens, for example, when the list said *no ports found* until the device was plugged in and the refresh button was clicked.
-- **Baud rate.** For USB CDC the baud rate does not matter, but for a real UART it must match the device. A rate out of 300 to 20000000, or an empty box, does not connect (3.5). A rate the driver refuses comes back as *COM10 did not open*, the system's text in the pill's tooltip and in the Log (3.8).
+- **Baud rate.** For USB CDC the baud rate does not matter, but for a real UART it must match the device. While the
+  Link row means USB CDC (chosen, or Auto for the port selected), the Baud row says so: the number is muted, like the
+  label, and a line of its own under the box reads *ignored on USB CDC* (on a UART the line goes). The Link box is
+  never narrower than its widest short text, so *Auto: USB CDC* is never cut. The label, the box and that
+  text share one tooltip: *The baud rate is ignored on USB CDC: the port runs at USB's speed whatever the number says.
+  It matters on a UART (Link).* The box stays a box to type in, with its frame and arrow, and its number is in the text
+  colour while it is typed in: the number is kept for the case Link is switched to UART. Baud's and Link's boxes
+  start and end together. On a UART the row is as before. A rate out of 300 to 20000000, or an empty box, does not connect (3.5). A rate the driver refuses comes back as *COM10 did not open*, the system's text in the pill's tooltip and in the Log (3.8).
 - **USB CDC or UART.** A USB CDC port (a board's own USB, a virtual COM port) runs at USB's speed whatever the baud rate says: the hardware ignores the number. A UART, or a USB-to-UART bridge, really runs at the baud rate. The difference matters to Auto send (13.8), which a UART must leave room for. On **Auto** the Studio decides by the port's USB IDs, not by its description (Windows names a CDC port after the device's own product string):
   - no USB vendor ID (a motherboard's COM port, Linux's `ttyS`): a UART;
   - a USB-to-UART bridge by its vendor ID: FTDI `0x0403`, Silicon Labs `0x10C4` (CP210x), WCH `0x1A86` (CH340, CH343), Prolific `0x067B` (PL2303), Microchip `0x04D8` with the product `0x00DF` or `0x00DD` (MCP2200, MCP2221): a UART (the baud rate is real on the bridge's far side);
@@ -616,7 +623,7 @@ height only while a reason takes more than one line.
 |---|---|---|
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
-| *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`, or `COM7 @ 115200` for serial. |
+| *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`; for serial `COM7 @ 115200` on a UART, where the number is the link's speed, and `COM13 · USB CDC` on USB CDC, where the baud rate means nothing (the tooltip adds *the baud rate 12000000 is ignored on USB CDC*). The kind is the one Connect opened the link with: a Link row changed while connected counts at the next connect. The serial name is one left-to-right piece, so Arabic reads it unturned. The Log's line keeps the number: *connected: COM13 @ 12000000*, after *opening COM13 at 12000000 (USB CDC: the baud rate is ignored)*. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, it is shown whole on two lines (or more), never cut. The tooltip adds the system's text, and the Log has both. |
 
 <picture>
@@ -2811,7 +2818,8 @@ A device whose STATUS has `CAP_AUTO_SEND` (bit 11) can send its read-only block 
 | Part | Behaviour |
 |---|---|
 | The&nbsp;box | Offered only with one device on the link (not on a bus: devices sending by themselves would collide on a shared link), once connected and STATUS (read at connect) has `CAP_AUTO_SEND`. Otherwise disabled; its tooltip says why. Never saved: it changes the device, so it is off at every start. |
-| The&nbsp;rate | The 16 rates the device makes exactly, 8000 Hz divided by 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 (prescaler + 1): 4000, 2000, 1600, 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 Hz. The prescaler is the device timer's reload and a reload of 0 stops a timer, so it is never 0 (a device replaces a 0: by 1, or by its default 0x4F); the protocol's rates are 4000 Hz to 40 Hz. Default 100 Hz, saved (`poll/autoSendHz`). A change while on is written to the device at once. |
+| The&nbsp;rate | The 16 rates the device makes exactly, 8000 Hz divided by 2, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 80, 100, 125, 160, 200 (prescaler + 1): 4000, 2000, 1600, 1000, 800, 500, 400, 320, 250, 200, 160, 100, 80, 64, 50, 40 Hz. The prescaler is the device timer's reload and a reload of 0 stops a timer, so it is never 0 (a device replaces a 0: by 1, or by its default 0x4F); the protocol's rates are 4000 Hz to 40 Hz. A map that declares the device's limits (`protocol.auto_send`, below) leaves only the rates the device makes: a device on a 1 ms tick lists 1000, 500, 250, 200, 100, 50, 40 Hz. Default 100 Hz, saved (`poll/autoSendHz`). A change while on is written to the device at once. The tooltip names the rates and the map's limits (*The rates this device makes: 1000, 500, 250, 200, 100, 50, 40 Hz (its map: at most 1000 Hz, a 1000 Hz tick).*), or, without limits, says a map can declare them. |
+| The&nbsp;note | Two lines under the row, always there (the card keeps its height), the text wrapped between words, the rate first and then why; cut with "…" only when even two lines are too short, the whole in its tooltip; empty when there is nothing to say. One text at a time, the first that applies: what comes short of what was asked (warn colour, below); the rate a UART lowered, muted: *250 Hz: the UART at 115200 baud caps the 1000 Hz asked* (tooltip: the Log's sentence); the saved rate the map's device does not make, muted: *1000 Hz: the saved 4000 Hz is over the map's top rate*, or *500 Hz: the saved 800 Hz is not one of the map's rates* (800 Hz saved, a 1 ms tick). |
 
 What the Studio does:
 
@@ -2825,7 +2833,33 @@ never sends a frame still gives samples. From the first frame on, a poll gives n
 - **No frames:** when not one frame has come 2 s after the device took AUTO_SEND, something between the Studio and the device does not pass them on (a gateway that answers requests from its own copy of the device and streams nothing). The Studio switches it off again (on the device too), unticks the box, says so in the Log (*no frame came in 2 s ...*), and the registers are polled as before.
 - **Not offered:** the box is greyed and its rate list says why in a word or two in place of a rate: *not connected*, *not offered* (the device's STATUS has no CAP_AUTO_SEND) or *not on a bus*. The box's tooltip has the whole reason; the rate chosen is kept and comes back with the offer.
 - **A lost link** keeps it: after the reconnect (Reconnect by itself), once STATUS says the device can, it is switched on again.
-- **A bus:** loading one switches it off first; a broadcast that sets AUTO_SEND is refused (3.10).
+- **A bus:** loading one switches it off first; a broadcast that sets AUTO_SEND is refused (3.10). The rate list keeps the one device's map's rates.
+
+**The device's limits.** A device whose frames are timed by a timer at 8000 Hz makes every rate of the list exactly. One
+that sends from a main loop on a 1 ms tick makes at most 1000 frames a second, and other rates only as 1000 / n: asked
+for 4000 Hz it sends 1000, asked for 727 Hz it sends 1000 too. The protocol cannot say so; the map can, in its
+`protocol` object (MAP_FORMAT.md section 3): `"auto_send": { "max_hz": 1000, "tick_hz": 1000 }`. `max_hz` is the highest
+rate the device delivers, `tick_hz` its timing resolution (a frame period is a whole number of ticks); both are
+integers 40 to 8000, `tick_hz` 8000 when not given (a timer), `max_hz` the tick's when not given. The list then holds a
+rate r of the 16 when r <= `max_hz` and `tick_hz` % r == 0. The Map settings' Protocol page has the two boxes and the
+rates they leave (30.7); the map's checks refuse limits out of range, a `max_hz` above `tick_hz` and a tick that
+leaves no rate, and warn of a `max_hz` between two rates (30.6).
+
+- **A saved rate the map's device does not make** (4000 Hz saved, a map with a 1000 Hz top): the list shows the
+  nearest rate at or below it (the lowest when none is below), never a faster one, and the note says so. The setting is
+  not changed, so the next map that allows 4000 Hz gets it back. A rate picked (the one shown too) is saved and the
+  note goes.
+- **A UART's cap among the device's rates:** the cap steps down inside the list, so the lower of the two limits wins: a
+  device on a 1 ms tick at 1000 Hz on 115200 baud goes to 100 Hz (its list), not to 160 Hz (the full list's, which it
+  cannot make). The note names the UART.
+- **What comes, measured:** the frames a second (the engine's 1 s average, as in the rate line) against the rate
+  written. Under 90% for 2 s, the note says *only 727/s of 1000 Hz: the device, the link or the PC's load* in the
+  warn colour; its tooltip has the numbers: *Asked 1000 Hz (CONFIG written with prescaler 7); 727 frames a
+  second came over the last 2 s, more than 10% under. The device's timer or loop may not make this rate (its map can
+  say so: "auto_send"), the link may drop frames, or this PC is too busy to read them.* One reading at 90% or more takes
+  it away. Nothing counts in the first 3 s after Auto send is switched or its rate changed (the first second's window is
+  partial and the frames start late), nor while it is off or the link is down. Poll does not matter: the frames come
+  whatever Poll does. It works for a map that declares nothing too: it compares with the rate asked.
 
 The sidebar's rate line while on: *Auto send 99.8/s · 10.0 polls/s* (the frames a second, then the polls of the rest; past 100 a second without decimals, so it stays one line at 8000 and 4000 in Linux's wider fonts too). The "slower than asked" hint (13.6) stays empty meanwhile: the polls then read only what the frames leave.
 
@@ -2994,7 +3028,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `link/inflightTcp` | `4` | on&nbsp;change | In flight for TCP. |
 | `link/inflightSerial` | `1` | on&nbsp;change | In flight for serial. |
 | `poll/interval` | `100` | on&nbsp;close | Poll interval, ms (0 = max). |
-| `poll/autoSendHz` | `100` | on&nbsp;change | Auto send's rate, Hz (13.8): one of 8000 / (prescaler + 1) for the 16 prescalers offered (4000 Hz to 40 Hz); another number, an 8000 saved by an older version too, takes the nearest. |
+| `poll/autoSendHz` | `100` | on&nbsp;change | Auto send's rate, Hz (13.8): one of 8000 / (prescaler + 1) for the 16 prescalers offered (4000 Hz to 40 Hz); another number, an 8000 saved by an older version too, shows the nearest rate at or below. A rate the map's device does not make (`protocol.auto_send`) is shown as the nearest it makes at or below, and the setting is kept until a rate is picked. |
 | `api/on` | `false` | on&nbsp;close | Serve API. |
 | `api/network` | `false` | on&nbsp;close | Network (not only this computer). |
 | `api/evrePort` | `1219` | never&nbsp;(read&nbsp;only) | The EVRe pass-through port. Change it by editing the settings. |
@@ -4605,7 +4639,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
-| `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names) |
+| `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names), `AUTO_SEND_DIVIDERS` (the 16 prescalers + 1 of 13.8) and `autoSendRatesFor(maxHz, tickHz)` (the rates a map's `auto_send` limits leave; the checker, the Map settings and the sidebar use it) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
 | `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, the Dump tab's store (its replies, each fast stream's newest block) |
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
@@ -4628,7 +4662,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection, devices, map, polling and recording, fast streams, and API cards; link settings |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
-| `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon) |
+| `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon; `setLines`: always that many lines tall, the text wrapped between words and cut at the end of the last, Auto send's note) |
 | `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
 | `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
 | `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
@@ -4737,11 +4771,13 @@ pass-through checks compare frames byte for byte (chapter 26).
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
   (19.3), so the window waits until the engine has stopped.
 - Called from any thread: `table()`, `now()`, `stats()`, `takeSamples()`, `takeFrames(dropped)`, `takeDumps(blocks)` (every block's `DumpReply` when one moved), and the static
-  `autoSendDividers()` (the 18 prescalers + 1 of 13.8) and `autoSendPrescalerFor(prescaler, baud, streamBytes)` (the
-  serial link's cap, public for the tests); `autoSendBaudLimit()` (tests: the baud rate the cap uses, 0 for none).
+  `autoSendDividers()` (the 16 prescalers + 1 of 13.8), `autoSendDividersFor(protocol)` (those a map's `auto_send`
+  leaves) and `autoSendPrescalerFor(prescaler, baud, streamBytes[, dividers])` (the serial link's cap, stepping among
+  `dividers`, all 16 without them; public for the tests); `autoSendBaudLimit()` (tests: the baud rate the cap uses, 0
+  for none). `setMap` takes the one device's rates from its map, so the cap never picks one it does not make.
 - AUTO_SEND's signals: `autoSendSet(on, hz, err)` (switched, or not and why), `autoSendSlowed(why)` (a serial link
   cut the rate), `autoSendStopped()` (CONFIG shows it cleared). `Stats::autoSend` and `Stats::autoSendHz` give the
-  sidebar its rate line.
+  sidebar its rate line and the measured note under the Auto send row.
 - Fast EVRe: `setFastTrigger(stream, watch)` (posted: the chart's trigger on a channel, -1 none; each block's crossings
   in `FastBlock::crossings`, the blocks still queued scanned again by `rescanWaiting`, public for the tests, 23.10; `fastTriggerWatch(stream)`, what it watches now, for the tests); `setFastStream(stream, on)` (posted; the stream's index in `DeviceMap::streams`); signals
   `fastStreamSet(stream, on, rate, err)`, `fastStreamNote(stream, text, stopped)` and `fastRecorded(text)` (a stream's
@@ -4911,7 +4947,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), signal `autoSendChanged`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
 | `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`; signals `writeRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
@@ -6182,6 +6218,25 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   device killed and started again: after the reconnect bit 3 and prescaler 79 are set again by themselves; the
   device's CONFIG cleared by another client: the Log says *the device stopped auto send (reset?)* once, the box
   unticks, it stays off. The window then connects back to the Python fake device.
+- **The device's Auto send limits** (`autoSendLimits`, after Auto send). The rates `evre::autoSendRatesFor` leaves
+  (8000 / 8000 and none given: all 16; a 1 ms tick: 1000, 500, 250, 200, 100, 50, 40; tick 3000 the same; tick 125
+  none; 1000 / 8000: the 13 up to 1000); the checker's four errors and its warning from maps made for them, none for
+  the example map, 8000 / 8000 or 1000 / 1000; the Map settings' Protocol page (the two boxes loaded and saved by
+  OK, *Rates offered* following them, *none: ...* in the warn colour at tick 125, *none: a value is out of range (40 to
+  8000)* at a top rate of 20 Hz or a tick of 30 Hz). A copy of the example map with
+  `auto_send` 1000 / 1000 in a temporary folder: the list holds its 7 rates, the example map 16, a new sidebar 16;
+  4000 Hz saved shows 1000 Hz with *1000 Hz: the saved 4000 Hz is over the map's top rate* under
+  the row, `poll/autoSendHz` still 4000 (the example map shows 4000 Hz again), the 1000 Hz shown picked: saved, the
+  note gone. `autoSendPrescalerFor(7, 115200, 32)`: 160 Hz with the 16 rates, 100 Hz with a 1 ms tick's. The UART's
+  note (*100 Hz: the UART at 115200 baud caps the 1000 Hz asked*, muted, the Log's sentence its tooltip), gone with
+  Auto send off. The note two lines tall with a text, with none and with 24 words; the map's and the UART's notes whole
+  at the sidebar's width, the 24 words cut with "…" at the end of the second line, whole in the tooltip. The measured note fed `Stats` with the
+  clock moved on by `Sidebar::shiftAutoSendClock`: 700 of 1000 for 2 s says *only 700/s of 1000 Hz: the device,
+  ...* in the warn colour, nothing in the first 3 s nor after 1 s, 950 takes it away, Auto send off clears it. End to
+  end, `evre_fake_fast --tick-hz 1000` on port 1236: the example map at 4000 Hz gets *only 1000/s of 4000 Hz:*
+  within 9 s; the map's limits edited to 1000 / 1000 while on: the list at 1000 Hz and CONFIG with
+  prescaler 7, undone: 4000 Hz and prescaler 1; the limited map loaded with the box left on: 1000 Hz and prescaler 7
+  again; at 1000 Hz no note after 5 s. The step ends on a copy of the example map kept to the end of the run.
 - **The serial link** (`serialKind`, after Auto send). No real port: the ports opened do not exist. The kind by the
   USB IDs (`Sidebar::serialKindOf`: none, FTDI and MCP2221 a UART; another Microchip ID and ST's VCP USB CDC; Linux's
   `ttyUSB` a UART, `ttyACM` USB CDC; the debug probes and an Arduino's 16U2 a UART, a Pico's and a Leonardo's own USB
@@ -6204,6 +6259,17 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   list's rates aligned left, a rate typed and added with Enter too, one drawn at the left of its row; the list opened
   in both looks, its selected rate 4.5:1 on its row, read from the drawn row). It ends connected to the Python fake
   device over TCP.
+- **USB CDC's look** (`serialUsbCdcLook`, after the serial link). `Sidebar::serialLinkText`: *COM13 · USB CDC* and
+  *COM13 @ 115200*, each one left-to-right piece. The Baud row with two ports added (ST's VCP and one without USB
+  IDs): on Auto for the CDC port and with USB CDC chosen, the label and the box `ignored`, *ignored on USB CDC*
+  shown, one tooltip on the three, the box enabled, editable and as wide as Link's; on Auto for the other port and
+  with UART chosen, as before. The number as painted (the line edit grabbed, its strongest pixel's grey step from the
+  box's background): no further than the muted colour's on USB CDC, clearly further while typed in (a focus-in sent to
+  it) and on a UART. A sidebar of its own in English and in Arabic with ST's port: the Link box's text field as wide
+  as *Auto: USB CDC* (the card shown first on a port without USB IDs, then ST's port chosen), *ignored on USB CDC*
+  whole on its line between the Baud box and the Link box, one row gap under Baud as Link is on a UART (the line gone
+  whole there). The pill's long reason waits for the layouts above it (a few event passes) before it is measured. The Arabic of *Auto send %1/s*,
+  the note's *%1/s* and Show values' *%1 / s*: each rate between U+2066 and U+2069.
 - **A bus** (`busDevices`, before the login steps). It starts `evre_fake_fast` beside the test on port 1226 as two
   devices of this map (slaves 1 and 2) and writes two bus files in a temporary folder. With the first (D1, D2): the
   table holds both devices' registers named `D1_` and `D2_` and shows the selected one; selecting D2 shows its
@@ -6825,7 +6891,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 754 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 772 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -6963,7 +7029,9 @@ slave address, map and memory on the same port. It differs from the Python devic
   `--fast-lose N` (every N-th block is not sent: its records keep their numbers, the next block says LOST),
   `--fast-ppm P` (the sample clock P parts in a million fast; negative, slow), `--fast-first K` (the first block
   starts at record K: just below 2^32 walks a host across the wrap), `--fast-rate R` (R records a second in place of
-  the map's rate; the rate register says so). `maps/example_fast.json` is the map it serves in the fast tests;
+  the map's rate; the rate register says so). For Auto send, `--tick-hz N` plays a device whose frames are timed by
+  a tick of N Hz, not a timer (a main loop on a 1 ms tick: 1000): a rate asked for is rounded to N / n and is at most
+  N (4000 Hz asked gives 1000, 727 Hz gives 1000, 100 Hz gives 100); the default, 8000, is today's exact device. `maps/example_fast.json` is the map it serves in the fast tests;
   `tests/fake_device.py` serves no stream. A device more than a second behind (a stall) drops what it could not
   send, and its next block says LOST.
 - With a map that has no `device_id`, it reports DEVICE_ID 0, where the Python device reports `0x0001`.
@@ -7372,6 +7440,8 @@ register (a finding on the map itself opens the Map settings). With nothing foun
 | special values on a byte array; *write-1-to-clear* on a float | error |
 | min&nbsp;above&nbsp;max | error |
 | slave&nbsp;0&nbsp;(the&nbsp;broadcast&nbsp;address) | error |
+| `auto_send`: *max_hz* or *tick_hz* out of 40 to 8000, *max_hz* above *tick_hz* (*a device sends at most one frame a tick*), a tick that leaves no rate (*no offered rate has a period of whole ticks at tick_hz 125 ...*) | error |
+| `auto_send`: a *max_hz* under 4000 that is not one of the rates (*... is not a rate the Studio offers; the top rate offered is 500 Hz*) | warning |
 | registers&nbsp;that&nbsp;share&nbsp;bytes | warning |
 | fields that share bits, a field without a name | warning |
 | value names on a float, names on a register never read | warning |
@@ -7388,7 +7458,7 @@ The checks never stop a save: a map under construction may be incomplete.
 | Page | Boxes |
 |---|---|
 | Device | device name, description, device ID (checked when connecting, 3.7), slave address, USB vendor and product ID (mark its port, 3.2), login: the token register and its size (3.6) |
-| Protocol | transport (serial, tcp, usb, or several), baud rate, TCP port, answer timeout, notes; the byte order is always little endian |
+| Protocol | transport (serial, tcp, usb, or several), baud rate, TCP port, answer timeout, **Auto send top rate** and **Auto send tick** (`protocol.auto_send`, 13.8: 40 to 8000 Hz, *not given (the tick)* and *not given (8000)* at 0) with **Rates offered** under them, the rates the two leave as they are typed (*1000, 500, 250, 200, 100, 50, 40 Hz*, or *none: no offered rate has a period of whole ticks* in the warn colour, *none: a value is out of range (40 to 8000)* when 1 to 39 is typed), notes; the byte order is always little endian |
 | Notes | notes on the whole map, and a note per group |
 | Streams | the map's fast streams (Fast EVRe, 13.9, 16.13): the list on the left (**+&nbsp;Stream**, **Remove**), the selected one's name, its window (**Address** and **Size**), its rate in samples a second, its **Enable** and **Rate register** (the map's registers offered, any name typed), its description, and its channels in a table: name, type (`u8` … `i32`, `f32`), unit, scale, offset, decimals, description (**+&nbsp;Channel**, **Remove&nbsp;channel**) |
 

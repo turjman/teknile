@@ -4,7 +4,8 @@
  *   Device     name, description, device ID (checked when connecting), slave
  *              address, USB vendor and product ID (mark its serial port)
  *   Login      the register the token is written to, and its size
- *   Protocol   transport, baud rate, TCP port, answer timeout, notes
+ *   Protocol   transport, baud rate, TCP port, answer timeout, the Auto send limits (top rate, tick) with the
+ *              rates they leave, notes
  *   Notes      on the whole map, and on each group
  *   Streams    its fast streams (Fast EVRe): each its name, window (Address and Size), rate, the registers
  *              that switch it and give its rate, and the channels of one record; the map's checks of
@@ -54,6 +55,7 @@ private:
 	QWidget *buildStreams();
 	void showStream(int index);   /* the form from streams_[index] */
 	void takeStream();            /* the form into streams_[current_] */
+	void showAutoSendRates();     /* the Rates offered row from the Auto send boxes */
 	void refreshStreams();        /* the list's names, the record's size, the checks */
 	void load(const DeviceMap &map);
 	/* the boxes into `map`; false with why if a box holds something that is not a value */
@@ -61,7 +63,8 @@ private:
 
 	MapDocument *doc_;
 	QLineEdit *device_, *desc_, *deviceId_, *usbVid_, *usbPid_, *loginAddr_;
-	QSpinBox *slave_, *loginSize_, *baud_, *tcpPort_, *timeout_;
+	QSpinBox *slave_, *loginSize_, *baud_, *tcpPort_, *timeout_, *autoSendMax_, *autoSendTick_;
+	QLabel *autoSendRates_; /* the rates the two boxes leave, live */
 	QCheckBox *login_;
 	QComboBox *transport_;
 	QPlainTextEdit *protocolNotes_, *notes_;
