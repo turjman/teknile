@@ -112,10 +112,11 @@ constexpr int STRIP_ALPHA = 170;     /* the lines on the memory strip, a little 
 constexpr qint64 RELEASE_NS = 3000000; /* a frame's time for freeing what the fast stores' trims let go */
 constexpr qint64 RELEASE_SLICE = 4 << 20; /* bytes of a summary's pages discarded at a time (1.3 to 2.6 ms) */
 constexpr qsizetype POINTS_PER_STRIPE = 20000; /* the lines' points that make drawing on threads worth it */
-/* the bars' device pixels that do the same, about 2 ms on one thread: a fast line's bars the whole plot high in every
- * column are a few thousand points, but on a 1080 x 470 chart at 225 % 2 million pixels, and with the stroke joining
- * them they took 8.5 ms (a column is a logical pixel, its bar 3 device pixels wide) */
-constexpr double BAR_PIXELS_PER_STRIPE = 5e5;
+/* the bars' rows that do the same, about 2 ms on one thread with the stroke joining them: a fill costs a call per
+ * row it fills, hardly its pixels (a bar is 3 device pixels wide at 225 %). Counted after merging (mergeBars): a fast
+ * line's bars the whole plot high in every column were 0.93 million rows on a 1080 x 470 chart at 225 % and are a
+ * thousand, one thread's work; a zoomed-in fast sine, whose bars share few rows, still takes stripes */
+constexpr double BAR_ROWS_PER_STRIPE = 1.5e5;
 constexpr int STRIPE_OVERLAP = 8; /* device pixels each stripe draws past its edges: an image's own edge pixels are
                                      antialiased a little differently, and are never shown */
 constexpr double FRAME_SHARE = 0.6;            /* the chart's frames take at most this share of the thread */
@@ -4666,28 +4667,157 @@ QPolygonF ChartView::toPolyline(const QVector<Bin> &bins, double columnSeconds, 
 	return poly;
 }
 
+/* Bars in x order that touch or overlap in x and share rows, filled as one rect over the rows they all share and
+ * each bar's rows above and below that as its own: the same union of pixels, so with an opaque colour on whole
+ * device pixels the same picture, but far fewer rows to fill (a fill's cost is a call per row; a fast line's bars the
+ * whole plot high are one rect). A run grows only while it saves at least as many rows as before (m bars sharing h
+ * rows save (m - 1) h); what is left above and below gets `passes` more such passes (a noisy band's edges) */
+void ChartView::mergeBars(const QVector<DeviceBar> &bars, QVector<DeviceBar> &out, int passes) {
+	QVector<DeviceBar> above, below;
+	for (qsizetype k = 0; k < bars.size();) {
+		int top = bars[k].y0, bottom = bars[k].y1, right = bars[k].x1;
+		qsizetype end = k + 1;
+		for (; end < bars.size(); end++) {
+			const DeviceBar &b = bars[end];
+			if (b.x0 < bars[end - 1].x0 || b.x0 > right) break; /* not touching: the union would not be one rect */
+			const int t = std::max(top, b.y0), u = std::min(bottom, b.y1);
+			if (u <= t || qint64(u - t) * (end - k) < qint64(bottom - top) * (end - k - 1)) break;
+			top = t;
+			bottom = u;
+			right = std::max(right, b.x1);
+		}
+		if (end - k == 1) {
+			out << bars[k];
+		} else {
+			out << DeviceBar{ bars[k].x0, right, top, bottom };
+			for (qsizetype j = k; j < end; j++) {
+				if (bars[j].y0 < top) above << DeviceBar{ bars[j].x0, bars[j].x1, bars[j].y0, top };
+				if (bars[j].y1 > bottom) below << DeviceBar{ bars[j].x0, bars[j].x1, bottom, bars[j].y1 };
+			}
+		}
+		k = end;
+	}
+	for (const QVector<DeviceBar> *left : { &above, &below }) {
+		if (passes > 0) mergeBars(*left, out, passes - 1);
+		else out << *left;
+	}
+}
+
+/* each bar snapped to whole device pixels: the same pixels on p and on a stripe (a stripe lies on whole device
+ * pixels, its transform p's shifted by whole pixels) */
+QVector<ChartView::DeviceBar> ChartView::crispBars(const QTransform &toDevice, const QRectF *bands, qsizetype count,
+		bool merge) {
+	QVector<DeviceBar> bars;
+	bars.reserve(count);
+	for (qsizetype k = 0; k < count; k++) {
+		const QRectF d = toDevice.mapRect(bands[k]);
+		const int x0 = int(std::round(d.left())), x1 = std::max(x0 + 1, int(std::round(d.right())));
+		const int y0 = int(std::round(d.top())), y1 = std::max(y0 + 1, int(std::round(d.bottom())));
+		bars.push_back(DeviceBar{ x0, x1, y0, y1 });
+	}
+	if (!merge || bars.size() < 2) return bars;
+	QVector<DeviceBar> merged;
+	merged.reserve(bars.size());
+	mergeBars(bars, merged, 1);
+	return merged;
+}
+
+/* A segment of a thin stroke (one antialiased cosmetic line) touches the two pixels nearest its line across it and
+ * reaches half a pixel past its ends (its cap) and a pixel more (the ends' partial pixels) along it: when all of that
+ * lies inside one bar, or inside the rows two touching bars share, the segment is drawn in the line's colour over the
+ * same colour and changes nothing (1 in a channel at most, the blend's rounding). Such runs are left out: in a fast
+ * line's bars the whole plot high that is the whole stroke, half of the lines' cost. Each piece keeps a stub of the
+ * segment beside the break, so its new end and cap lie inside the bar too; a run shorter than HIDDEN_MIN device
+ * pixels stays (a piece costs a stroke's call) */
+qsizetype ChartView::leaveOutHidden(const QTransform &toDevice, const QVector<DeviceBar> &bars, QPolygonF &poly,
+		QVector<qsizetype> &breaks) {
+	constexpr double HIDDEN_MIN = 384, STUB = 2; /* device pixels */
+	const qsizetype n = poly.size();
+	if (n < 2 || bars.isEmpty()) return 0;
+	QVector<QPointF> d(n);
+	for (qsizetype j = 0; j < n; j++) d[j] = toDevice.map(poly[j]);
+	QVector<char> begins(n + 1, 0), hidden(n, 0);
+	for (qsizetype b : std::as_const(breaks)) begins[b] = 1;
+	const auto inside = [&](int x0, int x1, int y0, int y1) { /* pixels x0..x1, y0..y1 */
+		const auto at = std::upper_bound(bars.begin(), bars.end(), x0, [](int x, const DeviceBar &b) { return x < b.x1; });
+		if (at == bars.end() || at->x0 > x0) return false;
+		if (x1 < at->x1) return y0 >= at->y0 && y1 < at->y1;
+		const auto next = at + 1;
+		return next != bars.end() && next->x0 <= at->x1 && next->x0 >= at->x0 && x1 < next->x1
+				&& y0 >= std::max(at->y0, next->y0) && y1 < std::min(at->y1, next->y1);
+	};
+	/* across the segment: the two pixels nearest its line, shifted by half its slope at a cap */
+	const auto across = [](double lo, double hi, double slope, int &p0, int &p1) {
+		p0 = int(std::floor(lo - slope / 2 - 0.5));
+		p1 = int(std::floor(hi + slope / 2 - 0.5)) + 1;
+	};
+	const auto along = [](double lo, double hi, int &p0, int &p1) { /* along it: its cap and the ends' partial pixels */
+		p0 = int(std::floor(lo - 1.5));
+		p1 = int(std::floor(hi + 1.5));
+	};
+	for (qsizetype j = 0; j + 1 < n; j++) {
+		if (begins[j + 1]) continue;
+		const QPointF a = d[j], b = d[j + 1];
+		const double dx = std::fabs(b.x() - a.x()), dy = std::fabs(b.y() - a.y());
+		int x0, x1, y0, y1;
+		if (dy >= dx) {
+			across(std::min(a.x(), b.x()), std::max(a.x(), b.x()), dy > 0 ? dx / dy : 0, x0, x1);
+			along(std::min(a.y(), b.y()), std::max(a.y(), b.y()), y0, y1);
+		} else {
+			across(std::min(a.y(), b.y()), std::max(a.y(), b.y()), dy / dx, y0, y1);
+			along(std::min(a.x(), b.x()), std::max(a.x(), b.x()), x0, x1);
+		}
+		hidden[j] = inside(x0, x1, y0, y1);
+	}
+	const auto stub = [&](qsizetype from, qsizetype to) { /* STUB device pixels from `from` towards `to` */
+		const double length = std::hypot(d[to].x() - d[from].x(), d[to].y() - d[from].y());
+		return poly[from] + (poly[to] - poly[from]) * std::min(1.0, STUB / std::max(length, 1e-9));
+	};
+	QPolygonF out;
+	QVector<qsizetype> outBreaks;
+	out.reserve(n);
+	qsizetype left = 0;
+	for (qsizetype j = 0; j < n;) {
+		if (begins[j] && !out.isEmpty()) outBreaks << out.size();
+		out << poly[j];
+		qsizetype end = j;
+		double length = 0;
+		for (; end + 1 < n && hidden[end]; end++)
+			length += std::max(std::fabs(d[end + 1].x() - d[end].x()), std::fabs(d[end + 1].y() - d[end].y()));
+		if (end > j && length >= HIDDEN_MIN) {
+			out << stub(j, j + 1);
+			outBreaks << out.size();
+			out << stub(end, end - 1);
+			left += end - j;
+			j = end;
+			continue;
+		}
+		for (qsizetype k = j + 1; k < end; k++) out << poly[k];
+		j = std::max(end, j + 1);
+	}
+	if (left == 0) return 0;
+	poly = out;
+	breaks = outBreaks;
+	return left;
+}
+
 /* a line's bars, plain fills, antialiased: an edge on half a pixel is the same partly covered pixel whether it is
  * drawn here or on a stripe (without, the two rounded it to different sides). crisp (a fast line, a bar in nearly
  * every column): each bar snapped to whole device pixels and filled without antialiasing, the same pixels here and on
  * a stripe (a stripe lies on whole device pixels), at a fraction of the cost (two such lines took 9 ms antialiased;
- * fillRect without antialiasing is the raster engine's fastest path, drawRects went through its general one) */
-void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp) {
+ * fillRect without antialiasing is the raster engine's fastest path, drawRects went through its general one).
+ * merge: the bars merged over the rows they share, only for an opaque colour (a colour seen through would show
+ * where bars overlap, and merging takes the overlaps away) */
+void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, const QColor &color, bool crisp, bool merge) {
 	if (count <= 0) return;
 	if (crisp) {
 		/* snapped in the device's pixels, then back into p's coordinates: whole device pixels each way (the device's
 		 * transform holds the widget's place in the window too, which drawing in it would count twice) */
 		const QTransform toDevice = p.deviceTransform(), back = toDevice.inverted();
-		QVector<QRectF> rects;
-		rects.reserve(count);
-		for (qsizetype k = 0; k < count; k++) {
-			const QRectF d = toDevice.mapRect(bands[k]);
-			const double x0 = std::round(d.left()), x1 = std::max(x0 + 1, std::round(d.right()));
-			const double y0 = std::round(d.top()), y1 = std::max(y0 + 1, std::round(d.bottom()));
-			rects.push_back(back.mapRect(QRectF(QPointF(x0, y0), QPointF(x1, y1))));
-		}
+		const QVector<DeviceBar> bars = crispBars(toDevice, bands, count, merge && color.alpha() == 255 && p.opacity() >= 1);
 		p.save();
 		p.setRenderHint(QPainter::Antialiasing, false);
-		for (const QRectF &r : std::as_const(rects)) p.fillRect(r, color);
+		for (const DeviceBar &b : bars) p.fillRect(back.mapRect(QRectF(QPointF(b.x0, b.y0), QPointF(b.x1, b.y1))), color);
 		p.restore();
 		return;
 	}
@@ -4699,7 +4829,7 @@ void ChartView::fillBands(QPainter &p, const QRectF *bands, qsizetype count, con
 }
 
 /* The lines, clipped to the plot (with room for their thickness). Many points or
- * many bars' pixels: the plot is cut into vertical stripes on whole device pixels,
+ * many bars' rows: the plot is cut into vertical stripes on whole device pixels,
  * each drawn on a thread into an image of its own (every line's part in it, a
  * little past its edges), then the stripes side by side: the same pixels as drawn
  * on p. */
@@ -4745,23 +4875,38 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	 * whole height of each column cost the most of a frame */
 	QVector<char> thin(lines.size());
 	qsizetype points = 0;
-	double barPixels = 0; /* the bars' area, a fill's cost: their points alone kept a full-height fast line on one thread */
+	/* the rows the bars fill, a fill's cost (their points alone kept a full-height fast line on one thread): a fast
+	 * line's as merged, so a picture that merges into a few rects is not cut into stripes it no longer needs */
+	qint64 barRows = 0;
+	const QTransform toDevice = p.deviceTransform();
+	segmentsHidden_ = 0;
 	for (qsizetype i = 0; i < lines.size(); i++) {
 		thin[i] = 2 * bands[i].size() > lines[i].bins.size();
+		const bool opaque = lines[i].series->color.alpha() == 255 && p.opacity() >= 1;
+		if (lines[i].series->fast && thin[i] && opaque && hiddenStroke_) /* the stroke its bars hide, left out */
+			segmentsHidden_ += leaveOutHidden(toDevice, crispBars(toDevice, bands[i].constData(), bands[i].size(), false),
+					polys[i], breaks[i]);
 		points += polys[i].size() + 2 * bands[i].size();
-		for (const QRectF &band : std::as_const(bands[i])) barPixels += band.width() * band.height();
+		if (lines[i].series->fast) {
+			const bool merge = barMerge_ && opaque;
+			for (const DeviceBar &b : crispBars(toDevice, bands[i].constData(), bands[i].size(), merge))
+				barRows += b.y1 - b.y0;
+		} else {
+			for (const QRectF &band : std::as_const(bands[i])) barRows += qint64(std::ceil(band.height() * dpr));
+		}
 	}
-	barPixels *= dpr * dpr;
+	barRowsDrawn_ = barRows;
 	const int threads = drawThreads_ > 0 ? drawThreads_ : pool_.maxThreadCount() + 1;
 	const int stripes = int(std::clamp<qsizetype>(
-			std::max(points / POINTS_PER_STRIPE, qsizetype(barPixels / BAR_PIXELS_PER_STRIPE)), 1, threads));
+			std::max(points / POINTS_PER_STRIPE, qsizetype(double(barRows) / BAR_ROWS_PER_STRIPE)), 1, threads));
 	stripesDrawn_ = stripes;
 	if (stripes == 1) {
 		p.save();
 		for (qsizetype i = 0; i < lines.size(); i++) {
 			if (!axesOf[i]) continue;
 			p.setClipRect(clipOf(i));
-			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color, lines[i].series->fast != nullptr);
+			fillBands(p, bands[i].constData(), bands[i].size(), lines[i].series->color, lines[i].series->fast != nullptr,
+					barMerge_);
 			if (!polys[i].isEmpty()) strokePieces(p, polys[i], breaks[i], 0, polys[i].size(), lines[i].series->color, thin[i], dpr);
 		}
 		p.restore();
@@ -4799,7 +4944,8 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 			const QVector<QRectF> &bars = bands[i]; /* in x order too: the ones that reach the stripe */
 			const qsizetype first = std::lower_bound(bars.begin(), bars.end(), rect.left(), bandBefore) - bars.begin();
 			const qsizetype last = std::upper_bound(bars.begin(), bars.end(), rect.right(), bandAfter) - bars.begin();
-			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color, lines[i].series->fast != nullptr);
+			fillBands(ip, bars.constData() + first, last - first, lines[i].series->color, lines[i].series->fast != nullptr,
+					barMerge_);
 			const QPolygonF &poly = polys[i]; /* its x never falls: the part in the stripe, a point either side */
 			const qsizetype from = std::max<qsizetype>(
 					0, std::lower_bound(poly.begin(), poly.end(), rect.left() - REACH, beforeX) - poly.begin() - 1);

@@ -579,6 +579,8 @@ public:
 		chartInfoLine();
 		chartOneCap();
 		chartFastBarsOnThreads();
+		chartFastBarsMerged();
+		chartFastStrokeHidden();
 		chartRamCut();
 		chartRamSlices();
 		chartRamFree();
@@ -11878,80 +11880,195 @@ private:
 			&ChartView::PerfStats::legend };
 	};
 
-	/* A fast line's bars the whole plot high in every column, on the CPU: few points (a column's bar and its joins), but
-	 * 2 million device pixels on a 1080 x 470 chart at 225 %, and drawn on one thread they followed the PC's load. The
-	 * stripes count the bars' pixels too: a chart of 2400 x 1400 device pixels on any screen is drawn in stripes, and
-	 * the stripes give the same picture as one thread (crisp bars snapped to whole device pixels) */
-	static void chartFastBarsOnThreads() {
-		StreamDef def;
-		def.name = QStringLiteral("ADC");
-		for (const char *name : { "I", "V" }) {
-			StreamChannel channel;
-			channel.name = QString::fromLatin1(name);
-			channel.type = RegType::I16;
-			def.channels << channel;
-		}
+	/* A fast chart for the bars' checks: ADC.I (and ADC.V with `both`) plotted, `blocks` blocks of 65536 records a
+	 * microsecond apart from value(record, channel), the view `window` s, held after a first frame, and its lines drawn
+	 * afresh at each picture (a held view reuses the last frame's, 23.6) */
+	struct FastBarsChart {
 		QWidget host;
-		auto *view = new ChartView(&host);
-		/* the same device pixels on any screen: the logical size by the ratio */
-		const double dpr = view->devicePixelRatioF();
-		const QSize size(int(2400 / dpr), int(1400 / dpr));
-		host.resize(size + QSize(20, 10));
-		view->setGeometry(9, 5, size.width(), size.height());
+		ChartView *view = nullptr;
 		double now = 100;
-		view->setClock([&now] { return now; }, 0);
-		view->setSmooth(false);
-		view->setMemory(60);
-		view->setWindow(0.2);
-		view->setFastStream(0, def);
-		view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
-		constexpr qsizetype BLOCK = 65536;
-		QByteArray records(BLOCK * 4, Qt::Uninitialized);
-		for (qsizetype i = 0; i < BLOCK * 2; i++) reinterpret_cast<qint16 *>(records.data())[i] = qint16((i * 37) % 2000 - 1000);
-		for (quint64 first = 0; first < 5 * BLOCK; first += BLOCK) {
-			view->appendFast(0, first, BLOCK, records, first == 0, 0);
-			now = 100.0 + (first + BLOCK) * 1e-6;
-			view->markFast(0, first + BLOCK, now, 1e-6);
+		FastBarsChart(const QSize &size, double window, int blocks, bool both,
+				const std::function<double(qint64, int)> &value) {
+			StreamDef def;
+			def.name = QStringLiteral("ADC");
+			for (const char *name : { "I", "V" }) {
+				StreamChannel channel;
+				channel.name = QString::fromLatin1(name);
+				channel.type = RegType::I16;
+				def.channels << channel;
+			}
+			view = new ChartView(&host);
+			host.resize(size + QSize(20, 10));
+			view->setGeometry(9, 5, size.width(), size.height());
+			view->setClock([this] { return now; }, 0);
+			view->setSmooth(false);
+			view->setMemory(60);
+			view->setWindow(window);
+			view->setFastStream(0, def);
+			view->addSeries(ChartView::fastKey(0, 0), QStringLiteral("ADC.I"), QStringLiteral("A"), Qt::red);
+			if (both) view->addSeries(ChartView::fastKey(0, 1), QStringLiteral("ADC.V"), QStringLiteral("A"), Qt::blue);
+			constexpr qsizetype BLOCK = 65536;
+			QByteArray records(BLOCK * 4, Qt::Uninitialized);
+			for (quint64 first = 0; first < quint64(blocks) * BLOCK; first += BLOCK) {
+				for (qsizetype i = 0; i < BLOCK * 2; i++)
+					reinterpret_cast<qint16 *>(records.data())[i] = qint16(value(qint64(first) + i / 2, int(i % 2)));
+				view->appendFast(0, first, BLOCK, records, first == 0, 0);
+				now = 100.0 + (first + BLOCK) * 1e-6;
+				view->markFast(0, first + BLOCK, now, 1e-6);
+			}
+			(void) host.grab(); /* a first frame: Hold keeps the view last shown */
+			view->setLive(false);
+			view->setLineReuse(false);
 		}
-		(void) host.grab(); /* a first frame: Hold keeps the view last shown */
-		view->setLive(false); /* the same view in both pictures */
-		view->setLineReuse(false); /* each picture's lines drawn afresh: a held view reuses the last frame's (23.6) */
-		view->setDrawThreads(1);
-		const QImage one = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
-		const int oneStripes = view->stripesDrawn();
-		view->setDrawThreads(0);
-		const QImage many = host.grab().toImage().convertToFormat(QImage::Format_RGB32);
-		const int stripes = view->stripesDrawn();
-		int worst = 0, differ = 0;
-		for (int y = 0; y < one.height() && one.size() == many.size(); y++) {
+		QImage picture() { return host.grab().toImage().convertToFormat(QImage::Format_RGB32); }
+	};
+	/* the worst channel difference of two pictures, and the pixels that differ (any difference) */
+	static int pictureDifference(const QImage &one, const QImage &two, int &differ) {
+		differ = 0;
+		if (one.size() != two.size() || one.isNull()) return 256;
+		int worst = 0;
+		for (int y = 0; y < one.height(); y++) {
 			const QRgb *a = reinterpret_cast<const QRgb *>(one.constScanLine(y));
-			const QRgb *b = reinterpret_cast<const QRgb *>(many.constScanLine(y));
+			const QRgb *b = reinterpret_cast<const QRgb *>(two.constScanLine(y));
 			for (int x = 0; x < one.width(); x++) {
 				const int d = std::max({ std::abs(qRed(a[x]) - qRed(b[x])), std::abs(qGreen(a[x]) - qGreen(b[x])),
 						std::abs(qBlue(a[x]) - qBlue(b[x])) });
 				worst = std::max(worst, d);
-				if (d > 3) differ++;
+				if (d) differ++;
 			}
 		}
+		return worst;
+	}
+	/* the RAM checks' records: every value in each 1000, each column of them the plot high */
+	static double ramRecord(qint64 record, int channel) { return double(((2 * record + channel) * 37) % 2000 - 1000); }
+
+	/* Drawn on threads in stripes: a fast line's bars as many rows as a stripe takes after merging (two zoomed-in fast
+	 * sines, about 4.4 columns a period: neighbouring bars share few rows), on a chart of 2400 x 1400 device pixels on
+	 * any screen, the same picture as on one thread (crisp bars snapped to whole device pixels). Bars the whole plot
+	 * high merge into a few rects and stay on one stripe (chartFastBarsMerged) */
+	static void chartFastBarsOnThreads() {
+		QWidget probe;
+		const double dpr = probe.devicePixelRatioF(); /* the same device pixels on any screen: the logical size by the ratio */
+		const QSize size(int(2400 / dpr), int(1400 / dpr));
+		const double period = 4.37 * 200000.0 / size.width(); /* records: the view is 0.2 s, a column a logical pixel */
+		FastBarsChart chart(size, 0.2, 5, true, [period](qint64 record, int channel) {
+			return 1000 * std::sin(2 * M_PI * record / (channel ? period * 1.13 : period));
+		});
+		ChartView *view = chart.view;
+		view->setDrawThreads(1);
+		const QImage one = chart.picture();
+		const int oneStripes = view->stripesDrawn();
+		view->setDrawThreads(0);
+		const QImage many = chart.picture();
+		const int stripes = view->stripesDrawn();
+		const qint64 rows = view->barRowsDrawn();
+		int differ = 0;
+		const int worst = pictureDifference(one, many, differ);
 		const QVector<ChartView::BinInfo> bins = view->lastBins(ChartView::fastKey(0, 0));
-		double lo = 0, hi = 0;
-		for (const ChartView::BinInfo &bin : bins) {
-			lo = std::min(lo, bin.min);
-			hi = std::max(hi, bin.max);
-		}
-		qsizetype tall = 0; /* columns whose bar spans most of the range: the bars fill the plot */
+		qsizetype bars = 0; /* columns with a bar: the line's swing in a column over its width */
 		for (const ChartView::BinInfo &bin : bins)
-			if (bin.max - bin.min > 0.75 * (hi - lo)) tall++;
+			if (bin.max - bin.min > 100) bars++;
 		/* the stripes at most: the chart's pool (the CPU's threads less three, 1 to 8) and the window's thread */
 		const int drawers = std::clamp(QThread::idealThreadCount() - 3, 1, 8) + 1;
-		std::printf("     (a fast line's full-height bars, %d x %d device pixels: %lld of %lld columns tall, %d stripes "
-				"(%d with one thread; %d threads here, %d drawing at most); against one thread: worst channel difference %d, "
-				"%d pixels above 3)\n", one.width(), one.height(), (long long) tall, (long long) bins.size(), stripes,
-				oneStripes, QThread::idealThreadCount(), drawers, worst, differ);
-		check(bins.size() > 500 && hi > lo && tall >= bins.size() * 9 / 10 && oneStripes == 1 && stripes >= 2
-						&& one.size() == many.size() && differ <= 200 && worst <= 32,
-				"chart, a fast line's bars the whole plot high: drawn on threads in stripes by their pixels (few points), the "
+		std::printf("     (two zoomed-in fast sines' bars, %d x %d device pixels: %lld of %lld columns with a bar, %lld rows "
+				"filled after merging, %d stripes (%d with one thread; %d threads here, %d drawing at most); against one "
+				"thread: worst channel difference %d, %d pixels differ)\n", one.width(), one.height(), (long long) bars,
+				(long long) bins.size(), (long long) rows, stripes, oneStripes, QThread::idealThreadCount(), drawers, worst,
+				differ);
+		check(bins.size() > 500 && bars >= bins.size() * 9 / 10 && rows > 300000 && oneStripes == 1 && stripes >= 2
+						&& one.size() == many.size() && worst == 0,
+				"chart, fast lines' bars still many rows after merging (zoomed-in sines): drawn on threads in stripes, the "
 				"same picture as on one thread");
+	}
+
+	/* A fast line's bars merged: x-contiguous bars that share rows filled as one rect over those rows, each bar's rows
+	 * above and below as its own, the same pixels (an opaque colour on whole device pixels). The RAM checks' chart
+	 * (1080 x 470, a bar the whole plot high in every column: 0.93 million rows at 225 %) and a noisy line: the
+	 * picture equal to each bar filled alone, fewer rows; and the stripes counted from the merged rows: the RAM
+	 * checks' chart on one stripe (no stripe images, nothing to wait for), unmerged on more */
+	static void chartFastBarsMerged() {
+		FastBarsChart full(QSize(1080, 470), 2.0, 34, false, ramRecord);
+		ChartView *view = full.view;
+		view->setDrawThreads(1);
+		view->setBarMerge(false);
+		const QImage fullAlone = full.picture();
+		const qint64 fullRowsAlone = view->barRowsDrawn();
+		view->setDrawThreads(0);
+		(void) full.picture();
+		const int stripesAlone = view->stripesDrawn();
+		view->setBarMerge(true);
+		const QImage fullMerged = full.picture();
+		const qint64 fullRows = view->barRowsDrawn();
+		const int stripes = view->stripesDrawn();
+		int fullDiffer = 0;
+		const int fullWorst = pictureDifference(fullAlone, fullMerged, fullDiffer);
+
+		quint32 seed = 63; /* the noise: a fixed sequence, the same picture on every run */
+		QVector<qint16> noisy(5 * 65536);
+		for (qsizetype r = 0; r < noisy.size(); r++) {
+			seed = seed * 1664525u + 1013904223u;
+			noisy[r] = qint16(600 * std::sin(2 * M_PI * r * 50e-6) + double((seed >> 16) % 400) - 200);
+		}
+		FastBarsChart band(QSize(1080, 470), 0.2, 5, false, [&noisy](qint64 record, int) { return double(noisy[record]); });
+		band.view->setDrawThreads(1);
+		band.view->setBarMerge(false);
+		const QImage bandAlone = band.picture();
+		const qint64 bandRowsAlone = band.view->barRowsDrawn();
+		band.view->setBarMerge(true);
+		const QImage bandMerged = band.picture();
+		const qint64 bandRows = band.view->barRowsDrawn();
+		int bandDiffer = 0;
+		const int bandWorst = pictureDifference(bandAlone, bandMerged, bandDiffer);
+		std::printf("     (the RAM checks' chart: %lld rows filled, %lld merged, %d stripes (%d unmerged), worst channel "
+				"difference %d; a noisy line: %lld rows, %lld merged, worst %d)\n", (long long) fullRowsAlone,
+				(long long) fullRows, stripes, stripesAlone, fullWorst, (long long) bandRowsAlone, (long long) bandRows,
+				bandWorst);
+		check(fullWorst == 0 && fullDiffer == 0 && bandWorst == 0 && bandDiffer == 0 && fullRowsAlone > 200000
+						&& fullRows * 20 < fullRowsAlone && bandRows * 3 / 2 < bandRowsAlone,
+				"chart, a fast line's bars merged over the rows they share: the same picture as each bar filled alone "
+				"(worst channel difference 0: bars the whole plot high, a noisy line), far fewer rows to fill");
+		const int drawers = std::clamp(QThread::idealThreadCount() - 3, 1, 8) + 1;
+		check(stripes == 1 && (fullRowsAlone < 300000 || drawers < 2 || stripesAlone >= 2),
+				"chart, the stripes counted from the bars' rows after merging: the RAM checks' chart (a bar the whole plot "
+				"high in every column) on one stripe, its bars unmerged on more");
+	}
+
+	/* The stroke a fast line's bars hide left out: a segment of its thin polyline whose pixels (two across, its cap
+	 * and partial end along) all lie inside a bar of its colour, or the rows two touching bars share, is drawn in the
+	 * colour over itself. Bars the whole plot high on 2400 x 1400 device pixels: segments left out, and the picture
+	 * against the stroke drawn whole differs by at most 1 in a channel, only where both are the line's colour */
+	static void chartFastStrokeHidden() {
+		QWidget probe;
+		const double dpr = probe.devicePixelRatioF();
+		FastBarsChart chart(QSize(int(2400 / dpr), int(1400 / dpr)), 2.0, 34, false, ramRecord);
+		ChartView *view = chart.view;
+		view->setDrawThreads(1);
+		const QImage hidden = chart.picture();
+		const qsizetype left = view->strokeSegmentsHidden();
+		view->setHiddenStroke(false);
+		const QImage whole = chart.picture();
+		const qsizetype leftWhole = view->strokeSegmentsHidden();
+		view->setHiddenStroke(true);
+		int worst = 0, differ = 0, elsewhere = 0;
+		const auto lineColour = [](QRgb c) { return qRed(c) >= 254 && qGreen(c) <= 1 && qBlue(c) <= 1; };
+		for (int y = 0; y < hidden.height() && hidden.size() == whole.size(); y++) {
+			const QRgb *a = reinterpret_cast<const QRgb *>(hidden.constScanLine(y));
+			const QRgb *b = reinterpret_cast<const QRgb *>(whole.constScanLine(y));
+			for (int x = 0; x < hidden.width(); x++) {
+				const int d = std::max({ std::abs(qRed(a[x]) - qRed(b[x])), std::abs(qGreen(a[x]) - qGreen(b[x])),
+						std::abs(qBlue(a[x]) - qBlue(b[x])) });
+				if (!d) continue;
+				differ++;
+				worst = std::max(worst, d);
+				if (!lineColour(a[x]) || !lineColour(b[x])) elsewhere++;
+			}
+		}
+		std::printf("     (bars the whole plot high, %d x %d device pixels: %lld stroke segments left out (%lld drawn whole); "
+				"against the stroke drawn: worst channel difference %d, %d pixels differ, %d not the line's colour)\n",
+				hidden.width(), hidden.height(), (long long) left, (long long) leftWhole, worst, differ, elsewhere);
+		check(left > 100 && leftWhole == 0 && hidden.size() == whole.size() && worst <= 1 && elsewhere == 0,
+				"chart, the stroke a fast line's bars hide left out: the picture within 1 in a channel of the stroke drawn, "
+				"only inside the bars");
 	}
 
 	/* The RAM budget cut with a filled fast store (O-7): a fast line's store of two i16 channels filled to its share of
