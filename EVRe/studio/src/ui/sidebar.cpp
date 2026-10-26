@@ -250,6 +250,8 @@ QWidget *Sidebar::buildSerialFields() {
 	baudLabel_->setObjectName(QStringLiteral("baudLabel"));
 	baudIgnored_ = new ElidedLabel;
 	baudIgnored_->setObjectName(QStringLiteral("baudIgnored"));
+	/* never cut: in a narrow sidebar it goes on two lines, broken after "USB CDC:" (cut, it no longer said what) */
+	baudIgnored_->setWraps(true);
 	baudIgnored_->hide();
 	/* USB CDC or a UART: Auto from the port's USB IDs, or chosen. The box shows a short text; the list opened says
 	 * what each choice does */

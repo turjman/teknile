@@ -510,9 +510,9 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 - **Baud rate.** For USB CDC the baud rate does not matter, but for a real UART it must match the device. While the
   Link row means USB CDC (chosen, or Auto for the port selected), the Baud row says so: the number is muted, like the
   label, and a line of its own right under the box reads *USB CDC: the baud rate is not used* (on a UART the line
-  goes). The line belongs to the Baud row: it is a small gap (at most 3 px) under the box, at the box's leading edge
-  (left; right in Arabic), and the usual row gap follows it before the Link row, so it never reads as a note of its
-  own or as Link's. The Link box is
+  goes); in a narrow sidebar it goes on two lines, broken after *USB CDC:*, never cut. The line belongs to the Baud
+  row: it is a small gap (at most 3 px) under the box, at the box's leading edge (left; right in Arabic), and the
+  usual row gap follows it before the Link row, so it never reads as a note of its own or as Link's. The Link box is
   never narrower than its widest short text, so *Auto: USB CDC* is never cut. The label, the box and that
   text share one tooltip: *The baud rate is ignored on USB CDC: the port runs at USB's speed whatever the number says.
   It matters on a UART (Link).* The box stays a box to type in, with its frame and arrow, and its number is in the text
@@ -6269,8 +6269,8 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   with UART chosen, as before. The number as painted (the line edit grabbed, its strongest pixel's grey step from the
   box's background): no further than the muted colour's on USB CDC, clearly further while typed in (a focus-in sent to
   it) and on a UART. A sidebar of its own in English and in Arabic with ST's port: the Link box's text field as wide
-  as *Auto: USB CDC* (the card shown first on a port without USB IDs, then ST's port chosen), the note whole on its
-  line between the Baud box and the Link box; its text *USB CDC: the baud rate is not used* (in Arabic its translation);
+  as *Auto: USB CDC* (the card shown first on a port without USB IDs, then ST's port chosen), the note whole (on two
+  lines when it does not fit on one) between the Baud box and the Link box; its text *USB CDC: the baud rate is not used* (in Arabic its translation);
   closer under the Baud box than over the Link box, with the row gap of a UART (the line gone whole there) before
   Link, and at the Baud box's left edge (in Arabic its right edge, the text drawn at the right), measured from the
   widgets' geometries. The pill's long reason waits for the layouts above it (a few event passes) before it is measured. The Arabic of *Auto send %1/s*,

@@ -1768,7 +1768,8 @@ private:
 					QStyle::SC_ComboBoxEditField, cardKind);
 			const int needs = cardKind->fontMetrics().horizontalAdvance(cardKind->currentText());
 			const bool whole = field.width() - 2 >= needs && cardKind->currentIndex() == 0 && !cardNote->isHidden()
-					&& !cardNote->isCut() && cardNote->text() == cardNote->fullText()
+					&& !cardNote->isCut()
+					&& QString(cardNote->text()).replace(QLatin1Char('\n'), QLatin1Char(' ')) == cardNote->fullText()
 					&& cardNote->y() >= cardBaud->geometry().bottom() && cardNote->geometry().bottom() <= cardKind->y();
 			const QString english = QStringLiteral("USB CDC: the baud rate is not used");
 			const QString shown = QCoreApplication::translate("Sidebar", "USB CDC: the baud rate is not used");
