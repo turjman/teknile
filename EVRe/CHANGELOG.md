@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1 (2026-10-27)
+
+### EVRe Studio
+
+- On USB CDC the line under the Baud box now reads *USB CDC: the baud rate is not used* (it said *ignored on USB
+  CDC*, which did not say what was ignored). It sits right under the box, as part of the Baud row, and in a narrow
+  sidebar goes on two lines, never cut. The Baud box's tooltip says *Not used on USB CDC (see Link)*.
+- The chart's CPU path (no graphics card, or on Linux) paints a noisy fast line's bars more than twice as fast: bars
+  that share rows are drawn as one, the stroke the bars hide is left out, and what is left is drawn on the chart's
+  threads. The picture is the same. At 225 % the longest frame with a full-height fast line went from 13 to 15 ms to
+  about 5.5 ms.
+- The GUI test's RAM checks (*no paint over 20 ms*) no longer fail now and then on a quiet Windows PC.
+
 ## 1.2.0 (2026-10-26)
 
 ### The map format `evre-map/1`
