@@ -4818,13 +4818,16 @@ private:
 		 * own fading aside), the replies taken at each */
 		{
 			const DumpCounts counts = dumpCounts(view, 2000);
-			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d poll takes)\n",
-					pace, counts.ticks, counts.paints, counts.glows, counts.polls);
+			std::printf("     (the Dump's tick in 2 s at %d a second: %d ticks, %d paints (%d of the glow), %d ticks merged into "
+					"the next's paint, %d unpainted, %d poll takes)\n", pace, counts.ticks, counts.paints, counts.glows,
+					counts.merged, counts.unpainted, counts.polls);
 			check((pace > 0 ? counts.ticks >= 3 * pace / 2 && counts.ticks <= 2 * pace + 2 : counts.ticks >= 20)
-							&& counts.polls == counts.ticks && counts.paints >= counts.ticks - 1
-							&& counts.paints <= counts.ticks + counts.glows + 1,
+							&& counts.polls == counts.ticks && counts.paints + counts.merged >= counts.ticks - 1
+							&& counts.merged <= counts.ticks / 10 && counts.paints <= counts.ticks + counts.glows + 1
+							&& counts.unpainted <= 1,
 					"Dump, one tick: no fast card, the tab ticks at the beats of Show values (15 to 22 in 2 s at 10 a second, "
-					"the frames as a busy PC keeps them), one repaint a tick, the replies taken at each");
+					"the frames as a busy PC keeps them), one repaint a tick (two ticks in one event pass share it, at most a "
+					"tenth of them), none left unpainted, the replies taken at each");
 		}
 
 		/* Hold: the bytes kept, no repaint, while the table moves; every card framed amber, the reply line says held */
@@ -6759,17 +6762,21 @@ private:
 				"كتلة ↓, عرض الكل ▾, the loss line), the records left to right");
 	}
 
-	/* the Dump tab's ticks, repaints, takes and glow repaints over ms, the mouse off the view */
+	/* the Dump tab's ticks, repaints, takes and glow repaints over ms, the mouse off the view. Two ticks the window's
+	 * thread takes in one event pass share one paint (Qt merges update() until its paint request is delivered), so a
+	 * check counts paints + merged against the ticks; unpainted is the ticks still waiting for a paint at the end (at
+	 * most the last one: more is a card left stale) */
 	struct DumpCounts {
-		int ticks = 0, paints = 0, glows = 0, polls = 0, fasts = 0;
+		int ticks = 0, paints = 0, glows = 0, polls = 0, fasts = 0, merged = 0, unpainted = 0;
 	};
 	DumpCounts dumpCounts(DumpView *view, int ms) {
 		dumpMouseTo(view, QPoint(-20, -20));
 		const DumpCounts before { window_.dumpTicks(), view->paintCount(), view->glowRepaints(), window_.pollDumpTakes(),
-			window_.fastDumpTakes() };
+			window_.fastDumpTakes(), view->ticksMerged() };
 		QTest::qWait(ms);
 		return { window_.dumpTicks() - before.ticks, view->paintCount() - before.paints, view->glowRepaints() - before.glows,
-			window_.pollDumpTakes() - before.polls, window_.fastDumpTakes() - before.fasts };
+			window_.pollDumpTakes() - before.polls, window_.fastDumpTakes() - before.fasts, view->ticksMerged() - before.merged,
+			view->ticksUnpainted() };
 	}
 
 	/* The fast card live (the fast streams step, the stream running at 10 000 records a second): the card of the newest
@@ -6878,17 +6885,23 @@ private:
 		QTest::qWait(400);
 		const DumpCounts every = dumpCounts(view, 2000);
 		pace->setCurrentIndex(pace->findData(paceWas));
-		std::printf("     (the Dump's tick in 2 s: Show values 2/s: %d ticks, %d paints (%d of the glow), %d poll takes, %d fast "
-				"takes; every frame: %d ticks, %d paints (%d of the glow), %d fast takes)\n", slow.ticks, slow.paints, slow.glows,
-				slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.fasts);
+		std::printf("     (the Dump's tick in 2 s: Show values 2/s: %d ticks, %d paints (%d of the glow), %d ticks merged into the "
+				"next's paint, %d unpainted, %d poll takes, %d fast takes; every frame: %d ticks, %d paints (%d of the glow), %d "
+				"ticks merged into the next's paint, %d unpainted, %d fast takes)\n", slow.ticks, slow.paints, slow.glows,
+				slow.merged, slow.unpainted, slow.polls, slow.fasts, every.ticks, every.paints, every.glows, every.merged,
+				every.unpainted, every.fasts);
 		check(slow.ticks >= 18 && slow.ticks <= 22 && slow.polls >= 3 && slow.polls <= 5 && slow.fasts >= 18 && slow.fasts <= 22
-						&& slow.paints >= slow.ticks - 1 && slow.paints <= slow.ticks + slow.glows + 1,
-				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each), "
-				"the polls' replies taken at their two beats, the fast block at every tick");
-		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10 && every.paints >= every.ticks - 2
-						&& every.paints <= every.ticks + every.glows + 1,
-				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each), the "
-				"fast block still taken at most ten times a second");
+						&& slow.paints + slow.merged >= slow.ticks - 1 && slow.merged <= slow.ticks / 10
+						&& slow.paints <= slow.ticks + slow.glows + 1 && slow.unpainted <= 1,
+				"Dump, one tick with a fast card: Show values 2 a second, the tab ticks ten times a second (one repaint each, "
+				"two ticks in one event pass share it, at most a tenth of them, none left unpainted), the polls' replies taken "
+				"at their two beats, the fast block at every tick");
+		check(every.fasts >= 18 && every.fasts <= 22 && every.ticks >= every.fasts + 10
+						&& every.paints + every.merged >= every.ticks - 1 && every.merged <= every.ticks / 10
+						&& every.paints <= every.ticks + every.glows + 1 && every.unpainted <= 1,
+				"Dump, one tick with a fast card: Show values every frame, the tab ticks every frame (one repaint each, two "
+				"ticks in one event pass share it, at most a tenth of them, none left unpainted), the fast block still taken "
+				"at most ten times a second");
 
 		/* hidden: no tick, no take, the blocks gone; shown again, the card comes back */
 		tabs->setCurrentIndex(MainWindow::TabChart);

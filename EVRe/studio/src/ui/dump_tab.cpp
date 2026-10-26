@@ -245,7 +245,7 @@ void DumpTab::showManualRead(const DumpBlock &block) {
 }
 
 void DumpTab::tick() {
-	if (shown_ && following()) view_->viewport()->update();
+	if (shown_ && following()) view_->tick();
 }
 
 void DumpTab::setFollow(bool follow) {
