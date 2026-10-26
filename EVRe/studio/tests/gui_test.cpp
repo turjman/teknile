@@ -1628,7 +1628,7 @@ private:
 	}
 
 	/* The serial link on USB CDC: the pill names the link, not a baud rate nobody uses, and the Baud row says it is
-	 * ignored (muted, "ignored on USB CDC" under the box), still a box to type in for a UART */
+	 * not used (muted, "USB CDC: the baud rate is not used" close under the box), still a box to type in for a UART */
 	void serialUsbCdcLook() {
 		const QString cdc = Sidebar::serialLinkText(QStringLiteral("COM13"), 12000000, false);
 		const QString uart = Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true);
@@ -1649,7 +1649,7 @@ private:
 		auto *label = window_.findChild<QLabel *>(QStringLiteral("baudLabel"));
 		auto *ignoredNote = window_.findChild<ElidedLabel *>(QStringLiteral("baudIgnored"));
 		if (!sidebar || !kind || !baud || !port || !label || !ignoredNote) {
-			check(false, "serial, the Baud row: its label, box and \"ignored on USB CDC\"");
+			check(false, "serial, the Baud row: its label, box and \"USB CDC: the baud rate is not used\"");
 			return;
 		}
 		sidebar->addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
@@ -1661,7 +1661,8 @@ private:
 			if (QLayout *fields = kind->parentWidget() ? kind->parentWidget()->layout() : nullptr) fields->activate();
 			widths += QStringLiteral(" %1/%2").arg(kind->width()).arg(baud->width());
 			return label->property("ignored").toBool() && baud->property("ignored").toBool() && !ignoredNote->isHidden()
-					&& ignoredNote->fullText() == QLatin1String("ignored on USB CDC") && baud->isEnabled() && baud->isEditable()
+					&& ignoredNote->fullText() == QLatin1String("USB CDC: the baud rate is not used") && baud->isEnabled()
+					&& baud->isEditable()
 					&& baud->toolTip() == label->toolTip() && ignoredNote->toolTip() == baud->toolTip()
 					&& baud->toolTip().startsWith(QLatin1String("The baud rate is ignored on USB CDC"))
 					&& kind->width() == baud->width();
@@ -1729,13 +1730,19 @@ private:
 					qPrintable(ignoredNote->fullText()));
 		check(autoCdc && autoUart && chosenCdc && chosenUart,
 				"serial, the Baud row on USB CDC (Auto for a CDC port, or chosen): its label and number muted (\"ignored\"), "
-				"\"ignored on USB CDC\" under the box, one tooltip on the three, the box still editable and as wide as Link's; on a "
+				"\"USB CDC: the baud rate is not used\" under the box, one tooltip on the three, the box still editable and as "
+				"wide as Link's; on a "
 				"UART (Auto for a port without USB IDs, or chosen) as before");
 
 		/* the Link box never cuts "Auto: USB CDC" (it read "Auto: USB C": measured while it read "Auto: UART", a note
-		 * beside took the rest), and "ignored on USB CDC" is whole on its line under the Baud box; in English and in
-		 * Arabic (longer). A sidebar of its own for each, made after the language */
+		 * beside took the rest), and the note is whole on its line under the Baud box; in English and in Arabic (longer).
+		 * A sidebar of its own for each, made after the language. The note reads as the Baud row's (the owner read
+		 * "ignored on USB CDC", between the boxes with equal gaps, as a note of its own or as Link's): it says what is
+		 * not used, it sits close under the Baud box at its leading edge, and the row gap follows it before Link */
 		bool linkWhole = true;
+		bool noteText = true;
+		bool noteGrouped = true;
+		QString groupedSeen;
 		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 			language::apply(*qApp, code);
 			Sidebar card;
@@ -1764,10 +1771,26 @@ private:
 					QStyle::SC_ComboBoxEditField, cardKind);
 			const int needs = cardKind->fontMetrics().horizontalAdvance(cardKind->currentText());
 			const bool whole = field.width() - 2 >= needs && cardKind->currentIndex() == 0 && !cardNote->isHidden()
-					&& !cardNote->isCut() && cardNote->text() == cardNote->fullText()
-					&& cardNote->y() >= cardBaud->geometry().bottom() && cardNote->geometry().bottom() <= cardKind->y()
-					&& std::abs(cardNote->x() - cardBaud->x()) <= 1
-					&& cardNote->y() - cardBaud->geometry().bottom() == uartGap;
+					&& !cardNote->isCut()
+					&& QString(cardNote->text()).replace(QLatin1Char('\n'), QLatin1Char(' ')) == cardNote->fullText()
+					&& cardNote->y() >= cardBaud->geometry().bottom() && cardNote->geometry().bottom() <= cardKind->y();
+			const QString english = QStringLiteral("USB CDC: the baud rate is not used");
+			const QString shown = QCoreApplication::translate("Sidebar", "USB CDC: the baud rate is not used");
+			noteText = noteText && cardNote->fullText() == shown
+					&& (code == QLatin1String("en") ? shown == english
+													: shown != english && shown.startsWith(QLatin1String("USB CDC: ")));
+			/* the gaps in the widgets' own coordinates (no picture is cut here, so no device pixels to scale) */
+			const int above = cardNote->y() - cardBaud->geometry().bottom();
+			const int below = cardKind->y() - cardNote->geometry().bottom();
+			const bool rtl = code == QLatin1String("ar");
+			const Qt::Alignment drawn = QStyle::visualAlignment(cardNote->layoutDirection(), cardNote->alignment());
+			const bool edge = rtl ? cardNote->geometry().right() == cardBaud->geometry().right()
+										&& cardNote->layoutDirection() == Qt::RightToLeft && (drawn & Qt::AlignRight)
+								  : cardNote->x() == cardBaud->x() && (drawn & Qt::AlignLeft);
+			const bool grouped = above >= 1 && above < below && below == uartGap && edge;
+			groupedSeen += QStringLiteral(" %1: %2 px under Baud, %3 px over Link, a UART's gap %4, edge %5;").arg(code)
+					.arg(above).arg(below).arg(uartGap).arg(edge ? 1 : 0);
+			noteGrouped = noteGrouped && grouped;
 			if (!whole)
 				std::printf("     (%s: \"%s\" needs %d px of %d; the note \"%s\" cut %d, shown %d, at %d,%d to %d, Baud "
 						"at %d,%d to %d, Link from %d; on a UART Link %d px under Baud)\n", qPrintable(code),
@@ -1785,7 +1808,12 @@ private:
 		language::apply(*qApp, QStringLiteral("en"));
 		QTest::qWait(100);
 		check(linkWhole, "serial, USB CDC in a narrow sidebar: the Link box whole (\"Auto: USB CDC\", never \"Auto: USB C\"), "
-				"\"ignored on USB CDC\" whole on its line under the Baud box, in English and in Arabic");
+				"the note whole on its line under the Baud box, in English and in Arabic");
+		check(noteText, "serial, USB CDC: the note under the Baud box says what is not used, \"USB CDC: the baud rate is not "
+				"used\", in English and in its Arabic");
+		if (!noteGrouped) std::printf("     (the note:%s)\n", qPrintable(groupedSeen));
+		check(noteGrouped, "serial, USB CDC: the note reads as the Baud row's, closer under the Baud box than over the Link "
+				"box, the row gap before Link as on a UART, at the Baud box's leading edge (left; right in Arabic)");
 		const QString isolatedRate = QChar(0x2066) + QStringLiteral("%1/s") + QChar(0x2069);
 		check(arabicStats.contains(isolatedRate) && arabicShort.contains(isolatedRate)
 						&& arabicPace == QChar(0x2066) + QStringLiteral("%1 / s") + QChar(0x2069),
@@ -2329,12 +2357,12 @@ private:
 		check(baud->count() == 11 && baud->itemText(6) == QLatin1String("2000000")
 						&& baud->itemText(10) == QLatin1String("12000000"),
 				"serial, Baud: 11 rates listed, 9600 to 12000000");
-		/* read on a UART: on USB CDC (the ST port selected here) the tooltip says the number is ignored (serialUsbCdcLook) */
+		/* read on a UART: on USB CDC (the ST port selected here) the tooltip says the number is not used (serialUsbCdcLook) */
 		const int kindWas = kind->currentIndex();
 		kind->setCurrentIndex(2);
 		const QString uartTip = baud->toolTip();
 		kind->setCurrentIndex(kindWas);
-		check(uartTip == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Ignored on USB CDC (see Link).")
+		check(uartTip == QLatin1String("Pick a rate or type any rate, 300 to 20000000. Not used on USB CDC (see Link).")
 						&& edit->placeholderText() == QLatin1String("type a rate"),
 				"serial, Baud: the tooltip says any rate 300 to 20000000 can be typed; emptied, it reads \"type a rate\"");
 		baud->setCurrentText(QStringLiteral("115200"));

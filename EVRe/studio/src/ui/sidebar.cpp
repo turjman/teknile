@@ -241,15 +241,17 @@ QWidget *Sidebar::buildSerialFields() {
 	};
 	alignRates(QModelIndex(), 0, baud_->count() - 1);
 	connect(baud_->model(), &QAbstractItemModel::rowsInserted, this, alignRates);
-	baudHelp_ = tr("Pick a rate or type any rate, %1 to %2. Ignored on USB CDC (see Link).").arg(BAUD_MIN).arg(BAUD_MAX);
+	baudHelp_ = tr("Pick a rate or type any rate, %1 to %2. Not used on USB CDC (see Link).").arg(BAUD_MIN).arg(BAUD_MAX);
 	baud_->setToolTip(baudHelp_);
 	baud_->lineEdit()->installEventFilter(this); /* typed in: the number in the text colour (eventFilter) */
-	/* on USB CDC the row says the number does not matter: the number muted as its label, "ignored on USB CDC" under it
-	 * (showBaudIgnored). The box stays a box to type in: the number is kept for a UART */
+	/* on USB CDC the row says the number does not matter: the number muted as its label, "USB CDC: the baud rate is not
+	 * used" under it (showBaudIgnored). The box stays a box to type in: the number is kept for a UART */
 	baudLabel_ = mutedLabel(tr("Baud"));
 	baudLabel_->setObjectName(QStringLiteral("baudLabel"));
 	baudIgnored_ = new ElidedLabel;
 	baudIgnored_->setObjectName(QStringLiteral("baudIgnored"));
+	/* never cut: in a narrow sidebar it goes on two lines, broken after "USB CDC:" (cut, it no longer said what) */
+	baudIgnored_->setWraps(true);
 	baudIgnored_->hide();
 	/* USB CDC or a UART: Auto from the port's USB IDs, or chosen. The box shows a short text; the list opened says
 	 * what each choice does */
@@ -284,14 +286,14 @@ QWidget *Sidebar::buildSerialFields() {
 	rows->setColumnStretch(1, 1);
 	rows->addWidget(baudLabel_, 0, 0);
 	rows->addWidget(baud_, 0, 1);
-	/* "ignored on USB CDC" on a line of its own under the Baud box, as wide as the boxes: a third column beside them
-	 * was too narrow for it (cut, "ignored on U...", in Arabic even on two lines) and took the room the Link box needs
-	 * for "Auto: USB CDC". Hidden on a UART, the line goes */
+	/* the note on a line of its own under the Baud box, as wide as the boxes: a third column beside them was too narrow
+	 * for it (cut, in Arabic even on two lines) and took the room the Link box needs for "Auto: USB CDC". Hidden on a
+	 * UART, the line goes. Row 2 is left empty: on USB CDC it holds the row gap under the note (showBaudIgnored) */
 	rows->addWidget(baudIgnored_, 1, 1);
 	QLabel *kindLabel = mutedLabel(tr("Link"));
 	kindLabel->setToolTip(kindHelp);
-	rows->addWidget(kindLabel, 2, 0);
-	rows->addWidget(serialKind_, 2, 1);
+	rows->addWidget(kindLabel, 3, 0);
+	rows->addWidget(serialKind_, 3, 1);
 	layout->addLayout(rows);
 	serialRows_ = rows;
 	showBaudIgnored();
@@ -861,8 +863,18 @@ void Sidebar::showBaudIgnored() {
 	}
 	const QString help = tr("The baud rate is ignored on USB CDC: the port runs at USB's speed whatever the number says. "
 			"It matters on a UART (Link).");
-	baudIgnored_->setFullText(tr("ignored on USB CDC"), help);
+	baudIgnored_->setFullText(tr("USB CDC: the baud rate is not used"), help);
 	baudIgnored_->setVisible(ignored);
+	/* the note close under its box and the row gap after it, before Link: with the grid's equal gaps it read as a note
+	 * of its own, or as Link's. The empty row 2 takes the rest of the gap (an empty row has no gaps of its own); on a
+	 * UART the grid's gaps as before */
+	serialRows_->setVerticalSpacing(-1);
+	int gap = serialRows_->verticalSpacing();
+	if (gap < 0) gap = style()->layoutSpacing(QSizePolicy::ComboBox, QSizePolicy::ComboBox, Qt::Vertical);
+	gap = std::max(gap, 0);
+	const int tight = std::min(3, gap / 2);
+	serialRows_->setVerticalSpacing(ignored ? tight : -1);
+	serialRows_->setRowMinimumHeight(2, ignored ? gap - tight : 0);
 	baudLabel_->setToolTip(ignored ? help : QString());
 	baud_->setToolTip(ignored ? help : baudHelp_);
 }
