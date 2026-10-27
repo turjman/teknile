@@ -235,6 +235,10 @@ private:
 	void onWriteRequested(int row, const QString &text, const QByteArray &base);
 	bool confirmOverwrite(const RegDef &def, const QByteArray &base, const QByteArray &now, const QString &text);
 	bool confirmDangerWrite(const RegDef &def, const QString &text, const QByteArray &bytes);
+	/* one value to several registers (STUDIO.md 6.6): the dialog in place of the questions above, then one write per
+	 * register in address order, each read back, and one line in the Log for them all */
+	void onBulkWriteRequested(const QVector<int> &rows, const QString &text, const QVector<QByteArray> &bases,
+			const QStringList &leftOut);
 	/* "To all devices": the value in one broadcast frame, then each device read back */
 	void onBroadcastRequested(int row, const QString &text);
 	void broadcastValue(const RegDef &def, const QString &text); /* the checks, the confirmation, the frame, the reads */
@@ -265,6 +269,7 @@ private:
 
 	/* the event log, the status bar, the theme, help */
 	void logEvent(LogLevel level, const QString &text); /* the Log tab, logs/studio_<date>.log, a pop-up */
+	void logWithoutPopUp(LogLevel level, const QString &text); /* the same, no pop-up: a line after it sums it up */
 	void refreshStatus();         /* twice a second: the statistics everywhere */
 	void showSlowHint();          /* the status bar's hint (cut to its room, the whole of it in the tooltip) */
 	void logTimeouts(quint64 total); /* the timeouts not made by an offline device's retries */

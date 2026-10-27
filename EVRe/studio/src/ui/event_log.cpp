@@ -131,7 +131,7 @@ void EventLog::setShown(bool shown) {
 	emit unseenChanged(0);
 }
 
-void EventLog::add(LogLevel level, const QString &text) {
+void EventLog::add(LogLevel level, const QString &text, bool withPopUp) {
 	const QDateTime now = QDateTime::currentDateTime();
 	const QLatin1String tag(levelTag(level));
 	/* the same event again and again (a reconnect every 2 s): counted, not repeated */
@@ -152,7 +152,7 @@ void EventLog::add(LogLevel level, const QString &text) {
 	showInTab(level, lines);
 	if (level == LogLevel::Info) return;
 	if (!shown_) emit unseenChanged(++unseen_);
-	if (popUps_->isChecked()) emit popUp(level, text);
+	if (withPopUp && popUps_->isChecked()) emit popUp(level, text);
 }
 
 void EventLog::writeToFile(const QDateTime &now, const QStringList &lines) {

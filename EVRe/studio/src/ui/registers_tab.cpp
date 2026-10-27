@@ -53,7 +53,10 @@ void RegistersTab::changeEvent(QEvent *event) {
 	if (Theme::switched(event, drawnDark_)) setHighlighted(allowWrites_, allowWrites_->isChecked(), Theme::colors().warn);
 }
 
-void RegistersTab::setConnected(bool connected) { quickWrite_->setConnected(connected); }
+void RegistersTab::setConnected(bool connected) {
+	connected_ = connected;
+	quickWrite_->setConnected(connected);
+}
 
 void RegistersTab::setDevice(int slave) { filter_->setDevice(slave); }
 
@@ -215,8 +218,15 @@ QLabel *RegistersTab::buildDetail() {
 }
 
 void RegistersTab::connectModel() {
-	/* writes from the table and from the panel leave the same way */
-	connect(model_, &RegisterModel::writeRequested, this, &RegistersTab::writeRequested);
+	/* writes from the table and from the panel leave the same way; an edit of one of several rows selected (F2 keeps
+	 * the selection, a double-click does not) is one value for all of them */
+	connect(model_, &RegisterModel::writeRequested, this, [this](int row, const QString &text, const QByteArray &base) {
+		const BulkTargets targets = bulkTargets();
+		if (targets.rows.size() >= 2 && targets.problem.isEmpty() && targets.rows.contains(row))
+			requestBulkWrite(targets, text, row, base);
+		else
+			emit writeRequested(row, text, base);
+	});
 	connect(quickWrite_, &QuickWritePanel::writeRequested, this, &RegistersTab::writeRequested);
 	connect(quickWrite_, &QuickWritePanel::broadcastRequested, this, &RegistersTab::broadcastRequested);
 	/* the register selected, under the table */
@@ -227,6 +237,8 @@ void RegistersTab::connectModel() {
 				quickWrite_->showRegister(detailRow_);
 				emit currentRegisterChanged(detailRow_);
 			});
+	/* several rows selected: the detail line says how one value goes to all */
+	connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this, &RegistersTab::updateDetail);
 	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last) {
 		if (detailRow_ >= first.row() && detailRow_ <= last.row()) updateDetail();
 	});
@@ -264,6 +276,7 @@ void RegistersTab::showTableMenu(const QPoint &pos) {
 			const RegDef &def = model_->rows()[row].def;
 			emit readRequested(def.addr, quint16(def.size)); /* the table follows through the engine */
 		});
+		addBulkWriteAction(menu);
 		menu.addAction(tr("Copy value"), this, [reg] { /* the value when the menu opened */
 			QGuiApplication::clipboard()->setText(reg.valid ? formatValue(reg.def, reg.raw) : QString());
 		});
@@ -288,7 +301,68 @@ void RegistersTab::showTableMenu(const QPoint &pos) {
 	menu.addAction(tr("Log all"), this, [this] { model_->setAllLog(true); });
 	menu.addAction(tr("Log none"), this, [this] { model_->setAllLog(false); });
 	menu.addAction(tr("Add register…"), this, &RegistersTab::addRegister);
+	menu.setToolTipsVisible(true); /* why the bulk write is not offered */
 	menu.exec(table_->viewport()->mapToGlobal(pos));
+}
+
+/* ------------------------------------------------------------ a bulk write */
+
+RegistersTab::BulkTargets RegistersTab::bulkTargets() const {
+	BulkTargets targets;
+	QStringList types;
+	QModelIndexList selected = table_->selectionModel()->selectedRows();
+	/* in the table's order, as they are seen */
+	std::sort(selected.begin(), selected.end(), [](const QModelIndex &a, const QModelIndex &b) { return a.row() < b.row(); });
+	for (const QModelIndex &index : selected) {
+		const int row = filter_->mapToSource(index).row();
+		const RegDef &def = model_->rows()[row].def;
+		if (!def.rw) {
+			targets.readOnly << def.name;
+			continue;
+		}
+		targets.rows << row;
+		/* one type: the text typed means one thing to all of them (bytes: of one size too) */
+		const QString type = def.type == RegType::Bytes ? QStringLiteral("bytes (%1)").arg(def.size) : typeName(def.type);
+		if (!types.contains(type)) types << type;
+	}
+	if (types.size() > 1) targets.problem = types.join(QStringLiteral(", "));
+	return targets;
+}
+
+void RegistersTab::addBulkWriteAction(QMenu &menu) {
+	const BulkTargets targets = bulkTargets();
+	const int count = int(targets.rows.size());
+	QAction *action = menu.addAction(count >= 2 ? tr("Write to %n selected registers…", nullptr, count)
+			: tr("Write to several registers…"));
+	action->setObjectName(QStringLiteral("bulkWriteAction"));
+	/* not offered: why, as its tooltip (the menu shows tooltips) */
+	QString why;
+	if (!model_->writesEnabled()) why = tr("Tick Allow writes first");
+	else if (!connected_) why = tr("Not connected: connect to the device first");
+	else if (count < 2) why = tr("Select two or more rw registers of one type (Ctrl-click, Shift-click) to write one value "
+				"to all of them");
+	else if (!targets.problem.isEmpty()) why = tr("The selected registers are of different types: %1").arg(targets.problem);
+	action->setEnabled(why.isEmpty());
+	QString tip = why.isEmpty() ? tr("One value to all of them, after a list of what each one gets") : why;
+	if (targets.readOnly.size() == 1) tip += QLatin1Char('\n') + tr("%1 is read-only: left out.").arg(targets.readOnly.first());
+	else if (targets.readOnly.size() > 1) tip += QLatin1Char('\n') + tr("%1 are read-only: left out.")
+			.arg(targets.readOnly.join(QStringLiteral(", ")));
+	action->setToolTip(tip);
+	connect(action, &QAction::triggered, this, [this] {
+		const BulkTargets now = bulkTargets();
+		if (now.rows.size() >= 2 && now.problem.isEmpty()) requestBulkWrite(now, QString(), -1, {});
+	});
+}
+
+/* each row starts from its value now; the row edited in the table from the value its editor started from */
+void RegistersTab::requestBulkWrite(const BulkTargets &targets, const QString &text, int editedRow,
+		const QByteArray &editedBase) {
+	QVector<QByteArray> bases;
+	for (const int row : targets.rows) {
+		const RegisterModel::Row &reg = model_->rows()[row];
+		bases << (row == editedRow ? editedBase : reg.valid ? reg.raw : QByteArray());
+	}
+	emit bulkWriteRequested(targets.rows, text, bases, targets.readOnly);
 }
 
 void RegistersTab::showHeaderMenu(const QPoint &pos) {
@@ -509,5 +583,15 @@ void RegistersTab::updateDetail() {
 	}
 	if (!row.error.isEmpty()) text += QStringLiteral("<br>") + coloredSpan(row.error.toHtmlEscaped(), colors.bad);
 	if (!def.desc.isEmpty()) text += QStringLiteral("<br>") + coloredSpan(def.desc.toHtmlEscaped(), colors.muted);
+	/* several selected: the rule, readable without hovering (a double-click selects one row alone first) */
+	const BulkTargets targets = bulkTargets();
+	if (targets.rows.size() >= 2) {
+		const int count = int(targets.rows.size());
+		text += QStringLiteral("<br>") + coloredSpan((targets.problem.isEmpty()
+				? tr("%n registers selected: one value to all with F2 and Enter, or the right-click menu", nullptr, count)
+				: tr("%n registers selected, of different types (%1): no one value for all", nullptr, count)
+						.arg(targets.problem))
+						.toHtmlEscaped(), colors.muted);
+	}
 	if (detail_->text() != text) detail_->setText(text);
 }
