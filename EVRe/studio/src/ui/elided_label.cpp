@@ -46,8 +46,10 @@ void ElidedLabel::keepHeight() {
 	const QMargins margins = contentsMargins();
 	if (lines_ == 1) {
 		/* the line with the style sheet's padding and border (the contents margins): the font's height alone let a
-		 * layout short of room squeeze the sidebar's pill to half its height */
-		setMinimumHeight(fontMetrics().height() + margins.top() + margins.bottom() + 2 * margin());
+		 * layout short of room squeeze the sidebar's pill to half its height. Unwrapped, the height QLabel asks for its
+		 * text can be a pixel more than the font's (a rich text laid out by a text document, on Linux): the larger */
+		const int line = fontMetrics().height() + margins.top() + margins.bottom() + 2 * margin();
+		setMinimumHeight(wordWrap() ? line : std::max(line, QLabel::sizeHint().height()));
 		return;
 	}
 	QStringList rows;
