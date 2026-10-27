@@ -43,13 +43,15 @@ void ElidedLabel::setLines(int lines) {
 /* the lines' height as the label lays them out in its own font (the style sheet sets it when the label is polished, and
  * again at a theme switch): counted before, it was a pixel or two short of what the font then took */
 void ElidedLabel::keepHeight() {
+	const QMargins margins = contentsMargins();
 	if (lines_ == 1) {
-		setMinimumHeight(fontMetrics().height());
+		/* the line with the style sheet's padding and border (the contents margins): the font's height alone let a
+		 * layout short of room squeeze the sidebar's pill to half its height */
+		setMinimumHeight(fontMetrics().height() + margins.top() + margins.bottom() + 2 * margin());
 		return;
 	}
 	QStringList rows;
 	for (int i = 0; i < lines_; i++) rows << QStringLiteral("x");
-	const QMargins margins = contentsMargins();
 	setFixedHeight(fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft, rows.join(QLatin1Char('\n'))).height()
 			+ margins.top() + margins.bottom() + 2 * margin());
 }
@@ -83,6 +85,13 @@ void ElidedLabel::changeEvent(QEvent *event) {
 		keepHeight();
 		fit();
 	}
+}
+
+/* the style sheet sets its padding and border as contents margins after the font and style changes: the least height
+ * counted again with them */
+bool ElidedLabel::event(QEvent *event) {
+	if (event->type() == QEvent::ContentsRectChange) keepHeight();
+	return QLabel::event(event);
 }
 
 /* The width the text takes, rich text measured as drawn (bold is wider); then the text as it is, or cut. The room is

@@ -42,6 +42,7 @@ public:
 protected:
 	void resizeEvent(QResizeEvent *event) override;
 	void changeEvent(QEvent *event) override; /* a new font (the style sheet): one line of it, and cut again */
+	bool event(QEvent *event) override;       /* new contents margins (the style sheet's padding): the height again */
 
 private:
 	void fit();

@@ -364,7 +364,7 @@ QVBoxLayout *Sidebar::buildLinkState() {
 	deviceInfo_->setObjectName(QStringLiteral("deviceInfo"));
 	deviceInfo_->setWordWrap(true);
 	deviceInfo_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-	deviceInfo_->installEventFilter(this); /* two lines tall in the font the style sheet gives it (eventFilter) */
+	deviceInfo_->installEventFilter(this); /* two lines tall or more, in the font the style sheet gives it (fitDeviceInfo) */
 	deviceInfo_->setMinimumHeight(2 * deviceInfo_->fontMetrics().lineSpacing());
 	auto *rows = new QVBoxLayout;
 	rows->addWidget(connectButton_);
@@ -897,12 +897,8 @@ bool Sidebar::eventFilter(QObject *watched, QEvent *event) {
 			baud_->setProperty("typing", typing);
 			repolish(baud_);
 		}
-	} else if (watched == deviceInfo_ && font) {
-		/* two lines as the label lays them out, in its own font: measured at construction, before the style sheet set
-		 * it, they were 2 px short, and a "last seen: ..." that wraps grew the line where the sidebar scrolls */
-		const int twoLines = deviceInfo_->fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft,
-				QStringLiteral("x\nx")).height();
-		if (deviceInfo_->minimumHeight() != twoLines) deviceInfo_->setMinimumHeight(twoLines);
+	} else if (watched == deviceInfo_ && (font || type == QEvent::Resize)) {
+		fitDeviceInfo();
 	}
 	return QScrollArea::eventFilter(watched, event);
 }
@@ -937,7 +933,23 @@ void Sidebar::showLinkError(const QString &why, const QString &detail) {
 
 void Sidebar::showReconnecting() { setConnectButton(tr("Stop reconnecting"), QStringLiteral("primary")); }
 
-void Sidebar::setDeviceInfo(const QString &html) { deviceInfo_->setText(html); }
+void Sidebar::setDeviceInfo(const QString &html) {
+	deviceInfo_->setText(html);
+	fitDeviceInfo();
+}
+
+/* The device line's least height: two lines as the label lays them out, in its own font (measured at construction,
+ * before the style sheet set it, they were 2 px short, and a "last seen: ..." that wraps grew the line where the
+ * sidebar scrolls), or the lines its text takes at its width when that is more. A third line (the ID wrapped, then
+ * "the map is for 0xFC03") changed only the label's height for its width, which nothing passes up: the card kept its
+ * height and its layout took the room from the pill, which showed half of "Disconnected". As a minimum, the card and
+ * the sidebar grow for it. */
+void Sidebar::fitDeviceInfo() {
+	const int twoLines = deviceInfo_->fontMetrics().boundingRect(QRect(0, 0, 1000, 1000), Qt::AlignLeft,
+			QStringLiteral("x\nx")).height();
+	const int needs = std::max(twoLines, deviceInfo_->heightForWidth(deviceInfo_->width()));
+	if (deviceInfo_->minimumHeight() != needs) deviceInfo_->setMinimumHeight(needs);
+}
 
 /* a wrap inside a piece ("protocol | rev 1") splits what reads as one thing; after a ":" or a "·" it falls between two
  * (the space before a "·" is a no-break one too, so the "·" ends its line) */
