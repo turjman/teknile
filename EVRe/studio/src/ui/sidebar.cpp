@@ -941,7 +941,7 @@ void Sidebar::setDeviceInfo(const QString &html) {
 /* The device line's least height: two lines as the label lays them out, in its own font (measured at construction,
  * before the style sheet set it, they were 2 px short, and a "last seen: ..." that wraps grew the line where the
  * sidebar scrolls), or the lines its text takes at its width when that is more. A third line (the ID wrapped, then
- * "the map is for 0xFC03") changed only the label's height for its width, which nothing passes up: the card kept its
+ * "the map is for 0x1002") changed only the label's height for its width, which nothing passes up: the card kept its
  * height and its layout took the room from the pill, which showed half of "Disconnected". As a minimum, the card and
  * the sidebar grow for it. */
 void Sidebar::fitDeviceInfo() {

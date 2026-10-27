@@ -1629,7 +1629,7 @@ private:
 	}
 
 	/* The link's pill keeps its whole height whatever the device line under it takes (the owner's sidebar: with
-	 * "last seen: Device ID 0x1001 · protocol rev 1" on two lines and "the map is for 0xFC03" under it, only the top
+	 * "last seen: Device ID 0x1001 · protocol rev 1" on two lines and "the map is for 0x1002" under it, only the top
 	 * half of "● Disconnected" showed). A sidebar as the window's, in English and Arabic: the device line on one, two
 	 * and three lines, the pill in each state (Disconnected, Connecting, Connected to a serial port, an error that
 	 * wraps, Reconnecting); the pill as tall as it needs (its size hint, or its height for its width when it wraps) and
@@ -1659,7 +1659,7 @@ private:
 			card.show();
 			(void) QTest::qWaitForWindowExposed(&card);
 			const auto translate = [](const char *text) { return QCoreApplication::translate("MainWindow", text); };
-			const QString warn = coloredSpan(translate("the map is for %1").arg(addrText(0xFC03)).toHtmlEscaped(),
+			const QString warn = coloredSpan(translate("the map is for %1").arg(addrText(0x1002)).toHtmlEscaped(),
 					Theme::colors().warn);
 			const QString id = Sidebar::wholePieces(translate("Device ID %1 · protocol rev %2").arg(addrText(0x1001)).arg(1))
 					.toHtmlEscaped();
@@ -1705,7 +1705,7 @@ private:
 					Theme::apply(*qApp, dark);
 					card.themeChanged();
 					card.setDeviceInfo(lastSeen + QStringLiteral("<br>")
-							+ coloredSpan(translate("the map is for %1").arg(addrText(0xFC03)).toHtmlEscaped(),
+							+ coloredSpan(translate("the map is for %1").arg(addrText(0x1002)).toHtmlEscaped(),
 									Theme::colors().warn));
 					if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
 					QTest::qWait(150);

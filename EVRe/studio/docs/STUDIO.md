@@ -621,7 +621,7 @@ Only what still does not fit, a long host name, is cut in the middle. A reason i
 the pill, the pill takes two lines (or more), the part up to the colon on the first (*COM10 is gone:*) and the rest
 under it (*unplugged or reset?*). The device line under it is always there, two lines tall, so the card changes
 height only while a reason takes more than one line, or while the device line needs a third (*last seen: Device ID
-0x1001 ·* / *protocol rev 1* / *the map is for 0xFC03* in a sidebar of normal width): then the card grows for it and
+0x1001 ·* / *protocol rev 1* / *the map is for 0x1002* in a sidebar of normal width): then the card grows for it and
 the sidebar scrolls if it must. The pill keeps its whole height in every case.
 
 | Pill | Colour | Meaning |
@@ -6288,7 +6288,7 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   in both looks, its selected rate 4.5:1 on its row, read from the drawn row). It ends connected to the Python fake
   device over TCP.
 - **The pill's height** (`pillKeepsHeight`, after the serial link). A sidebar as tall as the window's, in English
-  and in Arabic: the device line on one line (*Device ID not read yet*), two (an ID, *the map is for 0xFC03*) and
+  and in Arabic: the device line on one line (*Device ID not read yet*), two (an ID, *the map is for 0x1002*) and
   three (*last seen: ...* wrapped, then the map's line), and for each the pill Disconnected, Connecting, Connected
   (*COM13 @ 115200*), with a reason on two lines and Reconnecting: the pill as tall as its size hint (wrapped: its
   height for its width) and its least height as much, the device line as tall as its lines need, the pill over
