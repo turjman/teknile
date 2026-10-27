@@ -1718,11 +1718,14 @@ private:
 			check(whole[0], qPrintable(QStringLiteral("the link's pill, %1: a one-line device line under it, the pill as tall "
 					"as it needs and held there in every state (Disconnected, Connecting, Connected, an error on two lines, "
 					"Reconnecting), nothing over another").arg(where)));
-			check(whole[1] && linesSeen[1] == 2, qPrintable(QStringLiteral("the link's pill, %1: a two-line device line (an ID, "
-					"the map is for another): the pill whole in every state, the line's two lines whole").arg(where)));
-			check(whole[2] && linesSeen[2] == 3, qPrintable(QStringLiteral("the link's pill, %1: a three-line device line "
+			/* at least: a longer translation or a narrower font may wrap the ID once more (Arabic on Linux's xvfb took three
+			 * lines for the two); the height it then needs is what whole[] checks */
+			check(whole[1] && linesSeen[1] >= 2, qPrintable(QStringLiteral("the link's pill, %1: a two-line device line (an ID, "
+					"the map is for another): the pill whole in every state, the line's two lines whole (%2 lines)").arg(where)
+					.arg(linesSeen[1])));
+			check(whole[2] && linesSeen[2] >= 3, qPrintable(QStringLiteral("the link's pill, %1: a three-line device line "
 					"(last seen wrapped, the map is for another): the pill whole in every state, the card grown for the "
-					"third line").arg(where)));
+					"third line (%2 lines)").arg(where).arg(linesSeen[2])));
 		}
 		language::apply(*qApp, QStringLiteral("en"));
 		Theme::apply(*qApp, wasDark);
