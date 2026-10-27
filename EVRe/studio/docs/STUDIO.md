@@ -930,8 +930,8 @@ On a register:
 
 - **Plot** or **Remove from chart** (numeric registers only)
 - **Read now**: one read of this register at once, into the table. This is how a byte array too long to be polled is read (see 13.3).
-- **Write to N selected registers…**: one value to every rw register selected (6.6). Disabled while it cannot be,
-  its tooltip says why: *Tick Allow writes first*, *Not connected: connect to the device first*, fewer than two rw
+- **Write to N selected registers…**: one value to every rw register selected (6.6). Disabled (greyed, as every menu
+  entry that cannot be used now) while it cannot be, its tooltip says why: *Tick Allow writes first*, *Not connected: connect to the device first*, fewer than two rw
   registers selected, or *The selected registers are of different types: f32, u8*. Read-only rows in the selection
   are left out, and its tooltip names them.
 - **Copy value**: the value text, as shown when the menu opened.
@@ -3180,7 +3180,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 The foot of the sidebar holds two buttons, the language and the version line (*v1.2.1 · teknile*):
 
 - **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
-- The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`).
+- The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`). In both themes a menu entry that cannot be used now is drawn in the muted grey and is not highlighted under the mouse; where it matters its tooltip says why.
 - **Language**: **System** (the default: the computer's language when the Studio has it, else English), **English**
   or **العربية** (Arabic), each in its own words. It is saved at once (`ui/language`) and applied at the next start: a
   window rebuilt in another language half-way would keep the texts made before. While the choice is not the language
@@ -6298,7 +6298,9 @@ The steps run in order. Each leaves the window and the device as the next step e
       Cancel writes none, Write anyway all; a ⚠ register among them (MSG_CNT marked for the check): marked, one
       sentence, no *Confirm write* after it; a register the device refuses (added at 0xD0F0 for the check): the
       others written, one Warning, one pop-up, *2 of 3 registers written*; one row selected: a single write, no
-      dialog (with `EVRE_TEST_SHOT`: `<prefix>_bulk_<plain|limit|refused|danger|menu>_<en|ar>_<light|dark>.png`)
+      dialog (with `EVRE_TEST_SHOT`: `<prefix>_bulk_<plain|limit|refused|danger|menu|menu_off>_<en|ar>_<light|dark>.png`)
+    - a disabled menu entry, in both themes: its text in the muted colour, not the others' (the ink painted), and no
+      highlight with the mouse over it
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
 11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
     sits left of the tabs, at 1200×720, 1600×950 and the window's size, and right of them again in left to right,
@@ -7036,7 +7038,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 796 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 798 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

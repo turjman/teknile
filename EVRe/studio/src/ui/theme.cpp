@@ -296,7 +296,8 @@ QScrollBar::handle:horizontal:hover, QScrollBar::handle:horizontal:pressed { bac
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 )"
-		/* status bar, menus, message boxes, splitters */
+		/* status bar, menus (an entry that cannot be used now muted, never highlighted: it must not look like the others),
+		 * message boxes, splitters */
 		R"(
 QStatusBar { background: %S1%; border-top: 1px solid %BORDER%; color: %MUTED%; }
 QStatusBar QLabel { color: %MUTED%; padding: 0 8px; }
@@ -305,6 +306,7 @@ QLabel#problem { color: %BAD%; }
 QMenu { background: %S2%; border: 1px solid %BORDER%; border-radius: 8px; padding: 4px; }
 QMenu::item { padding: 6px 18px; border-radius: 5px; }
 QMenu::item:selected { background: %ACCENTA%; }
+QMenu::item:disabled { color: %MUTED%; background: transparent; }
 QMenu::indicator { width: 16px; height: 16px; padding-left: 6px; }
 QMenu::indicator:non-exclusive { border-radius: 4px; border: 1px solid %CONTROL%; background: %BG%; margin-left: 6px; padding: 0; }
 QMenu::indicator:non-exclusive:checked { background: %AFILL%; border-color: %AFILL%; %TICK% }

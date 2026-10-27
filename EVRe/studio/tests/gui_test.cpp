@@ -555,6 +555,7 @@ public:
 		dangerRegister();
 		badValueRefused();
 		bulkWrite();
+		menuDisabledEntries();
 		noticeCoversNothing();
 		showInLogEndsNotice();
 		noticeRightToLeft();
@@ -1330,7 +1331,7 @@ private:
 	}
 
 	/* EVRE_TEST_SHOT: the bulk dialog (a plain one, one with a limit's note, one with a ⚠ register) and the right-click
-	 * menu with its entry, <prefix>_bulk_<what>_<en|ar>_<light|dark>.png, in English (both themes) and Arabic (light).
+	 * menu with its entry (menu; menu_off: disabled, a u8 and an i16 selected), <prefix>_bulk_<what>_<en|ar>_<light|dark>.png, in English (both themes) and Arabic (light).
 	 * The dialogs are made for the picture from the table's rows, as the window makes them; MSG_CNT is marked ⚠ for the
 	 * third and the map put back after */
 	template <typename Entry, typename Select>
@@ -1356,6 +1357,9 @@ private:
 				QTest::qWait(200);
 				select(names + QStringList{ QStringLiteral("STATUS") }, names[0]);
 				(void) bulkEntry(names[0], false, name(QStringLiteral("menu")));
+				/* and the entry off: a u8 and an i16 selected, its tooltip names the types */
+				select({ names[0], QStringLiteral("MOTOR_SPEED") }, names[0]);
+				(void) bulkEntry(names[0], false, name(QStringLiteral("menu_off")));
 				for (const auto &[what, text] : { std::pair{ QStringLiteral("plain"), QStringLiteral("2") },
 							 std::pair{ QStringLiteral("limit"), QStringLiteral("200") },
 							 std::pair{ QStringLiteral("refused"), QStringLiteral("blink") } }) {
@@ -1388,6 +1392,67 @@ private:
 		Theme::apply(*qApp, wasDark);
 		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
 		QTest::qWait(200);
+	}
+
+	/* A menu entry that cannot be used now (disabled) is drawn in the theme's muted colour, not as the others, and gets
+	 * no highlight under the mouse (theme.cpp, QMenu::item:disabled): the owner could not tell the bulk write's entry
+	 * was off. In both themes, a menu of its own with an entry on and one off, the disabled one made the active one;
+	 * the ink of each entry is the pixel of its rectangle farthest from the menu's background (the picture in device
+	 * pixels: the rectangles scaled by its ratio). */
+	void menuDisabledEntries() {
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const ThemeColors &colors = Theme::colors();
+			QMenu menu(&window_);
+			QAction *on = menu.addAction(QStringLiteral("An entry that works"));
+			QAction *off = menu.addAction(QStringLiteral("An entry that does not"));
+			off->setEnabled(false);
+			menu.popup(window_.mapToGlobal(QPoint(200, 200)));
+			(void) QTest::qWaitForWindowExposed(&menu);
+			menu.setActiveAction(off); /* as the mouse over it */
+			QTest::qWait(150);
+			const QImage picture = menu.grab().toImage();
+			menu.close();
+			const qreal ratio = picture.devicePixelRatio();
+			const auto distance = [](const QColor &a, const QColor &b) {
+				return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+			};
+			const QColor background = colors.surface2;
+			const auto inDevice = [&](QAction *action) {
+				const QRect r = menu.actionGeometry(action);
+				return QRect(qRound(r.x() * ratio), qRound(r.y() * ratio), qRound(r.width() * ratio),
+						qRound(r.height() * ratio)).intersected(picture.rect());
+			};
+			const auto ink = [&](QAction *action) {
+				QColor farthest = background;
+				const QRect r = inDevice(action);
+				for (int y = r.top(); y <= r.bottom(); y++)
+					for (int x = r.left(); x <= r.right(); x++) {
+						const QColor pixel = picture.pixelColor(x, y);
+						if (distance(pixel, background) > distance(farthest, background)) farthest = pixel;
+					}
+				return farthest;
+			};
+			const QColor inkOn = ink(on), inkOff = ink(off);
+			/* beside the text (inside the entry's left padding): the menu's background, no highlight */
+			const QRect offRect = inDevice(off);
+			const QColor besideOff = picture.pixelColor(offRect.left() + qRound(6 * ratio), offRect.center().y());
+			const bool ok = distance(inkOn, colors.text) < distance(inkOn, colors.muted)
+					&& distance(inkOff, colors.muted) < distance(inkOff, colors.text) && distance(inkOff, colors.muted) < 90
+					&& distance(besideOff, background) < 12;
+			if (!ok)
+				std::printf("     (%s: the ink on %s, off %s (muted %s, text %s), beside the off entry %s (the menu %s))\n",
+						dark ? "dark" : "light", qPrintable(inkOn.name()), qPrintable(inkOff.name()),
+						qPrintable(colors.muted.name()), qPrintable(colors.text.name()), qPrintable(besideOff.name()),
+						qPrintable(background.name()));
+			check(ok, dark ? "menus, dark theme: an entry that cannot be used now is drawn in the muted colour, not as the "
+							 "others, and the mouse over it highlights nothing"
+						   : "menus, light theme: an entry that cannot be used now is drawn in the muted colour, not as the "
+							 "others, and the mouse over it highlights nothing");
+		}
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
 	}
 
 	/* a pop-up notice is shown whose tooltip holds text */
