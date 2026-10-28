@@ -123,6 +123,7 @@ DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model
 	});
 
 	connect(view_, &DumpView::registerPicked, this, &DumpTab::registerPicked);
+	connect(view_, &DumpView::selectionCleared, this, &DumpTab::selectionCleared);
 	connect(view_, &DumpView::menuRequested, this, [this](RegKey key, int card, const QPoint &globalPos) {
 		QMenu menu(this);
 		menu.setToolTipsVisible(true);

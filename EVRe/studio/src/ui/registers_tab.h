@@ -62,6 +62,8 @@ public:
 	/* the register in this row of the model made the current one (the detail line and the quick-write panel follow);
 	 * false when the search or the groups hide it */
 	bool selectRow(int row);
+	/* no register selected and none current, as after a click below the rows (the Dump's empty room clears both) */
+	void clearSelection();
 	/* the Value editor opened on the row (as a double-click on it): false when it is hidden or cannot be written */
 	bool editValue(int row);
 

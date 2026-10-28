@@ -304,6 +304,7 @@ void MapEditorTab::buildTable() {
 	connect(table_, &QWidget::customContextMenuRequested, this, &MapEditorTab::showTableMenu);
 	connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
 			[this] { editor_->setTargets(selectedUids()); });
+	clearSelectionOnEmpty(table_); /* a click below the rows or Escape: none selected, the form says so */
 }
 
 void MapEditorTab::buildIssues() {
@@ -311,6 +312,7 @@ void MapEditorTab::buildIssues() {
 	issuesTitle_->setObjectName(QStringLiteral("muted"));
 	issues_ = new QListWidget;
 	issues_->setObjectName(QStringLiteral("mapIssues"));
+	clearSelectionOnEmpty(issues_);
 	connect(issues_, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
 		const quint32 uid = item->data(Qt::UserRole).toUInt();
 		if (uid) selectRegister(uid);

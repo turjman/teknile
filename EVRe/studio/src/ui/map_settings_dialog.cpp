@@ -204,6 +204,7 @@ QWidget *MapSettingsDialog::buildNotes() {
 	groupNotes_->horizontalHeader()->setStretchLastSection(true);
 	groupNotes_->verticalHeader()->hide();
 	groupNotes_->setColumnWidth(0, 160);
+	clearSelectionOnEmpty(groupNotes_, false); /* a dialog: Escape closes it */
 	auto *page = new QWidget;
 	auto *layout = new QVBoxLayout(page);
 	layout->addWidget(mutedLabel(tr("The map")));
@@ -247,6 +248,7 @@ QWidget *MapSettingsDialog::buildStreams() {
 	streamList_ = new QListWidget;
 	streamList_->setObjectName(QStringLiteral("fastStreamList"));
 	streamList_->setMaximumWidth(150);
+	clearSelectionOnEmpty(streamList_, false); /* none selected: the form empty and greyed (showStream(-1)) */
 	auto *add = smallButton(tr("+ Stream"), tr("A new fast stream: its window, rate and channels to fill in"),
 			QStringLiteral("addStream"));
 	removeStream_ = smallButton(tr("Remove"), tr("Remove the selected stream from the map"), QStringLiteral("removeStream"));
@@ -312,6 +314,7 @@ QWidget *MapSettingsDialog::buildStreams() {
 			tr("Description") });
 	channels_->horizontalHeader()->setStretchLastSection(true);
 	channels_->verticalHeader()->hide();
+	clearSelectionOnEmpty(channels_, false);
 	/* the other columns as wide as their header or a short value, Description the rest: the table fits its page
 	 * (a last header cut behind a scroll bar read as "Descripti") */
 	for (const auto &[column, width] : { std::pair{ ChName, 84 }, { ChType, 76 }, { ChUnit, 48 }, { ChScale, 64 },

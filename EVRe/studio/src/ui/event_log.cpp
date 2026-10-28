@@ -112,6 +112,7 @@ EventLog::EventLog(QWidget *parent) : QWidget(parent), file_(std::make_unique<Da
 	view_->setReadOnly(true);
 	view_->setMaximumBlockCount(MAX_LINES);
 	view_->setFont(monospaceFont());
+	clearSelectionOnEscape(view_);
 	/* one line per event, its columns under each other: a long path scrolls, it does not wrap mid-path */
 	view_->setLineWrapMode(QPlainTextEdit::NoWrap);
 	layout->addWidget(view_, 1);

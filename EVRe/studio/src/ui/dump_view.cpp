@@ -255,6 +255,12 @@ void DumpView::select(RegKey key) {
 	viewport()->update();
 }
 
+void DumpView::clearSelection() {
+	if (selected_ == NO_REGISTER) return;
+	select(NO_REGISTER);
+	emit selectionCleared();
+}
+
 void DumpView::setEmptyText(const QString &text) {
 	emptyText_ = text;
 	viewport()->update();
@@ -2270,17 +2276,20 @@ void DumpView::mouseMoveEvent(QMouseEvent *e) {
 	QAbstractScrollArea::mouseMoveEvent(e);
 }
 
-/* a click picks the register under it (here and in the Registers tab); the menu is the right-click's */
+/* a click picks the register under it (here and in the Registers tab), one on empty room picks none; the menu is the
+ * right-click's */
 void DumpView::mousePressEvent(QMouseEvent *e) {
 	const QPoint pos = e->position().toPoint();
 	int card = -1, row = -1, channel = -1;
 	FastPart part = NoPart;
-	if (e->button() == Qt::LeftButton && fastAt(pos, card, row, channel, part) && part == ShowAllButton) {
+	const bool left = e->button() == Qt::LeftButton;
+	if (left && fastAt(pos, card, row, channel, part) && part == ShowAllButton) {
 		setShowAll(card, !showAll(card)); /* a fast card's Show all: every record, or the first three and the last */
 		return;
 	}
-	const RegKey key = e->button() == Qt::LeftButton ? registerAt(pos) : NO_REGISTER;
+	const RegKey key = left ? registerAt(pos) : NO_REGISTER;
 	if (key == NO_REGISTER) {
+		if (left && part == NoPart) clearSelection(); /* no chip, no decode line, no fast card's channel or record */
 		QAbstractScrollArea::mousePressEvent(e);
 		return;
 	}
@@ -2328,7 +2337,8 @@ void DumpView::contextMenuEvent(QContextMenuEvent *e) {
 
 /* Up and Left the register before, Down and Right the next, across the cards (the first key without a selection
  * picks the first register); each move is a click's (the Registers tab follows), scrolled into view. Enter goes to
- * the Registers tab on it. The Menu key and Shift+F10 come as a context menu event (contextMenuEvent). */
+ * the Registers tab on it, Escape clears the selection (both tabs). The Menu key and Shift+F10 come as a context
+ * menu event (contextMenuEvent). */
 void DumpView::keyPressEvent(QKeyEvent *e) {
 	const int key = e->key();
 	if (key == Qt::Key_Menu || (key == Qt::Key_F10 && e->modifiers() == Qt::ShiftModifier)) {
@@ -2339,6 +2349,10 @@ void DumpView::keyPressEvent(QKeyEvent *e) {
 	}
 	if (key == Qt::Key_Return || key == Qt::Key_Enter) {
 		if (selected_ != NO_REGISTER) emit registerPicked(selected_, true);
+		return;
+	}
+	if (key == Qt::Key_Escape && e->modifiers() == Qt::NoModifier && selected_ != NO_REGISTER) {
+		clearSelection();
 		return;
 	}
 	const bool back = key == Qt::Key_Up || key == Qt::Key_Left, forth = key == Qt::Key_Down || key == Qt::Key_Right;

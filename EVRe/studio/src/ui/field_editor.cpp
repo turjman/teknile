@@ -39,6 +39,7 @@ FieldEditor::FieldEditor(QWidget *parent) : QWidget(parent) {
 	table_->setColumnWidth(ColAccess, 76);
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setSelectionMode(QAbstractItemView::SingleSelection);
+	clearSelectionOnEmpty(table_); /* a click below the rows or Escape: no field picked (pick(-1), as below) */
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (!loading_) readTable();
 	});
@@ -147,6 +148,10 @@ void FieldEditor::pick(int index) {
 	if (!on) {
 		valuesTitle_->setText(tr("Pick a field to name its values"));
 		values_->setEntries({}, false);
+		/* none picked (the strip's empty room): no row of the table lit or current either */
+		loading_ = true;
+		table_->selectionModel()->clear();
+		loading_ = false;
 		return;
 	}
 	const BitField &field = fields_[index];

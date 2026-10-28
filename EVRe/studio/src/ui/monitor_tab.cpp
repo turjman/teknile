@@ -55,6 +55,7 @@ MonitorTab::MonitorTab(const RegisterModel *model, QWidget *parent) : QWidget(pa
 	frames_->setReadOnly(true);
 	frames_->setMaximumBlockCount(5000);
 	frames_->setFont(monospaceFont());
+	clearSelectionOnEscape(frames_);
 	/* empty: what shows here, and how to get it */
 	frames_->setPlaceholderText(tr("Nothing yet. Send a request above, or tick Log frames to see every frame of the "
 			"polling."));

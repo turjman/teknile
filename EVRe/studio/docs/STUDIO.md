@@ -990,6 +990,31 @@ Examples from the example map:
 
 With nothing selected, it says *Select a register to see it here in full: value, decoded, raw bytes, description.*
 
+**Nothing selected.** A click on empty room in the table (below the rows), or **Esc** while the table has the focus,
+selects no register: no row is highlighted or current, the detail line says *Select a register…*, the quick-write
+panel hides, and the Dump lights no register (37.4). A click on a row selects it again, and all three follow. Qt's own
+table cleared only the highlight on such a click and kept the current row, so the line, the panel and the Dump went
+on showing it.
+
+The same rule holds in every view of the Studio with a selection: a click on its empty room, or **Esc** while it has
+the focus, selects nothing, and what shows the selection follows. In a dialog **Esc** closes the dialog, as in every
+dialog; the click still clears its lists.
+
+| View | Cleared by, and what follows |
+|---|---|
+| Registers&nbsp;table | A click below the rows, **Esc**: the detail line, the quick-write panel and the Dump show nothing selected. |
+| Dump | A click anywhere but a register's chip or decode line (and a fast card's channels and records), **Esc**: the Registers tab has no current row either (37.4). |
+| Map&nbsp;editor&nbsp;table | A click below the rows, **Esc**: the form shows *No register selected* (30.5). |
+| Map&nbsp;editor's&nbsp;checks | A click below the list, **Esc**. |
+| Bit&nbsp;fields | A click below the fields' rows, **Esc**, a click on the strip's empty room (its bit numbers, a bit no field has, under the bits): no field picked, *Pick a field to name its values* (31.3). |
+| Value&nbsp;names | A click below the rows, **Esc** (31.1). |
+| Chart's&nbsp;notes | A click on the plot away from the tags, **Esc**: no note chosen, so **Delete** removes nothing (7.11). |
+| Measurement&nbsp;table | A click below the rows, **Esc**: no cell selected. |
+| Recording's&nbsp;window | As the chart: its notes and its measurement table. |
+| Monitor,&nbsp;Log | A click in the text (Qt's own), **Esc**: no text selected. |
+| Dialogs'&nbsp;lists | A click below the rows (the Map settings' streams, a stream's channels, the groups' notes); **Esc** closes the dialog. No stream selected: its form is empty and greyed. |
+| Devices&nbsp;on&nbsp;the&nbsp;link | Not a selection but a choice: one device is always the one shown (3.9), so nothing clears it. The Help's list of topics is one too. |
+
 **Definitions are made on the Map editor tab** (chapter 30). **+ Register** and *Edit definition…* open it, with the
 new register (after the selected one) or the chosen one selected; *Remove* takes the selected registers out as an
 undoable step. What follows describes the old *Add register* form, kept for reference: the Map editor's table and
@@ -1581,6 +1606,7 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 | Trigger's&nbsp;T&nbsp;▼&nbsp;flag&nbsp;above&nbsp;the&nbsp;plot | Drag&nbsp;/&nbsp;double&#8209;click | The crossing's place in the window, 0 to 90 %, from where it was taken; a double-click puts it back at 50 %, the default; its tooltip says when the line crossed (7.13). |
 | Chart | Right-click | The chart's menu: Copy picture, Save picture, Export to CSV, Add note here, Open recording (7.10). |
 | Note's&nbsp;tag | Drag&nbsp;/&nbsp;double&#8209;click&nbsp;/&nbsp;Delete | Move the note / edit its text / remove the note clicked last with Delete (7.11). |
+| Chart,&nbsp;away&nbsp;from&nbsp;the&nbsp;tags | Click&nbsp;/&nbsp;Esc | No note chosen: Delete then removes nothing (7.11). |
 | Legend&nbsp;(chips&nbsp;overflow) | Wheel | Scroll the chips, 60 px per notch. The time zoom is left alone. |
 | Legend&nbsp;scroll&nbsp;bar | Click&nbsp;/&nbsp;drag | Bring the thumb under the mouse, then drag it. |
 | Legend&nbsp;arrows | Click | Scroll half a row that way. |
@@ -1589,6 +1615,7 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 | Memory&nbsp;strip | Click&nbsp;/&nbsp;drag | Centre the view there, and hold. Taken by its box (or the 12 px handle at a short window), the view follows the mouse from where it was. |
 | Memory&nbsp;strip | Wheel | The view a window earlier (up) or later (down), held (7.4). |
 | Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
+| Measurement&nbsp;table | Click&nbsp;below&nbsp;the&nbsp;rows&nbsp;/&nbsp;Esc | No cell selected (4.11). |
 | Anywhere | F1 | Help. |
 | Register&nbsp;table | Enter&nbsp;/&nbsp;Esc&nbsp;/&nbsp;F2 | Write the edited value / cancel the edit / start an edit. |
 
@@ -1599,7 +1626,7 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 
 *The crosshair: a dot on each line in its lane, and one box with the clock time, how long ago, and every value with its unit.*
 
-The chart takes one key: **Delete** (or Backspace) removes the note clicked last (7.11).
+The chart takes two keys: **Delete** (or Backspace) removes the note clicked last, **Esc** leaves none chosen (7.11).
 
 ### 7.9 Legend, labels and the info line
 
@@ -1708,7 +1735,8 @@ A note marks a moment on the chart with a few words: *pump on*, *valve shut*.
   warning colour at that time and a tag with the text at the bottom of the plot (a long text is cut to 180 px; the
   tag stands left of its line at the plot's right edge).
 - **Move it:** drag its tag. **Edit it:** double-click its tag (an empty text removes it). **Remove it:** click its
-  tag (its edge turns to the accent colour) and press **Delete**.
+  tag (its edge turns to the accent colour) and press **Delete**. **Esc**, or a click on the plot away from the tags,
+  leaves none chosen (4.11).
 - Notes are times, as the cursors are: in a live view they move left with the data, and a note older than the
   memory is no longer shown. **Clear** leaves them.
 - A graphics card draws them too: the line on the card, the tag as a picture, as the cursors' tags.
@@ -4786,7 +4814,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
@@ -5041,7 +5069,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
 | `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
-| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
+| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
 | `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
@@ -5059,8 +5087,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `forget` / `fillRecentMenu` (a file not found greyed, `recentMissing`; `recentClear`), `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
-| `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`, `bannerText`; signals `registerPicked`, `writeRequested` | GUI test (the Dump steps) |
-| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`; signals `registerPicked`, `menuRequested` | GUI test (the Dump steps) |
+| `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`, `bannerText`; signals `registerPicked`, `selectionCleared`, `writeRequested` | GUI test (the Dump steps) |
+| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`; `clearSelection`; signals `registerPicked`, `selectionCleared`, `menuRequested` | GUI test (the Dump steps) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
@@ -7025,6 +7053,28 @@ no request strip, the device's READ_RESP strip, the polled read gone); on a bus 
 D2's cards only, each request naming it, and D1 chosen shows D1's; a running stream is a note without hex, its blocks
 never in the store. The Help step checks the Dump's page and the first page's line for it.
 
+Clearing a selection (4.11), a check per view, each after the step of its view; each clicks an item, then empty room
+(nothing selected), the item again (selected as before), then Escape (nothing selected):
+
+- **The Registers tab** (`clearRegistersSelection`, after `dumpMouse`): the search left with FAN_SPEED's row; after
+  the click below it and after Escape no row selected or current, the detail line's *Select a register*, the
+  quick-write panel hidden, the Dump lighting none.
+- **The Dump** (`clearDumpSelection`): FAN_SPEED current in the Registers tab and lit in the Dump; a click under the
+  first card's last row (no register there) and Escape on the cards leave none selected in either tab, the detail
+  line and the panel as above; a click on SUPPLY_V's chip selects it in both.
+- **The Map editor** (`clearMapEditorSelection`, after `mapEditor`): the table (the form's note *No register
+  selected* instead of the form, and back); the checks list, with a name used twice for it (undone after); CONFIG's
+  bit fields: the table, and on the strip a field's cell picks it, the bit numbers over it pick none (*Pick a field to
+  name its values*); LED_MODE's value names.
+- **The chart** (`clearChartSelection`, after `chartNotes`): a note added, Escape and a click on the plot away from
+  its tag leave none chosen, the note kept and Delete then removing nothing; the measurement table; a recording's
+  window opened from a small CSV, its note and its measurement table the same.
+- **The Monitor and the Log** (`clearTextSelection`, after `monitorRequests`): all their text selected, Escape and a
+  click in the text clear it.
+- **A dialog** (`clearDialogSelection`, after `mapStreamsPage`): the Map settings of the example fast map, the groups'
+  notes, the streams (none selected: the stream's form empty and greyed; the stream clicked: its form again) and the
+  channels clear on a click on empty room; Escape on the streams' list closes the dialog, the list keeping its row.
+
 The last check counts Qt's warnings about objects used across threads. It installs a message handler at start and
 looks for messages that contain one of these phrases:
 
@@ -7038,7 +7088,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 798 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 810 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7518,6 +7568,7 @@ empty and says *(several)*, and what is typed or picked there goes to all of the
 | Copy | Ctrl+C | the selected registers as JSON on the clipboard (a list as in the map file; also plain text) |
 | Paste | Ctrl+V | registers from the clipboard: from this map, another one, or JSON typed in a text editor. Where their addresses are free they keep them; otherwise they move as a block, the gaps between them kept, to the first place after the selection they all fit |
 | **Delete** | Del | the selected registers out of the map |
+| Select&nbsp;none | Esc | no register selected, as a click below the rows: the form shows *No register selected*; the checks, the bit fields and the value names clear the same way (4.11) |
 
 On the Registers tab, **+ Register** and *Edit definition…* open the Map editor with the new or the chosen register
 selected, and *Remove* is an undoable step too.
@@ -7668,7 +7719,8 @@ write may always set them, whatever min and max say.
 The **Bit fields** page draws the register's bits as the Registers tab does, with the live value in the fields:
 
 - **Drag across bit cells** to make a field of those bits.
-- **Click a field** to pick it: its row in the list, and its value names below.
+- **Click a field** to pick it: its row in the list, and its value names below. A click on the strip's empty room
+  (its bit numbers, a bit no field has), a click below the list's rows, or **Esc** in the list picks none (4.11).
 - The list: name, bits (`7:4`, or one bit `3`), access and description, edited in place. Access is *—* (as the
   register), `ro`, `rw` or `w1c`.
 - **+ Field** makes a one-bit field on the lowest free bit; **− Field** removes the picked one.
@@ -8175,6 +8227,7 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 | Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7). |
 | **Show&nbsp;all&nbsp;▾** | On a fast card: every record of the block, the button then **Show fewer ▴** (37.7). A hand and a highlight under the mouse, a tooltip. |
 | Click | Selects the register here (its chips lit as on the mouse and framed in the accent, its decode line filled with its tint and bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
+| Click&nbsp;on&nbsp;empty&nbsp;room | Anywhere but a register's chip or decode line (a fast card's channels and records and its Show all excepted): no register selected, here and in the Registers tab, which then has no current row (its detail line and quick-write panel show nothing selected, 4.11). After **Show in dump** this is how the register stops being lit. |
 | Double-click | Goes to the Registers tab on the register. |
 | Right-click,&nbsp;or&nbsp;**Copy&nbsp;▾** | The menu of the register under the mouse (Copy ▾: the selected one) and of its card (or the first card in view). Nothing is reachable only by the right-click. |
 
@@ -8185,6 +8238,7 @@ The keys, once the cards have the focus (the Tab key reaches them after the tool
 | Up,&nbsp;Left | The register before, across the cards (the first key without a selection picks the first register); the Registers tab follows, as with a click, and the register is scrolled into view. |
 | Down,&nbsp;Right | The next register. |
 | Enter | The Registers tab on the selected register. |
+| Esc | No register selected, here and in the Registers tab, as a click on empty room. |
 | Menu,&nbsp;Shift&nbsp;+&nbsp;F10 | The menu of the selected register, at its chip. |
 
 The menu, always the same nine items; one that cannot be used now is greyed with the reason in its tooltip (on a fast

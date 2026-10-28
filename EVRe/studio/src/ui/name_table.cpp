@@ -16,6 +16,7 @@
 #include <cmath>
 
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 NameTable::NameTable(Keys keys, const QString &objectName, QWidget *parent) : QWidget(parent), keys_(keys) {
 	drawnDark_ = Theme::isDark();
@@ -26,6 +27,7 @@ NameTable::NameTable(Keys keys, const QString &objectName, QWidget *parent) : QW
 	table_->verticalHeader()->hide();
 	table_->setColumnWidth(0, 90);
 	table_->verticalHeader()->setDefaultSectionSize(24);
+	clearSelectionOnEmpty(table_);
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (loading_) return;
 		markRows();

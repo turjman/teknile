@@ -6,7 +6,8 @@
  *
  * In edit mode (the Map editor) nothing is written: a drag across bit cells
  * chooses bits for a new field (bitsChosen), a click on a field picks it
- * (fieldPicked), and the field picked is drawn in the accent colour. */
+ * (fieldPicked), a click on empty room picks none (fieldPicked(-1)), and the field picked is drawn in the accent
+ * colour. */
 #pragma once
 
 #include <QWidget>
