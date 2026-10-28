@@ -404,8 +404,9 @@ QWidget *MainWindow::buildRegistersTab() {
 	connect(registersTab_, &RegistersTab::writeRequested, this, &MainWindow::onWriteRequested);
 	connect(registersTab_, &RegistersTab::bulkWriteRequested, this, &MainWindow::onBulkWriteRequested);
 	connect(registersTab_, &RegistersTab::broadcastRequested, this, &MainWindow::onBroadcastRequested);
-	connect(registersTab_, &RegistersTab::readRequested, this, [this](quint16 addr, quint16 count) {
-		engineRead(selectedSlave(), addr, count, true, {}); /* the table follows through the engine */
+	connect(registersTab_, &RegistersTab::readRequested, this, [this](int row) {
+		const RegDef &def = model_->rows()[row].def; /* All devices shown: its own device, not the one selected */
+		engineRead(slaveOf(def), def.addr, quint16(def.size), true, {}); /* the table follows through the engine */
 	});
 	connect(registersTab_, &RegistersTab::unplotAllRequested, this, &MainWindow::unplotAll);
 	connect(registersTab_, &RegistersTab::plotFieldRequested, this, [this](int row, int field) {
@@ -1508,7 +1509,9 @@ void MainWindow::onBulkWriteRequested(const QVector<int> &rows, const QString &t
 	QVector<BulkWriteDialog::Target> targets;
 	for (const int row : rows) {
 		const RegisterModel::Row &reg = model_->rows()[row];
-		targets << BulkWriteDialog::Target{ reg.def, reg.valid ? reg.raw : QByteArray(), QString() };
+		const int device = isBus() ? deviceOfSlave(reg.def.slave) : -1; /* a bus: the Device column */
+		targets << BulkWriteDialog::Target{ reg.def, reg.valid ? reg.raw : QByteArray(),
+				device >= 0 ? bus_.devices[device].name : QString() };
 	}
 	BulkWriteDialog dialog(targets, leftOut, text, this);
 	if (dialog.exec() != QDialog::Accepted || dialog.writable() == 0) {

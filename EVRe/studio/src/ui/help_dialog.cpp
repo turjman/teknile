@@ -315,8 +315,8 @@ name.</li>
 </ol>
 <h3>Several registers at once</h3>
 <p>Select several <b>rw</b> registers of one type (<b>Ctrl-click</b>, <b>Shift-click</b>), then right-click one of them →
-<b>Write to N selected registers…</b>, or press <b>F2</b> on one, type and <b>Enter</b> (a double-click selects that
-row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
+<b>Write to N selected registers…</b>, type the value in the quick-write panel under the table, or press <b>F2</b> on
+one, type and <b>Enter</b> (a double-click selects that row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
 its names); one that does not take it is left out with the reason, one past its map's limits has a note, read-only
 rows are left out. <b>Cancel</b> has the focus; <b>Write N</b> writes them one after the other in address order, each
 read back. A refusal does not stop the others, and the Log sums them up in one line with the values replaced: there is
@@ -334,6 +334,12 @@ values, or <i>Value…</i>);</li>
 <p>On a bus, <b>To all devices</b> sends the value typed to every device in one broadcast frame, where the
 broadcast rule allows it (see <b>Connecting</b>), after a confirmation, and reads each one back; the Log says which
 devices took it. It is offered once a value is typed.</p>
+<p>With several <b>rw</b> registers of one type selected, the panel writes to all of them (<b>Write 3 selected
+registers</b>): the box starts with the value they share, or is empty with <i>(several values)</i> while they differ;
+a list under it shows each one's value as the polls bring it; <b>Enter</b> or <b>Write</b> opens the list of what each
+one gets. The names list shows only when they all have the same names; <b>Default</b>, <b>To all devices</b> and
+<b>Bits</b> are hidden. On a bus with All devices shown they may be on several devices: each one is written to its own
+device, never as a broadcast, and the list names the device.</p>
 <p>A bit or field is written read-modify-write from the value the device holds, so the other bits are kept.
 Every quick write goes the same way as a table edit: <b>Allow writes</b> must be on, ⚠ registers ask first.</p>
 <ul>
@@ -344,7 +350,12 @@ Every quick write goes the same way as a table edit: <b>Allow writes</b> must be
 yours overwrites it.</li>
 </ul>
 <p>Right-click a row: <b>Plot</b> (or <b>Remove from chart</b>), <b>Plot a field</b> (a register with bit fields: one
-field as a line of its own), <b>Read now</b>, <b>Write to N selected registers…</b>, <b>Copy value</b>, <b>Edit definition…</b>, <b>Remove</b>. Anywhere in
+field as a line of its own), <b>Read now</b>, <b>Write to N selected registers…</b>, <b>Copy value</b>, <b>Show in
+dump</b>, <b>Edit definition…</b>, <b>Remove</b>. The menu acts on the rows selected (a row outside the selection is
+selected alone first): with several, <b>Plot</b>, <b>Read now</b>, <b>Copy value</b> and <b>Remove</b> act on all of
+them and say how many (<i>Read 3 registers now</i>; Copy gives a line each, the name and the value apart by a tab;
+Remove asks first), and <b>Plot a field</b>, <b>Show in dump</b> and <b>Edit definition…</b> name the register under
+the mouse. Anywhere in
 the table: <b>Plot all shown</b>, <b>Remove shown from the chart</b>, <b>Remove all from the chart</b>, <b>Fit
 columns</b>, <b>Decoded column</b>, <b>Log all</b> / <b>Log none</b>, <b>Add register…</b>.</p>
 )HTML") },
