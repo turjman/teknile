@@ -498,6 +498,8 @@ QWidget *MainWindow::buildDumpTab() {
 			statusBar()->showMessage(tr("%1 is hidden on the Registers tab by its search or groups")
 					.arg(model_->rows()[row].def.name), 4000);
 	});
+	/* a click on the Dump's empty room or Escape there: nothing selected in either tab */
+	connect(dumpTab_, &DumpTab::selectionCleared, registersTab_, &RegistersTab::clearSelection);
 	connect(dumpTab_, &DumpTab::writeRequested, this, [this](RegKey key) {
 		const int row = rowOfKey(key);
 		if (row < 0) return;

@@ -710,6 +710,7 @@ QWidget *ChartTab::buildMeasurements() {
 	measures_->verticalHeader()->setDefaultSectionSize(26);
 	measures_->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	measures_->setSelectionMode(QAbstractItemView::ContiguousSelection);
+	clearSelectionOnEmpty(measures_); /* Qt clears the cells on a click below the rows, but keeps the current one */
 	measures_->setShowGrid(false);
 	measures_->setAlternatingRowColors(true);
 	measures_->setWordWrap(false);

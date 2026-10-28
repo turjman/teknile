@@ -84,6 +84,7 @@ signals:
 	void dumpWanted(bool on);                       /* the engine keeps the replies (IoEngine::setDump) */
 	void slaveChosen(int slave);                    /* the chooser: another device's cards */
 	void registerPicked(RegKey key, bool switchTab); /* a click (false), a double-click or Show in Registers (true) */
+	void selectionCleared();                        /* a click on the cards' empty room or Escape (DumpView's) */
 	void writeRequested(RegKey key);                /* Write...: the Registers tab's editor on it */
 
 private:

@@ -48,8 +48,9 @@
  * address, a crosshair in the register's tint, so its place reads at the edges. A fast card's records have no column
  * offsets: a row there is a record, not 16 bytes of memory. A click selects it (the same light, framed in the accent; the
  * window makes it the Registers tab's current row), a double-click goes there, a right-click asks for the menu (the
- * tab's, repeated in its Copy button). The keys do the same: the arrows move the
- * selection, Enter goes there, the Menu key or Shift+F10 opens the menu.
+ * tab's, repeated in its Copy button); a click on empty room (no chip, decode line or fast card's part) clears the
+ * selection, here and in the Registers tab. The keys do the same: the arrows move the
+ * selection, Enter goes there, Escape clears it, the Menu key or Shift+F10 opens the menu.
  *
  * Painted as BitView paints (ThemeColors, no style sheet): the bytes, addresses, names and values in a monospace
  * font, the labels and field names in the window's font a point smaller; left to right in every language, the
@@ -157,6 +158,8 @@ public:
 	void tick();
 	void select(RegKey key);                        /* its chips framed, its decode line bold */
 	RegKey selected() const { return selected_; }
+	/* nothing selected (a click on empty room, Escape): selectionCleared, so the Registers tab clears too */
+	void clearSelection();
 	/* scrolled so the register's first chip is in view; a register no card holds yet: when its card comes */
 	void scrollToRegister(RegKey key);
 	void setEmptyText(const QString &text);         /* said in the middle while there is no card */
@@ -278,6 +281,8 @@ public:
 signals:
 	/* a click on a chip or a decode line (switchTab false), a double-click or Enter (true) */
 	void registerPicked(RegKey key, bool switchTab);
+	/* the selection cleared here (clearSelection): the Registers tab has no current row either */
+	void selectionCleared();
 	/* a right-click: the menu for this register (NO_REGISTER: none under the mouse) of card (-1: none) */
 	void menuRequested(RegKey key, int card, const QPoint &globalPos);
 

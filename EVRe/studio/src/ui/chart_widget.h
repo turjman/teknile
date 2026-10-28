@@ -42,7 +42,7 @@
  * Notes: labelled markers at a time, a dashed line with a tag at the bottom of
  * the plot (drawn by the CPU, and as a picture on the card like the cursors'
  * tags); drag a tag to move it, double-click it to edit (noteEditRequested),
- * Delete removes the one clicked last. A right-click asks for the chart's menu
+ * Delete removes the one clicked last, Escape or a click elsewhere leaves none chosen. A right-click asks for the chart's menu
  * (menuRequested): the Chart tab makes it.
  *
  * Trigger: a line crossing its level (rising, falling or either; each line

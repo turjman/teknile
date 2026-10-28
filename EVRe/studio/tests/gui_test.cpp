@@ -598,6 +598,7 @@ public:
 		chartMenuAndPictures();
 		chartExport();
 		chartNotes();
+		clearChartSelection();
 		chartLanes();
 		chartLanesFit();
 		chartLanesFoldButton();
@@ -636,16 +637,21 @@ public:
 		recordingWindows();
 		recentMissing();
 		mapEditor();
+		clearMapEditorSelection();
 		mapStreamsPage();
+		clearDialogSelection();
 		limitsAndFields();
 		pollingSurvivesEdits();
 		uiAudit();
 		hoverEdges();
 		monitorRequests();
+		clearTextSelection();
 		dumpCards();
 		dumpColours();
 		dumpLive();
 		dumpMouse();
+		clearRegistersSelection();
+		clearDumpSelection();
 		dumpColumns();
 		dumpKeys();
 		dumpFields();
@@ -6595,6 +6601,553 @@ private:
 					tabs->currentIndex(), view->selected() == setpoint, inView);
 		check(follows && shown, "Dump: the Registers tab's current row is the Dump's selected register (its chips framed, "
 				"its decode line bold); its right-click menu's Show in dump opens the Dump on it, in view");
+	}
+
+	/* ---- the rule for every selection (STUDIO.md 4.11): a click on empty room or Escape clears it; what follows it
+	 * shows nothing selected; a click on an item after it selects as before */
+
+	/* the Registers tab's search box */
+	QLineEdit *registersSearch() const {
+		if (auto *tab = window_.findChild<RegistersTab *>())
+			for (QLineEdit *box : tab->findChildren<QLineEdit *>())
+				if (box->placeholderText().startsWith(QLatin1String("Search name"))) return box;
+		return nullptr;
+	}
+
+	/* the Registers tab: its current row drives the detail line, the quick-write panel and the Dump's lit register */
+	void clearRegistersSelection() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		auto *panel = window_.findChild<QWidget *>(QStringLiteral("quickWrite"));
+		DumpTab *dump = dumpTab();
+		QLineEdit *search = registersSearch();
+		if (!tabs || !detail || !panel || !dump || !search) {
+			check(false, "clearing a selection, Registers tab: its parts found");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		search->setText(regs_.u8.name); /* a row or two: room under them */
+		QApplication::processEvents();
+		const RegKey u8 = keyOf(regs_.u8.name);
+		const auto rowCentre = [&] {
+			return table_->visualRect(valueCell(table_, regs_.u8.name).siblingAtColumn(RegisterModel::ColName)).center();
+		};
+		const auto picked = [&] {
+			return table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString() == regs_.u8.name
+					&& table_->selectionModel()->hasSelection() && detail->text().contains(regs_.u8.name)
+					&& !panel->isHidden() && dump->view()->selected() == u8;
+		};
+		const auto cleared = [&] {
+			return !table_->selectionModel()->hasSelection() && !table_->currentIndex().isValid()
+					&& detail->text().contains(QLatin1String("Select a register to see it here in full")) && panel->isHidden()
+					&& dump->view()->selected() == DumpView::NO_REGISTER;
+		};
+		const QPoint empty(table_->viewport()->width() / 2, table_->viewport()->height() - 6);
+		const bool room = !table_->indexAt(empty).isValid();
+		QTest::mouseClick(table_->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre());
+		const bool first = picked();
+		QTest::mouseClick(table_->viewport(), Qt::LeftButton, Qt::NoModifier, empty);
+		const bool byClick = cleared();
+		QTest::mouseClick(table_->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre());
+		const bool again = picked();
+		table_->setFocus();
+		QTest::keyClick(table_, Qt::Key_Escape);
+		const bool byEscape = cleared();
+		QTest::mouseClick(table_->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre());
+		const bool afterEscape = picked();
+		search->clear();
+		QApplication::processEvents();
+		if (!room || !first || !byClick || !again || !byEscape || !afterEscape)
+			std::printf("     (Registers: room %d, picked %d, click clears %d, picked again %d, Escape clears %d, picked %d; "
+					"detail \"%s\", panel hidden %d, Dump 0x%llx)\n", room, first, byClick, again, byEscape, afterEscape,
+					qPrintable(detail->text().left(80)), panel->isHidden(), (unsigned long long) dump->view()->selected());
+		check(room && first && byClick && again && byEscape && afterEscape, "clearing a selection, Registers tab: a click "
+				"below the rows, and Escape with the table focused, leave no row selected and none current; the detail line "
+				"says \"Select a register\", the quick-write panel hides, the Dump lights none; a click on a row selects it "
+				"again, all three following");
+	}
+
+	/* the Dump: a click on empty room (no chip, no decode line) or Escape clears its selection and the Registers tab's */
+	void clearDumpSelection() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		auto *panel = window_.findChild<QWidget *>(QStringLiteral("quickWrite"));
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !detail || !panel || !view) {
+			check(false, "clearing a selection, Dump: its parts found");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		table_->setCurrentIndex(valueCell(table_, regs_.u8.name));
+		const bool lit = view->selected() == keyOf(regs_.u8.name) && !panel->isHidden();
+		tabs->setCurrentIndex(MainWindow::TabDump); /* the cards come at the next beat (hidden, the tab keeps none) */
+		const bool cards = dumpAnswered(view, 0xD000);
+		const int card = dumpCard(view, 0xD000);
+		dumpInView(view, card);
+		const RegKey supplyV = keyOf(QStringLiteral("SUPPLY_V"));
+		const QPoint chip = view->byteRect(card, 6).center();
+		const QPoint empty(view->byteRect(card, 16).left() + 4, view->byteRect(card, 16).bottom() + 12);
+		const bool room = view->registerAt(empty) == DumpView::NO_REGISTER;
+		const auto cleared = [&] {
+			return view->selected() == DumpView::NO_REGISTER && !table_->currentIndex().isValid()
+					&& !table_->selectionModel()->hasSelection() && panel->isHidden()
+					&& detail->text().contains(QLatin1String("Select a register to see it here in full"));
+		};
+		const auto picked = [&] {
+			return view->selected() == supplyV
+					&& table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString() == QLatin1String("SUPPLY_V")
+					&& tabs->currentIndex() == MainWindow::TabDump;
+		};
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, empty);
+		const bool byClick = cleared();
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, chip);
+		const bool again = picked();
+		view->setFocus();
+		QTest::keyClick(view, Qt::Key_Escape);
+		const bool byEscape = cleared();
+		QTest::mouseClick(view->viewport(), Qt::LeftButton, Qt::NoModifier, chip);
+		const bool afterEscape = picked();
+		if (!lit || !cards || !room || !byClick || !again || !byEscape || !afterEscape)
+			std::printf("     (Dump: lit %d, cards %d, room %d, click clears %d, chip picks %d, Escape clears %d, chip picks %d)\n",
+					lit, cards, room, byClick, again, byEscape, afterEscape);
+		check(lit && cards && room && byClick && again && byEscape && afterEscape, "clearing a selection, Dump: a click on empty room "
+				"(no chip, no decode line), and Escape with the cards focused, leave no register selected in the Dump and in "
+				"the Registers tab (no current row, the detail line's \"Select a register\", no quick-write panel); a click "
+				"on a chip selects in both again");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: both tabs with nothing selected, both themes */
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				/* SUPPLY_V selected, then Escape on the cards; the mouse away, so nothing is lit by it either */
+				tabs->setCurrentIndex(MainWindow::TabRegisters);
+				table_->setCurrentIndex(valueCell(table_, QStringLiteral("SUPPLY_V")));
+				tabs->setCurrentIndex(MainWindow::TabDump);
+				QTest::qWait(300);
+				dumpInView(view, dumpCard(view, 0xD000));
+				view->setFocus();
+				QTest::keyClick(view, Qt::Key_Escape);
+				dumpMouseTo(view, QPoint(2, 2));
+				QTest::qWait(150);
+				window_.grab().save(prefix + QStringLiteral("_clear_dump_%1.png").arg(theme));
+				tabs->setCurrentIndex(MainWindow::TabRegisters);
+				QTest::qWait(300);
+				window_.grab().save(prefix + QStringLiteral("_clear_registers_%1.png").arg(theme));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		/* as dumpMouse left it for the Dump's next steps: SETPOINT current and selected, the Dump shown with its cards */
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("SETPOINT")));
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		(void) dumpAnswered(view, 0xD080);
+	}
+
+	/* the Map editor: its table (the form follows), its checks list, the bit fields (the strip and the table) and a
+	 * value names table */
+	void clearMapEditorSelection() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *editorTab = window_.findChild<MapEditorTab *>();
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		auto *issues = window_.findChild<QListWidget *>(QStringLiteral("mapIssues"));
+		auto *pages = window_.findChild<QTabWidget *>(QStringLiteral("editorPages"));
+		QLabel *note = nullptr;
+		for (QLabel *label : window_.findChildren<QLabel *>(QStringLiteral("editorEmpty")))
+			if (label->text().contains(QLatin1String("No register selected"))) note = label;
+		QLineEdit *search = nullptr;
+		if (editorTab)
+			for (QLineEdit *box : editorTab->findChildren<QLineEdit *>())
+				if (box->placeholderText().startsWith(QLatin1String("Search: name"))) search = box;
+		if (!tabs || !editorTab || !doc || !mapTable || !issues || !pages || !note || !search) {
+			check(false, "clearing a selection, Map editor: its parts found");
+			return;
+		}
+		const int tabBefore = tabs->currentIndex(); /* the next steps find the window as the Map editor's step left it */
+		const QVector<quint32> selectedBefore = selectedMapUids(mapTable, doc);
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		QApplication::processEvents();
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		const auto rowCentre = [&](QTableView *view, const QString &name) {
+			for (int r = 0; r < view->model()->rowCount(); r++)
+				if (view->model()->index(r, MapTableModel::ColName).data().toString() == name)
+					return view->visualRect(view->model()->index(r, MapTableModel::ColName)).center();
+			return QPoint(-1, -1);
+		};
+
+		/* the table: a row selected shows the form; none, the note */
+		search->setText(regs_.u8.name);
+		QApplication::processEvents();
+		const QPoint empty(mapTable->viewport()->width() / 2, mapTable->viewport()->height() - 6);
+		const bool room = !mapTable->indexAt(empty).isValid();
+		const auto picked = [&] {
+			return selectedMapUids(mapTable, doc) == QVector<quint32>{ u8Uid } && pages->isVisibleTo(&window_)
+					&& !note->isVisibleTo(&window_);
+		};
+		const auto cleared = [&] {
+			return selectedMapUids(mapTable, doc).isEmpty() && !mapTable->currentIndex().isValid()
+					&& note->isVisibleTo(&window_) && !pages->isVisibleTo(&window_);
+		};
+		QTest::mouseClick(mapTable->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre(mapTable, regs_.u8.name));
+		const bool first = picked();
+		QTest::mouseClick(mapTable->viewport(), Qt::LeftButton, Qt::NoModifier, empty);
+		const bool byClick = cleared();
+		QTest::mouseClick(mapTable->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre(mapTable, regs_.u8.name));
+		const bool again = picked();
+		mapTable->setFocus();
+		QTest::keyClick(mapTable, Qt::Key_Escape);
+		const bool byEscape = cleared();
+		QTest::mouseClick(mapTable->viewport(), Qt::LeftButton, Qt::NoModifier, rowCentre(mapTable, regs_.u8.name));
+		const bool afterEscape = picked();
+		search->clear();
+		QApplication::processEvents();
+		if (!room || !first || !byClick || !again || !byEscape || !afterEscape)
+			std::printf("     (Map editor table: room %d, picked %d, click clears %d, again %d, Escape clears %d, again %d)\n",
+					room, first, byClick, again, byEscape, afterEscape);
+		check(room && first && byClick && again && byEscape && afterEscape, "clearing a selection, Map editor: a click "
+				"below the rows, and Escape with the table focused, leave no row selected and none current, the form's note "
+				"\"No register selected\" instead; a click on a row shows its form again");
+
+		/* the checks list: a name used twice makes one; a click on it selects the register, as before */
+		const int steps = doc->undoStack()->index();
+		const quint32 dangerUid = model_->rows()[regRow(regs_.danger.name)].def.uid;
+		mapTable->model()->setData(mapTable->model()->index(doc->indexOf(u8Uid), MapTableModel::ColName), regs_.danger.name);
+		QApplication::processEvents();
+		QListWidgetItem *issue = nullptr;
+		for (int i = 0; i < issues->count(); i++)
+			if (issues->item(i)->text().contains(QLatin1String("is also"))) issue = issues->item(i);
+		bool listed = issue != nullptr, issueRoom = false, issuePicked = false, issueClick = false, issueAgain = false,
+				issueEscape = false;
+		if (issue) {
+			const QPoint itemAt = issues->visualItemRect(issue).center();
+			const QPoint below(issues->viewport()->width() / 2, issues->viewport()->height() - 4);
+			issueRoom = !issues->indexAt(below).isValid();
+			QTest::mouseClick(issues->viewport(), Qt::LeftButton, Qt::NoModifier, itemAt);
+			const QVector<quint32> chosen = selectedMapUids(mapTable, doc);
+			issuePicked = issue->isSelected() && chosen.size() == 1
+					&& (chosen.front() == u8Uid || chosen.front() == dangerUid);
+			QTest::mouseClick(issues->viewport(), Qt::LeftButton, Qt::NoModifier, below);
+			issueClick = issues->selectedItems().isEmpty() && issues->currentRow() < 0;
+			QTest::mouseClick(issues->viewport(), Qt::LeftButton, Qt::NoModifier, itemAt);
+			issueAgain = issue->isSelected();
+			issues->setFocus();
+			QTest::keyClick(issues, Qt::Key_Escape);
+			issueEscape = issues->selectedItems().isEmpty() && issues->currentRow() < 0;
+		}
+		doc->undoStack()->setIndex(steps);
+		QApplication::processEvents();
+		if (!listed || !issueRoom || !issuePicked || !issueClick || !issueAgain || !issueEscape)
+			std::printf("     (Map editor checks: listed %d, room %d, picked %d, click clears %d, again %d, Escape clears %d)\n",
+					listed, issueRoom, issuePicked, issueClick, issueAgain, issueEscape);
+		check(listed && issueRoom && issuePicked && issueClick && issueAgain && issueEscape, "clearing a selection, Map "
+				"editor's checks: a click on a check selects it (and its register); a click under the list, and Escape "
+				"with the list focused, leave none selected; a click selects it again");
+
+		/* the bit fields: the field picked is the table's row and the strip's accent, and names the values under them */
+		const quint32 configUid = model_->rows()[regRow(QStringLiteral("CONFIG"))].def.uid;
+		const RegDef *config = doc->reg(configUid);
+		auto *fieldTable = window_.findChild<QTableWidget *>(QStringLiteral("fieldTable"));
+		auto *strip = window_.findChild<BitView *>(QStringLiteral("fieldStrip"));
+		auto *fieldEditor = window_.findChild<FieldEditor *>();
+		bool fieldsShown = config && !config->fields.isEmpty() && fieldTable && strip && fieldEditor;
+		bool fieldClick = false, fieldAgain = false, fieldEscape = false, stripPicks = false, stripClears = false,
+				fieldRoom = false;
+		if (fieldsShown) {
+			editorTab->selectRegister(configUid);
+			pages->setCurrentIndex(2); /* Bit fields */
+			QApplication::processEvents();
+			/* on the strip, the field drawn leftmost (the highest bits), well inside what is shown of it */
+			int onLeft = 0;
+			for (int i = 0; i < config->fields.size(); i++)
+				if (strip->fieldCell(config->fields[i].name).left() < strip->fieldCell(config->fields[onLeft].name).left()) onLeft = i;
+			const auto title = [&] {
+				for (QLabel *label : fieldEditor->findChildren<QLabel *>())
+					if (label->text().startsWith(QLatin1String("Values of")) || label->text().startsWith(QLatin1String("Pick a field")))
+						return label->text();
+				return QString();
+			};
+			const auto fieldPicked = [&](int index = 0) {
+				return fieldTable->currentRow() == index && !fieldTable->selectedItems().isEmpty()
+						&& title().startsWith(QStringLiteral("Values of %1").arg(config->fields[index].name));
+			};
+			const auto noField = [&] {
+				return fieldTable->currentRow() < 0 && fieldTable->selectedItems().isEmpty()
+						&& title() == QLatin1String("Pick a field to name its values");
+			};
+			const QPoint cell = fieldTable->visualItemRect(fieldTable->item(0, 0)).center();
+			const QPoint below(fieldTable->viewport()->width() / 2, fieldTable->viewport()->height() - 4);
+			fieldRoom = !fieldTable->indexAt(below).isValid();
+			QTest::mouseClick(fieldTable->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+			const bool firstField = fieldPicked();
+			QTest::mouseClick(fieldTable->viewport(), Qt::LeftButton, Qt::NoModifier, below);
+			fieldClick = firstField && noField();
+			QTest::mouseClick(fieldTable->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+			fieldAgain = fieldPicked();
+			fieldTable->setFocus();
+			QTest::keyClick(fieldTable, Qt::Key_Escape);
+			fieldEscape = noField();
+			/* the strip: a field's cell picks it, its bit numbers over it (empty room) pick none */
+			const QRect onStrip = strip->fieldCell(config->fields[onLeft].name);
+			/* the first click after the register is shown: the field's index was taken from a copy of the list (a
+			 * pointer into the shared list minus the copy's start), so it picked nothing */
+			QTest::mouseClick(strip, Qt::LeftButton, Qt::NoModifier, onStrip.center());
+			stripPicks = fieldPicked(onLeft);
+			QTest::mouseClick(strip, Qt::LeftButton, Qt::NoModifier, QPoint(onStrip.center().x(), onStrip.top() - 6));
+			stripClears = noField();
+			if (!fieldRoom || !fieldClick || !fieldAgain || !fieldEscape || !stripPicks || !stripClears)
+				std::printf("     (bit fields: room %d, click clears %d, again %d, Escape clears %d, strip picks %d, strip's "
+						"empty room clears %d; \"%s\")\n", fieldRoom, fieldClick, fieldAgain, fieldEscape, stripPicks,
+						stripClears, qPrintable(title()));
+		}
+		check(fieldsShown && fieldRoom && fieldClick && fieldAgain && fieldEscape && stripPicks && stripClears,
+				"clearing a selection, Map editor's bit fields: a click under the fields' rows, Escape with the table "
+				"focused, and a click on the strip's empty room (the bit numbers) leave no field picked: none lit, \"Pick "
+				"a field to name its values\"; a click on a row or on the field in the strip picks it again (the strip's "
+				"first click after the register is shown too)");
+
+		/* a value names table (LED_MODE's) */
+		auto *names = editorTab->findChild<QWidget *>(QStringLiteral("enumNames"));
+		auto *cells = names ? names->findChild<QTableWidget *>() : nullptr;
+		bool namesShown = !regs_.enumU8.name.isEmpty() && cells, namesRoom = false, namesClick = false, namesAgain = false,
+				namesEscape = false;
+		if (namesShown) {
+			editorTab->selectRegister(model_->rows()[regRow(regs_.enumU8.name)].def.uid);
+			pages->setCurrentIndex(1); /* Values */
+			QApplication::processEvents();
+			namesShown = cells->rowCount() > 0 && cells->isVisibleTo(&window_);
+			const QPoint cell = cells->visualItemRect(cells->item(0, 1)).center();
+			const QPoint below(cells->viewport()->width() / 2, cells->viewport()->height() - 4);
+			namesRoom = !cells->indexAt(below).isValid();
+			QTest::mouseClick(cells->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+			const bool first = !cells->selectedItems().isEmpty();
+			QTest::mouseClick(cells->viewport(), Qt::LeftButton, Qt::NoModifier, below);
+			namesClick = first && cells->selectedItems().isEmpty() && cells->currentRow() < 0;
+			QTest::mouseClick(cells->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+			namesAgain = !cells->selectedItems().isEmpty();
+			cells->setFocus();
+			QTest::keyClick(cells, Qt::Key_Escape);
+			namesEscape = cells->selectedItems().isEmpty() && cells->currentRow() < 0;
+		}
+		if (!namesShown || !namesRoom || !namesClick || !namesAgain || !namesEscape)
+			std::printf("     (value names: shown %d, room %d, click clears %d, again %d, Escape clears %d)\n", namesShown,
+					namesRoom, namesClick, namesAgain, namesEscape);
+		check(namesShown && namesRoom && namesClick && namesAgain && namesEscape, "clearing a selection, Map editor's value "
+				"names: a click under the rows, and Escape with the table focused, leave no row selected and none current; a "
+				"click selects again");
+		pages->setCurrentIndex(0);
+		if (selectedBefore.isEmpty()) mapTable->selectionModel()->clear();
+		else editorTab->selectRegister(selectedBefore.front());
+		tabs->setCurrentIndex(tabBefore);
+	}
+
+	/* a chart tab's measure table (Measure on, a row a line): a click under the rows clears, Escape too */
+	static bool measureTableClears(ChartTab &tab) {
+		auto *measure = tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *table = tab.findChild<QTableWidget *>(QStringLiteral("measures"));
+		if (!measure || !table) return false;
+		measure->setChecked(true);
+		measured(tab.view());
+		QApplication::processEvents();
+		if (!QTest::qWaitFor([&] { return table->rowCount() > 0 && table->item(0, ChartTab::ColMean); }, 3000)) return false;
+		const QPoint cell = table->visualItemRect(table->item(0, ChartTab::ColMean)).center();
+		const QPoint below(table->viewport()->width() / 2, table->viewport()->height() - 4);
+		const bool room = !table->indexAt(below).isValid();
+		QTest::mouseClick(table->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+		const bool first = !table->selectedItems().isEmpty();
+		QTest::mouseClick(table->viewport(), Qt::LeftButton, Qt::NoModifier, below);
+		const bool byClick = table->selectedItems().isEmpty() && !table->currentIndex().isValid();
+		QTest::mouseClick(table->viewport(), Qt::LeftButton, Qt::NoModifier, cell);
+		const bool again = !table->selectedItems().isEmpty();
+		table->setFocus();
+		QTest::keyClick(table, Qt::Key_Escape);
+		const bool byEscape = table->selectedItems().isEmpty() && !table->currentIndex().isValid();
+		measure->setChecked(false);
+		if (!room || !first || !byClick || !again || !byEscape)
+			std::printf("     (measure table: room %d, selected %d, click clears %d, again %d, Escape clears %d)\n", room, first,
+					byClick, again, byEscape);
+		return room && first && byClick && again && byEscape;
+	}
+
+	/* the chart: the chosen note and the measure table; a recording's window the same */
+	void clearChartSelection() {
+		LoneChart chart(QStringLiteral("CLEAR"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 1000; i++) samples[regKey(chart.def)] << QPointF(90.0 + i * 0.01, std::sin(i * 0.02));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.view->setLive(false);
+		(void) chart.view->grab();
+		const QRectF plot = chart.view->lastPlot();
+		const double at = chart.view->timeAt(int(plot.left() + plot.width() / 4));
+		chart.view->addNote(at, QStringLiteral("pump on"));
+		(void) chart.view->grab();
+		const QPoint tag = chart.view->noteTag(0).center().toPoint();
+		const QPoint empty(int(plot.left() + plot.width() * 3 / 4), int(plot.top() + plot.height() / 2));
+		const bool chosen = chart.view->selectedNote() == 0; /* a note just added is the chosen one */
+		chart.view->setFocus();
+		QTest::keyClick(chart.view, Qt::Key_Escape);
+		const bool byEscape = chart.view->selectedNote() == -1 && chart.view->notes().size() == 1;
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, tag);
+		const bool again = chart.view->selectedNote() == 0;
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, empty);
+		const bool byClick = chart.view->selectedNote() == -1 && chart.view->notes().size() == 1;
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, tag);
+		const bool afterClick = chart.view->selectedNote() == 0;
+		QTest::keyClick(chart.view, Qt::Key_Escape);
+		QTest::keyClick(chart.view, Qt::Key_Delete); /* none chosen: Delete removes nothing */
+		const bool kept = chart.view->notes().size() == 1;
+		if (!chosen || !byEscape || !again || !byClick || !afterClick || !kept)
+			std::printf("     (chart notes: chosen %d, Escape clears %d, tag chooses %d, click clears %d, again %d, kept %d)\n",
+					chosen, byEscape, again, byClick, afterClick, kept);
+		check(chosen && byEscape && again && byClick && afterClick && kept, "clearing a selection, chart: Escape, and a "
+				"click on the plot away from the tags, leave no note chosen (the note stays, Delete then removes nothing); a "
+				"click on its tag chooses it again");
+		check(measureTableClears(chart.tab), "clearing a selection, chart's measure table: a click under the rows, and "
+				"Escape with the table focused, leave no cell selected and none current; a click selects again");
+		chart.tab.hide();
+
+		/* a recording's window: its own chart tab, the same */
+		QTemporaryDir folder;
+		const QString csv = folder.filePath(QStringLiteral("clear.csv"));
+		{
+			QFile file(csv);
+			if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+				QString text = QStringLiteral("time_s,datetime,LOAD [A]\n");
+				for (int row = 0; row < 50; row++)
+					text += QStringLiteral("%1,2026-10-08T12:00:%2.%3,%4\n").arg(row * 0.1).arg(row / 10, 2, 10, QLatin1Char('0'))
+							.arg((row % 10) * 100, 3, 10, QLatin1Char('0')).arg(row % 7);
+				file.write(text.toUtf8());
+			}
+		}
+		RecordingWindow *opened = nullptr;
+		RecordingWindow::open(nullptr, csv, {}, 2048, [&](RecordingWindow *w) { opened = w; });
+		(void) QTest::qWaitFor([&] { return opened != nullptr; }, 5000);
+		bool recordingOk = false;
+		if (opened) {
+			(void) QTest::qWaitForWindowExposed(opened);
+			ChartView *view = opened->chartTab()->view();
+			(void) view->grab();
+			const QRectF area = view->lastPlot();
+			view->addNote(view->timeAt(int(area.center().x())), QStringLiteral("load step"));
+			view->setFocus();
+			QTest::keyClick(view, Qt::Key_Escape);
+			const bool noteCleared = view->selectedNote() == -1 && view->notes().size() == 1;
+			const bool table = measureTableClears(*opened->chartTab());
+			if (!noteCleared || !table) std::printf("     (recording: note cleared %d, measure table %d)\n", noteCleared, table);
+			recordingOk = noteCleared && table;
+		}
+		check(recordingOk, "clearing a selection, a recording's window: Escape leaves no note chosen; its measure table "
+				"clears as the chart's");
+		RecordingWindow::closeAll();
+	}
+
+	/* the Monitor's frames and the Log: text selected, a click clears it (Qt's) and Escape too */
+	void clearTextSelection() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *monitor = window_.findChild<MonitorTab *>();
+		QPlainTextEdit *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		auto *log = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"));
+		if (!tabs || !frames || !log) {
+			check(false, "clearing a selection, Monitor and Log: their text found");
+			return;
+		}
+		const auto clears = [&](QPlainTextEdit *text, int tab, const char *what) {
+			tabs->setCurrentIndex(tab);
+			QApplication::processEvents();
+			if (text->toPlainText().isEmpty()) text->appendPlainText(QStringLiteral("text to select")); /* never empty */
+			text->selectAll();
+			const bool selected = text->textCursor().hasSelection();
+			text->setFocus();
+			QTest::keyClick(text, Qt::Key_Escape);
+			const bool byEscape = !text->textCursor().hasSelection();
+			text->selectAll();
+			QTest::mouseClick(text->viewport(), Qt::LeftButton, Qt::NoModifier, QPoint(text->viewport()->width() / 2,
+					text->viewport()->height() - 6));
+			const bool byClick = !text->textCursor().hasSelection();
+			if (!selected || !byEscape || !byClick)
+				std::printf("     (%s: selected %d, Escape clears %d, click clears %d)\n", what, selected, byEscape, byClick);
+			return selected && byEscape && byClick;
+		};
+		const int tabBefore = tabs->currentIndex();
+		const bool monitorClears = clears(frames, MainWindow::TabMonitor, "Monitor");
+		const bool logClears = clears(log, MainWindow::TabLog, "Log");
+		tabs->setCurrentIndex(tabBefore);
+		check(monitorClears && logClears, "clearing a selection, Monitor and Log: text selected is cleared by Escape with "
+				"the text focused, and by a click in it");
+	}
+
+	/* a dialog's lists (the Map settings: the streams, a stream's channels, the groups' notes): a click on empty room
+	 * clears, Escape closes the dialog as in every dialog */
+	void clearDialogSelection() {
+		DeviceMap map;
+		QString err;
+		const bool loaded = map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), err);
+		MapDocument doc;
+		doc.reset(map);
+		MapSettingsDialog dialog(&doc);
+		dialog.resize(760, 660);
+		dialog.show();
+		(void) QTest::qWaitForWindowExposed(&dialog);
+		auto *pages = dialog.findChild<QTabWidget *>();
+		auto *list = dialog.findChild<QListWidget *>(QStringLiteral("fastStreamList"));
+		auto *addr = dialog.findChild<QLineEdit *>(QStringLiteral("streamAddr"));
+		auto *channels = dialog.findChild<QTableWidget *>(QStringLiteral("streamChannels"));
+		auto *groups = dialog.findChild<QTableWidget *>(QStringLiteral("groupNotes"));
+		if (!loaded || !pages || !list || !addr || !channels || !groups || list->count() == 0 || channels->rowCount() == 0) {
+			check(false, "clearing a selection, Map settings: its lists found");
+			return;
+		}
+		const auto page = [&](const char *title) {
+			for (int i = 0; i < pages->count(); i++)
+				if (pages->tabText(i) == QLatin1String(title)) pages->setCurrentIndex(i);
+			QApplication::processEvents();
+		};
+		const auto below = [](QAbstractItemView *view) {
+			return QPoint(view->viewport()->width() / 2, view->viewport()->height() - 4);
+		};
+		/* the groups' notes */
+		page("Notes");
+		bool groupsOk = groups->rowCount() > 0 && !groups->indexAt(below(groups)).isValid();
+		if (groupsOk) {
+			QTest::mouseClick(groups->viewport(), Qt::LeftButton, Qt::NoModifier, groups->visualItemRect(groups->item(0, 0)).center());
+			const bool first = !groups->selectedItems().isEmpty();
+			QTest::mouseClick(groups->viewport(), Qt::LeftButton, Qt::NoModifier, below(groups));
+			groupsOk = first && groups->selectedItems().isEmpty() && !groups->currentIndex().isValid();
+		}
+		/* the streams: none selected, the form empty and greyed; the stream clicked, its form again */
+		page("Streams");
+		const QPoint item = list->visualItemRect(list->item(0)).center();
+		const bool listRoom = !list->indexAt(below(list)).isValid();
+		const bool shown = list->currentRow() == 0 && addr->isEnabled() && addr->text() == QLatin1String("0xDC00");
+		QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, below(list));
+		const bool listClears = list->currentRow() < 0 && list->selectedItems().isEmpty() && !addr->isEnabled()
+				&& addr->text().isEmpty();
+		QTest::mouseClick(list->viewport(), Qt::LeftButton, Qt::NoModifier, item);
+		const bool listAgain = list->currentRow() == 0 && addr->isEnabled() && addr->text() == QLatin1String("0xDC00");
+		/* the channels */
+		const QPoint channel = channels->visualItemRect(channels->item(0, 0)).center();
+		const bool channelsRoom = !channels->indexAt(below(channels)).isValid();
+		QTest::mouseClick(channels->viewport(), Qt::LeftButton, Qt::NoModifier, channel);
+		const bool channelPicked = !channels->selectedItems().isEmpty();
+		QTest::mouseClick(channels->viewport(), Qt::LeftButton, Qt::NoModifier, below(channels));
+		const bool channelsClear = channelPicked && channels->selectedItems().isEmpty() && !channels->currentIndex().isValid();
+		/* Escape on the list: the dialog's, it closes; the list keeps its stream */
+		list->setFocus();
+		QTest::keyClick(list, Qt::Key_Escape);
+		const bool closes = !dialog.isVisible() && dialog.result() == QDialog::Rejected && list->currentRow() == 0;
+		if (!groupsOk || !listRoom || !shown || !listClears || !listAgain || !channelsRoom || !channelsClear || !closes)
+			std::printf("     (Map settings: groups %d, list room %d, shown %d, click clears %d, again %d, channels room %d, "
+					"click clears %d, Escape closes %d)\n", groupsOk, listRoom, shown, listClears, listAgain, channelsRoom,
+					channelsClear, closes);
+		check(groupsOk && listRoom && shown && listClears && listAgain && channelsRoom && channelsClear, "clearing a "
+				"selection, a dialog's lists (Map settings: the groups' notes, the streams, a stream's channels): a click on "
+				"empty room leaves none selected (no stream: its form empty and greyed); a click selects again");
+		check(closes, "clearing a selection, a dialog: Escape on its list closes the dialog, as in every dialog (the list "
+				"keeps its row)");
 	}
 
 	/* the middle of the ink drawn in an area (the pixels far from its commonest colour), across, in logical px; -1: none */

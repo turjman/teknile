@@ -94,6 +94,8 @@ bool RegistersTab::selectRow(int row) {
 	return true;
 }
 
+void RegistersTab::clearSelection() { table_->selectionModel()->clear(); }
+
 bool RegistersTab::editValue(int row) {
 	if (!selectRow(row)) return false;
 	const QModelIndex value = filter_->mapFromSource(model_->index(row, RegisterModel::ColValue));
@@ -202,6 +204,8 @@ QTableView *RegistersTab::buildTable() {
 	table_->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
 	table_->setContextMenuPolicy(Qt::CustomContextMenu);
 	connect(table_, &QTableView::customContextMenuRequested, this, &RegistersTab::showTableMenu);
+	/* a click below the rows or Escape: no register selected, the detail line, the panel and the Dump follow */
+	clearSelectionOnEmpty(table_);
 	return table_;
 }
 

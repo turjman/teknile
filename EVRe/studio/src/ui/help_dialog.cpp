@@ -299,7 +299,8 @@ the decoded fields one per line, and its age.</p>
 none); right-click the table or its header → <b>Decoded column</b> to show it.</p>
 <p>Nothing is cut off: the columns fit their longest text (a scroll bar if the window is narrower), and the
 <b>selected register</b> is shown in full under the table (value, raw bytes, every decoded field,
-description). Right-click → <b>Fit columns</b> shrinks them back after a long value.</p>
+description). A click below the rows, or <b>Esc</b>, selects none: the line, the panel under it and the Dump then
+show nothing selected. Right-click → <b>Fit columns</b> shrinks them back after a long value.</p>
 <ul>
 <li>A value that just changed <b>glows</b> for a moment.</li>
 <li>A value <b>grey</b> is not refreshed: older than two poll intervals, or one interval plus the timeout
@@ -519,7 +520,8 @@ the values shown (scaled). Columns are fixed when the recording starts. <b>■ S
 <li><b>Export to CSV…</b>: the samples of every line over the view, or between the cursors A → B when both are
 placed, in the recording's format (a row per poll); a big one runs on its own with a progress bar and Cancel.</li>
 <li><b>Add note here</b>: a labelled marker at that time, a tag at the bottom of the plot. Drag the tag to move it,
-double-click it to edit, click it and press <b>Delete</b> to remove it. While recording, the notes are written beside
+double-click it to edit, click it and press <b>Delete</b> to remove it (<b>Esc</b> or a click elsewhere: none
+chosen). While recording, the notes are written beside
 the file (<code>run.csv.notes.json</code>), and an export takes the notes of its span.</li>
 <li><b>Open recording…</b> and <b>Recent recordings</b> (also <b>Open</b> beside Record CSV, or drop a .csv on the
 window): a recording or an export in a window of its own, with its chart, measurements, notes and math lines of its
@@ -589,7 +591,8 @@ scale, decimals, min, max, default), <i>Values</i> (value names, special values;
 <i>Bit fields</i> (drag across bits to make a field, click one to edit it), <i>Notes</i>. The card over them shows
 the name, address, type, access and the LIVE value read the way it is being defined (the dot: green with a value,
 amber past a limit, grey without one; hover it for a long value in full).
-With no register selected, a note in the middle says so. A page the register cannot have (<i>Bit fields</i> of
+A click below the rows, or <b>Esc</b>, selects none (the same in the checks, the fields and the value names; a click
+on the bit strip's empty room picks no field); with no register selected, a note in the middle says so. A page the register cannot have (<i>Bit fields</i> of
 a bytes or f32 register, <i>Values</i> with several selected) has a warning sign on its tab: hover it, or open the
 page, for why.</li>
 <li><b>Checks</b> under the table: names used twice, registers sharing bytes, fields past the bits, min above
@@ -693,7 +696,8 @@ register, which byte of it, its address, its value; the tooltip sits under the r
 <b>click</b> selects the register here and in the Registers tab (lit the same way, framed in blue); a
 <b>double-click</b> goes there. The Registers tab's
 current row is selected here too, and its right-click menu has <b>Show in dump</b>. With the cards in focus the
-<b>arrow keys</b> move the selection, <b>Enter</b> goes to the Registers tab, the <b>Menu</b> key opens the menu.</li>
+<b>arrow keys</b> move the selection, <b>Enter</b> goes to the Registers tab, the <b>Menu</b> key opens the menu. A
+click on empty room (no chip, no decode line), or <b>Esc</b>, selects none, here and in the Registers tab.</li>
 <li><b>Right-click</b>, or the <b>Copy ▾</b> button: Show in Registers, Plot / Unplot, Write… (with <i>Allow
 writes</i>), and Copy: the register's bytes, the block as hex rows or as a C array, or its decoded values.</li>
 <li>A <b>READ</b> sent from the Monitor shows as a card at the top, until the next one; so does the last <b>write</b>
@@ -767,11 +771,16 @@ the ⚠ switch.</li>
 <h2>Keys &amp; mouse</h2>
 <table cellpadding="4">
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
+<tr><td><b>A selection</b></td><td>A <b>click</b> on empty room in a table, a list, the Dump's cards or the bit strip, or
+<b>Esc</b> with it in focus: nothing selected (what shows the selection follows: the Registers tab and the Dump clear
+together). In a dialog <b>Esc</b> closes the dialog; the click still clears its lists. Devices on the link is a
+choice, one device always shown</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
 cancels · <b>Ctrl-click</b> / <b>Shift-click</b> select several, <b>F2</b> + <b>Enter</b> writes one value to all ·
 right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Dump</b></td><td><b>Click</b> a chip or a decode line: the register selected (in the Registers tab too) ·
-<b>double-click</b>: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on <b>Copy ▾</b> too)</td></tr>
+<b>double-click</b>: the Registers tab on it · <b>click</b> empty room or <b>Esc</b>: none selected, in both tabs ·
+right-click: Show in Registers, Plot, Write…, Copy (on <b>Copy ▾</b> too)</td></tr>
 <tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·
 <b>double-click</b> Y back to Auto · <b>drag</b> looks back through the memory, and holds · with <b>Cursors</b> on, a
 <b>click</b> places A, then B, a <b>drag</b> moves the nearer (below 1 s with <b>Shift</b>: to a tenth of a
@@ -783,7 +792,7 @@ handle: from where it was) · <b>wheel</b>: a window earlier or later</td></tr>
 <tr><td><b>Chart, right-click</b></td><td>pictures, Export to CSV, Add note here, Open recording (all but the note on
 <b>File ▾</b> too)</td></tr>
 <tr><td><b>Note</b></td><td><b>drag</b> its tag to move it · <b>double-click</b> to edit · <b>click</b>, then
-<b>Delete</b> to remove</td></tr>
+<b>Delete</b> to remove · <b>Esc</b>: none chosen</td></tr>
 <tr><td><b>Measurements</b></td><td><b>Right-click</b> the header: show or hide columns</td></tr>
 <tr><td><b>Legend</b></td><td><b>Click</b> or <b>right-click</b> a line's chip (its ▾): its Histogram or
 Spectrum, Trigger on this line</td></tr>

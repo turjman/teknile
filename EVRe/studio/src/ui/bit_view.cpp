@@ -146,7 +146,7 @@ void BitView::drawFields(QPainter &p, int line) const {
 		const QRect first = bitCell(high), last = bitCell(low);
 		const QRectF box(first.left() + 1.5, top + 1.5, last.right() - first.left() - 2, FIELD_HEIGHT - 5);
 		const bool hovered = f && hoverField_ && hoverBit_ <= high && hoverBit_ >= low;
-		const bool picked = f && editMode_ && int(f - def_.fields.data()) == pickedField_;
+		const bool picked = f && editMode_ && int(f - def_.fields.constData()) == pickedField_;
 		p.setPen(QPen(hovered || picked ? c.accent : c.border, picked ? 2 : 1));
 		p.setBrush(f ? c.surface2 : Qt::transparent);
 		p.drawRoundedRect(box, 5, 5);
@@ -236,9 +236,13 @@ void BitView::leaveEvent(QEvent *) {
 void BitView::mousePressEvent(QMouseEvent *e) {
 	updateHover(e->position().toPoint());
 	if (editMode_) {
-		if (!isEnabled() || hoverBit_ < 0 || e->button() != Qt::LeftButton) return;
+		if (!isEnabled() || e->button() != Qt::LeftButton) return;
+		if (hoverBit_ < 0) { /* empty room (the bit numbers, the gaps, right of the bits): no field picked */
+			emit fieldPicked(-1);
+			return;
+		}
 		if (hoverField_) {
-			if (const BitField *f = fieldAt(hoverBit_)) emit fieldPicked(int(f - def_.fields.data()));
+			if (const BitField *f = fieldAt(hoverBit_)) emit fieldPicked(int(f - def_.fields.constData()));
 		} else {
 			dragFrom_ = dragTo_ = hoverBit_;
 			update();

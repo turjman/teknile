@@ -2,6 +2,7 @@
 /* The shared helpers of the window: see ui_helpers.h. */
 #include "ui/ui_helpers.h"
 
+#include <QAbstractItemView>
 #include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
@@ -10,17 +11,21 @@
 #include <QFrame>
 #include <QGuiApplication>
 #include <QIcon>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSignalBlocker>
 #include <QStyle>
 #include <QStyledItemDelegate>
+#include <QTextCursor>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -156,6 +161,55 @@ void noWindowAnimation(QWidget *dialog) {
 	DwmSetWindowAttribute(HWND(dialog->winId()), DWMWA_TRANSITIONS_FORCEDISABLED, &disabled, sizeof disabled);
 #endif
 }
+
+namespace {
+
+/* clearSelectionOnEmpty's and clearSelectionOnEscape's watcher: on the view (its keys) and on its viewport (the mouse) */
+class SelectionClearer : public QObject {
+public:
+	SelectionClearer(QAbstractScrollArea *view, bool escape) : QObject(view), view_(view), escape_(escape) {}
+
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		auto *items = qobject_cast<QAbstractItemView *>(view_);
+		if (event->type() == QEvent::MouseButtonPress && items && watched == view_->viewport()) {
+			/* a plain click: Ctrl and Shift keep adding to the selection, as Qt does */
+			const auto *mouse = static_cast<QMouseEvent *>(event);
+			if (mouse->button() == Qt::LeftButton && !(mouse->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))
+					&& !items->indexAt(mouse->position().toPoint()).isValid() && items->selectionModel())
+				items->selectionModel()->clear(); /* the selection and the current row: currentChanged follows */
+			return false; /* Qt's own press goes on (a drag from there still selects rows) */
+		}
+		if (event->type() != QEvent::KeyPress || !escape_ || watched != view_) return false;
+		const auto *key = static_cast<QKeyEvent *>(event);
+		if (key->key() != Qt::Key_Escape || key->modifiers() != Qt::NoModifier) return false;
+		if (items) {
+			QItemSelectionModel *selection = items->selectionModel();
+			if (!selection || (!selection->hasSelection() && !selection->currentIndex().isValid())) return false;
+			selection->clear();
+			return true;
+		}
+		auto *text = qobject_cast<QPlainTextEdit *>(view_);
+		if (!text || !text->textCursor().hasSelection()) return false; /* nothing to clear: Escape goes on */
+		QTextCursor cursor = text->textCursor();
+		cursor.clearSelection();
+		text->setTextCursor(cursor);
+		return true;
+	}
+
+private:
+	QAbstractScrollArea *view_;
+	bool escape_;
+};
+
+} // namespace
+
+void clearSelectionOnEmpty(QAbstractItemView *view, bool escape) {
+	auto *clearer = new SelectionClearer(view, escape);
+	view->installEventFilter(clearer);
+	view->viewport()->installEventFilter(clearer);
+}
+
+void clearSelectionOnEscape(QPlainTextEdit *view) { view->installEventFilter(new SelectionClearer(view, true)); }
 
 void repolish(QWidget *widget) {
 	widget->style()->unpolish(widget);

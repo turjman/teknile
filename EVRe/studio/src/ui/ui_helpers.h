@@ -9,6 +9,7 @@
 #include <QString>
 #include <QVector>
 
+class QAbstractItemView;
 class QComboBox;
 class QFont;
 class QIcon;
@@ -16,6 +17,7 @@ class QMenu;
 class QLabel;
 class QLayout;
 class QObject;
+class QPlainTextEdit;
 class QPushButton;
 class QStyledItemDelegate;
 class QWidget;
@@ -74,6 +76,16 @@ bool confirmed(QWidget *parent, const QString &title, const QString &html, const
  * its title bar's X, a dialog fades out while the window's live chart waits behind it (STUDIO.md 27). It also marks
  * the dialog (the property "noAnimation", for the tests); nothing else on Linux. Called where the dialog is made. */
 void noWindowAnimation(QWidget *dialog);
+
+/* The rule for every view with a selection (STUDIO.md 4.11): a click on empty room in it (no row or item under the
+ * mouse) clears what it has selected and its current row, and so does Escape while it has the keyboard's focus; what
+ * follows the view's selection or current row then shows nothing selected. In a dialog escape is false: Escape
+ * closes the dialog there, as in every Qt dialog, and the click still clears. Qt itself does neither: a click on
+ * empty room clears the highlight of a table of several rows but keeps its current row, and Escape does nothing. */
+void clearSelectionOnEmpty(QAbstractItemView *view, bool escape = true);
+/* the same for a read-only text view (the Monitor's frames, the Log): Escape clears the text selected (a click
+ * anywhere clears it already, Qt's own) */
+void clearSelectionOnEscape(QPlainTextEdit *view);
 
 /* the style sheet again, after a change of the object name or of a property it selects on */
 void repolish(QWidget *widget);

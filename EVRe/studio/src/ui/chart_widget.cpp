@@ -2703,6 +2703,13 @@ void ChartView::keyPressEvent(QKeyEvent *e) {
 		e->accept();
 		return;
 	}
+	/* Escape: no note chosen, as a click on empty room (the rule for every selection, STUDIO.md 4.11) */
+	if (e->key() == Qt::Key_Escape && e->modifiers() == Qt::NoModifier && selectedNote_ >= 0) {
+		selectedNote_ = -1;
+		refresh();
+		e->accept();
+		return;
+	}
 	QWidget::keyPressEvent(e);
 }
 
