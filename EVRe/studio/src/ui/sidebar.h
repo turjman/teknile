@@ -238,6 +238,7 @@ private:
 	QWidget *buildSerialFields();
 	QVBoxLayout *buildRequestOptions(); /* slave, timeout, In flight */
 	QVBoxLayout *buildLinkState();      /* Connect, the pill, the device's ID */
+	void fitDeviceInfo();               /* the device line at least as tall as its lines need */
 	QWidget *buildBusCard();
 	QWidget *buildMapCard();
 	QWidget *buildPollingCard();

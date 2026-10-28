@@ -621,7 +621,9 @@ has no tint at all. The pill is one line and its tooltip has the whole text. An 
 Only what still does not fit, a long host name, is cut in the middle. A reason is never cut: when it is longer than
 the pill, the pill takes two lines (or more), the part up to the colon on the first (*COM10 is gone:*) and the rest
 under it (*unplugged or reset?*). The device line under it is always there, two lines tall, so the card changes
-height only while a reason takes more than one line.
+height only while a reason takes more than one line, or while the device line needs a third (*last seen: Device ID
+0x1001 ·* / *protocol rev 1* / *the map is for 0x1002* in a sidebar of normal width): then the card grows for it and
+the sidebar scrolls if it must. The pill keeps its whole height in every case.
 
 | Pill | Colour | Meaning |
 |---|---|---|
@@ -6419,6 +6421,13 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   list's rates aligned left, a rate typed and added with Enter too, one drawn at the left of its row; the list opened
   in both looks, its selected rate 4.5:1 on its row, read from the drawn row). It ends connected to the Python fake
   device over TCP.
+- **The pill's height** (`pillKeepsHeight`, after the serial link). A sidebar as tall as the window's, in English
+  and in Arabic: the device line on one line (*Device ID not read yet*), two (an ID, *the map is for 0x1002*) and
+  three (*last seen: ...* wrapped, then the map's line), and for each the pill Disconnected, Connecting, Connected
+  (*COM13 @ 115200*), with a reason on two lines and Reconnecting: the pill as tall as its size hint (wrapped: its
+  height for its width) and its least height as much, the device line as tall as its lines need, the pill over
+  neither the device line nor Connect, the three-line text taking three lines. With `EVRE_TEST_SHOT`:
+  `<prefix>_pill_card_<en|ar>_<light|dark>.png`, the card with the three-line device line.
 - **USB CDC's look** (`serialUsbCdcLook`, after the serial link). `Sidebar::serialLinkText`: *COM13 · USB CDC* and
   *COM13 @ 115200*, each one left-to-right piece. The Baud row with two ports added (ST's VCP and one without USB
   IDs): on Auto for the CDC port and with USB CDC chosen, the label and the box `ignored`, *USB CDC: the baud rate is
@@ -7088,7 +7097,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 810 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 816 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
