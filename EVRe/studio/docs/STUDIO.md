@@ -7070,7 +7070,9 @@ Clearing a selection (4.11), a check per view, each after the step of its view; 
   quick-write panel hidden, the Dump lighting none.
 - **The Dump** (`clearDumpSelection`): FAN_SPEED current in the Registers tab and lit in the Dump; a click under the
   first card's last row (no register there) and Escape on the cards leave none selected in either tab, the detail
-  line and the panel as above; a click on SUPPLY_V's chip selects it in both.
+  line and the panel as above; a click on SUPPLY_V's chip selects it in both. With `EVRE_TEST_SHOT` set it saves
+  `<prefix>_clear_dump_<light|dark>.png` and `<prefix>_clear_registers_<light|dark>.png`, both tabs with nothing
+  selected.
 - **The Map editor** (`clearMapEditorSelection`, after `mapEditor`): the table (the form's note *No register
   selected* instead of the form, and back); the checks list, with a name used twice for it (undone after); CONFIG's
   bit fields: the table, and on the strip a field's cell picks it, the bit numbers over it pick none (*Pick a field to

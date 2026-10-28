@@ -6715,7 +6715,34 @@ private:
 				"(no chip, no decode line), and Escape with the cards focused, leave no register selected in the Dump and in "
 				"the Registers tab (no current row, the detail line's \"Select a register\", no quick-write panel); a click "
 				"on a chip selects in both again");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) { /* for a look: both tabs with nothing selected, both themes */
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const bool wasDark = Theme::isDark();
+			for (const bool dark : { false, true }) {
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				/* SUPPLY_V selected, then Escape on the cards; the mouse away, so nothing is lit by it either */
+				tabs->setCurrentIndex(MainWindow::TabRegisters);
+				table_->setCurrentIndex(valueCell(table_, QStringLiteral("SUPPLY_V")));
+				tabs->setCurrentIndex(MainWindow::TabDump);
+				QTest::qWait(300);
+				dumpInView(view, dumpCard(view, 0xD000));
+				view->setFocus();
+				QTest::keyClick(view, Qt::Key_Escape);
+				dumpMouseTo(view, QPoint(2, 2));
+				QTest::qWait(150);
+				window_.grab().save(prefix + QStringLiteral("_clear_dump_%1.png").arg(theme));
+				tabs->setCurrentIndex(MainWindow::TabRegisters);
+				QTest::qWait(300);
+				window_.grab().save(prefix + QStringLiteral("_clear_registers_%1.png").arg(theme));
+			}
+			Theme::apply(*qApp, wasDark);
+		}
+		/* as dumpMouse left it for the Dump's next steps: SETPOINT current and selected, the Dump shown with its cards */
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("SETPOINT")));
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		(void) dumpAnswered(view, 0xD080);
 	}
 
 	/* the Map editor: its table (the form follows), its checks list, the bit fields (the strip and the table) and a
@@ -6738,6 +6765,8 @@ private:
 			check(false, "clearing a selection, Map editor: its parts found");
 			return;
 		}
+		const int tabBefore = tabs->currentIndex(); /* the next steps find the window as the Map editor's step left it */
+		const QVector<quint32> selectedBefore = selectedMapUids(mapTable, doc);
 		tabs->setCurrentIndex(MainWindow::TabMap);
 		QApplication::processEvents();
 		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
@@ -6908,8 +6937,9 @@ private:
 				"names: a click under the rows, and Escape with the table focused, leave no row selected and none current; a "
 				"click selects again");
 		pages->setCurrentIndex(0);
-		editorTab->selectRegister(u8Uid);
-		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		if (selectedBefore.isEmpty()) mapTable->selectionModel()->clear();
+		else editorTab->selectRegister(selectedBefore.front());
+		tabs->setCurrentIndex(tabBefore);
 	}
 
 	/* a chart tab's measure table (Measure on, a row a line): a click under the rows clears, Escape too */
@@ -7042,9 +7072,10 @@ private:
 				std::printf("     (%s: selected %d, Escape clears %d, click clears %d)\n", what, selected, byEscape, byClick);
 			return selected && byEscape && byClick;
 		};
+		const int tabBefore = tabs->currentIndex();
 		const bool monitorClears = clears(frames, MainWindow::TabMonitor, "Monitor");
 		const bool logClears = clears(log, MainWindow::TabLog, "Log");
-		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		tabs->setCurrentIndex(tabBefore);
 		check(monitorClears && logClears, "clearing a selection, Monitor and Log: text selected is cleared by Escape with "
 				"the text focused, and by a click in it");
 	}
