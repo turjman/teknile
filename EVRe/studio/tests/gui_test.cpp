@@ -662,6 +662,7 @@ public:
 		autoSendLimits(); /* the same */
 		serialKind(); /* it ends connected to the fake device as before, over TCP */
 		serialUsbCdcLook();
+		pillKeepsHeight();
 		busDevices(); /* it ends with the window on one device again, connected to the fake device as before */
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
@@ -2198,6 +2199,110 @@ private:
 		(void) (QFile::copy(map_.path, lastingFile) && load(lastingFile, FAKE_DEVICE_PORT));
 		rate->setCurrentIndex(rate->findData(100));
 		(void) cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000);
+	}
+
+	/* The link's pill keeps its whole height whatever the device line under it takes (the owner's sidebar: with
+	 * "last seen: Device ID 0x1001 · protocol rev 1" on two lines and "the map is for 0x1002" under it, only the top
+	 * half of "● Disconnected" showed). A sidebar as the window's, in English and Arabic: the device line on one, two
+	 * and three lines, the pill in each state (Disconnected, Connecting, Connected to a serial port, an error that
+	 * wraps, Reconnecting); the pill as tall as it needs (its size hint, or its height for its width when it wraps) and
+	 * held there by its least height, the device line
+	 * as tall as its lines need, the two never over each other nor the pill over Connect. With EVRE_TEST_SHOT the card
+	 * with the three-line device line: <prefix>_pill_card_<en|ar>_<light|dark>.png */
+	void pillKeepsHeight() {
+		auto *windowSidebar = window_.findChild<Sidebar *>();
+		const QSize size = windowSidebar ? windowSidebar->size() : QSize(312, 900);
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			Sidebar card;
+			card.resize(size);
+			card.restoreLinkSettings();
+			auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+			auto *info = card.findChild<QLabel *>(QStringLiteral("deviceInfo"));
+			QPushButton *connect = nullptr;
+			for (QPushButton *button : card.findChildren<QPushButton *>())
+				if (button->objectName() == QLatin1String("primary") || button->objectName() == QLatin1String("danger"))
+					if (button->parentWidget() == (pill ? pill->parentWidget() : nullptr)) connect = button;
+			if (!pill || !info || !connect) {
+				check(false, "the link's pill: the sidebar's pill, device line and Connect found");
+				break;
+			}
+			card.show();
+			(void) QTest::qWaitForWindowExposed(&card);
+			const auto translate = [](const char *text) { return QCoreApplication::translate("MainWindow", text); };
+			const QString warn = coloredSpan(translate("the map is for %1").arg(addrText(0x1002)).toHtmlEscaped(),
+					Theme::colors().warn);
+			const QString id = Sidebar::wholePieces(translate("Device ID %1 · protocol rev %2").arg(addrText(0x1001)).arg(1))
+					.toHtmlEscaped();
+			const QString lastSeen = Sidebar::wholePieces(translate("last seen: Device ID %1 · protocol rev %2")
+					.arg(addrText(0x1001)).arg(1)).toHtmlEscaped();
+			const QStringList lines{ translate("Device ID not read yet").toHtmlEscaped(), id + QStringLiteral("<br>") + warn,
+				lastSeen + QStringLiteral("<br>") + warn };
+			const QString reason = QCoreApplication::translate("evre::SerialLink", "%1 is gone: unplugged or reset?")
+					.arg(QStringLiteral("COM10"));
+			const QFontMetrics infoMetrics(info->font());
+			bool whole[3] = { true, true, true };
+			int linesSeen[3] = { 0, 0, 0 };
+			for (int n = 0; n < 3; n++) {
+				card.setDeviceInfo(lines[n]);
+				for (int state = 0; state < 5; state++) {
+					if (state == 0) card.showDisconnected();
+					if (state == 1) card.showConnecting();
+					if (state == 2) card.showConnected(Sidebar::serialLinkText(QStringLiteral("COM13"), 115200, true));
+					if (state >= 3) card.showLinkError(reason, QString());
+					if (state == 4) card.showReconnecting();
+					QTest::qWait(60); /* the card laid out again */
+					QApplication::processEvents();
+					const int pillNeeds = pill->wordWrap() ? pill->heightForWidth(pill->width()) : pill->sizeHint().height();
+					const int infoNeeds = info->heightForWidth(info->width());
+					linesSeen[n] = std::max(linesSeen[n], (infoNeeds + 1) / std::max(1, infoMetrics.lineSpacing()));
+					/* and held there: its least height its whole line, so a layout short of room cannot squeeze it */
+					const bool ok = pill->height() >= pillNeeds && (pill->wordWrap() || pill->minimumHeight() >= pillNeeds)
+							&& info->height() >= infoNeeds
+							&& !pill->geometry().intersects(info->geometry()) && !pill->geometry().intersects(connect->geometry());
+					if (!ok)
+						std::printf("     (%s, the device line of %d line(s), state %d: the pill %d px of %d (min %d), the device "
+								"line %d px of %d, pill %d..%d, line %d..%d, Connect ..%d)\n", qPrintable(code), n + 1, state,
+								pill->height(), pillNeeds, pill->minimumHeight(), info->height(), infoNeeds, pill->y(),
+								pill->geometry().bottom(), info->y(), info->geometry().bottom(), connect->geometry().bottom());
+					whole[n] = whole[n] && ok;
+				}
+			}
+			if (!prefix.isEmpty()) {
+				card.setDeviceInfo(lines[2]);
+				card.showDisconnected();
+				for (const bool dark : { false, true }) {
+					if (dark && code == QLatin1String("ar")) continue;
+					Theme::apply(*qApp, dark);
+					card.themeChanged();
+					card.setDeviceInfo(lastSeen + QStringLiteral("<br>")
+							+ coloredSpan(translate("the map is for %1").arg(addrText(0x1002)).toHtmlEscaped(),
+									Theme::colors().warn));
+					if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
+					QTest::qWait(150);
+					docsCard(pill)->grab().save(prefix + QStringLiteral("_pill_card_%1_%2.png")
+							.arg(code, dark ? QStringLiteral("dark") : QStringLiteral("light")));
+				}
+				Theme::apply(*qApp, wasDark);
+			}
+			const QString where = code == QLatin1String("ar") ? QStringLiteral("Arabic") : QStringLiteral("English");
+			check(whole[0], qPrintable(QStringLiteral("the link's pill, %1: a one-line device line under it, the pill as tall "
+					"as it needs and held there in every state (Disconnected, Connecting, Connected, an error on two lines, "
+					"Reconnecting), nothing over another").arg(where)));
+			/* at least: a longer translation or a narrower font may wrap the ID once more (Arabic on Linux's xvfb took three
+			 * lines for the two); the height it then needs is what whole[] checks */
+			check(whole[1] && linesSeen[1] >= 2, qPrintable(QStringLiteral("the link's pill, %1: a two-line device line (an ID, "
+					"the map is for another): the pill whole in every state, the line's two lines whole (%2 lines)").arg(where)
+					.arg(linesSeen[1])));
+			check(whole[2] && linesSeen[2] >= 3, qPrintable(QStringLiteral("the link's pill, %1: a three-line device line "
+					"(last seen wrapped, the map is for another): the pill whole in every state, the card grown for the "
+					"third line (%2 lines)").arg(where).arg(linesSeen[2])));
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (windowSidebar) windowSidebar->themeChanged();
 	}
 
 	/* The serial link on USB CDC: the pill names the link, not a baud rate nobody uses, and the Baud row says it is
