@@ -211,6 +211,100 @@
     </message>
 </context>
 <context>
+    <name>BulkWriteDialog</name>
+    <message numerus="yes">
+        <source>Write to %n registers</source>
+        <translation>
+            <numerusform>الكتابة في %n مسجّلات</numerusform>
+            <numerusform>الكتابة في مسجّل واحد</numerusform>
+            <numerusform>الكتابة في مسجّلين</numerusform>
+            <numerusform>الكتابة في %n مسجّلات</numerusform>
+            <numerusform>الكتابة في %n مسجّلًا</numerusform>
+            <numerusform>الكتابة في %n مسجّل</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation>القيمة</translation>
+    </message>
+    <message>
+        <source>one value for all: 12, 0x1F, 0b101, or a name</source>
+        <translation>قيمة واحدة للجميع: 12 أو 0x1F أو 0b101 أو اسم</translation>
+    </message>
+    <message>
+        <source>Register</source>
+        <translation>المسجّل</translation>
+    </message>
+    <message>
+        <source>Address</source>
+        <translation>العنوان</translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation>الجهاز</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>الحالية</translation>
+    </message>
+    <message>
+        <source>New</source>
+        <translation>الجديدة</translation>
+    </message>
+    <message>
+        <source>Note</source>
+        <translation>ملاحظة</translation>
+    </message>
+    <message>
+        <source>Write</source>
+        <translation>كتابة</translation>
+    </message>
+    <message>
+        <source>refused: %1</source>
+        <translation>مرفوض: %1</translation>
+    </message>
+    <message>
+        <source>Write %1 of %2 anyway</source>
+        <translation>الكتابة على أي حال (%1 من %2)</translation>
+    </message>
+    <message>
+        <source>Write %1 of %2</source>
+        <translation>كتابة %1 من %2</translation>
+    </message>
+    <message>
+        <source>Write %1 anyway</source>
+        <translation>الكتابة على أي حال (%1)</translation>
+    </message>
+    <message>
+        <source>Write %1</source>
+        <translation>كتابة %1</translation>
+    </message>
+    <message>
+        <source>%1 is read-only: left out.</source>
+        <translation>%1 للقراءة فقط: مستبعد.</translation>
+    </message>
+    <message>
+        <source>%1 are read-only: left out.</source>
+        <translation>%1 للقراءة فقط: مستبعدة.</translation>
+    </message>
+    <message>
+        <source>None of them takes this value.</source>
+        <translation>لا يقبل أيٌّ منها هذه القيمة.</translation>
+    </message>
+    <message>
+        <source>⚠ %1 moves, powers or changes something on the device.</source>
+        <translation>⚠ %1 يحرّك شيئًا على الجهاز أو يشغّله أو يغيّره.</translation>
+    </message>
+    <message>
+        <source>⚠ %1 move, power or change something on the device.</source>
+        <translation>⚠ %1 تحرّك شيئًا على الجهاز أو تشغّله أو تغيّره.</translation>
+    </message>
+    <message>
+        <source>There is no undo: the Log keeps the values replaced.</source>
+        <translation>لا تراجع: السجل يحتفظ بالقيم المستبدلة.</translation>
+    </message>
+</context>
+<context>
     <name>BusDeviceDialog</name>
     <message>
         <source>New device on the link</source>
@@ -2510,108 +2604,6 @@ A note: right-click the chart where it goes, Add note here.</source>
         <translation>المسجّلات والكتابات</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Registers &amp;amp; writes&lt;/h2&gt;
-&lt;p&gt;One row per register: address, name, &lt;b&gt;value&lt;/b&gt; (bold), unit, &lt;b&gt;decoded&lt;/b&gt; bit fields or enum name,
-type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
-the decoded fields one per line, and its age.&lt;/p&gt;
-&lt;p&gt;A value with bit fields or an enum name has an &lt;b&gt;ⓘ&lt;/b&gt; beside it: hover the ⓘ to see them decoded, one per line
-(the rest of the value shows its usual tooltip). The &lt;b&gt;Decoded&lt;/b&gt; column is off by default (most registers have
-none); right-click the table or its header → &lt;b&gt;Decoded column&lt;/b&gt; to show it.&lt;/p&gt;
-&lt;p&gt;Nothing is cut off: the columns fit their longest text (a scroll bar if the window is narrower), and the
-&lt;b&gt;selected register&lt;/b&gt; is shown in full under the table (value, raw bytes, every decoded field,
-description). Right-click → &lt;b&gt;Fit columns&lt;/b&gt; shrinks them back after a long value.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;A value that just changed &lt;b&gt;glows&lt;/b&gt; for a moment.&lt;/li&gt;
-&lt;li&gt;A value &lt;b&gt;grey&lt;/b&gt; is not refreshed: older than two poll intervals, or one interval plus the timeout
-when that is longer, plus the time between two updates of &lt;b&gt;Show values&lt;/b&gt; (polling off, link lost).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;error&lt;/i&gt; / &lt;i&gt;not available&lt;/i&gt; in red: the read failed / the device does not have that address.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Writing&lt;/h3&gt;
-&lt;ol&gt;
-&lt;li&gt;Tick &lt;b&gt;Allow writes&lt;/b&gt; (off at every start).&lt;/li&gt;
-&lt;li&gt;Double-click an &lt;b&gt;rw&lt;/b&gt; value, type, &lt;b&gt;Enter&lt;/b&gt;. Numbers, &lt;code&gt;0x1F&lt;/code&gt;, &lt;code&gt;0b101&lt;/code&gt;, or an enum
-name.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h3&gt;Quick write&lt;/h3&gt;
-&lt;p&gt;Select an &lt;b&gt;rw&lt;/b&gt; register: under the table, &lt;b&gt;Write NAME&lt;/b&gt; has&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;a value box: type, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt;;&lt;/li&gt;
-&lt;li&gt;for an enum register, a list of its values: pick one and it is written;&lt;/li&gt;
-&lt;li&gt;for a register with bit fields, its &lt;b&gt;bits drawn as in a datasheet&lt;/b&gt;: a cell per bit (click to flip that
-bit only), each flag by its name (click to flip it), and each wider field with its value (click for its named
-values, or &lt;i&gt;Value…&lt;/i&gt;);&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Bits&lt;/b&gt;: the same bit view for an integer register without fields, the highest bit first.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;On a bus, &lt;b&gt;To all devices&lt;/b&gt; sends the value typed to every device in one broadcast frame, where the
-broadcast rule allows it (see &lt;b&gt;Connecting&lt;/b&gt;), after a confirmation, and reads each one back; the Log says which
-devices took it. It is offered once a value is typed.&lt;/p&gt;
-&lt;p&gt;A bit or field is written read-modify-write from the value the device holds, so the other bits are kept.
-Every quick write goes the same way as a table edit: &lt;b&gt;Allow writes&lt;/b&gt; must be on, ⚠ registers ask first.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Registers marked &lt;b&gt;rw ⚠&lt;/b&gt; move, power or change something: every write asks first.&lt;/li&gt;
-&lt;li&gt;The table never shows what you typed, only what the device reports: the register is read back at once
-(a clamped value reads clamped), and every poll re-reads it.&lt;/li&gt;
-&lt;li&gt;If the device, or another client, changed the value while you were editing, you are asked before
-yours overwrites it.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Right-click a row: &lt;b&gt;Plot&lt;/b&gt; (or &lt;b&gt;Remove from chart&lt;/b&gt;), &lt;b&gt;Plot a field&lt;/b&gt; (a register with bit fields: one
-field as a line of its own), &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt;, &lt;b&gt;Edit definition…&lt;/b&gt;, &lt;b&gt;Remove&lt;/b&gt;. Anywhere in
-the table: &lt;b&gt;Plot all shown&lt;/b&gt;, &lt;b&gt;Remove shown from the chart&lt;/b&gt;, &lt;b&gt;Remove all from the chart&lt;/b&gt;, &lt;b&gt;Fit
-columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt; / &lt;b&gt;Log none&lt;/b&gt;, &lt;b&gt;Add register…&lt;/b&gt;.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;المسجّلات والكتابات&lt;/h2&gt;
-&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;فك الترميزة&lt;/b&gt; أو اسم القيمة،
-النوع والوصول. مربع البحث ومرشّح المجموعات في الأعلى. مرّر الفأرة فوق صف لترى وصفه، وبايتاته الخام،
-والحقول فك الترميزة واحدًا في كل سطر، وعمره.&lt;/p&gt;
-&lt;p&gt;القيمة ذات حقول البتات أو اسم القيمة بجانبها &lt;b&gt;ⓘ&lt;/b&gt;: مرّر الفأرة فوق ⓘ لتراها مفكوكة، واحدًا في كل سطر
-(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;فك الترميز&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
-بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود فك الترميز&lt;/b&gt; لإظهاره.&lt;/p&gt;
-&lt;p&gt;لا شيء يُقصّ: تتسع الأعمدة لأطول نص فيها (شريط تمرير إن كانت النافذة أضيق)، و
-&lt;b&gt;المسجّل المحدّد&lt;/b&gt; يُعرض كاملًا تحت الجدول (القيمة، البايتات الخام، كل حقل مفكوك،
-الوصف). النقر بالزر الأيمن ← &lt;b&gt;ملاءمة الأعمدة&lt;/b&gt; يقلّصها من جديد بعد قيمة طويلة.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;القيمة التي تغيّرت للتو &lt;b&gt;تتوهج&lt;/b&gt; لحظة.&lt;/li&gt;
-&lt;li&gt;القيمة &lt;b&gt;الرمادية&lt;/b&gt; غير محدّثة: أقدم من فاصلي استطلاع، أو فاصل واحد زائد المهلة
-حين يكون ذلك أطول، زائد الزمن بين تحديثين في &lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع معطّل، الوصلة مفقودة).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;خطأ&lt;/i&gt; / &lt;i&gt;غير متاح&lt;/i&gt; بالأحمر: فشلت القراءة / الجهاز لا يملك ذلك العنوان.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;الكتابة&lt;/h3&gt;
-&lt;ol&gt;
-&lt;li&gt;فعّل &lt;b&gt;السماح بالكتابة&lt;/b&gt; (معطّل عند كل تشغيل).&lt;/li&gt;
-&lt;li&gt;انقر نقرًا مزدوجًا على قيمة &lt;b&gt;rw&lt;/b&gt;، واكتب، ثم &lt;b&gt;Enter&lt;/b&gt;. أعداد، &lt;code&gt;0x1F&lt;/code&gt;، &lt;code&gt;0b101&lt;/code&gt;، أو اسم
-قيمة.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h3&gt;الكتابة السريعة&lt;/h3&gt;
-&lt;p&gt;حدّد مسجّلًا &lt;b&gt;rw&lt;/b&gt;: تحت الجدول، في &lt;b&gt;كتابة NAME&lt;/b&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;مربع قيمة: اكتب، ثم &lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt;؛&lt;/li&gt;
-&lt;li&gt;لمسجّل له أسماء قيم، قائمة بقيمه: اختر واحدة فتُكتب؛&lt;/li&gt;
-&lt;li&gt;لمسجّل له حقول بتات، &lt;b&gt;بتاته مرسومة كما في ورقة البيانات&lt;/b&gt;: خلية لكل بت (انقر لقلب ذلك
-البت وحده)، وكل علم باسمه (انقر لقلبه)، وكل حقل أعرض بقيمته (انقر لقيمه
-المسمّاة، أو &lt;i&gt;القيمة…&lt;/i&gt;)؛&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;البتات&lt;/b&gt;: عرض البتات نفسه لمسجّل صحيح بلا حقول، البت الأعلى أولًا.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;على الناقل، يرسل &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; القيمة المكتوبة إلى كل جهاز في إطار بث واحد، حيث
-تسمح قاعدة البث بذلك (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، بعد تأكيد، ويقرأ كل واحد للتحقق؛ ويقول السجل أي
-الأجهزة قبلتها. يُعرض حين تُكتب قيمة.&lt;/p&gt;
-&lt;p&gt;البت أو الحقل يُكتب قراءةً-تعديلًا-كتابةً من القيمة التي يحملها الجهاز، فتُحفظ البتات الأخرى.
-كل كتابة سريعة تسلك طريق تحرير الجدول نفسه: يجب أن يكون &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا، ومسجّلات ⚠ تسأل أولًا.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;المسجّلات المعلّمة &lt;b&gt;rw ⚠&lt;/b&gt; تحرّك شيئًا أو تشغّله أو تغيّره: كل كتابة تسأل أولًا.&lt;/li&gt;
-&lt;li&gt;لا يعرض الجدول أبدًا ما كتبته، بل ما يبلّغ عنه الجهاز فقط: يُقرأ المسجّل للتحقق فورًا
-(القيمة المقصوصة تُقرأ مقصوصة)، وكل استطلاع يعيد قراءته.&lt;/li&gt;
-&lt;li&gt;إن غيّر الجهاز، أو عميل آخر، القيمة وأنت تحرّرها، تُسأل قبل أن
-تكتب قيمتك فوقها.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;رسم حقل&lt;/b&gt; (مسجّل له حقول بتات: حقل
-واحد خطًا خاصًا)، &lt;b&gt;قراءة الآن&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. وفي أي مكان من
-الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
-الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
         <source>Chart &amp; recording</source>
         <translation>المخطط والتسجيل</translation>
     </message>
@@ -3107,80 +3099,6 @@ the ⚠ switch.&lt;/li&gt;
 &lt;li&gt;&lt;code&gt;--api-writes&lt;/code&gt; مثل تفعيل &lt;i&gt;السماح بكتابات API&lt;/i&gt;؛ و&lt;code&gt;--api-writes-danger&lt;/code&gt; مع
 مفتاح ⚠ أيضًا.&lt;/li&gt;
 &lt;/ul&gt;
-</translation>
-    </message>
-    <message>
-        <source>
-&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
-cancels · right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
-&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
-&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
-division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
-all fit&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
-handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
-&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
-&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
-Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
-arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
-it: 50 %&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
-Manual or Log tag: Auto ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
-values: Auto ·
-&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
-(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
-&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</source>
-        <translation>
-&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
-يلغي · النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
-كلها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
-مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
-&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
-⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
-(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
-و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
 </translation>
     </message>
     <message>
@@ -4063,6 +3981,197 @@ in amber: the device&apos;s limit, the link or this PC&apos;s load; hover it for
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>
+&lt;h2&gt;Registers &amp;amp; writes&lt;/h2&gt;
+&lt;p&gt;One row per register: address, name, &lt;b&gt;value&lt;/b&gt; (bold), unit, &lt;b&gt;decoded&lt;/b&gt; bit fields or enum name,
+type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
+the decoded fields one per line, and its age.&lt;/p&gt;
+&lt;p&gt;A value with bit fields or an enum name has an &lt;b&gt;ⓘ&lt;/b&gt; beside it: hover the ⓘ to see them decoded, one per line
+(the rest of the value shows its usual tooltip). The &lt;b&gt;Decoded&lt;/b&gt; column is off by default (most registers have
+none); right-click the table or its header → &lt;b&gt;Decoded column&lt;/b&gt; to show it.&lt;/p&gt;
+&lt;p&gt;Nothing is cut off: the columns fit their longest text (a scroll bar if the window is narrower), and the
+&lt;b&gt;selected register&lt;/b&gt; is shown in full under the table (value, raw bytes, every decoded field,
+description). Right-click → &lt;b&gt;Fit columns&lt;/b&gt; shrinks them back after a long value.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A value that just changed &lt;b&gt;glows&lt;/b&gt; for a moment.&lt;/li&gt;
+&lt;li&gt;A value &lt;b&gt;grey&lt;/b&gt; is not refreshed: older than two poll intervals, or one interval plus the timeout
+when that is longer, plus the time between two updates of &lt;b&gt;Show values&lt;/b&gt; (polling off, link lost).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;error&lt;/i&gt; / &lt;i&gt;not available&lt;/i&gt; in red: the read failed / the device does not have that address.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Writing&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;Tick &lt;b&gt;Allow writes&lt;/b&gt; (off at every start).&lt;/li&gt;
+&lt;li&gt;Double-click an &lt;b&gt;rw&lt;/b&gt; value, type, &lt;b&gt;Enter&lt;/b&gt;. Numbers, &lt;code&gt;0x1F&lt;/code&gt;, &lt;code&gt;0b101&lt;/code&gt;, or an enum
+name.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3&gt;Several registers at once&lt;/h3&gt;
+&lt;p&gt;Select several &lt;b&gt;rw&lt;/b&gt; registers of one type (&lt;b&gt;Ctrl-click&lt;/b&gt;, &lt;b&gt;Shift-click&lt;/b&gt;), then right-click one of them →
+&lt;b&gt;Write to N selected registers…&lt;/b&gt;, or press &lt;b&gt;F2&lt;/b&gt; on one, type and &lt;b&gt;Enter&lt;/b&gt; (a double-click selects that
+row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
+its names); one that does not take it is left out with the reason, one past its map&apos;s limits has a note, read-only
+rows are left out. &lt;b&gt;Cancel&lt;/b&gt; has the focus; &lt;b&gt;Write N&lt;/b&gt; writes them one after the other in address order, each
+read back. A refusal does not stop the others, and the Log sums them up in one line with the values replaced: there is
+no undo.&lt;/p&gt;
+&lt;h3&gt;Quick write&lt;/h3&gt;
+&lt;p&gt;Select an &lt;b&gt;rw&lt;/b&gt; register: under the table, &lt;b&gt;Write NAME&lt;/b&gt; has&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;a value box: type, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt;;&lt;/li&gt;
+&lt;li&gt;for an enum register, a list of its values: pick one and it is written;&lt;/li&gt;
+&lt;li&gt;for a register with bit fields, its &lt;b&gt;bits drawn as in a datasheet&lt;/b&gt;: a cell per bit (click to flip that
+bit only), each flag by its name (click to flip it), and each wider field with its value (click for its named
+values, or &lt;i&gt;Value…&lt;/i&gt;);&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Bits&lt;/b&gt;: the same bit view for an integer register without fields, the highest bit first.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On a bus, &lt;b&gt;To all devices&lt;/b&gt; sends the value typed to every device in one broadcast frame, where the
+broadcast rule allows it (see &lt;b&gt;Connecting&lt;/b&gt;), after a confirmation, and reads each one back; the Log says which
+devices took it. It is offered once a value is typed.&lt;/p&gt;
+&lt;p&gt;A bit or field is written read-modify-write from the value the device holds, so the other bits are kept.
+Every quick write goes the same way as a table edit: &lt;b&gt;Allow writes&lt;/b&gt; must be on, ⚠ registers ask first.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Registers marked &lt;b&gt;rw ⚠&lt;/b&gt; move, power or change something: every write asks first.&lt;/li&gt;
+&lt;li&gt;The table never shows what you typed, only what the device reports: the register is read back at once
+(a clamped value reads clamped), and every poll re-reads it.&lt;/li&gt;
+&lt;li&gt;If the device, or another client, changed the value while you were editing, you are asked before
+yours overwrites it.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Right-click a row: &lt;b&gt;Plot&lt;/b&gt; (or &lt;b&gt;Remove from chart&lt;/b&gt;), &lt;b&gt;Plot a field&lt;/b&gt; (a register with bit fields: one
+field as a line of its own), &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Write to N selected registers…&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt;, &lt;b&gt;Edit definition…&lt;/b&gt;, &lt;b&gt;Remove&lt;/b&gt;. Anywhere in
+the table: &lt;b&gt;Plot all shown&lt;/b&gt;, &lt;b&gt;Remove shown from the chart&lt;/b&gt;, &lt;b&gt;Remove all from the chart&lt;/b&gt;, &lt;b&gt;Fit
+columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt; / &lt;b&gt;Log none&lt;/b&gt;, &lt;b&gt;Add register…&lt;/b&gt;.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;المسجّلات والكتابات&lt;/h2&gt;
+&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;فك الترميزة&lt;/b&gt; أو اسم القيمة،
+النوع والوصول. مربع البحث ومرشّح المجموعات في الأعلى. مرّر الفأرة فوق صف لترى وصفه، وبايتاته الخام،
+والحقول فك الترميزة واحدًا في كل سطر، وعمره.&lt;/p&gt;
+&lt;p&gt;القيمة ذات حقول البتات أو اسم القيمة بجانبها &lt;b&gt;ⓘ&lt;/b&gt;: مرّر الفأرة فوق ⓘ لتراها مفكوكة، واحدًا في كل سطر
+(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;فك الترميز&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
+بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود فك الترميز&lt;/b&gt; لإظهاره.&lt;/p&gt;
+&lt;p&gt;لا شيء يُقصّ: تتسع الأعمدة لأطول نص فيها (شريط تمرير إن كانت النافذة أضيق)، و
+&lt;b&gt;المسجّل المحدّد&lt;/b&gt; يُعرض كاملًا تحت الجدول (القيمة، البايتات الخام، كل حقل مفكوك،
+الوصف). النقر بالزر الأيمن ← &lt;b&gt;ملاءمة الأعمدة&lt;/b&gt; يقلّصها من جديد بعد قيمة طويلة.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;القيمة التي تغيّرت للتو &lt;b&gt;تتوهج&lt;/b&gt; لحظة.&lt;/li&gt;
+&lt;li&gt;القيمة &lt;b&gt;الرمادية&lt;/b&gt; غير محدّثة: أقدم من فاصلي استطلاع، أو فاصل واحد زائد المهلة
+حين يكون ذلك أطول، زائد الزمن بين تحديثين في &lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع معطّل، الوصلة مفقودة).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;خطأ&lt;/i&gt; / &lt;i&gt;غير متاح&lt;/i&gt; بالأحمر: فشلت القراءة / الجهاز لا يملك ذلك العنوان.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الكتابة&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;فعّل &lt;b&gt;السماح بالكتابة&lt;/b&gt; (معطّل عند كل تشغيل).&lt;/li&gt;
+&lt;li&gt;انقر نقرًا مزدوجًا على قيمة &lt;b&gt;rw&lt;/b&gt;، واكتب، ثم &lt;b&gt;Enter&lt;/b&gt;. أعداد، &lt;code&gt;0x1F&lt;/code&gt;، &lt;code&gt;0b101&lt;/code&gt;، أو اسم
+قيمة.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3&gt;عدة مسجّلات معًا&lt;/h3&gt;
+&lt;p&gt;حدّد عدة مسجّلات &lt;b&gt;rw&lt;/b&gt; من نوع واحد (&lt;b&gt;Ctrl مع النقر&lt;/b&gt;، &lt;b&gt;Shift مع النقر&lt;/b&gt;)، ثم انقر بالزر الأيمن على أحدها ← &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، أو اضغط &lt;b&gt;F2&lt;/b&gt; على أحدها واكتب ثم &lt;b&gt;Enter&lt;/b&gt; (النقر المزدوج يحدّد
+ذلك الصف وحده). تعرض قائمة ما يحمله كل منها الآن وما سيأخذه: يأخذ كل مسجّل القيمة على طريقته (معامله،
+أسماؤه)؛ ومن لا يقبلها يُستبعد مع السبب، ومن يتجاوز حدود خريطته عليه ملاحظة، وصفوف القراءة فقط تُستبعد. التركيز على &lt;b&gt;إلغاء&lt;/b&gt;؛ و&lt;b&gt;كتابة N&lt;/b&gt; تكتبها واحدًا بعد الآخر بترتيب العناوين، ويُقرأ كل منها بعد كتابته.
+الرفض لا يوقف الباقي، ويجمعها السجل في سطر واحد مع القيم المستبدلة: لا تراجع.&lt;/p&gt;
+&lt;h3&gt;الكتابة السريعة&lt;/h3&gt;
+&lt;p&gt;حدّد مسجّلًا &lt;b&gt;rw&lt;/b&gt;: تحت الجدول، في &lt;b&gt;كتابة NAME&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;مربع قيمة: اكتب، ثم &lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt;؛&lt;/li&gt;
+&lt;li&gt;لمسجّل له أسماء قيم، قائمة بقيمه: اختر واحدة فتُكتب؛&lt;/li&gt;
+&lt;li&gt;لمسجّل له حقول بتات، &lt;b&gt;بتاته مرسومة كما في ورقة البيانات&lt;/b&gt;: خلية لكل بت (انقر لقلب ذلك
+البت وحده)، وكل علم باسمه (انقر لقلبه)، وكل حقل أعرض بقيمته (انقر لقيمه
+المسمّاة، أو &lt;i&gt;القيمة…&lt;/i&gt;)؛&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;البتات&lt;/b&gt;: عرض البتات نفسه لمسجّل صحيح بلا حقول، البت الأعلى أولًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;على الناقل، يرسل &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; القيمة المكتوبة إلى كل جهاز في إطار بث واحد، حيث
+تسمح قاعدة البث بذلك (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، بعد تأكيد، ويقرأ كل واحد للتحقق؛ ويقول السجل أي
+الأجهزة قبلتها. يُعرض حين تُكتب قيمة.&lt;/p&gt;
+&lt;p&gt;البت أو الحقل يُكتب قراءةً-تعديلًا-كتابةً من القيمة التي يحملها الجهاز، فتُحفظ البتات الأخرى.
+كل كتابة سريعة تسلك طريق تحرير الجدول نفسه: يجب أن يكون &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا، ومسجّلات ⚠ تسأل أولًا.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;المسجّلات المعلّمة &lt;b&gt;rw ⚠&lt;/b&gt; تحرّك شيئًا أو تشغّله أو تغيّره: كل كتابة تسأل أولًا.&lt;/li&gt;
+&lt;li&gt;لا يعرض الجدول أبدًا ما كتبته، بل ما يبلّغ عنه الجهاز فقط: يُقرأ المسجّل للتحقق فورًا
+(القيمة المقصوصة تُقرأ مقصوصة)، وكل استطلاع يعيد قراءته.&lt;/li&gt;
+&lt;li&gt;إن غيّر الجهاز، أو عميل آخر، القيمة وأنت تحرّرها، تُسأل قبل أن
+تكتب قيمتك فوقها.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;رسم حقل&lt;/b&gt; (مسجّل له حقول بتات: حقل
+واحد خطًا خاصًا)، &lt;b&gt;قراءة الآن&lt;/b&gt;، &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. وفي أي مكان من
+الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
+الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
+cancels · &lt;b&gt;Ctrl-click&lt;/b&gt; / &lt;b&gt;Shift-click&lt;/b&gt; select several, &lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; writes one value to all ·
+right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
+&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
+division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
+all fit&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
+handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
+&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
+&lt;b&gt;Delete&lt;/b&gt; to remove&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
+Manual or Log tag: Auto ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
+values: Auto ·
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
+(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
+&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</source>
+        <translation>
+&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
+يلغي · &lt;b&gt;Ctrl مع النقر&lt;/b&gt; / &lt;b&gt;Shift مع النقر&lt;/b&gt; يحدّدان عدة صفوف، و&lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; يكتب قيمة واحدة فيها كلها ·
+النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
+كلها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
+مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
+&lt;b&gt;Delete&lt;/b&gt; للإزالة&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
+(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
+و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -4762,6 +4871,83 @@ in amber: the device&apos;s limit, the link or this PC&apos;s load; hover it for
     <message>
         <source>the baud rate %1 is ignored on USB CDC</source>
         <translation>معدّل البود ⁦%1⁩ مُتجاهَل على USB CDC</translation>
+    </message>
+    <message numerus="yes">
+        <source>bulk write to %n registers cancelled</source>
+        <translation>
+            <numerusform>أُلغيت الكتابة في %n مسجّلات</numerusform>
+            <numerusform>أُلغيت الكتابة في مسجّل واحد</numerusform>
+            <numerusform>أُلغيت الكتابة في مسجّلين</numerusform>
+            <numerusform>أُلغيت الكتابة في %n مسجّلات</numerusform>
+            <numerusform>أُلغيت الكتابة في %n مسجّلًا</numerusform>
+            <numerusform>أُلغيت الكتابة في %n مسجّل</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;%1&lt;/b&gt;: when you started &lt;b&gt;%2&lt;/b&gt;, now on the device &lt;b&gt;%3&lt;/b&gt;</source>
+        <translation>&lt;b&gt;%1&lt;/b&gt;: حين بدأت &lt;b&gt;%2&lt;/b&gt;، والآن على الجهاز &lt;b&gt;%3&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>Changed while you were editing (you typed &lt;b&gt;%1&lt;/b&gt;):&lt;br&gt;&lt;br&gt;%2&lt;br&gt;&lt;br&gt;Something else writes these registers (the device itself, or another client). Write yours to all of them anyway?</source>
+        <translation>تغيّرت وأنت تحرّر (كتبت &lt;b&gt;%1&lt;/b&gt;):&lt;br&gt;&lt;br&gt;%2&lt;br&gt;&lt;br&gt;شيء آخر يكتب هذه المسجّلات (الجهاز نفسه، أو عميل آخر). أتكتب قيمتك فيها كلها مع ذلك؟</translation>
+    </message>
+    <message>
+        <source>bulk write of %1 cancelled (the value changed meanwhile)</source>
+        <translation>أُلغيت الكتابة الجماعية لـ %1 (تغيّرت القيمة في الأثناء)</translation>
+    </message>
+    <message>
+        <source>; not taken: %1</source>
+        <translation>؛ لم تُقبل في: %1</translation>
+    </message>
+    <message>
+        <source>%1 (was %2)</source>
+        <translation>%1 (كانت %2)</translation>
+    </message>
+    <message>
+        <source>not read</source>
+        <translation>غير مقروءة</translation>
+    </message>
+    <message>
+        <source>bulk write of %1 (1 register): %2</source>
+        <translation>كتابة جماعية لـ %1 (مسجّل واحد): %2</translation>
+    </message>
+    <message numerus="yes">
+        <source>bulk write of %1 (%n registers): %2</source>
+        <translation>
+            <numerusform>كتابة جماعية لـ %1 (%n مسجّلات): %2</numerusform>
+            <numerusform>كتابة جماعية لـ %1 (مسجّل واحد): %2</numerusform>
+            <numerusform>كتابة جماعية لـ %1 (مسجّلان): %2</numerusform>
+            <numerusform>كتابة جماعية لـ %1 (%n مسجّلات): %2</numerusform>
+            <numerusform>كتابة جماعية لـ %1 (%n مسجّلًا): %2</numerusform>
+            <numerusform>كتابة جماعية لـ %1 (%n مسجّل): %2</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>1 register written</source>
+        <translation>كُتب مسجّل واحد</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n registers written</source>
+        <translation>
+            <numerusform>كُتبت %n مسجّلات</numerusform>
+            <numerusform>كُتب مسجّل واحد</numerusform>
+            <numerusform>كُتب مسجّلان</numerusform>
+            <numerusform>كُتبت %n مسجّلات</numerusform>
+            <numerusform>كُتب %n مسجّلًا</numerusform>
+            <numerusform>كُتب %n مسجّل</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>bulk write of %1: %2 of %3 written; refused: %4</source>
+        <translation>كتابة جماعية لـ %1: كُتب %2 من %3؛ رُفض: %4</translation>
+    </message>
+    <message>
+        <source>; written: %1</source>
+        <translation>؛ كُتب: %1</translation>
+    </message>
+    <message>
+        <source>%1 of %2 registers written</source>
+        <translation>المسجّلات المكتوبة: %1 من %2</translation>
     </message>
 </context>
 <context>
@@ -7392,6 +7578,71 @@ Right-click the table to remove them again.</source>
     <message>
         <source>Show in dump</source>
         <translation>إظهار في عرض الذاكرة</translation>
+    </message>
+    <message numerus="yes">
+        <source>Write to %n selected registers…</source>
+        <translation>
+            <numerusform>الكتابة في %n مسجّلات محددة…</numerusform>
+            <numerusform>الكتابة في مسجّل واحد محدد…</numerusform>
+            <numerusform>الكتابة في مسجّلين محددين…</numerusform>
+            <numerusform>الكتابة في %n مسجّلات محددة…</numerusform>
+            <numerusform>الكتابة في %n مسجّلًا محددًا…</numerusform>
+            <numerusform>الكتابة في %n مسجّل محدد…</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Write to several registers…</source>
+        <translation>الكتابة في عدة مسجّلات…</translation>
+    </message>
+    <message>
+        <source>Tick Allow writes first</source>
+        <translation>فعّل «السماح بالكتابة» أولًا</translation>
+    </message>
+    <message>
+        <source>Not connected: connect to the device first</source>
+        <translation>غير متصل: اتصل بالجهاز أولًا</translation>
+    </message>
+    <message>
+        <source>Select two or more rw registers of one type (Ctrl-click, Shift-click) to write one value to all of them</source>
+        <translation>حدّد مسجّلين rw أو أكثر من نوع واحد (Ctrl مع النقر، Shift مع النقر) لتكتب فيها كلها قيمة واحدة</translation>
+    </message>
+    <message>
+        <source>The selected registers are of different types: %1</source>
+        <translation>المسجّلات المحددة من أنواع مختلفة: %1</translation>
+    </message>
+    <message>
+        <source>One value to all of them, after a list of what each one gets</source>
+        <translation>قيمة واحدة فيها كلها، بعد قائمة بما يأخذه كل منها</translation>
+    </message>
+    <message>
+        <source>%1 is read-only: left out.</source>
+        <translation>%1 للقراءة فقط: مستبعد.</translation>
+    </message>
+    <message>
+        <source>%1 are read-only: left out.</source>
+        <translation>%1 للقراءة فقط: مستبعدة.</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n registers selected: one value to all with F2 and Enter, or the right-click menu</source>
+        <translation>
+            <numerusform>حُدّدت %n مسجّلات: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+            <numerusform>حُدّد مسجّل واحد: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+            <numerusform>حُدّد مسجّلان: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+            <numerusform>حُدّدت %n مسجّلات: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+            <numerusform>حُدّد %n مسجّلًا: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+            <numerusform>حُدّد %n مسجّل: قيمة واحدة للجميع بـ F2 ثم Enter، أو بقائمة النقر بالزر الأيمن</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%n registers selected, of different types (%1): no one value for all</source>
+        <translation>
+            <numerusform>حُدّدت %n مسجّلات، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+            <numerusform>حُدّد مسجّل واحد، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+            <numerusform>حُدّد مسجّلان، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+            <numerusform>حُدّدت %n مسجّلات، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+            <numerusform>حُدّد %n مسجّلًا، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+            <numerusform>حُدّد %n مسجّل، من أنواع مختلفة (%1): لا قيمة واحدة للجميع</numerusform>
+        </translation>
     </message>
 </context>
 <context>
