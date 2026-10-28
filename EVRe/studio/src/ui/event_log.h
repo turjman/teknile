@@ -38,7 +38,8 @@ public:
 	void setShown(bool shown);
 
 public slots:
-	void add(LogLevel level, const QString &text);
+	/* withPopUp false: a warning or an error that a line after it sums up with one pop-up (a bulk write's refusals) */
+	void add(LogLevel level, const QString &text, bool withPopUp = true);
 
 signals:
 	/* the warnings and errors logged since the tab was last shown */

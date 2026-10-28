@@ -118,6 +118,7 @@
 #include "model/recording_file.h"
 #include "model/register_model.h"
 #include "ui/bit_view.h"
+#include "ui/bulk_write_dialog.h"
 #include "ui/bus_panel.h"
 #include "ui/event_log.h"
 #include "model/analysis.h"
@@ -363,6 +364,7 @@ struct AwaitingDialog {
 /* the last message box answerDialog answered: the button with the keyboard's focus, and its default (Space presses
  * the one with the focus, Enter the default: a question before a write keeps both on Cancel) */
 QString lastBoxFocus, lastBoxDefault;
+QString lastBoxText; /* and its text, as plain text */
 
 /* runs trigger, then answers the modal message box it brings by clicking
  * buttonText (or rejects it, without that button): the box's title, or empty if none came.
@@ -381,6 +383,7 @@ QString answerDialog(const QString &buttonText, const std::function<void()> &tri
 		if (!box) return;
 		poll.stop();
 		title = box->windowTitle();
+		lastBoxText = QTextDocumentFragment::fromHtml(box->text()).toPlainText();
 		done = true;
 		/* a key goes where the focus is once the box is active (xvfb may never make it so: then its focus child) */
 		if (key != Qt::Key_unknown) (void) QTest::qWaitFor([box] { return QApplication::activeWindow() == box; }, 1000);
@@ -551,6 +554,8 @@ public:
 		unchangedMeanwhile();
 		dangerRegister();
 		badValueRefused();
+		bulkWrite();
+		menuDisabledEntries();
 		noticeCoversNothing();
 		showInLogEndsNotice();
 		noticeRightToLeft();
@@ -880,6 +885,574 @@ private:
 		if (editor) QTest::keyClick(editor, Qt::Key_Return);
 		check(QTest::qWaitFor([&] { return noticeShown("not written"); }, 2000) && other_.readU8(regs_.u8.addr) == 0,
 				"300 into a u8: a pop-up \"not written\", nothing sent");
+	}
+
+	/* 7b. One value to several registers (STUDIO.md 6.6): with FAN_SPEED, LED_MODE and MSG_CNT (three u8) selected, the
+	 * right-click menu's entry and F2 + Enter open the dialog (what each one gets, a refusal, a limit, a ⚠ register);
+	 * Write sends one write per register, each read back, and one line in the Log sums them up. The device's values
+	 * are put back afterwards. */
+	void bulkWrite() {
+		const QStringList names{ QStringLiteral("FAN_SPEED"), QStringLiteral("LED_MODE"), QStringLiteral("MSG_CNT") };
+		QVector<uint16_t> addrs;
+		for (const QString &name : names) {
+			const auto it = std::find_if(map_.regs.begin(), map_.regs.end(), [&](const RegDef &def) { return def.name == name; });
+			if (it == map_.regs.end() || it->type != RegType::U8 || !it->rw) {
+				check(false, "bulk write: the map has FAN_SPEED, LED_MODE and MSG_CNT, writable u8");
+				return;
+			}
+			addrs << it->addr;
+		}
+		QVector<int> was;
+		for (const uint16_t addr : addrs) was << other_.readU8(addr);
+		/* the device holds these, and the table shows them (a write's read back came in: the next step starts there) */
+		const auto holds = [&](const QVector<int> &values) {
+			return QTest::qWaitFor([&] {
+				for (int i = 0; i < addrs.size(); i++)
+					if (other_.readU8(addrs[i]) != values[i]
+							|| valueCell(table_, names[i]).data().toString() != QString::number(values[i]))
+						return false;
+				return true;
+			}, 3000);
+		};
+		/* the device and the table on one value for all three */
+		const auto setAll = [&](int value) {
+			for (const uint16_t addr : addrs) other_.writeU8(addr, uint8_t(value));
+			for (const QString &name : names) {
+				if (!cellShows(valueCell(table_, name), QString::number(value)))
+					std::printf("     (%s shows \"%s\", not %d)\n", qPrintable(name),
+							qPrintable(valueCell(table_, name).data().toString()), value);
+			}
+		};
+		const auto select = [&](const QStringList &rows, const QString &current) {
+			table_->clearSelection();
+			for (const QString &name : rows)
+				table_->selectionModel()->select(valueCell(table_, name), QItemSelectionModel::Select | QItemSelectionModel::Rows);
+			table_->selectionModel()->setCurrentIndex(valueCell(table_, current), QItemSelectionModel::NoUpdate);
+			table_->scrollTo(valueCell(table_, current));
+			QApplication::processEvents();
+		};
+		/* F2 on the current row (the others stay selected), the text, Enter */
+		const auto f2Enter = [&](const QString &text) {
+			QTest::keyClick(table_, Qt::Key_F2);
+			QLineEdit *editor = nullptr;
+			(void) QTest::qWaitFor([&] {
+				for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+					if (line->isVisible()) editor = line;
+				return editor != nullptr;
+			}, 2000);
+			if (!editor) return;
+			editor->selectAll();
+			QTest::keyClicks(editor, text);
+			QTest::keyClick(editor, Qt::Key_Return);
+		};
+		/* the right-click menu on a row: its bulk entry, triggered when asked (the menu closed first); a picture of it */
+		struct MenuEntry {
+			bool found = false, enabled = false;
+			QString text, tip;
+		};
+		const auto bulkEntry = [&](const QString &at, bool trigger, const QString &picture = QString()) {
+			MenuEntry entry;
+			QTimer poll;
+			poll.setInterval(50);
+			QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+				auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+				if (!menu) return;
+				poll.stop();
+				QAction *action = nullptr;
+				for (QAction *a : menu->actions())
+					if (a->objectName() == QLatin1String("bulkWriteAction")) action = a;
+				if (action) entry = MenuEntry{ true, action->isEnabled(), action->text(), action->toolTip() };
+				if (!picture.isEmpty()) {
+					menu->setActiveAction(action);
+					QTest::qWait(150);
+					menu->grab().save(picture);
+				}
+				menu->hide();
+				if (trigger && action && action->isEnabled()) action->trigger();
+				menu->close();
+			});
+			poll.start();
+			emit table_->customContextMenuRequested(table_->visualRect(valueCell(table_, at)).center());
+			(void) QTest::qWaitFor([&] { return !poll.isActive(); }, 3000);
+			return entry;
+		};
+		/* what the dialog shows */
+		struct Look {
+			bool box = false;
+			QStringList rows;    /* "NAME | Now | New | Note" */
+			QString button, notes, focus, byDefault;
+			bool writeEnabled = false, fits = false;
+		};
+		const auto lookAt = [](QDialog *dialog) {
+			Look look;
+			look.box = dialog->findChild<QLineEdit *>(QStringLiteral("bulkValue")) != nullptr;
+			if (auto *list = dialog->findChild<QTableWidget *>(QStringLiteral("bulkList"))) {
+				for (int r = 0; r < list->rowCount(); r++) {
+					QStringList cells;
+					for (const int c : { 0, 3, 4, 5 }) cells << (list->item(r, c) ? list->item(r, c)->text() : QString());
+					look.rows << cells.join(QStringLiteral(" | "));
+				}
+				/* nothing cut: every column as wide as its content, the list within its viewport or a scroll bar */
+				bool wide = true;
+				for (int c = 0; c < list->columnCount(); c++)
+					if (!list->isColumnHidden(c))
+						wide = wide && list->columnWidth(c) >= static_cast<QAbstractItemView *>(list)->sizeHintForColumn(c);
+				look.fits = wide && (list->horizontalHeader()->length() <= list->viewport()->width()
+						|| list->horizontalScrollBar()->isVisible());
+			}
+			if (auto *notes = dialog->findChild<QLabel *>(QStringLiteral("bulkNotes")))
+				look.notes = QTextDocumentFragment::fromHtml(notes->text()).toPlainText();
+			if (auto *write = dialog->findChild<QPushButton *>(QStringLiteral("bulkWriteButton"))) {
+				look.button = write->text();
+				look.writeEnabled = write->isEnabled();
+			}
+			const auto *focus = qobject_cast<QPushButton *>(dialog->focusWidget());
+			look.focus = focus ? focus->text().remove(QLatin1Char('&')) : QString();
+			for (QPushButton *button : dialog->findChildren<QPushButton *>())
+				if (button->isDefault()) look.byDefault = button->text().remove(QLatin1Char('&'));
+			return look;
+		};
+		const auto tell = [](const char *what, const Look &look) {
+			std::printf("     (%s: the rows \"%s\", the button \"%s\", the notes \"%s\", focus \"%s\")\n", what,
+					qPrintable(look.rows.join(QStringLiteral("; "))), qPrintable(look.button), qPrintable(look.notes),
+					qPrintable(look.focus));
+		};
+		int failedAt = 0; /* the failures before a check: what the dialog showed is told when it fails */
+		const auto clickWrite = [](QDialog *dialog) {
+			if (auto *write = dialog->findChild<QPushButton *>(QStringLiteral("bulkWriteButton"))) write->click();
+		};
+		const auto summaries = [&](const QString &marker) { return int(logText().count(marker)); };
+		const auto lastLineWith = [&](const QString &marker) {
+			const QStringList lines = logText().split(QLatin1Char('\n'));
+			for (int i = int(lines.size()) - 1; i >= 0; i--)
+				if (lines[i].contains(marker)) return lines[i];
+			return QString();
+		};
+
+		/* the menu offers it, enabled, with the count; STATUS (read-only) selected too: left out, said, the count kept */
+		setAll(0);
+		select(names, names[0]);
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		const QString detailText = detail ? QTextDocumentFragment::fromHtml(detail->text()).toPlainText() : QString();
+		check(detailText.contains(QLatin1String("3 registers selected: one value to all with F2 and Enter, or the "
+						"right-click menu")),
+				"bulk write: three rw u8 selected, the detail line ends with how one value goes to all of them");
+		MenuEntry entry = bulkEntry(names[0], false);
+		check(entry.found && entry.enabled && entry.text == QStringLiteral("Write to 3 selected registers…"),
+				"bulk write: the right-click menu offers \"Write to 3 selected registers…\", enabled");
+		select(names + QStringList{ QStringLiteral("STATUS") }, names[0]);
+		entry = bulkEntry(names[0], false);
+		Look look;
+		const bool menuDialog = fillDialog([&](QDialog *dialog) {
+			look = lookAt(dialog);
+			dialog->reject();
+		}, [&] { (void) bulkEntry(names[0], true); });
+		if (!(entry.enabled && entry.text == QStringLiteral("Write to 3 selected registers…") && menuDialog))
+			std::printf("     (with STATUS: \"%s\" enabled %d, tooltip \"%s\"; the dialog %d)\n", qPrintable(entry.text),
+					int(entry.enabled), qPrintable(entry.tip), int(menuDialog));
+		check(entry.enabled && entry.text == QStringLiteral("Write to 3 selected registers…")
+						&& entry.tip.contains(QLatin1String("STATUS is read-only: left out")) && menuDialog
+						&& look.rows.size() == 3 && look.notes.contains(QLatin1String("STATUS is read-only: left out")),
+				"bulk write: STATUS (read-only) selected too: the count stays 3, the entry's tooltip and the dialog say STATUS "
+				"is left out");
+		check(look.box && !look.writeEnabled && look.button == QLatin1String("Write"),
+				"bulk write from the menu: the dialog has a value box at its top, Write disabled while it is empty");
+
+		/* from the menu: the value typed in the dialog's box, the list following it, Write: all three on the device */
+		select(names, names[0]);
+		Look typed;
+		(void) fillDialog([&](QDialog *dialog) {
+			if (auto *box = dialog->findChild<QLineEdit *>(QStringLiteral("bulkValue"))) {
+				QTest::keyClicks(box, QStringLiteral("4"));
+				QTest::keyClick(box, Qt::Key_Return); /* Enter in the box writes nothing, cancels nothing */
+			}
+			typed = lookAt(dialog);
+			if (dialog->isVisible()) clickWrite(dialog);
+		}, [&] { (void) bulkEntry(names[0], true); });
+		failedAt = failed;
+		check(typed.button == QLatin1String("Write 3") && typed.writeEnabled && typed.rows.size() == 3
+						&& typed.rows[1].contains(QLatin1String("| 4 %")) && holds({ 4, 4, 4 }),
+				"bulk write from the menu: \"4\" typed in its box, the list shows it per register, Enter there keeps the dialog "
+				"open; Write 3: the device holds 4 in all three");
+		if (failed > failedAt) tell("typed", typed);
+
+		/* not offered: different types, Allow writes off, not connected; each says why as its tooltip */
+		select({ names[0], QStringLiteral("SETPOINT") }, names[0]);
+		entry = bulkEntry(names[0], false);
+		check(entry.found && !entry.enabled && entry.tip.contains(QLatin1String("different types: f32, u8")),
+				"bulk write: FAN_SPEED and SETPOINT selected: the entry disabled, its tooltip names the types in the table's "
+				"order, \"f32, u8\"");
+		select(names, names[0]);
+		allowWrites_->setChecked(false);
+		entry = bulkEntry(names[0], false);
+		allowWrites_->setChecked(true);
+		const bool offWhy = !entry.enabled && entry.tip.contains(QLatin1String("Tick Allow writes first"));
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QApplication::processEvents();
+		select(names, names[0]);
+		entry = bulkEntry(names[0], false);
+		const bool linkWhy = disconnectButton && !entry.enabled
+				&& entry.tip.contains(QLatin1String("not connected"), Qt::CaseInsensitive);
+		if (QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"))) connectButton->click();
+		(void) QTest::qWaitFor([&] { return buttonWithText(QStringLiteral("Disconnect")) != nullptr; }, 5000);
+		check(offWhy && linkWhy && cellShows(valueCell(table_, names[0]), QStringLiteral("4"), 5000),
+				"bulk write: Allow writes off, the entry disabled with \"Tick Allow writes first\"; not connected: disabled, "
+				"\"not connected\"");
+
+		/* F2 with the three selected: the dialog lists them, Now and New; Space and Enter cancel (Cancel focused, the
+		 * default), nothing written */
+		setAll(0);
+		select(names, names[0]);
+		bool keysCancel = true;
+		Look f2;
+		for (const Qt::Key key : { Qt::Key_Space, Qt::Key_Return }) {
+			const bool came = fillDialog([&](QDialog *dialog) {
+				f2 = lookAt(dialog);
+				QWidget *focus = dialog->focusWidget();
+				QTest::keyClick(focus ? focus : dialog, key);
+			}, [&] { f2Enter(QStringLiteral("2")); });
+			QTest::qWait(300); /* a write it let through would land meanwhile */
+			keysCancel = keysCancel && came && holds({ 0, 0, 0 });
+			select(names, names[0]);
+		}
+		failedAt = failed;
+		check(f2.rows.size() == 3 && f2.rows[0] == QStringLiteral("MSG_CNT | 0 | 2 | ")
+						&& f2.rows[1] == QStringLiteral("FAN_SPEED | 0 % | 2 % | ")
+						&& f2.rows[2] == QStringLiteral("LED_MODE | off (0) | blink (2) | ") && !f2.box,
+				"bulk write: F2 on FAN_SPEED with three selected, \"2\", Enter: the dialog lists the three, what each holds and "
+				"gets (\"blink (2)\" by LED_MODE's names)");
+		if (failed > failedAt) tell("f2", f2);
+		check(f2.focus == QLatin1String("Cancel") && f2.byDefault == QLatin1String("Cancel") && keysCancel,
+				"bulk write: the dialog opens with the focus on Cancel, its default: Space and Enter cancel, nothing written");
+
+		/* Write: one write each, read back; one line in the Log with the values replaced; the status bar */
+		const QString marker = QStringLiteral("bulk write of 2 (3 registers): ");
+		const int linesBefore = summaries(marker);
+		Look written;
+		(void) fillDialog([&](QDialog *dialog) {
+			written = lookAt(dialog);
+			clickWrite(dialog);
+		}, [&] { f2Enter(QStringLiteral("2")); });
+		bool shown = holds({ 2, 2, 2 });
+		for (const QString &name : names) shown = cellShows(valueCell(table_, name), QStringLiteral("2")) && shown;
+		const bool logged = QTest::qWaitFor([&] { return summaries(marker) == linesBefore + 1; }, 3000);
+		const QString summary = lastLineWith(marker);
+		if (!logged || !shown)
+			std::printf("     (Write 3: the device %d %d %d, the Log \"%s\", the status bar \"%s\")\n", other_.readU8(addrs[0]),
+					other_.readU8(addrs[1]), other_.readU8(addrs[2]), qPrintable(summary),
+					qPrintable(window_.statusBar()->currentMessage()));
+		failedAt = failed;
+		check(written.button == QLatin1String("Write 3") && shown && logged
+						&& summary.contains(QLatin1String("MSG_CNT (was 0), FAN_SPEED (was 0 %), LED_MODE (was off (0))"))
+						&& window_.statusBar()->currentMessage() == QLatin1String("3 registers written"),
+				"bulk write: Write 3: the device holds 2 in all three, the table shows 2 (read back), one line in the Log with "
+				"the values replaced, \"3 registers written\" in the status bar");
+		if (failed > failedAt) tell("written", written);
+
+		/* a value only one of them takes: the others refused in the list, greyed, "Write 1 of 3"; at the window's minimum
+		 * width nothing in the list is cut */
+		setAll(0);
+		select(names, names[0]);
+		const QSize windowWas = window_.size();
+		window_.resize(window_.minimumSizeHint().width(), windowWas.height());
+		QApplication::processEvents();
+		Look blink;
+		(void) fillDialog([&](QDialog *dialog) {
+			blink = lookAt(dialog);
+			clickWrite(dialog);
+		}, [&] { f2Enter(QStringLiteral("blink")); });
+		window_.resize(windowWas);
+		const bool onlyLed = holds({ 0, 2, 0 });
+		failedAt = failed;
+		check(blink.rows.size() == 3 && blink.rows[2] == QStringLiteral("LED_MODE | off (0) | blink (2) | ")
+						&& blink.rows[0].contains(QLatin1String("| refused: not a number"))
+						&& blink.rows[1].contains(QLatin1String("| refused: not a number"))
+						&& blink.button == QLatin1String("Write 1 of 3") && onlyLed,
+				"bulk write: \"blink\": LED_MODE gets \"blink (2)\", FAN_SPEED and MSG_CNT are refused (not a number), "
+				"\"Write 1 of 3\" writes LED_MODE alone");
+		if (failed > failedAt) tell("blink", blink);
+		check(blink.fits, "bulk write: the dialog at the window's minimum width: every column as wide as its text, the "
+				"list in its view or with a scroll bar");
+
+		/* past a map limit: the note, "Write 3 anyway" */
+		setAll(0);
+		select(names, names[0]);
+		Look limit;
+		(void) fillDialog([&](QDialog *dialog) {
+			limit = lookAt(dialog);
+			dialog->reject();
+		}, [&] { f2Enter(QStringLiteral("200")); });
+		failedAt = failed;
+		check(limit.rows.size() == 3 && limit.rows[1].endsWith(QLatin1String("| above the maximum 100 %"))
+						&& limit.button == QLatin1String("Write 3 anyway") && holds({ 0, 0, 0 }),
+				"bulk write: \"200\" past FAN_SPEED's maximum: its note \"above the maximum 100 %\", the button \"Write 3 "
+				"anyway\"; Cancel writes nothing");
+		if (failed > failedAt) tell("limit", limit);
+
+		/* changed meanwhile: another client writes FAN_SPEED while the dialog is open; at Write one question names it
+		 * alone; Cancel writes none, Write anyway all */
+		const auto changedWhileOpen = [&](const QString &answer) {
+			return answerDialog(answer, [&] {
+				(void) fillDialog([&](QDialog *dialog) {
+					other_.writeU8(addrs[0], 7);
+					(void) cellShows(valueCell(table_, names[0]), QStringLiteral("7"));
+					clickWrite(dialog);
+				}, [&] { f2Enter(QStringLiteral("2")); });
+			});
+		};
+		select(names, names[0]);
+		QString title = changedWhileOpen(QStringLiteral("Cancel"));
+		const QString question = lastBoxText;
+		QTest::qWait(300);
+		const bool noneWritten = holds({ 7, 0, 0 });
+		setAll(0);
+		select(names, names[0]);
+		const QString titleAgain = changedWhileOpen(QStringLiteral("Write anyway"));
+		if (title != valueChangedTitle || !noneWritten)
+			std::printf("     (changed meanwhile: \"%s\": %s)\n", qPrintable(title), qPrintable(question));
+		check(title == valueChangedTitle
+						&& question.contains(QLatin1String("FAN_SPEED: when you started 0, now on the device 7"))
+						&& !question.contains(QLatin1String("LED_MODE")) && !question.contains(QLatin1String("MSG_CNT"))
+						&& noneWritten,
+				"bulk write: FAN_SPEED changed by another client while the dialog was open: \"Value changed while editing\" "
+				"names it alone; Cancel writes none of the three");
+		check(titleAgain == valueChangedTitle && holds({ 2, 2, 2 }),
+				"bulk write: ... Write anyway: all three written");
+
+		/* a ⚠ register among them (MSG_CNT marked danger for this check): marked in the list, the danger sentence once,
+		 * and no "Confirm write" after the dialog: Write writes all three */
+		auto *doc = window_.findChild<MapDocument *>();
+		if (doc) {
+			doc->edit(QStringLiteral("test"), [&](DeviceMap &map) {
+				for (RegDef &def : map.regs)
+					if (def.name == names[2]) def.danger = true;
+			});
+		}
+		setAll(0);
+		select(names, names[0]);
+		Look danger;
+		int questions = 0; /* a message box after the dialog ("Confirm write"): there must be none */
+		QTimer boxGuard;
+		boxGuard.setInterval(50);
+		QObject::connect(&boxGuard, &QTimer::timeout, &boxGuard, [&] {
+			if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+				questions++;
+				box->reject();
+			}
+		});
+		boxGuard.start();
+		(void) fillDialog([&](QDialog *dialog) {
+			danger = lookAt(dialog);
+			clickWrite(dialog);
+		}, [&] { f2Enter(QStringLiteral("3")); });
+		const bool dangerWritten = holds({ 3, 3, 3 });
+		boxGuard.stop();
+		const bool confirmAsked = questions > 0;
+		if (doc) doc->undoStack()->undo();
+		failedAt = failed;
+		check(doc && danger.rows.size() == 3 && danger.rows[0].startsWith(QStringLiteral("MSG_CNT ⚠ |"))
+						&& danger.notes.contains(QStringLiteral("⚠ MSG_CNT moves, powers or changes something on the device."))
+						&& danger.notes.contains(QLatin1String("There is no undo")) && !confirmAsked && dangerWritten,
+				"bulk write: a ⚠ register among them: marked in the list, the danger sentence once and \"no undo\"; no "
+				"\"Confirm write\" after it: Write writes all three");
+		if (failed > failedAt) tell("danger", danger);
+
+		/* a refusal midway: a u8 at an address the fake device does not serve; the others are written, one Warning sums
+		 * it up with the refusal, and it alone pops up */
+		const QString missing = QStringLiteral("BULK_NOWHERE");
+		if (doc) {
+			doc->edit(QStringLiteral("test"), [&](DeviceMap &map) {
+				RegDef def;
+				def.addr = 0xD0F0;
+				def.name = missing;
+				def.type = RegType::U8;
+				def.size = 1;
+				def.rw = true;
+				def.group = QStringLiteral("Settings");
+				map.regs << def;
+			});
+		}
+		const bool added = QTest::qWaitFor([&] { return valueCell(table_, missing).isValid(); }, 3000);
+		QTest::qWait(1000); /* its read refused once (not available), before the counting starts */
+		setAll(0);
+		int writePopUps = 0;
+		QStringList popUpTexts;
+		auto *eventLog = window_.findChild<EventLog *>();
+		const QMetaObject::Connection counting = eventLog ? QObject::connect(eventLog, &EventLog::popUp, eventLog,
+				[&](LogLevel, const QString &text) {
+					if (!text.contains(QLatin1String("write"))) return;
+					writePopUps++;
+					popUpTexts << text;
+				}) : QMetaObject::Connection();
+		select({ names[0], names[1], missing }, names[0]);
+		const QString refusedMarker = QStringLiteral("bulk write of 1: 2 of 3 written; refused: BULK_NOWHERE (");
+		(void) fillDialog(clickWrite, [&] { f2Enter(QStringLiteral("1")); });
+		const bool summed = QTest::qWaitFor([&] { return summaries(refusedMarker) == 1; }, 3000);
+		QTest::qWait(300);
+		QObject::disconnect(counting);
+		if (!summed || writePopUps != 1)
+			std::printf("     (a refusal midway: the summary %d, pop-ups %d: %s)\n", int(summed), writePopUps,
+					qPrintable(popUpTexts.join(QStringLiteral(" / "))));
+		check(added && summed && writePopUps == 1 && popUpTexts.value(0).contains(refusedMarker)
+						&& other_.readU8(addrs[0]) == 1 && other_.readU8(addrs[1]) == 1
+						&& window_.statusBar()->currentMessage() == QLatin1String("2 of 3 registers written"),
+				"bulk write: a register the device refuses among them: the others written all the same, one Warning names "
+				"the refused one, one pop-up for the three, \"2 of 3 registers written\"");
+		if (doc) doc->undoStack()->undo();
+		u8Cell_ = valueCell(table_, regs_.u8.name); /* the table's rows again: an index of before is gone */
+
+		/* one row selected: the single write as before, no bulk dialog */
+		int bulkDialogs = 0;
+		QTimer guard;
+		guard.setInterval(50);
+		QObject::connect(&guard, &QTimer::timeout, &guard, [&] {
+			if (auto *dialog = qobject_cast<BulkWriteDialog *>(QApplication::activeModalWidget())) {
+				bulkDialogs++;
+				dialog->reject();
+			}
+		});
+		guard.start();
+		QLineEdit *editor = typeInto(u8Cell_, QStringLiteral("5"));
+		if (editor) QTest::keyClick(editor, Qt::Key_Return);
+		const bool single = u8Becomes(5);
+		guard.stop();
+		check(editor && single && bulkDialogs == 0, "bulk write: one row selected, typed and Enter: written as before, no "
+				"bulk dialog");
+
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) bulkWriteShots(names, bulkEntry, select);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+
+		/* as the device was before this step */
+		for (int i = 0; i < addrs.size(); i++) other_.writeU8(addrs[i], uint8_t(std::max(0, was[i])));
+		(void) cellShows(u8Cell_, QString::number(std::max(0, was[0])));
+		table_->clearSelection();
+		table_->setCurrentIndex(u8Cell_);
+	}
+
+	/* EVRE_TEST_SHOT: the bulk dialog (a plain one, one with a limit's note, one with a ⚠ register) and the right-click
+	 * menu with its entry (menu; menu_off: disabled, a u8 and an i16 selected), <prefix>_bulk_<what>_<en|ar>_<light|dark>.png, in English (both themes) and Arabic (light).
+	 * The dialogs are made for the picture from the table's rows, as the window makes them; MSG_CNT is marked ⚠ for the
+	 * third and the map put back after */
+	template <typename Entry, typename Select>
+	void bulkWriteShots(const QStringList &names, const Entry &bulkEntry, const Select &select) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		auto *doc = window_.findChild<MapDocument *>();
+		const auto targets = [&]() {
+			QVector<BulkWriteDialog::Target> list; /* in the table's order, as the window gives them */
+			for (const RegisterModel::Row &row : model_->rows())
+				if (names.contains(row.def.name)) list << BulkWriteDialog::Target{ row.def, row.raw, QString() };
+			return list;
+		};
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			for (const bool dark : { false, true }) {
+				if (dark && code == QLatin1String("ar")) continue;
+				Theme::apply(*qApp, dark);
+				const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+				const auto name = [&](const QString &what) {
+					return prefix + QStringLiteral("_bulk_%1_%2_%3.png").arg(what, code, theme);
+				};
+				QTest::qWait(200);
+				select(names + QStringList{ QStringLiteral("STATUS") }, names[0]);
+				(void) bulkEntry(names[0], false, name(QStringLiteral("menu")));
+				/* and the entry off: a u8 and an i16 selected, its tooltip names the types */
+				select({ names[0], QStringLiteral("MOTOR_SPEED") }, names[0]);
+				(void) bulkEntry(names[0], false, name(QStringLiteral("menu_off")));
+				for (const auto &[what, text] : { std::pair{ QStringLiteral("plain"), QStringLiteral("2") },
+							 std::pair{ QStringLiteral("limit"), QStringLiteral("200") },
+							 std::pair{ QStringLiteral("refused"), QStringLiteral("blink") } }) {
+					const QStringList leftOut = what == QLatin1String("refused") ? QStringList{ QStringLiteral("STATUS") }
+							: QStringList();
+					BulkWriteDialog dialog(targets(), leftOut, text, &window_);
+					dialog.show();
+					(void) QTest::qWaitForWindowExposed(&dialog);
+					QTest::qWait(150);
+					dialog.grab().save(name(what));
+					dialog.reject();
+				}
+				if (doc) {
+					doc->edit(QStringLiteral("test"), [&](DeviceMap &map) {
+						for (RegDef &def : map.regs)
+							if (def.name == names[2]) def.danger = true;
+					});
+					BulkWriteDialog dialog(targets(), {}, QString(), &window_);
+					dialog.show();
+					(void) QTest::qWaitForWindowExposed(&dialog);
+					if (auto *box = dialog.findChild<QLineEdit *>(QStringLiteral("bulkValue"))) box->setText(QStringLiteral("1"));
+					QTest::qWait(150);
+					dialog.grab().save(name(QStringLiteral("danger")));
+					dialog.reject();
+					doc->undoStack()->undo();
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+		QTest::qWait(200);
+	}
+
+	/* A menu entry that cannot be used now (disabled) is drawn in the theme's muted colour, not as the others, and gets
+	 * no highlight under the mouse (theme.cpp, QMenu::item:disabled): the owner could not tell the bulk write's entry
+	 * was off. In both themes, a menu of its own with an entry on and one off, the disabled one made the active one;
+	 * the ink of each entry is the pixel of its rectangle farthest from the menu's background (the picture in device
+	 * pixels: the rectangles scaled by its ratio). */
+	void menuDisabledEntries() {
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			const ThemeColors &colors = Theme::colors();
+			QMenu menu(&window_);
+			QAction *on = menu.addAction(QStringLiteral("An entry that works"));
+			QAction *off = menu.addAction(QStringLiteral("An entry that does not"));
+			off->setEnabled(false);
+			menu.popup(window_.mapToGlobal(QPoint(200, 200)));
+			(void) QTest::qWaitForWindowExposed(&menu);
+			menu.setActiveAction(off); /* as the mouse over it */
+			QTest::qWait(150);
+			const QImage picture = menu.grab().toImage();
+			menu.close();
+			const qreal ratio = picture.devicePixelRatio();
+			const auto distance = [](const QColor &a, const QColor &b) {
+				return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+			};
+			const QColor background = colors.surface2;
+			const auto inDevice = [&](QAction *action) {
+				const QRect r = menu.actionGeometry(action);
+				return QRect(qRound(r.x() * ratio), qRound(r.y() * ratio), qRound(r.width() * ratio),
+						qRound(r.height() * ratio)).intersected(picture.rect());
+			};
+			const auto ink = [&](QAction *action) {
+				QColor farthest = background;
+				const QRect r = inDevice(action);
+				for (int y = r.top(); y <= r.bottom(); y++)
+					for (int x = r.left(); x <= r.right(); x++) {
+						const QColor pixel = picture.pixelColor(x, y);
+						if (distance(pixel, background) > distance(farthest, background)) farthest = pixel;
+					}
+				return farthest;
+			};
+			const QColor inkOn = ink(on), inkOff = ink(off);
+			/* beside the text (inside the entry's left padding): the menu's background, no highlight */
+			const QRect offRect = inDevice(off);
+			const QColor besideOff = picture.pixelColor(offRect.left() + qRound(6 * ratio), offRect.center().y());
+			const bool ok = distance(inkOn, colors.text) < distance(inkOn, colors.muted)
+					&& distance(inkOff, colors.muted) < distance(inkOff, colors.text) && distance(inkOff, colors.muted) < 90
+					&& distance(besideOff, background) < 12;
+			if (!ok)
+				std::printf("     (%s: the ink on %s, off %s (muted %s, text %s), beside the off entry %s (the menu %s))\n",
+						dark ? "dark" : "light", qPrintable(inkOn.name()), qPrintable(inkOff.name()),
+						qPrintable(colors.muted.name()), qPrintable(colors.text.name()), qPrintable(besideOff.name()),
+						qPrintable(background.name()));
+			check(ok, dark ? "menus, dark theme: an entry that cannot be used now is drawn in the muted colour, not as the "
+							 "others, and the mouse over it highlights nothing"
+						   : "menus, light theme: an entry that cannot be used now is drawn in the muted colour, not as the "
+							 "others, and the mouse over it highlights nothing");
+		}
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
 	}
 
 	/* a pop-up notice is shown whose tooltip holds text */

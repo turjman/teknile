@@ -68,6 +68,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [6.3 Danger confirmation](#63-danger-confirmation)
     - [6.4 The order of the checks](#64-the-order-of-the-checks)
     - [6.5 What is logged](#65-what-is-logged)
+    - [6.6 One value to several registers](#66-one-value-to-several-registers)
   - [7. The Chart](#7-the-chart)
     - [7.1 The axes row](#71-the-axes-row)
     - [7.2 The actions row](#72-the-actions-row)
@@ -929,6 +930,10 @@ On a register:
 
 - **Plot** or **Remove from chart** (numeric registers only)
 - **Read now**: one read of this register at once, into the table. This is how a byte array too long to be polled is read (see 13.3).
+- **Write to N selected registers…**: one value to every rw register selected (6.6). Disabled (greyed, as every menu
+  entry that cannot be used now) while it cannot be, its tooltip says why: *Tick Allow writes first*, *Not connected: connect to the device first*, fewer than two rw
+  registers selected, or *The selected registers are of different types: f32, u8*. Read-only rows in the selection
+  are left out, and its tooltip names them.
 - **Copy value**: the value text, as shown when the menu opened.
 - **Show in dump**: the Dump tab on this register, its chips selected and in view (chapter 37).
 - **Edit definition…** (see 4.11)
@@ -1022,6 +1027,10 @@ Each of these edits marks the map *modified* in the sidebar. **Save** writes it,
 ### 4.12 Editing a value in the table
 
 With **Allow writes** on, double-click the value of a read-write register, or press the platform's edit key (F2 on Windows and most Linux desktops). Type the new value and press **Enter** to write it, or **Esc** to cancel.
+
+**F2 keeps the selection, a double-click does not.** With several rw registers of one type selected (Ctrl-click,
+Shift-click), F2 on one of them and Enter write the value to all of them, after a list of what each one gets (6.6).
+A double-click selects its row alone first, so it always edits one register.
 
 - **The editor starts from the value as shown.** For example `12.000`, `0x0005` for a register with fields, or `2` for an enum register.
 - **Polls do not overwrite your typing.** New values keep arriving while you type, but the editor's text stays yours.
@@ -1208,8 +1217,79 @@ Section 21.3 follows the same path through the code.
 | Not&nbsp;a&nbsp;valid&nbsp;value | Error | `FAN_SPEED: 300 not written: 300 is out of range for u8 (0 … 255)` |
 | Cancelled | Info | `…: write of … cancelled (the value changed meanwhile)` or `… cancelled at the confirmation` |
 | Monitor&nbsp;raw&nbsp;write | Info&nbsp;/&nbsp;Error | `raw write 00 64 at 0xD086: OK` or `…: refused: <reason>` |
+| Bulk&nbsp;write&nbsp;(6.6) | Info | `bulk write of 2 (3 registers): MSG_CNT (was 0), FAN_SPEED (was 35 %), LED_MODE (was off (0))`, after each register's own `written: …` line; *3 registers written* in the status bar |
+| Bulk&nbsp;write&nbsp;refused | Warning | `bulk write of 1: 2 of 3 written; refused: SETPOINT (permission denied); written: FAN_SPEED (was 35 %), LED_MODE (was off (0))`: one pop-up for them all (each refusal's own Error line pops up no more) |
+| Bulk&nbsp;write&nbsp;cancelled | Info | `bulk write to 3 registers cancelled` or `bulk write of 2 cancelled (the value changed meanwhile)` |
 
-Errors also pop up (see 11.3).
+Errors and warnings also pop up (see 11.3).
+
+### 6.6 One value to several registers
+
+Select several **read-write** registers of one type with **Ctrl-click** or **Shift-click**, then either:
+
+- right-click one of them, **Write to N selected registers…** (4.9): the dialog opens with a value box at its top, or
+- press **F2** on one of them (the others stay selected), type the value and press **Enter** (4.12).
+
+A double-click cannot start it: it selects the row clicked alone before its editor opens (Qt's selection does this),
+so that edit is a single write as always. The detail line under the table says how, while several are selected:
+*3 registers selected: one value to all with F2 and Enter, or the right-click menu*.
+
+**Which rows.** The targets are the rows selected and shown by the table that are read-write. Read-only rows in the
+selection are left out and named (*STATUS is read-only: left out.*, in the menu entry's tooltip and in the dialog).
+The targets must be of **one type** (and of one size for `bytes`), so the text typed means one thing; their unit,
+scale, names and limits may differ. Different types: the entry is disabled, its tooltip names them (*The selected
+registers are of different types: f32, u8*), and F2 + Enter writes the edited row alone, as a single write. Fewer
+than two targets: everything is as for one register.
+
+**The dialog** (always, for two or more):
+
+```
++------------------------------------------------------------------+
+| Write to 3 registers                                             |
++------------------------------------------------------------------+
+| Value  2                                                         |
+|                                                                  |
+| Register     Address   Now        New        Note                |
+| MSG_CNT      0xA006    0          2                              |
+| FAN_SPEED    0xD084    0 %        2 %                            |
+| LED_MODE     0xD085    off (0)    blink (2)                      |
+|                                                                  |
+| STATUS is read-only: left out.                                   |
+| There is no undo: the Log keeps the values replaced.             |
+|                                                                  |
+|                                          [ Write 3 ]  [ Cancel ] |
++------------------------------------------------------------------+
+```
+
+- The text is taken by **each register on its own** (`encodeValue` for each): `22.5` is scaled by each one's scale, a
+  name is looked up in each one's names, a special value too. **New** shows what each one gets, a name with its
+  number (`blink (2)`). **Now** is the value when the dialog opened (it does not follow the polls).
+- A register that does not take the text is **refused** in the list: greyed, its reason in **Note**
+  (*refused: not a number: "blink"*), not written. The button then reads **Write 1 of 3**. None takes it: the button
+  is disabled and the dialog says so.
+- A value past a register's map limits gets a note (*above the maximum 100 %*) and the button reads **Write 3
+  anyway**. This stands in for the question of 6.4 step 3.
+- A ⚠ register is marked in the list, and one sentence names the ⚠ ones (*⚠ CONFIG moves, powers or changes
+  something on the device.*): one confirmation for all of them, in place of one "Confirm write" each (6.3).
+- **Cancel** is the default and has the focus: **Enter** and **Space** cancel, **Esc** too. **Write** needs a click,
+  or Tab and Space. Opened from the menu, the value box has the focus; Enter there writes nothing (the list follows
+  the typing already).
+- On a bus with All devices shown, each register is written to its own device (`slaveOf`); no broadcast is used.
+
+**Changed meanwhile.** At Write, every target's value is compared with the one its write started from (the edited
+row: the editor's; the others: their values at Enter, or when the menu opened). The ones another client or the
+device changed meanwhile are listed in one *Value changed while editing* question (*FAN_SPEED: when you started 0,
+now on the device 7*). **Cancel** writes none of them; **Write anyway** writes all.
+
+**The writes.** One `WRITE_ACK` per register, posted at once in address order (on a bus device by device, in the
+order of the devices). The Master sends them one after the other (21.3), and the engine reads each one back: the
+table shows what the device holds. A refusal does not stop the others: they were all confirmed. No frame writes
+several registers at once (the read back, the Dump's record of a write and a refusal are per register).
+
+**The Log.** Each register gets its line as a single write does (`written: …`, `write refused: …`; a refusal here
+without its own pop-up). After the last answer one line sums them up with the values replaced (6.5), so they can be
+written back by hand: **there is no undo** of a write to the device. The status bar says *3 registers written* or
+*2 of 3 registers written*.
 
 ## 7. The Chart
 
@@ -2431,7 +2511,7 @@ start (one *map loaded*), not after the one chosen last.
 | `3 request(s) timed out (17 in all)` | Warning |
 | `1 error answer(s) from the device (4 in all)` | Warning |
 | `2 bad frame(s) received (2 in all)` | Warning |
-| Writes, refusals, cancels, raw writes (6.5) | Info / Error |
+| Writes, refusals, cancels, raw writes, bulk writes (6.5) | Info / Warning / Error |
 | `CSV recording started`, `CSV recording stopped: 1200 rows in <path>` | Info |
 | `CSV recording not started: <why>` (also a message box) | Error |
 | `recording opened: <path>` | Info |
@@ -3100,7 +3180,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 The foot of the sidebar holds two buttons, the language and the version line (*v1.2.1 · teknile*):
 
 - **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
-- The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`).
+- The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`). In both themes a menu entry that cannot be used now is drawn in the muted grey and is not highlighted under the mouse; where it matters its tooltip says why.
 - **Language**: **System** (the default: the computer's language when the Studio has it, else English), **English**
   or **العربية** (Arabic), each in its own words. It is saved at once (`ui/language`) and applied at the next start: a
   window rebuilt in another language half-way would keep the texts made before. While the choice is not the language
@@ -4569,6 +4649,15 @@ union of the plotted registers and the registers the active math lines read.
 Example: with `FAN_SPEED` (u8, %, RW), typing `300` stops at step 4 with "300 is out of range for u8 (0 … 255)".
 Typing `2` into `MOTOR_SPEED` (i16, danger) asks at step 5 before anything is sent.
 
+**Several rows selected (6.6).** At step 2 the Registers tab looks at the selection (`RegistersTab::bulkTargets`).
+When the edited row is one of two or more rw rows of one type, it sends `bulkWriteRequested(rows, text, bases,
+leftOut)` instead (the edited row's base is the editor's, the others' their values at Enter); the right-click
+menu's entry sends the same with no text. `MainWindow::onBulkWriteRequested` shows `BulkWriteDialog`, which encodes
+the text for each register and checks its limits (steps 4 and 5 for all of them at once, one dialog). After Write,
+step 3 runs once for all (one question for the rows changed meanwhile), then step 6 for each register, in address
+order, all posted at once; the Master sends them one after the other. A shared counter gathers the answers, and
+the last one writes the summary line (6.5).
+
 ### 21.4 A map load
 
 1. `MainWindow::loadMap(file)` calls `DeviceMap::load`. The file is parsed into a temporary map, so a file that
@@ -4666,6 +4755,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
 | `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon; `setLines`: always that many lines tall, the text wrapped between words and cut at the end of the last, Auto send's note) |
+| `src/ui/bulk_write_dialog.h`,&nbsp;`.cpp` | `BulkWriteDialog`: one value to several registers (6.6): what each one holds and gets, refused or past a limit, ⚠; the value box |
 | `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
 | `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
 | `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
@@ -4951,7 +5041,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
 | `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
-| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`; signals `writeRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
+| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage` | GUI test |
+| `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
 | `BusPanel` | the Devices on the link card; shows, the window does the work | `showBus`, `pickerDevices` (the devices with their state, for the pickers), `namesText`, `setBroadcastBlocked` (the kept broadcasts off, with the reason); signals `newBusClicked`, `openBusClicked`, `saveBusClicked`, `closeBusClicked`, `addDeviceClicked`, `editDeviceClicked`, `removeDeviceClicked`, `deviceSelected`, `presetChosen`, `newPresetClicked`, `removePresetClicked` | GUI test (bus step) |
@@ -6195,6 +6286,21 @@ The steps run in order. Each leaves the window and the device as the next step e
 7. no question when nothing changed
 8. the danger confirmation; it too opens with the focus on Cancel, and Space and Enter cancel
 9. an out-of-range value refused, with a pop-up
+    - one value to several registers (6.6), with MSG_CNT, FAN_SPEED and LED_MODE selected: the detail line's sentence;
+      the right-click menu's *Write to 3 selected registers…* (STATUS selected too: left out, the count kept, named
+      in its tooltip and the dialog), the dialog's value box, a value typed there written to all three; the entry
+      disabled for different types (*f32, u8*), Allow writes off and not connected, each with its reason; F2 + Enter
+      with the three selected: the dialog lists what each holds and gets (`blink (2)`), opens with the focus on
+      Cancel, its default, so Space and Enter cancel; Write: the device holds the value in all three, the table
+      shows it, one summary line with the values replaced, *3 registers written*; `blink`: two refused,
+      *Write 1 of 3*; `200`: FAN_SPEED's note, *Write 3 anyway*; at the window's minimum width no column cut;
+      another client's write while the dialog is open: one *Value changed while editing* naming FAN_SPEED alone,
+      Cancel writes none, Write anyway all; a ⚠ register among them (MSG_CNT marked for the check): marked, one
+      sentence, no *Confirm write* after it; a register the device refuses (added at 0xD0F0 for the check): the
+      others written, one Warning, one pop-up, *2 of 3 registers written*; one row selected: a single write, no
+      dialog (with `EVRE_TEST_SHOT`: `<prefix>_bulk_<plain|limit|refused|danger|menu|menu_off>_<en|ar>_<light|dark>.png`)
+    - a disabled menu entry, in both themes: its text in the muted colour, not the others' (the ink painted), and no
+      highlight with the mouse over it
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
 11. "Show in Log" ends the pop-up, even after a resize; in right-to-left (Arabic, `noticeRightToLeft`) the pop-up
     sits left of the tabs, at 1200×720, 1600×950 and the window's size, and right of them again in left to right,
@@ -6932,7 +7038,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 778 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 798 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

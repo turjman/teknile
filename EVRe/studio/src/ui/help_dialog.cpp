@@ -312,6 +312,14 @@ when that is longer, plus the time between two updates of <b>Show values</b> (po
 <li>Double-click an <b>rw</b> value, type, <b>Enter</b>. Numbers, <code>0x1F</code>, <code>0b101</code>, or an enum
 name.</li>
 </ol>
+<h3>Several registers at once</h3>
+<p>Select several <b>rw</b> registers of one type (<b>Ctrl-click</b>, <b>Shift-click</b>), then right-click one of them →
+<b>Write to N selected registers…</b>, or press <b>F2</b> on one, type and <b>Enter</b> (a double-click selects that
+row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
+its names); one that does not take it is left out with the reason, one past its map's limits has a note, read-only
+rows are left out. <b>Cancel</b> has the focus; <b>Write N</b> writes them one after the other in address order, each
+read back. A refusal does not stop the others, and the Log sums them up in one line with the values replaced: there is
+no undo.</p>
 <h3>Quick write</h3>
 <p>Select an <b>rw</b> register: under the table, <b>Write NAME</b> has</p>
 <ul>
@@ -335,7 +343,7 @@ Every quick write goes the same way as a table edit: <b>Allow writes</b> must be
 yours overwrites it.</li>
 </ul>
 <p>Right-click a row: <b>Plot</b> (or <b>Remove from chart</b>), <b>Plot a field</b> (a register with bit fields: one
-field as a line of its own), <b>Read now</b>, <b>Copy value</b>, <b>Edit definition…</b>, <b>Remove</b>. Anywhere in
+field as a line of its own), <b>Read now</b>, <b>Write to N selected registers…</b>, <b>Copy value</b>, <b>Edit definition…</b>, <b>Remove</b>. Anywhere in
 the table: <b>Plot all shown</b>, <b>Remove shown from the chart</b>, <b>Remove all from the chart</b>, <b>Fit
 columns</b>, <b>Decoded column</b>, <b>Log all</b> / <b>Log none</b>, <b>Add register…</b>.</p>
 )HTML") },
@@ -760,7 +768,8 @@ the ⚠ switch.</li>
 <table cellpadding="4">
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
 <tr><td><b>Registers</b></td><td><b>Double-click</b> or <b>F2</b> edits an rw value, <b>Enter</b> writes it, <b>Esc</b>
-cancels · right-click: the menu of the row and the table</td></tr>
+cancels · <b>Ctrl-click</b> / <b>Shift-click</b> select several, <b>F2</b> + <b>Enter</b> writes one value to all ·
+right-click: the menu of the row and the table</td></tr>
 <tr><td><b>Dump</b></td><td><b>Click</b> a chip or a decode line: the register selected (in the Registers tab too) ·
 <b>double-click</b>: the Registers tab on it · right-click: Show in Registers, Plot, Write…, Copy (on <b>Copy ▾</b> too)</td></tr>
 <tr><td><b>Chart</b></td><td><b>Wheel</b> zooms the time (below 1 s: the next 1, 2 or 5 per division) · <b>Ctrl + wheel</b> zooms Y around the mouse (Manual) ·

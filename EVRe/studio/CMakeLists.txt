@@ -53,6 +53,7 @@ qt_add_library(evre_studio_core STATIC
     src/model/analysis.h        src/model/analysis.cpp
     src/model/register_model.h  src/model/register_model.cpp
     src/model/map_document.h    src/model/map_document.cpp
+    src/ui/bulk_write_dialog.h  src/ui/bulk_write_dialog.cpp
     src/ui/bus_panel.h          src/ui/bus_panel.cpp
     src/ui/bus_device_dialog.h  src/ui/bus_device_dialog.cpp
     src/ui/bus_preset_dialog.h  src/ui/bus_preset_dialog.cpp

@@ -7,7 +7,8 @@
  *    chart), Allow writes, and + Register.
  *  - the table (RegisterModel through RegisterFilter). ValueDelegate draws
  *    and edits the Value column. A right-click offers plotting, reading now,
- *    copying, editing the definition and logging; the header's menu shows or
+ *    one value to the rows selected (a bulk write: bulkTargets), copying,
+ *    editing the definition and logging; the header's menu shows or
  *    hides the Decoded column (saved in "ui/decodedColumn"). The columns fit
  *    their content, Decoded as wide as its longest text.
  *  - under it: the selected register in full (the detail line), and the
@@ -44,7 +45,7 @@ class RegistersTab : public QWidget {
 public:
 	RegistersTab(RegisterModel *model, MapDocument *doc, QWidget *parent = nullptr);
 
-	/* the link state, for the quick-write panel */
+	/* the link state, for the quick-write panel and the bulk write */
 	void setConnected(bool connected);
 	/* a bus: the device whose registers the table shows (RegDef::slave); -1: every row (one device, or All devices) */
 	void setDevice(int slave);
@@ -68,6 +69,11 @@ signals:
 	/* a write asked for here: an edit in the table (RegisterModel::writeRequested) or the quick-write panel.
 	 * Handled at once (a direct connection): afterwards, written or not, the panel shows the device's value. */
 	void writeRequested(int row, const QString &text, const QByteArray &base);
+	/* one value to several registers (STUDIO.md 6.6): the rows (two or more, of one type), the text typed (empty:
+	 * the dialog asks for it), each row's raw value the write starts from (empty: not read), and the read-only rows
+	 * of the selection, left out. An edit of one of them in the table (F2, Enter) comes this way too. */
+	void bulkWriteRequested(const QVector<int> &rows, const QString &text, const QVector<QByteArray> &bases,
+			const QStringList &leftOut);
 	/* "To all devices" in the quick-write panel: a broadcast of the value typed */
 	void broadcastRequested(int row, const QString &text);
 	/* Read now: one register read at once, into the table */
@@ -116,6 +122,17 @@ private:
 	void plotShown(bool on);  /* every numeric register the table shows now */
 	void updatePlotButton();  /* "Plot shown" or, when they all are, "Unplot shown" */
 
+	/* a bulk write: the rows selected and shown that can be written, with one value for all; the read-only ones left
+	 * out; the types when they differ ("u8, f32": no one value for all), empty when they are one */
+	struct BulkTargets {
+		QVector<int> rows;
+		QStringList readOnly;
+		QString problem;
+	};
+	BulkTargets bulkTargets() const;
+	void addBulkWriteAction(QMenu &menu); /* "Write to N selected registers…", or why not, as its tooltip */
+	void requestBulkWrite(const BulkTargets &targets, const QString &text, int editedRow, const QByteArray &editedBase);
+
 	/* the map */
 	void addRegister();       /* after the selected register, on the Map editor tab */
 	void removeRegisters();   /* the rows selected, as one undo step */
@@ -130,6 +147,7 @@ private:
 	MapDocument *doc_;
 	RegisterFilter *filter_;      /* the search and the groups */
 	bool shown_ = false;
+	bool connected_ = false;
 
 	/* the toolbar */
 	QLineEdit *search_;

@@ -29,6 +29,7 @@
 #include "io/engine.h"
 #include "model/map_document.h"
 #include "model/register_model.h"
+#include "ui/bulk_write_dialog.h"
 #include "ui/bus_panel.h"
 #include "ui/chart_tab.h"
 #include "ui/chart_widget.h"
@@ -401,6 +402,7 @@ void MainWindow::connectSidebar() {
 QWidget *MainWindow::buildRegistersTab() {
 	registersTab_ = new RegistersTab(model_, doc_);
 	connect(registersTab_, &RegistersTab::writeRequested, this, &MainWindow::onWriteRequested);
+	connect(registersTab_, &RegistersTab::bulkWriteRequested, this, &MainWindow::onBulkWriteRequested);
 	connect(registersTab_, &RegistersTab::broadcastRequested, this, &MainWindow::onBroadcastRequested);
 	connect(registersTab_, &RegistersTab::readRequested, this, [this](quint16 addr, quint16 count) {
 		engineRead(selectedSlave(), addr, count, true, {}); /* the table follows through the engine */
@@ -1493,6 +1495,108 @@ bool MainWindow::confirmDangerWrite(const RegDef &def, const QString &text, cons
 	return confirmed(this, tr("Confirm write"), question, tr("Write"));
 }
 
+/* One value to several registers (STUDIO.md 6.6). The dialog lists what each one gets and stands in for the questions
+ * of a single write (outside the limits, a ⚠ register); changed meanwhile is asked once, for all, after it. Then one
+ * WRITE_ACK per register, posted at once in address order (device by device on a bus): the Master sends them one
+ * after the other, the engine reads each one back, and a refusal does not stop the others, all confirmed. Each gets
+ * its line as a single write does (a refusal without its pop-up), and the last answer one line for them all, with
+ * the values replaced: there is no undo of a device's write. */
+void MainWindow::onBulkWriteRequested(const QVector<int> &rows, const QString &text, const QVector<QByteArray> &bases,
+		const QStringList &leftOut) {
+	QVector<BulkWriteDialog::Target> targets;
+	for (const int row : rows) {
+		const RegisterModel::Row &reg = model_->rows()[row];
+		targets << BulkWriteDialog::Target{ reg.def, reg.valid ? reg.raw : QByteArray(), QString() };
+	}
+	BulkWriteDialog dialog(targets, leftOut, text, this);
+	if (dialog.exec() != QDialog::Accepted || dialog.writable() == 0) {
+		logEvent(LogLevel::Info, tr("bulk write to %n registers cancelled", nullptr, int(targets.size())));
+		return;
+	}
+	const QString typed = dialog.text();
+	/* the registers that take the value, as they are now (the table may have changed under the dialog) */
+	struct Planned {
+		RegDef def;
+		QByteArray base, now, bytes;
+	};
+	QVector<Planned> writes;
+	QStringList notTaken, changed;
+	for (int i = 0; i < targets.size(); i++) {
+		const BulkWriteDialog::Entry &entry = dialog.entries()[i];
+		const RegDef &def = targets[i].def;
+		if (entry.bytes.isEmpty()) {
+			notTaken << QStringLiteral("%1 (%2)").arg(def.name, entry.refused);
+			continue;
+		}
+		const int row = rowOfKey(regKey(def));
+		const QByteArray now = row >= 0 && model_->rows()[row].valid ? model_->rows()[row].raw : QByteArray();
+		writes << Planned{ def, bases.value(i), now, entry.bytes };
+		if (!bases.value(i).isEmpty() && !now.isEmpty() && now != bases.value(i)) {
+			changed << tr("<b>%1</b>: when you started <b>%2</b>, now on the device <b>%3</b>")
+					.arg(def.name.toHtmlEscaped(), formatValue(def, bases.value(i)).toHtmlEscaped(),
+							formatValue(def, now).toHtmlEscaped());
+		}
+	}
+	if (!changed.isEmpty() && !confirmed(this, tr("Value changed while editing"),
+			tr("Changed while you were editing (you typed <b>%1</b>):<br><br>%2<br><br>Something else writes these "
+			   "registers (the device itself, or another client). Write yours to all of them anyway?")
+					.arg(typed.toHtmlEscaped(), changed.join(QStringLiteral("<br>"))),
+			tr("Write anyway"))) {
+		logEvent(LogLevel::Info, tr("bulk write of %1 cancelled (the value changed meanwhile)").arg(typed));
+		return;
+	}
+	/* address order, device by device in the table's order of the devices */
+	QHash<uint8_t, int> deviceOrder;
+	for (const RegisterModel::Row &reg : model_->rows())
+		if (!deviceOrder.contains(reg.def.slave)) deviceOrder.insert(reg.def.slave, int(deviceOrder.size()));
+	std::stable_sort(writes.begin(), writes.end(), [&deviceOrder](const Planned &a, const Planned &b) {
+		const int da = deviceOrder.value(a.def.slave), db = deviceOrder.value(b.def.slave);
+		return da != db ? da < db : a.def.addr < b.def.addr;
+	});
+	/* the answers gathered: the last one says how it went */
+	struct Results {
+		int left = 0;
+		int total = 0;
+		QStringList written, refused;
+	};
+	auto results = std::make_shared<Results>();
+	results->left = results->total = int(writes.size());
+	const QString notTakenText = notTaken.isEmpty() ? QString()
+			: tr("; not taken: %1").arg(notTaken.join(QStringLiteral(", ")));
+	for (const Planned &write : std::as_const(writes)) {
+		const RegDef &def = write.def;
+		const QString what = tr("%1 = %2 (%3 at %4)").arg(def.name, typed, evre::hex(write.bytes), addrText(def.addr));
+		const QString was = tr("%1 (was %2)").arg(def.name, write.now.isEmpty() ? tr("not read")
+				: BulkWriteDialog::shownText(def, write.now));
+		engineWrite(slaveOf(def), def.addr, write.bytes, true,
+				[this, results, what, was, typed, notTakenText, name = def.name](bool ok, const QString &message) {
+					if (ok) {
+						logEvent(LogLevel::Info, tr("written: %1").arg(what));
+						results->written << was;
+					} else {
+						logWithoutPopUp(LogLevel::Error, tr("write refused: %1: %2").arg(what, message));
+						results->refused << QStringLiteral("%1 (%2)").arg(name, message);
+					}
+					if (--results->left > 0) return;
+					const int done = int(results->written.size());
+					if (results->refused.isEmpty()) {
+						const QString list = results->written.join(QStringLiteral(", "));
+						logEvent(LogLevel::Info, (done == 1 ? tr("bulk write of %1 (1 register): %2").arg(typed, list)
+								: tr("bulk write of %1 (%n registers): %2", nullptr, done).arg(typed, list)) + notTakenText);
+						statusBar()->showMessage(done == 1 ? tr("1 register written") : tr("%n registers written", nullptr, done),
+								3000);
+						return;
+					}
+					/* one pop-up for them all */
+					QString line = tr("bulk write of %1: %2 of %3 written; refused: %4").arg(typed).arg(done)
+							.arg(results->total).arg(results->refused.join(QStringLiteral(", ")));
+					if (done > 0) line += tr("; written: %1").arg(results->written.join(QStringLiteral(", ")));
+					logEvent(LogLevel::Warning, line + notTakenText);
+					statusBar()->showMessage(tr("%1 of %2 registers written").arg(done).arg(results->total), 8000);
+				});
+	}
+}
+
 /* its answer in the Monitor, and as a card at the top of the Dump tab (the map's chips and decode on it) */
 void MainWindow::sendRawRead(quint8 slave, quint16 addr, quint16 count) {
 	engineRead(slave, addr, count, false, [this, slave, addr, count](bool ok, const QByteArray &data,
@@ -1650,6 +1754,7 @@ void MainWindow::onApiStarted(bool ok, const QString &err) {
 /* ---------------------------------------------- the event log, the status bar */
 
 void MainWindow::logEvent(LogLevel level, const QString &text) { eventLog_->add(level, text); }
+void MainWindow::logWithoutPopUp(LogLevel level, const QString &text) { eventLog_->add(level, text, false); }
 
 void MainWindow::showSlowHint() { statusSlow_->setFullText(sidebar_->slowPollHint()); }
 
