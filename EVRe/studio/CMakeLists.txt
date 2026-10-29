@@ -11,7 +11,7 @@
 #   evre_fake_fast   a fake EVRe device fast enough to measure the Studio
 #   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
 cmake_minimum_required(VERSION 3.21)
-project(EVReStudio VERSION 1.2.1 LANGUAGES CXX)
+project(EVReStudio VERSION 1.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

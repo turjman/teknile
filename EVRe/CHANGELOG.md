@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.3.0 (2026-10-29)
+
+### EVRe Studio
+
+- **One value to several registers.** Select several rw registers of one type on the Registers tab (Ctrl-click,
+  Shift-click), then right-click one of them, **Write to 3 selected registers...**, or press **F2**, type and
+  **Enter**, or use the quick-write panel under the table. A dialog lists every register with its value now and
+  what it gets (encoded for each: its scale, its value names): a register that does not take the value is greyed with
+  the reason, one past its map limits is noted and the button reads *Write 3 anyway*, danger registers are marked
+  with one sentence for all. **Cancel** is the default. Each register is written and read back on its own, a refusal
+  does not stop the others, and the Log keeps the values replaced in one summary line.
+- The quick-write panel on several registers: its title names how many, the box starts with the value they all hold
+  (*(several values)* while they differ), and a list under it shows each one's value as the polls bring it.
+- On a bus with All devices shown, registers of several devices can be one bulk write: each to its own device (an
+  acknowledged write each, no broadcast), with a Device column in the dialog.
+- The Registers tab's right-click menu acts on every selected row, with the count: *Plot 3 registers*, *Read 3
+  registers now* (each from its own device), *Copy 3 values*, *Remove 3 registers...* (it asks first; one undo
+  step). A right-click on a row outside the selection selects that row alone first. Read now now asks the
+  register's own device (with All devices shown it asked the selected one).
+- A click on empty room, or Esc, clears a selection in every view: the Registers table (the detail line, the panel
+  and the Dump follow), the Dump (a register lit by *Show in dump* stays no longer), the Map editor's table and
+  checks, the bit fields, the value names, the chart's notes, the measurement table, the Monitor and the Log, the map
+  settings' lists. In a dialog Esc still closes it.
+- On the bit fields' strip the first click on a field after a register was shown picked nothing; it picks now.
+- A disabled menu entry is muted and never highlighted under the mouse (every disabled entry in the Studio looked
+  enabled, in both themes).
+- The sidebar's link pill keeps its whole height when the device line under it takes three lines (*last seen: ...*
+  and *the map is for 0x1002*); the Connection card grows for the line instead.
+- In Arabic the Registers tab's detail line is right to left as a whole: its value and the several-selected hint
+  read in order.
+
 ## 1.2.1 (2026-10-26)
 
 ### EVRe Studio
