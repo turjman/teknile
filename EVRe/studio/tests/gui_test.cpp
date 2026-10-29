@@ -1044,6 +1044,21 @@ private:
 		check(detailText.contains(QLatin1String("3 registers selected: one value to all with F2 and Enter, the panel "
 						"below or the right-click menu")),
 				"bulk write: three rw u8 selected, the detail line ends with how one value goes to all of them");
+		/* in Arabic the detail line is right to left as a whole, though it starts with the register's (Latin) name */
+		const auto detailDirection = [&](const QString &code) {
+			language::apply(*qApp, code);
+			QTest::qWait(200);
+			table_->clearSelection();
+			select(names, names[0]);
+			QTextDocument laid;
+			laid.setHtml(detail ? detail->text() : QString());
+			return laid.begin().textDirection();
+		};
+		const Qt::LayoutDirection arabicDetail = detailDirection(QStringLiteral("ar"));
+		const Qt::LayoutDirection englishDetail = detailDirection(QStringLiteral("en"));
+		check(arabicDetail == Qt::RightToLeft && englishDetail == Qt::LeftToRight,
+				"bulk write: the detail line right to left in Arabic (its value and the hint's sentence read in order), "
+				"left to right in English");
 		MenuEntry entry = bulkEntry(names[0], false);
 		check(entry.found && entry.enabled && entry.text == QStringLiteral("Write to 3 selected registers…"),
 				"bulk write: the right-click menu offers \"Write to 3 selected registers…\", enabled");

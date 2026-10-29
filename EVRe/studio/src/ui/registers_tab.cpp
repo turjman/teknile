@@ -684,5 +684,9 @@ void RegistersTab::updateDetail() {
 						.arg(targets.problem))
 						.toHtmlEscaped(), colors.muted);
 	}
+	/* right to left as a whole in Arabic: the text starts with the register's name, Latin, and a paragraph takes its
+	 * direction from its first letter, so the Arabic lines read in a left-to-right order ("القيمة" after its value,
+	 * the hint's sentence split around "F2") */
+	if (QGuiApplication::isRightToLeft()) text = QStringLiteral("<div dir='rtl'>%1</div>").arg(text);
 	if (detail_->text() != text) detail_->setText(text);
 }
