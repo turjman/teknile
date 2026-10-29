@@ -1041,9 +1041,24 @@ private:
 		select(names, names[0]);
 		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
 		const QString detailText = detail ? QTextDocumentFragment::fromHtml(detail->text()).toPlainText() : QString();
-		check(detailText.contains(QLatin1String("3 registers selected: one value to all with F2 and Enter, or the "
-						"right-click menu")),
+		check(detailText.contains(QLatin1String("3 registers selected: one value to all with F2 and Enter, the panel "
+						"below or the right-click menu")),
 				"bulk write: three rw u8 selected, the detail line ends with how one value goes to all of them");
+		/* in Arabic the detail line is right to left as a whole, though it starts with the register's (Latin) name */
+		const auto detailDirection = [&](const QString &code) {
+			language::apply(*qApp, code);
+			QTest::qWait(200);
+			table_->clearSelection();
+			select(names, names[0]);
+			QTextDocument laid;
+			laid.setHtml(detail ? detail->text() : QString());
+			return laid.begin().textDirection();
+		};
+		const Qt::LayoutDirection arabicDetail = detailDirection(QStringLiteral("ar"));
+		const Qt::LayoutDirection englishDetail = detailDirection(QStringLiteral("en"));
+		check(arabicDetail == Qt::RightToLeft && englishDetail == Qt::LeftToRight,
+				"bulk write: the detail line right to left in Arabic (its value and the hint's sentence read in order), "
+				"left to right in English");
 		MenuEntry entry = bulkEntry(names[0], false);
 		check(entry.found && entry.enabled && entry.text == QStringLiteral("Write to 3 selected registers…"),
 				"bulk write: the right-click menu offers \"Write to 3 selected registers…\", enabled");
@@ -1327,7 +1342,11 @@ private:
 		check(editor && single && bulkDialogs == 0, "bulk write: one row selected, typed and Enter: written as before, no "
 				"bulk dialog");
 
-		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) bulkWriteShots(names, bulkEntry, select);
+		bulkWritePanel(names, addrs, select, holds, setAll);
+		bulkRowMenu(names, select, setAll);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) bulkWriteShots(names, addrs, bulkEntry, select, setAll);
 		u8Cell_ = valueCell(table_, regs_.u8.name);
 
 		/* as the device was before this step */
@@ -1337,12 +1356,299 @@ private:
 		table_->setCurrentIndex(u8Cell_);
 	}
 
+	/* the quick-write panel's pieces, by their object names */
+	struct PanelLook {
+		QFrame *frame = nullptr;
+		QLabel *title = nullptr;
+		QLineEdit *box = nullptr;
+		QComboBox *names = nullptr;
+		QPushButton *write = nullptr, *byDefault = nullptr, *toAll = nullptr;
+		QCheckBox *bits = nullptr;
+		QTableWidget *list = nullptr;
+		bool complete() const { return frame && title && box && names && write && byDefault && toAll && bits && list; }
+		QString titleText() const { return title ? QTextDocumentFragment::fromHtml(title->text()).toPlainText() : QString(); }
+		/* the list of the registers selected: "NAME | value" */
+		QStringList rows() const {
+			QStringList out;
+			for (int r = 0; list && r < list->rowCount(); r++)
+				out << (list->item(r, 0) ? list->item(r, 0)->text() : QString()) + QStringLiteral(" | ")
+								+ (list->item(r, 1) ? list->item(r, 1)->text() : QString());
+			return out;
+		}
+	};
+	PanelLook panelLook() const {
+		PanelLook look;
+		look.frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		if (!look.frame) return look;
+		look.title = look.frame->findChild<QLabel *>(QStringLiteral("qwTitle"));
+		look.box = look.frame->findChild<QLineEdit *>(QStringLiteral("qwValue"));
+		look.names = look.frame->findChild<QComboBox *>(QStringLiteral("qwEnum"));
+		look.byDefault = look.frame->findChild<QPushButton *>(QStringLiteral("qwDefault"));
+		look.toAll = look.frame->findChild<QPushButton *>(QStringLiteral("qwBroadcast"));
+		look.list = look.frame->findChild<QTableWidget *>(QStringLiteral("qwTargets"));
+		for (QPushButton *button : look.frame->findChildren<QPushButton *>())
+			if (button->text() == QLatin1String("Write")) look.write = button;
+		for (QCheckBox *box : look.frame->findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Bits")) look.bits = box;
+		return look;
+	}
+
+	/* 7c. The quick-write panel with several selected (STUDIO.md 5.1): its title, the box on the value they share or
+	 * "(several values)", the list of them kept live as the polls bring values, the names list only when they all
+	 * have the same names, Default and Bits hidden; Enter there goes through the bulk dialog. Leaves the three at 0. */
+	template <typename Select, typename Holds, typename SetAll>
+	void bulkWritePanel(const QStringList &names, const QVector<uint16_t> &addrs, const Select &select, const Holds &holds,
+			const SetAll &setAll) {
+		const PanelLook panel = panelLook();
+		check(panel.complete(), "bulk write, the panel: its title, box, names list, Write, Default, Bits and the list");
+		if (!panel.complete()) return;
+		const QStringList zeros{ QStringLiteral("MSG_CNT | 0"), QStringLiteral("FAN_SPEED | 0 %"),
+			QStringLiteral("LED_MODE | off (0)") };
+		setAll(0);
+		select(names, names[0]);
+		const bool listed = QTest::qWaitFor([&] { return panel.rows() == zeros && panel.box->text() == QLatin1String("0"); },
+				3000);
+		if (!listed || panel.titleText() != QLatin1String("Write 3 selected registers (u8)"))
+			std::printf("     (the panel: \"%s\", the box \"%s\", the list \"%s\")\n", qPrintable(panel.titleText()),
+					qPrintable(panel.box->text()), qPrintable(panel.rows().join(QStringLiteral("; "))));
+		check(panel.frame->isVisible() && panel.titleText() == QLatin1String("Write 3 selected registers (u8)") && listed
+						&& panel.list->isVisible() && panel.box->isEnabled() && panel.write->isEnabled()
+						&& panel.names->isHidden() && panel.byDefault->isHidden() && panel.bits->isHidden(),
+				"bulk write, the panel: three u8 selected: \"Write 3 selected registers (u8)\", the box on the value they "
+				"share (0), a list of the three with their values; the names list (LED_MODE's alone), Default and Bits "
+				"hidden");
+
+		/* another client changes one: its row follows, the box empties to "(several values)"; the same again: the value */
+		other_.writeU8(addrs[0], 7);
+		const bool several = QTest::qWaitFor([&] {
+			return panel.rows().value(1) == QLatin1String("FAN_SPEED | 7 %") && panel.box->text().isEmpty()
+					&& panel.box->placeholderText() == QLatin1String("(several values)");
+		}, 3000);
+		setAll(0);
+		const bool sameAgain = QTest::qWaitFor([&] { return panel.rows() == zeros && panel.box->text() == QLatin1String("0"); },
+				3000);
+		check(several && sameAgain, "bulk write, the panel: another client writes 7 to FAN_SPEED: its row in the list "
+				"follows, the box empties to \"(several values)\"; all three 0 again: the box shows 0");
+
+		/* the names list when every one has the same names (LED_MODE's given to the other two for the check) */
+		auto *doc = window_.findChild<MapDocument *>();
+		bool shared = false;
+		if (doc) {
+			const QMap<qint64, QString> led = model_->rows()[regRow(names[1])].def.enumValues;
+			doc->edit(QStringLiteral("test"), [&](DeviceMap &map) {
+				for (RegDef &def : map.regs)
+					if (def.name == names[0] || def.name == names[2]) def.enumValues = led;
+			});
+			select(names, names[0]);
+			shared = QTest::qWaitFor([&] { return !panel.names->isHidden() && panel.names->count() == led.size(); }, 2000);
+			doc->undoStack()->undo();
+			select(names, names[0]);
+		}
+		check(shared && QTest::qWaitFor([&] { return panel.names->isHidden(); }, 2000),
+				"bulk write, the panel: the names list shown when all three have the same names, hidden again when not");
+
+		/* different types: said in the title, nothing to write */
+		select({ names[0], QStringLiteral("SETPOINT") }, names[0]);
+		const QString mixed = panel.titleText();
+		check(mixed == QLatin1String("2 selected: different types (f32, u8)") && !panel.box->isEnabled()
+						&& !panel.write->isEnabled() && panel.rows().size() == 2,
+				"bulk write, the panel: FAN_SPEED and SETPOINT selected: \"2 selected: different types (f32, u8)\", the box "
+				"and Write disabled");
+
+		/* "5" typed (kept while a value changes), Enter: the bulk dialog, Write 3: all three hold 5 */
+		select(names, names[0]);
+		panel.box->clear();
+		QTest::keyClicks(panel.box, QStringLiteral("5"));
+		other_.writeU8(addrs[0], 9);
+		const bool kept = QTest::qWaitFor([&] { return panel.rows().value(1) == QLatin1String("FAN_SPEED | 9 %"); }, 3000)
+				&& panel.box->text() == QLatin1String("5");
+		QString button;
+		int listRows = 0;
+		const bool came = fillDialog([&](QDialog *dialog) {
+			if (auto *write = dialog->findChild<QPushButton *>(QStringLiteral("bulkWriteButton"))) {
+				button = write->text();
+				if (auto *list = dialog->findChild<QTableWidget *>(QStringLiteral("bulkList"))) listRows = list->rowCount();
+				write->click();
+			}
+		}, [&] { QTest::keyClick(panel.box, Qt::Key_Return); });
+		const bool written = holds({ 5, 5, 5 });
+		if (!came || !written) std::printf("     (the panel's Enter: the dialog %d \"%s\", %d rows)\n", int(came), qPrintable(button),
+				listRows);
+		check(kept && came && button == QLatin1String("Write 3") && listRows == 3 && written,
+				"bulk write, the panel: \"5\" typed stays while a value changes; Enter opens the bulk dialog, Write 3: the "
+				"device holds 5 in all three");
+		setAll(0);
+	}
+
+	/* the right-click menu on a row: its entries' texts (a submenu by its title); the entry with the object name
+	 * `trigger` triggered, the menu closed first */
+	QStringList rowMenu(const QString &at, const QString &trigger = QString()) {
+		QStringList texts;
+		QTimer poll;
+		poll.setInterval(50);
+		QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+			auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+			if (!menu) return;
+			poll.stop();
+			QAction *chosen = nullptr;
+			for (QAction *action : menu->actions()) {
+				if (action->isSeparator()) continue;
+				texts << action->text();
+				if (!trigger.isEmpty() && action->objectName() == trigger) chosen = action;
+			}
+			menu->hide();
+			if (chosen && chosen->isEnabled()) chosen->trigger();
+			menu->close();
+		});
+		poll.start();
+		const QModelIndex cell = valueCell(table_, at);
+		table_->scrollTo(cell);
+		emit table_->customContextMenuRequested(table_->visualRect(cell).center());
+		(void) QTest::qWaitFor([&] { return !poll.isActive(); }, 3000);
+		return texts;
+	}
+
+	/* 7d. The right-click menu with several rows selected: Plot, Read now, Copy value and Remove act on every one and
+	 * say how many; Show in dump, Edit definition and Plot a field are about the row under the mouse and name it; a
+	 * right-click outside the selection selects that row alone first. Hands back the plots and the map as they were. */
+	template <typename Select, typename SetAll>
+	void bulkRowMenu(const QStringList &names, const Select &select, const SetAll &setAll) {
+		QVector<int> rows;
+		QVector<bool> plotWas;
+		for (const QString &name : names) {
+			rows << regRow(name);
+			plotWas << (rows.last() >= 0 && model_->rows()[rows.last()].plot);
+		}
+		if (rows.contains(-1)) {
+			check(false, "the menu with several selected: the three registers in the table");
+			return;
+		}
+		const auto plotted = [&] {
+			int on = 0;
+			for (const int row : rows) on += model_->rows()[row].plot ? 1 : 0;
+			return on;
+		};
+		for (const int row : rows) model_->setPlot(row, false);
+		setAll(0);
+		select(names, names[0]);
+		const QStringList texts = rowMenu(names[0]);
+		const QStringList want{ QStringLiteral("Plot 3 registers"), QStringLiteral("Read 3 registers now"),
+			QStringLiteral("Write to 3 selected registers…"), QStringLiteral("Copy 3 values"),
+			QStringLiteral("Show FAN_SPEED in dump"), QStringLiteral("Edit FAN_SPEED's definition…"),
+			QStringLiteral("Remove 3 registers…") };
+		bool counted = true;
+		for (const QString &text : want) counted = counted && texts.contains(text);
+		select({ QStringLiteral("CONFIG"), regs_.danger.name }, QStringLiteral("CONFIG"));
+		const bool field = rowMenu(QStringLiteral("CONFIG")).contains(QLatin1String("Plot a field of CONFIG"));
+		if (!counted || !field) std::printf("     (the menu with three selected: %s)\n", qPrintable(texts.join(QStringLiteral(" / "))));
+		check(counted && field, "the menu with several selected: \"Plot 3 registers\", \"Read 3 registers now\", \"Copy 3 "
+				"values\", \"Remove 3 registers…\"; the entries of one register name it: \"Show FAN_SPEED in dump\", \"Edit "
+				"FAN_SPEED's definition…\", \"Plot a field of CONFIG\"");
+
+		/* Plot: all three on the chart; all on it: "Remove 3 from chart" takes them off; one on it: the other two on */
+		select(names, names[0]);
+		(void) rowMenu(names[0], QStringLiteral("plotRows"));
+		const bool allOn = plotted() == 3;
+		const bool offText = rowMenu(names[0]).contains(QLatin1String("Remove 3 from chart"));
+		(void) rowMenu(names[0], QStringLiteral("plotRows"));
+		const bool allOff = plotted() == 0;
+		model_->setPlot(rows[1], true);
+		const bool mixedText = rowMenu(names[0], QStringLiteral("plotRows")).contains(QLatin1String("Plot 3 registers"));
+		const bool mixedOn = plotted() == 3;
+		for (int i = 0; i < rows.size(); i++) model_->setPlot(rows[i], plotWas[i]);
+		check(allOn && offText && allOff && mixedText && mixedOn, "the menu with several selected: \"Plot 3 registers\" "
+				"charts the three; with all of them charted \"Remove 3 from chart\" takes them off; with one charted, "
+				"\"Plot 3 registers\" charts the other two");
+
+		/* Read now: each of them read */
+		auto *tab = window_.findChild<RegistersTab *>();
+		QList<int> asked;
+		if (tab) {
+			QSignalSpy reads(tab, &RegistersTab::readRequested);
+			(void) rowMenu(names[0], QStringLiteral("readRows"));
+			for (const QList<QVariant> &args : std::as_const(reads)) asked << args.value(0).toInt();
+		}
+		QList<int> wantRead(rows.begin(), rows.end());
+		std::sort(asked.begin(), asked.end());
+		std::sort(wantRead.begin(), wantRead.end());
+		check(tab && asked == wantRead, "the menu with several selected: \"Read 3 registers now\" reads each of the three");
+
+		/* Copy: a line each, the name, a tab, the value; in the table's order */
+		QGuiApplication::clipboard()->setText(QString());
+		(void) rowMenu(names[0], QStringLiteral("copyRows"));
+		const QString copied = QGuiApplication::clipboard()->text();
+		if (copied != QLatin1String("MSG_CNT\t0\nFAN_SPEED\t0\nLED_MODE\t0"))
+			std::printf("     (Copy 3 values: \"%s\")\n", qPrintable(QString(copied).replace(QLatin1Char('\t'), QStringLiteral("<TAB>"))));
+		check(copied == QLatin1String("MSG_CNT\t0\nFAN_SPEED\t0\nLED_MODE\t0"),
+				"the menu with several selected: \"Copy 3 values\" copies a line each: the name, a tab, its value");
+
+		/* Remove: three registers added for the check (byte arrays too long to be polled), named in a question first;
+		 * Cancel keeps them, Remove removes the three */
+		auto *doc = window_.findChild<MapDocument *>();
+		const QStringList extra{ QStringLiteral("BULK_RM_A"), QStringLiteral("BULK_RM_B"), QStringLiteral("BULK_RM_C") };
+		const auto inMap = [&] {
+			int found = 0;
+			for (const RegDef &def : doc->map().regs) found += extra.contains(def.name) ? 1 : 0;
+			return found;
+		};
+		bool asks = false, kept = false, removed = false;
+		if (doc) {
+			const int undoAt = doc->undoStack()->index();
+			doc->edit(QStringLiteral("test"), [&](DeviceMap &map) {
+				for (int i = 0; i < extra.size(); i++) {
+					RegDef def;
+					def.addr = uint16_t(0xD200 + 0x40 * i);
+					def.name = extra[i];
+					def.type = RegType::Bytes;
+					def.size = 40;
+					def.group = QStringLiteral("Settings");
+					map.regs << def;
+				}
+			});
+			(void) QTest::qWaitFor([&] { return valueCell(table_, extra[2]).isValid(); }, 3000);
+			select(extra, extra[0]);
+			const QString title = answerDialog(QStringLiteral("Cancel"),
+					[&] { (void) rowMenu(extra[0], QStringLiteral("removeRows")); });
+			asks = title == QLatin1String("Remove registers") && lastBoxText.contains(QLatin1String("BULK_RM_A, BULK_RM_B, BULK_RM_C"));
+			kept = inMap() == 3;
+			select(extra, extra[0]);
+			(void) answerDialog(QStringLiteral("Remove"), [&] { (void) rowMenu(extra[0], QStringLiteral("removeRows")); });
+			removed = inMap() == 0 && QTest::qWaitFor([&] { return !valueCell(table_, extra[0]).isValid(); }, 2000);
+			while (doc->undoStack()->index() > undoAt) doc->undoStack()->undo();
+			u8Cell_ = valueCell(table_, regs_.u8.name);
+		}
+		check(doc && asks && kept && removed, "the menu with several selected: \"Remove 3 registers…\" names them in a "
+				"question first; Cancel keeps them, Remove removes the three");
+
+		/* a right-click on a row outside the selection: that row alone selected first, the entries as for one */
+		select(names, names[0]);
+		const QStringList one = rowMenu(QStringLiteral("SETPOINT"));
+		const QModelIndexList selected = table_->selectionModel()->selectedRows();
+		const bool alone = selected.size() == 1
+				&& selected.first().siblingAtColumn(RegisterModel::ColName).data().toString() == QLatin1String("SETPOINT")
+				&& table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString() == QLatin1String("SETPOINT");
+		const bool singleTexts = (one.contains(QLatin1String("Plot")) || one.contains(QLatin1String("Remove from chart")))
+				&& one.contains(QLatin1String("Read now")) && one.contains(QLatin1String("Copy value"))
+				&& one.contains(QLatin1String("Show in dump")) && one.contains(QStringLiteral("Edit definition…"))
+				&& one.contains(QLatin1String("Remove"));
+		if (!alone || !singleTexts)
+			std::printf("     (outside the selection: %d selected, \"%s\", current \"%s\", the menu %s)\n", int(selected.size()),
+					qPrintable(selected.value(0).siblingAtColumn(RegisterModel::ColName).data().toString()),
+					qPrintable(table_->currentIndex().siblingAtColumn(RegisterModel::ColName).data().toString()),
+					qPrintable(one.join(QStringLiteral(" / "))));
+		check(alone && singleTexts, "the menu on a row outside the selection: that row selected alone first, its entries "
+				"as for one register (\"Read now\", \"Copy value\", \"Show in dump\", \"Remove\")");
+	}
+
 	/* EVRE_TEST_SHOT: the bulk dialog (a plain one, one with a limit's note, one with a ⚠ register) and the right-click
-	 * menu with its entry (menu; menu_off: disabled, a u8 and an i16 selected), <prefix>_bulk_<what>_<en|ar>_<light|dark>.png, in English (both themes) and Arabic (light).
+	 * menu with its entry (menu; menu_off: disabled, a u8 and an i16 selected; menu3: three selected, the counted
+	 * entries), the Registers tab with the panel on three (panel_same: one value, panel_several: FAN_SPEED at 7),
+	 * <prefix>_bulk_<what>_<en|ar>_<light|dark>.png, in English (both themes) and Arabic (light).
 	 * The dialogs are made for the picture from the table's rows, as the window makes them; MSG_CNT is marked ⚠ for the
 	 * third and the map put back after */
-	template <typename Entry, typename Select>
-	void bulkWriteShots(const QStringList &names, const Entry &bulkEntry, const Select &select) {
+	template <typename Entry, typename Select, typename SetAll>
+	void bulkWriteShots(const QStringList &names, const QVector<uint16_t> &addrs, const Entry &bulkEntry,
+			const Select &select, const SetAll &setAll) {
 		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
 		const bool wasDark = Theme::isDark();
 		auto *doc = window_.findChild<MapDocument *>();
@@ -1367,6 +1673,23 @@ private:
 				/* and the entry off: a u8 and an i16 selected, its tooltip names the types */
 				select({ names[0], QStringLiteral("MOTOR_SPEED") }, names[0]);
 				(void) bulkEntry(names[0], false, name(QStringLiteral("menu_off")));
+				select(names, names[0]);
+				(void) bulkEntry(names[0], false, name(QStringLiteral("menu3")));
+				/* the panel on the three: made anew in this language (none selected first) */
+				if (auto *tab = window_.findChild<RegistersTab *>()) {
+					const PanelLook panel = panelLook();
+					setAll(0);
+					table_->clearSelection();
+					select(names, names[0]);
+					(void) QTest::qWaitFor([&] { return panel.box && panel.box->text() == QLatin1String("0"); }, 3000);
+					QTest::qWait(150);
+					tab->grab().save(name(QStringLiteral("panel_same")));
+					other_.writeU8(addrs[0], 7);
+					(void) QTest::qWaitFor([&] { return panel.box && panel.box->text().isEmpty(); }, 3000);
+					QTest::qWait(150);
+					tab->grab().save(name(QStringLiteral("panel_several")));
+					setAll(0);
+				}
 				for (const auto &[what, text] : { std::pair{ QStringLiteral("plain"), QStringLiteral("2") },
 							 std::pair{ QStringLiteral("limit"), QStringLiteral("200") },
 							 std::pair{ QStringLiteral("refused"), QStringLiteral("blink") } }) {
@@ -5090,6 +5413,7 @@ private:
 		if (editor) QTest::keyClick(editor, Qt::Key_Return);
 		const bool wrote = QTest::qWaitFor([&] { return two.readU8(regs_.u8.addr) == 33; }, 3000);
 		check(wrote && one.readU8(regs_.u8.addr) == 11, "bus: a write to D2_ reaches slave 2 only");
+		bulkWriteOnBus(one, two);
 		quickWriteToAll(d2u8, one, two);
 		devicesCard(devices, model, d1u8, d2u8, one, two, folder.path());
 
@@ -5346,6 +5670,106 @@ private:
 
 	/* Quick write's "To all devices" on a bus: offered only once a value is typed and with Allow writes on; it asks
 	 * first, then sends one broadcast frame, reads every device back, and the Log says each one took it. */
+	/* One value to a register of each device (STUDIO.md 6.6, All devices shown): D1_ and D2_MOTOR_SPEED (i16 ⚠)
+	 * selected, the panel's Enter opens the bulk dialog with a Device column, both marked ⚠ and the danger sentence
+	 * once; Cancel writes nothing; Write writes each to its own device (a write each, acknowledged: no broadcast).
+	 * EVRE_TEST_SHOT: that dialog, <prefix>_bulk_bus_<en|ar>_<light|dark>.png. Leaves D2 shown, none selected, both 0. */
+	void bulkWriteOnBus(OtherClient &one, OtherClient &two) {
+		const RegDef &motor = regs_.danger;
+		const QString d1 = QStringLiteral("D1_") + motor.name, d2 = QStringLiteral("D2_") + motor.name;
+		auto *picker = window_.findChild<QComboBox *>(QStringLiteral("registersDevice"));
+		const PanelLook panel = panelLook();
+		check(picker && panel.complete(), "bus: the Registers tab's device picker and the quick-write panel");
+		if (!picker || !panel.complete()) return;
+		const auto showDevice = [&](int slave) {
+			picker->setCurrentIndex(picker->findData(slave));
+			emit picker->activated(picker->currentIndex());
+			QApplication::processEvents();
+		};
+		one.writeI16(motor.addr, 0);
+		two.writeI16(motor.addr, 0);
+		showDevice(-1);
+		table_->clearSelection();
+		for (const QString &name : { d1, d2 })
+			table_->selectionModel()->select(valueCell(table_, name), QItemSelectionModel::Select | QItemSelectionModel::Rows);
+		table_->selectionModel()->setCurrentIndex(valueCell(table_, d1), QItemSelectionModel::NoUpdate);
+		QApplication::processEvents();
+		const QString title = panel.titleText();
+		const bool panelBulk = title == QStringLiteral("Write 2 selected registers (i16) ⚠") && panel.toAll->isHidden();
+		panel.box->clear();
+		QTest::keyClicks(panel.box, QStringLiteral("120"));
+		QStringList registers, devices;
+		QString notes;
+		bool deviceColumn = false;
+		const bool came = fillDialog([&](QDialog *dialog) {
+			if (auto *list = dialog->findChild<QTableWidget *>(QStringLiteral("bulkList"))) {
+				deviceColumn = !list->isColumnHidden(2) && list->horizontalHeaderItem(2)
+						&& list->horizontalHeaderItem(2)->text() == QLatin1String("Device");
+				for (int r = 0; r < list->rowCount(); r++) {
+					registers << (list->item(r, 0) ? list->item(r, 0)->text() : QString());
+					devices << (list->item(r, 2) ? list->item(r, 2)->text() : QString());
+				}
+			}
+			if (auto *label = dialog->findChild<QLabel *>(QStringLiteral("bulkNotes")))
+				notes = QTextDocumentFragment::fromHtml(label->text()).toPlainText();
+			dialog->reject();
+		}, [&] { QTest::keyClick(panel.box, Qt::Key_Return); });
+		QTest::qWait(300); /* a write it let through would land meanwhile */
+		const bool noneWritten = one.readI16(motor.addr) == 0 && two.readI16(motor.addr) == 0;
+		if (!panelBulk || !came || !deviceColumn)
+			std::printf("     (the bus's bulk: \"%s\", the dialog %d, rows %s, devices %s, the notes \"%s\")\n",
+					qPrintable(title), int(came), qPrintable(registers.join(QStringLiteral(", "))),
+					qPrintable(devices.join(QStringLiteral(", "))), qPrintable(notes));
+		check(panelBulk && came && deviceColumn
+						&& registers == QStringList{ d1 + QStringLiteral(" ⚠"), d2 + QStringLiteral(" ⚠") }
+						&& devices == QStringList{ QStringLiteral("D1"), QStringLiteral("D2") }
+						&& notes.contains(QStringLiteral("⚠ %1, %2 move, power or change something on the device.").arg(d1, d2))
+						&& noneWritten,
+				"bus: D1_ and D2_MOTOR_SPEED selected (All devices): the panel writes to both (no To all devices); its "
+				"Enter opens the bulk dialog with a Device column (D1, D2), both ⚠ and the danger sentence once; Cancel "
+				"writes nothing");
+		const QString logBefore = logText();
+		const bool clicked = fillDialog([&](QDialog *dialog) {
+			if (auto *write = dialog->findChild<QPushButton *>(QStringLiteral("bulkWriteButton"))) write->click();
+		}, [&] { QTest::keyClick(panel.box, Qt::Key_Return); });
+		const bool both = QTest::qWaitFor([&] {
+			return one.readI16(motor.addr) == 120 && two.readI16(motor.addr) == 120;
+		}, 3000);
+		const bool each = QTest::qWaitFor([&] {
+			const QString log = logText().mid(logBefore.size());
+			return log.contains(QStringLiteral("written: %1 = 120").arg(d1)) && log.contains(QStringLiteral("written: %1 = 120").arg(d2));
+		}, 3000);
+		check(clicked && both && each, "bus: ... Write 2: each device holds 120, a write to each acknowledged by its own "
+				"device (\"written: D1_MOTOR_SPEED = 120\", the same for D2)");
+
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) {
+			const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+			const bool wasDark = Theme::isDark();
+			for (const auto &[code, dark] : { std::pair{ QStringLiteral("en"), false }, std::pair{ QStringLiteral("en"), true },
+						 std::pair{ QStringLiteral("ar"), false } }) {
+				language::apply(*qApp, code);
+				Theme::apply(*qApp, dark);
+				QTest::qWait(200);
+				(void) fillDialog([&](QDialog *dialog) {
+					(void) QTest::qWaitForWindowExposed(dialog);
+					QTest::qWait(150);
+					dialog->grab().save(prefix + QStringLiteral("_bulk_bus_%1_%2.png").arg(code, dark ? QStringLiteral("dark")
+							: QStringLiteral("light")));
+					dialog->reject();
+				}, [&] { QTest::keyClick(panel.box, Qt::Key_Return); });
+			}
+			language::apply(*qApp, QStringLiteral("en"));
+			Theme::apply(*qApp, wasDark);
+			if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+			QTest::qWait(200);
+		}
+		one.writeI16(motor.addr, 0);
+		two.writeI16(motor.addr, 0);
+		panel.box->clear();
+		table_->clearSelection();
+		showDevice(2);
+	}
+
 	void quickWriteToAll(const QString &d2u8, OtherClient &one, OtherClient &two) {
 		auto *panel = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
 		auto *value = panel ? panel->findChild<QLineEdit *>(QStringLiteral("qwValue")) : nullptr;

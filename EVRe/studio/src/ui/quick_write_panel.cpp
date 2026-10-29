@@ -6,18 +6,24 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QLocale>
+#include <QStyledItemDelegate>
+#include <QTableWidget>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 #include <initializer_list>
 
 #include "model/register_model.h"
 #include "ui/bit_view.h"
+#include "ui/bulk_write_dialog.h"
 #include "ui/ui_helpers.h"
 
 namespace {
@@ -57,11 +63,22 @@ QVariant listKey(const RegDef &def, const QByteArray &raw) {
 /* the bit view is for integer registers whose value shown is the raw integer (no scale, no offset) */
 bool bitsWritable(const RegDef &def) { return def.isNumeric() && def.type != RegType::F32 && !def.isFloat(); }
 
+/* two registers whose names list would be the same: the same special values and the same value names */
+bool sameNames(const RegDef &a, const RegDef &b) {
+	if (a.enumValues != b.enumValues || a.special.size() != b.special.size()) return false;
+	for (int i = 0; i < a.special.size(); i++)
+		if (a.special[i].name != b.special[i].name || a.special[i].value != b.special[i].value) return false;
+	return true;
+}
+
+constexpr int TARGET_ROWS = 4; /* several selected: the rows of their list shown before it scrolls */
+
 } // namespace
 
 QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : QFrame(parent), model_(model) {
 	setObjectName(QStringLiteral("quickWrite"));
 	name_ = new QLabel;
+	name_->setObjectName(QStringLiteral("qwTitle"));
 	value_ = new QLineEdit;
 	value_->setObjectName(QStringLiteral("qwValue"));
 	value_->setPlaceholderText(tr("value, 0x1F, 0b101, or a name"));
@@ -84,6 +101,23 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	bitArea_ = new QWidget;
 	auto *bitLayout = new QVBoxLayout(bitArea_);
 	bitLayout->setContentsMargins(0, 0, 0, 0);
+	/* several selected: each one and its value, a few rows high (a scroll bar for more) */
+	targets_ = new QTableWidget(0, 2);
+	targets_->setObjectName(QStringLiteral("qwTargets"));
+	targets_->horizontalHeader()->hide();
+	targets_->verticalHeader()->hide();
+	targets_->verticalHeader()->setDefaultSectionSize(fontMetrics().height() + 8);
+	targets_->setSelectionMode(QAbstractItemView::NoSelection);
+	targets_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	targets_->setFocusPolicy(Qt::NoFocus);
+	targets_->setShowGrid(false);
+	targets_->setWordWrap(false);
+	targets_->setAlternatingRowColors(true);
+	targets_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff); /* as wide as its columns: nothing to scroll */
+	targets_->setItemDelegateForColumn(1, ltrCells(targets_)); /* "-1500 rpm" one piece in Arabic */
+	targets_->setToolTip(tr("The registers selected, each with its value now. Write sends the value to all of them, "
+			"after a list of what each one gets"));
+	targets_->hide();
 
 	auto *row = new QHBoxLayout;
 	row->setSpacing(6);
@@ -101,6 +135,7 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	layout->setContentsMargins(10, 0, 10, 6);
 	layout->setSpacing(6);
 	layout->addLayout(row);
+	layout->addWidget(targets_, 0, Qt::AlignLeading);
 	layout->addWidget(bitArea_);
 
 	connect(write_, &QPushButton::clicked, this, &QuickWritePanel::writeTyped);
@@ -124,11 +159,26 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	connect(model_, &QAbstractItemModel::dataChanged, this, &QuickWritePanel::onValuesChanged);
 	/* a new map: its rows are new, none is selected */
 	connect(model_, &QAbstractItemModel::modelReset, this, [this] { showRegister(-1); });
+	/* the map edited, the same rows kept: several selected, their title and names list anew (RegistersTab gives the
+	 * rows again when their types changed) */
+	connect(model_, &RegisterModel::structureChanged, this, [this] {
+		if (!rows_.isEmpty()) rebuild();
+	});
 	showRegister(-1);
 }
 
 void QuickWritePanel::showRegister(int row) {
 	row_ = row;
+	rows_.clear();
+	problem_.clear();
+	rebuild();
+}
+
+void QuickWritePanel::showRegisters(const QVector<int> &rows, const QString &problem) {
+	if (rows == rows_ && problem == problem_) return; /* another of them made current: the box keeps what is typed */
+	row_ = -1;
+	rows_ = rows;
+	problem_ = problem;
 	rebuild();
 }
 
@@ -145,6 +195,11 @@ void QuickWritePanel::setBroadcastRule(BroadcastRule rule) {
 void QuickWritePanel::rebuild() {
 	delete bitView_;
 	bitView_ = nullptr;
+	if (!rows_.isEmpty()) {
+		rebuildBulk();
+		return;
+	}
+	targets_->hide();
 	if (row_ < 0 || row_ >= model_->rows().size() || !model_->rows()[row_].def.rw) {
 		hide();
 		return;
@@ -165,14 +220,7 @@ void QuickWritePanel::rebuild() {
 	default_->setVisible(def.hasDefault());
 	default_->setToolTip(def.hasDefault() ? tr("Write the default: %1%2").arg(numberText(def.defaultValue), unit)
 			: QString());
-	/* the names: special values first (in shown units), then the enum's */
-	namedValues_->clear();
-	for (const SpecialValue &special : def.special)
-		namedValues_->addItem(QStringLiteral("%1  (%2)").arg(special.name, numberText(special.value)),
-				QStringLiteral("s") + numberText(special.value));
-	for (auto it = def.enumValues.begin(); it != def.enumValues.end(); ++it)
-		namedValues_->addItem(QStringLiteral("%1  (%2)").arg(it.value()).arg(it.key()), it.key());
-	namedValues_->setVisible(namedValues_->count() > 0);
+	fillNamedValues(def);
 	const bool withBits = bitsWritable(def);
 	bits_->setVisible(withBits && def.fields.isEmpty()); /* with fields the bits are always shown */
 	/* the register as in a datasheet: always for one with fields, with "Bits" for any other integer register */
@@ -186,7 +234,68 @@ void QuickWritePanel::rebuild() {
 	refresh();
 }
 
+/* the names: special values first (in shown units), then the enum's */
+void QuickWritePanel::fillNamedValues(const RegDef &def) {
+	namedValues_->clear();
+	for (const SpecialValue &special : def.special)
+		namedValues_->addItem(QStringLiteral("%1  (%2)").arg(special.name, numberText(special.value)),
+				QStringLiteral("s") + numberText(special.value));
+	for (auto it = def.enumValues.begin(); it != def.enumValues.end(); ++it)
+		namedValues_->addItem(QStringLiteral("%1  (%2)").arg(it.value()).arg(it.key()), it.key());
+	namedValues_->setVisible(namedValues_->count() > 0);
+}
+
+/* several selected: what the panel writes, the names they all have, and a row for each in the list; what belongs to
+ * one register (Default, To all devices, the bits) is hidden */
+void QuickWritePanel::rebuildBulk() {
+	const int count = int(rows_.size());
+	for (const int row : std::as_const(rows_))
+		if (row < 0 || row >= model_->rows().size()) {
+			hide();
+			return;
+		}
+	show();
+	const RegDef first = model_->rows()[rows_.first()].def;
+	bool danger = false, shared = true;
+	for (const int row : std::as_const(rows_)) {
+		const RegDef &def = model_->rows()[row].def;
+		danger = danger || def.danger;
+		shared = shared && sameNames(def, first);
+	}
+	if (problem_.isEmpty()) {
+		const QString type = first.type == RegType::Bytes ? QStringLiteral("bytes[%1]").arg(first.size) : typeName(first.type);
+		name_->setText(tr("Write <b>%n selected registers</b> (%1)", nullptr, count).arg(type)
+				+ (danger ? QStringLiteral(" ⚠") : QString()));
+	} else {
+		name_->setText(tr("<b>%n selected</b>: different types (%1)", nullptr, count).arg(problem_.toHtmlEscaped()));
+	}
+	value_->clear();
+	value_->setPlaceholderText(tr("value, 0x1F, 0b101, or a name"));
+	/* the names list when it would be the same for each of them: a name is then one value for all */
+	if (shared && problem_.isEmpty()) {
+		fillNamedValues(first);
+	} else {
+		namedValues_->clear();
+		namedValues_->hide();
+	}
+	default_->hide();
+	bits_->hide();
+	targets_->setRowCount(count);
+	for (int i = 0; i < count; i++) {
+		const RegDef &def = model_->rows()[rows_[i]].def;
+		targets_->setItem(i, 0, new QTableWidgetItem(def.danger ? def.name + QStringLiteral(" ⚠") : def.name));
+		targets_->setItem(i, 1, new QTableWidgetItem);
+	}
+	targets_->setMinimumWidth(0); /* fitted anew to these registers */
+	targets_->show();
+	refresh();
+}
+
 void QuickWritePanel::refresh() {
+	if (!rows_.isEmpty()) {
+		refreshBulk();
+		return;
+	}
 	if (row_ < 0 || row_ >= model_->rows().size()) return;
 	const RegisterModel::Row &row = model_->rows()[row_];
 	const bool writesAllowed = model_->writesEnabled();
@@ -204,10 +313,51 @@ void QuickWritePanel::refresh() {
 	if (bitView_) bitView_->setValue(rawBits(row.raw), true);
 }
 
+/* several selected: each one's value as the polls bring it; the box on the value they all hold until something is
+ * typed in it (empty, "(several values)", while they differ) */
+void QuickWritePanel::refreshBulk() {
+	const bool writesAllowed = model_->writesEnabled();
+	const bool enabled = writesAllowed && connected_ && problem_.isEmpty();
+	for (QWidget *control : std::initializer_list<QWidget *>{ value_, namedValues_, write_ })
+		control->setEnabled(enabled);
+	hint_->setText(!writesAllowed ? tr("tick Allow writes to write") : !connected_ ? tr("not connected") : QString());
+	updateBroadcast();
+	QStringList values; /* as the box would take them: the same text is one value for all */
+	bool allRead = true;
+	for (int i = 0; i < rows_.size() && i < targets_->rowCount(); i++) {
+		if (rows_[i] >= model_->rows().size()) return; /* the map changed: the table selects again */
+		const RegisterModel::Row &row = model_->rows()[rows_[i]];
+		/* a value with its unit or its name; else as the table says it ("—" not read yet, "error") */
+		const QString shown = row.valid && !row.unavailable && row.error.isEmpty()
+				? BulkWriteDialog::shownText(row.def, row.raw)
+				: model_->data(model_->index(rows_[i], RegisterModel::ColValue), Qt::DisplayRole).toString();
+		if (targets_->item(i, 1)->text() != shown) targets_->item(i, 1)->setText(shown);
+		allRead = allRead && row.valid;
+		if (row.valid && !values.contains(formatValue(row.def, row.raw))) values << formatValue(row.def, row.raw);
+	}
+	const bool typed = value_->isModified() && !value_->text().isEmpty();
+	if (!typed) {
+		const QString common = allRead && values.size() == 1 ? values.first() : QString();
+		if (value_->text() != common) value_->setText(common);
+		value_->setPlaceholderText(values.size() > 1 ? tr("(several values)") : tr("value, 0x1F, 0b101, or a name"));
+	}
+	/* as wide as its columns, never narrower while the values change; a few rows high */
+	targets_->resizeColumnsToContents();
+	QHeaderView *header = targets_->horizontalHeader();
+	for (int column = 0; column < 2; column++) header->resizeSection(column, header->sectionSize(column) + 16);
+	const int shownRows = std::min(int(targets_->rowCount()), TARGET_ROWS);
+	const bool scrolls = targets_->rowCount() > TARGET_ROWS;
+	const int frame = 2 * targets_->frameWidth();
+	const int width = header->length() + frame + (scrolls ? targets_->verticalScrollBar()->sizeHint().width() : 0);
+	targets_->setMinimumWidth(std::max(width, targets_->minimumWidth()));
+	targets_->setMaximumWidth(targets_->minimumWidth());
+	targets_->setFixedHeight(shownRows * targets_->verticalHeader()->defaultSectionSize() + frame);
+}
+
 /* a bus: the same value to every device at once, when the rule allows it for this register, and once a value is
- * typed (there is nothing to send before) */
+ * typed (there is nothing to send before); never for several selected */
 void QuickWritePanel::updateBroadcast() {
-	broadcast_->setVisible(bool(broadcastRule_));
+	broadcast_->setVisible(bool(broadcastRule_) && rows_.isEmpty());
 	if (!broadcastRule_ || row_ < 0 || row_ >= model_->rows().size()) return;
 	const QString refusal = broadcastRule_(model_->rows()[row_].def);
 	const bool typed = !value_->text().trimmed().isEmpty();
@@ -219,19 +369,20 @@ void QuickWritePanel::updateBroadcast() {
 }
 
 void QuickWritePanel::onValuesChanged(const QModelIndex &first, const QModelIndex &last) {
-	if (row_ >= first.row() && row_ <= last.row()) refresh();
+	const auto within = [&](int row) { return row >= first.row() && row <= last.row(); };
+	if (within(row_) || std::any_of(rows_.begin(), rows_.end(), within)) refresh();
 }
 
 /* ------------------------------------------------------------------ writing */
 
 void QuickWritePanel::writeTyped() {
 	const QString text = value_->text().trimmed();
-	if (row_ < 0 || text.isEmpty()) return;
+	if ((row_ < 0 && rows_.isEmpty()) || text.isEmpty()) return;
 	requestWrite(text);
 }
 
 void QuickWritePanel::writeNamedValue(int listIndex) {
-	if (row_ < 0) return;
+	if (row_ < 0 && rows_.isEmpty()) return;
 	/* "s3.5": a special value, in shown units; a number: an enum's raw value */
 	const QVariant data = namedValues_->itemData(listIndex);
 	if (data.typeId() == QMetaType::QString) requestWrite(data.toString().mid(1));
@@ -249,6 +400,11 @@ void QuickWritePanel::writeField(int lsb, int width, quint64 value) {
 }
 
 void QuickWritePanel::requestWrite(const QString &text) {
+	if (!rows_.isEmpty()) {
+		emit bulkWriteRequested(text); /* the dialog lists what each one gets */
+		refresh();
+		return;
+	}
 	const RegisterModel::Row &row = model_->rows()[row_];
 	emit writeRequested(row_, text, row.valid ? row.raw : QByteArray());
 	refresh(); /* refused or cancelled: the controls show the device's value again */

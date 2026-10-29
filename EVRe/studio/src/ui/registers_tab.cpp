@@ -233,16 +233,24 @@ void RegistersTab::connectModel() {
 	});
 	connect(quickWrite_, &QuickWritePanel::writeRequested, this, &RegistersTab::writeRequested);
 	connect(quickWrite_, &QuickWritePanel::broadcastRequested, this, &RegistersTab::broadcastRequested);
+	/* the panel on several selected: the same bulk write as the menu's entry, from the values now */
+	connect(quickWrite_, &QuickWritePanel::bulkWriteRequested, this, [this](const QString &text) {
+		const BulkTargets targets = bulkTargets();
+		if (targets.rows.size() >= 2 && targets.problem.isEmpty()) requestBulkWrite(targets, text, -1, {});
+	});
 	/* the register selected, under the table */
 	connect(table_->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
 			[this](const QModelIndex &current) {
 				detailRow_ = current.isValid() ? filter_->mapToSource(current).row() : -1;
 				updateDetail();
-				quickWrite_->showRegister(detailRow_);
+				updatePanel(true);
 				emit currentRegisterChanged(detailRow_);
 			});
-	/* several rows selected: the detail line says how one value goes to all */
-	connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this, &RegistersTab::updateDetail);
+	/* several rows selected: the detail line says how one value goes to all, the panel writes to all of them */
+	connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this, [this] {
+		updateDetail();
+		updatePanel(false);
+	});
 	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last) {
 		if (detailRow_ >= first.row() && detailRow_ <= last.row()) updateDetail();
 	});
@@ -253,6 +261,7 @@ void RegistersTab::connectModel() {
 	/* another map, or registers added or removed: its groups, and the columns once the table shows the rows */
 	connect(model_, &RegisterModel::structureChanged, this, [this] {
 		refreshGroups();
+		updatePanel(false); /* several selected whose types changed */
 		QTimer::singleShot(0, this, [this] { fitColumns(true); });
 	});
 }
@@ -261,39 +270,12 @@ void RegistersTab::connectModel() {
 
 void RegistersTab::showTableMenu(const QPoint &pos) {
 	const QModelIndex clicked = table_->indexAt(pos);
+	/* a row outside the selection: selected alone first (as a file manager does), so the menu acts on what is lit */
+	if (clicked.isValid() && !table_->selectionModel()->isRowSelected(clicked.row(), QModelIndex()))
+		table_->selectionModel()->setCurrentIndex(clicked, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
 	const int row = clicked.isValid() ? filter_->mapToSource(clicked).row() : -1;
 	QMenu menu(this);
-	if (row >= 0) {
-		/* the register under the mouse */
-		const RegisterModel::Row &reg = model_->rows()[row];
-		if (reg.def.canPlot()) {
-			menu.addAction(reg.plot ? tr("Remove from chart") : tr("Plot"), this,
-					[this, row] { model_->setPlot(row, !model_->rows()[row].plot); });
-		}
-		/* a field alone, as a line of its own: a register shown raw only (scaled, its bits are not the value) */
-		if (!reg.def.fields.isEmpty() && !reg.def.isFloat()) {
-			QMenu *fields = menu.addMenu(tr("Plot a field"));
-			for (int i = 0; i < reg.def.fields.size(); i++)
-				fields->addAction(noMnemonic(reg.def.fields[i].name), this, [this, row, i] { emit plotFieldRequested(row, i); });
-		}
-		menu.addAction(tr("Read now"), this, [this, row] {
-			const RegDef &def = model_->rows()[row].def;
-			emit readRequested(def.addr, quint16(def.size)); /* the table follows through the engine */
-		});
-		addBulkWriteAction(menu);
-		menu.addAction(tr("Copy value"), this, [reg] { /* the value when the menu opened */
-			QGuiApplication::clipboard()->setText(reg.valid ? formatValue(reg.def, reg.raw) : QString());
-		});
-		/* its bytes as read, with the map's chips and the reply they came in */
-		QAction *dump = menu.addAction(tr("Show in dump"), this, [this, row] { emit showInDumpRequested(row); });
-		dump->setEnabled(reg.def.readable);
-		menu.addSeparator();
-		menu.addAction(tr("Edit definition…"), this, [this, row] {
-			emit editDefinitionRequested(model_->rows()[row].def.uid, model_->rows()[row].def.slave);
-		});
-		menu.addAction(tr("Remove"), this, &RegistersTab::removeRegisters);
-		menu.addSeparator();
-	}
+	if (row >= 0) addRowActions(menu, row);
 	/* what the table shows, and the table itself */
 	menu.addAction(tr("Plot all shown (%1)").arg(filter_->rowCount()), this, [this] { plotShown(true); });
 	menu.addAction(tr("Remove shown from the chart"), this, [this] { plotShown(false); });
@@ -309,16 +291,93 @@ void RegistersTab::showTableMenu(const QPoint &pos) {
 	menu.exec(table_->viewport()->mapToGlobal(pos));
 }
 
+/* The register under the mouse, or every row selected: Plot, Read now, Copy value and Remove act on all of them and
+ * say how many; Plot a field, Show in dump and Edit definition are about one register, the one under the mouse, and
+ * name it when several are selected */
+void RegistersTab::addRowActions(QMenu &menu, int row) {
+	const RegisterModel::Row &reg = model_->rows()[row];
+	const QVector<int> rows = selectedRows();
+	const int count = int(rows.size());
+	const bool several = count >= 2 && rows.contains(row);
+	const QString name = noMnemonic(reg.def.name);
+	if (!several) {
+		if (reg.def.canPlot()) {
+			menu.addAction(reg.plot ? tr("Remove from chart") : tr("Plot"), this,
+					[this, row] { model_->setPlot(row, !model_->rows()[row].plot); });
+		}
+	} else {
+		/* those that can be plotted: off the chart when all of them are on it, else on it (those not yet) */
+		QVector<int> plottable;
+		int plotted = 0;
+		for (const int r : rows) {
+			if (!model_->rows()[r].def.canPlot()) continue;
+			plottable << r;
+			plotted += model_->rows()[r].plot ? 1 : 0;
+		}
+		const int n = int(plottable.size());
+		if (n > 0) {
+			const bool all = plotted == n;
+			QAction *plot = menu.addAction(all ? tr("Remove %n from chart", nullptr, n) : tr("Plot %n registers", nullptr, n),
+					this, [this, plottable, all] { plotRows(plottable, !all); });
+			plot->setObjectName(QStringLiteral("plotRows"));
+		}
+	}
+	/* a field alone, as a line of its own: a register shown raw only (scaled, its bits are not the value) */
+	if (!reg.def.fields.isEmpty() && !reg.def.isFloat()) {
+		QMenu *fields = menu.addMenu(several ? tr("Plot a field of %1").arg(name) : tr("Plot a field"));
+		for (int i = 0; i < reg.def.fields.size(); i++)
+			fields->addAction(noMnemonic(reg.def.fields[i].name), this, [this, row, i] { emit plotFieldRequested(row, i); });
+	}
+	const QVector<int> reads = several ? rows : QVector<int>{ row };
+	QAction *read = menu.addAction(several ? tr("Read %n registers now", nullptr, count) : tr("Read now"), this,
+			[this, reads] {
+				for (const int r : reads) emit readRequested(r); /* the table follows through the engine */
+			});
+	read->setObjectName(QStringLiteral("readRows"));
+	addBulkWriteAction(menu);
+	/* the values when the menu opened; several: a line each, the name and the value apart by a tab */
+	QString copied;
+	if (!several) {
+		copied = reg.valid ? formatValue(reg.def, reg.raw) : QString();
+	} else {
+		QStringList lines;
+		for (const int r : rows) {
+			const RegisterModel::Row &each = model_->rows()[r];
+			lines << each.def.name + QLatin1Char('\t') + (each.valid ? formatValue(each.def, each.raw) : QString());
+		}
+		copied = lines.join(QLatin1Char('\n'));
+	}
+	QAction *copy = menu.addAction(several ? tr("Copy %n values", nullptr, count) : tr("Copy value"), this,
+			[copied] { QGuiApplication::clipboard()->setText(copied); });
+	copy->setObjectName(QStringLiteral("copyRows"));
+	/* its bytes as read, with the map's chips and the reply they came in */
+	QAction *dump = menu.addAction(several ? tr("Show %1 in dump").arg(name) : tr("Show in dump"), this,
+			[this, row] { emit showInDumpRequested(row); });
+	dump->setEnabled(reg.def.readable);
+	menu.addSeparator();
+	menu.addAction(several ? tr("Edit %1's definition…").arg(name) : tr("Edit definition…"), this, [this, row] {
+		emit editDefinitionRequested(model_->rows()[row].def.uid, model_->rows()[row].def.slave);
+	});
+	QAction *remove = several ? menu.addAction(tr("Remove %n registers…", nullptr, count), this, &RegistersTab::askRemoveRegisters)
+			: menu.addAction(tr("Remove"), this, &RegistersTab::removeRegisters);
+	remove->setObjectName(QStringLiteral("removeRows"));
+	menu.addSeparator();
+}
+
+QVector<int> RegistersTab::selectedRows() const {
+	QModelIndexList selected = table_->selectionModel()->selectedRows();
+	std::sort(selected.begin(), selected.end(), [](const QModelIndex &a, const QModelIndex &b) { return a.row() < b.row(); });
+	QVector<int> rows;
+	for (const QModelIndex &index : selected) rows << filter_->mapToSource(index).row();
+	return rows;
+}
+
 /* ------------------------------------------------------------ a bulk write */
 
 RegistersTab::BulkTargets RegistersTab::bulkTargets() const {
 	BulkTargets targets;
 	QStringList types;
-	QModelIndexList selected = table_->selectionModel()->selectedRows();
-	/* in the table's order, as they are seen */
-	std::sort(selected.begin(), selected.end(), [](const QModelIndex &a, const QModelIndex &b) { return a.row() < b.row(); });
-	for (const QModelIndex &index : selected) {
-		const int row = filter_->mapToSource(index).row();
+	for (const int row : selectedRows()) { /* in the table's order, as they are seen */
 		const RegDef &def = model_->rows()[row].def;
 		if (!def.rw) {
 			targets.readOnly << def.name;
@@ -356,6 +415,14 @@ void RegistersTab::addBulkWriteAction(QMenu &menu) {
 		const BulkTargets now = bulkTargets();
 		if (now.rows.size() >= 2 && now.problem.isEmpty()) requestBulkWrite(now, QString(), -1, {});
 	});
+}
+
+/* several targets: the panel writes to all of them (or says their types differ); else the current register's panel.
+ * The current row moving among the targets changes nothing, so what is typed in the box stays */
+void RegistersTab::updatePanel(bool currentChanged) {
+	const BulkTargets targets = bulkTargets();
+	if (targets.rows.size() >= 2) quickWrite_->showRegisters(targets.rows, targets.problem);
+	else if (currentChanged || quickWrite_->isBulk()) quickWrite_->showRegister(detailRow_);
 }
 
 /* each row starts from its value now; the row edited in the table from the value its editor started from */
@@ -476,10 +543,14 @@ void RegistersTab::updatePlotButton() {
 
 void RegistersTab::plotShown(bool on) {
 	QVector<int> rows;
-	for (int i = 0; i < filter_->rowCount(); i++) {
-		const int row = filter_->mapToSource(filter_->index(i, 0)).row();
+	for (int i = 0; i < filter_->rowCount(); i++) rows << filter_->mapToSource(filter_->index(i, 0)).row();
+	plotRows(rows, on);
+}
+
+void RegistersTab::plotRows(const QVector<int> &all, bool on) {
+	QVector<int> rows;
+	for (const int row : all)
 		if (model_->rows()[row].def.canPlot() && model_->rows()[row].plot != on) rows << row;
-	}
 	/* no question: as many as there is room for (RegisterModel::MAX_PLOTTED), in the table's order; the rest are
 	 * left off and the status bar says how many */
 	const int room = on ? std::max(0, model_->plotLimit() - model_->plottedCount()) : int(rows.size());
@@ -501,6 +572,21 @@ void RegistersTab::addRegister() {
 	/* after the current register when it is of the map edited (all devices shown: perhaps another's) */
 	const bool ofMap = row >= 0 && model_->rows()[row].def.slave == model_->selectedDevice();
 	emit addRegisterRequested(ofMap ? model_->rows()[row].def.uid : 0);
+}
+
+void RegistersTab::askRemoveRegisters() {
+	QStringList names;
+	for (const int row : selectedRows()) names << model_->rows()[row].def.name.toHtmlEscaped();
+	if (names.size() < 2) {
+		removeRegisters();
+		return;
+	}
+	if (!confirmed(this, tr("Remove registers"),
+			tr("Remove these %n registers from the map?<br><br>%1<br><br>Undo on the Map editor tab brings them back.",
+					nullptr, int(names.size())).arg(ltrPiece(names.join(QStringLiteral(", ")))),
+			tr("Remove")))
+		return;
+	removeRegisters();
 }
 
 void RegistersTab::removeRegisters() {
@@ -592,10 +678,15 @@ void RegistersTab::updateDetail() {
 	if (targets.rows.size() >= 2) {
 		const int count = int(targets.rows.size());
 		text += QStringLiteral("<br>") + coloredSpan((targets.problem.isEmpty()
-				? tr("%n registers selected: one value to all with F2 and Enter, or the right-click menu", nullptr, count)
+				? tr("%n registers selected: one value to all with F2 and Enter, the panel below or the right-click menu",
+						nullptr, count)
 				: tr("%n registers selected, of different types (%1): no one value for all", nullptr, count)
 						.arg(targets.problem))
 						.toHtmlEscaped(), colors.muted);
 	}
+	/* right to left as a whole in Arabic: the text starts with the register's name, Latin, and a paragraph takes its
+	 * direction from its first letter, so the Arabic lines read in a left-to-right order ("القيمة" after its value,
+	 * the hint's sentence split around "F2") */
+	if (QGuiApplication::isRightToLeft()) text = QStringLiteral("<div dir='rtl'>%1</div>").arg(text);
 	if (detail_->text() != text) detail_->setText(text);
 }

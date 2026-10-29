@@ -695,6 +695,10 @@ does not know are kept when the bus file is saved again. Tokens are never in it.
 math lines, the CSV columns and the API all use those names, so any register of any device is reached by its name
 alone, without a slave address.
 
+**Several devices at once.** With **All devices** shown on the Registers tab, rows of several devices can be selected
+together: one value to all of them (6.6) writes each register to its own device, an acknowledged write each, never a
+broadcast, and the dialog has a **Device** column; **Read N registers now** reads each from its own device (4.9).
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/bus-devices-dark.png">
   <img src="../../docs/assets/pictures/bus-devices-light.png" alt="A bus of three example devices: D1 and D2 online, D3 offline, and the Registers tab showing D1 with its D1_ register names" width="900">
@@ -928,18 +932,21 @@ Neither tick is saved. A map loads with every Plot off and every Log on. To plot
 
 ### 4.9 The right-click menu
 
-On a register:
+On a register, the menu acts on the rows selected. A right-click on a row outside the selection selects that row
+alone first (as a file manager does), so the menu always acts on what is highlighted. With one row the entries read
+as below; with several, those that act on all of them say how many, and those about one register name the row under
+the mouse.
 
-- **Plot** or **Remove from chart** (numeric registers only)
-- **Read now**: one read of this register at once, into the table. This is how a byte array too long to be polled is read (see 13.3).
-- **Write to N selected registers…**: one value to every rw register selected (6.6). Disabled (greyed, as every menu
-  entry that cannot be used now) while it cannot be, its tooltip says why: *Tick Allow writes first*, *Not connected: connect to the device first*, fewer than two rw
-  registers selected, or *The selected registers are of different types: f32, u8*. Read-only rows in the selection
-  are left out, and its tooltip names them.
-- **Copy value**: the value text, as shown when the menu opened.
-- **Show in dump**: the Dump tab on this register, its chips selected and in view (chapter 37).
-- **Edit definition…** (see 4.11)
-- **Remove**: removes the **selected** rows from the map. It does not ask.
+| Entry | What it does |
+|---|---|
+| **Plot**&nbsp;/&nbsp;**Remove&nbsp;from&nbsp;chart** | Numeric registers only. Several selected: **Plot 3 registers** charts every one of them not on the chart yet (as many as there is room for, as Plot shown); when all of them are on it, **Remove 3 from chart** takes them off. |
+| **Plot&nbsp;a&nbsp;field** | A register with bit fields, shown raw: one field as a line of its own (a math line). Several selected: the register under the mouse, named (*Plot a field of CONFIG*). |
+| **Read&nbsp;now** | One read of this register at once, into the table. This is how a byte array too long to be polled is read (see 13.3). Several selected: **Read 3 registers now**, each from its own device. |
+| **Write&nbsp;to&nbsp;N&nbsp;selected&nbsp;registers…** | One value to every rw register selected (6.6). Disabled (greyed, as every menu entry that cannot be used now) while it cannot be, its tooltip says why: *Tick Allow writes first*, *Not connected: connect to the device first*, fewer than two rw registers selected, or *The selected registers are of different types: f32, u8*. Read-only rows in the selection are left out, and its tooltip names them. |
+| **Copy&nbsp;value** | The value text, as shown when the menu opened. Several selected: **Copy 3 values**, a line each in the table's order: the name, a tab, the value (`FAN_SPEED<TAB>35`), ready to paste into a spreadsheet. |
+| **Show&nbsp;in&nbsp;dump** | The Dump tab on this register, its chips selected and in view (chapter 37). Several selected: the register under the mouse, named (*Show FAN_SPEED in dump*). |
+| **Edit&nbsp;definition…** | See 4.11. Several selected: the register under the mouse, named (*Edit FAN_SPEED's definition…*). |
+| **Remove** | Removes the row from the map without asking (Undo on the Map editor tab brings it back). Several selected: **Remove 3 registers…** names them in a question first (*Remove registers*, Cancel the default), then removes them as one undo step. |
 
 Anywhere on the table:
 
@@ -1091,6 +1098,18 @@ The panel has one row of controls:
 *Above: SETPOINT, its limits in the box's hint and a Default button; below: LED_MODE's list of names open, Bits ticked.*
 
 The controls are enabled only while **Allow writes** is on **and** the link is up. The hint says which of the two is missing.
+
+**Several registers selected** (two or more rw rows of one type, with Ctrl-click or Shift-click; read-only rows in the
+selection are left out): the panel writes one value to all of them, through the dialog of 6.6, as the right-click
+menu's entry and F2 do.
+
+| Control | With several selected |
+|---|---|
+| *Write&nbsp;3&nbsp;selected&nbsp;registers&nbsp;(u8)* | The title, with ⚠ when one of them is a danger register. Of different types it reads *3 selected: different types (f32, u8)*, and the box and **Write** are disabled. |
+| Value&nbsp;box | Starts with the value they all hold; empty, with *(several values)* in it, while they differ. It follows the polls until something is typed in it. **Enter** or **Write** opens the dialog of 6.6: what each one holds and gets. |
+| List&nbsp;of&nbsp;them | Under the box: each register and its value now, a name with its number (`off (0)`), kept live as the polls bring values; four rows high, a scroll bar for more. |
+| Named&nbsp;values&nbsp;list | Only when all of them have the same value names and special values: a name picked opens the dialog with it. |
+| **Default**,&nbsp;**To&nbsp;all&nbsp;devices**,&nbsp;**Bits** | Hidden: each belongs to one register (a default is the register's own, a broadcast sends one register to every device, a bit is written read-modify-write per register). |
 
 Every quick write follows exactly the same path as an edit in the table: the danger confirmation and the other checks of chapter 6. After each attempt, written or not, the named-values list and the bit view show the device's value again. The value box keeps the text you typed, so a refused value can be corrected. It is emptied only when the panel is set up anew: another register is selected, a map is loaded, or **Bits** is switched.
 
@@ -1254,12 +1273,14 @@ Errors and warnings also pop up (see 11.3).
 
 Select several **read-write** registers of one type with **Ctrl-click** or **Shift-click**, then either:
 
-- right-click one of them, **Write to N selected registers…** (4.9): the dialog opens with a value box at its top, or
+- right-click one of them, **Write to N selected registers…** (4.9): the dialog opens with a value box at its top,
+- type the value in the quick-write panel under the table, which then writes to all of them (5.1), and press
+  **Enter** or click **Write**, or
 - press **F2** on one of them (the others stay selected), type the value and press **Enter** (4.12).
 
 A double-click cannot start it: it selects the row clicked alone before its editor opens (Qt's selection does this),
 so that edit is a single write as always. The detail line under the table says how, while several are selected:
-*3 registers selected: one value to all with F2 and Enter, or the right-click menu*.
+*3 registers selected: one value to all with F2 and Enter, the panel below or the right-click menu*.
 
 **Which rows.** The targets are the rows selected and shown by the table that are read-write. Read-only rows in the
 selection are left out and named (*STATUS is read-only: left out.*, in the menu entry's tooltip and in the dialog).
@@ -1302,6 +1323,7 @@ than two targets: everything is as for one register.
   or Tab and Space. Opened from the menu, the value box has the focus; Enter there writes nothing (the list follows
   the typing already).
 - On a bus with All devices shown, each register is written to its own device (`slaveOf`); no broadcast is used.
+  The list then has a **Device** column (D1, D2), and the order is device by device (3.9).
 
 **Changed meanwhile.** At Write, every target's value is compared with the one its write started from (the edited
 row: the editor's; the others: their values at Enter, or when the menu opened). The ones another client or the
@@ -4682,7 +4704,8 @@ Typing `2` into `MOTOR_SPEED` (i16, danger) asks at step 5 before anything is se
 **Several rows selected (6.6).** At step 2 the Registers tab looks at the selection (`RegistersTab::bulkTargets`).
 When the edited row is one of two or more rw rows of one type, it sends `bulkWriteRequested(rows, text, bases,
 leftOut)` instead (the edited row's base is the editor's, the others' their values at Enter); the right-click
-menu's entry sends the same with no text. `MainWindow::onBulkWriteRequested` shows `BulkWriteDialog`, which encodes
+menu's entry sends the same with no text, and the quick-write panel on several selected
+(`QuickWritePanel::bulkWriteRequested`) with its text, every base the value at Enter. `MainWindow::onBulkWriteRequested` shows `BulkWriteDialog`, which encodes
 the text for each register and checks its limits (steps 4 and 5 for all of them at once, one dialog). After Write,
 step 3 runs once for all (one question for the rows changed meanwhile), then step 6 for each register, in address
 order, all posted at once; the Master sends them one after the other. A shared counter gathers the answers, and
@@ -4789,9 +4812,9 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
 | `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
 | `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
-| `src/ui/registers_tab.h`,&nbsp;`.cpp` | `RegistersTab`: toolbar, table, menus, groups, Plot shown, map editing, detail line |
+| `src/ui/registers_tab.h`,&nbsp;`.cpp` | `RegistersTab`: toolbar, table, menus (on every row selected, counted), groups, Plot shown, map editing, detail line |
 | `src/ui/value_delegate.h`,&nbsp;`.cpp` | `ValueDelegate`: the Value column's drawing (the ⓘ mark) and editor (`base`) |
-| `src/ui/quick_write_panel.h`,&nbsp;`.cpp` | `QuickWritePanel`: value box, named values, bit view for the selected RW register |
+| `src/ui/quick_write_panel.h`,&nbsp;`.cpp` | `QuickWritePanel`: value box, named values, bit view for the selected RW register; one value for several selected, with the list of them |
 | `src/ui/bit_view.h`,&nbsp;`.cpp` | `BitView`: a register drawn bit by bit; click to flip or pick a field value |
 | `src/ui/map_editor_tab.h`,&nbsp;`.cpp` | `MapEditorTab`: toolbar, the register table, checks list, clipboard, export and import; on a bus the banner (whose map, `showDevices`) and the Live values from picker |
 | `src/ui/map_table_model.h`,&nbsp;`.cpp` | `MapTableModel`: the Map editor's table, edited in place, bulk edits |
@@ -5071,10 +5094,10 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
 | `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
-| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested`, `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
+| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
 | `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
-| `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; only asks | `showRegister`, `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested` | GUI test (value, bits, danger flag, link state) |
+| `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; or one value for several selected; only asks | `showRegister`, `showRegisters` (several: their rows, or the types that differ), `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested`, `bulkWriteRequested` | GUI test (value, bits, danger flag, link state, bulk write) |
 | `BusPanel` | the Devices on the link card; shows, the window does the work | `showBus`, `pickerDevices` (the devices with their state, for the pickers), `namesText`, `setBroadcastBlocked` (the kept broadcasts off, with the reason); signals `newBusClicked`, `openBusClicked`, `saveBusClicked`, `closeBusClicked`, `addDeviceClicked`, `editDeviceClicked`, `removeDeviceClicked`, `deviceSelected`, `presetChosen`, `newPresetClicked`, `removePresetClicked` | GUI test (bus step) |
 | `BusPresetDialog` | one broadcast preset; OK only when the value is one the register takes | `result` | GUI test (bus step) |
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
@@ -6328,7 +6351,20 @@ The steps run in order. Each leaves the window and the device as the next step e
       Cancel writes none, Write anyway all; a ⚠ register among them (MSG_CNT marked for the check): marked, one
       sentence, no *Confirm write* after it; a register the device refuses (added at 0xD0F0 for the check): the
       others written, one Warning, one pop-up, *2 of 3 registers written*; one row selected: a single write, no
-      dialog (with `EVRE_TEST_SHOT`: `<prefix>_bulk_<plain|limit|refused|danger|menu|menu_off>_<en|ar>_<light|dark>.png`)
+      dialog
+    - the quick-write panel on the three (5.1): *Write 3 selected registers (u8)*, the box on the value they share,
+      the list of the three with their values, the names list, Default and Bits hidden; another client's write to
+      FAN_SPEED: its row follows, the box empties to *(several values)*, and shows the value again once they agree;
+      the names list shown when all three have LED_MODE's names (given to them for the check); FAN_SPEED and SETPOINT:
+      *2 selected: different types (f32, u8)*, the box and Write disabled; `5` typed stays while a value changes,
+      Enter opens the dialog, *Write 3* writes all three
+    - the right-click menu with the three selected: *Plot 3 registers*, *Read 3 registers now*, *Copy 3 values*,
+      *Remove 3 registers…*, *Show FAN_SPEED in dump*, *Edit FAN_SPEED's definition…* and *Plot a field of CONFIG*;
+      Plot charts the three, *Remove 3 from chart* takes them off, with one charted Plot charts the other two; Read
+      asks for each; Copy gives `NAME<TAB>value` lines in the table's order; Remove (three byte arrays added for the
+      check) asks first, Cancel keeps them, Remove removes the three; a right-click on SETPOINT outside the selection
+      selects it alone, the entries as for one register (with `EVRE_TEST_SHOT`:
+      `<prefix>_bulk_<plain|limit|refused|danger|menu|menu_off|menu3|panel_same|panel_several>_<en|ar>_<light|dark>.png`)
     - a disabled menu entry, in both themes: its text in the muted colour, not the others' (the ink painted), and no
       highlight with the mouse over it
 10. the pop-up covers no tab, page or sidebar, on every tab, at 1200×720 and 1600×950
@@ -6444,7 +6480,10 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
 - **A bus** (`busDevices`, before the login steps). It starts `evre_fake_fast` beside the test on port 1226 as two
   devices of this map (slaves 1 and 2) and writes two bus files in a temporary folder. With the first (D1, D2): the
   table holds both devices' registers named `D1_` and `D2_` and shows the selected one; selecting D2 shows its
-  values; a write to `D2_` reaches slave 2 only; the JSON API reads `D1_` and `D2_` by name and the pass-through
+  values; a write to `D2_` reaches slave 2 only; with All devices shown, `D1_` and `D2_MOTOR_SPEED` selected: the
+  quick-write panel writes to both (no To all devices), the bulk dialog has a Device column (D1, D2), both ⚠ and the
+  danger sentence once, Cancel writes nothing, Write writes each to its own device (with `EVRE_TEST_SHOT`:
+  `<prefix>_bulk_bus_<en|ar>_<light|dark>.png`); the JSON API reads `D1_` and `D2_` by name and the pass-through
   answers frames to slaves 1 and 2 each from its device; the JSON `broadcast` is refused without Allow API writes,
   then reaches both and reads each back; the Map editor names the devices of its map and shows D2's live values; the
   Registers tab's All devices shows both devices' registers; the three device pickers show D2 alike (its dot,
@@ -7099,7 +7138,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 816 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 832 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

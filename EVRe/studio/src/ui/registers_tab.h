@@ -8,11 +8,14 @@
  *  - the table (RegisterModel through RegisterFilter). ValueDelegate draws
  *    and edits the Value column. A right-click offers plotting, reading now,
  *    one value to the rows selected (a bulk write: bulkTargets), copying,
- *    editing the definition and logging; the header's menu shows or
+ *    editing the definition and logging; plotting, reading, copying and
+ *    removing act on every row selected and say how many (a row outside the
+ *    selection is selected alone first). The header's menu shows or
  *    hides the Decoded column (saved in "ui/decodedColumn"). The columns fit
  *    their content, Decoded as wide as its longest text.
  *  - under it: the selected register in full (the detail line), and the
- *    quick-write panel for it (quick_write_panel.h).
+ *    quick-write panel for it (quick_write_panel.h), or for all of them when
+ *    several are selected.
  *
  * The map's definitions are made on the Map editor tab: + Register and "Edit
  * definition" here ask the window to go there (and remove goes through the
@@ -78,8 +81,8 @@ signals:
 			const QStringList &leftOut);
 	/* "To all devices" in the quick-write panel: a broadcast of the value typed */
 	void broadcastRequested(int row, const QString &text);
-	/* Read now: one register read at once, into the table */
-	void readRequested(quint16 addr, quint16 count);
+	/* Read now: the register in this row of the model read at once, from its own device, into the table */
+	void readRequested(int row);
 	/* Remove all from the chart (the window unticks every Plot) */
 	void unplotAllRequested();
 	/* one bit field of the register in `row` on the chart (a math line) */
@@ -122,6 +125,7 @@ private:
 
 	/* the chart */
 	void plotShown(bool on);  /* every numeric register the table shows now */
+	void plotRows(const QVector<int> &rows, bool on); /* these rows of the model: as many as there is room for */
 	void updatePlotButton();  /* "Plot shown" or, when they all are, "Unplot shown" */
 
 	/* a bulk write: the rows selected and shown that can be written, with one value for all; the read-only ones left
@@ -134,10 +138,14 @@ private:
 	BulkTargets bulkTargets() const;
 	void addBulkWriteAction(QMenu &menu); /* "Write to N selected registers…", or why not, as its tooltip */
 	void requestBulkWrite(const BulkTargets &targets, const QString &text, int editedRow, const QByteArray &editedBase);
+	void updatePanel(bool currentChanged); /* the quick-write panel on the current register, or on all the targets */
+	QVector<int> selectedRows() const;     /* the rows selected (rows of the model), in the table's order */
+	void addRowActions(QMenu &menu, int row); /* the menu's entries for the row under the mouse, or every row selected */
 
 	/* the map */
 	void addRegister();       /* after the selected register, on the Map editor tab */
 	void removeRegisters();   /* the rows selected, as one undo step */
+	void askRemoveRegisters(); /* several selected: named first, then removed */
 
 	/* the columns */
 	void fitColumns(bool shrink); /* every column to its content; shrink: narrower too, not only wider */
