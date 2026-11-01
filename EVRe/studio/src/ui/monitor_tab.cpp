@@ -11,6 +11,8 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSignalBlocker>
+#include <QTextDocument>
+#include <QTextOption>
 #include <QVBoxLayout>
 #include <algorithm>
 
@@ -44,21 +46,26 @@ MonitorTab::MonitorTab(const RegisterModel *model, QWidget *parent) : QWidget(pa
 	address_->setFixedWidth(90);
 	argument_ = new QLineEdit(QStringLiteral("2"));
 	argument_->setMaximumWidth(480); /* room for a few bytes; it took the whole width for READ's count */
-	auto *sendButton = new QPushButton(tr("Send"));
-	sendButton->setObjectName(QStringLiteral("primary"));
+	send_ = new QPushButton(tr("Send"));
+	send_->setObjectName(QStringLiteral("primary"));
 	auto *logFrames = new QCheckBox(tr("Log frames"));
 	logFrames->setToolTip(tr("Every frame sent and received. Off by default: at fast polling it is a lot of text."));
 	auto *clearButton = new QPushButton(tr("Clear"));
 	frames_ = new QPlainTextEdit;
 	/* frames, hex and addresses read left to right in any language */
 	for (QWidget *w : std::initializer_list<QWidget *>{ frames_, address_, argument_ }) w->setLayoutDirection(Qt::LeftToRight);
+	/* each line too: a line with Arabic in it ("??  12 bytes not EVRe") would take its direction from the words, and the
+	 * time and the mark would go to its other end */
+	QTextOption direction = frames_->document()->defaultTextOption();
+	direction.setTextDirection(Qt::LeftToRight);
+	frames_->document()->setDefaultTextOption(direction);
 	frames_->setReadOnly(true);
 	frames_->setMaximumBlockCount(5000);
 	frames_->setFont(monospaceFont());
 	clearSelectionOnEscape(frames_);
 	/* empty: what shows here, and how to get it */
-	frames_->setPlaceholderText(tr("Nothing yet. Send a request above, or tick Log frames to see every frame of the "
-			"polling."));
+	sentPlaceholder_ = tr("Nothing yet. Send a request above, or tick Log frames to see every frame of the polling.");
+	frames_->setPlaceholderText(sentPlaceholder_);
 	/* each box says what it takes; the second one's name and hint follow the function (count / bytes). READ's
 	 * count left as it started ("2") is no value to write: a WRITE starts it empty, with its hint */
 	argumentLabel_ = mutedLabel(QString());
@@ -100,7 +107,7 @@ MonitorTab::MonitorTab(const RegisterModel *model, QWidget *parent) : QWidget(pa
 	bar->addSpacing(6);
 	bar->addWidget(argumentLabel_);
 	bar->addWidget(argument_, 1);
-	bar->addWidget(sendButton);
+	bar->addWidget(send_);
 	bar->addStretch(1);
 	bar->addSpacing(12);
 	bar->addWidget(logFrames);
@@ -111,7 +118,7 @@ MonitorTab::MonitorTab(const RegisterModel *model, QWidget *parent) : QWidget(pa
 	layout->addLayout(bar);
 	layout->addWidget(frames_, 1);
 
-	connect(sendButton, &QPushButton::clicked, this, &MonitorTab::sendRequest);
+	connect(send_, &QPushButton::clicked, this, &MonitorTab::sendRequest);
 	connect(argument_, &QLineEdit::returnPressed, this, &MonitorTab::sendRequest);
 	connect(address_, &QLineEdit::returnPressed, this, &MonitorTab::sendRequest); /* Enter in either box */
 	connect(logFrames, &QCheckBox::toggled, this, &MonitorTab::logFramesToggled);
@@ -154,6 +161,25 @@ void MonitorTab::setDevices(const QVector<PickerDevice> &devices) {
 }
 
 void MonitorTab::showNote(const QString &text) { frames_->appendPlainText(text); }
+
+void MonitorTab::setListening(bool on) {
+	if (on == !beforeListening_.isEmpty()) return;
+	frames_->setPlaceholderText(on ? tr("Nothing yet. Tick Log frames to see what the other program and the device say.")
+			: sentPlaceholder_);
+	if (!on) {
+		for (const RowControl &row : std::as_const(beforeListening_)) {
+			row.control->setEnabled(row.enabled);
+			row.control->setToolTip(row.toolTip);
+		}
+		beforeListening_.clear();
+		return;
+	}
+	for (QWidget *control : std::initializer_list<QWidget *>{ slave_, device_, function_, address_, argument_, send_ }) {
+		beforeListening_.push_back({ control, control->isEnabled(), control->toolTip() });
+		control->setEnabled(false);
+		control->setToolTip(listeningText());
+	}
+}
 
 void MonitorTab::showSent(quint16 addr, const QByteArray &bytes) {
 	frames_->appendPlainText(tr("-> %1 sent: %2  (no acknowledge: nothing says it arrived; READ it to see)")

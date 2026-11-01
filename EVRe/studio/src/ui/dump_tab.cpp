@@ -367,6 +367,7 @@ void DumpTab::fillMenu(QMenu *menu, RegKey key, int card) {
 	write->setEnabled(editable);
 	write->setToolTip(!reg ? none
 			: !reg->def.rw ? tr("%1 is read only").arg(reg->def.name)
+			: model_->listening() ? listeningText()
 			: !model_->writesEnabled() ? tr("Tick Allow writes on the Registers tab first")
 			: tr("The Registers tab's editor on %1").arg(reg->def.name));
 	menu->addSeparator();

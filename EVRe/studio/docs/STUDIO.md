@@ -44,6 +44,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [3.8 What the state pill shows](#38-what-the-state-pill-shows)
     - [3.9 Several devices on one link (a bus)](#39-several-devices-on-one-link-a-bus)
     - [3.10 Broadcast](#310-broadcast)
+    - [3.11 Listen](#311-listen)
   - [4. The Registers tab](#4-the-registers-tab)
     - [4.1 The toolbar](#41-the-toolbar)
     - [4.2 The columns](#42-the-columns)
@@ -150,6 +151,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [15.14 An API client gets *API writes are off* or cannot connect](#1514-an-api-client-gets-api-writes-are-off-or-cannot-connect)
     - [15.15 A math line draws nothing](#1515-a-math-line-draws-nothing)
     - [15.16 The Monitor shows frames marked *(not a pending request)*](#1516-the-monitor-shows-frames-marked-not-a-pending-request)
+    - [15.17 Listen says *USBPcap is not installed*, or *not a USB port*](#1517-listen-says-usbpcap-is-not-installed-or-not-a-usb-port)
 - **[Part II. Reference](#part-ii-reference)**
   - [16. The device map format "evre-map/1"](#16-the-device-map-format-evre-map1)
     - [16.1 A minimal map](#161-a-minimal-map)
@@ -317,6 +319,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Area | What it does |
 |---|---|
 | Links | TCP (any EVRe-over-TCP server or gateway) or a serial / USB CDC port. Slave address, answer timeout, pipelining (*In flight*), reconnect by itself. |
+| Listen | What another program says to a USB device, heard from the system's USB capture on a port that program holds: the Monitor, the table, the chart, the CSV and the Dump fill, and the Studio sends nothing (3.11). |
 | Login | An optional token, written after connecting to a login register that the map declares. |
 | Device&nbsp;check | Reads DEVICE_ID and STATUS at every connect. Warns when the map was made for another device ID. |
 | Register&nbsp;table | Live values with units. Decoded bit fields and enum names. Stale values turn grey and changed values glow. Search, group filter, tooltips, a detail line for the selected register. |
@@ -473,7 +476,7 @@ All options are in chapter 14.
 
 Everything about the link is in the sidebar's **Connection** card. The card has, from top to bottom:
 
-- the choice **TCP** / **Serial / USB**
+- the choice **TCP** / **Serial / USB** / **Listen**
 - the fields for the chosen link
 - **Slave**, **Timeout** and **In flight**
 - **Reconnect by itself**
@@ -528,7 +531,7 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
   - any other USB ID (Windows' *USB Serial Device*, a vendor's VCP driver, ST's `0483:5740`): USB CDC.
 
   Unsure means a UART: the slower side. When Auto guesses wrong, choose **USB CDC** or **UART** in the Link row. In flight's rule is the same for both: a bus on a serial link gets In flight 1 (3.9), since a USB CDC board in front of an RS-485 bus still has one transmitter at a time behind it.
-- **One program per port.** A serial port can be open in one program only. See 15.5.
+- **One program per port.** A serial port can be open in one program only. See 15.5. **Listen** (3.11) hears a port another program holds, from this same list.
 - **No token.** The token is sent only over TCP.
 
 ### 3.3 Slave and timeout
@@ -631,6 +634,7 @@ the sidebar scrolls if it must. The pill keeps its whole height in every case.
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`; for serial `COM7 @ 115200` on a UART, where the number is the link's speed, and `COM13 · USB CDC` on USB CDC, where the baud rate means nothing (the tooltip adds *the baud rate 12000000 is ignored on USB CDC*). The kind is the one Connect opened the link with: a Link row changed while connected counts at the next connect. The serial name is one left-to-right piece, so Arabic reads it unturned. The Log's line keeps the number: *connected: COM13 @ 12000000*, after *opening COM13 at 12000000 (USB CDC: the baud rate is ignored)*. |
+| *Listening&nbsp;·&nbsp;COM13&nbsp;·&nbsp;USB&nbsp;CDC* | blue | Listen is on (3.11): the Studio hears the port and sends nothing. Its own tint in both looks, so it is not read as connected. The tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*, and any sign of a capture that lost something. The name is one left-to-right piece, and a bridge reads `COM13 · FTDI`. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, it is shown whole on two lines (or more), never cut. The tooltip adds the system's text, and the Log has both. |
 
 <picture>
@@ -652,6 +656,7 @@ reset? (The system cannot find the file specified.)*.
 | *COM10&nbsp;is&nbsp;busy&nbsp;or&nbsp;not&nbsp;allowed* | at&nbsp;the&nbsp;open | *...: another program holds it, or you have no permission for it*. Another program has the port open, or (on Linux) your user may not open it (15.5): the system gives both the same error. |
 | *COM10&nbsp;did&nbsp;not&nbsp;open* | at&nbsp;the&nbsp;open | Any other failure, a baud rate the driver refuses among them: the tooltip has the system's text. |
 | *Baud&nbsp;rate&nbsp;out&nbsp;of&nbsp;range* | at&nbsp;Connect | *...: 300 to 20000000*. The Baud box is empty (read as 0) or out of range: nothing is opened (3.5). |
+| *COM3&nbsp;is&nbsp;not&nbsp;a&nbsp;USB&nbsp;port* | at&nbsp;Listen | *...: it cannot be listened to*. Refused at once and not tried again, as every reason of the Listen line (3.11). |
 
 The device line under the pill keeps the device's ID while the link is down, said to be old: *last seen: Device ID
 0x1001 · protocol rev 1* (on a bus *D2: last seen: ...*), in the same muted colour, with the map's warning under it
@@ -788,6 +793,82 @@ A device built on EVRe 1.1 takes a broadcast into its own registers (0xD000 and 
 (`ACCEPT_BROADCAST_D000`, STATUS bit 14); a 1.0 device takes it as a unicast WRITE. Read the register back to know.
 
 The API's pass-through (17) sends a client's broadcast WRITE on a bus under the same rule and the same write switches.
+
+### 3.11 Listen
+
+Listen shows what **another program** says to a USB device, on a port that program holds: a Python script, a test
+tool. A serial port belongs to one program (15.5), so the Studio cannot open it beside the other. It reads the USB
+traffic under the port instead, with the system's own capture, and **sends nothing**.
+
+This build has no live capture yet: the sources for Windows and Linux are the next steps, so every port reads *no USB
+capture on this system* and Connect refuses it with that reason, in the pill. All the rest of this section works
+and is tested on replayed captures (26.10).
+
+**What it hears.** USB devices only: USB CDC (a board's own USB, a debug probe's virtual port) and USB-UART bridges
+(FTDI, CP210x, CH340, PL2303), whose bulk data carries the UART's bytes. Not a motherboard's COM port, RS-485 without
+a USB bridge, Bluetooth, virtual port pairs, another program's TCP link, or a port held inside a VM or WSL. The
+frames are read as they pass: a split frame or two in one transfer cost nothing, bytes that are no EVRe frame are
+counted, and the capture sees **everything on that USB device**, whatever it is.
+
+**The card.** **Listen** is the third segment of the Connection card (`link/listen`). It shares the port box of
+Serial / USB; Baud and Link are hidden, for the port is another program's. Under the port box stands the Listen line.
+In flight stays in its place, muted, with the tooltip *Listening: the Studio sends nothing*. Slave says whose answers
+fill the table, Timeout how long a heard request waits for its answer. **Connect** reads **Listen**, and **Stop** while
+it is on; the device line says *Device ID not heard yet*, then *Device ID 0x1001 · protocol rev 1 (heard)* from a heard
+read of `0xA000`.
+
+| The&nbsp;Listen&nbsp;line | When | What to do |
+|---|---|---|
+| *listens&nbsp;to&nbsp;USB&nbsp;CDC&nbsp;·&nbsp;bus&nbsp;2,&nbsp;device&nbsp;5* | a&nbsp;USB&nbsp;CDC&nbsp;port | Nothing: **Listen** starts. |
+| *listens&nbsp;to&nbsp;a&nbsp;USB-UART&nbsp;bridge&nbsp;(FTDI)* | a&nbsp;bridge | Nothing. |
+| *not&nbsp;a&nbsp;USB&nbsp;port:&nbsp;cannot&nbsp;be&nbsp;listened&nbsp;to* | no&nbsp;USB&nbsp;under&nbsp;the&nbsp;port | The port stays in the list; Listen refuses it with the reason in the pill. |
+| *USBPcap&nbsp;is&nbsp;not&nbsp;installed* | Windows | **Get USBPcap…** opens its page. It is a capture driver, installed once as administrator; then unplug and plug the device again (the driver joins a device when it is plugged in). |
+| *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon` and `sudo setfacl -m u:$USER:r /dev/usbmon*`. The rule that lasts: `SUBSYSTEM=="usbmon", GROUP="dialout", MODE="0640"` in `/etc/udev/rules.d/60-usbmon.rules`, then `sudo udevadm trigger`. |
+| *no&nbsp;USB&nbsp;capture&nbsp;on&nbsp;this&nbsp;system* | no&nbsp;capture&nbsp;here | Nothing can be done from the Studio. |
+
+Under *USBPcap is not installed* a second line says what it is, and in Arabic the line wraps rather than cut. The line
+is read when a port is chosen, at the refresh button and at Connect.
+
+**The pill** reads *Listening · COM13 · USB CDC* on a blue tint, its own (3.8): not the connected green, nothing is
+being sent. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
+A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again.
+
+**What fills.** The Monitor marks who sent each line (10.2). The table, the chart, the CSV and the Dump fill from heard
+answers: a `READ_RESP` matched to a heard `READ` sets the registers it covers, and heard AUTO_SEND frames and fast
+blocks are taken as ever. A register the other program never reads stays `—`, with the tooltip *not read by the other
+program yet*. A heard write goes to the Dump's write card and the Monitor only: the table changes at the next heard
+read, the device being the truth. An error answer sets the rows' error, never *not available*: the Studio did not ask.
+
+**One point per round.** A poll ticks once for all its registers; another program's reads come one by one. The Studio
+takes its round for a poll: when an answer would set a register again the round is over and the chart gets its point
+and the CSV its row; a round left open ends after 250 ms. A program that reads one register twice in a row makes short
+rounds: more points, never wrong ones.
+
+The status bar's first field and the Polling card read *heard 120 req/s*, and the Auto send row *heard 100/s* while
+AUTO_SEND frames come. A stream's row reads *heard 10.0 k samples/s*, with what was lost.
+
+**Disabled while listening**, each with the tooltip *Listening: the Studio sends nothing*:
+
+| Control | While&nbsp;listening |
+|---|---|
+| Poll,&nbsp;the&nbsp;interval | Disabled. |
+| Allow&nbsp;writes | Unticked and disabled; no cell can be edited. It stays unticked after Stop. |
+| Quick&nbsp;write | Disabled, the panel saying why. |
+| Read&nbsp;now,&nbsp;the&nbsp;bulk&nbsp;write | Disabled in the table's right-click menu. |
+| Dump's&nbsp;Write… | Disabled. |
+| The&nbsp;Monitor's&nbsp;request&nbsp;row | Disabled; Log frames and Clear work. |
+| Auto&nbsp;send,&nbsp;its&nbsp;rate | Disabled; the rate box reads *listening*. |
+| A&nbsp;stream's&nbsp;Start | Disabled. The Plot and Log ticks work. |
+| Serve&nbsp;API | Disabled. A running API is stopped when listening starts, and said in the Log: its clients could send. |
+| A&nbsp;bus's&nbsp;presets | Disabled. |
+
+Record CSV, the chart, the Dump, notes, exports and Reconnect by itself work. Even a request that got past all of
+these would stop at the engine (22.3), and at the link, which writes nothing.
+
+**Lost captures.** A capture can miss traffic, and nothing in the file says so; the signs are read at the EVRe level:
+a request no answer came to, an answer with no request, a stream's numbers that skip, and on Linux usbmon's own count.
+They are said in the pill's tooltip and in the Log, at most once a minute: *the capture may have lost data: 3 requests
+without an answer, 100 records lost*.
 
 ## 4. The Registers tab
 
@@ -2527,6 +2608,25 @@ A frame marked `(not a pending request)` is usually one of these:
 
 Frames with a wrong CRC or end byte are not shown. They only increase the *Bad frames* counter in the status bar.
 
+**Listening (3.11).** The marks say who sent each line, in place of `TX` and `RX`:
+
+```
+14:03:12.345  listening on COM13 (bus 2, device 5): ->DEV the other program's request, DEV-> the device's answer
+14:03:12.345  ->DEV  7B 01 AA 00 A0 04 00 4E 21 7D   READ
+14:03:12.346  DEV->  7B 01 AB 00 A0 04 00 01 10 01 3F B3 19 7D   READ_RESP
+14:03:12.350  DEV->  7B 01 AB 10 D0 02 00 05 00 0E 1E 7D   READ_RESP (no request heard)
+14:03:12.400  ??     12 bytes not EVRe
+```
+
+| Mark | Meaning |
+|---|---|
+| `->DEV` | The other program's request, with its function's name. |
+| `DEV->` | The device's bytes. *(no request heard)*: an answer the capture heard no request for, counted *unmatched*. |
+| `??` | Bytes that are no EVRe frame, one line with their count. |
+
+The marks are ASCII and not translated, as `TX` and `RX`. Every line of the view runs left to right, in Arabic too: the
+time and the mark first, whatever the words after them. The request row is disabled while listening.
+
 ### 10.3 Limits
 
 At thousands of frames per second, the Monitor would slow the window down, so it keeps two limits:
@@ -3154,6 +3254,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | Key | Default | Saved | Meaning |
 |---|---|---|---|
 | `link/tcp` | `true` | on&nbsp;close | TCP (true) or Serial / USB. |
+| `link/listen` | `false` | on&nbsp;close | Listen (true) chosen in the card (3.11): it goes before `link/tcp`. |
 | `link/host` | `127.0.0.1` | on&nbsp;close | TCP host. |
 | `link/port` | `1210` | on&nbsp;close | TCP port. |
 | `link/serial` | empty | on&nbsp;close | Serial port name. |
@@ -3413,6 +3514,16 @@ The map's `device_id` does not match the device's DEVICE_ID. You may be connecte
 These are late answers after a timeout, echoes of the Studio's own requests on a half-duplex RS-485 line, or frames the device sends by itself (with **Auto send** on, its read-only block at `0xD000`, which the Studio takes into the table: 13.8). They do no harm. Many late answers mean the Timeout is too short for the link.
 
 # Part II. Reference
+
+### 15.17 Listen says *USBPcap is not installed*, or *not a USB port*
+
+- *USBPcap is not installed*: **Get USBPcap…** on the Listen line opens its page. Install it once, as administrator, then
+  unplug and plug the device again: the driver joins a device when it is plugged in.
+- *usbmon is not loaded or /dev/usbmon2 is not readable*: **Copy the commands**, paste them into a terminal. Help,
+  Connecting, has the udev rule that lasts.
+- *not a USB port: cannot be listened to*: a motherboard's COM port, Bluetooth and virtual ports have no USB traffic to
+  read. See 3.11.
+- *no USB capture on this system*: this build has no capture for this system yet (3.11).
 
 ## 16. The device map format "evre-map/1"
 
@@ -4807,7 +4918,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/register_model.h`,&nbsp;`.cpp` | `RegisterModel` (the table's model), `RegisterFilter` (search and groups) |
 | `src/api/api_server.h`,&nbsp;`.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
 | `src/ui/main_window.h`,&nbsp;`.cpp` | `MainWindow`: builds the window, wires the parts to the engine, sync per frame, writes, CSV, API, log |
-| `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection, devices, map, polling and recording, fast streams, and API cards; link settings |
+| `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection (with Listen's segment and line, 3.11), devices, map, polling and recording, fast streams, and API cards; link settings |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
 | `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon; `setLines`: always that many lines tall, the text wrapped between words and cut at the end of the last, Auto send's note) |
@@ -5008,6 +5119,12 @@ event; the other bridges and USB CDC have no framing. The live sources and the l
 not here yet: a test gives the target with the file (`setListenFileForTests`), and a port with neither is refused
 in plain words.
 
+`UsbPortState` is what Listen can do with a port: its kind (`Listenable`, `NotUsb`, `NoUsbPcap`, `NoUsbmon`, `NoCapture`)
+and, when it can be heard, the target. `UsbTarget::stateOf(port)` is the one place the system is asked, on the window's
+thread: the Listen line, the pill's refusal and Connect all read it. Each system's lookup and install check come in
+there, and its live capture in `IoEngine::connectListen`, the branch without a file; until then every port is
+`NoCapture`. `UsbTarget::stateForTests` forces a port's state.
+
 *Tested by:* `evre_listen_test` (26.10).
 
 **The listening link (`listen_link`).** `evre::ListenLink` is a `Link` that owns a `UsbCapture` (its child) and never
@@ -5067,9 +5184,15 @@ polls and no enables, and the rest of the bytes' way is:
   server is off*). The master is not changed: with the keep-alive off and nothing queued it has nothing to send, and
   `ListenLink::send()` is the last belt.
 
-Until the Connection card offers Listen, a window reaches this only through `setListenPortForTests` (Connect then
-listens on that port, and Reconnect by itself listens again); the device line says *Device ID not heard yet*, then
-*Device ID 0x1001 · protocol rev 1 (heard)*.
+**Listening in the window.** `MainWindow::connectLink` reads `Sidebar::isListen()`: a port `listenRefusal` refuses gets
+the reason in the pill and nothing else, at a Connect; a try by itself goes on to the engine, where the link refuses it
+in the same words, since the device may be back at the next. `showListening(port, link)` holds what the window knows
+from Connect until Stop or the end: `RegisterModel::setListening` keeps writes off and gives a value never read its
+tooltip, `RegistersTab`, `MonitorTab` and `Sidebar::setListening` disable what would send (`listeningText()`, one text
+for all), and the offers of Auto send and the streams and the bus's presets say why. The disabled controls are the
+first belt, the engine's guards the second, the link the last. A link that opens at once can open after Stop was
+pressed: `onOpened` leaves it to the engine's close. `Sidebar::showStats` shows the heard rates and keeps the pill's
+tooltip; `logLostCaptures` says the signs at most once a minute.
 
 *Tested by:* the GUI test's Listen steps (26.2), `evre_listen_test` (26.10).
 
@@ -5233,7 +5356,7 @@ stays sharp at any scaling; the temp folder when the cache folder cannot be writ
 it fails the build's tests:
 
 - **Contrast.** Every text colour (text, muted, accent, good, warn, bad) is 4.5:1 or more on the window, the panels
-  and the cards. White text sits on `accentFill` / `badFill` (the primary and danger buttons, a checked segment,
+  and the cards, and Listen's pill text (`listen`, the accent's blue moved to 4.5:1 on its own tint). White text sits on `accentFill` / `badFill` (the primary and danger buttons, a checked segment,
   the chart's cursor tags), not on `accent` / `bad` (3.2 and 3.0 in the dark look). The edge of an input box or a
   check box (`control`) is 3:1 or more; card and table edges stay subtle (they only group). The light look's tints
   behind coloured text are lighter (alpha 24, not 40) so that text keeps 4.5:1 on them.
@@ -6650,7 +6773,7 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   nothing; no crash. The tick off takes the line off.
 - **Listen, the scenes** (`listenScenes`, after the fast steps). What another program said, replayed from
   `tests/captures/` (26.10) into the real window: `setListenFileForTests` gives the engine the file and the target a
-  lookup would find, `setListenPortForTests` makes Connect listen. No fake device is needed and no test port is
+  lookup would find, `UsbTarget::stateForTests` the port's state, and Listen is chosen on the card. No fake device is needed and no test port is
   used; the window's link to the fake device is put back at the end. A scene replayed at once is one turn of the
   engine's loop, so no timer cuts a round short; a scene at its stamps shows what takes time.
     - `cdc_poll`, at once, every view from one replay: the Monitor's first line, the marks in place of TX and RX with
@@ -6661,7 +6784,7 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
       Dump's cards as the program reads, and the write card; `master.tx` unmoved and no send attempt
     - the same at its stamps: the rates measured while listening, no polls a second; the late answer, 700 ms after its
       request with a 500 ms Timeout: no answer to it, both counted unmatched
-    - Disconnect in the middle of a paced replay: nothing more is heard
+    - Stop in the middle of a paced replay: nothing more is heard
     - `cdc_quiet` at its stamps, a capture that stays open: the device line *not heard yet*, then marked *(heard)*
     - a port with no capture: refused with a plain reason
     - `ftdi_poll`: every register as in `cdc_poll`, bytes for bytes; `composite`: only our endpoints
@@ -6686,6 +6809,32 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   acknowledge), `read`, `setAutoSend`, `setFastStream` and `apiStart` refused with their texts; a map without the
   stream, a map loaded while listening; no `TX` line; Disconnect with AUTO_SEND's off and a stream's 0 due; and the
   link's own `send()`, counted and dropped. (`trySendingForTests` sets up what each path needs to send.)
+- **Listen, the card** (`listenCard`). A sidebar of its own, no link: a refusal on two lines holding the pill's height and
+  giving it back; the third segment and its tooltip; chosen, Baud and
+  Link hidden and the Listen line under the port box, Connect reads Listen, In flight muted with its tooltip; Serial /
+  USB gives all of it back; `link/listen` saved and restored. The Listen line's texts, each state forced by
+  `UsbTarget::stateForTests`: USB CDC with its bus and device, a bridge by name, not a USB port, USBPcap (its second
+  line, whole and held by the label's least height, and the button: `QDesktopServices::setUrlHandler` catches the
+  page), usbmon (the button: the clipboard, said in the status bar, a word joiner keeping the path whole), no capture.
+  The pill in both themes, read off the card's pixels: its own tint, not the connected green, the text at 4.5:1 on it;
+  whole, and the button reads Stop. From numbers given to `showStats`: the tooltip with nothing lost and with the signs
+  of a lost capture, *heard 120 req/s* in the Polling card, *heard 100/s* on the Auto send row, *heard 10.0 k samples/s*
+  and the lost count on a stream's row, and all of it gone when Listen is off.
+- **Listen, the window** (`listenWindow`). The real window, a capture that stays open (`cdc_quiet`), Serve API on with a
+  client in: the pill, its tooltip and Stop; the API stopped, the box unticked and said in the Log, the client hung up
+  on and no new one let in; the table's `—` with its tooltip. Each control disabled with its tooltip: Poll, the interval,
+  Serve API, Allow writes (and the model taking none, no cell editable), Quick write, the Monitor's row, Send no longer
+  a filled button, Auto send and its rate, the Dump's Write…, Read now and the bulk write in the table's menu; Log frames,
+  Record CSV and Reconnect by itself not. Then each is **tried**, by hand where it can be and by the signal it would
+  send, past the disabled control: `heard.sendAttempts` stays 0 and `master.tx` does not move. The status bar's *heard
+  N req/s* on `cdc_poll` at its stamps. Stop: Disconnected, the button Listen, every control and tooltip back, writes
+  still off. Stop right after Listen: Disconnected stays. A port that is not USB: refused in the pill and the Log, not
+  tried again, nothing disabled. On a bus its presets disabled. On the fast example map a stream's Start, disabled, then tried. Reconnect by itself:
+  three tries in a row, nothing sent, the controls off between them. The next link is an ordinary one.
+- **Listen, Arabic** (`listenArabic`). The segment, Stop, the pill and why a control is disabled in the glossary's words,
+  every Listen line translated and whole, each segment's text in its button; every Monitor line left to right; the
+  device line *not heard yet* at once when Listen is chosen; the window's minimum width at most 1280 px with Listen
+  chosen.
 - **Fast speed** (`fastSpeed`, after the fast streams step). `evre_fake_fast` with `--fast-rate 1000000` on port
   1240: both channels plotted over a 10 s window, the Chart tab shown, the stream on for 20 s. About 20 million
   records taken, none lost, no bad block, none left unshown (the rate's tooltip), the rate 0.95 to 1.04 M samples/s;
@@ -7278,7 +7427,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 894 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 959 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7302,7 +7451,12 @@ in English and Arabic, both themes: with a long port label cut, the pill *COM10 
 the device line as last seen (`<prefix>_serial_card_<en|ar>_<light|dark>.png`), with the port list opened over it
 (`<prefix>_serial_list_...`), with the Link row's list opened (`<prefix>_serial_link_...`), with the Baud box's rates
 opened (`<prefix>_serial_rates_...`), and with the Baud box emptied and the pill Connect gives then
-(`<prefix>_serial_baud_...`).
+(`<prefix>_serial_baud_...`); and Listen in English and Arabic, both themes, from a window of its own: the Connection
+card in each state of the Listen line (`<prefix>_listen_card_<cdc|bridge|notusb|usbpcap|usbmon|nocapture>_<en|ar>_<light|dark>.png`),
+a port refused (`_listen_card_refused_...`), listening with the pill and the device line heard (`_listen_card_on_...`), the
+sidebar (`_listen_side_...`), and in the middle of `cdc_poll` the Registers tab (`_listen_registers_...`), the window
+(`_listen_window_...`) and the Monitor with its marks and its row off, from the first line and at the end
+(`_listen_monitor_...`, `_listen_monitor_end_...`).
 
 `EVRE_DOCS_SHOT=<prefix>` makes the test take the pictures of README.md and STUDIO.md in a last step
 (`docsPictures`), after every check, adding none. It pictures real signals only: the example map on the fake device

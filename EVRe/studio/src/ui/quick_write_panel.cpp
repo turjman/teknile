@@ -218,8 +218,7 @@ void QuickWritePanel::rebuild() {
 	value_->setPlaceholderText(range.isEmpty() ? tr("value, 0x1F, 0b101, or a name")
 			: tr("value (%1), or a name").arg(range));
 	default_->setVisible(def.hasDefault());
-	default_->setToolTip(def.hasDefault() ? tr("Write the default: %1%2").arg(numberText(def.defaultValue), unit)
-			: QString());
+	defaultTip_ = def.hasDefault() ? tr("Write the default: %1%2").arg(numberText(def.defaultValue), unit) : QString();
 	fillNamedValues(def);
 	const bool withBits = bitsWritable(def);
 	bits_->setVisible(withBits && def.fields.isEmpty()); /* with fields the bits are always shown */
@@ -300,9 +299,14 @@ void QuickWritePanel::refresh() {
 	const RegisterModel::Row &row = model_->rows()[row_];
 	const bool writesAllowed = model_->writesEnabled();
 	const bool enabled = writesAllowed && connected_;
-	for (QWidget *control : std::initializer_list<QWidget *>{ value_, namedValues_, write_, default_, bitArea_ })
+	const QString listening = model_->listening() ? listeningText() : QString();
+	for (QWidget *control : std::initializer_list<QWidget *>{ value_, namedValues_, write_, default_, bitArea_ }) {
 		control->setEnabled(enabled);
-	hint_->setText(!writesAllowed ? tr("tick Allow writes to write") : !connected_ ? tr("not connected") : QString());
+		control->setToolTip(listening);
+	}
+	if (listening.isEmpty()) default_->setToolTip(defaultTip_);
+	hint_->setText(!listening.isEmpty() ? listening : !writesAllowed ? tr("tick Allow writes to write")
+			: !connected_ ? tr("not connected") : QString());
 	updateBroadcast();
 	if (!row.valid) return;
 	/* the list shows the device's value, except while the user is choosing in it */
@@ -318,9 +322,13 @@ void QuickWritePanel::refresh() {
 void QuickWritePanel::refreshBulk() {
 	const bool writesAllowed = model_->writesEnabled();
 	const bool enabled = writesAllowed && connected_ && problem_.isEmpty();
-	for (QWidget *control : std::initializer_list<QWidget *>{ value_, namedValues_, write_ })
+	const QString listening = model_->listening() ? listeningText() : QString();
+	for (QWidget *control : std::initializer_list<QWidget *>{ value_, namedValues_, write_ }) {
 		control->setEnabled(enabled);
-	hint_->setText(!writesAllowed ? tr("tick Allow writes to write") : !connected_ ? tr("not connected") : QString());
+		control->setToolTip(listening);
+	}
+	hint_->setText(!listening.isEmpty() ? listening : !writesAllowed ? tr("tick Allow writes to write")
+			: !connected_ ? tr("not connected") : QString());
 	updateBroadcast();
 	QStringList values; /* as the box would take them: the same text is one value for all */
 	bool allRead = true;
@@ -362,7 +370,7 @@ void QuickWritePanel::updateBroadcast() {
 	const QString refusal = broadcastRule_(model_->rows()[row_].def);
 	const bool typed = !value_->text().trimmed().isEmpty();
 	broadcast_->setEnabled(model_->writesEnabled() && connected_ && refusal.isEmpty() && typed);
-	broadcast_->setToolTip(!refusal.isEmpty() ? tr("No broadcast: %1").arg(refusal)
+	broadcast_->setToolTip(model_->listening() ? listeningText() : !refusal.isEmpty() ? tr("No broadcast: %1").arg(refusal)
 			: typed ? tr("The value typed, to every device on the link in one broadcast frame (slave 0). No device "
 						 "answers a broadcast: each one is read back afterwards.")
 					: tr("Type a value first: it goes to every device on the link in one broadcast frame (slave 0)."));

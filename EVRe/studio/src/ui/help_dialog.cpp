@@ -78,6 +78,25 @@ reset?</i>, <i>COM10 not found</i>); hover it for the system's own text, which t
 the device's ID as <i>last seen: Device ID …</i> while the link is down, until the next connect reads it again.
 Connected, the pill names the link: <i>COM13 @ 115200</i> on a UART, <i>COM13 · USB CDC</i> on USB CDC, where the
 baud rate means nothing (the Log keeps the number).</p>
+<h3>Listen</h3>
+<p><b>Listen</b> shows what <b>another program</b> says to a USB device, on a port that program holds. The Studio reads
+the USB traffic under the port with the system's capture, and <b>sends nothing</b>. USB devices only: USB CDC boards and
+USB-UART bridges; not a motherboard's COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
+everything on that USB device.</p>
+<ul>
+<li>The port box is the one of Serial / USB; the line under it says what can be heard, or why not. <b>Windows</b>:
+<b>USBPcap</b>, a capture driver, installed once as administrator; then unplug and plug the device again. <b>Linux</b>:
+<b>usbmon</b>: <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
+<code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>. The rule that lasts: <code>SUBSYSTEM=="usbmon", GROUP="dialout",
+MODE="0640"</code> in <code>/etc/udev/rules.d/60-usbmon.rules</code>, then <code>sudo udevadm trigger</code>.</li>
+<li><b>Listen</b> starts it, <b>Stop</b> ends it. The pill reads <i>Listening · COM13 · USB CDC</i> on blue; its tooltip
+says what is heard, and what a capture may have lost.</li>
+<li>The table, the chart, the CSV and the Dump fill from the answers to the other program's reads, one chart point and one
+CSV row per round of its reads. A register it never reads stays <i>—</i>. A heard write shows in the Dump's write card and
+the Monitor; the table changes at the next heard read.</li>
+<li>Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor's request row,
+Auto send, a stream's Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.</li>
+</ul>
 <h3>Options</h3>
 <ul>
 <li><b>Baud</b> (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
@@ -737,6 +756,10 @@ to say it arrived; READ it to see.</p>
 0</i> on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see <b>Connecting</b>), which every device
 takes and none answers. A device chosen again gets back the function chosen before.</p>
 <p>A READ's answer also shows at the top of the <b>Dump</b> tab, decoded by the map.</p>
+<p>While <b>Listen</b> is on (see <b>Connecting</b>) the request row is disabled and each line says who sent it, in place
+of <code>TX</code> and <code>RX</code>: <code>-&gt;DEV</code> the other program's request, <code>DEV-&gt;</code> the
+device's answer, <code>??</code> bytes that are no EVRe frame. <i>(no request heard)</i>: an answer the capture heard no
+request for.</p>
 )HTML") },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Log & pop-ups"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Log &amp; pop-ups</h2>

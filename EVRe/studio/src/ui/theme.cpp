@@ -34,6 +34,7 @@ ThemeColors darkColors() {
 	c.muted = QColor(0x8B, 0x93, 0xA1);
 	c.accent = QColor(0x4F, 0x8C, 0xFF);
 	c.accentFill = QColor(0x25, 0x63, 0xEB); /* white on it 5.2:1 (on accent: 3.2) */
+	c.listen = QColor(0x7A, 0xA7, 0xFF);
 	c.badFill = QColor(0xDC, 0x26, 0x26);    /* white on it 4.8:1 (on bad: 3.0) */
 	c.control = QColor(0x6B, 0x75, 0x86);    /* 3.4:1 or more to the window, panels and cards */
 	c.good = QColor(0x3E, 0xCF, 0x8E);
@@ -56,6 +57,7 @@ ThemeColors lightColors() {
 	c.muted = QColor(0x64, 0x6D, 0x7A);
 	c.accent = QColor(0x25, 0x63, 0xEB);
 	c.accentFill = c.accent;                 /* white on it 5.2:1 */
+	c.listen = QColor(0x1D, 0x4E, 0xD8);
 	c.badFill = QColor(0xC8, 0x1E, 0x1E);    /* white on it 5.7:1 */
 	c.control = QColor(0x7F, 0x89, 0x98);    /* 3.1:1 or more to the window, panels and cards */
 	/* as text, 4.5:1 or more on white, the window and their tints (the ones of D9 77 06 and 16 A3 4A were 3.2) */
@@ -176,8 +178,8 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 QLabel#fastStreamName { font-weight: 700; }
 QLabel#ramNeed { color: %MUTED%; }
 QLabel#ramNeed[warn="true"] { color: %WARN%; }
-QLabel#autoSendNote, QLabel#autoSendRates, QLabel#baudIgnored { color: %MUTED%; }
-QLabel#autoSendNote[warn="true"], QLabel#autoSendRates[warn="true"] { color: %WARN%; }
+QLabel#autoSendNote, QLabel#autoSendRates, QLabel#baudIgnored, QLabel#listenLine, QLabel#listenHint { color: %MUTED%; }
+QLabel#autoSendNote[warn="true"], QLabel#autoSendRates[warn="true"], QLabel#listenLine[warn="true"] { color: %WARN%; }
 QLabel#baudLabel { color: %MUTED%; }
 QLabel#dumpBanner { color: %WARN%; padding: 0 2px; }
 QFrame#dumpBannerLine { background: %WARN%; border: none; }
@@ -229,6 +231,7 @@ QPushButton:checked { background: %ACCENTA%; border-color: %ACCENT%; }
 QPushButton#primary { background: %AFILL%; border: 1px solid %AFILL%; color: white; font-weight: 600;
   padding: 7px 11px; }
 QPushButton#primary:hover { background: %AFILLH%; border-color: %AFILLH%; }
+QPushButton#primary:disabled { background: %S2%; border-color: %BORDER%; color: %MUTED%; }
 QPushButton#hold[live="false"] { background: %AFILL%; border-color: %AFILL%; color: white; }
 QPushButton#hold[stopped="true"] { background: %WARNA%; border-color: %WARN%; color: %WARN%; }
 QPushButton#triggerArm[primary="true"] { background: %AFILL%; border-color: %AFILL%; color: white; font-weight: 600; }
@@ -261,6 +264,7 @@ QLabel#pill { border-radius: 12px; padding: 6px 12px; font-weight: 600; border: 
 QLabel#pill[state="idle"] { background: transparent; color: %MUTED%; }
 QLabel#pill[state="busy"] { background: %WARNA%; color: %WARN%; }
 QLabel#pill[state="ok"] { background: %GOODA%; color: %GOOD%; }
+QLabel#pill[state="listen"] { background: %LISTENA%; color: %LISTEN%; }
 QLabel#pill[state="error"] { background: %BADA%; color: %BAD%; }
 )"
 		/* tabs: text with an accent underline */
@@ -348,6 +352,8 @@ QString styleSheet(const ThemeColors &c, bool dark) {
 		{ "%ACCENT%", cssColor(c.accent) },
 		{ "%ACCENTH%", cssColor(c.accent.lighter(112)) }, /* hovered */
 		{ "%ACCENTA%", cssColorWithAlpha(c.accent, 60) },
+		{ "%LISTEN%", cssColor(c.listen) },
+		{ "%LISTENA%", cssColorWithAlpha(c.listen, tint) },
 		{ "%AFILLH%", cssColor(c.accentFill.lighter(106)) }, /* hovered: white on it still 4.5:1 */
 		{ "%AFILL%", cssColor(c.accentFill) },
 		{ "%BFILL%", cssColor(c.badFill) },

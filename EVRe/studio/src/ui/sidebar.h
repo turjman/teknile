@@ -2,10 +2,13 @@
 /* The sidebar at the left of the window: a column of cards, scrolled when the
  * window is not tall enough.
  *
- *  - Connection: TCP (host, port, a token for the map's login register) or
- *    a serial port (the ports found, the baud rate, the Link: USB CDC or a
- *    UART, told apart by the port's USB IDs or chosen); the slave address, the
- *    answer timeout, the requests in flight; Reconnect by itself; Connect,
+ *  - Connection: TCP (host, port, a token for the map's login register), a
+ *    serial port (the ports found, the baud rate, the Link: USB CDC or a
+ *    UART, told apart by the port's USB IDs or chosen), or Listen (the same
+ *    ports, and the Listen line: what can be heard on the port, or why not,
+ *    with a button when something can be done about it; "link/listen"); the
+ *    slave address, the answer timeout, the requests in flight (muted in
+ *    Listen: nothing is sent); Reconnect by itself; Connect (Listen, Stop),
  *    with the link's state (the pill) and the device's ID under it.
  *  - Devices on the link: one device (the map's) or a bus of several (BusPanel,
  *    ui/bus_panel.h).
@@ -77,6 +80,7 @@ public:
 
 	/* the connection card */
 	bool isTcp() const;
+	bool isListen() const;       /* Listen: the port is heard, not opened */
 	QString host() const;        /* without spaces around it */
 	quint16 port() const;
 	QString token() const;       /* empty: none */
@@ -116,6 +120,19 @@ public:
 	void showConnecting();
 	/* note: a line the pill's tooltip adds under its text (the baud rate a USB CDC port ignores) */
 	void showConnected(const QString &link, const QString &note = QString());
+	/* the pill on the accent tint, not the connected green: nothing is sent. link: listenLinkText */
+	void showListening(const QString &link);
+	/* a listening link as the pill names it, one left-to-right piece: "COM13 · USB CDC", "COM13 · FTDI" */
+	static QString listenLinkText(const QString &port, const UsbTarget &target);
+	/* why Listen refuses this port, in the pill's words; empty: it does not */
+	static QString listenRefusal(const QString &port, const UsbPortState &state);
+	/* the status bar's and the polling card's "heard 120 req/s" */
+	static QString heardRateText(double requestsHz);
+	/* the signs of a capture that lost something, one sentence for the pill's tooltip and the Log; empty: none */
+	static QString lostCapturesText(const IoEngine::Stats &stats);
+	void showListenLine();               /* the Listen line for the port selected, as the system says it now */
+	/* Listen is on or off: Poll, its interval and Serve API disabled, saying why */
+	void setListening(bool on);
 	/* a serial link as the pill names it, one left-to-right piece: "COM13 @ 115200" on a UART (baudLimited), where the
 	 * number is the link's speed, "COM13 · USB CDC" on USB CDC, where it is none */
 	static QString serialLinkText(const QString &port, qint32 baud, bool baudLimited);
@@ -206,6 +223,7 @@ public:
 
 signals:
 	void connectClicked();
+	void linkChoiceChanged();      /* TCP, Serial / USB or Listen chosen */
 	void refreshPortsClicked();
 	void slaveChanged(int slave);  /* the Slave box (one device: the user's choice; a bus sets it, disabled) */
 	void inFlightChanged();
@@ -257,6 +275,10 @@ private:
 	void showSerialKind();               /* the Link row's Auto item and the port box's tooltip, for the port selected */
 	void fitKindBox();                   /* the Link box as wide as its widest short text */
 	void showBaudIgnored();              /* the Baud row faint, "the baud rate is not used" under, while Link means USB CDC */
+	void showLinkChoice();               /* the card for the segment chosen: Listen's line, In flight, what Connect reads */
+	void listenActionClicked();          /* the Listen line's button */
+	QString connectText() const;         /* Connect, or Listen */
+	void showHeard(const IoEngine::Stats &stats); /* the pill's tooltip, what is heard */
 	int savedInFlight(bool tcp) const;   /* In flight is kept per link type: TCP pipelines, a UART does not */
 	void showPollRate(const IoEngine::Stats &stats, bool connected);
 	void showSavedRate();                /* the list at the saved rate, or the nearest at or below; the note if moved */
@@ -273,7 +295,7 @@ private:
 	void showApiState(const IoEngine::Stats &stats);
 
 	/* the connection card */
-	QPushButton *tcpButton_, *serialButton_;
+	QPushButton *tcpButton_, *serialButton_, *listenButton_;
 	QStackedWidget *linkStack_;  /* the TCP fields or the serial ones */
 	QLineEdit *host_, *token_;
 	QSpinBox *port_;
@@ -282,10 +304,19 @@ private:
 	QLabel *baudLabel_;
 	ElidedLabel *baudIgnored_;   /* "USB CDC: the baud rate is not used", close under the Baud box; hidden on a UART */
 	QGridLayout *serialRows_ = nullptr; /* Baud and Link */
+	QWidget *serialRowsBox_;     /* the same, hidden in Listen */
+	QWidget *listenBox_;         /* the Listen line, shown in Listen */
+	ElidedLabel *listenLine_;    /* what is listened to, or why not; wraps, never cut */
+	ElidedLabel *listenHint_;    /* a second line, when the state has one */
+	QPushButton *listenAction_;  /* opens the page or copies the commands; only when something can be done */
+	QLabel *inFlightLabel_, *inFlightRange_;
+	QString inFlightHelp_;       /* In flight's tooltip when not in Listen */
 	QString baudHelp_;           /* the Baud box's tooltip on a UART */
 	LimitSpinBox *slave_, *timeout_, *inFlight_;
 	QCheckBox *autoReconnect_;
 	QPushButton *connectButton_;
+	bool connectOffered_ = true; /* the button reads Connect or Listen, whichever the segment says: not Stop or Cancel */
+	bool listening_ = false;     /* Listen is on */
 	QPushButton *refreshButton_;  /* the serial ports looked for again */
 	/* the pill: one line, a long text cut in the middle, the whole of it in the tooltip; an error wraps, never cut */
 	ElidedLabel *linkState_;
@@ -306,11 +337,14 @@ private:
 	int savedHz_ = 100;           /* the rate saved (poll/autoSendHz): the list may show a lower one, the map's */
 	bool autoSendLimited_ = false; /* the list is the map's limits', not all 16 */
 	QString rateHelp_;            /* the list's tooltip while offered (not offered: the reason) */
+	QString intervalHelp_;        /* the interval's tooltip when not in Listen */
 	/* the note under the Auto send row and what it is made of */
 	ElidedLabel *autoSendNote_;
 	QString movedNote_;           /* the list shows another rate than the saved one: the map's */
 	QString capNote_, capWhy_;    /* the UART set a lower rate than chosen, and the Log's sentence */
 	QString shortfall_, shortfallWhy_; /* fewer frames come than were asked for */
+	QString heardNote_;           /* Listen: "heard 100/s", the frames another program asked the device for */
+	QString listenText_, listenLink_; /* the pill while listening, and what it shrinks to */
 	int takenHz_ = 0;             /* the rate the device was set to; 0: off */
 	QElapsedTimer autoSendClock_;
 	qint64 clockShiftMs_ = 0;     /* tests */
@@ -348,6 +382,7 @@ private:
 	/* the API card */
 	QCheckBox *apiServe_, *apiNetwork_, *apiWrites_, *apiDanger_;
 	QLabel *apiInfo_;
+	QString apiServeHelp_;        /* Serve API's tooltip when not listening */
 
 	QPushButton *themeButton_;
 	QComboBox *language_;         /* System, English, العربية: applied at the next start (language.h) */

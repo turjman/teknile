@@ -58,6 +58,13 @@ void RegistersTab::setConnected(bool connected) {
 	quickWrite_->setConnected(connected);
 }
 
+void RegistersTab::setListening(bool on) {
+	if (on) allowWrites_->setChecked(false);
+	allowWrites_->setEnabled(!on);
+	allowWrites_->setToolTip(on ? listeningText() : allowWritesHelp_);
+	quickWrite_->setConnected(connected_); /* the panel reads the model again */
+}
+
 void RegistersTab::setDevice(int slave) { filter_->setDevice(slave); }
 
 void RegistersTab::setDevices(const QVector<PickerDevice> &devices, int shown) {
@@ -143,8 +150,8 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 
 	allowWrites_ = new QCheckBox(tr("Allow writes"));
 	setHighlighted(allowWrites_, false, Theme::colors().warn); /* its bold width from the start: no jump at the first tick */
-	allowWrites_->setToolTip(
-			tr("Off: values cannot be edited. On: double-click an rw value to write it. ⚠ registers ask first."));
+	allowWritesHelp_ = tr("Off: values cannot be edited. On: double-click an rw value to write it. ⚠ registers ask first.");
+	allowWrites_->setToolTip(allowWritesHelp_);
 	connect(allowWrites_, &QCheckBox::toggled, this, [this](bool on) {
 		model_->setWritesEnabled(on);
 		setHighlighted(allowWrites_, on, Theme::colors().warn);
@@ -334,6 +341,10 @@ void RegistersTab::addRowActions(QMenu &menu, int row) {
 				for (const int r : reads) emit readRequested(r); /* the table follows through the engine */
 			});
 	read->setObjectName(QStringLiteral("readRows"));
+	if (model_->listening()) { /* a read is a request: the other program's reads fill the table */
+		read->setEnabled(false);
+		read->setToolTip(listeningText());
+	}
 	addBulkWriteAction(menu);
 	/* the values when the menu opened; several: a line each, the name and the value apart by a tab */
 	QString copied;
@@ -400,7 +411,8 @@ void RegistersTab::addBulkWriteAction(QMenu &menu) {
 	action->setObjectName(QStringLiteral("bulkWriteAction"));
 	/* not offered: why, as its tooltip (the menu shows tooltips) */
 	QString why;
-	if (!model_->writesEnabled()) why = tr("Tick Allow writes first");
+	if (model_->listening()) why = listeningText();
+	else if (!model_->writesEnabled()) why = tr("Tick Allow writes first");
 	else if (!connected_) why = tr("Not connected: connect to the device first");
 	else if (count < 2) why = tr("Select two or more rw registers of one type (Ctrl-click, Shift-click) to write one value "
 				"to all of them");

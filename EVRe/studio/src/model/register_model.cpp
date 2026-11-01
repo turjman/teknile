@@ -147,8 +147,13 @@ bool RegisterModel::isStale(const Row &row) const {
 }
 
 void RegisterModel::setWritesEnabled(bool on) {
-	writesEnabled_ = on;
+	writesEnabled_ = on && !listening_;
 	refreshColumns(ColValue, ColValue); /* the cells become editable or not */
+}
+
+void RegisterModel::setListening(bool on) {
+	listening_ = on;
+	setWritesEnabled(writesEnabled_);
 }
 
 int RegisterModel::plotLimitFor(double samplesPerSecond) {
@@ -230,6 +235,8 @@ QVariant RegisterModel::data(const QModelIndex &index, int role) const {
 		if (column == ColPlot && !row.def.isNumeric()) return tr("Not plotted: a bytes register is not a number");
 		if (column == ColPlot && !row.def.plottable)
 			return tr("Not plotted: the map marks it a fixed value (\"plot\": false, the Map editor's plot box)");
+		if (column == ColValue && listening_ && !row.valid && !row.unavailable && row.error.isEmpty())
+			return tr("not read by the other program yet");
 		return toolTip(row);
 	case Qt::TextAlignmentRole: return int(alignment(column));
 	case Qt::FontRole: return font(column);

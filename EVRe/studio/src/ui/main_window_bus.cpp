@@ -95,6 +95,7 @@ QString MainWindow::broadcastRefusal(uint16_t addr, int count) const {
 
 /* the presets are offered only when a click can send one: the link up, Allow writes on */
 QString MainWindow::presetsBlocked() const {
+	if (listening()) return listeningText();
 	if (!connected_) return tr("Not connected: a broadcast needs the link.");
 	if (!model_->writesEnabled()) return tr("Writes are off: tick Allow writes on the Registers tab to broadcast.");
 	return {};

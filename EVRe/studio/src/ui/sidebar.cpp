@@ -5,14 +5,17 @@
 #include <QAbstractItemView>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QEvent>
 #include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -27,6 +30,7 @@
 #include <QStyle>
 #include <QStyleOptionComboBox>
 #include <QStyledItemDelegate>
+#include <QUrl>
 #include <QValidator>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -43,6 +47,8 @@
 
 static const QString NOT_LOGGED_KEY = QStringLiteral("fast/notLogged"); /* the streams whose Log is off, by name */
 static const QString SERIAL_KIND_KEY = QStringLiteral("link/serialKind"); /* auto, cdc or uart */
+static const QString USBPCAP_PAGE = QStringLiteral("https://desowin.org/usbpcap/");
+static const QString USBMON_COMMANDS = QStringLiteral("sudo modprobe usbmon\nsudo setfacl -m u:$USER:r /dev/usbmon*");
 
 namespace {
 
@@ -154,14 +160,20 @@ Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 QWidget *Sidebar::buildConnectionCard() {
 	/* TCP or serial: a segmented choice over the fields of the one chosen */
 	tcpButton_ = segmentButton(tr("TCP"), "first");
-	serialButton_ = segmentButton(tr("Serial / USB"), "last");
+	serialButton_ = segmentButton(tr("Serial / USB"), "middle");
+	listenButton_ = segmentButton(tr("Listen"), "last");
+	listenButton_->setObjectName(QStringLiteral("linkListen"));
+	listenButton_->setToolTip(tr("Hear what another program says to a USB device, on a port that program holds. The "
+			"Studio sends nothing."));
 	auto *linkChoice = new QButtonGroup(this);
 	linkChoice->addButton(tcpButton_);
 	linkChoice->addButton(serialButton_);
+	linkChoice->addButton(listenButton_);
 	auto *choiceRow = new QHBoxLayout;
 	choiceRow->setSpacing(0);
 	choiceRow->addWidget(tcpButton_, 1);
 	choiceRow->addWidget(serialButton_, 1);
+	choiceRow->addWidget(listenButton_, 1);
 	QWidget *tcpFields = buildTcpFields();
 	QWidget *serialFields = buildSerialFields();
 	linkStack_ = new QStackedWidget;
@@ -171,6 +183,7 @@ QWidget *Sidebar::buildConnectionCard() {
 		linkStack_->setCurrentIndex(tcp ? 0 : 1);
 		inFlight_->setValue(savedInFlight(tcp));
 	});
+	connect(listenButton_, &QPushButton::toggled, this, &Sidebar::showLinkChoice);
 	QVBoxLayout *requestOptions = buildRequestOptions();
 	autoReconnect_ = new QCheckBox(tr("Reconnect by itself"));
 	QVBoxLayout *linkState = buildLinkState();
@@ -281,8 +294,31 @@ QWidget *Sidebar::buildSerialFields() {
 	portRow->addWidget(serialPort_, 1);
 	portRow->addWidget(refreshButton_);
 	layout->addLayout(portRow);
+	/* Listen shares the port box: under it, in place of Baud and Link, what can be heard on the port or why not. It
+	 * wraps rather than cuts (Arabic is longer); the button only when there is something to do about it */
+	listenLine_ = new ElidedLabel;
+	listenLine_->setObjectName(QStringLiteral("listenLine"));
+	listenLine_->setWraps(true);
+	listenHint_ = new ElidedLabel;
+	listenHint_->setObjectName(QStringLiteral("listenHint"));
+	listenHint_->setWraps(true);
+	listenAction_ = new QPushButton;
+	listenAction_->setObjectName(QStringLiteral("listenAction"));
+	listenAction_->setCursor(Qt::PointingHandCursor);
+	connect(listenAction_, &QPushButton::clicked, this, &Sidebar::listenActionClicked);
+	listenBox_ = new QWidget;
+	auto *listenRows = new QVBoxLayout(listenBox_);
+	listenRows->setContentsMargins(0, 0, 0, 0);
+	listenRows->setSpacing(4);
+	listenRows->addWidget(listenLine_);
+	listenRows->addWidget(listenHint_);
+	listenRows->addWidget(listenAction_);
+	listenBox_->hide();
+	layout->addWidget(listenBox_);
 	/* Baud and Link in a grid: their boxes start at the same place whatever the labels' lengths (Arabic too) */
-	auto *rows = new QGridLayout;
+	serialRowsBox_ = new QWidget;
+	auto *rows = new QGridLayout(serialRowsBox_);
+	rows->setContentsMargins(0, 0, 0, 0);
 	rows->setColumnStretch(1, 1);
 	rows->addWidget(baudLabel_, 0, 0);
 	rows->addWidget(baud_, 0, 1);
@@ -294,7 +330,7 @@ QWidget *Sidebar::buildSerialFields() {
 	kindLabel->setToolTip(kindHelp);
 	rows->addWidget(kindLabel, 3, 0);
 	rows->addWidget(serialKind_, 3, 1);
-	layout->addLayout(rows);
+	layout->addWidget(serialRowsBox_);
 	serialRows_ = rows;
 	showBaudIgnored();
 	return fields;
@@ -320,16 +356,19 @@ QVBoxLayout *Sidebar::buildRequestOptions() {
 	 * In flight holds several polls' reads */
 	inFlight_ = new LimitSpinBox;
 	inFlight_->setLimits(1, 1024);
-	inFlight_->setHelp(tr("Requests sent before their answers come. 1: one at a time, for a device on a UART.\n"
+	inFlightHelp_ = tr("Requests sent before their answers come. 1: one at a time, for a device on a UART.\n"
 			"More: pipelined, much faster over TCP to a server that takes several at once "
 			"(a TCP gateway usually does).\n"
 			"A poll is one read per block: polls overlap only with In flight >= 2 x blocks.\n"
-			"Over Wi-Fi (several ms per answer) 1000 polls/s needs about (latency ms) x blocks."));
+			"Over Wi-Fi (several ms per answer) 1000 polls/s needs about (latency ms) x blocks.");
+	inFlight_->setHelp(inFlightHelp_);
 	auto *inFlightRow = new QHBoxLayout;
-	inFlightRow->addWidget(mutedLabel(tr("In flight")));
+	inFlightLabel_ = mutedLabel(tr("In flight"));
+	inFlightRow->addWidget(inFlightLabel_);
 	inFlightRow->addWidget(inFlight_);
 	/* the range in view before anything is typed: a number past it is taken to the nearest end */
-	inFlightRow->addWidget(mutedLabel(tr("%1 – %2").arg(inFlight_->minimum()).arg(inFlight_->maximum())));
+	inFlightRange_ = mutedLabel(tr("%1 – %2").arg(inFlight_->minimum()).arg(inFlight_->maximum()));
+	inFlightRow->addWidget(inFlightRange_);
 	inFlightRow->addStretch();
 	/* saved on every change, for the link type shown: loading one on a switch
 	 * must not overwrite the other */
@@ -411,9 +450,10 @@ QWidget *Sidebar::buildPollingCard() {
 	interval_->setStepType(QAbstractSpinBox::AdaptiveDecimalStepType); /* 10 -> 9, 1 -> 0.9, 0.1 -> 0.09 */
 	interval_->setSuffix(QStringLiteral(" ms"));
 	interval_->setSpecialValueText(tr("max")); /* 0: the next poll as soon as one ends */
-	interval_->setToolTip(tr("Time between polls: type it, or the arrows / wheel (they step by a tenth:\n"
+	intervalHelp_ = tr("Time between polls: type it, or the arrows / wheel (they step by a tenth:\n"
 			"1 -> 0.9 -> ... 0.1 -> 0.09). 0.25 ms = 4000 polls/s; \"max\" (0) = back to back.\n"
-			"The device and the link set the real limit: see the poll rate below."));
+			"The device and the link set the real limit: see the poll rate below.");
+	interval_->setToolTip(intervalHelp_);
 	connect(interval_, &QDoubleSpinBox::valueChanged, this, [this] {
 		emit pollingChanged();
 		emit timingChanged();
@@ -535,7 +575,8 @@ QWidget *Sidebar::buildApiCard() {
 	setHighlighted(apiDanger_, false, Theme::colors().bad);
 	apiInfo_ = mutedLabel(QString());
 	apiInfo_->setWordWrap(true);
-	apiServe_->setToolTip(tr("EVRe frames on port 1219, JSON lines on port 1220 (Help: API)"));
+	apiServeHelp_ = tr("EVRe frames on port 1219, JSON lines on port 1220 (Help: API)");
+	apiServe_->setToolTip(apiServeHelp_);
 	apiWrites_->setToolTip(tr("Off: clients can read and stream only. Not remembered: off at every start."));
 	apiDanger_->setToolTip(
 			tr("Also the registers marked ⚠ (the ones that move, switch or reset something). Not remembered."));
@@ -614,6 +655,7 @@ void Sidebar::addFooter(QVBoxLayout *layout) {
 void Sidebar::restoreLinkSettings() {
 	QSettings settings;
 	(settings.value(QStringLiteral("link/tcp"), true).toBool() ? tcpButton_ : serialButton_)->setChecked(true);
+	if (settings.value(QStringLiteral("link/listen"), false).toBool()) listenButton_->setChecked(true);
 	linkStack_->setCurrentIndex(tcpButton_->isChecked() ? 0 : 1);
 	inFlight_->setValue(savedInFlight(tcpButton_->isChecked()));
 	host_->setText(settings.value(QStringLiteral("link/host"), QStringLiteral("127.0.0.1")).toString());
@@ -647,6 +689,7 @@ void Sidebar::restoreApiSettings() {
 void Sidebar::saveSettings() const {
 	QSettings settings;
 	settings.setValue(QStringLiteral("link/tcp"), isTcp());
+	settings.setValue(QStringLiteral("link/listen"), isListen());
 	settings.setValue(QStringLiteral("link/host"), host_->text());
 	settings.setValue(QStringLiteral("link/port"), port_->value());
 	settings.setValue(QStringLiteral("link/serial"), serialPort_->currentData().toString());
@@ -699,6 +742,8 @@ void Sidebar::tickApiSwitches(bool serve, bool writes, bool danger) {
 /* ------------------------------------------------------ the connection card */
 
 bool Sidebar::isTcp() const { return tcpButton_->isChecked(); }
+
+bool Sidebar::isListen() const { return listenButton_->isChecked(); }
 
 QString Sidebar::host() const { return host_->text().trimmed(); }
 
@@ -847,6 +892,126 @@ void Sidebar::showSerialKind() {
 	fitKindBox();
 	serialPort_->setToolTip(serialPort_->currentData(FULL_LABEL_ROLE).toString());
 	showBaudIgnored();
+	showListenLine();
+}
+
+/* The card for the segment chosen. Listen has the port box of Serial / USB, without what only an open port needs: the
+ * port belongs to another program, whose baud rate it is. In flight stays in its place, muted */
+void Sidebar::showLinkChoice() {
+	const bool listen = isListen();
+	serialRowsBox_->setVisible(!listen);
+	listenBox_->setVisible(listen);
+	showListenLine();
+	inFlight_->setEnabled(!listen);
+	inFlightLabel_->setEnabled(!listen);
+	inFlightRange_->setEnabled(!listen);
+	if (listen) inFlight_->setToolTip(listeningText());
+	else inFlight_->setHelp(inFlightHelp_);
+	inFlightLabel_->setToolTip(listen ? listeningText() : QString());
+	inFlightRange_->setToolTip(listen ? listeningText() : QString());
+	if (connectOffered_) setConnectButton(connectText(), QStringLiteral("primary"));
+	emit linkChoiceChanged();
+}
+
+/* What can be heard on the port selected, or why not, and what to do about it */
+void Sidebar::showListenLine() {
+	if (!isListen()) return;
+	const UsbPortState state = UsbTarget::stateOf(serialPort());
+	QString line, why, hint, action, actionTip;
+	switch (state.kind) {
+	case UsbPortState::Listenable:
+		line = state.target.kind == UsbTarget::Cdc
+				? tr("listens to USB CDC · bus %1, device %2").arg(state.target.bus).arg(state.target.address)
+				: tr("listens to a USB-UART bridge (%1)").arg(listenLinkText(QString(), state.target));
+		why = tr("The Studio reads the USB traffic under this port and sends nothing. It sees everything on that USB "
+				"device (Help: Connecting).");
+		break;
+	case UsbPortState::NotUsb:
+		line = tr("not a USB port: cannot be listened to");
+		why = tr("Listen reads the USB traffic under a port. A motherboard's COM port, a Bluetooth or a virtual port has "
+				"none.");
+		break;
+	case UsbPortState::NoUsbPcap:
+		line = tr("USBPcap is not installed");
+		hint = tr("a capture driver, installed once as administrator; then unplug and plug the device again");
+		action = tr("Get USBPcap…");
+		actionTip = tr("Opens USBPcap's page in the browser: %1").arg(USBPCAP_PAGE);
+		break;
+	case UsbPortState::NoUsbmon:
+		line = listenRefusal(QString(), state);
+		why = tr("The system's USB capture. Help: Connecting has the rule that lasts.");
+		action = tr("Copy the commands");
+		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + USBMON_COMMANDS;
+		break;
+	case UsbPortState::NoCapture:
+		line = tr("no USB capture on this system");
+		why = tr("Listen reads the USB traffic with the system's capture, and this Studio has none here.");
+		break;
+	}
+	listenLine_->setFullText(line, why);
+	const bool warn = state.kind != UsbPortState::Listenable;
+	if (listenLine_->property("warn").toBool() != warn) {
+		listenLine_->setProperty("warn", warn);
+		repolish(listenLine_);
+	}
+	listenHint_->setFullText(hint);
+	listenHint_->setVisible(!hint.isEmpty());
+	listenAction_->setText(action);
+	listenAction_->setToolTip(actionTip);
+	listenAction_->setVisible(!action.isEmpty());
+}
+
+void Sidebar::listenActionClicked() {
+	if (UsbTarget::stateOf(serialPort()).kind == UsbPortState::NoUsbmon) {
+		QGuiApplication::clipboard()->setText(USBMON_COMMANDS);
+		emit statusMessage(tr("The commands are on the clipboard: paste them into a terminal"), 6000);
+	} else {
+		QDesktopServices::openUrl(QUrl(USBPCAP_PAGE));
+	}
+}
+
+/* the vendor's name for a bridge: the VIDs of serialKindOf's list that carry no framing, FTDI's that does */
+QString Sidebar::listenLinkText(const QString &port, const UsbTarget &target) {
+	QString what = tr("USB-UART");
+	if (target.kind == UsbTarget::Cdc) what = QStringLiteral("USB CDC");
+	else if (target.kind == UsbTarget::Ftdi) what = QStringLiteral("FTDI");
+	else if (target.vid == 0x10C4) what = QStringLiteral("CP210x");
+	else if (target.vid == 0x1A86) what = QStringLiteral("CH340");
+	else if (target.vid == 0x067B) what = QStringLiteral("PL2303");
+	else if (target.vid == 0x04D8) what = QStringLiteral("MCP2200");
+	return ltrPiece(port.isEmpty() ? what : QStringLiteral("%1 · %2").arg(port, what));
+}
+
+QString Sidebar::listenRefusal(const QString &port, const UsbPortState &state) {
+	const QString name = ltrPiece(port);
+	switch (state.kind) {
+	case UsbPortState::Listenable: return {};
+	case UsbPortState::NotUsb: return tr("%1 is not a USB port: it cannot be listened to").arg(name);
+	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
+	case UsbPortState::NoUsbmon:
+		/* a word joiner after each "/": a wrapped line never breaks the path ("/dev/" and "usbmon2" read as two things) */
+		return tr("usbmon is not loaded or %1 is not readable").arg(ltrPiece(QString(state.device)
+				.replace(QLatin1Char('/'), QStringLiteral("/") + QChar(0x2060))));
+	case UsbPortState::NoCapture: break;
+	}
+	return tr("%1 cannot be listened to: no USB capture on this system").arg(name);
+}
+
+/* a tenth below 100 a second, past it no decimals: as the polls' */
+static QString rateNumber(double hz) { return hz >= 100 ? QString::number(qRound(hz)) : QString::number(hz, 'f', 1); }
+
+QString Sidebar::heardRateText(double requestsHz) { return tr("heard %1 req/s").arg(rateNumber(requestsHz)); }
+
+QString Sidebar::lostCapturesText(const IoEngine::Stats &stats) {
+	quint64 records = 0;
+	for (const IoEngine::Stats::Fast &stream : stats.fast) records += stream.lost;
+	const int requests = int(stats.heard.unmatched), lost = int(records), dropped = int(stats.heard.dropped);
+	if (requests + lost + dropped == 0) return {};
+	QStringList signs;
+	if (requests) signs << (requests == 1 ? tr("1 request without an answer") : tr("%n requests without an answer", nullptr, requests));
+	if (lost) signs << (lost == 1 ? tr("1 record lost") : tr("%n records lost", nullptr, lost));
+	if (dropped) signs << (dropped == 1 ? tr("1 capture dropped") : tr("%n captures dropped", nullptr, dropped));
+	return tr("the capture may have lost data: %1").arg(signs.join(tr(", ", "between the items of a list in a sentence")));
 }
 
 /* The Baud row while the Link row means USB CDC (chosen, or Auto for the port selected): the number is ignored there,
@@ -904,19 +1069,61 @@ bool Sidebar::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void Sidebar::showDisconnected() {
-	setConnectButton(tr("Connect"), QStringLiteral("primary"));
+	setConnectButton(connectText(), QStringLiteral("primary"));
+	connectOffered_ = true;
 	showLinkState(QStringLiteral("idle"), tr("Disconnected"));
 }
+
+QString Sidebar::connectText() const { return isListen() ? tr("Listen") : tr("Connect"); }
 
 void Sidebar::showConnecting() {
 	showLinkState(QStringLiteral("busy"), tr("Connecting…"));
 	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
+	connectOffered_ = false;
 }
 
 void Sidebar::showConnected(const QString &link, const QString &note) {
 	const QString text = tr("Connected · %1").arg(link);
 	showLinkState(QStringLiteral("ok"), text, link, note.isEmpty() ? QString() : text + QLatin1Char('\n') + note);
 	setConnectButton(tr("Disconnect"), QStringLiteral("danger"));
+	connectOffered_ = false;
+}
+
+void Sidebar::showListening(const QString &link) {
+	listenText_ = tr("Listening · %1").arg(link);
+	listenLink_ = link;
+	showLinkState(QStringLiteral("listen"), listenText_, link);
+	setConnectButton(tr("Stop"), QStringLiteral("danger"));
+	connectOffered_ = false;
+}
+
+/* What is heard, under the state: the tooltip follows the numbers. The text stays as it is, one line */
+void Sidebar::showHeard(const IoEngine::Stats &stats) {
+	if (linkState_->property("state").toString() != QLatin1String("listen")) return;
+	const IoEngine::Stats::Heard &heard = stats.heard;
+	QString tip = listenText_ + QLatin1Char('\n')
+			+ tr("heard: %1 requests/s · %2 answers/s · %3 unmatched · %4 bytes not EVRe")
+					  .arg(rateNumber(heard.requestsHz), rateNumber(heard.answersHz)).arg(heard.unmatched).arg(heard.notEvreBytes);
+	const QString lost = lostCapturesText(stats);
+	if (!lost.isEmpty()) tip += QLatin1Char('\n') + lost;
+	const QString dot = QStringLiteral("●  ");
+	linkState_->setFullText(dot + listenText_, tip, dot + listenLink_);
+}
+
+void Sidebar::setListening(bool on) {
+	listening_ = on;
+	const QString why = listeningText();
+	poll_->setEnabled(!on);
+	poll_->setToolTip(on ? why : QString());
+	interval_->setEnabled(!on);
+	interval_->setToolTip(on ? why : intervalHelp_);
+	apiServe_->setEnabled(!on);
+	apiServe_->setToolTip(on ? why : apiServeHelp_);
+	if (!on) {
+		apiInfo_->clear(); /* why the API was stopped is over; the next look says what it is now */
+		heardNote_.clear();
+		showAutoSendNote();
+	}
 }
 
 /* the baud rate of a USB CDC port is a number nobody uses: the pill says what the link is instead */
@@ -927,11 +1134,15 @@ QString Sidebar::serialLinkText(const QString &port, qint32 baud, bool baudLimit
 /* The reason is the news: shown whole, its gist ("COM10 is gone:") on the first line and the rest under it when it does
  * not fit on one, so nothing of it is only in the tooltip. The system's text is for the tooltip */
 void Sidebar::showLinkError(const QString &why, const QString &detail) {
-	setConnectButton(tr("Connect"), QStringLiteral("primary"));
+	setConnectButton(connectText(), QStringLiteral("primary"));
+	connectOffered_ = true;
 	showLinkState(QStringLiteral("error"), why, QString(), detail.isEmpty() ? QString() : why + QLatin1Char('\n') + detail);
 }
 
-void Sidebar::showReconnecting() { setConnectButton(tr("Stop reconnecting"), QStringLiteral("primary")); }
+void Sidebar::showReconnecting() {
+	setConnectButton(tr("Stop reconnecting"), QStringLiteral("primary"));
+	connectOffered_ = false;
+}
 
 void Sidebar::setDeviceInfo(const QString &html) {
 	deviceInfo_->setText(html);
@@ -1111,6 +1322,7 @@ void Sidebar::watchAutoSend(bool running, double hz) {
 void Sidebar::showAutoSendNote() {
 	const bool warn = !shortfall_.isEmpty();
 	if (warn) autoSendNote_->setFullText(shortfall_, shortfallWhy_);
+	else if (!heardNote_.isEmpty()) autoSendNote_->setFullText(heardNote_, tr("Frames the other program asked the device for"));
 	else if (!capNote_.isEmpty()) autoSendNote_->setFullText(capNote_, capWhy_);
 	else autoSendNote_->setFullText(movedNote_);
 	if (autoSendNote_->property("warn").toBool() != warn) {
@@ -1398,11 +1610,11 @@ void Sidebar::setFastOffered(bool offered, const QString &why, const QString &sh
 void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 	for (int i = 0; i < fastRows_.size(); i++) {
 		const IoEngine::Stats::Fast *f = i < stats.fast.size() ? &stats.fast[i] : nullptr;
-		if (fastOffered_ && connected && f && f->on && f->rate > 0) showFastAbout(i, f->rate, true);
+		if ((fastOffered_ || listening_) && connected && f && f->on && f->rate > 0) showFastAbout(i, f->rate, true);
 		else if (f && f->setRate > 0) showFastAbout(i, f->setRate, false, true);
 		else showFastAbout(i, fastRows_[i].def.rate, false);
 	}
-	if (!fastOffered_ || !connected) return;
+	if ((!fastOffered_ && !listening_) || !connected) return;
 	auto samples = [](double hz) {
 		return hz >= 1e6 ? tr("%1 M samples/s").arg(hz / 1e6, 0, 'f', 2)
 				: hz >= 1e3 ? tr("%1 k samples/s").arg(hz / 1e3, 0, 'f', 1) : tr("%1 samples/s").arg(hz, 0, 'f', 1);
@@ -1421,12 +1633,15 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 			const QString ppm = QStringLiteral("%1%2 ppm").arg(f->ppm >= 0 ? QStringLiteral("+") : QString())
 					.arg(qRound(f->ppm));
 			/* a text of its own for the line's direction alone: Arabic keeps "(+32 ppm)" one left-to-right piece */
-			row.rate->setText(tr("%1 (%2)", "a stream's rate and its correction: 10.0 k samples/s (+32 ppm)")
-					.arg(samples(f->rate), ppm));
+			row.rate->setText(listening_ ? tr("heard %1").arg(samples(f->rate))
+					: tr("%1 (%2)", "a stream's rate and its correction: 10.0 k samples/s (+32 ppm)")
+							  .arg(samples(f->rate), ppm));
 			row.rate->setToolTip(tr("The samples a second as the Studio's clock measures the device's: the rate the "
 					"device was set to, corrected by %1 parts in a million.\n%2 samples in %3 blocks since Start; "
 					"%4 bad blocks; %5 samples not shown (the window did not take them in time).").arg(ppm).arg(f->records)
-					.arg(f->blocks).arg(f->badBlocks + f->newerBlocks).arg(f->notShown));
+					.arg(f->blocks).arg(f->badBlocks + f->newerBlocks).arg(f->notShown)
+					+ (listening_ ? QLatin1Char('\n') + tr("%1 samples lost: numbered by the device, not heard.").arg(f->lost)
+								  : QString()));
 		}
 		const quint64 lost = f ? f->lost : 0;
 		/* a count in groups of three, "1 024" (a space that does not break the line), kept one left-to-right number in
@@ -1465,6 +1680,7 @@ void Sidebar::showApiNotStarted(const QString &error) {
 void Sidebar::showStats(const IoEngine::Stats &stats, bool connected) {
 	showPollRate(stats, connected);
 	showFastStats(stats, connected);
+	showHeard(stats);
 	if (stats.recording) {
 		recordInfo_->setText(tr("Recording %1 columns · %2 rows\n%3").arg(stats.csvCols).arg(stats.csvRows)
 				.arg(QFileInfo(stats.csvFile).fileName()));
@@ -1475,14 +1691,21 @@ void Sidebar::showStats(const IoEngine::Stats &stats, bool connected) {
 void Sidebar::showPollRate(const IoEngine::Stats &stats, bool connected) {
 	/* a tenth below 100 a second; past it no decimals: the auto send line stays one line at 8000 frames and 4000 polls
 	 * a second, in the wider fonts of Linux too */
-	auto rate = [](double hz) { return hz >= 100 ? QString::number(qRound(hz)) : QString::number(hz, 'f', 1); };
+	const auto rate = rateNumber;
 	QString info = !connected ? tr("Not connected")
+			: listening_ ? heardRateText(stats.heard.requestsHz)
 			: stats.autoSend ? tr("Auto send %1/s · %2 polls/s").arg(rate(stats.autoSendHz), rate(stats.pollHz))
 			: tr("%1 polls/s, %2 registers in %3 reads").arg(stats.pollHz, 0, 'f', 1).arg(stats.pollable).arg(stats.blocks);
 	/* the rate alone here: the card keeps its height. Why it is slower than asked goes to the status bar; with auto
 	 * send on, the polls read only the rest, at whatever pace the frames leave them: no hint */
 	slowHint_ = connected && poll_->isChecked() && !stats.autoSend ? slowPollReason(stats) : QString();
 	pollInfo_->setText(info);
+	/* Listen: what comes without anyone polling, under the Auto send row that cannot be ticked */
+	const QString heard = listening_ && connected && stats.autoSend ? tr("heard %1/s").arg(rate(stats.autoSendHz)) : QString();
+	if (heard != heardNote_) {
+		heardNote_ = heard;
+		showAutoSendNote();
+	}
 	watchAutoSend(connected && stats.autoSend, stats.autoSendHz);
 }
 

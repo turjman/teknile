@@ -26,6 +26,7 @@ class QComboBox;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QPushButton;
 class RegisterModel;
 
 class MonitorTab : public QWidget {
@@ -52,6 +53,8 @@ public:
 	void setDevices(const QVector<PickerDevice> &devices);
 	/* a line of its own in the frames: a refusal, or what a broadcast did */
 	void showNote(const QString &text);
+	/* Listen is on: the request row disabled, each control saying why; the frames go on */
+	void setListening(bool on);
 
 signals:
 	void logFramesToggled(bool on);
@@ -68,5 +71,13 @@ private:
 	int functionBeforeBroadcast_ = 0; /* the function chosen before slave 0 locked it to WRITE: back after it */
 	QLineEdit *address_, *argument_;  /* argument: READ's count, or WRITE's hex bytes */
 	QLabel *argumentLabel_;           /* the argument's name: Count or Bytes */
+	QPushButton *send_;
 	QPlainTextEdit *frames_;
+	struct RowControl { /* as the row was when Listen came on: what it goes back to */
+		QWidget *control;
+		bool enabled;
+		QString toolTip;
+	};
+	QVector<RowControl> beforeListening_;
+	QString sentPlaceholder_;         /* the frames' hint when not listening */
 };

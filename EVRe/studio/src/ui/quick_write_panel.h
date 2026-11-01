@@ -9,7 +9,8 @@
  * the same request an edit in the table makes, so the danger confirmation and
  * the changed-meanwhile check stay in one place (the window). Allow writes is
  * enforced here: the controls are enabled only while it is on
- * (RegisterModel::writesEnabled) and the link is up. A field is written as the
+ * (RegisterModel::writesEnabled) and the link is up; while Listen is on it
+ * cannot be, and the panel says why. A field is written as the
  * whole register: what the device holds now, with that field's bits changed.
  * The controls follow the register's value as it changes.
  *
@@ -95,6 +96,7 @@ private:
 	QComboBox *namedValues_;
 	QPushButton *write_;
 	QPushButton *default_;
+	QString defaultTip_;        /* the Default button's tooltip, the register's */
 	QPushButton *broadcast_;    /* "To all devices": a bus only */
 	BroadcastRule broadcastRule_;
 	QCheckBox *bits_;           /* "Bits": the bit view for a register without fields too */
