@@ -66,10 +66,14 @@ public:
 	void clear() { buffer_.clear(); }
 	/* frames dropped for a wrong CRC or end byte, since the parser was made */
 	int badFrames() const { return badFrames_; }
+	/* bytes taken out of the stream without a frame, since the parser was made: noise, or what a listener hears of
+	 * something that is not EVRe */
+	quint64 skippedBytes() const { return skippedBytes_; }
 
 private:
 	QByteArray buffer_;
 	int badFrames_ = 0;
+	quint64 skippedBytes_ = 0;
 };
 
 /* Words for the log and the frame monitor. */

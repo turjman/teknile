@@ -673,6 +673,9 @@ public:
 		fastStreams(); /* it ends with the window on the example map again, connected to the fake device as before */
 		fastSpeed();   /* the same */
 		fastStopped(); /* the same */
+		listenScenes(); /* the same */
+		listenHeardFrames();
+		listenNothingSent();
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last check: the window keeps a map without the login */
@@ -4396,6 +4399,576 @@ private:
 		check(chartView && !chartView->fastStore(0),
 				"fast streams: a map without the stream leaves no store of it in the chart: the same stream in a map loaded "
 				"later starts afresh");
+	}
+
+	/* ------------------------------------------------------------ Listen, the engine */
+
+	static QString captureFile(const QString &name) {
+		return QCoreApplication::applicationDirPath() + QStringLiteral("/captures/") + name;
+	}
+
+	/* the device of the captures, as a lookup would find it: the board's own USB, address 5 on bus 2 */
+	static UsbTarget listenTarget() {
+		UsbTarget target;
+		target.port = QStringLiteral("COM13");
+		target.bus = 2;
+		target.address = 5;
+		target.vid = 0x0483;
+		target.pid = 0x5740;
+		target.kind = UsbTarget::Cdc;
+		target.inEndpoints = { 0x81 };
+		target.outEndpoints = { 0x01 };
+		target.inMaxPacket = 64;
+		return target;
+	}
+
+	/* What another program said, replayed from tests/make_captures.py's scenes into the real window through the file
+	 * hook (the Connection card offers Listen later; here the window is told which port). A scene replayed at once is
+	 * one turn of the engine's loop, so no timer cuts a round short; the same scene at its stamps shows what takes time.
+	 * It uses no port of the test's fake devices. */
+	void listenScenes() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+		auto *chartTab = window_.findChild<ChartTab *>();
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *deviceLine = window_.findChild<QLabel *>(QStringLiteral("deviceInfo"));
+		DumpView *dump = dumpTab() ? dumpTab()->view() : nullptr;
+		QCheckBox *logFrames = nullptr, *reconnect = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Log frames")) logFrames = box;
+			if (box->text() == QLatin1String("Reconnect by itself")) reconnect = box;
+		}
+		QSpinBox *timeout = nullptr;
+		if (sidebar)
+			for (QSpinBox *box : sidebar->findChildren<QSpinBox *>())
+				if (box->suffix() == QLatin1String(" ms") && box->maximum() == 10000) timeout = box;
+		QPushButton *clear = monitor ? buttonWithText(*monitor, QStringLiteral("Clear")) : nullptr;
+		const bool found = tabs && frames && chartTab && deviceLine && dump && logFrames && reconnect && timeout && clear;
+		check(found, "Listen: the Monitor, the chart, the Dump, the device line, Reconnect by itself and the Timeout are there");
+		if (!found) return;
+
+		IoEngine *engine = window_.engineForTests();
+		const QString port = QStringLiteral("COM13");
+		const UsbTarget cdc = listenTarget();
+		const auto endings = [&] { return logText().count(QLatin1String("connection lost: the capture ended")); };
+		const auto connectButton = [&] { return buttonWithText(QStringLiteral("Connect")); };
+		const auto setFile = [&](const QString &name, const UsbTarget &target, FileCapture::Pace pace) {
+			engine->post([engine, port, file = captureFile(name), target, pace] {
+				engine->setListenFileForTests(port, file, target, pace);
+			});
+		};
+		/* a scene from start to end: the capture's end is what the window hears last */
+		const auto replay = [&](const QString &name, const UsbTarget &target, FileCapture::Pace pace = FileCapture::AtOnce) {
+			setFile(name, target, pace);
+			if (QApplication::focusWidget()) QApplication::focusWidget()->clearFocus();
+			clear->click();
+			const int before = endings();
+			if (connectButton()) connectButton()->click();
+			return QTest::qWaitFor([&] { return endings() > before && connectButton(); }, 6000);
+		};
+		const auto linesWith = [&](const QString &text) { return frames->toPlainText().count(text); };
+		const auto rowOf = [&](const QString &name) -> const RegisterModel::Row & { return model_->rows()[regRow(name)]; };
+		const auto valueOf = [&](const QString &name) { return decodeNumber(rowOf(name).def, rowOf(name).raw); };
+		const auto nearly = [](double a, double b) { return std::abs(a - b) < 1e-3; };
+
+		const int timeoutWas = timeout->value();
+		const bool reconnectWas = reconnect->isChecked();
+		/* a stall in the middle of a replay is no late answer: only the replay at its stamps below goes by the Timeout */
+		timeout->setValue(10000);
+		reconnect->setChecked(false);
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
+		QMetaObject::invokeMethod(engine, [] {}, Qt::BlockingQueuedConnection); /* the engine has let go of the fake device */
+		const quint64 txBefore = engine->stats().master.tx; /* the master counts from the program's start */
+		(void) engine->takeSamples(); /* a math line's register is sampled unplotted: the last poll's is not the file's */
+		const bool logFramesWas = logFrames->isChecked();
+		logFrames->setChecked(true);
+		window_.setListenPortForTests(port);
+
+		/* -- cdc_poll: every view, from one replay ------------------------------------------------------------ */
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		const int supplyRow = regRow(QStringLiteral("SUPPLY_V"));
+		const RegKey supply = regKey(model_->rows()[supplyRow].def);
+		const bool supplyWas = model_->rows()[supplyRow].plot;
+		model_->setPlot(supplyRow, true);
+		ChartView *chart = chartTab->view();
+		/* the points since a moment on the engine's clock: a line may hold what earlier steps plotted */
+		const auto pointsSince = [&](RegKey key, double from) {
+			QVector<double> times, values;
+			chart->lineSamples(int(key), from, 1e12, times, values);
+			return int(times.size());
+		};
+		double start = engine->now();
+		QTemporaryDir folder;
+		const QString csv = folder.filePath(QStringLiteral("heard.csv"));
+		engine->post([engine, csv, supply] { engine->startRecord(csv, { supply }); });
+		const bool polled = replay(QStringLiteral("cdc_poll.pcap"), cdc);
+		engine->post([engine] { engine->stopRecord(); });
+		(void) QTest::qWaitFor([&] { return !engine->stats().recording; }, 2000);
+		IoEngine::Stats stats = engine->stats();
+		check(polled && QTest::qWaitFor([&] { return linesWith(QStringLiteral("  DEV->  ")) == 46; }, 3000)
+						&& logText().contains(QLatin1String("connected: COM13 (listening)")),
+				"Listen, scene 1: the capture opens as a link and ends by itself; the Monitor has every frame");
+		const QStringList lines = frames->toPlainText().split(QLatin1Char('\n'));
+		check(lines.size() > 2 && lines[0].endsWith(QLatin1String(
+						"  listening on COM13 (bus 2, device 5): ->DEV the other program's request, DEV-> the device's answer")),
+				"Listen, the Monitor: its first line says where and what the marks mean");
+		check(lines.size() > 2 && lines[1].contains(QLatin1String("  ->DEV  7B 01 AA 00 A0 04 00")) && lines[1].endsWith(QLatin1String("   READ"))
+						&& lines[2].contains(QLatin1String("  DEV->  7B 01 AB 00 A0 04 00")) && lines[2].endsWith(QLatin1String("   READ_RESP"))
+						&& linesWith(QStringLiteral("  ->DEV  ")) == 46 && !frames->toPlainText().contains(QLatin1String("  TX  "))
+						&& !frames->toPlainText().contains(QLatin1String("  RX  ")),
+				"Listen, the Monitor: the marks in place of TX and RX, each request ->DEV before its answer DEV->, with their "
+				"function names, every frame heard");
+		check(linesWith(QStringLiteral(" (no request heard)")) == 1
+						&& frames->toPlainText().contains(QRegularExpression(QStringLiteral(
+								"  DEV->  7B 01 AB 10 D0 02 00 [0-9A-F ]+   READ_RESP \\(no request heard\\)\\n")))
+						&& !frames->toPlainText().contains(QLatin1String("not a pending request")) && stats.heard.unmatched == 1,
+				"Listen, the Monitor: the answer nobody asked for says (no request heard), never (not a pending request), and "
+				"is the one counted unmatched");
+		check(linesWith(QStringLiteral("  ??     ")) == 1 && linesWith(QStringLiteral("  ??     12 bytes not EVRe\n")) == 1
+						&& stats.heard.notEvreBytes == 12,
+				"Listen, the Monitor: the text on the line is one ?? line with its count, and counted");
+		bool filled = QTest::qWaitFor([&] { return rowOf(QStringLiteral("COUNTER")).valid && valueOf(QStringLiteral("COUNTER")) == 19; }, 3000);
+		check(filled && nearly(valueOf(QStringLiteral("SUPPLY_V")), 13.9) && valueOf(QStringLiteral("DEVICE_ID")) == 0x1001
+						&& valueOf(QStringLiteral("STATUS")) == 0x3F01 && valueOf(QStringLiteral("FAN_SPEED")) == 45
+						&& valueOf(QStringLiteral("LED_MODE")) == 2 && nearly(valueOf(QStringLiteral("TEMPERATURE")), 25.95),
+				"Listen, the table: the registers the other program reads hold what the device answered last; a write it heard "
+				"shows at the next heard read");
+		check(!rowOf(QStringLiteral("CONFIG")).valid && !rowOf(QStringLiteral("MSG_BUFFER")).valid
+						&& rowOf(QStringLiteral("CONFIG")).error.isEmpty(),
+				"Listen, the table: a register it never reads, and a long array it reads a part of, are left alone");
+		check(rowOf(QStringLiteral("MSG_CNT")).error == QLatin1String("permission denied")
+						&& !rowOf(QStringLiteral("MSG_CNT")).unavailable,
+				"Listen, ERROR_RESP: the rows of the refused read say the error; never unavailable, the Studio did not ask");
+		const bool plotted = QTest::qWaitFor([&] { return pointsSince(supply, start) >= 20; }, 3000);
+		if (pointsSince(supply, start) != 20) std::printf("  points: %d\n", pointsSince(supply, start));
+		check(plotted && pointsSince(supply, start) == 20,
+				"Listen, the chart: one point per round of the other program, 20 in the scene's 20 rounds, not one per answer");
+		QStringList rows;
+		{
+			QFile file(csv);
+			if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+				rows = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+		}
+		const auto csvValue = [&](int row) { return rows[row].section(QLatin1Char(','), -1).toDouble(); };
+		check(rows.size() == 21 && nearly(csvValue(1), 12.0) && nearly(csvValue(10), 12.9) && nearly(csvValue(20), 13.9),
+				"Listen, the CSV: a row per round, 20 of them, the ramp in order");
+		const bool cards = QTest::qWaitFor([&] {
+			return dumpCard(dump, 0xD000) >= 0 && dumpCard(dump, 0xD080) >= 0 && dumpCard(dump, evre::DEVICE_ID) >= 0;
+		}, 3000);
+		check(cards && dump->blocks()[dumpCard(dump, 0xD000)].size == 22 && dump->blocks()[dumpCard(dump, 0xD080)].size == 8
+						&& evre::littleEndian16(dump->blocks()[dumpCard(dump, 0xD000)].data, 0x12) == 19
+						&& dumpCard(dump, regs_.u8.addr) < 0 && dump->blocks()[dumpCard(dump, evre::DEVICE_ID)].size == 4,
+				"Listen, the Dump: a card per block the other program reads, as it reads them, with the newest bytes");
+		int writeCard = -1;
+		for (int i = 0; i < dump->blocks().size(); i++)
+			if (dump->blocks()[i].kind == DumpBlock::Write) writeCard = i;
+		check(writeCard >= 0 && dump->blocks()[writeCard].addr == 0xD085 && !dump->blocks()[writeCard].ack
+						&& dump->blocks()[writeCard].data == QByteArray(1, '\x02'),
+				"Listen, the Dump: the write card holds the last write heard (LED_MODE, a WRITE, no answer due)");
+		const int refusedCard = dumpCard(dump, 0xA006);
+		check(refusedCard >= 0 && dump->blocks()[refusedCard].errorCode == 3 && !dump->blocks()[refusedCard].timedOut,
+				"Listen, the Dump: the refused read's card has the device's error code");
+		check(stats.master.tx == txBefore && stats.heard.sendAttempts == 0,
+				"Listen, nothing sent: a whole scene heard, the master sent nothing, the link was asked to send nothing");
+		QHash<QString, QByteArray> scene1;
+		for (const RegisterModel::Row &row : model_->rows()) scene1.insert(row.def.name, row.raw);
+		model_->setPlot(supplyRow, supplyWas);
+
+		/* -- the same scene at its stamps: what takes time -------------------------------------------------------- */
+		timeout->setValue(500);
+		setFile(QStringLiteral("cdc_poll.pcap"), cdc, FileCapture::ByStamps);
+		clear->click();
+		int before = endings();
+		if (connectButton()) connectButton()->click();
+		const bool measured = QTest::qWaitFor([&] {
+			const IoEngine::Stats now = engine->stats();
+			return now.listening && now.heard.requestsHz > 0 && now.heard.answersHz > 0 && now.pollHz == 0;
+		}, 2000);
+		stats = engine->stats();
+		if (!measured) std::printf("  listening %d, %.1f requests/s, %.1f answers/s, %.1f polls/s\n", int(stats.listening),
+				stats.heard.requestsHz, stats.heard.answersHz, stats.pollHz);
+		const bool paced = QTest::qWaitFor([&] { return endings() > before && connectButton(); }, 6000);
+		stats = engine->stats();
+		check(measured, "Listen, Stats: the requests and the answers a second are measured while listening, no polls a second");
+		check(paced && linesWith(QStringLiteral(" (no request heard)")) == 2
+						&& frames->toPlainText().contains(QRegularExpression(QStringLiteral(
+								"  DEV->  7B 01 AB 02 A0 02 00 [0-9A-F ]+   READ_RESP \\(no request heard\\)\\n")))
+						&& stats.heard.unmatched == 3,
+				"Listen, a late answer: 700 ms after its request, past the 500 ms Timeout, it is no answer to it: the request is "
+				"counted unmatched, and so is the answer");
+
+		/* -- Stop ends the capture ------------------------------------------------------------------------------ */
+		setFile(QStringLiteral("cdc_poll.pcap"), cdc, FileCapture::ByStamps);
+		clear->click();
+		if (connectButton()) connectButton()->click();
+		const bool going = QTest::qWaitFor([&] { return linesWith(QStringLiteral("  ->DEV  ")) >= 5; }, 3000);
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		const bool stopped = QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+		QTest::qWait(200);
+		const int heardAtStop = linesWith(QStringLiteral("  ->DEV  "));
+		QTest::qWait(400);
+		check(going && stopped && linesWith(QStringLiteral("  ->DEV  ")) == heardAtStop && connectButton(),
+				"Listen, Disconnect ends the capture: nothing more is heard, and no reason is given for it");
+
+		/* -- cdc_quiet: a capture that stays open --------------------------------------------------------------- */
+		setFile(QStringLiteral("cdc_quiet.pcap"), cdc, FileCapture::ByStamps);
+		if (connectButton()) connectButton()->click();
+		const bool heardLine = QTest::qWaitFor([&] { return deviceLine->text().contains(QLatin1String("(heard)")); }, 3000);
+		const QString said = deviceLine->text().simplified();
+		if (said != QStringLiteral("Device ID 0x1001 · protocol rev 1 (heard)")) std::printf("  the device line: %s\n", qPrintable(said));
+		check(window_.deviceInfoAtOpen() == QLatin1String("Device ID not heard yet") && heardLine
+						&& said == QStringLiteral("Device ID 0x1001 · protocol rev 1 (heard)"),
+				"Listen, the device line: \"not heard yet\", then what a heard read of DEVICE_ID says, marked heard");
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
+
+		/* -- a port with no capture ----------------------------------------------------------------------------- */
+		window_.setListenPortForTests(QStringLiteral("COM99"));
+		if (connectButton()) connectButton()->click();
+		check(QTest::qWaitFor([&] {
+					return logText().contains(QLatin1String("not connected: COM99 cannot be listened to: no USB capture on this system"));
+				}, 3000) && QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
+				"Listen, a port nothing here can hear: refused with a plain reason");
+		window_.setListenPortForTests(port);
+
+		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
+		timeout->setValue(10000);
+		UsbTarget ftdi = cdc;
+		ftdi.vid = 0x0403;
+		ftdi.pid = 0x6001;
+		ftdi.kind = UsbTarget::Ftdi;
+		ftdi.outEndpoints = { 0x02 };
+		const bool bridged = replay(QStringLiteral("ftdi_poll.usbmon"), ftdi);
+		stats = engine->stats();
+		bool same = QTest::qWaitFor([&] { return rowOf(QStringLiteral("COUNTER")).valid && valueOf(QStringLiteral("COUNTER")) == 19; }, 3000);
+		for (const RegisterModel::Row &row : model_->rows()) same = same && scene1.value(row.def.name) == row.raw;
+		check(bridged && same && stats.heard.notEvreBytes == 12 && stats.heard.unmatched == 1 && stats.master.badFrames == 0,
+				"Listen, scene 4: behind an FTDI bridge every register reads the same values as scene 1, its status bytes out "
+				"of the way");
+
+		/* -- composite: two functions on one device ------------------------------------------------------------------ */
+		UsbTarget ours = cdc;
+		ours.inEndpoints = { 0x83 };
+		ours.outEndpoints = { 0x03 };
+		const bool second = replay(QStringLiteral("composite.usbmon"), ours);
+		const bool lastHeard = QTest::qWaitFor([&] {
+			return rowOf(QStringLiteral("SETPOINT")).valid && nearly(valueOf(QStringLiteral("SETPOINT")), 29);
+		}, 3000);
+		check(second && lastHeard && linesWith(QStringLiteral("  ->DEV  ")) == 10 && linesWith(QStringLiteral("  DEV->  ")) == 10
+						&& !frames->toPlainText().contains(QLatin1String("7B 02 ")),
+				"Listen, scene 5: of two functions on one device only our endpoints are heard");
+
+		/* -- cdc_autosend ---------------------------------------------------------------------------------------- */
+		const int counterRow = regRow(QStringLiteral("COUNTER"));
+		const bool counterWas = model_->rows()[counterRow].plot;
+		model_->setPlot(counterRow, true);
+		const RegKey counter = regKey(model_->rows()[counterRow].def);
+		start = engine->now();
+		const bool sending = replay(QStringLiteral("cdc_autosend.usbmon"), cdc);
+		stats = engine->stats();
+		const bool lastFrame = QTest::qWaitFor([&] { return rowOf(QStringLiteral("COUNTER")).valid && valueOf(QStringLiteral("COUNTER")) == 99; }, 3000);
+		const bool autoPoints = QTest::qWaitFor([&] { return pointsSince(counter, start) == 100; }, 3000);
+		check(sending && lastFrame && nearly(valueOf(QStringLiteral("PRESSURE")), 1.5) && autoPoints && stats.heard.unmatched == 0
+						&& linesWith(QStringLiteral(" (no request heard)")) == 0 && stats.master.tx == txBefore,
+				"Listen, scene 2: AUTO_SEND's frames fill the stream's rows and each is a sample tick, as when the Studio asked "
+				"for them; no frame is taken for an answer that lost its request");
+		const bool autoCard = QTest::qWaitFor([&] { return dumpCard(dump, 0xD000, DumpBlock::AutoSend) >= 0; }, 3000);
+		writeCard = -1;
+		for (int i = 0; i < dump->blocks().size(); i++)
+			if (dump->blocks()[i].kind == DumpBlock::Write) writeCard = i;
+		check(autoCard && writeCard >= 0 && dump->blocks()[writeCard].addr == evre::CONFIG && dump->blocks()[writeCard].ack
+						&& dump->blocks()[writeCard].error.isEmpty(),
+				"Listen, scene 2: the Dump shows the frames' card, and the write card the WRITE_ACK of CONFIG and its answer");
+		model_->setPlot(counterRow, counterWas);
+
+		/* -- Reconnect by itself listens again ------------------------------------------------------------------------ */
+		setFile(QStringLiteral("composite.usbmon"), ours, FileCapture::AtOnce);
+		reconnect->setChecked(true);
+		const int connects = logText().count(QLatin1String("connected: COM13 (listening)"));
+		before = endings();
+		if (connectButton()) connectButton()->click();
+		const bool again = QTest::qWaitFor([&] {
+			return logText().count(QLatin1String("connected: COM13 (listening)")) >= connects + 2 && endings() >= before + 1;
+		}, 6000);
+		reconnect->setChecked(false);
+		const bool settled = QTest::qWaitFor([&] { return connectButton() != nullptr; }, 6000);
+		check(again && settled, "Listen, the capture's end: the link closes with the plain reason, and Reconnect by itself "
+				"listens again");
+
+		/* -- cdc_fast: another map ------------------------------------------------------------------------------------ */
+		const QString exampleFile = folder.filePath(QStringLiteral("example_again.json"));
+		const bool copied = QFile::copy(map_.path, exampleFile);
+		MainWindow::Startup fastMap;
+		fastMap.map = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		window_.applyStartup(fastMap);
+		chartTab->plotFastChannel(0, 0, true);
+		const bool streamed = replay(QStringLiteral("cdc_fast.usbmon"), cdc);
+		const bool blocksCame = QTest::qWaitFor([&] {
+			const IoEngine::Stats now = engine->stats();
+			return now.fast.size() == 1 && now.fast[0].records == 900;
+		}, 3000);
+		stats = engine->stats();
+		const bool lostRead = blocksCame && stats.fast[0].lost == 100 && stats.fast[0].blocks == 18 && stats.fast[0].badBlocks == 0;
+		const bool storeFilled = QTest::qWaitFor([&] { return chart->fastStore(0) && chart->fastStore(0)->size() == 900; }, 3000);
+		check(streamed && lostRead && storeFilled,
+				"Listen, scene 3: the blocks fill the fast line, and the 2 missing blocks are counted lost: 100 records");
+		check(linesWith(QStringLiteral("READ_RESP (fast stream ADC)")) == 18 && linesWith(QStringLiteral(" (no request heard)")) == 0
+						&& stats.master.tx == txBefore,
+				"Listen, scene 3: the Monitor names the stream, and no enable was written by the Studio");
+		chartTab->plotFastChannel(0, 0, false);
+
+		/* the example map and the fake device of the other steps again */
+		window_.setListenPortForTests(QString());
+		logFrames->setChecked(logFramesWas);
+		timeout->setValue(timeoutWas);
+		reconnect->setChecked(reconnectWas);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(copied && cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000)
+						&& deviceLine->text().simplified() != said,
+				"Listen: done; the next link is an ordinary one, the window polls the fake device of the other steps again, and "
+				"its device line is not marked heard");
+	}
+
+	/* Frames told to the link one by one, on an engine of the test's own (its thread is this one): what a scene does not
+	 * hold. The capture stays open (cdc_quiet at its stamps), so the link is there to tell them to. */
+	void listenHeardFrames() {
+		DeviceMap map;
+		QString error;
+		const bool loaded = map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_device.json"), error);
+		check(loaded, "Listen, frames: the example map");
+		if (!loaded) return;
+		EngineDevice device;
+		device.name = QStringLiteral("example");
+		device.map = std::make_shared<const DeviceMap>(map);
+		IoEngine engine;
+		engine.setMap(map.regs, 1, device.name, { device });
+		engine.setLinkOptions(1, 200, 4);
+		engine.setListenFileForTests(QStringLiteral("COM13"), captureFile(QStringLiteral("cdc_quiet.usbmon")), listenTarget(),
+				FileCapture::ByStamps);
+		const RegKey setpoint = regKey(0, 0xD080), id = regKey(0, evre::DEVICE_ID);
+		engine.setPlotted({ setpoint, id });
+		QSignalSpy opened(&engine, &IoEngine::opened), info(&engine, &IoEngine::deviceInfo);
+		engine.connectListen(QStringLiteral("COM13"));
+		const auto fresh = [&] {
+			QTest::qWait(300); /* the stats' timer */
+			return engine.stats();
+		};
+		evre::ListenLink *link = engine.listenLink();
+		check(opened.count() == 1 && link && link->describe() == QLatin1String("COM13 (listening)") && link->isOpen(),
+				"Listen, the link: opened at once, and it says what it is");
+		if (!link) return;
+
+		/* cdc_quiet read DEVICE_ID and a block: the round stays open with nothing more to come; the timer closes it */
+		const bool heard = QTest::qWaitFor([&] { return info.count() == 1; }, 2000);
+		const bool ticked = QTest::qWaitFor([&] { return !engine.takeSamples().isEmpty(); }, 2000);
+		check(heard && ticked && engine.stats().master.tx == 0, "Listen, a slow program: a round left open is closed by the "
+				"timer, a point for it while the capture goes on");
+
+		/* the device's line, once for each thing it says */
+		const auto exchange = [&](const QByteArray &request, const QByteArray &answer) {
+			emit link->heardRequest(request);
+			emit link->received(answer);
+		};
+		const QByteArray readId = evre::build(1, evre::READ, evre::DEVICE_ID, 4);
+		const auto idAnswer = [](uint16_t status) {
+			QByteArray data("\x01\x10", 2);
+			data.append(char(status & 0xFF)).append(char(status >> 8));
+			return evre::build(1, evre::READ_RESP, evre::DEVICE_ID, 4, data);
+		};
+		exchange(readId, idAnswer(0x3F01));
+		exchange(readId, idAnswer(0x3F01));
+		const int sameTwice = int(info.count());
+		exchange(readId, idAnswer(0x3F02));
+		check(sameTwice == 1 && info.count() == 2 && info.last().at(3).toUInt() == 0x3F02,
+				"Listen, DEVICE_ID read at every round: the device line hears of it when it changes, not each time");
+
+		/* a device that is not the link's slave fills no row, and is no answer to the other's request */
+		QVector<RegValue> values;
+		quint64 generation = 0;
+		qint64 nowMs = 0;
+		const auto rawOf = [&](RegKey key) {
+			engine.table().snapshot(values, generation, nowMs);
+			for (const RegValue &value : std::as_const(values))
+				if (regKey(value.def) == key) return value.raw;
+			return QByteArray();
+		};
+		const QByteArray before = rawOf(setpoint), other("\x11\x22\x33\x44\x55\x66\x77\x10", 8);
+		QVector<IoEngine::DumpReply> replies;
+		engine.setDump(true);
+		exchange(evre::build(2, evre::READ, 0xD080, 8), evre::build(2, evre::READ_RESP, 0xD080, 8, other));
+		const bool dumped = engine.takeDumps(replies);
+		check(rawOf(setpoint) == before && !dumped, "Listen, one device: an exchange with another slave changes no row and "
+				"no Dump card");
+
+		/* two requests alike: each answer takes one, the newest first */
+		const IoEngine::Stats counted = fresh();
+		const QByteArray readBlock = evre::build(1, evre::READ, 0xD080, 8);
+		emit link->heardRequest(readBlock + readBlock);
+		emit link->received(evre::build(1, evre::READ_RESP, 0xD080, 8, other) + evre::build(1, evre::READ_RESP, 0xD080, 8, other));
+		check(rawOf(setpoint) == other.left(4) && fresh().heard.unmatched == counted.heard.unmatched,
+				"Listen, two reads alike and their two answers: each answer takes one request, none left over");
+
+		/* a refused write says so in the write card, and nothing of reading the registers */
+		const QByteArray written("\x09", 1);
+		exchange(evre::build(1, evre::WRITE_ACK, 0xD084, 1, written), evre::build(1, evre::ERROR_RESP, 0xD084, 1, QByteArray(1, '\x03')));
+		const bool took = engine.takeDumps(replies);
+		const auto writeReply = std::find_if(replies.begin(), replies.end(), [](const IoEngine::DumpReply &r) { return r.write; });
+		engine.table().snapshot(values, generation, nowMs);
+		const auto fan = std::find_if(values.begin(), values.end(), [](const RegValue &v) { return v.def.addr == 0xD084; });
+		check(took && writeReply != replies.end() && writeReply->errorCode == 3 && writeReply->data == written && writeReply->ack
+						&& fan != values.end() && fan->error.isEmpty(),
+				"Listen, a refused WRITE_ACK: the error in the write card; the register's row keeps no read error");
+
+		/* a request with no answer is counted when its time is up, and so is one past the most that are kept */
+		const quint64 unmatched = fresh().heard.unmatched;
+		const auto countReaches = [&](quint64 count) {
+			return QTest::qWaitFor([&] { return engine.stats().heard.unmatched >= count; }, 2000)
+					&& engine.stats().heard.unmatched == count;
+		};
+		emit link->heardRequest(evre::build(1, evre::READ, 0xD000, 4));
+		const bool expired = countReaches(unmatched + 1);
+		engine.setLinkOptions(1, 10000, 4);
+		QByteArray many;
+		for (int i = 0; i < IoEngine::HEARD_REQUESTS_KEPT + 6; i++) many += evre::build(1, evre::READ, 0xD000, 2);
+		emit link->heardRequest(many);
+		check(expired && countReaches(unmatched + 7),
+				"Listen, requests kept: past the Timeout or past the most kept they are dropped, each counted unmatched");
+		engine.setLinkOptions(1, 200, 4);
+
+		/* noise each way, a chunk at a time, split frames not counted */
+		const quint64 noise = fresh().heard.notEvreBytes;
+		const QByteArray frame = idAnswer(0x3F02);
+		emit link->heardRequest(readId);
+		emit link->received(frame.left(5));
+		emit link->received(frame.mid(5));
+		const bool wholeFrame = fresh().heard.notEvreBytes == noise;
+		emit link->heardRequest(QByteArray("abc", 3));
+		emit link->received(QByteArray("defgh", 5));
+		check(wholeFrame && fresh().heard.notEvreBytes == noise + 8, "Listen, not EVRe: bytes that are no frame count both ways, "
+				"a frame cut across two chunks does not");
+
+		emit link->capturesLost(3);
+		check(fresh().heard.dropped == 3, "Listen, Stats: the captures the system says it lost are counted");
+
+		/* a device's answers do not run on when the link is gone: the next connect starts afresh */
+		engine.disconnectLink();
+		check(!engine.listenLink() && !engine.stats().listening && engine.stats().heard.dropped == 3,
+				"Listen, Disconnect: the link goes, the counts stay to be read until the next listening");
+		engine.shutdown();
+		QTest::qWait(0);
+	}
+
+	/* Nothing is sent: an engine of the test's own, listening, with a device that has a token and a stream with an
+	 * enable, the polls on and an API running. Every way it could send is tried directly, each on its own (the file
+	 * hook's capture stays open), and the link's own count and the master's say what went out. */
+	void listenNothingSent() {
+		DeviceMap map;
+		QString error;
+		const bool loaded = map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), error)
+				&& map.streams.size() == 1 && map.registerNamed(map.streams[0].enable);
+		check(loaded, "Listen, nothing sent: the fast example map, a stream and its enable");
+		if (!loaded) return;
+		EngineDevice device;
+		device.name = QStringLiteral("example");
+		device.loginAddr = 0xF000;
+		device.loginSize = 16;
+		device.token = QString::fromLatin1(fakeDeviceToken);
+		device.map = std::make_shared<const DeviceMap>(map);
+		IoEngine engine;
+		engine.setMap(map.regs, 1, device.name, { device });
+		engine.setLinkOptions(1, 500, 4);
+		engine.setPolling(true, 20);
+		engine.setMonitor(true);
+		engine.setListenFileForTests(QStringLiteral("COM13"), captureFile(QStringLiteral("cdc_quiet.pcap")), listenTarget(),
+				FileCapture::ByStamps);
+		QSignalSpy writes(&engine, &IoEngine::writeDone), reads(&engine, &IoEngine::readDone),
+				api(&engine, &IoEngine::apiStarted), autoSend(&engine, &IoEngine::autoSendSet),
+				fastSet(&engine, &IoEngine::fastStreamSet);
+		engine.apiStart(0, 0, false);
+		const bool apiWasOn = engine.stats().apiRunning && api.count() == 1 && api.last().at(0).toBool();
+		engine.connectListen(QStringLiteral("COM13"));
+		evre::ListenLink *link = engine.listenLink();
+		check(apiWasOn && !engine.stats().apiRunning && api.count() == 2 && !api.last().at(0).toBool()
+						&& api.last().at(1).toString() == QLatin1String("listening: the API server is off"),
+				"Listen, nothing sent: an API running is stopped when listening starts, and said");
+		if (!link) return;
+		const auto nothing = [&] {
+			engine.trySendingForTests(IoEngine::SendPath::None); /* the stats, as they are now */
+			const IoEngine::Stats stats = engine.stats();
+			return link->sendAttempts() == 0 && stats.heard.sendAttempts == 0 && stats.master.tx == 0;
+		};
+		const auto tried = [&](IoEngine::SendPath path) {
+			engine.trySendingForTests(path);
+			return nothing();
+		};
+		QTest::qWait(700); /* past the keep-alive's 400 ms, and many a poll */
+		check(nothing() && engine.stats().listening && !engine.pollTickerRunning(), "Listen, nothing sent: no login, no "
+				"DEVICE_ID and no keep-alive in 700 ms with Poll on, and the poll ticker never started");
+		using Path = IoEngine::SendPath;
+		check(tried(Path::Login), "Listen, nothing sent: the login token is not written");
+		check(tried(Path::DeviceInfo), "Listen, nothing sent: DEVICE_ID is not read");
+		check(tried(Path::Poll), "Listen, nothing sent: a poll's tick starts no poll");
+		engine.setPolling(true, 0);
+		const bool asFast = tried(Path::Poll);
+		QTest::qWait(30);
+		engine.setPolling(true, 20);
+		check(asFast && nothing() && !engine.pollTickerRunning(),
+				"Listen, nothing sent: Poll as fast as possible starts none either, and no ticker");
+		check(tried(Path::Heartbeat), "Listen, nothing sent: no heartbeat, though AUTO_SEND's frames are taken");
+		check(tried(Path::AutoSend), "Listen, nothing sent: AUTO_SEND's CONFIG is neither read nor written");
+		check(tried(Path::Fast), "Listen, nothing sent: no stream's enable is written");
+		(void) QTest::qWaitFor([&] { return engine.now() * 1000 > IoEngine::FIRST_FRAME_MS + 100; }, 3000);
+		check(tried(Path::Silence), "Listen, nothing sent: a stream gone silent has its enable left unread");
+		check(tried(Path::Retry), "Listen, nothing sent: an offline device is not asked again");
+		check(tried(Path::ReadBack), "Listen, nothing sent: nothing is read back");
+		engine.write(7, 1, 0xD084, QByteArray(1, '\x01'), true);
+		engine.write(8, 1, 0xD084, QByteArray(1, '\x01'), false);
+		check(writes.count() == 2 && writes.first().at(0).toULongLong() == 7 && !writes.first().at(1).toBool()
+						&& writes.last().at(0).toULongLong() == 8 && !writes.last().at(1).toBool()
+						&& writes.first().at(2).toString() == QLatin1String("listening: nothing is sent") && nothing(),
+				"Listen, nothing sent: a write, with or without acknowledge, is refused with its text");
+		engine.read(9, 1, evre::DEVICE_ID, 2, true);
+		check(reads.count() == 1 && reads.last().at(0).toULongLong() == 9 && !reads.last().at(1).toBool()
+						&& reads.last().at(3).toString() == QLatin1String("listening: nothing is sent") && nothing(),
+				"Listen, nothing sent: a read is refused with its text");
+		engine.setAutoSend(true, 79);
+		check(autoSend.count() == 1 && autoSend.last().at(2).toString() == QLatin1String("listening") && nothing(),
+				"Listen, nothing sent: Auto send is refused with its text");
+		engine.setFastStream(0, true);
+		check(fastSet.count() == 1 && fastSet.last().at(3).toString() == QLatin1String("listening") && nothing(),
+				"Listen, nothing sent: a stream's Start is refused with its text");
+		engine.apiStart(0, 0, false);
+		check(api.count() == 3 && !api.last().at(0).toBool()
+						&& api.last().at(1).toString() == QLatin1String("listening: the API server is off")
+						&& !engine.stats().apiRunning && nothing(),
+				"Listen, nothing sent: the API's Start is refused with its text");
+		check(tried(Path::StreamGone), "Listen, nothing sent: a map without the stream does not switch it off on the device");
+		engine.setMap(map.regs, 2, device.name, { device });
+		check(nothing(), "Listen, nothing sent: a map loaded while listening asks for nothing");
+		int dropped = 0;
+		const QStringList lines = engine.takeFrames(dropped);
+		check(!lines.join(QLatin1Char('\n')).contains(QLatin1String("  TX  ")), "Listen, nothing sent: no TX line in the Monitor");
+		engine.trySendingForTests(Path::Offs); /* the link goes with it */
+		const IoEngine::Stats last = engine.stats();
+		check(last.heard.sendAttempts == 0 && last.master.tx == 0 && !last.listening,
+				"Listen, nothing sent: Disconnect sends no AUTO_SEND off and no stream's 0");
+
+		/* the belt under the guards: the link itself */
+		evre::ListenLink belt(QStringLiteral("COM13"), new FileCapture(captureFile(QStringLiteral("cdc_quiet.pcap")),
+				FileCapture::ByStamps), listenTarget());
+		belt.open();
+		belt.send(evre::build(1, evre::READ, evre::DEVICE_ID, 2));
+		belt.close();
+		check(belt.sendAttempts() == 1 && !belt.isOpen(), "Listen, the link's send: counted and dropped");
+		engine.shutdown();
+		QTest::qWait(0);
 	}
 
 	/* The owner's finding: a stopped stream must not look live. evre_fake_fast at the map's 10 000 records a second,

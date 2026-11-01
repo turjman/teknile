@@ -126,13 +126,17 @@ IoEngine::IoEngine(QObject *parent) : QObject(parent) {
 		if (monitorOn_) monitorLine("TX", raw, QString());
 	});
 	connect(master_, &evre::Master::frameReceived, this, [this](const QByteArray &raw, const QString &what) {
-		if (!monitorOn_) return;
+		if (!monitorOn_ || listening_) return; /* listening, onUnsolicited knows what the frame is */
 		const int stream = fastStreamOfRaw(raw);
 		monitorLine("RX", raw, stream >= 0 ? tr("READ_RESP (fast stream %1)").arg(fastRuns_[stream].def.name) : what);
 	});
 	fastWatch_ = new QTimer(this);
 	fastWatch_->setInterval(500);
 	connect(fastWatch_, &QTimer::timeout, this, &IoEngine::watchFast);
+	roundTimer_ = new QTimer(this);
+	roundTimer_->setSingleShot(true);
+	roundTimer_->setInterval(HEARD_ROUND_MS);
+	connect(roundTimer_, &QTimer::timeout, this, &IoEngine::closeRound);
 	clock_.start();
 	clockEpochMs_ = QDateTime::currentMSecsSinceEpoch();
 	rateClock_.start();
@@ -344,7 +348,7 @@ void IoEngine::keepWrite(uint8_t slave, uint16_t addr, const QByteArray &bytes, 
 /* The replies of blocks no longer read go with them: a merged block split into singles, a register refused for good,
  * another map, AUTO_SEND switched off. */
 void IoEngine::pruneDumps() {
-	if (!dumpOn_) return;
+	if (!dumpOn_ || listening_) return; /* listening, the blocks are the other program's, not the polls' */
 	QMutexLocker lock(&crossThreadMutex_);
 	for (auto it = dumps_.begin(); it != dumps_.end();) {
 		const DumpReply &reply = it.value();
@@ -376,6 +380,16 @@ void IoEngine::monitorLine(const char *direction, const QByteArray &raw, const Q
 	monitorLines_.push_back(std::move(line));
 }
 
+void IoEngine::monitorText(const QString &text) {
+	QString line = QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")) + QLatin1String("  ") + text;
+	QMutexLocker lock(&crossThreadMutex_);
+	if (monitorLines_.size() >= MAX_MONITOR_LINES) {
+		monitorLines_.removeFirst();
+		monitorLinesDropped_++;
+	}
+	monitorLines_.push_back(std::move(line));
+}
+
 /* ---------------------------------------------------------------------- map */
 
 void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QString &deviceName,
@@ -391,6 +405,7 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 	}
 	const uint8_t oneDevice = isBus() ? 0 : target(0); /* where the one device was, before the new devices */
 	devices_ = devices;
+	heardBlocks_.clear();
 	/* the rates the one device makes, by its map: a serial link's cap steps down among these only. The window asks
 	 * again (setAutoSend) when they change while Auto send is on */
 	autoSendDividers_ = !isBus() && !devices_.isEmpty() && devices_[0].map
@@ -430,7 +445,7 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 	}
 	for (const FastRun &old : std::as_const(fastRuns_)) {
 		const bool kept = std::any_of(runs.begin(), runs.end(), [&](const FastRun &r) { return r.def.name == old.def.name; });
-		if (kept || !connected_ || !old.deviceMaySend || !old.enable() || oneDevice == 0) continue;
+		if (listening_ || kept || !connected_ || !old.deviceMaySend || !old.enable() || oneDevice == 0) continue;
 		QByteArray zero;
 		QString why;
 		if (encodeValue(old.enableReg, QStringLiteral("0"), zero, why)) master_->writeTo(oneDevice, old.enableReg.addr, zero);
@@ -449,6 +464,10 @@ void IoEngine::setMap(const QVector<RegDef> &defs, quint64 generation, const QSt
 		fastBlocks_.removeIf(stale);
 	}
 	fastRuns_ = runs;
+	if (listening_) { /* another map while listening: what it says the device sends is taken too */
+		autoSendOn_ = !isBus();
+		hearStreams();
+	}
 	if (!anyFastOn() && !autoSendOn_) heartbeatTimer_->stop();
 	QStringList names;
 	if (isBus())
@@ -505,6 +524,8 @@ uint8_t IoEngine::tableSlave(uint8_t slave) const { return isBus() ? slave : 0; 
 void IoEngine::setLinkOptions(int slave, int timeoutMs, int inFlight) {
 	master_->setSlave(uint8_t(slave));
 	master_->setTimeoutMs(timeoutMs);
+	timeoutMs_ = timeoutMs;
+	heardBlocks_.clear(); /* the link's slave says which frames are the one device's */
 	inFlightWanted_ = inFlight;
 	applyInFlight();
 }
@@ -528,6 +549,27 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 	attach(new evre::SerialLink(port, baud), QString());
 }
 
+/* A link that hears: a capture of this port, or nothing that can (open() then says so). No baud rate: the bytes are the
+ * other program's, at whatever speed it set. */
+void IoEngine::connectListen(const QString &port) {
+	serialBaud_ = 0;
+	applyInFlight();
+	const auto file = listenFiles_.constFind(port);
+	auto *link = file == listenFiles_.constEnd() ? new evre::ListenLink(port, nullptr, UsbTarget())
+			: new evre::ListenLink(port, new FileCapture(file->file, file->pace), file->target);
+	connect(link, &evre::ListenLink::heardRequest, this, &IoEngine::onHeardRequest);
+	connect(link, &evre::ListenLink::received, this, &IoEngine::onDeviceBytes);
+	connect(link, &evre::ListenLink::capturesLost, this, [this](quint64 total) { capturesLost_ = total; });
+	attach(link, QString());
+}
+
+void IoEngine::setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
+		FileCapture::Pace pace) {
+	listenFiles_.insert(port, { file, target, pace });
+}
+
+evre::ListenLink *IoEngine::listenLink() const { return qobject_cast<evre::ListenLink *>(link_.get()); }
+
 /* the new link replaces the old one; it is made here, in the engine thread */
 void IoEngine::attach(evre::Link *link, const QString &token) {
 	disconnectLink();
@@ -547,11 +589,12 @@ void IoEngine::disconnectLink() {
 	layoutGeneration_++; /* the answers still due belong to the old link */
 	autoSendRequest_++;  /* and the AUTO_SEND ones: cancelled below, that is no refusal */
 	pollsUnderWay_.clear();
+	if (listening_) closeRound(); /* the last round: nothing else would end it */
 	master_->setLink(nullptr);
 	if (link_) {
 		link_->disconnect(this); /* its closed() is not news any more */
 		/* the device may still be sending (on, or an off still under way): off now, the last frame before the close */
-		if (link_->isOpen() && deviceMaySend_) {
+		if (link_->isOpen() && deviceMaySend_ && !listening_) {
 			const QByteArray off = configBytes(false, autoSendUsed_);
 			link_->send(evre::build(autoSendSlave_, evre::WRITE, evre::CONFIG, uint16_t(off.size()), off));
 			link_->flush(200);
@@ -559,6 +602,7 @@ void IoEngine::disconnectLink() {
 			deviceMaySend_ = false;
 		}
 		if (link_->isOpen()) sendFastOffs();
+		if (const evre::ListenLink *listen = listenLink()) sendAttemptsBefore_ += quint64(listen->sendAttempts());
 		if (link_->isOpen()) link_->close();
 		link_.release()->deleteLater();
 	}
@@ -579,6 +623,13 @@ void IoEngine::disconnectLink() {
 		run.takenMs = -1;
 	}
 	fastWatch_->stop();
+	/* the counts stay until the next listening: a capture that ended is still read in Stats::heard */
+	listening_ = false;
+	master_->setKeepAlive(true);
+	heard_.clear();
+	heardParser_.clear();
+	deviceParser_.clear();
+	heardDevices_.clear();
 	updateStats();
 }
 
@@ -588,12 +639,18 @@ void IoEngine::disconnectLink() {
  * window logs the connection before any login warning. */
 void IoEngine::onOpened() {
 	connected_ = true;
+	listening_ = listenLink() != nullptr;
 	table_.clearValues();
 	/* a new link: every device is given its chance again */
 	offline_.clear();
 	missedAnswers_.clear();
 	rebuildBlocks();
 	emit opened(link_->describe());
+	if (listening_) {
+		startListening();
+		updateStats();
+		return;
+	}
 	sendLogin();
 	readDeviceInfo();
 	/* the fast streams wanted (a reconnect): on again, after the login */
@@ -610,6 +667,7 @@ void IoEngine::onClosed(const QString &why, const QString &detail) {
 
 /* each device's token (its own, else the link's), UTF-8, cut or zero-padded to the size of its login register */
 void IoEngine::sendLogin() {
+	if (listening_) return;
 	bool sent = false, given = !loginToken_.isEmpty();
 	for (const EngineDevice &device : devices_) {
 		const QString token = device.token.isEmpty() ? loginToken_ : device.token;
@@ -628,6 +686,7 @@ void IoEngine::sendLogin() {
 
 /* DEVICE_ID and STATUS of every device: every EVRe device has them */
 void IoEngine::readDeviceInfo() {
+	if (listening_) return;
 	for (const EngineDevice &device : devices_) {
 		const uint8_t slave = device.slave;
 		master_->readFrom(target(slave), evre::DEVICE_ID, 4, [this, slave](const evre::Result &r) {
@@ -680,7 +739,7 @@ void IoEngine::heardFrom(uint8_t tableSlave, const evre::Result &r) {
  * while one is under way: on a serial bus every offline device costs a whole timeout, and asking them all at once
  * would stall the polls of the others for that long each time. */
 void IoEngine::retryOffline() {
-	if (!connected_ || retryPending_ || offline_.isEmpty()) return;
+	if (listening_ || !connected_ || retryPending_ || offline_.isEmpty()) return;
 	QList<uint8_t> slaves(offline_.begin(), offline_.end());
 	std::sort(slaves.begin(), slaves.end());
 	const auto next = std::upper_bound(slaves.begin(), slaves.end(), lastRetried_);
@@ -785,7 +844,7 @@ void IoEngine::setPolling(bool on, double intervalMs) {
 }
 
 void IoEngine::resumePolling() {
-	if (!connected_ || !pollingOn_) return;
+	if (listening_ || !connected_ || !pollingOn_) return;
 	if (!continuous_) startTicker();
 	else if (pollsUnderWay_.isEmpty()) QTimer::singleShot(0, this, &IoEngine::pollTick);
 }
@@ -842,6 +901,7 @@ int IoEngine::maxPollsUnderWay() const {
 
 /* the blocks of every device that answers (an offline one is asked by retryOffline instead) */
 void IoEngine::startPoll() {
+	if (listening_) return;
 	const quint64 layout = layoutGeneration_, pollId = nextPollId_++;
 	QVector<Block> reads;
 	for (const Block &block : std::as_const(blocks_))
@@ -856,7 +916,7 @@ void IoEngine::startPoll() {
 }
 
 void IoEngine::pollTick() {
-	if (!connected_ || !pollingOn_ || blocks_.isEmpty()) return;
+	if (listening_ || !connected_ || !pollingOn_ || blocks_.isEmpty()) return;
 	if (offline_.size() > 0 && std::all_of(blocks_.begin(), blocks_.end(),
 			[this](const Block &b) { return offline_.contains(b.slave); }))
 		return; /* nobody to ask: retryOffline brings them back */
@@ -976,11 +1036,13 @@ void IoEngine::appendSamples(double t) {
 void IoEngine::updateStats() {
 	/* the poll rate, over a second at least; until then the last one stands */
 	const double elapsed = double(rateClock_.elapsed()) / 1000.0;
-	double pollHz = -1, framesHz = -1;
+	double pollHz = -1, framesHz = -1, requestsHz = -1, answersHz = -1;
 	if (elapsed >= 1.0) {
 		pollHz = pollsSinceRate_ / elapsed;
 		framesHz = framesSinceRate_ / elapsed;
-		pollsSinceRate_ = framesSinceRate_ = 0;
+		requestsHz = requestsSinceRate_ / elapsed;
+		answersHz = answersSinceRate_ / elapsed;
+		pollsSinceRate_ = framesSinceRate_ = requestsSinceRate_ = answersSinceRate_ = 0;
 		for (FastRun &run : fastRuns_) {
 			run.recordsHz = connected_ && run.on ? double(run.recordsSinceRate) / elapsed : 0;
 			run.recordsSinceRate = 0;
@@ -990,12 +1052,24 @@ void IoEngine::updateStats() {
 	if (csvFile_->isOpen()) csvStream_.flush();
 	for (FastRun &run : fastRuns_)
 		if (run.writer) run.writer->flush();
+	if (listening_) dropOldRequests(); /* a request that never gets its answer is counted without waiting for a next one */
+	const evre::ListenLink *listen = listenLink();
 	const auto &rows = table_.rows();
 	QMutexLocker lock(&crossThreadMutex_);
 	stats_.master = master_->stats();
-	if (pollHz >= 0) stats_.pollHz = connected_ ? pollHz : 0;
+	if (pollHz >= 0) stats_.pollHz = connected_ && !listening_ ? pollHz : 0;
 	if (framesHz >= 0) stats_.autoSendHz = connected_ && autoSendOn_ ? framesHz : 0;
-	stats_.autoSend = connected_ && autoSendOn_;
+	/* listening, it is on from the start, so that a frame is taken: it says something once one has come */
+	stats_.autoSend = connected_ && autoSendOn_ && (!listening_ || streamCount_ > 0);
+	stats_.listening = listening_;
+	if (requestsHz >= 0) {
+		stats_.heard.requestsHz = listening_ ? requestsHz : 0;
+		stats_.heard.answersHz = listening_ ? answersHz : 0;
+	}
+	stats_.heard.unmatched = heardUnmatched_;
+	stats_.heard.notEvreBytes = notEvreBytes_;
+	stats_.heard.dropped = capturesLost_;
+	stats_.heard.sendAttempts = sendAttemptsBefore_ + quint64(listen ? listen->sendAttempts() : 0);
 	stats_.blocks = int(blocks_.size());
 	stats_.pollable = int(std::count_if(rows.begin(), rows.end(), pollable));
 	stats_.recording = csvFile_->isOpen();
@@ -1060,6 +1134,10 @@ int IoEngine::autoSendPrescalerFor(int prescaler, qint32 baud, int streamBytes, 
 
 /* the wish is kept whatever the link: connected, it goes to the device at once (on: once STATUS allows it) */
 void IoEngine::setAutoSend(bool on, int prescaler) {
+	if (listening_) { /* the wish stays what it was: this link has no say in it */
+		emit autoSendSet(on, 0, tr("listening"));
+		return;
+	}
 	autoSendWanted_ = on;
 	autoSendPrescaler_ = std::clamp(prescaler, evre::AUTO_SEND_PRESCALER_MIN,
 			evre::AUTO_SEND_BASE_HZ / evre::AUTO_SEND_MIN_HZ - 1);
@@ -1092,6 +1170,7 @@ QByteArray IoEngine::configBytes(bool on, int prescaler) const {
  * USB bridge) the rate is cut to what leaves room for the polls; USB CDC's baud rate is a number the hardware ignores,
  * so it is not cut there: 4000 frames of 32 bytes are a tenth of USB full speed. */
 void IoEngine::applyAutoSend(uint8_t slave) {
+	if (listening_) return;
 	const bool on = autoSendWanted_ && !isBus();
 	const quint64 request = ++autoSendRequest_;
 	int prescaler = autoSendPrescaler_;
@@ -1171,13 +1250,24 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 	/* a fast stream's block, recognised first: by its slave and its window */
 	const int stream = fastStreamOf(frame);
 	if (stream >= 0) {
+		if (listening_ && monitorOn_)
+			monitorLine("DEV->", frame.raw, tr("READ_RESP (fast stream %1)").arg(fastRuns_[stream].def.name));
 		api_->passBlock(fastRuns_[stream].def.name, frame); /* to the pass-through clients that asked, as it came */
 		takeBlock(stream, frame);
 		return;
 	}
+	/* listening, an answer to a heard read comes before the AUTO_SEND test, as an answer to a poll comes to the master
+	 * first: the other program's read of the read-only block is no frame the device sent by itself */
+	if (listening_ && takeHeardAnswer(frame)) return;
 	if (!autoSendOn_ || isBus() || frame.fn != evre::READ_RESP || frame.slave != target(0)
-			|| frame.addr != evre::READ_ONLY_BLOCK || frame.cnt == 0 || frame.data.size() != frame.cnt)
+			|| frame.addr != evre::READ_ONLY_BLOCK || frame.cnt == 0 || frame.data.size() != frame.cnt) {
+		if (listening_) {
+			heardUnmatched_++;
+			if (monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn) + tr(" (no request heard)"));
+		}
 		return;
+	}
+	if (listening_ && monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn));
 	if (frame.addr != streamAddr_ || frame.cnt != streamCount_) {
 		streamAddr_ = frame.addr;
 		streamCount_ = frame.cnt;
@@ -1211,7 +1301,7 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
  * register in the frames), so the device's host watchdog sees a request. AUTO_SEND found cleared (the device reset,
  * or someone wrote CONFIG): said once, and not switched on again by itself. */
 void IoEngine::heartbeat() {
-	if (!connected_ || (!autoSendOn_ && !anyFastOn()) || heartbeatPending_) return;
+	if (listening_ || !connected_ || (!autoSendOn_ && !anyFastOn()) || heartbeatPending_) return;
 	heartbeatPending_ = true;
 	const quint64 request = autoSendRequest_;
 	master_->readFrom(target(0), evre::CONFIG, 2, [this, request](const evre::Result &r) {
@@ -1245,6 +1335,10 @@ int IoEngine::streamBytes() const {
 /* the wish is kept whatever the link: connected, it goes to the device at once */
 void IoEngine::setFastStream(int stream, bool on) {
 	if (stream < 0 || stream >= fastRuns_.size()) return;
+	if (listening_) { /* the wish stays what it was: this link has no say in it */
+		emit fastStreamSet(stream, on, 0, tr("listening"));
+		return;
+	}
 	FastRun &run = fastRuns_[stream];
 	run.wanted = on;
 	if (!connected_) return;
@@ -1264,6 +1358,7 @@ bool IoEngine::anyFastOn() const {
  * without an enable is the device's own business: it is listened to at once. Off: the blocks ignored at once, the
  * enable written 0. */
 void IoEngine::applyFast(int stream) {
+	if (listening_) return;
 	FastRun &run = fastRuns_[stream];
 	const quint64 request = ++run.request;
 	const bool on = run.wanted && !isBus();
@@ -1488,7 +1583,7 @@ void IoEngine::recordBlock(int stream, const fast::BlockTaken &taken, const QByt
  * not pass them on, or the device does not stream; off again, and said. A stream that sent and went silent as long:
  * its enable read once; 0 (a reset, another host) stops it here too, not switched on again by itself. */
 void IoEngine::watchFast() {
-	if (!connected_) return;
+	if (listening_ || !connected_) return;
 	const qint64 now = clock_.elapsed();
 	for (int i = 0; i < fastRuns_.size(); i++) {
 		FastRun &run = fastRuns_[i];
@@ -1523,6 +1618,7 @@ void IoEngine::watchFast() {
 /* Before the link closes: every stream that may be sending told 0, in a WRITE sent straight on the link and flushed,
  * the link drained, as AUTO_SEND's off */
 void IoEngine::sendFastOffs() {
+	if (listening_) return;
 	bool sent = false;
 	for (FastRun &run : fastRuns_) {
 		if (!run.deviceMaySend || !run.enable()) continue;
@@ -1536,6 +1632,237 @@ void IoEngine::sendFastOffs() {
 	if (!sent) return;
 	link_->flush(200);
 	link_->drain(100);
+}
+
+/* -------------------------------------------------------------------- Listen */
+
+/* What another program is doing is taken from now on; nothing goes out. The keep-alive is the one request the master
+ * sends by itself. AUTO_SEND counts as on and every stream as listened to, so that frames and blocks are taken the way
+ * they always are, whoever asked the device for them; no enable is written and no rate read. A running API would
+ * let its clients send: stopped, and said. */
+void IoEngine::startListening() {
+	master_->setKeepAlive(false);
+	if (api_->running()) {
+		api_->stop();
+		emit apiStarted(false, tr("listening: the API server is off"));
+	}
+	autoSendOn_ = !isBus();
+	hearStreams();
+	heardBlocks_.clear();
+	roundRows_.clear();
+	requestsSinceRate_ = answersSinceRate_ = 0;
+	heardUnmatched_ = notEvreBytes_ = capturesLost_ = 0;
+	{
+		/* the Dump's blocks are the ones heard from here on; the polls' before and the last write are another story */
+		QMutexLocker lock(&crossThreadMutex_);
+		dumpsMoved_ = dumpsMoved_ || !dumps_.isEmpty() || lastWrite_.write;
+		dumps_.clear();
+		lastWrite_ = DumpReply();
+	}
+	if (monitorOn_) {
+		monitorText(tr("listening on %1: ->DEV the other program's request, DEV-> the device's answer")
+				.arg(listenLink()->place()));
+	}
+}
+
+void IoEngine::hearStreams() {
+	for (FastRun &run : fastRuns_) {
+		if (run.on) continue;
+		run.state.reset(run.def, run.def.rate);
+		run.starts++;
+		run.notShown = 0;
+		run.on = true;
+		run.newerSaid = run.silenceAsked = false;
+		run.lastBlockMs = run.takenMs = -1;
+	}
+}
+
+/* The other program's frames. A WRITE has no answer, so it is done when heard; a READ or a WRITE_ACK waits for its
+ * answer. A heard write goes no further than the Dump's write card: the table changes at the next heard read, the
+ * device being the truth and the Studio unable to read it back. */
+void IoEngine::onHeardRequest(const QByteArray &bytes) {
+	const quint64 skipped = heardParser_.skippedBytes();
+	heardParser_.feed(bytes);
+	evre::Frame frame;
+	while (heardParser_.next(frame)) {
+		requestsSinceRate_++;
+		if (monitorOn_) monitorLine("->DEV", frame.raw, evre::fnName(frame.fn));
+		if (frame.fn == evre::WRITE) {
+			evre::Result sent;
+			sent.ok = true;
+			keepWrite(frame.slave, frame.addr, frame.data, false, sent);
+		} else if (frame.fn == evre::READ || frame.fn == evre::WRITE_ACK) {
+			heard_.push_back({ frame.slave, frame.fn, frame.addr, frame.cnt, frame.data, clock_.elapsed() });
+			dropOldRequests();
+		}
+	}
+	sayNotEvre(heardParser_.skippedBytes() - skipped);
+}
+
+/* the master has the frames; this only tells what was not one */
+void IoEngine::onDeviceBytes(const QByteArray &bytes) {
+	const quint64 skipped = deviceParser_.skippedBytes();
+	deviceParser_.feed(bytes);
+	evre::Frame frame;
+	while (deviceParser_.next(frame)) {}
+	sayNotEvre(deviceParser_.skippedBytes() - skipped);
+}
+
+void IoEngine::sayNotEvre(quint64 bytes) {
+	if (bytes == 0) return;
+	notEvreBytes_ += bytes;
+	if (!monitorOn_) return;
+	const QString text = bytes == 1 ? tr("1 byte not EVRe") : tr("%n bytes not EVRe", nullptr, int(bytes));
+	monitorText(QStringLiteral("??     ") + text);
+}
+
+/* a request the program gave up on, or that the capture lost the answer to: a late answer is no answer to it */
+void IoEngine::dropOldRequests() {
+	const qint64 oldest = clock_.elapsed() - timeoutMs_;
+	while (!heard_.isEmpty() && (heard_.size() > HEARD_REQUESTS_KEPT || heard_.first().timeMs < oldest)) {
+		heard_.removeFirst();
+		heardUnmatched_++;
+	}
+}
+
+/* as Master::findPending matches: the same slave, offset and count, and the answer the function asks for or an error */
+int IoEngine::heardRequestFor(const evre::Frame &answer) const {
+	for (int i = int(heard_.size()) - 1; i >= 0; i--) {
+		const HeardRequest &request = heard_[i];
+		const uint8_t expected = request.fn == evre::READ ? evre::READ_RESP : evre::WRITE_ACK_RESP;
+		if (answer.slave == request.slave && answer.addr == request.addr && answer.cnt == request.cnt
+				&& (answer.fn == expected || answer.fn == evre::ERROR_RESP))
+			return i;
+	}
+	return -1;
+}
+
+bool IoEngine::takeHeardAnswer(const evre::Frame &frame) {
+	dropOldRequests();
+	const int index = heardRequestFor(frame);
+	if (index < 0) return false;
+	const HeardRequest request = heard_.takeAt(index);
+	answersSinceRate_++;
+	if (monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn));
+	evre::Result result;
+	if (frame.fn == evre::ERROR_RESP) {
+		result.error = frame.data.isEmpty() ? 0 : uint8_t(frame.data[0]);
+		result.message = evre::errorName(result.error);
+	} else {
+		result.ok = true;
+		result.data = frame.data;
+	}
+	if (request.fn == evre::WRITE_ACK) { /* refused too: that says nothing of reading these registers */
+		keepWrite(request.slave, request.addr, request.data, true, result);
+		return true;
+	}
+	const Block block = heardBlock(frame.slave, frame.addr, frame.cnt);
+	if (result.ok) takeHeardRead(block, frame);
+	else for (const int row : block.rows) table_.setError(row, result.message, false); /* the Studio did not ask: no more */
+	/* the Dump's blocks are the table's devices': with one device, another's answer stays in the Monitor */
+	if (dumpOn_ && (isBus() || frame.slave == master_->slave())) keepDump(block, result);
+	return true;
+}
+
+/* With one device, only the link's slave is that device: another's answers fill no row. Registers wholly inside what
+ * was read: a long array read in part is left as it was. */
+IoEngine::Block IoEngine::heardBlock(uint8_t slave, uint16_t addr, uint16_t count) {
+	const quint64 key = quint64(slave) << 32 | quint64(addr) << 16 | count;
+	const auto known = heardBlocks_.constFind(key);
+	if (known != heardBlocks_.constEnd()) return *known;
+	Block block;
+	block.slave = tableSlave(slave);
+	block.addr = addr;
+	block.size = count;
+	if (isBus() || slave == master_->slave()) {
+		const auto &rows = table_.rows();
+		for (int i = 0; i < rows.size(); i++) {
+			const RegDef &d = rows[i].def;
+			if (d.slave == block.slave && d.addr >= addr && int(d.addr) + d.size <= int(addr) + count) block.rows << i;
+		}
+	}
+	if (heardBlocks_.size() >= 4096) heardBlocks_.clear(); /* a program that reads everywhere: a cache, not a record */
+	heardBlocks_.insert(key, block);
+	return block;
+}
+
+/* An answer that would set a row this round has set already: the other program has come round again, so the round
+ * before is a sample first. */
+void IoEngine::takeHeardRead(const Block &block, const evre::Frame &frame) {
+	if (std::any_of(block.rows.begin(), block.rows.end(), [this](int row) { return roundRows_.contains(row); }))
+		closeRound();
+	storeBlock(block, frame.data);
+	for (const int row : block.rows) roundRows_.insert(row);
+	if (!block.rows.isEmpty() && !roundTimer_->isActive()) roundTimer_->start();
+	/* the device's line, once for each thing it says: a program may well read this at every round */
+	if (frame.addr != evre::DEVICE_ID || frame.cnt < 4 || (!isBus() && frame.slave != master_->slave())) return;
+	const uint16_t id = evre::littleEndian16(frame.data, 0), status = evre::littleEndian16(frame.data, 2);
+	const quint32 said = quint32(id) << 16 | status;
+	const auto known = heardDevices_.constFind(block.slave);
+	if (known != heardDevices_.constEnd() && *known == said) return;
+	heardDevices_.insert(block.slave, said);
+	emit deviceInfo(block.slave, true, id, status, QString());
+}
+
+/* the round's sample tick, as pollDone's: while AUTO_SEND's frames come, each of them is the tick instead */
+void IoEngine::closeRound() {
+	roundTimer_->stop();
+	if (roundRows_.isEmpty()) return;
+	roundRows_.clear();
+	if (autoSendOn_ && streamCount_ > 0) return;
+	const double t = now();
+	appendSamples(t);
+	writeCsvRow(t);
+}
+
+/* Each path the engine sends by, in the state that would make it send, however it came there. */
+void IoEngine::trySendingForTests(SendPath path) {
+	switch (path) {
+	case SendPath::None: break;
+	case SendPath::Login: sendLogin(); break;
+	case SendPath::DeviceInfo: readDeviceInfo(); break;
+	case SendPath::Poll:
+		pollTick();
+		startPoll();
+		break;
+	case SendPath::Heartbeat: heartbeat(); break;
+	case SendPath::AutoSend: applyAutoSend(target(0)); break;
+	case SendPath::Fast:
+		for (int i = 0; i < fastRuns_.size(); i++) applyFast(i);
+		break;
+	case SendPath::Silence:
+		for (FastRun &run : fastRuns_) {
+			run.takenMs = run.lastBlockMs = 0; /* as long ago as the clock goes: the tests wait for FIRST_FRAME_MS of it */
+			run.silenceAsked = false;
+		}
+		watchFast();
+		for (FastRun &run : fastRuns_) run.takenMs = run.lastBlockMs = -1;
+		break;
+	case SendPath::Retry:
+		offline_.insert(0);
+		retryOffline();
+		offline_.clear();
+		break;
+	case SendPath::ReadBack: readBack(0, evre::DEVICE_ID, 2); break;
+	case SendPath::StreamGone: {
+		for (FastRun &run : fastRuns_) run.deviceMaySend = true;
+		QVector<RegDef> defs;
+		for (const RegValue &v : table_.rows()) defs << v.def;
+		setMap(defs, 1, deviceName_, {}); /* no device, so no streams */
+		break;
+	}
+	case SendPath::Offs:
+		deviceMaySend_ = true;
+		for (FastRun &run : fastRuns_) run.deviceMaySend = true;
+		disconnectLink();
+		break;
+	}
+	updateStats();
+}
+
+bool IoEngine::pollTickerRunning() {
+	std::lock_guard<std::mutex> lock(tickerMutex_);
+	return tickerRunning_;
 }
 
 /* ---------------------------------------------------------------------- CSV */
@@ -1601,6 +1928,10 @@ void IoEngine::stopRecord() {
 /* ----------------------------------------------- writes and reads asked for */
 
 void IoEngine::write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray &bytes, bool ack) {
+	if (listening_) {
+		emit writeDone(id, false, tr("listening: nothing is sent"));
+		return;
+	}
 	if (!connected_) {
 		emit writeDone(id, false, tr("not connected"));
 		return;
@@ -1624,6 +1955,7 @@ void IoEngine::write(quint64 id, uint8_t slave, uint16_t addr, const QByteArray 
 
 /* after a write, what the device holds now (it may have kept another value) */
 void IoEngine::readBack(uint8_t tableSlave, uint16_t addr, int writtenSize) {
+	if (listening_) return;
 	const RegKey key = regKey(tableSlave, addr);
 	const int row = rowOfKey_.value(key, -1);
 	const uint16_t count = uint16_t(row >= 0 ? table_.rows()[row].def.size : writtenSize);
@@ -1634,6 +1966,10 @@ void IoEngine::readBack(uint8_t tableSlave, uint16_t addr, int writtenSize) {
 }
 
 void IoEngine::read(quint64 id, uint8_t slave, uint16_t addr, uint16_t count, bool intoTable) {
+	if (listening_) {
+		emit readDone(id, false, {}, tr("listening: nothing is sent"), 0);
+		return;
+	}
 	if (!connected_) {
 		emit readDone(id, false, {}, tr("not connected"), 0);
 		return;
@@ -1652,6 +1988,10 @@ void IoEngine::read(quint64 id, uint8_t slave, uint16_t addr, uint16_t count, bo
 /* ---------------------------------------------------------------------- API */
 
 void IoEngine::apiStart(quint16 evrePort, quint16 jsonPort, bool network) {
+	if (listening_) {
+		emit apiStarted(false, tr("listening: the API server is off"));
+		return;
+	}
 	QString err;
 	const bool ok = api_->start(evrePort, jsonPort, network, err);
 	updateStats();

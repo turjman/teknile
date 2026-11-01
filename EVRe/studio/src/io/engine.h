@@ -36,6 +36,17 @@
  * again, and said. (5.1: the window shows the counts; the chart takes the blocks from 5.2.) The chart's trigger on a
  * channel (setFastTrigger) is looked for in each block as it comes, and its crossings go with the block.
  *
+ * Listen (connectListen): the link belongs to another program, and the frames come from the system's USB capture
+ * (io/listen_link.h). The device's bytes still run through the master, which then has no request to match them to, so
+ * every frame comes to onUnsolicited; the other program's bytes go through a parser of their own (onHeardRequest), each
+ * request kept until its answer. A heard answer fills the table, the chart and the CSV as a polled one does, AUTO_SEND's
+ * frames and fast blocks are taken as they always are. A heard round is the sample tick: another program's reads come
+ * one by one, so an answer that would set a row already set since the last tick starts the next round.
+ *
+ * Nothing is sent while listening (listening_): no login, no polls, no keep-alive, no heartbeat, no enables; the
+ * window's requests are refused with a text, the API is off. Each place that could send has its own guard, and
+ * the link drops whatever gets past them (the GUI test's nothing-sent checks go through trySendingForTests).
+ *
  * Every QObject the engine uses is its child (or is made in its thread), so
  * moveToThread() takes them all along: a timer left in the window's thread
  * could not be started from the engine's.
@@ -61,6 +72,7 @@
 #include "evre/master.h"
 #include "evre/registers.h"
 #include "io/fast_stream.h"
+#include "io/listen_link.h"
 #include "io/reg_table.h"
 
 class ApiServer;
@@ -103,6 +115,10 @@ public:
 	static constexpr int HEARTBEAT_MS = 100;
 	static constexpr int FIRST_FRAME_MS = 2000;  /* AUTO_SEND on and no frame by then: off again, polled */
 	static constexpr double AUTO_SEND_LINK_SHARE = 0.7;
+	/* Listen: heard requests waiting for their answers, at most; and how long a heard round stays open: a program
+	 * slower than this gets a point for each round all the same, a little after its first read */
+	static constexpr int HEARD_REQUESTS_KEPT = 64;
+	static constexpr int HEARD_ROUND_MS = 250;
 	/* the prescaler + 1 of every rate the protocol names (8000 Hz divided evenly), fastest first:
 	 * evre::AUTO_SEND_DIVIDERS */
 	static const QVector<int> &autoSendDividers();
@@ -155,6 +171,14 @@ public:
 			quint64 notShown = 0; /* records the window did not take in time (FAST_QUEUE_BYTES) */
 		};
 		QVector<Fast> fast;
+		bool listening = false;  /* the link is Listen's: nothing is sent, heard says what comes */
+		struct Heard {
+			double requestsHz = 0, answersHz = 0; /* requests, and answers matched to one, a second, measured as pollHz is */
+			quint64 unmatched = 0;     /* answers with no request heard, and requests no answer came to in time */
+			quint64 notEvreBytes = 0;  /* bytes that were no frame, both ways */
+			quint64 dropped = 0;       /* captures the system says it lost */
+			quint64 sendAttempts = 0;  /* requests that reached a listening link: 0, or a guard is missing */
+		} heard;
 	};
 	Stats stats() const;
 	/* the samples of the plotted registers since the last call, every poll, by register key */
@@ -246,6 +270,19 @@ public:
 	/* baudLimited: the baud rate is the link's real speed (a UART, a USB-to-UART bridge); false on USB CDC, which runs
 	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
+	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
+	void connectListen(const QString &port);
+	/* tests: that port is replayed from a file, for the device a lookup would find there (no lookup yet) */
+	void setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
+			FileCapture::Pace pace = FileCapture::AtOnce);
+	evre::ListenLink *listenLink() const; /* tests: the link, when it is Listen's */
+	/* tests: each way the engine sends by itself, tried now in the state that would send: while listening, nothing
+	 * goes. The stats are brought up to date with it (None: only that). */
+	enum class SendPath {
+		None, Login, DeviceInfo, Poll, Heartbeat, AutoSend, Fast, Silence, Retry, ReadBack, StreamGone, Offs
+	};
+	void trySendingForTests(SendPath path);
+	bool pollTickerRunning();             /* tests: the thread that wakes the polls */
 	void disconnectLink();
 	/* inFlight as the user set it; a bus on a serial link (RS-485: one transmitter at a time) always gets 1 */
 	void setLinkOptions(int slave, int timeoutMs, int inFlight);
@@ -317,6 +354,7 @@ private:
 	void onClosed(const QString &why, const QString &detail);
 	void sendLogin();
 	void readDeviceInfo();
+	void startListening();                    /* the link is open and is Listen's: nothing goes out, all that comes is taken */
 	uint8_t target(uint8_t tableSlave) const; /* where a request for a register of this device goes */
 	uint8_t tableSlave(uint8_t slave) const;  /* the table's slave of the device at this address */
 	bool isBus() const { return devices_.size() > 1 || (!devices_.isEmpty() && devices_[0].slave != 0); }
@@ -401,6 +439,24 @@ private:
 	void watchFast();                              /* every 500 ms: the first block, and a stream gone silent */
 	void sendFastOffs();                           /* Disconnect: each stream that may send told 0, straight */
 
+	/* Listen */
+	struct HeardRequest {
+		uint8_t slave = 0, fn = 0;
+		uint16_t addr = 0, cnt = 0;
+		QByteArray data;
+		qint64 timeMs = 0;                         /* when it was heard (clock_) */
+	};
+	void onHeardRequest(const QByteArray &bytes);  /* the other program's bytes */
+	void onDeviceBytes(const QByteArray &bytes);   /* the device's: only what is not a frame, the master has the frames */
+	void hearStreams();                            /* every stream taken, none switched: the device's own business */
+	void dropOldRequests();                        /* those past the timeout, or past HEARD_REQUESTS_KEPT */
+	int heardRequestFor(const evre::Frame &answer) const; /* the newest it answers; -1: none */
+	bool takeHeardAnswer(const evre::Frame &frame);       /* false: it answers nothing heard */
+	Block heardBlock(uint8_t slave, uint16_t addr, uint16_t count); /* the rows inside what was read */
+	void takeHeardRead(const Block &block, const evre::Frame &frame);
+	void closeRound();                             /* a point per plotted register, a CSV row */
+	void sayNotEvre(quint64 bytes);                /* the ?? line of a chunk */
+
 	/* the poll clock: a thread that sleeps to each deadline and wakes the
 	 * engine. Qt's timers tick at ~15.6 ms on Windows outside the GUI thread;
 	 * this one keeps a 1-5 ms interval on Windows and Linux alike. */
@@ -410,6 +466,7 @@ private:
 	void onTick(int ticks); /* in the ticker thread: this many more polls due */
 
 	void monitorLine(const char *direction, const QByteArray &raw, const QString &note);
+	void monitorText(const QString &text);    /* a line that is no frame, stamped the same way */
 	void updateStats();
 
 	/* the device side (children of the engine) */
@@ -479,6 +536,21 @@ private:
 	QTimer *heartbeatTimer_;
 	QTimer *firstFrameTimer_;
 	bool heartbeatPending_ = false;              /* one CONFIG read under way at most */
+
+	/* Listen */
+	bool listening_ = false;                     /* set when the link opens, cleared when it goes: every guard reads this */
+	QHash<QString, evre::ListenFile> listenFiles_; /* the tests' ports, by name */
+	int timeoutMs_ = 500;                        /* the link's timeout: a heard request is waited for as long */
+	evre::Parser heardParser_;                   /* the other program's bytes */
+	evre::Parser deviceParser_;                  /* the device's again, the master's parser being its own: what is no frame */
+	QList<HeardRequest> heard_;                  /* waiting for their answers; oldest first */
+	QHash<quint64, Block> heardBlocks_;          /* rows by slave, address and count: a scan once, not at every answer */
+	QHash<uint8_t, quint32> heardDevices_;       /* the DEVICE_ID and STATUS last said, by table slave */
+	QSet<int> roundRows_;                        /* rows set since the last tick */
+	QTimer *roundTimer_;
+	int requestsSinceRate_ = 0, answersSinceRate_ = 0;
+	quint64 heardUnmatched_ = 0, notEvreBytes_ = 0, capturesLost_ = 0;
+	quint64 sendAttemptsBefore_ = 0;             /* on listening links now gone */
 
 	/* Fast EVRe: the map's streams (none on a bus) */
 	QVector<FastRun> fastRuns_;
