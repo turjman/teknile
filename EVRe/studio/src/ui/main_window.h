@@ -268,6 +268,7 @@ private:
 	/* the API server */
 	void setApiRunning(bool on);
 	void onApiStarted(bool ok, const QString &err);
+	void onApiStopped(const QString &why);
 
 	/* the event log, the status bar, the theme, help */
 	void logEvent(LogLevel level, const QString &text); /* the Log tab, logs/studio_<date>.log, a pop-up */

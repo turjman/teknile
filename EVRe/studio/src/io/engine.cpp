@@ -554,11 +554,17 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 void IoEngine::connectListen(const QString &port) {
 	serialBaud_ = 0;
 	applyInFlight();
-	/* the tests' file, or nothing yet: a system's live capture and UsbTarget::stateOf(port).target go in the first
-	 * branch; without a capture the link refuses the port in plain words */
+	/* the tests' file, or the system's capture of what the port is now, a device back at a try by itself on a new
+	 * address; without a capture the link refuses the port in plain words */
+	evre::ListenLink *link = nullptr;
 	const auto file = listenFiles_.constFind(port);
-	auto *link = file == listenFiles_.constEnd() ? new evre::ListenLink(port, nullptr, UsbTarget())
-			: new evre::ListenLink(port, new FileCapture(file->file, file->pace), file->target);
+	if (file != listenFiles_.constEnd()) {
+		link = new evre::ListenLink(port, new FileCapture(file->file, file->pace), file->target);
+	} else {
+		const UsbPortState state = UsbTarget::liveStateOf(port);
+		link = new evre::ListenLink(port, state.kind == UsbPortState::Listenable ? UsbCapture::live() : nullptr, state.target);
+		link->setRefused(state);
+	}
 	connect(link, &evre::ListenLink::heardRequest, this, &IoEngine::onHeardRequest);
 	connect(link, &evre::ListenLink::received, this, &IoEngine::onDeviceBytes);
 	connect(link, &evre::ListenLink::capturesLost, this, [this](quint64 total) { capturesLost_ = total; });
@@ -1646,7 +1652,7 @@ void IoEngine::startListening() {
 	master_->setKeepAlive(false);
 	if (api_->running()) {
 		api_->stop();
-		emit apiStarted(false, tr("listening: the API server is off"));
+		emit apiStopped(listeningApiReason());
 	}
 	autoSendOn_ = !isBus();
 	hearStreams();
@@ -1989,9 +1995,11 @@ void IoEngine::read(quint64 id, uint8_t slave, uint16_t addr, uint16_t count, bo
 
 /* ---------------------------------------------------------------------- API */
 
+QString IoEngine::listeningApiReason() { return tr("the Studio is listening, and a client could send"); }
+
 void IoEngine::apiStart(quint16 evrePort, quint16 jsonPort, bool network) {
 	if (listening_) {
-		emit apiStarted(false, tr("listening: the API server is off"));
+		emit apiStarted(false, listeningApiReason());
 		return;
 	}
 	QString err;

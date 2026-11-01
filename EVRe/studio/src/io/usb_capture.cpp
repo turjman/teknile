@@ -2,13 +2,19 @@
 #include "io/usb_capture.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QHash>
 #include <QTimer>
 #include <QtEndian>
 
+#include <algorithm>
+#include <climits>
 #include <memory>
+
+#ifdef Q_OS_LINUX
+#include "io/usbmon_capture.h"
+#endif
 
 namespace {
 
@@ -24,10 +30,13 @@ constexpr int PACKET_HEADER = 27;
 constexpr uchar INFO_COMPLETION = 0x01;
 
 /* struct mon_bin_hdr: id 0, type 8, xfer_type 9, epnum 10, devnum 11, busnum 12, flag_setup 14, flag_data 15, ts_sec 16,
- * ts_usec 24, status 28, len_urb 32, len_cap 36, then setup and the like up to 64 */
-constexpr int MON_HEADER = 64;
+ * ts_usec 24, status 28, len_urb 32, len_cap 36, then setup and the like up to UsbmonDecoder::HEADER */
+constexpr int MON_LEN_CAP = 36;
 
 constexpr int ENDPOINT_IN = 0x80;
+
+constexpr int CDC_DATA_CLASS = 0x0A;
+constexpr quint16 FTDI_VID = 0x0403;
 
 template <typename T>
 T little(const char *bytes) { return qFromLittleEndian<T>(bytes); }
@@ -40,7 +49,103 @@ QString brokenStream() {
 	return QCoreApplication::translate("UsbCapture", "the capture's stream is broken: a record longer than any can be");
 }
 
+/* a sysfs file holds one line; a number in it is hexadecimal or decimal by the file, -1 when there is none */
+QByteArray sysfsLine(const QString &file) {
+	QFile in(file);
+	return in.open(QIODevice::ReadOnly) ? in.readAll().trimmed() : QByteArray();
+}
+
+int sysfsNumber(const QString &file, int base) {
+	bool ok = false;
+	const int value = sysfsLine(file).toInt(&ok, base);
+	return ok ? value : -1;
+}
+
+/* Up from the tty to the USB device above it, empty when there is none (a motherboard's port walks up to the root).
+ * interface: the step below the device, the tty's own interface */
+QString usbDeviceAbove(const QString &start, QString &interface) {
+	QString below, dir = start;
+	for (;;) {
+		if (sysfsNumber(dir + QLatin1String("/busnum"), 10) > 0 && sysfsNumber(dir + QLatin1String("/devnum"), 10) > 0) {
+			interface = below;
+			return dir;
+		}
+		const QString up = QFileInfo(dir).path();
+		if (up == dir || up.isEmpty() || up == QLatin1String(".")) return {};
+		below = dir;
+		dir = up;
+	}
+}
+
+/* A USB CDC port's data, where its tty sits on the control interface: the data interface of the same function. A
+ * composite device has one per function and sysfs does not say which is whose, but a function's interfaces are
+ * neighbours: the next one up, or failing that the nearest one down. None: the tty's own (one interface doing both) */
+QString cdcDataInterface(const QString &device, const QString &own) {
+	const int control = sysfsNumber(own + QLatin1String("/bInterfaceNumber"), 16);
+	QString found = own;
+	int nearest = INT_MAX;
+	const QStringList names = QDir(device).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+	for (const QString &name : names) {
+		const QString dir = device + QLatin1Char('/') + name;
+		if (sysfsNumber(dir + QLatin1String("/bInterfaceClass"), 16) != CDC_DATA_CLASS) continue;
+		const int number = sysfsNumber(dir + QLatin1String("/bInterfaceNumber"), 16);
+		const int distance = number > control ? number - control : 256 + control - number;
+		if (distance < nearest) {
+			nearest = distance;
+			found = dir;
+		}
+	}
+	return found;
+}
+
+/* the interface's bulk endpoints; what its interrupt endpoint says of the line is not the data */
+void readBulkEndpoints(const QString &interface, UsbTarget &target) {
+	const QStringList names = QDir(interface).entryList({ QStringLiteral("ep_*") }, QDir::Dirs, QDir::Name);
+	for (const QString &name : names) {
+		const QString dir = interface + QLatin1Char('/') + name;
+		const int address = sysfsNumber(dir + QLatin1String("/bEndpointAddress"), 16);
+		if (address < 0 || sysfsLine(dir + QLatin1String("/type")) != "Bulk") continue;
+		if (address & ENDPOINT_IN) {
+			target.inEndpoints << address;
+			if (!target.inMaxPacket) target.inMaxPacket = std::max(0, sysfsNumber(dir + QLatin1String("/wMaxPacketSize"), 16)) & 0x7FF;
+		} else {
+			target.outEndpoints << address;
+		}
+	}
+}
+
 } // namespace
+
+UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QString &port, const QHash<QString, QString> &links) {
+	UsbPortState state;
+	state.kind = UsbPortState::NotUsb;
+	const QString tty = QFileInfo(port).fileName();
+	if (tty.isEmpty()) return state;
+	const QString link = sys + QLatin1String("/class/tty/") + tty + QLatin1String("/device");
+	/* no such tty, or a tty with no device under it: a virtual one, a Bluetooth one */
+	const QString start = links.contains(link) ? links.value(link) : QFileInfo(link).canonicalFilePath();
+	if (start.isEmpty()) return state;
+	QString own;
+	const QString device = usbDeviceAbove(start, own);
+	if (device.isEmpty()) return state;
+
+	UsbTarget &target = state.target;
+	target.port = tty;
+	target.bus = sysfsNumber(device + QLatin1String("/busnum"), 10);
+	target.address = sysfsNumber(device + QLatin1String("/devnum"), 10);
+	target.vid = quint16(sysfsNumber(device + QLatin1String("/idVendor"), 16));
+	target.pid = quint16(sysfsNumber(device + QLatin1String("/idProduct"), 16));
+	/* the driver's name decides, not the VID: ttyACM is cdc-acm, whose bulk data has no framing whoever made the chip */
+	const bool cdc = tty.startsWith(QLatin1String("ttyACM"));
+	target.kind = cdc ? UsbTarget::Cdc : target.vid == FTDI_VID ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
+	readBulkEndpoints(cdc ? cdcDataInterface(device, own) : own, target);
+
+	const QFileInfo capture(dev + QLatin1String("/usbmon") + QString::number(target.bus));
+	const bool readable = capture.exists() && capture.isReadable();
+	state.kind = readable ? UsbPortState::Listenable : UsbPortState::NoUsbmon;
+	if (!readable) state.device = capture.filePath();
+	return state;
+}
 
 /* the tests' ports (stateForTests) */
 static QHash<QString, UsbPortState> &portStatesForTests() {
@@ -48,10 +153,30 @@ static QHash<QString, UsbPortState> &portStatesForTests() {
 	return states;
 }
 
-/* Where each system's answer goes: the port's USB device and endpoints (sysfs, or SetupAPI and the hub's descriptors),
- * or why not (not a USB port, the capture not installed or not readable). No system has one yet */
 UsbPortState UsbTarget::stateOf(const QString &port) {
-	return portStatesForTests().value(port);
+	const auto forced = portStatesForTests().constFind(port);
+	return forced != portStatesForTests().constEnd() ? *forced : liveStateOf(port);
+}
+
+/* Where each system's answer goes: the port's USB device and endpoints (sysfs, or SetupAPI and the hub's descriptors),
+ * or why not (not a USB port, the capture not installed or not readable). Windows has none yet */
+UsbPortState UsbTarget::liveStateOf(const QString &port) {
+#ifdef Q_OS_LINUX
+	/* a name with a path may be a link of /dev/serial/by-id */
+	const QString name = port.contains(QLatin1Char('/')) ? QFileInfo(port).canonicalFilePath() : port;
+	return usbmonPortState(QStringLiteral("/sys"), QStringLiteral("/dev"), name);
+#else
+	Q_UNUSED(port);
+	return {};
+#endif
+}
+
+UsbCapture *UsbCapture::live() {
+#ifdef Q_OS_LINUX
+	return new UsbmonCapture;
+#else
+	return nullptr;
+#endif
 }
 
 void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) { portStatesForTests().insert(port, state); }
@@ -135,14 +260,20 @@ void UsbPcapDecoder::packet(const char *bytes, qsizetype size, qint64 stamp, QVe
 	}
 }
 
+qsizetype UsbmonDecoder::fitRecord(char *bytes, quint32 room) {
+	const quint32 captured = std::min(little<quint32>(bytes + MON_LEN_CAP), room);
+	qToLittleEndian(captured, bytes + MON_LEN_CAP);
+	return HEADER + qsizetype(captured);
+}
+
 qsizetype UsbmonDecoder::record(const char *bytes, qsizetype size, QVector<UsbEvent> &out) {
-	if (size < MON_HEADER) return 0;
-	const quint32 captured = little<quint32>(bytes + 36);
+	if (size < HEADER) return 0;
+	const quint32 captured = little<quint32>(bytes + MON_LEN_CAP);
 	if (captured > quint32(MAX_RECORD)) {
 		fail(brokenStream());
 		return 0;
 	}
-	const qsizetype whole = MON_HEADER + qsizetype(captured);
+	const qsizetype whole = HEADER + qsizetype(captured);
 	if (size < whole) return 0;
 	const char type = bytes[8];
 	const bool hasData = bytes[15] == 0; /* flag_data: 0 is data, '<' or '>' says why there is none */
@@ -152,9 +283,9 @@ qsizetype UsbmonDecoder::record(const char *bytes, qsizetype size, QVector<UsbEv
 		const int status = little<qint32>(bytes + 28);
 		const qint64 stamp = stampOf(little<qint64>(bytes + 16), little<qint32>(bytes + 24));
 		if (endpoint & ENDPOINT_IN) {
-			if (type == 'C' && status == 0) hear(UsbDirection::In, device, endpoint, status, bytes + MON_HEADER, captured, stamp, out);
+			if (type == 'C' && status == 0) hear(UsbDirection::In, device, endpoint, status, bytes + HEADER, captured, stamp, out);
 		} else if (type == 'S') {
-			hear(UsbDirection::Out, device, endpoint, status, bytes + MON_HEADER, captured, stamp, out);
+			hear(UsbDirection::Out, device, endpoint, status, bytes + HEADER, captured, stamp, out);
 		}
 	}
 	return whole;

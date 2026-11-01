@@ -272,7 +272,7 @@ public:
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
 	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
 	void connectListen(const QString &port);
-	/* tests: that port is replayed from a file, for the device a lookup would find there (no lookup yet) */
+	/* tests: that port is replayed from a file, for the device a lookup would find there */
 	void setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
 			FileCapture::Pace pace = FileCapture::AtOnce);
 	evre::ListenLink *listenLink() const; /* tests: the link, when it is Listen's */
@@ -326,6 +326,7 @@ signals:
 	void recordStarted(bool ok, const QString &err);
 	void recordStopped(const QString &file, quint64 rows);
 	void apiStarted(bool ok, const QString &err);
+	void apiStopped(const QString &why);    /* a running API stopped by the engine, not by the card */
 	/* AUTO_SEND switched on (at hz) or off; err not empty: it was not, and is no longer wanted */
 	void autoSendSet(bool on, int hz, const QString &err);
 	void autoSendSlowed(const QString &why); /* a serial link: a slower rate than asked, and why */
@@ -355,6 +356,7 @@ private:
 	void sendLogin();
 	void readDeviceInfo();
 	void startListening();                    /* the link is open and is Listen's: nothing goes out, all that comes is taken */
+	static QString listeningApiReason();      /* why no API runs while listening */
 	uint8_t target(uint8_t tableSlave) const; /* where a request for a register of this device goes */
 	uint8_t tableSlave(uint8_t slave) const;  /* the table's slave of the device at this address */
 	bool isBus() const { return devices_.size() > 1 || (!devices_.isEmpty() && devices_[0].slave != 0); }

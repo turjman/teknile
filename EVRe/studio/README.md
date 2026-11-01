@@ -73,8 +73,8 @@ EVRe is a protocol of **teknile**.
   the map declares.
 - **Listen:** what another program says to a USB device, on a port that program holds, heard from the system's USB
   capture (USBPcap on Windows, usbmon on Linux; USB CDC and USB-UART bridges): the Monitor marks who said what, the table,
-  the chart, the CSV and the Dump fill from its reads, and the Studio sends nothing. The captures of both systems are on
-  their way: this build replays them in its tests.
+  the chart, the CSV and the Dump fill from its reads, and the Studio sends nothing. Linux hears live; Windows's capture
+  is on its way, and this build replays it in its tests.
 - **Device check:** DEVICE_ID and STATUS are read at every connect; a warning when the map is for another device.
 - **Several devices on one link:** a bus file (`evre-bus/1`) puts devices at their slave addresses on one link
   (RS-485, a gateway); their registers are named after them (`D1_SPEED`, `D2_STATUS`) in the table, chart, CSV and
@@ -230,11 +230,11 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (958 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (961 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
 | `evre_map_test` | the map files without a window (25 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |
-| `evre_listen_test` | Listen's capture decoders and its link without a window, a driver or a USB device (23 tests): USBPcap's and usbmon's formats give the same transfers on six made-up scenes (`tests/make_captures.py`), FTDI's status bytes, the device and endpoint filters, a stream cut at any byte, a file replayed |
+| `evre_listen_test` | Listen's capture decoders and its link without a window, a driver or a USB device (37 tests): USBPcap's and usbmon's formats give the same transfers on six made-up scenes (`tests/make_captures.py`), FTDI's status bytes, the device and endpoint filters, a stream cut at any byte, a file replayed, a port finding its device in a made-up sysfs |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the EVRe library as C++11 to 20 at -O0 to -Os and run, no heap, its stack, its frames through the Studio's parser, PROTOCOL.md's example block (44 checks; needs `g++` and the library) |
 | `tests/cli_test.py` | the `evre` command line end to end (51 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` (recorded, and checked by `evre check --writes`) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes, a fast stream included (29 checks) |

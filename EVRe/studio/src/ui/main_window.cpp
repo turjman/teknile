@@ -304,6 +304,7 @@ void MainWindow::startEngine() {
 	connect(engine_, &IoEngine::recordStarted, this, &MainWindow::onRecordStarted);
 	connect(engine_, &IoEngine::recordStopped, this, &MainWindow::onRecordStopped);
 	connect(engine_, &IoEngine::apiStarted, this, &MainWindow::onApiStarted);
+	connect(engine_, &IoEngine::apiStopped, this, &MainWindow::onApiStopped);
 	connect(engine_, &IoEngine::autoSendSet, this, &MainWindow::onAutoSendSet);
 	connect(engine_, &IoEngine::fastStreamSet, this, &MainWindow::onFastStreamSet);
 	connect(engine_, &IoEngine::fastStreamNote, this, [this](int stream, const QString &text, bool stopped) {
@@ -1811,6 +1812,11 @@ void MainWindow::onApiStarted(bool ok, const QString &err) {
 	}
 	logEvent(LogLevel::Error, tr("API server not started: %1").arg(err));
 	sidebar_->showApiNotStarted(err);
+}
+
+void MainWindow::onApiStopped(const QString &why) {
+	logEvent(LogLevel::Warning, tr("API server stopped: %1").arg(why));
+	sidebar_->showApiStopped(why);
 }
 
 /* ---------------------------------------------- the event log, the status bar */

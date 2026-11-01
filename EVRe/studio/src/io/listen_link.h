@@ -29,6 +29,8 @@ public:
 	/* capture: what hears this port, taken as a child; nullptr: nothing here can, and open() says so. target: what it
 	 * listens to, and where the Monitor says it is */
 	ListenLink(const QString &port, UsbCapture *capture, const UsbTarget &target, QObject *parent = nullptr);
+	/* why this port has no capture, for open() to say */
+	void setRefused(const UsbPortState &state) { refused_ = state; }
 	void open() override;
 	void close() override;
 	bool isOpen() const override { return open_; }
@@ -42,9 +44,12 @@ signals:
 	void capturesLost(quint64 total);               /* captures the system says it lost, so far */
 
 private:
+	QString refusal() const;
+
 	QString port_;
 	UsbCapture *capture_;
 	UsbTarget target_;
+	UsbPortState refused_;
 	bool open_ = false;
 	int sendAttempts_ = 0;
 };

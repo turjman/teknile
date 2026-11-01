@@ -1,13 +1,16 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* evre_listen_test: Listen without a window, a driver or a USB device (the capture sources of src/io/usb_capture.h):
  * the two decoders give the same events on every scene tests/make_captures.py wrote, FTDI's status bytes come off,
- * only the target's device and endpoints are heard, a stream may be cut at any byte, and a file replays through the
- * interface the live captures have. */
+ * only the target's device and endpoints are heard, a stream may be cut at any byte, a file replays through the
+ * interface the live captures have, and a port finds its device in a sysfs the test lays out. */
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QtEndian>
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <random>
 #include <utility>
 
@@ -209,6 +212,95 @@ QByteArray pattern(int size) {
 	for (int i = 0; i < size; i++) data[i] = char(0x20 + i % 90);
 	return data;
 }
+
+/* A /sys and a /dev of the test's own, for usbmonPortState, laid out as the kernel does: real links and colons where
+ * the system has them; on Windows a table for the links and "_" for the colon, which the lookup never looks at. */
+class FakeSysfs {
+public:
+	FakeSysfs() {
+		sys_ = dir_.path() + QStringLiteral("/sys");
+		dev_ = dir_.path() + QStringLiteral("/dev");
+		QDir().mkpath(sys_ + QStringLiteral("/class/tty"));
+		QDir().mkpath(dev_);
+	}
+
+	/* a USB device: the directory with busnum, devnum and the IDs */
+	QString device(const QString &name, int bus, int address, const char *vid, const char *pid) {
+		const QString dir = sys_ + QStringLiteral("/devices/pci0000/usb%1/%2").arg(bus).arg(name);
+		write(dir, "busnum", QByteArray::number(bus));
+		write(dir, "devnum", QByteArray::number(address));
+		write(dir, "idVendor", vid);
+		write(dir, "idProduct", pid);
+		return dir;
+	}
+
+	/* the kernel names it with the number in decimal and writes the file in hexadecimal */
+	QString interface(const QString &device, int number, const char *interfaceClass) {
+#ifdef Q_OS_WIN
+		const QChar colon = QLatin1Char('_');
+#else
+		const QChar colon = QLatin1Char(':');
+#endif
+		const QString dir = device + QLatin1Char('/') + device.section(QLatin1Char('/'), -1) + colon + QStringLiteral("1.%1").arg(number);
+		write(dir, "bInterfaceNumber", QByteArray::number(number, 16).rightJustified(2, '0'));
+		write(dir, "bInterfaceClass", interfaceClass);
+		return dir;
+	}
+
+	void endpoint(const QString &interface, int address, const char *type, const char *maxPacket) {
+		const QByteArray hex = QByteArray::number(address, 16).rightJustified(2, '0');
+		const QString dir = interface + QStringLiteral("/ep_") + QString::fromLatin1(hex);
+		write(dir, "bEndpointAddress", hex);
+		write(dir, "type", type);
+		write(dir, "wMaxPacketSize", maxPacket);
+	}
+
+	void bulkPair(const QString &interface, int in, int out, const char *maxPacket) {
+		endpoint(interface, in, "Bulk", maxPacket);
+		endpoint(interface, out, "Bulk", maxPacket);
+	}
+
+	/* the tty and its link; an empty target: a tty with no device under it */
+	void tty(const QString &name, const QString &target) {
+		const QString dir = sys_ + QStringLiteral("/class/tty/") + name;
+		QDir().mkpath(dir);
+		QDir().mkpath(target);
+		if (target.isEmpty()) return;
+#ifdef Q_OS_WIN
+		links_.insert(dir + QStringLiteral("/device"), target);
+#else
+		QVERIFY(QFile::link(target, dir + QStringLiteral("/device")));
+#endif
+	}
+
+	void forgetTty(const QString &name) {
+		QVERIFY(QDir(sys_ + QStringLiteral("/class/tty/") + name).removeRecursively());
+		links_.remove(sys_ + QStringLiteral("/class/tty/") + name + QStringLiteral("/device"));
+	}
+
+	QString usbmon(int bus) {
+		const QString file = dev_ + QStringLiteral("/usbmon%1").arg(bus);
+		QFile out(file);
+		out.open(QIODevice::WriteOnly);
+		return file;
+	}
+
+	void write(const QString &dir, const char *name, const QByteArray &line) {
+		QDir().mkpath(dir);
+		QFile out(dir + QLatin1Char('/') + QLatin1String(name));
+		QVERIFY(out.open(QIODevice::WriteOnly));
+		out.write(line + '\n');
+	}
+
+	UsbPortState state(const QString &port) const { return usbmonPortState(sys_, dev_, port, links_); }
+
+	QString dev() const { return dev_; }
+
+private:
+	QTemporaryDir dir_;
+	QString sys_, dev_;
+	QHash<QString, QString> links_;
+};
 
 } // namespace
 
@@ -805,6 +897,288 @@ private slots:
 		connect(&link, &evre::ListenLink::capturesLost, this, [&](quint64 total) { lost << total; });
 		link.open();
 		QCOMPARE(lost, QList<quint64>{ 7 });
+	}
+
+	/* no capture: open() gives the reason of the port's state, in the window's words */
+	void linkRefused_data() {
+		QTest::addColumn<int>("kind");
+		QTest::addColumn<QString>("said");
+		QTest::newRow("not USB") << int(UsbPortState::NotUsb) << QStringLiteral("ttyS0 is not a USB port: it cannot be listened to");
+		QTest::newRow("usbmon") << int(UsbPortState::NoUsbmon) << QStringLiteral("usbmon is not loaded or /dev/usbmon2 is not readable");
+		QTest::newRow("USBPcap") << int(UsbPortState::NoUsbPcap) << QStringLiteral("USBPcap is not installed");
+		QTest::newRow("no capture") << int(UsbPortState::NoCapture) << QStringLiteral("ttyS0 cannot be listened to: no USB capture on this system");
+	}
+
+	void linkRefused() {
+		QFETCH(int, kind);
+		QFETCH(QString, said);
+		UsbPortState state;
+		state.kind = UsbPortState::Kind(kind);
+		state.device = QStringLiteral("/dev/usbmon2");
+		evre::ListenLink link(QStringLiteral("ttyS0"), nullptr, UsbTarget());
+		link.setRefused(state);
+		QStringList closed;
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QCOMPARE(closed, QStringList{ said });
+		QVERIFY(!link.isOpen());
+	}
+
+	/* a board's own USB: the tty on the control interface, the data on the next one; its interrupt endpoint is not data */
+	void sysfsCdc() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-3"), 2, 5, "0483", "5740");
+		const QString control = sys.interface(device, 0, "02");
+		sys.endpoint(control, 0x82, "Interrupt", "0008");
+		const QString data = sys.interface(device, 1, "0a");
+		sys.bulkPair(data, 0x81, 0x01, "0040");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		for (const char *port : { "ttyACM0", "/dev/ttyACM0" }) {
+			const UsbPortState state = sys.state(QLatin1String(port));
+			QCOMPARE(state.kind, UsbPortState::Listenable);
+			QCOMPARE(state.target.port, QStringLiteral("ttyACM0"));
+			QCOMPARE(state.target.bus, 2);
+			QCOMPARE(state.target.address, 5);
+			QCOMPARE(state.target.vid, quint16(0x0483));
+			QCOMPARE(state.target.pid, quint16(0x5740));
+			QCOMPARE(state.target.kind, UsbTarget::Cdc);
+			QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 });
+			QCOMPARE(state.target.outEndpoints, QVector<int>{ 0x01 });
+			QCOMPARE(state.target.inMaxPacket, 64);
+			QVERIFY(state.device.isEmpty());
+		}
+	}
+
+	/* a bridge: the tty one level under its own interface, whose endpoints are the data; the kind by the VID */
+	void sysfsBridge_data() {
+		QTest::addColumn<QByteArray>("vid");
+		QTest::addColumn<QByteArray>("maxPacket");
+		QTest::addColumn<int>("kind");
+		QTest::addColumn<int>("packet");
+		QTest::newRow("FT232R") << QByteArray("0403") << QByteArray("0040") << int(UsbTarget::Ftdi) << 64;
+		QTest::newRow("FT232H") << QByteArray("0403") << QByteArray("0200") << int(UsbTarget::Ftdi) << 512;
+		QTest::newRow("CP210x") << QByteArray("10c4") << QByteArray("0040") << int(UsbTarget::OtherBridge) << 64;
+		QTest::newRow("CH340") << QByteArray("1a86") << QByteArray("0020") << int(UsbTarget::OtherBridge) << 32;
+	}
+
+	void sysfsBridge() {
+		QFETCH(QByteArray, vid);
+		QFETCH(QByteArray, maxPacket);
+		QFETCH(int, kind);
+		QFETCH(int, packet);
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("1-2"), 1, 7, vid.constData(), "6001");
+		const QString own = sys.interface(device, 0, "ff");
+		sys.bulkPair(own, 0x81, 0x02, maxPacket.constData());
+		sys.endpoint(own, 0x83, "Interrupt", "0008");
+		sys.tty(QStringLiteral("ttyUSB0"), own + QStringLiteral("/ttyUSB0"));
+		sys.usbmon(1);
+		const UsbPortState state = sys.state(QStringLiteral("/dev/ttyUSB0"));
+		QCOMPARE(state.kind, UsbPortState::Listenable);
+		QCOMPARE(state.target.bus, 1);
+		QCOMPARE(state.target.address, 7);
+		QCOMPARE(int(state.target.kind), kind);
+		QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 });
+		QCOMPARE(state.target.outEndpoints, QVector<int>{ 0x02 });
+		QCOMPARE(state.target.inMaxPacket, packet);
+	}
+
+	/* an FTDI's VID on the cdc-acm driver is USB CDC: no status bytes to take off */
+	void sysfsCdcByDriver() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-1"), 2, 3, "0403", "6015");
+		const QString control = sys.interface(device, 0, "02");
+		sys.bulkPair(sys.interface(device, 1, "0a"), 0x81, 0x01, "0040");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.kind, UsbTarget::Cdc);
+	}
+
+	/* two functions on one device: each port its own data interface, never the other's */
+	void sysfsComposite() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-4"), 2, 9, "0483", "5740");
+		QString controls[3];
+		const QVector<int> numbers{ 0, 2, 10 };
+		for (int i = 0; i < 3; i++) {
+			controls[i] = sys.interface(device, numbers[i], "02");
+			sys.bulkPair(sys.interface(device, numbers[i] + 1, "0a"), 0x81 + i, 0x01 + i, "0200");
+			sys.tty(QStringLiteral("ttyACM%1").arg(i), controls[i]);
+		}
+		sys.usbmon(2);
+		for (int i = 0; i < 3; i++) {
+			const UsbPortState state = sys.state(QStringLiteral("ttyACM%1").arg(i));
+			QCOMPARE(state.kind, UsbPortState::Listenable);
+			QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 + i });
+			QCOMPARE(state.target.outEndpoints, QVector<int>{ 0x01 + i });
+			QCOMPARE(state.target.inMaxPacket, 512);
+		}
+	}
+
+	/* the data interface before its control one, as the kernel's "switched interfaces" allows: the nearest one down */
+	void sysfsDataBefore() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-5"), 2, 4, "1234", "0001");
+		sys.bulkPair(sys.interface(device, 0, "0a"), 0x81, 0x01, "0040");
+		const QString control = sys.interface(device, 1, "02");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.inEndpoints, QVector<int>{ 0x81 });
+	}
+
+	/* a tty with no USB device above it, or with no device at all, or none: no USB traffic to read */
+	void sysfsNotUsb() {
+		FakeSysfs sys;
+		sys.tty(QStringLiteral("ttyS0"), sys.dev() + QStringLiteral("/../sys/devices/pnp0/00_01"));
+		sys.write(sys.dev() + QStringLiteral("/../sys/devices/pnp0/00_01"), "id", "PNP0501");
+		sys.tty(QStringLiteral("tty1"), QString());
+		sys.usbmon(2);
+		QCOMPARE(sys.state(QStringLiteral("ttyS0")).kind, UsbPortState::NotUsb);
+		QCOMPARE(sys.state(QStringLiteral("tty1")).kind, UsbPortState::NotUsb);
+	}
+
+	void sysfsMissing() {
+		FakeSysfs sys;
+		sys.usbmon(2);
+		for (const char *port : { "ttyACM9", "/dev/ttyACM9", "/dev/", "" })
+			QCOMPARE(sys.state(QLatin1String(port)).kind, UsbPortState::NotUsb);
+	}
+
+	/* a device without bulk endpoints, or without a data interface: the device is known, and an empty list hears every
+	 * bulk endpoint (the Listen line says so) */
+	void sysfsNoBulk() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-6"), 2, 8, "1234", "0002");
+		const QString control = sys.interface(device, 0, "02");
+		sys.endpoint(control, 0x82, "Interrupt", "0008");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		UsbPortState state = sys.state(QStringLiteral("ttyACM0"));
+		QCOMPARE(state.kind, UsbPortState::Listenable);
+		QCOMPARE(state.target.address, 8);
+		QVERIFY(state.target.inEndpoints.isEmpty());
+		QVERIFY(state.target.outEndpoints.isEmpty());
+		QCOMPARE(state.target.inMaxPacket, 0);
+		sys.endpoint(sys.interface(device, 1, "0a"), 0x83, "Interrupt", "0008");
+		state = sys.state(QStringLiteral("ttyACM0"));
+		QCOMPARE(state.kind, UsbPortState::Listenable);
+		QVERIFY(state.target.inEndpoints.isEmpty());
+	}
+
+	/* a USB port on a bus that cannot be read: its file named, the target known; a USB port on another bus does not help */
+	void sysfsNoUsbmon() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-3"), 2, 5, "0483", "5740");
+		const QString control = sys.interface(device, 0, "02");
+		sys.bulkPair(sys.interface(device, 1, "0a"), 0x81, 0x01, "0040");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(1);
+		const UsbPortState state = sys.state(QStringLiteral("ttyACM0"));
+		QCOMPARE(state.kind, UsbPortState::NoUsbmon);
+		QCOMPARE(state.device, sys.dev() + QStringLiteral("/usbmon2"));
+		QCOMPARE(state.target.bus, 2);
+		const QString file = sys.usbmon(2);
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).kind, UsbPortState::Listenable);
+#ifdef Q_OS_UNIX
+		QVERIFY(QFile::setPermissions(file, QFile::WriteOwner));
+		if (!QFileInfo(file).isReadable()) QCOMPARE(sys.state(QStringLiteral("ttyACM0")).kind, UsbPortState::NoUsbmon); /* root reads all */
+		QVERIFY(QFile::setPermissions(file, QFile::ReadOwner | QFile::WriteOwner));
+#else
+		Q_UNUSED(file);
+#endif
+	}
+
+	/* what the live capture looks at: unplugged, plugged in again on another address, gone from the list */
+	void sysfsHolds() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-3"), 2, 5, "0483", "5740");
+		const QString control = sys.interface(device, 0, "02");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		const UsbTarget running = sys.state(QStringLiteral("ttyACM0")).target;
+		QVERIFY(sys.state(QStringLiteral("ttyACM0")).holds(running));
+		sys.write(device, "devnum", "6");
+		QVERIFY(!sys.state(QStringLiteral("ttyACM0")).holds(running));
+		sys.write(device, "devnum", "5");
+		QVERIFY(sys.state(QStringLiteral("ttyACM0")).holds(running));
+		QFile::remove(sys.dev() + QStringLiteral("/usbmon2"));
+		QVERIFY(sys.state(QStringLiteral("ttyACM0")).holds(running)); /* the capture running has its file open */
+		sys.forgetTty(QStringLiteral("ttyACM0"));
+		QVERIFY(!sys.state(QStringLiteral("ttyACM0")).holds(running));
+	}
+
+	/* a forced state wins, NoCapture too; the system's own answer is under it, and the system's capture has its place */
+	void systemAnswer() {
+		const QString port = QStringLiteral("noSuchPortHere");
+#ifdef Q_OS_LINUX
+		const UsbPortState::Kind none = UsbPortState::NotUsb;
+#else
+		const UsbPortState::Kind none = UsbPortState::NoCapture;
+#endif
+		QCOMPARE(UsbTarget::stateOf(port).kind, none);
+		UsbPortState forced;
+		forced.kind = UsbPortState::NoCapture;
+		UsbTarget::stateForTests(port, forced);
+		QCOMPARE(UsbTarget::stateOf(port).kind, UsbPortState::NoCapture);
+		QCOMPARE(UsbTarget::liveStateOf(port).kind, none);
+		forced.kind = UsbPortState::Listenable;
+		UsbTarget::stateForTests(port, forced);
+		QCOMPARE(UsbTarget::stateOf(port).kind, UsbPortState::Listenable);
+		QCOMPARE(UsbTarget::liveStateOf(port).kind, none);
+	}
+
+	/* The live source without hardware: a bus nobody has. Its start returns at once, the reason comes from the event loop
+	 * as a replayed file's does, once, and nothing follows a stop. Elsewhere there is no live source yet. */
+	void liveCapture() {
+		std::unique_ptr<UsbCapture> capture(UsbCapture::live());
+#ifdef Q_OS_LINUX
+		QVERIFY(capture);
+		UsbTarget target = cdcTarget();
+		target.bus = 987;
+		QStringList ended;
+		connect(capture.get(), &UsbCapture::ended, this, [&](const QString &why) { ended << why; });
+		capture->start(target);
+		capture->stop();
+		QTest::qWait(30);
+		QVERIFY(ended.isEmpty());
+		capture->start(target);
+		QVERIFY(ended.isEmpty());
+		QTRY_COMPARE(ended.size(), 1);
+		QVERIFY2(ended.first().startsWith(QLatin1String("/dev/usbmon987 cannot be read: ")), qPrintable(ended.first()));
+		QTest::qWait(30);
+		QCOMPARE(ended.size(), 1);
+#else
+		QVERIFY(!capture);
+#endif
+	}
+
+	/* a transfer longer than the buffer: the header still says what usbmon kept, the bytes are what the buffer took, and
+	 * the next record is found where the cut one ends */
+	void fitRecord() {
+		const int room = 64;
+		QByteArray record(UsbmonDecoder::HEADER + room, '\0');
+		record[8] = 'C';
+		record[9] = char(BULK);
+		record[10] = char(0x81);
+		record[11] = char(ADDRESS);
+		qToLittleEndian<quint32>(5000, record.data() + 36);
+		record.replace(UsbmonDecoder::HEADER, room, pattern(room));
+		const qsizetype whole = UsbmonDecoder::fitRecord(record.data(), room);
+		QCOMPARE(whole, qsizetype(UsbmonDecoder::HEADER + room));
+		QCOMPARE(qFromLittleEndian<quint32>(record.constData() + 36), quint32(room));
+		QByteArray two = record;
+		two += record;
+		UsbmonDecoder decoder(cdcTarget());
+		QVector<UsbEvent> events;
+		decoder.feed(two, events);
+		QCOMPARE(events.size(), 2);
+		QCOMPARE(events.first().data, pattern(room));
+		QCOMPARE(decoder.pendingBytes(), qsizetype(0));
+		/* one that fits stays as it was */
+		qToLittleEndian<quint32>(10, record.data() + 36);
+		QCOMPARE(UsbmonDecoder::fitRecord(record.data(), room), qsizetype(UsbmonDecoder::HEADER + 10));
+		QCOMPARE(qFromLittleEndian<quint32>(record.constData() + 36), quint32(10));
 	}
 
 	/* Parser::skippedBytes: what left the stream without a frame, whatever way, and no frame's own bytes */
