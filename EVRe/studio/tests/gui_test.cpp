@@ -4803,12 +4803,16 @@ private:
 		noUsbPcap.kind = UsbPortState::NoUsbPcap;
 		noUsbmon.kind = UsbPortState::NoUsbmon;
 		noUsbmon.device = QStringLiteral("/dev/usbmon2");
+		UsbPortState noEndpoints = listenableState(listenTarget());
+		noEndpoints.target.inEndpoints.clear();
+		noEndpoints.target.outEndpoints.clear();
 		const QVector<ListenCase> cases = { { QStringLiteral("cdc"), QStringLiteral("COM21"), listenableState(listenTarget()) },
 			{ QStringLiteral("bridge"), QStringLiteral("COM22"), listenableState(bridge) },
 			{ QStringLiteral("notusb"), QStringLiteral("COM23"), notUsb },
 			{ QStringLiteral("usbpcap"), QStringLiteral("COM24"), noUsbPcap },
 			{ QStringLiteral("usbmon"), QStringLiteral("COM25"), noUsbmon },
-			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() } };
+			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() },
+			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints } };
 		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
 		return cases;
 	}
@@ -4935,14 +4939,8 @@ private:
 				"the Listen line: no capture here, no button, no pretending");
 
 		/* a port heard without its descriptors: the plan's fallback, and the line says so; no port at all reads as none */
-		UsbPortState noEndpoints = listenableState(listenTarget());
-		noEndpoints.target.inEndpoints.clear();
-		noEndpoints.target.outEndpoints.clear();
-		UsbTarget::stateForTests(QStringLiteral("COM27"), noEndpoints);
-		card.addPort(QStringLiteral("COM27"), QString(), false, 0, 0, QString());
-		portBox->setCurrentIndex(portBox->findData(QStringLiteral("COM27")));
-		QApplication::processEvents();
-		check(line->fullText() == QLatin1String("listens to USB CDC · bus 2, device 5") && !warns() && hint->isVisible()
+		choose(6);
+		check(line->fullText() == QStringLiteral("listens to USB CDC · bus 2, device 5") && !warns() && hint->isVisible()
 						&& hint->fullText() == QLatin1String("its endpoints could not be read: every bulk endpoint of the device is heard")
 						&& !hint->isCut(), "the Listen line: endpoints not read: every bulk endpoint heard, and it says so, whole");
 		UsbPortState notUsbState;

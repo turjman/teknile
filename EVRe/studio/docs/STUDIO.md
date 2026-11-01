@@ -7502,7 +7502,7 @@ the device line as last seen (`<prefix>_serial_card_<en|ar>_<light|dark>.png`), 
 (`<prefix>_serial_list_...`), with the Link row's list opened (`<prefix>_serial_link_...`), with the Baud box's rates
 opened (`<prefix>_serial_rates_...`), and with the Baud box emptied and the pill Connect gives then
 (`<prefix>_serial_baud_...`); and Listen in English and Arabic, both themes, from a window of its own: the Connection
-card in each state of the Listen line (`<prefix>_listen_card_<cdc|bridge|notusb|usbpcap|usbmon|nocapture>_<en|ar>_<light|dark>.png`),
+card in each state of the Listen line (`<prefix>_listen_card_<cdc|bridge|notusb|usbpcap|usbmon|nocapture|noendpoints>_<en|ar>_<light|dark>.png`),
 a port refused (`_listen_card_refused_...`), listening with the pill and the device line heard (`_listen_card_on_...`), the
 sidebar (`_listen_side_...`), and in the middle of `cdc_poll` the Registers tab (`_listen_registers_...`), the window
 (`_listen_window_...`) and the Monitor with its marks and its row off, from the first line and at the end
