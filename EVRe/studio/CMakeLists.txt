@@ -10,6 +10,7 @@
 #                    the one write is the login token when EVRE_TOKEN is set)
 #   evre_fake_fast   a fake EVRe device fast enough to measure the Studio
 #   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
+#   evre_listen_test Listen without a window or a USB device: the two capture decoders on replayed captures
 cmake_minimum_required(VERSION 3.21)
 project(EVReStudio VERSION 1.3.0 LANGUAGES CXX)
 
@@ -37,6 +38,7 @@ qt_add_library(evre_protocol STATIC
     src/model/map_export.h      src/model/map_export.cpp
     src/model/bus_file.h        src/model/bus_file.cpp
     src/io/fast_stream.h        src/io/fast_stream.cpp
+    src/io/usb_capture.h        src/io/usb_capture.cpp
     src/model/fast_recording.h  src/model/fast_recording.cpp
     src/model/fast_store.h      src/model/fast_store.cpp
 )
@@ -161,6 +163,14 @@ add_dependencies(evre_map_test evre_maps)
 # and the frames lib/fast builds (tests/fast_lib_test.py).
 qt_add_executable(evre_fast_test tests/fast_test.cpp)
 target_link_libraries(evre_fast_test PRIVATE evre_protocol Qt6::Test)
+
+# Listen's capture decoders without a window, a driver or a USB device: the captures tests/make_captures.py wrote travel
+# with the test as the maps do.
+add_custom_target(evre_captures ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/tests/captures $<TARGET_FILE_DIR:EVReStudio>/captures)
+qt_add_executable(evre_listen_test tests/listen_test.cpp)
+target_link_libraries(evre_listen_test PRIVATE evre_protocol Qt6::Test)
+add_dependencies(evre_listen_test evre_maps evre_captures)
 
 # The protocol core without the window, for checking it against a real device (reads only;
 # the one write is the login token when EVRE_TOKEN is set).

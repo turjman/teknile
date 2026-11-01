@@ -43,6 +43,8 @@ jobs:
         run: ./build/evre_map_test
       - name: Fast EVRe without a window
         run: ./build/evre_fast_test
+      - name: Listen's capture decoders without a window
+        run: ./build/evre_listen_test
       - name: Fast EVRe's device helper, compiled with lib/EVRe.cpp
         run: python3 studio/tests/fast_lib_test.py build
       - name: JSON Schema
@@ -88,6 +90,7 @@ jobs:
           export PATH="$IQTA_TOOLS/mingw1310_64/bin:$QT_ROOT_DIR/bin:$PATH"
           ./build/evre_map_test
           ./build/evre_fast_test
+          ./build/evre_listen_test
           python studio/tests/fast_lib_test.py build
           python studio/tests/cli_test.py build
           python studio/tests/sim_test.py build

@@ -230,6 +230,7 @@ Part IV how to make one in the Map editor.
 | `evre_map_test` | the map files without a window (25 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |
+| `evre_listen_test` | Listen's capture decoders without a window, a driver or a USB device (18 tests): USBPcap's and usbmon's formats give the same transfers on five made-up scenes (`tests/make_captures.py`), FTDI's status bytes, the device and endpoint filters, a stream cut at any byte, a file replayed |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the EVRe library as C++11 to 20 at -O0 to -Os and run, no heap, its stack, its frames through the Studio's parser, PROTOCOL.md's example block (44 checks; needs `g++` and the library) |
 | `tests/cli_test.py` | the `evre` command line end to end (51 checks), against its own fake device, a bus of two devices and a fast stream on `evre_fake_fast` (recorded, and checked by `evre check --writes`) |
 | `tests/sim_test.py` | `evre-sim` driven with `evre`: every behaviour the map describes, a fast stream included (29 checks) |

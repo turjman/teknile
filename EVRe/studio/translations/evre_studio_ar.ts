@@ -2575,6 +2575,21 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
 </context>
 <context>
+    <name>FileCapture</name>
+    <message>
+        <source>the capture ended</source>
+        <translation>انتهى الالتقاط</translation>
+    </message>
+    <message>
+        <source>%1 is not a .pcap or .usbmon capture</source>
+        <translation>⁦%1⁩ ليس التقاطًا بصيغة ⁦.pcap⁩ أو ⁦.usbmon⁩</translation>
+    </message>
+    <message>
+        <source>%1 cannot be read: %2</source>
+        <translation>تعذّرت قراءة ⁦%1⁩: %2</translation>
+    </message>
+</context>
+<context>
     <name>FormulaCompleter</name>
     <message>
         <source>constant</source>
@@ -8396,6 +8411,17 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>closed by %1</source>
         <translation>أغلقه %1</translation>
+    </message>
+</context>
+<context>
+    <name>UsbCapture</name>
+    <message>
+        <source>the capture&apos;s stream is broken: a record longer than any can be</source>
+        <translation>تدفق الالتقاط تالف: سجلّ أطول مما يمكن أن يكون</translation>
+    </message>
+    <message>
+        <source>not a USBPcap capture</source>
+        <translation>ليس التقاطًا من ⁦USBPcap⁩</translation>
     </message>
 </context>
 <context>
