@@ -120,8 +120,9 @@ public:
 	void showConnecting();
 	/* note: a line the pill's tooltip adds under its text (the baud rate a USB CDC port ignores) */
 	void showConnected(const QString &link, const QString &note = QString());
-	/* the pill on the accent tint, not the connected green: nothing is sent. link: listenLinkText */
-	void showListening(const QString &link);
+	/* the pill on its own tint, not the connected green: nothing is sent. link: listenLinkText; the port alone when it
+	 * does not fit: "Listening" stays, it is the state to know */
+	void showListening(const QString &link, const QString &port);
 	/* a listening link as the pill names it, one left-to-right piece: "COM13 · USB CDC", "COM13 · FTDI" */
 	static QString listenLinkText(const QString &port, const UsbTarget &target);
 	/* why Listen refuses this port, in the pill's words; empty: it does not */
@@ -344,7 +345,7 @@ private:
 	QString capNote_, capWhy_;    /* the UART set a lower rate than chosen, and the Log's sentence */
 	QString shortfall_, shortfallWhy_; /* fewer frames come than were asked for */
 	QString heardNote_;           /* Listen: "heard 100/s", the frames another program asked the device for */
-	QString listenText_, listenLink_; /* the pill while listening, and what it shrinks to */
+	QString listenText_, listenShorter_; /* the pill while listening, and what it shrinks to */
 	int takenHz_ = 0;             /* the rate the device was set to; 0: off */
 	QElapsedTimer autoSendClock_;
 	qint64 clockShiftMs_ = 0;     /* tests */

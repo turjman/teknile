@@ -1089,10 +1089,10 @@ void Sidebar::showConnected(const QString &link, const QString &note) {
 	connectOffered_ = false;
 }
 
-void Sidebar::showListening(const QString &link) {
+void Sidebar::showListening(const QString &link, const QString &port) {
 	listenText_ = tr("Listening · %1").arg(link);
-	listenLink_ = link;
-	showLinkState(QStringLiteral("listen"), listenText_, link);
+	listenShorter_ = tr("Listening · %1").arg(ltrPiece(port));
+	showLinkState(QStringLiteral("listen"), listenText_, listenShorter_);
 	setConnectButton(tr("Stop"), QStringLiteral("danger"));
 	connectOffered_ = false;
 }
@@ -1107,7 +1107,7 @@ void Sidebar::showHeard(const IoEngine::Stats &stats) {
 	const QString lost = lostCapturesText(stats);
 	if (!lost.isEmpty()) tip += QLatin1Char('\n') + lost;
 	const QString dot = QStringLiteral("●  ");
-	linkState_->setFullText(dot + listenText_, tip, dot + listenLink_);
+	linkState_->setFullText(dot + listenText_, tip, dot + listenShorter_);
 }
 
 void Sidebar::setListening(bool on) {

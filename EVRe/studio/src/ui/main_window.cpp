@@ -777,7 +777,7 @@ void MainWindow::onOpened(const QString &link) {
 	dumpTab_->setConnected(true);
 	/* the Log keeps the baud rate (its open line says USB CDC ignores it); the pill names what the link is */
 	if (listening())
-		sidebar_->showListening(listenLink_);
+		sidebar_->showListening(listenLink_, listenPort_);
 	else if (linkPort_.isEmpty())
 		sidebar_->showConnected(link);
 	else

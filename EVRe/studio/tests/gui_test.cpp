@@ -4950,7 +4950,7 @@ private:
 			const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
 			card.showConnected(link);
 			const QColor connected = pillColour();
-			card.showListening(link);
+			card.showListening(link, QStringLiteral("COM13"));
 			const QColor listening = pillColour();
 			const double apart = std::abs(connected.hslHue() - listening.hslHue());
 			const double readable = contrast(Theme::colors().listen, listening);
@@ -4960,9 +4960,11 @@ private:
 		}
 		Theme::apply(*qApp, wasDark);
 		card.themeChanged();
-		check(pill->fullText() == QStringLiteral("●  Listening · COM13 · USB CDC") && !pill->isCut()
+		/* whole where it fits (Linux's fonts are wider): the port alone after Listening, never cut */
+		check(pill->fullText() == QStringLiteral("●  Listening · COM13 · USB CDC")
+						&& (pill->text() == pill->fullText() || pill->text() == QStringLiteral("●  Listening · COM13"))
 						&& connect->text() == QLatin1String("Stop") && connect->objectName() == QLatin1String("danger"),
-				"the pill: Listening, the port, what it is, whole; the button reads Stop");
+				"the pill: Listening, the port, what it is when it fits, never cut; the button reads Stop");
 
 		/* -- what is heard, from numbers ---------------------------------------------------------------------------- */
 		card.setListening(true);
@@ -5054,6 +5056,12 @@ private:
 		const double intervalWas = interval->value();
 		const QString pollTipWas = poll->toolTip(), intervalTipWas = interval->toolTip(), serveTipWas = serve->toolTip();
 		const QString allowTipWas = allowWrites_->toolTip();
+		QVector<QWidget *> row{ send };
+		row << monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) << monitor->findChild<QSpinBox *>(QStringLiteral("monitorSlave"));
+		for (QLineEdit *box : monitor->findChildren<QLineEdit *>())
+			if (!box->parentWidget()->inherits("QAbstractSpinBox")) row << box;
+		QVector<bool> rowWas; /* as the steps before left it: slave 0 locks the function */
+		for (QWidget *control : std::as_const(row)) rowWas << (control && control->isEnabled());
 		reconnect->setChecked(false);
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
 
@@ -5113,10 +5121,6 @@ private:
 		const QList<QLabel *> panelLabels = panel->findChildren<QLabel *>();
 		const bool panelSays = std::any_of(panelLabels.begin(), panelLabels.end(), [](const QLabel *label) { return label->text() == listeningText(); });
 		check(!write->isEnabled() && write->toolTip() == listeningText() && panelSays, "the window, listening: Quick write's Write disabled, saying why");
-		QVector<QWidget *> row{ send };
-		row << monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) << monitor->findChild<QSpinBox *>(QStringLiteral("monitorSlave"));
-		for (QLineEdit *box : monitor->findChildren<QLineEdit *>())
-			if (!box->parentWidget()->inherits("QAbstractSpinBox")) row << box;
 		bool rowOff = row.size() == 5;
 		for (QWidget *control : std::as_const(row)) rowOff = rowOff && control && !control->isEnabled() && control->toolTip() == listeningText();
 		check(rowOff && logFrames->isEnabled(), "the window, listening: the Monitor's request row disabled, each saying why; Log frames works");
@@ -5202,7 +5206,8 @@ private:
 						&& allowWrites_->toolTip() == allowTipWas && !allowWrites_->isChecked() && !model_->listening(),
 				"Stop: Poll, the interval, Serve API and Allow writes back, their own tooltips again, writes still off");
 		bool rowBack = true;
-		for (QWidget *control : std::as_const(row)) rowBack = rowBack && control && control->isEnabled() && control->toolTip() != listeningText();
+		for (int i = 0; i < row.size(); i++)
+			rowBack = rowBack && row[i] && row[i]->isEnabled() == rowWas[i] && row[i]->toolTip() != listeningText();
 		check(rowBack && model_->data(configValue, Qt::ToolTipRole).toString() != QLatin1String("not read by the other program yet"),
 				"Stop: the Monitor's row back; the table's tooltip is the register's again");
 
@@ -5361,14 +5366,14 @@ private:
 					lines << line->fullText();
 				}
 				card.setListening(true);
-				card.showListening(Sidebar::listenLinkText(QStringLiteral("COM13"), listenTarget()));
+				card.showListening(Sidebar::listenLinkText(QStringLiteral("COM13"), listenTarget()), QStringLiteral("COM13"));
 				QApplication::processEvents();
 				/* the segments share a row: each text in its button */
 				bool fits = true;
 				for (QPushButton *button : card.findChildren<QPushButton *>())
 					if (button->property("segment").toBool()) fits = fits && button->fontMetrics().horizontalAdvance(button->text()) + 20 <= button->width();
 				check(segment->text() == QStringLiteral("استماع") && link->text() == QStringLiteral("إيقاف")
-								&& pill->fullText().contains(QStringLiteral("يستمع")) && !pill->isCut() && whole && fits,
+								&& pill->text().contains(QStringLiteral("يستمع")) && !pill->text().contains(QChar(0x2026)) && whole && fits,
 						"Listen, Arabic: the segment, Stop and the pill in the glossary's words, every Listen line translated and whole");
 				check(listeningText() == QStringLiteral("يستمع: لا يرسل الاستوديو شيئًا"), "Listen, Arabic: why a control is disabled");
 				MonitorTab monitor(model_);

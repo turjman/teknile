@@ -830,7 +830,7 @@ Under *USBPcap is not installed* a second line says what it is, and in Arabic th
 is read when a port is chosen, at the refresh button and at Connect.
 
 **The pill** reads *Listening · COM13 · USB CDC* on a blue tint, its own (3.8): not the connected green, nothing is
-being sent. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
+being sent. Where that does not fit it reads *Listening · COM13*, never cut. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
 A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again.
 
 **What fills.** The Monitor marks who sent each line (10.2). The table, the chart, the CSV and the Dump fill from heard
@@ -6817,7 +6817,7 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   line, whole and held by the label's least height, and the button: `QDesktopServices::setUrlHandler` catches the
   page), usbmon (the button: the clipboard, said in the status bar, a word joiner keeping the path whole), no capture.
   The pill in both themes, read off the card's pixels: its own tint, not the connected green, the text at 4.5:1 on it;
-  whole, and the button reads Stop. From numbers given to `showStats`: the tooltip with nothing lost and with the signs
+  never cut, and the button reads Stop. From numbers given to `showStats`: the tooltip with nothing lost and with the signs
   of a lost capture, *heard 120 req/s* in the Polling card, *heard 100/s* on the Auto send row, *heard 10.0 k samples/s*
   and the lost count on a stream's row, and all of it gone when Listen is off.
 - **Listen, the window** (`listenWindow`). The real window, a capture that stays open (`cdc_quiet`), Serve API on with a
@@ -7427,7 +7427,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 959 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 958 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
