@@ -4542,6 +4542,10 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
         <translation>TX %1 · RX %2</translation>
     </message>
     <message>
+        <source>TX: frames the Studio has sent since it started, none while listening. RX: the device's frames. The other program's requests are heard: the rate beside this, -&gt;DEV in the Monitor.</source>
+        <translation>TX: الإطارات التي أرسلها الاستوديو منذ بدء تشغيله، ولا شيء أثناء الاستماع. RX: إطارات الجهاز. طلبات البرنامج الآخر مسموعة: المعدّل بجانب هذا، و⁦-&gt;DEV⁩ في المراقبة.</translation>
+    </message>
+    <message>
         <source>Timeouts %1 · Errors %2 · Bad frames %3</source>
         <translation>مهلات %1 · أخطاء %2 · إطارات تالفة %3</translation>
     </message>

@@ -31,6 +31,11 @@
 - A disabled primary button (Send, Write) now looks disabled in both themes: it kept its blue. Every line of the Monitor
   runs left to right in Arabic, the time and the mark first. A long reason in the pill wraps whole in a short sidebar too.
 
+### Python package 1.0.1
+
+- `evre.connect_serial` answers through an ST-LINK's virtual COM port: it set the port's timeout for each read, which on
+  Windows reconfigures the port, and an answer arriving meanwhile was lost (1 read in 20 answered there).
+
 ## 1.3.0 (2026-10-29)
 
 ### EVRe Studio

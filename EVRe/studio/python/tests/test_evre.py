@@ -16,8 +16,10 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import time
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.dont_write_bytecode = True  # no __pycache__ beside the sources
@@ -157,6 +159,49 @@ class _CannedLink:
 
     def close(self):
         pass
+
+
+class _Port:
+    """pyserial's Serial as far as SerialLink uses it, counting what would reconfigure a port"""
+
+    def __init__(self, port, baud, timeout):
+        self.opened_with, self.changes, self.in_waiting, self.bytes = timeout, 0, 0, b''
+
+    def __setattr__(self, name, value):
+        if name == 'timeout':
+            self.changes += 1
+        object.__setattr__(self, name, value)
+
+    def write(self, data):
+        pass
+
+    def read(self, size):
+        data, self.bytes = self.bytes[:size], self.bytes[size:]
+        return data
+
+
+class SerialPort(unittest.TestCase):
+    """on Windows setting a port's timeout reconfigures it, and an answer arriving meanwhile is lost"""
+
+    def test_the_timeout_is_set_at_opening_only(self):
+        fake = types.ModuleType('serial')
+        fake.Serial = _Port
+        with mock.patch.dict(sys.modules, {'serial': fake}):
+            link = evre.SerialLink('COM13', 115200, 1.0)
+        link.port.bytes = evre.build(1, frame.READ_RESP, 0xA000, 2, b'')
+        master = evre.Master(link, slave=1, timeout=0.5)
+        self.assertEqual(master.read(0xA000, 2), b'')
+        self.assertEqual(link.port.changes, 0)
+        self.assertLessEqual(link.port.opened_with, 0.05)
+
+    def test_silence_ends_at_the_master_s_deadline(self):
+        fake = types.ModuleType('serial')
+        fake.Serial = _Port
+        with mock.patch.dict(sys.modules, {'serial': fake}):
+            link = evre.SerialLink('COM13', 115200, 1.0)
+        master = evre.Master(link, slave=1, timeout=0.05)
+        with self.assertRaises(evre.EvreError):
+            master.read(0xA000, 2)
 
 
 class Answers(unittest.TestCase):

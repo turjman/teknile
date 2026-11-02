@@ -580,9 +580,10 @@ QWidget *Sidebar::buildApiCard() {
 	apiInfo_->setWordWrap(true);
 	apiServeHelp_ = tr("EVRe frames on port 1219, JSON lines on port 1220 (Help: API)");
 	apiServe_->setToolTip(apiServeHelp_);
-	apiWrites_->setToolTip(tr("Off: clients can read and stream only. Not remembered: off at every start."));
-	apiDanger_->setToolTip(
-			tr("Also the registers marked ⚠ (the ones that move, switch or reset something). Not remembered."));
+	apiWritesHelp_ = tr("Off: clients can read and stream only. Not remembered: off at every start.");
+	apiWrites_->setToolTip(apiWritesHelp_);
+	apiDangerHelp_ = tr("Also the registers marked ⚠ (the ones that move, switch or reset something). Not remembered.");
+	apiDanger_->setToolTip(apiDangerHelp_);
 	connect(apiServe_, &QCheckBox::toggled, this, &Sidebar::apiServeChanged);
 	connect(apiNetwork_, &QCheckBox::toggled, this, [this] {
 		if (apiServe_->isChecked()) emit apiServeChanged(true); /* again, on the addresses chosen now */
@@ -1157,6 +1158,13 @@ void Sidebar::setListening(bool on) {
 	interval_->setToolTip(on ? why : intervalHelp_);
 	apiServe_->setEnabled(!on);
 	apiServe_->setToolTip(on ? why : apiServeHelp_);
+	/* with the server off the card's other boxes mean nothing: they say so too, not one box of four */
+	apiNetwork_->setEnabled(!on);
+	apiNetwork_->setToolTip(on ? why : QString());
+	apiWrites_->setEnabled(!on);
+	apiWrites_->setToolTip(on ? why : apiWritesHelp_);
+	apiDanger_->setEnabled(!on && apiWrites_->isChecked());
+	apiDanger_->setToolTip(on ? why : apiDangerHelp_);
 	if (!on) {
 		apiInfo_->clear(); /* why the API was stopped is over; the next look says what it is now */
 		apiReasonShown_ = false;
