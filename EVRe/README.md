@@ -28,7 +28,7 @@ host                                   device
 |---|---|
 | Protocol&nbsp;revision | **1** (reported in `STATUS[7:0]`) |
 | Device&nbsp;library | C++, two files, no dependencies beyond `stdint` / `stdlib`, ~3 kB of code |
-| Host&nbsp;tool | **EVRe Studio**: live registers, charts, CSV, writes, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module |
+| Host&nbsp;tool | **EVRe Studio**: live registers, charts, CSV, writes, Listen, an API for MATLAB / LabVIEW / Python, and a map editor that exports a specification, a C header and a Python module |
 | Map&nbsp;format | **`evre-map/1`**: one JSON file describes a device's registers for every tool ([contract](studio/docs/MAP_FORMAT.md), [JSON Schema](studio/docs/evre-map-1.schema.json)) |
 
 ## What is here
@@ -40,7 +40,7 @@ host                                   device
 | [`docs/PROTOCOL.md`](docs/PROTOCOL.md) | The protocol: frame, function codes, CRC, register model, reserved bank, messages, errors, test vectors, device API, host notes, conformance checklist. |
 | [`studio/`](studio/) | **EVRe Studio**, the desktop tool (C++17, Qt 6). |
 | [`studio/docs/MAP_FORMAT.md`](studio/docs/MAP_FORMAT.md) | The register map format `evre-map/1`: the contract for any tool that reads or writes maps, and its [JSON Schema](studio/docs/evre-map-1.schema.json). |
-| [`studio/cli/`](studio/cli/) | `evre` (validate, export, info, read, dump, watch, write, check a device against its map) and `evre-sim` (a map served as a device), built with the Studio. |
+| [`studio/cli/`](studio/cli/) | `evre` (validate, export, info, read, dump, watch, write, broadcast, check a device against its map, record a fast stream) and `evre-sim` (a map served as a device), built with the Studio. |
 | [`studio/python/`](studio/python/) | `evre` for Python: a device by register name with its map, standard library only. |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md),&nbsp;[`CHANGELOG.md`](CHANGELOG.md) | how to change EVRe, and what each version holds. |
 | [`studio/examples/`](studio/examples/) | Using a device from MATLAB, LabVIEW and Python through EVRe Studio. |
@@ -73,7 +73,7 @@ base_t dev;
 
 uint8_t protocolConfigure(base_t *d) {        /* override the weak default */
     d->SALVE_ID_REG = 1;
-    d->DEVICE_ID    = 0x2001;
+    d->DEVICE_ID    = 0x1001;
     d->DEVICE_REG_READ_MAX  = 0xD0EC;
     d->DEVICE_REG_WRITE_MIN = 0xD0CC;
     d->D000 = new uint8_t*[(d->DEVICE_REG_READ_MAX + 1) & 0x0FFF];
@@ -94,7 +94,8 @@ Add `lib/EVRe.cpp` to the firmware build and `lib/` to the include path.
 
 ## EVRe Studio
 
-A desktop tool for any EVRe device, over TCP or a serial / USB port.
+A desktop tool for any EVRe device, over TCP or a serial / USB port, or by
+listening to what another program says to a USB device.
 
 - Live register table from a JSON **device map**: units, bit fields and enum
   names decoded; search, groups; values not refreshed turn grey.
@@ -108,12 +109,20 @@ A desktop tool for any EVRe device, over TCP or a serial / USB port.
   their values by themselves.
 - **Writes**, read back from the device; registers marked ⚠ ask first; an edit
   whose register changed meanwhile asks before overwriting.
+- **One value to several registers**: a list of what each one holds and gets,
+  then each written and read back.
+- **Listen**: what another program says to a USB device, on a port that program
+  holds, heard from the system's USB capture (USBPcap on Windows, usbmon on
+  Linux). The table, the chart, the CSV, the Dump and the Monitor fill, and the
+  Studio sends nothing.
 - **API server**: other programs reach the device through the Studio —
   **JSON lines** by register name on port 1220 (`get`, `set`, `stream`, …) and
   an **EVRe pass-through** on port 1219. Only this PC unless allowed; writes
   only when switched on in the Studio.
 - **Fast**: device I/O on its own thread, pipelined requests, overlapping
   polls — about 4000 polls/s measured against a fast test device on the same PC.
+- **Dump tab**: each block as the frames carry it, the bytes as a hex grid with
+  each register a chip.
 - Built-in help (F1) and a full reference in
   [studio/docs/STUDIO.md](studio/docs/STUDIO.md).
 - Qt 6 and standard C++ (on Windows also Direct3D 11 and DirectComposition,
@@ -140,6 +149,8 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])
 | `studio/tests/gui_test.cpp` | EVRe Studio's window driven by QtTest against the fake device: writes, read-back, change-while-editing, ⚠ confirmation, stale values, a bus, auto send, the Map editor, the chart (on a graphics card too). |
 | `studio/tests/api_test.py` | The API server end to end, in its three write modes, JSON and pass-through, and a fast stream through both. |
 | `studio/tests/map_test.cpp`, `cli_test.py`, `sim_test.py`, `device_table_test.py`, `schema_test.py` | The map files and exports, `evre`, `evre-sim`, the device table compiled with the library, the JSON Schema. |
+| `studio/tests/fast_test.cpp`, `fast_lib_test.py` | Fast EVRe without a window, and `lib/fast` compiled with the library. |
+| `studio/tests/listen_test.cpp`, `make_captures.py` | Listen's decoders, port lookups and link on made-up captures, without a driver or a USB device. |
 | `studio/python/tests` | The Python package against `evre-sim`. |
 | `studio/tests/evre_probe.cpp` | The Studio's protocol core against a real device, read only. |
 

@@ -24,7 +24,7 @@
   stays `—`, with the tooltip *not read by the other program yet*. The status bar and the Polling card read *heard 120
   req/s*, the Auto send row *heard 100/s*.
 - Everything that would send is disabled while listening, each control saying why: Poll, Allow writes, Quick write, the
-  Monitor's request row, Auto send, a stream's Start, Read now, the Dump's Write… and a bus's presets. A running API is
+  Monitor's request row, Auto send, a stream's Start, Read now, the Dump's Write…, a bus's presets and the API card. A running API is
   stopped and said in the Log. The engine and the link refuse whatever got past them.
 - The signs of a capture that lost something (requests without an answer, a stream's numbers that skip) go to the pill's
   tooltip and to the Log, at most once a minute.
@@ -96,7 +96,7 @@
   100, 50 and 40 Hz. A saved rate the map no longer allows falls to the next one below, never to a faster one, and the
   note under the rate says why. With a UART's baud limit too, the lower of the two wins and the note names it.
 - What is asked against what comes: when the frames received stay more than 10 % under the rate asked for 2 s, the
-  note says *device delivers 700/s of 1000 Hz asked* in the warn colour, with the likely causes (the device's limit,
+  note says *only 700/s of 1000 Hz: the device, the link or the PC's load* in the warn colour, with the likely causes (the device's limit,
   the link, the PC's load); it waits 3 s after a start or a rate change. It works for maps that declare nothing.
 - The Map editor's Protocol page: **Auto send top rate** and **Auto send tick**, and a live **Rates offered** row
   (*none: a value is out of range (40 to 8000)* when a value is too small). A change while Auto send is on asks the

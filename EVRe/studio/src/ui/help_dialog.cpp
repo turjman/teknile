@@ -27,9 +27,11 @@ const Topic TOPICS[] = {
 <h2>Getting started</h2>
 <p>EVRe Studio talks to any device that speaks <b>EVRe</b>, over <b>TCP</b> or a <b>serial / USB</b> port: one
 device, or several on one link. It shows every register of the device's <b>map</b> live, charts them, records them
-to CSV, writes them, and lets other programs reach the device through it (<i>API</i>).</p>
+to CSV, writes them, and lets other programs reach the device through it (<i>API</i>). <b>Listen</b> hears what another
+program says to a USB device, and the Studio sends nothing.</p>
 <ol>
-<li><b>Connection</b> (left): choose TCP or Serial / USB, fill in the address or pick the port, <b>Connect</b>.
+<li><b>Connection</b> (left): choose TCP or Serial / USB (<b>Listen</b>: see <b>Connecting</b>), fill in the address or
+pick the port, <b>Connect</b>.
 The pill turns green and the device ID appears under it (<i>not read yet</i> until it is).</li>
 <li><b>Registers</b> tab: the values update at the poll rate (<i>Polling &amp; recording</i>).</li>
 <li>Tick <b>Plot</b> on registers and open the <b>Chart</b> tab.</li>

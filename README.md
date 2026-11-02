@@ -113,9 +113,9 @@ The Windows installer and the zip hold the command-line tools and the example ma
 |---|---|
 | **[EVRe&nbsp;protocol](EVRe/docs/PROTOCOL.md)** | A small single-master register protocol: frames, function codes, CRC-16/X-25, the register model, a reserved bank for the protocol's own registers, messages, errors, broadcast, device-initiated streaming (auto send), test vectors and a conformance checklist. |
 | **[Device&nbsp;library](EVRe/lib/)** | `EVRe.h` and `EVRe.cpp`: the device side in two files, with a port note for newlib on Cortex-M7. |
-| **[EVRe&nbsp;Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers, safe writes, the chart, measurements and analysis, recordings, a map editor with exports, several devices on one bus, and an API for other programs. |
+| **[EVRe&nbsp;Studio](EVRe/studio/)** | The desktop tool (C++17, Qt 6, Windows and Linux): live registers, safe writes, the chart, measurements and analysis, recordings, a map editor with exports, several devices on one bus, Listen (what another program says to a USB device), and an API for other programs. |
 | **[Map&nbsp;format](EVRe/studio/docs/MAP_FORMAT.md)** | `evre-map/1`: one JSON file describes a device's registers for every tool, with a [JSON Schema](EVRe/studio/docs/evre-map-1.schema.json). Overlays change a base map in a small file of their own. |
-| **[Command&nbsp;line](EVRe/studio/cli/)** | `evre`: validate and export maps, read, dump, watch, write, broadcast, and check a device against its map, from a terminal or CI. `evre-sim`: any map served as a device over TCP. |
+| **[Command&nbsp;line](EVRe/studio/cli/)** | `evre`: validate and export maps, read, dump, watch, write, broadcast, check a device against its map and record a fast stream, from a terminal or CI. `evre-sim`: any map served as a device over TCP. |
 | **[Python&nbsp;package](EVRe/studio/python/)** | A device by register name with its map, standard library only; a bus of devices too. |
 | **[Examples](EVRe/studio/examples/)** | A device driven from MATLAB, LabVIEW and Python through the Studio's API. |
 
@@ -147,6 +147,8 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
   and the value's age in a tooltip. Changed values glow; values that stop refreshing turn grey.
 - A datasheet-style bit view for quick writes: click a bit or a field, the Studio does the read-modify-write.
 - A frame monitor that shows every byte sent and received, and a log of every event, in a tab and a daily file.
+- The Dump tab: each block as the frames carry it, the request and the reply as strips of named fields, the bytes as a
+  hex grid with each register a chip.
 
 ### Chart it like an oscilloscope
 
@@ -225,6 +227,22 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
   and records them beside the CSV as they came (`.evrs`). The device side is `lib/fast`, a header beside the
   library; the protocol itself is unchanged.
 
+### Listen to another program
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="EVRe/docs/assets/pictures/listen-monitor-dark.png">
+    <img src="EVRe/docs/assets/pictures/listen-monitor-light.png" alt="The Monitor while listening: the other program's requests marked -&gt;DEV, each followed by the device's answer marked DEV-&gt;" width="800">
+  </picture>
+  <br>
+  <em>The other program's requests and the device's answers, heard. The Studio sends nothing.</em>
+</p>
+
+- Listen: when another program holds the port (a Python script, a test tool), the Studio shows what it says to a USB
+  device, from the system's own USB capture, without opening the port or sending anything: USB CDC boards and USB-UART
+  bridges, on Windows (USBPcap) and Linux (usbmon).
+- The Monitor marks who said what, and the table, the chart, the CSV and the Dump fill from what the program reads.
+
 ### Record and replay
 
 <p align="center">
@@ -254,6 +272,8 @@ A JSON map tells the Studio what the device holds; the Studio does the rest.
 
 - Writes only with *Allow writes* on; registers marked `danger` ask first; a value that changed while you were
   editing asks first; limits from the map; every write read back from the device.
+- One value to several registers: select them, then the right-click menu, F2 or the quick-write panel; a list shows
+  what each one holds and gets before anything is written, and each is read back.
 
 ### Make the map without touching JSON
 
@@ -374,7 +394,7 @@ base_t dev;
 
 uint8_t protocolConfigure(base_t *d) {        /* override the weak default */
     d->SALVE_ID_REG = 1;
-    d->DEVICE_ID    = 0x2001;
+    d->DEVICE_ID    = 0x1001;
     d->DEVICE_REG_READ_MAX  = 0xD0EC;
     d->DEVICE_REG_WRITE_MIN = 0xD0CC;
     d->D000 = new uint8_t*[(d->DEVICE_REG_READ_MAX + 1) & 0x0FFF];
@@ -465,14 +485,19 @@ The Studio's own **Help (F1)** holds a short form of the guide, in English and A
 
 ## Tested on every push
 
-Continuous integration builds and tests on **Windows** and **Linux** at every push and pull request:
+Continuous integration builds and tests on **Windows** and **Linux** at every pull request and every push to `main`; the
+GUI test, the JSON Schema and the fake devices' login run on Linux:
 
 | Suite | What it covers |
 |---|---|
-| GUI&nbsp;test | the real window driven by QtTest against the fake device, hundreds of checks: the login, writes and read-back, the Map editor, limits and fields, a bus, broadcast, auto send and the chart |
+| GUI&nbsp;test | the real window driven by QtTest against the fake device, about a thousand checks: the login, writes and read-back, bulk writes, the Map editor, limits and fields, a bus, broadcast, auto send, fast streams, Listen and the chart |
 | Map&nbsp;and&nbsp;schema | the map files saved byte for byte, edits, overlays, the exports (the C header compiled, the Python module imported), the JSON Schema |
+| Fast&nbsp;EVRe | the block's rules, the clock's fit and the chart's store without a window; `lib/fast` compiled with the library and run |
+| Listen | the capture decoders, the port lookups and the link, without a driver or a USB device, on made-up captures |
 | Tools | `evre` end to end against its own fake device and a bus of two; `evre-sim` serving the example map; the device table compiled with the library |
-| API&nbsp;and&nbsp;Python | the API server in its three write modes, JSON and pass-through; the Python package against `evre-sim` |
+| Python&nbsp;package | the Python package against `evre-sim` |
+
+The API test runs by hand: it needs a Studio connected to the fake device ([Contributing](EVRe/CONTRIBUTING.md)).
 
 The release workflow builds the installer, the zip, the AppImage and the tools, starts the AppImage under a
 virtual display and checks that it draws before anything is published.

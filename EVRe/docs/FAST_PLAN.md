@@ -5,9 +5,11 @@ as recommended on 2026-10-05: where a decision lists options, the recommended on
 the work plan (CLAUDE.md) builds it part by part (section 14). Section 16 fixes what the build needs beyond the
 decisions.
 
+Built and merged 2026-10-07 (pull requests #16 to #30); the user guide is STUDIO.md 7.14 and 13.9. Where this file and
+STUDIO.md differ, STUDIO.md describes what the Studio does.
+
 Numbers marked (measured) were measured on 2026-10-05 on the Windows laptop, with a Release build (MinGW g++
-13.1, Qt 6.8.3) of a scratch program around the Studio's own `src/evre/frame.cpp`, or are taken from
-PERFORMANCE.md. Numbers marked (estimate) are judgement, and the build measures them.
+13.1, Qt 6.8.3) of a scratch program around the Studio's own `src/evre/frame.cpp`. Numbers marked (estimate) are judgement, and the build measures them.
 
 ## 1. What Fast EVRe is, and what it is not
 
@@ -242,7 +244,7 @@ transmitter. When the transmitter is still busy with the buffer before, the devi
 - No heap, no state but the 12 bytes of `evre_fast_t`, C++11.
 
 Cost (estimate): about 200 to 300 B of code; 12 B of RAM a stream, plus the device's buffers. The time is the
-CRC's: about 10 instructions a byte. PERFORMANCE.md measured 2977 instructions for a 220 B READ_RESP built from
+CRC's: about 10 instructions a byte. A measurement gave 2977 instructions for a 220 B READ_RESP built from
 ranges, copy included. So a 1 KB block costs about 10 000 instructions, and 4 MB a second (a million records
 of two i16) takes under 10 % of a 480 MHz Cortex-M7. An MCU with a CRC unit can do it in hardware, later, if a
 bench says it matters.
@@ -679,7 +681,7 @@ built on the line of the branch `evre-1.1` (GUARD_PLAN.md there).
 Read, in full or the parts that matter: PROTOCOL.md (the 1.1 copy) and both versions of the library's
 encoder; the Guard's header; the Studio's frame parser, its master and its engine (the auto send path); the
 chart's data structures (STUDIO.md 23 and `chart_widget.h`); the chapters on polling, auto send and
-recordings; MAP_FORMAT.md; `evre-sim`, the fake devices and the Python client; PERFORMANCE.md.
+recordings; MAP_FORMAT.md; `evre-sim`, the fake devices and the Python client.
 
 Checked in the code, not assumed:
 
