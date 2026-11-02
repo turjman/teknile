@@ -925,8 +925,14 @@ void Sidebar::showListenLine() {
 				: tr("listens to a USB-UART bridge (%1)").arg(listenLinkText(QString(), state.target));
 		why = tr("The Studio reads the USB traffic under this port and sends nothing. It sees everything on that USB "
 				"device (Help: Connecting).");
+		if (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty())
+			hint = tr("its endpoints could not be read: every bulk endpoint of the device is heard");
 		break;
 	case UsbPortState::NotUsb:
+		if (serialPort().isEmpty()) {
+			line = tr("no serial port");
+			break;
+		}
 		line = tr("not a USB port: cannot be listened to");
 		why = tr("Listen reads the USB traffic under a port. A motherboard's COM port, a Bluetooth or a virtual port has "
 				"none.");
@@ -1121,6 +1127,7 @@ void Sidebar::setListening(bool on) {
 	apiServe_->setToolTip(on ? why : apiServeHelp_);
 	if (!on) {
 		apiInfo_->clear(); /* why the API was stopped is over; the next look says what it is now */
+		apiReasonShown_ = false;
 		heardNote_.clear();
 		showAutoSendNote();
 	}
@@ -1675,6 +1682,14 @@ void Sidebar::showApiNotStarted(const QString &error) {
 	const QSignalBlocker blocker(apiServe_);
 	apiServe_->setChecked(false);
 	apiInfo_->setText(coloredSpan(tr("not started: %1").arg(error.toHtmlEscaped()), Theme::colors().bad));
+	apiReasonShown_ = true;
+}
+
+void Sidebar::showApiStopped(const QString &why) {
+	const QSignalBlocker blocker(apiServe_);
+	apiServe_->setChecked(false);
+	apiInfo_->setText(coloredSpan(tr("stopped: %1").arg(why.toHtmlEscaped()), Theme::colors().warn));
+	apiReasonShown_ = true;
 }
 
 void Sidebar::showStats(const IoEngine::Stats &stats, bool connected) {
@@ -1755,11 +1770,12 @@ int Sidebar::suggestedInFlight(int blocks, int inFlight, double wantHz, double l
 
 void Sidebar::showApiState(const IoEngine::Stats &stats) {
 	if (stats.apiRunning) {
+		apiReasonShown_ = false;
 		apiInfo_->setText(tr("EVRe :%1 · JSON :%2 on %3<br>%4 clients · %5 requests")
 				.arg(stats.evrePort).arg(stats.jsonPort)
 				.arg(apiNetwork_->isChecked() ? tr("the network") : tr("this PC"))
 				.arg(stats.apiClients).arg(stats.apiRequests));
-	} else if (!apiInfo_->text().contains(QLatin1String("not started"))) { /* why it did not start stays */
+	} else if (!apiReasonShown_) { /* why it did not start stays */
 		apiInfo_->setText(tr("Off. Scripts: see Help → API.")); /* one line in the card */
 	}
 }

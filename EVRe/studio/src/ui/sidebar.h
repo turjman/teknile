@@ -212,6 +212,7 @@ public:
 	bool apiWrites() const;
 	bool apiDanger() const;
 	void showApiNotStarted(const QString &error); /* Serve API unticked again, and why */
+	void showApiStopped(const QString &why);      /* the same for a running API the engine stopped */
 	/* twice a second: the poll rate, the recording, the API's clients */
 	void showStats(const IoEngine::Stats &stats, bool connected);
 	/* why the polls are slower than asked, as the last showStats found it; empty: they are not. The window shows it in
@@ -383,6 +384,7 @@ private:
 	/* the API card */
 	QCheckBox *apiServe_, *apiNetwork_, *apiWrites_, *apiDanger_;
 	QLabel *apiInfo_;
+	bool apiReasonShown_ = false; /* it says why the API is off, not that it is */
 	QString apiServeHelp_;        /* Serve API's tooltip when not listening */
 
 	QPushButton *themeButton_;

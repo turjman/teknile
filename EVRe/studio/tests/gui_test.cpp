@@ -4650,13 +4650,17 @@ private:
 		if (stopButton()) stopButton()->click();
 		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
 
-		/* -- a port with no capture ----------------------------------------------------------------------------- */
+		/* -- a port with no state: the real lookup, no hook ----------------------------------------------------- */
 		listenTo(QStringLiteral("COM99"));
 		if (connectButton()) connectButton()->click();
-		check(QTest::qWaitFor([&] {
-					return logText().contains(QLatin1String("not connected: COM99 cannot be listened to: no USB capture on this system"));
-				}, 3000) && QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
-				"Listen, a port nothing here can hear: refused with a plain reason");
+#ifdef Q_OS_LINUX
+		const QLatin1String nothingHeard("not connected: COM99 is not a USB port: it cannot be listened to");
+#else
+		const QLatin1String nothingHeard("not connected: COM99 cannot be listened to: no USB capture on this system");
+#endif
+		check(QTest::qWaitFor([&] { return logText().contains(nothingHeard); }, 3000)
+						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
+				"Listen, a port nothing here can hear: refused with a plain reason, the system's own lookup");
 		listenTo(port);
 
 		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
@@ -4799,12 +4803,16 @@ private:
 		noUsbPcap.kind = UsbPortState::NoUsbPcap;
 		noUsbmon.kind = UsbPortState::NoUsbmon;
 		noUsbmon.device = QStringLiteral("/dev/usbmon2");
+		UsbPortState noEndpoints = listenableState(listenTarget());
+		noEndpoints.target.inEndpoints.clear();
+		noEndpoints.target.outEndpoints.clear();
 		const QVector<ListenCase> cases = { { QStringLiteral("cdc"), QStringLiteral("COM21"), listenableState(listenTarget()) },
 			{ QStringLiteral("bridge"), QStringLiteral("COM22"), listenableState(bridge) },
 			{ QStringLiteral("notusb"), QStringLiteral("COM23"), notUsb },
 			{ QStringLiteral("usbpcap"), QStringLiteral("COM24"), noUsbPcap },
 			{ QStringLiteral("usbmon"), QStringLiteral("COM25"), noUsbmon },
-			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() } };
+			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() },
+			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints } };
 		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
 		return cases;
 	}
@@ -4929,6 +4937,21 @@ private:
 		choose(5);
 		check(line->fullText() == QLatin1String("no USB capture on this system") && warns() && !action->isVisible() && !hint->isVisible(),
 				"the Listen line: no capture here, no button, no pretending");
+
+		/* a port heard without its descriptors: the plan's fallback, and the line says so; no port at all reads as none */
+		choose(6);
+		check(line->fullText() == QStringLiteral("listens to USB CDC · bus 2, device 5") && !warns() && hint->isVisible()
+						&& hint->fullText() == QLatin1String("its endpoints could not be read: every bulk endpoint of the device is heard")
+						&& !hint->isCut(), "the Listen line: endpoints not read: every bulk endpoint heard, and it says so, whole");
+		UsbPortState notUsbState;
+		notUsbState.kind = UsbPortState::NotUsb;
+		UsbTarget::stateForTests(QString(), notUsbState);
+		portBox->setCurrentIndex(-1);
+		card.showListenLine();
+		check(line->fullText() == QLatin1String("no serial port") && warns() && !hint->isVisible() && !action->isVisible(),
+				"the Listen line: no port to choose reads as that, not as a port that is no USB one");
+		UsbTarget::stateForTests(QString(), UsbPortState());
+		choose(5);
 
 		/* -- the pill ------------------------------------------------------------------------------------------------ */
 		UsbTarget bridgeTarget = cases[1].state.target;
@@ -5088,9 +5111,16 @@ private:
 		check(on && heard && link && link->text() == QLatin1String("Stop") && pill->fullText() == QStringLiteral("●  Listening · COM13 · USB CDC")
 						&& pill->toolTip().startsWith(QStringLiteral("Listening · COM13 · USB CDC\nheard: ")),
 				"the window, listening: the pill, its tooltip, and the button reads Stop");
+		const QLatin1String apiStopped("the Studio is listening, and a client could send");
 		check(serving && clientIn && QTest::qWaitFor([&] { return !engine->stats().apiRunning && !serve->isChecked(); }, 2000)
-						&& logText().contains(QLatin1String("API server not started: listening: the API server is off")),
-				"the window, listening: a running API is stopped and the card unticked, said in the Log");
+						&& logText().contains(QLatin1String("API server stopped: ") + apiStopped)
+						&& !logText().contains(QLatin1String("API server not started")),
+				"the window, listening: a running API is stopped and the card unticked, said in the Log as stopped");
+		QTest::qWait(600); /* the stats that come next leave the reason alone */
+		bool apiSaid = false;
+		for (const QLabel *label : sidebar->findChildren<QLabel *>())
+			apiSaid = apiSaid || label->text().contains(QLatin1String("stopped: ") + apiStopped);
+		check(apiSaid, "the window, listening: the API card says it was stopped, and why, past the next stats");
 		check(!serve->isEnabled() && serve->toolTip() == listeningText(), "the window, listening: Serve API disabled, saying why");
 		client.write(QByteArray::fromHex("7b01aa00a004004e217d")); /* a READ, through a pass-through that is gone */
 		const bool hungUp = QTest::qWaitFor([&] { return client.state() == QAbstractSocket::UnconnectedState; }, 2000);
@@ -5670,14 +5700,15 @@ private:
 		engine.setListenFileForTests(QStringLiteral("COM13"), captureFile(QStringLiteral("cdc_quiet.pcap")), listenTarget(),
 				FileCapture::ByStamps);
 		QSignalSpy writes(&engine, &IoEngine::writeDone), reads(&engine, &IoEngine::readDone),
-				api(&engine, &IoEngine::apiStarted), autoSend(&engine, &IoEngine::autoSendSet),
+				api(&engine, &IoEngine::apiStarted), apiOff(&engine, &IoEngine::apiStopped), autoSend(&engine, &IoEngine::autoSendSet),
 				fastSet(&engine, &IoEngine::fastStreamSet);
 		engine.apiStart(0, 0, false);
 		const bool apiWasOn = engine.stats().apiRunning && api.count() == 1 && api.last().at(0).toBool();
 		engine.connectListen(QStringLiteral("COM13"));
 		evre::ListenLink *link = engine.listenLink();
-		check(apiWasOn && !engine.stats().apiRunning && api.count() == 2 && !api.last().at(0).toBool()
-						&& api.last().at(1).toString() == QLatin1String("listening: the API server is off"),
+		const QLatin1String listeningApi("the Studio is listening, and a client could send");
+		check(apiWasOn && !engine.stats().apiRunning && api.count() == 1 && apiOff.count() == 1
+						&& apiOff.last().at(0).toString() == listeningApi,
 				"Listen, nothing sent: an API running is stopped when listening starts, and said");
 		if (!link) return;
 		const auto nothing = [&] {
@@ -5726,9 +5757,8 @@ private:
 		check(fastSet.count() == 1 && fastSet.last().at(3).toString() == QLatin1String("listening") && nothing(),
 				"Listen, nothing sent: a stream's Start is refused with its text");
 		engine.apiStart(0, 0, false);
-		check(api.count() == 3 && !api.last().at(0).toBool()
-						&& api.last().at(1).toString() == QLatin1String("listening: the API server is off")
-						&& !engine.stats().apiRunning && nothing(),
+		check(api.count() == 2 && !api.last().at(0).toBool() && api.last().at(1).toString() == listeningApi
+						&& apiOff.count() == 1 && !engine.stats().apiRunning && nothing(),
 				"Listen, nothing sent: the API's Start is refused with its text");
 		check(tried(Path::StreamGone), "Listen, nothing sent: a map without the stream does not switch it off on the device");
 		engine.setMap(map.regs, 2, device.name, { device });

@@ -6,8 +6,9 @@
 
 - **Listen: hear what another program says to a USB device.** A third choice in the Connection card, beside TCP and
   Serial / USB, for a port another program holds: the Studio reads the USB traffic under it with the system's own
-  capture (USBPcap on Windows, usbmon on Linux; USB CDC boards and USB-UART bridges) and **sends nothing**. The live
-  captures come with the next steps of this version; everything else is here and tested on replayed captures.
+  capture (USBPcap on Windows, usbmon on Linux; USB CDC boards and USB-UART bridges) and **sends nothing**. Linux hears
+  live now; Windows's live capture comes with the next step of this version, and everything else is here and tested on
+  replayed captures.
 - The port box is the one of Serial / USB, and a line under it says what can be heard (*listens to USB CDC · bus 2,
   device 5*) or why not, with a button when something can be done (**Get USBPcap…**, **Copy the commands**). **Connect**
   reads **Listen**, then **Stop**; the pill reads *Listening · COM13 · USB CDC* on a blue tint of its own, and its

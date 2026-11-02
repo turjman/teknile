@@ -10,15 +10,17 @@
  *   UsbmonDecoder    usbmon's binary records -> events, the same
  *   UsbCapture       a source of heard bytes
  *   FileCapture      a capture replayed from a file: what the tests listen to
+ *   usbmonPortState  a port to its USB device on Linux, from files only, so a test runs it on a tree of its own
+ *   UsbmonCapture    the live capture on Linux (usbmon_capture.h, built there only)
  *
  * The decoders take bytes as they come: a stream may be cut at any byte, and what is not a whole record yet waits for
- * the next feed. The live sources (USBPcap's program, /dev/usbmonN) and finding a port's device come with their own
- * system's part.
+ * the next feed. Windows's live source (USBPcap's program) and its lookup come with their own part.
  */
 #pragma once
 
 #include <QByteArray>
 #include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -45,10 +47,12 @@ struct UsbTarget {
 	QVector<int> outEndpoints;
 	int inMaxPacket = 0;        /* the IN endpoint's wMaxPacketSize; 0: not known (FTDI then goes by FTDI_PACKET) */
 
-	/* What Listen can do with this port now. The one place the system is asked: each system's lookup and its install
-	 * check come in here (usb_capture.cpp); there are none yet, so every port is NoCapture. The window's thread */
+	/* What Listen can do with this port now, a state forced by a test first. The window's thread */
 	static UsbPortState stateOf(const QString &port);
-	/* tests: the state stateOf gives this port from now on (the window's thread); NoCapture takes it back */
+	/* The system's own answer, the one place it is asked: each system's lookup and its install check come in here
+	 * (usb_capture.cpp). It only reads files, on any thread; a system without a lookup yet says NoCapture */
+	static UsbPortState liveStateOf(const QString &port);
+	/* tests: the state stateOf gives this port from now on, whatever the system says (the window's thread) */
 	static void stateForTests(const QString &port, const UsbPortState &state);
 };
 
@@ -63,9 +67,29 @@ struct UsbPortState {
 		NoUsbmon,       /* Linux: usbmon is not loaded, or its device cannot be read */
 	};
 	Kind kind = NoCapture;
-	UsbTarget target;           /* Listenable: what to listen to */
+	UsbTarget target;           /* Listenable: what to listen to; NoUsbmon: what would be */
 	QString device;             /* NoUsbmon: the file that cannot be read, /dev/usbmon2 */
+
+	/* still the device a capture was started on? Plugged in again it has a new address, which a filter on the old one
+	 * would never hear */
+	bool holds(const UsbTarget &running) const {
+		return kind != NotUsb && target.bus == running.bus && target.address == running.address;
+	}
 };
+
+/* What sysfs says of a port, and whether its bus can be read: sys and dev are /sys and /dev, or a tree a test made.
+ *
+ *   <sys>/class/tty/ttyACM0/device  -> .../usb2/2-3/2-3:1.0              a link to the tty's interface
+ *   <sys>/class/tty/ttyUSB0/device  -> .../usb2/2-1/2-1:1.0/ttyUSB0      a bridge's: one level more
+ *   .../usb2/2-3                    busnum, devnum, idVendor, idProduct: the walk up ends here
+ *   .../usb2/2-3/2-3:1.1            bInterfaceClass, bInterfaceNumber, ep_81/, ep_01/
+ *   .../ep_81                       bEndpointAddress, type, wMaxPacketSize
+ *
+ * Nothing here needs Linux, so the tests run on every system; but a link cannot be made everywhere, nor an interface's
+ * colon on Windows: `links` gives what a link leads to (full path -> full path), and one it does not name is followed
+ * by the file system. */
+UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QString &port,
+		const QHash<QString, QString> &links = {});
 
 /* One transfer's bytes. Only bulk transfers of the target with data become events; the capture's own stamp is kept
  * for a later Monitor column (the frames are laid on the host's clock at arrival, as a serial link's are). */
@@ -137,6 +161,12 @@ class UsbmonDecoder : public UsbDecoder {
 public:
 	using UsbDecoder::UsbDecoder;
 
+	static constexpr int HEADER = 64;   /* a record's mon_bin_hdr */
+
+	/* A record as MON_IOCX_GETX leaves it: the header goes on saying what usbmon kept even when the buffer took less,
+	 * and then no record after it could be found. Its len_cap cut to what the `room` of the buffer held; its size */
+	static qsizetype fitRecord(char *bytes, quint32 room);
+
 protected:
 	qsizetype record(const char *bytes, qsizetype size, QVector<UsbEvent> &out) override;
 };
@@ -147,6 +177,8 @@ class UsbCapture : public QObject {
 	Q_OBJECT
 public:
 	using QObject::QObject;
+	/* the system's live capture, unstarted; nullptr where it has none yet */
+	static UsbCapture *live();
 	virtual void start(const UsbTarget &target) = 0;
 	virtual void stop() = 0;    /* nothing follows it, not even ended() */
 

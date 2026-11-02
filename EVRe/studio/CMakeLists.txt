@@ -45,6 +45,10 @@ qt_add_library(evre_protocol STATIC
 )
 target_include_directories(evre_protocol PUBLIC src)
 target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPort)
+# Listen's live capture on Linux: /dev/usbmonN and its ioctls exist nowhere else
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(evre_protocol PRIVATE src/io/usbmon_capture.h src/io/usbmon_capture.cpp)
+endif()
 
 # The rest of the Studio without main(): the program and the GUI test are both
 # built on it, so a new source file is one more line here (or in

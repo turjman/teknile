@@ -85,10 +85,14 @@ USB-UART bridges; not a motherboard's COM port, RS-485 without a USB bridge, Blu
 everything on that USB device.</p>
 <ul>
 <li>The port box is the one of Serial / USB; the line under it says what can be heard, or why not. <b>Windows</b>:
-<b>USBPcap</b>, a capture driver, installed once as administrator; then unplug and plug the device again. <b>Linux</b>:
-<b>usbmon</b>: <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
-<code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>. The rule that lasts: <code>SUBSYSTEM=="usbmon", GROUP="dialout",
-MODE="0640"</code> in <code>/etc/udev/rules.d/60-usbmon.rules</code>, then <code>sudo udevadm trigger</code>.</li>
+<b>USBPcap</b>, a capture driver, installed once as administrator; then unplug and plug the device again.</li>
+<li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
+<code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>, good until the PC restarts. What lasts takes three steps. The
+module at every start: <code>usbmon</code> in <code>/etc/modules-load.d/usbmon.conf</code>. The udev rule:
+<code>SUBSYSTEM=="usbmon", GROUP="dialout", MODE="0640"</code> in <code>/etc/udev/rules.d/60-usbmon.rules</code>, then
+<code>sudo udevadm control --reload</code> and <code>sudo udevadm trigger</code>. You in the group:
+<code>sudo usermod -aG dialout $USER</code>, then log in again. Whoever can read <code>/dev/usbmon2</code> reads all the
+traffic of bus 2, a keyboard's too, so think before giving a shared PC this rule.</li>
 <li><b>Listen</b> starts it, <b>Stop</b> ends it. The pill reads <i>Listening · COM13 · USB CDC</i> on blue; its tooltip
 says what is heard, and what a capture may have lost.</li>
 <li>The table, the chart, the CSV and the Dump fill from the answers to the other program's reads, one chart point and one

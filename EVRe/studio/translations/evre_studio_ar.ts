@@ -3196,217 +3196,6 @@ ADC&lt;/i&gt;). والمسجّل فيها يُثبَّت عند آخر قيمة 
     </message>
     <message>
         <source>
-&lt;h2&gt;Connecting&lt;/h2&gt;
-&lt;h3&gt;TCP&lt;/h3&gt;
-&lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
-or another EVRe Studio&apos;s API (port 1219).
-A device that asks for a &lt;b&gt;token&lt;/b&gt; gets it from the token box: after connecting, the Studio writes it to
-the &lt;b&gt;login register&lt;/b&gt; the map declares (&lt;code&gt;&quot;login&quot;&lt;/code&gt;, see &lt;i&gt;Device maps&lt;/i&gt;). It is not stored.
-With no login register in the map the token is not sent, and the Log says so.&lt;/p&gt;
-&lt;h3&gt;Serial / USB&lt;/h3&gt;
-&lt;p&gt;Ports are listed as &lt;i&gt;COM10 · its description · 0483:5740&lt;/i&gt;: the name, the driver&apos;s description and the USB
-IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device&apos;s USB
-ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks that port with the device&apos;s name, and picks it by itself when no port was chosen before.
-A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy or not allowed&lt;/i&gt; otherwise).&lt;/p&gt;
-&lt;p&gt;When a link fails or is lost, the pill says what happened in plain words (&lt;i&gt;COM10 is gone: unplugged or
-reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&apos;s own text, which the Log has too. The line under it keeps
-the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.
-Connected, the pill names the link: &lt;i&gt;COM13 @ 115200&lt;/i&gt; on a UART, &lt;i&gt;COM13 · USB CDC&lt;/i&gt; on USB CDC, where the
-baud rate means nothing (the Log keeps the number).&lt;/p&gt;
-&lt;h3&gt;Listen&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;Listen&lt;/b&gt; shows what &lt;b&gt;another program&lt;/b&gt; says to a USB device, on a port that program holds. The Studio reads
-the USB traffic under the port with the system&apos;s capture, and &lt;b&gt;sends nothing&lt;/b&gt;. USB devices only: USB CDC boards and
-USB-UART bridges; not a motherboard&apos;s COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
-everything on that USB device.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not. &lt;b&gt;Windows&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;, a capture driver, installed once as administrator; then unplug and plug the device again. &lt;b&gt;Linux&lt;/b&gt;:
-&lt;b&gt;usbmon&lt;/b&gt;: &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;. The rule that lasts: &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;,
-MODE=&quot;0640&quot;&lt;/code&gt; in &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;, then &lt;code&gt;sudo udevadm trigger&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Listen&lt;/b&gt; starts it, &lt;b&gt;Stop&lt;/b&gt; ends it. The pill reads &lt;i&gt;Listening · COM13 · USB CDC&lt;/i&gt; on blue; its tooltip
-says what is heard, and what a capture may have lost.&lt;/li&gt;
-&lt;li&gt;The table, the chart, the CSV and the Dump fill from the answers to the other program&apos;s reads, one chart point and one
-CSV row per round of its reads. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
-the Monitor; the table changes at the next heard read.&lt;/li&gt;
-&lt;li&gt;Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor&apos;s request row,
-Auto send, a stream&apos;s Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Options&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
-connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
-&lt;i&gt;USB CDC: the baud rate is not used&lt;/i&gt; stands right under the box; the box stays editable, for a UART.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
-UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
-rate is the real speed) by the port&apos;s USB IDs, and
-shows what it found (&lt;i&gt;Auto: USB CDC&lt;/i&gt;). Choose &lt;b&gt;USB CDC&lt;/b&gt; or &lt;b&gt;UART&lt;/b&gt; when it guesses wrong. On a UART,
-Auto send is kept under the baud rate.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Slave&lt;/b&gt;: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
-On a bus each device has its own (below).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Timeout&lt;/b&gt;: how long an answer may take. Slow radio links need more.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt; (Polling): time between polls, down to 0.05 ms; &lt;b&gt;max&lt;/b&gt; (0) polls back to back.
-Type it, or use the arrows / wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09).
-0.25 ms is 4000 polls/s: the device and the link must keep up, the poll rate below says what they do,
-and &lt;i&gt;why&lt;/i&gt; when it is slower than asked (in amber).
-Polls run on their own thread: the window drawing never slows them, and CSV gets every one.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Show values&lt;/b&gt; (Polling): how often the numbers on screen change, in the table and in the chart&apos;s
-legend: 2, 5, &lt;b&gt;10&lt;/b&gt; (default) or 30 per second, or every frame. A number that changes at every frame
-cannot be read. The polls, the CSV file and the chart&apos;s lines are not slowed by it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: requests sent before their answers come. &lt;b&gt;1&lt;/b&gt; for a device on a UART;
-&lt;b&gt;4&lt;/b&gt; (default for TCP) pipelines them, so a poll of several blocks costs one round trip
-instead of one per block. Kept separately for TCP and serial.
-A poll is one read per block, so polls &lt;b&gt;overlap&lt;/b&gt; only with In flight ≥ 2 × blocks: with 3 blocks
-and In flight 4 there is one poll at a time and the rate is 1 / latency (≈ 200/s at 5 ms over Wi-Fi).
-Faster needs about &lt;i&gt;polls/s × latency&lt;/i&gt; polls at once: In flight 12 (4 polls) for ~800/s at 5 ms.
-More in &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Reconnect by itself&lt;/b&gt;: after a lost link, try again (0.5 s after a drop, every 2 s after a failed
-attempt).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Several devices on one link&lt;/h3&gt;
-&lt;p&gt;An RS-485 line or a gateway may carry several devices, each at its own slave address. &lt;b&gt;Devices on the
-link&lt;/b&gt; (sidebar): &lt;b&gt;New bus&lt;/b&gt; makes a bus of the map&apos;s device; &lt;b&gt;+ Device&lt;/b&gt; adds one (a name, a slave
-address, a map: several devices may share one); &lt;b&gt;Bus file &amp;gt; Save&lt;/b&gt; keeps it as a bus file
-(&lt;code&gt;evre-bus/1&lt;/code&gt;), opened again at the next start. A row of the list reads &lt;i&gt;D1 · slave 1 · map&lt;/i&gt;.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Every register is named after its device: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;, &lt;b&gt;D2_STATUS&lt;/b&gt;. The chart, math lines, CSV and
-the API use those names: any device&apos;s register by its name alone.&lt;/li&gt;
-&lt;li&gt;The Registers tab shows the device selected in the list, or &lt;b&gt;All devices&lt;/b&gt; (its own picker); the Map
-editor edits the selected device&apos;s map, says which devices share it, and &lt;b&gt;Live values from&lt;/b&gt; picks whose values
-its live line shows. Every picker shows a device as the list does: its dot (green answers, red offline, grey not
-connected), then &lt;i&gt;D1 · slave 1&lt;/i&gt;; a long name is cut, its row&apos;s tooltip has it whole.&lt;/li&gt;
-&lt;li&gt;A device with a token of its own: type it in its &lt;b&gt;Edit…&lt;/b&gt; dialog (never saved).&lt;/li&gt;
-&lt;li&gt;A device that misses %OFFLINE_MISSES% answers in a row is &lt;b&gt;offline&lt;/b&gt; (red dot): left out of the polls, asked
-again every %OFFLINE_RETRY_S% s, so the others keep their rate. Its timeouts are not logged again while it is offline;
-another device&apos;s are.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Broadcast&lt;/h3&gt;
-&lt;p&gt;Slave &lt;b&gt;0&lt;/b&gt; reaches every device at once, and none answers. The Studio sends one only when it means the same to
-every device: into the reserved bank&apos;s writable registers (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG, the
-messages) always; anywhere else only when every device on the link has the same map. Never one that switches
-CONFIG&apos;s AUTO_SEND on: every device would send by itself at once, over the others. &lt;b&gt;To all devices&lt;/b&gt; in quick
-write broadcasts the value typed, then reads every device back; the Monitor&apos;s Slave &lt;b&gt;0&lt;/b&gt; sends raw bytes; the
-&lt;b&gt;Broadcast&lt;/b&gt; menu of the Devices card keeps broadcasts by name in the bus file (&lt;i&gt;Stop all&lt;/i&gt;), each sent after a
-confirmation, then each device read back. They are offered while connected with &lt;b&gt;Allow writes&lt;/b&gt; on; a preset&apos;s
-tooltip says why when it is not.&lt;/p&gt;
-&lt;h3&gt;If it does not connect&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: wrong address, or this PC is not on that network.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;Connects, then drops after a few seconds&lt;/i&gt;: the server wants a token and it is missing or wrong, or the
-map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;COM10 is busy or not allowed: another program holds it, or you have no permission for it&lt;/i&gt; (serial): close
-the other program; on Linux, add your user to the &lt;code&gt;dialout&lt;/code&gt; group.&lt;/li&gt;
-&lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
-or this link does not). Not an error.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;الاتصال&lt;/h2&gt;
-&lt;h3&gt;TCP&lt;/h3&gt;
-&lt;p&gt;المضيف والمنفذ لأي خادم EVRe عبر TCP: جهاز بمنفذ شبكة، أو بوابة TCP إلى جهاز،
-أو API لبرنامج EVRe Studio آخر (المنفذ 1219).
-الجهاز الذي يطلب &lt;b&gt;رمز دخول&lt;/b&gt; يأخذه من مربع رمز الدخول: بعد الاتصال يكتبه البرنامج في
-&lt;b&gt;مسجّل الدخول&lt;/b&gt; الذي تعلنه الخريطة (&lt;code&gt;&quot;login&quot;&lt;/code&gt;، انظر &lt;i&gt;خرائط الأجهزة&lt;/i&gt;). لا يُحفظ.
-إن لم يكن في الخريطة مسجّل دخول لا يُرسل الرمز، ويقول السجل ذلك.&lt;/p&gt;
-&lt;h3&gt;تسلسلي / USB&lt;/h3&gt;
-&lt;p&gt;تُعرض المنافذ هكذا: &lt;i&gt;⁦COM10 · وصفه · 0483:5740⁩&lt;/i&gt;: الاسم، ووصف برنامج التشغيل، ومعرّفات USB.
-الاسم الطويل يُقطع بنقاط حذف: مرّر الفأرة فوقه، أو افتح القائمة، لتراه كله. الخريطة التي تسمّي معرّف USB لجهازها
-(&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) تعلّم ذلك المنفذ باسم الجهاز، وتختاره وحدها حين لم يُختر منفذ من قبل.
-المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا &lt;i&gt;⁦COM10⁩ مشغول أو ممنوع&lt;/i&gt;).&lt;/p&gt;
-&lt;p&gt;حين تفشل الوصلة أو تُفقد، تقول الشارة ما حدث بكلمات بسيطة (&lt;i&gt;⁦COM10⁩ اختفى: فُصل أو أُعيد
-تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
-تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
-جديد. وعند الاتصال تسمّي الشارة الوصلة: &lt;i&gt;⁦COM13 @ 115200⁩&lt;/i&gt; على UART، و&lt;i&gt;⁦COM13 · USB CDC⁩&lt;/i&gt; على USB CDC، حيث لا يعني معدّل البود شيئًا (ويُبقي السجل الرقم).&lt;/p&gt;
-&lt;h3&gt;الاستماع&lt;/h3&gt;
-&lt;p&gt;&lt;b&gt;الاستماع&lt;/b&gt; يعرض ما يقوله &lt;b&gt;برنامج آخر&lt;/b&gt; لجهاز ⁦USB⁩، على منفذ يحجزه ذلك البرنامج. يقرأ الاستوديو
-حركة ⁦USB⁩ تحت المنفذ بالتقاط النظام، و&lt;b&gt;لا يرسل شيئًا&lt;/b&gt;. أجهزة ⁦USB⁩ فقط: لوحات ⁦USB CDC⁩ وجسور
-⁦USB-UART⁩؛ لا منفذ ⁦COM⁩ على اللوحة الأم، ولا ⁦RS-485⁩ بلا جسر ⁦USB⁩، ولا بلوتوث ولا منفذ افتراضي.
-ويرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا. &lt;b&gt;ويندوز&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله. &lt;b&gt;لينكس&lt;/b&gt;:
-&lt;b&gt;usbmon&lt;/b&gt;: يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;. والقاعدة التي تدوم: &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;,
-MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم &lt;code&gt;sudo udevadm trigger&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;استماع&lt;/b&gt; يبدؤه و&lt;b&gt;إيقاف&lt;/b&gt; ينهيه. تقرأ الشارة &lt;i&gt;يستمع · ⁦COM13 · USB CDC⁩&lt;/i&gt; على الأزرق؛ ويقول تلميحها ما يُسمع،
-وما قد يكون الالتقاط فقده.&lt;/li&gt;
-&lt;li&gt;يمتلئ الجدول والمخطط وملف ⁦CSV⁩ وعرض الذاكرة من ردود قراءات البرنامج الآخر، نقطة واحدة في المخطط وصف واحد في
-⁦CSV⁩ لكل جولة من قراءاته. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
-وفي المراقبة؛ ويتغيّر الجدول عند القراءة المسموعة التالية.&lt;/li&gt;
-&lt;li&gt;كل ما يرسل معطّل، وكل عنصر يقول لماذا: الاستطلاع، والسماح بالكتابة، والكتابة السريعة، وصف الطلب في المراقبة، والإرسال
-التلقائي، وبدء التدفق؛ ويتوقف خادم API إن كان يعمل. أما تسجيل ⁦CSV⁩ والمخطط وإعادة الاتصال تلقائيًا فتعمل.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;الخيارات&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
-لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وتحت المربع مباشرة
-&lt;i&gt;USB CDC: معدّل البود غير مستخدم&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
-من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
-هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
-ويعرض ما وجده (&lt;i&gt;تلقائي: USB CDC&lt;/i&gt;). اختر &lt;b&gt;USB CDC&lt;/b&gt; أو &lt;b&gt;UART&lt;/b&gt; حين يخطئ. على UART يبقى الإرسال التلقائي
-دون معدّل البود.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
-على الناقل لكل جهاز عنوانه (أدناه).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المهلة&lt;/b&gt;: كم يجوز أن يستغرق الجواب. الوصلات الراديوية البطيئة تحتاج أكثر.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى ⁦0.05 ms⁩؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
-اكتبه، أو استخدم الأسهم / العجلة: تخطو بعُشر (10 → 9، 1 → 0.9 → … 0.1 → 0.09).
-⁦0.25 ms⁩ تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
-و&lt;i&gt;لماذا&lt;/i&gt; حين يكون أبطأ مما طُلب (بالكهرماني).
-تعمل الاستطلاعات على خيطها الخاص: رسم النافذة لا يبطئها أبدًا، وCSV يحصل على كل واحد.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع): كم مرة تتغير الأعداد على الشاشة، في الجدول وفي مفتاح
-المخطط: 2 أو 5 أو &lt;b&gt;10&lt;/b&gt; (افتراضيًا) أو 30 في الثانية، أو كل إطار. العدد الذي يتغير في كل إطار
-لا يُقرأ. ولا يُبطئ ذلك الاستطلاعات ولا ملف CSV ولا خطوط المخطط.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: طلبات تُرسل قبل وصول أجوبتها. &lt;b&gt;1&lt;/b&gt; لجهاز على UART؛
-و&lt;b&gt;4&lt;/b&gt; (افتراضي TCP) يتابعها، فيكلّف استطلاع عدة كتل رحلة ذهاب وإياب واحدة
-بدل واحدة لكل كتلة. يُحفظ منفصلًا لـ TCP وللتسلسلي.
-الاستطلاع قراءة واحدة لكل كتلة، فلا &lt;b&gt;تتداخل&lt;/b&gt; الاستطلاعات إلا مع «قيد الإرسال» ≥ 2 × الكتل: مع 3 كتل
-و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند ⁦5 ms⁩ عبر Wi-Fi).
-الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند ⁦5 ms⁩.
-المزيد في &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد ⁦0.5 s⁩ من الانقطاع، وكل ⁦2 s⁩ بعد محاولة
-فاشلة).&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;عدة أجهزة على وصلة واحدة&lt;/h3&gt;
-&lt;p&gt;قد يحمل خط RS-485 أو بوابة عدة أجهزة، لكل منها عنوان تابع خاص. &lt;b&gt;الأجهزة على
-الوصلة&lt;/b&gt; (الشريط الجانبي): &lt;b&gt;ناقل جديد&lt;/b&gt; يصنع ناقلًا من جهاز الخريطة؛ و&lt;b&gt;+ جهاز&lt;/b&gt; يضيف واحدًا (اسم، وعنوان
-تابع، وخريطة: يجوز لعدة أجهزة أن تتشارك واحدة)؛ و&lt;b&gt;ملف الناقل &amp;gt; حفظ&lt;/b&gt; يحفظه ملف ناقل
-(&lt;code&gt;evre-bus/1&lt;/code&gt;)، يُفتح من جديد عند التشغيل التالي. يُقرأ صف في القائمة هكذا: &lt;i&gt;D1 · التابع 1 · الخريطة&lt;/i&gt;.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;يُسمّى كل مسجّل باسم جهازه: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;، &lt;b&gt;D2_STATUS&lt;/b&gt;. المخطط والخطوط الرياضية وCSV و
-API تستخدم هذه الأسماء: مسجّل أي جهاز باسمه وحده.&lt;/li&gt;
-&lt;li&gt;يعرض لسان المسجّلات الجهاز المحدّد في القائمة، أو &lt;b&gt;كل الأجهزة&lt;/b&gt; (له منتقٍ خاص)؛ ومحرر الخريطة
-يحرّر خريطة الجهاز المحدّد، ويقول أي الأجهزة تتشاركها، و&lt;b&gt;القيم الحية من&lt;/b&gt; تختار من تُعرض قيمه
-في سطره الحي. كل منتقٍ يعرض الجهاز كما تعرضه القائمة: نقطته (خضراء يجيب، حمراء غير متصل، رمادية غير
-متصل بعد)، ثم &lt;i&gt;D1 · التابع 1&lt;/i&gt;؛ والاسم الطويل يُقصّ، وتلميح صفه يحمله كاملًا.&lt;/li&gt;
-&lt;li&gt;جهاز له رمز دخول خاص: اكتبه في حوار &lt;b&gt;تحرير…&lt;/b&gt; الخاص به (لا يُحفظ أبدًا).&lt;/li&gt;
-&lt;li&gt;الجهاز الذي يفوته %OFFLINE_MISSES% أجوبة متتالية يصير &lt;b&gt;غير متصل&lt;/b&gt; (نقطة حمراء): يُخرج من الاستطلاعات، ويُسأل
-من جديد كل %OFFLINE_RETRY_S% s، فيحافظ الباقون على معدّلهم. لا تُسجَّل مهلاته من جديد ما دام غير متصل؛
-أما مهلات غيره فتُسجَّل.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;البث&lt;/h3&gt;
-&lt;p&gt;التابع &lt;b&gt;0&lt;/b&gt; يصل إلى كل جهاز معًا، ولا يجيب أحد. يرسل البرنامج بثًا فقط حين يعني الشيء نفسه
-لكل جهاز: إلى مسجّلات البنك المحجوز القابلة للكتابة (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG،
-الرسائل) دائمًا؛ وإلى أي مكان آخر فقط حين يكون لكل جهاز على الوصلة الخريطة نفسها. ولا يرسل أبدًا ما يفعّل
-AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فورًا، فوق البقية. &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; في الكتابة
-السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقبة يرسل بايتات خامًا؛ وقائمة
-&lt;b&gt;البث&lt;/b&gt; في بطاقة الأجهزة تحفظ بثوثًا بأسمائها في ملف الناقل (&lt;i&gt;أوقف الكل&lt;/i&gt;)، كل منها يُرسل بعد
-تأكيد، ثم يُقرأ كل جهاز للتحقق. تُعرض ما دام متصلًا و&lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّل؛ وتلميح البث المحفوظ
-يقول لماذا حين لا يُعرض.&lt;/p&gt;
-&lt;h3&gt;إن لم يتصل&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: عنوان خاطئ، أو هذا الحاسوب ليس على تلك الشبكة.&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;يتصل، ثم ينقطع بعد ثوانٍ&lt;/i&gt;: الخادم يريد رمز دخول وهو مفقود أو خاطئ، أو ليس في
-الخريطة &lt;code&gt;&quot;login&quot;&lt;/code&gt; لإرساله إليه (انظر السجل).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;⁦COM10⁩ مشغول أو ممنوع: يمسكه برنامج آخر، أو ليس لك إذن به&lt;/i&gt; (تسلسلي): أغلق
-البرنامج الآخر؛ وعلى Linux أضف مستخدمك إلى المجموعة &lt;code&gt;dialout&lt;/code&gt;.&lt;/li&gt;
-&lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
-أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;Polling &amp;amp; speed&lt;/h2&gt;
 &lt;p&gt;A &lt;b&gt;poll&lt;/b&gt; reads every register of the map once. The registers are not asked one by one: they are
 merged into a few &lt;b&gt;block reads&lt;/b&gt;, and the sidebar says how many: &lt;i&gt;15 registers in 3 reads&lt;/i&gt;.&lt;/p&gt;
@@ -4271,6 +4060,223 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
 الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
 </translation>
     </message>
+    <message>
+        <source>
+&lt;h2&gt;Connecting&lt;/h2&gt;
+&lt;h3&gt;TCP&lt;/h3&gt;
+&lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
+or another EVRe Studio&apos;s API (port 1219).
+A device that asks for a &lt;b&gt;token&lt;/b&gt; gets it from the token box: after connecting, the Studio writes it to
+the &lt;b&gt;login register&lt;/b&gt; the map declares (&lt;code&gt;&quot;login&quot;&lt;/code&gt;, see &lt;i&gt;Device maps&lt;/i&gt;). It is not stored.
+With no login register in the map the token is not sent, and the Log says so.&lt;/p&gt;
+&lt;h3&gt;Serial / USB&lt;/h3&gt;
+&lt;p&gt;Ports are listed as &lt;i&gt;COM10 · its description · 0483:5740&lt;/i&gt;: the name, the driver&apos;s description and the USB
+IDs. A long name is cut with an ellipsis: hover it, or open the list, for the whole. A map that names its device&apos;s USB
+ID (&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) marks that port with the device&apos;s name, and picks it by itself when no port was chosen before.
+A port can be open in &lt;b&gt;one program&lt;/b&gt; only: close other tools first (&lt;i&gt;COM10 is busy or not allowed&lt;/i&gt; otherwise).&lt;/p&gt;
+&lt;p&gt;When a link fails or is lost, the pill says what happened in plain words (&lt;i&gt;COM10 is gone: unplugged or
+reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&apos;s own text, which the Log has too. The line under it keeps
+the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.
+Connected, the pill names the link: &lt;i&gt;COM13 @ 115200&lt;/i&gt; on a UART, &lt;i&gt;COM13 · USB CDC&lt;/i&gt; on USB CDC, where the
+baud rate means nothing (the Log keeps the number).&lt;/p&gt;
+&lt;h3&gt;Listen&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;Listen&lt;/b&gt; shows what &lt;b&gt;another program&lt;/b&gt; says to a USB device, on a port that program holds. The Studio reads
+the USB traffic under the port with the system&apos;s capture, and &lt;b&gt;sends nothing&lt;/b&gt;. USB devices only: USB CDC boards and
+USB-UART bridges; not a motherboard&apos;s COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
+everything on that USB device.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not. &lt;b&gt;Windows&lt;/b&gt;:
+&lt;b&gt;USBPcap&lt;/b&gt;, a capture driver, installed once as administrator; then unplug and plug the device again.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
+&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;, good until the PC restarts. What lasts takes three steps. The
+module at every start: &lt;code&gt;usbmon&lt;/code&gt; in &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. The udev rule:
+&lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; in &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;, then
+&lt;code&gt;sudo udevadm control --reload&lt;/code&gt; and &lt;code&gt;sudo udevadm trigger&lt;/code&gt;. You in the group:
+&lt;code&gt;sudo usermod -aG dialout $USER&lt;/code&gt;, then log in again. Whoever can read &lt;code&gt;/dev/usbmon2&lt;/code&gt; reads all the
+traffic of bus 2, a keyboard&apos;s too, so think before giving a shared PC this rule.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Listen&lt;/b&gt; starts it, &lt;b&gt;Stop&lt;/b&gt; ends it. The pill reads &lt;i&gt;Listening · COM13 · USB CDC&lt;/i&gt; on blue; its tooltip
+says what is heard, and what a capture may have lost.&lt;/li&gt;
+&lt;li&gt;The table, the chart, the CSV and the Dump fill from the answers to the other program&apos;s reads, one chart point and one
+CSV row per round of its reads. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
+the Monitor; the table changes at the next heard read.&lt;/li&gt;
+&lt;li&gt;Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor&apos;s request row,
+Auto send, a stream&apos;s Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Options&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
+connect. A UART must match the device; USB CDC ignores it. While the Link row means USB CDC the number is muted and
+&lt;i&gt;USB CDC: the baud rate is not used&lt;/i&gt; stands right under the box; the box stays editable, for a UART.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Link&lt;/b&gt; (serial): &lt;b&gt;Auto&lt;/b&gt; tells a USB CDC port (a board&apos;s own USB: full speed, the baud rate ignored) from a
+UART or a USB-to-UART bridge (FTDI, CP210x, CH340, PL2303, a debug probe&apos;s port such as ST-Link&apos;s or J-Link&apos;s: the baud
+rate is the real speed) by the port&apos;s USB IDs, and
+shows what it found (&lt;i&gt;Auto: USB CDC&lt;/i&gt;). Choose &lt;b&gt;USB CDC&lt;/b&gt; or &lt;b&gt;UART&lt;/b&gt; when it guesses wrong. On a UART,
+Auto send is kept under the baud rate.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Slave&lt;/b&gt;: the EVRe address (1 for most devices). 0 is the broadcast address, which no device answers.
+On a bus each device has its own (below).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Timeout&lt;/b&gt;: how long an answer may take. Slow radio links need more.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Interval&lt;/b&gt; (Polling): time between polls, down to 0.05 ms; &lt;b&gt;max&lt;/b&gt; (0) polls back to back.
+Type it, or use the arrows / wheel: they step by a tenth (10 → 9, 1 → 0.9 → … 0.1 → 0.09).
+0.25 ms is 4000 polls/s: the device and the link must keep up, the poll rate below says what they do,
+and &lt;i&gt;why&lt;/i&gt; when it is slower than asked (in amber).
+Polls run on their own thread: the window drawing never slows them, and CSV gets every one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Show values&lt;/b&gt; (Polling): how often the numbers on screen change, in the table and in the chart&apos;s
+legend: 2, 5, &lt;b&gt;10&lt;/b&gt; (default) or 30 per second, or every frame. A number that changes at every frame
+cannot be read. The polls, the CSV file and the chart&apos;s lines are not slowed by it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;In flight&lt;/b&gt;: requests sent before their answers come. &lt;b&gt;1&lt;/b&gt; for a device on a UART;
+&lt;b&gt;4&lt;/b&gt; (default for TCP) pipelines them, so a poll of several blocks costs one round trip
+instead of one per block. Kept separately for TCP and serial.
+A poll is one read per block, so polls &lt;b&gt;overlap&lt;/b&gt; only with In flight ≥ 2 × blocks: with 3 blocks
+and In flight 4 there is one poll at a time and the rate is 1 / latency (≈ 200/s at 5 ms over Wi-Fi).
+Faster needs about &lt;i&gt;polls/s × latency&lt;/i&gt; polls at once: In flight 12 (4 polls) for ~800/s at 5 ms.
+More in &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Reconnect by itself&lt;/b&gt;: after a lost link, try again (0.5 s after a drop, every 2 s after a failed
+attempt).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Several devices on one link&lt;/h3&gt;
+&lt;p&gt;An RS-485 line or a gateway may carry several devices, each at its own slave address. &lt;b&gt;Devices on the
+link&lt;/b&gt; (sidebar): &lt;b&gt;New bus&lt;/b&gt; makes a bus of the map&apos;s device; &lt;b&gt;+ Device&lt;/b&gt; adds one (a name, a slave
+address, a map: several devices may share one); &lt;b&gt;Bus file &amp;gt; Save&lt;/b&gt; keeps it as a bus file
+(&lt;code&gt;evre-bus/1&lt;/code&gt;), opened again at the next start. A row of the list reads &lt;i&gt;D1 · slave 1 · map&lt;/i&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Every register is named after its device: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;, &lt;b&gt;D2_STATUS&lt;/b&gt;. The chart, math lines, CSV and
+the API use those names: any device&apos;s register by its name alone.&lt;/li&gt;
+&lt;li&gt;The Registers tab shows the device selected in the list, or &lt;b&gt;All devices&lt;/b&gt; (its own picker); the Map
+editor edits the selected device&apos;s map, says which devices share it, and &lt;b&gt;Live values from&lt;/b&gt; picks whose values
+its live line shows. Every picker shows a device as the list does: its dot (green answers, red offline, grey not
+connected), then &lt;i&gt;D1 · slave 1&lt;/i&gt;; a long name is cut, its row&apos;s tooltip has it whole.&lt;/li&gt;
+&lt;li&gt;A device with a token of its own: type it in its &lt;b&gt;Edit…&lt;/b&gt; dialog (never saved).&lt;/li&gt;
+&lt;li&gt;A device that misses %OFFLINE_MISSES% answers in a row is &lt;b&gt;offline&lt;/b&gt; (red dot): left out of the polls, asked
+again every %OFFLINE_RETRY_S% s, so the others keep their rate. Its timeouts are not logged again while it is offline;
+another device&apos;s are.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Broadcast&lt;/h3&gt;
+&lt;p&gt;Slave &lt;b&gt;0&lt;/b&gt; reaches every device at once, and none answers. The Studio sends one only when it means the same to
+every device: into the reserved bank&apos;s writable registers (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG, the
+messages) always; anywhere else only when every device on the link has the same map. Never one that switches
+CONFIG&apos;s AUTO_SEND on: every device would send by itself at once, over the others. &lt;b&gt;To all devices&lt;/b&gt; in quick
+write broadcasts the value typed, then reads every device back; the Monitor&apos;s Slave &lt;b&gt;0&lt;/b&gt; sends raw bytes; the
+&lt;b&gt;Broadcast&lt;/b&gt; menu of the Devices card keeps broadcasts by name in the bus file (&lt;i&gt;Stop all&lt;/i&gt;), each sent after a
+confirmation, then each device read back. They are offered while connected with &lt;b&gt;Allow writes&lt;/b&gt; on; a preset&apos;s
+tooltip says why when it is not.&lt;/p&gt;
+&lt;h3&gt;If it does not connect&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: wrong address, or this PC is not on that network.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;Connects, then drops after a few seconds&lt;/i&gt;: the server wants a token and it is missing or wrong, or the
+map has no &lt;code&gt;&quot;login&quot;&lt;/code&gt; to send it to (see the Log).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;COM10 is busy or not allowed: another program holds it, or you have no permission for it&lt;/i&gt; (serial): close
+the other program; on Linux, add your user to the &lt;code&gt;dialout&lt;/code&gt; group.&lt;/li&gt;
+&lt;li&gt;Registers &quot;not available&quot;: the device refused the address (a register the map has and this device
+or this link does not). Not an error.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;الاتصال&lt;/h2&gt;
+&lt;h3&gt;TCP&lt;/h3&gt;
+&lt;p&gt;المضيف والمنفذ لأي خادم EVRe عبر TCP: جهاز بمنفذ شبكة، أو بوابة TCP إلى جهاز،
+أو API لبرنامج EVRe Studio آخر (المنفذ 1219).
+الجهاز الذي يطلب &lt;b&gt;رمز دخول&lt;/b&gt; يأخذه من مربع رمز الدخول: بعد الاتصال يكتبه البرنامج في
+&lt;b&gt;مسجّل الدخول&lt;/b&gt; الذي تعلنه الخريطة (&lt;code&gt;&quot;login&quot;&lt;/code&gt;، انظر &lt;i&gt;خرائط الأجهزة&lt;/i&gt;). لا يُحفظ.
+إن لم يكن في الخريطة مسجّل دخول لا يُرسل الرمز، ويقول السجل ذلك.&lt;/p&gt;
+&lt;h3&gt;تسلسلي / USB&lt;/h3&gt;
+&lt;p&gt;تُعرض المنافذ هكذا: &lt;i&gt;⁦COM10 · وصفه · 0483:5740⁩&lt;/i&gt;: الاسم، ووصف برنامج التشغيل، ومعرّفات USB.
+الاسم الطويل يُقطع بنقاط حذف: مرّر الفأرة فوقه، أو افتح القائمة، لتراه كله. الخريطة التي تسمّي معرّف USB لجهازها
+(&lt;code&gt;&quot;usb&quot;&lt;/code&gt;) تعلّم ذلك المنفذ باسم الجهاز، وتختاره وحدها حين لم يُختر منفذ من قبل.
+المنفذ لا يُفتح إلا في &lt;b&gt;برنامج واحد&lt;/b&gt;: أغلق الأدوات الأخرى أولًا (وإلا &lt;i&gt;⁦COM10⁩ مشغول أو ممنوع&lt;/i&gt;).&lt;/p&gt;
+&lt;p&gt;حين تفشل الوصلة أو تُفقد، تقول الشارة ما حدث بكلمات بسيطة (&lt;i&gt;⁦COM10⁩ اختفى: فُصل أو أُعيد
+تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
+تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
+جديد. وعند الاتصال تسمّي الشارة الوصلة: &lt;i&gt;⁦COM13 @ 115200⁩&lt;/i&gt; على UART، و&lt;i&gt;⁦COM13 · USB CDC⁩&lt;/i&gt; على USB CDC، حيث لا يعني معدّل البود شيئًا (ويُبقي السجل الرقم).&lt;/p&gt;
+&lt;h3&gt;الاستماع&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;الاستماع&lt;/b&gt; يعرض ما يقوله &lt;b&gt;برنامج آخر&lt;/b&gt; لجهاز ⁦USB⁩، على منفذ يحجزه ذلك البرنامج. يقرأ الاستوديو
+حركة ⁦USB⁩ تحت المنفذ بالتقاط النظام، و&lt;b&gt;لا يرسل شيئًا&lt;/b&gt;. أجهزة ⁦USB⁩ فقط: لوحات ⁦USB CDC⁩ وجسور
+⁦USB-UART⁩؛ لا منفذ ⁦COM⁩ على اللوحة الأم، ولا ⁦RS-485⁩ بلا جسر ⁦USB⁩، ولا بلوتوث ولا منفذ افتراضي.
+ويرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا. &lt;b&gt;ويندوز&lt;/b&gt;:
+&lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
+&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;، وهما صالحان حتى إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
+&lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم
+&lt;code&gt;sudo udevadm control --reload&lt;/code&gt; و&lt;code&gt;sudo udevadm trigger&lt;/code&gt;. وأنت في المجموعة:
+&lt;code&gt;sudo usermod -aG dialout $USER&lt;/code&gt;، ثم سجّل الدخول من جديد. من يقرأ &lt;code&gt;/dev/usbmon2&lt;/code&gt; يقرأ كل حركة الناقل 2، حتى حركة لوحة المفاتيح، ففكّر قبل وضع هذه القاعدة على حاسوب مشترك.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;استماع&lt;/b&gt; يبدؤه و&lt;b&gt;إيقاف&lt;/b&gt; ينهيه. تقرأ الشارة &lt;i&gt;يستمع · ⁦COM13 · USB CDC⁩&lt;/i&gt; على الأزرق؛ ويقول تلميحها ما يُسمع،
+وما قد يكون الالتقاط فقده.&lt;/li&gt;
+&lt;li&gt;يمتلئ الجدول والمخطط وملف ⁦CSV⁩ وعرض الذاكرة من ردود قراءات البرنامج الآخر، نقطة واحدة في المخطط وصف واحد في
+⁦CSV⁩ لكل جولة من قراءاته. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
+وفي المراقبة؛ ويتغيّر الجدول عند القراءة المسموعة التالية.&lt;/li&gt;
+&lt;li&gt;كل ما يرسل معطّل، وكل عنصر يقول لماذا: الاستطلاع، والسماح بالكتابة، والكتابة السريعة، وصف الطلب في المراقبة، والإرسال
+التلقائي، وبدء التدفق؛ ويتوقف خادم API إن كان يعمل. أما تسجيل ⁦CSV⁩ والمخطط وإعادة الاتصال تلقائيًا فتعمل.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الخيارات&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
+لا يتصل. على UART يجب أن يطابق الجهاز؛ وUSB CDC يتجاهله. وما دام صف «الوصلة» يعني USB CDC يظهر الرقم باهتًا وتحت المربع مباشرة
+&lt;i&gt;USB CDC: معدّل البود غير مستخدم&lt;/i&gt;؛ ويبقى المربع قابلًا للتحرير، من أجل UART.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الوصلة&lt;/b&gt; (تسلسلي): &lt;b&gt;تلقائي&lt;/b&gt; يميّز منفذ USB CDC (منفذ USB الخاص باللوحة: سرعة كاملة، ويُتجاهل معدّل البود)
+من UART أو جسر USB إلى UART (FTDI وCP210x وCH340 وPL2303، ومنفذ مسبار التنقيح مثل ST-Link أو J-Link: معدّل البود
+هو السرعة الحقيقية) بمعرّفات USB للمنفذ،
+ويعرض ما وجده (&lt;i&gt;تلقائي: USB CDC&lt;/i&gt;). اختر &lt;b&gt;USB CDC&lt;/b&gt; أو &lt;b&gt;UART&lt;/b&gt; حين يخطئ. على UART يبقى الإرسال التلقائي
+دون معدّل البود.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;التابع&lt;/b&gt;: عنوان EVRe (1 لمعظم الأجهزة). 0 عنوان البث، ولا يجيب عليه أي جهاز.
+على الناقل لكل جهاز عنوانه (أدناه).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المهلة&lt;/b&gt;: كم يجوز أن يستغرق الجواب. الوصلات الراديوية البطيئة تحتاج أكثر.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الفاصل&lt;/b&gt; (الاستطلاع): الزمن بين الاستطلاعات، حتى ⁦0.05 ms⁩؛ و&lt;b&gt;أقصى&lt;/b&gt; (0) يستطلع بلا فاصل.
+اكتبه، أو استخدم الأسهم / العجلة: تخطو بعُشر (10 → 9، 1 → 0.9 → … 0.1 → 0.09).
+⁦0.25 ms⁩ تعني 4000 استطلاع/ث: على الجهاز والوصلة أن يجاريا، ومعدّل الاستطلاع أدناه يقول ما يفعلانه،
+و&lt;i&gt;لماذا&lt;/i&gt; حين يكون أبطأ مما طُلب (بالكهرماني).
+تعمل الاستطلاعات على خيطها الخاص: رسم النافذة لا يبطئها أبدًا، وCSV يحصل على كل واحد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع): كم مرة تتغير الأعداد على الشاشة، في الجدول وفي مفتاح
+المخطط: 2 أو 5 أو &lt;b&gt;10&lt;/b&gt; (افتراضيًا) أو 30 في الثانية، أو كل إطار. العدد الذي يتغير في كل إطار
+لا يُقرأ. ولا يُبطئ ذلك الاستطلاعات ولا ملف CSV ولا خطوط المخطط.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;قيد الإرسال&lt;/b&gt;: طلبات تُرسل قبل وصول أجوبتها. &lt;b&gt;1&lt;/b&gt; لجهاز على UART؛
+و&lt;b&gt;4&lt;/b&gt; (افتراضي TCP) يتابعها، فيكلّف استطلاع عدة كتل رحلة ذهاب وإياب واحدة
+بدل واحدة لكل كتلة. يُحفظ منفصلًا لـ TCP وللتسلسلي.
+الاستطلاع قراءة واحدة لكل كتلة، فلا &lt;b&gt;تتداخل&lt;/b&gt; الاستطلاعات إلا مع «قيد الإرسال» ≥ 2 × الكتل: مع 3 كتل
+و«قيد الإرسال» 4 يكون استطلاع واحد في كل مرة والمعدّل 1 / زمن الاستجابة (≈ 200/ث عند ⁦5 ms⁩ عبر Wi-Fi).
+الأسرع يحتاج نحو &lt;i&gt;استطلاعات/ث × زمن الاستجابة&lt;/i&gt; استطلاعًا معًا: «قيد الإرسال» 12 (4 استطلاعات) لنحو 800/ث عند ⁦5 ms⁩.
+المزيد في &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt;: بعد فقد الوصلة، حاول من جديد (بعد ⁦0.5 s⁩ من الانقطاع، وكل ⁦2 s⁩ بعد محاولة
+فاشلة).&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;عدة أجهزة على وصلة واحدة&lt;/h3&gt;
+&lt;p&gt;قد يحمل خط RS-485 أو بوابة عدة أجهزة، لكل منها عنوان تابع خاص. &lt;b&gt;الأجهزة على
+الوصلة&lt;/b&gt; (الشريط الجانبي): &lt;b&gt;ناقل جديد&lt;/b&gt; يصنع ناقلًا من جهاز الخريطة؛ و&lt;b&gt;+ جهاز&lt;/b&gt; يضيف واحدًا (اسم، وعنوان
+تابع، وخريطة: يجوز لعدة أجهزة أن تتشارك واحدة)؛ و&lt;b&gt;ملف الناقل &amp;gt; حفظ&lt;/b&gt; يحفظه ملف ناقل
+(&lt;code&gt;evre-bus/1&lt;/code&gt;)، يُفتح من جديد عند التشغيل التالي. يُقرأ صف في القائمة هكذا: &lt;i&gt;D1 · التابع 1 · الخريطة&lt;/i&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;يُسمّى كل مسجّل باسم جهازه: &lt;b&gt;D1_SUPPLY_V&lt;/b&gt;، &lt;b&gt;D2_STATUS&lt;/b&gt;. المخطط والخطوط الرياضية وCSV و
+API تستخدم هذه الأسماء: مسجّل أي جهاز باسمه وحده.&lt;/li&gt;
+&lt;li&gt;يعرض لسان المسجّلات الجهاز المحدّد في القائمة، أو &lt;b&gt;كل الأجهزة&lt;/b&gt; (له منتقٍ خاص)؛ ومحرر الخريطة
+يحرّر خريطة الجهاز المحدّد، ويقول أي الأجهزة تتشاركها، و&lt;b&gt;القيم الحية من&lt;/b&gt; تختار من تُعرض قيمه
+في سطره الحي. كل منتقٍ يعرض الجهاز كما تعرضه القائمة: نقطته (خضراء يجيب، حمراء غير متصل، رمادية غير
+متصل بعد)، ثم &lt;i&gt;D1 · التابع 1&lt;/i&gt;؛ والاسم الطويل يُقصّ، وتلميح صفه يحمله كاملًا.&lt;/li&gt;
+&lt;li&gt;جهاز له رمز دخول خاص: اكتبه في حوار &lt;b&gt;تحرير…&lt;/b&gt; الخاص به (لا يُحفظ أبدًا).&lt;/li&gt;
+&lt;li&gt;الجهاز الذي يفوته %OFFLINE_MISSES% أجوبة متتالية يصير &lt;b&gt;غير متصل&lt;/b&gt; (نقطة حمراء): يُخرج من الاستطلاعات، ويُسأل
+من جديد كل %OFFLINE_RETRY_S% s، فيحافظ الباقون على معدّلهم. لا تُسجَّل مهلاته من جديد ما دام غير متصل؛
+أما مهلات غيره فتُسجَّل.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;البث&lt;/h3&gt;
+&lt;p&gt;التابع &lt;b&gt;0&lt;/b&gt; يصل إلى كل جهاز معًا، ولا يجيب أحد. يرسل البرنامج بثًا فقط حين يعني الشيء نفسه
+لكل جهاز: إلى مسجّلات البنك المحجوز القابلة للكتابة (&lt;code&gt;0xA004&lt;/code&gt; … &lt;code&gt;0xA105&lt;/code&gt;: CONFIG،
+الرسائل) دائمًا؛ وإلى أي مكان آخر فقط حين يكون لكل جهاز على الوصلة الخريطة نفسها. ولا يرسل أبدًا ما يفعّل
+AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فورًا، فوق البقية. &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; في الكتابة
+السريعة يبث القيمة المكتوبة، ثم يقرأ كل جهاز للتحقق؛ والتابع &lt;b&gt;0&lt;/b&gt; في المراقبة يرسل بايتات خامًا؛ وقائمة
+&lt;b&gt;البث&lt;/b&gt; في بطاقة الأجهزة تحفظ بثوثًا بأسمائها في ملف الناقل (&lt;i&gt;أوقف الكل&lt;/i&gt;)، كل منها يُرسل بعد
+تأكيد، ثم يُقرأ كل جهاز للتحقق. تُعرض ما دام متصلًا و&lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّل؛ وتلميح البث المحفوظ
+يقول لماذا حين لا يُعرض.&lt;/p&gt;
+&lt;h3&gt;إن لم يتصل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;i&gt;Connection timed out&lt;/i&gt;: عنوان خاطئ، أو هذا الحاسوب ليس على تلك الشبكة.&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;يتصل، ثم ينقطع بعد ثوانٍ&lt;/i&gt;: الخادم يريد رمز دخول وهو مفقود أو خاطئ، أو ليس في
+الخريطة &lt;code&gt;&quot;login&quot;&lt;/code&gt; لإرساله إليه (انظر السجل).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;⁦COM10⁩ مشغول أو ممنوع: يمسكه برنامج آخر، أو ليس لك إذن به&lt;/i&gt; (تسلسلي): أغلق
+البرنامج الآخر؛ وعلى Linux أضف مستخدمك إلى المجموعة &lt;code&gt;dialout&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;مسجّلات «غير متاحة»: رفض الجهاز العنوان (مسجّل في الخريطة لا يملكه هذا الجهاز
+أو هذه الوصلة). ليس خطأ.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>IoEngine</name>
@@ -4351,10 +4357,6 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
         <translation>يستمع: لا يرسل الاستوديو شيئًا</translation>
     </message>
     <message>
-        <source>listening: the API server is off</source>
-        <translation>يستمع: خادم API متوقف</translation>
-    </message>
-    <message>
         <source> (no request heard)</source>
         <translation> (لم يُسمع طلب)</translation>
     </message>
@@ -4376,6 +4378,10 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     <message>
         <source>listening on %1: -&gt;DEV the other program&apos;s request, DEV-&gt; the device&apos;s answer</source>
         <translation>يستمع على ⁦%1⁩: ⁦-&gt;DEV⁩ طلب البرنامج الآخر، ⁦DEV-&gt;⁩ رد الجهاز</translation>
+    </message>
+    <message>
+        <source>the Studio is listening, and a client could send</source>
+        <translation>الاستوديو يستمع، وقد يرسل أحد العملاء</translation>
     </message>
 </context>
 <context>
@@ -4405,6 +4411,18 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     <message>
         <source>%1 (bus %2, device %3)</source>
         <translation>⁦%1⁩ (الناقل %2، الجهاز %3)</translation>
+    </message>
+    <message>
+        <source>%1 is not a USB port: it cannot be listened to</source>
+        <translation>⁦%1⁩ ليس منفذ ⁦USB⁩: لا يمكن الاستماع إليه</translation>
+    </message>
+    <message>
+        <source>USBPcap is not installed</source>
+        <translation>⁦USBPcap⁩ غير مثبّت</translation>
+    </message>
+    <message>
+        <source>usbmon is not loaded or %1 is not readable</source>
+        <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
     </message>
 </context>
 <context>
@@ -5120,6 +5138,10 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     <message>
         <source>listening</source>
         <translation>يستمع</translation>
+    </message>
+    <message>
+        <source>API server stopped: %1</source>
+        <translation>توقف خادم API: %1</translation>
     </message>
 </context>
 <context>
@@ -8701,6 +8723,18 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <comment>between the items of a list in a sentence</comment>
         <translation>، </translation>
     </message>
+    <message>
+        <source>its endpoints could not be read: every bulk endpoint of the device is heard</source>
+        <translation>تعذّرت قراءة نقاط نهايته: تُسمع كل نقاط نهاية ⁦bulk⁩ في الجهاز</translation>
+    </message>
+    <message>
+        <source>no serial port</source>
+        <translation>لا منفذ تسلسلي</translation>
+    </message>
+    <message>
+        <source>stopped: %1</source>
+        <translation>توقف: %1</translation>
+    </message>
 </context>
 <context>
     <name>TcpLink</name>
@@ -8721,6 +8755,21 @@ Not remembered: it changes the device, so it is off at every start.</source>
     </message>
 </context>
 <context>
+    <name>UsbmonCapture</name>
+    <message>
+        <source>%1 cannot be read: %2</source>
+        <translation>تعذّرت قراءة ⁦%1⁩: %2</translation>
+    </message>
+    <message>
+        <source>the capture stopped: %1</source>
+        <translation>توقف الالتقاط: %1</translation>
+    </message>
+    <message>
+        <source>%1 is gone: unplugged or reset?</source>
+        <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
+    </message>
+</context>
+<context>
     <name>evre::ListenLink</name>
     <message>
         <source>%1 cannot be listened to: no USB capture on this system</source>
@@ -8733,6 +8782,18 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>%1 (bus %2, device %3)</source>
         <translation>⁦%1⁩ (الناقل %2، الجهاز %3)</translation>
+    </message>
+    <message>
+        <source>%1 is not a USB port: it cannot be listened to</source>
+        <translation>⁦%1⁩ ليس منفذ ⁦USB⁩: لا يمكن الاستماع إليه</translation>
+    </message>
+    <message>
+        <source>USBPcap is not installed</source>
+        <translation>⁦USBPcap⁩ غير مثبّت</translation>
+    </message>
+    <message>
+        <source>usbmon is not loaded or %1 is not readable</source>
+        <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
     </message>
 </context>
 <context>
