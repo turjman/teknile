@@ -4085,8 +4085,13 @@ the USB traffic under the port with the system&apos;s capture, and &lt;b&gt;send
 USB-UART bridges; not a motherboard&apos;s COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
 everything on that USB device.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not. &lt;b&gt;Windows&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;, a capture driver, installed once as administrator; then unplug and plug the device again.&lt;/li&gt;
+&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Windows&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;, a capture driver. &lt;b&gt;Get USBPcap…&lt;/b&gt; opens its page; install it once as administrator,
+then unplug and plug the device again: it joins a device when that is plugged in. If the line then reads &lt;i&gt;USBPcap is
+not on this device yet&lt;/i&gt;, restart the PC. USBPcap lets only an administrator capture, so the line reads &lt;i&gt;run the
+Studio as administrator&lt;/i&gt; until you do: close the Studio and start it with &lt;b&gt;Run as administrator&lt;/b&gt;. The Studio
+captures that one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there
+first.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
 &lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;, good until the PC restarts. What lasts takes three steps. The
 module at every start: &lt;code&gt;usbmon&lt;/code&gt; in &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. The udev rule:
@@ -4193,8 +4198,12 @@ or this link does not). Not an error.&lt;/li&gt;
 ⁦USB-UART⁩؛ لا منفذ ⁦COM⁩ على اللوحة الأم، ولا ⁦RS-485⁩ بلا جسر ⁦USB⁩، ولا بلوتوث ولا منفذ افتراضي.
 ويرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا. &lt;b&gt;ويندوز&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله.&lt;/li&gt;
+&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;ويندوز&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط. يفتح &lt;b&gt;تنزيل ⁦USBPcap⁩…&lt;/b&gt; صفحته؛ ثبّته مرة واحدة بصلاحية المسؤول،
+ثم افصل الجهاز وأعد توصيله: فهو ينضم إلى الجهاز عند توصيله. وإن قرأ السطر بعد ذلك &lt;i&gt;⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد&lt;/i&gt;،
+فأعد تشغيل الحاسوب. ولا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول، فيقرأ السطر &lt;i&gt;شغّل الاستوديو كمسؤول&lt;/i&gt; إلى أن تفعل: أغلق
+الاستوديو وابدأه بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt;. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل كله أبدًا، ولا يشغل الناقل إلا التقاط
+واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
 &lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;، وهما صالحان حتى إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم
@@ -4423,6 +4432,14 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
     <message>
         <source>usbmon is not loaded or %1 is not readable</source>
         <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>run the Studio as administrator</source>
+        <translation>شغّل الاستوديو كمسؤول</translation>
     </message>
 </context>
 <context>
@@ -8735,6 +8752,26 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <source>stopped: %1</source>
         <translation>توقف: %1</translation>
     </message>
+    <message>
+        <source>USBPcap joins a device when it is plugged in, and a USB bus when the PC starts.</source>
+        <translation>ينضم ⁦USBPcap⁩ إلى الجهاز عند توصيله، وإلى ناقل ⁦USB⁩ عند بدء تشغيل الحاسوب.</translation>
+    </message>
+    <message>
+        <source>unplug it and plug it in again; if that does not help, restart the PC</source>
+        <translation>افصله ثم أعد توصيله؛ وإن لم يُجدِ ذلك فأعد تشغيل الحاسوب</translation>
+    </message>
+    <message>
+        <source>USBPcap lets only an administrator capture: close the Studio and start it with Run as administrator.</source>
+        <translation>لا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول: أغلق الاستوديو وابدأه بأمر «تشغيل كمسؤول».</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>run the Studio as administrator</source>
+        <translation>شغّل الاستوديو كمسؤول</translation>
+    </message>
 </context>
 <context>
     <name>TcpLink</name>
@@ -8752,6 +8789,37 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>not a USBPcap capture</source>
         <translation>ليس التقاطًا من ⁦USBPcap⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap refused this USB bus: another capture holds it</source>
+        <translation>رفض ⁦USBPcap⁩ ناقل ⁦USB⁩ هذا: يشغله التقاط آخر</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped: %1</source>
+        <translation>توقف ⁦USBPcapCMD⁩: %1</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD crashed</source>
+        <translation>تعطّل ⁦USBPcapCMD⁩</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped with code %1</source>
+        <translation>توقف ⁦USBPcapCMD⁩ بالرمز %1</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped</source>
+        <translation>توقف ⁦USBPcapCMD⁩</translation>
+    </message>
+</context>
+<context>
+    <name>UsbPcapCapture</name>
+    <message>
+        <source>USBPcapCMD could not be started: %1</source>
+        <translation>تعذّر تشغيل ⁦USBPcapCMD⁩: %1</translation>
+    </message>
+    <message>
+        <source>%1 is gone: unplugged or reset?</source>
+        <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
     </message>
 </context>
 <context>
@@ -8794,6 +8862,14 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>usbmon is not loaded or %1 is not readable</source>
         <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>run the Studio as administrator</source>
+        <translation>شغّل الاستوديو كمسؤول</translation>
     </message>
 </context>
 <context>
