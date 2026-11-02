@@ -60,6 +60,9 @@ public:
 
 	void setWritesEnabled(bool on);
 	bool writesEnabled() const { return writesEnabled_; }
+	/* Listen is on: nothing is written (writes stay off) and a value never read says why it is "—" */
+	void setListening(bool on);
+	bool listening() const { return listening_; }
 	/* The registers on the chart: PLOT_SAMPLES_PER_SECOND for all the lines together, at most MAX_PLOTTED (more
 	 * cannot be followed by eye): 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz. A Plot past the limit is refused
 	 * (false, and plotLimitReached); a lower limit takes the newest lines off (plotsTakenOff). */
@@ -119,6 +122,7 @@ private:
 	int plotLimit_ = MAX_PLOTTED;
 	quint64 nextPlotOrder_ = 1;
 	bool writesEnabled_ = false;
+	bool listening_ = false;
 	QElapsedTimer clock_;       /* the time base of changedMs / updatedMs */
 	qint64 staleAfterMs_ = 1000;
 	Colors colors_;

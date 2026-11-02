@@ -48,10 +48,12 @@ private:
 	void fit();
 	void wrapLines(bool on); /* word wrap and the height for width on or off, only for a text that does not fit */
 	void keepHeight();       /* one line's height at least; with setLines, exactly the lines' */
+	void oneLineAgain();
 	bool fitsLines(const QString &text, int room) const;
 	QString full_, toolTip_, shorter_;
 	bool cut_ = false;
 	bool wraps_ = false;
+	bool grown_ = false;     /* wrapped: the least height is the lines' */
 	int lines_ = 1;
 	Qt::TextElideMode mode_ = Qt::ElideRight;
 };

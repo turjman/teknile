@@ -554,6 +554,8 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 void IoEngine::connectListen(const QString &port) {
 	serialBaud_ = 0;
 	applyInFlight();
+	/* the tests' file, or nothing yet: a system's live capture and UsbTarget::stateOf(port).target go in the first
+	 * branch; without a capture the link refuses the port in plain words */
 	const auto file = listenFiles_.constFind(port);
 	auto *link = file == listenFiles_.constEnd() ? new evre::ListenLink(port, nullptr, UsbTarget())
 			: new evre::ListenLink(port, new FileCapture(file->file, file->pace), file->target);

@@ -2656,6 +2656,10 @@ to say it arrived; READ it to see.&lt;/p&gt;
 0&lt;/i&gt; on a bus, is a broadcast: a WRITE only, as the broadcast rule allows (see &lt;b&gt;Connecting&lt;/b&gt;), which every device
 takes and none answers. A device chosen again gets back the function chosen before.&lt;/p&gt;
 &lt;p&gt;A READ&apos;s answer also shows at the top of the &lt;b&gt;Dump&lt;/b&gt; tab, decoded by the map.&lt;/p&gt;
+&lt;p&gt;While &lt;b&gt;Listen&lt;/b&gt; is on (see &lt;b&gt;Connecting&lt;/b&gt;) the request row is disabled and each line says who sent it, in place
+of &lt;code&gt;TX&lt;/code&gt; and &lt;code&gt;RX&lt;/code&gt;: &lt;code&gt;-&amp;gt;DEV&lt;/code&gt; the other program&apos;s request, &lt;code&gt;DEV-&amp;gt;&lt;/code&gt; the
+device&apos;s answer, &lt;code&gt;??&lt;/code&gt; bytes that are no EVRe frame. &lt;i&gt;(no request heard)&lt;/i&gt;: an answer the capture heard no
+request for.&lt;/p&gt;
 </source>
         <translation>
 &lt;h2&gt;المراقبة&lt;/h2&gt;
@@ -2670,6 +2674,9 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
 0&lt;/i&gt; على الناقل، بث: WRITE فقط، كما تسمح قاعدة البث (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، يأخذه كل جهاز
 ولا أحد يجيب. والجهاز الذي يُختار من جديد يستعيد الوظيفة المختارة قبل.&lt;/p&gt;
 &lt;p&gt;يظهر جواب قراءة READ أيضًا في أعلى لسان &lt;b&gt;عرض الذاكرة&lt;/b&gt;، مفكوكًا بالخريطة.&lt;/p&gt;
+&lt;p&gt;أثناء &lt;b&gt;الاستماع&lt;/b&gt; (انظر &lt;b&gt;الاتصال&lt;/b&gt;) يتعطّل صف الطلب ويقول كل سطر من أرسله، بدل &lt;code&gt;TX&lt;/code&gt; و&lt;code&gt;RX&lt;/code&gt;:
+&lt;code&gt;-&amp;gt;DEV&lt;/code&gt; طلب البرنامج الآخر، &lt;code&gt;DEV-&amp;gt;&lt;/code&gt; رد الجهاز، &lt;code&gt;??&lt;/code&gt; بايتات ليست إطار ⁦EVRe⁩.
+&lt;i&gt;(لم يُسمع طلب)&lt;/i&gt;: رد لم يسمع الالتقاط طلبًا له.&lt;/p&gt;
 </translation>
     </message>
     <message>
@@ -3206,6 +3213,25 @@ reset?&lt;/i&gt;, &lt;i&gt;COM10 not found&lt;/i&gt;); hover it for the system&a
 the device&apos;s ID as &lt;i&gt;last seen: Device ID …&lt;/i&gt; while the link is down, until the next connect reads it again.
 Connected, the pill names the link: &lt;i&gt;COM13 @ 115200&lt;/i&gt; on a UART, &lt;i&gt;COM13 · USB CDC&lt;/i&gt; on USB CDC, where the
 baud rate means nothing (the Log keeps the number).&lt;/p&gt;
+&lt;h3&gt;Listen&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;Listen&lt;/b&gt; shows what &lt;b&gt;another program&lt;/b&gt; says to a USB device, on a port that program holds. The Studio reads
+the USB traffic under the port with the system&apos;s capture, and &lt;b&gt;sends nothing&lt;/b&gt;. USB devices only: USB CDC boards and
+USB-UART bridges; not a motherboard&apos;s COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
+everything on that USB device.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not. &lt;b&gt;Windows&lt;/b&gt;:
+&lt;b&gt;USBPcap&lt;/b&gt;, a capture driver, installed once as administrator; then unplug and plug the device again. &lt;b&gt;Linux&lt;/b&gt;:
+&lt;b&gt;usbmon&lt;/b&gt;: &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
+&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;. The rule that lasts: &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;,
+MODE=&quot;0640&quot;&lt;/code&gt; in &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;, then &lt;code&gt;sudo udevadm trigger&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Listen&lt;/b&gt; starts it, &lt;b&gt;Stop&lt;/b&gt; ends it. The pill reads &lt;i&gt;Listening · COM13 · USB CDC&lt;/i&gt; on blue; its tooltip
+says what is heard, and what a capture may have lost.&lt;/li&gt;
+&lt;li&gt;The table, the chart, the CSV and the Dump fill from the answers to the other program&apos;s reads, one chart point and one
+CSV row per round of its reads. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
+the Monitor; the table changes at the next heard read.&lt;/li&gt;
+&lt;li&gt;Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor&apos;s request row,
+Auto send, a stream&apos;s Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h3&gt;Options&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;Baud&lt;/b&gt; (serial): pick a rate or type any, 300 to 20000000; only digits can be typed, and an empty box does not
@@ -3291,6 +3317,25 @@ or this link does not). Not an error.&lt;/li&gt;
 تشغيله؟&lt;/i&gt;، &lt;i&gt;⁦COM10⁩ غير موجود&lt;/i&gt;)؛ مرّر الفأرة فوقها لنص النظام نفسه، وهو في السجل أيضًا. والسطر
 تحتها يُبقي معرّف الجهاز بصيغة &lt;i&gt;آخر ظهور: معرّف الجهاز …&lt;/i&gt; ما دامت الوصلة منقطعة، حتى يقرأه الاتصال التالي من
 جديد. وعند الاتصال تسمّي الشارة الوصلة: &lt;i&gt;⁦COM13 @ 115200⁩&lt;/i&gt; على UART، و&lt;i&gt;⁦COM13 · USB CDC⁩&lt;/i&gt; على USB CDC، حيث لا يعني معدّل البود شيئًا (ويُبقي السجل الرقم).&lt;/p&gt;
+&lt;h3&gt;الاستماع&lt;/h3&gt;
+&lt;p&gt;&lt;b&gt;الاستماع&lt;/b&gt; يعرض ما يقوله &lt;b&gt;برنامج آخر&lt;/b&gt; لجهاز ⁦USB⁩، على منفذ يحجزه ذلك البرنامج. يقرأ الاستوديو
+حركة ⁦USB⁩ تحت المنفذ بالتقاط النظام، و&lt;b&gt;لا يرسل شيئًا&lt;/b&gt;. أجهزة ⁦USB⁩ فقط: لوحات ⁦USB CDC⁩ وجسور
+⁦USB-UART⁩؛ لا منفذ ⁦COM⁩ على اللوحة الأم، ولا ⁦RS-485⁩ بلا جسر ⁦USB⁩، ولا بلوتوث ولا منفذ افتراضي.
+ويرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا. &lt;b&gt;ويندوز&lt;/b&gt;:
+&lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله. &lt;b&gt;لينكس&lt;/b&gt;:
+&lt;b&gt;usbmon&lt;/b&gt;: يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
+&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;. والقاعدة التي تدوم: &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;,
+MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم &lt;code&gt;sudo udevadm trigger&lt;/code&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;استماع&lt;/b&gt; يبدؤه و&lt;b&gt;إيقاف&lt;/b&gt; ينهيه. تقرأ الشارة &lt;i&gt;يستمع · ⁦COM13 · USB CDC⁩&lt;/i&gt; على الأزرق؛ ويقول تلميحها ما يُسمع،
+وما قد يكون الالتقاط فقده.&lt;/li&gt;
+&lt;li&gt;يمتلئ الجدول والمخطط وملف ⁦CSV⁩ وعرض الذاكرة من ردود قراءات البرنامج الآخر، نقطة واحدة في المخطط وصف واحد في
+⁦CSV⁩ لكل جولة من قراءاته. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
+وفي المراقبة؛ ويتغيّر الجدول عند القراءة المسموعة التالية.&lt;/li&gt;
+&lt;li&gt;كل ما يرسل معطّل، وكل عنصر يقول لماذا: الاستطلاع، والسماح بالكتابة، والكتابة السريعة، وصف الطلب في المراقبة، والإرسال
+التلقائي، وبدء التدفق؛ ويتوقف خادم API إن كان يعمل. أما تسجيل ⁦CSV⁩ والمخطط وإعادة الاتصال تلقائيًا فتعمل.&lt;/li&gt;
+&lt;/ul&gt;
 &lt;h3&gt;الخيارات&lt;/h3&gt;
 &lt;ul&gt;
 &lt;li&gt;&lt;b&gt;البود&lt;/b&gt; (تسلسلي): اختر معدّلًا أو اكتب أي معدّل، من 300 إلى 20000000؛ لا تُكتب إلا الأرقام، والمربع الفارغ
@@ -4341,6 +4386,13 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     </message>
 </context>
 <context>
+    <name>Listen</name>
+    <message>
+        <source>Listening: the Studio sends nothing</source>
+        <translation>يستمع: لا يرسل الاستوديو شيئًا</translation>
+    </message>
+</context>
+<context>
     <name>ListenLink</name>
     <message>
         <source>%1 cannot be listened to: no USB capture on this system</source>
@@ -5064,6 +5116,10 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     <message>
         <source>Device ID %1 · protocol rev %2 (heard)</source>
         <translation>معرّف الجهاز %1 · مراجعة البروتوكول %2 (مسموع)</translation>
+    </message>
+    <message>
+        <source>listening</source>
+        <translation>يستمع</translation>
     </message>
 </context>
 <context>
@@ -6024,6 +6080,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>(shown in the Dump)</source>
         <translation>(معروض في عرض الذاكرة)</translation>
+    </message>
+    <message>
+        <source>Nothing yet. Tick Log frames to see what the other program and the device say.</source>
+        <translation>لا شيء بعد. فعّل سجل الإطارات لترى ما يقوله البرنامج الآخر والجهاز.</translation>
     </message>
 </context>
 <context>
@@ -7523,6 +7583,10 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
         <source>Group</source>
         <translation>المجموعة</translation>
     </message>
+    <message>
+        <source>not read by the other program yet</source>
+        <translation>لم يقرأه البرنامج الآخر بعد</translation>
+    </message>
 </context>
 <context>
     <name>RegistersTab</name>
@@ -8466,6 +8530,176 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>Asked %1 Hz (CONFIG written with prescaler %2); %3 frames a second came over the last 2 s, more than 10% under. The device&apos;s timer or loop may not make this rate (its map can say so: &quot;auto_send&quot;), the link may drop frames, or this PC is too busy to read them.</source>
         <translation>طُلب ⁦%1 Hz⁩ (كُتب CONFIG بالمقسّم %2)؛ ووصل %3 إطارًا في الثانية خلال آخر ⁦2 s⁩، أي أقل بأكثر من 10%. قد لا يصنع مؤقت الجهاز أو حلقته هذا المعدّل (تستطيع خريطته أن تقول ذلك: &quot;auto_send&quot;)، وقد تُسقط الوصلة إطارات، أو أن هذا الحاسوب أكثر انشغالًا من أن يقرأها.</translation>
+    </message>
+    <message>
+        <source>Listen</source>
+        <translation>استماع</translation>
+    </message>
+    <message>
+        <source>Hear what another program says to a USB device, on a port that program holds. The Studio sends nothing.</source>
+        <translation>سماع ما يقوله برنامج آخر لجهاز ⁦USB⁩، على منفذ يحجزه ذلك البرنامج. لا يرسل الاستوديو شيئًا.</translation>
+    </message>
+    <message>
+        <source>listens to USB CDC · bus %1, device %2</source>
+        <translation>يستمع إلى ⁦USB CDC⁩ · الناقل %1، الجهاز %2</translation>
+    </message>
+    <message>
+        <source>listens to a USB-UART bridge (%1)</source>
+        <translation>يستمع إلى جسر ⁦USB-UART⁩ (%1)</translation>
+    </message>
+    <message>
+        <source>The Studio reads the USB traffic under this port and sends nothing. It sees everything on that USB device (Help: Connecting).</source>
+        <translation>يقرأ الاستوديو حركة ⁦USB⁩ تحت هذا المنفذ ولا يرسل شيئًا. يرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك (المساعدة: الاتصال).</translation>
+    </message>
+    <message>
+        <source>not a USB port: cannot be listened to</source>
+        <translation>ليس منفذ ⁦USB⁩: لا يمكن الاستماع إليه</translation>
+    </message>
+    <message>
+        <source>Listen reads the USB traffic under a port. A motherboard&apos;s COM port, a Bluetooth or a virtual port has none.</source>
+        <translation>يقرأ الاستماع حركة ⁦USB⁩ تحت المنفذ. ولا حركة كهذه تحت منفذ ⁦COM⁩ على اللوحة الأم ولا منفذ بلوتوث ولا منفذ افتراضي.</translation>
+    </message>
+    <message>
+        <source>USBPcap is not installed</source>
+        <translation>⁦USBPcap⁩ غير مثبّت</translation>
+    </message>
+    <message>
+        <source>a capture driver, installed once as administrator; then unplug and plug the device again</source>
+        <translation>مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله</translation>
+    </message>
+    <message>
+        <source>Get USBPcap…</source>
+        <translation>تنزيل ⁦USBPcap⁩…</translation>
+    </message>
+    <message>
+        <source>Opens USBPcap&apos;s page in the browser: %1</source>
+        <translation>يفتح صفحة ⁦USBPcap⁩ في المتصفح: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>usbmon is not loaded or %1 is not readable</source>
+        <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة %1</translation>
+    </message>
+    <message>
+        <source>The system&apos;s USB capture. Help: Connecting has the rule that lasts.</source>
+        <translation>التقاط ⁦USB⁩ الخاص بالنظام. في المساعدة، صفحة الاتصال، القاعدة التي تدوم.</translation>
+    </message>
+    <message>
+        <source>Copy the commands</source>
+        <translation>نسخ الأوامر</translation>
+    </message>
+    <message>
+        <source>To the clipboard, for a terminal:</source>
+        <translation>إلى الحافظة، للصقها في الطرفية:</translation>
+    </message>
+    <message>
+        <source>no USB capture on this system</source>
+        <translation>لا التقاط ⁦USB⁩ على هذا النظام</translation>
+    </message>
+    <message>
+        <source>Listen reads the USB traffic with the system&apos;s capture, and this Studio has none here.</source>
+        <translation>يقرأ الاستماع حركة ⁦USB⁩ بالتقاط النظام، ولا التقاط لهذا الاستوديو هنا.</translation>
+    </message>
+    <message>
+        <source>The commands are on the clipboard: paste them into a terminal</source>
+        <translation>الأوامر في الحافظة: الصقها في الطرفية</translation>
+    </message>
+    <message>
+        <source>USB-UART</source>
+        <translation>USB-UART</translation>
+    </message>
+    <message>
+        <source>%1 is not a USB port: it cannot be listened to</source>
+        <translation>%1 ليس منفذ ⁦USB⁩: لا يمكن الاستماع إليه</translation>
+    </message>
+    <message>
+        <source>%1 cannot be listened to: no USB capture on this system</source>
+        <translation>لا يمكن الاستماع إلى ⁦%1⁩: لا التقاط USB على هذا النظام</translation>
+    </message>
+    <message>
+        <source>heard %1 req/s</source>
+        <translation>مسموع ‏%1 طلب/ث</translation>
+    </message>
+    <message>
+        <source>Listening · %1</source>
+        <translation>يستمع · %1</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>إيقاف</translation>
+    </message>
+    <message>
+        <source>heard: %1 requests/s · %2 answers/s · %3 unmatched · %4 bytes not EVRe</source>
+        <translation>مسموع: ‏%1 طلب/ث · ‏%2 رد/ث · ‏%3 بلا مطابقة · ‏%4 بايت ليست ⁦EVRe⁩</translation>
+    </message>
+    <message>
+        <source>Frames the other program asked the device for</source>
+        <translation>إطارات طلبها البرنامج الآخر من الجهاز</translation>
+    </message>
+    <message>
+        <source>heard %1</source>
+        <translation>مسموع %1</translation>
+    </message>
+    <message>
+        <source>%1 samples lost: numbered by the device, not heard.</source>
+        <translation>عينات مفقودة: ‏%1، رقّمها الجهاز ولم تُسمع.</translation>
+    </message>
+    <message>
+        <source>heard %1/s</source>
+        <translation>مسموع ⁦%1/s⁩</translation>
+    </message>
+    <message>
+        <source>1 request without an answer</source>
+        <translation>طلب واحد بلا رد</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n requests without an answer</source>
+        <translation>
+            <numerusform>لا طلبات بلا رد</numerusform>
+            <numerusform>طلب واحد بلا رد</numerusform>
+            <numerusform>طلبان بلا رد</numerusform>
+            <numerusform>%n طلبات بلا رد</numerusform>
+            <numerusform>%n طلبًا بلا رد</numerusform>
+            <numerusform>%n طلب بلا رد</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>1 record lost</source>
+        <translation>سجلّ واحد مفقود</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n records lost</source>
+        <translation>
+            <numerusform>لا سجلّات مفقودة</numerusform>
+            <numerusform>سجلّ واحد مفقود</numerusform>
+            <numerusform>سجلّان مفقودان</numerusform>
+            <numerusform>%n سجلّات مفقودة</numerusform>
+            <numerusform>%n سجلًّا مفقودًا</numerusform>
+            <numerusform>%n سجلّ مفقود</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>1 capture dropped</source>
+        <translation>التقاط واحد مُسقَط</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n captures dropped</source>
+        <translation>
+            <numerusform>لا التقاطات مُسقَطة</numerusform>
+            <numerusform>التقاط واحد مُسقَط</numerusform>
+            <numerusform>التقاطان مُسقَطان</numerusform>
+            <numerusform>%n التقاطات مُسقَطة</numerusform>
+            <numerusform>%n التقاطًا مُسقَطًا</numerusform>
+            <numerusform>%n التقاط مُسقَط</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>the capture may have lost data: %1</source>
+        <translation>ربما فقد الالتقاط بيانات: %1</translation>
+    </message>
+    <message>
+        <source>, </source>
+        <comment>between the items of a list in a sentence</comment>
+        <translation>، </translation>
     </message>
 </context>
 <context>

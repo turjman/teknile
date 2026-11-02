@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QTimer>
 #include <QtEndian>
 
@@ -40,6 +41,20 @@ QString brokenStream() {
 }
 
 } // namespace
+
+/* the tests' ports (stateForTests) */
+static QHash<QString, UsbPortState> &portStatesForTests() {
+	static QHash<QString, UsbPortState> states;
+	return states;
+}
+
+/* Where each system's answer goes: the port's USB device and endpoints (sysfs, or SetupAPI and the hub's descriptors),
+ * or why not (not a USB port, the capture not installed or not readable). No system has one yet */
+UsbPortState UsbTarget::stateOf(const QString &port) {
+	return portStatesForTests().value(port);
+}
+
+void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) { portStatesForTests().insert(port, state); }
 
 void UsbDecoder::feed(const QByteArray &bytes, QVector<UsbEvent> &out) {
 	if (!error_.isEmpty()) return;

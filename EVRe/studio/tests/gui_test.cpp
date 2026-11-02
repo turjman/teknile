@@ -42,6 +42,7 @@
 #include <QProgressDialog>
 #include <QSignalSpy>
 #include <QComboBox>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QCompleter>
 #include <QElapsedTimer>
@@ -524,6 +525,15 @@ struct QuickWriteWidgets {
 	}
 };
 
+/* QDesktopServices opens a page here, not in a browser (it calls a slot by name) */
+class UrlCatcher : public QObject {
+	Q_OBJECT
+public:
+	QUrl url;
+public slots:
+	void open(const QUrl &opened) { url = opened; }
+};
+
 class GuiTest {
 public:
 	GuiTest(MainWindow &window, OtherClient &other, const DeviceMap &map, const QString &mapName)
@@ -676,6 +686,9 @@ public:
 		listenScenes(); /* the same */
 		listenHeardFrames();
 		listenNothingSent();
+		listenCard();
+		listenWindow(); /* it ends with the window on the example map again, connected to the fake device as before */
+		listenArabic();
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		tokenWithoutLoginRegister(); /* the last check: the window keeps a map without the login */
@@ -4423,7 +4436,7 @@ private:
 	}
 
 	/* What another program said, replayed from tests/make_captures.py's scenes into the real window through the file
-	 * hook (the Connection card offers Listen later; here the window is told which port). A scene replayed at once is
+	 * hook, Listen chosen on the Connection card and the port's state forced. A scene replayed at once is
 	 * one turn of the engine's loop, so no timer cuts a round short; the same scene at its stamps shows what takes time.
 	 * It uses no port of the test's fake devices. */
 	void listenScenes() {
@@ -4444,7 +4457,7 @@ private:
 			for (QSpinBox *box : sidebar->findChildren<QSpinBox *>())
 				if (box->suffix() == QLatin1String(" ms") && box->maximum() == 10000) timeout = box;
 		QPushButton *clear = monitor ? buttonWithText(*monitor, QStringLiteral("Clear")) : nullptr;
-		const bool found = tabs && frames && chartTab && deviceLine && dump && logFrames && reconnect && timeout && clear;
+		const bool found = tabs && frames && chartTab && sidebar && deviceLine && dump && logFrames && reconnect && timeout && clear;
 		check(found, "Listen: the Monitor, the chart, the Dump, the device line, Reconnect by itself and the Timeout are there");
 		if (!found) return;
 
@@ -4452,8 +4465,21 @@ private:
 		const QString port = QStringLiteral("COM13");
 		const UsbTarget cdc = listenTarget();
 		const auto endings = [&] { return logText().count(QLatin1String("connection lost: the capture ended")); };
-		const auto connectButton = [&] { return buttonWithText(QStringLiteral("Connect")); };
+		/* the card's button when it starts a link: it reads Listen, or Connect until Listen is chosen */
+		const auto connectButton = [&]() -> QPushButton * {
+			QPushButton *button = linkButtonOf(window_);
+			return button && (button->text() == QLatin1String("Listen") || button->text() == QLatin1String("Connect")) ? button : nullptr;
+		};
+		const auto stopButton = [&]() -> QPushButton * {
+			QPushButton *button = linkButtonOf(window_);
+			return button && button->text() == QLatin1String("Stop") ? button : nullptr;
+		};
+		const auto listenTo = [&](const QString &name) {
+			sidebar->useSerial(name);
+			if (auto *segment = window_.findChild<QPushButton *>(QStringLiteral("linkListen"))) segment->click();
+		};
 		const auto setFile = [&](const QString &name, const UsbTarget &target, FileCapture::Pace pace) {
+			UsbTarget::stateForTests(port, listenableState(target));
 			engine->post([engine, port, file = captureFile(name), target, pace] {
 				engine->setListenFileForTests(port, file, target, pace);
 			});
@@ -4484,7 +4510,7 @@ private:
 		(void) engine->takeSamples(); /* a math line's register is sampled unplotted: the last poll's is not the file's */
 		const bool logFramesWas = logFrames->isChecked();
 		logFrames->setChecked(true);
-		window_.setListenPortForTests(port);
+		listenTo(port);
 
 		/* -- cdc_poll: every view, from one replay ------------------------------------------------------------ */
 		tabs->setCurrentIndex(MainWindow::TabDump);
@@ -4604,13 +4630,13 @@ private:
 		clear->click();
 		if (connectButton()) connectButton()->click();
 		const bool going = QTest::qWaitFor([&] { return linesWith(QStringLiteral("  ->DEV  ")) >= 5; }, 3000);
-		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		if (stopButton()) stopButton()->click();
 		const bool stopped = QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
 		QTest::qWait(200);
 		const int heardAtStop = linesWith(QStringLiteral("  ->DEV  "));
 		QTest::qWait(400);
 		check(going && stopped && linesWith(QStringLiteral("  ->DEV  ")) == heardAtStop && connectButton(),
-				"Listen, Disconnect ends the capture: nothing more is heard, and no reason is given for it");
+				"Listen, Stop ends the capture: nothing more is heard, and no reason is given for it");
 
 		/* -- cdc_quiet: a capture that stays open --------------------------------------------------------------- */
 		setFile(QStringLiteral("cdc_quiet.pcap"), cdc, FileCapture::ByStamps);
@@ -4621,17 +4647,17 @@ private:
 		check(window_.deviceInfoAtOpen() == QLatin1String("Device ID not heard yet") && heardLine
 						&& said == QStringLiteral("Device ID 0x1001 · protocol rev 1 (heard)"),
 				"Listen, the device line: \"not heard yet\", then what a heard read of DEVICE_ID says, marked heard");
-		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		if (stopButton()) stopButton()->click();
 		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
 
 		/* -- a port with no capture ----------------------------------------------------------------------------- */
-		window_.setListenPortForTests(QStringLiteral("COM99"));
+		listenTo(QStringLiteral("COM99"));
 		if (connectButton()) connectButton()->click();
 		check(QTest::qWaitFor([&] {
 					return logText().contains(QLatin1String("not connected: COM99 cannot be listened to: no USB capture on this system"));
 				}, 3000) && QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
 				"Listen, a port nothing here can hear: refused with a plain reason");
-		window_.setListenPortForTests(port);
+		listenTo(port);
 
 		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
 		timeout->setValue(10000);
@@ -4703,6 +4729,7 @@ private:
 		MainWindow::Startup fastMap;
 		fastMap.map = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
 		window_.applyStartup(fastMap);
+		listenTo(port); /* the list is the ports found again, with the map */
 		chartTab->plotFastChannel(0, 0, true);
 		const bool streamed = replay(QStringLiteral("cdc_fast.usbmon"), cdc);
 		const bool blocksCame = QTest::qWaitFor([&] {
@@ -4720,7 +4747,8 @@ private:
 		chartTab->plotFastChannel(0, 0, false);
 
 		/* the example map and the fake device of the other steps again */
-		window_.setListenPortForTests(QString());
+		UsbTarget::stateForTests(port, UsbPortState());
+		sidebar->refreshPorts(DeviceMap());
 		logFrames->setChecked(logFramesWas);
 		timeout->setValue(timeoutWas);
 		reconnect->setChecked(reconnectWas);
@@ -4734,6 +4762,759 @@ private:
 						&& deviceLine->text().simplified() != said,
 				"Listen: done; the next link is an ordinary one, the window polls the fake device of the other steps again, and "
 				"its device line is not marked heard");
+	}
+
+	/* ------------------------------------------------------------ Listen, what is seen */
+
+	/* the Connection card's Connect, whatever it reads now: the button beside the pill that is no segment */
+	static QPushButton *linkButtonOf(const QWidget &in) {
+		auto *pill = in.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		for (QPushButton *button : in.findChildren<QPushButton *>())
+			if (pill && button->parentWidget() == pill->parentWidget() && !button->property("segment").toBool()
+					&& (button->objectName() == QLatin1String("primary") || button->objectName() == QLatin1String("danger")))
+				return button;
+		return nullptr;
+	}
+
+	static UsbPortState listenableState(const UsbTarget &target) {
+		UsbPortState state;
+		state.kind = UsbPortState::Listenable;
+		state.target = target;
+		return state;
+	}
+
+	/* a port of each state of the Listen line: its port names in the list, in the order of the texts */
+	struct ListenCase {
+		QString name; /* the pictures' */
+		QString port;
+		UsbPortState state;
+	};
+	static QVector<ListenCase> listenCases() {
+		UsbTarget bridge = listenTarget();
+		bridge.vid = 0x0403;
+		bridge.pid = 0x6001;
+		bridge.kind = UsbTarget::Ftdi;
+		UsbPortState notUsb, noUsbPcap, noUsbmon;
+		notUsb.kind = UsbPortState::NotUsb;
+		noUsbPcap.kind = UsbPortState::NoUsbPcap;
+		noUsbmon.kind = UsbPortState::NoUsbmon;
+		noUsbmon.device = QStringLiteral("/dev/usbmon2");
+		const QVector<ListenCase> cases = { { QStringLiteral("cdc"), QStringLiteral("COM21"), listenableState(listenTarget()) },
+			{ QStringLiteral("bridge"), QStringLiteral("COM22"), listenableState(bridge) },
+			{ QStringLiteral("notusb"), QStringLiteral("COM23"), notUsb },
+			{ QStringLiteral("usbpcap"), QStringLiteral("COM24"), noUsbPcap },
+			{ QStringLiteral("usbmon"), QStringLiteral("COM25"), noUsbmon },
+			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() } };
+		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
+		return cases;
+	}
+
+	/* The card with no link: what Listen changes on it, its setting, the Listen line in every state and what its buttons
+	 * do, the pill's look in both themes, and what the sidebar says of what is heard, from numbers given to it */
+	void listenCard() {
+		auto *windowSidebar = window_.findChild<Sidebar *>();
+		Sidebar card;
+		card.resize(windowSidebar ? windowSidebar->size() : QSize(312, 900));
+		card.restoreLinkSettings();
+		auto *segment = card.findChild<QPushButton *>(QStringLiteral("linkListen"));
+		auto *portBox = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
+		auto *baud = card.findChild<QComboBox *>(QStringLiteral("baud"));
+		auto *kind = card.findChild<QComboBox *>(QStringLiteral("serialKind"));
+		auto *line = card.findChild<ElidedLabel *>(QStringLiteral("listenLine"));
+		auto *hint = card.findChild<ElidedLabel *>(QStringLiteral("listenHint"));
+		auto *action = card.findChild<QPushButton *>(QStringLiteral("listenAction"));
+		auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		auto *note = card.findChild<ElidedLabel *>(QStringLiteral("autoSendNote"));
+		QPushButton *connect = linkButtonOf(card);
+		QPushButton *serial = buttonWithText(card, QStringLiteral("Serial / USB"));
+		QSpinBox *inFlight = nullptr;
+		for (QSpinBox *box : card.findChildren<QSpinBox *>())
+			if (box->maximum() == 1024) inFlight = box;
+		const bool found = segment && portBox && baud && kind && line && hint && action && pill && note && connect && serial
+				&& inFlight;
+		check(found, "Listen, the card: the segment, the Listen line, its button, In flight and Connect are there");
+		if (!found) return;
+		portBox->clear();
+		card.addPort(QStringLiteral("COM13"), QStringLiteral("Example device"), true, 0x0483, 0x5740, QString());
+		card.useSerial(QStringLiteral("COM13:115200"));
+		card.show();
+		QApplication::processEvents();
+		const QString help = inFlight->toolTip();
+		check(segment->text() == QLatin1String("Listen") && segment->toolTip().contains(QLatin1String("sends nothing"))
+						&& segment->cursor().shape() == Qt::PointingHandCursor && baud->isVisible() && kind->isVisible()
+						&& !line->isVisible() && !action->isVisible() && connect->text() == QLatin1String("Connect"),
+				"Listen, the card: a third segment that says what it does; Serial / USB as before until it is chosen");
+
+		segment->click();
+		QApplication::processEvents();
+		check(card.isListen() && !card.isTcp() && !baud->isVisible() && !kind->isVisible() && line->isVisible()
+						&& portBox->isVisible() && line->mapTo(&card, QPoint(0, 0)).y() >= portBox->mapTo(&card, QPoint(0, portBox->height())).y(),
+				"Listen chosen: Baud and Link hidden, the Listen line under the port box");
+		check(connect->text() == QLatin1String("Listen") && connect->objectName() == QLatin1String("primary"),
+				"Listen chosen: Connect reads Listen");
+		check(!inFlight->isEnabled() && inFlight->toolTip() == listeningText(),
+				"Listen chosen: In flight muted, its tooltip says why");
+		serial->click();
+		QApplication::processEvents();
+		check(baud->isVisible() && kind->isVisible() && !line->isVisible() && connect->text() == QLatin1String("Connect")
+						&& inFlight->isEnabled() && inFlight->toolTip() == help,
+				"Serial / USB again: Baud, Link, Connect and In flight's tooltip come back");
+
+		segment->click();
+		card.saveSettings();
+		{
+			Sidebar again;
+			again.restoreLinkSettings();
+			auto *baudAgain = again.findChild<QComboBox *>(QStringLiteral("baud"));
+			check(QSettings().value(QStringLiteral("link/listen")).toBool() && again.isListen() && baudAgain && baudAgain->isHidden() == false
+							&& !baudAgain->isVisibleTo(&again), "Listen: the choice is saved (link/listen) and comes back at the next start");
+		}
+		QSettings().remove(QStringLiteral("link/listen"));
+		QSettings().remove(QStringLiteral("link/tcp"));
+
+		/* -- the Listen line --------------------------------------------------------------------------------------- */
+		const QVector<ListenCase> cases = listenCases();
+		const auto choose = [&](int index) {
+			card.addPort(cases[index].port, QString(), false, 0, 0, QString());
+			portBox->setCurrentIndex(portBox->findData(cases[index].port));
+			QApplication::processEvents();
+		};
+		const auto warns = [&] { return line->property("warn").toBool(); };
+		choose(0);
+		check(line->fullText() == QStringLiteral("listens to USB CDC · bus 2, device 5") && !warns() && !hint->isVisible()
+						&& !action->isVisible() && !line->isCut() && line->toolTip().contains(QLatin1String("sends nothing")),
+				"the Listen line: USB CDC, its bus and device, in the muted colour, nothing to do");
+		choose(1);
+		check(line->fullText() == QLatin1String("listens to a USB-UART bridge (FTDI)") && !warns() && !action->isVisible(),
+				"the Listen line: a USB-UART bridge, by name");
+		choose(2);
+		check(line->fullText() == QLatin1String("not a USB port: cannot be listened to") && warns() && !action->isVisible()
+						&& !line->isCut() && line->toolTip().contains(QLatin1String("Bluetooth")),
+				"the Listen line: not a USB port, in the warn colour, and why in the tooltip");
+		choose(3);
+		const QString installHint = hint->fullText();
+		const int hintLines = hint->height() / hint->fontMetrics().lineSpacing();
+		check(line->fullText() == QLatin1String("USBPcap is not installed") && warns() && hint->isVisible() && !hint->isCut()
+						&& hint->minimumHeight() >= hint->heightForWidth(hint->width()) && hintLines >= 2
+						&& installHint.contains(QLatin1String("once as administrator"))
+						&& installHint.contains(QLatin1String("unplug and plug the device again"))
+						&& action->isVisible() && action->text() == QStringLiteral("Get USBPcap…"),
+				"the Listen line: USBPcap not installed, what it is, and a button for it");
+		UrlCatcher catcher;
+		QDesktopServices::setUrlHandler(QStringLiteral("https"), &catcher, "open");
+		action->click();
+		QDesktopServices::unsetUrlHandler(QStringLiteral("https"));
+		check(catcher.url == QUrl(QStringLiteral("https://desowin.org/usbpcap/")) && action->cursor().shape() == Qt::PointingHandCursor
+						&& action->toolTip().contains(catcher.url.toString()),
+				"Get USBPcap…: opens the page, and says so in its tooltip");
+		const int pillLine = pill->minimumHeight();
+		card.showLinkError(Sidebar::listenRefusal(QStringLiteral("COM13"), cases[2].state));
+		QApplication::processEvents();
+		const int pillWrapped = pill->minimumHeight();
+		card.showDisconnected();
+		QApplication::processEvents();
+		check(pillWrapped > pillLine && pill->minimumHeight() == pillLine,
+				"a refusal on two lines holds the pill's height for them; one line again after it");
+		choose(4);
+		check(QString(line->fullText()).remove(QChar(0x2060)) == QLatin1String("usbmon is not loaded or /dev/usbmon2 is not readable")
+						&& line->fullText().contains(QStringLiteral("/\u2060dev/\u2060usbmon2")) && warns() && !hint->isVisible()
+						&& action->isVisible() && action->text() == QLatin1String("Copy the commands") && !line->isCut(),
+				"the Listen line: usbmon, the device it needs, and a button");
+		QGuiApplication::clipboard()->clear();
+		QSignalSpy said(&card, &Sidebar::statusMessage);
+		action->click();
+		const QString commands = QGuiApplication::clipboard()->text();
+		check(commands == QLatin1String("sudo modprobe usbmon\nsudo setfacl -m u:$USER:r /dev/usbmon*") && said.count() == 1
+						&& action->toolTip().contains(commands), "Copy the commands: on the clipboard, said, and in its tooltip");
+		choose(5);
+		check(line->fullText() == QLatin1String("no USB capture on this system") && warns() && !action->isVisible() && !hint->isVisible(),
+				"the Listen line: no capture here, no button, no pretending");
+
+		/* -- the pill ------------------------------------------------------------------------------------------------ */
+		UsbTarget bridgeTarget = cases[1].state.target;
+		check(Sidebar::listenLinkText(QStringLiteral("COM13"), listenTarget()) == QStringLiteral("COM13 · USB CDC")
+						&& Sidebar::listenLinkText(QStringLiteral("COM13"), bridgeTarget) == QStringLiteral("COM13 · FTDI"),
+				"the pill names the link: USB CDC, or the bridge");
+		QWidget *box = docsCard(pill);
+		const auto pillColour = [&] {
+			QApplication::processEvents();
+			const QImage image = box->grab().toImage();
+			const QPoint at = pill->mapTo(box, QPoint(8, pill->height() / 2)) * image.devicePixelRatio();
+			return image.pixelColor(at);
+		};
+		const QString link = Sidebar::listenLinkText(QStringLiteral("COM13"), listenTarget());
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			card.themeChanged();
+			const QString theme = dark ? QStringLiteral("dark") : QStringLiteral("light");
+			card.showConnected(link);
+			const QColor connected = pillColour();
+			card.showListening(link, QStringLiteral("COM13"));
+			const QColor listening = pillColour();
+			const double apart = std::abs(connected.hslHue() - listening.hslHue());
+			const double readable = contrast(Theme::colors().listen, listening);
+			if (readable < 4.5 || apart < 30) std::printf("  %s: text on the pill %.2f:1, hues %.0f apart\n", qPrintable(theme), readable, apart);
+			check(pill->property("state") == QLatin1String("listen") && connected != listening && apart >= 30 && readable >= 4.5,
+					qPrintable(QStringLiteral("the pill, %1 theme: its own tint, not the connected green, the text at 4.5:1 on it").arg(theme)));
+		}
+		Theme::apply(*qApp, wasDark);
+		card.themeChanged();
+		/* whole where it fits (Linux's fonts are wider): the port alone after Listening, never cut */
+		check(pill->fullText() == QStringLiteral("●  Listening · COM13 · USB CDC")
+						&& (pill->text() == pill->fullText() || pill->text() == QStringLiteral("●  Listening · COM13"))
+						&& connect->text() == QLatin1String("Stop") && connect->objectName() == QLatin1String("danger"),
+				"the pill: Listening, the port, what it is when it fits, never cut; the button reads Stop");
+
+		/* -- what is heard, from numbers ---------------------------------------------------------------------------- */
+		card.setListening(true);
+		DeviceMap fastMap;
+		QString error;
+		const bool loaded = fastMap.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json"), error);
+		card.setFastStreams(fastMap.streams);
+		card.setFastOffered(false, listeningText(), QStringLiteral("listening"));
+		IoEngine::Stats stats;
+		stats.listening = true;
+		stats.heard.requestsHz = 120;
+		stats.heard.answersHz = 118;
+		card.showStats(stats, true);
+		const auto labelSays = [&](const QString &text) {
+			const QList<QLabel *> labels = card.findChildren<QLabel *>();
+			return std::any_of(labels.begin(), labels.end(), [&](const QLabel *label) { return label->text() == text; });
+		};
+		check(pill->toolTip() == QStringLiteral("Listening · COM13 · USB CDC\nheard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe"),
+				"the pill's tooltip: what is heard, with nothing lost");
+		check(labelSays(QStringLiteral("heard 120 req/s")) && !labelSays(QLatin1String("0.0 polls/s")),
+				"the polling card: heard 120 req/s in place of the polls");
+		check(note->fullText().isEmpty(), "the Auto send row: nothing under it while no frames come");
+		stats.autoSend = true;
+		stats.autoSendHz = 100;
+		IoEngine::Stats::Fast fast;
+		fast.on = true;
+		fast.rate = 10000;
+		fast.records = 900;
+		fast.blocks = 18;
+		fast.lost = 100;
+		stats.fast << fast;
+		stats.heard.unmatched = 1;
+		stats.heard.notEvreBytes = 12;
+		card.showStats(stats, true);
+		check(note->fullText() == QLatin1String("heard 100/s") && !note->isCut(), "the Auto send card says heard 100/s");
+		check(loaded && card.fastRateText(0) == QLatin1String("heard 10.0 k samples/s") && card.fastLostText(0) == QLatin1String("lost 100")
+						&& card.fastRateTip(0).contains(QLatin1String("100 samples lost")),
+				"a stream's row: heard with the rate, and what was lost, in its tooltip too");
+		check(pill->toolTip().contains(QStringLiteral("1 unmatched · 12 bytes not EVRe"))
+						&& pill->toolTip().endsWith(QLatin1String("\nthe capture may have lost data: 1 request without an answer, 100 records lost")),
+				"the pill's tooltip: the signs of a capture that lost something");
+		stats.heard.dropped = 2;
+		stats.heard.unmatched = 3;
+		check(Sidebar::lostCapturesText(stats)
+						== QLatin1String("the capture may have lost data: 3 requests without an answer, 100 records lost, 2 captures dropped"),
+				"the signs of a lost capture: the system's own count too");
+		card.setListening(false);
+		card.showStats(IoEngine::Stats(), false);
+		check(note->fullText().isEmpty() && labelSays(QStringLiteral("Not connected")), "Listen off: the sidebar says nothing heard");
+	}
+
+	/* The real window, listening: everything that would send is disabled and says why; tried anyway, as far as a user
+	 * or a stray signal can get, nothing goes out; Stop gives every control back. A capture that stays open. */
+	void listenWindow() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *monitor = window_.findChild<MonitorTab *>();
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *registers = window_.findChild<RegistersTab *>();
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		auto *panel = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		auto *autoSendBox = window_.findChild<QCheckBox *>(QStringLiteral("autoSend"));
+		auto *autoSendRate = window_.findChild<QComboBox *>(QStringLiteral("autoSendRate"));
+		QCheckBox *poll = nullptr, *serve = nullptr, *reconnect = nullptr, *logFrames = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Poll")) poll = box;
+			if (box->text() == QLatin1String("Serve API")) serve = box;
+			if (box->text() == QLatin1String("Reconnect by itself")) reconnect = box;
+			if (box->text() == QLatin1String("Log frames")) logFrames = box;
+		}
+		QDoubleSpinBox *interval = sidebar ? sidebar->findChild<QDoubleSpinBox *>() : nullptr;
+		auto *segment = window_.findChild<QPushButton *>(QStringLiteral("linkListen"));
+		auto *record = sidebar ? buttonWithText(*sidebar, QStringLiteral("●  Record CSV")) : nullptr;
+		QPushButton *send = monitor ? buttonWithText(*monitor, QStringLiteral("Send")) : nullptr;
+		QPushButton *write = panel ? buttonWithText(*panel, QStringLiteral("Write")) : nullptr;
+		const bool found = tabs && monitor && sidebar && registers && pill && panel && autoSendBox && autoSendRate
+				&& poll && serve && reconnect && logFrames && interval && segment && record && send && write;
+		check(found, "Listen, the window: the controls are there");
+		if (!found) return;
+
+		IoEngine *engine = window_.engineForTests();
+		const QString port = QStringLiteral("COM13");
+		const UsbTarget cdc = listenTarget();
+		const auto setFile = [&](const QString &name, FileCapture::Pace pace) {
+			UsbTarget::stateForTests(port, listenableState(cdc));
+			engine->post([engine, port, file = captureFile(name), cdc, pace] { engine->setListenFileForTests(port, file, cdc, pace); });
+		};
+		const bool reconnectWas = reconnect->isChecked();
+		const bool logFramesWas = logFrames->isChecked();
+		const double intervalWas = interval->value();
+		const QString pollTipWas = poll->toolTip(), intervalTipWas = interval->toolTip(), serveTipWas = serve->toolTip();
+		const QString allowTipWas = allowWrites_->toolTip();
+		QVector<QWidget *> row{ send };
+		row << monitor->findChild<QComboBox *>(QStringLiteral("monitorFunction")) << monitor->findChild<QSpinBox *>(QStringLiteral("monitorSlave"));
+		for (QLineEdit *box : monitor->findChildren<QLineEdit *>())
+			if (!box->parentWidget()->inherits("QAbstractSpinBox")) row << box;
+		QVector<bool> rowWas; /* as the steps before left it: slave 0 locks the function */
+		for (QWidget *control : std::as_const(row)) rowWas << (control && control->isEnabled());
+		reconnect->setChecked(false);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+
+		/* the API is running when listening starts, a client on it */
+		if (!serve->isChecked()) serve->click();
+		const bool serving = QTest::qWaitFor([&] { return engine->stats().apiRunning; }, 3000);
+		QTcpSocket client;
+		client.connectToHost(QStringLiteral("127.0.0.1"), 1219);
+		const bool clientIn = client.waitForConnected(2000);
+
+		if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+		(void) QTest::qWaitFor([&] { return linkButtonOf(window_) && linkButtonOf(window_)->text() == QLatin1String("Connect"); }, 3000);
+		QMetaObject::invokeMethod(engine, [] {}, Qt::BlockingQueuedConnection);
+		const quint64 txBefore = engine->stats().master.tx;
+		setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
+		sidebar->useSerial(port);
+		segment->click();
+		QPushButton *link = linkButtonOf(window_);
+		check(link && link->text() == QLatin1String("Listen"), "the window, Listen chosen: Connect reads Listen");
+		if (link) link->click();
+		const bool on = QTest::qWaitFor([&] { return engine->stats().listening && pill->property("state") == QLatin1String("listen"); }, 3000);
+		link = linkButtonOf(window_);
+		const bool heard = QTest::qWaitFor([&] { return pill->toolTip().contains(QLatin1String("heard: ")); }, 2000);
+		check(on && heard && link && link->text() == QLatin1String("Stop") && pill->fullText() == QStringLiteral("●  Listening · COM13 · USB CDC")
+						&& pill->toolTip().startsWith(QStringLiteral("Listening · COM13 · USB CDC\nheard: ")),
+				"the window, listening: the pill, its tooltip, and the button reads Stop");
+		check(serving && clientIn && QTest::qWaitFor([&] { return !engine->stats().apiRunning && !serve->isChecked(); }, 2000)
+						&& logText().contains(QLatin1String("API server not started: listening: the API server is off")),
+				"the window, listening: a running API is stopped and the card unticked, said in the Log");
+		check(!serve->isEnabled() && serve->toolTip() == listeningText(), "the window, listening: Serve API disabled, saying why");
+		client.write(QByteArray::fromHex("7b01aa00a004004e217d")); /* a READ, through a pass-through that is gone */
+		const bool hungUp = QTest::qWaitFor([&] { return client.state() == QAbstractSocket::UnconnectedState; }, 2000);
+		QTcpSocket late;
+		late.connectToHost(QStringLiteral("127.0.0.1"), 1219);
+		check(hungUp && !late.waitForConnected(500), "the window, listening: an API client is hung up on and no new one gets in");
+
+		/* the table */
+		const int configRow = regRow(QStringLiteral("CONFIG"));
+		const QModelIndex configValue = model_->index(configRow, RegisterModel::ColValue);
+		const int never = model_->rows()[configRow].valid ? -1 : configRow;
+		check(never >= 0 && model_->data(configValue, Qt::DisplayRole).toString() == QStringLiteral("—")
+						&& model_->data(configValue, Qt::ToolTipRole).toString() == QLatin1String("not read by the other program yet"),
+				"the table: a register never heard is — with its tooltip");
+
+		/* each control disabled, saying why */
+		check(!poll->isEnabled() && poll->toolTip() == listeningText() && !interval->isEnabled() && interval->toolTip() == listeningText(),
+				"the window, listening: Poll and its interval disabled, saying why");
+		check(!allowWrites_->isEnabled() && !allowWrites_->isChecked() && allowWrites_->toolTip() == listeningText()
+						&& !model_->writesEnabled(), "the window, listening: Allow writes off and disabled, saying why");
+		model_->setWritesEnabled(true);
+		const int fanRow = regRow(QStringLiteral("FAN_SPEED"));
+		const QModelIndex fanValue = model_->index(fanRow, RegisterModel::ColValue);
+		check(!model_->writesEnabled() && !(model_->flags(fanValue) & Qt::ItemIsEditable),
+				"the window, listening: the model takes no Allow writes, and no cell can be edited");
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("FAN_SPEED")));
+		QApplication::processEvents();
+		const QList<QLabel *> panelLabels = panel->findChildren<QLabel *>();
+		const bool panelSays = std::any_of(panelLabels.begin(), panelLabels.end(), [](const QLabel *label) { return label->text() == listeningText(); });
+		check(!write->isEnabled() && write->toolTip() == listeningText() && panelSays, "the window, listening: Quick write's Write disabled, saying why");
+		bool rowOff = row.size() == 5;
+		for (QWidget *control : std::as_const(row)) rowOff = rowOff && control && !control->isEnabled() && control->toolTip() == listeningText();
+		check(rowOff && logFrames->isEnabled(), "the window, listening: the Monitor's request row disabled, each saying why; Log frames works");
+		tabs->setCurrentIndex(MainWindow::TabMonitor);
+		QApplication::processEvents();
+		const QImage sendPicture = send->grab().toImage();
+		const QColor sendFill = sendPicture.pixelColor(QPoint(sendPicture.width() / 8, sendPicture.height() / 2));
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		check(sendFill != Theme::colors().accentFill, "the window, listening: Send looks disabled: not the filled button of an action");
+		check(!autoSendBox->isEnabled() && autoSendBox->toolTip() == listeningText() && !autoSendRate->isEnabled()
+						&& autoSendRate->toolTip() == listeningText() && autoSendRate->placeholderText() == QLatin1String("listening"),
+				"the window, listening: Auto send and its rate disabled, saying why");
+		QMenu dumpMenu;
+		const int setpointRow = regRow(QStringLiteral("SETPOINT"));
+		dumpTab()->fillMenu(&dumpMenu, regKey(model_->rows()[setpointRow].def), -1);
+		QAction *dumpWrite = nullptr;
+		for (QAction *action : dumpMenu.actions())
+			if (action->text() == QStringLiteral("Write…")) dumpWrite = action;
+		check(dumpWrite && !dumpWrite->isEnabled() && dumpWrite->toolTip() == listeningText(), "the window, listening: the Dump's Write… disabled, saying why");
+		QStringList rowTips;
+		{
+			QTimer watch;
+			watch.setInterval(50);
+			QObject::connect(&watch, &QTimer::timeout, &watch, [&] {
+				auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+				if (!menu) return;
+				watch.stop();
+				for (QAction *action : menu->actions())
+					if (action->objectName() == QLatin1String("readRows") || action->objectName() == QLatin1String("bulkWriteAction"))
+						if (!action->isEnabled()) rowTips << action->toolTip().section(QLatin1Char('\n'), 0, 0);
+				menu->hide();
+				menu->close();
+			});
+			watch.start();
+			emit table_->customContextMenuRequested(table_->visualRect(valueCell(table_, QStringLiteral("FAN_SPEED"))).center());
+			(void) QTest::qWaitFor([&] { return !watch.isActive(); }, 3000);
+		}
+		check(rowTips == QStringList({ listeningText(), listeningText() }), "the window, listening: Read now and the bulk write's entry disabled, saying why");
+		check(record->isEnabled() && reconnect->isEnabled(), "the window, listening: Record CSV and Reconnect by itself work");
+
+		/* tried: each by hand where it can be, and by the signal it would send, past the disabled control */
+		poll->click();
+		QTest::mouseClick(send, Qt::LeftButton);
+		QTest::mouseClick(write, Qt::LeftButton);
+		emit monitor->readRequested(1, 0xA000, 4);
+		emit monitor->writeRequested(1, 0xD082, QByteArray(1, '\x01'), true);
+		emit registers->readRequested(fanRow);
+		emit registers->writeRequested(fanRow, QStringLiteral("1"), QByteArray());
+		sidebar->setAutoSendOn(true);
+		emit sidebar->autoSendChanged();
+		emit sidebar->pollingChanged();
+		const bool refused = QTest::qWaitFor([&] { return !sidebar->autoSendOn() && logText().contains(QLatin1String("write refused: FAN_SPEED")); }, 3000);
+		QTest::qWait(300);
+		IoEngine::Stats now = engine->stats();
+		check(refused && now.listening && now.heard.sendAttempts == 0 && now.master.tx == txBefore && !engine->pollTickerRunning(),
+				"the window, nothing sent: Poll, a write and a read from the table, the Monitor's Send, Quick write and Auto send "
+				"tried: the link got nothing, the master sent nothing");
+
+		/* the status bar, on a capture that reads */
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		(void) QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+		setFile(QStringLiteral("cdc_poll.pcap"), FileCapture::ByStamps);
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		const bool barSays = QTest::qWaitFor([&] {
+			const double rate = engine->stats().heard.requestsHz;
+			const QList<QLabel *> labels = window_.statusBar()->findChildren<QLabel *>();
+			return rate >= 5 && std::any_of(labels.begin(), labels.end(), [&](const QLabel *label) {
+				return label->text() == Sidebar::heardRateText(rate);
+			});
+		}, 3000);
+		check(barSays, "the status bar: heard N req/s, in place of the latency");
+
+		/* Stop */
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		const bool stopped = QTest::qWaitFor([&] {
+			return !engine->stats().listening && pill->fullText() == QStringLiteral("●  Disconnected");
+		}, 3000);
+		link = linkButtonOf(window_);
+		check(stopped && link && link->text() == QLatin1String("Listen") && pill->property("state") == QLatin1String("idle"),
+				"Stop: the capture ends, the pill reads Disconnected, the button Listen");
+		check(poll->isEnabled() && poll->toolTip() == pollTipWas && interval->isEnabled() && interval->toolTip() == intervalTipWas
+						&& serve->isEnabled() && serve->toolTip() == serveTipWas && allowWrites_->isEnabled()
+						&& allowWrites_->toolTip() == allowTipWas && !allowWrites_->isChecked() && !model_->listening(),
+				"Stop: Poll, the interval, Serve API and Allow writes back, their own tooltips again, writes still off");
+		bool rowBack = true;
+		for (int i = 0; i < row.size(); i++)
+			rowBack = rowBack && row[i] && row[i]->isEnabled() == rowWas[i] && row[i]->toolTip() != listeningText();
+		check(rowBack && model_->data(configValue, Qt::ToolTipRole).toString() != QLatin1String("not read by the other program yet"),
+				"Stop: the Monitor's row back; the table's tooltip is the register's again");
+
+		/* the link opens at once: Stop right after Listen meets its "opened" on the way */
+		setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		QTest::qWait(300);
+		link = linkButtonOf(window_);
+		check(!engine->stats().listening && pill->property("state") == QLatin1String("idle") && link && link->text() == QLatin1String("Listen"),
+				"Stop right after Listen: Disconnected stays, the link that opened meanwhile is not shown as a connection");
+
+		/* a port that cannot be heard: refused at Connect, nothing tried again */
+		UsbPortState notUsb;
+		notUsb.kind = UsbPortState::NotUsb;
+		UsbTarget::stateForTests(QStringLiteral("COM3"), notUsb);
+		sidebar->useSerial(QStringLiteral("COM3"));
+		segment->click();
+		reconnect->setChecked(true);
+		const quint64 attemptsBefore = engine->stats().heard.sendAttempts;
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		QApplication::processEvents();
+		link = linkButtonOf(window_);
+		const QString refusal = QStringLiteral("COM3 is not a USB port: it cannot be listened to");
+		const bool refusalLogged = QTest::qWaitFor([&] { return logText().contains(QLatin1String("not connected: ") + refusal); }, 2000);
+		check(pill->property("state") == QLatin1String("error") && pill->fullText().endsWith(refusal) && link && link->text() == QLatin1String("Listen")
+						&& refusalLogged,
+				"a port that is not USB: refused in the pill, in red, with the reason, and in the Log; not tried again");
+		QTest::qWait(300);
+		check(!engine->stats().listening && poll->isEnabled() && engine->stats().heard.sendAttempts == attemptsBefore
+						&& !pill->fullText().contains(QLatin1String("Listening")), "a port that is not USB: no link, nothing disabled, nothing sent");
+		reconnect->setChecked(false);
+
+		/* a bus: its presets, the one thing there that would send */
+		QTemporaryDir busFolder;
+		BusFile bus;
+		for (const int slave : { 1, 2 }) {
+			BusDevice device;
+			device.name = QStringLiteral("D%1").arg(slave);
+			device.slave = uint8_t(slave);
+			device.map = map_.path;
+			bus.devices << device;
+		}
+		bus.presets.push_back({ QStringLiteral("Stop all"), QStringLiteral("FAN_SPEED"), QStringLiteral("0"), QJsonObject() });
+		QString busError;
+		const QString busFile = busFolder.filePath(QStringLiteral("listen_bus.json"));
+		const bool busSaved = bus.save(busFile, busError);
+		MainWindow::Startup onBus;
+		onBus.bus = busFile;
+		window_.applyStartup(onBus);
+		setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
+		sidebar->useSerial(port);
+		segment->click();
+		const auto presetAction = [&]() -> QAction * {
+			for (QMenu *menu : sidebar->busPanel()->findChildren<QMenu *>())
+				for (QAction *action : menu->actions())
+					if (action->text().startsWith(QLatin1String("Stop all"))) return action;
+			return nullptr;
+		};
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		const bool onBusListening = QTest::qWaitFor([&] { return engine->stats().listening; }, 3000);
+		check(busSaved && onBusListening && presetAction() && !presetAction()->isEnabled() && presetAction()->toolTip() == listeningText(),
+				"the window, listening on a bus: its broadcast presets disabled, saying why");
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		(void) QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+		reconnect->setChecked(false);
+
+		/* the window on a stream: its Start, by hand and by its signal */
+		const QString exampleFile = QDir::temp().filePath(QStringLiteral("evre_listen_example.json"));
+		QFile::remove(exampleFile);
+		const bool copied = QFile::copy(map_.path, exampleFile);
+		MainWindow::Startup fastMap;
+		fastMap.map = QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_fast.json");
+		window_.applyStartup(fastMap);
+		setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
+		sidebar->useSerial(port);
+		segment->click();
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		const bool onAgain = QTest::qWaitFor([&] { return engine->stats().listening; }, 3000);
+		QPushButton *start = sidebar->fastButton(0);
+		check(onAgain && start && !start->isEnabled() && start->toolTip() == listeningText() && sidebar->fastRateText(0) == QLatin1String("listening"),
+				"the window, listening: a stream's Start disabled, saying why");
+		if (start) QTest::mouseClick(start, Qt::LeftButton);
+		emit sidebar->fastStreamToggled(0, true);
+		const bool fastRefused = QTest::qWaitFor([&] { return logText().contains(QLatin1String("fast stream ADC not switched on: listening")); }, 3000);
+		QTest::qWait(300);
+		now = engine->stats();
+		check(fastRefused && !sidebar->fastOn(0) && now.heard.sendAttempts == 0 && now.master.tx == txBefore,
+				"the window, nothing sent: a stream's Start tried: refused with its text, nothing went out");
+
+		/* Reconnect by itself: every try stays silent, and the controls stay as they are between tries */
+		setFile(QStringLiteral("composite.usbmon"), FileCapture::AtOnce);
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		(void) QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+		reconnect->setChecked(true);
+		const int connects = logText().count(QLatin1String("connected: COM13 (listening)"));
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		const bool tries = QTest::qWaitFor([&] { return logText().count(QLatin1String("connected: COM13 (listening)")) >= connects + 3; }, 6000);
+		const bool held = !poll->isEnabled() && !allowWrites_->isEnabled() && !serve->isEnabled();
+		now = engine->stats();
+		check(tries && held && now.heard.sendAttempts == 0 && now.master.tx == txBefore,
+				"the window, nothing sent: Reconnect by itself listens again and again, sending nothing, the controls off between tries");
+		reconnect->setChecked(false);
+		(void) QTest::qWaitFor([&] { return !poll->isEnabled() ? false : true; }, 6000);
+
+		/* the example map and the fake device again */
+		UsbTarget::stateForTests(port, UsbPortState());
+		sidebar->refreshPorts(DeviceMap());
+		interval->setValue(intervalWas);
+		logFrames->setChecked(logFramesWas);
+		reconnect->setChecked(reconnectWas);
+		MainWindow::Startup example;
+		example.map = exampleFile;
+		example.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		example.connect = true;
+		window_.applyStartup(example);
+		check(copied && cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000)
+						&& linkButtonOf(window_) && linkButtonOf(window_)->text() == QLatin1String("Disconnect"),
+				"Listen, the window: done; the next link is an ordinary one, polling the fake device again");
+		QFile::remove(exampleFile);
+	}
+
+	/* Arabic: the segment and the marks of the Listen line in their glossary words, nothing cut, the window's minimum
+	 * width. A sidebar of its own, made after the language is set; with EVRE_TEST_SHOT the pictures of both languages */
+	void listenArabic() {
+		const QSize size = window_.findChild<Sidebar *>() ? window_.findChild<Sidebar *>()->size() : QSize(312, 900);
+		language::apply(*qApp, QStringLiteral("ar"));
+		{
+			Sidebar card;
+			card.resize(size);
+			card.restoreLinkSettings();
+			auto *segment = card.findChild<QPushButton *>(QStringLiteral("linkListen"));
+			auto *portBox = card.findChild<QComboBox *>(QStringLiteral("serialPort"));
+			auto *line = card.findChild<ElidedLabel *>(QStringLiteral("listenLine"));
+			auto *hint = card.findChild<ElidedLabel *>(QStringLiteral("listenHint"));
+			auto *action = card.findChild<QPushButton *>(QStringLiteral("listenAction"));
+			auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+			QPushButton *link = linkButtonOf(card);
+			const bool found = segment && portBox && line && hint && action && pill && link;
+			check(found, "Listen, Arabic: the card's widgets");
+			if (found) {
+				portBox->clear();
+				card.show();
+				segment->click();
+				QApplication::processEvents();
+				const QVector<ListenCase> cases = listenCases();
+				bool whole = true;
+				QStringList lines;
+				for (const ListenCase &each : cases) {
+					card.addPort(each.port, QString(), false, 0, 0, QString());
+					portBox->setCurrentIndex(portBox->findData(each.port));
+					QApplication::processEvents();
+					QApplication::processEvents();
+					whole = whole && !line->isCut() && !hint->isCut() && !line->fullText().isEmpty();
+					if (line->fullText().contains(QLatin1String("listens")) || line->fullText().contains(QLatin1String("not a USB"))) whole = false;
+					lines << line->fullText();
+				}
+				card.setListening(true);
+				card.showListening(Sidebar::listenLinkText(QStringLiteral("COM13"), listenTarget()), QStringLiteral("COM13"));
+				QApplication::processEvents();
+				/* the segments share a row: each text in its button */
+				bool fits = true;
+				for (QPushButton *button : card.findChildren<QPushButton *>())
+					if (button->property("segment").toBool()) fits = fits && button->fontMetrics().horizontalAdvance(button->text()) + 20 <= button->width();
+				check(segment->text() == QStringLiteral("استماع") && link->text() == QStringLiteral("إيقاف")
+								&& pill->text().contains(QStringLiteral("يستمع")) && !pill->text().contains(QChar(0x2026)) && whole && fits,
+						"Listen, Arabic: the segment, Stop and the pill in the glossary's words, every Listen line translated and whole");
+				check(listeningText() == QStringLiteral("يستمع: لا يرسل الاستوديو شيئًا"), "Listen, Arabic: why a control is disabled");
+				MonitorTab monitor(model_);
+				auto *frames = monitor.findChild<QPlainTextEdit *>();
+				check(frames && frames->document()->defaultTextOption().textDirection() == Qt::LeftToRight,
+						"Listen, Arabic: every Monitor line left to right, the time and the mark first, whatever its words");
+				if (!whole || !fits) std::printf("  lines: %s\n", qPrintable(lines.join(QStringLiteral(" | "))));
+			}
+		}
+		int least = 100000;
+		bool chosenLine = false;
+		{
+			MainWindow other(map_.path);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1280, 800);
+			auto *line = other.findChild<QLabel *>(QStringLiteral("deviceInfo"));
+			const QString notRead = line ? line->text() : QString();
+			if (auto *segment = other.findChild<QPushButton *>(QStringLiteral("linkListen"))) segment->click();
+			QApplication::processEvents();
+			least = other.minimumSizeHint().width();
+			chosenLine = line && line->text() != notRead
+					&& line->text() == QCoreApplication::translate("MainWindow", "Device ID not heard yet");
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		check(chosenLine, "Listen chosen, no device known: the device line says \"not heard yet\", at once");
+		if (least > 1280) std::printf("  the Arabic window at least %d px wide\n", least);
+		check(least <= 1280, "Listen, Arabic: the window's minimum width at most 1280 px with Listen chosen");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) listenShots();
+	}
+
+	/* EVRE_TEST_SHOT: in English and Arabic, both themes: the Connection card in each state of the Listen line
+	 * (<prefix>_listen_card_<state>_<en|ar>_<light|dark>.png), a port refused (<prefix>_listen_card_refused_...), listening
+	 * with the pill and the device line heard (<prefix>_listen_card_on_...), the sidebar (<prefix>_listen_side_...), and over
+	 * a scene: the Registers tab (<prefix>_listen_registers_...), the window (<prefix>_listen_window_...), the Monitor with
+	 * its marks and its row off, from its first line and at its end (<prefix>_listen_monitor_..., _monitor_end_...). A
+	 * window of its own, made after the language is set */
+	void listenShots() {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		const UsbTarget cdc = listenTarget();
+		const QString port = QStringLiteral("COM13");
+		for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+			language::apply(*qApp, code);
+			MainWindow other(map_.path);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1560, 900);
+			auto *sidebar = other.findChild<Sidebar *>();
+			auto *tabs = other.findChild<QTabWidget *>();
+			auto *monitor = other.findChild<MonitorTab *>();
+			auto *registers = other.findChild<RegistersTab *>();
+			auto *frames = monitor ? monitor->findChild<QPlainTextEdit *>() : nullptr;
+			auto *segment = other.findChild<QPushButton *>(QStringLiteral("linkListen"));
+			auto *portBox = other.findChild<QComboBox *>(QStringLiteral("serialPort"));
+			auto *pill = other.findChild<ElidedLabel *>(QStringLiteral("pill"));
+			auto *logFrames = monitor ? monitor->findChild<QCheckBox *>() : nullptr;
+			QCheckBox *reconnect = nullptr;
+			for (QCheckBox *box : other.findChildren<QCheckBox *>())
+				if (box->objectName().isEmpty() && box->parentWidget() == (pill ? pill->parentWidget() : nullptr)) reconnect = box;
+			if (!sidebar || !tabs || !monitor || !registers || !frames || !segment || !portBox || !pill || !logFrames || !reconnect) break;
+			IoEngine *engine = other.engineForTests();
+			const auto setFile = [&](const QString &name, FileCapture::Pace pace) {
+				UsbTarget::stateForTests(port, listenableState(cdc));
+				engine->post([engine, port, file = captureFile(name), cdc, pace] { engine->setListenFileForTests(port, file, cdc, pace); });
+			};
+			const auto theme = [&](bool dark) {
+				if (Theme::isDark() != dark) emit sidebar->themeClicked();
+				if (QWidget *focused = QApplication::focusWidget()) focused->clearFocus();
+				QTest::qWait(150);
+				return dark ? QStringLiteral("dark") : QStringLiteral("light");
+			};
+			const QVector<ListenCase> cases = listenCases();
+			portBox->clear();
+			sidebar->addPort(port, QStringLiteral("Example device"), true, 0x0483, 0x5740, QString());
+			for (const ListenCase &each : cases) sidebar->addPort(each.port, QString(), false, 0, 0, QString());
+			segment->click();
+			QWidget *box = docsCard(pill);
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				for (const ListenCase &each : cases) {
+					portBox->setCurrentIndex(portBox->findData(each.port));
+					QTest::qWait(60);
+					box->grab().save(prefix + QStringLiteral("_listen_card_%1_%2_%3.png").arg(each.name, code, look));
+				}
+			}
+			/* refused at Connect: the red pill */
+			portBox->setCurrentIndex(portBox->findData(cases[2].port));
+			if (linkButtonOf(other)) linkButtonOf(other)->click();
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				box->grab().save(prefix + QStringLiteral("_listen_card_refused_%1_%2.png").arg(code, look));
+			}
+			setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
+			portBox->setCurrentIndex(portBox->findData(port));
+			if (linkButtonOf(other)) linkButtonOf(other)->click();
+			(void) QTest::qWaitFor([&] { return pill->property("state") == QLatin1String("listen"); }, 3000);
+			QTest::qWait(900);
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				box->grab().save(prefix + QStringLiteral("_listen_card_on_%1_%2.png").arg(code, look));
+				if (auto *content = sidebar->widget()) content->grab().save(prefix + QStringLiteral("_listen_side_%1_%2.png").arg(code, look));
+			}
+			if (linkButtonOf(other)) linkButtonOf(other)->click();
+			(void) QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+			logFrames->setChecked(true);
+			reconnect->setChecked(true); /* Listen stays on past the capture's end: the controls as they are while it runs */
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				tabs->setCurrentIndex(MainWindow::TabRegisters);
+				for (int row = 0; row < model_->rows().size(); row++)
+					if (model_->rows()[row].def.rw && model_->rows()[row].def.addr >= 0xD000) {
+						registers->selectRow(row);
+						break;
+					}
+				frames->clear();
+				setFile(QStringLiteral("cdc_poll.pcap"), FileCapture::ByStamps);
+				if (linkButtonOf(other)) linkButtonOf(other)->click();
+				QTest::qWait(1400); /* in the middle of the scene, past the first second's rates */
+				registers->grab().save(prefix + QStringLiteral("_listen_registers_%1_%2.png").arg(code, look));
+				other.grab().save(prefix + QStringLiteral("_listen_window_%1_%2.png").arg(code, look));
+				tabs->setCurrentIndex(MainWindow::TabMonitor);
+				(void) QTest::qWaitFor([&] { return frames->toPlainText().contains(QLatin1String("?? ")); }, 4000);
+				QTest::qWait(100);
+				monitor->grab().save(prefix + QStringLiteral("_listen_monitor_end_%1_%2.png").arg(code, look));
+				if (auto *bar = frames->verticalScrollBar()) bar->setValue(0);
+				QTest::qWait(100);
+				monitor->grab().save(prefix + QStringLiteral("_listen_monitor_%1_%2.png").arg(code, look));
+				reconnect->setChecked(false);
+				if (linkButtonOf(other)) linkButtonOf(other)->click();
+				(void) QTest::qWaitFor([&] { return !engine->stats().listening; }, 2000);
+				reconnect->setChecked(true);
+			}
+			reconnect->setChecked(false);
+			(void) theme(wasDark);
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+		for (const ListenCase &each : listenCases()) UsbTarget::stateForTests(each.port, UsbPortState());
+		UsbTarget::stateForTests(port, UsbPortState());
 	}
 
 	/* Frames told to the link one by one, on an engine of the test's own (its thread is this one): what a scene does not
@@ -23755,3 +24536,5 @@ int main(int argc, char **argv) {
 	std::printf("\n%d passed, %d failed\n", passed, failed);
 	return failed == 0 ? 0 : 1;
 }
+
+#include "gui_test.moc"

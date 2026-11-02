@@ -4,6 +4,7 @@
  * as they went over the wire, one stream each way, and the parser above finds the frames.
  *
  *   UsbTarget        the device and the endpoints a capture listens to
+ *   UsbPortState     what Listen can do with a port: the Listen line, the pill's refusal, Connect
  *   UsbEvent         one bulk transfer's bytes, as heard
  *   UsbPcapDecoder   USBPcap's pcap stream -> events, on every system, so CI checks the Windows format on Linux too
  *   UsbmonDecoder    usbmon's binary records -> events, the same
@@ -27,6 +28,8 @@ class QTimer;
 /* USB's words: Out is the other program's bytes, In the device's. */
 enum class UsbDirection { Out, In };
 
+struct UsbPortState;
+
 /* What a capture listens to. The endpoints are their addresses (bit 7 set on an IN endpoint); a list left empty hears
  * every bulk endpoint of that direction, for a lookup that could not read the descriptors. */
 struct UsbTarget {
@@ -41,6 +44,27 @@ struct UsbTarget {
 	QVector<int> inEndpoints;
 	QVector<int> outEndpoints;
 	int inMaxPacket = 0;        /* the IN endpoint's wMaxPacketSize; 0: not known (FTDI then goes by FTDI_PACKET) */
+
+	/* What Listen can do with this port now. The one place the system is asked: each system's lookup and its install
+	 * check come in here (usb_capture.cpp); there are none yet, so every port is NoCapture. The window's thread */
+	static UsbPortState stateOf(const QString &port);
+	/* tests: the state stateOf gives this port from now on (the window's thread); NoCapture takes it back */
+	static void stateForTests(const QString &port, const UsbPortState &state);
+};
+
+/* What Listen can do with a port. Everything but Listenable is a reason it cannot, said on the Listen line and, when
+ * Connect is tried, in the pill */
+struct UsbPortState {
+	enum Kind {
+		NoCapture,      /* nothing on this system can hear USB */
+		Listenable,
+		NotUsb,         /* a motherboard's COM port, a Bluetooth or a virtual one */
+		NoUsbPcap,      /* Windows: USBPcap is not installed */
+		NoUsbmon,       /* Linux: usbmon is not loaded, or its device cannot be read */
+	};
+	Kind kind = NoCapture;
+	UsbTarget target;           /* Listenable: what to listen to */
+	QString device;             /* NoUsbmon: the file that cannot be read, /dev/usbmon2 */
 };
 
 /* One transfer's bytes. Only bulk transfers of the target with data become events; the capture's own stamp is kept

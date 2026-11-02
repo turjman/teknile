@@ -39,6 +39,7 @@ struct ThemeColors {
 	QColor muted;             /* secondary text, disabled things */
 	QColor accent;            /* selection, focus, checked, links */
 	QColor accentFill;        /* behind white text: the primary button, a checked segment */
+	QColor listen;            /* Listen's pill, as text on its own tint: the accent's blue, 4.5:1 there (the accent is 4.0) */
 	QColor badFill;           /* behind white text: the danger button (Disconnect) */
 	QColor control;           /* the edge of an input box or a check box (3:1 to what is around it) */
 	QColor good, warn, bad;   /* states: ok, busy or a warning, an error (as text: 4.5:1) */

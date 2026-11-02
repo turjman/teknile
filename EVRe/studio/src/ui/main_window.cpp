@@ -356,6 +356,7 @@ void MainWindow::buildWindow() {
 
 void MainWindow::connectSidebar() {
 	connect(sidebar_, &Sidebar::connectClicked, this, &MainWindow::toggleConnect);
+	connect(sidebar_, &Sidebar::linkChoiceChanged, this, &MainWindow::showDeviceInfo); /* "not read yet" or "not heard yet" */
 	connect(sidebar_, &Sidebar::refreshPortsClicked, this, &MainWindow::refreshPorts);
 	/* one device: the Monitor's requests and the link's keep-alive go to the slave chosen (a bus sets the box) */
 	connect(sidebar_, &Sidebar::slaveChanged, this, [this](int slave) {
@@ -650,6 +651,7 @@ void MainWindow::toggleConnect() {
 		sidebar_->setAutoSendOn(false);
 		pushAutoSend();
 		stopFastStreams();
+		showListening(QString());
 	} else {
 		wantConnected_ = true;
 		connectLink();
@@ -663,9 +665,31 @@ void MainWindow::connectLink() {
 	linkPort_.clear();
 	linkBaud_ = 0;
 	linkBaudLimited_ = true;
-	if (!listenPort_.isEmpty()) {
-		if (!retrying_) logEvent(LogLevel::Info, tr("listening to %1").arg(listenPort_));
-		engine_->post([engine = engine_, port = listenPort_] { engine->connectListen(port); });
+	if (!sidebar_->isListen()) showListening(QString());
+	if (sidebar_->isListen()) {
+		const QString port = sidebar_->serialPort();
+		if (port.isEmpty()) {
+			wantConnected_ = false;
+			sidebar_->showLinkError(tr("No serial port"));
+			return;
+		}
+		const UsbPortState state = UsbTarget::stateOf(port);
+		const QString refusal = Sidebar::listenRefusal(port, state);
+		sidebar_->showListenLine(); /* it may have changed since the port was chosen: a driver installed, a device unplugged */
+		/* refused at Connect, as a port that is not there; a try by itself goes on: the device may be back at the next */
+		if (!refusal.isEmpty() && !retrying_) {
+			wantConnected_ = false;
+			logEvent(LogLevel::Warning, tr("not connected: %1").arg(refusal));
+			sidebar_->showLinkError(refusal);
+			return;
+		}
+		if (!retrying_) logEvent(LogLevel::Info, tr("listening to %1").arg(port));
+		showListening(port, Sidebar::listenLinkText(port, state.target));
+		/* the wishes of an earlier link stay no wishes: a listening link cannot act on them, nor the next one ask */
+		sidebar_->setAutoSendOn(false);
+		pushAutoSend();
+		stopFastStreams();
+		engine_->post([engine = engine_, port] { engine->connectListen(port); });
 	} else if (sidebar_->isTcp()) {
 		const QString host = sidebar_->host();
 		const quint16 port = sidebar_->port();
@@ -703,6 +727,23 @@ void MainWindow::connectLink() {
 	sidebar_->showConnecting();
 }
 
+/* Listen on or off, from Connect to the end: everything that would send says why it cannot */
+void MainWindow::showListening(const QString &port, const QString &link) {
+	const bool was = listening();
+	listenPort_ = port;
+	listenLink_ = link;
+	if (listening() == was) return;
+	lostSaid_ = 0;
+	model_->setListening(listening());
+	registersTab_->setListening(listening());
+	monitorTab_->setListening(listening());
+	sidebar_->setListening(listening());
+	updateAutoSendOffer();
+	updateFastOffer();
+	showBus(); /* the presets follow */
+	showDeviceInfo();
+}
+
 void MainWindow::retryConnect() {
 	if (!wantConnected_ || connected_) return;
 	retrying_ = true;
@@ -725,6 +766,7 @@ void MainWindow::disconnectLink() {
 }
 
 void MainWindow::onOpened(const QString &link) {
+	if (!wantConnected_) return; /* stopped meanwhile: a listening link opens at once, and the engine has closed it again */
 	logEvent(LogLevel::Info, tr("connected: %1").arg(link));
 	connected_ = true;
 	offlineDevices_.clear();
@@ -734,7 +776,9 @@ void MainWindow::onOpened(const QString &link) {
 	registersTab_->setConnected(true);
 	dumpTab_->setConnected(true);
 	/* the Log keeps the baud rate (its open line says USB CDC ignores it); the pill names what the link is */
-	if (linkPort_.isEmpty())
+	if (listening())
+		sidebar_->showListening(listenLink_, listenPort_);
+	else if (linkPort_.isEmpty())
 		sidebar_->showConnected(link);
 	else
 		sidebar_->showConnected(Sidebar::serialLinkText(linkPort_, linkBaud_, linkBaudLimited_), linkBaudLimited_
@@ -771,6 +815,7 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 		sidebar_->showReconnecting();
 	} else {
 		wantConnected_ = false;
+		showListening(QString());
 	}
 }
 
@@ -819,9 +864,10 @@ void MainWindow::markDeviceInfoLost() {
  * edit of the map shows at once */
 QString MainWindow::deviceInfoHtml(int slave) const {
 	const QString who = deviceLabel(slave);
+	const bool hears = listening() || (!wantConnected_ && sidebar_->isListen()); /* or will at the next Connect */
 	const auto it = deviceInfo_.constFind(slave);
 	if (it == deviceInfo_.constEnd())
-		return (who + (listenPort_.isEmpty() ? tr("Device ID not read yet") : tr("Device ID not heard yet"))).toHtmlEscaped();
+		return (who + (hears ? tr("Device ID not heard yet") : tr("Device ID not read yet"))).toHtmlEscaped();
 	switch (it->state) {
 	case DeviceInfo::State::NotRead:
 		return (who + tr("DEVICE_ID not read: %1").arg(it->error)).toHtmlEscaped();
@@ -833,7 +879,7 @@ QString MainWindow::deviceInfoHtml(int slave) const {
 	}
 	const QString id = it->state == DeviceInfo::State::Lost
 			? tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision)
-			: (listenPort_.isEmpty() ? tr("Device ID %1 · protocol rev %2") : tr("Device ID %1 · protocol rev %2 (heard)"))
+			: (hears ? tr("Device ID %1 · protocol rev %2 (heard)") : tr("Device ID %1 · protocol rev %2"))
 					.arg(addrText(it->id)).arg(it->revision);
 	/* a narrow sidebar wraps it between its pieces only ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1") */
 	QString html = Sidebar::wholePieces(who + id).toHtmlEscaped();
@@ -857,7 +903,10 @@ void MainWindow::pushAutoSend() {
 /* one device only, and only one whose STATUS has CAP_AUTO_SEND; the tooltip says why not */
 void MainWindow::updateAutoSendOffer() {
 	QString why, shortWhy;
-	if (isBus()) {
+	if (listening()) {
+		why = listeningText();
+		shortWhy = tr("listening");
+	} else if (isBus()) {
 		why = tr("Not with several devices on the link: devices sending by themselves would collide on a shared link.");
 		shortWhy = tr("not on a bus");
 	} else if (!connected_ || autoSendCap_ < 0) {
@@ -919,7 +968,10 @@ void MainWindow::onFastPlotToggled(int stream, int channel, bool on) {
 
 void MainWindow::updateFastOffer() {
 	QString why, shortWhy;
-	if (isBus()) {
+	if (listening()) {
+		why = listeningText();
+		shortWhy = tr("listening");
+	} else if (isBus()) {
 		why = tr("Not with several devices on the link: a device sending by itself would collide with the others.");
 		shortWhy = tr("not on a bus");
 	} else if (!connected_) {
@@ -1295,7 +1347,7 @@ void MainWindow::sync() {
 	if (!fastRest_.isEmpty()) fastSyncsLeftOver_++;
 	/* a stream stopped, or the link down: its lines on the chart say so, and look live no longer */
 	for (int i = 0; i < sidebar_->fastStreamCount(); i++)
-		chartTab_->setFastFed(i, connected_ && !isBus() && sidebar_->fastOn(i));
+		chartTab_->setFastFed(i, connected_ && !isBus() && (sidebar_->fastOn(i) || listening()));
 	if (copyValues)
 		for (auto it = fastValues_.constBegin(); it != fastValues_.constEnd(); ++it) sidebar_->showFastValues(it.key(), it.value());
 	/* samples, and the chart moves on */
@@ -1779,11 +1831,13 @@ void MainWindow::refreshStatus() {
 	logTimeouts(link.timeouts);
 	logCounterIncrease(link.errors, loggedErrors_, tr("%1 error answer(s) from the device (%2 in all)"));
 	logCounterIncrease(link.badFrames, loggedBadFrames_, tr("%1 bad frame(s) received (%2 in all)"));
-	statusLatency_->setText(tr("Latency %1 ms").arg(link.avgLatencyMs, 0, 'f', 1));
+	statusLatency_->setText(stats.listening ? Sidebar::heardRateText(stats.heard.requestsHz)
+			: tr("Latency %1 ms").arg(link.avgLatencyMs, 0, 'f', 1));
 	statusTraffic_->setText(tr("TX %1 · RX %2").arg(link.tx).arg(link.rx));
 	statusErrors_->setText(tr("Timeouts %1 · Errors %2 · Bad frames %3")
 			.arg(link.timeouts).arg(link.errors).arg(link.badFrames));
 	sidebar_->showStats(stats, connected_);
+	if (stats.listening) logLostCaptures(stats);
 	if (stats.pollHz > 0) measuredPollHz_ = std::ceil(stats.pollHz / 100.0) * 100.0; /* steps of 100: no flapping */
 	if (sidebar_->pollIntervalMs() <= 0) updatePlotLimit();
 	showSlowHint();
@@ -1806,6 +1860,17 @@ void MainWindow::logTimeouts(quint64 total) {
 		loggedTimeouts_ += retries;
 	}
 	logCounterIncrease(total, loggedTimeouts_, tr("%1 request(s) timed out (%2 in all)"));
+}
+
+/* The signs of a capture that lost something, in the Log at most once a minute: a program that stops mid-exchange
+ * would otherwise be said at every look */
+void MainWindow::logLostCaptures(const IoEngine::Stats &stats) {
+	quint64 total = stats.heard.unmatched + stats.heard.dropped;
+	for (const IoEngine::Stats::Fast &stream : stats.fast) total += stream.lost;
+	if (total == lostSaid_ || (lostClock_.isValid() && lostClock_.elapsed() < LOST_SAID_MS)) return;
+	lostClock_.start();
+	lostSaid_ = total;
+	logWithoutPopUp(LogLevel::Warning, Sidebar::lostCapturesText(stats));
 }
 
 /* a counter of link problems went up since it was last logged: a warning with how many are new */

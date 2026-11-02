@@ -93,10 +93,8 @@ public:
 	static bool restartAsked();
 	/* tests: what the engine's fast trigger watches on a stream now, asked on its thread after what was posted to it */
 	fast::TriggerWatch engineFastWatch(int stream) const;
-	/* tests: the engine, for what only it can say (post() and its copies), and Connect listening on this port (empty:
-	 * the Connection card's link again): the Listen path, until the card offers it */
+	/* tests: the engine, for what only it can say (post() and its copies) */
 	IoEngine *engineForTests() const { return engine_; }
-	void setListenPortForTests(const QString &port) { listenPort_ = port; }
 	/* tests: the syncs that left fast blocks for the next (a backlog spread over frames, sync()) */
 	int fastSyncsLeftOver() const { return fastSyncsLeftOver_; }
 	/* tests: the device line as the last connect left it, before any answer (it passes too fast to be seen) */
@@ -344,7 +342,14 @@ private:
 	bool connected_ = false;
 	bool wantConnected_ = false;  /* Connect clicked and not Disconnect: a lost link is tried again */
 	bool retrying_ = false;       /* a reconnect by itself: not logged each time */
-	QString listenPort_;          /* Connect listens on this port; empty: the Connection card's link */
+	/* Listen is on, from Connect until it is stopped or given up: the port, and what the pill calls it. Empty: not */
+	QString listenPort_, listenLink_;
+	bool listening() const { return !listenPort_.isEmpty(); }
+	void showListening(const QString &port, const QString &link = QString()); /* port empty: off */
+	void logLostCaptures(const IoEngine::Stats &stats);
+	static constexpr qint64 LOST_SAID_MS = 60000; /* the capture's losses in the Log, at most this often */
+	quint64 lostSaid_ = 0;        /* those the Log has, all counted together */
+	QElapsedTimer lostClock_;
 	bool recording_ = false;
 	QString recordFile_;          /* the file being recorded into (asked for: startRecord; certain: onRecordStarted) */
 	double recordFrom_ = 0;       /* the time base when it started: the notes from then on go beside it */

@@ -28,6 +28,9 @@ class QWidget;
  * invisible), so the Arabic around it does not split it ("s 0.886", "MB 122"); left to right, the text as it is */
 QString ltrPiece(const QString &text);
 
+/* why a control does nothing while Listen is on: every one of them says the same */
+QString listeningText();
+
 /* a table's or a column's cells drawn as ltrPiece ("-3.000 V", "°C" in Arabic, not "V 3.000-" and "C°"): only
  * the drawn text, the cell's data stays plain, so a cell copied (Ctrl+C) carries no isolate */
 QStyledItemDelegate *ltrCells(QObject *parent);

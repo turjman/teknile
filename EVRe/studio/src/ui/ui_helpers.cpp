@@ -70,6 +70,8 @@ QString ltrPiece(const QString &text) {
 	return QChar(0x2066) + text + QChar(0x2069);
 }
 
+QString listeningText() { return QCoreApplication::translate("Listen", "Listening: the Studio sends nothing"); }
+
 namespace {
 
 class LtrCells : public QStyledItemDelegate {

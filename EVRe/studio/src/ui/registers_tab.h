@@ -50,6 +50,8 @@ public:
 
 	/* the link state, for the quick-write panel and the bulk write */
 	void setConnected(bool connected);
+	/* Listen is on: Allow writes unticked and disabled, saying why; nothing here can reach the device */
+	void setListening(bool on);
 	/* a bus: the device whose registers the table shows (RegDef::slave); -1: every row (one device, or All devices) */
 	void setDevice(int slave);
 	/* a bus: the devices the picker over the table offers (fillDevicePicker), after "All devices" (shown: -1 for
@@ -167,6 +169,7 @@ private:
 	QStringList groupsShown_;     /* empty: all */
 	QPushButton *plotShownButton_;
 	QCheckBox *allowWrites_;
+	QString allowWritesHelp_;    /* its tooltip when not listening */
 	bool drawnDark_ = true; /* the look Allow writes' highlight is drawn in */
 
 	QTableView *table_;

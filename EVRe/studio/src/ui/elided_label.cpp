@@ -92,7 +92,10 @@ void ElidedLabel::changeEvent(QEvent *event) {
 /* the style sheet sets its padding and border as contents margins after the font and style changes: the least height
  * counted again with them */
 bool ElidedLabel::event(QEvent *event) {
-	if (event->type() == QEvent::ContentsRectChange) keepHeight();
+	if (event->type() == QEvent::ContentsRectChange) {
+		keepHeight();
+		if (grown_) fit();
+	}
 	return QLabel::event(event);
 }
 
@@ -135,6 +138,7 @@ void ElidedLabel::fit() {
 	wrapLines(wraps_ && cut_ && !rich);
 	if (!cut_) {
 		QLabel::setText(full_);
+		oneLineAgain();
 		return;
 	}
 	if (wraps_ && !rich) {
@@ -142,14 +146,28 @@ void ElidedLabel::fit() {
 		cut_ = false;
 		const int colon = int(full_.indexOf(QLatin1String(": ")));
 		QLabel::setText(colon > 0 ? full_.left(colon + 1) + QLatin1Char('\n') + full_.mid(colon + 2) : full_);
+		/* as a least height: the height for the width stops at the layouts around the label, and a sidebar short of room
+		 * laid three lines into the height of two, cut through their letters */
+		keepHeight();
+		setMinimumHeight(std::max(minimumHeight(), heightForWidth(QWidget::width())));
+		grown_ = true;
 		return;
 	}
 	/* the shorter text whole when it fits; cut only when even it does not */
 	if (!shorter_.isEmpty() && fontMetrics().horizontalAdvance(shorter_) <= room) {
 		QLabel::setText(shorter_);
+		oneLineAgain();
 		return;
 	}
 	const QString shown = fontMetrics().elidedText(shorter_.isEmpty() ? plain : shorter_, mode_, room);
 	/* cut rich text stays rich (a span), so an escaped "&amp;" is drawn as "&" */
 	QLabel::setText(rich ? QStringLiteral("<span>%1</span>").arg(shown.toHtmlEscaped()) : shown);
+	oneLineAgain();
+}
+
+/* the least height a wrapped text raised goes when the text no longer wraps: a pill of one line again */
+void ElidedLabel::oneLineAgain() {
+	if (!grown_) return;
+	grown_ = false;
+	keepHeight();
 }
