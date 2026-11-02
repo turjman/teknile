@@ -105,7 +105,7 @@ Every version ships ready to run on the [Releases](https://github.com/turjman/te
 | `EVReStudio-<version>-x86_64.AppImage` | Linux: make it executable and run it |
 | `evre-tools-<version>-linux-x86_64.tar.gz` | The command-line tools `evre` and `evre-sim` for Linux |
 
-The Windows installer and the zip hold the command-line tools and the example map beside the Studio.
+The Windows installer and the zip hold the command-line tools and the example files (`example_device.json`, `example_fast.json`, `example_bus.json`) beside the Studio.
 
 ## What is inside
 
