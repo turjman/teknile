@@ -13,6 +13,7 @@
 
 #include "evre/frame.h"
 #include "io/fast_stream.h"
+#include "io/listen_link.h"
 #include "io/usb_capture.h"
 #include "model/device_map.h"
 
@@ -217,7 +218,7 @@ class ListenTest : public QObject {
 private slots:
 	void scenes_data() {
 		QTest::addColumn<QString>("scene");
-		for (const char *name : { "cdc_poll", "cdc_autosend", "cdc_fast", "ftdi_poll", "composite" })
+		for (const char *name : { "cdc_poll", "cdc_autosend", "cdc_fast", "ftdi_poll", "composite", "cdc_quiet" })
 			QTest::newRow(name) << QString::fromLatin1(name);
 	}
 
@@ -726,6 +727,113 @@ private slots:
 		QTRY_COMPARE(ended, 1);
 		QVERIFY(heard > 0);
 		QVERIFY(heard <= decodedPcap(QStringLiteral("composite"), compositeTarget()).size());
+	}
+
+	/* the link: opened before anything is heard, the device's bytes as received(), the other program's as
+	 * heardRequest(), each in its order, and the capture's end as closed() with its reason */
+	void linkBothWays() {
+		QVector<UsbEvent> want = decodedPcap(QStringLiteral("cdc_poll"), cdcTarget());
+		evre::ListenLink link(QStringLiteral("COM13"), new FileCapture(captureFile(QStringLiteral("cdc_poll.pcap"))), cdcTarget());
+		QByteArray in, out;
+		QStringList closed;
+		int opened = 0;
+		bool heardBeforeOpen = false;
+		connect(&link, &evre::Link::opened, this, [&] {
+			opened++;
+			heardBeforeOpen = !in.isEmpty() || !out.isEmpty();
+		});
+		connect(&link, &evre::Link::received, this, [&](const QByteArray &bytes) { in += bytes; });
+		connect(&link, &evre::ListenLink::heardRequest, this, [&](const QByteArray &bytes) { out += bytes; });
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		QVERIFY(!link.isOpen());
+		link.open();
+		QCOMPARE(opened, 1);
+		QVERIFY(!heardBeforeOpen);
+		QVERIFY(link.isOpen());
+		QVERIFY(in.isEmpty() && out.isEmpty());
+		QTRY_COMPARE(closed.size(), 1);
+		QByteArray wantIn, wantOut;
+		for (const UsbEvent &event : want) (event.direction == UsbDirection::In ? wantIn : wantOut) += event.data;
+		QCOMPARE(in, wantIn);
+		QCOMPARE(out, wantOut);
+		QCOMPARE(closed.first(), QStringLiteral("the capture ended"));
+		QVERIFY(!link.isOpen());
+		QCOMPARE(link.describe(), QStringLiteral("COM13 (listening)"));
+		QCOMPARE(link.place(), QStringLiteral("COM13 (bus 2, device 5)"));
+	}
+
+	/* close() is the end of the capture: nothing after it, and no reason given */
+	void linkClosed() {
+		evre::ListenLink link(QStringLiteral("COM13"), new FileCapture(captureFile(QStringLiteral("cdc_poll.pcap"))), cdcTarget());
+		int heard = 0;
+		QStringList closed;
+		connect(&link, &evre::Link::received, this, [&] { heard++; });
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		link.close();
+		QTest::qWait(30);
+		QCOMPARE(heard, 0);
+		QCOMPARE(closed, QStringList{ QString() });
+		QVERIFY(!link.isOpen());
+	}
+
+	/* nothing can hear this port: open() says so and the link stays shut; what send() is given goes nowhere, counted */
+	void linkWithoutCapture() {
+		evre::ListenLink link(QStringLiteral("COM13"), nullptr, UsbTarget());
+		QStringList closed;
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QVERIFY(!link.isOpen());
+		QCOMPARE(closed.size(), 1);
+		QVERIFY(closed.first().startsWith(QLatin1String("COM13 cannot be listened to")));
+		QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("listening on COM13")));
+		link.send(QByteArray("\x7B", 1));
+		link.send(QByteArray("\x7B", 1)); /* said once */
+		QCOMPARE(link.sendAttempts(), 2);
+	}
+
+	/* what capture says it lost comes through the link */
+	void linkLostCaptures() {
+		class Lossy : public UsbCapture {
+		public:
+			using UsbCapture::UsbCapture;
+			void start(const UsbTarget &) override { emit dropped(7); }
+			void stop() override {}
+		};
+		evre::ListenLink link(QStringLiteral("COM13"), new Lossy, cdcTarget());
+		QList<quint64> lost;
+		connect(&link, &evre::ListenLink::capturesLost, this, [&](quint64 total) { lost << total; });
+		link.open();
+		QCOMPARE(lost, QList<quint64>{ 7 });
+	}
+
+	/* Parser::skippedBytes: what left the stream without a frame, whatever way, and no frame's own bytes */
+	void parserSkips() {
+		const QByteArray frame = evre::build(1, evre::READ, 0xD000, 4);
+		evre::Parser parser;
+		evre::Frame found;
+		parser.feed(frame);
+		QVERIFY(parser.next(found));
+		QCOMPARE(parser.skippedBytes(), quint64(0));
+		parser.feed(QByteArray("hello, world"));            /* no start byte */
+		QVERIFY(!parser.next(found));
+		QCOMPARE(parser.skippedBytes(), quint64(12));
+		parser.feed(QByteArray("abc") + frame);             /* before a frame */
+		QVERIFY(parser.next(found));
+		QCOMPARE(parser.skippedBytes(), quint64(15));
+		parser.feed(QByteArray("\x7B\x01\x00\x00\x00\x00\x00", 7) + frame); /* a 7B that started nothing */
+		QVERIFY(parser.next(found));
+		QCOMPARE(parser.skippedBytes(), quint64(22));
+		QByteArray bad = frame;
+		bad[3] = char(bad[3] ^ 1);                          /* a wrong CRC: every byte of it, as no frame */
+		parser.feed(bad + frame);
+		QVERIFY(parser.next(found));
+		QCOMPARE(parser.skippedBytes(), quint64(22 + bad.size()));
+		QCOMPARE(parser.badFrames(), 1);
+		parser.feed(frame.left(4));                         /* half a frame waits */
+		QVERIFY(!parser.next(found));
+		parser.clear();                                     /* and clearing is no skipping */
+		QCOMPARE(parser.skippedBytes(), quint64(22 + bad.size()));
 	}
 };
 

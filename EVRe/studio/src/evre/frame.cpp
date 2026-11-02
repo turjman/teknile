@@ -61,16 +61,21 @@ bool Parser::next(Frame &out) {
 	for (;;) {
 		const int start = int(buffer_.indexOf(char(START_BYTE)));
 		if (start < 0) {
+			skippedBytes_ += quint64(buffer_.size());
 			buffer_.clear(); /* no start byte: none of it can become a frame */
 			return false;
 		}
-		if (start > 0) buffer_.remove(0, start);
+		if (start > 0) {
+			skippedBytes_ += quint64(start);
+			buffer_.remove(0, start);
+		}
 		if (buffer_.size() < HEADER_SIZE) return false;
 
 		const auto *bytes = reinterpret_cast<const uint8_t *>(buffer_.constData());
 		const uint16_t cnt = littleEndian16(bytes + 5);
 		const int length = dataLength(bytes[2], cnt);
 		if (length < 0) {
+			skippedBytes_++;
 			buffer_.remove(0, 1); /* no function code: that 7B was data */
 			continue;
 		}
@@ -80,6 +85,7 @@ bool Parser::next(Frame &out) {
 		const uint16_t crc = crc16(bytes, total - TRAILER_SIZE);
 		if (littleEndian16(bytes + total - TRAILER_SIZE) != crc || bytes[total - 1] != END_BYTE) {
 			badFrames_++;
+			skippedBytes_++;
 			buffer_.remove(0, 1); /* not a frame after all: the next 7B may be */
 			continue;
 		}

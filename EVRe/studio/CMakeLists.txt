@@ -39,6 +39,7 @@ qt_add_library(evre_protocol STATIC
     src/model/bus_file.h        src/model/bus_file.cpp
     src/io/fast_stream.h        src/io/fast_stream.cpp
     src/io/usb_capture.h        src/io/usb_capture.cpp
+    src/io/listen_link.h        src/io/listen_link.cpp
     src/model/fast_recording.h  src/model/fast_recording.cpp
     src/model/fast_store.h      src/model/fast_store.cpp
 )
@@ -141,7 +142,7 @@ qt_add_executable(evre_gui_test tests/gui_test.cpp)
 target_link_libraries(evre_gui_test PRIVATE evre_studio_core Qt6::Test)
 # the translations' own checks read the .ts files where they are kept
 target_compile_definitions(evre_gui_test PRIVATE EVRE_TRANSLATIONS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/translations")
-add_dependencies(evre_gui_test evre_maps)
+add_dependencies(evre_gui_test evre_maps evre_captures)
 
 # evre: the EVRe tools on the command line (validate, export, info, read, dump,
 # watch, write), on the protocol core without a window.

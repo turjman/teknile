@@ -4297,12 +4297,62 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
         <source>fast stream %1 recorded: %2 (%3 blocks, %4 MB)</source>
         <translation>التدفق السريع %1 سُجِّل: %2 (الكتل: %3، ⁦%4 MB⁩)</translation>
     </message>
+    <message>
+        <source>listening</source>
+        <translation>يستمع</translation>
+    </message>
+    <message>
+        <source>listening: nothing is sent</source>
+        <translation>يستمع: لا يرسل الاستوديو شيئًا</translation>
+    </message>
+    <message>
+        <source>listening: the API server is off</source>
+        <translation>يستمع: خادم API متوقف</translation>
+    </message>
+    <message>
+        <source> (no request heard)</source>
+        <translation> (لم يُسمع طلب)</translation>
+    </message>
+    <message>
+        <source>1 byte not EVRe</source>
+        <translation>بايت واحد ليس من EVRe</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n bytes not EVRe</source>
+        <translation>
+            <numerusform>%n بايت ليس من EVRe</numerusform>
+            <numerusform>بايت واحد ليس من EVRe</numerusform>
+            <numerusform>بايتان ليسا من EVRe</numerusform>
+            <numerusform>%n بايتات ليست من EVRe</numerusform>
+            <numerusform>%n بايتًا ليست من EVRe</numerusform>
+            <numerusform>%n بايت ليس من EVRe</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>listening on %1: -&gt;DEV the other program&apos;s request, DEV-&gt; the device&apos;s answer</source>
+        <translation>يستمع على ⁦%1⁩: ⁦-&gt;DEV⁩ طلب البرنامج الآخر، ⁦DEV-&gt;⁩ رد الجهاز</translation>
+    </message>
 </context>
 <context>
     <name>LimitSpinBox</name>
     <message>
         <source>%1 to %2</source>
         <translation>%1 إلى %2</translation>
+    </message>
+</context>
+<context>
+    <name>ListenLink</name>
+    <message>
+        <source>%1 cannot be listened to: no USB capture on this system</source>
+        <translation>لا يمكن الاستماع إلى ⁦%1⁩: لا التقاط USB على هذا النظام</translation>
+    </message>
+    <message>
+        <source>%1 (listening)</source>
+        <translation>⁦%1⁩ (يستمع)</translation>
+    </message>
+    <message>
+        <source>%1 (bus %2, device %3)</source>
+        <translation>⁦%1⁩ (الناقل %2، الجهاز %3)</translation>
     </message>
 </context>
 <context>
@@ -5002,6 +5052,18 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
     <message>
         <source>%1 of %2 registers written</source>
         <translation>المسجّلات المكتوبة: %1 من %2</translation>
+    </message>
+    <message>
+        <source>listening to %1</source>
+        <translation>يستمع إلى ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Device ID not heard yet</source>
+        <translation>لم يُسمع معرّف الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>Device ID %1 · protocol rev %2 (heard)</source>
+        <translation>معرّف الجهاز %1 · مراجعة البروتوكول %2 (مسموع)</translation>
     </message>
 </context>
 <context>
@@ -8422,6 +8484,21 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>not a USBPcap capture</source>
         <translation>ليس التقاطًا من ⁦USBPcap⁩</translation>
+    </message>
+</context>
+<context>
+    <name>evre::ListenLink</name>
+    <message>
+        <source>%1 cannot be listened to: no USB capture on this system</source>
+        <translation>لا يمكن الاستماع إلى ⁦%1⁩: لا التقاط USB على هذا النظام</translation>
+    </message>
+    <message>
+        <source>%1 (listening)</source>
+        <translation>⁦%1⁩ (يستمع)</translation>
+    </message>
+    <message>
+        <source>%1 (bus %2, device %3)</source>
+        <translation>⁦%1⁩ (الناقل %2، الجهاز %3)</translation>
     </message>
 </context>
 <context>

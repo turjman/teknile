@@ -4787,9 +4787,10 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names), `AUTO_SEND_DIVIDERS` (the 16 prescalers + 1 of 13.8) and `autoSendRatesFor(maxHz, tickHz)` (the rates a map's `auto_send` limits leave; the checker, the Map settings and the sidebar use it) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
-| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, the Dump tab's store (its replies, each fast stream's newest block) |
+| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, Listen (heard requests and answers, the heard round, the guards), the Dump tab's store (its replies, each fast stream's newest block) |
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
 | `src/io/usb_capture.h`,&nbsp;`.cpp` | Listen, the USB side (22.3): `UsbTarget`, `UsbEvent`, the decoders `UsbPcapDecoder` and `UsbmonDecoder`, the `UsbCapture` interface and `FileCapture` |
+| `src/io/listen_link.h`,&nbsp;`.cpp` | `evre::ListenLink`: Listen's link, which hears both ways and never sends (22.3); `ListenFile`, a file replayed for a port (the tests) |
 | `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
@@ -4846,7 +4847,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the library (C++11 to 20, -O0 to -Os) and run; no heap, its stack; its frames through `evre_fast_test`; PROTOCOL.md's example block |
-| `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders without a window, a driver or a USB device (26.10) |
+| `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders and its link without a window, a driver or a USB device (26.10) |
 | `tests/make_captures.py` | writes `tests/captures/`, the five USB scenes in both formats, from the Python package and the example maps (26.10) |
 | `tests/captures/` | those scenes, `.pcap` and `.usbmon`, copied beside the programs at every build as `maps/` is |
 | `maps/example_fast.json` | the example map with a fast stream (`ADC`), served by `evre_fake_fast` in the fast tests |
@@ -4869,7 +4870,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 **`frame.h` / `frame.cpp`.** The frame layout, the function codes with their DATA lengths and the CRC are in 18.1,
 18.2 and 18.4. `build()` makes a frame. `Parser::next()` reads frames out of a byte stream by the rules of 18.5: a
 byte that is no function code, or a wrong CRC or end byte, costs exactly one byte, so noise and half frames are
-skipped, never fatal. `badFrames()` counts the CRC and end-byte failures. `errorName()` gives the words for the
+skipped, never fatal. `badFrames()` counts the CRC and end-byte failures, `skippedBytes()` the bytes taken out of the
+stream without a frame (Listen says them in the Monitor). `errorName()` gives the words for the
 error codes 1, 2, 3, 4, 5 and 12 (18.3). `hex()` formats bytes for the monitor.
 
 **`link.h` / `link.cpp`.** `Link` is the interface: `open()`, `close()`, `isOpen()`, `send()`, `flush(ms)` (what was
@@ -5003,9 +5005,73 @@ control transfers (`SET_LINE_CODING`) and interrupt notifications are skipped. A
 is a broken stream, not something to wait for. FTDI: 2 status bytes are taken off at each multiple of `wMaxPacketSize`
 of a completed IN transfer (64 when it is not known), and a transfer of only status bytes, the chip's poll, is no
 event; the other bridges and USB CDC have no framing. The live sources and the lookup from a port to its device are
-not here yet, and neither is the link above: nothing in the Studio uses this part so far.
+not here yet: a test gives the target with the file (`setListenFileForTests`), and a port with neither is refused
+in plain words.
 
 *Tested by:* `evre_listen_test` (26.10).
+
+**The listening link (`listen_link`).** `evre::ListenLink` is a `Link` that owns a `UsbCapture` (its child) and never
+speaks. `open()` starts the capture and says `opened()` at once, before anything can be heard; the capture's end comes
+as `closed(why)`, with its plain reason, and `close()` stops it. The device's bytes go out as `received(bytes)`, the
+link's usual signal, so the master's parser, the frames nobody asked for, AUTO_SEND and the fast blocks run unchanged;
+the other program's bytes go out as `heardRequest(bytes)`. `send()` writes nothing: it counts (`sendAttempts()`) and
+says so once. `describe()` reads *COM13 (listening)*, `place()` *COM13 (bus 2, device 5)*. It is in `src/io`, not
+`src/evre`: the protocol module stays free of USB.
+
+**Listening in the engine.** `connectListen(port)` makes the link and goes through `attach()` like any other;
+`onOpened()` finds it is Listen's and sets `listening_` (cleared when the link goes). Then no login, no DEVICE_ID, no
+polls and no enables, and the rest of the bytes' way is:
+
+```
+    device's bytes ---> Link::received ---> master's parser ---> unsolicited ---> onUnsolicited
+                               |
+                               +----------> deviceParser_ (only what is no frame: the ?? line)
+
+    other program's
+    bytes -----------> heardRequest -------> heardParser_ -----> heard_ (a ->DEV Monitor line)
+```
+
+- `startListening()`: the keep-alive off (the one request the master sends by itself), a running API stopped and said
+  (`apiStarted(false, ...)`), `autoSendOn_` set so that a heard AUTO_SEND frame is taken, every `FastRun` on the way a
+  stream without an enable is (`hearStreams`; no enable written, no rate read, `takenMs` stays -1 so `watchFast` has
+  nothing to wait for), the Dump's store emptied and the Monitor's first line.
+- **Heard requests** (`onHeardRequest`): `heardParser_` finds the frames, each gets a `->DEV` line, and a READ or a
+  WRITE_ACK is kept in `heard_` until its answer, at most `HEARD_REQUESTS_KEPT` = 64 and at most the link's Timeout;
+  one dropped is counted `unmatched`. A WRITE has no answer: it goes to the Dump's write card at once.
+- **Heard answers** (`onUnsolicited`): the master has no request of its own, so every frame comes here. A fast block
+  is taken first, as always. Then `takeHeardAnswer()` looks for the newest heard request with the slave, offset and
+  count of the frame and the function it belongs to, as `Master::findPending` matches. This comes before the AUTO_SEND
+  test: an answer to a read of the read-only block is no frame the device sent by itself, as on a polled link, where
+  the master takes the answer first. A `READ_RESP` sets the rows wholly inside what was read (`heardBlock`, a scan
+  cached by slave, offset and count) and goes to the Dump as a block; at DEVICE_ID with a count of at least 4 it also
+  emits `deviceInfo`, once for each thing it says. A `WRITE_ACK_RESP` goes to the write card. An `ERROR_RESP` to a read
+  sets the rows' error, never *unavailable* (the Studio did not ask); to a WRITE_ACK it goes to the write card, a
+  refused write saying nothing of reading the register. What answers nothing and is no AUTO_SEND frame gets
+  *(no request heard)* in the Monitor and is counted `unmatched`. `(not a pending request)` is not used.
+- **The heard round** (`takeHeardRead`, `closeRound`). A poll ticks once for all the plotted registers; another
+  program's reads come one by one. `roundRows_` holds the rows set since the last tick: an answer that would set one of
+  them again ends the round first (`appendSamples`, `writeCsvRow`, as `pollDone`), and `roundTimer_`
+  (`HEARD_ROUND_MS` = 250, from the round's first row) closes a round left open by a slow program. The link's end
+  closes the last one. While AUTO_SEND's frames come, each of them is the tick instead, and a fast block ticks nothing,
+  as always. A program that reads one register twice in a row makes short rounds: more points, never wrong ones.
+- **`Stats::heard`**: `requestsHz`, `answersHz` (answers matched to a request; both measured as `pollHz` is, which stays
+  0), `unmatched`, `notEvreBytes` (`Parser::skippedBytes` of both parsers; a chunk that held any gets one `??` line),
+  `dropped` (the capture's count, `capturesLost`), `sendAttempts`. They stay until the next listening, so what a
+  capture that ended heard can still be read. `master.tx` does not move.
+- **Nothing is sent, everywhere.** Each place that could send has its own guard on `listening_`, covered by a check
+  of its own (`listenNothingSent`, 26.2; `trySendingForTests` tries the private ones): `sendLogin`, `readDeviceInfo`,
+  `pollTick`, `startPoll`, `resumePolling` (the ticker never starts), `heartbeat`, `applyAutoSend`, `applyFast`,
+  `watchFast`, `retryOffline`, `readBack`, `sendFastOffs`, the AUTO_SEND off in `disconnectLink`, and the 0 of a stream
+  gone from the map in `setMap`. What the window asks is refused with a text: `write` and `read` (*listening: nothing
+  is sent*), `setAutoSend` and `setFastStream` (*listening*; the wish is left as it was), `apiStart` (*listening: the API
+  server is off*). The master is not changed: with the keep-alive off and nothing queued it has nothing to send, and
+  `ListenLink::send()` is the last belt.
+
+Until the Connection card offers Listen, a window reaches this only through `setListenPortForTests` (Connect then
+listens on that port, and Reconnect by itself listens again); the device line says *Device ID not heard yet*, then
+*Device ID 0x1001 · protocol rev 1 (heard)*.
+
+*Tested by:* the GUI test's Listen steps (26.2), `evre_listen_test` (26.10).
 
 **`RegTable`**: 19.4.
 
@@ -6129,6 +6195,11 @@ where.
 6. Tests: at least a GUI test path if a fake device can serve it.
 7. Documentation: the "Connecting" help page, chapter 3, and Part III.
 
+**A link that only hears (Listen, 22.3).** `open`, `close`, `isOpen` and `describe` as above; `send()` writes nothing
+and counts. What it hears from the device goes out as `received`, so the master and everything behind it run as
+they are; what it hears the other program say goes out by a signal of its own. A new send site in the engine gets its
+guard on `listening_` and a check in `listenNothingSent`: the engine's `SendPath` lists them.
+
 ### 24.4 A tab
 
 1. Write the tab as its own widget class in `src/ui/`. It talks to the window through signals, like `MonitorTab`.
@@ -6298,7 +6369,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `tests/schema_test.py` | the maps against the JSON Schema; a stream's keys and refusals; MAP_FORMAT.md's stream keys against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `evre_fast_test` | Fast EVRe without a window (26.9): the block's rules, a fuzz, the clock's fit, the fake devices' source | nothing | no |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` (26.9) | the build folder (`evre_fast_test`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib`), SKIP without | only its own temporary folder |
-| `evre_listen_test` | Listen's capture decoders without a window (26.10): the two formats, FTDI's status bytes, the filters, a stream cut anywhere, a file replayed | `tests/captures/`, copied beside it, and `maps/` | no |
+| `evre_listen_test` | Listen without a window (26.10): the two capture formats, FTDI's status bytes, the filters, a stream cut anywhere, a file replayed, the link | `tests/captures/`, copied beside it, and `maps/` | no |
 | `tests/make_captures.py` | not a test: writes `tests/captures/` (26.10) | Python&nbsp;3,&nbsp;standard&nbsp;library | only that folder |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
 
@@ -6577,6 +6648,44 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   started: the engine watches what the window asks (the same channel and arm, asked on its thread with
   `MainWindow::engineFastWatch`) and, after an Arm, the view holds again; the line removed while armed, the engine watches
   nothing; no crash. The tick off takes the line off.
+- **Listen, the scenes** (`listenScenes`, after the fast steps). What another program said, replayed from
+  `tests/captures/` (26.10) into the real window: `setListenFileForTests` gives the engine the file and the target a
+  lookup would find, `setListenPortForTests` makes Connect listen. No fake device is needed and no test port is
+  used; the window's link to the fake device is put back at the end. A scene replayed at once is one turn of the
+  engine's loop, so no timer cuts a round short; a scene at its stamps shows what takes time.
+    - `cdc_poll`, at once, every view from one replay: the Monitor's first line, the marks in place of TX and RX with
+      each request `->DEV` before its answer `DEV->`, every frame heard; *(no request heard)* on the answer nobody
+      asked for, the only one counted unmatched; the `??` line with its count; the table's values, a register never
+      read and a long array read in part left alone, the read a write was followed by showing it; the `ERROR_RESP` on
+      the rows and not *unavailable*; 20 points on the chart and 20 CSV rows for the 20 rounds, the ramp in order; the
+      Dump's cards as the program reads, and the write card; `master.tx` unmoved and no send attempt
+    - the same at its stamps: the rates measured while listening, no polls a second; the late answer, 700 ms after its
+      request with a 500 ms Timeout: no answer to it, both counted unmatched
+    - Disconnect in the middle of a paced replay: nothing more is heard
+    - `cdc_quiet` at its stamps, a capture that stays open: the device line *not heard yet*, then marked *(heard)*
+    - a port with no capture: refused with a plain reason
+    - `ftdi_poll`: every register as in `cdc_poll`, bytes for bytes; `composite`: only our endpoints
+    - `cdc_autosend`: the frames fill the rows and each is a tick (100 points), the Dump's AUTO_SEND card, the write
+      card with the WRITE_ACK of CONFIG; none is taken for an answer that lost its request
+    - the capture's end closes the link with its reason, and Reconnect by itself listens again
+    - `cdc_fast` on the fast example map: 900 records on the fast line, 100 lost for the 2 missing blocks; the Monitor
+      names the stream, nothing is sent
+    - the next link is an ordinary one: the fake device polled, the device line not marked
+- **Listen, frames told to the link** (`listenHeardFrames`). An engine of the test's own, on its thread, the capture
+  held open by `cdc_quiet`, frames emitted through the link's own signals: the round left open closed by the timer
+  while the capture goes on; DEVICE_ID read again says nothing new, a changed STATUS does; an exchange with another
+  slave changes no row; two reads alike and their two answers leave nothing over; a refused WRITE_ACK in the write card
+  and no read error on the row; a request past the Timeout, and those past the most kept, dropped and counted; bytes
+  that are no frame counted both ways, a frame cut across two chunks not; the captures lost; the link gone, the
+  counts kept.
+- **Listen, nothing sent** (`listenNothingSent`). An engine of the test's own with a token, a stream with an enable,
+  Poll on and an API running. The API is stopped when listening starts. Then every way out is tried directly, each its
+  own check, `ListenLink::sendAttempts()` and `master.tx` read after each: 700 ms for the keep-alive and the polls (the
+  ticker not started), the login, DEVICE_ID, a poll's tick, Poll as fast as possible, the heartbeat, AUTO_SEND's CONFIG,
+  a stream's enable, its silence read, an offline device's retry, a read back; `write` (with and without an
+  acknowledge), `read`, `setAutoSend`, `setFastStream` and `apiStart` refused with their texts; a map without the
+  stream, a map loaded while listening; no `TX` line; Disconnect with AUTO_SEND's off and a stream's 0 due; and the
+  link's own `send()`, counted and dropped. (`trySendingForTests` sets up what each path needs to send.)
 - **Fast speed** (`fastSpeed`, after the fast streams step). `evre_fake_fast` with `--fast-rate 1000000` on port
   1240: both channels plotted over a 10 s window, the Chart tab shown, the stream on for 20 s. About 20 million
   records taken, none lost, no bad block, none left unshown (the rate's tooltip), the rate 0.95 to 1.04 M samples/s;
@@ -7169,7 +7278,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 832 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 894 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7484,7 +7593,7 @@ python3 tests/make_captures.py                  # only after changing a scene: w
 
 No driver, no USB device and nothing recorded from one: `tests/make_captures.py` makes the captures byte by byte,
 with `evre.frame.build` and the example maps, and with no clock and no random number the same script writes the
-same files. They are committed in `tests/captures/`, 6 to 25 KB each, and copied beside the programs at every build.
+same files. They are committed in `tests/captures/`, 1 to 25 KB each, and copied beside the programs at every build.
 Each scene is written twice: `<scene>.pcap` as USBPcap writes it, and `<scene>.usbmon`, the records of `/dev/usbmonN`
 one after another (the container is ours, the bytes are what the live source hands its decoder). The device is
 address 5 on bus 2.
@@ -7496,8 +7605,9 @@ address 5 on bus 2.
 | `cdc_fast` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | a stream's enable written (`example_fast.json`), 20 blocks in PROTOCOL.md's layout, 2 of them missing |
 | `ftdi_poll` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x02` | `cdc_poll` behind an FTDI bridge, VID `0403`: 64-byte IN packets each with 2 status bytes, status-only polls |
 | `composite` | IN&nbsp;`0x83`,&nbsp;OUT&nbsp;`0x03` | two CDC functions on one device, the other's endpoints (`0x81`, `0x01`) carrying frames that must not be heard |
+| `cdc_quiet` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | DEVICE_ID and a block read, then an hour of nothing: at its stamps a capture that stays open, a round left unfinished |
 
-`evre_listen_test` (QtTest, no window) checks `src/io/usb_capture.*`:
+`evre_listen_test` (QtTest, no window) checks `src/io/usb_capture.*` and `src/io/listen_link.*`:
 
 - **both formats (`scenes`):** every scene gives the same events from its `.pcap` and its `.usbmon`, only the
   target's endpoints, in time order
@@ -7520,6 +7630,14 @@ address 5 on bus 2.
 - **a file replayed (`FileCapture`):** nothing before the event loop, the same bytes, `ended` once (`replayAtOnce`);
   never ahead of its stamps (`replayPaced`); nothing after `stop()`, and a new start from the top (`replayStop`); a
   missing file, another suffix, a file that is no capture and a cut one (`replayRefused`)
+- **the link (`ListenLink`):** opened before anything is heard, the device's bytes as `received`, the other program's as
+  `heardRequest`, the capture's end as `closed` with its reason (`linkBothWays`); `close()` stops the capture, no reason
+  given (`linkClosed`); no capture: refused in plain words, and `send()` counted, said once (`linkWithoutCapture`); the
+  captures the system lost (`linkLostCaptures`)
+- **`Parser::skippedBytes`:** every way a byte leaves the stream without a frame, a frame's own bytes not, a half frame
+  not (`parserSkips`)
+
+The engine's side is in the GUI test's Listen steps (26.2).
 
 ## 27. Design decisions and pitfalls
 

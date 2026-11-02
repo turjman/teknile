@@ -663,7 +663,10 @@ void MainWindow::connectLink() {
 	linkPort_.clear();
 	linkBaud_ = 0;
 	linkBaudLimited_ = true;
-	if (sidebar_->isTcp()) {
+	if (!listenPort_.isEmpty()) {
+		if (!retrying_) logEvent(LogLevel::Info, tr("listening to %1").arg(listenPort_));
+		engine_->post([engine = engine_, port = listenPort_] { engine->connectListen(port); });
+	} else if (sidebar_->isTcp()) {
 		const QString host = sidebar_->host();
 		const quint16 port = sidebar_->port();
 		const QString token = sidebar_->token();
@@ -817,7 +820,8 @@ void MainWindow::markDeviceInfoLost() {
 QString MainWindow::deviceInfoHtml(int slave) const {
 	const QString who = deviceLabel(slave);
 	const auto it = deviceInfo_.constFind(slave);
-	if (it == deviceInfo_.constEnd()) return (who + tr("Device ID not read yet")).toHtmlEscaped();
+	if (it == deviceInfo_.constEnd())
+		return (who + (listenPort_.isEmpty() ? tr("Device ID not read yet") : tr("Device ID not heard yet"))).toHtmlEscaped();
 	switch (it->state) {
 	case DeviceInfo::State::NotRead:
 		return (who + tr("DEVICE_ID not read: %1").arg(it->error)).toHtmlEscaped();
@@ -829,7 +833,8 @@ QString MainWindow::deviceInfoHtml(int slave) const {
 	}
 	const QString id = it->state == DeviceInfo::State::Lost
 			? tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision)
-			: tr("Device ID %1 · protocol rev %2").arg(addrText(it->id)).arg(it->revision);
+			: (listenPort_.isEmpty() ? tr("Device ID %1 · protocol rev %2") : tr("Device ID %1 · protocol rev %2 (heard)"))
+					.arg(addrText(it->id)).arg(it->revision);
 	/* a narrow sidebar wraps it between its pieces only ("D2:", "last seen:", "Device ID 0x1001", "protocol rev 1") */
 	QString html = Sidebar::wholePieces(who + id).toHtmlEscaped();
 	const int index = deviceOfSlave(slave);

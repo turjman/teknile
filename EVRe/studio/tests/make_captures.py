@@ -16,6 +16,7 @@ the same files, byte for byte.
     cdc_fast       bulk IN 0x81, OUT 0x01                       a stream's enable written, its blocks, 2 of 20 missing
     ftdi_poll      bulk IN 0x81, OUT 0x02, 64-byte packets      cdc_poll behind an FTDI bridge
     composite      bulk IN 0x83, OUT 0x03 (the other: 0x81, 01) two CDC functions on one device
+    cdc_quiet      bulk IN 0x81, OUT 0x01                       a program reads twice, then says nothing for an hour
 """
 import argparse
 import os
@@ -364,8 +365,22 @@ def composite():
     return scene
 
 
+def cdc_quiet():
+    """DEVICE_ID and STATUS read, one block read, then an hour of nothing: replayed at its stamps, a capture that stays
+    open with a round left unfinished, for as long as a test wants to try things on it."""
+    scene, device = Scene(), Device('example_device.json')
+    link = CdcLink(scene)
+    link.line_setup(1000)
+    identity = device.span('DEVICE_ID', 'STATUS')
+    block = device.span('SETPOINT', 'MOTOR_SPEED')
+    link.exchange(5000, device.read(*identity), device.answer(*identity))
+    link.exchange(10000, device.read(*block), device.answer(*block))
+    link.exchange(3600 * 1000000, device.read(*block), device.answer(*block))
+    return scene
+
+
 SCENES = {'cdc_poll': cdc_poll, 'cdc_autosend': cdc_autosend, 'cdc_fast': cdc_fast, 'ftdi_poll': ftdi_poll,
-          'composite': composite}
+          'composite': composite, 'cdc_quiet': cdc_quiet}
 
 
 def main():
