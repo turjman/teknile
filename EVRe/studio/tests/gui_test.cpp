@@ -4653,7 +4653,7 @@ private:
 		/* -- a port with no state: the real lookup, no hook ----------------------------------------------------- */
 		listenTo(QStringLiteral("COM99"));
 		if (connectButton()) connectButton()->click();
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
 		const QLatin1String nothingHeard("not connected: COM99 is not a USB port: it cannot be listened to");
 #else
 		const QLatin1String nothingHeard("not connected: COM99 cannot be listened to: no USB capture on this system");
@@ -4661,6 +4661,25 @@ private:
 		check(QTest::qWaitFor([&] { return logText().contains(nothingHeard); }, 3000)
 						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
 				"Listen, a port nothing here can hear: refused with a plain reason, the system's own lookup");
+
+		/* -- Windows's two refusals: at Connect, as any other, and no capture is started -------------------------------- */
+		UsbPortState needsAdmin, noFilter;
+		needsAdmin.kind = UsbPortState::NeedsAdmin;
+		noFilter.kind = UsbPortState::NoFilter;
+		UsbTarget::stateForTests(QStringLiteral("COM98"), needsAdmin);
+		UsbTarget::stateForTests(QStringLiteral("COM97"), noFilter);
+		listenTo(QStringLiteral("COM98"));
+		if (connectButton()) connectButton()->click();
+		check(QTest::qWaitFor([&] { return logText().contains(QLatin1String("not connected: run the Studio as administrator")); }, 3000)
+						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000) && !engine->listenLink(),
+				"Listen below administrator: refused at Connect with its reason, and nothing is started, so no UAC prompt comes");
+		listenTo(QStringLiteral("COM97"));
+		if (connectButton()) connectButton()->click();
+		check(QTest::qWaitFor([&] { return logText().contains(QLatin1String("not connected: USBPcap is not on this device yet")); }, 3000)
+						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000) && !engine->listenLink(),
+				"Listen on a device USBPcap has not joined: refused at Connect with its reason");
+		UsbTarget::stateForTests(QStringLiteral("COM98"), UsbPortState());
+		UsbTarget::stateForTests(QStringLiteral("COM97"), UsbPortState());
 		listenTo(port);
 
 		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
@@ -4798,10 +4817,12 @@ private:
 		bridge.vid = 0x0403;
 		bridge.pid = 0x6001;
 		bridge.kind = UsbTarget::Ftdi;
-		UsbPortState notUsb, noUsbPcap, noUsbmon;
+		UsbPortState notUsb, noUsbPcap, noUsbmon, noFilter, needsAdmin;
 		notUsb.kind = UsbPortState::NotUsb;
 		noUsbPcap.kind = UsbPortState::NoUsbPcap;
 		noUsbmon.kind = UsbPortState::NoUsbmon;
+		noFilter.kind = UsbPortState::NoFilter;
+		needsAdmin.kind = UsbPortState::NeedsAdmin;
 		noUsbmon.device = QStringLiteral("/dev/usbmon2");
 		UsbPortState noEndpoints = listenableState(listenTarget());
 		noEndpoints.target.inEndpoints.clear();
@@ -4812,7 +4833,9 @@ private:
 			{ QStringLiteral("usbpcap"), QStringLiteral("COM24"), noUsbPcap },
 			{ QStringLiteral("usbmon"), QStringLiteral("COM25"), noUsbmon },
 			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() },
-			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints } };
+			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints },
+			{ QStringLiteral("nofilter"), QStringLiteral("COM28"), noFilter },
+			{ QStringLiteral("needsadmin"), QStringLiteral("COM29"), needsAdmin } };
 		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
 		return cases;
 	}
@@ -4943,6 +4966,18 @@ private:
 		check(line->fullText() == QStringLiteral("listens to USB CDC · bus 2, device 5") && !warns() && hint->isVisible()
 						&& hint->fullText() == QLatin1String("its endpoints could not be read: every bulk endpoint of the device is heard")
 						&& !hint->isCut(), "the Listen line: endpoints not read: every bulk endpoint heard, and it says so, whole");
+		choose(7);
+		check(line->fullText() == QLatin1String("USBPcap is not on this device yet") && warns() && hint->isVisible() && !hint->isCut()
+						&& hint->fullText().contains(QLatin1String("unplug it and plug it in again"))
+						&& line->toolTip().contains(QLatin1String("when it is plugged in")) && !action->isVisible(),
+				"the Listen line: USBPcap has not joined this device: what to do, and no button to get what is already there");
+		choose(8);
+		check(line->fullText() == QLatin1String("run the Studio as administrator") && warns() && !hint->isVisible() && !action->isVisible()
+						&& line->toolTip().contains(QLatin1String("Run as administrator")) && !line->isCut(),
+				"the Listen line: below administrator it says so, nothing more: no button, no prompt");
+		check(Sidebar::listenRefusal(QStringLiteral("COM13"), cases[7].state) == QLatin1String("USBPcap is not on this device yet")
+						&& Sidebar::listenRefusal(QStringLiteral("COM13"), cases[8].state) == QLatin1String("run the Studio as administrator"),
+				"the pill's refusals say the Listen line's words");
 		UsbPortState notUsbState;
 		notUsbState.kind = UsbPortState::NotUsb;
 		UsbTarget::stateForTests(QString(), notUsbState);

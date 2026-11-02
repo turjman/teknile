@@ -12,9 +12,12 @@
  *   FileCapture      a capture replayed from a file: what the tests listen to
  *   usbmonPortState  a port to its USB device on Linux, from files only, so a test runs it on a tree of its own
  *   UsbmonCapture    the live capture on Linux (usbmon_capture.h, built there only)
+ *   UsbPortFacts     what Windows says of a port (usbPcapFacts, usbpcap_lookup.cpp, built there only)
+ *   usbPcapPortState those facts to a state, on every system, so a test runs it on made-up answers
+ *   UsbPcapCapture   the live capture on Windows (usbpcap_capture.h): USBPcap's own program, run for one device
  *
  * The decoders take bytes as they come: a stream may be cut at any byte, and what is not a whole record yet waits for
- * the next feed. Windows's live source (USBPcap's program) and its lookup come with their own part.
+ * the next feed.
  */
 #pragma once
 
@@ -23,6 +26,7 @@
 #include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 class QTimer;
@@ -50,8 +54,11 @@ struct UsbTarget {
 	/* What Listen can do with this port now, a state forced by a test first. The window's thread */
 	static UsbPortState stateOf(const QString &port);
 	/* The system's own answer, the one place it is asked: each system's lookup and its install check come in here
-	 * (usb_capture.cpp). It only reads files, on any thread; a system without a lookup yet says NoCapture */
+	 * (usb_capture.cpp). It sends nothing and opens no port, on any thread; a system without a lookup says NoCapture */
 	static UsbPortState liveStateOf(const QString &port);
+	/* Is the device a capture was started on still there, at the same address? What a capture asks twice a second, so
+	 * on Windows without the configuration descriptor, which the hub would fetch from the device each time */
+	static bool stillThere(const UsbTarget &running);
 	/* tests: the state stateOf gives this port from now on, whatever the system says (the window's thread) */
 	static void stateForTests(const QString &port, const UsbPortState &state);
 };
@@ -65,9 +72,11 @@ struct UsbPortState {
 		NotUsb,         /* a motherboard's COM port, a Bluetooth or a virtual one */
 		NoUsbPcap,      /* Windows: USBPcap is not installed */
 		NoUsbmon,       /* Linux: usbmon is not loaded, or its device cannot be read */
+		NoFilter,       /* Windows: USBPcap is installed, but its filter is not on this device or its root hub */
+		NeedsAdmin,     /* Windows: USBPcap's driver opens only to an administrator */
 	};
 	Kind kind = NoCapture;
-	UsbTarget target;           /* Listenable: what to listen to; NoUsbmon: what would be */
+	UsbTarget target;           /* Listenable: what to listen to; else as far as it is known */
 	QString device;             /* NoUsbmon: the file that cannot be read, /dev/usbmon2 */
 
 	/* still the device a capture was started on? Plugged in again it has a new address, which a filter on the old one
@@ -90,6 +99,59 @@ struct UsbPortState {
  * by the file system. */
 UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QString &port,
 		const QHash<QString, QString> &links = {});
+
+/* What Windows says of a port. usbPcapFacts gathers it and decides nothing; every decision is in usbPcapPortState and
+ * the functions after it, which need no Windows, so the tests run them everywhere on made-up answers.
+ *
+ *   COM13                                   the port: any one of the nodes below, or a node of its own under them
+ *   FTDIBUS\VID_0403+PID_6001+A1\0000       a bridge's own bus driver
+ *   USB\VID_1234&PID_0001&MI_02\6&2&0&0002  a function of a composite device: it starts at interface 2
+ *   USB\VID_1234&PID_0001\0001              the USB device: its address, its descriptors, its stack of drivers
+ *   USB\VID_1234&PID_0002\5&1&0&1           a hub on the way, none or several
+ *   USB\ROOT_HUB30\4&1&0&0                  the root hub, which has a USBPcap filter of its own, \\.\USBPcapN */
+struct UsbPortFacts {
+	QString port;
+	QStringList chain;          /* instance IDs: the port's first, each one's parent after it */
+	int address = 0;            /* the device's on its bus; 0: its hub did not say */
+	QStringList stack;          /* the drivers on the USB device; empty: the system does not say */
+	QByteArray configuration;   /* the configuration descriptor; empty: not read */
+	QStringList filters;        /* what \\.\USBPcap1, 2, ... say of their root hub; empty where there is no such device */
+	bool program = false;       /* USBPcapCMD.exe is there */
+	bool elevated = false;      /* the Studio runs as administrator, which is what USBPcapCMD itself looks at */
+};
+
+/* The nodes that matter in a chain, as positions in it, -1 for none */
+struct UsbChain {
+	int device = -1;            /* the USB device */
+	int rootHub = -1;
+	int firstInterface = -1;    /* the interface number the port's function starts at (not a position); -1: not a composite's */
+};
+
+UsbPortState usbPcapPortState(const UsbPortFacts &facts);
+UsbChain usbChainOf(const QStringList &chain);
+/* the interface number of a composite function's MI_xx, -1 for a node without one */
+int usbInterfaceOf(const QString &instance);
+/* Does USBPcap's name for a root hub, \??\USB#ROOT_HUB30#4&1&0&0#{f18a0e88-...}, mean this instance ID? */
+bool usbHubLinkIs(const QString &link, const QString &rootHub);
+/* The bulk endpoints of the function that starts at `firstInterface` (-1: of the device's only function) into the target,
+ * and its kind: a CDC control interface's data interface is the one its Union descriptor names. False leaves the target
+ * as it was: a cut descriptor or a function without bulk endpoints each way says nothing that can be trusted */
+bool usbReadEndpoints(const QByteArray &configuration, int firstInterface, UsbTarget &target);
+/* what a bridge is by its VID, for a descriptor that could not be read */
+UsbTarget::Kind usbKindByVid(quint16 vid);
+/* USBPcapCMD's arguments for one device of one root hub: never -A, a whole hub carries the keyboard too */
+QStringList usbPcapArguments(const UsbTarget &target);
+/* why USBPcapCMD ended, in plain words; `errors` is what it said on its standard error */
+QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors);
+/* the program beside the uninstaller the registry names, for an install in another place; empty when it names none */
+QString usbPcapProgramBeside(const QString &uninstallString);
+
+#ifdef Q_OS_WIN
+/* usbpcap_lookup.cpp. descriptors false leaves out the one thing that reaches the device */
+UsbPortFacts usbPcapFacts(const QString &port, bool descriptors = true);
+/* where USBPcapCMD.exe is, empty when it is nowhere */
+QString usbPcapProgram();
+#endif
 
 /* One transfer's bytes. Only bulk transfers of the target with data become events; the capture's own stamp is kept
  * for a later Monitor column (the frames are laid on the host's clock at arrival, as a serial link's are). */
@@ -177,7 +239,7 @@ class UsbCapture : public QObject {
 	Q_OBJECT
 public:
 	using QObject::QObject;
-	/* the system's live capture, unstarted; nullptr where it has none yet */
+	/* the system's live capture, unstarted; nullptr where it has none */
 	static UsbCapture *live();
 	virtual void start(const UsbTarget &target) = 0;
 	virtual void stop() = 0;    /* nothing follows it, not even ended() */

@@ -84,8 +84,13 @@ the USB traffic under the port with the system's capture, and <b>sends nothing</
 USB-UART bridges; not a motherboard's COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
 everything on that USB device.</p>
 <ul>
-<li>The port box is the one of Serial / USB; the line under it says what can be heard, or why not. <b>Windows</b>:
-<b>USBPcap</b>, a capture driver, installed once as administrator; then unplug and plug the device again.</li>
+<li>The port box is the one of Serial / USB; the line under it says what can be heard, or why not.</li>
+<li><b>Windows</b>: <b>USBPcap</b>, a capture driver. <b>Get USBPcap…</b> opens its page; install it once as administrator,
+then unplug and plug the device again: it joins a device when that is plugged in. If the line then reads <i>USBPcap is
+not on this device yet</i>, restart the PC. USBPcap lets only an administrator capture, so the line reads <i>run the
+Studio as administrator</i> until you do: close the Studio and start it with <b>Run as administrator</b>. The Studio
+captures that one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there
+first.</li>
 <li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
 <code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>, good until the PC restarts. What lasts takes three steps. The
 module at every start: <code>usbmon</code> in <code>/etc/modules-load.d/usbmon.conf</code>. The udev rule:

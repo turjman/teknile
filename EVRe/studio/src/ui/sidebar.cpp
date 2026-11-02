@@ -949,6 +949,15 @@ void Sidebar::showListenLine() {
 		action = tr("Copy the commands");
 		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + USBMON_COMMANDS;
 		break;
+	case UsbPortState::NoFilter:
+		line = listenRefusal(QString(), state);
+		why = tr("USBPcap joins a device when it is plugged in, and a USB bus when the PC starts.");
+		hint = tr("unplug it and plug it in again; if that does not help, restart the PC");
+		break;
+	case UsbPortState::NeedsAdmin:
+		line = listenRefusal(QString(), state);
+		why = tr("USBPcap lets only an administrator capture: close the Studio and start it with Run as administrator.");
+		break;
 	case UsbPortState::NoCapture:
 		line = tr("no USB capture on this system");
 		why = tr("Listen reads the USB traffic with the system's capture, and this Studio has none here.");
@@ -998,6 +1007,8 @@ QString Sidebar::listenRefusal(const QString &port, const UsbPortState &state) {
 		/* a word joiner after each "/": a wrapped line never breaks the path ("/dev/" and "usbmon2" read as two things) */
 		return tr("usbmon is not loaded or %1 is not readable").arg(ltrPiece(QString(state.device)
 				.replace(QLatin1Char('/'), QStringLiteral("/") + QChar(0x2060))));
+	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");
+	case UsbPortState::NeedsAdmin: return tr("run the Studio as administrator");
 	case UsbPortState::NoCapture: break;
 	}
 	return tr("%1 cannot be listened to: no USB capture on this system").arg(name);
