@@ -28,6 +28,9 @@ class UsbPcapCapture : public UsbCapture {
 public:
 	explicit UsbPcapCapture(const QString &program, QObject *parent = nullptr);
 	~UsbPcapCapture() override;
+	/* The driver writes the pcap header as soon as it has the bus, on a silent device too: no bytes, no capture, whether a
+	 * prompt came first or not. One that fails at the start (another capture holds the bus) has then never opened */
+	bool opensOnFirstBytes() const override { return true; }
 	void start(const UsbTarget &target) override;
 	void stop() override;
 

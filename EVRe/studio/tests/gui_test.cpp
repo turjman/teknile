@@ -685,6 +685,7 @@ public:
 		fastStopped(); /* the same */
 		listenScenes(); /* the same */
 		listenHeardFrames();
+		listenRounds();
 		listenNothingSent();
 		listenCard();
 		listenWindow(); /* it ends with the window on the example map again, connected to the fake device as before */
@@ -4676,6 +4677,7 @@ private:
 
 		/* -- Windows below administrator: the capture asks first, and only a press may start it -------------------------- */
 		listenAsking(engine, connectButton, stopButton, listenTo, [&] { return logText(); });
+		listenGoesWrong(engine, connectButton, listenTo, [&] { return logText(); });
 		listenTo(port);
 
 		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
@@ -4789,13 +4791,18 @@ private:
 		std::atomic<int> starts{ 0 };
 		std::atomic<int> stops{ 0 };
 		UsbCapture *running = nullptr;
+		bool firstBytes = false;    /* as USBPcap's: it runs when its stream says so, prompt or no prompt */
+		QString endsAtStart;        /* it fails before its first byte, and says this */
 	};
 	class PromptCapture : public UsbCapture {
 	public:
 		explicit PromptCapture(const std::shared_ptr<PromptControl> &control) : control_(control) {}
-		void start(const UsbTarget &) override {
+		bool opensOnFirstBytes() const override { return asks_ || control_->firstBytes; }
+		void start(const UsbTarget &target) override {
+			asks_ = target.asksPermission;
 			control_->starts++;
 			control_->running = this;
+			if (!control_->endsAtStart.isEmpty()) QTimer::singleShot(0, this, [this] { emit ended(control_->endsAtStart); });
 		}
 		void stop() override {
 			if (control_->running == this) control_->running = nullptr;
@@ -4804,6 +4811,7 @@ private:
 
 	private:
 		std::shared_ptr<PromptControl> control_;
+		bool asks_ = false;
 	};
 
 	template <typename ConnectButton, typename StopButton, typename ListenTo, typename LogText>
@@ -4909,15 +4917,23 @@ private:
 		engineDone();
 		check(control->starts == 3, "Listen, asking: the engine starts nothing without a press");
 
-		/* elevated: opened at once, and a try by itself listens again */
+		/* elevated: no prompt, it has opened at its first bytes all the same, and a try by itself listens again */
+		control->firstBytes = true;
 		const int startsBefore = control->starts;
 		listenTo(elevated);
 		if (connectButton()) connectButton()->click();
+		engineDone();
+		check(control->starts == startsBefore + 1 && pillSays() != QLatin1String("Asking Windows for permission…")
+						&& !pillSays().startsWith(QLatin1String("Listening")),
+				"Listen as administrator: no asking, and nothing has opened before the stream's first bytes");
+		answerYes();
 		check(QTest::qWaitFor([&] { return pillSays().startsWith(QLatin1String("Listening")); }, 3000),
-				"Listen as administrator: no asking: opened at once");
+				"Listen as administrator: opened at the stream's first bytes");
 		endWith(QStringLiteral("COM96 is gone: unplugged or reset?"));
 		check(QTest::qWaitFor([&] { return control->starts == startsBefore + 2; }, 4000),
 				"Listen as administrator: a try by itself listens again");
+		engineDone();
+		answerYes();
 		(void) QTest::qWaitFor([&] { return stopButton() != nullptr; }, 3000);
 		if (stopButton()) stopButton()->click();
 		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
@@ -4925,6 +4941,117 @@ private:
 		reconnect->setChecked(reconnectWas);
 		UsbTarget::stateForTests(port, UsbPortState());
 		UsbTarget::stateForTests(elevated, UsbPortState());
+	}
+
+	/* The window when a capture goes wrong: one that fails before its first byte, a device that moves, a port that is gone,
+	 * and what each of them costs the device. Captures that hold still, for the test to end them */
+	template <typename ConnectButton, typename ListenTo, typename LogText>
+	void listenGoesWrong(IoEngine *engine, const ConnectButton &connectButton, const ListenTo &listenTo, const LogText &logText) {
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		auto *log = window_.findChild<EventLog *>();
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *ports = sidebar ? sidebar->findChild<QComboBox *>(QStringLiteral("serialPort")) : nullptr;
+		auto *hint = sidebar ? sidebar->findChild<ElidedLabel *>(QStringLiteral("listenHint")) : nullptr;
+		QCheckBox *reconnect = nullptr, *poll = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Reconnect by itself")) reconnect = box;
+			if (box->text() == QLatin1String("Poll")) poll = box;
+		}
+		const bool found = pill && log && ports && hint && reconnect && poll;
+		check(found, "Listen going wrong: the pill, the Log, the port box, the Listen line, Poll and Reconnect by itself are there");
+		if (!found) return;
+		const QString dying = QStringLiteral("COM95"), moving = QStringLiteral("COM94");
+		const auto engineDone = [&] { QMetaObject::invokeMethod(engine, [] {}, Qt::BlockingQueuedConnection); };
+		const auto pillSays = [&] { return QString(pill->fullText()).remove(QStringLiteral("●  ")); };
+		const auto lookups = [] { return UsbTarget::descriptorLookupsForTests(); };
+		const bool reconnectWas = reconnect->isChecked();
+		reconnect->setChecked(true);
+
+		/* a capture that dies before its first byte, as with Wireshark on the bus: a failed try, not a lost link */
+		auto failing = std::make_shared<PromptControl>();
+		failing->firstBytes = true;
+		failing->endsAtStart = QStringLiteral("USBPcap refused this USB bus: another capture holds it");
+		UsbTarget plain = listenTarget();
+		plain.port = dying;
+		UsbTarget::stateForTests(dying, listenableState(plain));
+		engine->post([engine, dying, plain, failing] {
+			engine->setListenCaptureForTests(dying, plain, [failing] { return new PromptCapture(failing); });
+		});
+		listenTo(dying);
+		QSignalSpy popUps(log, &EventLog::popUp);
+		if (connectButton()) connectButton()->click();
+		const bool secondTry = QTest::qWaitFor([&] { return failing->starts == 2; }, 4000);
+		QTest::qWait(800); /* a lost link's pace would have tried again in this time */
+		const QString said = logText();
+		if (failing->starts != 2 || popUps.count() > 1) std::printf("  tries %d, pop-ups %d\n", int(failing->starts), int(popUps.count()));
+		check(secondTry && failing->starts == 2, "Listen, a capture that fails before its first byte: tried again every 2 s, "
+				"not twice a second");
+		check(said.count(QLatin1String("not connected: USBPcap refused this USB bus: another capture holds it")) == 1
+						&& !said.contains(QLatin1String("connected: COM95")) && !said.contains(QLatin1String("connection lost: USBPcap refused"))
+						&& popUps.count() <= 1,
+				"Listen, a capture that fails before its first byte: it never opened, so one Warning that repeats quietly: no "
+				"connected and lost lines by turns, and no pop-up per try");
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
+
+		/* what a press costs the device, and what the rest does */
+		auto staying = std::make_shared<PromptControl>();
+		const auto endWith = [&](const QString &why) {
+			engine->post([staying, why] {
+				if (staying->running) emit staying->running->ended(why);
+			});
+		};
+		plain.port = moving;
+		UsbTarget::stateForTests(moving, listenableState(plain));
+		engine->post([engine, moving, plain, staying] {
+			engine->setListenCaptureForTests(moving, plain, [staying] { return new PromptCapture(staying); });
+		});
+		listenTo(moving);
+		const quint64 beforePress = lookups();
+		if (connectButton()) connectButton()->click();
+		engineDone();
+		const bool listening = QTest::qWaitFor([&] { return pillSays().startsWith(QLatin1String("Listening")); }, 3000);
+		check(listening && lookups() == beforePress + 1, "Listen, a press: the device's descriptor is asked for once, for the "
+				"line and the capture alike");
+
+		const quint64 running = lookups();
+		sidebar->showListenLine();
+		const UsbPortState wasThere = listenableState(plain);
+		UsbPortState noDescriptor = wasThere;
+		noDescriptor.target.inEndpoints.clear();
+		noDescriptor.target.outEndpoints.clear();
+		UsbTarget::stateForTests(moving, noDescriptor);
+		sidebar->showListenLine();
+		check(lookups() == running && !hint->fullText().contains(QLatin1String("could not be read")),
+				"Listen, a capture running: the Listen line asks the device nothing, and a lookup without endpoints is no "
+				"endpoints that could not be read");
+		UsbTarget::stateForTests(moving, wasThere);
+
+		/* a try by itself: the device where the press found it asks nothing, plugged in again it is read as at a press */
+		endWith(QStringLiteral("COM94 is gone: unplugged or reset?"));
+		const bool again = QTest::qWaitFor([&] { return staying->starts == 2; }, 4000);
+		check(again && lookups() == running, "Listen, a try by itself, the device where it was: nothing asked of it");
+		engineDone();
+		UsbPortState elsewhere = wasThere;
+		elsewhere.target.address = 9;
+		UsbTarget::stateForTests(moving, elsewhere);
+		endWith(QStringLiteral("COM94 is gone: unplugged or reset?"));
+		const bool thrice = QTest::qWaitFor([&] { return staying->starts == 3; }, 4000);
+		check(thrice && lookups() == running + 1, "Listen, a try by itself, the device at a new address: read once, as at a press");
+		engineDone();
+
+		/* the port gone from the list, and no try can go on: Listen is over, whatever a capture left behind */
+		const bool pollOffWhile = !poll->isEnabled();
+		ports->clear();
+		ports->addItem(QStringLiteral("no ports found"), QString());
+		endWith(QStringLiteral("COM94 is gone: unplugged or reset?"));
+		const bool noPort = QTest::qWaitFor([&] { return pillSays() == QLatin1String("No serial port"); }, 4000);
+		check(pollOffWhile && noPort && connectButton() && poll->isEnabled() && !poll->toolTip().contains(QLatin1String("Listening")),
+				"Listen on, the port gone and the refresh leaving none: Listen's state ends with it, Poll is back");
+
+		reconnect->setChecked(reconnectWas);
+		UsbTarget::stateForTests(dying, UsbPortState());
+		UsbTarget::stateForTests(moving, UsbPortState());
 	}
 
 	/* ------------------------------------------------------------ Listen, what is seen */
@@ -5885,6 +6012,224 @@ private:
 		engine.disconnectLink();
 		check(!engine.listenLink() && !engine.stats().listening && engine.stats().heard.dropped == 3,
 				"Listen, Disconnect: the link goes, the counts stay to be read until the next listening");
+		engine.shutdown();
+		QTest::qWait(0);
+	}
+
+	/* What another program's frames come to on the chart and in the CSV, each case from the start of a listening. Frames
+	 * told to the link, on an engine of the test's own (its thread is this one): the order they come in and the waits
+	 * written here are the case. */
+	void listenRounds() {
+		DeviceMap map;
+		QString error;
+		const bool loaded = map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_device.json"), error);
+		const RegDef *supplyDef = loaded ? map.registerNamed(QStringLiteral("SUPPLY_V")) : nullptr;
+		const RegDef *temperatureDef = loaded ? map.registerNamed(QStringLiteral("TEMPERATURE")) : nullptr;
+		const RegDef *fanDef = loaded ? map.registerNamed(QStringLiteral("FAN_SPEED")) : nullptr;
+		check(supplyDef && temperatureDef && fanDef, "Listen, rounds: the example map and its registers");
+		if (!supplyDef || !temperatureDef || !fanDef) return;
+		EngineDevice device;
+		device.name = QStringLiteral("example");
+		device.map = std::make_shared<const DeviceMap>(map);
+		IoEngine engine;
+		engine.setMap(map.regs, 1, device.name, { device });
+		engine.setLinkOptions(1, 2000, 4);
+		engine.setMonitor(true);
+		const QString port = QStringLiteral("COM13");
+		auto control = std::make_shared<PromptControl>();
+		engine.setListenCaptureForTests(port, listenTarget(), [control] { return new PromptCapture(control); });
+		const RegKey supply = regKey(*supplyDef), temperature = regKey(*temperatureDef), setpoint = regKey(0, 0xD080);
+		engine.setPlotted({ supply, temperature, setpoint });
+		QTemporaryDir folder;
+		const QString csv = folder.filePath(QStringLiteral("rounds.csv"));
+		evre::ListenLink *link = nullptr;
+		const auto begin = [&] {
+			engine.startRecord(csv, { supply, temperature });
+			engine.connectListen(port);
+			link = engine.listenLink();
+			(void) engine.takeSamples();
+		};
+		const auto rowsWritten = [&] {
+			engine.disconnectLink();
+			engine.stopRecord();
+			QFile file(csv);
+			return file.open(QIODevice::ReadOnly | QIODevice::Text)
+					? QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts) : QStringList();
+		};
+		const auto notes = [&] {
+			int dropped = 0;
+			return int(engine.takeFrames(dropped).join(QLatin1Char('\n')).count(QLatin1String(" (no request heard)")));
+		};
+		const auto frame = [](uint16_t addr, int size) {
+			return evre::build(1, evre::READ_RESP, addr, uint16_t(size), QByteArray(size, '\x01'));
+		};
+		const auto read = [&](uint16_t addr, int size) {
+			emit link->heardRequest(evre::build(1, evre::READ, addr, uint16_t(size)));
+			emit link->received(frame(addr, size));
+		};
+		const auto readRegister = [&](const RegDef *def) { read(def->addr, def->size); };
+		constexpr uint16_t BLOCK = 0xD000, OTHER = 0xD080;
+		constexpr int BLOCK_SIZE = 22, OTHER_SIZE = 8;
+		const auto sendFrame = [&] { emit link->received(frame(BLOCK, BLOCK_SIZE)); };
+
+		/* the capture opens on an answer whose poll was under way, and a program goes on polling */
+		begin();
+		sendFrame();
+		for (int i = 0; i < 20; i++) {
+			read(BLOCK, BLOCK_SIZE);
+			read(OTHER, OTHER_SIZE);
+		}
+		QStringList rows = rowsWritten();
+		QHash<RegKey, QVector<QPointF>> points = engine.takeSamples();
+		const int strayNotes = notes();
+		if (points.value(supply).size() != 20 || rows.size() != 21)
+			std::printf("  points %d, rows %d\n", int(points.value(supply).size()), int(rows.size()));
+		check(points.value(supply).size() == 20 && rows.size() == 21,
+				"Listen, the capture opens on an answer with no request heard at 0xD000: 20 rounds are 20 points and 20 CSV rows");
+		check(strayNotes == 1 && engine.stats().heard.unmatched == 1,
+				"Listen, one such frame is no AUTO_SEND: the Monitor says (no request heard), and it is counted unmatched");
+
+		/* one frame and nothing after it */
+		begin();
+		sendFrame();
+		QVector<RegValue> values;
+		quint64 generation = 0;
+		qint64 nowMs = 0;
+		engine.table().snapshot(values, generation, nowMs);
+		const auto supplyValue = std::find_if(values.begin(), values.end(), [&](const RegValue &v) { return regKey(v.def) == supply; });
+		const bool noRow = supplyValue != values.end() && !supplyValue->valid;
+		const bool saidInTime = QTest::qWaitFor([&] { return engine.stats().heard.unmatched == 1; }, 2000);
+		check(noRow && saidInTime && notes() == 1 && engine.takeSamples().isEmpty(),
+				"Listen, a lone frame nobody asked for: no row and no point, and the Monitor's note comes without a next frame");
+
+		/* a stream slower than that wait: the first is said, the next ones are its frames */
+		sendFrame();
+		sendFrame();
+		points = engine.takeSamples();
+		check(points.value(supply).size() == 2 && engine.stats().heard.unmatched == 1 && notes() == 0,
+				"Listen, AUTO_SEND slower than a round: frames from the second on are taken");
+		(void) rowsWritten();
+
+		/* real AUTO_SEND, switched off, then polled */
+		begin();
+		engine.setDump(true);
+		for (int i = 0; i < 10; i++) sendFrame();
+		const int framePoints = int(engine.takeSamples().value(supply).size());
+		QVector<IoEngine::DumpReply> replies;
+		const auto framesCard = [&] {
+			(void) engine.takeDumps(replies);
+			return std::any_of(replies.begin(), replies.end(), [](const IoEngine::DumpReply &r) { return r.autoSend; });
+		};
+		const bool cardWhile = framesCard();
+		for (int i = 0; i < 20; i++) {
+			read(BLOCK, BLOCK_SIZE);
+			read(OTHER, OTHER_SIZE);
+		}
+		const bool cardAfter = framesCard();
+		rows = rowsWritten();
+		points = engine.takeSamples();
+		if (framePoints != 10 || points.value(supply).size() != 20 || rows.size() != 31)
+			std::printf("  frames %d, points %d, rows %d\n", framePoints, int(points.value(supply).size()), int(rows.size()));
+		check(framePoints == 10 && notes() == 0 && points.value(supply).size() == 20 && rows.size() == 31,
+				"Listen, AUTO_SEND switched off, then that block polled: a heard read of it ends the frames, and every round "
+				"is a point and a row again");
+		check(cardWhile && !cardAfter, "Listen, AUTO_SEND ended by a read: the Dump's frames card goes");
+		engine.setDump(false);
+
+		/* AUTO_SEND with another block polled beside it: the frames tick while they come, the silence ends them */
+		begin();
+		for (int i = 0; i < 3; i++) sendFrame();
+		(void) engine.takeSamples();
+		read(OTHER, OTHER_SIZE);
+		read(OTHER, OTHER_SIZE);
+		const int heldBack = int(engine.takeSamples().value(setpoint).size());
+		sendFrame();
+		points = engine.takeSamples();
+		const bool withFrame = points.value(setpoint).size() == 1 && points.value(supply).size() == 1;
+		QTest::qWait(IoEngine::HEARD_ROUND_MS + 80);
+		read(OTHER, OTHER_SIZE);
+		read(OTHER, OTHER_SIZE);
+		read(OTHER, OTHER_SIZE);
+		points = engine.takeSamples();
+		check(heldBack == 0 && withFrame, "Listen, frames coming and another block read: the frame is the tick, the read rows go with it");
+		check(points.value(setpoint).size() == 2 && points.value(supply).isEmpty(),
+				"Listen, the frames stopped and that block polled on: its rounds tick again, nothing for the stream's rows");
+		(void) rowsWritten();
+
+		/* the Auto send row: while frames are coming, and not after */
+		begin();
+		const bool saysHeard = QTest::qWaitFor([&] {
+			sendFrame();
+			return engine.stats().autoSend && engine.stats().autoSendHz > 0;
+		}, 3000);
+		const bool saysNothing = QTest::qWaitFor([&] { return !engine.stats().autoSend; }, 3000);
+		check(saysHeard && saysNothing, "Listen, Stats: AUTO_SEND is on while its frames come, and off once they have stopped, "
+				"never a rate of 0.0");
+		(void) rowsWritten();
+		(void) notes();
+		(void) engine.takeSamples();
+
+		/* a script reads SUPPLY_V once, then polls TEMPERATURE */
+		begin();
+		readRegister(supplyDef);
+		for (int i = 0; i < 5; i++) readRegister(temperatureDef);
+		rows = rowsWritten();
+		points = engine.takeSamples();
+		const auto cell = [&](int row, int column) { return rows[row].section(QLatin1Char(','), 2 + column, 2 + column); };
+		bool cellsFit = rows.size() == 6 && !cell(1, 0).isEmpty();
+		for (int row = 1; cellsFit && row < 6; row++) cellsFit = !cell(row, 1).isEmpty() && (row == 1 || cell(row, 0).isEmpty());
+		check(points.value(supply).size() == 1 && points.value(temperature).size() == 5,
+				"Listen, a register read once: one point, no flat line after it");
+		check(cellsFit, "Listen, a register read once: its CSV cell in that round, empty in the rounds after it");
+
+		/* an ERROR_RESP sets no row: no point and no cell for it in that round */
+		begin();
+		for (int i = 0; i < 2; i++) {
+			readRegister(supplyDef);
+			readRegister(temperatureDef);
+		}
+		readRegister(supplyDef);
+		emit link->heardRequest(evre::build(1, evre::READ, temperatureDef->addr, uint16_t(temperatureDef->size)));
+		emit link->received(evre::build(1, evre::ERROR_RESP, temperatureDef->addr, uint16_t(temperatureDef->size), QByteArray(1, '\x03')));
+		readRegister(supplyDef);
+		readRegister(temperatureDef);
+		rows = rowsWritten();
+		points = engine.takeSamples();
+		check(points.value(supply).size() == 4 && points.value(temperature).size() == 3 && rows.size() == 5
+						&& !cell(2, 1).isEmpty() && cell(3, 1).isEmpty() && !cell(3, 0).isEmpty() && !cell(4, 1).isEmpty(),
+				"Listen, a refused read: no point and an empty cell for its register in that round, the others' as usual");
+
+		/* a sample's time is its answer's, not the moment the next round showed it was over */
+		begin();
+		const double before = engine.now();
+		readRegister(supplyDef);
+		const double after = engine.now();
+		QTest::qWait(150);
+		readRegister(supplyDef);
+		rows = rowsWritten();
+		points = engine.takeSamples();
+		const QVector<QPointF> line = points.value(supply);
+		check(line.size() == 2 && line[0].x() >= before && line[0].x() <= after,
+				"Listen, a round's time: the time of its last answer, not of what ended it");
+		const auto moment = [&](int row) { return QDateTime::fromString(rows[row].section(QLatin1Char(','), 1, 1), Qt::ISODateWithMs); };
+		const auto seconds = [&](int row) { return rows[row].section(QLatin1Char(','), 0, 0).toDouble(); };
+		check(rows.size() == 3 && std::abs(double(moment(1).msecsTo(moment(2))) - (seconds(2) - seconds(1)) * 1000) < 30,
+				"Listen, the CSV: a round's datetime says the same moment as its time_s");
+
+		/* two WRITE_ACKs pipelined to one register: the device answers in order, and the write card ends on the last */
+		begin();
+		engine.setDump(true);
+		const QByteArray first(1, '\x11'), second(1, '\x22');
+		emit link->heardRequest(evre::build(1, evre::WRITE_ACK, fanDef->addr, 1, first));
+		emit link->heardRequest(evre::build(1, evre::WRITE_ACK, fanDef->addr, 1, second));
+		emit link->received(evre::build(1, evre::WRITE_ACK_RESP, fanDef->addr, 1));
+		emit link->received(evre::build(1, evre::WRITE_ACK_RESP, fanDef->addr, 1));
+		replies.clear();
+		const bool cards = engine.takeDumps(replies);
+		const auto written = std::find_if(replies.begin(), replies.end(), [](const IoEngine::DumpReply &r) { return r.write; });
+		check(cards && written != replies.end() && written->data == second,
+				"Listen, two WRITE_ACKs alike: oldest first as the master matches, so the write card holds the later bytes");
+		(void) rowsWritten();
 		engine.shutdown();
 		QTest::qWait(0);
 	}

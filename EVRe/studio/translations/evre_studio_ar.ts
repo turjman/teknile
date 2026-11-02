@@ -4092,7 +4092,9 @@ not on this device yet&lt;/i&gt;, restart the PC. USBPcap lets only an administr
 &lt;b&gt;Listen&lt;/b&gt; Windows asks for your permission; the pill reads &lt;i&gt;Asking Windows for permission…&lt;/i&gt; for as long as you
 take, and if you do not see the prompt, it may be waiting on the taskbar. Because a prompt must never come up with nobody
 there, &lt;b&gt;Reconnect by itself&lt;/b&gt; does not start a capture: a lost one waits for you to press &lt;b&gt;Listen&lt;/b&gt; again. Started
-with &lt;b&gt;Run as administrator&lt;/b&gt; the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
+with &lt;b&gt;Run as administrator&lt;/b&gt; the Studio needs no prompt, and Reconnect by itself works. To find the endpoints, the
+device&apos;s USB descriptor is read when the line looks at a port and once when &lt;b&gt;Listen&lt;/b&gt; starts; while a capture runs nothing
+reaches the device. The Studio captures that
 one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. &lt;b&gt;Stop&lt;/b&gt;, closing
 the Studio or a crash end the capture; Task Manager&apos;s Details tab should show no &lt;code&gt;USBPcapCMD.exe&lt;/code&gt; after it.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt;,
@@ -4106,7 +4108,8 @@ traffic of bus 2, a keyboard&apos;s too, so think before giving a shared PC this
 &lt;li&gt;&lt;b&gt;Listen&lt;/b&gt; starts it, &lt;b&gt;Stop&lt;/b&gt; ends it. The pill reads &lt;i&gt;Listening · COM13 · USB CDC&lt;/i&gt; on blue; its tooltip
 says what is heard, and what a capture may have lost.&lt;/li&gt;
 &lt;li&gt;The table, the chart, the CSV and the Dump fill from the answers to the other program&apos;s reads, one chart point and one
-CSV row per round of its reads. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
+CSV row per round of its reads, for the registers read in that round alone: one it no longer reads gets no more points, and
+its CSV cells stay empty. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
 the Monitor; the table changes at the next heard read.&lt;/li&gt;
 &lt;li&gt;Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor&apos;s request row,
 Auto send, a stream&apos;s Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.&lt;/li&gt;
@@ -4208,7 +4211,8 @@ or this link does not). Not an error.&lt;/li&gt;
 فأعد تشغيل الحاسوب. ولا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول، فيطلب ويندوز إذنك في كل مرة تضغط فيها &lt;b&gt;استماع&lt;/b&gt;؛ وتقرأ الشارة
 &lt;i&gt;يطلب الإذن من ويندوز…&lt;/i&gt; ما دمت لم تُجب، وإن لم تَرَ نافذة الطلب فقد تكون منتظرة في شريط المهام. ولأن نافذة الطلب يجب ألا تظهر
 في غياب أحد، لا تبدأ &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; التقاطًا: فالالتقاط المفقود ينتظر أن تضغط &lt;b&gt;استماع&lt;/b&gt; من جديد. وإذا بدأت
-الاستوديو بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt; فلا حاجة إلى نافذة الطلب، وتعمل إعادة الاتصال تلقائيًا. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل
+الاستوديو بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt; فلا حاجة إلى نافذة الطلب، وتعمل إعادة الاتصال تلقائيًا. ولمعرفة نقاط النهاية يُقرأ واصف ⁦USB⁩ للجهاز حين يفحص السطر منفذًا، ومرة واحدة عند بدء
+&lt;b&gt;استماع&lt;/b&gt;؛ ولا يصل إلى الجهاز شيء أثناء الالتقاط. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل
 كله أبدًا، ولا يشغل الناقل إلا التقاط واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا. و&lt;b&gt;إيقاف&lt;/b&gt; أو إغلاق الاستوديو أو تعطّله ينهي
 الالتقاط؛ ويجب ألا يظهر ⁦&lt;code&gt;USBPcapCMD.exe&lt;/code&gt;⁩ بعده في تبويب «التفاصيل» في إدارة المهام.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
@@ -4220,7 +4224,8 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;استماع&lt;/b&gt; يبدؤه و&lt;b&gt;إيقاف&lt;/b&gt; ينهيه. تقرأ الشارة &lt;i&gt;يستمع · ⁦COM13 · USB CDC⁩&lt;/i&gt; على الأزرق؛ ويقول تلميحها ما يُسمع،
 وما قد يكون الالتقاط فقده.&lt;/li&gt;
 &lt;li&gt;يمتلئ الجدول والمخطط وملف ⁦CSV⁩ وعرض الذاكرة من ردود قراءات البرنامج الآخر، نقطة واحدة في المخطط وصف واحد في
-⁦CSV⁩ لكل جولة من قراءاته. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
+⁦CSV⁩ لكل جولة من قراءاته، للمسجّلات المقروءة في تلك الجولة وحدها: فالمسجّل الذي توقف عن قراءته لا يحصل على نقاط جديدة،
+وتبقى خلاياه في ⁦CSV⁩ فارغة. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
 وفي المراقبة؛ ويتغيّر الجدول عند القراءة المسموعة التالية.&lt;/li&gt;
 &lt;li&gt;كل ما يرسل معطّل، وكل عنصر يقول لماذا: الاستطلاع، والسماح بالكتابة، والكتابة السريعة، وصف الطلب في المراقبة، والإرسال
 التلقائي، وبدء التدفق؛ ويتوقف خادم API إن كان يعمل. أما تسجيل ⁦CSV⁩ والمخطط وإعادة الاتصال تلقائيًا فتعمل.&lt;/li&gt;

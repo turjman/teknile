@@ -55,15 +55,20 @@ struct UsbTarget {
 	bool asksPermission = false;
 
 	/* What Listen can do with this port now, a state forced by a test first. The window's thread */
-	static UsbPortState stateOf(const QString &port);
+	static UsbPortState stateOf(const QString &port, bool descriptors = true);
 	/* The system's own answer, the one place it is asked: each system's lookup and its install check come in here
-	 * (usb_capture.cpp). It sends nothing and opens no port, on any thread; a system without a lookup says NoCapture */
-	static UsbPortState liveStateOf(const QString &port);
+	 * (usb_capture.cpp). It opens no port, on any thread; a system without a lookup says NoCapture. On Linux it only
+	 * reads sysfs. On Windows, with `descriptors`, the hub fetches the configuration descriptor from the device: a
+	 * standard control request, the one thing any of this sends, and never while a capture runs. Without it there are no
+	 * endpoints, and the kind is what the VID says */
+	static UsbPortState liveStateOf(const QString &port, bool descriptors = true);
 	/* Is the device a capture was started on still there, at the same address? What a capture asks twice a second, so
-	 * on Windows without the configuration descriptor, which the hub would fetch from the device each time */
+	 * without the descriptor: nothing reaches the device */
 	static bool stillThere(const UsbTarget &running);
 	/* tests: the state stateOf gives this port from now on, whatever the system says (the window's thread) */
 	static void stateForTests(const QString &port, const UsbPortState &state);
+	/* tests: the lookups so far that would fetch the descriptor, a forced state's too */
+	static quint64 descriptorLookupsForTests();
 };
 
 /* What Listen can do with a port. Everything but Listenable is a reason it cannot, said on the Listen line and, when
@@ -81,6 +86,7 @@ struct UsbPortState {
 	UsbTarget target;           /* Listenable: what to listen to; else as far as it is known */
 	QString device;             /* NoUsbmon: the file that cannot be read, /dev/usbmon2 */
 	bool missing = false;       /* NotUsb: no such port at all, which says nothing of what it is when it is there */
+	bool forced = false;        /* a test's (stateForTests): no live capture is ever started from it */
 
 	/* still the device a capture was started on? Plugged in again it has a new address, which a filter on the old one
 	 * would never hear */
@@ -133,6 +139,10 @@ struct UsbChain {
 };
 
 UsbPortState usbPcapPortState(const UsbPortFacts &facts);
+/* The answer to UsbTarget::stillThere, for a capture that is running: false only for what was seen, the device's node
+ * gone from the tree or the device somewhere else. A look that could not be made (a filter or a hub that did not answer)
+ * says nothing, and a healthy capture must not end on it */
+bool usbPcapStillThere(const UsbPortFacts &facts, const UsbTarget &running);
 UsbChain usbChainOf(const QStringList &chain);
 /* the interface number of a composite function's MI_xx, -1 for a node without one */
 int usbInterfaceOf(const QString &instance);
@@ -248,12 +258,15 @@ public:
 	/* the system's live capture, unstarted; nullptr where it has none. Never start it in a test: on Windows below
 	 * administrator that raises a UAC prompt */
 	static UsbCapture *live();
+	/* True: only the stream's first bytes (started()) say this capture runs, so a link opens there, not at start().
+	 * False: it stands from the start and may stay silent, as usbmon's, whose stream has no header */
+	virtual bool opensOnFirstBytes() const { return false; }
 	virtual void start(const UsbTarget &target) = 0;
 	virtual void stop() = 0;    /* nothing follows it, not even ended() */
 
 signals:
 	void data(UsbDirection direction, const QByteArray &bytes);
-	void started();                     /* the stream's first bytes: what says a prompt was answered yes */
+	void started();                     /* the stream's first bytes: it runs, and a prompt was answered yes */
 	void dropped(quint64 total);        /* captures the system says it lost, so far */
 	void ended(const QString &why);     /* it stopped by itself */
 };

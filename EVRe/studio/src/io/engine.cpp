@@ -551,23 +551,21 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 
 /* A link that hears: a capture of this port, or nothing that can (open() then says so). No baud rate: the bytes are the
  * other program's, at whatever speed it set. */
-void IoEngine::connectListen(const QString &port, bool pressed) {
+void IoEngine::connectListen(const QString &port, bool pressed, const UsbPortState &known) {
 	serialBaud_ = 0;
 	applyInFlight();
-	/* the tests' file, or the system's capture of what the port is now, a device back at a try by itself on a new
-	 * address; without a capture the link refuses the port in plain words. The window asks only with a press: this is
-	 * the last belt, for a prompt must never come unattended */
+	/* the tests' file, or the system's capture of what the window's lookup found; without a capture the link refuses the
+	 * port in plain words. The window asks only with a press: this is the last belt, for a prompt must never come
+	 * unattended, and the same for a state a test forced with no file behind it */
 	const auto file = listenFiles_.constFind(port);
 	const bool test = file != listenFiles_.constEnd();
-	UsbPortState state;
+	UsbPortState state = known;
 	if (test) {
 		state.kind = UsbPortState::Listenable;
 		state.target = file->target;
-	} else {
-		state = UsbTarget::liveStateOf(port);
 	}
 	UsbCapture *capture = nullptr;
-	if (state.kind == UsbPortState::Listenable && (pressed || !state.target.asksPermission))
+	if (state.kind == UsbPortState::Listenable && (pressed || !state.target.asksPermission) && (test || !state.forced))
 		capture = !test ? UsbCapture::live() : file->capture ? file->capture() : new FileCapture(file->file, file->pace);
 	evre::ListenLink *link = new evre::ListenLink(port, capture, state.target);
 	link->setRefused(state);
@@ -613,7 +611,10 @@ void IoEngine::disconnectLink() {
 	layoutGeneration_++; /* the answers still due belong to the old link */
 	autoSendRequest_++;  /* and the AUTO_SEND ones: cancelled below, that is no refusal */
 	pollsUnderWay_.clear();
-	if (listening_) closeRound(); /* the last round: nothing else would end it */
+	if (listening_) { /* the last round, and a frame still waiting: nothing else would end them */
+		closeRound();
+		sayStrayFrame();
+	}
 	master_->setLink(nullptr);
 	if (link_) {
 		link_->disconnect(this); /* its closed() is not news any more */
@@ -1044,13 +1045,13 @@ void IoEngine::pollDone() {
 }
 
 /* an offline device's registers get no point: its last value is not news */
-void IoEngine::appendSamples(double t) {
+void IoEngine::appendSamples(double t, const QSet<int> *only) {
 	if (plottedKeys_.isEmpty()) return;
 	const auto &rows = table_.rows();
 	QMutexLocker lock(&crossThreadMutex_);
 	for (RegKey key : plottedKeys_) {
 		const int row = rowOfKey_.value(key, -1);
-		if (row < 0 || !rows[row].valid || offline_.contains(rows[row].def.slave)) continue;
+		if (row < 0 || !rows[row].valid || offline_.contains(rows[row].def.slave) || (only && !only->contains(row))) continue;
 		QVector<QPointF> &points = samples_[key];
 		if (points.size() >= MAX_SAMPLES) points.remove(0, MAX_SAMPLES / 10);
 		points.push_back(QPointF(t, decodeNumber(rows[row].def, rows[row].raw)));
@@ -1077,14 +1078,15 @@ void IoEngine::updateStats() {
 	for (FastRun &run : fastRuns_)
 		if (run.writer) run.writer->flush();
 	if (listening_) dropOldRequests(); /* a request that never gets its answer is counted without waiting for a next one */
+	if (listening_ && clock_.elapsed() - strayMs_ > HEARD_ROUND_MS) sayStrayFrame();
 	const evre::ListenLink *listen = listenLink();
 	const auto &rows = table_.rows();
 	QMutexLocker lock(&crossThreadMutex_);
 	stats_.master = master_->stats();
 	if (pollHz >= 0) stats_.pollHz = connected_ && !listening_ ? pollHz : 0;
 	if (framesHz >= 0) stats_.autoSendHz = connected_ && autoSendOn_ ? framesHz : 0;
-	/* listening, it is on from the start, so that a frame is taken: it says something once one has come */
-	stats_.autoSend = connected_ && autoSendOn_ && (!listening_ || streamCount_ > 0);
+	/* listening, it is on from the start, so that a frame is taken: it says something while frames are coming */
+	stats_.autoSend = connected_ && autoSendOn_ && (!listening_ || stats_.autoSendHz > 0);
 	stats_.listening = listening_;
 	if (requestsHz >= 0) {
 		stats_.heard.requestsHz = listening_ ? requestsHz : 0;
@@ -1291,7 +1293,11 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 		}
 		return;
 	}
-	if (listening_ && monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn));
+	if (listening_) {
+		if (!heardFrameIsStream(frame)) return;
+		if (monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn));
+		lastStreamFrameMs_ = clock_.elapsed();
+	}
 	if (frame.addr != streamAddr_ || frame.cnt != streamCount_) {
 		streamAddr_ = frame.addr;
 		streamCount_ = frame.cnt;
@@ -1317,6 +1323,11 @@ void IoEngine::onUnsolicited(const evre::Frame &frame) {
 	}
 	framesSinceRate_++;
 	const double t = now();
+	if (listening_) {
+		for (const int row : std::as_const(streamRows_)) roundRows_.insert(row);
+		tickRound(t);
+		return;
+	}
 	appendSamples(t);
 	writeCsvRow(t);
 }
@@ -1674,7 +1685,9 @@ void IoEngine::startListening() {
 	hearStreams();
 	heardBlocks_.clear();
 	roundRows_.clear();
-	requestsSinceRate_ = answersSinceRate_ = 0;
+	lastStreamFrameMs_ = -1;
+	strayFrame_ = evre::Frame();
+	requestsSinceRate_ = answersSinceRate_ = framesSinceRate_ = 0;
 	heardUnmatched_ = notEvreBytes_ = capturesLost_ = 0;
 	{
 		/* the Dump's blocks are the ones heard from here on; the polls' before and the last write are another story */
@@ -1710,6 +1723,11 @@ void IoEngine::onHeardRequest(const QByteArray &bytes) {
 	evre::Frame frame;
 	while (heardParser_.next(frame)) {
 		requestsSinceRate_++;
+		/* the block a frame came from unasked, read: that frame was an answer that lost its request */
+		if (frame.fn == evre::READ && frame.addr == strayFrame_.addr) {
+			sayStrayFrame();
+			strayFrame_ = evre::Frame();
+		}
 		if (monitorOn_) monitorLine("->DEV", frame.raw, evre::fnName(frame.fn));
 		if (frame.fn == evre::WRITE) {
 			evre::Result sent;
@@ -1749,16 +1767,21 @@ void IoEngine::dropOldRequests() {
 	}
 }
 
-/* as Master::findPending matches: the same slave, offset and count, and the answer the function asks for or an error */
+/* What Master::findPending matches: the same slave, offset and count, and the answer the function asks for or an error.
+ * A WRITE_ACK takes the oldest, as findPending does, for writes are answered in order and the last one's bytes must end
+ * in the write card. A READ takes the newest: it steps over a request whose answer the capture lost. */
 int IoEngine::heardRequestFor(const evre::Frame &answer) const {
-	for (int i = int(heard_.size()) - 1; i >= 0; i--) {
+	int found = -1;
+	for (int i = 0; i < heard_.size(); i++) {
 		const HeardRequest &request = heard_[i];
 		const uint8_t expected = request.fn == evre::READ ? evre::READ_RESP : evre::WRITE_ACK_RESP;
-		if (answer.slave == request.slave && answer.addr == request.addr && answer.cnt == request.cnt
-				&& (answer.fn == expected || answer.fn == evre::ERROR_RESP))
-			return i;
+		if (answer.slave != request.slave || answer.addr != request.addr || answer.cnt != request.cnt
+				|| (answer.fn != expected && answer.fn != evre::ERROR_RESP))
+			continue;
+		if (request.fn == evre::WRITE_ACK) return i;
+		found = i;
 	}
-	return -1;
+	return found;
 }
 
 bool IoEngine::takeHeardAnswer(const evre::Frame &frame) {
@@ -1768,6 +1791,7 @@ bool IoEngine::takeHeardAnswer(const evre::Frame &frame) {
 	const HeardRequest request = heard_.takeAt(index);
 	answersSinceRate_++;
 	if (monitorOn_) monitorLine("DEV->", frame.raw, evre::fnName(frame.fn));
+	if (request.fn == evre::READ && streamCount_ > 0 && request.addr == streamAddr_) endHeardStream();
 	evre::Result result;
 	if (frame.fn == evre::ERROR_RESP) {
 		result.error = frame.data.isEmpty() ? 0 : uint8_t(frame.data[0]);
@@ -1817,6 +1841,7 @@ void IoEngine::takeHeardRead(const Block &block, const evre::Frame &frame) {
 		closeRound();
 	storeBlock(block, frame.data);
 	for (const int row : block.rows) roundRows_.insert(row);
+	if (!block.rows.isEmpty()) roundTime_ = now();
 	if (!block.rows.isEmpty() && !roundTimer_->isActive()) roundTimer_->start();
 	/* the device's line, once for each thing it says: a program may well read this at every round */
 	if (frame.addr != evre::DEVICE_ID || frame.cnt < 4 || (!isBus() && frame.slave != master_->slave())) return;
@@ -1828,15 +1853,66 @@ void IoEngine::takeHeardRead(const Block &block, const evre::Frame &frame) {
 	emit deviceInfo(block.slave, true, id, status, QString());
 }
 
-/* the round's sample tick, as pollDone's: while AUTO_SEND's frames come, each of them is the tick instead */
+/* The round's sample tick, as pollDone's, at its last answer: what ends it comes a period later. While AUTO_SEND's frames
+ * are coming each of them is the tick instead, and takes the round's rows along */
 void IoEngine::closeRound() {
 	roundTimer_->stop();
-	if (roundRows_.isEmpty()) return;
+	if (roundRows_.isEmpty() || heardFramesComing()) return;
+	tickRound(roundTime_);
+}
+
+/* A point and a cell for the rows set since the last tick and for no others: a register the program no longer reads, or
+ * that the device just refused, is no news, and a flat line would say it is */
+void IoEngine::tickRound(double t) {
+	appendSamples(t, &roundRows_);
+	writeCsvRow(t, &roundRows_);
 	roundRows_.clear();
-	if (autoSendOn_ && streamCount_ > 0) return;
-	const double t = now();
-	appendSamples(t);
-	writeCsvRow(t);
+}
+
+/* AUTO_SEND is on at the device for as long as its frames say so: a program may switch it off, and nothing here hears
+ * that for certain */
+bool IoEngine::heardFramesComing() const {
+	return lastStreamFrameMs_ >= 0 && clock_.elapsed() - lastStreamFrameMs_ <= HEARD_ROUND_MS;
+}
+
+/* A READ_RESP of the read-only block that answers nothing heard: a frame of AUTO_SEND, or an answer that lost its request
+ * (a poll under way when Listen started, a capture that missed it, a late answer). One proves nothing, so it waits; a
+ * second of the same shape with no read of that block between says frames are coming, and both are taken. */
+bool IoEngine::heardFrameIsStream(const evre::Frame &frame) {
+	if (frame.addr == streamAddr_ && frame.cnt == streamCount_) return true;
+	if (frame.addr != strayFrame_.addr || frame.cnt != strayFrame_.cnt) {
+		sayStrayFrame();
+		strayFrame_ = frame;
+		strayMs_ = clock_.elapsed();
+		return false;
+	}
+	const evre::Frame first = strayFrame_;
+	strayFrame_ = evre::Frame();
+	streamAddr_ = frame.addr;
+	streamCount_ = frame.cnt;
+	rebuildBlocks();
+	if (!first.raw.isEmpty()) onUnsolicited(first); /* it waited; said already, it stays what the Monitor called it */
+	return true;
+}
+
+/* An answer's request was not heard, as for any other address. Its place stays: a stream slower than the wait here is
+ * told by its next frame */
+void IoEngine::sayStrayFrame() {
+	if (strayFrame_.raw.isEmpty()) return;
+	heardUnmatched_++;
+	if (monitorOn_) monitorLine("DEV->", strayFrame_.raw, evre::fnName(strayFrame_.fn) + tr(" (no request heard)"));
+	strayFrame_.raw.clear();
+}
+
+/* Its rows are read like any others from here on, and the Dump's frames card has stopped being true */
+void IoEngine::endHeardStream() {
+	{
+		QMutexLocker lock(&crossThreadMutex_);
+		dumpsMoved_ = dumps_.remove(dumpKey(0, streamAddr_, true)) > 0 || dumpsMoved_;
+	}
+	streamAddr_ = streamCount_ = 0;
+	lastStreamFrameMs_ = -1;
+	rebuildBlocks();
 }
 
 /* Each path the engine sends by, in the state that would make it send, however it came there. */
@@ -1915,15 +1991,18 @@ void IoEngine::startRecord(const QString &file, const QVector<RegKey> &cols, con
 	emit recordStarted(true, QString());
 }
 
-/* a register with no good value yet, or of an offline device, leaves its cell empty */
-void IoEngine::writeCsvRow(double t) {
+/* a register with no good value yet, or of an offline device, or left out of a heard round, leaves its cell empty */
+void IoEngine::writeCsvRow(double t, const QSet<int> *only) {
 	if (!csvFile_->isOpen()) return;
 	const auto &rows = table_.rows();
-	csvStream_ << QString::number(t, 'f', 6) << ',' << QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+	/* a heard round is written after it ended: its datetime says the same moment as its time_s */
+	const QDateTime when = QDateTime::currentDateTime().addMSecs(only ? qRound64((t - now()) * 1000) : 0);
+	csvStream_ << QString::number(t, 'f', 6) << ',' << when.toString(Qt::ISODateWithMs);
 	for (RegKey key : csvColumns_) {
 		csvStream_ << ',';
 		const int row = rowOfKey_.value(key, -1);
-		if (row >= 0 && rows[row].valid && !offline_.contains(rows[row].def.slave)) csvStream_ << csvCell(rows[row]);
+		if (row >= 0 && rows[row].valid && !offline_.contains(rows[row].def.slave) && (!only || only->contains(row)))
+			csvStream_ << csvCell(rows[row]);
 	}
 	csvStream_ << '\n';
 	csvRows_++;

@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* What Windows says of a COM port, for usbPcapPortState (usb_capture.h), which decides from it. Built on Windows only.
  *
- * It opens no COM port and sends nothing of its own. The registry and the device tree are only read; a hub answers
- * IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX from what it knows; only the configuration descriptor is fetched from the
- * device, by the hub, the standard request every USB host makes. None of it needs administrator rights: USBPcap's
- * control devices let anyone open them for the hub's name, and only a capture's read and write access is refused.
+ * It opens no COM port. The registry and the device tree are only read; a hub answers
+ * IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX from what it knows. Only the configuration descriptor reaches the device: the
+ * hub fetches it, the standard request every USB host makes, and only when `descriptors` asks for it, which it never
+ * does while a capture runs. None of it needs administrator rights: USBPcap's control devices let anyone open them for
+ * the hub's name, and only a capture's read and write access is refused.
  */
 #include "io/usb_capture.h"
 

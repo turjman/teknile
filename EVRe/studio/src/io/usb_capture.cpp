@@ -9,6 +9,7 @@
 #include <QtEndian>
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <memory>
 
@@ -369,6 +370,12 @@ UsbPortState usbPcapPortState(const UsbPortFacts &facts) {
 	return state;
 }
 
+bool usbPcapStillThere(const UsbPortFacts &facts, const UsbTarget &running) {
+	if (usbChainOf(facts.chain).device < 0) return false;
+	const UsbTarget seen = usbPcapPortState(facts).target;
+	return (!seen.address || seen.address == running.address) && (!seen.bus || seen.bus == running.bus);
+}
+
 QStringList usbPcapArguments(const UsbTarget &target) {
 	return { QStringLiteral("-d"), QStringLiteral("\\\\.\\USBPcap%1").arg(target.bus),
 		QStringLiteral("--devices"), QString::number(target.address),
@@ -408,20 +415,28 @@ static QHash<QString, UsbPortState> &portStatesForTests() {
 	return states;
 }
 
-UsbPortState UsbTarget::stateOf(const QString &port) {
+/* a count for the tests, on both threads a lookup runs on */
+static std::atomic<quint64> descriptorLookups{ 0 };
+
+quint64 UsbTarget::descriptorLookupsForTests() { return descriptorLookups; }
+
+UsbPortState UsbTarget::stateOf(const QString &port, bool descriptors) {
 	const auto forced = portStatesForTests().constFind(port);
-	return forced != portStatesForTests().constEnd() ? *forced : liveStateOf(port);
+	if (forced == portStatesForTests().constEnd()) return liveStateOf(port, descriptors);
+	if (descriptors) descriptorLookups++;
+	return *forced;
 }
 
 /* Where each system's answer goes: the port's USB device and endpoints (sysfs, or SetupAPI and the hub's descriptors),
  * or why not (not a USB port, the capture not installed or not readable) */
-UsbPortState UsbTarget::liveStateOf(const QString &port) {
+UsbPortState UsbTarget::liveStateOf(const QString &port, bool descriptors) {
+	if (descriptors) descriptorLookups++;
 #ifdef Q_OS_LINUX
 	/* a name with a path may be a link of /dev/serial/by-id */
 	const QString name = port.contains(QLatin1Char('/')) ? QFileInfo(port).canonicalFilePath() : port;
 	return usbmonPortState(QStringLiteral("/sys"), QStringLiteral("/dev"), name);
 #elif defined(Q_OS_WIN)
-	return usbPcapPortState(usbPcapFacts(port));
+	return usbPcapPortState(usbPcapFacts(port, descriptors));
 #else
 	Q_UNUSED(port);
 	return {};
@@ -430,9 +445,9 @@ UsbPortState UsbTarget::liveStateOf(const QString &port) {
 
 bool UsbTarget::stillThere(const UsbTarget &running) {
 #ifdef Q_OS_WIN
-	return usbPcapPortState(usbPcapFacts(running.port, false)).holds(running);
+	return usbPcapStillThere(usbPcapFacts(running.port, false), running);
 #else
-	return liveStateOf(running.port).holds(running);
+	return liveStateOf(running.port, false).holds(running);
 #endif
 }
 
@@ -446,7 +461,11 @@ UsbCapture *UsbCapture::live() {
 #endif
 }
 
-void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) { portStatesForTests().insert(port, state); }
+void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) {
+	UsbPortState forced = state;
+	forced.forced = true;
+	portStatesForTests().insert(port, forced);
+}
 
 void UsbDecoder::feed(const QByteArray &bytes, QVector<UsbEvent> &out) {
 	if (!error_.isEmpty()) return;

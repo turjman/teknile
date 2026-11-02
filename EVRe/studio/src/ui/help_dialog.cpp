@@ -91,7 +91,9 @@ not on this device yet</i>, restart the PC. USBPcap lets only an administrator c
 <b>Listen</b> Windows asks for your permission; the pill reads <i>Asking Windows for permission…</i> for as long as you
 take, and if you do not see the prompt, it may be waiting on the taskbar. Because a prompt must never come up with nobody
 there, <b>Reconnect by itself</b> does not start a capture: a lost one waits for you to press <b>Listen</b> again. Started
-with <b>Run as administrator</b> the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
+with <b>Run as administrator</b> the Studio needs no prompt, and Reconnect by itself works. To find the endpoints, the
+device's USB descriptor is read when the line looks at a port and once when <b>Listen</b> starts; while a capture runs nothing
+reaches the device. The Studio captures that
 one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. <b>Stop</b>, closing
 the Studio or a crash end the capture; Task Manager's Details tab should show no <code>USBPcapCMD.exe</code> after it.</li>
 <li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code>,
@@ -105,7 +107,8 @@ traffic of bus 2, a keyboard's too, so think before giving a shared PC this rule
 <li><b>Listen</b> starts it, <b>Stop</b> ends it. The pill reads <i>Listening · COM13 · USB CDC</i> on blue; its tooltip
 says what is heard, and what a capture may have lost.</li>
 <li>The table, the chart, the CSV and the Dump fill from the answers to the other program's reads, one chart point and one
-CSV row per round of its reads. A register it never reads stays <i>—</i>. A heard write shows in the Dump's write card and
+CSV row per round of its reads, for the registers read in that round alone: one it no longer reads gets no more points, and
+its CSV cells stay empty. A register it never reads stays <i>—</i>. A heard write shows in the Dump's write card and
 the Monitor; the table changes at the next heard read.</li>
 <li>Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor's request row,
 Auto send, a stream's Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.</li>

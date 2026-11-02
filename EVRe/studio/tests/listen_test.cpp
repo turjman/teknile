@@ -1488,7 +1488,9 @@ private slots:
 		QVERIFY(usbPcapPortState(facts).missing);
 		UsbTarget gone;
 		gone.port = missing;
+		const quint64 lookups = UsbTarget::descriptorLookupsForTests();
 		QVERIFY(!UsbTarget::stillThere(gone));
+		QCOMPARE(UsbTarget::descriptorLookupsForTests(), lookups); /* it asks the device nothing */
 		for (const QSerialPortInfo &info : QSerialPortInfo::availablePorts())
 			QVERIFY(UsbTarget::liveStateOf(info.portName()).kind != UsbPortState::NoCapture);
 #else
@@ -1927,6 +1929,37 @@ private slots:
 		QVERIFY(!usbPcapPortState(UsbPortFacts()).holds(running));
 	}
 
+	/* A running capture ends on what was seen, the node gone or the device elsewhere, never on a look that failed. What
+	 * holds would have said to a filter that did not open is the bug this guards against */
+	void pcapStillThere() {
+		const UsbTarget running = usbPcapPortState(cdcFacts()).target;
+		UsbPortFacts look = cdcFacts();
+		look.configuration.clear();
+		QVERIFY(usbPcapStillThere(look, running));
+		look.filters = QStringList(look.filters.size(), QString()); /* every filter refused the open */
+		QVERIFY(!usbPcapPortState(look).holds(running));
+		QVERIFY(usbPcapStillThere(look, running));
+		look.filters.clear();
+		QVERIFY(usbPcapStillThere(look, running));
+		look = cdcFacts();
+		look.address = 0;                                           /* its hub did not answer */
+		QVERIFY(usbPcapStillThere(look, running));
+		look = cdcFacts();
+		look.program = false;
+		look.stack.clear();
+		QVERIFY(usbPcapStillThere(look, running));
+		look = cdcFacts();
+		look.address = 7;                                           /* plugged in again */
+		QVERIFY(!usbPcapStillThere(look, running));
+		look = cdcFacts();
+		look.filters.prepend(QString());                            /* another root hub's number */
+		QVERIFY(!usbPcapStillThere(look, running));
+		QVERIFY(!usbPcapStillThere(UsbPortFacts(), running));       /* no node */
+		look = cdcFacts();
+		look.chain = { look.chain.last() };                         /* nothing of USB under the port now */
+		QVERIFY(!usbPcapStillThere(look, running));
+	}
+
 	/* The capture on the stand-in: what the decoder gives from the process's output comes out, nothing inside start(),
 	 * started with the arguments asked; a stop ends it, a kill being what does, and nothing follows */
 	void pcapCaptureHears() {
@@ -2043,17 +2076,48 @@ private slots:
 		QCOMPARE(opened, 1);
 	}
 
-	/* elevated nothing asks: opened at once, as ever */
-	void pcapCaptureElevatedOpensAtOnce() {
+	/* elevated nothing asks, and its first bytes are still what says the capture runs; only USBPcap's stream has a header
+	 * that comes at once, so a capture of a file or of usbmon goes on opening at the start */
+	void pcapCaptureElevatedOpensOnFirstBytes() {
 		const StandInOrders orders("prompt", captureFile(QStringLiteral("cdc_poll.pcap")));
 		auto *capture = new UsbPcapCapture(QCoreApplication::applicationFilePath());
 		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		QVERIFY(capture->opensOnFirstBytes());
 		evre::ListenLink link(QStringLiteral("COM13"), capture, cdcTarget());
 		int opened = 0;
 		connect(&link, &evre::Link::opened, this, [&] { opened++; });
 		link.open();
-		QCOMPARE(opened, 1);
+		QCOMPARE(opened, 0);
+		QVERIFY(link.isOpen()); /* a Stop must reach the capture while it starts */
+		QTRY_COMPARE_WITH_TIMEOUT(opened, 1, 15000);
 		link.close();
+		QCOMPARE(opened, 1);
+		QVERIFY(!FileCapture(captureFile(QStringLiteral("cdc_poll.pcap"))).opensOnFirstBytes());
+	}
+
+	/* elevated, a capture that dies before its first byte has never opened: the window's failed try, not a lost link */
+	void pcapCaptureDiesFirst_data() {
+		QTest::addColumn<QByteArray>("what");
+		QTest::newRow("the bus refused") << QByteArray("refused");
+		QTest::newRow("it says nothing") << QByteArray("silent");
+		QTest::newRow("an exit code") << QByteArray("code");
+	}
+
+	void pcapCaptureDiesFirst() {
+		QFETCH(QByteArray, what);
+		const StandInOrders orders(what);
+		auto *capture = new UsbPcapCapture(QCoreApplication::applicationFilePath());
+		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		evre::ListenLink link(QStringLiteral("COM13"), capture, cdcTarget());
+		int opened = 0;
+		QStringList closed;
+		connect(&link, &evre::Link::opened, this, [&] { opened++; });
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QTRY_COMPARE_WITH_TIMEOUT(closed.size(), 1, 15000);
+		QVERIFY(!closed.first().isEmpty());
+		QCOMPARE(opened, 0);
+		QVERIFY(!link.isOpen());
 	}
 
 	/* the prompt answered no, a worker that said nothing, and the Stop of a link still asking */

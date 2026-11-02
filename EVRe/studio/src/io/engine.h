@@ -41,7 +41,9 @@
  * every frame comes to onUnsolicited; the other program's bytes go through a parser of their own (onHeardRequest), each
  * request kept until its answer. A heard answer fills the table, the chart and the CSV as a polled one does, AUTO_SEND's
  * frames and fast blocks are taken as they always are. A heard round is the sample tick: another program's reads come
- * one by one, so an answer that would set a row already set since the last tick starts the next round.
+ * one by one, so an answer that would set a row already set since the last tick starts the next round. A tick here
+ * gives a point and a cell only to the rows set since the last one: a register no longer read has no news. AUTO_SEND's
+ * frames are the tick instead only while they are coming, and one frame nobody asked for proves nothing of them.
  *
  * Nothing is sent while listening (listening_): no login, no polls, no keep-alive, no heartbeat, no enables; the
  * window's requests are refused with a text, the API is off. Each place that could send has its own guard, and
@@ -271,8 +273,9 @@ public:
 	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
 	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
-	/* pressed: a person asked for this, so a UAC prompt may come; a try by itself must not raise one */
-	void connectListen(const QString &port, bool pressed = false);
+	/* pressed: a person asked for this, so a UAC prompt may come; a try by itself must not raise one. known: what the
+	 * window's lookup found on the port, not asked again here (it costs the device a request); a test's port needs none */
+	void connectListen(const QString &port, bool pressed = false, const UsbPortState &known = UsbPortState());
 	/* tests: that port is replayed from a file, for the device a lookup would find there */
 	void setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
 			FileCapture::Pace pace = FileCapture::AtOnce);
@@ -383,8 +386,9 @@ private:
 	void onBlockRefused(const Block &block, const evre::Result &r);
 	void splitBlock(const Block &block);
 	void pollDone();
-	void appendSamples(double t);
-	void writeCsvRow(double t);
+	/* only: these table rows and no others (a heard tick); null: every plotted row, every CSV column */
+	void appendSamples(double t, const QSet<int> *only = nullptr);
+	void writeCsvRow(double t, const QSet<int> *only = nullptr);
 	void readBack(uint8_t tableSlave, uint16_t addr, int writtenSize);
 	/* the Dump tab's store (with dumpOn_): a block's answer kept, and the replies of blocks no longer read dropped */
 	void keepDump(const Block &block, const evre::Result &r);
@@ -454,11 +458,16 @@ private:
 	void onDeviceBytes(const QByteArray &bytes);   /* the device's: only what is not a frame, the master has the frames */
 	void hearStreams();                            /* every stream taken, none switched: the device's own business */
 	void dropOldRequests();                        /* those past the timeout, or past HEARD_REQUESTS_KEPT */
-	int heardRequestFor(const evre::Frame &answer) const; /* the newest it answers; -1: none */
+	int heardRequestFor(const evre::Frame &answer) const; /* the one it answers; -1: none */
 	bool takeHeardAnswer(const evre::Frame &frame);       /* false: it answers nothing heard */
 	Block heardBlock(uint8_t slave, uint16_t addr, uint16_t count); /* the rows inside what was read */
 	void takeHeardRead(const Block &block, const evre::Frame &frame);
 	void closeRound();                             /* a point per plotted register, a CSV row */
+	void tickRound(double t);                      /* the rows set since the last tick: their points and cells */
+	bool heardFrameIsStream(const evre::Frame &frame); /* false: it waits, or it was not AUTO_SEND's */
+	bool heardFramesComing() const;                /* AUTO_SEND is in force: a frame came within HEARD_ROUND_MS */
+	void endHeardStream();                         /* the program reads the stream's block: its AUTO_SEND is over */
+	void sayStrayFrame();                          /* the frame waiting answered a request not heard: the Monitor's note */
 	void sayNotEvre(quint64 bytes);                /* the ?? line of a chunk */
 
 	/* the poll clock: a thread that sleeps to each deadline and wakes the
@@ -551,7 +560,13 @@ private:
 	QHash<quint64, Block> heardBlocks_;          /* rows by slave, address and count: a scan once, not at every answer */
 	QHash<uint8_t, quint32> heardDevices_;       /* the DEVICE_ID and STATUS last said, by table slave */
 	QSet<int> roundRows_;                        /* rows set since the last tick */
+	double roundTime_ = 0;                       /* the round's last answer: its samples' time */
 	QTimer *roundTimer_;
+	qint64 lastStreamFrameMs_ = -1;              /* AUTO_SEND's last frame heard (clock_); -1: none, or it has ended */
+	/* the read-only block, sent with no request: the whole frame until it is said (raw empty then), its place until that
+	 * block is read, for a second frame like it to prove a stream */
+	evre::Frame strayFrame_;
+	qint64 strayMs_ = 0;                         /* when it came (clock_) */
 	int requestsSinceRate_ = 0, answersSinceRate_ = 0;
 	quint64 heardUnmatched_ = 0, notEvreBytes_ = 0, capturesLost_ = 0;
 	quint64 sendAttemptsBefore_ = 0;             /* on listening links now gone */

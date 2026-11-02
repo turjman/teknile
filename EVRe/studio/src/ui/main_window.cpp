@@ -674,15 +674,17 @@ void MainWindow::connectLink() {
 		const QString port = sidebar_->serialPort();
 		if (port.isEmpty()) {
 			wantConnected_ = false;
+			showListening(QString());
 			sidebar_->showLinkError(tr("No serial port"));
 			return;
 		}
-		const UsbPortState state = UsbTarget::stateOf(port);
+		const UsbPortState state = listenState(port);
 		const QString refusal = Sidebar::listenRefusal(port, state);
-		sidebar_->showListenLine(); /* it may have changed since the port was chosen: a driver installed, a device unplugged */
+		sidebar_->showListenLine(state); /* it may have changed since the port was chosen: a driver installed, a device unplugged */
 		/* refused at Connect, as a port that is not there; a try by itself goes on: the device may be back at the next */
 		if (!refusal.isEmpty() && !retrying_) {
 			wantConnected_ = false;
+			showListening(QString());
 			logEvent(LogLevel::Warning, tr("not connected: %1").arg(refusal));
 			sidebar_->showLinkError(refusal);
 			return;
@@ -705,7 +707,7 @@ void MainWindow::connectLink() {
 		pushAutoSend();
 		stopFastStreams();
 		const bool pressed = connectPressed_;
-		engine_->post([engine = engine_, port, pressed] { engine->connectListen(port, pressed); });
+		engine_->post([engine = engine_, port, pressed, state] { engine->connectListen(port, pressed, state); });
 		if (asks) {
 			sidebar_->showAsking();
 			return;
@@ -745,6 +747,23 @@ void MainWindow::connectLink() {
 		engine_->post([engine = engine_, port, baud, baudLimited] { engine->connectSerial(port, baud, baudLimited); });
 	}
 	sidebar_->showConnecting();
+}
+
+/* What Listen can do with a port. On Windows finding the endpoints costs the device a descriptor request: one for a
+ * press. A try by itself asks only where the device is, and while that is where the press found it the endpoints are
+ * what they were; somewhere else it is a device plugged in again, and read as at a press. */
+UsbPortState MainWindow::listenState(const QString &port) {
+	if (retrying_) {
+		UsbPortState quiet = UsbTarget::stateOf(port, false);
+		if (quiet.kind != UsbPortState::Listenable) return quiet;
+		if (quiet.holds(listenTarget_) && quiet.target.vid == listenTarget_.vid && quiet.target.pid == listenTarget_.pid) {
+			quiet.target = listenTarget_;
+			return quiet;
+		}
+	}
+	const UsbPortState state = UsbTarget::stateOf(port);
+	listenTarget_ = state.target;
+	return state;
 }
 
 /* Listen on or off, from Connect to the end: everything that would send says why it cannot */

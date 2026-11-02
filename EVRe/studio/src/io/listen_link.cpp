@@ -15,7 +15,7 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 		else emit heardRequest(bytes);
 	});
 	connect(capture_, &UsbCapture::started, this, [this] {
-		if (target_.asksPermission) emit opened();
+		if (capture_->opensOnFirstBytes()) emit opened();
 	});
 	connect(capture_, &UsbCapture::dropped, this, &ListenLink::capturesLost);
 	connect(capture_, &UsbCapture::ended, this, [this](const QString &why) {
@@ -24,9 +24,10 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 	});
 }
 
-/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening. One that
- * asks a person first has opened when its first bytes say the answer was yes; it may take as long as the person does, so
- * nothing here runs a clock on it. Meanwhile isOpen() holds, for a Stop to reach the capture */
+/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening. One whose
+ * first bytes are what says it runs has opened then: that may take as long as a person answering a prompt does, so
+ * nothing here runs a clock on it, and one that fails first has never opened, so the window tries again at a failed
+ * try's pace and not a lost link's. Meanwhile isOpen() holds, for a Stop to reach the capture */
 void ListenLink::open() {
 	if (!capture_) {
 		emit closed(refusal());
@@ -34,7 +35,7 @@ void ListenLink::open() {
 	}
 	open_ = true;
 	capture_->start(target_);
-	if (!target_.asksPermission) emit opened();
+	if (!capture_->opensOnFirstBytes()) emit opened();
 }
 
 /* The window's words (Sidebar::listenRefusal): it refuses a fresh Listen itself, and a try by itself comes as far as here */

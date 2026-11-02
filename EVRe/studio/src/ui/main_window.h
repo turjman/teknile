@@ -140,6 +140,7 @@ private:
 	void toggleConnect();
 	void connectLink();
 	void retryConnect();          /* Reconnect by itself, after a lost link */
+	UsbPortState listenState(const QString &port); /* what Listen can do with it, at what the moment may ask of the device */
 	void disconnectLink();
 	void onOpened(const QString &link);
 	void onClosed(const QString &why, const QString &detail);
@@ -346,6 +347,7 @@ private:
 	bool connectPressed_ = false;   /* a person pressed Connect, now: only that may raise a UAC prompt */
 	bool listenAsks_ = false;       /* this Listen had to ask: nothing may start it again but a press */
 	/* Listen is on, from Connect until it is stopped or given up: the port, and what the pill calls it. Empty: not */
+	UsbTarget listenTarget_;        /* what the last press found: a try by itself goes on it while the device stays put */
 	QString listenPort_, listenLink_;
 	bool listening() const { return !listenPort_.isEmpty(); }
 	void showListening(const QString &port, const QString &link = QString()); /* port empty: off */

@@ -19,7 +19,8 @@
 - The Monitor marks who said what: `->DEV` the other program's request, `DEV->` the device's answer, `??` bytes that are
   no EVRe frame, *(no request heard)* on an answer nobody was heard asking for.
 - The table, the chart, the CSV and the Dump fill from the answers to the other program's reads, one chart point and
-  one CSV row per round of its reads; heard AUTO_SEND frames and fast blocks are taken as ever. A register it never reads
+  one CSV row per round of its reads, for the registers that round read; heard AUTO_SEND frames, while they come, and
+  fast blocks are taken as ever. A register it never reads
   stays `—`, with the tooltip *not read by the other program yet*. The status bar and the Polling card read *heard 120
   req/s*, the Auto send row *heard 100/s*.
 - Everything that would send is disabled while listening, each control saying why: Poll, Allow writes, Quick write, the

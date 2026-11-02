@@ -918,8 +918,10 @@ void Sidebar::showLinkChoice() {
 
 /* What can be heard on the port selected, or why not, and what to do about it */
 void Sidebar::showListenLine() {
-	if (!isListen()) return;
-	const UsbPortState state = UsbTarget::stateOf(serialPort());
+	if (isListen()) showListenLine(UsbTarget::stateOf(serialPort(), !listening_));
+}
+
+void Sidebar::showListenLine(const UsbPortState &state) {
 	QString line, why, hint, action, actionTip;
 	switch (state.kind) {
 	case UsbPortState::Listenable:
@@ -928,7 +930,8 @@ void Sidebar::showListenLine() {
 				: tr("listens to a USB-UART bridge (%1)").arg(listenLinkText(QString(), state.target));
 		why = tr("The Studio reads the USB traffic under this port and sends nothing. It sees everything on that USB "
 				"device (Help: Connecting).");
-		if (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty())
+		/* while listening the lookup leaves the endpoints out on purpose: they were not refused */
+		if (!listening_ && (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty()))
 			hint = tr("its endpoints could not be read: every bulk endpoint of the device is heard");
 		if (state.target.asksPermission) {
 			const QString asks = tr("Windows asks for your permission each time Listen is pressed");
@@ -985,7 +988,7 @@ void Sidebar::showListenLine() {
 }
 
 void Sidebar::listenActionClicked() {
-	const UsbPortState state = UsbTarget::stateOf(serialPort());
+	const UsbPortState state = UsbTarget::stateOf(serialPort(), false); /* what is missing: the device has no say in that */
 	if (state.kind == UsbPortState::NoUsbmon) {
 		QGuiApplication::clipboard()->setText(usbmonCommands(state.device));
 		emit statusMessage(tr("The commands are on the clipboard: paste them into a terminal"), 6000);
