@@ -5449,6 +5449,18 @@ private:
 			apiSaid = apiSaid || label->text().contains(QLatin1String("stopped: ") + apiStopped);
 		check(apiSaid, "the window, listening: the API card says it was stopped, and why, past the next stats");
 		check(!serve->isEnabled() && serve->toolTip() == listeningText(), "the window, listening: Serve API disabled, saying why");
+		QCheckBox *apiNetwork = nullptr, *apiWrites = nullptr, *apiDanger = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>()) {
+			if (box->text() == QLatin1String("Network (not only this PC)")) apiNetwork = box;
+			if (box->text() == QLatin1String("Allow API writes")) apiWrites = box;
+			if (box->text().startsWith(QLatin1String("including"))) apiDanger = box;
+		}
+		const auto apiBoxes = [&](bool enabled, const QString &tip) {
+			return apiNetwork && apiWrites && apiDanger && apiNetwork->isEnabled() == enabled
+					&& apiWrites->isEnabled() == enabled && !apiDanger->isEnabled()
+					&& (tip.isEmpty() || (apiNetwork->toolTip() == tip && apiWrites->toolTip() == tip && apiDanger->toolTip() == tip));
+		};
+		check(apiBoxes(false, listeningText()), "the window, listening: the API card's other boxes disabled too, saying why");
 		client.write(QByteArray::fromHex("7b01aa00a004004e217d")); /* a READ, through a pass-through that is gone */
 		const bool hungUp = QTest::qWaitFor([&] { return client.state() == QAbstractSocket::UnconnectedState; }, 2000);
 		QTcpSocket late;
@@ -5549,6 +5561,10 @@ private:
 			});
 		}, 3000);
 		check(barSays, "the status bar: heard N req/s, in place of the latency");
+		const QList<QLabel *> barLabels = window_.statusBar()->findChildren<QLabel *>();
+		check(std::any_of(barLabels.begin(), barLabels.end(), [](const QLabel *label) {
+			return label->text().startsWith(QLatin1String("TX ")) && label->toolTip().contains(QLatin1String("none while listening"));
+		}), "the status bar: TX's tooltip says it stands still while listening, and where the other program's frames are");
 
 		/* Stop */
 		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
@@ -5560,8 +5576,9 @@ private:
 				"Stop: the capture ends, the pill reads Disconnected, the button Listen");
 		check(poll->isEnabled() && poll->toolTip() == pollTipWas && interval->isEnabled() && interval->toolTip() == intervalTipWas
 						&& serve->isEnabled() && serve->toolTip() == serveTipWas && allowWrites_->isEnabled()
-						&& allowWrites_->toolTip() == allowTipWas && !allowWrites_->isChecked() && !model_->listening(),
-				"Stop: Poll, the interval, Serve API and Allow writes back, their own tooltips again, writes still off");
+						&& allowWrites_->toolTip() == allowTipWas && !allowWrites_->isChecked() && !model_->listening()
+						&& apiBoxes(true, QString()) && apiWrites->toolTip() != listeningText(),
+				"Stop: Poll, the interval, the API card and Allow writes back, their own tooltips again, writes still off");
 		bool rowBack = true;
 		for (int i = 0; i < row.size(); i++)
 			rowBack = rowBack && row[i] && row[i]->isEnabled() == rowWas[i] && row[i]->toolTip() != listeningText();

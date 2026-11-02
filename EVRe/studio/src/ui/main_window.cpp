@@ -1883,6 +1883,10 @@ void MainWindow::refreshStatus() {
 	statusLatency_->setText(stats.listening ? Sidebar::heardRateText(stats.heard.requestsHz)
 			: tr("Latency %1 ms").arg(link.avgLatencyMs, 0, 'f', 1));
 	statusTraffic_->setText(tr("TX %1 · RX %2").arg(link.tx).arg(link.rx));
+	/* TX stands still while listening, and rightly: it counts what the Studio sends, the other program's frames are heard */
+	statusTraffic_->setToolTip(stats.listening ? tr("TX: frames the Studio has sent since it started, none while listening. "
+			"RX: the device's frames. The other program's requests are heard: the rate beside this, ->DEV in the Monitor.")
+			: QString());
 	statusErrors_->setText(tr("Timeouts %1 · Errors %2 · Bad frames %3")
 			.arg(link.timeouts).arg(link.errors).arg(link.badFrames));
 	sidebar_->showStats(stats, connected_);

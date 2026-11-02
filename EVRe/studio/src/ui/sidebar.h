@@ -389,6 +389,7 @@ private:
 	QLabel *apiInfo_;
 	bool apiReasonShown_ = false; /* it says why the API is off, not that it is */
 	QString apiServeHelp_;        /* Serve API's tooltip when not listening */
+	QString apiWritesHelp_, apiDangerHelp_; /* the same for Allow API writes and its ⚠ */
 
 	QPushButton *themeButton_;
 	QComboBox *language_;         /* System, English, العربية: applied at the next start (language.h) */
