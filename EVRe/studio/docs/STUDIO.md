@@ -825,7 +825,8 @@ read of `0xA000`.
 | *not&nbsp;a&nbsp;USB&nbsp;port:&nbsp;cannot&nbsp;be&nbsp;listened&nbsp;to* | no&nbsp;USB&nbsp;under&nbsp;the&nbsp;port | The port stays in the list; Listen refuses it with the reason in the pill. |
 | *USBPcap&nbsp;is&nbsp;not&nbsp;installed* | Windows | **Get USBPcap…** opens its page. It is a capture driver, installed once as administrator; then unplug and plug the device again (the driver joins a device when it is plugged in). |
 | *USBPcap&nbsp;is&nbsp;not&nbsp;on&nbsp;this&nbsp;device&nbsp;yet* | Windows | Unplug the device and plug it in again; if that does not help, restart the PC. A second line says so. |
-| *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon` and `sudo setfacl -m u:$USER:r /dev/usbmon*`, good until the PC restarts. What lasts is below the table. |
+| *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon`, `sudo chgrp "$(id -gn)" /dev/usbmon2` and `sudo chmod g+r /dev/usbmon2`, for the port's own bus, good until the PC restarts. Whoever is in your group can then read that bus. What lasts is below the table. |
+| *not&nbsp;found:&nbsp;unplugged?* | no&nbsp;such&nbsp;port | The port is not there now: plug the device in, then the refresh button. In the pill, *COM13 not found*; with **Reconnect by itself** on it stands there until the device is back. |
 | *no&nbsp;USB&nbsp;capture&nbsp;on&nbsp;this&nbsp;system* | another&nbsp;system | Nothing can be done from the Studio. |
 | *no&nbsp;serial&nbsp;port* | no&nbsp;port&nbsp;in&nbsp;the&nbsp;list | Plug the device in, then the refresh button. |
 
@@ -887,6 +888,10 @@ sudo udevadm trigger
 And you in that group: `sudo usermod -aG dialout $USER`, then log in again. Think before doing this on a shared PC:
 `/dev/usbmon2` holds **all** the traffic of bus 2, a keyboard's too, so whoever can read it reads that. The Studio keeps
 only the port's own device and endpoints, but the rule is about the file.
+
+**Two limits on Linux.** A program that holds the tty open across an unplug brings the device back under a new name, such as
+`ttyACM1`, so a Studio listening to `ttyACM0` waits on a name that does not come back: choose the new one. And a transfer
+over 64 KiB is cut; only usbfs or libusb can make one, never a tty.
 
 **The pill** reads *Listening · COM13 · USB CDC* on a blue tint, its own (3.8): not the connected green, nothing is
 being sent. Where that does not fit it reads *Listening · COM13*, never cut. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
@@ -3600,6 +3605,8 @@ These are late answers after a timeout, echoes of the Studio's own requests on a
   and the Help's Connecting page have the steps that last. The number is the USB bus the port is on.
 - *not a USB port: cannot be listened to*: a motherboard's COM port, Bluetooth and virtual ports have no USB traffic to
   read. See 3.11.
+- *not found: unplugged?*, or *ttyACM0 not found* in the pill: the port is not there now. Plug the device in, then the
+  refresh button. On Linux, if the other program held it open, it may be back under a new name such as `ttyACM1`.
 - *no USB capture on this system*: the Studio has a capture for Windows and Linux only (3.11).
 
 ## 16. The device map format "evre-map/1"
@@ -5212,20 +5219,25 @@ without the window's refusal). A system with no capture says `NoCapture`.
 but files, so its tests run on every system. `<sys>/class/tty/ttyACM0/device` is a link to the tty's interface (one level
 deeper for `ttyUSB0`); the walk goes up to the directory with `busnum` and `devnum`, which also has `idVendor` and
 `idProduct`. `ttyACM` is USB CDC, by the driver and whatever the VID says; anything else is a bridge, FTDI by VID `0403`.
-A bridge's data is on the tty's own interface. A CDC port's tty is on the control interface: its data is on the interface
-of class `0a` nearest above it, or else nearest below (a function's interfaces are neighbours, and sysfs does not say
-which data interface is whose on a composite device). The interface's `ep_*` directories give the bulk endpoints and the
-IN endpoint's `wMaxPacketSize`; a device that gives none is heard on every bulk endpoint, and the Listen line says so.
-No such tty, or no USB device above it, is `NotUsb`; `<dev>/usbmon<bus>` missing or unreadable is `NoUsbmon`, the target
-known and the file named.
+An FTDI chip under another maker's VID is told by its interface's `driver` link, which ends in `ftdi_sio`. A bridge's data
+is on the tty's own interface. A CDC port's tty is on the control interface: its data interface is the one the Union
+descriptor names, read from `<device>/descriptors` (the 18 bytes of the device descriptor, then each configuration; the
+one whose value is `bConfigurationValue`) with `usbReadEndpoints`, as on Windows. Functions can be nested, crossed or
+data-first, and a real kernel showed the neighbours then hearing the other port's valid frames behind a good-looking line.
+Only with nothing to read does it go by the interface of class `0a` nearest above, or else nearest below, and the
+interface's `ep_*` directories, which give the bulk endpoints and the IN endpoint's `wMaxPacketSize`; a device that gives
+none is heard on every bulk endpoint, and the Listen line says so. A tty with no USB device above it is `NotUsb`; no such
+tty at all is `NotUsb` with `missing`, which reads *not found*, for it says nothing of what the port is when it is there.
+`<dev>/usbmon<bus>` missing or unreadable is `NoUsbmon`, the target known and the file named.
 
 **The live capture on Linux (`usbmon_capture`).** `UsbmonCapture` opens `/dev/usbmon<bus>` read-only and non-blocking,
 asks for a ring of 8 MiB (1200 KiB on the older kernels that refuse it, the default of 300 KiB when both fail), and a
 `QSocketNotifier` reads records with `MON_IOCX_GETX` into a 64-byte header and 64 KiB of data, at most 1024 at a turn
-of the engine's event loop. `read()` would give only the first interface's 48-byte header. A header's `len_cap` stays
+of the engine's event loop; a transfer over 64 KiB is cut there. `read()` would give only the first interface's 48-byte header. A header's `len_cap` stays
 what usbmon kept even when the buffer took less, so `fitRecord` cuts it before the decoder sees it. The ioctls are in no
 public header: they are defined locally from the kernel's `drivers/usb/mon/mon_bin.c`, as libpcap does. Every 500 ms it
-reads `MON_IOCG_STATS` for `dropped` (the lost-capture text), and asks `liveStateOf` whether the port still holds the same
+reads `MON_IOCG_STATS` for `dropped`, which is what was lost since the last ask, not a total (the kernel counts from 0
+again), so `dropped_` adds it up for the lost-capture text, and asks `liveStateOf` whether the port still holds the same
 device (`UsbPortState::holds`): usbmon hears a bus, which outlives a device, and a device plugged in again has a new
 address that a running filter would never hear. Either ends the capture with a reason, and Reconnect by itself finds the
 device afresh. A device that cannot be opened ends it too, from the event loop, as a replayed file's end does.
@@ -5245,12 +5257,14 @@ a standard request the hub makes. `usbReadEndpoints` walks the descriptor: a CDC
 one its Union descriptor names, or without one the nearest of class `0a`, and alternate settings count as one interface.
 The class decides the kind, and the VID only among the bridges; a descriptor that is cut, or a function with no bulk
 endpoint each way, is taken as not read: every bulk endpoint is heard, the Listen line says so, and the kind goes by the
-VID (`usbKindByVid`). `USBPcap`'s control devices `\\.\USBPcap1` to `32` are opened with no access, which needs no
+VID (`usbKindByVid`). An `FTDIBUS` node anywhere in the chain is FTDI's own driver, and so FTDI, under another maker's VID
+too. `USBPcap`'s control devices `\\.\USBPcap1` to `32` are opened with no access, which needs no
 rights and works beside a running capture, and `IOCTL_USBPCAP_GET_HUB_SYMLINK` (0x0022200C, defined locally from the
 driver's `USBPcap.h`, which is no public header) names each one's root hub; `usbHubLinkIs` compares that with the root
 hub's instance ID. **The filter's number is the bus**, as USBPcap itself numbers buses.
 
-`usbPcapPortState` then says, in this order: no USB device, `NotUsb`; no `USBPcapCMD.exe`, `NoUsbPcap`; no filter on the
+`usbPcapPortState` then says, in this order: no USB device, `NotUsb`, with `missing` when the port is not there at all; no
+`USBPcapCMD.exe`, `NoUsbPcap`; no filter on the
 root hub, no address, or `\Driver\USBPcap` missing from the device's `DEVPKEY_Device_Stack`, `NoFilter`; else `Listenable`.
 A system that does not give the stack is taken as having the filter. `UsbTarget::asksPermission` is set when the Studio is
 not elevated (`TokenElevation`, the test `USBPcapCMD` makes itself).
@@ -7600,7 +7614,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 979 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 980 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7934,7 +7948,7 @@ address 5 on bus 2.
 | `composite` | IN&nbsp;`0x83`,&nbsp;OUT&nbsp;`0x03` | two CDC functions on one device, the other's endpoints (`0x81`, `0x01`) carrying frames that must not be heard |
 | `cdc_quiet` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | DEVICE_ID and a block read, then an hour of nothing: at its stamps a capture that stays open, a round left unfinished |
 
-`evre_listen_test` (QtTest, no window, 72 tests) checks `src/io/usb_capture.*`, `src/io/usbpcap_capture.*` and
+`evre_listen_test` (QtTest, no window, 79 tests) checks `src/io/usb_capture.*`, `src/io/usbpcap_capture.*` and
 `src/io/listen_link.*`:
 
 - **both formats (`scenes`):** every scene gives the same events from its `.pcap` and its `.usbmon`, only the
@@ -7962,8 +7976,8 @@ address 5 on bus 2.
   `heardRequest`, the capture's end as `closed` with its reason (`linkBothWays`); `close()` stops the capture, no reason
   given (`linkClosed`); no capture: refused in plain words, and `send()` counted, said once (`linkWithoutCapture`); the
   captures the system lost (`linkLostCaptures`)
-- **a port with no capture (`linkRefused`, `linkPressNeeded`):** each state's reason, in the window's words, and what a
-  target that asks says with no press
+- **a port with no capture (`linkRefused`, `linkPressNeeded`, `linkPortMissing`):** each state's reason, in the window's
+  words, what a target that asks says with no press, and a port that is not there
 - **a port to its device (`sysfs...`, on every system):** `FakeSysfs` lays out a `/sys` and a `/dev` in a `QTemporaryDir`:
   real links and colons where the system has them, on Windows a table for the links and `_` for the colon. A USB CDC
   port by its name and by `/dev/ttyACM0`, the interrupt endpoint left out (`sysfsCdc`); four bridges, the tty a level
@@ -7974,6 +7988,11 @@ address 5 on bus 2.
   (`sysfsMissing`); no bulk endpoint, no data interface (`sysfsNoBulk`); the bus's file missing, another bus's, and on
   Unix one that cannot be read (`sysfsNoUsbmon`); the same device, plugged in again on another address, the tty gone
   (`sysfsHolds`)
+- **the descriptors on Linux (`sysfsUnion`, `sysfsConfigurations`, `sysfsCdcVendorClass`):** two CDC functions in order,
+  nested, crossed and data-first, each port its own endpoints; the active configuration and not the first, the file cut or
+  without it the neighbours' guess; `ttyACM` stays USB CDC on a vendor's class
+- **an FTDI chip under another VID (`sysfsFtdiByDriver`, `pcapStateFtdiBus`):** by the `driver` link on Linux, by an `FTDIBUS`
+  node on Windows, and the same VID with neither is no FTDI
 - **the system's answer (`systemAnswer`):** a forced state wins, `NoCapture` too, and `liveStateOf` is under it
 - **the live source (`liveCapture`, Linux):** without hardware, a bus nobody has: nothing inside `start()`, nothing after
   `stop()`, the reason from the event loop and once. On Windows it is only made, never started: the real `USBPcapCMD`
@@ -7992,7 +8011,8 @@ address 5 on bus 2.
   motherboard's port, a virtual pair, a root hub alone; USBPcap's name for a hub against an instance ID
 - **USBPcapCMD (`pcapArguments`, `pcapEndReason`, `pcapProgramBeside`):** the arguments, never `-A`; each reason, what it
   said first; the program beside the registry's uninstaller
-- **the facts to a state (`pcapState...`, `pcapHolds`):** the target whole, the bus by the filter's number, a number
+- **the facts to a state (`pcapState...`, `pcapHolds`):** a port that is not there and one with no USB under it
+  (`pcapStateMissing`); the target whole, the bus by the filter's number, a number
   missing after a dock went; the descriptor not read or cut, the kind by the VID; each refusal and which wins when
   several hold; a stack not given; the address that decides `holds`, the light lookup holding
 - **the capture on a stand-in (`pcapCapture...`, on every system):** the test program started again in place of

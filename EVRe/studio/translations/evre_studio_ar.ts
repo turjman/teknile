@@ -4095,8 +4095,9 @@ there, &lt;b&gt;Reconnect by itself&lt;/b&gt; does not start a capture: a lost o
 with &lt;b&gt;Run as administrator&lt;/b&gt; the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
 one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. &lt;b&gt;Stop&lt;/b&gt;, closing
 the Studio or a crash end the capture; Task Manager&apos;s Details tab should show no &lt;code&gt;USBPcapCMD.exe&lt;/code&gt; after it.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;, good until the PC restarts. What lasts takes three steps. The
+&lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt;,
+&lt;code&gt;sudo chgrp &quot;$(id -gn)&quot; /dev/usbmon2&lt;/code&gt; and &lt;code&gt;sudo chmod g+r /dev/usbmon2&lt;/code&gt;, for the port&apos;s own bus, good
+until the PC restarts. What lasts takes three steps. The
 module at every start: &lt;code&gt;usbmon&lt;/code&gt; in &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. The udev rule:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; in &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;, then
 &lt;code&gt;sudo udevadm control --reload&lt;/code&gt; and &lt;code&gt;sudo udevadm trigger&lt;/code&gt;. You in the group:
@@ -4210,8 +4211,9 @@ or this link does not). Not an error.&lt;/li&gt;
 الاستوديو بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt; فلا حاجة إلى نافذة الطلب، وتعمل إعادة الاتصال تلقائيًا. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل
 كله أبدًا، ولا يشغل الناقل إلا التقاط واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا. و&lt;b&gt;إيقاف&lt;/b&gt; أو إغلاق الاستوديو أو تعطّله ينهي
 الالتقاط؛ ويجب ألا يظهر ⁦&lt;code&gt;USBPcapCMD.exe&lt;/code&gt;⁩ بعده في تبويب «التفاصيل» في إدارة المهام.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;، وهما صالحان حتى إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
+&lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
+&lt;code&gt;sudo chgrp &quot;$(id -gn)&quot; /dev/usbmon2&lt;/code&gt; و&lt;code&gt;sudo chmod g+r /dev/usbmon2&lt;/code&gt;، لناقل المنفذ نفسه، وهي صالحة حتى
+إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم
 &lt;code&gt;sudo udevadm control --reload&lt;/code&gt; و&lt;code&gt;sudo udevadm trigger&lt;/code&gt;. وأنت في المجموعة:
 &lt;code&gt;sudo usermod -aG dialout $USER&lt;/code&gt;، ثم سجّل الدخول من جديد. من يقرأ &lt;code&gt;/dev/usbmon2&lt;/code&gt; يقرأ كل حركة الناقل 2، حتى حركة لوحة المفاتيح، ففكّر قبل وضع هذه القاعدة على حاسوب مشترك.&lt;/li&gt;
@@ -4446,6 +4448,10 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
     <message>
         <source>press Listen: Windows asks for permission first</source>
         <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
     </message>
 </context>
 <context>
@@ -8794,6 +8800,18 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <source>Asking Windows…</source>
         <translation>يطلب الإذن…</translation>
     </message>
+    <message>
+        <source>not found: unplugged?</source>
+        <translation>غير موجود: هل فُصل؟</translation>
+    </message>
+    <message>
+        <source>This port is not there now: plug the device in, then press the refresh button.</source>
+        <translation>هذا المنفذ غير موجود الآن: صِل الجهاز، ثم اضغط زر التحديث.</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
+    </message>
 </context>
 <context>
     <name>TcpLink</name>
@@ -8900,6 +8918,10 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>press Listen: Windows asks for permission first</source>
         <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
     </message>
 </context>
 <context>

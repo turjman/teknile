@@ -105,8 +105,9 @@ void UsbmonCapture::look() {
 		return;
 	}
 	MonBinStats stats{};
-	if (::ioctl(file_, MON_IOCG_STATS, &stats) == 0 && stats.dropped != dropped_) {
-		dropped_ = stats.dropped;
+	/* the kernel hands over what it lost since the last ask and counts from 0 again: the total is ours */
+	if (::ioctl(file_, MON_IOCG_STATS, &stats) == 0 && stats.dropped) {
+		dropped_ += stats.dropped;
 		emit dropped(dropped_);
 		if (file_ < 0) return;
 	}

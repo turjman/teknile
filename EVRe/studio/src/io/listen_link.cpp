@@ -40,7 +40,8 @@ void ListenLink::open() {
 /* The window's words (Sidebar::listenRefusal): it refuses a fresh Listen itself, and a try by itself comes as far as here */
 QString ListenLink::refusal() const {
 	switch (refused_.kind) {
-	case UsbPortState::NotUsb: return tr("%1 is not a USB port: it cannot be listened to").arg(port_);
+	case UsbPortState::NotUsb:
+		return refused_.missing ? tr("%1 not found").arg(port_) : tr("%1 is not a USB port: it cannot be listened to").arg(port_);
 	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
 	case UsbPortState::NoUsbmon: return tr("usbmon is not loaded or %1 is not readable").arg(refused_.device);
 	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");

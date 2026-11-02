@@ -94,8 +94,9 @@ there, <b>Reconnect by itself</b> does not start a capture: a lost one waits for
 with <b>Run as administrator</b> the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
 one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. <b>Stop</b>, closing
 the Studio or a crash end the capture; Task Manager's Details tab should show no <code>USBPcapCMD.exe</code> after it.</li>
-<li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
-<code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>, good until the PC restarts. What lasts takes three steps. The
+<li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code>,
+<code>sudo chgrp "$(id -gn)" /dev/usbmon2</code> and <code>sudo chmod g+r /dev/usbmon2</code>, for the port's own bus, good
+until the PC restarts. What lasts takes three steps. The
 module at every start: <code>usbmon</code> in <code>/etc/modules-load.d/usbmon.conf</code>. The udev rule:
 <code>SUBSYSTEM=="usbmon", GROUP="dialout", MODE="0640"</code> in <code>/etc/udev/rules.d/60-usbmon.rules</code>, then
 <code>sudo udevadm control --reload</code> and <code>sudo udevadm trigger</code>. You in the group:

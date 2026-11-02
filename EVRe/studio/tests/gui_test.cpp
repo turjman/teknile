@@ -4655,7 +4655,7 @@ private:
 		listenTo(QStringLiteral("COM999"));
 		if (connectButton()) connectButton()->click();
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
-		const QLatin1String nothingHeard("not connected: COM999 is not a USB port: it cannot be listened to");
+		const QLatin1String nothingHeard("not connected: COM999 not found");
 #else
 		const QLatin1String nothingHeard("not connected: COM999 cannot be listened to: no USB capture on this system");
 #endif
@@ -4957,8 +4957,10 @@ private:
 		bridge.vid = 0x0403;
 		bridge.pid = 0x6001;
 		bridge.kind = UsbTarget::Ftdi;
-		UsbPortState notUsb, noUsbPcap, noUsbmon, noFilter;
+		UsbPortState notUsb, noUsbPcap, noUsbmon, noFilter, missing;
 		notUsb.kind = UsbPortState::NotUsb;
+		missing.kind = UsbPortState::NotUsb;
+		missing.missing = true;
 		noUsbPcap.kind = UsbPortState::NoUsbPcap;
 		noUsbmon.kind = UsbPortState::NoUsbmon;
 		noFilter.kind = UsbPortState::NoFilter;
@@ -4976,7 +4978,8 @@ private:
 			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() },
 			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints },
 			{ QStringLiteral("nofilter"), QStringLiteral("COM28"), noFilter },
-			{ QStringLiteral("asks"), QStringLiteral("COM29"), listenableState(asking) } };
+			{ QStringLiteral("asks"), QStringLiteral("COM29"), listenableState(asking) },
+			{ QStringLiteral("missing"), QStringLiteral("COM30"), missing } };
 		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
 		return cases;
 	}
@@ -5096,7 +5099,7 @@ private:
 		QSignalSpy said(&card, &Sidebar::statusMessage);
 		action->click();
 		const QString commands = QGuiApplication::clipboard()->text();
-		check(commands == QLatin1String("sudo modprobe usbmon\nsudo setfacl -m u:$USER:r /dev/usbmon*") && said.count() == 1
+		check(commands == QLatin1String("sudo modprobe usbmon\nsudo chgrp \"$(id -gn)\" /dev/usbmon2\nsudo chmod g+r /dev/usbmon2") && said.count() == 1
 						&& action->toolTip().contains(commands), "Copy the commands: on the clipboard, said, and in its tooltip");
 		choose(5);
 		check(line->fullText() == QLatin1String("no USB capture on this system") && warns() && !action->isVisible() && !hint->isVisible(),
@@ -5124,6 +5127,11 @@ private:
 		check(hint->fullText().contains(QLatin1String("Windows asks")) && hint->fullText().contains(QLatin1String("could not be read")) && !hint->isCut(),
 				"the Listen line: asking and endpoints not read: the second line says both, whole");
 		UsbTarget::stateForTests(cases[8].port, cases[8].state);
+		choose(9);
+		check(line->fullText() == QLatin1String("not found: unplugged?") && warns() && !hint->isVisible() && !action->isVisible()
+						&& line->toolTip().contains(QLatin1String("refresh button"))
+						&& Sidebar::listenRefusal(QStringLiteral("COM13"), cases[9].state) == QLatin1String("COM13 not found"),
+				"the Listen line: a port that is gone reads as gone, not as a port that is no USB one, and the pill says the same");
 		check(Sidebar::listenRefusal(QStringLiteral("COM13"), cases[7].state) == QLatin1String("USBPcap is not on this device yet")
 						&& Sidebar::listenRefusal(QStringLiteral("COM13"), cases[8].state).isEmpty(),
 				"the pill's refusal says the Listen line's words, and a port that asks is no refusal");

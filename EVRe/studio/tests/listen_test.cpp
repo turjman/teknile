@@ -277,6 +277,26 @@ public:
 		endpoint(interface, out, "Bulk", maxPacket);
 	}
 
+	/* the descriptors file the kernel keeps: the device descriptor, then each configuration */
+	void descriptors(const QString &device, int active, const QByteArray &configurations) {
+		QFile out(device + QStringLiteral("/descriptors"));
+		QVERIFY(out.open(QIODevice::WriteOnly));
+		out.write(QByteArray(18, '\1') + configurations);
+		out.close();
+		write(device, "bConfigurationValue", QByteArray::number(active));
+	}
+
+	/* the driver bound to an interface: the link /sys keeps */
+	void driver(const QString &interface, const QString &name) {
+		const QString target = sys_ + QStringLiteral("/bus/usb-serial/drivers/") + name;
+		QDir().mkpath(target);
+#ifdef Q_OS_WIN
+		links_.insert(interface + QStringLiteral("/driver"), target);
+#else
+		QVERIFY(QFile::link(target, interface + QStringLiteral("/driver")));
+#endif
+	}
+
 	/* the tty and its link; an empty target: a tty with no device under it */
 	void tty(const QString &name, const QString &target) {
 		const QString dir = sys_ + QStringLiteral("/class/tty/") + name;
@@ -1080,6 +1100,19 @@ private slots:
 		QTest::newRow("no capture") << int(UsbPortState::NoCapture) << QStringLiteral("ttyS0 cannot be listened to: no USB capture on this system");
 	}
 
+	/* a port that is not there is said as that: with Reconnect by itself on, this is what stands in the pill until it is back */
+	void linkPortMissing() {
+		UsbPortState state;
+		state.kind = UsbPortState::NotUsb;
+		state.missing = true;
+		evre::ListenLink link(QStringLiteral("ttyACM0"), nullptr, UsbTarget());
+		link.setRefused(state);
+		QStringList closed;
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QCOMPARE(closed, QStringList{ QStringLiteral("ttyACM0 not found") });
+	}
+
 	void linkRefused() {
 		QFETCH(int, kind);
 		QFETCH(QString, said);
@@ -1211,6 +1244,106 @@ private slots:
 		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.inEndpoints, QVector<int>{ 0x81 });
 	}
 
+	/* Two CDC functions whose interfaces are not neighbours in order: the Union descriptor says whose is whose, and the
+	 * neighbours would hear the other port's valid frames behind a good-looking line. Each port by its control interface */
+	void sysfsUnion_data() {
+		QTest::addColumn<QByteArray>("body");
+		QTest::addColumn<QByteArrayList>("interfaces");     /* class, in the order of their numbers */
+		QTest::addColumn<int>("firstControl");
+		QTest::addColumn<int>("secondControl");
+		const auto control = [](int number, int data, int notify) {
+			return interfaceDescriptor(number, 2) + unionDescriptor(number, data) + endpointDescriptor(notify, 3, 8);
+		};
+		const auto data = [](int number, int in, int out) { return interfaceDescriptor(number, 0x0A) + bulkPair(in, out, 64); };
+		const QByteArray cc("02"), dd("0a");
+		QTest::newRow("in order") << (control(0, 1, 0x84) + data(1, 0x81, 0x01) + control(2, 3, 0x85) + data(3, 0x83, 0x03))
+				<< QByteArrayList{ cc, dd, cc, dd } << 0 << 2;
+		QTest::newRow("nested") << (control(0, 3, 0x84) + control(1, 2, 0x85) + data(2, 0x83, 0x03) + data(3, 0x81, 0x01))
+				<< QByteArrayList{ cc, cc, dd, dd } << 0 << 1;
+		QTest::newRow("crossed") << (control(0, 2, 0x84) + control(1, 3, 0x85) + data(2, 0x81, 0x01) + data(3, 0x83, 0x03))
+				<< QByteArrayList{ cc, cc, dd, dd } << 0 << 1;
+		QTest::newRow("data first") << (data(0, 0x81, 0x01) + control(1, 0, 0x84) + data(2, 0x83, 0x03) + control(3, 2, 0x85))
+				<< QByteArrayList{ dd, cc, dd, cc } << 1 << 3;
+	}
+
+	void sysfsUnion() {
+		QFETCH(QByteArray, body);
+		QFETCH(QByteArrayList, interfaces);
+		QFETCH(int, firstControl);
+		QFETCH(int, secondControl);
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-6"), 2, 8, "1234", "0001");
+		sys.descriptors(device, 1, configurationOf(body));
+		QString dirs[4];
+		for (int i = 0; i < 4; i++) dirs[i] = sys.interface(device, i, interfaces[i].constData());
+		sys.tty(QStringLiteral("ttyACM0"), dirs[firstControl]);
+		sys.tty(QStringLiteral("ttyACM1"), dirs[secondControl]);
+		sys.usbmon(2);
+		const UsbPortState first = sys.state(QStringLiteral("ttyACM0")), second = sys.state(QStringLiteral("ttyACM1"));
+		QCOMPARE(first.kind, UsbPortState::Listenable);
+		QCOMPARE(first.target.kind, UsbTarget::Cdc);
+		QCOMPARE(first.target.inEndpoints, QVector<int>{ 0x81 });
+		QCOMPARE(first.target.outEndpoints, QVector<int>{ 0x01 });
+		QCOMPARE(second.target.inEndpoints, QVector<int>{ 0x83 });
+		QCOMPARE(second.target.outEndpoints, QVector<int>{ 0x03 });
+		QCOMPARE(second.target.inMaxPacket, 64);
+	}
+
+	/* the active configuration, not the first; and a file cut or too short leaves the neighbours' guess */
+	void sysfsConfigurations() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-7"), 2, 9, "1234", "0001");
+		const auto config = [](int value, int in, int out) {
+			QByteArray bytes = configurationOf(cdcFunction(0, 0x82, in, out));
+			bytes[5] = char(value);
+			return bytes;
+		};
+		sys.descriptors(device, 2, config(1, 0x83, 0x03) + config(2, 0x81, 0x01));
+		const QString control = sys.interface(device, 0, "02");
+		sys.bulkPair(sys.interface(device, 1, "0a"), 0x85, 0x05, "0040");
+		sys.tty(QStringLiteral("ttyACM0"), control);
+		sys.usbmon(2);
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.inEndpoints, QVector<int>{ 0x81 });
+		sys.descriptors(device, 3, config(1, 0x83, 0x03));              /* no such configuration */
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.inEndpoints, QVector<int>{ 0x85 });
+		sys.descriptors(device, 1, config(1, 0x83, 0x03).left(20));     /* cut */
+		QCOMPARE(sys.state(QStringLiteral("ttyACM0")).target.inEndpoints, QVector<int>{ 0x85 });
+	}
+
+	/* ttyACM stays USB CDC when the descriptors say a vendor's class: the driver decides, as ever */
+	void sysfsCdcVendorClass() {
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("2-8"), 2, 10, "1234", "0001");
+		sys.descriptors(device, 1, configurationOf(interfaceDescriptor(0, 0xFF) + bulkPair(0x81, 0x01, 64)));
+		const QString own = sys.interface(device, 0, "ff");
+		sys.tty(QStringLiteral("ttyACM0"), own);
+		sys.usbmon(2);
+		const UsbPortState state = sys.state(QStringLiteral("ttyACM0"));
+		QCOMPARE(state.target.kind, UsbTarget::Cdc);
+		QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 });
+	}
+
+	/* an FTDI chip under another maker's VID: the driver says so, and its status bytes must come off */
+	void sysfsFtdiByDriver_data() {
+		QTest::addColumn<QString>("driver");
+		QTest::addColumn<int>("kind");
+		QTest::newRow("ftdi_sio") << QStringLiteral("ftdi_sio") << int(UsbTarget::Ftdi);
+		QTest::newRow("another driver") << QStringLiteral("cp210x") << int(UsbTarget::OtherBridge);
+	}
+
+	void sysfsFtdiByDriver() {
+		QFETCH(QString, driver);
+		QFETCH(int, kind);
+		FakeSysfs sys;
+		const QString device = sys.device(QStringLiteral("1-3"), 1, 7, "0856", "ac01");
+		const QString own = sys.interface(device, 0, "ff");
+		sys.bulkPair(own, 0x81, 0x02, "0040");
+		sys.driver(own, driver);
+		sys.tty(QStringLiteral("ttyUSB0"), own + QStringLiteral("/ttyUSB0"));
+		sys.usbmon(1);
+		QCOMPARE(int(sys.state(QStringLiteral("ttyUSB0")).target.kind), kind);
+	}
+
 	/* a tty with no USB device above it, or with no device at all, or none: no USB traffic to read */
 	void sysfsNotUsb() {
 		FakeSysfs sys;
@@ -1220,6 +1353,9 @@ private slots:
 		sys.usbmon(2);
 		QCOMPARE(sys.state(QStringLiteral("ttyS0")).kind, UsbPortState::NotUsb);
 		QCOMPARE(sys.state(QStringLiteral("tty1")).kind, UsbPortState::NotUsb);
+		QVERIFY(!sys.state(QStringLiteral("ttyS0")).missing); /* these are there: what they are is the news */
+		QVERIFY(!sys.state(QStringLiteral("tty1")).missing);
+		QVERIFY(sys.state(QStringLiteral("ttyACM7")).missing);
 	}
 
 	void sysfsMissing() {
@@ -1349,6 +1485,7 @@ private slots:
 		const UsbPortFacts facts = usbPcapFacts(missing);
 		QVERIFY(facts.chain.isEmpty());
 		QCOMPARE(usbPcapPortState(facts).kind, UsbPortState::NotUsb);
+		QVERIFY(usbPcapPortState(facts).missing);
 		UsbTarget gone;
 		gone.port = missing;
 		QVERIFY(!UsbTarget::stillThere(gone));
@@ -1743,6 +1880,32 @@ private slots:
 		QVERIFY(state.target.asksPermission);
 		QCOMPARE(state.target.bus, 2);
 		QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 });
+	}
+
+	/* a chip of FTDI's under another maker's VID: FTDI's own bus driver in the chain says so, and its status bytes must come
+	 * off, whatever the descriptor's vendor class leaves it as */
+	void pcapStateFtdiBus() {
+		UsbPortFacts facts = cdcFacts();
+		facts.chain.prepend(QStringLiteral("FTDIBUS\\VID_0856+PID_AC01+A1A\\0000"));
+		facts.chain[1] = QStringLiteral("USB\\VID_0856&PID_AC01\\A1");
+		facts.configuration = configurationOf(interfaceDescriptor(0, 0xFF) + bulkPair(0x81, 0x02, 64));
+		QCOMPARE(usbPcapPortState(facts).target.kind, UsbTarget::Ftdi);
+		facts.configuration.clear();
+		QCOMPARE(usbPcapPortState(facts).target.kind, UsbTarget::Ftdi);
+		facts.chain.removeFirst(); /* the same VID with no bus of FTDI's is no FTDI */
+		facts.configuration = configurationOf(interfaceDescriptor(0, 0xFF) + bulkPair(0x81, 0x02, 64));
+		QCOMPARE(usbPcapPortState(facts).target.kind, UsbTarget::OtherBridge);
+	}
+
+	/* a COM port that is not there says that; one that is there and has no USB under it, what it is */
+	void pcapStateMissing() {
+		UsbPortFacts facts;
+		facts.port = QStringLiteral("COM13");
+		QCOMPARE(usbPcapPortState(facts).kind, UsbPortState::NotUsb);
+		QVERIFY(usbPcapPortState(facts).missing);
+		facts.chain = { QStringLiteral("ACPI\\PNP0501\\0"), QStringLiteral("HTREE\\ROOT\\0") };
+		QVERIFY(!usbPcapPortState(facts).missing);
+		QVERIFY(!usbPcapPortState(cdcFacts()).missing);
 	}
 
 	/* a system that does not say the stack is no sign the filter is missing */

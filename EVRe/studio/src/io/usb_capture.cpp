@@ -116,6 +116,21 @@ QString cdcDataInterface(const QString &device, const QString &own) {
 	return found;
 }
 
+/* The active configuration as the device sent it: 18 bytes of device descriptor, then each configuration in turn */
+QByteArray sysfsConfiguration(const QString &device) {
+	QFile in(device + QLatin1String("/descriptors"));
+	if (!in.open(QIODevice::ReadOnly)) return {};
+	const QByteArray all = in.readAll();
+	const int active = sysfsNumber(device + QLatin1String("/bConfigurationValue"), 10);
+	for (int at = 18; at + 9 <= all.size(); ) {
+		const int total = little<quint16>(all.constData() + at + 2);
+		if (total < 9) break;
+		if (uchar(all[at + 5]) == active) return all.mid(at, total);
+		at += total;
+	}
+	return {};
+}
+
 /* the interface's bulk endpoints; what its interrupt endpoint says of the line is not the data */
 void readBulkEndpoints(const QString &interface, UsbTarget &target) {
 	const QStringList names = QDir(interface).entryList({ QStringLiteral("ep_*") }, QDir::Dirs, QDir::Name);
@@ -139,9 +154,12 @@ UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QStri
 	state.kind = UsbPortState::NotUsb;
 	const QString tty = QFileInfo(port).fileName();
 	if (tty.isEmpty()) return state;
-	const QString link = sys + QLatin1String("/class/tty/") + tty + QLatin1String("/device");
+	const QString ttyDir = sys + QLatin1String("/class/tty/") + tty;
+	const QString link = ttyDir + QLatin1String("/device");
+	const auto follow = [&links](const QString &file) { return links.contains(file) ? links.value(file) : QFileInfo(file).canonicalFilePath(); };
+	state.missing = !links.contains(link) && !QFileInfo::exists(ttyDir);
 	/* no such tty, or a tty with no device under it: a virtual one, a Bluetooth one */
-	const QString start = links.contains(link) ? links.value(link) : QFileInfo(link).canonicalFilePath();
+	const QString start = follow(link);
 	if (start.isEmpty()) return state;
 	QString own;
 	const QString device = usbDeviceAbove(start, own);
@@ -155,8 +173,13 @@ UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QStri
 	target.pid = quint16(sysfsNumber(device + QLatin1String("/idProduct"), 16));
 	/* the driver's name decides, not the VID: ttyACM is cdc-acm, whose bulk data has no framing whoever made the chip */
 	const bool cdc = tty.startsWith(QLatin1String("ttyACM"));
-	target.kind = cdc ? UsbTarget::Cdc : target.vid == FTDI_VID ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
-	readBulkEndpoints(cdc ? cdcDataInterface(device, own) : own, target);
+	/* A CDC port's data interface is the one its Union descriptor names, wherever that is: functions can be nested,
+	 * crossed or data-first, and then the neighbours are another port's. They are the guess when there is nothing to read */
+	if (!cdc || !usbReadEndpoints(sysfsConfiguration(device), sysfsNumber(own + QLatin1String("/bInterfaceNumber"), 16), target))
+		readBulkEndpoints(cdc ? cdcDataInterface(device, own) : own, target);
+	/* ftdi_sio takes FTDI chips under other makers' VIDs too */
+	const bool ftdi = target.vid == FTDI_VID || follow(own + QLatin1String("/driver")).endsWith(QLatin1String("/ftdi_sio"));
+	target.kind = cdc ? UsbTarget::Cdc : ftdi ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
 
 	const QFileInfo capture(dev + QLatin1String("/usbmon") + QString::number(target.bus));
 	const bool readable = capture.exists() && capture.isReadable();
@@ -319,6 +342,7 @@ UsbPortState usbPcapPortState(const UsbPortFacts &facts) {
 	UsbPortState state;
 	state.kind = UsbPortState::NotUsb;
 	const UsbChain chain = usbChainOf(facts.chain);
+	state.missing = facts.chain.isEmpty();
 	if (chain.device < 0) return state;
 
 	UsbTarget &target = state.target;
@@ -328,6 +352,9 @@ UsbPortState usbPcapPortState(const UsbPortFacts &facts) {
 	target.vid = instanceField(device, QLatin1String("VID_"));
 	target.pid = instanceField(device, QLatin1String("PID_"));
 	if (!usbReadEndpoints(facts.configuration, chain.firstInterface, target)) target.kind = usbKindByVid(target.vid);
+	/* FTDI's driver makes a bus of its own, for chips under other makers' VIDs too */
+	for (const QString &node : facts.chain)
+		if (enumeratedBy(node, QLatin1String("FTDIBUS"))) target.kind = UsbTarget::Ftdi;
 	/* USBPcap numbers its buses by its root hubs' filters, and the number is what a capture opens */
 	for (int i = 0; i < facts.filters.size() && !target.bus; i++)
 		if (usbHubLinkIs(facts.filters[i], facts.chain[chain.rootHub])) target.bus = i + 1;

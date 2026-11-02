@@ -80,6 +80,7 @@ struct UsbPortState {
 	Kind kind = NoCapture;
 	UsbTarget target;           /* Listenable: what to listen to; else as far as it is known */
 	QString device;             /* NoUsbmon: the file that cannot be read, /dev/usbmon2 */
+	bool missing = false;       /* NotUsb: no such port at all, which says nothing of what it is when it is there */
 
 	/* still the device a capture was started on? Plugged in again it has a new address, which a filter on the old one
 	 * would never hear */
@@ -93,7 +94,9 @@ struct UsbPortState {
  *   <sys>/class/tty/ttyACM0/device  -> .../usb2/2-3/2-3:1.0              a link to the tty's interface
  *   <sys>/class/tty/ttyUSB0/device  -> .../usb2/2-1/2-1:1.0/ttyUSB0      a bridge's: one level more
  *   .../usb2/2-3                    busnum, devnum, idVendor, idProduct: the walk up ends here
- *   .../usb2/2-3/2-3:1.1            bInterfaceClass, bInterfaceNumber, ep_81/, ep_01/
+ *   .../usb2/2-3/descriptors        the device descriptor, then each configuration: a CDC port's own data interface
+ *   .../usb2/2-3/bConfigurationValue  which configuration is the active one
+ *   .../usb2/2-3/2-3:1.1            bInterfaceClass, bInterfaceNumber, ep_81/, ep_01/, driver -> .../ftdi_sio
  *   .../ep_81                       bEndpointAddress, type, wMaxPacketSize
  *
  * Nothing here needs Linux, so the tests run on every system; but a link cannot be made everywhere, nor an interface's

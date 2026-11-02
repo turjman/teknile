@@ -48,7 +48,10 @@
 static const QString NOT_LOGGED_KEY = QStringLiteral("fast/notLogged"); /* the streams whose Log is off, by name */
 static const QString SERIAL_KIND_KEY = QStringLiteral("link/serialKind"); /* auto, cdc or uart */
 static const QString USBPCAP_PAGE = QStringLiteral("https://desowin.org/usbpcap/");
-static const QString USBMON_COMMANDS = QStringLiteral("sudo modprobe usbmon\nsudo setfacl -m u:$USER:r /dev/usbmon*");
+/* chgrp and chmod are on every system, and setfacl is not on a stock Ubuntu */
+static QString usbmonCommands(const QString &device) {
+	return QStringLiteral("sudo modprobe usbmon\nsudo chgrp \"$(id -gn)\" %1\nsudo chmod g+r %1").arg(device);
+}
 
 namespace {
 
@@ -937,6 +940,11 @@ void Sidebar::showListenLine() {
 			line = tr("no serial port");
 			break;
 		}
+		if (state.missing) {
+			line = tr("not found: unplugged?");
+			why = tr("This port is not there now: plug the device in, then press the refresh button.");
+			break;
+		}
 		line = tr("not a USB port: cannot be listened to");
 		why = tr("Listen reads the USB traffic under a port. A motherboard's COM port, a Bluetooth or a virtual port has "
 				"none.");
@@ -951,7 +959,7 @@ void Sidebar::showListenLine() {
 		line = listenRefusal(QString(), state);
 		why = tr("The system's USB capture. Help: Connecting has the rule that lasts.");
 		action = tr("Copy the commands");
-		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + USBMON_COMMANDS;
+		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + usbmonCommands(state.device);
 		break;
 	case UsbPortState::NoFilter:
 		line = listenRefusal(QString(), state);
@@ -977,8 +985,9 @@ void Sidebar::showListenLine() {
 }
 
 void Sidebar::listenActionClicked() {
-	if (UsbTarget::stateOf(serialPort()).kind == UsbPortState::NoUsbmon) {
-		QGuiApplication::clipboard()->setText(USBMON_COMMANDS);
+	const UsbPortState state = UsbTarget::stateOf(serialPort());
+	if (state.kind == UsbPortState::NoUsbmon) {
+		QGuiApplication::clipboard()->setText(usbmonCommands(state.device));
 		emit statusMessage(tr("The commands are on the clipboard: paste them into a terminal"), 6000);
 	} else {
 		QDesktopServices::openUrl(QUrl(USBPCAP_PAGE));
@@ -1001,7 +1010,8 @@ QString Sidebar::listenRefusal(const QString &port, const UsbPortState &state) {
 	const QString name = ltrPiece(port);
 	switch (state.kind) {
 	case UsbPortState::Listenable: return {};
-	case UsbPortState::NotUsb: return tr("%1 is not a USB port: it cannot be listened to").arg(name);
+	case UsbPortState::NotUsb:
+		return state.missing ? tr("%1 not found").arg(name) : tr("%1 is not a USB port: it cannot be listened to").arg(name);
 	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
 	case UsbPortState::NoUsbmon:
 		/* a word joiner after each "/": a wrapped line never breaks the path ("/dev/" and "usbmon2" read as two things) */
