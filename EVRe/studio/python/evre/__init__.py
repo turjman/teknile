@@ -35,7 +35,7 @@ from .frame import Parser, build, crc16
 from .link import EvreError, Master, SerialLink, TcpLink
 from .studio import Line, Studio, Summary, connect_studio
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 __all__ = ['Bus', 'Device', 'DeviceMap', 'EvreError', 'Field', 'Line', 'Master', 'Parser', 'Recording', 'Register',
            'SerialLink', 'Studio', 'Summary', 'TcpLink', 'build', 'connect_bus_serial', 'connect_bus_tcp', 'connect_serial',
            'connect_studio', 'connect_tcp', 'crc16', 'load_map', 'read_recording']

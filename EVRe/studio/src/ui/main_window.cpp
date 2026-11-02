@@ -859,6 +859,8 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 		wantConnected_ = false;
 		showListening(QString());
 	}
+	/* a capture lost: the line under the port box follows the pill, or it would go on saying what can be heard */
+	if (wasUp && !why.isEmpty() && sidebar_->isListen()) sidebar_->showListenLine();
 }
 
 /* a device's ID and protocol revision, under the pill (the selected device's, on a bus) and in the log; a warning

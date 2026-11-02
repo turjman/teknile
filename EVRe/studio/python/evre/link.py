@@ -41,18 +41,20 @@ class TcpLink:
 class SerialLink:
     """A serial or USB CDC port (needs the pyserial package)."""
 
+    READ_S = 0.02
+
     def __init__(self, port, baud=115200, timeout=1.0):
         import serial  # only here: TCP needs no extra package
-        self.port = serial.Serial(port, baud, timeout=timeout)
+        # a short read and the master's deadline, not a timeout set for each read: on Windows setting it reconfigures
+        # the port, and an answer arriving meanwhile is lost (an ST-LINK's virtual COM port lost 19 of 20)
+        self.port = serial.Serial(port, baud, timeout=min(timeout, self.READ_S))
         self.name = '%s@%d' % (port, baud)
 
     def send(self, data):
         self.port.write(data)
 
     def receive(self, timeout):
-        self.port.timeout = max(timeout, 0.001)
-        waiting = max(1, self.port.in_waiting)
-        return self.port.read(waiting)
+        return self.port.read(max(1, self.port.in_waiting))
 
     def close(self):
         self.port.close()

@@ -4874,10 +4874,18 @@ private:
 				"Listen, asking: it has opened when the stream's first bytes say yes");
 
 		/* the device gone: no try by itself, and the pill says what is wanted */
+		UsbPortState gone;
+		gone.kind = UsbPortState::NotUsb;
+		gone.missing = true;
+		UsbTarget::stateForTests(port, gone);
 		endWith(QStringLiteral("COM98 is gone: unplugged or reset?"));
 		const QString pressAgain = QStringLiteral("COM98 is gone: unplugged or reset? · press Listen to hear it again");
 		check(QTest::qWaitFor([&] { return pillSays() == pressAgain; }, 3000) && connectButton(),
 				"Listen, asking: a capture lost: the pill says Listen must be pressed again");
+		auto *portLine = window_.findChild<ElidedLabel *>(QStringLiteral("listenLine"));
+		check(portLine && portLine->fullText() == QLatin1String("not found: unplugged?"),
+				"Listen, asking: a capture lost: the line under the port box follows the pill");
+		UsbTarget::stateForTests(port, listenableState(asks));
 		QTest::qWait(2600);
 		check(control->starts == 1 && connectButton() && pillSays() == pressAgain,
 				"Listen, asking: a try by itself below administrator starts nothing");
