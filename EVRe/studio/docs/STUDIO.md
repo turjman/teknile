@@ -245,6 +245,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [26.7 The map test and the schema test](#267-the-map-test-and-the-schema-test)
     - [26.8 `EVRE_PERF_LOG`](#268-evre_perf_log)
     - [26.9 Fast EVRe without a window](#269-fast-evre-without-a-window)
+    - [26.10 Listen without a window](#2610-listen-without-a-window)
   - [27. Design decisions and pitfalls](#27-design-decisions-and-pitfalls)
   - [28. Glossary](#28-glossary)
   - [29. Open items](#29-open-items)
@@ -4779,7 +4780,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 
 | File | Role |
 |---|---|
-| `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps copied beside them |
+| `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps and the USB captures copied beside them |
 | `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`) |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
@@ -4788,6 +4789,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
 | `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, the Dump tab's store (its replies, each fast stream's newest block) |
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
+| `src/io/usb_capture.h`,&nbsp;`.cpp` | Listen, the USB side (22.3): `UsbTarget`, `UsbEvent`, the decoders `UsbPcapDecoder` and `UsbmonDecoder`, the `UsbCapture` interface and `FileCapture` |
 | `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
@@ -4844,6 +4846,9 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the library (C++11 to 20, -O0 to -Os) and run; no heap, its stack; its frames through `evre_fast_test`; PROTOCOL.md's example block |
+| `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders without a window, a driver or a USB device (26.10) |
+| `tests/make_captures.py` | writes `tests/captures/`, the five USB scenes in both formats, from the Python package and the example maps (26.10) |
+| `tests/captures/` | those scenes, `.pcap` and `.usbmon`, copied beside the programs at every build as `maps/` is |
 | `maps/example_fast.json` | the example map with a fast stream (`ADC`), served by `evre_fake_fast` in the fast tests |
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
 | `cli/evre_sim.cpp` | `evre-sim`: a device made from a map (chapter 35) |
@@ -4977,6 +4982,30 @@ every 250 ms (`updateStats`) and when recording stops.
 
 *Tested by:* the GUI test (polling, stale values, reconnect, writes and read-back, the login sent first, refused
 and skipped, auto send, fast streams, thread warnings) and the API test; `fast_stream` by `evre_fast_test`.
+
+**Listen's capture sources (`usb_capture`).** Listen hears what another program says to a USB device through the
+system's own USB capture. This part holds what does not depend on the system or on EVRe, so the Windows format is
+checked on Linux as well:
+
+| Class | Role |
+|---|---|
+| `UsbTarget` | the device a capture listens to: port, bus, address, VID and PID, the kind (`Cdc`, `Ftdi`, `OtherBridge`), its bulk endpoints (an empty list hears every bulk endpoint of that direction) and the IN endpoint's `wMaxPacketSize` |
+| `UsbEvent` | one bulk transfer's bytes: direction, endpoint, transfer type, status, data, the capture's stamp (microseconds, UTC; kept, not shown yet) |
+| `UsbDecoder` | what the formats share: `feed(bytes, out)` takes a stream cut at any byte and keeps what is not a whole record yet (`pendingBytes`); the target's filter; FTDI's status bytes; `error()` when the stream cannot be read |
+| `UsbPcapDecoder` | USBPcap's pcap stream: the 24-byte header (link type 249 or it is refused), per record 16 bytes and the driver's packet, whose own `headerLen` is obeyed (27 on bulk, 28 on control) |
+| `UsbmonDecoder` | usbmon's records: the 64-byte `mon_bin_hdr` and its `len_cap` bytes |
+| `UsbCapture` | a source of heard bytes: `start(target)`, `stop()`; signals `data(direction, bytes)`, `dropped(total)`, `ended(why)`. What is heard comes from the event loop, never inside `start()`, and nothing follows `stop()` |
+| `FileCapture` | a `UsbCapture` replaying a `.pcap` or `.usbmon` file, at once or by its stamps: the tests' source |
+
+The rule of both formats: **OUT**, the other program's bytes, comes from the submission; **IN**, the device's, from
+the completion with status 0. Only bulk transfers of the target's device and endpoints with data become events:
+control transfers (`SET_LINE_CODING`) and interrupt notifications are skipped. A record longer than `MAX_RECORD` = 2 MiB
+is a broken stream, not something to wait for. FTDI: 2 status bytes are taken off at each multiple of `wMaxPacketSize`
+of a completed IN transfer (64 when it is not known), and a transfer of only status bytes, the chip's poll, is no
+event; the other bridges and USB CDC have no framing. The live sources and the lookup from a port to its device are
+not here yet, and neither is the link above: nothing in the Studio uses this part so far.
+
+*Tested by:* `evre_listen_test` (26.10).
 
 **`RegTable`**: 19.4.
 
@@ -6269,6 +6298,8 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `tests/schema_test.py` | the maps against the JSON Schema; a stream's keys and refusals; MAP_FORMAT.md's stream keys against the schema (26.7) | the `jsonschema` package (SKIP without it) | no |
 | `evre_fast_test` | Fast EVRe without a window (26.9): the block's rules, a fuzz, the clock's fit, the fake devices' source | nothing | no |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` (26.9) | the build folder (`evre_fast_test`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib`), SKIP without | only its own temporary folder |
+| `evre_listen_test` | Listen's capture decoders without a window (26.10): the two formats, FTDI's status bytes, the filters, a stream cut anywhere, a file replayed | `tests/captures/`, copied beside it, and `maps/` | no |
+| `tests/make_captures.py` | not a test: writes `tests/captures/` (26.10) | Python&nbsp;3,&nbsp;standard&nbsp;library | only that folder |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
 
 **The rule: the GUI test and the API test write only to a fake device.** They write registers of the device bank
@@ -7443,6 +7474,52 @@ from slave 0; `evre_fast_lost()` (the numbers go on, the next block says LOST); 
 start again. Then: no heap (`nm -u`: the helper calls only `GetCrc16`), its stack at most 64 bytes a call
 (`-fstack-usage`), its frames through `evre_fast_test`, and PROTOCOL.md's example block (after
 `<!-- fast-example -->`) equal byte for byte to the one the helper builds. Without `g++` or the library it says SKIP.
+
+### 26.10 Listen without a window
+
+```sh
+./build/evre_listen_test
+python3 tests/make_captures.py                  # only after changing a scene: writes tests/captures/
+```
+
+No driver, no USB device and nothing recorded from one: `tests/make_captures.py` makes the captures byte by byte,
+with `evre.frame.build` and the example maps, and with no clock and no random number the same script writes the
+same files. They are committed in `tests/captures/`, 6 to 25 KB each, and copied beside the programs at every build.
+Each scene is written twice: `<scene>.pcap` as USBPcap writes it, and `<scene>.usbmon`, the records of `/dev/usbmonN`
+one after another (the container is ours, the bytes are what the live source hands its decoder). The device is
+address 5 on bus 2.
+
+| Scene | Endpoints | What it holds |
+|---|---|---|
+| `cdc_poll` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | a program reads DEVICE_ID, then both blocks at 10 Hz for 2 s, SUPPLY_V a ramp; a `WRITE_ACK` and its answer, a `WRITE`, an `ERROR_RESP`, a late answer, an answer with no request, 12 bytes of text, a frame split across two transfers, two frames in one; around them `SET_LINE_CODING`, interrupt notifications and a second device's bulk traffic |
+| `cdc_autosend` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | CONFIG written on, AUTO_SEND frames at 100 Hz for 1 s |
+| `cdc_fast` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | a stream's enable written (`example_fast.json`), 20 blocks in PROTOCOL.md's layout, 2 of them missing |
+| `ftdi_poll` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x02` | `cdc_poll` behind an FTDI bridge, VID `0403`: 64-byte IN packets each with 2 status bytes, status-only polls |
+| `composite` | IN&nbsp;`0x83`,&nbsp;OUT&nbsp;`0x03` | two CDC functions on one device, the other's endpoints (`0x81`, `0x01`) carrying frames that must not be heard |
+
+`evre_listen_test` (QtTest, no window) checks `src/io/usb_capture.*`:
+
+- **both formats (`scenes`):** every scene gives the same events from its `.pcap` and its `.usbmon`, only the
+  target's endpoints, in time order
+- **a stream cut anywhere:** one byte at a time, in chunks of sizes around the headers' and in random ones, the same
+  events as all at once (`cutAnywhere`); stopped at every byte of a file, the whole records are heard and nothing
+  else, no error, and what waits is less than a record (`truncated`)
+- **the scenes' content:** the frames the parser finds in `cdc_poll`, by kind and count, the ramp, the split and the
+  two in one (`pollScene`); `cdc_autosend`'s rate (`autoSendScene`); `cdc_fast`'s blocks through `fast::FastStream`,
+  the two missing blocks' records lost (`fastScene`)
+- **FTDI:** `ftdi_poll` gives `cdc_poll`'s bytes in the same transfers, and read as a plain CDC device it does not
+  (`ftdiScene`); 64 and 512-byte packets, the 64-byte rule when the size is not known, one full packet, a transfer
+  ending on status bytes, a status poll, OUT left alone (`ftdiPackets`)
+- **the filters:** the second device is another target's (`deviceFilter`); the other function's endpoints are not
+  ours, and an empty endpoint list hears both but no interrupt endpoint (`endpointFilter`)
+- **a transfer's two halves (`transferRules`):** OUT from the submission, IN from the completion, a failed IN, an
+  interrupt and a control transfer not heard, in both formats
+- **edges (`recordEdges`, `notAStream`, `fuzz`):** a longer driver header, the snap length, usbmon's "no data", a
+  packet too short skipped; another link type, another byte order, a length no record can have refused; 2000 rounds
+  of random bytes and of files with bytes changed without a crash
+- **a file replayed (`FileCapture`):** nothing before the event loop, the same bytes, `ended` once (`replayAtOnce`);
+  never ahead of its stamps (`replayPaced`); nothing after `stop()`, and a new start from the top (`replayStop`); a
+  missing file, another suffix, a file that is no capture and a cut one (`replayRefused`)
 
 ## 27. Design decisions and pitfalls
 
