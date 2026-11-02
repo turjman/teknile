@@ -633,6 +633,7 @@ the sidebar scrolls if it must. The pill keeps its whole height in every case.
 |---|---|---|
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
+| *Asking&nbsp;Windows&nbsp;for&nbsp;permission…* | amber | Listen on Windows: its prompt is open, for as long as you take (3.11). *Asking Windows…* where that does not fit; the tooltip keeps the whole. |
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`; for serial `COM7 @ 115200` on a UART, where the number is the link's speed, and `COM13 · USB CDC` on USB CDC, where the baud rate means nothing (the tooltip adds *the baud rate 12000000 is ignored on USB CDC*). The kind is the one Connect opened the link with: a Link row changed while connected counts at the next connect. The serial name is one left-to-right piece, so Arabic reads it unturned. The Log's line keeps the number: *connected: COM13 @ 12000000*, after *opening COM13 at 12000000 (USB CDC: the baud rate is ignored)*. |
 | *Listening&nbsp;·&nbsp;COM13&nbsp;·&nbsp;USB&nbsp;CDC* | blue | Listen is on (3.11): the Studio hears the port and sends nothing. Its own tint in both looks, so it is not read as connected. The tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*, and any sign of a capture that lost something. The name is one left-to-right piece, and a bridge reads `COM13 · FTDI`. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, it is shown whole on two lines (or more), never cut. The tooltip adds the system's text, and the Log has both. |
@@ -800,8 +801,8 @@ Listen shows what **another program** says to a USB device, on a port that progr
 tool. A serial port belongs to one program (15.5), so the Studio cannot open it beside the other. It reads the USB
 traffic under the port instead, with the system's own capture, and **sends nothing**.
 
-On **Windows** it hears with USBPcap, a capture driver you install once, and the Studio must run as administrator. On
-**Linux** it hears with usbmon, the kernel's own capture. All the rest of this section works on both, and is tested on
+On **Windows** it hears with USBPcap, a capture driver you install once, and Windows asks for your permission each time
+**Listen** is pressed. On **Linux** it hears with usbmon, the kernel's own capture. All the rest of this section works on both, and is tested on
 replayed captures (26.10); what only a real device can show is the owner's check.
 
 **What it hears.** USB devices only: USB CDC (a board's own USB, a debug probe's virtual port) and USB-UART bridges
@@ -824,12 +825,13 @@ read of `0xA000`.
 | *not&nbsp;a&nbsp;USB&nbsp;port:&nbsp;cannot&nbsp;be&nbsp;listened&nbsp;to* | no&nbsp;USB&nbsp;under&nbsp;the&nbsp;port | The port stays in the list; Listen refuses it with the reason in the pill. |
 | *USBPcap&nbsp;is&nbsp;not&nbsp;installed* | Windows | **Get USBPcap…** opens its page. It is a capture driver, installed once as administrator; then unplug and plug the device again (the driver joins a device when it is plugged in). |
 | *USBPcap&nbsp;is&nbsp;not&nbsp;on&nbsp;this&nbsp;device&nbsp;yet* | Windows | Unplug the device and plug it in again; if that does not help, restart the PC. A second line says so. |
-| *run&nbsp;the&nbsp;Studio&nbsp;as&nbsp;administrator* | Windows | Close the Studio and start it with **Run as administrator**. Below. |
 | *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon` and `sudo setfacl -m u:$USER:r /dev/usbmon*`, good until the PC restarts. What lasts is below the table. |
 | *no&nbsp;USB&nbsp;capture&nbsp;on&nbsp;this&nbsp;system* | another&nbsp;system | Nothing can be done from the Studio. |
 | *no&nbsp;serial&nbsp;port* | no&nbsp;port&nbsp;in&nbsp;the&nbsp;list | Plug the device in, then the refresh button. |
 
-Under *USBPcap is not installed* a second line says what it is, and in Arabic the line wraps rather than cut. A port
+On Windows, unless the Studio runs as administrator, a muted second line under *listens to …* says *Windows asks for
+your permission each time Listen is pressed*. Under *USBPcap is not installed* a second line says what it is, and in
+Arabic the line wraps rather than cut. A port
 whose endpoints could not be read is heard all the same, on every bulk endpoint of its device, and a second line says
 so: *its endpoints could not be read: every bulk endpoint of the device is heard*. The line is read when a port is
 chosen, at the refresh button and at Connect.
@@ -842,16 +844,30 @@ plugged in again; a restart settles it when that is not enough. Then the Studio 
 `%ProgramFiles%\USBPcap`, then beside the uninstaller the registry names. It never asks for a whole bus, so a keyboard
 on the same bus stays out of it.
 
-**Why as administrator.** USBPcap lets only an administrator capture. Its control device, `\\.\USBPcap1`, refuses to
-open for reading from a normal process with *access denied* (error 5), even for a user in the Administrators group,
-because Windows starts programs without those rights unless asked: that was tried on the owner's PC with USBPcap
-installed. `USBPcapCMD.exe` started from a normal process would raise a UAC prompt of its own, every time, and a try by
-itself would raise it again. So the Studio does not start it then: the Listen line says *run the Studio as
-administrator*, nothing more, and no prompt comes. Finding the device needs no rights, so the line is right in a normal
-Studio too. As administrator, everything the Studio does runs with those rights, so close it when you are done.
+**Windows asks each time.** USBPcap lets only an administrator capture: its control device, `\\.\USBPcap1`, refuses to open
+for reading from a normal process with *access denied* (error 5), even for a user in the Administrators group, because
+Windows starts programs without those rights unless asked. So when you press **Listen**, `USBPcapCMD.exe` asks: Windows
+shows its permission prompt, and the pill reads *Asking Windows for permission…* for as long as you take, with no
+clock on it. It has started when the first bytes come. If you do not see the prompt, it may be waiting on the taskbar.
+
+- **Only your press raises the prompt.** A prompt must never come up with nobody there, so **Reconnect by itself** does not
+  start a capture, and nor does `--connect` at the start: a lost capture reads *COM13 is gone: unplugged or reset? · press
+  Listen to hear it again*, and the Studio waits.
+- **Answered no**, the pill reads *permission refused: press Listen to ask again*, and nothing tries again.
+- **Run as administrator** and none of this applies: no prompt, and **Reconnect by itself** works. Everything the Studio
+  does then runs with those rights, so close it when you are done.
+
+**Nothing is left behind.** Asking for permission means a second, elevated `USBPcapCMD.exe`, the worker, and the Studio
+cannot kill a process above it. So the Studio runs the program in a Windows job, which the system ends when the Studio
+goes, however it goes, and the worker is born into that job: **Stop**, closing the Studio and a crash each end both,
+and only then does the driver let go of the bus. This rests on Windows putting a process started through its prompt in
+its parent's job, which USBPcap's own design rests on too, and it could not be tried here with a real prompt. The check
+is Task Manager's Details tab: no `USBPcapCMD.exe` after a Stop. The pipe between the two does not do this job. The
+worker notices it broken only at its next write, which on a silent device never comes.
 
 **One capture to a bus.** The driver lets one capture read a USB bus at a time. With Wireshark capturing the same bus,
-Listen ends at once with *USBPcap refused this USB bus: another capture holds it*.
+Listen ends at once with *USBPcap refused this USB bus: another capture holds it*; below administrator the worker's words
+reach nobody, so it reads *the capture ended before anything came: another capture may hold this USB bus*.
 
 **usbmon, so that it lasts.** The commands above end with the PC's next start. Three steps keep it. The module at every
 start:
@@ -3568,9 +3584,16 @@ These are late answers after a timeout, echoes of the Studio's own requests on a
   unplug and plug the device again: the driver joins a device when it is plugged in.
 - *USBPcap is not on this device yet*: it is installed, but it has not joined this device. Unplug the device and plug it
   in again; if that does not help, restart the PC, which is what the driver needs after its install.
-- *run the Studio as administrator*: USBPcap lets only an administrator capture (3.11). Close the Studio and start it with
-  **Run as administrator**; a normal Studio does not start the capture, so no UAC prompt comes.
-- *USBPcap refused this USB bus: another capture holds it*: Wireshark or another program is capturing that bus. Stop it.
+- *Asking Windows for permission…*: Windows's prompt is open. If you do not see it, look on the taskbar. Nothing runs out
+  while it waits.
+- *permission refused: press Listen to ask again*: the prompt was answered no, or let run out. Nothing tries again by itself.
+- *press Listen: Windows asks for permission first*, or *... · press Listen to hear it again*: a prompt comes only from your
+  press, so neither **Reconnect by itself** nor `--connect` starts a capture. Run the Studio as administrator and neither
+  is needed (3.11).
+- *USBPcap refused this USB bus: another capture holds it*, or *the capture ended before anything came: another capture
+  may hold this USB bus*: Wireshark or another program is capturing that bus. Stop it.
+- After a **Stop**, a `USBPcapCMD.exe` left in Task Manager's Details tab should never happen (3.11). Reboot if it does,
+  and say so: it would hold the bus for itself.
 - The pill says *Listening* and nothing comes: the other program is not talking yet. On a Windows that does not say which
   drivers are on a device, it may be a device plugged in before USBPcap was: unplug it and plug it in again.
 - *usbmon is not loaded or /dev/usbmon2 is not readable*: **Copy the commands**, paste them into a terminal. Section 3.11
@@ -5178,7 +5201,7 @@ of a completed IN transfer (64 when it is not known), and a transfer of only sta
 event; the other bridges and USB CDC have no framing. A test gives the target with the file (`setListenFileForTests`);
 without either, a port is refused in plain words.
 
-`UsbPortState` is what Listen can do with a port: its kind (`Listenable`, `NotUsb`, `NoUsbPcap`, `NoFilter`, `NeedsAdmin`,
+`UsbPortState` is what Listen can do with a port: its kind (`Listenable`, `NotUsb`, `NoUsbPcap`, `NoFilter`,
 `NoUsbmon`, `NoCapture`) and, when it can be heard, the target. The Listen line, the pill's refusal and Connect read
 `UsbTarget::stateOf(port)`, on the window's thread: a state forced by `UsbTarget::stateForTests`, or the system's answer.
 `UsbTarget::liveStateOf(port)` is the one place the system is asked: it sends nothing of its own and opens no port, so
@@ -5228,17 +5251,43 @@ driver's `USBPcap.h`, which is no public header) names each one's root hub; `usb
 hub's instance ID. **The filter's number is the bus**, as USBPcap itself numbers buses.
 
 `usbPcapPortState` then says, in this order: no USB device, `NotUsb`; no `USBPcapCMD.exe`, `NoUsbPcap`; no filter on the
-root hub, no address, or `\Driver\USBPcap` missing from the device's `DEVPKEY_Device_Stack`, `NoFilter`; not elevated
-(`TokenElevation`, the test `USBPcapCMD` makes itself), `NeedsAdmin`; else `Listenable`. A system that does not give the
-stack is taken as having the filter.
+root hub, no address, or `\Driver\USBPcap` missing from the device's `DEVPKEY_Device_Stack`, `NoFilter`; else `Listenable`.
+A system that does not give the stack is taken as having the filter. `UsbTarget::asksPermission` is set when the Studio is
+not elevated (`TokenElevation`, the test `USBPcapCMD` makes itself).
 
 **The live capture on Windows (`usbpcap_capture`).** `UsbPcapCapture` starts
 `USBPcapCMD.exe -d \\.\USBPcapN --devices <address> -s 65535 -b 33554432 -o -` as a `QProcess` and gives its standard
 output to `UsbPcapDecoder`, which keeps the target's endpoints. It is started, not linked, so USBPcap's licences do not
-touch the Studio's. What the program does was read in its source: below administrator it always asks for an elevated
-worker, which is why `NeedsAdmin` keeps it from being started; elevated it writes the stream itself and flushes after
-each read of the driver, so nothing waits in a buffer. The buffer of `-b` is the driver's, 32 MiB; a full one drops
-packets and says so nowhere, so `dropped` is never sent and what is lost shows in the EVRe-level signs.
+touch the Studio's. The driver writes the pcap header when its buffer is set up, so the first bytes come as soon as the
+capture runs, with no traffic: that is `started()`, which says a prompt was answered yes. Elevated the program writes the
+stream itself and flushes after each read of the driver. Below administrator it starts a worker, the same program elevated
+through `ShellExecuteEx` and `runas`, and passes on what that writes into a named pipe; either way nothing waits in a
+buffer. The buffer of `-b` is the driver's, 32 MiB; a full one drops packets and says so nowhere, so `dropped` is never
+sent and what is lost shows in the EVRe-level signs.
+
+**How a capture ends.** Read in `USBPcapCMD`'s `cmd.c` and `thread.c`, master and the 1.3.0.0 installer's alike, and tried
+on the pipe:
+
+| Who&nbsp;goes | What&nbsp;the&nbsp;worker&nbsp;sees |
+|---|---|
+| The&nbsp;program,&nbsp;with&nbsp;no&nbsp;job&nbsp;of&nbsp;ours | Its own job, with `KILL_ON_JOB_CLOSE`, ends with it, and takes the worker. Without that job nothing: the worker's dummy read of the pipe, meant to notice a break, is refused at once (error 5, the handle is write-only) and its event never comes, so it finds out at its next write (error 232), which on a silent device never comes |
+| The&nbsp;Studio,&nbsp;with&nbsp;no&nbsp;job&nbsp;of&nbsp;ours | Nothing: the program notices its broken standard output only at its next write, and lives on with its worker |
+
+So `UsbPcapCapture` runs the program in a job of its own, the way Wireshark runs its capture programs
+(`win32_create_process`): started suspended, assigned, resumed, so that nothing of it runs outside. `KILL_ON_JOB_CLOSE`
+makes the system end the job when its one handle closes, however the Studio goes, and `USBPcapCMD` looks for that flag
+and then leaves *dangling processes* to whoever made the job, making none of its own. `stop()` is `TerminateJobObject`,
+and a kernel job takes no account of a process's integrity. Windows gives the worker its parent's job, as with the job
+the program makes for itself, which is its usual way of running. Without a job of ours (one that could not be made)
+`stop()` is `terminate()`, 500 ms, then `kill()`, which ends the program: on Windows `terminate()` is a `WM_CLOSE`,
+and the program has no window and stops only on `q` at a console. That still ends the worker, and a crash then does not.
+
+A process that ends is a capture that ends; `usbPcapEndReason` makes the reason, what it said on its standard error
+first, for it says a failure there and still ends with code 0: a refused prompt is *Failed to create worker process!*. A
+worker's own words reach nobody, so its end before any bytes reads as a bus that may be held. A program that cannot start
+says so inside `QProcess::start`, and the reason waits for the event loop, as `start()` promises. Every 500 ms
+`UsbTarget::stillThere` asks the lookup without the descriptor (about 1 ms, and nothing reaches the device): USBPcap too
+hears a bus that outlives a device.
 
 **Its standard input is no handle at all.** The program's main thread waits on it for a `q` at a console. A `QProcess`
 pipe, or `NUL`, reads as ready at once and is no console, so that thread would spin a whole core for as long as Listen
@@ -5246,25 +5295,19 @@ runs. `UsbPcapCapture` clears `hStdInput` with `setCreateProcessArgumentsModifie
 out of that wait. A stand-in that makes the program's own calls, in a `QProcess`, showed this: the pipe and `NUL` are
 ready, and its overlapped read of standard output is refused (error 5) and its writes all go through.
 
-`stop()` is `terminate()`, 500 ms, then `kill()`, only that process, on the engine's thread. On Windows `terminate()`
-is a `WM_CLOSE`, and the program has no window and stops only on `q` at a console: the kill ends it, which closes its
-handle on the driver and with that the filtering. A process that ends is a capture that ends; `usbPcapEndReason` makes
-the reason, what it said on its standard error first, for it says a refused device there and still ends with code 0. A
-program that cannot start says so inside `QProcess::start`, and the reason waits for the event loop, as `start()`
-promises. Every 500 ms `UsbTarget::stillThere` asks the lookup without the descriptor (about 1 ms, and nothing reaches
-the device): USBPcap too hears a bus that outlives a device.
-
 *Tested by:* `evre_listen_test` (26.10).
 
 **The listening link (`listen_link`).** `evre::ListenLink` is a `Link` that owns a `UsbCapture` (its child) and never
-speaks. `open()` starts the capture and says `opened()` at once, before anything can be heard; the capture's end comes
-as `closed(why)`, with its plain reason, and `close()` stops it. The device's bytes go out as `received(bytes)`, the
+speaks. `open()` starts the capture and says `opened()` at once, before anything can be heard; a target that asks
+(`asksPermission`) has opened at the capture's `started()`, its first bytes, and nothing runs a clock until then. The
+capture's end comes as `closed(why)`, with its plain reason, and `close()` stops it. The device's bytes go out as `received(bytes)`, the
 link's usual signal, so the master's parser, the frames nobody asked for, AUTO_SEND and the fast blocks run unchanged;
 the other program's bytes go out as `heardRequest(bytes)`. `send()` writes nothing: it counts (`sendAttempts()`) and
 says so once. `describe()` reads *COM13 (listening)*, `place()` *COM13 (bus 2, device 5)*. It is in `src/io`, not
 `src/evre`: the protocol module stays free of USB.
 
-**Listening in the engine.** `connectListen(port)` makes the link and goes through `attach()` like any other;
+**Listening in the engine.** `connectListen(port, pressed)` makes the link, with no capture for a target that asks unless
+`pressed` (the window never asks then: this is the last belt, a prompt must never come unattended), and goes through `attach()` like any other;
 `onOpened()` finds it is Listen's and sets `listening_` (cleared when the link goes). Then no login, no DEVICE_ID, no
 polls and no enables, and the rest of the bytes' way is:
 
@@ -7557,7 +7600,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 966 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 979 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7891,7 +7934,7 @@ address 5 on bus 2.
 | `composite` | IN&nbsp;`0x83`,&nbsp;OUT&nbsp;`0x03` | two CDC functions on one device, the other's endpoints (`0x81`, `0x01`) carrying frames that must not be heard |
 | `cdc_quiet` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | DEVICE_ID and a block read, then an hour of nothing: at its stamps a capture that stays open, a round left unfinished |
 
-`evre_listen_test` (QtTest, no window, 65 tests) checks `src/io/usb_capture.*`, `src/io/usbpcap_capture.*` and
+`evre_listen_test` (QtTest, no window, 72 tests) checks `src/io/usb_capture.*`, `src/io/usbpcap_capture.*` and
 `src/io/listen_link.*`:
 
 - **both formats (`scenes`):** every scene gives the same events from its `.pcap` and its `.usbmon`, only the
@@ -7919,7 +7962,8 @@ address 5 on bus 2.
   `heardRequest`, the capture's end as `closed` with its reason (`linkBothWays`); `close()` stops the capture, no reason
   given (`linkClosed`); no capture: refused in plain words, and `send()` counted, said once (`linkWithoutCapture`); the
   captures the system lost (`linkLostCaptures`)
-- **a port with no capture (`linkRefused`):** each state's reason, in the window's words
+- **a port with no capture (`linkRefused`, `linkPressNeeded`):** each state's reason, in the window's words, and what a
+  target that asks says with no press
 - **a port to its device (`sysfs...`, on every system):** `FakeSysfs` lays out a `/sys` and a `/dev` in a `QTemporaryDir`:
   real links and colons where the system has them, on Windows a table for the links and `_` for the colon. A USB CDC
   port by its name and by `/dev/ttyACM0`, the interrupt endpoint left out (`sysfsCdc`); four bridges, the tty a level
@@ -7953,12 +7997,17 @@ address 5 on bus 2.
   several hold; a stack not given; the address that decides `holds`, the light lookup holding
 - **the capture on a stand-in (`pcapCapture...`, on every system):** the test program started again in place of
   `USBPcapCMD`, taking no notice of `terminate()` as the real one does, so **no test starts the real one**. The events of
-  `cdc_poll.pcap` through a real pipe, none inside `start()`, the arguments it got, `stop()` waiting its 500 ms and
-  leaving no process (`pcapCaptureHears`); a process that ends, what it wrote first still heard, its reason once
+  `cdc_poll.pcap` through a real pipe, none inside `start()`, the arguments it got, `stop()` leaving no process
+  (`pcapCaptureHears`); a process that ends, what it wrote first still heard, its reason once
   (`pcapCaptureEnds`); no such program (`pcapCaptureNoProgram`); no pcap stream (`pcapCaptureBroken`); a device gone
   while it runs and as it ends (`pcapCaptureGone`); a stop from a slot (`pcapCaptureStoppedFromASlot`); a second start
-  (`pcapCaptureStartsAgain`). What only a real device can show (the elevated stream, an unplug, a bridge) is the owner's
-  check on Windows
+  (`pcapCaptureStartsAgain`); opened at the first bytes after 1.5 s of silence, nothing running out, and at once when
+  elevated (`pcapCaptureAsks`, `pcapCaptureElevatedOpensAtOnce`); the prompt refused, a worker that said nothing
+  (`pcapCaptureRefused`); Stop while asking (`pcapCaptureStopWhileAsking`). What only a real device can show (the
+  elevated worker, the stream, an unplug, a bridge) is the owner's check on Windows
+- **nothing left behind (`pcapCaptureLeavesNothing`, Windows):** a stand-in with a detached process of its own, no child
+  of the capture, as the worker is not: both gone after a Stop, after the capture is destroyed, and with the "Studio" killed
+  outright, which runs none of our code. It fails on all three without the job
 - **a record longer than the buffer (`fitRecord`):** `len_cap` cut, the next record found where the cut one ends, one
   that fits left alone
 - **`Parser::skippedBytes`:** every way a byte leaves the stream without a frame, a frame's own bytes not, a half frame

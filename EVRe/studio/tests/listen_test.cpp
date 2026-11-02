@@ -4,7 +4,7 @@
  * only the target's device and endpoints are heard, a stream may be cut at any byte, a file replays through the
  * interface the live captures have, a port finds its device in a sysfs the test lays out, and what Windows says of a
  * port is decided on made-up answers. UsbPcapCapture runs on a stand-in for USBPcapCMD: this same program, started again
- * (standIn, below), so that no test ever starts the real one, which below administrator would raise a UAC prompt. */
+ * (standIn, below), so that no test ever starts the real one, whose UAC prompt must not come up in a test. */
 #include <QDir>
 #include <QFile>
 #include <QPointer>
@@ -378,7 +378,8 @@ UsbPortFacts cdcFacts() {
 
 /* The stand-in for USBPcapCMD: what it does comes by the environment, its arguments are the capture's own. Like the
  * real one it takes no notice of terminate(): only a kill ends it. */
-constexpr char STAND_IN[] = "EVRE_TEST_USBPCAPCMD";             /* stay, end, refused, code or garbage */
+constexpr char STAND_IN[] = "EVRE_TEST_USBPCAPCMD";             /* stay, end, refused, code, garbage, prompt, noworker,
+                                                                  * silent, tree, leaf or owner: standIn */
 constexpr char STAND_IN_FILE[] = "EVRE_TEST_USBPCAPCMD_FILE";   /* what it writes to its standard output */
 constexpr char STAND_IN_ARGS[] = "EVRE_TEST_USBPCAPCMD_ARGS";   /* where it notes its arguments */
 
@@ -389,6 +390,16 @@ int standIn(int argc, char **argv) {
 	std::signal(SIGTERM, SIG_IGN);
 #endif
 	const QByteArray what = qgetenv(STAND_IN);
+	if (what == "leaf")             /* the elevated worker: it does nothing of itself to end */
+		for (;;) QThread::sleep(1);
+	if (what == "owner") {          /* the Studio: a capture of the stand-in, and whoever started it kills this */
+		QCoreApplication app(argc, argv);
+		qputenv(STAND_IN, "tree");
+		UsbPcapCapture capture(QCoreApplication::applicationFilePath());
+		capture.setStillThereForTests([](const UsbTarget &) { return true; });
+		capture.start(cdcTarget());
+		return app.exec();
+	}
 	if (QFile notes(qEnvironmentVariable(STAND_IN_ARGS)); notes.open(QIODevice::WriteOnly)) {
 		for (int i = 1; i < argc; i++) notes.write(QByteArray(argv[i]) + '\n');
 #ifdef Q_OS_WIN
@@ -402,6 +413,21 @@ int standIn(int argc, char **argv) {
 		return 0;
 	}
 	if (what == "code") return 3;
+	if (what == "noworker") {       /* the prompt refused: ShellExecuteEx failed, and the program ends with code 0 */
+		fputs("Failed to create worker process!\n", stderr);
+		return 0;
+	}
+	if (what == "silent") return 0; /* its worker went, and what it said reaches nobody */
+	if (what == "tree") {           /* the program and its worker: both must go, and the second is no child of the capture */
+		QCoreApplication app(argc, argv);
+		qputenv(STAND_IN, "leaf");
+		qint64 worker = 0;
+		QProcess::startDetached(QCoreApplication::applicationFilePath(), {}, {}, &worker);
+		if (QFile notes(qEnvironmentVariable(STAND_IN_ARGS) + QStringLiteral(".pids")); notes.open(QIODevice::WriteOnly))
+			notes.write(QByteArray::number(QCoreApplication::applicationPid()) + ' ' + QByteArray::number(worker));
+		for (;;) QThread::sleep(1);
+	}
+	if (what == "prompt") QThread::msleep(1500); /* a person reading it */
 	const QByteArray bytes = what == "garbage" ? QByteArray(64, 'x') : readFile(qEnvironmentVariable(STAND_IN_FILE));
 	fwrite(bytes.constData(), 1, size_t(bytes.size()), stdout);
 	fflush(stdout);
@@ -425,10 +451,28 @@ public:
 	QStringList arguments() const {
 		return QString::fromUtf8(readFile(args_.filePath(QStringLiteral("args.txt")))).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 	}
+	/* the program's and its worker's, once it has started both */
+	QList<qint64> processes() const {
+		QList<qint64> ids;
+		const QByteArrayList words = readFile(args_.filePath(QStringLiteral("args.txt.pids"))).split(' ');
+		for (const QByteArray &word : words)
+			if (word.toLongLong()) ids << word.toLongLong();
+		return ids;
+	}
 
 private:
 	QTemporaryDir args_;
 };
+
+#ifdef Q_OS_WIN
+bool runs(qint64 process) {
+	const HANDLE handle = OpenProcess(SYNCHRONIZE, FALSE, DWORD(process));
+	if (!handle) return false;
+	const bool running = WaitForSingleObject(handle, 0) == WAIT_TIMEOUT;
+	CloseHandle(handle);
+	return running;
+}
+#endif
 
 class ListenTest : public QObject {
 	Q_OBJECT
@@ -1033,7 +1077,6 @@ private slots:
 		QTest::newRow("usbmon") << int(UsbPortState::NoUsbmon) << QStringLiteral("usbmon is not loaded or /dev/usbmon2 is not readable");
 		QTest::newRow("USBPcap") << int(UsbPortState::NoUsbPcap) << QStringLiteral("USBPcap is not installed");
 		QTest::newRow("no filter") << int(UsbPortState::NoFilter) << QStringLiteral("USBPcap is not on this device yet");
-		QTest::newRow("administrator") << int(UsbPortState::NeedsAdmin) << QStringLiteral("run the Studio as administrator");
 		QTest::newRow("no capture") << int(UsbPortState::NoCapture) << QStringLiteral("ttyS0 cannot be listened to: no USB capture on this system");
 	}
 
@@ -1050,6 +1093,19 @@ private slots:
 		link.open();
 		QCOMPARE(closed, QStringList{ said });
 		QVERIFY(!link.isOpen());
+	}
+
+	/* a capture that asks a person, and no press: the link has no capture, and says what is wanted */
+	void linkPressNeeded() {
+		UsbPortState state;
+		state.kind = UsbPortState::Listenable;
+		state.target.asksPermission = true;
+		evre::ListenLink link(QStringLiteral("COM13"), nullptr, state.target);
+		link.setRefused(state);
+		QStringList closed;
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QCOMPARE(closed, QStringList{ QStringLiteral("press Listen: Windows asks for permission first") });
 	}
 
 	/* a board's own USB: the tty on the control interface, the data on the next one; its interrupt endpoint is not data */
@@ -1541,24 +1597,30 @@ private slots:
 		QTest::addColumn<int>("code");
 		QTest::addColumn<bool>("crashed");
 		QTest::addColumn<QByteArray>("errors");
+		QTest::addColumn<bool>("silent");
 		QTest::addColumn<QString>("said");
-		QTest::newRow("another capture") << 0 << false << QByteArray("Couldn't open device - 5\nThread started with invalid read handle!\n")
+		QTest::newRow("the prompt refused") << 0 << false << QByteArray("Failed to create worker process!\n") << false
+				<< QStringLiteral("permission refused: press Listen to ask again");
+		QTest::newRow("another capture") << 0 << false << QByteArray("Couldn't open device - 5\nThread started with invalid read handle!\n") << false
 				<< QStringLiteral("USBPcap refused this USB bus: another capture holds it");
-		QTest::newRow("its first line") << 0 << false << QByteArray("Couldn't open device - 2\nThread started with invalid read handle!\r\n")
+		QTest::newRow("its first line") << 0 << false << QByteArray("Couldn't open device - 2\nThread started with invalid read handle!\r\n") << false
 				<< QStringLiteral("USBPcapCMD stopped: Couldn't open device - 2");
-		QTest::newRow("words before a crash") << 1 << true << QByteArray("Write failed (232). Stopping capture.\n")
+		QTest::newRow("words before a crash") << 1 << true << QByteArray("Write failed (232). Stopping capture.\n") << false
 				<< QStringLiteral("USBPcapCMD stopped: Write failed (232). Stopping capture.");
-		QTest::newRow("a crash") << 0 << true << QByteArray() << QStringLiteral("USBPcapCMD crashed");
-		QTest::newRow("a code") << 3 << false << QByteArray() << QStringLiteral("USBPcapCMD stopped with code 3");
-		QTest::newRow("no word") << 0 << false << QByteArray("  \n") << QStringLiteral("USBPcapCMD stopped");
+		QTest::newRow("a worker ended first") << 0 << false << QByteArray() << true
+				<< QStringLiteral("the capture ended before anything came: another capture may hold this USB bus");
+		QTest::newRow("a crash") << 0 << true << QByteArray() << false << QStringLiteral("USBPcapCMD crashed");
+		QTest::newRow("a code") << 3 << false << QByteArray() << false << QStringLiteral("USBPcapCMD stopped with code 3");
+		QTest::newRow("no word") << 0 << false << QByteArray("  \n") << false << QStringLiteral("USBPcapCMD stopped");
 	}
 
 	void pcapEndReason() {
 		QFETCH(int, code);
 		QFETCH(bool, crashed);
 		QFETCH(QByteArray, errors);
+		QFETCH(bool, silent);
 		QFETCH(QString, said);
-		QCOMPARE(usbPcapEndReason(code, crashed, errors), said);
+		QCOMPARE(usbPcapEndReason(code, crashed, errors, silent), said);
 	}
 
 	void pcapProgramBeside_data() {
@@ -1633,7 +1695,7 @@ private slots:
 	void pcapStateRefused_data() {
 		QTest::addColumn<int>("change");
 		QTest::addColumn<int>("kind");
-		enum { NoChain, NoProgram, NothingAtAll, NoFilters, OtherHub, NoStackEntry, NoAddress, NotElevated, NotElevatedNoFilter };
+		enum { NoChain, NoProgram, NothingAtAll, NoFilters, OtherHub, NoStackEntry, NoAddress, NotElevatedNoFilter };
 		QTest::newRow("no USB under the port") << int(NoChain) << int(UsbPortState::NotUsb);
 		QTest::newRow("no USBPcapCMD") << int(NoProgram) << int(UsbPortState::NoUsbPcap);
 		QTest::newRow("a motherboard's port, nothing installed") << int(NothingAtAll) << int(UsbPortState::NotUsb);
@@ -1641,14 +1703,13 @@ private slots:
 		QTest::newRow("the filter on another hub only") << int(OtherHub) << int(UsbPortState::NoFilter);
 		QTest::newRow("plugged in before the install") << int(NoStackEntry) << int(UsbPortState::NoFilter);
 		QTest::newRow("its hub did not say the address") << int(NoAddress) << int(UsbPortState::NoFilter);
-		QTest::newRow("a normal user") << int(NotElevated) << int(UsbPortState::NeedsAdmin);
 		QTest::newRow("a normal user, no filter") << int(NotElevatedNoFilter) << int(UsbPortState::NoFilter);
 	}
 
 	void pcapStateRefused() {
 		QFETCH(int, change);
 		QFETCH(int, kind);
-		enum { NoChain, NoProgram, NothingAtAll, NoFilters, OtherHub, NoStackEntry, NoAddress, NotElevated, NotElevatedNoFilter };
+		enum { NoChain, NoProgram, NothingAtAll, NoFilters, OtherHub, NoStackEntry, NoAddress, NotElevatedNoFilter };
 		UsbPortFacts facts = cdcFacts();
 		const QStringList noUsb{ QStringLiteral("ACPI\\PNP0501\\0"), QStringLiteral("HTREE\\ROOT\\0") };
 		switch (change) {
@@ -1663,7 +1724,6 @@ private slots:
 		case OtherHub: facts.filters = QStringList{ facts.filters[0] }; break;
 		case NoStackEntry: facts.stack.removeAll(QStringLiteral("\\Driver\\USBPcap")); break;
 		case NoAddress: facts.address = 0; break;
-		case NotElevated: facts.elevated = false; break;
 		case NotElevatedNoFilter:
 			facts.elevated = false;
 			facts.filters.clear();
@@ -1671,6 +1731,18 @@ private slots:
 		default: break;
 		}
 		QCOMPARE(int(usbPcapPortState(facts).kind), kind);
+	}
+
+	/* below administrator a port can be heard, and the capture must ask; elevated it need not */
+	void pcapStateAsks() {
+		UsbPortFacts facts = cdcFacts();
+		QVERIFY(!usbPcapPortState(facts).target.asksPermission);
+		facts.elevated = false;
+		const UsbPortState state = usbPcapPortState(facts);
+		QCOMPARE(state.kind, UsbPortState::Listenable);
+		QVERIFY(state.target.asksPermission);
+		QCOMPARE(state.target.bus, 2);
+		QCOMPARE(state.target.inEndpoints, QVector<int>{ 0x81 });
 	}
 
 	/* a system that does not say the stack is no sign the filter is missing */
@@ -1717,7 +1789,11 @@ private slots:
 		QElapsedTimer took;
 		took.start();
 		capture.stop();
+#ifdef Q_OS_WIN
+		QVERIFY2(took.elapsed() < 450, qPrintable(QString::number(took.elapsed()))); /* the job ends it, at once */
+#else
 		QVERIFY2(took.elapsed() >= 450, qPrintable(QString::number(took.elapsed()))); /* terminate() is given its 500 ms */
+#endif
 		QVERIFY(process && process->state() == QProcess::NotRunning);
 		QTest::qWait(60);
 		QVERIFY(ended.isEmpty());
@@ -1771,6 +1847,137 @@ private slots:
 		QVERIFY2(ended.first().startsWith(QLatin1String("USBPcapCMD could not be started: ")), qPrintable(ended.first()));
 		QTest::qWait(30);
 		QCOMPARE(ended.size(), 1);
+	}
+
+	/* Windows's prompt open: the link waits for as long as a person takes, nothing runs out, and it has opened at the
+	 * stream's first bytes, not at the start. The stand-in's 1.5 s is three of the capture's looks */
+	void pcapCaptureAsks() {
+		const StandInOrders orders("prompt", captureFile(QStringLiteral("cdc_poll.pcap")));
+		UsbTarget target = cdcTarget();
+		target.asksPermission = true;
+		auto *capture = new UsbPcapCapture(QCoreApplication::applicationFilePath());
+		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		evre::ListenLink link(QStringLiteral("COM13"), capture, target);
+		int opened = 0, heard = 0;
+		QStringList closed;
+		connect(&link, &evre::Link::opened, this, [&] {
+			opened++;
+			QCOMPARE(heard, 0); /* before the first bytes reach anyone */
+		});
+		connect(&link, &evre::Link::received, this, [&] { heard++; });
+		connect(&link, &evre::ListenLink::heardRequest, this, [&] { heard++; });
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QCOMPARE(opened, 0);
+		QVERIFY(link.isOpen()); /* a Stop must reach the capture while it waits */
+		QTest::qWait(1000);
+		QCOMPARE(opened, 0);
+		QVERIFY(closed.isEmpty());
+		QTRY_COMPARE_WITH_TIMEOUT(opened, 1, 15000);
+		QTRY_VERIFY_WITH_TIMEOUT(heard > 0, 15000);
+		QVERIFY(closed.isEmpty());
+		link.close();
+		QCOMPARE(opened, 1);
+	}
+
+	/* elevated nothing asks: opened at once, as ever */
+	void pcapCaptureElevatedOpensAtOnce() {
+		const StandInOrders orders("prompt", captureFile(QStringLiteral("cdc_poll.pcap")));
+		auto *capture = new UsbPcapCapture(QCoreApplication::applicationFilePath());
+		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		evre::ListenLink link(QStringLiteral("COM13"), capture, cdcTarget());
+		int opened = 0;
+		connect(&link, &evre::Link::opened, this, [&] { opened++; });
+		link.open();
+		QCOMPARE(opened, 1);
+		link.close();
+	}
+
+	/* the prompt answered no, a worker that said nothing, and the Stop of a link still asking */
+	void pcapCaptureRefused_data() {
+		QTest::addColumn<QByteArray>("what");
+		QTest::addColumn<QString>("said");
+		QTest::newRow("the prompt refused") << QByteArray("noworker") << QStringLiteral("permission refused: press Listen to ask again");
+		QTest::newRow("a worker ended first") << QByteArray("silent")
+				<< QStringLiteral("the capture ended before anything came: another capture may hold this USB bus");
+	}
+
+	void pcapCaptureRefused() {
+		QFETCH(QByteArray, what);
+		QFETCH(QString, said);
+		const StandInOrders orders(what);
+		UsbTarget target = cdcTarget();
+		target.asksPermission = true;
+		auto *capture = new UsbPcapCapture(QCoreApplication::applicationFilePath());
+		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		evre::ListenLink link(QStringLiteral("COM13"), capture, target);
+		int opened = 0;
+		QStringList closed;
+		connect(&link, &evre::Link::opened, this, [&] { opened++; });
+		connect(&link, &evre::Link::closed, this, [&](const QString &why) { closed << why; });
+		link.open();
+		QTRY_COMPARE_WITH_TIMEOUT(closed.size(), 1, 15000);
+		QCOMPARE(closed.first(), said);
+		QCOMPARE(opened, 0);
+		QVERIFY(!link.isOpen());
+	}
+
+	void pcapCaptureStopWhileAsking() {
+		const StandInOrders orders("prompt", captureFile(QStringLiteral("cdc_poll.pcap")));
+		UsbTarget target = cdcTarget();
+		target.asksPermission = true;
+		UsbPcapCapture capture(QCoreApplication::applicationFilePath());
+		capture.setStillThereForTests([](const UsbTarget &) { return true; });
+		int news = 0;
+		connect(&capture, &UsbCapture::started, this, [&] { news++; });
+		connect(&capture, &UsbCapture::ended, this, [&] { news++; });
+		capture.start(target);
+		QPointer<QProcess> process = capture.findChild<QProcess *>();
+		capture.stop();
+		QVERIFY(!process || process->state() == QProcess::NotRunning);
+		QTest::qWait(1800); /* past the prompt: nothing comes of it */
+		QCOMPARE(news, 0);
+	}
+
+	/* What matters most: the worker the Studio cannot kill. A process of the capture's process, not its child, must go with
+	 * a Stop, with the capture's end, and with the Studio itself killed, which runs no code of ours. The job does it,
+	 * so this is Windows's; a real elevated worker is the owner's check */
+	void pcapCaptureLeavesNothing_data() {
+		QTest::addColumn<QString>("how");
+		QTest::newRow("Stop") << QStringLiteral("stop");
+		QTest::newRow("the capture destroyed: the Studio closed") << QStringLiteral("close");
+		QTest::newRow("the Studio killed: a crash") << QStringLiteral("crash");
+	}
+
+	void pcapCaptureLeavesNothing() {
+#ifdef Q_OS_WIN
+		QFETCH(QString, how);
+		QList<qint64> processes;
+		if (how == QLatin1String("crash")) {
+			const StandInOrders orders("owner");
+			QProcess studio;
+			studio.start(QCoreApplication::applicationFilePath(), QStringList());
+			QTRY_COMPARE_WITH_TIMEOUT(orders.processes().size(), 2, 15000);
+			processes = orders.processes();
+			QVERIFY(runs(processes[0]) && runs(processes[1]));
+			studio.kill();
+			studio.waitForFinished(5000);
+			QTRY_VERIFY_WITH_TIMEOUT(!runs(processes[0]) && !runs(processes[1]), 5000);
+			return;
+		}
+		const StandInOrders orders("tree");
+		auto capture = std::make_unique<UsbPcapCapture>(QCoreApplication::applicationFilePath());
+		capture->setStillThereForTests([](const UsbTarget &) { return true; });
+		capture->start(cdcTarget());
+		QTRY_COMPARE_WITH_TIMEOUT(orders.processes().size(), 2, 15000);
+		processes = orders.processes();
+		QVERIFY(runs(processes[0]) && runs(processes[1]));
+		if (how == QLatin1String("stop")) capture->stop();
+		else capture.reset();
+		QTRY_VERIFY_WITH_TIMEOUT(!runs(processes[0]) && !runs(processes[1]), 5000);
+#else
+		QSKIP("a job is Windows's");
+#endif
 	}
 
 	/* what is no pcap stream ends the capture, and the process with it */

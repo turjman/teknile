@@ -8,11 +8,12 @@
   Serial / USB, for a port another program holds: the Studio reads the USB traffic under it with the system's own
   capture and **sends nothing**. USB CDC boards and USB-UART bridges, on Windows and on Linux. Windows: USBPcap, a
   capture driver installed once, which the Studio starts for that one device; it lets only an administrator capture, so
-  the Studio must be run as administrator. Linux: usbmon, in the kernel; **Copy the commands** gives what makes it
-  readable, and the Help gives what lasts.
+  Windows asks for your permission each time **Listen** is pressed, and Stop, closing the Studio or a crash end the
+  capture with nothing left behind. Run as administrator nothing asks. Linux: usbmon, in the kernel; **Copy the commands**
+  gives what makes it readable, and the Help gives what lasts.
 - The port box is the one of Serial / USB, and a line under it says what can be heard (*listens to USB CDC · bus 2,
   device 5*) or why not, with what to do about it: **Get USBPcap…**, *USBPcap is not on this device yet* and unplugging it,
-  *run the Studio as administrator*, **Copy the commands**. **Connect** reads **Listen**, then **Stop**; the pill reads
+  **Copy the commands**. **Connect** reads **Listen**, then **Stop**; the pill reads
   *Listening · COM13 · USB CDC* on a blue tint of its own, and its tooltip says what is heard. A port that cannot be
   heard is refused with the reason, in red.
 - The Monitor marks who said what: `->DEV` the other program's request, `DEV->` the device's answer, `??` bytes that are

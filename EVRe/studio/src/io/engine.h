@@ -271,10 +271,12 @@ public:
 	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
 	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
-	void connectListen(const QString &port);
+	/* pressed: a person asked for this, so a UAC prompt may come; a try by itself must not raise one */
+	void connectListen(const QString &port, bool pressed = false);
 	/* tests: that port is replayed from a file, for the device a lookup would find there */
 	void setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
 			FileCapture::Pace pace = FileCapture::AtOnce);
+	void setListenCaptureForTests(const QString &port, const UsbTarget &target, const std::function<UsbCapture *()> &capture);
 	evre::ListenLink *listenLink() const; /* tests: the link, when it is Listen's */
 	/* tests: each way the engine sends by itself, tried now in the state that would send: while listening, nothing
 	 * goes. The stats are brought up to date with it (None: only that). */

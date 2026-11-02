@@ -343,6 +343,8 @@ private:
 	bool connected_ = false;
 	bool wantConnected_ = false;  /* Connect clicked and not Disconnect: a lost link is tried again */
 	bool retrying_ = false;       /* a reconnect by itself: not logged each time */
+	bool connectPressed_ = false;   /* a person pressed Connect, now: only that may raise a UAC prompt */
+	bool listenAsks_ = false;       /* this Listen had to ask: nothing may start it again but a press */
 	/* Listen is on, from Connect until it is stopped or given up: the port, and what the pill calls it. Empty: not */
 	QString listenPort_, listenLink_;
 	bool listening() const { return !listenPort_.isEmpty(); }

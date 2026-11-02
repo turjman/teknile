@@ -3,9 +3,13 @@
  * standard output a pcap stream for UsbPcapDecoder. It is only started, never linked, so USBPcap's licences do not touch
  * the Studio's.
  *
- * It must run elevated: below that USBPcapCMD raises a UAC prompt of its own, so UsbPortState::NeedsAdmin keeps it from
- * being started at all. Nothing here needs Windows: the tests run the whole of it, on every system, on a stand-in for the
- * program, and so never on the real one.
+ * Below administrator the program raises a UAC prompt of its own and starts an elevated worker, which the Studio cannot
+ * kill, and which does not notice the program going until it next has something to write: on a silent device, never.
+ * So the program runs in a job of the Studio's, which the worker is born into. Ending the job ends the worker, and the
+ * system ends the job when the Studio goes, however it goes.
+ *
+ * The capture itself needs no Windows: the tests run it, on every system, on a stand-in for the program, and so never on
+ * the real one, whose prompt a test must not raise. The job is Windows's, and tried there.
  */
 #pragma once
 
@@ -25,7 +29,7 @@ public:
 	explicit UsbPcapCapture(const QString &program, QObject *parent = nullptr);
 	~UsbPcapCapture() override;
 	void start(const UsbTarget &target) override;
-	void stop() override;              /* waits for the process: STOP_MS, at most twice */
+	void stop() override;
 
 	/* tests: what says the device is still there, for a target no system has */
 	void setStillThereForTests(std::function<bool(const UsbTarget &)> stillThere) { stillThere_ = std::move(stillThere); }
@@ -36,6 +40,8 @@ private:
 	void look();                        /* every LOOK_MS: is the device still there */
 	void finish(const QString &why);
 	QString goneText() const;
+	void keepInJob(void *process);      /* Windows */
+	void endJob();
 
 	QString program_;
 	std::function<bool(const UsbTarget &)> stillThere_;
@@ -44,4 +50,6 @@ private:
 	QProcess *process_ = nullptr;
 	QTimer *look_;
 	QString why_;                       /* it could not start: what ended() says, from the event loop */
+	bool started_ = false;              /* the stream's first bytes came */
+	void *job_ = nullptr;               /* Windows: the job the program and its worker run in */
 };

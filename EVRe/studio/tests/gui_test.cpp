@@ -4650,36 +4650,32 @@ private:
 		if (stopButton()) stopButton()->click();
 		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
 
-		/* -- a port with no state: the real lookup, no hook ----------------------------------------------------- */
-		listenTo(QStringLiteral("COM99"));
+		/* -- a port with no state: the real lookup, no hook. Past COM256, which Windows cannot name: a real USB port here
+		 * would go on to the real USBPcapCMD and its UAC prompt, and a test must not raise one ------------------------ */
+		listenTo(QStringLiteral("COM999"));
 		if (connectButton()) connectButton()->click();
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
-		const QLatin1String nothingHeard("not connected: COM99 is not a USB port: it cannot be listened to");
+		const QLatin1String nothingHeard("not connected: COM999 is not a USB port: it cannot be listened to");
 #else
-		const QLatin1String nothingHeard("not connected: COM99 cannot be listened to: no USB capture on this system");
+		const QLatin1String nothingHeard("not connected: COM999 cannot be listened to: no USB capture on this system");
 #endif
 		check(QTest::qWaitFor([&] { return logText().contains(nothingHeard); }, 3000)
 						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000),
 				"Listen, a port nothing here can hear: refused with a plain reason, the system's own lookup");
 
-		/* -- Windows's two refusals: at Connect, as any other, and no capture is started -------------------------------- */
-		UsbPortState needsAdmin, noFilter;
-		needsAdmin.kind = UsbPortState::NeedsAdmin;
+		/* -- Windows: a device USBPcap has not joined, refused at Connect as any other -------------------------------- */
+		UsbPortState noFilter;
 		noFilter.kind = UsbPortState::NoFilter;
-		UsbTarget::stateForTests(QStringLiteral("COM98"), needsAdmin);
 		UsbTarget::stateForTests(QStringLiteral("COM97"), noFilter);
-		listenTo(QStringLiteral("COM98"));
-		if (connectButton()) connectButton()->click();
-		check(QTest::qWaitFor([&] { return logText().contains(QLatin1String("not connected: run the Studio as administrator")); }, 3000)
-						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000) && !engine->listenLink(),
-				"Listen below administrator: refused at Connect with its reason, and nothing is started, so no UAC prompt comes");
 		listenTo(QStringLiteral("COM97"));
 		if (connectButton()) connectButton()->click();
 		check(QTest::qWaitFor([&] { return logText().contains(QLatin1String("not connected: USBPcap is not on this device yet")); }, 3000)
 						&& QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000) && !engine->listenLink(),
 				"Listen on a device USBPcap has not joined: refused at Connect with its reason");
-		UsbTarget::stateForTests(QStringLiteral("COM98"), UsbPortState());
 		UsbTarget::stateForTests(QStringLiteral("COM97"), UsbPortState());
+
+		/* -- Windows below administrator: the capture asks first, and only a press may start it -------------------------- */
+		listenAsking(engine, connectButton, stopButton, listenTo, [&] { return logText(); });
 		listenTo(port);
 
 		/* -- ftdi_poll: scene 1 behind a bridge ------------------------------------------------------------------- */
@@ -4787,6 +4783,150 @@ private:
 				"its device line is not marked heard");
 	}
 
+	/* The capture that asks a person: a test's own, which does what Windows's prompt would when it is told to, so that no
+	 * check depends on a real prompt. What it is told comes on the engine's thread */
+	struct PromptControl {
+		std::atomic<int> starts{ 0 };
+		std::atomic<int> stops{ 0 };
+		UsbCapture *running = nullptr;
+	};
+	class PromptCapture : public UsbCapture {
+	public:
+		explicit PromptCapture(const std::shared_ptr<PromptControl> &control) : control_(control) {}
+		void start(const UsbTarget &) override {
+			control_->starts++;
+			control_->running = this;
+		}
+		void stop() override {
+			if (control_->running == this) control_->running = nullptr;
+			control_->stops++;
+		}
+
+	private:
+		std::shared_ptr<PromptControl> control_;
+	};
+
+	template <typename ConnectButton, typename StopButton, typename ListenTo, typename LogText>
+	void listenAsking(IoEngine *engine, const ConnectButton &connectButton, const StopButton &stopButton, const ListenTo &listenTo,
+			const LogText &logText) {
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		QCheckBox *reconnect = nullptr;
+		for (QCheckBox *box : window_.findChildren<QCheckBox *>())
+			if (box->text() == QLatin1String("Reconnect by itself")) reconnect = box;
+		const bool found = pill && reconnect;
+		check(found, "Listen, asking: the pill and Reconnect by itself are there");
+		if (!found) return;
+		const QString port = QStringLiteral("COM98"), elevated = QStringLiteral("COM96");
+		auto control = std::make_shared<PromptControl>();
+		const auto engineDone = [&] { QMetaObject::invokeMethod(engine, [] {}, Qt::BlockingQueuedConnection); };
+		const auto pillSays = [&] { return QString(pill->fullText()).remove(QStringLiteral("●  ")); };
+		const auto answerYes = [&] {
+			engine->post([control] {
+				if (control->running) emit control->running->started();
+			});
+		};
+		const auto endWith = [&](const QString &why) {
+			engine->post([control, why] {
+				if (control->running) emit control->running->ended(why);
+			});
+		};
+		UsbTarget asks = listenTarget();
+		asks.port = port;
+		asks.asksPermission = true;
+		UsbTarget plain = listenTarget();
+		plain.port = elevated;
+		UsbTarget::stateForTests(port, listenableState(asks));
+		UsbTarget::stateForTests(elevated, listenableState(plain));
+		const auto make = [control] { return new PromptCapture(control); };
+		engine->post([engine, port, elevated, asks, plain, make] {
+			engine->setListenCaptureForTests(port, asks, make);
+			engine->setListenCaptureForTests(elevated, plain, make);
+		});
+		const bool reconnectWas = reconnect->isChecked();
+		reconnect->setChecked(true); /* every try by itself that could be, is */
+		listenTo(port);
+
+		/* the press: the capture starts, once, and the link waits */
+		if (connectButton()) connectButton()->click();
+		engineDone();
+		check(control->starts == 1 && pillSays() == QStringLiteral("Asking Windows for permission…")
+						&& (pill->text() == pill->fullText() || pill->text() == QStringLiteral("●  Asking Windows…"))
+						&& pill->toolTip().contains(QLatin1String("taskbar")) && !stopButton()
+						&& linkButtonOf(window_) && linkButtonOf(window_)->text() == QLatin1String("Cancel"),
+				"Listen, asking: a press starts the capture, once, and the pill says Windows is asking");
+		QTest::qWait(2600); /* past a try by itself's 2 s */
+		check(control->starts == 1 && pillSays() == QStringLiteral("Asking Windows for permission…"),
+				"Listen, asking: nothing runs out while the prompt is open");
+		check(engine->listenLink() && engine->listenLink()->sendAttempts() == 0,
+				"Listen, asking: nothing reaches the link while the prompt is open, no keep-alive either");
+
+		/* opened at the first bytes */
+		answerYes();
+		check(QTest::qWaitFor([&] { return pillSays().startsWith(QLatin1String("Listening")); }, 3000) && stopButton(),
+				"Listen, asking: it has opened when the stream's first bytes say yes");
+
+		/* the device gone: no try by itself, and the pill says what is wanted */
+		endWith(QStringLiteral("COM98 is gone: unplugged or reset?"));
+		const QString pressAgain = QStringLiteral("COM98 is gone: unplugged or reset? · press Listen to hear it again");
+		check(QTest::qWaitFor([&] { return pillSays() == pressAgain; }, 3000) && connectButton(),
+				"Listen, asking: a capture lost: the pill says Listen must be pressed again");
+		QTest::qWait(2600);
+		check(control->starts == 1 && connectButton() && pillSays() == pressAgain,
+				"Listen, asking: a try by itself below administrator starts nothing");
+
+		/* the prompt refused: its reason, nothing more */
+		if (connectButton()) connectButton()->click();
+		engineDone();
+		const int pressed = control->starts;
+		endWith(QStringLiteral("permission refused: press Listen to ask again"));
+		const bool refused = QTest::qWaitFor([&] { return pillSays() == QLatin1String("permission refused: press Listen to ask again"); }, 3000);
+		QTest::qWait(2600);
+		check(pressed == 2 && refused && control->starts == 2 && connectButton()
+						&& pillSays() == QLatin1String("permission refused: press Listen to ask again"),
+				"Listen, asking: the prompt refused: a plain reason, no retry and no loop");
+
+		/* Cancel while it asks reaches the capture */
+		if (connectButton()) connectButton()->click();
+		engineDone();
+		const int stopsBefore = control->stops;
+		if (linkButtonOf(window_)) linkButtonOf(window_)->click();
+		engineDone();
+		check(control->starts == 3 && control->stops > stopsBefore && QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000)
+						&& pillSays() == QLatin1String("Disconnected"),
+				"Listen, asking: Cancel while the prompt is open stops the capture");
+
+		/* no press: not at the program's start either */
+		MainWindow::Startup atStart;
+		atStart.connect = true;
+		window_.applyStartup(atStart);
+		engineDone();
+		check(control->starts == 3 && connectButton()
+						&& pillSays() == QLatin1String("press Listen: Windows asks for permission first")
+						&& logText().contains(QLatin1String("not connected: press Listen: Windows asks for permission first")),
+				"Listen, asking: Connect at the program's start starts nothing: only a person's press does");
+		/* and the engine's own belt, for whatever else reaches it */
+		engine->post([engine, port] { engine->connectListen(port, false); });
+		engineDone();
+		check(control->starts == 3, "Listen, asking: the engine starts nothing without a press");
+
+		/* elevated: opened at once, and a try by itself listens again */
+		const int startsBefore = control->starts;
+		listenTo(elevated);
+		if (connectButton()) connectButton()->click();
+		check(QTest::qWaitFor([&] { return pillSays().startsWith(QLatin1String("Listening")); }, 3000),
+				"Listen as administrator: no asking: opened at once");
+		endWith(QStringLiteral("COM96 is gone: unplugged or reset?"));
+		check(QTest::qWaitFor([&] { return control->starts == startsBefore + 2; }, 4000),
+				"Listen as administrator: a try by itself listens again");
+		(void) QTest::qWaitFor([&] { return stopButton() != nullptr; }, 3000);
+		if (stopButton()) stopButton()->click();
+		(void) QTest::qWaitFor([&] { return connectButton() != nullptr; }, 3000);
+
+		reconnect->setChecked(reconnectWas);
+		UsbTarget::stateForTests(port, UsbPortState());
+		UsbTarget::stateForTests(elevated, UsbPortState());
+	}
+
 	/* ------------------------------------------------------------ Listen, what is seen */
 
 	/* the Connection card's Connect, whatever it reads now: the button beside the pill that is no segment */
@@ -4817,12 +4957,13 @@ private:
 		bridge.vid = 0x0403;
 		bridge.pid = 0x6001;
 		bridge.kind = UsbTarget::Ftdi;
-		UsbPortState notUsb, noUsbPcap, noUsbmon, noFilter, needsAdmin;
+		UsbPortState notUsb, noUsbPcap, noUsbmon, noFilter;
 		notUsb.kind = UsbPortState::NotUsb;
 		noUsbPcap.kind = UsbPortState::NoUsbPcap;
 		noUsbmon.kind = UsbPortState::NoUsbmon;
 		noFilter.kind = UsbPortState::NoFilter;
-		needsAdmin.kind = UsbPortState::NeedsAdmin;
+		UsbTarget asking = listenTarget();
+		asking.asksPermission = true;
 		noUsbmon.device = QStringLiteral("/dev/usbmon2");
 		UsbPortState noEndpoints = listenableState(listenTarget());
 		noEndpoints.target.inEndpoints.clear();
@@ -4835,7 +4976,7 @@ private:
 			{ QStringLiteral("nocapture"), QStringLiteral("COM26"), UsbPortState() },
 			{ QStringLiteral("noendpoints"), QStringLiteral("COM27"), noEndpoints },
 			{ QStringLiteral("nofilter"), QStringLiteral("COM28"), noFilter },
-			{ QStringLiteral("needsadmin"), QStringLiteral("COM29"), needsAdmin } };
+			{ QStringLiteral("asks"), QStringLiteral("COM29"), listenableState(asking) } };
 		for (const ListenCase &each : cases) UsbTarget::stateForTests(each.port, each.state);
 		return cases;
 	}
@@ -4972,12 +5113,20 @@ private:
 						&& line->toolTip().contains(QLatin1String("when it is plugged in")) && !action->isVisible(),
 				"the Listen line: USBPcap has not joined this device: what to do, and no button to get what is already there");
 		choose(8);
-		check(line->fullText() == QLatin1String("run the Studio as administrator") && warns() && !hint->isVisible() && !action->isVisible()
-						&& line->toolTip().contains(QLatin1String("Run as administrator")) && !line->isCut(),
-				"the Listen line: below administrator it says so, nothing more: no button, no prompt");
+		check(line->fullText() == QStringLiteral("listens to USB CDC · bus 2, device 5") && !warns() && hint->isVisible() && !hint->isCut()
+						&& hint->fullText() == QLatin1String("Windows asks for your permission each time Listen is pressed") && !action->isVisible(),
+				"the Listen line: below administrator it reads as ever, a muted second line saying Windows asks");
+		UsbPortState both = cases[8].state;
+		both.target.inEndpoints.clear();
+		both.target.outEndpoints.clear();
+		UsbTarget::stateForTests(cases[8].port, both);
+		card.showListenLine();
+		check(hint->fullText().contains(QLatin1String("Windows asks")) && hint->fullText().contains(QLatin1String("could not be read")) && !hint->isCut(),
+				"the Listen line: asking and endpoints not read: the second line says both, whole");
+		UsbTarget::stateForTests(cases[8].port, cases[8].state);
 		check(Sidebar::listenRefusal(QStringLiteral("COM13"), cases[7].state) == QLatin1String("USBPcap is not on this device yet")
-						&& Sidebar::listenRefusal(QStringLiteral("COM13"), cases[8].state) == QLatin1String("run the Studio as administrator"),
-				"the pill's refusals say the Listen line's words");
+						&& Sidebar::listenRefusal(QStringLiteral("COM13"), cases[8].state).isEmpty(),
+				"the pill's refusal says the Listen line's words, and a port that asks is no refusal");
 		UsbPortState notUsbState;
 		notUsbState.kind = UsbPortState::NotUsb;
 		UsbTarget::stateForTests(QString(), notUsbState);
@@ -5532,6 +5681,27 @@ private:
 				const QString look = theme(dark);
 				box->grab().save(prefix + QStringLiteral("_listen_card_refused_%1_%2.png").arg(code, look));
 			}
+			/* Windows's prompt open, and what a lost capture says below administrator; the capture a test's own */
+			const auto control = std::make_shared<PromptControl>();
+			const ListenCase &asks = cases[8];
+			engine->post([engine, name = asks.port, target = asks.state.target, control] {
+				engine->setListenCaptureForTests(name, target, [control] { return new PromptCapture(control); });
+			});
+			portBox->setCurrentIndex(portBox->findData(asks.port));
+			if (linkButtonOf(other)) linkButtonOf(other)->click();
+			QTest::qWait(60);
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				box->grab().save(prefix + QStringLiteral("_listen_card_asking_%1_%2.png").arg(code, look));
+			}
+			if (linkButtonOf(other)) linkButtonOf(other)->click();
+			sidebar->showLinkError(QCoreApplication::translate("MainWindow", "%1 · press Listen to hear it again")
+					.arg(QCoreApplication::translate("UsbPcapCapture", "%1 is gone: unplugged or reset?").arg(asks.port)));
+			for (const bool dark : { false, true }) {
+				const QString look = theme(dark);
+				box->grab().save(prefix + QStringLiteral("_listen_card_pressagain_%1_%2.png").arg(code, look));
+			}
+			sidebar->showDisconnected();
 			setFile(QStringLiteral("cdc_quiet.pcap"), FileCapture::ByStamps);
 			portBox->setCurrentIndex(portBox->findData(port));
 			if (linkButtonOf(other)) linkButtonOf(other)->click();

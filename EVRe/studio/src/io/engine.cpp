@@ -551,20 +551,26 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 
 /* A link that hears: a capture of this port, or nothing that can (open() then says so). No baud rate: the bytes are the
  * other program's, at whatever speed it set. */
-void IoEngine::connectListen(const QString &port) {
+void IoEngine::connectListen(const QString &port, bool pressed) {
 	serialBaud_ = 0;
 	applyInFlight();
 	/* the tests' file, or the system's capture of what the port is now, a device back at a try by itself on a new
-	 * address; without a capture the link refuses the port in plain words */
-	evre::ListenLink *link = nullptr;
+	 * address; without a capture the link refuses the port in plain words. The window asks only with a press: this is
+	 * the last belt, for a prompt must never come unattended */
 	const auto file = listenFiles_.constFind(port);
-	if (file != listenFiles_.constEnd()) {
-		link = new evre::ListenLink(port, new FileCapture(file->file, file->pace), file->target);
+	const bool test = file != listenFiles_.constEnd();
+	UsbPortState state;
+	if (test) {
+		state.kind = UsbPortState::Listenable;
+		state.target = file->target;
 	} else {
-		const UsbPortState state = UsbTarget::liveStateOf(port);
-		link = new evre::ListenLink(port, state.kind == UsbPortState::Listenable ? UsbCapture::live() : nullptr, state.target);
-		link->setRefused(state);
+		state = UsbTarget::liveStateOf(port);
 	}
+	UsbCapture *capture = nullptr;
+	if (state.kind == UsbPortState::Listenable && (pressed || !state.target.asksPermission))
+		capture = !test ? UsbCapture::live() : file->capture ? file->capture() : new FileCapture(file->file, file->pace);
+	evre::ListenLink *link = new evre::ListenLink(port, capture, state.target);
+	link->setRefused(state);
 	connect(link, &evre::ListenLink::heardRequest, this, &IoEngine::onHeardRequest);
 	connect(link, &evre::ListenLink::received, this, &IoEngine::onDeviceBytes);
 	connect(link, &evre::ListenLink::capturesLost, this, [this](quint64 total) { capturesLost_ = total; });
@@ -573,7 +579,11 @@ void IoEngine::connectListen(const QString &port) {
 
 void IoEngine::setListenFileForTests(const QString &port, const QString &file, const UsbTarget &target,
 		FileCapture::Pace pace) {
-	listenFiles_.insert(port, { file, target, pace });
+	listenFiles_.insert(port, { file, target, pace, {} });
+}
+
+void IoEngine::setListenCaptureForTests(const QString &port, const UsbTarget &target, const std::function<UsbCapture *()> &capture) {
+	listenFiles_.insert(port, { QString(), target, FileCapture::AtOnce, capture });
 }
 
 evre::ListenLink *IoEngine::listenLink() const { return qobject_cast<evre::ListenLink *>(link_.get()); }
@@ -586,6 +596,12 @@ void IoEngine::attach(evre::Link *link, const QString &token) {
 	connect(link, &evre::Link::opened, this, &IoEngine::onOpened);
 	connect(link, &evre::Link::closed, this, &IoEngine::onClosed);
 	master_->setLink(link);
+	/* A Listen link sends nothing from its first moment, not only once it has opened: a prompt may hold that off for as
+	 * long as a person takes, and the keep-alive would not wait */
+	if (listenLink()) {
+		listening_ = true;
+		master_->setKeepAlive(false);
+	}
 	link->open();
 }
 

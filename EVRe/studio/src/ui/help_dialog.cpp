@@ -87,10 +87,13 @@ everything on that USB device.</p>
 <li>The port box is the one of Serial / USB; the line under it says what can be heard, or why not.</li>
 <li><b>Windows</b>: <b>USBPcap</b>, a capture driver. <b>Get USBPcap…</b> opens its page; install it once as administrator,
 then unplug and plug the device again: it joins a device when that is plugged in. If the line then reads <i>USBPcap is
-not on this device yet</i>, restart the PC. USBPcap lets only an administrator capture, so the line reads <i>run the
-Studio as administrator</i> until you do: close the Studio and start it with <b>Run as administrator</b>. The Studio
-captures that one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there
-first.</li>
+not on this device yet</i>, restart the PC. USBPcap lets only an administrator capture, so each time you press
+<b>Listen</b> Windows asks for your permission; the pill reads <i>Asking Windows for permission…</i> for as long as you
+take, and if you do not see the prompt, it may be waiting on the taskbar. Because a prompt must never come up with nobody
+there, <b>Reconnect by itself</b> does not start a capture: a lost one waits for you to press <b>Listen</b> again. Started
+with <b>Run as administrator</b> the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
+one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. <b>Stop</b>, closing
+the Studio or a crash end the capture; Task Manager's Details tab should show no <code>USBPcapCMD.exe</code> after it.</li>
 <li><b>Linux</b>: <b>usbmon</b>, in the kernel. <b>Copy the commands</b> gives <code>sudo modprobe usbmon</code> and
 <code>sudo setfacl -m u:$USER:r /dev/usbmon*</code>, good until the PC restarts. What lasts takes three steps. The
 module at every start: <code>usbmon</code> in <code>/etc/modules-load.d/usbmon.conf</code>. The udev rule:

@@ -11,16 +11,19 @@
  */
 #pragma once
 
+#include <functional>
+
 #include "evre/link.h"
 #include "io/usb_capture.h"
 
 namespace evre {
 
-/* A file to replay for a port, in place of the live capture (the tests). */
+/* A file to replay for a port, or a capture of a test's own, in place of the live capture (the tests). */
 struct ListenFile {
 	QString file;
 	UsbTarget target;
 	FileCapture::Pace pace = FileCapture::AtOnce;
+	std::function<UsbCapture *()> capture;      /* made on the engine's thread, at each start */
 };
 
 class ListenLink : public Link {

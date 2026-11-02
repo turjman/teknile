@@ -4088,10 +4088,13 @@ everything on that USB device.&lt;/p&gt;
 &lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Windows&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;, a capture driver. &lt;b&gt;Get USBPcap…&lt;/b&gt; opens its page; install it once as administrator,
 then unplug and plug the device again: it joins a device when that is plugged in. If the line then reads &lt;i&gt;USBPcap is
-not on this device yet&lt;/i&gt;, restart the PC. USBPcap lets only an administrator capture, so the line reads &lt;i&gt;run the
-Studio as administrator&lt;/i&gt; until you do: close the Studio and start it with &lt;b&gt;Run as administrator&lt;/b&gt;. The Studio
-captures that one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there
-first.&lt;/li&gt;
+not on this device yet&lt;/i&gt;, restart the PC. USBPcap lets only an administrator capture, so each time you press
+&lt;b&gt;Listen&lt;/b&gt; Windows asks for your permission; the pill reads &lt;i&gt;Asking Windows for permission…&lt;/i&gt; for as long as you
+take, and if you do not see the prompt, it may be waiting on the taskbar. Because a prompt must never come up with nobody
+there, &lt;b&gt;Reconnect by itself&lt;/b&gt; does not start a capture: a lost one waits for you to press &lt;b&gt;Listen&lt;/b&gt; again. Started
+with &lt;b&gt;Run as administrator&lt;/b&gt; the Studio needs no prompt, and Reconnect by itself works. The Studio captures that
+one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. &lt;b&gt;Stop&lt;/b&gt;, closing
+the Studio or a crash end the capture; Task Manager&apos;s Details tab should show no &lt;code&gt;USBPcapCMD.exe&lt;/code&gt; after it.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
 &lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;, good until the PC restarts. What lasts takes three steps. The
 module at every start: &lt;code&gt;usbmon&lt;/code&gt; in &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. The udev rule:
@@ -4201,9 +4204,12 @@ or this link does not). Not an error.&lt;/li&gt;
 &lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;ويندوز&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط. يفتح &lt;b&gt;تنزيل ⁦USBPcap⁩…&lt;/b&gt; صفحته؛ ثبّته مرة واحدة بصلاحية المسؤول،
 ثم افصل الجهاز وأعد توصيله: فهو ينضم إلى الجهاز عند توصيله. وإن قرأ السطر بعد ذلك &lt;i&gt;⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد&lt;/i&gt;،
-فأعد تشغيل الحاسوب. ولا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول، فيقرأ السطر &lt;i&gt;شغّل الاستوديو كمسؤول&lt;/i&gt; إلى أن تفعل: أغلق
-الاستوديو وابدأه بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt;. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل كله أبدًا، ولا يشغل الناقل إلا التقاط
-واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا.&lt;/li&gt;
+فأعد تشغيل الحاسوب. ولا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول، فيطلب ويندوز إذنك في كل مرة تضغط فيها &lt;b&gt;استماع&lt;/b&gt;؛ وتقرأ الشارة
+&lt;i&gt;يطلب الإذن من ويندوز…&lt;/i&gt; ما دمت لم تُجب، وإن لم تَرَ نافذة الطلب فقد تكون منتظرة في شريط المهام. ولأن نافذة الطلب يجب ألا تظهر
+في غياب أحد، لا تبدأ &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; التقاطًا: فالالتقاط المفقود ينتظر أن تضغط &lt;b&gt;استماع&lt;/b&gt; من جديد. وإذا بدأت
+الاستوديو بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt; فلا حاجة إلى نافذة الطلب، وتعمل إعادة الاتصال تلقائيًا. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل
+كله أبدًا، ولا يشغل الناقل إلا التقاط واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا. و&lt;b&gt;إيقاف&lt;/b&gt; أو إغلاق الاستوديو أو تعطّله ينهي
+الالتقاط؛ ويجب ألا يظهر ⁦&lt;code&gt;USBPcapCMD.exe&lt;/code&gt;⁩ بعده في تبويب «التفاصيل» في إدارة المهام.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
 &lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;، وهما صالحان حتى إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم
@@ -4438,8 +4444,8 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
         <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
     </message>
     <message>
-        <source>run the Studio as administrator</source>
-        <translation>شغّل الاستوديو كمسؤول</translation>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
     </message>
 </context>
 <context>
@@ -5159,6 +5165,14 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
     <message>
         <source>API server stopped: %1</source>
         <translation>توقف خادم API: %1</translation>
+    </message>
+    <message>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 · press Listen to hear it again</source>
+        <translation>%1 · اضغط «استماع» لتسمعه من جديد</translation>
     </message>
 </context>
 <context>
@@ -8761,16 +8775,24 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>افصله ثم أعد توصيله؛ وإن لم يُجدِ ذلك فأعد تشغيل الحاسوب</translation>
     </message>
     <message>
-        <source>USBPcap lets only an administrator capture: close the Studio and start it with Run as administrator.</source>
-        <translation>لا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول: أغلق الاستوديو وابدأه بأمر «تشغيل كمسؤول».</translation>
-    </message>
-    <message>
         <source>USBPcap is not on this device yet</source>
         <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
     </message>
     <message>
-        <source>run the Studio as administrator</source>
-        <translation>شغّل الاستوديو كمسؤول</translation>
+        <source>Windows asks for your permission each time Listen is pressed</source>
+        <translation>يطلب ويندوز إذنك في كل مرة يُضغط فيها «استماع»</translation>
+    </message>
+    <message>
+        <source>Asking Windows for permission…</source>
+        <translation>يطلب الإذن من ويندوز…</translation>
+    </message>
+    <message>
+        <source>If you do not see the prompt, it may be waiting on the taskbar.</source>
+        <translation>إن لم تَرَ نافذة الطلب فقد تكون منتظرة في شريط المهام.</translation>
+    </message>
+    <message>
+        <source>Asking Windows…</source>
+        <translation>يطلب الإذن…</translation>
     </message>
 </context>
 <context>
@@ -8809,6 +8831,14 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>USBPcapCMD stopped</source>
         <translation>توقف ⁦USBPcapCMD⁩</translation>
+    </message>
+    <message>
+        <source>permission refused: press Listen to ask again</source>
+        <translation>رُفض الإذن: اضغط «استماع» لتطلبه من جديد</translation>
+    </message>
+    <message>
+        <source>the capture ended before anything came: another capture may hold this USB bus</source>
+        <translation>انتهى الالتقاط قبل وصول أي شيء: قد يشغل التقاط آخر ناقل ⁦USB⁩ هذا</translation>
     </message>
 </context>
 <context>
@@ -8868,8 +8898,8 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
     </message>
     <message>
-        <source>run the Studio as administrator</source>
-        <translation>شغّل الاستوديو كمسؤول</translation>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
     </message>
 </context>
 <context>

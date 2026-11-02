@@ -927,6 +927,10 @@ void Sidebar::showListenLine() {
 				"device (Help: Connecting).");
 		if (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty())
 			hint = tr("its endpoints could not be read: every bulk endpoint of the device is heard");
+		if (state.target.asksPermission) {
+			const QString asks = tr("Windows asks for your permission each time Listen is pressed");
+			hint = hint.isEmpty() ? asks : QStringLiteral("%1 · %2").arg(asks, hint);
+		}
 		break;
 	case UsbPortState::NotUsb:
 		if (serialPort().isEmpty()) {
@@ -953,10 +957,6 @@ void Sidebar::showListenLine() {
 		line = listenRefusal(QString(), state);
 		why = tr("USBPcap joins a device when it is plugged in, and a USB bus when the PC starts.");
 		hint = tr("unplug it and plug it in again; if that does not help, restart the PC");
-		break;
-	case UsbPortState::NeedsAdmin:
-		line = listenRefusal(QString(), state);
-		why = tr("USBPcap lets only an administrator capture: close the Studio and start it with Run as administrator.");
 		break;
 	case UsbPortState::NoCapture:
 		line = tr("no USB capture on this system");
@@ -1008,7 +1008,6 @@ QString Sidebar::listenRefusal(const QString &port, const UsbPortState &state) {
 		return tr("usbmon is not loaded or %1 is not readable").arg(ltrPiece(QString(state.device)
 				.replace(QLatin1Char('/'), QStringLiteral("/") + QChar(0x2060))));
 	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");
-	case UsbPortState::NeedsAdmin: return tr("run the Studio as administrator");
 	case UsbPortState::NoCapture: break;
 	}
 	return tr("%1 cannot be listened to: no USB capture on this system").arg(name);
@@ -1095,6 +1094,15 @@ QString Sidebar::connectText() const { return isListen() ? tr("Listen") : tr("Co
 
 void Sidebar::showConnecting() {
 	showLinkState(QStringLiteral("busy"), tr("Connecting…"));
+	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
+	connectOffered_ = false;
+}
+
+/* Windows's prompt is open, for as long as the person takes: nothing runs a clock on it */
+void Sidebar::showAsking() {
+	const QString text = tr("Asking Windows for permission…");
+	showLinkState(QStringLiteral("busy"), text, tr("Asking Windows…"),
+			text + QLatin1Char('\n') + tr("If you do not see the prompt, it may be waiting on the taskbar."));
 	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
 	connectOffered_ = false;
 }

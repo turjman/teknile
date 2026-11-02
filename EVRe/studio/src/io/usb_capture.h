@@ -50,6 +50,9 @@ struct UsbTarget {
 	QVector<int> inEndpoints;
 	QVector<int> outEndpoints;
 	int inMaxPacket = 0;        /* the IN endpoint's wMaxPacketSize; 0: not known (FTDI then goes by FTDI_PACKET) */
+	/* The system asks a person first (Windows, below administrator: USBPcapCMD raises a UAC prompt): only a press may
+	 * start the capture, and nothing has opened until its first bytes say the answer was yes */
+	bool asksPermission = false;
 
 	/* What Listen can do with this port now, a state forced by a test first. The window's thread */
 	static UsbPortState stateOf(const QString &port);
@@ -73,7 +76,6 @@ struct UsbPortState {
 		NoUsbPcap,      /* Windows: USBPcap is not installed */
 		NoUsbmon,       /* Linux: usbmon is not loaded, or its device cannot be read */
 		NoFilter,       /* Windows: USBPcap is installed, but its filter is not on this device or its root hub */
-		NeedsAdmin,     /* Windows: USBPcap's driver opens only to an administrator */
 	};
 	Kind kind = NoCapture;
 	UsbTarget target;           /* Listenable: what to listen to; else as far as it is known */
@@ -117,7 +119,7 @@ struct UsbPortFacts {
 	QByteArray configuration;   /* the configuration descriptor; empty: not read */
 	QStringList filters;        /* what \\.\USBPcap1, 2, ... say of their root hub; empty where there is no such device */
 	bool program = false;       /* USBPcapCMD.exe is there */
-	bool elevated = false;      /* the Studio runs as administrator, which is what USBPcapCMD itself looks at */
+	bool elevated = false;      /* the Studio runs as administrator: USBPcapCMD then raises no UAC prompt */
 };
 
 /* The nodes that matter in a chain, as positions in it, -1 for none */
@@ -141,8 +143,9 @@ bool usbReadEndpoints(const QByteArray &configuration, int firstInterface, UsbTa
 UsbTarget::Kind usbKindByVid(quint16 vid);
 /* USBPcapCMD's arguments for one device of one root hub: never -A, a whole hub carries the keyboard too */
 QStringList usbPcapArguments(const UsbTarget &target);
-/* why USBPcapCMD ended, in plain words; `errors` is what it said on its standard error */
-QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors);
+/* Why USBPcapCMD ended, in plain words; `errors` is what it said on its standard error. workerSilent: it had a worker,
+ * whose words reach nobody, and nothing came */
+QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors, bool workerSilent = false);
 /* the program beside the uninstaller the registry names, for an install in another place; empty when it names none */
 QString usbPcapProgramBeside(const QString &uninstallString);
 
@@ -239,13 +242,15 @@ class UsbCapture : public QObject {
 	Q_OBJECT
 public:
 	using QObject::QObject;
-	/* the system's live capture, unstarted; nullptr where it has none */
+	/* the system's live capture, unstarted; nullptr where it has none. Never start it in a test: on Windows below
+	 * administrator that raises a UAC prompt */
 	static UsbCapture *live();
 	virtual void start(const UsbTarget &target) = 0;
 	virtual void stop() = 0;    /* nothing follows it, not even ended() */
 
 signals:
 	void data(UsbDirection direction, const QByteArray &bytes);
+	void started();                     /* the stream's first bytes: what says a prompt was answered yes */
 	void dropped(quint64 total);        /* captures the system says it lost, so far */
 	void ended(const QString &why);     /* it stopped by itself */
 };

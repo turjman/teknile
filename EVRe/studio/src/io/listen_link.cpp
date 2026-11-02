@@ -14,6 +14,9 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 		if (direction == UsbDirection::In) emit received(bytes);
 		else emit heardRequest(bytes);
 	});
+	connect(capture_, &UsbCapture::started, this, [this] {
+		if (target_.asksPermission) emit opened();
+	});
 	connect(capture_, &UsbCapture::dropped, this, &ListenLink::capturesLost);
 	connect(capture_, &UsbCapture::ended, this, [this](const QString &why) {
 		open_ = false;
@@ -21,7 +24,9 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 	});
 }
 
-/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening */
+/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening. One that
+ * asks a person first has opened when its first bytes say the answer was yes; it may take as long as the person does, so
+ * nothing here runs a clock on it. Meanwhile isOpen() holds, for a Stop to reach the capture */
 void ListenLink::open() {
 	if (!capture_) {
 		emit closed(refusal());
@@ -29,7 +34,7 @@ void ListenLink::open() {
 	}
 	open_ = true;
 	capture_->start(target_);
-	emit opened();
+	if (!target_.asksPermission) emit opened();
 }
 
 /* The window's words (Sidebar::listenRefusal): it refuses a fresh Listen itself, and a try by itself comes as far as here */
@@ -39,9 +44,10 @@ QString ListenLink::refusal() const {
 	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
 	case UsbPortState::NoUsbmon: return tr("usbmon is not loaded or %1 is not readable").arg(refused_.device);
 	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");
-	case UsbPortState::NeedsAdmin: return tr("run the Studio as administrator");
-	case UsbPortState::NoCapture:
-	case UsbPortState::Listenable: break;
+	case UsbPortState::Listenable:
+		if (refused_.target.asksPermission) return tr("press Listen: Windows asks for permission first");
+		break;
+	case UsbPortState::NoCapture: break;
 	}
 	return tr("%1 cannot be listened to: no USB capture on this system").arg(port_);
 }

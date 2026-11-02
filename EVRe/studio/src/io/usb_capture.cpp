@@ -337,8 +337,8 @@ UsbPortState usbPcapPortState(const UsbPortFacts &facts) {
 		return state;
 	}
 	const bool onDevice = facts.stack.isEmpty() || facts.stack.contains(QLatin1String("\\Driver\\USBPcap"), Qt::CaseInsensitive);
-	if (!target.bus || !target.address || !onDevice) state.kind = UsbPortState::NoFilter;
-	else state.kind = facts.elevated ? UsbPortState::Listenable : UsbPortState::NeedsAdmin;
+	state.kind = !target.bus || !target.address || !onDevice ? UsbPortState::NoFilter : UsbPortState::Listenable;
+	target.asksPermission = !facts.elevated; /* USBPcap's driver opens only to an administrator: the program asks for one */
 	return state;
 }
 
@@ -350,14 +350,18 @@ QStringList usbPcapArguments(const UsbTarget &target) {
 		QStringLiteral("-o"), QStringLiteral("-") };
 }
 
-/* USBPcapCMD says a refused device on its standard error and still ends with code 0, so what it said comes first. The
- * driver lets one reader in, and the Studio starts the program only as administrator: error 5 is another capture */
-QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors) {
+/* USBPcapCMD says what went wrong on its standard error and still ends with code 0, so what it said comes first. A prompt
+ * refused is no worker made. The driver lets one reader in: error 5, elevated, is another capture */
+QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors, bool workerSilent) {
 	const QString said = QString::fromLocal8Bit(errors).trimmed();
+	if (said.contains(QLatin1String("Failed to create worker process")))
+		return QCoreApplication::translate("UsbCapture", "permission refused: press Listen to ask again");
 	if (said.contains(QLatin1String("Couldn't open device - 5")))
 		return QCoreApplication::translate("UsbCapture", "USBPcap refused this USB bus: another capture holds it");
 	if (!said.isEmpty())
 		return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped: %1").arg(said.section(QLatin1Char('\n'), 0, 0).trimmed());
+	if (workerSilent)
+		return QCoreApplication::translate("UsbCapture", "the capture ended before anything came: another capture may hold this USB bus");
 	if (crashed) return QCoreApplication::translate("UsbCapture", "USBPcapCMD crashed");
 	if (exitCode) return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped with code %1").arg(exitCode);
 	return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped");

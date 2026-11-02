@@ -655,12 +655,15 @@ void MainWindow::toggleConnect() {
 		showListening(QString());
 	} else {
 		wantConnected_ = true;
+		connectPressed_ = true;
 		connectLink();
+		connectPressed_ = false;
 	}
 }
 
 void MainWindow::connectLink() {
 	disconnectLink();
+	listenAsks_ = false;
 	pushLinkOptions();
 	pushPolling();
 	linkPort_.clear();
@@ -684,13 +687,29 @@ void MainWindow::connectLink() {
 			sidebar_->showLinkError(refusal);
 			return;
 		}
+		/* A UAC prompt comes only from a person's press: not at the program's start, not at a try by itself */
+		const bool asks = state.kind == UsbPortState::Listenable && state.target.asksPermission;
+		if (asks && !connectPressed_) {
+			const QString press = tr("press Listen: Windows asks for permission first");
+			wantConnected_ = false;
+			showListening(QString());
+			logEvent(LogLevel::Warning, tr("not connected: %1").arg(press));
+			sidebar_->showLinkError(press);
+			return;
+		}
+		listenAsks_ = asks;
 		if (!retrying_) logEvent(LogLevel::Info, tr("listening to %1").arg(port));
 		showListening(port, Sidebar::listenLinkText(port, state.target));
 		/* the wishes of an earlier link stay no wishes: a listening link cannot act on them, nor the next one ask */
 		sidebar_->setAutoSendOn(false);
 		pushAutoSend();
 		stopFastStreams();
-		engine_->post([engine = engine_, port] { engine->connectListen(port); });
+		const bool pressed = connectPressed_;
+		engine_->post([engine = engine_, port, pressed] { engine->connectListen(port, pressed); });
+		if (asks) {
+			sidebar_->showAsking();
+			return;
+		}
 	} else if (sidebar_->isTcp()) {
 		const QString host = sidebar_->host();
 		const quint16 port = sidebar_->port();
@@ -811,7 +830,10 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 	markDeviceInfoLost();
 	if (why.isEmpty()) sidebar_->showDisconnected();
 	else sidebar_->showLinkError(why, detail);
-	if (wantConnected_ && sidebar_->autoReconnect()) {
+	/* below administrator a try by itself would raise a prompt nobody is there for: a person must press Listen */
+	if (listenAsks_ && wasUp && !why.isEmpty() && sidebar_->autoReconnect())
+		sidebar_->showLinkError(tr("%1 · press Listen to hear it again").arg(why), detail);
+	if (wantConnected_ && sidebar_->autoReconnect() && !listenAsks_) {
 		reconnectTimer_.start(wasUp ? 500 : 2000);
 		sidebar_->showReconnecting();
 	} else {
