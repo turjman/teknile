@@ -48,7 +48,10 @@
 static const QString NOT_LOGGED_KEY = QStringLiteral("fast/notLogged"); /* the streams whose Log is off, by name */
 static const QString SERIAL_KIND_KEY = QStringLiteral("link/serialKind"); /* auto, cdc or uart */
 static const QString USBPCAP_PAGE = QStringLiteral("https://desowin.org/usbpcap/");
-static const QString USBMON_COMMANDS = QStringLiteral("sudo modprobe usbmon\nsudo setfacl -m u:$USER:r /dev/usbmon*");
+/* chgrp and chmod are on every system, and setfacl is not on a stock Ubuntu */
+static QString usbmonCommands(const QString &device) {
+	return QStringLiteral("sudo modprobe usbmon\nsudo chgrp \"$(id -gn)\" %1\nsudo chmod g+r %1").arg(device);
+}
 
 namespace {
 
@@ -915,8 +918,10 @@ void Sidebar::showLinkChoice() {
 
 /* What can be heard on the port selected, or why not, and what to do about it */
 void Sidebar::showListenLine() {
-	if (!isListen()) return;
-	const UsbPortState state = UsbTarget::stateOf(serialPort());
+	if (isListen()) showListenLine(UsbTarget::stateOf(serialPort(), !listening_));
+}
+
+void Sidebar::showListenLine(const UsbPortState &state) {
 	QString line, why, hint, action, actionTip;
 	switch (state.kind) {
 	case UsbPortState::Listenable:
@@ -925,12 +930,22 @@ void Sidebar::showListenLine() {
 				: tr("listens to a USB-UART bridge (%1)").arg(listenLinkText(QString(), state.target));
 		why = tr("The Studio reads the USB traffic under this port and sends nothing. It sees everything on that USB "
 				"device (Help: Connecting).");
-		if (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty())
+		/* while listening the lookup leaves the endpoints out on purpose: they were not refused */
+		if (!listening_ && (state.target.inEndpoints.isEmpty() || state.target.outEndpoints.isEmpty()))
 			hint = tr("its endpoints could not be read: every bulk endpoint of the device is heard");
+		if (state.target.asksPermission) {
+			const QString asks = tr("Windows asks for your permission each time Listen is pressed");
+			hint = hint.isEmpty() ? asks : QStringLiteral("%1 · %2").arg(asks, hint);
+		}
 		break;
 	case UsbPortState::NotUsb:
 		if (serialPort().isEmpty()) {
 			line = tr("no serial port");
+			break;
+		}
+		if (state.missing) {
+			line = tr("not found: unplugged?");
+			why = tr("This port is not there now: plug the device in, then press the refresh button.");
 			break;
 		}
 		line = tr("not a USB port: cannot be listened to");
@@ -947,7 +962,12 @@ void Sidebar::showListenLine() {
 		line = listenRefusal(QString(), state);
 		why = tr("The system's USB capture. Help: Connecting has the rule that lasts.");
 		action = tr("Copy the commands");
-		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + USBMON_COMMANDS;
+		actionTip = tr("To the clipboard, for a terminal:") + QLatin1Char('\n') + usbmonCommands(state.device);
+		break;
+	case UsbPortState::NoFilter:
+		line = listenRefusal(QString(), state);
+		why = tr("USBPcap joins a device when it is plugged in, and a USB bus when the PC starts.");
+		hint = tr("unplug it and plug it in again; if that does not help, restart the PC");
 		break;
 	case UsbPortState::NoCapture:
 		line = tr("no USB capture on this system");
@@ -968,8 +988,9 @@ void Sidebar::showListenLine() {
 }
 
 void Sidebar::listenActionClicked() {
-	if (UsbTarget::stateOf(serialPort()).kind == UsbPortState::NoUsbmon) {
-		QGuiApplication::clipboard()->setText(USBMON_COMMANDS);
+	const UsbPortState state = UsbTarget::stateOf(serialPort(), false); /* what is missing: the device has no say in that */
+	if (state.kind == UsbPortState::NoUsbmon) {
+		QGuiApplication::clipboard()->setText(usbmonCommands(state.device));
 		emit statusMessage(tr("The commands are on the clipboard: paste them into a terminal"), 6000);
 	} else {
 		QDesktopServices::openUrl(QUrl(USBPCAP_PAGE));
@@ -992,12 +1013,14 @@ QString Sidebar::listenRefusal(const QString &port, const UsbPortState &state) {
 	const QString name = ltrPiece(port);
 	switch (state.kind) {
 	case UsbPortState::Listenable: return {};
-	case UsbPortState::NotUsb: return tr("%1 is not a USB port: it cannot be listened to").arg(name);
+	case UsbPortState::NotUsb:
+		return state.missing ? tr("%1 not found").arg(name) : tr("%1 is not a USB port: it cannot be listened to").arg(name);
 	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
 	case UsbPortState::NoUsbmon:
 		/* a word joiner after each "/": a wrapped line never breaks the path ("/dev/" and "usbmon2" read as two things) */
 		return tr("usbmon is not loaded or %1 is not readable").arg(ltrPiece(QString(state.device)
 				.replace(QLatin1Char('/'), QStringLiteral("/") + QChar(0x2060))));
+	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");
 	case UsbPortState::NoCapture: break;
 	}
 	return tr("%1 cannot be listened to: no USB capture on this system").arg(name);
@@ -1084,6 +1107,15 @@ QString Sidebar::connectText() const { return isListen() ? tr("Listen") : tr("Co
 
 void Sidebar::showConnecting() {
 	showLinkState(QStringLiteral("busy"), tr("Connecting…"));
+	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
+	connectOffered_ = false;
+}
+
+/* Windows's prompt is open, for as long as the person takes: nothing runs a clock on it */
+void Sidebar::showAsking() {
+	const QString text = tr("Asking Windows for permission…");
+	showLinkState(QStringLiteral("busy"), text, tr("Asking Windows…"),
+			text + QLatin1Char('\n') + tr("If you do not see the prompt, it may be waiting on the taskbar."));
 	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
 	connectOffered_ = false;
 }

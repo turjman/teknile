@@ -40,6 +40,7 @@ qt_add_library(evre_protocol STATIC
     src/io/fast_stream.h        src/io/fast_stream.cpp
     src/io/usb_capture.h        src/io/usb_capture.cpp
     src/io/listen_link.h        src/io/listen_link.cpp
+    src/io/usbpcap_capture.h    src/io/usbpcap_capture.cpp
     src/model/fast_recording.h  src/model/fast_recording.cpp
     src/model/fast_store.h      src/model/fast_store.cpp
 )
@@ -48,6 +49,12 @@ target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPor
 # Listen's live capture on Linux: /dev/usbmonN and its ioctls exist nowhere else
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(evre_protocol PRIVATE src/io/usbmon_capture.h src/io/usbmon_capture.cpp)
+endif()
+# On Windows the capture is another program, built everywhere so its handling is tested everywhere; what finds a COM
+# port's USB device is SetupAPI and the hubs' ioctls
+if(WIN32)
+    target_sources(evre_protocol PRIVATE src/io/usbpcap_lookup.cpp)
+    target_link_libraries(evre_protocol PRIVATE setupapi cfgmgr32)
 endif()
 
 # The rest of the Studio without main(): the program and the GUI test are both

@@ -105,14 +105,15 @@ void UsbmonCapture::look() {
 		return;
 	}
 	MonBinStats stats{};
-	if (::ioctl(file_, MON_IOCG_STATS, &stats) == 0 && stats.dropped != dropped_) {
-		dropped_ = stats.dropped;
+	/* the kernel hands over what it lost since the last ask and counts from 0 again: the total is ours */
+	if (::ioctl(file_, MON_IOCG_STATS, &stats) == 0 && stats.dropped) {
+		dropped_ += stats.dropped;
 		emit dropped(dropped_);
 		if (file_ < 0) return;
 	}
 	/* usbmon hears a bus, which outlives the device: it would just go quiet. Plugged in again the device may have
 	 * another address, which only a new start hears */
-	if (!UsbTarget::liveStateOf(target_.port).holds(target_)) finish(tr("%1 is gone: unplugged or reset?").arg(target_.port));
+	if (!UsbTarget::liveStateOf(target_.port, false).holds(target_)) finish(tr("%1 is gone: unplugged or reset?").arg(target_.port));
 }
 
 void UsbmonCapture::finish(const QString &why) {

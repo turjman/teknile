@@ -6,17 +6,21 @@
 
 - **Listen: hear what another program says to a USB device.** A third choice in the Connection card, beside TCP and
   Serial / USB, for a port another program holds: the Studio reads the USB traffic under it with the system's own
-  capture (USBPcap on Windows, usbmon on Linux; USB CDC boards and USB-UART bridges) and **sends nothing**. Linux hears
-  live now; Windows's live capture comes with the next step of this version, and everything else is here and tested on
-  replayed captures.
+  capture and **sends nothing**. USB CDC boards and USB-UART bridges, on Windows and on Linux. Windows: USBPcap, a
+  capture driver installed once, which the Studio starts for that one device; it lets only an administrator capture, so
+  Windows asks for your permission each time **Listen** is pressed, and Stop, closing the Studio or a crash end the
+  capture with nothing left behind. Run as administrator nothing asks. Linux: usbmon, in the kernel; **Copy the commands**
+  gives what makes it readable, and the Help gives what lasts.
 - The port box is the one of Serial / USB, and a line under it says what can be heard (*listens to USB CDC · bus 2,
-  device 5*) or why not, with a button when something can be done (**Get USBPcap…**, **Copy the commands**). **Connect**
-  reads **Listen**, then **Stop**; the pill reads *Listening · COM13 · USB CDC* on a blue tint of its own, and its
-  tooltip says what is heard. A port that cannot be heard is refused with the reason, in red.
+  device 5*) or why not, with what to do about it: **Get USBPcap…**, *USBPcap is not on this device yet* and unplugging it,
+  **Copy the commands**. **Connect** reads **Listen**, then **Stop**; the pill reads
+  *Listening · COM13 · USB CDC* on a blue tint of its own, and its tooltip says what is heard. A port that cannot be
+  heard is refused with the reason, in red.
 - The Monitor marks who said what: `->DEV` the other program's request, `DEV->` the device's answer, `??` bytes that are
   no EVRe frame, *(no request heard)* on an answer nobody was heard asking for.
 - The table, the chart, the CSV and the Dump fill from the answers to the other program's reads, one chart point and
-  one CSV row per round of its reads; heard AUTO_SEND frames and fast blocks are taken as ever. A register it never reads
+  one CSV row per round of its reads, for the registers that round read; heard AUTO_SEND frames, while they come, and
+  fast blocks are taken as ever. A register it never reads
   stays `—`, with the tooltip *not read by the other program yet*. The status bar and the Polling card read *heard 120
   req/s*, the Auto send row *heard 100/s*.
 - Everything that would send is disabled while listening, each control saying why: Poll, Allow writes, Quick write, the

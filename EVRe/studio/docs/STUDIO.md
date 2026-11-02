@@ -633,6 +633,7 @@ the sidebar scrolls if it must. The pill keeps its whole height in every case.
 |---|---|---|
 | *Disconnected* | grey,&nbsp;no&nbsp;tint | No link. |
 | *Connecting…* | amber | The link is opening. |
+| *Asking&nbsp;Windows&nbsp;for&nbsp;permission…* | amber | Listen on Windows: its prompt is open, for as long as you take (3.11). *Asking Windows…* where that does not fit; the tooltip keeps the whole. |
 | *Connected&nbsp;·&nbsp;127.0.0.1:1210* | green | The link is open. The text names the link: `host:port`; for serial `COM7 @ 115200` on a UART, where the number is the link's speed, and `COM13 · USB CDC` on USB CDC, where the baud rate means nothing (the tooltip adds *the baud rate 12000000 is ignored on USB CDC*). The kind is the one Connect opened the link with: a Link row changed while connected counts at the next connect. The serial name is one left-to-right piece, so Arabic reads it unturned. The Log's line keeps the number: *connected: COM13 @ 12000000*, after *opening COM13 at 12000000 (USB CDC: the baud rate is ignored)*. |
 | *Listening&nbsp;·&nbsp;COM13&nbsp;·&nbsp;USB&nbsp;CDC* | blue | Listen is on (3.11): the Studio hears the port and sends nothing. Its own tint in both looks, so it is not read as connected. The tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*, and any sign of a capture that lost something. The name is one left-to-right piece, and a bridge reads `COM13 · FTDI`. |
 | the reason, for example *Connection refused* | red | The last attempt failed, or the link was lost. The text is the reason; a serial port's is in plain words (below). When it is longer than the pill, it is shown whole on two lines (or more), never cut. The tooltip adds the system's text, and the Log has both. |
@@ -800,9 +801,14 @@ Listen shows what **another program** says to a USB device, on a port that progr
 tool. A serial port belongs to one program (15.5), so the Studio cannot open it beside the other. It reads the USB
 traffic under the port instead, with the system's own capture, and **sends nothing**.
 
-On **Linux** it hears live, with usbmon, the kernel's own capture. On **Windows** this build has no live capture yet:
-that is the next step, so there every port reads *no USB capture on this system* and Connect refuses it with that reason,
-in the pill. All the rest of this section works on both, and is tested on replayed captures (26.10).
+One thing does reach the device on Windows: to find the endpoints, the device's hub reads its USB descriptor, the standard
+request every USB host makes, when the Listen line looks at a port and once when **Listen** starts. A try by itself does
+not, unless the device came back at a new address. While a capture runs nothing reaches the device. On Linux all this
+comes from sysfs, and nothing reaches the device at all.
+
+On **Windows** it hears with USBPcap, a capture driver you install once, and Windows asks for your permission each time
+**Listen** is pressed. On **Linux** it hears with usbmon, the kernel's own capture. All the rest of this section works on both, and is tested on
+replayed captures (26.10); what only a real device can show is the owner's check.
 
 **What it hears.** USB devices only: USB CDC (a board's own USB, a debug probe's virtual port) and USB-UART bridges
 (FTDI, CP210x, CH340, PL2303), whose bulk data carries the UART's bytes. Not a motherboard's COM port, RS-485 without
@@ -823,14 +829,54 @@ read of `0xA000`.
 | *listens&nbsp;to&nbsp;a&nbsp;USB-UART&nbsp;bridge&nbsp;(FTDI)* | a&nbsp;bridge | Nothing. |
 | *not&nbsp;a&nbsp;USB&nbsp;port:&nbsp;cannot&nbsp;be&nbsp;listened&nbsp;to* | no&nbsp;USB&nbsp;under&nbsp;the&nbsp;port | The port stays in the list; Listen refuses it with the reason in the pill. |
 | *USBPcap&nbsp;is&nbsp;not&nbsp;installed* | Windows | **Get USBPcap…** opens its page. It is a capture driver, installed once as administrator; then unplug and plug the device again (the driver joins a device when it is plugged in). |
-| *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon` and `sudo setfacl -m u:$USER:r /dev/usbmon*`, good until the PC restarts. What lasts is below the table. |
-| *no&nbsp;USB&nbsp;capture&nbsp;on&nbsp;this&nbsp;system* | Windows,&nbsp;this&nbsp;build | Nothing can be done from the Studio. |
+| *USBPcap&nbsp;is&nbsp;not&nbsp;on&nbsp;this&nbsp;device&nbsp;yet* | Windows | Unplug the device and plug it in again; if that does not help, restart the PC. A second line says so. |
+| *usbmon&nbsp;is&nbsp;not&nbsp;loaded&nbsp;or&nbsp;/dev/usbmon2&nbsp;is&nbsp;not&nbsp;readable* | Linux | **Copy the commands**: `sudo modprobe usbmon`, `sudo chgrp "$(id -gn)" /dev/usbmon2` and `sudo chmod g+r /dev/usbmon2`, for the port's own bus, good until the PC restarts. Whoever is in your group can then read that bus. What lasts is below the table. |
+| *not&nbsp;found:&nbsp;unplugged?* | no&nbsp;such&nbsp;port | The port is not there now: plug the device in, then the refresh button. In the pill, *COM13 not found*; with **Reconnect by itself** on it stands there until the device is back. |
+| *no&nbsp;USB&nbsp;capture&nbsp;on&nbsp;this&nbsp;system* | another&nbsp;system | Nothing can be done from the Studio. |
 | *no&nbsp;serial&nbsp;port* | no&nbsp;port&nbsp;in&nbsp;the&nbsp;list | Plug the device in, then the refresh button. |
 
-Under *USBPcap is not installed* a second line says what it is, and in Arabic the line wraps rather than cut. A port
+On Windows, unless the Studio runs as administrator, a muted second line under *listens to …* says *Windows asks for
+your permission each time Listen is pressed*. Under *USBPcap is not installed* a second line says what it is, and in
+Arabic the line wraps rather than cut. A port
 whose endpoints could not be read is heard all the same, on every bulk endpoint of its device, and a second line says
 so: *its endpoints could not be read: every bulk endpoint of the device is heard*. The line is read when a port is
 chosen, at the refresh button and at Connect.
+
+**USBPcap on Windows.** The Studio does not bundle it: **Get USBPcap…** opens its page, <https://desowin.org/usbpcap/>.
+Its installer asks for administrator rights once. The driver joins a USB bus when the PC starts and a device when that
+is plugged in, so a device that was already there reads *USBPcap is not on this device yet* until it is unplugged and
+plugged in again; a restart settles it when that is not enough. Then the Studio starts USBPcap's own program,
+`USBPcapCMD.exe`, for that one device, by its address on its bus, and reads what it writes. It looks for the program in
+`%ProgramFiles%\USBPcap`, then beside the uninstaller the registry names. It never asks for a whole bus, so a keyboard
+on the same bus stays out of it.
+
+**Windows asks each time.** USBPcap lets only an administrator capture: its control device, `\\.\USBPcap1`, refuses to open
+for reading from a normal process with *access denied* (error 5), even for a user in the Administrators group, because
+Windows starts programs without those rights unless asked. So when you press **Listen**, `USBPcapCMD.exe` asks: Windows
+shows its permission prompt, and the pill reads *Asking Windows for permission…* for as long as you take, with no
+clock on it. It has started when the first bytes come. If you do not see the prompt, it may be waiting on the taskbar.
+
+- **Only your press raises the prompt.** A prompt must never come up with nobody there, so **Reconnect by itself** does not
+  start a capture, and nor does `--connect` at the start: a lost capture reads *COM13 is gone: unplugged or reset? · press
+  Listen to hear it again*, and the Studio waits.
+- **Answered no**, the pill reads *permission refused: press Listen to ask again*, and nothing tries again.
+- **Run as administrator** and none of this applies: no prompt, and **Reconnect by itself** works. Everything the Studio
+  does then runs with those rights, so close it when you are done.
+
+**Nothing is left behind.** Asking for permission means a second, elevated `USBPcapCMD.exe`, the worker, and the Studio
+cannot kill a process above it. So the Studio runs the program in a Windows job, which the system ends when the Studio
+goes, however it goes, and the worker is born into that job: **Stop**, closing the Studio and a crash each end both,
+and only then does the driver let go of the bus. This rests on Windows putting a process started through its prompt in
+its parent's job, which USBPcap's own design rests on too, and it could not be tried here with a real prompt. The check
+is Task Manager's Details tab: no `USBPcapCMD.exe` after a Stop. The pipe between the two does not do this job. The
+worker notices it broken only at its next write, which on a silent device never comes.
+
+**One capture to a bus.** The driver lets one capture read a USB bus at a time. With Wireshark capturing the same bus,
+Listen ends at once with *USBPcap refused this USB bus: another capture holds it*; below administrator the worker's words
+reach nobody, so it reads *the capture ended before anything came: another capture may hold this USB bus*. A capture has
+started when its first bytes come, with or without a prompt: the driver writes the stream's header at once, on a silent
+device too. One that ends before them never opened, so it is a failed try: a Warning in the Log, its repeats counted on
+one line, and **Reconnect by itself** tries again every 2 s.
 
 **usbmon, so that it lasts.** The commands above end with the PC's next start. Three steps keep it. The module at every
 start:
@@ -851,22 +897,40 @@ And you in that group: `sudo usermod -aG dialout $USER`, then log in again. Thin
 `/dev/usbmon2` holds **all** the traffic of bus 2, a keyboard's too, so whoever can read it reads that. The Studio keeps
 only the port's own device and endpoints, but the rule is about the file.
 
+**Two limits on Linux.** A program that holds the tty open across an unplug brings the device back under a new name, such as
+`ttyACM1`, so a Studio listening to `ttyACM0` waits on a name that does not come back: choose the new one. And a transfer
+over 64 KiB is cut; only usbfs or libusb can make one, never a tty.
+
 **The pill** reads *Listening · COM13 · USB CDC* on a blue tint, its own (3.8): not the connected green, nothing is
 being sent. Where that does not fit it reads *Listening · COM13*, never cut. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
-A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again. usbmon hears a
-bus, which outlives the device, so the Studio looks twice a second: a device unplugged reads *ttyACM0 is gone: unplugged
-or reset?*, and one plugged in again, which has a new address, is heard from the next try.
+A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again. A capture hears
+a bus, which outlives the device, so the Studio looks twice a second: a device unplugged reads *COM13 is gone: unplugged
+or reset?*, and one plugged in again, which has a new address, is heard from the next try. On Windows the capture is a
+program, and its end is said too: *USBPcapCMD stopped*, with what it said, if it said anything.
 
 **What fills.** The Monitor marks who sent each line (10.2). The table, the chart, the CSV and the Dump fill from heard
 answers: a `READ_RESP` matched to a heard `READ` sets the registers it covers, and heard AUTO_SEND frames and fast
-blocks are taken as ever. A register the other program never reads stays `—`, with the tooltip *not read by the other
+blocks are taken. A register the other program never reads stays `—`, with the tooltip *not read by the other
 program yet*. A heard write goes to the Dump's write card and the Monitor only: the table changes at the next heard
 read, the device being the truth. An error answer sets the rows' error, never *not available*: the Studio did not ask.
 
 **One point per round.** A poll ticks once for all its registers; another program's reads come one by one. The Studio
 takes its round for a poll: when an answer would set a register again the round is over and the chart gets its point
 and the CSV its row; a round left open ends after 250 ms. A program that reads one register twice in a row makes short
-rounds: more points, never wrong ones.
+rounds: more points, never wrong ones. A point's time is the round's last answer, not the moment the round was seen to
+be over.
+
+**Only what the round read.** A register gets a point and a CSV cell in a round that set it, and in no other. One the
+program read once and no longer reads has one point, no flat line, and its cell stays empty in the rows after that, as
+an offline device's does. So does a register whose read the device refused. The chart and the CSV say what was heard:
+the table goes on showing the last value.
+
+**AUTO_SEND heard.** The read-only block from the device with no request heard may be AUTO_SEND, or an answer that lost
+its request: a poll under way when Listen started, a request the capture missed, a late answer. One such frame proves
+nothing: it fills no row, and the Monitor marks it *(no request heard)*. A second like it, with no read of that block
+between, says frames are coming, and both are taken. While they come (one in the last 250 ms) each frame is the sample
+tick, and whatever else was read goes with it. They end when they stop coming, or at once when a read of that block is
+answered: from then on the rounds tick again, and the Dump's frames card goes with a read's.
 
 The status bar's first field and the Polling card read *heard 120 req/s*, and the Auto send row *heard 100/s* while
 AUTO_SEND frames come. A stream's row reads *heard 10.0 k samples/s*, with what was lost.
@@ -3544,11 +3608,30 @@ These are late answers after a timeout, echoes of the Studio's own requests on a
 
 - *USBPcap is not installed*: **Get USBPcap…** on the Listen line opens its page. Install it once, as administrator, then
   unplug and plug the device again: the driver joins a device when it is plugged in.
+- *USBPcap is not on this device yet*: it is installed, but it has not joined this device. Unplug the device and plug it
+  in again; if that does not help, restart the PC, which is what the driver needs after its install.
+- *Asking Windows for permission…*: Windows's prompt is open. If you do not see it, look on the taskbar. Nothing runs out
+  while it waits.
+- *permission refused: press Listen to ask again*: the prompt was answered no, or let run out. Nothing tries again by itself.
+- *press Listen: Windows asks for permission first*, or *... · press Listen to hear it again*: a prompt comes only from your
+  press, so neither **Reconnect by itself** nor `--connect` starts a capture. Run the Studio as administrator and neither
+  is needed (3.11).
+- *USBPcap refused this USB bus: another capture holds it*, or *the capture ended before anything came: another capture
+  may hold this USB bus*: Wireshark or another program is capturing that bus. Stop it. Listen ends at once, and run as
+  administrator with **Reconnect by itself** on it tries again every 2 s, one line in the Log.
+- After a **Stop**, a `USBPcapCMD.exe` left in Task Manager's Details tab should never happen (3.11). Reboot if it does,
+  and say so: it would hold the bus for itself.
+- The pill says *Listening* and nothing comes: the other program is not talking yet. On a Windows that does not say which
+  drivers are on a device, it may be a device plugged in before USBPcap was: unplug it and plug it in again.
+- A line stops on the chart while others go on, and its CSV cells are empty: the other program no longer reads that
+  register, or the device refuses it. Only what a round read gets a point (3.11). The Monitor shows what it reads.
 - *usbmon is not loaded or /dev/usbmon2 is not readable*: **Copy the commands**, paste them into a terminal. Section 3.11
   and the Help's Connecting page have the steps that last. The number is the USB bus the port is on.
 - *not a USB port: cannot be listened to*: a motherboard's COM port, Bluetooth and virtual ports have no USB traffic to
   read. See 3.11.
-- *no USB capture on this system*: this build has no capture for Windows yet (3.11).
+- *not found: unplugged?*, or *ttyACM0 not found* in the pill: the port is not there now. Plug the device in, then the
+  refresh button. On Linux, if the other program held it open, it may be back under a new name such as `ttyACM1`.
+- *no USB capture on this system*: the Studio has a capture for Windows and Linux only (3.11).
 
 ## 16. The device map format "evre-map/1"
 
@@ -4927,6 +5010,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
 | `src/io/usb_capture.h`,&nbsp;`.cpp` | Listen, the USB side (22.3): `UsbTarget`, `UsbEvent`, the decoders `UsbPcapDecoder` and `UsbmonDecoder`, the `UsbCapture` interface and `FileCapture` |
 | `src/io/usbmon_capture.h`,&nbsp;`.cpp` | `UsbmonCapture`: Listen's live capture on Linux, `/dev/usbmonN` and its ioctls (22.3). Built on Linux only |
+| `src/io/usbpcap_capture.h`,&nbsp;`.cpp` | `UsbPcapCapture`: Listen's live capture on Windows, `USBPcapCMD.exe` as a `QProcess` (22.3). Built on every system, so its tests run everywhere |
+| `src/io/usbpcap_lookup.cpp` | `usbPcapFacts`, `usbPcapProgram`: what Windows says of a COM port, from SetupAPI, the device tree, the hub's ioctls and USBPcap's control devices (22.3). Built on Windows only |
 | `src/io/listen_link.h`,&nbsp;`.cpp` | `evre::ListenLink`: Listen's link, which hears both ways and never sends (22.3); `ListenFile`, a file replayed for a port (the tests) |
 | `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
@@ -4984,7 +5069,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the library (C++11 to 20, -O0 to -Os) and run; no heap, its stack; its frames through `evre_fast_test`; PROTOCOL.md's example block |
-| `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders and its link without a window, a driver or a USB device (26.10) |
+| `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders, its lookups, its capture on a stand-in and its link without a window, a driver or a USB device (26.10) |
 | `tests/make_captures.py` | writes `tests/captures/`, the five USB scenes in both formats, from the Python package and the example maps (26.10) |
 | `tests/captures/` | those scenes, `.pcap` and `.usbmon`, copied beside the programs at every build as `maps/` is |
 | `maps/example_fast.json` | the example map with a fast stream (`ADC`), served by `evre_fake_fast` in the fast tests |
@@ -5133,9 +5218,11 @@ checked on Linux as well:
 | `UsbDecoder` | what the formats share: `feed(bytes, out)` takes a stream cut at any byte and keeps what is not a whole record yet (`pendingBytes`); the target's filter; FTDI's status bytes; `error()` when the stream cannot be read |
 | `UsbPcapDecoder` | USBPcap's pcap stream: the 24-byte header (link type 249 or it is refused), per record 16 bytes and the driver's packet, whose own `headerLen` is obeyed (27 on bulk, 28 on control) |
 | `UsbmonDecoder` | usbmon's records: the 64-byte `mon_bin_hdr` and its `len_cap` bytes; `fitRecord` cuts a record's `len_cap` to the buffer that took it |
-| `UsbCapture` | a source of heard bytes: `start(target)`, `stop()`; signals `data(direction, bytes)`, `dropped(total)`, `ended(why)`. What is heard comes from the event loop, never inside `start()`, and nothing follows `stop()` |
+| `UsbCapture` | a source of heard bytes: `start(target)`, `stop()`, `opensOnFirstBytes()` (true: a link opens at `started()`, not at the start; only `UsbPcapCapture`'s is); signals `data(direction, bytes)`, `started()`, `dropped(total)`, `ended(why)`. What is heard comes from the event loop, never inside `start()`, and nothing follows `stop()` |
 | `FileCapture` | a `UsbCapture` replaying a `.pcap` or `.usbmon` file, at once or by its stamps: the tests' source |
-| `UsbmonCapture` | the live `UsbCapture` on Linux (`usbmon_capture`), which `UsbCapture::live()` makes; nullptr on a system with none yet |
+| `UsbmonCapture` | the live `UsbCapture` on Linux (`usbmon_capture`), which `UsbCapture::live()` makes |
+| `UsbPcapCapture` | the live `UsbCapture` on Windows (`usbpcap_capture`), which `UsbCapture::live()` makes; nullptr on a system with neither |
+| `UsbPortFacts` | what Windows says of a port (`usbPcapFacts`): the instance IDs up the device tree, the address, the stack of drivers, the configuration descriptor, USBPcap's hubs, whether its program is there and the Studio elevated. `usbPcapPortState` decides from it |
 
 The rule of both formats: **OUT**, the other program's bytes, comes from the submission; **IN**, the device's, from
 the completion with status 0. Only bulk transfers of the target's device and endpoints with data become events:
@@ -5145,46 +5232,127 @@ of a completed IN transfer (64 when it is not known), and a transfer of only sta
 event; the other bridges and USB CDC have no framing. A test gives the target with the file (`setListenFileForTests`);
 without either, a port is refused in plain words.
 
-`UsbPortState` is what Listen can do with a port: its kind (`Listenable`, `NotUsb`, `NoUsbPcap`, `NoUsbmon`, `NoCapture`)
-and, when it can be heard, the target. The Listen line, the pill's refusal and Connect read `UsbTarget::stateOf(port)`,
-on the window's thread: a state forced by `UsbTarget::stateForTests`, or the system's answer. `UsbTarget::liveStateOf(port)`
-is the one place the system is asked: it only reads files, so `IoEngine::connectListen`, the branch without a file, asks
-it again on the engine's thread (a try by itself reaches it without the window's refusal). Windows has no answer yet, so
-there every port is `NoCapture`.
+`UsbPortState` is what Listen can do with a port: its kind (`Listenable`, `NotUsb`, `NoUsbPcap`, `NoFilter`,
+`NoUsbmon`, `NoCapture`) and, when it can be heard, the target. The Listen line, the pill's refusal and Connect read
+`UsbTarget::stateOf(port)`, on the window's thread: a state forced by `UsbTarget::stateForTests`, or the system's answer.
+`UsbTarget::liveStateOf(port)` is the one place the system is asked: it sends nothing of its own and opens no port, so
+`IoEngine::connectListen`, the branch without a file, asks it again on the engine's thread (a try by itself reaches it
+without the window's refusal). A system with no capture says `NoCapture`.
 
 **A port to its device on Linux (`usbmonPortState`).** It takes the sysfs and `/dev` roots as parameters and uses nothing
 but files, so its tests run on every system. `<sys>/class/tty/ttyACM0/device` is a link to the tty's interface (one level
 deeper for `ttyUSB0`); the walk goes up to the directory with `busnum` and `devnum`, which also has `idVendor` and
 `idProduct`. `ttyACM` is USB CDC, by the driver and whatever the VID says; anything else is a bridge, FTDI by VID `0403`.
-A bridge's data is on the tty's own interface. A CDC port's tty is on the control interface: its data is on the interface
-of class `0a` nearest above it, or else nearest below (a function's interfaces are neighbours, and sysfs does not say
-which data interface is whose on a composite device). The interface's `ep_*` directories give the bulk endpoints and the
-IN endpoint's `wMaxPacketSize`; a device that gives none is heard on every bulk endpoint, and the Listen line says so.
-No such tty, or no USB device above it, is `NotUsb`; `<dev>/usbmon<bus>` missing or unreadable is `NoUsbmon`, the target
-known and the file named.
+An FTDI chip under another maker's VID is told by its interface's `driver` link, which ends in `ftdi_sio`. A bridge's data
+is on the tty's own interface. A CDC port's tty is on the control interface: its data interface is the one the Union
+descriptor names, read from `<device>/descriptors` (the 18 bytes of the device descriptor, then each configuration; the
+one whose value is `bConfigurationValue`) with `usbReadEndpoints`, as on Windows. Functions can be nested, crossed or
+data-first, and a real kernel showed the neighbours then hearing the other port's valid frames behind a good-looking line.
+Only with nothing to read does it go by the interface of class `0a` nearest above, or else nearest below, and the
+interface's `ep_*` directories, which give the bulk endpoints and the IN endpoint's `wMaxPacketSize`; a device that gives
+none is heard on every bulk endpoint, and the Listen line says so. A tty with no USB device above it is `NotUsb`; no such
+tty at all is `NotUsb` with `missing`, which reads *not found*, for it says nothing of what the port is when it is there.
+`<dev>/usbmon<bus>` missing or unreadable is `NoUsbmon`, the target known and the file named.
 
 **The live capture on Linux (`usbmon_capture`).** `UsbmonCapture` opens `/dev/usbmon<bus>` read-only and non-blocking,
 asks for a ring of 8 MiB (1200 KiB on the older kernels that refuse it, the default of 300 KiB when both fail), and a
 `QSocketNotifier` reads records with `MON_IOCX_GETX` into a 64-byte header and 64 KiB of data, at most 1024 at a turn
-of the engine's event loop. `read()` would give only the first interface's 48-byte header. A header's `len_cap` stays
+of the engine's event loop; a transfer over 64 KiB is cut there. `read()` would give only the first interface's 48-byte header. A header's `len_cap` stays
 what usbmon kept even when the buffer took less, so `fitRecord` cuts it before the decoder sees it. The ioctls are in no
 public header: they are defined locally from the kernel's `drivers/usb/mon/mon_bin.c`, as libpcap does. Every 500 ms it
-reads `MON_IOCG_STATS` for `dropped` (the lost-capture text), and asks `liveStateOf` whether the port still holds the same
+reads `MON_IOCG_STATS` for `dropped`, which is what was lost since the last ask, not a total (the kernel counts from 0
+again), so `dropped_` adds it up for the lost-capture text, and asks `liveStateOf` whether the port still holds the same
 device (`UsbPortState::holds`): usbmon hears a bus, which outlives a device, and a device plugged in again has a new
 address that a running filter would never hear. Either ends the capture with a reason, and Reconnect by itself finds the
 device afresh. A device that cannot be opened ends it too, from the event loop, as a replayed file's end does.
 
+**A port to its device on Windows (`usbPcapFacts`, `usbPcapPortState`).** `usbpcap_lookup.cpp` only gathers; everything
+decided from it is in `usb_capture.cpp`, which needs no Windows, so its tests run on every system on made-up answers.
+The port's node comes from SetupAPI: the `PortName` of each device with the serial ports' interface, or of the Ports
+class when a vendor's driver has not registered that interface. `CM_Get_Parent` gives the chain up the device tree as
+instance IDs, and `usbChainOf` finds its way in it: the USB device is the first node of the `USB` enumerator with no
+`MI_xx`, the root hub the last of that enumerator, and an `MI_xx` below the device is the interface the port's function
+starts at. A `BTHENUM` or `BTH` node anywhere is a Bluetooth port, `NotUsb`, though its radio is often a USB device.
+
+The device's connection on its hub is `CM_DRP_ADDRESS`. The hub, opened by its `GUID_DEVINTERFACE_USB_HUB` interface,
+answers `IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX` with `DeviceAddress`, from what it knows. Its
+`IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION` gives the configuration descriptor: the one thing that reaches the device,
+a standard request the hub makes. `usbReadEndpoints` walks the descriptor: a CDC control interface's data interface is the
+one its Union descriptor names, or without one the nearest of class `0a`, and alternate settings count as one interface.
+The class decides the kind, and the VID only among the bridges; a descriptor that is cut, or a function with no bulk
+endpoint each way, is taken as not read: every bulk endpoint is heard, the Listen line says so, and the kind goes by the
+VID (`usbKindByVid`). An `FTDIBUS` node anywhere in the chain is FTDI's own driver, and so FTDI, under another maker's VID
+too. `USBPcap`'s control devices `\\.\USBPcap1` to `32` are opened with no access, which needs no
+rights and works beside a running capture, and `IOCTL_USBPCAP_GET_HUB_SYMLINK` (0x0022200C, defined locally from the
+driver's `USBPcap.h`, which is no public header) names each one's root hub; `usbHubLinkIs` compares that with the root
+hub's instance ID. **The filter's number is the bus**, as USBPcap itself numbers buses.
+
+`usbPcapPortState` then says, in this order: no USB device, `NotUsb`, with `missing` when the port is not there at all; no
+`USBPcapCMD.exe`, `NoUsbPcap`; no filter on the
+root hub, no address, or `\Driver\USBPcap` missing from the device's `DEVPKEY_Device_Stack`, `NoFilter`; else `Listenable`.
+A system that does not give the stack is taken as having the filter. `UsbTarget::asksPermission` is set when the Studio is
+not elevated (`TokenElevation`, the test `USBPcapCMD` makes itself).
+
+**The live capture on Windows (`usbpcap_capture`).** `UsbPcapCapture` starts
+`USBPcapCMD.exe -d \\.\USBPcapN --devices <address> -s 65535 -b 33554432 -o -` as a `QProcess` and gives its standard
+output to `UsbPcapDecoder`, which keeps the target's endpoints. It is started, not linked, so USBPcap's licences do not
+touch the Studio's. The driver writes the pcap header when its buffer is set up, so the first bytes come as soon as the
+capture runs, with no traffic: that is `started()`, which says the capture runs and a prompt, if one came, was answered
+yes (`opensOnFirstBytes()`, on Windows only: usbmon's stream has no header). A capture that fails first has never
+opened, so the window takes it for a failed try: 2 s to the next, a Warning, and the same text each time, which the
+Log counts. Elevated the program writes the
+stream itself and flushes after each read of the driver. Below administrator it starts a worker, the same program elevated
+through `ShellExecuteEx` and `runas`, and passes on what that writes into a named pipe; either way nothing waits in a
+buffer. The buffer of `-b` is the driver's, 32 MiB; a full one drops packets and says so nowhere, so `dropped` is never
+sent and what is lost shows in the EVRe-level signs.
+
+**How a capture ends.** Read in `USBPcapCMD`'s `cmd.c` and `thread.c`, master and the 1.3.0.0 installer's alike, and tried
+on the pipe:
+
+| Who&nbsp;goes | What&nbsp;the&nbsp;worker&nbsp;sees |
+|---|---|
+| The&nbsp;program,&nbsp;with&nbsp;no&nbsp;job&nbsp;of&nbsp;ours | Its own job, with `KILL_ON_JOB_CLOSE`, ends with it, and takes the worker. Without that job nothing: the worker's dummy read of the pipe, meant to notice a break, is refused at once (error 5, the handle is write-only) and its event never comes, so it finds out at its next write (error 232), which on a silent device never comes |
+| The&nbsp;Studio,&nbsp;with&nbsp;no&nbsp;job&nbsp;of&nbsp;ours | Nothing: the program notices its broken standard output only at its next write, and lives on with its worker |
+
+So `UsbPcapCapture` runs the program in a job of its own, the way Wireshark runs its capture programs
+(`win32_create_process`): started suspended, assigned, resumed, so that nothing of it runs outside. `KILL_ON_JOB_CLOSE`
+makes the system end the job when its one handle closes, however the Studio goes, and `USBPcapCMD` looks for that flag
+and then leaves *dangling processes* to whoever made the job, making none of its own. `stop()` is `TerminateJobObject`,
+and a kernel job takes no account of a process's integrity. Windows gives the worker its parent's job, as with the job
+the program makes for itself, which is its usual way of running. Without a job of ours (one that could not be made)
+`stop()` is `terminate()`, 500 ms, then `kill()`, which ends the program: on Windows `terminate()` is a `WM_CLOSE`,
+and the program has no window and stops only on `q` at a console. That still ends the worker, and a crash then does not.
+
+A process that ends is a capture that ends; `usbPcapEndReason` makes the reason, what it said on its standard error
+first, for it says a failure there and still ends with code 0: a refused prompt is *Failed to create worker process!*. A
+worker's own words reach nobody, so its end before any bytes reads as a bus that may be held. A program that cannot start
+says so inside `QProcess::start`, and the reason waits for the event loop, as `start()` promises. Every 500 ms
+`UsbTarget::stillThere` asks the lookup without the descriptor (about 1 ms, and nothing reaches the device): USBPcap too
+hears a bus that outlives a device. What decides is `usbPcapStillThere`, not `holds`: a running capture ends on what was
+seen, the device's node gone from the tree or the device at another address or on another bus. A look that could not be
+made (a filter that did not open, a hub that did not answer) says nothing, and a healthy capture goes on.
+
+**Its standard input is no handle at all.** The program's main thread waits on it for a `q` at a console. A `QProcess`
+pipe, or `NUL`, reads as ready at once and is no console, so that thread would spin a whole core for as long as Listen
+runs. `UsbPcapCapture` clears `hStdInput` with `setCreateProcessArgumentsModifier`, and a program given no handle leaves it
+out of that wait. A stand-in that makes the program's own calls, in a `QProcess`, showed this: the pipe and `NUL` are
+ready, and its overlapped read of standard output is refused (error 5) and its writes all go through.
+
 *Tested by:* `evre_listen_test` (26.10).
 
 **The listening link (`listen_link`).** `evre::ListenLink` is a `Link` that owns a `UsbCapture` (its child) and never
-speaks. `open()` starts the capture and says `opened()` at once, before anything can be heard; the capture's end comes
-as `closed(why)`, with its plain reason, and `close()` stops it. The device's bytes go out as `received(bytes)`, the
+speaks. `open()` starts the capture and says `opened()` at once, before anything can be heard; a capture with
+`opensOnFirstBytes()` has opened at its `started()`, whether a prompt came first or not, and nothing runs a clock until
+then. The
+capture's end comes as `closed(why)`, with its plain reason, and `close()` stops it. The device's bytes go out as `received(bytes)`, the
 link's usual signal, so the master's parser, the frames nobody asked for, AUTO_SEND and the fast blocks run unchanged;
 the other program's bytes go out as `heardRequest(bytes)`. `send()` writes nothing: it counts (`sendAttempts()`) and
 says so once. `describe()` reads *COM13 (listening)*, `place()` *COM13 (bus 2, device 5)*. It is in `src/io`, not
 `src/evre`: the protocol module stays free of USB.
 
-**Listening in the engine.** `connectListen(port)` makes the link and goes through `attach()` like any other;
+**Listening in the engine.** `connectListen(port, pressed, known)` makes the link from the window's lookup `known`, with no
+capture for a target that asks unless `pressed` (the window never asks then: this is the last belt, a prompt must never
+come unattended), nor from a state a test forced with no file behind it, and goes through `attach()` like any other;
 `onOpened()` finds it is Listen's and sets `listening_` (cleared when the link goes). Then no login, no DEVICE_ID, no
 polls and no enables, and the rest of the bytes' way is:
 
@@ -5205,8 +5373,10 @@ polls and no enables, and the rest of the bytes' way is:
   WRITE_ACK is kept in `heard_` until its answer, at most `HEARD_REQUESTS_KEPT` = 64 and at most the link's Timeout;
   one dropped is counted `unmatched`. A WRITE has no answer: it goes to the Dump's write card at once.
 - **Heard answers** (`onUnsolicited`): the master has no request of its own, so every frame comes here. A fast block
-  is taken first, as always. Then `takeHeardAnswer()` looks for the newest heard request with the slave, offset and
-  count of the frame and the function it belongs to, as `Master::findPending` matches. This comes before the AUTO_SEND
+  is taken first, as always. Then `takeHeardAnswer()` looks for the heard request with the slave, offset and count of
+  the frame and the function it belongs to, as `Master::findPending` matches: a WRITE_ACK the oldest, as that does, for
+  a pipelined write's bytes must end in the write card; a READ the newest, which steps over an answer the capture lost.
+  This comes before the AUTO_SEND
   test: an answer to a read of the read-only block is no frame the device sent by itself, as on a polled link, where
   the master takes the answer first. A `READ_RESP` sets the rows wholly inside what was read (`heardBlock`, a scan
   cached by slave, offset and count) and goes to the Dump as a block; at DEVICE_ID with a count of at least 4 it also
@@ -5214,12 +5384,22 @@ polls and no enables, and the rest of the bytes' way is:
   sets the rows' error, never *unavailable* (the Studio did not ask); to a WRITE_ACK it goes to the write card, a
   refused write saying nothing of reading the register. What answers nothing and is no AUTO_SEND frame gets
   *(no request heard)* in the Monitor and is counted `unmatched`. `(not a pending request)` is not used.
+- **AUTO_SEND heard** (`heardFrameIsStream`, `endHeardStream`). `autoSendOn_` is true from the start so that a frame can
+  be taken, so it says nothing of the device. The read-only block with no request heard waits in `strayFrame_`: a
+  second of its shape with no read of that block between makes it a stream (`streamAddr_`, `streamCount_`) and both are
+  taken. Left alone past `HEARD_ROUND_MS`, or at a read of that block, it is an answer that lost its request
+  (`sayStrayFrame`); its place stays, so a stream slower than that wait starts at its next frame. `heardFramesComing()`
+  is what is in force: a frame in the last `HEARD_ROUND_MS`, stamped in `lastStreamFrameMs_`. A read of the block,
+  answered, ends the stream and its Dump card. `Stats::autoSend` follows the frames too: true while `autoSendHz` > 0.
 - **The heard round** (`takeHeardRead`, `closeRound`). A poll ticks once for all the plotted registers; another
   program's reads come one by one. `roundRows_` holds the rows set since the last tick: an answer that would set one of
-  them again ends the round first (`appendSamples`, `writeCsvRow`, as `pollDone`), and `roundTimer_`
-  (`HEARD_ROUND_MS` = 250, from the round's first row) closes a round left open by a slow program. The link's end
-  closes the last one. While AUTO_SEND's frames come, each of them is the tick instead, and a fast block ticks nothing,
-  as always. A program that reads one register twice in a row makes short rounds: more points, never wrong ones.
+  them again ends the round first (`tickRound`), and `roundTimer_` (`HEARD_ROUND_MS` = 250, from the round's first row)
+  closes a round left open by a slow program. The link's end closes the last one. The tick is at `roundTime_`, the
+  round's last answer, the moment `pollDone` would have, and `appendSamples` and `writeCsvRow` take `roundRows_`: only
+  the rows set get a point and a cell, a row no longer read and one just refused none, and the CSV's datetime follows
+  `t` (a null set, as a poll and every other link pass, is every row, and the time now). While AUTO_SEND's frames are
+  coming each of them is the tick instead, and takes the round's rows along; a fast block ticks nothing, as always. A
+  program that reads one register twice in a row makes short rounds: more points, never wrong ones.
 - **`Stats::heard`**: `requestsHz`, `answersHz` (answers matched to a request; both measured as `pollHz` is, which stays
   0), `unmatched`, `notEvreBytes` (`Parser::skippedBytes` of both parsers; a chunk that held any gets one `??` line),
   `dropped` (the capture's count, `capturesLost`), `sendAttempts`. They stay until the next listening, so what a
@@ -5238,8 +5418,12 @@ the reason in the pill and nothing else, at a Connect; a try by itself goes on t
 in the same words, since the device may be back at the next. `showListening(port, link)` holds what the window knows
 from Connect until Stop or the end: `RegisterModel::setListening` keeps writes off and gives a value never read its
 tooltip, `RegistersTab`, `MonitorTab` and `Sidebar::setListening` disable what would send (`listeningText()`, one text
-for all), and the offers of Auto send and the streams and the bus's presets say why. The disabled controls are the
-first belt, the engine's guards the second, the link the last. A link that opens at once can open after Stop was
+for all), and the offers of Auto send and the streams and the bus's presets say why. An empty port or a refusal at
+Connect ends all that too. The disabled controls are the
+first belt, the engine's guards the second, the link the last. **What the device is asked:** `listenState` makes the one
+lookup with the descriptor at a press, and the Listen line and the engine use that answer; a try by itself looks without
+it and goes on `listenTarget_` while the device is where the press found it; `Sidebar::showListenLine` looks without it
+while listening. A link that opens at once can open after Stop was
 pressed: `onOpened` leaves it to the engine's close. `Sidebar::showStats` shows the heard rates and keeps the pill's
 tooltip; `logLostCaptures` says the signs at most once a minute.
 
@@ -6850,6 +7034,17 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   and no read error on the row; a request past the Timeout, and those past the most kept, dropped and counted; bytes
   that are no frame counted both ways, a frame cut across two chunks not; the captures lost; the link gone, the
   counts kept.
+- **Listen, rounds** (`listenRounds`). An engine of the test's own, frames told to the link, each case from the start of
+  a listening. The capture opens on a request-less answer at `0xD000`, then 20 rounds: 20 points, 20 CSV rows, one
+  *(no request heard)*; a lone such frame: no row, no point, its note without a next frame; AUTO_SEND slower than a
+  round; real AUTO_SEND and then that block polled, points and rows again and the frames card gone; another block read
+  beside the frames, its rows going with a frame, and its rounds ticking once the frames have stopped; `Stats::autoSend`
+  while frames come and after; a register read once (one point, its cell empty after) and one refused; a round's time
+  and the CSV's datetime; two WRITE_ACKs alike, the write card on the later bytes.
+- **Listen going wrong** (`listenGoesWrong`, in the scenes' step). The real window. A capture that fails before its first
+  byte: a try every 2 s, not twice a second, one Warning line, no *connected* or *connection lost* line, a pop-up at most.
+  What the device is asked (`descriptorLookupsForTests`): once for a press, nothing for the Listen line while listening,
+  nothing for a try by itself, once for a device at a new address. The port gone and no try possible: Listen's state ends.
 - **Listen, nothing sent** (`listenNothingSent`). An engine of the test's own with a token, a stream with an enable,
   Poll on and an API running. The API is stopped when listening starts. Then every way out is tried directly, each its
   own check, `ListenLink::sendAttempts()` and `master.tx` read after each: 700 ms for the keep-alive and the polls (the
@@ -7477,7 +7672,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 961 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1005 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -7811,7 +8006,8 @@ address 5 on bus 2.
 | `composite` | IN&nbsp;`0x83`,&nbsp;OUT&nbsp;`0x03` | two CDC functions on one device, the other's endpoints (`0x81`, `0x01`) carrying frames that must not be heard |
 | `cdc_quiet` | IN&nbsp;`0x81`,&nbsp;OUT&nbsp;`0x01` | DEVICE_ID and a block read, then an hour of nothing: at its stamps a capture that stays open, a round left unfinished |
 
-`evre_listen_test` (QtTest, no window, 37 tests) checks `src/io/usb_capture.*` and `src/io/listen_link.*`:
+`evre_listen_test` (QtTest, no window, 81 tests) checks `src/io/usb_capture.*`, `src/io/usbpcap_capture.*` and
+`src/io/listen_link.*`:
 
 - **both formats (`scenes`):** every scene gives the same events from its `.pcap` and its `.usbmon`, only the
   target's endpoints, in time order
@@ -7838,7 +8034,8 @@ address 5 on bus 2.
   `heardRequest`, the capture's end as `closed` with its reason (`linkBothWays`); `close()` stops the capture, no reason
   given (`linkClosed`); no capture: refused in plain words, and `send()` counted, said once (`linkWithoutCapture`); the
   captures the system lost (`linkLostCaptures`)
-- **a port with no capture (`linkRefused`):** each state's reason, in the window's words
+- **a port with no capture (`linkRefused`, `linkPressNeeded`, `linkPortMissing`):** each state's reason, in the window's
+  words, what a target that asks says with no press, and a port that is not there
 - **a port to its device (`sysfs...`, on every system):** `FakeSysfs` lays out a `/sys` and a `/dev` in a `QTemporaryDir`:
   real links and colons where the system has them, on Windows a table for the links and `_` for the colon. A USB CDC
   port by its name and by `/dev/ttyACM0`, the interrupt endpoint left out (`sysfsCdc`); four bridges, the tty a level
@@ -7849,10 +8046,47 @@ address 5 on bus 2.
   (`sysfsMissing`); no bulk endpoint, no data interface (`sysfsNoBulk`); the bus's file missing, another bus's, and on
   Unix one that cannot be read (`sysfsNoUsbmon`); the same device, plugged in again on another address, the tty gone
   (`sysfsHolds`)
+- **the descriptors on Linux (`sysfsUnion`, `sysfsConfigurations`, `sysfsCdcVendorClass`):** two CDC functions in order,
+  nested, crossed and data-first, each port its own endpoints; the active configuration and not the first, the file cut or
+  without it the neighbours' guess; `ttyACM` stays USB CDC on a vendor's class
+- **an FTDI chip under another VID (`sysfsFtdiByDriver`, `pcapStateFtdiBus`):** by the `driver` link on Linux, by an `FTDIBUS`
+  node on Windows, and the same VID with neither is no FTDI
 - **the system's answer (`systemAnswer`):** a forced state wins, `NoCapture` too, and `liveStateOf` is under it
 - **the live source (`liveCapture`, Linux):** without hardware, a bus nobody has: nothing inside `start()`, nothing after
-  `stop()`, the reason from the event loop and once. What only a real device can show (the ioctls, the records, `dropped`,
-  an unplug) is the owner's check on a Linux machine
+  `stop()`, the reason from the event loop and once. On Windows it is only made, never started: the real `USBPcapCMD`
+  below administrator would raise a UAC prompt. What only a real device can show (the ioctls, the records, `dropped`, an
+  unplug) is the owner's check on a Linux machine
+- **Windows's lookup on the PC it runs on (`windowsLookup`, Windows):** a port that is not there is no USB port, and gone;
+  every real port gets an answer, without being opened
+- **a configuration descriptor (`descriptor...`, on every system):** a device of one function, no `MI_xx`
+  (`descriptorCdc`); two CDC functions, `MI_xx` picks one (`descriptorComposite`); Union wins, the nearest only without it
+  (`descriptorUnion`); endpoints on an alternate setting (`descriptorAlternate`); FT232R, the second port of an FT2232H with
+  its 512 bytes, CP210x, and a CDC chip of a bridge's maker (`descriptorBridge`); HID, nothing, no such interface, no data
+  interface, bulk one way (`descriptorNoBulk`); cut at every byte (`descriptorCut`); lengths that cannot be
+  (`descriptorBroken`). Each refusal leaves the target as it was
+- **a port's place (`interfaceOfInstance`, `chainWalk`, `hubLink`):** `MI_xx` in hexadecimal and either case; CDC, a
+  composite's function, FTDI's own bus with and without a function, behind two hubs; a Bluetooth port on a USB radio, a
+  motherboard's port, a virtual pair, a root hub alone; USBPcap's name for a hub against an instance ID
+- **USBPcapCMD (`pcapArguments`, `pcapEndReason`, `pcapProgramBeside`):** the arguments, never `-A`; each reason, what it
+  said first; the program beside the registry's uninstaller
+- **the facts to a state (`pcapState...`, `pcapHolds`, `pcapStillThere`):** a port that is not there and one with no USB under it
+  (`pcapStateMissing`); the target whole, the bus by the filter's number, a number
+  missing after a dock went; the descriptor not read or cut, the kind by the VID; each refusal and which wins when
+  several hold; a stack not given; the address that decides `holds`, the light lookup holding; a running capture that
+  ends on a node gone or a device elsewhere and never on a filter or a hub that did not answer
+- **the capture on a stand-in (`pcapCapture...`, on every system):** the test program started again in place of
+  `USBPcapCMD`, taking no notice of `terminate()` as the real one does, so **no test starts the real one**. The events of
+  `cdc_poll.pcap` through a real pipe, none inside `start()`, the arguments it got, `stop()` leaving no process
+  (`pcapCaptureHears`); a process that ends, what it wrote first still heard, its reason once
+  (`pcapCaptureEnds`); no such program (`pcapCaptureNoProgram`); no pcap stream (`pcapCaptureBroken`); a device gone
+  while it runs and as it ends (`pcapCaptureGone`); a stop from a slot (`pcapCaptureStoppedFromASlot`); a second start
+  (`pcapCaptureStartsAgain`); opened at the first bytes after 1.5 s of silence, nothing running out, and the same
+  elevated (`pcapCaptureAsks`, `pcapCaptureElevatedOpensOnFirstBytes`); dying before them, never opened
+  (`pcapCaptureDiesFirst`); the prompt refused, a worker that said nothing (`pcapCaptureRefused`); Stop while asking (`pcapCaptureStopWhileAsking`). What only a real device can show (the
+  elevated worker, the stream, an unplug, a bridge) is the owner's check on Windows
+- **nothing left behind (`pcapCaptureLeavesNothing`, Windows):** a stand-in with a detached process of its own, no child
+  of the capture, as the worker is not: both gone after a Stop, after the capture is destroyed, and with the "Studio" killed
+  outright, which runs none of our code. It fails on all three without the job
 - **a record longer than the buffer (`fitRecord`):** `len_cap` cut, the next record found where the cut one ends, one
   that fits left alone
 - **`Parser::skippedBytes`:** every way a byte leaves the stream without a frame, a frame's own bytes not, a half frame

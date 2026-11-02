@@ -118,6 +118,7 @@ public:
 	 * window, once the sidebar is in it, calls showDisconnected() */
 	void showDisconnected();
 	void showConnecting();
+	void showAsking();                      /* Listen below administrator: Windows's prompt is open */
 	/* note: a line the pill's tooltip adds under its text (the baud rate a USB CDC port ignores) */
 	void showConnected(const QString &link, const QString &note = QString());
 	/* the pill on its own tint, not the connected green: nothing is sent. link: listenLinkText; the port alone when it
@@ -131,7 +132,9 @@ public:
 	static QString heardRateText(double requestsHz);
 	/* the signs of a capture that lost something, one sentence for the pill's tooltip and the Log; empty: none */
 	static QString lostCapturesText(const IoEngine::Stats &stats);
-	void showListenLine();               /* the Listen line for the port selected, as the system says it now */
+	/* the Listen line for the port selected, as the system says it now: with nothing reaching the device while listening */
+	void showListenLine();
+	void showListenLine(const UsbPortState &state); /* the same from a lookup just made */
 	/* Listen is on or off: Poll, its interval and Serve API disabled, saying why */
 	void setListening(bool on);
 	/* a serial link as the pill names it, one left-to-right piece: "COM13 @ 115200" on a UART (baudLimited), where the

@@ -4085,10 +4085,21 @@ the USB traffic under the port with the system&apos;s capture, and &lt;b&gt;send
 USB-UART bridges; not a motherboard&apos;s COM port, RS-485 without a USB bridge, Bluetooth or a virtual port. It sees
 everything on that USB device.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not. &lt;b&gt;Windows&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;, a capture driver, installed once as administrator; then unplug and plug the device again.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; and
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;, good until the PC restarts. What lasts takes three steps. The
+&lt;li&gt;The port box is the one of Serial / USB; the line under it says what can be heard, or why not.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Windows&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;, a capture driver. &lt;b&gt;Get USBPcap…&lt;/b&gt; opens its page; install it once as administrator,
+then unplug and plug the device again: it joins a device when that is plugged in. If the line then reads &lt;i&gt;USBPcap is
+not on this device yet&lt;/i&gt;, restart the PC. USBPcap lets only an administrator capture, so each time you press
+&lt;b&gt;Listen&lt;/b&gt; Windows asks for your permission; the pill reads &lt;i&gt;Asking Windows for permission…&lt;/i&gt; for as long as you
+take, and if you do not see the prompt, it may be waiting on the taskbar. Because a prompt must never come up with nobody
+there, &lt;b&gt;Reconnect by itself&lt;/b&gt; does not start a capture: a lost one waits for you to press &lt;b&gt;Listen&lt;/b&gt; again. Started
+with &lt;b&gt;Run as administrator&lt;/b&gt; the Studio needs no prompt, and Reconnect by itself works. To find the endpoints, the
+device&apos;s USB descriptor is read when the line looks at a port and once when &lt;b&gt;Listen&lt;/b&gt; starts; while a capture runs nothing
+reaches the device. The Studio captures that
+one device, never a whole bus, and one capture can hold a bus at a time, so stop Wireshark there first. &lt;b&gt;Stop&lt;/b&gt;, closing
+the Studio or a crash end the capture; Task Manager&apos;s Details tab should show no &lt;code&gt;USBPcapCMD.exe&lt;/code&gt; after it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Linux&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;, in the kernel. &lt;b&gt;Copy the commands&lt;/b&gt; gives &lt;code&gt;sudo modprobe usbmon&lt;/code&gt;,
+&lt;code&gt;sudo chgrp &quot;$(id -gn)&quot; /dev/usbmon2&lt;/code&gt; and &lt;code&gt;sudo chmod g+r /dev/usbmon2&lt;/code&gt;, for the port&apos;s own bus, good
+until the PC restarts. What lasts takes three steps. The
 module at every start: &lt;code&gt;usbmon&lt;/code&gt; in &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. The udev rule:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; in &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;, then
 &lt;code&gt;sudo udevadm control --reload&lt;/code&gt; and &lt;code&gt;sudo udevadm trigger&lt;/code&gt;. You in the group:
@@ -4097,7 +4108,8 @@ traffic of bus 2, a keyboard&apos;s too, so think before giving a shared PC this
 &lt;li&gt;&lt;b&gt;Listen&lt;/b&gt; starts it, &lt;b&gt;Stop&lt;/b&gt; ends it. The pill reads &lt;i&gt;Listening · COM13 · USB CDC&lt;/i&gt; on blue; its tooltip
 says what is heard, and what a capture may have lost.&lt;/li&gt;
 &lt;li&gt;The table, the chart, the CSV and the Dump fill from the answers to the other program&apos;s reads, one chart point and one
-CSV row per round of its reads. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
+CSV row per round of its reads, for the registers read in that round alone: one it no longer reads gets no more points, and
+its CSV cells stay empty. A register it never reads stays &lt;i&gt;—&lt;/i&gt;. A heard write shows in the Dump&apos;s write card and
 the Monitor; the table changes at the next heard read.&lt;/li&gt;
 &lt;li&gt;Whatever would send is disabled, each control saying why: Poll, Allow writes, Quick write, the Monitor&apos;s request row,
 Auto send, a stream&apos;s Start; a running API is stopped. Record CSV, the chart and Reconnect by itself work.&lt;/li&gt;
@@ -4193,17 +4205,27 @@ or this link does not). Not an error.&lt;/li&gt;
 ⁦USB-UART⁩؛ لا منفذ ⁦COM⁩ على اللوحة الأم، ولا ⁦RS-485⁩ بلا جسر ⁦USB⁩، ولا بلوتوث ولا منفذ افتراضي.
 ويرى كل ما يمرّ على جهاز ⁦USB⁩ ذاك.&lt;/p&gt;
 &lt;ul&gt;
-&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا. &lt;b&gt;ويندوز&lt;/b&gt;:
-&lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط يُثبَّت مرة واحدة بصلاحية المسؤول؛ ثم افصل الجهاز وأعد توصيله.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; الأمرين &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
-&lt;code&gt;sudo setfacl -m u:$USER:r /dev/usbmon*&lt;/code&gt;، وهما صالحان حتى إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
+&lt;li&gt;صندوق المنفذ هو نفسه في تسلسلي / USB؛ والسطر تحته يقول ما يمكن سماعه أو لماذا لا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;ويندوز&lt;/b&gt;: &lt;b&gt;USBPcap&lt;/b&gt;، مشغّل التقاط. يفتح &lt;b&gt;تنزيل ⁦USBPcap⁩…&lt;/b&gt; صفحته؛ ثبّته مرة واحدة بصلاحية المسؤول،
+ثم افصل الجهاز وأعد توصيله: فهو ينضم إلى الجهاز عند توصيله. وإن قرأ السطر بعد ذلك &lt;i&gt;⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد&lt;/i&gt;،
+فأعد تشغيل الحاسوب. ولا يسمح ⁦USBPcap⁩ بالالتقاط إلا للمسؤول، فيطلب ويندوز إذنك في كل مرة تضغط فيها &lt;b&gt;استماع&lt;/b&gt;؛ وتقرأ الشارة
+&lt;i&gt;يطلب الإذن من ويندوز…&lt;/i&gt; ما دمت لم تُجب، وإن لم تَرَ نافذة الطلب فقد تكون منتظرة في شريط المهام. ولأن نافذة الطلب يجب ألا تظهر
+في غياب أحد، لا تبدأ &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; التقاطًا: فالالتقاط المفقود ينتظر أن تضغط &lt;b&gt;استماع&lt;/b&gt; من جديد. وإذا بدأت
+الاستوديو بأمر &lt;b&gt;تشغيل كمسؤول&lt;/b&gt; فلا حاجة إلى نافذة الطلب، وتعمل إعادة الاتصال تلقائيًا. ولمعرفة نقاط النهاية يُقرأ واصف ⁦USB⁩ للجهاز حين يفحص السطر منفذًا، ومرة واحدة عند بدء
+&lt;b&gt;استماع&lt;/b&gt;؛ ولا يصل إلى الجهاز شيء أثناء الالتقاط. يلتقط الاستوديو ذلك الجهاز وحده، لا الناقل
+كله أبدًا، ولا يشغل الناقل إلا التقاط واحد في كل مرة، فأوقف ⁦Wireshark⁩ عليه أولًا. و&lt;b&gt;إيقاف&lt;/b&gt; أو إغلاق الاستوديو أو تعطّله ينهي
+الالتقاط؛ ويجب ألا يظهر ⁦&lt;code&gt;USBPcapCMD.exe&lt;/code&gt;⁩ بعده في تبويب «التفاصيل» في إدارة المهام.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;لينكس&lt;/b&gt;: &lt;b&gt;usbmon&lt;/b&gt;، في النواة. يعطي &lt;b&gt;نسخ الأوامر&lt;/b&gt; &lt;code&gt;sudo modprobe usbmon&lt;/code&gt; و
+&lt;code&gt;sudo chgrp &quot;$(id -gn)&quot; /dev/usbmon2&lt;/code&gt; و&lt;code&gt;sudo chmod g+r /dev/usbmon2&lt;/code&gt;، لناقل المنفذ نفسه، وهي صالحة حتى
+إعادة تشغيل الحاسوب. أما ما يدوم فثلاث خطوات. الوحدة عند كل تشغيل: &lt;code&gt;usbmon&lt;/code&gt; في &lt;code&gt;/etc/modules-load.d/usbmon.conf&lt;/code&gt;. قاعدة udev:
 &lt;code&gt;SUBSYSTEM==&quot;usbmon&quot;, GROUP=&quot;dialout&quot;, MODE=&quot;0640&quot;&lt;/code&gt; في &lt;code&gt;/etc/udev/rules.d/60-usbmon.rules&lt;/code&gt;، ثم
 &lt;code&gt;sudo udevadm control --reload&lt;/code&gt; و&lt;code&gt;sudo udevadm trigger&lt;/code&gt;. وأنت في المجموعة:
 &lt;code&gt;sudo usermod -aG dialout $USER&lt;/code&gt;، ثم سجّل الدخول من جديد. من يقرأ &lt;code&gt;/dev/usbmon2&lt;/code&gt; يقرأ كل حركة الناقل 2، حتى حركة لوحة المفاتيح، ففكّر قبل وضع هذه القاعدة على حاسوب مشترك.&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;استماع&lt;/b&gt; يبدؤه و&lt;b&gt;إيقاف&lt;/b&gt; ينهيه. تقرأ الشارة &lt;i&gt;يستمع · ⁦COM13 · USB CDC⁩&lt;/i&gt; على الأزرق؛ ويقول تلميحها ما يُسمع،
 وما قد يكون الالتقاط فقده.&lt;/li&gt;
 &lt;li&gt;يمتلئ الجدول والمخطط وملف ⁦CSV⁩ وعرض الذاكرة من ردود قراءات البرنامج الآخر، نقطة واحدة في المخطط وصف واحد في
-⁦CSV⁩ لكل جولة من قراءاته. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
+⁦CSV⁩ لكل جولة من قراءاته، للمسجّلات المقروءة في تلك الجولة وحدها: فالمسجّل الذي توقف عن قراءته لا يحصل على نقاط جديدة،
+وتبقى خلاياه في ⁦CSV⁩ فارغة. والمسجّل الذي لا يقرأه يبقى &lt;i&gt;—&lt;/i&gt;. والكتابة المسموعة تظهر في بطاقة الكتابة في عرض الذاكرة
 وفي المراقبة؛ ويتغيّر الجدول عند القراءة المسموعة التالية.&lt;/li&gt;
 &lt;li&gt;كل ما يرسل معطّل، وكل عنصر يقول لماذا: الاستطلاع، والسماح بالكتابة، والكتابة السريعة، وصف الطلب في المراقبة، والإرسال
 التلقائي، وبدء التدفق؛ ويتوقف خادم API إن كان يعمل. أما تسجيل ⁦CSV⁩ والمخطط وإعادة الاتصال تلقائيًا فتعمل.&lt;/li&gt;
@@ -4423,6 +4445,18 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
     <message>
         <source>usbmon is not loaded or %1 is not readable</source>
         <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
     </message>
 </context>
 <context>
@@ -5142,6 +5176,14 @@ AUTO_SEND في CONFIG: سيرسل كل جهاز من تلقاء نفسه فور�
     <message>
         <source>API server stopped: %1</source>
         <translation>توقف خادم API: %1</translation>
+    </message>
+    <message>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 · press Listen to hear it again</source>
+        <translation>%1 · اضغط «استماع» لتسمعه من جديد</translation>
     </message>
 </context>
 <context>
@@ -8735,6 +8777,46 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <source>stopped: %1</source>
         <translation>توقف: %1</translation>
     </message>
+    <message>
+        <source>USBPcap joins a device when it is plugged in, and a USB bus when the PC starts.</source>
+        <translation>ينضم ⁦USBPcap⁩ إلى الجهاز عند توصيله، وإلى ناقل ⁦USB⁩ عند بدء تشغيل الحاسوب.</translation>
+    </message>
+    <message>
+        <source>unplug it and plug it in again; if that does not help, restart the PC</source>
+        <translation>افصله ثم أعد توصيله؛ وإن لم يُجدِ ذلك فأعد تشغيل الحاسوب</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>Windows asks for your permission each time Listen is pressed</source>
+        <translation>يطلب ويندوز إذنك في كل مرة يُضغط فيها «استماع»</translation>
+    </message>
+    <message>
+        <source>Asking Windows for permission…</source>
+        <translation>يطلب الإذن من ويندوز…</translation>
+    </message>
+    <message>
+        <source>If you do not see the prompt, it may be waiting on the taskbar.</source>
+        <translation>إن لم تَرَ نافذة الطلب فقد تكون منتظرة في شريط المهام.</translation>
+    </message>
+    <message>
+        <source>Asking Windows…</source>
+        <translation>يطلب الإذن…</translation>
+    </message>
+    <message>
+        <source>not found: unplugged?</source>
+        <translation>غير موجود: هل فُصل؟</translation>
+    </message>
+    <message>
+        <source>This port is not there now: plug the device in, then press the refresh button.</source>
+        <translation>هذا المنفذ غير موجود الآن: صِل الجهاز، ثم اضغط زر التحديث.</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
+    </message>
 </context>
 <context>
     <name>TcpLink</name>
@@ -8752,6 +8834,45 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>not a USBPcap capture</source>
         <translation>ليس التقاطًا من ⁦USBPcap⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap refused this USB bus: another capture holds it</source>
+        <translation>رفض ⁦USBPcap⁩ ناقل ⁦USB⁩ هذا: يشغله التقاط آخر</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped: %1</source>
+        <translation>توقف ⁦USBPcapCMD⁩: %1</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD crashed</source>
+        <translation>تعطّل ⁦USBPcapCMD⁩</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped with code %1</source>
+        <translation>توقف ⁦USBPcapCMD⁩ بالرمز %1</translation>
+    </message>
+    <message>
+        <source>USBPcapCMD stopped</source>
+        <translation>توقف ⁦USBPcapCMD⁩</translation>
+    </message>
+    <message>
+        <source>permission refused: press Listen to ask again</source>
+        <translation>رُفض الإذن: اضغط «استماع» لتطلبه من جديد</translation>
+    </message>
+    <message>
+        <source>the capture ended before anything came: another capture may hold this USB bus</source>
+        <translation>انتهى الالتقاط قبل وصول أي شيء: قد يشغل التقاط آخر ناقل ⁦USB⁩ هذا</translation>
+    </message>
+</context>
+<context>
+    <name>UsbPcapCapture</name>
+    <message>
+        <source>USBPcapCMD could not be started: %1</source>
+        <translation>تعذّر تشغيل ⁦USBPcapCMD⁩: %1</translation>
+    </message>
+    <message>
+        <source>%1 is gone: unplugged or reset?</source>
+        <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
     </message>
 </context>
 <context>
@@ -8794,6 +8915,18 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>usbmon is not loaded or %1 is not readable</source>
         <translation>⁦usbmon⁩ غير محمّل أو لا يمكن قراءة ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>USBPcap is not on this device yet</source>
+        <translation>⁦USBPcap⁩ لم ينضم إلى هذا الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>press Listen: Windows asks for permission first</source>
+        <translation>اضغط «استماع»: يطلب ويندوز الإذن أولًا</translation>
+    </message>
+    <message>
+        <source>%1 not found</source>
+        <translation>⁦%1⁩ غير موجود</translation>
     </message>
 </context>
 <context>

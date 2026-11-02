@@ -9,11 +9,14 @@
 #include <QtEndian>
 
 #include <algorithm>
+#include <atomic>
 #include <climits>
 #include <memory>
 
 #ifdef Q_OS_LINUX
 #include "io/usbmon_capture.h"
+#elif defined(Q_OS_WIN)
+#include "io/usbpcap_capture.h"
 #endif
 
 namespace {
@@ -35,8 +38,24 @@ constexpr int MON_LEN_CAP = 36;
 
 constexpr int ENDPOINT_IN = 0x80;
 
+constexpr int CDC_CONTROL_CLASS = 0x02;
 constexpr int CDC_DATA_CLASS = 0x0A;
 constexpr quint16 FTDI_VID = 0x0403;
+
+/* USB 2.0 chapter 9's descriptors and CDC's Union functional descriptor, by their bytes */
+constexpr uchar DESCRIPTOR_CONFIGURATION = 2;
+constexpr uchar DESCRIPTOR_INTERFACE = 4;
+constexpr uchar DESCRIPTOR_ENDPOINT = 5;
+constexpr uchar DESCRIPTOR_CS_INTERFACE = 0x24;
+constexpr uchar CDC_UNION = 6;
+constexpr uchar ENDPOINT_TYPE_MASK = 3;
+constexpr uchar ENDPOINT_TYPE_BULK = 2;
+constexpr int MAX_PACKET_MASK = 0x7FF;
+
+/* 32 MiB in the driver, which a pause of the Studio's thread can fall behind into. A full buffer drops packets and says
+ * so nowhere, so what is lost shows only in the EVRe-level signs (the lost-capture text) */
+constexpr int USBPCAP_SNAP_LENGTH = 65535;
+constexpr int USBPCAP_BUFFER = 33554432;
 
 template <typename T>
 T little(const char *bytes) { return qFromLittleEndian<T>(bytes); }
@@ -98,6 +117,21 @@ QString cdcDataInterface(const QString &device, const QString &own) {
 	return found;
 }
 
+/* The active configuration as the device sent it: 18 bytes of device descriptor, then each configuration in turn */
+QByteArray sysfsConfiguration(const QString &device) {
+	QFile in(device + QLatin1String("/descriptors"));
+	if (!in.open(QIODevice::ReadOnly)) return {};
+	const QByteArray all = in.readAll();
+	const int active = sysfsNumber(device + QLatin1String("/bConfigurationValue"), 10);
+	for (int at = 18; at + 9 <= all.size(); ) {
+		const int total = little<quint16>(all.constData() + at + 2);
+		if (total < 9) break;
+		if (uchar(all[at + 5]) == active) return all.mid(at, total);
+		at += total;
+	}
+	return {};
+}
+
 /* the interface's bulk endpoints; what its interrupt endpoint says of the line is not the data */
 void readBulkEndpoints(const QString &interface, UsbTarget &target) {
 	const QStringList names = QDir(interface).entryList({ QStringLiteral("ep_*") }, QDir::Dirs, QDir::Name);
@@ -121,9 +155,12 @@ UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QStri
 	state.kind = UsbPortState::NotUsb;
 	const QString tty = QFileInfo(port).fileName();
 	if (tty.isEmpty()) return state;
-	const QString link = sys + QLatin1String("/class/tty/") + tty + QLatin1String("/device");
+	const QString ttyDir = sys + QLatin1String("/class/tty/") + tty;
+	const QString link = ttyDir + QLatin1String("/device");
+	const auto follow = [&links](const QString &file) { return links.contains(file) ? links.value(file) : QFileInfo(file).canonicalFilePath(); };
+	state.missing = !links.contains(link) && !QFileInfo::exists(ttyDir);
 	/* no such tty, or a tty with no device under it: a virtual one, a Bluetooth one */
-	const QString start = links.contains(link) ? links.value(link) : QFileInfo(link).canonicalFilePath();
+	const QString start = follow(link);
 	if (start.isEmpty()) return state;
 	QString own;
 	const QString device = usbDeviceAbove(start, own);
@@ -137,8 +174,13 @@ UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QStri
 	target.pid = quint16(sysfsNumber(device + QLatin1String("/idProduct"), 16));
 	/* the driver's name decides, not the VID: ttyACM is cdc-acm, whose bulk data has no framing whoever made the chip */
 	const bool cdc = tty.startsWith(QLatin1String("ttyACM"));
-	target.kind = cdc ? UsbTarget::Cdc : target.vid == FTDI_VID ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
-	readBulkEndpoints(cdc ? cdcDataInterface(device, own) : own, target);
+	/* A CDC port's data interface is the one its Union descriptor names, wherever that is: functions can be nested,
+	 * crossed or data-first, and then the neighbours are another port's. They are the guess when there is nothing to read */
+	if (!cdc || !usbReadEndpoints(sysfsConfiguration(device), sysfsNumber(own + QLatin1String("/bInterfaceNumber"), 16), target))
+		readBulkEndpoints(cdc ? cdcDataInterface(device, own) : own, target);
+	/* ftdi_sio takes FTDI chips under other makers' VIDs too */
+	const bool ftdi = target.vid == FTDI_VID || follow(own + QLatin1String("/driver")).endsWith(QLatin1String("/ftdi_sio"));
+	target.kind = cdc ? UsbTarget::Cdc : ftdi ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
 
 	const QFileInfo capture(dev + QLatin1String("/usbmon") + QString::number(target.bus));
 	const bool readable = capture.exists() && capture.isReadable();
@@ -147,39 +189,283 @@ UsbPortState usbmonPortState(const QString &sys, const QString &dev, const QStri
 	return state;
 }
 
+namespace {
+
+/* one interface of a configuration, its alternate settings together: a data interface may have its endpoints only on
+ * alternate 1 */
+struct ConfiguredInterface {
+	int number = 0;
+	int klass = 0;
+	int unionData = -1;         /* a control interface's data interface, by its Union descriptor */
+	QVector<int> in, out;
+	int inMaxPacket = 0;
+
+	bool hasData() const { return !in.isEmpty() && !out.isEmpty(); }
+};
+
+ConfiguredInterface *interfaceNumbered(QVector<ConfiguredInterface> &interfaces, int number) {
+	for (ConfiguredInterface &each : interfaces)
+		if (each.number == number) return &each;
+	return nullptr;
+}
+
+/* false when the bytes stop before the descriptor says they do, or a length cannot be right */
+bool readConfiguration(const QByteArray &bytes, QVector<ConfiguredInterface> &interfaces) {
+	if (bytes.size() < 9 || uchar(bytes[1]) != DESCRIPTOR_CONFIGURATION) return false;
+	const int total = little<quint16>(bytes.constData() + 2);
+	if (total < 9 || total > bytes.size()) return false;
+	int current = -1;
+	for (int at = 0; at < total; ) {
+		const char *one = bytes.constData() + at;
+		const int length = uchar(one[0]);
+		if (length < 2 || at + length > total) return false;
+		const uchar type = uchar(one[1]);
+		if (type == DESCRIPTOR_INTERFACE && length >= 9) {
+			current = uchar(one[2]);
+			if (!interfaceNumbered(interfaces, current)) {
+				ConfiguredInterface fresh;
+				fresh.number = current;
+				fresh.klass = uchar(one[5]);
+				interfaces.append(fresh);
+			}
+		} else if (type == DESCRIPTOR_CS_INTERFACE && length >= 5 && uchar(one[2]) == CDC_UNION) {
+			if (ConfiguredInterface *control = interfaceNumbered(interfaces, uchar(one[3]))) control->unionData = uchar(one[4]);
+		} else if (type == DESCRIPTOR_ENDPOINT && length >= 7 && (uchar(one[3]) & ENDPOINT_TYPE_MASK) == ENDPOINT_TYPE_BULK) {
+			ConfiguredInterface *owner = interfaceNumbered(interfaces, current);
+			if (!owner) return false;
+			const int address = uchar(one[2]);
+			QVector<int> &list = address & ENDPOINT_IN ? owner->in : owner->out;
+			if (!list.contains(address)) list << address;
+			if ((address & ENDPOINT_IN) && !owner->inMaxPacket) owner->inMaxPacket = little<quint16>(one + 4) & MAX_PACKET_MASK;
+		}
+		at += length;
+	}
+	return true;
+}
+
+/* a device of one function does not say which interface a port is on: its CDC control interface, or the first that
+ * can carry data each way */
+ConfiguredInterface *onlyFunction(QVector<ConfiguredInterface> &interfaces) {
+	for (ConfiguredInterface &each : interfaces)
+		if (each.klass == CDC_CONTROL_CLASS) return &each;
+	for (ConfiguredInterface &each : interfaces)
+		if (each.hasData()) return &each;
+	return nullptr;
+}
+
+/* a control interface's data: the one its Union names, else as the Linux lookup goes, the nearest one up, then down */
+ConfiguredInterface *dataOf(QVector<ConfiguredInterface> &interfaces, ConfiguredInterface *own) {
+	if (own->klass != CDC_CONTROL_CLASS) return own;
+	if (ConfiguredInterface *named = interfaceNumbered(interfaces, own->unionData)) return named;
+	ConfiguredInterface *found = nullptr;
+	int nearest = INT_MAX;
+	for (ConfiguredInterface &each : interfaces) {
+		if (each.klass != CDC_DATA_CLASS) continue;
+		const int distance = each.number > own->number ? each.number - own->number : 256 + own->number - each.number;
+		if (distance < nearest) {
+			nearest = distance;
+			found = &each;
+		}
+	}
+	return found;
+}
+
+/* a hexadecimal field after a word of an instance ID, VID_0483 or PID_5740; 0 when there is none */
+quint16 instanceField(const QString &instance, QLatin1String word) {
+	const int at = instance.indexOf(word, 0, Qt::CaseInsensitive);
+	return at < 0 ? quint16(0) : instance.mid(at + word.size(), 4).toUShort(nullptr, 16);
+}
+
+bool enumeratedBy(const QString &instance, QLatin1String bus) {
+	return instance.section(QLatin1Char('\\'), 0, 0).compare(bus, Qt::CaseInsensitive) == 0;
+}
+
+} // namespace
+
+int usbInterfaceOf(const QString &instance) {
+	const QLatin1String word("&MI_");
+	const int at = instance.indexOf(word, 0, Qt::CaseInsensitive);
+	if (at < 0) return -1;
+	bool ok = false;
+	const int number = instance.mid(at + word.size(), 2).toInt(&ok, 16);
+	return ok ? number : -1;
+}
+
+UsbChain usbChainOf(const QStringList &chain) {
+	UsbChain found;
+	for (int i = 0; i < chain.size(); i++) {
+		/* a Bluetooth radio is often a USB device, and the walk would end on it: its ports are not its USB traffic */
+		if (enumeratedBy(chain[i], QLatin1String("BTHENUM")) || enumeratedBy(chain[i], QLatin1String("BTH"))) return {};
+		if (!enumeratedBy(chain[i], QLatin1String("USB"))) continue;
+		found.rootHub = i;
+		if (found.device >= 0) continue;
+		const int number = usbInterfaceOf(chain[i]);
+		if (number >= 0) found.firstInterface = number;
+		else found.device = i;
+	}
+	if (found.device < 0 || found.device == found.rootHub) return {};
+	return found;
+}
+
+bool usbHubLinkIs(const QString &link, const QString &rootHub) {
+	QString name = link;
+	for (QLatin1String prefix : { QLatin1String("\\??\\"), QLatin1String("\\\\?\\"), QLatin1String("\\\\.\\") })
+		if (name.startsWith(prefix)) name.remove(0, prefix.size());
+	const int guid = name.indexOf(QLatin1String("#{"));
+	if (guid >= 0) name.truncate(guid);
+	name.replace(QLatin1Char('#'), QLatin1Char('\\'));
+	return !name.isEmpty() && name.compare(rootHub, Qt::CaseInsensitive) == 0;
+}
+
+bool usbReadEndpoints(const QByteArray &configuration, int firstInterface, UsbTarget &target) {
+	QVector<ConfiguredInterface> interfaces;
+	if (!readConfiguration(configuration, interfaces)) return false;
+	ConfiguredInterface *own = firstInterface < 0 ? onlyFunction(interfaces) : interfaceNumbered(interfaces, firstInterface);
+	ConfiguredInterface *data = own ? dataOf(interfaces, own) : nullptr;
+	if (!data || !data->hasData()) return false;
+	target.inEndpoints = data->in;
+	target.outEndpoints = data->out;
+	target.inMaxPacket = data->inMaxPacket;
+	if (own->klass == CDC_CONTROL_CLASS || data->klass == CDC_DATA_CLASS) target.kind = UsbTarget::Cdc;
+	else target.kind = target.vid == FTDI_VID ? UsbTarget::Ftdi : UsbTarget::OtherBridge;
+	return true;
+}
+
+UsbTarget::Kind usbKindByVid(quint16 vid) {
+	switch (vid) {
+	case FTDI_VID: return UsbTarget::Ftdi;
+	case 0x10C4: case 0x1A86: case 0x067B: case 0x04D8: return UsbTarget::OtherBridge; /* no framing on the data */
+	default: return UsbTarget::Cdc;
+	}
+}
+
+UsbPortState usbPcapPortState(const UsbPortFacts &facts) {
+	UsbPortState state;
+	state.kind = UsbPortState::NotUsb;
+	const UsbChain chain = usbChainOf(facts.chain);
+	state.missing = facts.chain.isEmpty();
+	if (chain.device < 0) return state;
+
+	UsbTarget &target = state.target;
+	const QString &device = facts.chain[chain.device];
+	target.port = facts.port;
+	target.address = facts.address;
+	target.vid = instanceField(device, QLatin1String("VID_"));
+	target.pid = instanceField(device, QLatin1String("PID_"));
+	if (!usbReadEndpoints(facts.configuration, chain.firstInterface, target)) target.kind = usbKindByVid(target.vid);
+	/* FTDI's driver makes a bus of its own, for chips under other makers' VIDs too */
+	for (const QString &node : facts.chain)
+		if (enumeratedBy(node, QLatin1String("FTDIBUS"))) target.kind = UsbTarget::Ftdi;
+	/* USBPcap numbers its buses by its root hubs' filters, and the number is what a capture opens */
+	for (int i = 0; i < facts.filters.size() && !target.bus; i++)
+		if (usbHubLinkIs(facts.filters[i], facts.chain[chain.rootHub])) target.bus = i + 1;
+
+	if (!facts.program) {
+		state.kind = UsbPortState::NoUsbPcap;
+		return state;
+	}
+	const bool onDevice = facts.stack.isEmpty() || facts.stack.contains(QLatin1String("\\Driver\\USBPcap"), Qt::CaseInsensitive);
+	state.kind = !target.bus || !target.address || !onDevice ? UsbPortState::NoFilter : UsbPortState::Listenable;
+	target.asksPermission = !facts.elevated; /* USBPcap's driver opens only to an administrator: the program asks for one */
+	return state;
+}
+
+bool usbPcapStillThere(const UsbPortFacts &facts, const UsbTarget &running) {
+	if (usbChainOf(facts.chain).device < 0) return false;
+	const UsbTarget seen = usbPcapPortState(facts).target;
+	return (!seen.address || seen.address == running.address) && (!seen.bus || seen.bus == running.bus);
+}
+
+QStringList usbPcapArguments(const UsbTarget &target) {
+	return { QStringLiteral("-d"), QStringLiteral("\\\\.\\USBPcap%1").arg(target.bus),
+		QStringLiteral("--devices"), QString::number(target.address),
+		QStringLiteral("-s"), QString::number(USBPCAP_SNAP_LENGTH),
+		QStringLiteral("-b"), QString::number(USBPCAP_BUFFER),
+		QStringLiteral("-o"), QStringLiteral("-") };
+}
+
+/* USBPcapCMD says what went wrong on its standard error and still ends with code 0, so what it said comes first. A prompt
+ * refused is no worker made. The driver lets one reader in: error 5, elevated, is another capture */
+QString usbPcapEndReason(int exitCode, bool crashed, const QByteArray &errors, bool workerSilent) {
+	const QString said = QString::fromLocal8Bit(errors).trimmed();
+	if (said.contains(QLatin1String("Failed to create worker process")))
+		return QCoreApplication::translate("UsbCapture", "permission refused: press Listen to ask again");
+	if (said.contains(QLatin1String("Couldn't open device - 5")))
+		return QCoreApplication::translate("UsbCapture", "USBPcap refused this USB bus: another capture holds it");
+	if (!said.isEmpty())
+		return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped: %1").arg(said.section(QLatin1Char('\n'), 0, 0).trimmed());
+	if (workerSilent)
+		return QCoreApplication::translate("UsbCapture", "the capture ended before anything came: another capture may hold this USB bus");
+	if (crashed) return QCoreApplication::translate("UsbCapture", "USBPcapCMD crashed");
+	if (exitCode) return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped with code %1").arg(exitCode);
+	return QCoreApplication::translate("UsbCapture", "USBPcapCMD stopped");
+}
+
+QString usbPcapProgramBeside(const QString &uninstallString) {
+	QString path = uninstallString.trimmed();
+	if (path.startsWith(QLatin1Char('"'))) path = path.section(QLatin1Char('"'), 1, 1);
+	path.replace(QLatin1Char('\\'), QLatin1Char('/'));
+	const int folder = path.lastIndexOf(QLatin1Char('/'));
+	return folder < 0 ? QString() : path.left(folder) + QLatin1String("/USBPcapCMD.exe");
+}
+
 /* the tests' ports (stateForTests) */
 static QHash<QString, UsbPortState> &portStatesForTests() {
 	static QHash<QString, UsbPortState> states;
 	return states;
 }
 
-UsbPortState UsbTarget::stateOf(const QString &port) {
+/* a count for the tests, on both threads a lookup runs on */
+static std::atomic<quint64> descriptorLookups{ 0 };
+
+quint64 UsbTarget::descriptorLookupsForTests() { return descriptorLookups; }
+
+UsbPortState UsbTarget::stateOf(const QString &port, bool descriptors) {
 	const auto forced = portStatesForTests().constFind(port);
-	return forced != portStatesForTests().constEnd() ? *forced : liveStateOf(port);
+	if (forced == portStatesForTests().constEnd()) return liveStateOf(port, descriptors);
+	if (descriptors) descriptorLookups++;
+	return *forced;
 }
 
 /* Where each system's answer goes: the port's USB device and endpoints (sysfs, or SetupAPI and the hub's descriptors),
- * or why not (not a USB port, the capture not installed or not readable). Windows has none yet */
-UsbPortState UsbTarget::liveStateOf(const QString &port) {
+ * or why not (not a USB port, the capture not installed or not readable) */
+UsbPortState UsbTarget::liveStateOf(const QString &port, bool descriptors) {
+	if (descriptors) descriptorLookups++;
 #ifdef Q_OS_LINUX
 	/* a name with a path may be a link of /dev/serial/by-id */
 	const QString name = port.contains(QLatin1Char('/')) ? QFileInfo(port).canonicalFilePath() : port;
 	return usbmonPortState(QStringLiteral("/sys"), QStringLiteral("/dev"), name);
+#elif defined(Q_OS_WIN)
+	return usbPcapPortState(usbPcapFacts(port, descriptors));
 #else
 	Q_UNUSED(port);
 	return {};
 #endif
 }
 
+bool UsbTarget::stillThere(const UsbTarget &running) {
+#ifdef Q_OS_WIN
+	return usbPcapStillThere(usbPcapFacts(running.port, false), running);
+#else
+	return liveStateOf(running.port, false).holds(running);
+#endif
+}
+
 UsbCapture *UsbCapture::live() {
 #ifdef Q_OS_LINUX
 	return new UsbmonCapture;
+#elif defined(Q_OS_WIN)
+	return new UsbPcapCapture(usbPcapProgram());
 #else
 	return nullptr;
 #endif
 }
 
-void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) { portStatesForTests().insert(port, state); }
+void UsbTarget::stateForTests(const QString &port, const UsbPortState &state) {
+	UsbPortState forced = state;
+	forced.forced = true;
+	portStatesForTests().insert(port, forced);
+}
 
 void UsbDecoder::feed(const QByteArray &bytes, QVector<UsbEvent> &out) {
 	if (!error_.isEmpty()) return;

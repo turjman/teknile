@@ -14,6 +14,9 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 		if (direction == UsbDirection::In) emit received(bytes);
 		else emit heardRequest(bytes);
 	});
+	connect(capture_, &UsbCapture::started, this, [this] {
+		if (capture_->opensOnFirstBytes()) emit opened();
+	});
 	connect(capture_, &UsbCapture::dropped, this, &ListenLink::capturesLost);
 	connect(capture_, &UsbCapture::ended, this, [this](const QString &why) {
 		open_ = false;
@@ -21,7 +24,10 @@ ListenLink::ListenLink(const QString &port, UsbCapture *capture, const UsbTarget
 	});
 }
 
-/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening */
+/* opened() comes first: a capture hears only from the event loop, so the first bytes find the engine listening. One whose
+ * first bytes are what says it runs has opened then: that may take as long as a person answering a prompt does, so
+ * nothing here runs a clock on it, and one that fails first has never opened, so the window tries again at a failed
+ * try's pace and not a lost link's. Meanwhile isOpen() holds, for a Stop to reach the capture */
 void ListenLink::open() {
 	if (!capture_) {
 		emit closed(refusal());
@@ -29,17 +35,21 @@ void ListenLink::open() {
 	}
 	open_ = true;
 	capture_->start(target_);
-	emit opened();
+	if (!capture_->opensOnFirstBytes()) emit opened();
 }
 
 /* The window's words (Sidebar::listenRefusal): it refuses a fresh Listen itself, and a try by itself comes as far as here */
 QString ListenLink::refusal() const {
 	switch (refused_.kind) {
-	case UsbPortState::NotUsb: return tr("%1 is not a USB port: it cannot be listened to").arg(port_);
+	case UsbPortState::NotUsb:
+		return refused_.missing ? tr("%1 not found").arg(port_) : tr("%1 is not a USB port: it cannot be listened to").arg(port_);
 	case UsbPortState::NoUsbPcap: return tr("USBPcap is not installed");
 	case UsbPortState::NoUsbmon: return tr("usbmon is not loaded or %1 is not readable").arg(refused_.device);
-	case UsbPortState::NoCapture:
-	case UsbPortState::Listenable: break;
+	case UsbPortState::NoFilter: return tr("USBPcap is not on this device yet");
+	case UsbPortState::Listenable:
+		if (refused_.target.asksPermission) return tr("press Listen: Windows asks for permission first");
+		break;
+	case UsbPortState::NoCapture: break;
 	}
 	return tr("%1 cannot be listened to: no USB capture on this system").arg(port_);
 }
