@@ -15,7 +15,7 @@ labels: bug
 **Versions**
 - EVRe Studio version (Help, or `EVReStudio --version`):
 - Operating system:
-- Connection: TCP / serial / USB CDC; one device or a bus
+- Connection: TCP / serial / USB CDC / Listen; one device or a bus
 - Device map: `example_device.json`, or attach a map that shows the problem (no private data)
 
 **Log**

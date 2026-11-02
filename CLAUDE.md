@@ -57,6 +57,9 @@ cmake -S $S -B $B -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build $B
 cd $B
 python3 $S/tests/schema_test.py
 ./evre_map_test
+./evre_fast_test
+./evre_listen_test
+python3 $S/tests/fast_lib_test.py $B
 python3 $S/tests/fake_device.py --port 1210 --map $S/maps/example_device.json & FAKE=$!
 sleep 1.5; QT_QPA_PLATFORM=xcb xvfb-run -a -s '-screen 0 1920x1200x24' ./evre_gui_test example_device.json
 kill $FAKE
@@ -75,6 +78,8 @@ The GUI test must end with
 The graphics-card drawing (`src/ui/gpu_lines.*`, Direct3D) and the display-paced frame clock
 (`src/ui/frame_clock.cpp`, DwmFlush) exist only on Windows. Keep them compiling, keep the CPU
 path and the card's pictures in step, and say in the pull request what needs a Windows check.
+`src/io/usbpcap_lookup.cpp` and USBPcap's real prompt and stream exist only on Windows, and a real capture needs a USB
+device.
 
 The owner's Windows run is at 225 % scaling (xvfb is at 100 %): a picture from `grab()` is in
 device pixels, so a check that cuts an area out of it scales the area by the picture's

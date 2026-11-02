@@ -85,7 +85,7 @@ base_t dev;
 
 uint8_t protocolConfigure(base_t *d) {      /* override the weak default */
     d->SALVE_ID_REG = 1;
-    d->DEVICE_ID    = 0x2001;
+    d->DEVICE_ID    = 0x1001;
     d->DEVICE_REG_READ_MAX  = 0xD0EC;
     d->DEVICE_REG_WRITE_MIN = 0xD0CC;
     d->D000 = new uint8_t*[(d->DEVICE_REG_READ_MAX + 1) & 0x0FFF];
@@ -432,7 +432,7 @@ validate a new implementation before touching hardware.
 | # | Meaning | Bytes |
 |---|---|---|
 | 1 | `READ`&nbsp;DEVICE_ID,&nbsp;`0xA000`&nbsp;×2 | `7B 01 AA 00 A0 02 00 9E 75 7D` |
-| 2 | `READ_RESP`&nbsp;→&nbsp;`0x2001` | `7B 01 AB 00 A0 02 00 01 20 2F 0F 7D` |
+| 2 | `READ_RESP`&nbsp;→&nbsp;`0x1001` | `7B 01 AB 00 A0 02 00 01 10 AC 3E 7D` |
 | 3 | `READ`&nbsp;STATUS,&nbsp;`0xA002`&nbsp;×2 | `7B 01 AA 02 A0 02 00 E8 4C 7D` |
 | 4 | `READ_RESP`&nbsp;→&nbsp;`0x3F01` | `7B 01 AB 02 A0 02 00 01 3F 0F EF 7D` |
 | 5 | `READ`&nbsp;`0xD000`&nbsp;×4 | `7B 01 AA 00 D0 04 00 96 A1 7D` |
@@ -514,7 +514,7 @@ the reserved bank and set `STATUS`.
 ```c
 uint8_t protocolConfigure(base_t *dev) {
     dev->SALVE_ID_REG = 1;
-    dev->DEVICE_ID    = 0x2001;
+    dev->DEVICE_ID    = 0x1001;
     dev->STATUS      |= CAP_AUTO_SEND;      /* what this device adds */
 
     dev->DEVICE_REG_READ_MAX  = 0xD0EC;     /* last register */

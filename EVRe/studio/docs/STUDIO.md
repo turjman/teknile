@@ -1,7 +1,7 @@
 # EVRe Studio — Software Documentation
 
-EVRe Studio is a desktop register tool for any device that speaks **EVRe**, over TCP or a serial / USB CDC port. A
-JSON device map names the device's registers; the Studio polls them live, shows and decodes them in a table, charts
+EVRe Studio is a desktop register tool for any device that speaks **EVRe**, over TCP or a serial / USB CDC port, or by
+listening to what another program says to a USB device (3.11). A JSON device map names the device's registers; the Studio polls them live, shows and decodes them in a table, charts
 them like an oscilloscope, measures and records them, writes them with safety checks, and shares the device with
 other programs through a local API.
 
@@ -9,14 +9,14 @@ It is for engineers who bring up and test devices, for test and automation scrip
 for developers of EVRe firmware. It runs on **Windows** and **Linux** (C++17, Qt 6). EVRe is a register protocol of
 **teknile**.
 
-This document has three parts:
+This document has four parts:
 
 - **Part I, Using the Studio**: what it does and how to use it, from the first session to troubleshooting.
 - **Part II, Reference**: the device map format, the API and the protocol as the Studio uses it.
 - **Part III, Internals**: the architecture, threads, data flows, source layout, building and tests, for people who
   maintain or extend the Studio.
 - **Part IV, Making maps**: the Map editor, value names and bit fields, exporting (Markdown, C, Python, CSV),
-  overlays, the `evre` command-line tool and the `evre-sim` simulator.
+  overlays, the `evre` command-line tool, the `evre-sim` simulator, the `evre` Python package and the Dump tab.
 
 The built-in help (F1) is a short form of Part I. Every example uses the registers of `maps/example_device.json`.
 
@@ -147,7 +147,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [15.10 The table shows another value than the one I wrote](#1510-the-table-shows-another-value-than-the-one-i-wrote)
     - [15.11 *Value changed while editing* appears when I write](#1511-value-changed-while-editing-appears-when-i-write)
     - [15.12 The map does not load](#1512-the-map-does-not-load)
-    - [15.13 *the map is for device 0x1001, this is 0x2002*](#1513-the-map-is-for-device-0x1001-this-is-0x2002)
+    - [15.13 *the map is for device 0x1001, this is 0x1002*](#1513-the-map-is-for-device-0x1001-this-is-0x1002)
     - [15.14 An API client gets *API writes are off* or cannot connect](#1514-an-api-client-gets-api-writes-are-off-or-cannot-connect)
     - [15.15 A math line draws nothing](#1515-a-math-line-draws-nothing)
     - [15.16 The Monitor shows frames marked *(not a pending request)*](#1516-the-monitor-shows-frames-marked-not-a-pending-request)
@@ -281,11 +281,12 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
   - [36. The `evre` Python package](#36-the-evre-python-package)
   - [37. The Dump tab](#37-the-dump-tab)
     - [37.1 What a card shows](#371-what-a-card-shows)
-    - [37.2 Follow, Hold and the amber frame](#372-follow-hold-and-the-amber-frame)
+    - [37.2 Follow, Hold, the stripe and the banner](#372-follow-hold-the-stripe-and-the-banner)
     - [37.3 Colours](#373-colours)
-    - [37.4 The mouse and the menu](#374-the-mouse-and-the-menu)
+    - [37.4 The mouse, the keys and the menu](#374-the-mouse-the-keys-and-the-menu)
     - [37.5 Other reads](#375-other-reads)
     - [37.6 How it works](#376-how-it-works)
+    - [37.7 The fast stream's newest block](#377-the-fast-streams-newest-block)
 
 ---
 
@@ -295,7 +296,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
 
 ### 1.1 What EVRe Studio is
 
-EVRe Studio is a desktop tool for devices that speak the EVRe register protocol. It connects to one device over TCP or a serial port (including USB CDC). It reads the device's registers many times a second and shows them in a table. It charts them like an oscilloscope, records them to CSV and writes them. It also serves them to other programs through a local API.
+EVRe Studio is a desktop tool for devices that speak the EVRe register protocol. It connects to one device, or several on one link, over TCP or a serial port (including USB CDC), or listens to what another program says to a USB device (3.11). It reads the device's registers many times a second and shows them in a table. It charts them like an oscilloscope, records them to CSV and writes them. It also serves them to other programs through a local API.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/hero-chart-dark.png">
@@ -325,15 +326,17 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Register&nbsp;table | Live values with units. Decoded bit fields and enum names. Stale values turn grey and changed values glow. Search, group filter, tooltips, a detail line for the selected register. |
 | Writes | Only when *Allow writes* is on. Registers marked danger ask first. Every write is read back, and a write asks first when the value changed while you were editing. |
 | Quick&nbsp;write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
+| Bulk&nbsp;write | One value to several registers of one type: right-click, **F2** or the quick-write panel. A dialog lists what each one holds and gets, and each is written and read back on its own (6.6). |
 | Map&nbsp;editor | Make a map from nothing or change one: a table edited in place, bulk edits, copy and paste, undo and redo, value names and bit fields on a bit strip, limits, defaults, notes, live checks, a live preview of the value. Saving changes only what was edited (Part IV). |
 | Export | The map as a Markdown specification, a C header, a Python module, CSV, or the device table for firmware on the EVRe library; CSV back in; a JSON Schema of the format (chapter 32). |
-| Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto or Manual Y, Normalise and Smooth. |
+| Chart | Oscilloscope style: the memory depth is set apart from the view, with Hold / Live, a memory strip, cursors A and B, Auto, Manual or Log Y, lanes (a plot per unit), Normalise and Smooth. |
 | Measurements | Per line: the value at A and B, B − A, and min, max, mean, RMS, standard deviation, peak to peak and area over A..B or over the view, and the total since Clear. Area units follow the line's unit (W → J and Wh, A → A·s and Ah). Columns shown or hidden by a right-click on the header. |
 | Math&nbsp;lines | Formulas over registers (`SUPPLY_V * SUPPLY_I`), drawn and measured like registers. |
 | Analysis | A line's histogram (Freedman–Diaconis bins) or spectrum (Welch, Hann) over A → B or the view, in a window of its own; a trigger holds the chart on a level crossing, as an oscilloscope (7.13, 8.6). |
 | Several&nbsp;devices&nbsp;on&nbsp;one&nbsp;link | A bus file (`evre-bus/1`) puts devices at their slave addresses on one link (RS-485, a gateway). Their registers are named after them (`D1_SPEED`) in the table, chart, CSV and API; a device that stops answering goes offline without slowing the others (3.9). |
 | Broadcast | One write to every device at once (slave 0), only where it means the same to each, then each read back (3.10). |
 | Auto&nbsp;send | A device that can sends its read-only block by itself at a set rate: one chart point and one CSV row per frame (13.8). |
+| Fast&nbsp;streams | A device sends samples taken on its own clock in numbered blocks: every record on the chart at its own time, measured, triggered on and recorded beside the CSV as `.evrs` (7.14, 12.7, 13.9). |
 | Monitor | Every frame sent and received. Raw reads and writes, to any slave address or as a broadcast. |
 | Dump | The device's bytes as the reads bring them: a card per block read with its request and reply, the payload as a hex grid with each register a coloured chip and its value beside its row; live, or held (chapter 37). |
 | Log | Every event in a tab and in a daily file. Pop-ups for warnings and errors; the same message pops up at most every 30 s (11.3). |
@@ -374,7 +377,7 @@ choose **More info**, then **Run anyway**.
 
 **Build from source.** You need:
 
-- Qt 6.5 or newer, with the modules Widgets, Network, SerialPort and Test. Test is needed for every build, not only for the GUI test: CMake asks for all four modules at once, so configuring fails without it.
+- Qt 6.5 or newer, with the modules Widgets, Network, SerialPort and Test, and the Linguist tools (`lupdate`, `lrelease`). Test is needed for every build, not only for the GUI test: CMake asks for all of them at once, so configuring fails without it.
 - a C++17 compiler
 - CMake 3.21 or newer
 
@@ -390,7 +393,7 @@ cmake --build build
 
 Chapter 25 has the details: toolchains, short build paths on Windows, deployment and the CMake targets.
 
-The build creates four programs:
+The build creates these programs:
 
 | Program | Purpose |
 |---|---|
@@ -398,6 +401,10 @@ The build creates four programs:
 | `evre_gui_test` | Drives the real window with QtTest against the fake device. |
 | `evre_probe` | The protocol core without the window, for checking a device. It reads the registers and writes nothing, except the login token when `EVRE_TOKEN` is set (26.5). |
 | `evre_fake_fast` | A fast fake device, for measuring the Studio. |
+| `evre`,&nbsp;`evre-sim` | The command-line tool and a device made from a map (chapters 34, 35). |
+| `evre_map_test` | The map files without a window (26.7). |
+| `evre_fast_test` | Fast EVRe without a window (26.9). |
+| `evre_listen_test` | Listen without a window (26.10). |
 
 After each build, the contents of `maps/` are copied next to the executable, into `build/maps/`.
 
@@ -430,7 +437,7 @@ To measure the Studio at thousands of polls a second, use `evre_fake_fast [port]
 
 ### 2.3 A first session, step by step
 
-1. **Start the Studio.** Run `build/EVReStudio` (on Windows `build\EVReStudio.exe`). The window has a sidebar on the left and five tabs: *Registers*, *Chart*, *Monitor*, *Map editor* and *Log*.
+1. **Start the Studio.** Run `build/EVReStudio` (on Windows `build\EVReStudio.exe`). The window has a sidebar on the left and six tabs: *Registers*, *Chart*, *Dump*, *Monitor*, *Map editor* and *Log*.
    - On a fresh install the link settings are already TCP, host `127.0.0.1`, port `1210`.
    - The example map is loaded by itself: with no saved choice, the Studio opens the first `*.json` in the `maps/` folder next to the program.
    - The sidebar's *Device map* card reads **Example device**, *16 registers · example_device.json*.
@@ -612,7 +619,7 @@ there. The fake device accepts the token `example-token` and refuses any other (
 Right after the login (or right after the link opens, when there is none), the Studio reads 4 bytes at `0xA000`. These are DEVICE_ID (`0xA000`) and STATUS (`0xA002`), which every EVRe device has.
 
 - **The answer comes.** The line under the pill shows *Device ID 0x1001 · protocol rev 1*. The protocol revision is the low byte of STATUS. The Log records *device ID 0x1001, protocol revision 1*.
-- **The map is for another device.** If the map has a non-zero `device_id` that differs from the device's, the line adds *the map is for 0x1001* in amber. The Log adds the warning *the map is for device 0x1001, this is 0x2002*. The Studio still polls: the warning only tells you that the map may not fit.
+- **The map is for another device.** If the map has a non-zero `device_id` that differs from the device's, the line adds *the map is for 0x1001* in amber. The Log adds the warning *the map is for device 0x1001, this is 0x1002*. The Studio still polls: the warning only tells you that the map may not fit.
 - **The read fails.** The line shows *DEVICE_ID not read: <reason>*, and the same error goes to the Log. Polling goes on.
 
 A map without `device_id` (or with 0) is not checked.
@@ -807,8 +814,35 @@ not, unless the device came back at a new address. While a capture runs nothing 
 comes from sysfs, and nothing reaches the device at all.
 
 On **Windows** it hears with USBPcap, a capture driver you install once, and Windows asks for your permission each time
-**Listen** is pressed. On **Linux** it hears with usbmon, the kernel's own capture. All the rest of this section works on both, and is tested on
-replayed captures (26.10); what only a real device can show is the owner's check.
+**Listen** is pressed. On **Linux** it hears with usbmon, the kernel's own capture. All the rest of this section works on both. The automatic tests replay
+captures (26.10); the Windows capture was also checked on a real USB CDC board, and the Linux one on a real kernel with an emulated USB device.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/listen-card-dark.png">
+    <img src="../../docs/assets/pictures/listen-card-light.png" alt="The Connection card listening: Listen selected, the line listens to USB CDC bus 2 device 5, Stop, and the blue pill Listening COM13 USB CDC" width="320">
+  </picture>
+  <br>
+  <em>Listening: the line says what is heard, the pill has a blue tint of its own.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/listen-registers-dark.png">
+    <img src="../../docs/assets/pictures/listen-registers-light.png" alt="The Registers table filled from the other program's reads, the write row disabled, and the note Listening: the Studio sends nothing" width="700">
+  </picture>
+  <br>
+  <em>The table fills from what the other program reads, and writing is disabled.</em>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/listen-monitor-dark.png">
+    <img src="../../docs/assets/pictures/listen-monitor-light.png" alt="The Monitor while listening: the other program's requests marked -&gt;DEV, each followed by the device's answer marked DEV-&gt;" width="800">
+  </picture>
+  <br>
+  <em>The Monitor: -&gt;DEV the other program's request, DEV-&gt; the device's answer.</em>
+</p>
 
 **What it hears.** USB devices only: USB CDC (a board's own USB, a debug probe's virtual port) and USB-UART bridges
 (FTDI, CP210x, CH340, PL2303), whose bulk data carries the UART's bytes. Not a motherboard's COM port, RS-485 without
@@ -867,7 +901,7 @@ clock on it. It has started when the first bytes come. If you do not see the pro
 cannot kill a process above it. So the Studio runs the program in a Windows job, which the system ends when the Studio
 goes, however it goes, and the worker is born into that job: **Stop**, closing the Studio and a crash each end both,
 and only then does the driver let go of the bus. This rests on Windows putting a process started through its prompt in
-its parent's job, which USBPcap's own design rests on too, and it could not be tried here with a real prompt. The check
+its parent's job, which USBPcap's own design rests on too. The check
 is Task Manager's Details tab: no `USBPcapCMD.exe` after a Stop. The pipe between the two does not do this job. The
 worker notices it broken only at its next write, which on a silent device never comes.
 
@@ -903,7 +937,8 @@ over 64 KiB is cut; only usbfs or libusb can make one, never a tty.
 
 **The pill** reads *Listening · COM13 · USB CDC* on a blue tint, its own (3.8): not the connected green, nothing is
 being sent. Where that does not fit it reads *Listening · COM13*, never cut. Its tooltip adds what is heard, *heard: 120 requests/s · 118 answers/s · 0 unmatched · 0 bytes not EVRe*.
-A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again. A capture hears
+A capture that ends says why in the pill as a lost link does, and **Reconnect by itself** listens again where no prompt
+is needed: on Linux, or run as administrator. On Windows below administrator it waits for your press (above). A capture hears
 a bus, which outlives the device, so the Studio looks twice a second: a device unplugged reads *COM13 is gone: unplugged
 or reset?*, and one plugged in again, which has a new address, is heard from the next try. On Windows the capture is a
 program, and its end is said too: *USBPcapCMD stopped*, with what it said, if it said anything.
@@ -933,7 +968,8 @@ tick, and whatever else was read goes with it. They end when they stop coming, o
 answered: from then on the rounds tick again, and the Dump's frames card goes with a read's.
 
 The status bar's first field and the Polling card read *heard 120 req/s*, and the Auto send row *heard 100/s* while
-AUTO_SEND frames come. A stream's row reads *heard 10.0 k samples/s*, with what was lost.
+AUTO_SEND frames come. A stream's row reads *heard 10.0 k samples/s*, with what was lost. In the status bar TX stands
+still: it counts what the Studio sends, from its start, and its tooltip says so.
 
 **Disabled while listening**, each with the tooltip *Listening: the Studio sends nothing*:
 
@@ -947,7 +983,7 @@ AUTO_SEND frames come. A stream's row reads *heard 10.0 k samples/s*, with what 
 | The&nbsp;Monitor's&nbsp;request&nbsp;row | Disabled; Log frames and Clear work. |
 | Auto&nbsp;send,&nbsp;its&nbsp;rate | Disabled; the rate box reads *listening*. |
 | A&nbsp;stream's&nbsp;Start | Disabled. The Plot and Log ticks work. |
-| Serve&nbsp;API | Disabled. A running API is stopped when listening starts, and said in the Log: its clients could send. |
+| Serve&nbsp;API,&nbsp;the&nbsp;API&nbsp;card | Disabled: Serve API, Network, Allow API writes and including ⚠ registers. A running API is stopped when listening starts, and said in the Log: its clients could send. |
 | A&nbsp;bus's&nbsp;presets | Disabled. |
 
 Record CSV, the chart, the Dump, notes, exports and Reconnect by itself work. Even a request that got past all of
@@ -1358,6 +1394,8 @@ Example with STATE on the example map. MODE (bits 1:0) shows `MODE = idle`. A cl
 
 - edits in the table
 - the quick-write panel
+- one value to several registers (6.6)
+- broadcasts (3.10)
 - raw writes on the Monitor tab
 
 It is off at every start and it is never saved. While it is on, its text is amber and bold. The login token (see 3.6) is written whatever the switch says, because it is not a register write that you ask for.
@@ -1405,10 +1443,11 @@ The dialog has **Cancel** (the default) and **Write**. A cancel logs *MOTOR_SPEE
 
 *300 typed into MOTOR_SPEED (rw ⚠): the question names the value and the register, its description muted, before anything is sent.*
 
-Two write paths do not show this dialog:
+Three write paths do not show this dialog:
 
 - **The Monitor's raw write** is a raw tool. It needs only Allow writes.
 - **API clients** need the separate switch *including ⚠ registers* instead (see 17.2).
+- **One value to several registers** has one sentence for all the ⚠ registers in its own dialog (6.6).
 
 ### 6.4 The order of the checks
 
@@ -2142,8 +2181,8 @@ only when stopped:
 
 *Triggered* stays while crossings keep coming, until none has for a window plus the hold-off, and for a second at
 least: a wave that keeps crossing a short window never flips it to *waiting* (or Auto to *free running*) between its
-crossings. Its text is the same at every crossing and frame, and so is its place, in the row and in the corner (the
-owner saw both dance: a rate whose digits changed twice a second, and *capturing after T* coming and going at each
+crossings. Its text is the same at every crossing and frame, and so is its place, in the row and in the corner (both
+used to dance: a rate whose digits changed twice a second, and *capturing after T* coming and going at each
 re-trigger). No number is written while the trigger runs, as on the reference scopes; the crossing's time is
 written only in Single's state and in Normal's *last at* (to the second, set when the state changes).
 
@@ -2665,8 +2704,6 @@ Answers to requests sent from here are printed in the view:
 !! bad address "0xG000"             input errors: also "READ needs a count", "WRITE needs hex bytes"
 ```
 
-A write sent without acknowledgement is reported `OK` as soon as it is sent.
-
 A READ's answer also shows in the Dump tab, as a card at the top with the map's chips and values on it, until the next READ (37.5); its line here ends with *(shown in the Dump)*.
 
 ### 10.2 The frame lines
@@ -2740,7 +2777,7 @@ start (one *map loaded*), not after the one chosen last.
 | `connection lost: <why>` (a link that was up) | Error |
 | `not connected: <why>` (an attempt that failed) | Warning |
 | `device ID 0x1001, protocol revision 1` | Info |
-| `the map is for device 0x1001, this is 0x2002` | Warning |
+| `the map is for device 0x1001, this is 0x1002` | Warning |
 | `DEVICE_ID not read: <why>` | Error |
 | `token refused: <why>` | Error |
 | `the map declares no login register: the token was not sent` | Warning |
@@ -2862,7 +2899,8 @@ time_s,datetime,DEVICE_ID,STATUS,CONFIG,MSG_CNT,UPTIME [ms],SUPPLY_V [V],SUPPLY_
 ### 12.4 Timing
 
 - **One row per completed poll.** A poll is complete when every block read of it has been answered, or has failed.
-  With auto send (13.8) a row is written per frame instead. On a bus, an offline device (3.9) leaves its cells empty,
+  With auto send (13.8) a row is written per frame instead. While listening (3.11) a row is written per round of the
+  other program's reads, with only what that round read. On a bus, an offline device (3.9) leaves its cells empty,
   and its lines get no chart points.
 - **Rows are written in the I/O thread.** The window's drawing never delays a row, and CSV gets every poll.
 - **The file is flushed every 250 ms** and when the recording stops.
@@ -3366,6 +3404,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `ui/geometry` | none | on&nbsp;close | The window's size and place. |
 | `ui/decodedColumn` | `false` | on&nbsp;change | Decoded column shown. |
 | `ui/quickBits` | `false` | on&nbsp;change | Quick write: Bits ticked. |
+| `ui/mapEditorSplit` | empty | on&nbsp;change | The place of the handle between the Map editor's table and its form (`QSplitter::saveState`); empty: 1100 to 420. |
 | `ui/popups` | `true` | on&nbsp;change | Log: Pop-ups. |
 | `dump/colour` | `all` | on&nbsp;change | The Dump tab's Colour: `all` (every register's chips in colour) or `plotted` (only the plotted ones) (37.3). |
 | `dump/fields` | `true` | on&nbsp;change | The Dump tab's Fields: each frame a strip of named fields (`true`) or one line of bytes (`false`) (37.1). |
@@ -3422,7 +3461,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 
 The foot of the sidebar holds two buttons, the language and the version line (*v1.3.0 · teknile*):
 
-- **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Monitor, Log & pop-ups, Command line, Keys & mouse.
+- **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Dump, Monitor, Log & pop-ups, Command line, Keys & mouse.
 - The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`). In both themes a menu entry that cannot be used now is drawn in the muted grey and is not highlighted under the mouse; where it matters its tooltip says why.
 - **Language**: **System** (the default: the computer's language when the Studio has it, else English), **English**
   or **العربية** (Arabic), each in its own words. It is saved at once (`ui/language`) and applied at the next start: a
@@ -3519,7 +3558,7 @@ The device refused its address for good: code 3 (permission denied), 4 (offset o
 ### 15.5 The serial port cannot be opened (*Access denied*, *Permission denied*, busy)
 
 The pill says *COM10 is busy or not allowed: another program holds it, or you have no permission for it* (the
-system's text, *Access denied* or *Permission denied*, is in its tooltip and in the Log). A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port.
+system's text, *Access denied* or *Permission denied*, is in its tooltip and in the Log). A serial port can be open in only one program at a time. Close any terminal program, other tool or second Studio that holds the port. To hear what that program says instead of closing it, use Listen (3.11), on a USB port.
 
 On Linux, your user also needs permission for the device file. On many distributions this means being a member of the `dialout` group. Log out and in again after adding the group.
 
@@ -3582,7 +3621,7 @@ A message box and the Log give the reason:
 
 The map that was loaded before stays. See 16.10.
 
-### 15.13 *the map is for device 0x1001, this is 0x2002*
+### 15.13 *the map is for device 0x1001, this is 0x1002*
 
 The map's `device_id` does not match the device's DEVICE_ID. You may be connected to another device than you think, or using the wrong map. The Studio keeps polling. Remove `device_id` from the map (or set it to 0) to turn off the check.
 
@@ -3601,8 +3640,6 @@ The map's `device_id` does not match the device's DEVICE_ID. You may be connecte
 ### 15.16 The Monitor shows frames marked *(not a pending request)*
 
 These are late answers after a timeout, echoes of the Studio's own requests on a half-duplex RS-485 line, or frames the device sends by itself (with **Auto send** on, its read-only block at `0xD000`, which the Studio takes into the table: 13.8). They do no harm. Many late answers mean the Timeout is too short for the link.
-
-# Part II. Reference
 
 ### 15.17 Listen says *USBPcap is not installed*, or *not a USB port*
 
@@ -3632,6 +3669,8 @@ These are late answers after a timeout, echoes of the Studio's own requests on a
 - *not found: unplugged?*, or *ttyACM0 not found* in the pill: the port is not there now. Plug the device in, then the
   refresh button. On Linux, if the other program held it open, it may be back under a new name such as `ttyACM1`.
 - *no USB capture on this system*: the Studio has a capture for Windows and Linux only (3.11).
+
+# Part II. Reference
 
 ## 16. The device map format "evre-map/1"
 
@@ -3663,7 +3702,7 @@ Every top-level key has a default. Even `format` and `device` may be left out, a
 | `slave` | number | `1` | The slave address, loaded into the Slave box. Saving the map writes the box's value back. |
 | `usb` | object | none | `{ "vid": "0x1234", "pid": "0xABCD" }`: the device's USB vendor and product IDs, in hex or decimal. The serial port list names the port with these IDs after the map's device, and picks it when no port was selected (3.2). |
 | `login` | object | none | `{ "addr": "0xF000", "size": 16 }`: the register the token is written to after a TCP connect (3.6). `addr` must be 1 – 0xFFFF (a JSON number is not range-checked, see 16.10). `size` is 1 – 65535 bytes, 16 when left out. Without `login`, no token is sent. |
-| `protocol` | object | none | `{ "transport": "serial", "baud": 115200, "tcp_port": 1210, "timeout_ms": 200, "notes": "…" }`: how the device is reached, for the reader of the map and its export. Every key is optional. The Studio connects as the sidebar says. |
+| `protocol` | object | none | `{ "transport": "serial", "baud": 115200, "tcp_port": 1210, "timeout_ms": 200, "auto_send": { "max_hz": 1000, "tick_hz": 1000 }, "notes": "…" }`: how the device is reached, for the reader of the map and its export. Every key is optional. The Studio connects as the sidebar says; `auto_send` says which Auto send rates it offers (13.8). |
 | `groups` | object | none | `{ "Power": { "notes": "…" } }`: notes on a group, by its name. |
 | `extends` | string | none | An overlay: the map this one changes, relative to this file (chapter 33). |
 | `registers` | array | empty | The registers (16.3). |
@@ -3961,6 +4000,7 @@ The ports can be changed only in the settings (`api/evrePort`, `api/jsonPort`, s
   *Serving on this PC: EVRe :1219 and JSON :1220, with its clients and requests.*
 
 - **Off:** the card says *Off. Scripts: see Help → API.* (MATLAB, LabVIEW, Python: the Help page names them)
+- **Listening (3.11):** Serve API, Network and the write switches are disabled, and a running server is stopped when listening starts, as the Log says: its clients could send.
 - **A failed start:** for example when a port is in use. Serve API is unticked again, the card shows *not started: EVRe port 1219: <reason>*, and the Log has the error.
 
 The server keeps running while the Studio has no link. In that state `info`, `list` and `stop` work, and every other JSON command answers *EVRe Studio is not connected to a device*.
@@ -4435,7 +4475,7 @@ An answer that matches nothing is reported as unsolicited (the Monitor's *(not a
 
 | Counter | Meaning |
 |---|---|
-| TX&nbsp;/&nbsp;RX | Frames sent and received. |
+| TX&nbsp;/&nbsp;RX | Frames the Studio sent and received since it started. TX stands still while listening (3.11). |
 | Timeouts | Requests that got no answer in time. |
 | Errors | Error answers from the device. |
 | Bad&nbsp;frames | Frames with a wrong CRC or end byte (18.5). |
@@ -4449,7 +4489,7 @@ An answer that matches nothing is reported as unsolicited (the Monitor's *(not a
 - A timed-out read of a poll leaves its registers' last good values (4.5), and the next poll tries again.
 - A late answer that comes after its timeout is matched to a newer request with the same offset if there is one, or reported as unsolicited. Either way no request is left hanging.
 
-**The keep-alive.** Every **400 ms**, when the link is open and nothing is queued or waiting, the Studio reads 2 bytes at `0xA000` (DEVICE_ID). Some servers drop a client that stays silent for about a second, and a device may watch its host the same way. With polling on, the queue is rarely empty, so the keep-alive is rarely sent. With polling off, it keeps the link alive.
+**The keep-alive.** Every **400 ms**, when the link is open and nothing is queued or waiting, the Studio reads 2 bytes at `0xA000` (DEVICE_ID). Some servers drop a client that stays silent for about a second, and a device may watch its host the same way. With polling on, the queue is rarely empty, so the keep-alive is rarely sent. With polling off, it keeps the link alive. Not while listening (3.11): it is the one request the master sends by itself.
 
 ### 18.8 The connect sequence and the device ID read
 
@@ -4510,13 +4550,14 @@ engine's `RegTable` (`io/reg_table.h`) and its master. `ui` uses all of them.
 |---|---|---|---|
 | `evre` | `src/evre/` | Qt&nbsp;Core,&nbsp;Network,&nbsp;SerialPort | frames and the CRC, the links (TCP, serial), the master (queue, pipelining, timeouts) |
 | `model` | `src/model/` | `evre`&nbsp;(byte&nbsp;order&nbsp;helpers) | the device map and value coding, formulas, math lines, the register table model |
-| `io` | `src/io/` | `evre`,&nbsp;`model`,&nbsp;`api` | the I/O engine: the connection, the poller, CSV, the table the I/O thread writes |
+| `io` | `src/io/` | `evre`,&nbsp;`model`,&nbsp;`api` | the I/O engine: the connection, the poller, CSV, the table the I/O thread writes; Listen's capture and link |
 | `api` | `src/api/` | `evre`,&nbsp;`model`,&nbsp;`io/reg_table.h` | the API server (EVRe pass-through, JSON lines) |
 | `ui` | `src/ui/` | all&nbsp;of&nbsp;the&nbsp;above | the window, the tabs, the chart, the theme, help |
 
-`src/main.cpp` reads the command line, applies the theme and opens the window. The four executables are built from
-the same sources (25.4). `evre_probe` and `evre_fake_fast` link only `evre_protocol`: the `evre` files and
-`device_map`. They do not link the window.
+`src/main.cpp` reads the command line, applies the theme and opens the window. The programs are built from the same
+sources (25.4). `evre`, `evre-sim`, `evre_probe`, `evre_fake_fast` and the tests without a window link only
+`evre_protocol`: the `evre` files, the map files, fast streams and recordings, and Listen's capture and link. They do
+not link the window.
 
 ```
  GUI thread
@@ -4526,6 +4567,7 @@ the same sources (25.4). `evre_probe` and `evre_fake_fast` link only `evre_proto
  |  +- RegistersTab       QTableView <- RegisterFilter <- RegisterModel           |
  |  |                     ValueDelegate, detail line, QuickWritePanel (BitView)   |
  |  +- ChartTab           ChartWidget / ChartView, MathLines, measurements        |
+ |  +- DumpTab            a block's frames and bytes, each register a chip        |
  |  +- MonitorTab         frames on the link, hand-typed requests                 |
  |  +- EventLog + Notice  Log tab, logs/studio_<date>.log, the pop-up             |
  |  +- FrameClock --tick--> MainWindow::sync()   (once per display refresh)       |
@@ -4542,7 +4584,7 @@ the same sources (25.4). `evre_probe` and `evre_fake_fast` link only `evre_proto
  |  +- poller            blocks, polls under way     <-- ticker thread            |
  |  +- CSV writer        one row per poll                                         |
  |  +- ApiServer         :1219 EVRe, :1220 JSON      <-- other programs           |
- |  +- evre::Master -- evre::Link (TcpLink | SerialLink) -- the device            |
+ |  +- evre::Master -- evre::Link (TcpLink | SerialLink | ListenLink) -- device   |
  +--------------------------------------------------------------------------------+
 ```
 
@@ -4577,8 +4619,8 @@ callback out of the hash and run it in the GUI thread.
 | `RegTable` | `IoEngine`&nbsp;member&nbsp;(not&nbsp;a&nbsp;`QObject`) | written&nbsp;in&nbsp;I/O | see 19.4 |
 | `evre::Master` | `IoEngine`&nbsp;(child) | I/O | moved along with the engine |
 | `ApiServer` | `IoEngine`&nbsp;(child) | I/O | its two `QTcpServer`s are its children |
-| `QTimer statsTimer_`, `offlineTimer_` (the offline retry, 3.9), `heartbeatTimer_` (auto send, 13.8), `QFile csvFile_` | `IoEngine`&nbsp;(children) | I/O | |
-| `evre::Link` | `IoEngine::link_`&nbsp;(`std::unique_ptr`) | I/O | created with `new` in `IoEngine::connectTcp` / `connectSerial`, which run in the I/O thread; `attach()` takes it over; its socket or port is its child |
+| `QTimer statsTimer_`, `offlineTimer_` (the offline retry, 3.9), `heartbeatTimer_` (auto send, 13.8), `roundTimer_` (the heard round, 3.11), `QFile csvFile_` | `IoEngine`&nbsp;(children) | I/O | |
+| `evre::Link` | `IoEngine::link_`&nbsp;(`std::unique_ptr`) | I/O | created with `new` in `IoEngine::connectTcp`, `connectSerial` or `connectListen`, which run in the I/O thread; `attach()` takes it over; its socket or port is its child |
 | API&nbsp;client&nbsp;sockets | the `QTcpServer` that accepted them | I/O | created by `nextPendingConnection()` in the I/O thread |
 | API&nbsp;stream&nbsp;timers | `ApiServer`&nbsp;(child) | I/O | created in the I/O thread by `startStream()` |
 | ticker&nbsp;`std::thread` | `IoEngine` | its&nbsp;own | only while polling at an interval > 0 |
@@ -4671,6 +4713,8 @@ Qt timers still serve jobs that need no fine pacing:
 | measurements | 250 ms; at most every 100 ms while the cursors move | `ChartTab` |
 | reconnect | 500 ms after a lost link, 2000 ms after a failed connect | `MainWindow` |
 | frame&nbsp;clock&nbsp;fallback | 16&nbsp;ms,&nbsp;`Qt::PreciseTimer` | `FrameClock` |
+| heard&nbsp;round | 250&nbsp;ms,&nbsp;single&nbsp;shot | `IoEngine` |
+| a&nbsp;capture's&nbsp;look&nbsp;at&nbsp;its&nbsp;device | 500&nbsp;ms | `UsbmonCapture`, `UsbPcapCapture` |
 
 The API stream timers use `Qt::PreciseTimer` because coarse timers drift by about 20 % on Windows (comment in
 `ApiServer::startStream`).
@@ -4999,7 +5043,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 
 | File | Role |
 |---|---|
-| `CMakeLists.txt` | the build: the protocol library, the core library, the program, the GUI test, the probe, the fast fake device, the maps and the USB captures copied beside them |
+| `CMakeLists.txt` | the build: the protocol library, the core library, the program, `evre`, `evre-sim`, the GUI test, the map, fast and Listen tests, the probe, the fast fake device, the maps and the USB captures copied beside them |
 | `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`) |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
@@ -5070,7 +5114,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the library (C++11 to 20, -O0 to -Os) and run; no heap, its stack; its frames through `evre_fast_test`; PROTOCOL.md's example block |
 | `tests/listen_test.cpp` | `evre_listen_test`: Listen's capture decoders, its lookups, its capture on a stand-in and its link without a window, a driver or a USB device (26.10) |
-| `tests/make_captures.py` | writes `tests/captures/`, the five USB scenes in both formats, from the Python package and the example maps (26.10) |
+| `tests/make_captures.py` | writes `tests/captures/`, the six USB scenes in both formats, from the Python package and the example maps (26.10) |
 | `tests/captures/` | those scenes, `.pcap` and `.usbmon`, copied beside the programs at every build as `maps/` is |
 | `maps/example_fast.json` | the example map with a fast stream (`ADC`), served by `evre_fake_fast` in the fast tests |
 | `cli/evre.cpp` | `evre`: the command-line tool (chapter 34) |
@@ -5140,7 +5184,7 @@ pass-through checks compare frames byte for byte (chapter 26).
 **`IoEngine`** (see chapters 19 – 21 for the flows).
 
 - Called through `post()`: `setMap`, `connectTcp`, `connectSerial(port, baud, baudLimited)` (baudLimited: Auto send
-  kept under the baud rate, false on USB CDC), `disconnectLink`, `setLinkOptions`,
+  kept under the baud rate, false on USB CDC), `connectListen(port, pressed, known)`, `disconnectLink`, `setLinkOptions`,
   `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord` (with the streams not logged), `stopRecord`, `write`, `read`,
   `setMonitor`, `setDump` (the Dump tab shown: each block's latest reply kept, 37.6), `apiStart`, `apiStop`, `apiSetWrites`.
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
@@ -5544,8 +5588,8 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
-| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions, `setListening`; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setListening`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
 | `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
 | `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`) | GUI test (typed text kept, tooltips) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; or one value for several selected; only asks | `showRegister`, `showRegisters` (several: their rows, or the types that differ), `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested`, `bulkWriteRequested` | GUI test (value, bits, danger flag, link state, bulk write) |
@@ -5562,7 +5606,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `language`&nbsp;(namespace) | the&nbsp;window's&nbsp;language&nbsp;(14.4) | `codes`, `saved` / `save`, `resolve` (System to `en` or `ar`), `apply` (the translators, the direction, Western digits), `current` | GUI test |
 | `RecordingWindow` | a recording in a window of its own (12.6): its columns as lines (matched with the map), its notes; the streams' `.evrs` beside it, or one alone (12.7): `fastRecordings` | `open` / `choose` (static: estimate, the RAM question, read on a thread, the window), `recentFiles` / `remember` / `forget` / `fillRecentMenu` (a file not found greyed, `recentMissing`; `recentClear`), `windows` / `closeAll`, the Lines checklist (`LINES_SEARCH_FROM`; its widgets `recordingLinesList`, `recordingLinesAll`, `recordingLinesNone`, `recordingLinesSearch`, `recordingLine`, `linesGroup`), `chartTab`, `definitions`, `skipped`; signal `logged` | GUI test |
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
-| `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name); signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
+| `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name), `setListening`; signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`, `bannerText`; signals `registerPicked`, `selectionCleared`, `writeRequested` | GUI test (the Dump steps) |
 | `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`; `clearSelection`; signals `registerPicked`, `selectionCleared`, `menuRequested` | GUI test (the Dump steps) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
@@ -6614,7 +6658,7 @@ guard on `listening_` and a check in `listenNothingSent`: the engine's `SendPath
 | C++&nbsp;compiler | C++17. Tested with GCC (MinGW on Windows, GCC on Linux). Clang and MSVC are not tested; MSVC in particular defines `M_PI` and `M_E`, which `src/model/expr.cpp` uses, only with `_USE_MATH_DEFINES`, so it may need that define. MSVC keeps its own warning defaults. |
 | Qt&nbsp;6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations |
 | Generator | Ninja (recommended) or any CMake generator |
-| Windows&nbsp;only | the system libraries `winmm` (1 ms timer resolution) and `dwmapi` (`DwmFlush`), linked by the build |
+| Windows&nbsp;only | the system libraries `winmm` (1 ms timer resolution), `dwmapi` (`DwmFlush`), `d3d11`, `dxgi`, `d3dcompiler` and `dcomp` (the chart on a graphics card), `setupapi` and `cfgmgr32` (Listen: a COM port's USB device), linked by the build |
 
 GCC and Clang build with `-Wall -Wextra`. The code builds without warnings with the Qt 6.8 MinGW toolchain on
 Windows and with Qt 6.10 and GCC on Linux.
@@ -6673,15 +6717,18 @@ its own.
 
 | Target | Kind | Built&nbsp;from | Notes |
 |---|---|---|---|
-| `evre_protocol` | static&nbsp;library | `src/evre/*` (with `registers.h`), `src/model/device_map.*` and `src/model/bus_file.*` | Qt Core, Network, SerialPort only; the core, the probe and the fast fake device link it |
+| `evre_protocol` | static&nbsp;library | `src/evre/*` (with `registers.h`); in `src/model/`: `device_map`, `map_file`, `map_check`, `json_doc`, `map_export`, `bus_file`, `fast_recording`, `fast_store`; in `src/io/`: `fast_stream`, `usb_capture`, `listen_link`, `usbpcap_capture`; `usbmon_capture` on Linux, `usbpcap_lookup` on Windows | Qt Core, Network, SerialPort only (on Windows also `setupapi`, `cfgmgr32`); the core, `evre`, `evre-sim`, the probe, the fast fake device and the tests without a window link it |
 | `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` | links `evre_protocol`; the program and the GUI test link it; a new source file is one more line here (or in `evre_protocol`) |
 | `evre_maps` | custom&nbsp;target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
+| `evre_captures` | custom&nbsp;target | `tests/captures/` | copies the USB captures beside the programs at every build (`captures/`) |
 | `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps` |
-| `evre_gui_test` | executable | `tests/gui_test.cpp` + core + Qt Test | depends on `evre_maps`: it opens the maps beside it |
+| `evre_gui_test` | executable | `tests/gui_test.cpp` + core + Qt Test | depends on `evre_maps` and `evre_captures`: it opens the maps and replays the captures beside it |
 | `evre_probe` | executable | `tests/evre_probe.cpp` + `evre_protocol` | Qt Core, Network, SerialPort only |
 | `evre` | executable | `cli/evre.cpp`&nbsp;+&nbsp;`evre_protocol` | the command-line tool (chapter 34) |
 | `evre-sim` | executable | `cli/evre_sim.cpp`&nbsp;+&nbsp;`evre_protocol` | the simulator (chapter 35) |
 | `evre_map_test` | executable | `tests/map_test.cpp` + `evre_protocol` + Qt Test | depends on `evre_maps` |
+| `evre_fast_test` | executable | `tests/fast_test.cpp` + `evre_protocol` + Qt Test | Fast EVRe without a window (26.9) |
+| `evre_listen_test` | executable | `tests/listen_test.cpp` + `evre_protocol` + Qt Test | depends on `evre_maps` and `evre_captures` (26.10) |
 | `evre_fake_fast` | executable | `tests/fake_device_fast.cpp` + `evre_protocol` | depends on `evre_maps`: without a map argument it opens the example map beside it |
 
 The project defines no options of its own. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
@@ -7045,6 +7092,11 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   byte: a try every 2 s, not twice a second, one Warning line, no *connected* or *connection lost* line, a pop-up at most.
   What the device is asked (`descriptorLookupsForTests`): once for a press, nothing for the Listen line while listening,
   nothing for a try by itself, once for a device at a new address. The port gone and no try possible: Listen's state ends.
+- **Listen, asking** (`listenAsking`). A capture that asks for permission: a press starts it once and the pill says
+  Windows is asking; nothing runs out and nothing reaches the link while the prompt is open; it opens at the stream's
+  first bytes. A capture lost: the pill says Listen must be pressed again, and the line under the port box follows it.
+  A try by itself and Connect at the program's start start nothing; the prompt refused: a plain reason, no retry;
+  Cancel while it is open stops the capture.
 - **Listen, nothing sent** (`listenNothingSent`). An engine of the test's own with a token, a stream with an enable,
   Poll on and an API running. The API is stopped when listening starts. Then every way out is tried directly, each its
   own check, `ListenLink::sendAttempts()` and `master.tx` read after each: 700 ms for the keep-alive and the polls (the
@@ -7068,11 +7120,11 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
 - **Listen, the window** (`listenWindow`). The real window, a capture that stays open (`cdc_quiet`), Serve API on with a
   client in: the pill, its tooltip and Stop; the API stopped, the box unticked, said in the Log as stopped and on the card
   past the next stats, the client hung up on and no new one let in; the table's `—` with its tooltip. Each control disabled with its tooltip: Poll, the interval,
-  Serve API, Allow writes (and the model taking none, no cell editable), Quick write, the Monitor's row, Send no longer
+  Serve API, the API card's other boxes, Allow writes (and the model taking none, no cell editable), Quick write, the Monitor's row, Send no longer
   a filled button, Auto send and its rate, the Dump's Write…, Read now and the bulk write in the table's menu; Log frames,
   Record CSV and Reconnect by itself not. Then each is **tried**, by hand where it can be and by the signal it would
   send, past the disabled control: `heard.sendAttempts` stays 0 and `master.tx` does not move. The status bar's *heard
-  N req/s* on `cdc_poll` at its stamps. Stop: Disconnected, the button Listen, every control and tooltip back, writes
+  N req/s* on `cdc_poll` at its stamps, and TX's tooltip, which says it stands still. Stop: Disconnected, the button Listen, every control and tooltip back, writes
   still off. Stop right after Listen: Disconnected stays. A port that is not USB: refused in the pill and the Log, not
   tried again, nothing disabled. On a bus its presets disabled. On the fast example map a stream's Start, disabled, then tried. Reconnect by itself:
   three tries in a row, nothing sent, the controls off between them. The next link is an ordinary one.
@@ -7421,7 +7473,7 @@ last at hh:mm:ss* in the row, the same a second later, and *Normal · waiting* i
 waits holds at the newest sample (*triggered*, its T there, the button hidden), and while Single waits too (Single
 complete, the button Arm and primary), one width throughout; Run in the warn colour while stopped (at least 30
 pixels of `warn` in the button, light and dark), none while running.
-The marks outside the data (`chartTriggerMarksOutside`, the owner's test of the marks): with the trigger on the plot
+The marks outside the data (`chartTriggerMarksOutside`): with the trigger on the plot
 is 26 px lower at its top, 21 px narrower at its left and 55 to 100 px narrower at its right (80), and gets all back when
 it is off; the level's tab *0.4 A ↑* right of the plot, never over it, at the line's height; over it a pointing hand, the tab lit and its
 tooltip *TAB 0.4 A, rising* then *Drag: the trigger level · Click the arrow: ...*; dragged from its lower part the
@@ -8055,7 +8107,7 @@ address 5 on bus 2.
 - **the live source (`liveCapture`, Linux):** without hardware, a bus nobody has: nothing inside `start()`, nothing after
   `stop()`, the reason from the event loop and once. On Windows it is only made, never started: the real `USBPcapCMD`
   below administrator would raise a UAC prompt. What only a real device can show (the ioctls, the records, `dropped`, an
-  unplug) is the owner's check on a Linux machine
+  unplug) needs a Linux machine and a device: no test here covers it
 - **Windows's lookup on the PC it runs on (`windowsLookup`, Windows):** a port that is not there is no USB port, and gone;
   every real port gets an answer, without being opened
 - **a configuration descriptor (`descriptor...`, on every system):** a device of one function, no `MI_xx`
@@ -8083,7 +8135,7 @@ address 5 on bus 2.
   (`pcapCaptureStartsAgain`); opened at the first bytes after 1.5 s of silence, nothing running out, and the same
   elevated (`pcapCaptureAsks`, `pcapCaptureElevatedOpensOnFirstBytes`); dying before them, never opened
   (`pcapCaptureDiesFirst`); the prompt refused, a worker that said nothing (`pcapCaptureRefused`); Stop while asking (`pcapCaptureStopWhileAsking`). What only a real device can show (the
-  elevated worker, the stream, an unplug, a bridge) is the owner's check on Windows
+  elevated worker, the stream, an unplug, a bridge) needs a Windows machine and a device: no test here covers it
 - **nothing left behind (`pcapCaptureLeavesNothing`, Windows):** a stand-in with a detached process of its own, no child
   of the capture, as the worker is not: both gone after a Stop, after the capture is destroyed, and with the "Studio" killed
   outright, which runs none of our code. It fails on all three without the job
@@ -8185,6 +8237,8 @@ The engine's side is in the GUI test's Listen steps (26.2).
 | JSON&nbsp;lines | the API port 1220: one JSON object per line each way |
 | stream | an API client's periodic samples of named registers |
 | unsolicited | a frame that answers no pending request |
+| Listen | a link that hears what another program says to a USB device and sends nothing (3.11) |
+| heard&nbsp;round | the other program's reads taken as one poll: one chart point and one CSV row (3.11) |
 
 ## 29. Open items
 
@@ -8196,7 +8250,6 @@ The engine's side is in the GUI test's Listen steps (26.2).
 | Login&nbsp;on&nbsp;serial&nbsp;links | only TCP connections send the token; a device that wants a login on a serial port cannot get one |
 | API&nbsp;ports&nbsp;only&nbsp;in&nbsp;the&nbsp;settings | `api/evrePort` and `api/jsonPort` have no field in the window and no command-line option |
 | Unit&nbsp;tests | the map files and the exports have their own test (`evre_map_test`); `Expr`, value coding and the frame parser are still tested only through the GUI and API tests |
-| Translations | user text goes through `tr()`, but no translation files are built or shipped |
 | Packaging | no CMake install target; the installers are made by the release workflow (25.5), and they are not code-signed |
 | macOS | the code has the macOS path (condition-variable ticker, timer frame clock) but has not been built or run there |
 
@@ -8784,7 +8837,8 @@ broken down into the protocol's fields (START, SLAVE, FUNCTION, OFFSET, COUNT, D
 grid with every register of the map as a coloured **chip** (the rows' addresses at its left, the columns' offsets
 `00` to `0F` over it, so a byte's address is read, not counted), and the registers' values beside the grid. It is a fourth
 way of looking at the device: the Registers tab shows the values, the Chart shows them over time, the Monitor shows
-the frames as text, and the Dump shows the bytes and what each one is.
+the frames as text, and the Dump shows the bytes and what each one is. While listening (3.11) a card is a block the
+other program reads: its request as heard and the device's reply.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/dump-tab-dark.png">

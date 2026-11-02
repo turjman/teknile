@@ -2700,9 +2700,11 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
 &lt;h2&gt;Getting started&lt;/h2&gt;
 &lt;p&gt;EVRe Studio talks to any device that speaks &lt;b&gt;EVRe&lt;/b&gt;, over &lt;b&gt;TCP&lt;/b&gt; or a &lt;b&gt;serial / USB&lt;/b&gt; port: one
 device, or several on one link. It shows every register of the device&apos;s &lt;b&gt;map&lt;/b&gt; live, charts them, records them
-to CSV, writes them, and lets other programs reach the device through it (&lt;i&gt;API&lt;/i&gt;).&lt;/p&gt;
+to CSV, writes them, and lets other programs reach the device through it (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;Listen&lt;/b&gt; hears what another
+program says to a USB device, and the Studio sends nothing.&lt;/p&gt;
 &lt;ol&gt;
-&lt;li&gt;&lt;b&gt;Connection&lt;/b&gt; (left): choose TCP or Serial / USB, fill in the address or pick the port, &lt;b&gt;Connect&lt;/b&gt;.
+&lt;li&gt;&lt;b&gt;Connection&lt;/b&gt; (left): choose TCP or Serial / USB (&lt;b&gt;Listen&lt;/b&gt;: see &lt;b&gt;Connecting&lt;/b&gt;), fill in the address or
+pick the port, &lt;b&gt;Connect&lt;/b&gt;.
 The pill turns green and the device ID appears under it (&lt;i&gt;not read yet&lt;/i&gt; until it is).&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Registers&lt;/b&gt; tab: the values update at the poll rate (&lt;i&gt;Polling &amp;amp; recording&lt;/i&gt;).&lt;/li&gt;
 &lt;li&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on registers and open the &lt;b&gt;Chart&lt;/b&gt; tab.&lt;/li&gt;
@@ -2737,9 +2739,9 @@ none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/
 &lt;h2&gt;البدء&lt;/h2&gt;
 &lt;p&gt;يتحدث EVRe Studio مع أي جهاز يتكلم &lt;b&gt;EVRe&lt;/b&gt;، عبر &lt;b&gt;TCP&lt;/b&gt; أو منفذ &lt;b&gt;تسلسلي / USB&lt;/b&gt;: جهاز واحد، أو عدة
 أجهزة على وصلة واحدة. يعرض كل مسجّل في &lt;b&gt;خريطة&lt;/b&gt; الجهاز حيًّا، ويرسمها، ويسجّلها في CSV، ويكتبها، ويتيح
-لبرامج أخرى الوصول إلى الجهاز من خلاله (&lt;i&gt;API&lt;/i&gt;).&lt;/p&gt;
+لبرامج أخرى الوصول إلى الجهاز من خلاله (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;الاستماع&lt;/b&gt; يسمع ما يقوله برنامج آخر لجهاز ⁦USB⁩، ولا يرسل الاستوديو شيئًا.&lt;/p&gt;
 &lt;ol&gt;
-&lt;li&gt;&lt;b&gt;الاتصال&lt;/b&gt; (على الجانب): اختر TCP أو تسلسلي / USB، واملأ العنوان أو اختر المنفذ، ثم &lt;b&gt;اتصال&lt;/b&gt;.
+&lt;li&gt;&lt;b&gt;الاتصال&lt;/b&gt; (على الجانب): اختر TCP أو تسلسلي / USB (&lt;b&gt;استماع&lt;/b&gt;: انظر &lt;b&gt;الاتصال&lt;/b&gt;)، واملأ العنوان أو اختر المنفذ، ثم &lt;b&gt;اتصال&lt;/b&gt;.
 تخضرّ الشارة ويظهر معرّف الجهاز تحتها (&lt;i&gt;لم يُقرأ بعد&lt;/i&gt; حتى يُقرأ).&lt;/li&gt;
 &lt;li&gt;لسان &lt;b&gt;المسجّلات&lt;/b&gt;: تتحدث القيم بمعدّل الاستطلاع (&lt;i&gt;الاستطلاع والتسجيل&lt;/i&gt;).&lt;/li&gt;
 &lt;li&gt;فعّل &lt;b&gt;رسم&lt;/b&gt; على مسجّلات وافتح لسان &lt;b&gt;المخطط&lt;/b&gt;.&lt;/li&gt;

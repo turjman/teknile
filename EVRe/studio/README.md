@@ -3,7 +3,8 @@
 by **teknile**
 
 EVRe Studio is a desktop register tool for any device that speaks the **EVRe** register protocol, over **TCP** or a
-**serial / USB CDC** port. A JSON **device map** tells it what the device holds. The Studio polls the registers
+**serial / USB CDC** port, or by **listening** to what another program says to a USB device. A JSON **device map**
+tells it what the device holds. The Studio polls the registers
 live, shows and decodes them, charts them like an oscilloscope, records them to CSV, writes them with safety
 checks, and shares the device with other programs through a local API. It runs on **Windows** and **Linux**
 (C++17, Qt 6).
@@ -85,6 +86,9 @@ EVRe is a protocol of **teknile**.
   that are not refreshed turn grey.
 - **Writes** only with *Allow writes* on. Registers marked `"danger"` ask first, a value that changed while you
   were editing asks first, and every write is read back: the table always shows what the device reports.
+- **One value to several registers:** select several rw registers of one type (Ctrl-click, Shift-click), then the
+  right-click menu, **F2** and **Enter**, or the quick-write panel. A dialog lists what each one holds and gets, **Cancel**
+  is the default, and each is written and read back on its own.
 - **Quick write** for the selected register: a value box with the map's range, its named and special values, a
   Default button, and its bits drawn as in a datasheet (click a bit or a field to change it, read-modify-write).
 - **Map editor:** make a map from nothing or change one, without touching JSON (fast streams too, on Map settings'
@@ -131,6 +135,8 @@ EVRe is a protocol of **teknile**.
   `.evrs` file.
 - **CSV recording:** one row per poll of the registers you choose (one row per frame with auto send).
 - **Monitor:** every frame sent and received, raw reads and writes, to any slave address or as a broadcast.
+- **Dump:** each block as the frames carry it: the request and the reply as strips of named fields, the bytes as a hex
+  grid with each register a coloured chip, its value beside it; Follow and Hold.
 - **Log:** every event in a tab and a daily file; pop-ups for warnings and errors that never block, and that hold
   back a repeat of the same message for 30 s.
 - **API:** port 1220 speaks JSON lines by register name (Python, MATLAB, LabVIEW, …); port 1219 is an EVRe
@@ -186,7 +192,7 @@ Log says so.
 
 ```
 EVReStudio [--tcp host:port | --serial COMx[:baud]] [--map file.json | --bus bus.json]
-           [--plot NAME,NAME] [--tab registers|chart|monitor|map] [--connect]
+           [--plot NAME,NAME] [--tab registers|chart|dump|monitor|map] [--connect] [--fast NAME,NAME]
            [--interval ms] [--inflight n] [--record file.csv]
            [--api] [--api-writes] [--api-writes-danger]
 ```
@@ -230,8 +236,8 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (1008 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send and fast streams included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
-| `evre_map_test` | the map files without a window (25 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (1008 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send, fast streams and Listen included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_map_test` | the map files without a window (26 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |
 | `evre_listen_test` | Listen's capture decoders and its link without a window, a driver or a USB device (81 tests): USBPcap's and usbmon's formats give the same transfers on six made-up scenes (`tests/make_captures.py`), FTDI's status bytes, the device and endpoint filters, a stream cut at any byte, a file replayed, a port finding its device in a made-up sysfs and in made-up Windows answers, configuration descriptors, `UsbPcapCapture` on a stand-in for `USBPcapCMD` |

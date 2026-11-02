@@ -352,7 +352,7 @@ def main():
         with tempfile.TemporaryDirectory() as tmp:
             wrong = os.path.join(tmp, 'wrong.json')
             doc = json.load(open(MAP, encoding='utf-8'))
-            doc['device_id'] = '0x2002'
+            doc['device_id'] = '0x1002'
             doc['registers'].append({'addr': '0xD300', 'name': 'MISSING', 'type': 'u16'})
             with open(wrong, 'w', encoding='utf-8') as f:
                 json.dump(doc, f)
