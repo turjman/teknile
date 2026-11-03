@@ -371,7 +371,7 @@ This chapter installs or builds the Studio, starts the fake device from `tests/`
 | `EVReStudio-<version>-x86_64.AppImage` | Linux: make it executable (`chmod +x`) and run it. |
 | `evre-tools-<version>-linux-x86_64.tar.gz` | Linux: `evre` and `evre-sim` with the Qt libraries they need (`bin/`, `lib/`). |
 
-The Windows installer and zip hold the Studio, `evre`, `evre-sim`, the Qt runtime, the example map (`maps/`),
+The Windows installer and zip hold the Studio, `evre`, `evre-sim`, the Qt runtime, the example maps and bus file (`maps/`),
 README, LICENSE and NOTICE. The installer is not code-signed: Windows SmartScreen may say it does not know it;
 choose **More info**, then **Run anyway**.
 

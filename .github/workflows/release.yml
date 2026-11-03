@@ -77,7 +77,7 @@ jobs:
           app="EVReStudio-$VERSION"
           mkdir -p "$app/maps" "$app/translations"
           cp build/EVReStudio.exe build/evre.exe build/evre-sim.exe "$app/"
-          cp EVRe/studio/maps/example_device.json "$app/maps/"
+          cp EVRe/studio/maps/example_*.json "$app/maps/"
           cp EVRe/studio/README.md EVRe/LICENSE EVRe/NOTICE "$app/"
           windeployqt --release --compiler-runtime --translations ar,en "$app/EVReStudio.exe"
           windeployqt --release --compiler-runtime --no-translations "$app/evre.exe" "$app/evre-sim.exe"
@@ -145,7 +145,7 @@ jobs:
           export LD_LIBRARY_PATH="$QT_ROOT_DIR/lib:${LD_LIBRARY_PATH:-}"
           mkdir -p AppDir/usr/bin/maps
           cp build/EVReStudio build/evre build/evre-sim AppDir/usr/bin/
-          cp EVRe/studio/maps/example_device.json AppDir/usr/bin/maps/
+          cp EVRe/studio/maps/example_*.json AppDir/usr/bin/maps/
           for size in 16 24 32 48 64 128 256; do
             mkdir -p "AppDir/usr/share/icons/hicolor/${size}x${size}/apps"
             cp "EVRe/studio/packaging/icons/evre-studio-$size.png" "AppDir/usr/share/icons/hicolor/${size}x${size}/apps/evre-studio.png"
@@ -180,7 +180,7 @@ jobs:
           tools="evre-tools-$VERSION-linux-x86_64"
           mkdir -p "$tools"
           cp -r ToolsDir/usr/bin ToolsDir/usr/lib "$tools/"
-          cp EVRe/studio/maps/example_device.json EVRe/LICENSE EVRe/NOTICE "$tools/"
+          cp EVRe/studio/maps/example_*.json EVRe/LICENSE EVRe/NOTICE "$tools/"
           env -u LD_LIBRARY_PATH "$tools/bin/evre" validate "$tools/example_device.json"
           tar -czf "dist/$tools.tar.gz" "$tools"
           ls -l dist
