@@ -139,6 +139,7 @@
 #include "ui/map_editor_tab.h"
 #include "ui/limit_spin_box.h"
 #include "ui/map_table_model.h"
+#include "ui/name_table.h"
 #include "ui/monitor_tab.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
@@ -12267,6 +12268,136 @@ private:
 	}
 
 	/* 13. the Map editor: every change through the document, with undo; the live values stay */
+	/* 1.4.1 fixes in the Map editor: New and Open ask first while the map has changes; Ctrl+Y and Ctrl+Shift+Z redo; a
+	 * key typed into a group cell replaces the group; the Hex box shows the names' values at once; the Bit fields page
+	 * follows + Field, − Field and a rename at once */
+	void mapEditorFixes() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		auto *sidebar = window_.findChild<Sidebar *>();
+		if (!doc || !tabs || !mapTable || !sidebar) {
+			check(false, "Map editor fixes: the tab and its table");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		QApplication::processEvents();
+		QAbstractItemModel *table = mapTable->model();
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		const QString unitBefore = doc->reg(u8Uid)->unit;
+		const int registers = int(doc->map().regs.size());
+
+		/* New and Open: the changes saved, dropped, or the new map not made */
+		table->setData(table->index(doc->indexOf(u8Uid), MapTableModel::ColUnit), QStringLiteral("rpm2"));
+		const QString newAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->newMapClicked(); });
+		const bool keptAfterNew = doc->isModified() && int(doc->map().regs.size()) == registers
+				&& doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		const QString openAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->openMapClicked(); });
+		const bool keptAfterOpen = doc->isModified() && doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		check(newAsked == QLatin1String("Unsaved map") && keptAfterNew && openAsked == QLatin1String("Unsaved map")
+						&& keptAfterOpen,
+				"Map editor: New and Open with changes not saved ask first (Save, Discard, Cancel); Cancel keeps the map "
+				"and its changes");
+
+		/* redo by the keys: Ctrl+Y and Ctrl+Shift+Z */
+		QUndoStack *undo = doc->undoStack();
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 1000);
+		mapTable->setFocus();
+		undo->undo();
+		const int undone = undo->index();
+		QTest::keyClick(mapTable, Qt::Key_Y, Qt::ControlModifier);
+		const bool redoY = undo->index() == undone + 1;
+		undo->undo();
+		QTest::keyClick(mapTable, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+		const bool redoShiftZ = undo->index() == undone + 1;
+		undo->undo();
+		if (!redoY || !redoShiftZ)
+			std::printf("     (redo keys: Ctrl+Y %d, Ctrl+Shift+Z %d; the window active %d)\n", int(redoY), int(redoShiftZ),
+					int(QApplication::activeWindow() == &window_));
+		check(redoY && redoShiftZ && doc->reg(u8Uid)->unit == unitBefore,
+				"Map editor: Ctrl+Y and Ctrl+Shift+Z both redo (Ctrl+Z undoes)");
+
+		/* a key typed into a group cell: the group typed anew, not added to the old one */
+		const QModelIndex group = table->index(doc->indexOf(u8Uid), MapTableModel::ColGroup);
+		mapTable->setCurrentIndex(group);
+		QTest::keyClick(mapTable, Qt::Key_Q);
+		QComboBox *box = nullptr;
+		(void) QTest::qWaitFor([&] {
+			for (QComboBox *c : mapTable->viewport()->findChildren<QComboBox *>())
+				if (c->isVisible()) box = c;
+			return box != nullptr;
+		}, 2000);
+		const QString typed = box ? box->currentText() : QString();
+		if (box) emit mapTable->itemDelegateForIndex(group)->closeEditor(box, QAbstractItemDelegate::RevertModelCache);
+		QApplication::processEvents();
+		if (typed != QLatin1String("q") && typed != QLatin1String("Q"))
+			std::printf("     (a key typed into the group cell: \"%s\")\n", qPrintable(typed));
+		check(box && (typed == QLatin1String("q") || typed == QLatin1String("Q")) && doc->reg(u8Uid)->group == regs_.u8.group,
+				"Map editor: a key typed into a group cell starts the group anew (\"Protocol\" + \"S\" is \"S\", not "
+				"\"ProtocolS\")");
+
+		/* value names: the Hex box shows the values in hex at once, and back */
+		{
+			NameTable names(NameTable::Keys::Integers, QStringLiteral("hexNames"));
+			names.setEntries({ { 2, QStringLiteral("two") }, { 10, QStringLiteral("ten") } }, false);
+			auto *hex = names.findChild<QCheckBox *>();
+			auto *list = names.findChild<QTableWidget *>();
+			const auto key = [&](int row) { return list && list->item(row, 0) ? list->item(row, 0)->text() : QString(); };
+			if (hex) hex->setChecked(true);
+			const bool inHex = key(0) == QLatin1String("0x2") && key(1) == QLatin1String("0xA");
+			if (hex) hex->setChecked(false);
+			const bool inDecimal = key(0) == QLatin1String("2") && key(1) == QLatin1String("10");
+			check(hex && list && inHex && inDecimal, "value names: the Hex box shows the values as 0x.. at once, and "
+					"back in decimal (the list was left as it was)");
+		}
+
+		/* the Bit fields page: + Field, a rename and − Field shown at once on the strip and in the table, while the
+		 * register editor does not give the register back (a control of the page has the focus) */
+		{
+			FieldEditor fields;
+			RegDef def;
+			def.uid = 0xF1E1D;
+			def.name = QStringLiteral("FLAGS");
+			def.type = RegType::U16;
+			def.size = 2;
+			BitField ready;
+			ready.name = QStringLiteral("READY");
+			ready.lsb = 0;
+			ready.width = 1;
+			def.fields = { ready };
+			fields.resize(700, 420);
+			fields.show();
+			(void) QTest::qWaitForWindowExposed(&fields);
+			fields.setRegister(def);
+			int editedTimes = 0;
+			QObject::connect(&fields, &FieldEditor::edited, &fields, [&] { editedTimes++; });
+			auto *strip = fields.findChild<BitView *>(QStringLiteral("fieldStrip"));
+			auto *list = fields.findChild<QTableWidget *>(QStringLiteral("fieldTable"));
+			QPushButton *add = buttonWithText(fields, QStringLiteral("+ Field"));
+			QPushButton *remove = buttonWithText(fields, QStringLiteral("− Field"));
+			bool added = false, renamed = false, removed = false;
+			if (strip && list && add && remove) {
+				add->click();
+				QApplication::processEvents();
+				added = list->rowCount() == 2 && strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+				if (QTableWidgetItem *name = list->item(0, 0)) name->setText(QStringLiteral("OK"));
+				QApplication::processEvents();
+				renamed = strip->fieldCell(QStringLiteral("OK")).isValid() && !strip->fieldCell(QStringLiteral("READY")).isValid();
+				list->setCurrentCell(1, 0);
+				remove->click();
+				QApplication::processEvents();
+				removed = list->rowCount() == 1 && !strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+			}
+			check(added && renamed && removed && editedTimes == 3, "the Bit fields page: + Field, a rename and − Field shown "
+					"at once on the strip and in the table (not only once the register is picked again)");
+		}
+		/* the page's window gone: the main window active again, on the Registers tab as the Map editor step leaves it */
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 2000);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
 	void mapEditor() {
 		auto *doc = window_.findChild<MapDocument *>();
 		auto *tabs = window_.findChild<QTabWidget *>();

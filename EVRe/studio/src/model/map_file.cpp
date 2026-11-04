@@ -418,14 +418,17 @@ bool resolveFile(const QString &file, int depth, Resolved &out, QString &err) {
 		err = QObject::tr("\"extends\" is not a file name");
 		return false;
 	}
+	const QString tooDeep = QObject::tr("\"extends\" goes more than 8 maps deep (does a map extend itself?)");
 	if (depth >= 8) {
-		err = QObject::tr("\"extends\" goes more than 8 maps deep (does a map extend itself?)");
+		err = tooDeep;
 		return false;
 	}
 	out.basePath = QDir::cleanPath(QFileInfo(file).absoluteDir().absoluteFilePath(extends->string.trimmed()));
 	Resolved base;
 	if (!resolveFile(out.basePath, depth + 1, base, err)) {
-		err = QObject::tr("base map %1: %2").arg(QDir::toNativeSeparators(out.basePath), err);
+		/* a base's own error names that base, once: a chain too deep (a loop) is named by the first base alone, not
+		 * by each of the 8 maps on the way */
+		if (err != tooDeep || depth == 0) err = QObject::tr("base map %1: %2").arg(QDir::toNativeSeparators(out.basePath), err);
 		return false;
 	}
 	out.base = base.flat;
@@ -447,6 +450,8 @@ const QStringList REGISTER_KEYS{ "addr", "name", "type", "size", "unit", "access
 const QStringList FIELD_KEYS{ "name", "bits", "access", "desc", "values" };
 const QStringList SETTINGS_KEYS{ "format", "device", "desc", "notes", "device_id", "slave", "usb", "login",
 	"protocol", "groups", "extends", "registers", "streams" };
+const QStringList STREAM_KEYS{ "name", "addr", "size", "rate", "rate_reg", "enable", "group", "desc", "notes", "channels" };
+const QStringList CHANNEL_KEYS{ "name", "type", "unit", "scale", "offset", "decimals", "desc" };
 
 Value str(const QString &text) { return Value::makeString(text); }
 Value num(double number) { return Value::makeNumber(number); }
@@ -694,6 +699,72 @@ Value registerAsWritten(const RegDef &def, const Value *written, const RegDef *l
 				if (key == QLatin1String("fields")) return fieldsAsWritten(def, writtenValue);
 				return nowValue;
 			});
+}
+
+/* which written item each item of `now` is (both arrays of objects with a "name"): the written one of the same name
+ * not taken yet, else -1 (a new one) */
+std::vector<int> claimByName(const Value &now, const Value &written) {
+	std::vector<int> claim(now.items.size(), -1);
+	std::vector<bool> used(written.items.size(), false);
+	for (size_t i = 0; i < now.items.size(); i++) {
+		const Value *name = now.items[i].find(QStringLiteral("name"));
+		for (size_t j = 0; name && j < written.items.size(); j++) {
+			const Value *other = written.items[j].find(QStringLiteral("name"));
+			if (used[j] || !other || other->string != name->string) continue;
+			claim[i] = int(j);
+			used[j] = true;
+			break;
+		}
+	}
+	return claim;
+}
+
+/* A stream's channels as written where they still are: an unchanged one as it was (its text copied), a changed one
+ * with its unchanged keys as written. `then`: the written channels read and written the Studio's way. */
+Value channelsAsWritten(const Value &now, const Value *written, const Value *then) {
+	if (!written || !written->isArray() || !then || then->items.size() != written->items.size()) return now;
+	const std::vector<int> claim = claimByName(now, *written);
+	Value out = Value::makeArray();
+	for (size_t i = 0; i < now.items.size(); i++) {
+		const int j = claim[i];
+		if (j < 0) out.items.push_back(now.items[i]);
+		else if (jsondoc::equal(then->items[size_t(j)], now.items[i])) out.items.push_back(written->items[size_t(j)]);
+		else out.items.push_back(keepAsWritten(&written->items[size_t(j)], then->items[size_t(j)], now.items[i], CHANNEL_KEYS,
+				unchangedOrNow));
+	}
+	return out;
+}
+
+/* The map's streams written again where the file has its own "streams" list: a stream unchanged is copied as it was,
+ * a changed one keeps its unchanged keys (and channels) as written, a new one is the Studio's way. Saving a change of
+ * one stream so changes only that stream's text, never 0.0005 into 5e-04 elsewhere. */
+std::vector<jsondoc::OutItem> streamsAsWritten(const Value &now, const Value &written) {
+	const std::vector<int> claim = claimByName(now, written);
+	std::vector<jsondoc::OutItem> items;
+	for (size_t i = 0; i < now.items.size(); i++) {
+		const int j = claim[i];
+		/* the written stream read and written the Studio's way: what it was, to compare with what it is */
+		QVector<StreamDef> was;
+		QString err;
+		if (j < 0 || !parseStreams(QJsonArray{ jsondoc::toQt(written.items[size_t(j)]) }, was, err) || was.size() != 1) {
+			items.push_back({ QString(), now.items[i], -1, {} });
+			continue;
+		}
+		const Value then = streamsJson(was).items.front();
+		const Value &own = written.items[size_t(j)];
+		if (jsondoc::equal(then, now.items[i])) {
+			items.push_back({ QString(), own, j, {} });
+			continue;
+		}
+		const Value stream = keepAsWritten(&own, then, now.items[i], STREAM_KEYS,
+				[&then](const QString &key, const Value &nowValue, const Value *writtenValue) {
+					if (key == QLatin1String("channels"))
+						return channelsAsWritten(nowValue, writtenValue, then.find(QStringLiteral("channels")));
+					return nowValue;
+				});
+		items.push_back({ QString(), stream, j, {} });
+	}
+	return items;
 }
 
 /* An overlay's item for a register of its base: the address, and each key whose
@@ -945,6 +1016,15 @@ QByteArray DeviceMap::toJson(const QString &file, bool flatten) const {
 		if (m.key == QLatin1String("registers")) {
 			haveRegisters = true;
 			item.rendered = ownRegs ? jsondoc::patchSequence(text, *ownRegs, items, listStyle, listColumn) : QByteArray();
+		}
+		/* a plain map's own streams changed: each stream patched in its list, as the registers are */
+		const Value *ownStreams = doc.find(QStringLiteral("streams"));
+		if (m.key == QLatin1String("streams") && !isOverlay() && ownStreams && ownStreams->isArray() && m.value.isArray()
+				&& !jsondoc::identical(m.value, *ownStreams)) {
+			int streamsColumn = rootColumn + int(rootStyle.unit.size());
+			const jsondoc::Style streamsStyle = styleOfList(text, ownStreams, rootStyle, streamsColumn);
+			item.rendered = jsondoc::patchSequence(text, *ownStreams, streamsAsWritten(m.value, *ownStreams), streamsStyle,
+					streamsColumn);
 		}
 		rootItems.push_back(item);
 	}

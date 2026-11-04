@@ -38,6 +38,7 @@ private:
 	void pick(int index);                  /* the field shown below the table, -1 = none */
 	void addField(int lsb, int width);
 	void readTable();                      /* the table's cells into fields_, then edited() */
+	void showFields(bool table = true);    /* fields_ on the strip, in the table (table) and the picked one's values */
 	static QString bitsText(const BitField &field);
 	static bool parseBits(const QString &text, int &lsb, int &width);
 

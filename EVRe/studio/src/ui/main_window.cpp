@@ -1093,6 +1093,7 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 }
 
 void MainWindow::openMap() {
+	if (!keepMapEdits()) return; /* the map edited gives way: saved, dropped, or the open cancelled */
 	const QString path = doc_->map().path;
 	const QString start = path.isEmpty() ? mapsFolder() : QFileInfo(path).absolutePath();
 	const QString file = QFileDialog::getOpenFileName(this, tr("Open register map"), start, tr("EVRe map (*.json)"));
@@ -1139,6 +1140,7 @@ void MainWindow::saveMap(bool saveAs) {
 }
 
 void MainWindow::newMap() {
+	if (!keepMapEdits()) return; /* the map edited gives way: saved, dropped, or New cancelled */
 	DeviceMap map;
 	rememberedMap_.clear(); /* not saved yet: the next start opens the first map in maps/ */
 	rememberedBus_.clear();
