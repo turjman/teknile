@@ -25,6 +25,7 @@
 #include <QTableView>
 #include <QTabWidget>
 #include <QTimer>
+#include <cstdlib>
 #include <optional>
 
 #include "model/fast_store.h"
@@ -32,16 +33,18 @@
 #include "ui/language.h"
 #include "ui/main_window.h"
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 namespace {
 
 /* The command line, as what the window applies once it is shown. --help, --version and a bad
- * option end the program here (QCommandLineParser::process). */
+ * option end the program here, their text on the console or in a window of its own (showCommandLineText: Qt's
+ * message box had a proportional font and the program's whole path) */
 MainWindow::Startup parseCommandLine(const QApplication &app) {
 	QCommandLineParser parser;
 	parser.setApplicationDescription(QStringLiteral("EVRe register tool"));
-	parser.addHelpOption();
-	parser.addVersionOption();
+	const QCommandLineOption helpOption = parser.addHelpOption();
+	const QCommandLineOption versionOption = parser.addVersionOption();
 	const QCommandLineOption tcp(QStringLiteral("tcp"), QStringLiteral("Connect over TCP."),
 			QStringLiteral("host:port"));
 	const QCommandLineOption serial(QStringLiteral("serial"), QStringLiteral("Connect over a serial port."),
@@ -70,7 +73,19 @@ MainWindow::Startup parseCommandLine(const QApplication &app) {
 			QStringLiteral("Allow API clients to write the danger registers too."));
 	parser.addOptions({ tcp, serial, map, bus, plot, tab, interval, inFlight, record, connectAtStart, fastAtStart, api,
 			apiWrites, apiWritesDanger });
-	parser.process(app);
+	if (!parser.parse(app.arguments())) { /* as QCommandLineParser::process says it, with its exit code */
+		showCommandLineText(QStringLiteral("%1: %2\n").arg(QCoreApplication::applicationName(), parser.errorText()), true);
+		std::exit(1);
+	}
+	if (parser.isSet(versionOption)) {
+		showCommandLineText(QStringLiteral("%1 %2\n").arg(QCoreApplication::applicationName(),
+				QCoreApplication::applicationVersion()), false);
+		std::exit(0);
+	}
+	if (parser.isSet(helpOption) || parser.optionNames().contains(QStringLiteral("help-all"))) {
+		showCommandLineText(parser.helpText(), false);
+		std::exit(0);
+	}
 
 	MainWindow::Startup startup;
 	startup.tcp = parser.value(tcp);

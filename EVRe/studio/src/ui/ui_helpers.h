@@ -11,6 +11,7 @@
 
 class QAbstractItemView;
 class QComboBox;
+class QDialog;
 class QFont;
 class QIcon;
 class QMenu;
@@ -100,6 +101,14 @@ void setHighlighted(QWidget *widget, bool on, const QColor &color);
 
 /* the monospace font of the frame monitor and the event log */
 QFont monospaceFont();
+
+/* EVReStudio --help, --version or a wrong option: the text on the console it was started from (on Windows the
+ * parent's, attached: a program with a window has none of its own; or where its output is sent), else in
+ * commandLineWindow. Qt's message box there had a proportional font (the columns did not line up, words wrapped onto
+ * lines of their own) and the program's whole path on its first line: the path is cut to the program's name here. */
+void showCommandLineText(const QString &text, bool error);
+/* the window for it: the text in a fixed-pitch font, not wrapped, as wide as its longest line (within the screen) */
+QDialog *commandLineWindow(const QString &text);
 
 /* a pause (two bars) or play (a triangle) icon, both the same size and weight: the font's
  * glyphs for them are not (a big pause beside a small play) */

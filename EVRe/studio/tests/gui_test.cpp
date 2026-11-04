@@ -598,6 +598,7 @@ public:
 		measureSinceFollows();
 		chartTotalsSlowPolls();
 		chartTriggerLevelFits();
+		commandLineHelp();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -15037,6 +15038,30 @@ private:
 		chart.tab.hide();
 	}
 
+	/* EVReStudio --help without a console (Windows, 14.1): its own window, the text in a fixed-pitch font and not
+	 * wrapped, as wide as its longest line, the program's name for its whole path; Qt's message box broke the columns */
+	void commandLineHelp() {
+		const QString program = QCoreApplication::arguments().value(0);
+		const QString text = QStringLiteral("Usage: %1 [options]\nEVRe register tool\n\nOptions:\n"
+				"  -h, --help                Displays help on commandline options.\n"
+				"  --interval <ms>           Poll interval, ms (0.25 = 4000/s, 0 = as fast as possible).\n").arg(program);
+		std::unique_ptr<QDialog> window(commandLineWindow(text));
+		auto *view = window->findChild<QPlainTextEdit *>(QStringLiteral("commandLineText"));
+		const QString name = QFileInfo(program).completeBaseName();
+		const bool named = view && view->toPlainText().startsWith(QStringLiteral("Usage: %1 [options]\n").arg(name))
+				&& !view->toPlainText().contains(program);
+		int widest = 0;
+		if (view)
+			for (const QString &line : view->toPlainText().split(QLatin1Char('\n')))
+				widest = std::max(widest, QFontMetrics(view->font()).horizontalAdvance(line));
+		const bool laidOut = view && QFontInfo(view->font()).fixedPitch() && view->lineWrapMode() == QPlainTextEdit::NoWrap
+				&& view->isReadOnly() && view->minimumWidth() >= widest;
+		if (!named || !laidOut)
+			std::printf("     (\"%s\"; fixed pitch %d, wrap %d, %d px for %d)\n", view ? qPrintable(view->toPlainText().section(
+					QLatin1Char('\n'), 0, 0)) : "", view ? int(QFontInfo(view->font()).fixedPitch()) : -1,
+					view ? int(view->lineWrapMode()) : -1, view ? view->minimumWidth() : -1, widest);
+		check(named && laidOut, "--help without a console: a window of its own, the text in a fixed-pitch font, not wrapped, "
+				"as wide as its longest line; \"Usage: <program> [options]\" with the program's name, not its path");
 	}
 
 	/* Log Y: decades on the axis with SI prefixes and equal heights, values <= 0 on the bottom edge, Auto over the
