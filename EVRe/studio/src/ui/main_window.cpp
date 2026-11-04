@@ -1279,6 +1279,7 @@ void MainWindow::updateStaleAfter() {
 	const qint64 staleAfterMs = copyGapMs + std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs());
 	model_->setStaleAfterMs(staleAfterMs);
 	dumpTab_->view()->setStaleAfterMs(staleAfterMs); /* the Dump's replies are stale when the table's values are */
+	chartTab_->setPollInterval(interval); /* the totals since Clear bridge two intervals: slow polls are no gaps */
 }
 
 void MainWindow::applyValuePace() {

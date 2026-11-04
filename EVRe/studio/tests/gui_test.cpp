@@ -596,6 +596,7 @@ public:
 		chartPanRefused();
 		mathLinesKept();
 		measureSinceFollows();
+		chartTotalsSlowPolls();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -14970,6 +14971,35 @@ private:
 				"without measuring all again");
 		measure->setChecked(false);
 		chart.tab.setShown(false);
+	}
+
+	/* Totals since Clear with polls slower than one a second (8.4): every interval was a gap over 1 s, the total stayed 0
+	 * and nothing said why; the gap bridged is two poll intervals now, as a value is stale after two. The window sets it */
+	void chartTotalsSlowPolls() {
+		LoneChart chart(QStringLiteral("SLOW"), QStringLiteral("A"));
+		const auto feed = [&](double from, double step, int count) {
+			MathLines::Samples samples;
+			for (int i = 0; i < count; i++) samples[regKey(chart.def)] << QPointF(from + i * step, 2.0);
+			chart.tab.frame(samples);
+		};
+		chart.tab.setPollInterval(2000);
+		feed(100.0, 2.0, 10); /* 2 A every 2 s: 18 s */
+		const double slow = chart.view->total(chart.key());
+		feed(128.0, 2.0, 2); /* after 10 s without a sample (more than two intervals): not bridged */
+		const double gapped = chart.view->total(chart.key());
+		chart.tab.setPollInterval(100); /* fast polls: the 1 s of before */
+		const bool least = chart.view->totalGap() == ChartView::TOTAL_GAP;
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *liveTab = window_.findChild<ChartTab *>();
+		ChartView *liveView = liveTab ? liveTab->findChild<ChartView *>() : nullptr;
+		const bool wired = sidebar && liveView
+				&& liveView->totalGap() == std::max(ChartView::TOTAL_GAP, 2 * sidebar->pollIntervalMs() / 1000);
+		if (std::fabs(slow - 36) > 1e-9 || std::fabs(gapped - 40) > 1e-9 || !least || !wired)
+			std::printf("     (2 A every 2 s: %g A·s over 18 s, %g after a 10 s gap; the gap at 100 ms polls %g s; the window's %g s)\n",
+					slow, gapped, chart.view->totalGap(), liveView ? liveView->totalGap() : -1.0);
+		check(std::fabs(slow - 36) < 1e-9 && std::fabs(gapped - 40) < 1e-9 && least && wired,
+				"chart, totals since Clear with polls every 2 s: summed (36 A·s over 18 s), a gap over two intervals not "
+				"bridged; 1 s at fast polls; the window gives the chart its poll interval");
 	}
 
 	}

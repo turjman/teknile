@@ -1368,6 +1368,8 @@ void ChartTab::frame(const MathLines::Samples &samples) {
 
 void ChartTab::setValuesPerSecond(int perSecond) { chart_->setValuesPerSecond(perSecond); }
 
+void ChartTab::setPollInterval(double ms) { chart_->view()->setTotalGap(2 * ms / 1000); }
+
 /* shown: the measurements at once, with the lines plotted meanwhile (the timer only runs them while shown) */
 void ChartTab::setShown(bool shown) {
 	shown_ = shown;

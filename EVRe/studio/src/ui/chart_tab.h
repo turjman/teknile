@@ -122,6 +122,8 @@ public:
 
 	/* the map's registers, again after every change of the map: the math lines are compiled against them */
 	void setRegisters(const QVector<RegDef> &registers);
+	/* the poll interval (ms): the totals since Clear bridge a gap up to two of them (8.4), as a value is stale after two */
+	void setPollInterval(double ms);
 	/* a register's line on or off the chart: keyed by regKey (its device and address), drawn in the next colour of
 	 * the palette */
 	void plotRegister(const RegDef &def, bool on);

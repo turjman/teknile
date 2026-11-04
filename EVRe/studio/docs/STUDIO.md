@@ -2428,7 +2428,8 @@ the charge of a whole test run, however long, without placing cursors.
 - **From every sample as it comes,** summed by trapezoids when the sample is added to the chart, not from what the
   memory keeps: the memory may hold one minute, the total covers hours, and the trims (7.4) take nothing from it.
 - **A gap of more than 1 s** between two samples of a line (no polls, the device gone) is not bridged: the time
-  without samples adds nothing.
+  without samples adds nothing. With polls slower than one every half second the gap is two poll intervals (polled
+  every 2 s: more than 4 s), as a value is stale after two.
 - **A fast line** sums its records as its blocks come, with nothing across a gap (records lost); from the records
   that come after it was ticked.
 - **Reset only by Clear** (and by another map, whose lines are others). A line taken off the chart and put back keeps
@@ -6103,7 +6104,8 @@ about 45 fps, the window's own copy of the plot to the screen being the rest. Th
   12 V line with 1 mV of ripple squared whole loses the ripple to the rounding of 144 V²), and the peak to peak,
   max − min, in the same pass;
 - the total since Clear (`Stats::total`, `total(key)`): not over the range. `append` sums each line's trapezoids as
-  the samples come (`Series::total`, `totalT`, `totalV`), a gap over `TOTAL_GAP` (1 s) not bridged, so the memory's
+  the samples come (`Series::total`, `totalT`, `totalV`), a gap over `TOTAL_GAP` (1 s, or two poll intervals:
+  `setTotalGap`, the window's `ChartTab::setPollInterval`) not bridged, so the memory's
   trims take nothing from it. `clearData` resets them, and `clearSeries` (another map); a line removed leaves its
   total in `keptTotals_`, taken back when a line of the same key, name and unit comes again. `totalsSince()` is the
   time of the first sample after the reset.

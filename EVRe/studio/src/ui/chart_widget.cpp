@@ -669,10 +669,10 @@ void ChartView::appendNow(int key, double t, double v) {
 	if (it == series_.end() || !std::isfinite(v)) return;
 	Series &s = *it;
 	/* the total since Clear, from every sample as it comes (not from what the memory keeps: trims lose nothing); a gap
-	 * over TOTAL_GAP is not bridged */
+	 * over totalGap_ is not bridged */
 	if (std::isnan(s.totalT) || t >= s.totalT) {
 		const double dt = t - s.totalT;
-		if (dt > 0 && dt <= TOTAL_GAP) s.total += 0.5 * (v + s.totalV) * dt;
+		if (dt > 0 && dt <= totalGap_) s.total += 0.5 * (v + s.totalV) * dt;
 		s.totalT = t;
 		s.totalV = v;
 		if (std::isnan(totalsSince_)) totalsSince_ = t;

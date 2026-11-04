@@ -542,8 +542,12 @@ public:
 	bool draggingCursor() const { return drag_ == Drag::CurA || drag_ == Drag::CurB; }
 	/* The totals (Stats::total): each line's value x dt by trapezoids from every sample as it is appended, a gap over
 	 * TOTAL_GAP not bridged; reset by clearData (the chart's Clear) and a new set of lines (clearSeries) only: a line
-	 * taken off and put back keeps its total. totalsSince: the time base of the first sample since then, NaN none. */
+	 * taken off and put back keeps its total. totalsSince: the time base of the first sample since then, NaN none.
+	 * setTotalGap: the gap not bridged, never under TOTAL_GAP (the window's: two poll intervals, as polls slower than
+	 * one a second summed nothing, every interval a gap) */
 	static constexpr double TOTAL_GAP = 1.0;
+	void setTotalGap(double seconds) { totalGap_ = std::max(TOTAL_GAP, seconds); }
+	double totalGap() const { return totalGap_; }
 	double total(int key) const;
 	double totalsSince() const { return totalsSince_; }
 	qint64 epochMs() const { return epochMs_; } /* the wall-clock time of the time base's zero, ms since the epoch */
@@ -1238,6 +1242,7 @@ private:
 	};
 	QHash<int, KeptTotal> keptTotals_;
 	double totalsSince_ = NAN;
+	double totalGap_ = TOTAL_GAP; /* setTotalGap */
 
 	/* the cursors and the mouse */
 	bool cursorMode_ = false;

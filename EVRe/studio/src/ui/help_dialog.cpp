@@ -500,8 +500,8 @@ from min/max summaries, so they cost no more than short ones.</p>
 <b>W</b> gives <b>J</b> and <b>Wh</b>, a current in <b>A</b> gives <b>A·s</b> and <b>Ah</b>. Drag the handle
 between the chart and the table (a grip, lit under the mouse) for more rows or a taller chart; its place is kept. While a cursor is dragged, A, B and B − A follow it; the rest is measured again once it is let go.</p>
 <p><b>Since Clear</b>: each line's total since the chart's <b>Clear</b>, in Wh, Ah or unit·h, summed from every sample
-as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples adds
-nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
+as it comes, so it covers hours while the memory keeps minutes; a gap of more than a second between samples (two
+poll intervals when the polls are slower) adds nothing. The line above the table says since when: <i>totals since 14:03:12 (1 h 12 min)</i>. A line taken off the
 chart and put back keeps its total.</p>
 <p><b>Right-click the table's header</b> to show or hide its columns; the choice is kept.</p>
 <h3>Histogram and spectrum</h3>
