@@ -595,6 +595,7 @@ public:
 		chartYRangeTyped();
 		chartPanRefused();
 		mathLinesKept();
+		measureSinceFollows();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -14936,6 +14937,39 @@ private:
 				"math lines: a line added, one shown off and on, one removed: the other lines keep their samples on the "
 				"chart (the line shown again starts anew)");
 		QSettings().remove(group);
+	}
+
+	/* The line over the measure table on a held view (8.4): "totals since 14:03:12 (1 h 12 min)" follows the clock at the
+	 * timer's pace, as the Since Clear column does; the full measurements are not run again for it */
+	void measureSinceFollows() {
+		LoneChart chart(QStringLiteral("SINCE"), QStringLiteral("A"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 100; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 10.0, 2.0);
+		chart.tab.frame(samples);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		if (!measure || !info) {
+			check(false, "chart, the measure line: its button and line found");
+			return;
+		}
+		chart.view->setLive(false);
+		chart.tab.setShown(true);
+		measure->setChecked(true);
+		measured(chart.view);
+		const QString first = info->text();
+		const int full = chart.tab.measureFullUpdates();
+		chart.now += 125; /* 2 min 5 s later, nothing new in the view */
+		const bool follows = QTest::qWaitFor([&] {
+			return info->text().endsWith(QStringLiteral("(%1)").arg(durationText(chart.now - 90.0)));
+		}, 2000);
+		if (!follows || first == info->text() || chart.tab.measureFullUpdates() != full)
+			std::printf("     (\"%s\" -> \"%s\", %d full updates)\n", qPrintable(first), qPrintable(info->text()),
+					chart.tab.measureFullUpdates() - full);
+		check(follows && first != info->text() && chart.tab.measureFullUpdates() == full,
+				"chart, a held view: the measure line's \"totals since ... (duration)\" follows the clock (2 min 5 s), "
+				"without measuring all again");
+		measure->setChecked(false);
+		chart.tab.setShown(false);
 	}
 
 	}

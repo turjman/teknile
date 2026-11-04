@@ -2175,6 +2175,13 @@ void ChartTab::measureTick() {
 		updateMeasures();
 		return;
 	}
+	/* the line over the table too: its "totals since 14:03:12 (1 h 12 min)" goes on with the clock (it stood still on a
+	 * held view, the full measurements not run again) */
+	const QString info = measuredRangeText();
+	if (measureInfo_->text() != info) {
+		measureInfo_->setText(info);
+		measureInfoChanges_++;
+	}
 	const QString none = QStringLiteral("—");
 	for (int row = 0; row < lines.size(); row++) {
 		const double total = view->total(lines[row].key);
