@@ -1450,7 +1450,13 @@ QWidget *ChartTab::buildTriggerRow() {
 	auto *validator = new QDoubleValidator(triggerLevel_);
 	validator->setLocale(QLocale::c());
 	triggerLevel_->setValidator(validator);
-	triggerLevel_->setFixedWidth(90);
+	/* as wide as a level of six digits with its sign and exponent ("-0.000123457", "-1.23457e+06"): 90 px cut them */
+	triggerLevel_->ensurePolished();
+	int levelRoom = 0;
+	for (const double widest : { -0.000888888, -8.88888e+88 })
+		levelRoom = std::max(levelRoom, triggerLevel_->fontMetrics().horizontalAdvance(ChartView::levelText(widest)));
+	const int levelFrame = triggerLevel_->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, triggerLevel_);
+	triggerLevel_->setFixedWidth(std::max(90, levelRoom + 2 * levelFrame + 4 + 6)); /* 2 px of QLineEdit's own a side */
 	triggerLevel_->setAlignment(Qt::AlignRight);
 	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
 	triggerMode_ = new QComboBox;

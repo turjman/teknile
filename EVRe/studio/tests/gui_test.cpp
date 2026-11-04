@@ -597,6 +597,7 @@ public:
 		mathLinesKept();
 		measureSinceFollows();
 		chartTotalsSlowPolls();
+		chartTriggerLevelFits();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -15000,6 +15001,29 @@ private:
 		check(std::fabs(slow - 36) < 1e-9 && std::fabs(gapped - 40) < 1e-9 && least && wired,
 				"chart, totals since Clear with polls every 2 s: summed (36 A·s over 18 s), a gap over two intervals not "
 				"bridged; 1 s at fast polls; the window gives the chart its poll interval");
+	}
+
+	/* The trigger row's level box holds a level of six digits whole, sign and exponent too (7.13): 90 px cut them */
+	void chartTriggerLevelFits() {
+		LoneChart chart(QStringLiteral("LEVEL"), QStringLiteral("V"));
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *box = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		if (!box) {
+			check(false, "chart, the trigger's level box found");
+			return;
+		}
+		const int frame = box->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, box);
+		const int room = box->width() - 2 * frame - 4 - box->textMargins().left() - box->textMargins().right();
+		QStringList cut;
+		for (const double level : { -0.000123457, -1234.56, -123456.0, -1.23457e+06, 9.87654e-12 }) {
+			const QString text = ChartView::levelText(level);
+			if (box->fontMetrics().horizontalAdvance(text) > room) cut << text;
+		}
+		if (!cut.isEmpty()) std::printf("     (cut in %d px: %s)\n", room, qPrintable(cut.join(QStringLiteral(", "))));
+		check(cut.isEmpty(), "chart, the trigger's level box: a level of six digits fits whole (-0.000123457, -123456, "
+				"-1.23457e+06, 9.87654e-12)");
+		chart.tab.hide();
 	}
 
 	}
