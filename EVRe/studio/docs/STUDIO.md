@@ -549,7 +549,7 @@ The Studio sets no connect timeout of its own. A host that does not answer takes
 | **Slave** | 1&nbsp;–&nbsp;255,&nbsp;default&nbsp;1 | The EVRe slave address put in every request. It is set from the map's `"slave"` when a map loads, and written back to the map when you save it. It is not a setting of its own. 0 is the broadcast address, which no device answers: a map with `"slave": 0` is an error. On a bus each device has its own (3.9) and the box only shows the selected one's. |
 | **Timeout** | 20&nbsp;–&nbsp;10000&nbsp;ms,&nbsp;default&nbsp;500 | How long the Studio waits for an answer before it fails the request with `timeout (<n> ms)`. Radio links and slow gateways need more. |
 
-The Studio sends Slave, Timeout and In flight to its I/O engine each time it connects. It also sends them each time In flight changes. After changing Slave or Timeout while connected, reconnect for the change to apply. The Timeout also sets how soon a value turns grey (see 4.3), and that part applies at once.
+The Studio sends Slave, Timeout and In flight to its I/O engine each time it connects. It also sends them each time Slave or In flight changes, so a new Slave applies at once, to the next request. After changing only the Timeout while connected, reconnect for the requests' timeout to change. The Timeout also sets how soon a value turns grey (see 4.3), and that part applies at once.
 
 ### 3.4 In flight
 
@@ -590,7 +590,8 @@ With **Reconnect by itself** off, a lost or failed link stays down until you cli
 
 A serial link with no port selected fails at once. The pill shows *No serial port*. A Baud box emptied, or a rate
 out of 300 to 20000000, does not connect either: the pill shows *Baud rate out of range: 300 to 20000000* (where it
-is too narrow, *Baud rate out of range*) and the box gets the focus. While the Studio waits to try again, the pill stays red with the last reason (3.8).
+is too narrow, on two lines: *Baud rate out of range:* and *300 to 20000000* under it, never cut, 3.8) and the box gets
+the focus. While the Studio waits to try again, the pill stays red with the last reason (3.8).
 
 ### 3.6 The token and the map's login register
 
@@ -747,7 +748,8 @@ with a bus, In flight is 1 whatever is set: a UART answers one request at a time
 again with one device or over TCP.
 
 **A device that stops answering.** After 3 timeouts in a row it is *offline*: its dot turns red, the Log says so once,
-it is left out of the polls (its values go grey, as any stale value) and it is asked for its DEVICE_ID again: every
+it is left out of the polls (the values it last sent stay and turn grey, as any stale value; a device that never
+answered has none, and its cells read *error* in red, the timeout in their tooltip) and it is asked for its DEVICE_ID again: every
 2 s one offline device, in turn, with never more than one such request waiting.
 The others keep their poll rate instead of each poll waiting a timeout for it. Its first answer brings it back. On a
 new connection every device starts online.
@@ -1121,7 +1123,8 @@ The groups button lists **All groups**, then a check box for every group of the 
 
 - Tick one or several groups to show only those. Ticking a box does not close the menu.
 - **All groups** unticks them all. No group ticked means every group is shown.
-- A register whose group is empty is listed under *(no group)*.
+- A register without a `"group"` key is in the group *Registers* (16.3). Only one whose map says `"group": ""` is
+  listed under *(no group)*.
 
 The button shows the names of the groups ticked. When they do not fit, it shortens them and adds the count, for example `Power & supply, Sen… (3)`. The full list is in its tooltip. The groups ticked stay ticked when the map is edited, as long as the map still has them. They are not saved.
 
@@ -1599,7 +1602,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **Cursors** | Cursor mode: clicks place cursors A and B (7.7). Turning it on turns Measure on, and turning Measure off turns Cursors off. Turning it off takes A and B off the chart. |
 | **Clear&nbsp;cursors** | Removes A and B. |
 | **ƒ&nbsp;Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
-| **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Smooth on · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
+| **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Lanes off · Smooth on · Trigger off · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
 | &#8209;&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
 | &#8209;&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
 | &#8209;&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
@@ -1612,7 +1615,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | &#8209;&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | &#8209;&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | **File&nbsp;▾** | Copy picture, Save picture…, Export to CSV…, Open recording… and Recent recordings: the chart's right-click menu (7.10) but *Add note here*, so none is reached by a right-click alone. A note needs its place on the chart: it stays on the right-click, and the button's tooltip says so. A recording's window has its own beside Lines (12.6). |
-| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes; a recording's window has no fps part at all), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
+| Info&nbsp;line | *32/64 plotted · 2 math · 60 fps · 3.2 ms · delay 12 ms · GPU*: every line on the chart, registers, math and fast lines together, of as many as it may hold now (64 at most, the registers at the rate now, 4.8), the math and fast lines among them when there are any, frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes, which while samples still come in is a few times a second, about 4 fps, for its legend's values, the memory strip and the measurements; a recording's window has no fps part at all), the average time to draw one, and the Smooth delay (7.9). Narrow, whole parts go, never letters: first the time to draw one, then the word *plotted*, then the delay (then the fps, *GPU*/*CPU*, the math lines); the count stays longest. The tooltip holds all of it and says what each number is. |
 | **Clear** | Empties every line and the memory, and starts the totals since Clear again (8.4). The lines go on from now. |
 | **Remove&nbsp;all** | Takes every register off the chart (every Plot is unticked). Math lines stay. |
 
@@ -1692,7 +1695,9 @@ The value axis labels all have the decimals their step needs: with a step of 2 t
 
 **Manual** keeps the min and max:
 
-- Typed min and max are swapped if min is greater than max. Equal values become min and min + 1.
+- Typed min and max are swapped if min is greater than max. Equal values become min and min + 1. Enter (or leaving
+  the box) applies them, and both boxes show at once what was made of them: *20* typed as min over a max of *10* reads
+  *10* and *20*, *12* and *12* read *12* and *13*, so leaving the box does not apply the old text again.
 - **Ctrl + mouse wheel** zooms Y around the value under the mouse, by 1.25 per wheel notch. This switches to Manual.
 - A **double-click** on the chart goes back to Auto.
 - The top right shows *Y manual*.
@@ -1759,7 +1764,7 @@ Drag a cursor to move it. Each cursor is a dashed line with a lettered tag at th
 
 Once both are placed, a bar joins their tags at the top of the plot and says the time between them, |B − A|, whether A or B is the earlier:
 
-- **The text.** Four significant digits below a minute, in the first unit where they stay below 1000: *123 µs*, *3.525 ms*, *12.35 s* (999.96 µs is written *1 ms*). From a minute: *1 min 23.4 s*; from an hour: *2 h 05 min*. The line above the measurements says the same span to the millisecond (*A → B = 4.457 s*, chapter 8); the bar is there to read at a glance.
+- **The text.** Four significant digits below a minute, in the first unit where they stay below 1000: *123 µs*, *3.525 ms*, *12.35 s* (999.96 µs is written *1 ms*). From a minute: *1 min 23.4 s*; from an hour: *2 h 05 min*. The line above the measurements says the same span in seconds, with the digits of a measurement (8.5): *Measured between the cursors: A → B = 4.457 s*, *0.1235 s* below a second, *123.46 s* from 100 s, chapter 8; the bar is there to read at a glance.
 - **A cursor off the view.** The bar ends at the plot's edge on that side, and its text stays the whole time between them. With both off, one each side, it runs across the plot. With both off on one side there is no bar.
 - **Close cursors.** When the text does not fit between the tags, it stands beside the right tag (beside the left one when the plot ends there). No bar is drawn between the tags then: a sliver of it would only look like a mistake.
 
@@ -1892,7 +1897,7 @@ The chart takes two keys: **Delete** (or Backspace) removes the note clicked las
   room; it keeps its place (the state's parts go first), and the chips end before it. The whole text is its
   tooltip. In Arabic it reads from the right. With Lanes it says nothing about them: the lanes' ▾ and ⋯ show the
   fold and the menu.
-- **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up or below 0.001 are written in exponent form (`1.235e+05`). Zero is `0`.
+- **Number format of the legend and the crosshair.** Both show about four significant digits, whatever the register's own format: no decimal from 100 up, one from 10 up, two from 1 up and three below 1. Values from 100 000 up are written in exponent form (`1.235e+05`). Below 0.001 they keep four significant digits, written out down to 0.0001 (`0.0005123`) and in exponent form below it (`5.123e-05`). Zero is `0`.
 - **Value labels.** They use 1-2-5 steps, about five of them.
 - **Time labels.** From a 1 s window up they show the **clock time**, as precise as the grid step needs (`14:03:12`, `14:03:12.5`, `14:03:12.35`, `14:03:12.345`). The grid lines are fixed to clock times, so they move with the data.
 - **Divisions below 1 s.** Below a 1 s window the time axis is a scope's graticule: **10 fixed divisions** across the
@@ -1918,7 +1923,7 @@ The chart takes two keys: **Delete** (or Backspace) removes the note clicked las
 
 - **Display → Time grid.** *Auto (divisions below 1 s)*, the default; *Clock times* (as before, at every window);
   *Divisions* (at every window: a 10 s window reads *1 s/div*, *-10 s* ... *0*). Saved (`chart/timeGrid`, 14.3).
-- **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes, so it costs nothing while it stands; the frames of its last change are not kept on the line), and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). A recording's window leaves the fps out (*6/6 plotted · 1 math · 1.8 ms · CPU*): its chart is drawn only when something in it changes, so a rate says nothing there. When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math and fast lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. The count stays: the row keeps room for it, at the narrowest window too. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
+- **Info line.** It starts with every line on the chart, registers, math and fast lines together, of as many as it may hold now (*32/64 plotted*: 64 at most, the registers at the rate now), and the math and fast lines among them, then shows *fps*, the frames drawn in the last second (*idle* when none was: a held view is drawn only when something in it changes, so it costs nothing while it stands; while samples still come in, its legend's values, the memory strip and the measurements change a few times a second, about 4 fps, not the display's rate; the frames of its last change are not kept on the line), and *ms*, the average time to draw one frame. With Smooth on it also shows *delay*. It ends with who draws, *GPU* or *CPU* (Drawing, 7.2). A recording's window leaves the fps out (*6/6 plotted · 1 math · 1.8 ms · CPU*): its chart is drawn only when something in it changes, so a rate says nothing there. When the row is too narrow, whole parts go in this order: the time to draw, the word *plotted*, the delay, then the fps, who draws and the math and fast lines (*32/64 · 60 fps · GPU*); a part is never cut in the middle. The count stays: the row keeps room for it, at the narrowest window too. Its tooltip holds the whole text. It is updated twice a second, only while the Chart tab is shown. Frames that take more than about 60 % of a refresh skip one now and then, as many as needed, so the chart never takes more than about 60 % of the window's time: with very many lines the fps drops, but the rest of the window keeps answering (23.6).
 
 Frames follow the display's refresh. On Windows the Studio waits for each refresh of the compositor. Without a compositor (a remote session, a screen that is off), and on other systems, a 16 ms timer paces the frames instead (see 20.6).
 
@@ -2130,7 +2135,7 @@ repeating wave held still.
 |---|---|
 | Line | The line watched: any register, math line or fast line (7.14) on the chart, each with its colour dot before its name (as on its chip). Another line chosen brings its own level and edge. |
 | Rising&nbsp;/&nbsp;Falling&nbsp;/&nbsp;Either | Rising: from below the level to it or above it; Falling: from above to it or below; Either: both. |
-| level | The level, in the line's unit (written after the box, muted): the dashed line on the chart. |
+| level | The level, in the line's unit (written after the box, muted): the dashed line on the chart. Written as it is set, six significant digits; the box is as wide as the widest such level (*-0.000123457*, *-1.23457e+06*), so none is cut. |
 | Find&nbsp;level | Sets the level halfway between the line's lowest and highest in view: the rule a line watched for the first time starts with. |
 | Auto&nbsp;/&nbsp;Normal&nbsp;/&nbsp;Single | The mode (below). |
 | hold-off | After a crossing, no other counts for this long: *window* (the window's length, the default: a picture per window) or a time typed, 0 to 10 s (`5 ms`, `0`). |
@@ -2443,7 +2448,9 @@ the charge of a whole test run, however long, without placing cursors.
 
 ### 8.5 Number format
 
-Values show five significant digits from 1e6 up and below 1e-3. Between those, they show 1 to 4 decimals depending on size: 1 from 1000, 2 from 100, 3 from 1, 4 below 1. Each value carries the line's unit. The table's cells can be selected and copied.
+Values show five significant digits from 1e6 up and below 1e-3. Between those, they show 1 to 4 decimals depending on size: 1 from 1000, 2 from 100, 3 from 1, 4 below 1. Each value carries the line's unit. The table's cells can be selected, but **Ctrl + C** copies one cell's text, the
+one clicked last, not the whole selection; the table has no copy menu (a picture or a CSV of the lines: the chart's
+File menu, 7.10).
 
 ### 8.6 Histogram and spectrum
 
@@ -2579,6 +2586,7 @@ Function names match in any case.
 | `floor`,&nbsp;`ceil`,&nbsp;`round` | 1 | `round` rounds halves away from zero |
 | `sign(x)` | 1 | −1, 0 or 1 |
 | `clamp(x, lo, hi)` | 3 | x limited to [lo, hi]; the limits may be in either order |
+| `bits(x, lsb, width)` | 3 | `width` bits of the integer x from bit `lsb` up: a bit field (`bits(STATUS, 4, 2)`); **Plot a field** (4.9) makes such a line |
 
 | Constant | Value |
 |---|---|
@@ -2724,7 +2732,8 @@ With **Log frames** on, each frame is one line:
 | `TX`&nbsp;/&nbsp;`RX` | Sent by the Studio / received from the link. |
 | bytes | The whole frame in hex, from the start byte `7B` to the end byte `7D` (layout in 18.1). |
 | note&nbsp;(RX&nbsp;only) | The function name: `READ_RESP`, `WRITE_ACK_RESP` or `ERROR_RESP`. For an error answer the code is the data byte before the CRC (codes in 18.3). |
-| `(not a pending request)` | A valid frame that answers nothing the Studio is waiting for (see below). |
+| `(not a pending request)` | A valid frame that answers nothing the Studio is waiting for (see below): `READ_RESP (not a pending request)`. |
+| `READ_RESP (fast stream ADC)` | A block of a fast stream the map names (13.9), in place of `(not a pending request)`. |
 
 The Monitor shows **all** traffic: polls, the keep-alive reads of `0xA000` (18.7), reads and writes from the table, the login, and every request from API clients.
 
@@ -2732,7 +2741,8 @@ A frame marked `(not a pending request)` is usually one of these:
 
 - a late answer that came after its request timed out
 - the echo of the Studio's own request on a half-duplex line (RS-485 converters often echo)
-- a frame the device sends by itself
+- a frame the device sends by itself: an auto-send frame (13.8) reads `READ_RESP (not a pending request)`; a fast
+  stream's block is named instead, `READ_RESP (fast stream ADC)`
 
 Frames with a wrong CRC or end byte are not shown. They only increase the *Bad frames* counter in the status bar.
 
@@ -2808,7 +2818,7 @@ start (one *map loaded*), not after the one chosen last.
 The tab's bar shows where the file is (*Also saved to …*) and has four controls:
 
 - **Pop-ups**: on by default, and saved (`ui/popups`)
-- **Show info**: on by default, not saved. Off, the tab shows only warnings and errors, while the file still gets everything. Info lines hidden this way do not come back when you turn it on again.
+- **Show info**: on by default, not saved. Off, the tab shows only warnings and errors, while the file still gets everything. It applies to the lines already in the tab too: off hides their info lines, and on brings them back.
 - **Open folder**: opens the folder of the log file
 - **Clear**: empties the tab, not the file
 
@@ -3001,11 +3011,12 @@ recordings can be open.
 
   *The Lines list: All and None, the file's columns with their units (ƒ P [W] is the math column the recording holds), and the window's own math line P off the chart (a ring).*
 
-- **With a map loaded,** a column named as one of its registers takes that register's definition: its value names
-  and fields. **Lines** then lists the fields of such a register under its checklist (*Fields of CONFIG*) and plots one as a math line
+- **With a map loaded,** a column named as one of its registers takes that register's definition: its fields (the
+  chart draws numbers, so a value's name, *blink* for 2, is not shown). **Lines** then lists the fields of such a register under its checklist (*Fields of CONFIG*) and plots one as a math line
   (`CONFIG.MSG_ENABLE`, 31.4). A byte array of the map is left out.
-- **Its own settings.** The window's chart keeps its choices under `recording/…` (14.3): its Window, Y range, Measure
-  and columns, Display, and its **own math lines** (`recording/math`), computed from the file's values.
+- **Its own settings.** The window's chart keeps its choices under `recording/…` (14.3): its Y range, Measure
+  and columns, Display, and its **own math lines** (`recording/math`), computed from the file's values. The Window is
+  not taken from them: each file opens with all of it in view, the Window box showing its span.
 - **Notes** beside the file (12.5) are shown, and saved again at every change.
 
 ### 12.7 Fast streams' recordings (.evrs)
@@ -3017,7 +3028,8 @@ default) is recorded **beside the CSV, as it came**:
 
 - **Written by the I/O thread**, the blocks as they arrive, from the first block after the recording starts to
   **■ Stop recording**; whether the chart shows the stream or not. With the CSV's flush (every 250 ms) its data goes
-  to the disk. The Log says at the stop: *fast stream ADC recorded: run.ADC.evrs (1517 blocks, 5.9 MB)*.
+  to the disk. The Log says at the stop, with the whole path in the system's separators as the CSV's line has it: *fast stream ADC
+  recorded: C:\Users\me\run.ADC.evrs (1517 blocks, 5.9 MB)*.
 - **The clock.** The file's time marks are the clock's fit (13.9) on the Studio's clock, the CSV's `time_s`: a
   recording opened with its CSV lays both on one time axis.
 - **The format** (`evre-fast-rec/1`, FAST_PLAN.md section 8.3): pieces, each a name of 4 bytes and a length before
@@ -3191,7 +3203,7 @@ A device whose STATUS has `CAP_AUTO_SEND` (bit 11) can send its read-only block 
 What the Studio does:
 
 - **On:** CONFIG is read, then written with WRITE_ACK as (CONFIG & `0x0004`) | `0x0008` | (prescaler << 8): MSG_ENABLE kept as read, AUTO_SEND set, SYS_RESET and DFU always 0 (HEARTBEAT is the device's). At 100 Hz the prescaler is 79: `0x4F08`. The Log says *auto send on: the device sends its read-only block 100 times a second*.
-- **The frames:** each READ_RESP from the device's slave at `0xD000` that answers no request fills the registers wholly inside it, and is one sample tick: a point on the chart per plotted register, one CSV row. The answer to a read is matched by slave, function, offset **and** count (18.6), so a frame is never taken for the answer to a read of part of the block (the Monitor's READ of `0xD000`, 4 bytes, still gets its 4 bytes).
+- **The frames:** each READ_RESP from the device's slave at `0xD000` that answers no request fills the registers wholly inside it, and is one sample tick: a point on the chart per plotted register, one CSV row. The answer to a read is matched by slave, function, offset **and** count (18.6), so a frame is never taken for the answer to a read of part of the block (the Monitor's READ of `0xD000`, 4 bytes, still gets its 4 bytes). The Monitor (with *Log frames* ticked) shows each frame as `READ_RESP (not a pending request)`: it answers no request (10.2).
 - **The polls** read everything else (CONFIG, the writable registers, the messages): the registers the last frame covered leave the blocks (13.3); until the first frame, everything is polled, and the polls give the chart points and the CSV rows, so a device that
 never sends a frame still gives samples. From the first frame on, a poll gives no chart point and no CSV row: the frames do. Poll and its interval work as before, for the rest.
 - **The device's host watchdog:** while on, CONFIG is read every 100 ms whatever the polling is (Poll off, or nothing left to poll), so a device that stops its actuators after 2 s without a request never does. A read that finds AUTO_SEND cleared (the device reset, or another client wrote CONFIG) is logged once, *the device stopped auto send (reset?)*; the box unticks and the Studio does not switch it on again by itself.
@@ -3253,7 +3265,7 @@ its **Log** tick (below). The tooltip holds all of it, the channels' names and t
 
 | Part | Behaviour |
 |---|---|
-| **▶&nbsp;Start&nbsp;stream** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;ADC**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
+| **▶&nbsp;Start&nbsp;stream** | Switches the stream on: the stream's `rate_reg` (if the map names one) is read for the rate the device was set to, then its `enable` register is written 1 with WRITE_ACK. A stream without `enable` is the device's own business: Start only listens for its blocks. The button turns red, **■&nbsp;Stop&nbsp;stream**, which writes 0. Never saved: it changes the device, so every stream is off at every start. Its tooltip says what it writes. |
 | The&nbsp;rate | *off · 10.0 k samples/s* (the rate set, as in the header) while off; *waiting for the first block*; then *10.0 k samples/s (+32 ppm)*: the samples a second as the Studio's clock measures the device's, and the correction against the rate the device was set to (below). Its tooltip counts the samples and blocks since Start, the bad blocks, and the samples not shown (below). |
 | Lost | *lost 0*, or *lost 1 024* in amber: samples the device numbered that never arrived, counted from the blocks' numbers (a gap, never filled in). |
 | **Log** | At the end of the stream's header, on by default: while **● Record CSV** runs the stream is written beside the CSV (`run.ADC.evrs`, 12.7), as a register's **Log** column puts it into the CSV. A whole stream or none: each block carries every channel of its instants and the file keeps the blocks as the device sent them, so there is no tick per channel (the tooltip says so). Off: not written, its lines still plot. Taken when a recording starts; kept by the stream's name (`fast/notLogged`). |
@@ -3438,7 +3450,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/measureSplit` | empty | on&nbsp;change | The place of the handle between the chart and the measure table (`QSplitter::saveState`); empty: the chart 600 to the table's 170, shared 4:1 when the tab grows (8). A recording's window keeps its own, `recording/measureSplit`. |
 | `chart/measureColumns` | empty | on&nbsp;change | The measurement columns hidden, by key (`atA`, `atB`, `diff`, `min`, `max`, `mean`, `rms`, `std`, `p2p`, `area`, `areaHours`, `total`); empty: all shown (8). |
 | `chart/math` | empty | on&nbsp;change | Math lines: one text per line, `name⇥unit⇥formula⇥1\|0`. The last field means shown, and a line without it counts as shown. |
-| `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/window`, `recording/math`, …); Memory, RAM and Smooth are not used there. |
+| `recording/…` | as&nbsp;`chart/…` | on&nbsp;change | The recording windows' chart (12.6): the same keys as `chart/` (`recording/math`, `recording/measureColumns`, …); Memory, RAM and Smooth are not used there, and `recording/window` is written but a file opens with all of it in view. |
 | `recording/recent` | empty | at&nbsp;each&nbsp;open&nbsp;or&nbsp;export | The last 8 recordings opened or exported, newest first; one whose file is gone is taken off with a click on it, and **Clear the list** empties it (12.6). |
 | `fast/notLogged` | empty | at&nbsp;each&nbsp;tick | The fast streams whose **Log** is off in the Fast streams card, by the map's stream name: not written beside a CSV recording (13.9). |
 | `recording/linesHidden` | empty | at&nbsp;each&nbsp;tick | The lines unticked in a recording window's **Lines** list, by name (`SUPPLY_V`, `ADC.I_LOAD`): a recording opened later comes without them (12.6). |
@@ -3576,7 +3588,7 @@ The Studio sets **DTR** after opening a serial port, because many USB CDC device
 
 ### 15.7 The poll rate is lower than the interval asks for
 
-Read the amber hint under the poll rate (13.6):
+Read the amber hint at the end of the status bar, at the right of the link's numbers (13.6):
 
 - It suggests an In flight value: set it, if the link allows pipelining (TCP usually does, a UART does not).
 - It says the link takes *n* ms per answer: the link or the device is the limit. Use a longer interval, or fewer registers in the map.
@@ -3847,7 +3859,7 @@ they have (26.7).
 | Message | Cause |
 |---|---|
 | The operating system's message, e.g. *No such file or directory* | The file cannot be read. |
-| `line L, column C: <what>` | Not valid JSON: *',' or '}' is expected*, *the string is not closed*, … JSON allows no comments and no trailing commas. |
+| `line L, column C: <what>` | Not valid JSON: *',' or '}' is expected*, *the string is not closed*, … JSON allows no comments and no trailing commas: a comma before `]` reads *line 12, column 3: unexpected character ']'*, the place of the `]`. |
 | `not a map: the file is not a JSON object` | A top-level array, number or string. |
 | `"registers" is not a list`, `"registers": an item is not an object` | |
 | `device_id: not a 16-bit number` | |
@@ -8809,7 +8821,7 @@ The device does what its map says:
 
 | The&nbsp;map&nbsp;says | The simulator |
 |---|---|
-| `device_id` | DEVICE_ID; STATUS reports protocol revision 1. The protocol's bank (`0xA000`…) is never moved or reset, even when the map lists its registers |
+| `device_id` | DEVICE_ID; STATUS reads `0x0001`: protocol revision 1 and no optional capability (no auto send, so the Studio's Auto send is not offered, 13.8). The protocol's bank (`0xA000`…) is never moved or reset, even when the map lists its registers |
 | `default` | the register's value at the start (else 0) |
 | a&nbsp;read-only&nbsp;number | moves: a float as a slow sine wave, an integer as a slow wave, inside `min` … `max` when given; a `u32` in `ms` counts milliseconds. Registers with value names, fields or a default stay put |
 | `"access": "wo"` | takes writes, refuses reads (ERROR_RESP 3) |
@@ -9024,7 +9036,8 @@ The keys, once the cards have the focus (the Tab key reaches them after the tool
 | Esc | No register selected, here and in the Registers tab, as a click on empty room. |
 | Menu,&nbsp;Shift&nbsp;+&nbsp;F10 | The menu of the selected register, at its chip. |
 
-The menu, always the same nine items; one that cannot be used now is greyed with the reason in its tooltip (on a fast
+The menu, always the same eight items, a separator between the register's three and the five copies; one that cannot
+be used now is greyed with the reason in its tooltip (on a fast
 card the register's items say *A fast block has records, not registers*):
 
 | Item | What it does |
@@ -9043,11 +9056,12 @@ bus, its chips selected and scrolled into view (when the tab was hidden, at the 
 
 ### 37.5 Other reads
 
-- **A manual READ.** A READ sent from the Monitor (10.1) shows as a card at the top, titled *Manual read 0xD080 · 8
+- **A manual READ.** A READ sent from the Monitor (10.1) shows as a card at the top, the first card (above the last
+  write's), titled *Manual read 0xD080 · 8
   bytes*, with both strips, the map's chips and decode on it and the amber stripe (read once). It stays until the next
   one; the Monitor's answer line ends with *(shown in the Dump)*.
 - **The last write.** A write from the Registers tab's editor (Allow writes on) or from the Monitor shows as a card
-  at the top, titled *Write SETPOINT @ 0xD080 · 4 bytes* (the register it starts at, when one does): the request is
+  at the top, under a manual read's when there is one, titled *Write SETPOINT @ 0xD080 · 4 bytes* (the register it starts at, when one does): the request is
   the WRITE_ACK (or WRITE) strip with *DATA payload* under the pill *4 bytes ↓*, the grid holds the written bytes as
   the register's chip and its decode line (the value written), and the reply is the WRITE_ACK_RESP strip (*DATA
   none*: the answer carries no status, *CRC OK*) or the device's ERROR_RESP. A WRITE is never answered: its reply label says *none: WRITE is not
