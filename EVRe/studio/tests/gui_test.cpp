@@ -7958,6 +7958,16 @@ private:
 		check(sqrtFirst && box->text() == volts + QStringLiteral(" * sqrt()")
 						&& box->cursorPosition() == int(box->text().size()) - 1,
 				"formula completion: a function goes in as sqrt(), the cursor inside; the rest of the formula kept");
+		/* Tab takes the one picked too (the box took the key first and moved the focus on, nothing taken) */
+		box->setText(QString());
+		box->setFocus();
+		QTest::keyClicks(box, volts.left(3));
+		const QString best = completer->shown().value(0);
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Tab);
+		if (best.isEmpty() || box->text() != best)
+			std::printf("     (Tab: \"%s\" offered first, the box \"%s\")\n", qPrintable(best), qPrintable(box->text()));
+		check(!best.isEmpty() && box->text() == best && completer->shown().isEmpty() && dialog.isVisible(),
+				"formula completion: Tab puts the one picked in, as Enter does (the list closed, the dialog open)");
 		/* Esc closes the list; a word that is a whole name already offers nothing */
 		box->setText(QString());
 		QTest::keyClicks(box, QStringLiteral("ab"));

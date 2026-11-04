@@ -44,6 +44,11 @@ public:
 	QStringList shown() const; /* the names in the open list, best first; none when it is closed (tests) */
 	QCompleter *completer() const { return completer_; }
 
+protected:
+	/* Tab on the open list takes the one picked: QCompleter hands the key to the box first, and the box moved the
+	 * focus on, closing the list with nothing taken */
+	bool eventFilter(QObject *watched, QEvent *event) override;
+
 private:
 	void update();                          /* a key typed: the list for the word at the cursor, or none */
 	void accept(const QModelIndex &index);  /* one taken: it replaces the word */

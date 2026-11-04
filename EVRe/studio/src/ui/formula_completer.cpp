@@ -4,6 +4,7 @@
 
 #include <QAbstractItemView>
 #include <QCompleter>
+#include <QKeyEvent>
 #include <QLineEdit>
 #include <QStandardItemModel>
 #include <algorithm>
@@ -49,6 +50,20 @@ FormulaCompleter::FormulaCompleter(QLineEdit *box, const QVector<RegDef> &regist
 	completer_->setMaxVisibleItems(10);
 	connect(box_, &QLineEdit::textEdited, this, &FormulaCompleter::update);
 	connect(completer_, qOverload<const QModelIndex &>(&QCompleter::activated), this, &FormulaCompleter::accept);
+	completer_->popup()->installEventFilter(this); /* after the completer's own: this one sees a key first */
+}
+
+bool FormulaCompleter::eventFilter(QObject *watched, QEvent *event) {
+	if (watched == completer_->popup() && event->type() == QEvent::KeyPress) {
+		const auto *key = static_cast<QKeyEvent *>(event);
+		const QModelIndex current = completer_->popup()->currentIndex();
+		if (key->key() == Qt::Key_Tab && key->modifiers() == Qt::NoModifier && current.isValid()) {
+			completer_->popup()->hide();
+			accept(current);
+			return true;
+		}
+	}
+	return QObject::eventFilter(watched, event);
 }
 
 void FormulaCompleter::addStreams(const QVector<StreamDef> &streams) {
