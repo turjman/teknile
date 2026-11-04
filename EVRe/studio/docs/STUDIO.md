@@ -7867,7 +7867,8 @@ slave address, map and memory on the same port. It differs from the Python devic
   1 ms timer; 0 stops it; so does a host silent for 2 s (its host watchdog, which then sets the enable back to 0)
   and the connection's end. A stream's `rate_reg` holds the rate it runs at. The test aids (`FastSource::Options`):
   `--fast-lose N` (every N-th block is not sent: its records keep their numbers, the next block says LOST),
-  `--fast-ppm P` (the sample clock P parts in a million fast; negative, slow), `--fast-first K` (the first block
+  `--fast-ppm P` (the sample clock P parts in a million fast; negative, slow; the correction shown follows it at
+  10 ppm a second, 13.9), `--fast-first K` (the first block
   starts at record K: just below 2^32 walks a host across the wrap), `--fast-rate R` (R records a second in place of
   the map's rate; the rate register says so). For Auto send, `--tick-hz N` plays a device whose frames are timed by
   a tick of N Hz, not a timer (a main loop on a 1 ms tick: 1000): a rate asked for is rounded to N / n and is at most
@@ -8743,7 +8744,9 @@ ADC: 30235 records in 290 blocks, 0 lost, 0 bad, 0 of a newer kind, 3.0 s; 10000
 ```
 
 (`--json`: one object with `records`, `blocks`, `lost`, `bad_blocks`, `newer_blocks`, `starts`, `seconds`, `rate`,
-`ppm`, `stopped`.) When no block came in 2 s, or the link closed, it stops and the exit code is 1; a stream the map
+`ppm`, `stopped`.) The rate and the ppm are the clock's fit at the end (13.9), which follows a device's true rate by
+at most 10 ppm a second: a short run shows less of a fast or slow clock than there is (`evre-sim --fast-ppm 1000`:
+about 70 ppm after 8 s, 330 after a minute). When no block came in 2 s, or the link closed, it stops and the exit code is 1; a stream the map
 does not have, or one with an error in the map's checks, is 2. `evre info` lists the map's streams (*fast stream
 ADC: window 0xDC00, 1024 bytes, 10000 records/s, 254 records a block; I_LOAD [A] i16, V_BUS [V] i16; enable
 ADC_STREAM*; with `--json` a `streams` list), and `evre validate` checks them.
