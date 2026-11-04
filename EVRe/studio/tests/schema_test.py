@@ -14,6 +14,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCHEMA = os.path.join(HERE, '..', 'docs', 'evre-map-1.schema.json')
+REPOSITORY = os.path.join(HERE, '..', '..', '..')
+# where the schema can be fetched: the file itself on the repository's main branch (an $id of a repository that did
+# not exist named it before)
+RAW = 'https://raw.githubusercontent.com/turjman/teknile/main/'
 MAP_FORMAT = os.path.join(HERE, '..', 'docs', 'MAP_FORMAT.md')
 
 STREAM = {'name': 'ADC', 'addr': '0xDC00', 'size': 1024, 'rate': 10000, 'enable': 'ADC_STREAM',
@@ -41,9 +45,12 @@ def main():
         schema = json.load(f)
     jsonschema.Draft202012Validator.check_schema(schema)
     print('PASS the schema itself is valid (draft 2020-12)')
+    where = RAW + os.path.relpath(SCHEMA, REPOSITORY).replace(os.sep, '/')
+    named = schema.get('$id') == where
+    print('%s its $id is where it is: %s' % ('PASS' if named else 'FAIL', schema.get('$id')))
     validator = jsonschema.Draft202012Validator(schema)
     files = sys.argv[1:] or sorted(glob.glob(os.path.join(HERE, '..', 'maps', '*.json')))
-    failed = 0
+    failed = 0 if named else 1
     for path in files:
         with open(path, encoding='utf-8') as f:
             doc = json.load(f)

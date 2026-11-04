@@ -372,7 +372,8 @@ This chapter installs or builds the Studio, starts the fake device from `tests/`
 | `evre-tools-<version>-linux-x86_64.tar.gz` | Linux: `evre` and `evre-sim` with the Qt libraries they need (`bin/`, `lib/`). |
 
 The Windows installer and zip hold the Studio, `evre`, `evre-sim`, the Qt runtime, the example maps and bus file (`maps/`),
-README, LICENSE and NOTICE. The installer is not code-signed: Windows SmartScreen may say it does not know it;
+README, LICENSE, NOTICE and the map format's JSON Schema (`evre-map-1.schema.json`, 32.5; the Linux tools' archive has it
+too). The installer is not code-signed: Windows SmartScreen may say it does not know it;
 choose **More info**, then **Run anyway**.
 
 **Build from source.** You need:
@@ -7958,7 +7959,8 @@ settings but takes no picture and does not quit.
   no channel, a `bytes` channel, a rate of 0, an `enable` or `rate_reg` that names nothing, an `enable` a host cannot
   write, a name used twice, no name)
 
-`tests/schema_test.py` checks the schema itself (draft 2020-12), every map in `maps/` (or the files named), and that
+`tests/schema_test.py` checks the schema itself (draft 2020-12) and its `$id` (the file's place on the repository's
+main branch), every map in `maps/` (or the files named), and that
 a broken map is refused; a stream that is valid, and the refusals the schema can say (the window outside the device
 bank, too small, a rate of 0, no channel, a `bytes` channel, a key missing); and that MAP_FORMAT.md's stream and
 channel tables list exactly the schema's keys. It needs the `jsonschema` package and says SKIP without it.
@@ -8583,7 +8585,9 @@ step. A sheet that cannot be read names the line: *line 4: bad address "0xG0"*.
 ### 32.5 The JSON Schema
 
 `docs/evre-map-1.schema.json` describes the format for tools: editors that complete and check JSON, CI jobs that
-validate maps, other programs that read them. It allows the keys the Studio does not know (tools keep them) and
+validate maps, other programs that read them. Its `$id` is where it can be fetched, the file on the repository's main
+branch (`https://raw.githubusercontent.com/turjman/teknile/main/EVRe/studio/docs/evre-map-1.schema.json`), and the
+downloads hold it beside the README. It allows the keys the Studio does not know (tools keep them) and
 `null` in the optional keys (an overlay removes a key with it). `tests/schema_test.py` checks the maps against it
 (26.7).
 
