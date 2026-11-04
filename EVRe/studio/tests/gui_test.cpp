@@ -139,6 +139,7 @@
 #include "ui/map_editor_tab.h"
 #include "ui/limit_spin_box.h"
 #include "ui/map_table_model.h"
+#include "ui/name_table.h"
 #include "ui/monitor_tab.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
@@ -573,6 +574,7 @@ public:
 		staleValues();
 		decodedFields();
 		quickWrite();
+		registersFixes();
 		groups();
 		chart();
 		chartManyLines();
@@ -645,8 +647,11 @@ public:
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
+		recordingFixes();
+		startupFixes();
 		recentMissing();
 		mapEditor();
+		mapEditorFixes();
 		clearMapEditorSelection();
 		mapStreamsPage();
 		clearDialogSelection();
@@ -659,6 +664,7 @@ public:
 		dumpCards();
 		dumpColours();
 		dumpLive();
+		dumpTipFollows();
 		dumpMouse();
 		clearRegistersSelection();
 		clearDumpSelection();
@@ -1335,9 +1341,11 @@ private:
 					qPrintable(popUpTexts.join(QStringLiteral(" / "))));
 		check(added && summed && writePopUps == 1 && popUpTexts.value(0).contains(refusedMarker)
 						&& other_.readU8(addrs[0]) == 1 && other_.readU8(addrs[1]) == 1
-						&& window_.statusBar()->currentMessage() == QLatin1String("2 of 3 registers written"),
+						&& window_.statusBar()->currentMessage().startsWith(
+								QLatin1String("2 of 3 registers written; refused: BULK_NOWHERE (")),
 				"bulk write: a register the device refuses among them: the others written all the same, one Warning names "
-				"the refused one, one pop-up for the three, \"2 of 3 registers written\"");
+				"the refused one, one pop-up for the three, \"2 of 3 registers written; refused: BULK_NOWHERE (...)\" in the "
+				"status bar (the count names the refusal: it is not hidden behind it)");
 		if (doc) doc->undoStack()->undo();
 		u8Cell_ = valueCell(table_, regs_.u8.name); /* the table's rows again: an index of before is gone */
 
@@ -1893,6 +1901,48 @@ private:
 		language::apply(*qApp, QStringLiteral("ar"));
 		QTest::qWait(200);
 		ok = clear("right to left") && ok;
+		/* a second message: its count ("+1 more") shown whole, nothing of the notice cut */
+		notice->post(LogLevel::Warning, QStringLiteral("a second notice in right-to-left, with a count beside it"));
+		QApplication::processEvents();
+		/* at every width: shown whole, or (too little room beside the tabs) said in the status bar instead */
+		bool countWhole = notice->isVisible() && notice->sizeHint().width() <= notice->width();
+		int shownAt = 0, inStatusBar = 0;
+		for (int width = 900; width <= 1600; width += 25) {
+			window_.resize(width, was.height());
+			QTest::qWait(20);
+			if (notice->isVisible()) {
+				shownAt++;
+				if (notice->sizeHint().width() > notice->width()) {
+					countWhole = false;
+					std::printf("     (the notice in Arabic at %d: %d px wide, its text needs %d: \"%s\")\n", window_.width(),
+							notice->width(), notice->sizeHint().width(), qPrintable(notice->text()));
+				}
+			} else if (!window_.statusBar()->currentMessage().isEmpty()) {
+				inStatusBar++;
+			}
+		}
+		window_.resize(was);
+		QTest::qWait(50);
+		std::printf("     (the notice in Arabic across the widths: shown whole at %d, in the status bar at %d)\n", shownAt,
+				inStatusBar);
+		check(countWhole && shownAt > 0, "the notice in right-to-left (Arabic): at every window width as wide as its text, "
+				"its count (+1 more) and link never cut; with too little room beside the tabs the status bar says it");
+		/* the Log in Arabic: its lines start with the date, left to right; the tab opens at their start */
+		if (auto *view = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"))) {
+			if (auto *eventLog = window_.findChild<EventLog *>())
+				eventLog->add(LogLevel::Warning, QStringLiteral("a long line for the Log in Arabic ") + QString(300, QLatin1Char('x')),
+						false);
+			tabs->setCurrentIndex(MainWindow::TabLog);
+			QTest::qWait(100);
+			QScrollBar *across = view->horizontalScrollBar();
+			const bool atStart = view->layoutDirection() == Qt::LeftToRight && across->maximum() > 0
+					&& across->value() == across->minimum();
+			if (!atStart)
+				std::printf("     (the Log in Arabic: direction %d, scrolled %d of %d..%d)\n", int(view->layoutDirection()),
+						across->value(), across->minimum(), across->maximum());
+			check(atStart, "the Log tab in Arabic: left to right, opened at its lines' start (the date), not scrolled to their end");
+			tabs->setCurrentIndex(0);
+		}
 		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
 			window_.resize(size);
 			QTest::qWait(100);
@@ -1918,6 +1968,35 @@ private:
 		const QString text = logText();
 		check(text.contains(QLatin1String("not written")) && text.contains(QLatin1String("written: ")),
 				"the Log tab: the writes, and the one not written");
+		/* Show info off: the info lines already there go too, not only the new ones; on again they are back */
+		auto *log = window_.findChild<EventLog *>();
+		QCheckBox *showInfo = nullptr;
+		if (log)
+			for (QCheckBox *box : log->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Show info")) showInfo = box;
+		if (!log || !showInfo) {
+			check(false, "the Log tab: Show info");
+			return;
+		}
+		log->add(LogLevel::Info, QStringLiteral("an info line for Show info"), false);
+		log->add(LogLevel::Warning, QStringLiteral("a warning line for Show info"), false);
+		const bool infoThere = logText().contains(QLatin1String("an info line for Show info"));
+		showInfo->setChecked(false);
+		const QString off = logText();
+		log->add(LogLevel::Info, QStringLiteral("a second info line for Show info"), false);
+		const bool newHidden = !logText().contains(QLatin1String("a second info line"));
+		showInfo->setChecked(true);
+		const QString on = logText();
+		if (!infoThere || off.contains(QLatin1String("INFO ")) || !newHidden || !on.contains(QLatin1String("a second info line")))
+			std::printf("     (Show info: there %d, off with an info line %d, a new one hidden %d, on: the new one back %d)\n",
+					int(infoThere), int(off.contains(QLatin1String("INFO "))), int(newHidden),
+					int(on.contains(QLatin1String("a second info line"))));
+		check(infoThere && !off.contains(QLatin1String("an info line for Show info")) && !off.contains(QLatin1String("INFO "))
+						&& off.contains(QLatin1String("a warning line for Show info")) && newHidden
+						&& on.contains(QLatin1String("an info line for Show info"))
+						&& on.contains(QLatin1String("a second info line for Show info")) && on.contains(QLatin1String("INFO ")),
+				"the Log tab, Show info off: the info lines already in the tab are hidden too (the warnings stay), a new one "
+				"is not shown; on again, all of them are back, the one logged meanwhile too");
 	}
 
 	/* 8. stale: polling paused, values go grey */
@@ -3878,6 +3957,9 @@ private:
 			if (stop) stop->click();
 			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
 			const bool written = QFileInfo::exists(evrs) && logText().contains(QLatin1String("fast stream ADC recorded: "));
+			check(logText().contains(QStringLiteral("fast stream ADC recorded: %1 (").arg(QDir::toNativeSeparators(evrs))),
+					"fast streams recorded: the Log's .evrs line gives its path in the system's separators, as the CSV's "
+					"line under it does (backslashes on Windows)");
 			RecordingWindow *opened = nullptr, *alone = nullptr, *cut = nullptr;
 			/* a fast math line of the recording's window's own (recording/math), computed from the records recorded */
 			const QVariant mathBefore = QSettings().value(QStringLiteral("recording/math"));
@@ -8841,6 +8923,46 @@ private:
 
 	/* The mouse: hover lights a register and says its byte; a click selects it in the Registers tab too, a double-click
 	 * goes there; the Registers tab's Show in dump and its current row */
+	/* a byte's tooltip says what the byte holds now: new bytes under it while it is up, it changes with them */
+	void dumpTipFollows() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !view) {
+			check(false, "Dump: a byte's tooltip follows (no tab)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		if (auto *follow = tab->findChild<QPushButton *>(QStringLiteral("dumpFollow"))) follow->click();
+		QApplication::processEvents();
+		int card = -1;
+		const uint16_t addr = regs_.volts.addr;
+		(void) QTest::qWaitFor([&] {
+			const QVector<DumpBlock> &blocks = view->blocks();
+			for (int i = 0; i < blocks.size() && card < 0; i++)
+				if (blocks[i].kind == DumpBlock::Read && blocks[i].addr <= addr && addr < blocks[i].addr + blocks[i].size)
+					card = i;
+			return card >= 0;
+		}, 3000);
+		bool follows = false;
+		QString first, now;
+		if (card >= 0) {
+			const QPoint at = view->byteRect(card, addr - view->blocks()[card].addr).center();
+			QToolTip::hideText();
+			QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
+			QApplication::sendEvent(view->viewport(), &help);
+			first = QToolTip::text();
+			follows = QTest::qWaitFor([&] {
+				now = QToolTip::text();
+				return QToolTip::isVisible() && now != first && now == view->toolTipAt(at);
+			}, 4000);
+			QToolTip::hideText();
+		}
+		if (!follows) std::printf("     (the tooltip: \"%s\", then \"%s\")\n", qPrintable(first), qPrintable(now));
+		check(card >= 0 && !first.isEmpty() && follows, "Dump: a byte's tooltip follows the byte under it (the value now, "
+				"not the one it held when the tooltip opened)");
+	}
+
 	void dumpMouse() {
 		auto *tabs = window_.findChild<QTabWidget *>();
 		DumpTab *tab = dumpTab();
@@ -11969,6 +12091,267 @@ private:
 		QApplication::processEvents();
 	}
 
+	/* 1.4.1 fixes on the Registers tab: the glow drawn, Decoded wide enough and widened by hand, a selected row keeps
+	 * its grey, F2 from any cell of a row, a bit in no field, the names list following with the focus, a name picked
+	 * logged as its number, no editor without a link; the cards' plurals and the saved path; tooltips that were missing */
+	void registersFixes() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *registersTab = window_.findChild<RegistersTab *>();
+		if (!tabs || !registersTab) {
+			check(false, "Registers fixes: the tabs");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		allowWrites_->setChecked(true);
+		QApplication::processEvents();
+		const QModelIndex u8 = valueCell(table_, regs_.u8.name);
+		const auto distance = [](const QColor &a, const QColor &b) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+		};
+		/* the cell's background, left of its right-aligned value */
+		const auto background = [&](const QModelIndex &cell) {
+			const QImage image = table_->viewport()->grab(table_->visualRect(cell)).toImage();
+			return image.pixelColor(int(4 * image.devicePixelRatio()), image.height() / 2);
+		};
+
+		/* the glow: a changed value's cell in the accent colour for a moment */
+		table_->clearSelection();
+		table_->selectionModel()->setCurrentIndex(valueCell(table_, regs_.danger.name), QItemSelectionModel::NoUpdate);
+		table_->scrollTo(u8);
+		QTest::qWait(RegisterModel::GLOW_MS + 100);
+		const QColor plain = background(u8);
+		const int next = (other_.readU8(regs_.u8.addr) + 7) % 100;
+		other_.writeU8(regs_.u8.addr, uint8_t(next));
+		const bool changed = cellShows(u8, QString::number(next));
+		const QColor glowing = background(u8);
+		QTest::qWait(RegisterModel::GLOW_MS + 100);
+		const QColor faded = background(u8);
+		if (!changed || distance(glowing, plain) < 20 || distance(faded, plain) > 6)
+			std::printf("     (the glow: %s plain, %s just changed, %s after %d ms)\n", qPrintable(plain.name()),
+					qPrintable(glowing.name()), qPrintable(faded.name()), int(RegisterModel::GLOW_MS) + 100);
+		check(changed && distance(glowing, plain) >= 20 && distance(faded, plain) <= 6,
+				"Registers: a changed value's cell glows (its background toward the accent), and the glow is gone 0.7 s later");
+
+		/* a selected row keeps its stale grey: the value's text in the muted colour, none in the plain text colour */
+		table_->selectionModel()->select(u8, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+		poll_->setChecked(false);
+		const bool stale = QTest::qWaitFor([&] {
+			return u8.data(Qt::ForegroundRole).value<QColor>() == Theme::colors().muted;
+		}, 3000);
+		QTest::qWait(100);
+		int nearMuted = 0, nearText = 0;
+		{
+			const QImage image = table_->viewport()->grab(table_->visualRect(u8)).toImage();
+			for (int y = 0; y < image.height(); y++)
+				for (int x = 0; x < image.width(); x++) {
+					const QColor c = image.pixelColor(x, y);
+					if (distance(c, Theme::colors().muted) < 30) nearMuted++;
+					if (distance(c, Theme::colors().text) < 30) nearText++;
+				}
+		}
+		poll_->setChecked(true);
+		(void) QTest::qWaitFor([&] { return u8.data(Qt::ForegroundRole).value<QColor>() != Theme::colors().muted; }, 3000);
+		if (!stale || nearMuted < 3 || nearText > 0)
+			std::printf("     (a selected stale value: stale %d, %d pixels near the muted colour, %d near the text's)\n",
+					int(stale), nearMuted, nearText);
+		check(stale && nearMuted >= 3 && nearText == 0,
+				"Registers: a selected row's stale value stays grey (the selection's text colour does not cover it)");
+
+		/* F2 on the row's name: its value edited, the selection kept */
+		table_->selectionModel()->setCurrentIndex(u8.siblingAtColumn(RegisterModel::ColName),
+				QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+		QTest::keyClick(table_, Qt::Key_F2);
+		QLineEdit *editor = nullptr;
+		(void) QTest::qWaitFor([&] {
+			for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+				if (line->isVisible()) editor = line;
+			return editor != nullptr;
+		}, 2000);
+		const QModelIndex edited = table_->currentIndex();
+		if (editor) QTest::keyClick(editor, Qt::Key_Escape);
+		check(editor && edited.row() == u8.row() && edited.column() == RegisterModel::ColValue,
+				"Registers: F2 on any cell of a row (its name here) edits the row's value");
+
+		/* no editor without a link, as the quick-write panel's controls */
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QApplication::processEvents();
+		const bool notEditable = !(valueCell(table_, regs_.u8.name).flags() & Qt::ItemIsEditable);
+		table_->selectionModel()->setCurrentIndex(valueCell(table_, regs_.u8.name), QItemSelectionModel::ClearAndSelect
+				| QItemSelectionModel::Rows);
+		QTest::keyClick(table_, Qt::Key_F2);
+		QTest::qWait(200);
+		bool editorOpened = false;
+		for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+			if (line->isVisible()) editorOpened = true;
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		const bool back = QTest::qWaitFor([&] { return bool(valueCell(table_, regs_.u8.name).flags() & Qt::ItemIsEditable); }, 5000)
+				&& cellShows(valueCell(table_, regs_.u8.name), QString::number(next), 5000);
+		check(disconnectButton && notEditable && !editorOpened && connectButton && back,
+				"Registers: not connected, a value cannot be edited (no editor, F2 or a double-click), as the quick-write "
+				"panel cannot write; connected again it can");
+
+		/* the quick-write panel: a bit in no field, the names list with the focus, a name picked logged as its number */
+		auto *frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		auto *enumList = frame ? frame->findChild<QComboBox *>(QStringLiteral("qwEnum")) : nullptr;
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+		QApplication::processEvents();
+		BitView *bitView = frame ? frame->findChild<BitView *>(QStringLiteral("bitView")) : nullptr;
+		int freeBit = -1;
+		for (const RegDef &def : map_.regs) {
+			if (def.name != QLatin1String("CONFIG")) continue;
+			for (int bit = 8 * def.size - 1; bit >= 0 && freeBit < 0; bit--)
+				if (std::none_of(def.fields.begin(), def.fields.end(),
+							[bit](const BitField &f) { return bit >= f.lsb && bit < f.lsb + f.width; }))
+					freeBit = bit;
+		}
+		QString freeTip;
+		if (bitView && freeBit >= 0) {
+			const QPoint at = bitView->bitCell(freeBit).center();
+			QToolTip::hideText();
+			QHelpEvent help(QEvent::ToolTip, at, bitView->mapToGlobal(at));
+			QApplication::sendEvent(bitView, &help);
+			freeTip = QToolTip::text();
+			QToolTip::hideText();
+		}
+		check(freeBit >= 0 && freeTip.contains(QStringLiteral("bit %1: click to flip").arg(freeBit))
+						&& freeTip.contains(QLatin1String("in no field")),
+				"the bit view: a bit in no field says its number and that a click flips it, as a field's bit does (not "
+				"\"in no field\" alone)");
+
+		const RegDef &named = regs_.enumU8;
+		qint64 pick = -1;
+		for (auto it = named.enumValues.begin(); it != named.enumValues.end() && pick < 0; ++it)
+			if (it.key() != 0) pick = it.key();
+		bool picked = false, logged = false, follows = false;
+		if (enumList && pick > 0 && named.enumValues.contains(0)) {
+			other_.writeU8(named.addr, 0);
+			table_->setCurrentIndex(valueCell(table_, named.name));
+			(void) QTest::qWaitFor([&] { return enumList->isVisible() && enumList->currentIndex() == enumList->findData(0); }, 3000);
+			window_.activateWindow();
+			(void) QTest::qWaitForWindowActive(&window_, 1000);
+			const int entry = enumList->findData(pick);
+			enumList->setFocus();
+			enumList->setCurrentIndex(entry);
+			emit enumList->activated(entry);
+			picked = QTest::qWaitFor([&] { return other_.readU8(named.addr) == pick; }, 3000);
+			logged = QTest::qWaitFor([&] {
+				return logText().contains(QStringLiteral("written: %1 = %2 (").arg(named.name).arg(pick));
+			}, 2000);
+			/* the device changes it meanwhile: the list follows, its focus kept after the pick */
+			other_.writeU8(named.addr, 0);
+			follows = QTest::qWaitFor([&] { return enumList->currentIndex() == enumList->findData(0); }, 3000);
+		}
+		check(picked && logged, "the named values list: a name picked is written and logged as its number (\"= 2\"), as "
+				"typed, not as hex (\"= 0x2\")");
+		check(follows, "the named values list follows the device's value while it has the focus (after a pick), only not "
+				"while its list is open");
+		table_->setCurrentIndex(u8);
+
+		/* the map card and the Devices card: "1 register", "1 device", their plurals; the saved path never cut after
+		 * "C:"; the tooltips of Record CSV, Clear cursors, Mean, RMS and Latency */
+		{
+			Sidebar fresh;
+			DeviceMap one;
+			one.device = QStringLiteral("One");
+			one.path = QStringLiteral("C:/maps/one.json");
+			const auto mapLine = [&] {
+				for (QLabel *label : fresh.findChildren<QLabel *>())
+					if (label->text().contains(QLatin1String("one.json"))) return label->text();
+				return QString();
+			};
+			fresh.showMap(one, 1, false);
+			const QString single = mapLine();
+			fresh.showMap(one, 2, true);
+			const QString several = mapLine();
+			if (!single.contains(QStringLiteral("1 register · one.json")) || !several.contains(QLatin1String("2 registers")))
+				std::printf("     (the map card: \"%s\", \"%s\")\n", qPrintable(single), qPrintable(several));
+			check(single.contains(QStringLiteral("1 register · one.json")) && !single.contains(QLatin1String("registers"))
+							&& several.contains(QStringLiteral("2 registers · one.json · modified")),
+					"the map card: \"1 register · one.json\", \"2 registers · one.json · modified\" (no \"1 registers\")");
+			fresh.showRecordSaved(QStringLiteral("C:/Users/someone/recordings/a folder for the bench/run_0042.csv"), 1234);
+			QLabel *saved = nullptr;
+			for (QLabel *label : fresh.findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("Saved 1234 rows"))) saved = label;
+			bool noLineAtColon = saved != nullptr;
+			if (saved) {
+				const QString text = saved->text();
+				QTextLayout layout(text, saved->font());
+				const int width = QFontMetrics(saved->font()).horizontalAdvance(QStringLiteral("Saved 1234 rows to C:")) + 4;
+				layout.beginLayout();
+				for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+					line.setLineWidth(width);
+					if (text.mid(line.textStart(), line.textLength()).trimmed().endsWith(QLatin1Char(':'))) noLineAtColon = false;
+				}
+				layout.endLayout();
+			}
+			check(noLineAtColon, "the recording card: the saved path wraps where it must, never with \"C:\" alone at a "
+					"line's end");
+		}
+		{
+			BusPanel panel;
+			BusFile bus;
+			bus.path = QStringLiteral("C:/buses/bench.json");
+			bus.devices << BusDevice{ QStringLiteral("D1"), 1, QStringLiteral("a.json"), true, QString(), {} };
+			const auto line = [&] {
+				auto *label = panel.findChild<ElidedLabel *>(QStringLiteral("muted"));
+				return label ? label->fullText() : QString();
+			};
+			panel.showBus(&bus, 0, {}, false, false);
+			const QString single = line();
+			bus.devices << BusDevice{ QStringLiteral("D2"), 2, QStringLiteral("a.json"), true, QString(), {} };
+			panel.showBus(&bus, 0, {}, false, true);
+			const QString several = line();
+			if (single != QStringLiteral("1 device · bench.json"))
+				std::printf("     (the Devices card: \"%s\", \"%s\")\n", qPrintable(single), qPrintable(several));
+			check(single == QStringLiteral("1 device · bench.json") && several == QStringLiteral("2 devices · bench.json · modified"),
+					"the Devices card: \"1 device · bench.json\", \"2 devices · bench.json · modified\" (no \"device(s)\")");
+		}
+		{
+			QPushButton *record = buttonWithText(QStringLiteral("●  Record CSV"));
+			QPushButton *clearCursors = buttonWithText(QStringLiteral("Clear cursors"));
+			auto *measures = window_.findChild<QTableWidget *>(QStringLiteral("measures"));
+			QString meanTip, rmsTip;
+			for (int c = 0; measures && c < measures->columnCount(); c++) {
+				const QTableWidgetItem *item = measures->horizontalHeaderItem(c);
+				if (item && item->text() == QLatin1String("Mean")) meanTip = item->toolTip();
+				if (item && item->text() == QLatin1String("RMS")) rmsTip = item->toolTip();
+			}
+			QString latencyTip;
+			for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("Latency"))) latencyTip = label->toolTip();
+			check(record && !record->toolTip().isEmpty() && clearCursors && !clearCursors->toolTip().isEmpty()
+							&& !meanTip.isEmpty() && !rmsTip.isEmpty() && !latencyTip.isEmpty(),
+					"tooltips: Record CSV, Clear cursors, the measurements' Mean and RMS, the status bar's Latency");
+		}
+		/* Decoded: as wide as its longest text (nothing cut), and a width dragged wider stays */
+		{
+			QHeaderView *header = table_->horizontalHeader();
+			const bool wasHidden = table_->isColumnHidden(RegisterModel::ColDecoded);
+			table_->setColumnHidden(RegisterModel::ColDecoded, false);
+			QApplication::processEvents();
+			const bool fits = QTest::qWaitFor([&] {
+				return static_cast<QAbstractItemView *>(table_)->sizeHintForColumn(RegisterModel::ColDecoded)
+						<= header->sectionSize(RegisterModel::ColDecoded);
+			}, 2000);
+			const int need = static_cast<QAbstractItemView *>(table_)->sizeHintForColumn(RegisterModel::ColDecoded);
+			const int wider = header->sectionSize(RegisterModel::ColDecoded) + 80;
+			header->resizeSection(RegisterModel::ColDecoded, wider);
+			QTest::qWait(1200); /* the columns are fitted twice a second */
+			const int kept = header->sectionSize(RegisterModel::ColDecoded);
+			if (!fits || kept != wider)
+				std::printf("     (Decoded: its text needs %d px, the column %d; dragged to %d, now %d)\n", need,
+						header->sectionSize(RegisterModel::ColDecoded), wider, kept);
+			check(fits && kept == wider, "Registers, Decoded: the column as wide as its longest text needs (nothing cut), "
+					"and a width dragged wider stays (it only grows by itself; Fit columns makes it narrow)");
+			table_->setColumnHidden(RegisterModel::ColDecoded, wasHidden);
+		}
+		other_.writeU8(regs_.u8.addr, 0);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		(void) cellShows(u8Cell_, QStringLiteral("0"), 3000);
+	}
+
 	/* 11. groups: several at once; "Plot shown" charts what the table shows */
 	void groups() {
 		auto *button = window_.findChild<QPushButton *>(QStringLiteral("groups"));
@@ -12003,6 +12386,136 @@ private:
 	}
 
 	/* 13. the Map editor: every change through the document, with undo; the live values stay */
+	/* 1.4.1 fixes in the Map editor: New and Open ask first while the map has changes; Ctrl+Y and Ctrl+Shift+Z redo; a
+	 * key typed into a group cell replaces the group; the Hex box shows the names' values at once; the Bit fields page
+	 * follows + Field, − Field and a rename at once */
+	void mapEditorFixes() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		auto *sidebar = window_.findChild<Sidebar *>();
+		if (!doc || !tabs || !mapTable || !sidebar) {
+			check(false, "Map editor fixes: the tab and its table");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		QApplication::processEvents();
+		QAbstractItemModel *table = mapTable->model();
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		const QString unitBefore = doc->reg(u8Uid)->unit;
+		const int registers = int(doc->map().regs.size());
+
+		/* New and Open: the changes saved, dropped, or the new map not made */
+		table->setData(table->index(doc->indexOf(u8Uid), MapTableModel::ColUnit), QStringLiteral("rpm2"));
+		const QString newAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->newMapClicked(); });
+		const bool keptAfterNew = doc->isModified() && int(doc->map().regs.size()) == registers
+				&& doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		const QString openAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->openMapClicked(); });
+		const bool keptAfterOpen = doc->isModified() && doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		check(newAsked == QLatin1String("Unsaved map") && keptAfterNew && openAsked == QLatin1String("Unsaved map")
+						&& keptAfterOpen,
+				"Map editor: New and Open with changes not saved ask first (Save, Discard, Cancel); Cancel keeps the map "
+				"and its changes");
+
+		/* redo by the keys: Ctrl+Y and Ctrl+Shift+Z */
+		QUndoStack *undo = doc->undoStack();
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 1000);
+		mapTable->setFocus();
+		undo->undo();
+		const int undone = undo->index();
+		QTest::keyClick(mapTable, Qt::Key_Y, Qt::ControlModifier);
+		const bool redoY = undo->index() == undone + 1;
+		undo->undo();
+		QTest::keyClick(mapTable, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+		const bool redoShiftZ = undo->index() == undone + 1;
+		undo->undo();
+		if (!redoY || !redoShiftZ)
+			std::printf("     (redo keys: Ctrl+Y %d, Ctrl+Shift+Z %d; the window active %d)\n", int(redoY), int(redoShiftZ),
+					int(QApplication::activeWindow() == &window_));
+		check(redoY && redoShiftZ && doc->reg(u8Uid)->unit == unitBefore,
+				"Map editor: Ctrl+Y and Ctrl+Shift+Z both redo (Ctrl+Z undoes)");
+
+		/* a key typed into a group cell: the group typed anew, not added to the old one */
+		const QModelIndex group = table->index(doc->indexOf(u8Uid), MapTableModel::ColGroup);
+		mapTable->setCurrentIndex(group);
+		QTest::keyClick(mapTable, Qt::Key_Q);
+		QComboBox *box = nullptr;
+		(void) QTest::qWaitFor([&] {
+			for (QComboBox *c : mapTable->viewport()->findChildren<QComboBox *>())
+				if (c->isVisible()) box = c;
+			return box != nullptr;
+		}, 2000);
+		const QString typed = box ? box->currentText() : QString();
+		if (box) emit mapTable->itemDelegateForIndex(group)->closeEditor(box, QAbstractItemDelegate::RevertModelCache);
+		QApplication::processEvents();
+		if (typed != QLatin1String("q") && typed != QLatin1String("Q"))
+			std::printf("     (a key typed into the group cell: \"%s\")\n", qPrintable(typed));
+		check(box && (typed == QLatin1String("q") || typed == QLatin1String("Q")) && doc->reg(u8Uid)->group == regs_.u8.group,
+				"Map editor: a key typed into a group cell starts the group anew (\"Protocol\" + \"S\" is \"S\", not "
+				"\"ProtocolS\")");
+
+		/* value names: the Hex box shows the values in hex at once, and back */
+		{
+			NameTable names(NameTable::Keys::Integers, QStringLiteral("hexNames"));
+			names.setEntries({ { 2, QStringLiteral("two") }, { 10, QStringLiteral("ten") } }, false);
+			auto *hex = names.findChild<QCheckBox *>();
+			auto *list = names.findChild<QTableWidget *>();
+			const auto key = [&](int row) { return list && list->item(row, 0) ? list->item(row, 0)->text() : QString(); };
+			if (hex) hex->setChecked(true);
+			const bool inHex = key(0) == QLatin1String("0x2") && key(1) == QLatin1String("0xA");
+			if (hex) hex->setChecked(false);
+			const bool inDecimal = key(0) == QLatin1String("2") && key(1) == QLatin1String("10");
+			check(hex && list && inHex && inDecimal, "value names: the Hex box shows the values as 0x.. at once, and "
+					"back in decimal (the list was left as it was)");
+		}
+
+		/* the Bit fields page: + Field, a rename and − Field shown at once on the strip and in the table, while the
+		 * register editor does not give the register back (a control of the page has the focus) */
+		{
+			FieldEditor fields;
+			RegDef def;
+			def.uid = 0xF1E1D;
+			def.name = QStringLiteral("FLAGS");
+			def.type = RegType::U16;
+			def.size = 2;
+			BitField ready;
+			ready.name = QStringLiteral("READY");
+			ready.lsb = 0;
+			ready.width = 1;
+			def.fields = { ready };
+			fields.resize(700, 420);
+			fields.show();
+			(void) QTest::qWaitForWindowExposed(&fields);
+			fields.setRegister(def);
+			int editedTimes = 0;
+			QObject::connect(&fields, &FieldEditor::edited, &fields, [&] { editedTimes++; });
+			auto *strip = fields.findChild<BitView *>(QStringLiteral("fieldStrip"));
+			auto *list = fields.findChild<QTableWidget *>(QStringLiteral("fieldTable"));
+			QPushButton *add = buttonWithText(fields, QStringLiteral("+ Field"));
+			QPushButton *remove = buttonWithText(fields, QStringLiteral("− Field"));
+			bool added = false, renamed = false, removed = false;
+			if (strip && list && add && remove) {
+				add->click();
+				QApplication::processEvents();
+				added = list->rowCount() == 2 && strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+				if (QTableWidgetItem *name = list->item(0, 0)) name->setText(QStringLiteral("OK"));
+				QApplication::processEvents();
+				renamed = strip->fieldCell(QStringLiteral("OK")).isValid() && !strip->fieldCell(QStringLiteral("READY")).isValid();
+				list->setCurrentCell(1, 0);
+				remove->click();
+				QApplication::processEvents();
+				removed = list->rowCount() == 1 && !strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+			}
+			check(added && renamed && removed && editedTimes == 3, "the Bit fields page: + Field, a rename and − Field shown "
+					"at once on the strip and in the table (not only once the register is picked again)");
+		}
+		/* the page's window gone: the main window active again, on the Registers tab as the Map editor step leaves it */
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 2000);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
 	void mapEditor() {
 		auto *doc = window_.findChild<MapDocument *>();
 		auto *tabs = window_.findChild<QTabWidget *>();
@@ -16267,9 +16780,9 @@ private:
 		const int arabic = widest(QStringLiteral("ar"), arabicNotes);
 		/* Arabic's texts, plurals, numbers and Help, while it is applied */
 		const bool translated = QCoreApplication::translate("Sidebar", "Language") == QStringLiteral("اللغة")
-				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 11).arg(QStringLiteral("x"))
+				&& QCoreApplication::translate("BusPanel", "%n devices · %1", nullptr, 11).arg(QStringLiteral("x"))
 						== QStringLiteral("11 جهازًا · x")
-				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 4).arg(QStringLiteral("x"))
+				&& QCoreApplication::translate("BusPanel", "%n devices · %1", nullptr, 4).arg(QStringLiteral("x"))
 						== QStringLiteral("4 أجهزة · x");
 		const bool westernDigits = QLocale().toString(1234.5) == QLatin1String("1234.5");
 		QString helpTitle, helpText;
@@ -23624,6 +24137,124 @@ private:
 	 * one marked not plottable in the map): no question, the first 64 it may plot on the chart, the rest left off and
 	 * said; a 65th Plot ticked: refused. Then the limit by the rate: 64,000 samples a second for all the lines, a lower
 	 * limit taking the newest off. */
+	/* the recording window, 1.4.1: the Lines list stays open with 13 lines or more (its search); a math line naming a
+	 * column the recording lacks says so; a file of titles only has no span; an integer reads as one in the
+	 * crosshair's box */
+	void recordingFixes() {
+		QTemporaryDir folder;
+		const auto openFile = [&](const QString &path) {
+			RecordingWindow::closeAll();
+			window_.openRecording(path);
+			RecordingWindow *opened = nullptr;
+			(void) QTest::qWaitFor([&] {
+				return !RecordingWindow::windows().isEmpty() && (opened = RecordingWindow::windows().first()) != nullptr;
+			}, 5000);
+			if (opened) (void) QTest::qWaitForWindowExposed(opened);
+			return opened;
+		};
+		const QString many = folder.filePath(QStringLiteral("many.csv"));
+		{
+			QFile file(many);
+			if (file.open(QIODevice::WriteOnly)) {
+				QStringList titles{ QStringLiteral("time_s"), QStringLiteral("datetime") };
+				for (int c = 1; c <= 14; c++) titles << QStringLiteral("C%1 [V]").arg(c);
+				file.write(titles.join(QLatin1Char(',')).toUtf8() + '\n');
+				for (int i = 0; i < 20; i++) {
+					QStringList row{ QString::number(i * 0.1, 'f', 3), QStringLiteral("2026-11-04T10:00:0%1.%2").arg(i / 10)
+						.arg((i % 10) * 100, 3, 10, QLatin1Char('0')) };
+					for (int c = 1; c <= 14; c++) row << QString::number(c + i);
+					file.write(row.join(QLatin1Char(',')).toUtf8() + '\n');
+				}
+			}
+		}
+		QSettings().setValue(QStringLiteral("recording/math"), QStringList{ QStringLiteral("Q\tV\tNOPE * 2\t1") });
+		RecordingWindow *opened = openFile(many);
+		bool stays = false, missingSaid = false;
+		QString tip;
+		if (auto *lines = opened ? opened->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr) {
+			QMenu *menu = lines->menu();
+			menu->popup(lines->mapToGlobal(QPoint(0, lines->height())));
+			QTest::qWait(300);
+			stays = menu->isVisible();
+			for (QCheckBox *box : menu->findChildren<QCheckBox *>(QStringLiteral("recordingLine")))
+				if (box->property("lineName").toString() == QLatin1String("Q")) tip = box->toolTip();
+			missingSaid = tip == QLatin1String("Not drawn: this recording has no NOPE");
+			menu->hide();
+		}
+		if (!stays || !missingSaid) std::printf("     (the Lines list open %d; Q's tooltip \"%s\")\n", int(stays), qPrintable(tip));
+		check(opened && stays, "recording window: the Lines list of 14 lines (with its search) opens and stays open");
+		check(missingSaid, "recording window: a math line naming a column the recording lacks says so (\"this recording "
+				"has no NOPE\"), not that the map lacks it");
+		QSettings().remove(QStringLiteral("recording/math"));
+
+		const QString empty = folder.filePath(QStringLiteral("titles.csv"));
+		{
+			QFile file(empty);
+			if (file.open(QIODevice::WriteOnly)) file.write("time_s,datetime,A [V]\n");
+		}
+		opened = openFile(empty);
+		const QString title = opened ? opened->windowTitle() : QString();
+		check(title.contains(QLatin1String("no samples")) && !title.contains(QLatin1String("1970")),
+				qPrintable(QStringLiteral("recording window: a CSV of titles only is titled \"no samples\", no span from "
+						"1970 (\"%1\")").arg(title)));
+		RecordingWindow::closeAll();
+
+		check(ChartView::readoutNumber(2) == QLatin1String("2") && ChartView::readoutNumber(-15) == QLatin1String("-15")
+						&& ChartView::readoutNumber(2.5) == QLatin1String("2.50")
+						&& ChartView::readoutNumber(0.125) == QLatin1String("0.125"),
+				"the crosshair's box: an integer reads \"2\" (a count, an integer column), not \"2.00\"; any other value "
+				"as before (2.50)");
+	}
+
+	/* the start, 1.4.1: a bad --map's message over the window, not before it; --map leaves the map chosen last as it
+	 * was in the settings */
+	void startupFixes() {
+		QTemporaryDir folder;
+		const QString chosen = folder.filePath(QStringLiteral("chosen.json"));
+		(void) QFile::copy(map_.path, chosen);
+		const QVariant before = QSettings().value(QStringLiteral("map/file"));
+		QSettings().setValue(QStringLiteral("map/file"), chosen);
+		{
+			MainWindow other(map_.path); /* --map: this session's map */
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.close();
+		}
+		const QString kept = QSettings().value(QStringLiteral("map/file")).toString();
+		check(kept == chosen, qPrintable(QStringLiteral("--map: closing the Studio keeps the map chosen last in the "
+				"settings (map/file \"%1\")").arg(kept)));
+
+		const QString bad = folder.filePath(QStringLiteral("bad.json"));
+		{
+			QFile file(bad);
+			if (file.open(QIODevice::WriteOnly)) file.write("{ \"format\": \"evre-map/1\", ");
+		}
+		bool boxCame = false, overWindow = false;
+		QString boxTitle;
+		{
+			const AwaitingDialog awaiting;
+			QTimer poll;
+			poll.setInterval(50);
+			QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+				auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+				if (!box || boxCame) return;
+				boxCame = true;
+				boxTitle = box->windowTitle();
+				overWindow = box->parentWidget() && box->parentWidget()->window()->isVisible();
+				box->accept();
+			});
+			poll.start();
+			std::unique_ptr<MainWindow> other = std::make_unique<MainWindow>(bad);
+			other->show();
+			(void) QTest::qWaitFor([&] { return boxCame; }, DIALOG_WAIT_MS);
+			other.reset();
+		}
+		QSettings().setValue(QStringLiteral("map/file"), before);
+		check(boxCame && boxTitle == QLatin1String("Map not loaded") && overWindow,
+				"--map with a map that does not load: \"Map not loaded\" comes over the window, once it is shown (not "
+				"before it, alone on the screen)");
+	}
+
 	void plotShownWithoutQuestion() {
 		RegisterModel many;
 		MapDocument doc;

@@ -41,6 +41,7 @@ class QCheckBox;
 class QLabel;
 class QMenu;
 class QPushButton;
+struct MathLine;
 
 class RecordingWindow : public QWidget {
 	Q_OBJECT
@@ -88,6 +89,7 @@ private:
 	void feed();                         /* every plotted line and math line again from the file's values */
 	void feedColumn(int column);         /* one column's samples onto its line */
 	void rebuildLinesMenu();             /* the Lines checklist, made again each time it opens */
+	QString notDrawnText(const MathLine &line) const; /* a math line's "Not drawn: ..." tooltip, empty when drawn */
 	void lineTicked(QCheckBox *box, bool on);
 	void showLinesCount();               /* "Lines 8/10" on the button */
 	int linesInFile() const;             /* every line the list offers: the columns, the channels, the math lines */

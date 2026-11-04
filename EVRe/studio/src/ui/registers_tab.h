@@ -106,6 +106,7 @@ signals:
 
 protected:
 	void changeEvent(QEvent *event) override; /* the theme switched: its colours again (Theme::switched) */
+	bool eventFilter(QObject *watched, QEvent *event) override; /* F2 on any cell of a row: its value edited */
 
 private:
 	/* building the tab */
@@ -151,7 +152,7 @@ private:
 
 	/* the columns */
 	void fitColumns(bool shrink); /* every column to its content; shrink: narrower too, not only wider */
-	void fitDecoded();            /* Decoded: as wide as its longest text */
+	void fitDecoded(bool shrink); /* Decoded: as wide as its longest text; not shrink: wider only */
 
 	void updateDetail();          /* the selected register, in full, under the table */
 

@@ -309,8 +309,9 @@ void QuickWritePanel::refresh() {
 			: !connected_ ? tr("not connected") : QString());
 	updateBroadcast();
 	if (!row.valid) return;
-	/* the list shows the device's value, except while the user is choosing in it */
-	if (!namedValues_->hasFocus() && !namedValues_->view()->isVisible()) {
+	/* the list shows the device's value, except while the user is choosing in it (its list open); its focus, kept
+	 * after a pick, is no choosing: a pick writes at once */
+	if (!namedValues_->view()->isVisible()) {
 		const QSignalBlocker blocker(namedValues_);
 		namedValues_->setCurrentIndex(namedValues_->findData(listKey(row.def, row.raw)));
 	}
@@ -394,8 +395,14 @@ void QuickWritePanel::writeNamedValue(int listIndex) {
 	/* "s3.5": a special value, in shown units; a number: an enum's raw value */
 	const QVariant data = namedValues_->itemData(listIndex);
 	if (data.typeId() == QMetaType::QString) requestWrite(data.toString().mid(1));
+	else if (data.toLongLong() >= 0 && rawIsShown()) requestWrite(QString::number(data.toLongLong())); /* the Log: "= 2" */
 	else if (data.toLongLong() >= 0) requestWrite(QStringLiteral("0x%1").arg(quint64(data.toLongLong()), 0, 16));
 	else requestWrite(QString::number(data.toLongLong())); /* a negative raw value: as a number */
+}
+
+bool QuickWritePanel::rawIsShown() const {
+	const QVector<int> rows = rows_.isEmpty() ? QVector<int>{ row_ } : rows_;
+	return std::none_of(rows.begin(), rows.end(), [this](int row) { return model_->rows()[row].def.isFloat(); });
 }
 
 /* `width` bits from `lsb` up become value: the rest is what the device holds now (nothing read yet: no write) */

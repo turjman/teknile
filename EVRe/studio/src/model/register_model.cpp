@@ -151,6 +151,11 @@ void RegisterModel::setWritesEnabled(bool on) {
 	refreshColumns(ColValue, ColValue); /* the cells become editable or not */
 }
 
+void RegisterModel::setLinkUp(bool up) {
+	linkUp_ = up;
+	refreshColumns(ColValue, ColValue);
+}
+
 void RegisterModel::setListening(bool on) {
 	listening_ = on;
 	setWritesEnabled(writesEnabled_);
@@ -342,7 +347,7 @@ Qt::ItemFlags RegisterModel::flags(const QModelIndex &index) const {
 	Qt::ItemFlags itemFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
 	if (column == ColPlot && row.def.canPlot()) itemFlags |= Qt::ItemIsUserCheckable;
 	if (column == ColLog) itemFlags |= Qt::ItemIsUserCheckable;
-	if (column == ColValue && writesEnabled_ && row.def.rw) itemFlags |= Qt::ItemIsEditable;
+	if (column == ColValue && writesEnabled_ && linkUp_ && row.def.rw) itemFlags |= Qt::ItemIsEditable;
 	return itemFlags;
 }
 

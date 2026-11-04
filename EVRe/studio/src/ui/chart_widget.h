@@ -623,6 +623,9 @@ public:
 	qsizetype strokeSegmentsHidden() const { return segmentsHidden_; }
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
+	/* a value in the crosshair's box: a whole number as it is ("2": a count, a state, an integer column of a recording),
+	 * any other as the legend writes it (chartNumber: "2.50") */
+	static QString readoutNumber(double v);
 	/* The frame budget, a credit of the window thread's time: each frame() earns FRAME_SHARE of the time since the
 	 * last, a paint spends what it took (one much slower than the frames before counts BUDGET_SAMPLE_MS or twice
 	 * their average at most: it holds back a frame or two), and a frame is painted while the credit is not short; the

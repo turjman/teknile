@@ -19,6 +19,9 @@ public:
 	using QStyledItemDelegate::QStyledItemDelegate;
 
 	void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
+	/* a selected row keeps the cell's own text colour (ForegroundRole: grey when stale, red on an error), as
+	 * HighlightedText; the Decoded column's delegate does the same */
+	static void keepColourWhenSelected(QStyleOptionViewItem *option, const QModelIndex &index);
 	QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 	QString displayText(const QVariant &value, const QLocale &locale) const override;
 	bool helpEvent(QHelpEvent *event, QAbstractItemView *view, const QStyleOptionViewItem &option,
@@ -27,6 +30,9 @@ public:
 	QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override;
 	void setEditorData(QWidget *editor, const QModelIndex &index) const override;
 	void setModelData(QWidget *editor, QAbstractItemModel *model, const QModelIndex &index) const override;
+
+protected:
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override;
 
 private:
 	static constexpr int INFO_WIDTH = 20; /* room for the (i) at the right of every value */

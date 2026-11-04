@@ -298,6 +298,12 @@ protected:
 	bool viewportEvent(QEvent *e) override; /* tooltips, and the mouse leaving */
 
 private:
+	/* new bytes while a tooltip of ours is up: it says what the chip under it holds now (a byte's value, a fast
+	 * card's record number), not what it held when it opened */
+	void refreshTip();
+	QPoint tipPos_;    /* where the tooltip shown was asked for, in the viewport */
+	QString tipText_;  /* and what it said: still on screen (QToolTip::text()) means it is ours */
+
 	static constexpr int PAD = 14;          /* inside a card */
 	static constexpr int CARD_GAP = 12;     /* between cards, and around them */
 	static constexpr int LABEL_GAP = 2;     /* between a strip's bytes and its labels */

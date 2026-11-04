@@ -82,8 +82,11 @@ public:
 	void setEditorData(QWidget *editor, const QModelIndex &index) const override {
 		if (auto *box = qobject_cast<QComboBox *>(editor)) {
 			const QString text = index.data(Qt::EditRole).toString();
-			if (box->isEditable()) box->setEditText(text);
-			else box->setCurrentIndex(std::max(0, box->findText(text)));
+			if (box->isEditable()) {
+				/* selected, as a line editor's text is: a key typed into the cell replaces the group, not added to it */
+				box->setEditText(text);
+				box->lineEdit()->selectAll();
+			} else box->setCurrentIndex(std::max(0, box->findText(text)));
 			return;
 		}
 		QStyledItemDelegate::setEditorData(editor, index);
@@ -200,9 +203,10 @@ MapEditorTab::MapEditorTab(MapDocument *doc, QWidget *parent) : QWidget(parent),
 		connect(key, &QShortcut::activated, this, slot);
 	};
 	shortcut(QKeySequence::Undo, this, Qt::WidgetWithChildrenShortcut, [this] { doc_->undoStack()->undo(); });
-	shortcut(QKeySequence::Redo, this, Qt::WidgetWithChildrenShortcut, [this] { doc_->undoStack()->redo(); });
-	shortcut(QKeySequence(QStringLiteral("Ctrl+Y")), this, Qt::WidgetWithChildrenShortcut,
-			[this] { doc_->undoStack()->redo(); });
+	/* redo: Ctrl+Y and Ctrl+Shift+Z, each bound once (QKeySequence::Redo is one of them, the platform's: bound beside
+	 * the same keys again, both shortcuts were ambiguous and neither fired) */
+	for (const QString &keys : { QStringLiteral("Ctrl+Y"), QStringLiteral("Ctrl+Shift+Z") })
+		shortcut(QKeySequence(keys), this, Qt::WidgetWithChildrenShortcut, [this] { doc_->undoStack()->redo(); });
 	shortcut(QKeySequence::Copy, table_, Qt::WidgetShortcut, [this] { copySelected(); });
 	shortcut(QKeySequence::Paste, table_, Qt::WidgetShortcut, [this] { paste(); });
 	shortcut(QKeySequence(QStringLiteral("Ctrl+D")), table_, Qt::WidgetShortcut, [this] { duplicateSelected(); });

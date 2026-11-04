@@ -519,6 +519,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"With the grid in divisions (windows under 1 s) the cursors keep their place on the grid while the wave "
 			"moves under them;\nShift while dragging snaps them to a tenth of a division."));
 	clearCursorsButton_ = new QPushButton(tr("Clear cursors"));
+	clearCursorsButton_->setToolTip(tr("Remove cursors A and B: the measurements cover the view again"));
 	measureButton_ = new QPushButton(tr("Measure"));
 	measureButton_->setObjectName(QStringLiteral("measure"));
 	measureButton_->setCheckable(true);
@@ -678,6 +679,10 @@ QWidget *ChartTab::buildMeasurements() {
 	measures_->setItemDelegate(ltrCells(measures_)); /* names, numbers and units: "-3.000 V" in Arabic too */
 	measures_->setHorizontalHeaderLabels({ tr("Line"), tr("at A"), tr("at B"), tr("B − A"), tr("Min"), tr("Max"),
 			tr("Mean"), tr("RMS"), tr("Std dev"), tr("Peak-peak"), tr("Area ∫ dt"), tr("Area / 3600"), tr("Since Clear") });
+	measures_->horizontalHeaderItem(ColMean)->setToolTip(tr("The mean over the range, time-weighted: each value counts "
+			"for as long as it held"));
+	measures_->horizontalHeaderItem(ColRms)->setToolTip(tr("The root mean square over the range, time-weighted as the "
+			"mean: √(mean of value²)"));
 	measures_->horizontalHeaderItem(ColStd)->setToolTip(tr("The standard deviation over the range, time-weighted as the "
 			"mean: √(mean of (value − mean)²). The ripple on a line, whatever its level."));
 	measures_->horizontalHeaderItem(ColP2p)->setToolTip(tr("Peak to peak: Max − Min over the range"));
