@@ -594,6 +594,7 @@ public:
 		chartInfoLine();
 		chartYRangeTyped();
 		chartPanRefused();
+		mathLinesKept();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -14890,6 +14891,51 @@ private:
 				"the view");
 		QToolTip::hideText();
 		chart.tab.hide();
+	}
+
+	/* Math lines (9.1): a change to one line (a new one, Shown off, removed) leaves the others' samples on the chart;
+	 * every polled math line was removed and drawn again, empty. One whose formula changed starts anew */
+	void mathLinesKept() {
+		const QString group = QStringLiteral("mathKeptTest");
+		QSettings().remove(group);
+		RegDef volts;
+		volts.addr = 0xD004;
+		volts.name = QStringLiteral("SUPPLY_V");
+		volts.unit = QStringLiteral("V");
+		volts.type = RegType::F32;
+		volts.size = 4;
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		tab.resize(1200, 700);
+		tab.setRegisters({ volts });
+		MathLine twice, plusOne, third;
+		twice.name = QStringLiteral("TWICE");
+		twice.unit = QStringLiteral("V");
+		twice.formula = QStringLiteral("SUPPLY_V * 2");
+		plusOne.name = QStringLiteral("PLUS");
+		plusOne.unit = QStringLiteral("V");
+		plusOne.formula = QStringLiteral("SUPPLY_V + 1");
+		third = plusOne;
+		third.name = QStringLiteral("THIRD");
+		const bool added = tab.addMathLine(twice) && tab.addMathLine(plusOne);
+		MathLines::Samples samples;
+		for (int i = 0; i < 200; i++) samples[regKey(volts)] << QPointF(90.0 + i / 20.0, 12 + std::sin(i * 0.1));
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		const auto count = [&](int line) { return view ? int(view->pointsKept(MathLines::chartKey(line))) : -1; };
+		const int before0 = count(0), before1 = count(1);
+		const bool newKept = tab.addMathLine(third) && count(0) == before0 && count(1) == before1 && count(2) == 0;
+		const bool offKept = tab.setMathLineShown(0, false) && count(1) == before1 && tab.setMathLineShown(0, true)
+				&& count(1) == before1 && count(0) == 0;
+		tab.removeMathLine(2);
+		const bool removedKept = count(1) == before1;
+		if (!(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept))
+			std::printf("     (added %d, samples %d and %d; a new line: %d %d %d; Shown off and on: %d (%d %d); removed: %d)\n",
+					int(added), before0, before1, count(0), count(1), count(2), int(offKept), count(0), count(1),
+					int(removedKept));
+		check(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept,
+				"math lines: a line added, one shown off and on, one removed: the other lines keep their samples on the "
+				"chart (the line shown again starts anew)");
+		QSettings().remove(group);
 	}
 
 	}

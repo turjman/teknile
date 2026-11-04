@@ -2678,8 +2678,26 @@ void ChartTab::drawMathLines() {
 		kept[i] = lines[i].active() && lines[i].fast() && store && store->def().name == fastMathDef(i).name
 				&& fastMathDrawn(i);
 	}
+	/* a polled math line drawn from the same formula and registers, under the same name and unit, stays as it is too:
+	 * changing one line wiped the others' samples */
+	const auto drawnFrom = [](const MathLine &line) {
+		QString from = line.formula;
+		for (RegKey input : line.inputs) from += QLatin1Char(' ') + QString::number(input);
+		return from;
+	};
+	QVector<bool> keptPolled(MathLines::MAX_DRAWN, false);
+	const QVector<ChartView::Info> shown = view->lines();
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		if (!lines[i].active() || lines[i].fast() || mathDrawnFrom_.value(i) != drawnFrom(lines[i])) continue;
+		for (const ChartView::Info &info : shown)
+			if (info.key == MathLines::chartKey(i) && info.name == QStringLiteral("ƒ %1").arg(lines[i].name)
+					&& info.unit == lines[i].unit)
+				keptPolled[i] = true;
+	}
 	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		if (keptPolled[i]) continue;
 		chart_->removeSeries(MathLines::chartKey(i));
+		mathDrawnFrom_.remove(i);
 		if (kept[i]) continue;
 		chart_->removeSeries(fastMathKey(i));
 		view->removeFastStream(MathLines::fastStream(i));
@@ -2689,7 +2707,7 @@ void ChartTab::drawMathLines() {
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
 		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
 		 * another map), the registers already on it stay */
-		if (kept[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
+		if (kept[i] || keptPolled[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
 		const QString name = QStringLiteral("ƒ %1").arg(lines[i].name);
@@ -2698,6 +2716,7 @@ void ChartTab::drawMathLines() {
 			chart_->addSeries(fastMathKey(i), name, lines[i].unit, color);
 		} else {
 			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
+			mathDrawnFrom_[i] = drawnFrom(lines[i]);
 		}
 	}
 	applyFastFed(); /* a fast math line over a stopped stream: stopped with it */

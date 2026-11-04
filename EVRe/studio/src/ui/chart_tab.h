@@ -331,6 +331,9 @@ private:
 		quint64 start = 0;
 	};
 	QHash<int, FastMathState> fastMath_;  /* by line */
+	/* by line: what a polled math line on the chart was drawn from (its formula and the registers it read), so that a
+	 * change to another line leaves its samples (all were removed and drawn again, empty) */
+	QHash<int, QString> mathDrawnFrom_;
 	QHash<RegKey, QVector<QPointF>> held_;
 	fast::TriggerScan mathScan_;          /* the trigger on a fast math line: its crossings looked for here */
 	int mathScanStream_ = -1;             /* the chart's stream of the line it watches; -1: none */
