@@ -6307,7 +6307,7 @@ bool ChartView::crosshair(const Axes &axes, const QVector<Lane> &plots, const QV
 			v = s.values[k];
 		}
 		if (std::fabs(sampleTime - t) > window_ / READOUT_REACH) continue;
-		if (remake && hoverValues_) rows.push_back({ s.name, chartNumber(v), s.unit, s.color });
+		if (remake && hoverValues_) rows.push_back({ s.name, ChartView::readoutNumber(v), s.unit, s.color });
 		double lo = line.lo, hi = line.hi; /* Normalize: the line's own range, as drawLines scales it */
 		widenFlatRange(lo, hi);
 		const double y = normalized_ ? lineAxes.y((v - lo) / (hi - lo)) : lineAxes.y(v);
@@ -6486,6 +6486,10 @@ const QImage &ChartView::dotPicture(const QColor &color, qreal dpr) const {
 	p.drawEllipse(QPointF(DOT_PICTURE / 2, DOT_PICTURE / 2), 3.5, 3.5);
 	p.end();
 	return *dots_.insert(color.rgba(), dot);
+}
+
+QString ChartView::readoutNumber(double v) {
+	return v == std::trunc(v) && std::fabs(v) < 1e5 ? QString::number(qint64(v)) : chartNumber(v);
 }
 
 int ChartView::readoutRowsPerColumn(double plotHeight) {

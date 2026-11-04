@@ -647,8 +647,11 @@ public:
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
+		recordingFixes();
+		startupFixes();
 		recentMissing();
 		mapEditor();
+		mapEditorFixes();
 		clearMapEditorSelection();
 		mapStreamsPage();
 		clearDialogSelection();
@@ -24134,6 +24137,124 @@ private:
 	 * one marked not plottable in the map): no question, the first 64 it may plot on the chart, the rest left off and
 	 * said; a 65th Plot ticked: refused. Then the limit by the rate: 64,000 samples a second for all the lines, a lower
 	 * limit taking the newest off. */
+	/* the recording window, 1.4.1: the Lines list stays open with 13 lines or more (its search); a math line naming a
+	 * column the recording lacks says so; a file of titles only has no span; an integer reads as one in the
+	 * crosshair's box */
+	void recordingFixes() {
+		QTemporaryDir folder;
+		const auto openFile = [&](const QString &path) {
+			RecordingWindow::closeAll();
+			window_.openRecording(path);
+			RecordingWindow *opened = nullptr;
+			(void) QTest::qWaitFor([&] {
+				return !RecordingWindow::windows().isEmpty() && (opened = RecordingWindow::windows().first()) != nullptr;
+			}, 5000);
+			if (opened) (void) QTest::qWaitForWindowExposed(opened);
+			return opened;
+		};
+		const QString many = folder.filePath(QStringLiteral("many.csv"));
+		{
+			QFile file(many);
+			if (file.open(QIODevice::WriteOnly)) {
+				QStringList titles{ QStringLiteral("time_s"), QStringLiteral("datetime") };
+				for (int c = 1; c <= 14; c++) titles << QStringLiteral("C%1 [V]").arg(c);
+				file.write(titles.join(QLatin1Char(',')).toUtf8() + '\n');
+				for (int i = 0; i < 20; i++) {
+					QStringList row{ QString::number(i * 0.1, 'f', 3), QStringLiteral("2026-11-04T10:00:0%1.%2").arg(i / 10)
+						.arg((i % 10) * 100, 3, 10, QLatin1Char('0')) };
+					for (int c = 1; c <= 14; c++) row << QString::number(c + i);
+					file.write(row.join(QLatin1Char(',')).toUtf8() + '\n');
+				}
+			}
+		}
+		QSettings().setValue(QStringLiteral("recording/math"), QStringList{ QStringLiteral("Q\tV\tNOPE * 2\t1") });
+		RecordingWindow *opened = openFile(many);
+		bool stays = false, missingSaid = false;
+		QString tip;
+		if (auto *lines = opened ? opened->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr) {
+			QMenu *menu = lines->menu();
+			menu->popup(lines->mapToGlobal(QPoint(0, lines->height())));
+			QTest::qWait(300);
+			stays = menu->isVisible();
+			for (QCheckBox *box : menu->findChildren<QCheckBox *>(QStringLiteral("recordingLine")))
+				if (box->property("lineName").toString() == QLatin1String("Q")) tip = box->toolTip();
+			missingSaid = tip == QLatin1String("Not drawn: this recording has no NOPE");
+			menu->hide();
+		}
+		if (!stays || !missingSaid) std::printf("     (the Lines list open %d; Q's tooltip \"%s\")\n", int(stays), qPrintable(tip));
+		check(opened && stays, "recording window: the Lines list of 14 lines (with its search) opens and stays open");
+		check(missingSaid, "recording window: a math line naming a column the recording lacks says so (\"this recording "
+				"has no NOPE\"), not that the map lacks it");
+		QSettings().remove(QStringLiteral("recording/math"));
+
+		const QString empty = folder.filePath(QStringLiteral("titles.csv"));
+		{
+			QFile file(empty);
+			if (file.open(QIODevice::WriteOnly)) file.write("time_s,datetime,A [V]\n");
+		}
+		opened = openFile(empty);
+		const QString title = opened ? opened->windowTitle() : QString();
+		check(title.contains(QLatin1String("no samples")) && !title.contains(QLatin1String("1970")),
+				qPrintable(QStringLiteral("recording window: a CSV of titles only is titled \"no samples\", no span from "
+						"1970 (\"%1\")").arg(title)));
+		RecordingWindow::closeAll();
+
+		check(ChartView::readoutNumber(2) == QLatin1String("2") && ChartView::readoutNumber(-15) == QLatin1String("-15")
+						&& ChartView::readoutNumber(2.5) == QLatin1String("2.50")
+						&& ChartView::readoutNumber(0.125) == QLatin1String("0.125"),
+				"the crosshair's box: an integer reads \"2\" (a count, an integer column), not \"2.00\"; any other value "
+				"as before (2.50)");
+	}
+
+	/* the start, 1.4.1: a bad --map's message over the window, not before it; --map leaves the map chosen last as it
+	 * was in the settings */
+	void startupFixes() {
+		QTemporaryDir folder;
+		const QString chosen = folder.filePath(QStringLiteral("chosen.json"));
+		(void) QFile::copy(map_.path, chosen);
+		const QVariant before = QSettings().value(QStringLiteral("map/file"));
+		QSettings().setValue(QStringLiteral("map/file"), chosen);
+		{
+			MainWindow other(map_.path); /* --map: this session's map */
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.close();
+		}
+		const QString kept = QSettings().value(QStringLiteral("map/file")).toString();
+		check(kept == chosen, qPrintable(QStringLiteral("--map: closing the Studio keeps the map chosen last in the "
+				"settings (map/file \"%1\")").arg(kept)));
+
+		const QString bad = folder.filePath(QStringLiteral("bad.json"));
+		{
+			QFile file(bad);
+			if (file.open(QIODevice::WriteOnly)) file.write("{ \"format\": \"evre-map/1\", ");
+		}
+		bool boxCame = false, overWindow = false;
+		QString boxTitle;
+		{
+			const AwaitingDialog awaiting;
+			QTimer poll;
+			poll.setInterval(50);
+			QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+				auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+				if (!box || boxCame) return;
+				boxCame = true;
+				boxTitle = box->windowTitle();
+				overWindow = box->parentWidget() && box->parentWidget()->window()->isVisible();
+				box->accept();
+			});
+			poll.start();
+			std::unique_ptr<MainWindow> other = std::make_unique<MainWindow>(bad);
+			other->show();
+			(void) QTest::qWaitFor([&] { return boxCame; }, DIALOG_WAIT_MS);
+			other.reset();
+		}
+		QSettings().setValue(QStringLiteral("map/file"), before);
+		check(boxCame && boxTitle == QLatin1String("Map not loaded") && overWindow,
+				"--map with a map that does not load: \"Map not loaded\" comes over the window, once it is shown (not "
+				"before it, alone on the screen)");
+	}
+
 	void plotShownWithoutQuestion() {
 		RegisterModel many;
 		MapDocument doc;

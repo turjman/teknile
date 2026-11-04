@@ -624,6 +624,10 @@ void MainWindow::restoreSettings() {
 	QSettings settings;
 	const QString mapFile = mapToOpenAtStart(settings);
 	const QString busFile = settings.value(QStringLiteral("map/bus")).toString();
+	/* the ones chosen last stay chosen while the command line's are open (they are not remembered): saved again at the
+	 * close as they were, not emptied */
+	rememberedMap_ = settings.value(QStringLiteral("map/file")).toString();
+	rememberedBus_ = busFile;
 	/* the command line's bus or map, for this session (the one chosen last stays chosen); else the bus chosen last,
 	 * the map chosen last, a new map: the first that opens */
 	bool opened = !busAtStart_.isEmpty() && loadBus(busAtStart_, false);
@@ -1072,7 +1076,10 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 	QString err;
 	if (!loaded.load(file, err)) {
 		logEvent(LogLevel::Error, tr("map not loaded: %1: %2").arg(QDir::toNativeSeparators(file), err));
-		QMessageBox::warning(this, tr("Map not loaded"), tr("%1\n\n%2").arg(QDir::toNativeSeparators(file), err));
+		const QString text = tr("%1\n\n%2").arg(QDir::toNativeSeparators(file), err);
+		/* at the start (--map, the map chosen last) the window is not shown yet: the message once it is, over it */
+		if (isVisible()) QMessageBox::warning(this, tr("Map not loaded"), text);
+		else QTimer::singleShot(0, this, [this, text] { QMessageBox::warning(this, tr("Map not loaded"), text); });
 		return;
 	}
 	logEvent(LogLevel::Info, tr("map loaded: %1 (%2 registers)")
