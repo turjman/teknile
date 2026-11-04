@@ -1403,7 +1403,7 @@ QString ChartTab::infoText(int width) const {
 	};
 	if (width < 0) return joined();
 	const QFontMetrics metrics = chartInfo_->fontMetrics();
-	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast, Count }) {
+	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast }) { /* the count stays (refreshStatus) */
 		if (metrics.horizontalAdvance(joined()) <= width) break;
 		parts[drop].clear();
 	}
@@ -1768,6 +1768,10 @@ void ChartTab::showHoldButton() {
 void ChartTab::refreshStatus() {
 	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
 	const QString info = shown_ ? infoText(chartInfo_->contentsRect().width()) : QString();
+	/* room for the count at least: at the narrowest window the buttons took the whole row and the line was empty */
+	const int least = shown_ ? chartInfo_->fontMetrics().horizontalAdvance(infoText(0)) + chartInfo_->width()
+			- chartInfo_->contentsRect().width() : 0;
+	if (chartInfo_->minimumWidth() != least) chartInfo_->setMinimumWidth(least);
 	chartInfo_->setText(info);
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);

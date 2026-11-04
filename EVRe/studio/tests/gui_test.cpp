@@ -16130,10 +16130,11 @@ private:
 		const bool steps = full != noPaint && noPaint != noPlotted && noPlotted != noDelay && at(full, 0) == full
 				&& at(full, 1) == noPaint && at(noPaint, 0) == noPaint && at(noPaint, 1) == noPlotted
 				&& at(noPlotted, 1) == noDelay && noDelay.startsWith(QStringLiteral("1/64 · "));
-		bool whole = true;
+		bool whole = true; /* the count is never dropped: it is what is left when nothing more fits */
+		const QString count = chart.tab.infoText(0);
 		for (int width = 0; width < metrics.horizontalAdvance(full) + 4; width += 3) {
 			const QString text = chart.tab.infoText(width);
-			whole = whole && (text.isEmpty() || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
+			whole = whole && (text == count || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
 		}
 		if (!steps) std::printf("     (\"%s\" -> \"%s\" -> \"%s\" -> \"%s\")\n", qPrintable(full),
 				qPrintable(at(full, 1)), qPrintable(at(noPaint, 1)), qPrintable(at(noPlotted, 1)));
@@ -16144,6 +16145,21 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
+
+		/* the narrowest: the buttons left the line no room and it was empty; now it keeps room for the count */
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.resize(chart.tab.minimumSizeHint().width(), chart.tab.height());
+		chart.tab.refreshStatus();
+		QApplication::processEvents();
+		chart.tab.refreshStatus();
+		const bool kept = count == QStringLiteral("1/64") && label->text() == count
+				&& label->contentsRect().width() >= metrics.horizontalAdvance(count);
+		if (!kept)
+			std::printf("     (at the narrowest, %d px: \"%s\" in %d px, the count \"%s\" %d px)\n", chart.tab.width(),
+					qPrintable(label->text()), label->contentsRect().width(), qPrintable(count), metrics.horizontalAdvance(count));
+		check(kept, "chart, the info line: at the narrowest the count stays (1/64), with room for it, never an empty line");
+		chart.tab.hide();
 	}
 
 	/* The translations as kept (translations/<name>.ts): every message finished and not empty, Arabic's plural forms all
