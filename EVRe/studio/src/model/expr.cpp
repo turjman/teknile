@@ -197,7 +197,9 @@ private:
 		if (function < 0) return fail(QObject::tr("no function \"%1\"").arg(name));
 		const int argCount = FUNCTIONS[function].argCount;
 		const auto wrongCount = [&] {
-			return fail(QObject::tr("%1 takes %2 values").arg(name, QString::number(argCount)));
+			/* one in English (sqrt: "takes 1 values"), Arabic's plural forms by %n */
+			return fail(argCount == 1 ? QObject::tr("%1 takes 1 value").arg(name)
+									  : QObject::tr("%1 takes %n values", nullptr, argCount).arg(name));
 		};
 		take('(');
 		for (int arg = 0; arg < argCount; arg++) {

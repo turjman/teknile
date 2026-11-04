@@ -78,7 +78,7 @@ jobs:
           mkdir -p "$app/maps" "$app/translations"
           cp build/EVReStudio.exe build/evre.exe build/evre-sim.exe "$app/"
           cp EVRe/studio/maps/example_*.json "$app/maps/"
-          cp EVRe/studio/README.md EVRe/LICENSE EVRe/NOTICE "$app/"
+          cp EVRe/studio/README.md EVRe/LICENSE EVRe/NOTICE EVRe/studio/docs/evre-map-1.schema.json "$app/"
           windeployqt --release --compiler-runtime --translations ar,en "$app/EVReStudio.exe"
           windeployqt --release --compiler-runtime --no-translations "$app/evre.exe" "$app/evre-sim.exe"
           # Qt's own Arabic texts (OK, Cancel), loaded by name as qtbase_ar.qm (language.cpp)
@@ -180,7 +180,7 @@ jobs:
           tools="evre-tools-$VERSION-linux-x86_64"
           mkdir -p "$tools"
           cp -r ToolsDir/usr/bin ToolsDir/usr/lib "$tools/"
-          cp EVRe/studio/maps/example_*.json EVRe/LICENSE EVRe/NOTICE "$tools/"
+          cp EVRe/studio/maps/example_*.json EVRe/studio/docs/evre-map-1.schema.json EVRe/LICENSE EVRe/NOTICE "$tools/"
           env -u LD_LIBRARY_PATH "$tools/bin/evre" validate "$tools/example_device.json"
           tar -czf "dist/$tools.tar.gz" "$tools"
           ls -l dist

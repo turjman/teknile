@@ -594,6 +594,13 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
+		chartYRangeTyped();
+		chartPanRefused();
+		mathLinesKept();
+		measureSinceFollows();
+		chartTotalsSlowPolls();
+		chartTriggerLevelFits();
+		commandLineHelp();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -3768,6 +3775,7 @@ private:
 
 		/* Start: the enable written 1, the blocks counted, the rate as fitted, nothing lost */
 		button->click();
+		const QString justStarted = sidebar->fastRateText(0); /* at once: not "off" under the Stop button */
 		const bool on = enableBecomes(1);
 		const QRegularExpression rate(QStringLiteral("^(9\\.9|10\\.0|10\\.1) k samples/s \\([+-][0-9]+ ppm\\)$"));
 		const bool counted = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 6000);
@@ -3777,6 +3785,16 @@ private:
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
+		{ /* the line says what Start began until the first block; the rate's tooltip says ppm once, then what it is */
+			const QString tip = sidebar->fastRateTip(0);
+			const bool once = QRegularExpression(QStringLiteral("corrected by [+-][0-9]+ ppm \\(parts in a million\\)"))
+					.match(tip).hasMatch();
+			if (justStarted != QLatin1String("waiting for the first block") || !once)
+				std::printf("     (just after Start: \"%s\"; the tooltip \"%s\")\n", qPrintable(justStarted), qPrintable(tip));
+			check(justStarted == QLatin1String("waiting for the first block") && once,
+					"fast streams: just after Start the line says \"waiting for the first block\" (not \"off\" under the Stop "
+					"button); the rate's tooltip: \"corrected by +8 ppm (parts in a million)\", ppm said once");
+		}
 		/* the Dump tab: the running stream's newest block as a card of its own */
 		dumpFastLive(fastMap);
 
@@ -8038,6 +8056,16 @@ private:
 		check(sqrtFirst && box->text() == volts + QStringLiteral(" * sqrt()")
 						&& box->cursorPosition() == int(box->text().size()) - 1,
 				"formula completion: a function goes in as sqrt(), the cursor inside; the rest of the formula kept");
+		/* Tab takes the one picked too (the box took the key first and moved the focus on, nothing taken) */
+		box->setText(QString());
+		box->setFocus();
+		QTest::keyClicks(box, volts.left(3));
+		const QString best = completer->shown().value(0);
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Tab);
+		if (best.isEmpty() || box->text() != best)
+			std::printf("     (Tab: \"%s\" offered first, the box \"%s\")\n", qPrintable(best), qPrintable(box->text()));
+		check(!best.isEmpty() && box->text() == best && completer->shown().isEmpty() && dialog.isVisible(),
+				"formula completion: Tab puts the one picked in, as Enter does (the list closed, the dialog open)");
 		/* Esc closes the list; a word that is a whole name already offers nothing */
 		box->setText(QString());
 		QTest::keyClicks(box, QStringLiteral("ab"));
@@ -14659,6 +14687,13 @@ private:
 		if (!autoSaid) std::printf("     (Display on Auto: \"%s\")\n", qPrintable(autoState));
 		check(listed && cpu && autoSaid, "chart, Display menu, Drawing: Auto, every adapter by name, CPU; CPU picked is "
 				"ticked, saved, in the button's tooltip, the info line ends \"CPU\"; on Auto the tooltip names who draws");
+		/* a card is listed once: a laptop's Intel graphics came twice from DXGI, under two LUIDs */
+		QStringList drawingTexts;
+		for (const QAction *choice : std::as_const(choices)) drawingTexts << choice->text();
+		const QStringList listedTexts = drawingTexts;
+		if (drawingTexts.removeDuplicates() > 0)
+			std::printf("     (Drawing: %s)\n", qPrintable(listedTexts.join(QStringLiteral(" | "))));
+		check(!listedTexts.isEmpty() && listedTexts == drawingTexts, "chart, Display menu, Drawing: no card listed twice");
 	}
 
 	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):
@@ -15273,6 +15308,273 @@ private:
 		feed(200.0, 2);
 		check(clear && cleared && chart.view->totalsSince() == 200.0 && std::fabs(chart.view->total(chart.key()) - 0.002) < 1e-12,
 				"chart, totals: Clear starts them again, from the next sample");
+	}
+
+	/* The Y boxes typed (7.5): a min above the max is swapped and stays, 12 and 12 read 12 and 13, a refused Log min is
+	 * put back at once; the box typed in shows what was made of it (it kept its text, and leaving it applied that again) */
+	void chartYRangeTyped() {
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		QSettings().remove(QStringLiteral("chart/yAuto"));
+		LoneChart chart(QStringLiteral("TYPED"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 40.0, 5 + std::sin(i * 0.05));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.activateWindow();
+		(void) QTest::qWaitForWindowActive(&chart.tab, 2000);
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *yMin = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *yMax = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		if (!mode || !yMin || !yMax) {
+			check(false, "chart, the Y boxes typed: the Y range list and its boxes found");
+			return;
+		}
+		const auto type = [&](QLineEdit *box, const QString &text) { /* as a person: focus, the text, Enter */
+			box->setFocus();
+			box->selectAll();
+			QTest::keyClicks(box, text);
+			QTest::keyClick(box, Qt::Key_Return);
+		};
+		const auto leave = [&] { /* the focus to the chart: a box left emits editingFinished again */
+			chart.view->setFocus();
+			QApplication::processEvents();
+		};
+		const auto shows = [&](double lo, double hi) {
+			return yMin->text() == ChartTab::yFieldShown(yMin, lo, true) && yMax->text() == ChartTab::yFieldShown(yMax, hi, true);
+		};
+		yMin->setText(QStringLiteral("0"));
+		type(yMax, QStringLiteral("10"));
+		leave();
+		const bool start = !chart.view->yAuto() && chart.view->yLo() == 0 && chart.view->yHi() == 10;
+		const bool focused = (type(yMin, QStringLiteral("20")), yMin->hasFocus());
+		const bool swapped = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		leave();
+		const bool stays = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		yMin->setText(QStringLiteral("12"));
+		type(yMax, QStringLiteral("12"));
+		const bool equal = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		leave();
+		const bool equalStays = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		emit mode->activated(ChartTab::YLog);
+		yMax->setText(QStringLiteral("100"));
+		type(yMin, QStringLiteral("-1"));
+		const bool refused = chart.view->yLog() && yMin->text() != QStringLiteral("-1")
+				&& yMin->text() == ChartTab::yFieldShown(yMin, chart.view->yLo(), !chart.view->yAuto());
+		leave();
+		if (!(start && swapped && stays && equal && equalStays && refused))
+			std::printf("     (focus %d; start %d, swapped %d, stays %d, 12 and 12 %d, stays %d, Log -1 %d: %g .. %g, \"%s\" \"%s\")\n",
+					int(focused), int(start), int(swapped), int(stays), int(equal), int(equalStays), int(refused),
+					chart.view->yLo(), chart.view->yHi(), qPrintable(yMin->text()), qPrintable(yMax->text()));
+		check(start && swapped && stays && equal && equalStays && refused,
+				"chart, the Y boxes typed: a min above the max swapped (20 over 10: 10 .. 20) and kept when the box is left; "
+				"12 and 12 shown as 12 and 13 at once; a Log min of -1 refused and the box back at once");
+		emit mode->activated(ChartTab::YAuto);
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		chart.tab.hide();
+	}
+
+	/* A drag with the Memory no longer than the Window (7.3): nothing is kept outside the view, so it moved nothing and
+	 * said nothing; now a tooltip says why (a click alone nothing), the view stays live; with a longer Memory it holds */
+	void chartPanRefused() {
+		LoneChart chart(QStringLiteral("PAN"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(60.0 + i / 10.0, 5 + std::sin(i * 0.05));
+		chart.view->setMemory(60);
+		chart.view->setWindow(10);
+		chart.tab.frame(samples);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab();
+		const QPoint middle = chart.view->lastPlot().center().toPoint();
+		const auto drag = [&] {
+			QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+			QMouseEvent moved(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)),
+					chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(chart.view, &moved);
+			QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		};
+		QToolTip::hideText();
+		drag();
+		const bool held = !chart.view->live() && !QToolTip::isVisible();
+		chart.view->setLive(true);
+		chart.view->setMemory(10);
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, middle); /* a click alone: no tooltip */
+		const bool quietClick = !QToolTip::isVisible();
+		QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+		QMouseEvent move(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)), chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))),
+				Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(chart.view, &move);
+		const bool said = quietClick && QTest::qWaitFor([] { return QToolTip::isVisible(); }, 2000)
+				&& QToolTip::text() == ChartView::panRefusal();
+		const QString tip = QToolTip::text();
+		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		const bool stillLive = chart.view->live();
+		if (!(said && stillLive && held))
+			std::printf("     (memory 60 s: held %d; memory = window: tooltip \"%s\", live %d)\n", int(held), qPrintable(tip),
+					int(stillLive));
+		check(said && stillLive && held, "chart, a drag with the Memory no longer than the Window: it says why in a tooltip "
+				"(nothing to drag to; a click alone says nothing), the view stays live; with a longer Memory the drag holds "
+				"the view");
+		QToolTip::hideText();
+		chart.tab.hide();
+	}
+
+	/* Math lines (9.1): a change to one line (a new one, Shown off, removed) leaves the others' samples on the chart;
+	 * every polled math line was removed and drawn again, empty. One whose formula changed starts anew */
+	void mathLinesKept() {
+		const QString group = QStringLiteral("mathKeptTest");
+		QSettings().remove(group);
+		RegDef volts;
+		volts.addr = 0xD004;
+		volts.name = QStringLiteral("SUPPLY_V");
+		volts.unit = QStringLiteral("V");
+		volts.type = RegType::F32;
+		volts.size = 4;
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		tab.resize(1200, 700);
+		tab.setRegisters({ volts });
+		MathLine twice, plusOne, third;
+		twice.name = QStringLiteral("TWICE");
+		twice.unit = QStringLiteral("V");
+		twice.formula = QStringLiteral("SUPPLY_V * 2");
+		plusOne.name = QStringLiteral("PLUS");
+		plusOne.unit = QStringLiteral("V");
+		plusOne.formula = QStringLiteral("SUPPLY_V + 1");
+		third = plusOne;
+		third.name = QStringLiteral("THIRD");
+		const bool added = tab.addMathLine(twice) && tab.addMathLine(plusOne);
+		MathLines::Samples samples;
+		for (int i = 0; i < 200; i++) samples[regKey(volts)] << QPointF(90.0 + i / 20.0, 12 + std::sin(i * 0.1));
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		const auto count = [&](int line) { return view ? int(view->pointsKept(MathLines::chartKey(line))) : -1; };
+		const int before0 = count(0), before1 = count(1);
+		const bool newKept = tab.addMathLine(third) && count(0) == before0 && count(1) == before1 && count(2) == 0;
+		const bool offKept = tab.setMathLineShown(0, false) && count(1) == before1 && tab.setMathLineShown(0, true)
+				&& count(1) == before1 && count(0) == 0;
+		tab.removeMathLine(2);
+		const bool removedKept = count(1) == before1;
+		if (!(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept))
+			std::printf("     (added %d, samples %d and %d; a new line: %d %d %d; Shown off and on: %d (%d %d); removed: %d)\n",
+					int(added), before0, before1, count(0), count(1), count(2), int(offKept), count(0), count(1),
+					int(removedKept));
+		check(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept,
+				"math lines: a line added, one shown off and on, one removed: the other lines keep their samples on the "
+				"chart (the line shown again starts anew)");
+		QSettings().remove(group);
+	}
+
+	/* The line over the measure table on a held view (8.4): "totals since 14:03:12 (1 h 12 min)" follows the clock at the
+	 * timer's pace, as the Since Clear column does; the full measurements are not run again for it */
+	void measureSinceFollows() {
+		LoneChart chart(QStringLiteral("SINCE"), QStringLiteral("A"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 100; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 10.0, 2.0);
+		chart.tab.frame(samples);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		if (!measure || !info) {
+			check(false, "chart, the measure line: its button and line found");
+			return;
+		}
+		chart.view->setLive(false);
+		chart.tab.setShown(true);
+		measure->setChecked(true);
+		measured(chart.view);
+		const QString first = info->text();
+		const int full = chart.tab.measureFullUpdates();
+		chart.now += 125; /* 2 min 5 s later, nothing new in the view */
+		const bool follows = QTest::qWaitFor([&] {
+			return info->text().endsWith(QStringLiteral("(%1)").arg(durationText(chart.now - 90.0)));
+		}, 2000);
+		if (!follows || first == info->text() || chart.tab.measureFullUpdates() != full)
+			std::printf("     (\"%s\" -> \"%s\", %d full updates)\n", qPrintable(first), qPrintable(info->text()),
+					chart.tab.measureFullUpdates() - full);
+		check(follows && first != info->text() && chart.tab.measureFullUpdates() == full,
+				"chart, a held view: the measure line's \"totals since ... (duration)\" follows the clock (2 min 5 s), "
+				"without measuring all again");
+		measure->setChecked(false);
+		chart.tab.setShown(false);
+	}
+
+	/* Totals since Clear with polls slower than one a second (8.4): every interval was a gap over 1 s, the total stayed 0
+	 * and nothing said why; the gap bridged is two poll intervals now, as a value is stale after two. The window sets it */
+	void chartTotalsSlowPolls() {
+		LoneChart chart(QStringLiteral("SLOW"), QStringLiteral("A"));
+		const auto feed = [&](double from, double step, int count) {
+			MathLines::Samples samples;
+			for (int i = 0; i < count; i++) samples[regKey(chart.def)] << QPointF(from + i * step, 2.0);
+			chart.tab.frame(samples);
+		};
+		chart.tab.setPollInterval(2000);
+		feed(100.0, 2.0, 10); /* 2 A every 2 s: 18 s */
+		const double slow = chart.view->total(chart.key());
+		feed(128.0, 2.0, 2); /* after 10 s without a sample (more than two intervals): not bridged */
+		const double gapped = chart.view->total(chart.key());
+		chart.tab.setPollInterval(100); /* fast polls: the 1 s of before */
+		const bool least = chart.view->totalGap() == ChartView::TOTAL_GAP;
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *liveTab = window_.findChild<ChartTab *>();
+		ChartView *liveView = liveTab ? liveTab->findChild<ChartView *>() : nullptr;
+		const bool wired = sidebar && liveView
+				&& liveView->totalGap() == std::max(ChartView::TOTAL_GAP, 2 * sidebar->pollIntervalMs() / 1000);
+		if (std::fabs(slow - 36) > 1e-9 || std::fabs(gapped - 40) > 1e-9 || !least || !wired)
+			std::printf("     (2 A every 2 s: %g A·s over 18 s, %g after a 10 s gap; the gap at 100 ms polls %g s; the window's %g s)\n",
+					slow, gapped, chart.view->totalGap(), liveView ? liveView->totalGap() : -1.0);
+		check(std::fabs(slow - 36) < 1e-9 && std::fabs(gapped - 40) < 1e-9 && least && wired,
+				"chart, totals since Clear with polls every 2 s: summed (36 A·s over 18 s), a gap over two intervals not "
+				"bridged; 1 s at fast polls; the window gives the chart its poll interval");
+	}
+
+	/* The trigger row's level box holds a level of six digits whole, sign and exponent too (7.13): 90 px cut them */
+	void chartTriggerLevelFits() {
+		LoneChart chart(QStringLiteral("LEVEL"), QStringLiteral("V"));
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *box = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		if (!box) {
+			check(false, "chart, the trigger's level box found");
+			return;
+		}
+		const int frame = box->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, box);
+		const int room = box->width() - 2 * frame - 4 - box->textMargins().left() - box->textMargins().right();
+		QStringList cut;
+		for (const double level : { -0.000123457, -1234.56, -123456.0, -1.23457e+06, 9.87654e-12 }) {
+			const QString text = ChartView::levelText(level);
+			if (box->fontMetrics().horizontalAdvance(text) > room) cut << text;
+		}
+		if (!cut.isEmpty()) std::printf("     (cut in %d px: %s)\n", room, qPrintable(cut.join(QStringLiteral(", "))));
+		check(cut.isEmpty(), "chart, the trigger's level box: a level of six digits fits whole (-0.000123457, -123456, "
+				"-1.23457e+06, 9.87654e-12)");
+		chart.tab.hide();
+	}
+
+	/* EVReStudio --help without a console (Windows, 14.1): its own window, the text in a fixed-pitch font and not
+	 * wrapped, as wide as its longest line, the program's name for its whole path; Qt's message box broke the columns */
+	void commandLineHelp() {
+		const QString program = QCoreApplication::arguments().value(0);
+		const QString text = QStringLiteral("Usage: %1 [options]\nEVRe register tool\n\nOptions:\n"
+				"  -h, --help                Displays help on commandline options.\n"
+				"  --interval <ms>           Poll interval, ms (0.25 = 4000/s, 0 = as fast as possible).\n").arg(program);
+		std::unique_ptr<QDialog> window(commandLineWindow(text));
+		auto *view = window->findChild<QPlainTextEdit *>(QStringLiteral("commandLineText"));
+		const QString name = QFileInfo(program).completeBaseName();
+		const bool named = view && view->toPlainText().startsWith(QStringLiteral("Usage: %1 [options]\n").arg(name))
+				&& !view->toPlainText().contains(program);
+		int widest = 0;
+		if (view)
+			for (const QString &line : view->toPlainText().split(QLatin1Char('\n')))
+				widest = std::max(widest, QFontMetrics(view->font()).horizontalAdvance(line));
+		const bool laidOut = view && QFontInfo(view->font()).fixedPitch() && view->lineWrapMode() == QPlainTextEdit::NoWrap
+				&& view->isReadOnly() && view->minimumWidth() >= widest;
+		if (!named || !laidOut)
+			std::printf("     (\"%s\"; fixed pitch %d, wrap %d, %d px for %d)\n", view ? qPrintable(view->toPlainText().section(
+					QLatin1Char('\n'), 0, 0)) : "", view ? int(QFontInfo(view->font()).fixedPitch()) : -1,
+					view ? int(view->lineWrapMode()) : -1, view ? view->minimumWidth() : -1, widest);
+		check(named && laidOut, "--help without a console: a window of its own, the text in a fixed-pitch font, not wrapped, "
+				"as wide as its longest line; \"Usage: <program> [options]\" with the program's name, not its path");
 	}
 
 	/* Log Y: decades on the axis with SI prefixes and equal heights, values <= 0 on the bottom edge, Auto over the
@@ -16575,10 +16877,11 @@ private:
 		const bool steps = full != noPaint && noPaint != noPlotted && noPlotted != noDelay && at(full, 0) == full
 				&& at(full, 1) == noPaint && at(noPaint, 0) == noPaint && at(noPaint, 1) == noPlotted
 				&& at(noPlotted, 1) == noDelay && noDelay.startsWith(QStringLiteral("1/64 · "));
-		bool whole = true;
+		bool whole = true; /* the count is never dropped: it is what is left when nothing more fits */
+		const QString count = chart.tab.infoText(0);
 		for (int width = 0; width < metrics.horizontalAdvance(full) + 4; width += 3) {
 			const QString text = chart.tab.infoText(width);
-			whole = whole && (text.isEmpty() || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
+			whole = whole && (text == count || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
 		}
 		if (!steps) std::printf("     (\"%s\" -> \"%s\" -> \"%s\" -> \"%s\")\n", qPrintable(full),
 				qPrintable(at(full, 1)), qPrintable(at(noPaint, 1)), qPrintable(at(noPlotted, 1)));
@@ -16589,6 +16892,21 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
+
+		/* the narrowest: the buttons left the line no room and it was empty; now it keeps room for the count */
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.resize(chart.tab.minimumSizeHint().width(), chart.tab.height());
+		chart.tab.refreshStatus();
+		QApplication::processEvents();
+		chart.tab.refreshStatus();
+		const bool kept = count == QStringLiteral("1/64") && label->text() == count
+				&& label->contentsRect().width() >= metrics.horizontalAdvance(count);
+		if (!kept)
+			std::printf("     (at the narrowest, %d px: \"%s\" in %d px, the count \"%s\" %d px)\n", chart.tab.width(),
+					qPrintable(label->text()), label->contentsRect().width(), qPrintable(count), metrics.horizontalAdvance(count));
+		check(kept, "chart, the info line: at the narrowest the count stays (1/64), with room for it, never an empty line");
+		chart.tab.hide();
 	}
 
 	/* The translations as kept (translations/<name>.ts): every message finished and not empty, Arabic's plural forms all
@@ -18952,6 +19270,22 @@ private:
 										QStringLiteral("12346") }),
 				"analysis, spectrum: a rate just off 10000 Hz is written whole (9999.7 as 10000, 9999.4 as 9999, 12345.6 as "
 				"12346), never 1e+04");
+		/* one of a kind in English: a histogram of one value has "1 bin", sqrt "takes 1 value" ("1 bins", "1 values") */
+		{
+			const AnalysisWindow single(AnalysisWindow::Kind::Histogram, QStringLiteral("WAVE"), QStringLiteral("V"), Qt::blue,
+					QStringLiteral("the view"), { 1.0, 2.0, 3.0 }, { 5.0, 5.0, 5.0 }, nullptr, true);
+			MathLine wrong;
+			wrong.formula = QStringLiteral("sqrt(1, 2)");
+			const bool refused = !wrong.compile({});
+			const QString text = single.summary();
+			if (!text.startsWith(QStringLiteral("3 samples · 1 bin of ")) || !wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+					|| wrong.error.contains(QStringLiteral("1 values")))
+				std::printf("     (\"%s\"; \"%s\")\n", qPrintable(text), qPrintable(wrong.error));
+			check(refused && text.startsWith(QStringLiteral("3 samples · 1 bin of "))
+							&& wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+							&& !wrong.error.contains(QStringLiteral("1 values")),
+					"plurals: a histogram of one value says \"1 bin\", a formula's sqrt(1, 2) \"sqrt takes 1 value\"");
+		}
 	}
 
 	/* The trigger: the view holds on a crossing with it at 20 % of the window and a marker; Normal holds on each and is

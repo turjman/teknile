@@ -246,8 +246,12 @@ QString AnalysisWindow::summary() const {
 	const QString u = unit_.isEmpty() ? QString() : QLatin1Char(' ') + unit_;
 	if (kind_ == Kind::Histogram) {
 		if (histogram_.counts.isEmpty()) return tr("No samples");
-		return tr("%1 samples · %2 bins of %3%4 (Freedman–Diaconis)").arg(histogram_.total).arg(histogram_.counts.size())
-				.arg(number(histogram_.width), u);
+		/* one of each in English (one value makes one bin: "1 bins"), Arabic's plural forms by %n */
+		const int samples = int(histogram_.total), bins = int(histogram_.counts.size());
+		return (samples == 1 ? tr("1 sample") : tr("%n samples", nullptr, samples))
+				+ (bins == 1 ? tr(" · 1 bin of %1%2 (Freedman–Diaconis)")
+								: tr(" · %n bins of %1%2 (Freedman–Diaconis)", nullptr, bins))
+						.arg(number(histogram_.width), u);
 	}
 	if (spectrum_.frequency.isEmpty()) return tr("%1 samples: too few for a spectrum").arg(samples_);
 	qsizetype peak = 1;
