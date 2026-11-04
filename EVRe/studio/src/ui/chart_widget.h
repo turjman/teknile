@@ -206,6 +206,8 @@ public:
 	double window() const { return window_; }
 	void setMemory(double seconds);     /* how much is kept */
 	double memory() const { return memory_; }
+	/* a drag on the plot when the Memory is no longer than the Window: nothing to pan to, this tooltip says so */
+	static QString panRefusal();
 	/* follow now, or hold the view where it is; Hold also ends a short window's lock (it stays off until Live) */
 	void setLive(bool on);
 	/* following now: a short window's lock holds the view on its crossings, yet for the user it is live (Hold, not

@@ -593,6 +593,7 @@ public:
 		chartLogScale();
 		chartInfoLine();
 		chartYRangeTyped();
+		chartPanRefused();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -14825,6 +14826,52 @@ private:
 				"12 and 12 shown as 12 and 13 at once; a Log min of -1 refused and the box back at once");
 		emit mode->activated(ChartTab::YAuto);
 		QSettings().remove(QStringLiteral("chart/yLog"));
+		chart.tab.hide();
+	}
+
+	/* A drag with the Memory no longer than the Window (7.3): nothing is kept outside the view, so it moved nothing and
+	 * said nothing; now a tooltip says why (a click alone nothing), the view stays live; with a longer Memory it holds */
+	void chartPanRefused() {
+		LoneChart chart(QStringLiteral("PAN"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(60.0 + i / 10.0, 5 + std::sin(i * 0.05));
+		chart.view->setMemory(60);
+		chart.view->setWindow(10);
+		chart.tab.frame(samples);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab();
+		const QPoint middle = chart.view->lastPlot().center().toPoint();
+		const auto drag = [&] {
+			QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+			QMouseEvent moved(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)),
+					chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(chart.view, &moved);
+			QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		};
+		QToolTip::hideText();
+		drag();
+		const bool held = !chart.view->live() && !QToolTip::isVisible();
+		chart.view->setLive(true);
+		chart.view->setMemory(10);
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, middle); /* a click alone: no tooltip */
+		const bool quietClick = !QToolTip::isVisible();
+		QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+		QMouseEvent move(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)), chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))),
+				Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(chart.view, &move);
+		const bool said = quietClick && QTest::qWaitFor([] { return QToolTip::isVisible(); }, 2000)
+				&& QToolTip::text() == ChartView::panRefusal();
+		const QString tip = QToolTip::text();
+		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		const bool stillLive = chart.view->live();
+		if (!(said && stillLive && held))
+			std::printf("     (memory 60 s: held %d; memory = window: tooltip \"%s\", live %d)\n", int(held), qPrintable(tip),
+					int(stillLive));
+		check(said && stillLive && held, "chart, a drag with the Memory no longer than the Window: it says why in a tooltip "
+				"(nothing to drag to; a click alone says nothing), the view stays live; with a longer Memory the drag holds "
+				"the view");
+		QToolTip::hideText();
 		chart.tab.hide();
 	}
 

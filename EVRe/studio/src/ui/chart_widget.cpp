@@ -2319,6 +2319,11 @@ void ChartView::mousePressEvent(QMouseEvent *e) {
 	setCursor(Qt::ClosedHandCursor);
 }
 
+QString ChartView::panRefusal() {
+	return tr("Nothing to drag to: the Memory is no longer than the Window, so the view holds all that is kept. A longer "
+			"Memory keeps more to look back on.");
+}
+
 /* Lanes: on the scroll bar, the handle is dragged and a click above or below it moves one plot height; a click on an
  * open lane's unit name folds it, one anywhere on a folded strip opens it */
 bool ChartView::pressLanes(const QPointF &pos) {
@@ -2428,6 +2433,12 @@ void ChartView::mouseMoveEvent(QMouseEvent *e) {
 	const QRectF plot = plotRect();
 	switch (drag_) {
 	case Drag::Pan:
+		/* nothing kept outside the view: the drag moves nothing (it said nothing either), the tooltip says why */
+		if (memory_ <= window_) {
+			if (std::fabs(pos.x() - dragStartX_) >= QGuiApplication::styleHints()->startDragDistance())
+				QToolTip::showText(e->globalPosition().toPoint(), panRefusal(), this);
+			break;
+		}
 		holdAt(dragStartEnd_ - (pos.x() - dragStartX_) / plot.width() * window_);
 		break;
 	case Drag::Overview: {
