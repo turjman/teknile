@@ -661,6 +661,7 @@ public:
 		dumpCards();
 		dumpColours();
 		dumpLive();
+		dumpTipFollows();
 		dumpMouse();
 		clearRegistersSelection();
 		clearDumpSelection();
@@ -1897,6 +1898,48 @@ private:
 		language::apply(*qApp, QStringLiteral("ar"));
 		QTest::qWait(200);
 		ok = clear("right to left") && ok;
+		/* a second message: its count ("+1 more") shown whole, nothing of the notice cut */
+		notice->post(LogLevel::Warning, QStringLiteral("a second notice in right-to-left, with a count beside it"));
+		QApplication::processEvents();
+		/* at every width: shown whole, or (too little room beside the tabs) said in the status bar instead */
+		bool countWhole = notice->isVisible() && notice->sizeHint().width() <= notice->width();
+		int shownAt = 0, inStatusBar = 0;
+		for (int width = 900; width <= 1600; width += 25) {
+			window_.resize(width, was.height());
+			QTest::qWait(20);
+			if (notice->isVisible()) {
+				shownAt++;
+				if (notice->sizeHint().width() > notice->width()) {
+					countWhole = false;
+					std::printf("     (the notice in Arabic at %d: %d px wide, its text needs %d: \"%s\")\n", window_.width(),
+							notice->width(), notice->sizeHint().width(), qPrintable(notice->text()));
+				}
+			} else if (!window_.statusBar()->currentMessage().isEmpty()) {
+				inStatusBar++;
+			}
+		}
+		window_.resize(was);
+		QTest::qWait(50);
+		std::printf("     (the notice in Arabic across the widths: shown whole at %d, in the status bar at %d)\n", shownAt,
+				inStatusBar);
+		check(countWhole && shownAt > 0, "the notice in right-to-left (Arabic): at every window width as wide as its text, "
+				"its count (+1 more) and link never cut; with too little room beside the tabs the status bar says it");
+		/* the Log in Arabic: its lines start with the date, left to right; the tab opens at their start */
+		if (auto *view = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"))) {
+			if (auto *eventLog = window_.findChild<EventLog *>())
+				eventLog->add(LogLevel::Warning, QStringLiteral("a long line for the Log in Arabic ") + QString(300, QLatin1Char('x')),
+						false);
+			tabs->setCurrentIndex(MainWindow::TabLog);
+			QTest::qWait(100);
+			QScrollBar *across = view->horizontalScrollBar();
+			const bool atStart = view->layoutDirection() == Qt::LeftToRight && across->maximum() > 0
+					&& across->value() == across->minimum();
+			if (!atStart)
+				std::printf("     (the Log in Arabic: direction %d, scrolled %d of %d..%d)\n", int(view->layoutDirection()),
+						across->value(), across->minimum(), across->maximum());
+			check(atStart, "the Log tab in Arabic: left to right, opened at its lines' start (the date), not scrolled to their end");
+			tabs->setCurrentIndex(0);
+		}
 		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
 			window_.resize(size);
 			QTest::qWait(100);
@@ -1922,6 +1965,35 @@ private:
 		const QString text = logText();
 		check(text.contains(QLatin1String("not written")) && text.contains(QLatin1String("written: ")),
 				"the Log tab: the writes, and the one not written");
+		/* Show info off: the info lines already there go too, not only the new ones; on again they are back */
+		auto *log = window_.findChild<EventLog *>();
+		QCheckBox *showInfo = nullptr;
+		if (log)
+			for (QCheckBox *box : log->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Show info")) showInfo = box;
+		if (!log || !showInfo) {
+			check(false, "the Log tab: Show info");
+			return;
+		}
+		log->add(LogLevel::Info, QStringLiteral("an info line for Show info"), false);
+		log->add(LogLevel::Warning, QStringLiteral("a warning line for Show info"), false);
+		const bool infoThere = logText().contains(QLatin1String("an info line for Show info"));
+		showInfo->setChecked(false);
+		const QString off = logText();
+		log->add(LogLevel::Info, QStringLiteral("a second info line for Show info"), false);
+		const bool newHidden = !logText().contains(QLatin1String("a second info line"));
+		showInfo->setChecked(true);
+		const QString on = logText();
+		if (!infoThere || off.contains(QLatin1String("INFO ")) || !newHidden || !on.contains(QLatin1String("a second info line")))
+			std::printf("     (Show info: there %d, off with an info line %d, a new one hidden %d, on: the new one back %d)\n",
+					int(infoThere), int(off.contains(QLatin1String("INFO "))), int(newHidden),
+					int(on.contains(QLatin1String("a second info line"))));
+		check(infoThere && !off.contains(QLatin1String("an info line for Show info")) && !off.contains(QLatin1String("INFO "))
+						&& off.contains(QLatin1String("a warning line for Show info")) && newHidden
+						&& on.contains(QLatin1String("an info line for Show info"))
+						&& on.contains(QLatin1String("a second info line for Show info")) && on.contains(QLatin1String("INFO ")),
+				"the Log tab, Show info off: the info lines already in the tab are hidden too (the warnings stay), a new one "
+				"is not shown; on again, all of them are back, the one logged meanwhile too");
 	}
 
 	/* 8. stale: polling paused, values go grey */
@@ -3882,6 +3954,9 @@ private:
 			if (stop) stop->click();
 			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
 			const bool written = QFileInfo::exists(evrs) && logText().contains(QLatin1String("fast stream ADC recorded: "));
+			check(logText().contains(QStringLiteral("fast stream ADC recorded: %1 (").arg(QDir::toNativeSeparators(evrs))),
+					"fast streams recorded: the Log's .evrs line gives its path in the system's separators, as the CSV's "
+					"line under it does (backslashes on Windows)");
 			RecordingWindow *opened = nullptr, *alone = nullptr, *cut = nullptr;
 			/* a fast math line of the recording's window's own (recording/math), computed from the records recorded */
 			const QVariant mathBefore = QSettings().value(QStringLiteral("recording/math"));
@@ -8845,6 +8920,46 @@ private:
 
 	/* The mouse: hover lights a register and says its byte; a click selects it in the Registers tab too, a double-click
 	 * goes there; the Registers tab's Show in dump and its current row */
+	/* a byte's tooltip says what the byte holds now: new bytes under it while it is up, it changes with them */
+	void dumpTipFollows() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !view) {
+			check(false, "Dump: a byte's tooltip follows (no tab)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		if (auto *follow = tab->findChild<QPushButton *>(QStringLiteral("dumpFollow"))) follow->click();
+		QApplication::processEvents();
+		int card = -1;
+		const uint16_t addr = regs_.volts.addr;
+		(void) QTest::qWaitFor([&] {
+			const QVector<DumpBlock> &blocks = view->blocks();
+			for (int i = 0; i < blocks.size() && card < 0; i++)
+				if (blocks[i].kind == DumpBlock::Read && blocks[i].addr <= addr && addr < blocks[i].addr + blocks[i].size)
+					card = i;
+			return card >= 0;
+		}, 3000);
+		bool follows = false;
+		QString first, now;
+		if (card >= 0) {
+			const QPoint at = view->byteRect(card, addr - view->blocks()[card].addr).center();
+			QToolTip::hideText();
+			QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
+			QApplication::sendEvent(view->viewport(), &help);
+			first = QToolTip::text();
+			follows = QTest::qWaitFor([&] {
+				now = QToolTip::text();
+				return QToolTip::isVisible() && now != first && now == view->toolTipAt(at);
+			}, 4000);
+			QToolTip::hideText();
+		}
+		if (!follows) std::printf("     (the tooltip: \"%s\", then \"%s\")\n", qPrintable(first), qPrintable(now));
+		check(card >= 0 && !first.isEmpty() && follows, "Dump: a byte's tooltip follows the byte under it (the value now, "
+				"not the one it held when the tooltip opened)");
+	}
+
 	void dumpMouse() {
 		auto *tabs = window_.findChild<QTabWidget *>();
 		DumpTab *tab = dumpTab();

@@ -130,6 +130,14 @@ void DumpView::setBlocks(const QVector<DumpBlock> &blocks) {
 	noteChanges(was);
 	relayout();
 	scrollToPending();
+	refreshTip();
+}
+
+void DumpView::refreshTip() {
+	if (tipText_.isEmpty() || !QToolTip::isVisible() || QToolTip::text() != tipText_) return;
+	if (toolTipAt(tipPos_) == tipText_) return;
+	QHelpEvent help(QEvent::ToolTip, tipPos_, viewport()->mapToGlobal(tipPos_));
+	viewportEvent(&help);
 }
 
 /* The bytes of a read that differ from its last answer start glowing; a read shown for the first time does not glow
@@ -2478,6 +2486,8 @@ bool DumpView::viewportEvent(QEvent *e) {
 	const QPoint pos = help->pos();
 	const QString tip = toolTipAt(pos);
 	const QRect place = tipPlace(pos);
+	tipPos_ = pos;
+	tipText_ = tip;
 	if (tip.isEmpty()) {
 		QToolTip::hideText();
 		e->ignore();
