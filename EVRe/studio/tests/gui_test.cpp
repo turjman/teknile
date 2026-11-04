@@ -14148,6 +14148,13 @@ private:
 		if (!autoSaid) std::printf("     (Display on Auto: \"%s\")\n", qPrintable(autoState));
 		check(listed && cpu && autoSaid, "chart, Display menu, Drawing: Auto, every adapter by name, CPU; CPU picked is "
 				"ticked, saved, in the button's tooltip, the info line ends \"CPU\"; on Auto the tooltip names who draws");
+		/* a card is listed once: a laptop's Intel graphics came twice from DXGI, under two LUIDs */
+		QStringList drawingTexts;
+		for (const QAction *choice : std::as_const(choices)) drawingTexts << choice->text();
+		const QStringList listedTexts = drawingTexts;
+		if (drawingTexts.removeDuplicates() > 0)
+			std::printf("     (Drawing: %s)\n", qPrintable(listedTexts.join(QStringLiteral(" | "))));
+		check(!listedTexts.isEmpty() && listedTexts == drawingTexts, "chart, Display menu, Drawing: no card listed twice");
 	}
 
 	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):

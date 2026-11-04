@@ -139,9 +139,11 @@ QVector<GpuLines::Adapter> GpuLines::adapters() {
 		a.luidLow = desc.AdapterLuid.LowPart;
 		a.luidHigh = desc.AdapterLuid.HighPart;
 		a.dedicated = desc.VendorId != VENDOR_INTEL && desc.DedicatedVideoMemory >= DEDICATED_MIN;
-		bool listed = false; /* an adapter can be listed once per output */
+		/* an adapter can be listed once per output; a laptop's Intel graphics came twice under two LUIDs (the
+		 * Drawing list showed it twice): one entry by name, the first, which draws as well as the other */
+		bool listed = false;
 		for (const Adapter &other : std::as_const(found))
-			listed = listed || (other.luidLow == a.luidLow && other.luidHigh == a.luidHigh);
+			listed = listed || (other.luidLow == a.luidLow && other.luidHigh == a.luidHigh) || other.name == a.name;
 		if (!listed) found << a;
 	}
 	std::stable_sort(found.begin(), found.end(), [](const Adapter &a, const Adapter &b) { return a.dedicated > b.dedicated; });
