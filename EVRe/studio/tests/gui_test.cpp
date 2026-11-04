@@ -18697,6 +18697,22 @@ private:
 										QStringLiteral("12346") }),
 				"analysis, spectrum: a rate just off 10000 Hz is written whole (9999.7 as 10000, 9999.4 as 9999, 12345.6 as "
 				"12346), never 1e+04");
+		/* one of a kind in English: a histogram of one value has "1 bin", sqrt "takes 1 value" ("1 bins", "1 values") */
+		{
+			const AnalysisWindow single(AnalysisWindow::Kind::Histogram, QStringLiteral("WAVE"), QStringLiteral("V"), Qt::blue,
+					QStringLiteral("the view"), { 1.0, 2.0, 3.0 }, { 5.0, 5.0, 5.0 }, nullptr, true);
+			MathLine wrong;
+			wrong.formula = QStringLiteral("sqrt(1, 2)");
+			const bool refused = !wrong.compile({});
+			const QString text = single.summary();
+			if (!text.startsWith(QStringLiteral("3 samples · 1 bin of ")) || !wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+					|| wrong.error.contains(QStringLiteral("1 values")))
+				std::printf("     (\"%s\"; \"%s\")\n", qPrintable(text), qPrintable(wrong.error));
+			check(refused && text.startsWith(QStringLiteral("3 samples · 1 bin of "))
+							&& wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+							&& !wrong.error.contains(QStringLiteral("1 values")),
+					"plurals: a histogram of one value says \"1 bin\", a formula's sqrt(1, 2) \"sqrt takes 1 value\"");
+		}
 	}
 
 	/* The trigger: the view holds on a crossing with it at 20 % of the window and a marker; Normal holds on each and is
