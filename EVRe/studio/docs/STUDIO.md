@@ -8685,7 +8685,9 @@ register is refused; a register marked danger and a value past the map's `min` o
 is acknowledged and read back (a write-only register is not read back).
 
 **Exit codes:** 0 done; 1 the device or the map said no (an error answer, a refusal, a timeout, a wrong token, a
-device ID that is not the map's, a map with an error for `validate`); 2 the command line or a file is wrong.
+device ID that is not the map's, a map with an error for `validate` and `export`); 2 the command line or a file is
+wrong. `export` writes nothing from a map that `validate` refuses (a min above its max, a name used twice): it lists
+the errors and ends with 1; warnings do not stop it.
 
 Examples:
 

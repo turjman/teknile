@@ -445,6 +445,16 @@ int cmdExport(const Args &a) {
 	}
 	DeviceMap map;
 	if (!loadMap(a.positional[0], map)) return 2;
+	/* a map with errors (what validate refuses: a min above its max, a name twice) is not exported: a header or a
+	 * module made from it went out with exit 0. Warnings do not stop it */
+	int errors = 0;
+	for (const MapIssue &issue : checkMap(map)) {
+		if (!issue.error) continue;
+		if (errors++ == 0)
+			err(QStringLiteral("%1: not exported, the map has errors (evre validate):").arg(QFileInfo(a.positional[0]).fileName()));
+		err(QStringLiteral("  ") + issue.text);
+	}
+	if (errors) return 1;
 	ExportOptions options;
 	options.source = QFileInfo(a.positional[0]).fileName();
 	options.prefix = a.prefix;
