@@ -3695,6 +3695,7 @@ private:
 
 		/* Start: the enable written 1, the blocks counted, the rate as fitted, nothing lost */
 		button->click();
+		const QString justStarted = sidebar->fastRateText(0); /* at once: not "off" under the Stop button */
 		const bool on = enableBecomes(1);
 		const QRegularExpression rate(QStringLiteral("^(9\\.9|10\\.0|10\\.1) k samples/s \\([+-][0-9]+ ppm\\)$"));
 		const bool counted = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 6000);
@@ -3704,6 +3705,16 @@ private:
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
+		{ /* the line says what Start began until the first block; the rate's tooltip says ppm once, then what it is */
+			const QString tip = sidebar->fastRateTip(0);
+			const bool once = QRegularExpression(QStringLiteral("corrected by [+-][0-9]+ ppm \\(parts in a million\\)"))
+					.match(tip).hasMatch();
+			if (justStarted != QLatin1String("waiting for the first block") || !once)
+				std::printf("     (just after Start: \"%s\"; the tooltip \"%s\")\n", qPrintable(justStarted), qPrintable(tip));
+			check(justStarted == QLatin1String("waiting for the first block") && once,
+					"fast streams: just after Start the line says \"waiting for the first block\" (not \"off\" under the Stop "
+					"button); the rate's tooltip: \"corrected by +8 ppm (parts in a million)\", ppm said once");
+		}
 		/* the Dump tab: the running stream's newest block as a card of its own */
 		dumpFastLive(fastMap);
 
