@@ -1693,12 +1693,15 @@ void MainWindow::onBulkWriteRequested(const QVector<int> &rows, const QString &t
 								3000);
 						return;
 					}
-					/* one pop-up for them all */
+					/* one pop-up for them all; the status bar's count names the refusal too, and comes first: when the
+					 * pop-up has no room beside the tabs, its message takes the status bar, not hidden by the count */
+					const QString refused = results->refused.join(QStringLiteral(", "));
+					statusBar()->showMessage(tr("%1 of %2 registers written; refused: %3").arg(done).arg(results->total)
+							.arg(refused), 8000);
 					QString line = tr("bulk write of %1: %2 of %3 written; refused: %4").arg(typed).arg(done)
-							.arg(results->total).arg(results->refused.join(QStringLiteral(", ")));
+							.arg(results->total).arg(refused);
 					if (done > 0) line += tr("; written: %1").arg(results->written.join(QStringLiteral(", ")));
 					logEvent(LogLevel::Warning, line + notTakenText);
-					statusBar()->showMessage(tr("%1 of %2 registers written").arg(done).arg(results->total), 8000);
 				});
 	}
 }
@@ -1882,6 +1885,8 @@ void MainWindow::refreshStatus() {
 	logCounterIncrease(link.badFrames, loggedBadFrames_, tr("%1 bad frame(s) received (%2 in all)"));
 	statusLatency_->setText(stats.listening ? Sidebar::heardRateText(stats.heard.requestsHz)
 			: tr("Latency %1 ms").arg(link.avgLatencyMs, 0, 'f', 1));
+	statusLatency_->setToolTip(stats.listening ? tr("The other program's requests heard a second") : tr("How long one answer takes, on average: well under 1 ms on "
+			"USB or this PC, 1–5 ms over Wi-Fi"));
 	statusTraffic_->setText(tr("TX %1 · RX %2").arg(link.tx).arg(link.rx));
 	/* TX stands still while listening, and rightly: it counts what the Studio sends, the other program's frames are heard */
 	statusTraffic_->setToolTip(stats.listening ? tr("TX: frames the Studio has sent since it started, none while listening. "

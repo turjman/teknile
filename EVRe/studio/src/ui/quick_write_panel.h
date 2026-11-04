@@ -82,6 +82,7 @@ private:
 	/* the three ways to write */
 	void writeTyped();
 	void writeNamedValue(int listIndex);
+	bool rawIsShown() const; /* no scale or offset on the register (on every one of several): a plain number is raw */
 	void writeField(int lsb, int width, quint64 value); /* from the bit view */
 	void requestWrite(const QString &text);
 

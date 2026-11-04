@@ -63,6 +63,9 @@ public:
 	/* Listen is on: nothing is written (writes stay off) and a value never read says why it is "—" */
 	void setListening(bool on);
 	bool listening() const { return listening_; }
+	/* the link is up: a Value cell is editable only then (with writes enabled), as the quick-write panel's controls */
+	void setLinkUp(bool up);
+	bool linkUp() const { return linkUp_; }
 	/* The registers on the chart: PLOT_SAMPLES_PER_SECOND for all the lines together, at most MAX_PLOTTED (more
 	 * cannot be followed by eye): 64 up to 1000 Hz, 32 at 2000 Hz, 16 at 4000 Hz. A Plot past the limit is refused
 	 * (false, and plotLimitReached); a lower limit takes the newest lines off (plotsTakenOff). */
@@ -123,6 +126,7 @@ private:
 	quint64 nextPlotOrder_ = 1;
 	bool writesEnabled_ = false;
 	bool listening_ = false;
+	bool linkUp_ = false;
 	QElapsedTimer clock_;       /* the time base of changedMs / updatedMs */
 	qint64 staleAfterMs_ = 1000;
 	Colors colors_;

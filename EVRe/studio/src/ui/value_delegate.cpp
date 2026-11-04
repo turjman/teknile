@@ -13,13 +13,17 @@
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 
-/* the whole cell's background (glow, selection), the value left of the (i), then the (i) */
+/* the whole cell's background (selection, glow), the value left of the (i), then the (i). The glow is filled here:
+ * the style sheet's item rule (QTableView::item) draws the cell's panel itself and leaves the model's background out */
 void ValueDelegate::paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const {
 	QStyleOptionViewItem cell(option);
 	initStyleOption(&cell, index);
 	const QWidget *widget = option.widget;
 	QStyle *style = widget ? widget->style() : QApplication::style();
+	const QBrush glow = cell.backgroundBrush;
+	cell.backgroundBrush = Qt::NoBrush;
 	style->drawPrimitive(QStyle::PE_PanelItemViewItem, &cell, painter, widget);
+	if (glow.style() != Qt::NoBrush) painter->fillRect(cell.rect, glow);
 	QStyleOptionViewItem value(cell);
 	value.rect.adjust(0, 0, -INFO_WIDTH, 0);
 	value.backgroundBrush = Qt::NoBrush;
@@ -42,6 +46,18 @@ void ValueDelegate::paintInfoMark(QPainter *painter, const QRect &cell, const QF
 	painter->setFont(letter);
 	painter->drawText(circle, Qt::AlignCenter, QStringLiteral("i"));
 	painter->restore();
+}
+
+void ValueDelegate::initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const {
+	QStyledItemDelegate::initStyleOption(option, index);
+	keepColourWhenSelected(option, index);
+}
+
+/* a selected row keeps the cell's own colour (a stale value's grey, an error's red): the selection's text colour
+ * (selection-color in the style sheet) would put every cell of the row in the plain text colour */
+void ValueDelegate::keepColourWhenSelected(QStyleOptionViewItem *option, const QModelIndex &index) {
+	const QVariant foreground = index.data(Qt::ForegroundRole);
+	if (foreground.canConvert<QBrush>()) option->palette.setBrush(QPalette::HighlightedText, qvariant_cast<QBrush>(foreground));
 }
 
 /* "-1500" in Arabic too, not "1500-": drawn as one left-to-right piece, the data plain (Ctrl+C copies it so) */
