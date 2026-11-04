@@ -274,7 +274,8 @@ private:
 	void applyRamText();     /* RAM typed or picked */
 	void applyDrawing(int drawing); /* a ChartView::Drawing picked (or restored): the renderer, the menu, the Log */
 	void showDisplayState();        /* the Display button's tooltip: what is on now */
-	void showYRange(bool save = true); /* the Y fields follow the chart; save: into the settings */
+	/* the Y fields follow the chart; save: into the settings; typed: the box with the keyboard's focus rewritten too */
+	void showYRange(bool save = true, bool typed = false);
 	void applyYFields();     /* the Y fields typed: Manual */
 
 	/* the measurements under the chart; measureSoon: at once, then at most every MEASURE_FOLLOW_MS while the cursors

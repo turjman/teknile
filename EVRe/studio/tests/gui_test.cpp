@@ -592,6 +592,7 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
+		chartYRangeTyped();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -14760,6 +14761,73 @@ private:
 		feed(200.0, 2);
 		check(clear && cleared && chart.view->totalsSince() == 200.0 && std::fabs(chart.view->total(chart.key()) - 0.002) < 1e-12,
 				"chart, totals: Clear starts them again, from the next sample");
+	}
+
+	/* The Y boxes typed (7.5): a min above the max is swapped and stays, 12 and 12 read 12 and 13, a refused Log min is
+	 * put back at once; the box typed in shows what was made of it (it kept its text, and leaving it applied that again) */
+	void chartYRangeTyped() {
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		QSettings().remove(QStringLiteral("chart/yAuto"));
+		LoneChart chart(QStringLiteral("TYPED"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 40.0, 5 + std::sin(i * 0.05));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.activateWindow();
+		(void) QTest::qWaitForWindowActive(&chart.tab, 2000);
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *yMin = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *yMax = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		if (!mode || !yMin || !yMax) {
+			check(false, "chart, the Y boxes typed: the Y range list and its boxes found");
+			return;
+		}
+		const auto type = [&](QLineEdit *box, const QString &text) { /* as a person: focus, the text, Enter */
+			box->setFocus();
+			box->selectAll();
+			QTest::keyClicks(box, text);
+			QTest::keyClick(box, Qt::Key_Return);
+		};
+		const auto leave = [&] { /* the focus to the chart: a box left emits editingFinished again */
+			chart.view->setFocus();
+			QApplication::processEvents();
+		};
+		const auto shows = [&](double lo, double hi) {
+			return yMin->text() == ChartTab::yFieldShown(yMin, lo, true) && yMax->text() == ChartTab::yFieldShown(yMax, hi, true);
+		};
+		yMin->setText(QStringLiteral("0"));
+		type(yMax, QStringLiteral("10"));
+		leave();
+		const bool start = !chart.view->yAuto() && chart.view->yLo() == 0 && chart.view->yHi() == 10;
+		const bool focused = (type(yMin, QStringLiteral("20")), yMin->hasFocus());
+		const bool swapped = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		leave();
+		const bool stays = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		yMin->setText(QStringLiteral("12"));
+		type(yMax, QStringLiteral("12"));
+		const bool equal = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		leave();
+		const bool equalStays = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		emit mode->activated(ChartTab::YLog);
+		yMax->setText(QStringLiteral("100"));
+		type(yMin, QStringLiteral("-1"));
+		const bool refused = chart.view->yLog() && yMin->text() != QStringLiteral("-1")
+				&& yMin->text() == ChartTab::yFieldShown(yMin, chart.view->yLo(), !chart.view->yAuto());
+		leave();
+		if (!(start && swapped && stays && equal && equalStays && refused))
+			std::printf("     (focus %d; start %d, swapped %d, stays %d, 12 and 12 %d, stays %d, Log -1 %d: %g .. %g, \"%s\" \"%s\")\n",
+					int(focused), int(start), int(swapped), int(stays), int(equal), int(equalStays), int(refused),
+					chart.view->yLo(), chart.view->yHi(), qPrintable(yMin->text()), qPrintable(yMax->text()));
+		check(start && swapped && stays && equal && equalStays && refused,
+				"chart, the Y boxes typed: a min above the max swapped (20 over 10: 10 .. 20) and kept when the box is left; "
+				"12 and 12 shown as 12 and 13 at once; a Log min of -1 refused and the box back at once");
+		emit mode->activated(ChartTab::YAuto);
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		chart.tab.hide();
+	}
+
 	}
 
 	/* Log Y: decades on the axis with SI prefixes and equal heights, values <= 0 on the bottom edge, Auto over the

@@ -2038,7 +2038,7 @@ void ChartTab::applyMemoryText() {
 	QSettings().setValue(settingKey("memory"), chart_->memory());
 }
 
-void ChartTab::showYRange(bool save) {
+void ChartTab::showYRange(bool save, bool typed) {
 	/* Lanes: the current lane's range (saved with the lanes' ranges, chart/laneY); without, the plot's */
 	const ChartView *view = chart_->view();
 	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
@@ -2046,8 +2046,10 @@ void ChartTab::showYRange(bool save) {
 	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
 	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
+	/* a box being typed in keeps its text, unless the typing was just taken: then it shows what was made of it (a min
+	 * above the max swapped, 12 and 12 as 12 and 13, a refused Log min), or leaving it applied the old text again */
+	if (typed || !yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (typed || !yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
@@ -2069,7 +2071,7 @@ void ChartTab::applyYFields() {
 	double low = QLocale::c().toDouble(yMin_->text().trimmed(), &lowOk);
 	double high = QLocale::c().toDouble(yMax_->text().trimmed(), &highOk);
 	if (!lowOk || !highOk) {
-		showYRange();
+		showYRange(true, true);
 		return;
 	}
 	ChartView *view = chart_->view();
@@ -2082,7 +2084,7 @@ void ChartTab::applyYFields() {
 		if (low > high) std::swap(low, high);
 		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
 		view->setLaneYManual(lane, low, high); /* refused on the Log scale at 0 or below: the fields back */
-		showYRange(false);
+		showYRange(false, true);
 		return;
 	}
 	const bool manual = !chart_->yAuto();
@@ -2092,7 +2094,7 @@ void ChartTab::applyYFields() {
 	if (low > high) std::swap(low, high);
 	if (high - low < 1e-12) high = chart_->yLog() ? low * 10 : low + 1;
 	chart_->setYManual(low, high); /* refused on the Log scale at 0 or below: the fields back to the range shown */
-	showYRange();
+	showYRange(true, true);
 }
 
 /* --------------------------------------------------------- the measurements */
