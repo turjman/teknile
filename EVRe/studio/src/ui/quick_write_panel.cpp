@@ -103,6 +103,7 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	bitLayout->setContentsMargins(0, 0, 0, 0);
 	/* several selected: each one and its value, a few rows high (a scroll bar for more) */
 	targets_ = new QTableWidget(0, 2);
+	keepCurrentInView(targets_);
 	targets_->setObjectName(QStringLiteral("qwTargets"));
 	targets_->horizontalHeader()->hide();
 	targets_->verticalHeader()->hide();

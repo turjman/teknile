@@ -251,6 +251,7 @@ QTableView *RegistersTab::buildTable() {
 	connect(table_, &QTableView::customContextMenuRequested, this, &RegistersTab::showTableMenu);
 	/* a click below the rows or Escape: no register selected, the detail line, the panel and the Dump follow */
 	clearSelectionOnEmpty(table_);
+	keepCurrentInView(table_); /* the quick-write panel opening under the table keeps the row just selected in view */
 	return table_;
 }
 

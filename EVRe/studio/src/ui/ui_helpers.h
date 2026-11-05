@@ -90,6 +90,10 @@ void clearSelectionOnEmpty(QAbstractItemView *view, bool escape = true);
 /* the same for a read-only text view (the Monitor's frames, the Log): Escape clears the text selected (a click
  * anywhere clears it already, Qt's own) */
 void clearSelectionOnEscape(QPlainTextEdit *view);
+/* a list or table keeps its current row in view when it gets shorter: a panel opening beside it (the Registers
+ * tab's quick-write panel for a read-write register) no longer hides the row just selected. Only a row that was
+ * in view is kept, scrolled up or down as little as needed; one scrolled away stays away, and nothing moves sideways */
+void keepCurrentInView(QAbstractItemView *view);
 
 /* the style sheet again, after a change of the object name or of a property it selects on */
 void repolish(QWidget *widget);

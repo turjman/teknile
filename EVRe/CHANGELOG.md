@@ -23,6 +23,8 @@ what the Studio does.
   *1 register*, *1 device* and their plurals; the saved path no longer breaks after *C:*; tooltips for Record CSV,
   Clear cursors, Mean, RMS and Latency.
 - **Glow.** Changed values glow only after a rest, with an arrow for the direction; Registers → Glow turns it off.
+- **The selected row stays in view.** Selecting a read-write register near the bottom of a long map no longer hides
+  it under the quick-write panel; every list and table keeps its current row in view when it gets shorter.
 - **Map editor.** New and Open ask first when the map has changes not saved; Ctrl+Y and Ctrl+Shift+Z redo on Windows;
   a key typed into a group cell starts the group anew; the value names' Hex box and the Bit fields page follow at once;
   saving after changing one fast stream writes the others as they were; the Markdown export's table headers are in the

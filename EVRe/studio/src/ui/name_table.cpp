@@ -28,6 +28,7 @@ NameTable::NameTable(Keys keys, const QString &objectName, QWidget *parent) : QW
 	table_->setColumnWidth(0, 90);
 	table_->verticalHeader()->setDefaultSectionSize(24);
 	clearSelectionOnEmpty(table_);
+	keepCurrentInView(table_);
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (loading_) return;
 		markRows();

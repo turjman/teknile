@@ -34,6 +34,7 @@ BusPanel::BusPanel(QWidget *parent) : QWidget(parent) {
 
 	/* a bus: its devices, and what can be done with them */
 	list_ = new QListWidget;
+	keepCurrentInView(list_);
 	list_->setObjectName(QStringLiteral("busDevices"));
 	list_->setSelectionMode(QAbstractItemView::SingleSelection);
 	list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);

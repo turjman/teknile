@@ -40,6 +40,7 @@ FieldEditor::FieldEditor(QWidget *parent) : QWidget(parent) {
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setSelectionMode(QAbstractItemView::SingleSelection);
 	clearSelectionOnEmpty(table_); /* a click below the rows or Escape: no field picked (pick(-1), as below) */
+	keepCurrentInView(table_);
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (!loading_) readTable();
 	});

@@ -309,6 +309,7 @@ void MapEditorTab::buildTable() {
 	connect(table_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
 			[this] { editor_->setTargets(selectedUids()); });
 	clearSelectionOnEmpty(table_); /* a click below the rows or Escape: none selected, the form says so */
+	keepCurrentInView(table_);
 }
 
 void MapEditorTab::buildIssues() {
@@ -317,6 +318,7 @@ void MapEditorTab::buildIssues() {
 	issues_ = new QListWidget;
 	issues_->setObjectName(QStringLiteral("mapIssues"));
 	clearSelectionOnEmpty(issues_);
+	keepCurrentInView(issues_);
 	connect(issues_, &QListWidget::itemClicked, this, [this](QListWidgetItem *item) {
 		const quint32 uid = item->data(Qt::UserRole).toUInt();
 		if (uid) selectRegister(uid);

@@ -12,6 +12,7 @@
 
 #include "io/engine.h"
 #include "ui/theme.h"
+#include "ui/ui_helpers.h"
 
 namespace {
 
@@ -888,6 +889,7 @@ HelpDialog::HelpDialog(QWidget *parent) : QDialog(parent) {
 	setWindowTitle(tr("EVRe Studio — Help"));
 	resize(980, 700);
 	topics_ = new QListWidget;
+	keepCurrentInView(topics_);
 	topics_->setObjectName(QStringLiteral("helpTopics")); /* a card as the page beside it (theme) */
 	topics_->setFixedWidth(250); /* the longest title and the card's padding: no scroll bar under it */
 	topics_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);

@@ -22,10 +22,12 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPersistentModelIndex>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QScreen>
 #include <QScrollBar>
 #include <QSignalBlocker>
@@ -33,6 +35,7 @@
 #include <QStyledItemDelegate>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
@@ -212,6 +215,34 @@ private:
 	bool escape_;
 };
 
+/* keepCurrentInView's watcher, on the viewport: it gets shorter with the current row in view, the row stays in view */
+class CurrentRowKeeper : public QObject {
+public:
+	explicit CurrentRowKeeper(QAbstractItemView *view) : QObject(view), view_(view) {
+		setObjectName(QStringLiteral("currentRowKeeper"));
+	}
+
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (event->type() != QEvent::Resize || watched != view_->viewport()) return false;
+		const auto *resize = static_cast<QResizeEvent *>(event);
+		const QModelIndex current = view_->currentIndex();
+		if (!current.isValid() || resize->size().height() >= resize->oldSize().height()) return false;
+		const QRect cell = view_->visualRect(current);
+		if (cell.isEmpty() || cell.bottom() < 0 || cell.top() >= resize->oldSize().height()) return false; /* away: left */
+		/* once the resize is done (the scroll bar's range follows it), up or down only */
+		QTimer::singleShot(0, view_, [view = view_, row = QPersistentModelIndex(current)] {
+			if (!row.isValid() || row != view->currentIndex()) return;
+			const int across = view->horizontalScrollBar()->value();
+			view->scrollTo(row, QAbstractItemView::EnsureVisible);
+			view->horizontalScrollBar()->setValue(across);
+		});
+		return false;
+	}
+
+private:
+	QAbstractItemView *view_;
+};
+
 } // namespace
 
 void clearSelectionOnEmpty(QAbstractItemView *view, bool escape) {
@@ -221,6 +252,8 @@ void clearSelectionOnEmpty(QAbstractItemView *view, bool escape) {
 }
 
 void clearSelectionOnEscape(QPlainTextEdit *view) { view->installEventFilter(new SelectionClearer(view, true)); }
+
+void keepCurrentInView(QAbstractItemView *view) { view->viewport()->installEventFilter(new CurrentRowKeeper(view)); }
 
 void repolish(QWidget *widget) {
 	widget->style()->unpolish(widget);

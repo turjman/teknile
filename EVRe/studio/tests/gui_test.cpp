@@ -577,6 +577,7 @@ public:
 		quickWrite();
 		registersFixes();
 		registersGlow();
+		currentRowKept();
 		groups();
 		chart();
 		chartManyLines();
@@ -12174,6 +12175,70 @@ private:
 	 * moved, in a slot kept on every row; the first value after connecting never glows; the Glow box (registers/glow)
 	 * turns it off, the Dump's bytes too. The glow's clock is moved on by the models' hooks (shiftGlowClock): a rest of
 	 * 2 s and a fade of 1.5 s are checked without waiting for them. */
+	/* a list or table keeps its current row in view when it gets shorter (the quick-write panel opening under the
+	 * Registers table for a read-write register hid the row just selected) */
+	void currentRowKept() {
+		int views = 0, kept = 0;
+		for (QAbstractItemView *view : window_.findChildren<QAbstractItemView *>()) {
+			if (view->window() != &window_) continue; /* a combo box's or a completer's pop-up list */
+			if (qobject_cast<QHeaderView *>(view)) continue; /* a table's own header: no rows to keep */
+			++views;
+			if (view->findChild<QObject *>(QStringLiteral("currentRowKeeper"), Qt::FindDirectChildrenOnly)) ++kept;
+			else std::printf("     without: %s %s in %s %s\n", view->metaObject()->className(), qPrintable(view->objectName()),
+					view->parentWidget() ? view->parentWidget()->metaObject()->className() : "-",
+					view->parentWidget() ? qPrintable(view->parentWidget()->objectName()) : "");
+		}
+		std::printf("     (%d of %d lists and tables)\n", kept, views);
+		check(views >= 5 && kept == views,
+				"lists and tables: every one in the window keeps its current row in view when it gets shorter");
+
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *table = window_.findChild<QTableView *>(QStringLiteral("registers"));
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		if (!tabs || !table || !detail || !table->model() || table->model()->rowCount() < 8) {
+			check(false, "Registers: the table, its detail line and at least 8 rows, for the row kept in view");
+			return;
+		}
+		tabs->setCurrentIndex(0);
+		QTest::qWait(50);
+		QAbstractItemModel *rows = table->model();
+		const QModelIndex first = rows->index(0, RegisterModel::ColName);
+		const QModelIndex last = rows->index(rows->rowCount() - 1, RegisterModel::ColName);
+		const int detailMin = detail->minimumHeight();
+		const int rowHeight = table->verticalHeader()->defaultSectionSize();
+		const auto inView = [&](const QModelIndex &index) {
+			const QRect cell = table->visualRect(index);
+			return !cell.isEmpty() && cell.top() >= 0 && cell.bottom() <= table->viewport()->height();
+		};
+		/* the table about six rows high, its last row selected and shown at the bottom */
+		detail->setMinimumHeight(detail->height() + qMax(0, table->viewport()->height() - 6 * rowHeight));
+		QTest::qWait(80);
+		table->setCurrentIndex(last);
+		table->scrollTo(last, QAbstractItemView::PositionAtBottom);
+		QTest::qWait(50);
+		const bool shownBefore = inView(last);
+		const int before = table->viewport()->height();
+		/* something opens under the table, as the quick-write panel does: two rows less room */
+		detail->setMinimumHeight(detail->minimumHeight() + 2 * rowHeight);
+		QTest::qWait(80);
+		const int after = table->viewport()->height();
+		std::printf("     (the rows' room %d px -> %d px)\n", before, after);
+		check(shownBefore && after < before && inView(last),
+				"Registers: the row selected at the bottom stays in view when the table gets shorter (a panel opening under it)");
+		/* the current row scrolled away by hand: the view stays where it is */
+		table->scrollToTop();
+		QTest::qWait(30);
+		const bool awayBefore = !inView(last);
+		const int top = table->verticalScrollBar()->value();
+		detail->setMinimumHeight(detail->minimumHeight() + rowHeight);
+		QTest::qWait(80);
+		check(awayBefore && table->verticalScrollBar()->value() == top && inView(first),
+				"Registers: a current row scrolled out of view by hand stays out when the table gets shorter (no jump)");
+		detail->setMinimumHeight(detailMin);
+		if (table->selectionModel()) table->selectionModel()->clear();
+		QTest::qWait(50);
+	}
+
 	void registersGlow() {
 		auto *tabs = window_.findChild<QTabWidget *>();
 		auto *glowBox = window_.findChild<QCheckBox *>(QStringLiteral("registersGlow"));

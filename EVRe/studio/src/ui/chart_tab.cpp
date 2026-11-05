@@ -716,6 +716,7 @@ QWidget *ChartTab::buildMeasurements() {
 	measures_->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	measures_->setSelectionMode(QAbstractItemView::ContiguousSelection);
 	clearSelectionOnEmpty(measures_); /* Qt clears the cells on a click below the rows, but keeps the current one */
+	keepCurrentInView(measures_);
 	measures_->setShowGrid(false);
 	measures_->setAlternatingRowColors(true);
 	measures_->setWordWrap(false);
