@@ -11791,6 +11791,22 @@ private:
 		/* the window fits a 1366 x 768 screen (1280 x 720 at 150 %): it was 1236 x 902 at least */
 		const QSize least = window_.minimumSizeHint();
 		std::printf("window minimum %d x %d\n", least.width(), least.height());
+		if (least.width() > 1280) {
+			/* say what is too wide: the window's central parts, each tab's page, and the wide rows of each page */
+			if (QWidget *central = window_.centralWidget())
+				for (QWidget *part : central->findChildren<QWidget *>(Qt::FindDirectChildrenOnly))
+					std::printf("  part %s %s: %d\n", part->metaObject()->className(), qPrintable(part->objectName()),
+							part->minimumSizeHint().width());
+			if (auto *tabs = window_.findChild<QTabWidget *>())
+				for (int i = 0; i < tabs->count(); ++i) {
+					QWidget *page = tabs->widget(i);
+					std::printf("  tab %s: %d\n", qPrintable(tabs->tabText(i)), page->minimumSizeHint().width());
+					if (QLayout *layout = page->layout())
+						for (int j = 0; j < layout->count(); ++j)
+							if (layout->itemAt(j)->minimumSize().width() > 600)
+								std::printf("    row %d: %d\n", j, layout->itemAt(j)->minimumSize().width());
+				}
+		}
 		check(least.width() <= 1280 && least.height() <= 660, "the window's minimum size fits 1280 x 720");
 
 		/* the spin boxes as tall as the text boxes beside them (a text box of its own, not a combo box's) */
