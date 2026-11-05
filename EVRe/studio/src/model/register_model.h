@@ -35,7 +35,10 @@ public:
 		bool plot = false;
 		quint64 plotOrder = 0;      /* when it was plotted: a lower limit takes the newest off first */
 		bool log = true;
-		qint64 changedMs = -100000; /* the value last changed (it glows for a moment) */
+		qint64 changedMs = -100000; /* the value last changed, or was first read since the link came up (glow clock) */
+		qint64 litMs = -100000;     /* its glow began (a change after a rest): it glows GLOW_MS from here */
+		int litDirection = 0;       /* that change: +1 up, -1 down, 0 no arrow (not a plain number) */
+		bool settled = false;       /* read since the link came up: its next change may glow, the first read never */
 		qint64 updatedMs = -100000; /* last successful read, changed or not */
 	};
 
@@ -43,6 +46,10 @@ public:
 	 * value when the edit started, so a change meanwhile can be caught) */
 	static constexpr int WriteRole = Qt::UserRole + 1;
 	static constexpr int RawRole = Qt::UserRole + 2; /* data(): the raw bytes now */
+	/* data() of a Value cell: how strongly it glows now, 1 (just changed) .. 0 (plain); ValueDelegate draws it */
+	static constexpr int GlowRole = Qt::UserRole + 3;
+	/* data() of a Value cell: which way the glowing change went, +1 up, -1 down, 0 none (an enum, bits, hex) */
+	static constexpr int GlowDirectionRole = Qt::UserRole + 4;
 
 	explicit RegisterModel(QObject *parent = nullptr);
 
@@ -72,7 +79,19 @@ public:
 	static constexpr int MAX_PLOTTED = 64;
 	static constexpr double PLOT_SAMPLES_PER_SECOND = 64000;
 	static int plotLimitFor(double samplesPerSecond); /* each line's rate; 0: not known, MAX_PLOTTED */
-	static constexpr qint64 GLOW_MS = 700; /* a changed value glows this long, fading out (the Dump tab's bytes too) */
+	/* A value glows when it changes after holding still GLOW_REST_MS: one that changes at every poll (a noisy ADC)
+	 * would flicker all the time, and a glow is to say "this just moved". It glows GLOW_MS, fading out
+	 * (glowStrength); the Dump tab's bytes follow the same rule, so the two tabs pulse together. */
+	static constexpr qint64 GLOW_MS = 1500;
+	static constexpr qint64 GLOW_REST_MS = 2000;
+	static double glowStrength(qint64 sinceMs); /* 1 at the change .. 0 at GLOW_MS, eased out: (1 - k)^2 */
+	/* the glow's arrow: a plain number (not an enum, bit fields, hex or bytes) */
+	static bool showsDirection(const RegDef &def);
+	/* the setting registers/glow: off, nothing glows (and a glow under way ends) */
+	void setGlowOn(bool on);
+	bool glowOn() const { return glowOn_; }
+	double glow(int row) const;     /* the row's glow now, 1 .. 0 */
+	void shiftGlowClock(qint64 ms); /* tests: the glow's clock moves on as if ms had passed */
 	void setPlotLimit(int limit);
 	int plotLimit() const { return plotLimit_; }
 	bool setPlot(int i, bool on);
@@ -81,7 +100,7 @@ public:
 
 	/* the text colours, the theme's (the model knows no theme): set at start and when it changes */
 	struct Colors {
-		QColor accent{ 79, 140, 255 };  /* rw, and the glow of a changed value */
+		QColor accent{ 79, 140, 255 };  /* rw (the glow is ValueDelegate's, from the theme) */
 		QColor error{ 255, 92, 92 };    /* a value that could not be read */
 		QColor warn{ 255, 176, 32 };    /* a danger register's access, "not refreshed" in the tooltip */
 		QColor muted{ 139, 147, 161 };  /* unit, type, group, decoded; a value not refreshed */
@@ -103,6 +122,7 @@ signals:
 	void plotLimitReached(); /* a Plot refused: plotLimit() are on the chart */
 	void plotsTakenOff(const QStringList &names); /* a lower limit took these off the chart, the newest first */
 	void structureChanged(); /* rows added / removed / redefined: the poller rebuilds */
+	void glowOnChanged(bool on); /* setGlowOn: the Dump's bytes follow */
 
 private:
 	bool isStale(const Row &row) const;
@@ -113,11 +133,13 @@ private:
 	QString toolTip(const Row &row) const;
 	QVariant font(int column) const;
 	QVariant foreground(const Row &row, int column) const;
-	QVariant valueGlow(const Row &row) const;
+	double glow(const Row &row) const;
+	qint64 glowNow() const { return clock_.elapsed() + glowShift_; }
 
 	/* the throttled repaint: rows changed since the last one */
 	void markDirty(int row);
 	void repaintDirtyRows();
+	void repaintGlowing(); /* the glow's own repaint while a value fades: its Value cells only */
 	void refreshColumns(int firstColumn, int lastColumn); /* every row */
 
 	QVector<Row> rows_;
@@ -133,6 +155,10 @@ private:
 	QFont monoFont_, monoBoldFont_;
 	QTimer repaintTimer_;
 	int dirtyFirst_ = -1, dirtyLast_ = -1;
+	bool glowOn_ = true;
+	qint64 glowShift_ = 0;   /* shiftGlowClock's */
+	QTimer glowTimer_;       /* runs only while a value glows */
+	QSet<int> glowing_;      /* the rows that glow (or just stopped: one more repaint draws them plain) */
 };
 
 /* The search box, the group filter and the device over the register table: a

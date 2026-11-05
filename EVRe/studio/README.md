@@ -82,8 +82,8 @@ EVRe is a protocol of **teknile**.
   API; a device that stops answering goes offline without slowing the others. Broadcasts (slave 0) only where they
   mean the same to every device.
 - **Register table:** live values with units, decoded bit fields and enum names, search and group filter, tooltips
-  with the raw bytes and the value's age, a detail line for the selected register. Changed values glow, values
-  that are not refreshed turn grey.
+  with the raw bytes and the value's age, a detail line for the selected register. A value that changes after
+  holding still glows (with an arrow for a number's direction), values that are not refreshed turn grey.
 - **Writes** only with *Allow writes* on. Registers marked `"danger"` ask first, a value that changed while you
   were editing asks first, and every write is read back: the table always shows what the device reports.
 - **One value to several registers:** select several rw registers of one type (Ctrl-click, Shift-click), then the
@@ -236,7 +236,7 @@ Part IV how to make one in the Map editor.
 
 | Test | What |
 |---|---|
-| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (1049 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send, fast streams and Listen included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
+| `evre_gui_test` | drives the real window with QtTest against `tests/fake_device.py` (1061 checks with the example map: the login, the Map editor, limits and fields, a bus, broadcast, auto send, fast streams and Listen included; it also starts `evre_fake_fast` for the bus, auto send and fast streams steps) |
 | `evre_map_test` | the map files without a window (28 tests): saved byte for byte, edits, overlays, keys, checks, streams, and the exports, streams included (the C header compiled with gcc, the Python module imported) |
 | `tests/schema_test.py` | the maps against the JSON Schema, a stream's refusals, MAP_FORMAT.md's stream keys (needs the `jsonschema` package) |
 | `evre_fast_test` | Fast EVRe without a window (22 tests): the block's rules, a fuzz, the clock's fit against a device 200 ppm fast or slow, the fake devices' source, the chart's store of records and its summaries, a recording written and read back |

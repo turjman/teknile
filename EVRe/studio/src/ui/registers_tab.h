@@ -170,6 +170,7 @@ private:
 	QStringList groupsShown_;     /* empty: all */
 	QPushButton *plotShownButton_;
 	QCheckBox *allowWrites_;
+	QCheckBox *glow_;
 	QString allowWritesHelp_;    /* its tooltip when not listening */
 	bool drawnDark_ = true; /* the look Allow writes' highlight is drawn in */
 

@@ -41,8 +41,9 @@
  * number, each channel's bytes a chip in its colour and its value; folded the first three and the last, with Show all
  * every record (as many rows as the stream's largest block, so the card never jumps between blocks).
  *
- * A byte whose value changed glows a moment (its text in a readable accent, fading over the Registers tab's
- * GLOW_MS), so the dump and the table pulse together; not while a register is hovered. Hovering a byte or a decode
+ * A byte whose value changed after holding still glows a moment (its text in a readable accent, fading over the
+ * Registers tab's GLOW_MS; its rest rule, GLOW_REST_MS, per byte), so the dump and the table pulse together; not while
+ * a register is hovered, nor with the setting registers/glow off. Hovering a byte or a decode
  * line lights its register in its own colour (the chips filled stronger and outlined, the decode line filled), and
  * nothing else changes: the other chips keep their tint. A hovered byte also lights its column's offset and its row's
  * address, a crosshair in the register's tint, so its place reads at the edges. A fast card's records have no column
@@ -149,6 +150,8 @@ public:
 	bool connected() const { return connected_; }
 	/* the frames' fields named under their bytes (on), or each frame one line of bytes (off) */
 	void setFields(bool on);
+	void setGlowOn(bool on);                        /* registers/glow: off, no byte glows */
+	void shiftGlowClock(qint64 ms);                 /* tests: the glow's clock moves on as if ms had passed */
 	bool fields() const { return fields_; }
 	void setClock(std::function<double()> now);     /* the seconds DumpBlock::time is on */
 	void setStaleAfterMs(qint64 ms);                /* a reply older than this is stale (the Registers tab's) */
@@ -448,9 +451,18 @@ private:
 	int crossCard_ = -1, crossOffset_ = 0; /* the byte under the mouse: its column offset and row address lit */
 	RegKey scrollTo_ = NO_REGISTER;   /* scrollToRegister's, waiting for its card */
 	QString emptyText_;
-	/* the glow: when each byte of a read last changed (ms on glowClock_), by the read (its kind, device, address) */
-	QHash<quint32, QVector<qint64>> changedMs_;
+	/* the glow, by the read (its kind, device, address), each byte's: when it last changed, or was first shown (it
+	 * holds still from there), and when its glow began (a change after a rest), in ms on the glow's clock */
+	struct ByteGlow {
+		qint64 changed = 0;
+		qint64 lit = 0;
+	};
+	QHash<quint32, QVector<ByteGlow>> glows_;
 	QElapsedTimer glowClock_;
+	qint64 glowShift_ = 0;   /* shiftGlowClock's */
+	bool glowOn_ = true;
+	double connectedAt_ = -1; /* the link came up (on the view's clock): an answer from before it is not compared */
+	qint64 glowNow() const { return glowClock_.elapsed() + glowShift_; }
 	QElapsedTimer keyMenu_;      /* when the keys last opened the menu */
 	QTimer *glowTimer_ = nullptr;
 	int contentHeight_ = 0;

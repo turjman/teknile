@@ -9,7 +9,7 @@
 namespace {
 
 constexpr int REPAINT_MS = 50;   /* the view is told of new values at most this often */
-constexpr int GLOW_ALPHA = 90;   /* how strongly it starts */
+constexpr int GLOW_TICK_MS = 50; /* a glowing value fades in steps this long (the Dump's bytes too) */
 
 /* "0x00ab": an address as the tooltip shows it and the search box matches it
  * (the Address column shows addrText's upper-case digits) */
@@ -40,6 +40,8 @@ RegisterModel::RegisterModel(QObject *parent) : QAbstractTableModel(parent) {
 	repaintTimer_.setSingleShot(true);
 	repaintTimer_.setInterval(REPAINT_MS);
 	connect(&repaintTimer_, &QTimer::timeout, this, &RegisterModel::repaintDirtyRows);
+	glowTimer_.setInterval(GLOW_TICK_MS);
+	connect(&glowTimer_, &QTimer::timeout, this, &RegisterModel::repaintGlowing);
 }
 
 /* ------------------------------------------------ the rows and their values */
@@ -130,7 +132,23 @@ void RegisterModel::applyValue(int i, const QByteArray &raw, bool valid, const Q
 	Row &row = rows_[i];
 	if (valid) {
 		const qint64 now = clock_.elapsed();
-		if (row.valid && raw != row.raw) row.changedMs = now;
+		const qint64 glowAt = glowNow();
+		if (!row.valid || !row.settled) {
+			/* the first value (since the link came up, or after an error): it only came, nothing changed; it holds
+			 * still from here */
+			row.changedMs = glowAt;
+			row.settled = true;
+		} else if (raw != row.raw) {
+			const bool rested = glowAt - row.changedMs >= GLOW_REST_MS;
+			row.changedMs = glowAt;
+			if (rested && glowOn_) {
+				const double was = decodeNumber(row.def, row.raw), is = decodeNumber(row.def, raw);
+				row.litMs = glowAt;
+				row.litDirection = !showsDirection(row.def) ? 0 : is > was ? 1 : is < was ? -1 : 0;
+				glowing_.insert(i);
+				if (!glowTimer_.isActive()) glowTimer_.start();
+			}
+		}
 		row.raw = raw;
 		row.updatedMs = now - ageMs;
 	} else {
@@ -152,6 +170,10 @@ void RegisterModel::setWritesEnabled(bool on) {
 }
 
 void RegisterModel::setLinkUp(bool up) {
+	/* the first value read after connecting never glows: it may differ from the last one before, but nothing was seen
+	 * to change */
+	if (up && !linkUp_)
+		for (Row &row : rows_) row.settled = false;
 	linkUp_ = up;
 	refreshColumns(ColValue, ColValue);
 }
@@ -246,7 +268,8 @@ QVariant RegisterModel::data(const QModelIndex &index, int role) const {
 	case Qt::TextAlignmentRole: return int(alignment(column));
 	case Qt::FontRole: return font(column);
 	case Qt::ForegroundRole: return foreground(row, column);
-	case Qt::BackgroundRole: return column == ColValue ? valueGlow(row) : QVariant();
+	case GlowRole: return column == ColValue ? QVariant(glow(row)) : QVariant();
+	case GlowDirectionRole: return column == ColValue && glow(row) > 0 ? QVariant(row.litDirection) : QVariant();
 	default: return {};
 	}
 }
@@ -316,13 +339,52 @@ QVariant RegisterModel::foreground(const Row &row, int column) const {
 	return {};
 }
 
-/* a value that just changed glows for a moment */
-QVariant RegisterModel::valueGlow(const Row &row) const {
-	const qint64 sinceChange = clock_.elapsed() - row.changedMs;
-	if (sinceChange >= GLOW_MS) return {};
-	QColor glow = colors_.accent;
-	glow.setAlpha(int(GLOW_ALPHA * (1.0 - double(sinceChange) / double(GLOW_MS))));
-	return glow;
+/* ------------------------------------------------------------------ the glow */
+
+/* eased out: strong for a moment, then a long soft tail, as the preview the owner chose fades */
+double RegisterModel::glowStrength(qint64 sinceMs) {
+	if (sinceMs < 0 || sinceMs >= GLOW_MS) return 0.0;
+	const double left = 1.0 - double(sinceMs) / double(GLOW_MS);
+	return left * left;
+}
+
+/* the value column shows a number that can go up or down: an enum's or the bits' value (hex) has no "up" */
+bool RegisterModel::showsDirection(const RegDef &def) {
+	return def.isNumeric() && def.enumValues.isEmpty() && def.fields.isEmpty() && !def.hex
+			&& def.unit != QLatin1String("bitmask");
+}
+
+double RegisterModel::glow(const Row &row) const {
+	return glowOn_ ? glowStrength(glowNow() - row.litMs) : 0.0;
+}
+
+double RegisterModel::glow(int row) const {
+	return row >= 0 && row < rows_.size() ? glow(rows_[row]) : 0.0;
+}
+
+void RegisterModel::setGlowOn(bool on) {
+	if (on == glowOn_) return;
+	glowOn_ = on;
+	emit glowOnChanged(on);
+	if (on) return;
+	for (Row &row : rows_) row.litMs = -100000; /* a glow under way ends now, and does not come back with On */
+	repaintGlowing();
+}
+
+void RegisterModel::shiftGlowClock(qint64 ms) {
+	glowShift_ += ms;
+	repaintGlowing();
+}
+
+/* the glowing Value cells drawn again (only them, only the glow's role: the detail line and the panel skip it); a
+ * row that stopped glowing gets one more repaint, plain, and is let go */
+void RegisterModel::repaintGlowing() {
+	const QSet<int> rows = glowing_;
+	for (const int i : rows) {
+		if (i >= rows_.size() || glow(rows_[i]) <= 0) glowing_.remove(i);
+		if (i < rows_.size()) emit dataChanged(index(i, ColValue), index(i, ColValue), { GlowRole });
+	}
+	if (glowing_.isEmpty()) glowTimer_.stop();
 }
 
 /* a column's text: numbers (the value) at the right, the rest at the left; its header the same */

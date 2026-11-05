@@ -32,6 +32,9 @@ const QString FIELDS_KEY = QStringLiteral("dump/fields");
 DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model_(model) {
 	view_ = new DumpView;
 	view_->setObjectName(QStringLiteral("dumpView"));
+	/* the Registers tab's Glow: the bytes glow with the values or not at all */
+	view_->setGlowOn(model_->glowOn());
+	connect(model_, &RegisterModel::glowOnChanged, view_, &DumpView::setGlowOn);
 
 	deviceLabel_ = mutedLabel(tr("Device"));
 	device_ = new QComboBox;

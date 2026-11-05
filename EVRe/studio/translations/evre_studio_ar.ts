@@ -3635,144 +3635,6 @@ values: Auto ·
     </message>
     <message>
         <source>
-&lt;h2&gt;Registers &amp;amp; writes&lt;/h2&gt;
-&lt;p&gt;One row per register: address, name, &lt;b&gt;value&lt;/b&gt; (bold), unit, &lt;b&gt;decoded&lt;/b&gt; bit fields or enum name,
-type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
-the decoded fields one per line, and its age.&lt;/p&gt;
-&lt;p&gt;A value with bit fields or an enum name has an &lt;b&gt;ⓘ&lt;/b&gt; beside it: hover the ⓘ to see them decoded, one per line
-(the rest of the value shows its usual tooltip). The &lt;b&gt;Decoded&lt;/b&gt; column is off by default (most registers have
-none); right-click the table or its header → &lt;b&gt;Decoded column&lt;/b&gt; to show it.&lt;/p&gt;
-&lt;p&gt;Nothing is cut off: the columns fit their longest text (a scroll bar if the window is narrower), and the
-&lt;b&gt;selected register&lt;/b&gt; is shown in full under the table (value, raw bytes, every decoded field,
-description). A click below the rows, or &lt;b&gt;Esc&lt;/b&gt;, selects none: the line, the panel under it and the Dump then
-show nothing selected. Right-click → &lt;b&gt;Fit columns&lt;/b&gt; shrinks them back after a long value.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;A value that just changed &lt;b&gt;glows&lt;/b&gt; for a moment.&lt;/li&gt;
-&lt;li&gt;A value &lt;b&gt;grey&lt;/b&gt; is not refreshed: older than two poll intervals, or one interval plus the timeout
-when that is longer, plus the time between two updates of &lt;b&gt;Show values&lt;/b&gt; (polling off, link lost).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;error&lt;/i&gt; / &lt;i&gt;not available&lt;/i&gt; in red: the read failed / the device does not have that address.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;Writing&lt;/h3&gt;
-&lt;ol&gt;
-&lt;li&gt;Tick &lt;b&gt;Allow writes&lt;/b&gt; (off at every start).&lt;/li&gt;
-&lt;li&gt;Double-click an &lt;b&gt;rw&lt;/b&gt; value, type, &lt;b&gt;Enter&lt;/b&gt;. Numbers, &lt;code&gt;0x1F&lt;/code&gt;, &lt;code&gt;0b101&lt;/code&gt;, or an enum
-name.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h3&gt;Several registers at once&lt;/h3&gt;
-&lt;p&gt;Select several &lt;b&gt;rw&lt;/b&gt; registers of one type (&lt;b&gt;Ctrl-click&lt;/b&gt;, &lt;b&gt;Shift-click&lt;/b&gt;), then right-click one of them →
-&lt;b&gt;Write to N selected registers…&lt;/b&gt;, type the value in the quick-write panel under the table, or press &lt;b&gt;F2&lt;/b&gt; on
-one, type and &lt;b&gt;Enter&lt;/b&gt; (a double-click selects that row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
-its names); one that does not take it is left out with the reason, one past its map&apos;s limits has a note, read-only
-rows are left out. &lt;b&gt;Cancel&lt;/b&gt; has the focus; &lt;b&gt;Write N&lt;/b&gt; writes them one after the other in address order, each
-read back. A refusal does not stop the others, and the Log sums them up in one line with the values replaced: there is
-no undo.&lt;/p&gt;
-&lt;h3&gt;Quick write&lt;/h3&gt;
-&lt;p&gt;Select an &lt;b&gt;rw&lt;/b&gt; register: under the table, &lt;b&gt;Write NAME&lt;/b&gt; has&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;a value box: type, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt;;&lt;/li&gt;
-&lt;li&gt;for an enum register, a list of its values: pick one and it is written;&lt;/li&gt;
-&lt;li&gt;for a register with bit fields, its &lt;b&gt;bits drawn as in a datasheet&lt;/b&gt;: a cell per bit (click to flip that
-bit only), each flag by its name (click to flip it), and each wider field with its value (click for its named
-values, or &lt;i&gt;Value…&lt;/i&gt;);&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Bits&lt;/b&gt;: the same bit view for an integer register without fields, the highest bit first.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;On a bus, &lt;b&gt;To all devices&lt;/b&gt; sends the value typed to every device in one broadcast frame, where the
-broadcast rule allows it (see &lt;b&gt;Connecting&lt;/b&gt;), after a confirmation, and reads each one back; the Log says which
-devices took it. It is offered once a value is typed.&lt;/p&gt;
-&lt;p&gt;With several &lt;b&gt;rw&lt;/b&gt; registers of one type selected, the panel writes to all of them (&lt;b&gt;Write 3 selected
-registers&lt;/b&gt;): the box starts with the value they share, or is empty with &lt;i&gt;(several values)&lt;/i&gt; while they differ;
-a list under it shows each one&apos;s value as the polls bring it; &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt; opens the list of what each
-one gets. The names list shows only when they all have the same names; &lt;b&gt;Default&lt;/b&gt;, &lt;b&gt;To all devices&lt;/b&gt; and
-&lt;b&gt;Bits&lt;/b&gt; are hidden. On a bus with All devices shown they may be on several devices: each one is written to its own
-device, never as a broadcast, and the list names the device.&lt;/p&gt;
-&lt;p&gt;A bit or field is written read-modify-write from the value the device holds, so the other bits are kept.
-Every quick write goes the same way as a table edit: &lt;b&gt;Allow writes&lt;/b&gt; must be on, ⚠ registers ask first.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;Registers marked &lt;b&gt;rw ⚠&lt;/b&gt; move, power or change something: every write asks first.&lt;/li&gt;
-&lt;li&gt;The table never shows what you typed, only what the device reports: the register is read back at once
-(a clamped value reads clamped), and every poll re-reads it.&lt;/li&gt;
-&lt;li&gt;If the device, or another client, changed the value while you were editing, you are asked before
-yours overwrites it.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;Right-click a row: &lt;b&gt;Plot&lt;/b&gt; (or &lt;b&gt;Remove from chart&lt;/b&gt;), &lt;b&gt;Plot a field&lt;/b&gt; (a register with bit fields: one
-field as a line of its own), &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Write to N selected registers…&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt;, &lt;b&gt;Show in
-dump&lt;/b&gt;, &lt;b&gt;Edit definition…&lt;/b&gt;, &lt;b&gt;Remove&lt;/b&gt;. The menu acts on the rows selected (a row outside the selection is
-selected alone first): with several, &lt;b&gt;Plot&lt;/b&gt;, &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt; and &lt;b&gt;Remove&lt;/b&gt; act on all of
-them and say how many (&lt;i&gt;Read 3 registers now&lt;/i&gt;; Copy gives a line each, the name and the value apart by a tab;
-Remove asks first), and &lt;b&gt;Plot a field&lt;/b&gt;, &lt;b&gt;Show in dump&lt;/b&gt; and &lt;b&gt;Edit definition…&lt;/b&gt; name the register under
-the mouse. Anywhere in
-the table: &lt;b&gt;Plot all shown&lt;/b&gt;, &lt;b&gt;Remove shown from the chart&lt;/b&gt;, &lt;b&gt;Remove all from the chart&lt;/b&gt;, &lt;b&gt;Fit
-columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt; / &lt;b&gt;Log none&lt;/b&gt;, &lt;b&gt;Add register…&lt;/b&gt;.&lt;/p&gt;
-</source>
-        <translation>
-&lt;h2&gt;المسجّلات والكتابات&lt;/h2&gt;
-&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;فك الترميزة&lt;/b&gt; أو اسم القيمة،
-النوع والوصول. مربع البحث ومرشّح المجموعات في الأعلى. مرّر الفأرة فوق صف لترى وصفه، وبايتاته الخام،
-والحقول فك الترميزة واحدًا في كل سطر، وعمره.&lt;/p&gt;
-&lt;p&gt;القيمة ذات حقول البتات أو اسم القيمة بجانبها &lt;b&gt;ⓘ&lt;/b&gt;: مرّر الفأرة فوق ⓘ لتراها مفكوكة، واحدًا في كل سطر
-(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;فك الترميز&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
-بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود فك الترميز&lt;/b&gt; لإظهاره.&lt;/p&gt;
-&lt;p&gt;لا شيء يُقصّ: تتسع الأعمدة لأطول نص فيها (شريط تمرير إن كانت النافذة أضيق)، و
-&lt;b&gt;المسجّل المحدّد&lt;/b&gt; يُعرض كاملًا تحت الجدول (القيمة، البايتات الخام، كل حقل مفكوك،
-الوصف). النقر تحت الصفوف، أو &lt;b&gt;Esc&lt;/b&gt;، لا يحدّد شيئًا: السطر واللوحة تحته وعرض الذاكرة لا تعرض
-عندها شيئًا محدّدًا. النقر بالزر الأيمن ← &lt;b&gt;ملاءمة الأعمدة&lt;/b&gt; يقلّصها من جديد بعد قيمة طويلة.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;القيمة التي تغيّرت للتو &lt;b&gt;تتوهج&lt;/b&gt; لحظة.&lt;/li&gt;
-&lt;li&gt;القيمة &lt;b&gt;الرمادية&lt;/b&gt; غير محدّثة: أقدم من فاصلي استطلاع، أو فاصل واحد زائد المهلة
-حين يكون ذلك أطول، زائد الزمن بين تحديثين في &lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع معطّل، الوصلة مفقودة).&lt;/li&gt;
-&lt;li&gt;&lt;i&gt;خطأ&lt;/i&gt; / &lt;i&gt;غير متاح&lt;/i&gt; بالأحمر: فشلت القراءة / الجهاز لا يملك ذلك العنوان.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;h3&gt;الكتابة&lt;/h3&gt;
-&lt;ol&gt;
-&lt;li&gt;فعّل &lt;b&gt;السماح بالكتابة&lt;/b&gt; (معطّل عند كل تشغيل).&lt;/li&gt;
-&lt;li&gt;انقر نقرًا مزدوجًا على قيمة &lt;b&gt;rw&lt;/b&gt;، واكتب، ثم &lt;b&gt;Enter&lt;/b&gt;. أعداد، &lt;code&gt;0x1F&lt;/code&gt;، &lt;code&gt;0b101&lt;/code&gt;، أو اسم
-قيمة.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;h3&gt;عدة مسجّلات معًا&lt;/h3&gt;
-&lt;p&gt;حدّد عدة مسجّلات &lt;b&gt;rw&lt;/b&gt; من نوع واحد (&lt;b&gt;Ctrl مع النقر&lt;/b&gt;، &lt;b&gt;Shift مع النقر&lt;/b&gt;)، ثم انقر بالزر الأيمن على أحدها ← &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، أو اكتب القيمة في لوحة الكتابة السريعة تحت
-الجدول، أو اضغط &lt;b&gt;F2&lt;/b&gt; على أحدها واكتب ثم &lt;b&gt;Enter&lt;/b&gt; (النقر المزدوج يحدّد
-ذلك الصف وحده). تعرض قائمة ما يحمله كل منها الآن وما سيأخذه: يأخذ كل مسجّل القيمة على طريقته (معامله،
-أسماؤه)؛ ومن لا يقبلها يُستبعد مع السبب، ومن يتجاوز حدود خريطته عليه ملاحظة، وصفوف القراءة فقط تُستبعد. التركيز على &lt;b&gt;إلغاء&lt;/b&gt;؛ و&lt;b&gt;كتابة N&lt;/b&gt; تكتبها واحدًا بعد الآخر بترتيب العناوين، ويُقرأ كل منها بعد كتابته.
-الرفض لا يوقف الباقي، ويجمعها السجل في سطر واحد مع القيم المستبدلة: لا تراجع.&lt;/p&gt;
-&lt;h3&gt;الكتابة السريعة&lt;/h3&gt;
-&lt;p&gt;حدّد مسجّلًا &lt;b&gt;rw&lt;/b&gt;: تحت الجدول، في &lt;b&gt;كتابة NAME&lt;/b&gt;&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;مربع قيمة: اكتب، ثم &lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt;؛&lt;/li&gt;
-&lt;li&gt;لمسجّل له أسماء قيم، قائمة بقيمه: اختر واحدة فتُكتب؛&lt;/li&gt;
-&lt;li&gt;لمسجّل له حقول بتات، &lt;b&gt;بتاته مرسومة كما في ورقة البيانات&lt;/b&gt;: خلية لكل بت (انقر لقلب ذلك
-البت وحده)، وكل علم باسمه (انقر لقلبه)، وكل حقل أعرض بقيمته (انقر لقيمه
-المسمّاة، أو &lt;i&gt;القيمة…&lt;/i&gt;)؛&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;البتات&lt;/b&gt;: عرض البتات نفسه لمسجّل صحيح بلا حقول، البت الأعلى أولًا.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;على الناقل، يرسل &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; القيمة المكتوبة إلى كل جهاز في إطار بث واحد، حيث
-تسمح قاعدة البث بذلك (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، بعد تأكيد، ويقرأ كل واحد للتحقق؛ ويقول السجل أي
-الأجهزة قبلتها. يُعرض حين تُكتب قيمة.&lt;/p&gt;
-&lt;p&gt;حين تُحدَّد عدة مسجّلات &lt;b&gt;rw&lt;/b&gt; من نوع واحد، تكتب اللوحة فيها كلها (&lt;b&gt;كتابة 3 مسجّلات محددة&lt;/b&gt;): يبدأ
-المربع بالقيمة التي تشترك فيها، أو يبقى فارغًا وفيه &lt;i&gt;(قيم متعددة)&lt;/i&gt; ما دامت تختلف؛ وتعرض قائمة تحته قيمة كل
-منها كما تأتي بها الاستطلاعات؛ و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt; يفتح قائمة ما سيأخذه كل منها. لا تظهر قائمة الأسماء
-إلا حين تكون لها كلها الأسماء نفسها؛ وتُخفى &lt;b&gt;الافتراضي&lt;/b&gt; و&lt;b&gt;إلى كل الأجهزة&lt;/b&gt; و&lt;b&gt;البتات&lt;/b&gt;. على الناقل مع
-عرض كل الأجهزة قد تكون على عدة أجهزة: يُكتب كل منها في جهازه، لا بثًّا أبدًا، وتذكر القائمة الجهاز.&lt;/p&gt;
-&lt;p&gt;البت أو الحقل يُكتب قراءةً-تعديلًا-كتابةً من القيمة التي يحملها الجهاز، فتُحفظ البتات الأخرى.
-كل كتابة سريعة تسلك طريق تحرير الجدول نفسه: يجب أن يكون &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا، ومسجّلات ⚠ تسأل أولًا.&lt;/p&gt;
-&lt;ul&gt;
-&lt;li&gt;المسجّلات المعلّمة &lt;b&gt;rw ⚠&lt;/b&gt; تحرّك شيئًا أو تشغّله أو تغيّره: كل كتابة تسأل أولًا.&lt;/li&gt;
-&lt;li&gt;لا يعرض الجدول أبدًا ما كتبته، بل ما يبلّغ عنه الجهاز فقط: يُقرأ المسجّل للتحقق فورًا
-(القيمة المقصوصة تُقرأ مقصوصة)، وكل استطلاع يعيد قراءته.&lt;/li&gt;
-&lt;li&gt;إن غيّر الجهاز، أو عميل آخر، القيمة وأنت تحرّرها، تُسأل قبل أن
-تكتب قيمتك فوقها.&lt;/li&gt;
-&lt;/ul&gt;
-&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;رسم حقل&lt;/b&gt; (مسجّل له حقول بتات: حقل
-واحد خطًا خاصًا)، &lt;b&gt;قراءة الآن&lt;/b&gt;، &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;إظهار في عرض الذاكرة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. تعمل القائمة على الصفوف
-المحددة (الصف خارج التحديد يُحدَّد وحده أولًا): مع عدة صفوف تعمل &lt;b&gt;رسم&lt;/b&gt; و&lt;b&gt;قراءة الآن&lt;/b&gt; و&lt;b&gt;نسخ القيمة&lt;/b&gt;
-و&lt;b&gt;إزالة&lt;/b&gt; عليها كلها وتذكر عددها (&lt;i&gt;قراءة 3 مسجّلات الآن&lt;/i&gt;؛ النسخ يعطي سطرًا لكل منها، الاسم والقيمة بينهما
-Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&lt;/b&gt; و&lt;b&gt;إظهار في عرض الذاكرة&lt;/b&gt; و&lt;b&gt;تحرير التعريف…&lt;/b&gt; اسم المسجّل الذي
-تحت الفأرة. وفي أي مكان من
-الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
-الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;Connecting&lt;/h2&gt;
 &lt;h3&gt;TCP&lt;/h3&gt;
 &lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
@@ -4353,6 +4215,146 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 ملغاة في التسجيل التالي الذي يُفتح. وتحتها حقول المسجّل. والتسجيل الأخير الذي لم يعد ملفه موجودًا يظهر رماديًا،
 &lt;i&gt;(غير موجود)&lt;/i&gt;: النقر يزيله من القائمة؛ و&lt;b&gt;مسح القائمة&lt;/b&gt; يفرغها.&lt;/li&gt;
 &lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Registers &amp;amp; writes&lt;/h2&gt;
+&lt;p&gt;One row per register: address, name, &lt;b&gt;value&lt;/b&gt; (bold), unit, &lt;b&gt;decoded&lt;/b&gt; bit fields or enum name,
+type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
+the decoded fields one per line, and its age.&lt;/p&gt;
+&lt;p&gt;A value with bit fields or an enum name has an &lt;b&gt;ⓘ&lt;/b&gt; beside it: hover the ⓘ to see them decoded, one per line
+(the rest of the value shows its usual tooltip). The &lt;b&gt;Decoded&lt;/b&gt; column is off by default (most registers have
+none); right-click the table or its header → &lt;b&gt;Decoded column&lt;/b&gt; to show it.&lt;/p&gt;
+&lt;p&gt;Nothing is cut off: the columns fit their longest text (a scroll bar if the window is narrower), and the
+&lt;b&gt;selected register&lt;/b&gt; is shown in full under the table (value, raw bytes, every decoded field,
+description). A click below the rows, or &lt;b&gt;Esc&lt;/b&gt;, selects none: the line, the panel under it and the Dump then
+show nothing selected. Right-click → &lt;b&gt;Fit columns&lt;/b&gt; shrinks them back after a long value.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;A value that changes after holding still for 2 s &lt;b&gt;glows&lt;/b&gt; for 1.5 s, a number with ▲ or ▼ beside it for the
+way it moved; one that keeps changing stays plain. The &lt;b&gt;Glow&lt;/b&gt; box in the bar above turns it off (the Dump&apos;s bytes
+too).&lt;/li&gt;
+&lt;li&gt;A value &lt;b&gt;grey&lt;/b&gt; is not refreshed: older than two poll intervals, or one interval plus the timeout
+when that is longer, plus the time between two updates of &lt;b&gt;Show values&lt;/b&gt; (polling off, link lost).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;error&lt;/i&gt; / &lt;i&gt;not available&lt;/i&gt; in red: the read failed / the device does not have that address.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Writing&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;Tick &lt;b&gt;Allow writes&lt;/b&gt; (off at every start).&lt;/li&gt;
+&lt;li&gt;Double-click an &lt;b&gt;rw&lt;/b&gt; value, type, &lt;b&gt;Enter&lt;/b&gt;. Numbers, &lt;code&gt;0x1F&lt;/code&gt;, &lt;code&gt;0b101&lt;/code&gt;, or an enum
+name.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3&gt;Several registers at once&lt;/h3&gt;
+&lt;p&gt;Select several &lt;b&gt;rw&lt;/b&gt; registers of one type (&lt;b&gt;Ctrl-click&lt;/b&gt;, &lt;b&gt;Shift-click&lt;/b&gt;), then right-click one of them →
+&lt;b&gt;Write to N selected registers…&lt;/b&gt;, type the value in the quick-write panel under the table, or press &lt;b&gt;F2&lt;/b&gt; on
+one, type and &lt;b&gt;Enter&lt;/b&gt; (a double-click selects that row alone). A list shows what each one holds now and what it gets: the value is taken by each register (its scale,
+its names); one that does not take it is left out with the reason, one past its map&apos;s limits has a note, read-only
+rows are left out. &lt;b&gt;Cancel&lt;/b&gt; has the focus; &lt;b&gt;Write N&lt;/b&gt; writes them one after the other in address order, each
+read back. A refusal does not stop the others, and the Log sums them up in one line with the values replaced: there is
+no undo.&lt;/p&gt;
+&lt;h3&gt;Quick write&lt;/h3&gt;
+&lt;p&gt;Select an &lt;b&gt;rw&lt;/b&gt; register: under the table, &lt;b&gt;Write NAME&lt;/b&gt; has&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;a value box: type, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt;;&lt;/li&gt;
+&lt;li&gt;for an enum register, a list of its values: pick one and it is written;&lt;/li&gt;
+&lt;li&gt;for a register with bit fields, its &lt;b&gt;bits drawn as in a datasheet&lt;/b&gt;: a cell per bit (click to flip that
+bit only), each flag by its name (click to flip it), and each wider field with its value (click for its named
+values, or &lt;i&gt;Value…&lt;/i&gt;);&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Bits&lt;/b&gt;: the same bit view for an integer register without fields, the highest bit first.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;On a bus, &lt;b&gt;To all devices&lt;/b&gt; sends the value typed to every device in one broadcast frame, where the
+broadcast rule allows it (see &lt;b&gt;Connecting&lt;/b&gt;), after a confirmation, and reads each one back; the Log says which
+devices took it. It is offered once a value is typed.&lt;/p&gt;
+&lt;p&gt;With several &lt;b&gt;rw&lt;/b&gt; registers of one type selected, the panel writes to all of them (&lt;b&gt;Write 3 selected
+registers&lt;/b&gt;): the box starts with the value they share, or is empty with &lt;i&gt;(several values)&lt;/i&gt; while they differ;
+a list under it shows each one&apos;s value as the polls bring it; &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Write&lt;/b&gt; opens the list of what each
+one gets. The names list shows only when they all have the same names; &lt;b&gt;Default&lt;/b&gt;, &lt;b&gt;To all devices&lt;/b&gt; and
+&lt;b&gt;Bits&lt;/b&gt; are hidden. On a bus with All devices shown they may be on several devices: each one is written to its own
+device, never as a broadcast, and the list names the device.&lt;/p&gt;
+&lt;p&gt;A bit or field is written read-modify-write from the value the device holds, so the other bits are kept.
+Every quick write goes the same way as a table edit: &lt;b&gt;Allow writes&lt;/b&gt; must be on, ⚠ registers ask first.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Registers marked &lt;b&gt;rw ⚠&lt;/b&gt; move, power or change something: every write asks first.&lt;/li&gt;
+&lt;li&gt;The table never shows what you typed, only what the device reports: the register is read back at once
+(a clamped value reads clamped), and every poll re-reads it.&lt;/li&gt;
+&lt;li&gt;If the device, or another client, changed the value while you were editing, you are asked before
+yours overwrites it.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Right-click a row: &lt;b&gt;Plot&lt;/b&gt; (or &lt;b&gt;Remove from chart&lt;/b&gt;), &lt;b&gt;Plot a field&lt;/b&gt; (a register with bit fields: one
+field as a line of its own), &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Write to N selected registers…&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt;, &lt;b&gt;Show in
+dump&lt;/b&gt;, &lt;b&gt;Edit definition…&lt;/b&gt;, &lt;b&gt;Remove&lt;/b&gt;. The menu acts on the rows selected (a row outside the selection is
+selected alone first): with several, &lt;b&gt;Plot&lt;/b&gt;, &lt;b&gt;Read now&lt;/b&gt;, &lt;b&gt;Copy value&lt;/b&gt; and &lt;b&gt;Remove&lt;/b&gt; act on all of
+them and say how many (&lt;i&gt;Read 3 registers now&lt;/i&gt;; Copy gives a line each, the name and the value apart by a tab;
+Remove asks first), and &lt;b&gt;Plot a field&lt;/b&gt;, &lt;b&gt;Show in dump&lt;/b&gt; and &lt;b&gt;Edit definition…&lt;/b&gt; name the register under
+the mouse. Anywhere in
+the table: &lt;b&gt;Plot all shown&lt;/b&gt;, &lt;b&gt;Remove shown from the chart&lt;/b&gt;, &lt;b&gt;Remove all from the chart&lt;/b&gt;, &lt;b&gt;Fit
+columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt; / &lt;b&gt;Log none&lt;/b&gt;, &lt;b&gt;Add register…&lt;/b&gt;.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;المسجّلات والكتابات&lt;/h2&gt;
+&lt;p&gt;صف لكل مسجّل: العنوان، الاسم، &lt;b&gt;القيمة&lt;/b&gt; (عريضة)، الوحدة، حقول البتات &lt;b&gt;فك الترميزة&lt;/b&gt; أو اسم القيمة،
+النوع والوصول. مربع البحث ومرشّح المجموعات في الأعلى. مرّر الفأرة فوق صف لترى وصفه، وبايتاته الخام،
+والحقول فك الترميزة واحدًا في كل سطر، وعمره.&lt;/p&gt;
+&lt;p&gt;القيمة ذات حقول البتات أو اسم القيمة بجانبها &lt;b&gt;ⓘ&lt;/b&gt;: مرّر الفأرة فوق ⓘ لتراها مفكوكة، واحدًا في كل سطر
+(وبقية القيمة تعرض تلميحها المعتاد). عمود &lt;b&gt;فك الترميز&lt;/b&gt; معطّل افتراضيًا (معظم المسجّلات
+بلا شيء)؛ انقر بالزر الأيمن على الجدول أو ترويسته ← &lt;b&gt;عمود فك الترميز&lt;/b&gt; لإظهاره.&lt;/p&gt;
+&lt;p&gt;لا شيء يُقصّ: تتسع الأعمدة لأطول نص فيها (شريط تمرير إن كانت النافذة أضيق)، و
+&lt;b&gt;المسجّل المحدّد&lt;/b&gt; يُعرض كاملًا تحت الجدول (القيمة، البايتات الخام، كل حقل مفكوك،
+الوصف). النقر تحت الصفوف، أو &lt;b&gt;Esc&lt;/b&gt;، لا يحدّد شيئًا: السطر واللوحة تحته وعرض الذاكرة لا تعرض
+عندها شيئًا محدّدًا. النقر بالزر الأيمن ← &lt;b&gt;ملاءمة الأعمدة&lt;/b&gt; يقلّصها من جديد بعد قيمة طويلة.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;القيمة التي تتغيّر بعد ثباتها ⁦2 s⁩ &lt;b&gt;تتوهج&lt;/b&gt; ⁦1.5 s⁩، والعدد بجانبه ▲ أو ▼ لاتجاه تغيّره؛ أما التي تظل تتغيّر فتبقى عادية. ومربع &lt;b&gt;التوهّج&lt;/b&gt; في الشريط أعلاه يعطّله (وبايتات عرض الذاكرة أيضًا).&lt;/li&gt;
+&lt;li&gt;القيمة &lt;b&gt;الرمادية&lt;/b&gt; غير محدّثة: أقدم من فاصلي استطلاع، أو فاصل واحد زائد المهلة
+حين يكون ذلك أطول، زائد الزمن بين تحديثين في &lt;b&gt;عرض القيم&lt;/b&gt; (الاستطلاع معطّل، الوصلة مفقودة).&lt;/li&gt;
+&lt;li&gt;&lt;i&gt;خطأ&lt;/i&gt; / &lt;i&gt;غير متاح&lt;/i&gt; بالأحمر: فشلت القراءة / الجهاز لا يملك ذلك العنوان.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الكتابة&lt;/h3&gt;
+&lt;ol&gt;
+&lt;li&gt;فعّل &lt;b&gt;السماح بالكتابة&lt;/b&gt; (معطّل عند كل تشغيل).&lt;/li&gt;
+&lt;li&gt;انقر نقرًا مزدوجًا على قيمة &lt;b&gt;rw&lt;/b&gt;، واكتب، ثم &lt;b&gt;Enter&lt;/b&gt;. أعداد، &lt;code&gt;0x1F&lt;/code&gt;، &lt;code&gt;0b101&lt;/code&gt;، أو اسم
+قيمة.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;h3&gt;عدة مسجّلات معًا&lt;/h3&gt;
+&lt;p&gt;حدّد عدة مسجّلات &lt;b&gt;rw&lt;/b&gt; من نوع واحد (&lt;b&gt;Ctrl مع النقر&lt;/b&gt;، &lt;b&gt;Shift مع النقر&lt;/b&gt;)، ثم انقر بالزر الأيمن على أحدها ← &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، أو اكتب القيمة في لوحة الكتابة السريعة تحت
+الجدول، أو اضغط &lt;b&gt;F2&lt;/b&gt; على أحدها واكتب ثم &lt;b&gt;Enter&lt;/b&gt; (النقر المزدوج يحدّد
+ذلك الصف وحده). تعرض قائمة ما يحمله كل منها الآن وما سيأخذه: يأخذ كل مسجّل القيمة على طريقته (معامله،
+أسماؤه)؛ ومن لا يقبلها يُستبعد مع السبب، ومن يتجاوز حدود خريطته عليه ملاحظة، وصفوف القراءة فقط تُستبعد. التركيز على &lt;b&gt;إلغاء&lt;/b&gt;؛ و&lt;b&gt;كتابة N&lt;/b&gt; تكتبها واحدًا بعد الآخر بترتيب العناوين، ويُقرأ كل منها بعد كتابته.
+الرفض لا يوقف الباقي، ويجمعها السجل في سطر واحد مع القيم المستبدلة: لا تراجع.&lt;/p&gt;
+&lt;h3&gt;الكتابة السريعة&lt;/h3&gt;
+&lt;p&gt;حدّد مسجّلًا &lt;b&gt;rw&lt;/b&gt;: تحت الجدول، في &lt;b&gt;كتابة NAME&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;مربع قيمة: اكتب، ثم &lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt;؛&lt;/li&gt;
+&lt;li&gt;لمسجّل له أسماء قيم، قائمة بقيمه: اختر واحدة فتُكتب؛&lt;/li&gt;
+&lt;li&gt;لمسجّل له حقول بتات، &lt;b&gt;بتاته مرسومة كما في ورقة البيانات&lt;/b&gt;: خلية لكل بت (انقر لقلب ذلك
+البت وحده)، وكل علم باسمه (انقر لقلبه)، وكل حقل أعرض بقيمته (انقر لقيمه
+المسمّاة، أو &lt;i&gt;القيمة…&lt;/i&gt;)؛&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;البتات&lt;/b&gt;: عرض البتات نفسه لمسجّل صحيح بلا حقول، البت الأعلى أولًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;على الناقل، يرسل &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; القيمة المكتوبة إلى كل جهاز في إطار بث واحد، حيث
+تسمح قاعدة البث بذلك (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، بعد تأكيد، ويقرأ كل واحد للتحقق؛ ويقول السجل أي
+الأجهزة قبلتها. يُعرض حين تُكتب قيمة.&lt;/p&gt;
+&lt;p&gt;حين تُحدَّد عدة مسجّلات &lt;b&gt;rw&lt;/b&gt; من نوع واحد، تكتب اللوحة فيها كلها (&lt;b&gt;كتابة 3 مسجّلات محددة&lt;/b&gt;): يبدأ
+المربع بالقيمة التي تشترك فيها، أو يبقى فارغًا وفيه &lt;i&gt;(قيم متعددة)&lt;/i&gt; ما دامت تختلف؛ وتعرض قائمة تحته قيمة كل
+منها كما تأتي بها الاستطلاعات؛ و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;كتابة&lt;/b&gt; يفتح قائمة ما سيأخذه كل منها. لا تظهر قائمة الأسماء
+إلا حين تكون لها كلها الأسماء نفسها؛ وتُخفى &lt;b&gt;الافتراضي&lt;/b&gt; و&lt;b&gt;إلى كل الأجهزة&lt;/b&gt; و&lt;b&gt;البتات&lt;/b&gt;. على الناقل مع
+عرض كل الأجهزة قد تكون على عدة أجهزة: يُكتب كل منها في جهازه، لا بثًّا أبدًا، وتذكر القائمة الجهاز.&lt;/p&gt;
+&lt;p&gt;البت أو الحقل يُكتب قراءةً-تعديلًا-كتابةً من القيمة التي يحملها الجهاز، فتُحفظ البتات الأخرى.
+كل كتابة سريعة تسلك طريق تحرير الجدول نفسه: يجب أن يكون &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا، ومسجّلات ⚠ تسأل أولًا.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;المسجّلات المعلّمة &lt;b&gt;rw ⚠&lt;/b&gt; تحرّك شيئًا أو تشغّله أو تغيّره: كل كتابة تسأل أولًا.&lt;/li&gt;
+&lt;li&gt;لا يعرض الجدول أبدًا ما كتبته، بل ما يبلّغ عنه الجهاز فقط: يُقرأ المسجّل للتحقق فورًا
+(القيمة المقصوصة تُقرأ مقصوصة)، وكل استطلاع يعيد قراءته.&lt;/li&gt;
+&lt;li&gt;إن غيّر الجهاز، أو عميل آخر، القيمة وأنت تحرّرها، تُسأل قبل أن
+تكتب قيمتك فوقها.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;انقر بالزر الأيمن على صف: &lt;b&gt;رسم&lt;/b&gt; (أو &lt;b&gt;إزالة من المخطط&lt;/b&gt;)، &lt;b&gt;رسم حقل&lt;/b&gt; (مسجّل له حقول بتات: حقل
+واحد خطًا خاصًا)، &lt;b&gt;قراءة الآن&lt;/b&gt;، &lt;b&gt;الكتابة في N مسجّلات محددة…&lt;/b&gt;، &lt;b&gt;نسخ القيمة&lt;/b&gt;، &lt;b&gt;إظهار في عرض الذاكرة&lt;/b&gt;، &lt;b&gt;تحرير التعريف…&lt;/b&gt;، &lt;b&gt;إزالة&lt;/b&gt;. تعمل القائمة على الصفوف
+المحددة (الصف خارج التحديد يُحدَّد وحده أولًا): مع عدة صفوف تعمل &lt;b&gt;رسم&lt;/b&gt; و&lt;b&gt;قراءة الآن&lt;/b&gt; و&lt;b&gt;نسخ القيمة&lt;/b&gt;
+و&lt;b&gt;إزالة&lt;/b&gt; عليها كلها وتذكر عددها (&lt;i&gt;قراءة 3 مسجّلات الآن&lt;/i&gt;؛ النسخ يعطي سطرًا لكل منها، الاسم والقيمة بينهما
+Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&lt;/b&gt; و&lt;b&gt;إظهار في عرض الذاكرة&lt;/b&gt; و&lt;b&gt;تحرير التعريف…&lt;/b&gt; اسم المسجّل الذي
+تحت الفأرة. وفي أي مكان من
+الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
+الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
 </translation>
     </message>
 </context>
@@ -8102,6 +8104,14 @@ Right-click the table to remove them again.</source>
             <numerusform>حُدّد %n مسجّلًا: قيمة واحدة للجميع بـ F2 ثم Enter، أو باللوحة أدناه، أو بقائمة النقر بالزر الأيمن</numerusform>
             <numerusform>حُدّد %n مسجّل: قيمة واحدة للجميع بـ F2 ثم Enter، أو باللوحة أدناه، أو بقائمة النقر بالزر الأيمن</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Glow</source>
+        <translation>التوهّج</translation>
+    </message>
+    <message>
+        <source>A value that changes after holding still for 2 s glows for 1.5 s, with ▲ or ▼ for the way a number moved; one that keeps changing stays plain. The Dump&apos;s bytes too. Off: nothing glows.</source>
+        <translation>القيمة التي تتغيّر بعد ثباتها ⁦2 s⁩ تتوهج ⁦1.5 s⁩، مع ▲ أو ▼ لاتجاه تغيّر العدد؛ والقيمة التي تظل تتغيّر تبقى عادية. وبايتات عرض الذاكرة كذلك. معطّل: لا شيء يتوهج.</translation>
     </message>
 </context>
 <context>

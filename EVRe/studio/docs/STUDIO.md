@@ -323,7 +323,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Listen | What another program says to a USB device, heard from the system's USB capture on a port that program holds: the Monitor, the table, the chart, the CSV and the Dump fill, and the Studio sends nothing (3.11). |
 | Login | An optional token, written after connecting to a login register that the map declares. |
 | Device&nbsp;check | Reads DEVICE_ID and STATUS at every connect. Warns when the map was made for another device ID. |
-| Register&nbsp;table | Live values with units. Decoded bit fields and enum names. Stale values turn grey and changed values glow. Search, group filter, tooltips, a detail line for the selected register. |
+| Register&nbsp;table | Live values with units. Decoded bit fields and enum names. Stale values turn grey; a value that changes after holding still glows, with ▲ or ▼ for a number's direction. Search, group filter, tooltips, a detail line for the selected register. |
 | Writes | Only when *Allow writes* is on. Registers marked danger ask first. Every write is read back, and a write asks first when the value changed while you were editing. |
 | Quick&nbsp;write | A panel for the selected register: a value box with the map's range, its list of named and special values, a Default button, and its bits drawn as in a datasheet (click a bit to flip it). |
 | Bulk&nbsp;write | One value to several registers of one type: right-click, **F2** or the quick-write panel. A dialog lists what each one holds and gets, and each is written and read back on its own (6.6). |
@@ -447,7 +447,7 @@ To measure the Studio at thousands of polls a second, use `evre_fake_fast [port]
    - The line under the pill reads *Device ID 0x1001 · protocol rev 1*.
    - The Log tab records `connecting to 127.0.0.1:1210`, `connected: 127.0.0.1:1210` and `device ID 0x1001, protocol revision 1`.
 3. **Read.** The Registers tab now shows live values at the default interval of 100 ms. The *Polling & recording* card reads about *10.0 polls/s, 15 registers in 3 reads*. Of the 16 registers, 15 are polled. MSG_BUFFER is a 255-byte array, which is read only on request (see 13.3).
-   - SUPPLY_V, SUPPLY_I and TEMPERATURE change. Each changed value glows for a moment.
+   - SUPPLY_V, SUPPLY_I and TEMPERATURE change at every poll. They do not glow: a value glows only when it changes after holding still for 2 s (4.3). The values you write in steps 8 and 9 glow: MOTOR_SPEED's with ▲ beside it.
    - UPTIME counts up.
    - STATE shows `0x0000`, with an ⓘ beside it. Hover the ⓘ to see the decoded fields: `MODE=idle`.
 
@@ -1058,7 +1058,10 @@ The columns fit their content when a map loads and after each edit of the map. T
 
 ### 4.3 Glow and stale grey
 
-- **Glow.** When a register's value changes, its cell glows in the accent colour. The glow fades out over 0.7 s. A value read again unchanged does not glow.
+- **Glow.** A value glows when it changes **after holding still for at least 2 s** (its previous change was 2 s or more ago). A value that keeps changing (a noisy ADC, a counter) stays plain, so a glow always means *this just moved*. A value read again unchanged does not glow, and neither does the first value read after connecting (it only came; nothing was seen to change).
+  - **The look.** For 1.5 s, fading fast at first and then softly: a faint accent tint over the cell, a 3 px accent bar on the cell's leading edge (the left; in Arabic, right to left, the right one), and the value's text in a readable accent blue while the glow is strong (Listen's blue: at least 4.5:1 on the tint in both themes; a selected row keeps its own text colour).
+  - **The arrow.** A plain number gets a filled triangle after it: **▲** when it went up, **▼** when it went down, about the digits' height, fading with the glow. An enum's name, bit fields, a hex value and bytes get none: they have no up or down. The triangle has a slot of its own at the cell's right end, kept on every row at all times, so neither the numbers nor the triangle move when it shows and right-aligned numbers stay lined up. In Arabic it stays at the right: values read left to right there.
+  - **On or off.** The **Glow** box in the tab's bar (beside *Plot shown*) turns it on or off; on by default, saved (`registers/glow`). Off, nothing glows: neither the table nor the Dump's bytes (37.1).
 - **A selected row keeps its colours.** A stale value stays grey, and an *error* red, in a selected row too: the selection tints the row, it does not turn every cell's text to the plain colour.
 - **Stale grey.** A value that has not been read successfully for longer than **the larger of two poll intervals and one poll interval plus the timeout, plus the time between two value updates on screen** (*Show values*, 13.2) turns grey. This applies to the Value and Decoded columns. At the defaults (100 ms interval, 500 ms timeout, 10 values per second) that is 700 ms. With the interval *max* (0) it is the timeout plus 100 ms. With *Show values* at *every frame* nothing is added.
 
@@ -3419,6 +3422,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
 | `ui/geometry` | none | on&nbsp;close | The window's size and place. |
 | `ui/decodedColumn` | `false` | on&nbsp;change | Decoded column shown. |
+| `registers/glow` | `true` | on&nbsp;change | The Registers tab's Glow: a value that changes after 2 s of rest glows, with an arrow for a number's direction; the Dump's bytes too (4.3). |
 | `ui/quickBits` | `false` | on&nbsp;change | Quick write: Bits ticked. |
 | `ui/mapEditorSplit` | empty | on&nbsp;change | The place of the handle between the Map editor's table and its form (`QSplitter::saveState`); empty: 1100 to 420. |
 | `ui/popups` | `true` | on&nbsp;change | Log: Pop-ups. |
@@ -5100,7 +5104,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/bus_device_dialog.h`,&nbsp;`.cpp` | `BusDeviceDialog`: one device of a bus: name, slave, map, polled, its own token; checked while typing |
 | `src/ui/bus_preset_dialog.h`,&nbsp;`.cpp` | `BusPresetDialog`: a broadcast kept in the bus file: name, register, value; checked while typing |
 | `src/ui/registers_tab.h`,&nbsp;`.cpp` | `RegistersTab`: toolbar, table, menus (on every row selected, counted), groups, Plot shown, map editing, detail line |
-| `src/ui/value_delegate.h`,&nbsp;`.cpp` | `ValueDelegate`: the Value column's drawing (the ⓘ mark) and editor (`base`) |
+| `src/ui/value_delegate.h`,&nbsp;`.cpp` | `ValueDelegate`: the Value column's drawing (the glow, its direction's triangle, the ⓘ mark) and editor (`base`) |
 | `src/ui/quick_write_panel.h`,&nbsp;`.cpp` | `QuickWritePanel`: value box, named values, bit view for the selected RW register; one value for several selected, with the list of them |
 | `src/ui/bit_view.h`,&nbsp;`.cpp` | `BitView`: a register drawn bit by bit; click to flip or pick a field value |
 | `src/ui/map_editor_tab.h`,&nbsp;`.cpp` | `MapEditorTab`: toolbar, the register table, checks list, clipboard, export and import; on a bus the banner (whose map, `showDevices`) and the Live values from picker |
@@ -5560,7 +5564,11 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 **`RegisterModel` / `RegisterFilter`.**
 
 - `applyValue` stores a value at once. The view is told of changes at most every 50 ms.
-- A value that changed glows for 700 ms. A value older than the stale limit is grey. The limit is
+- A value that changes after holding still `GLOW_REST_MS` (2 s) glows for `GLOW_MS` (1.5 s), eased out
+  (`glowStrength`: (1 - k)^2), its direction (`GlowDirectionRole`, for `showsDirection` registers) beside it; the first
+  value since the link came up (`setLinkUp`) never glows. `GlowRole` gives the strength now; a 50 ms timer repaints the
+  glowing Value cells (that role only) while one glows. `setGlowOn` is the setting `registers/glow`; `shiftGlowClock`
+  moves the glow's clock on for the tests. A value older than the stale limit is grey. The limit is
   `max(2 × interval, interval + timeout)`, set by `MainWindow::updateStaleAfter`.
 - `setDefinitions(defs)` follows the `MapDocument` (on a bus: every device's registers): rows are matched by
   `RegDef::uid` and `RegDef::slave`; a register read the same way (device, address, type, size) keeps its value,
@@ -5607,9 +5615,9 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
 | `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions, `setListening`; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
-| `RegistersTab` | the table and its tools; edits the map on the model | `setConnected`, `setListening`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
+| `RegistersTab` | the table and its tools (the Glow box: `registers/glow`); edits the map on the model | `setConnected`, `setListening`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
 | `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
-| `ValueDelegate` | draws the value and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`), `keepColourWhenSelected` (static: a selected row's cell in its own colour, the Decoded column's too) | GUI test (typed text kept, tooltips, the glow, a selected stale value grey) |
+| `ValueDelegate` | draws the value, the glow (tint, bar, text, the direction's triangle in its kept slot) and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`), `keepColourWhenSelected` (static: a selected row's cell in its own colour, the Decoded column's too), `valueRect`, `arrowRect`, `barRect`, `glowText` (static, the tests too) | GUI test (typed text kept, tooltips, the glow, a selected stale value grey) |
 | `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; or one value for several selected; only asks | `showRegister`, `showRegisters` (several: their rows, or the types that differ), `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested`, `bulkWriteRequested` | GUI test (value, bits, danger flag, link state, bulk write) |
 | `BusPanel` | the Devices on the link card; shows, the window does the work | `showBus`, `pickerDevices` (the devices with their state, for the pickers), `namesText`, `setBroadcastBlocked` (the kept broadcasts off, with the reason); signals `newBusClicked`, `openBusClicked`, `saveBusClicked`, `closeBusClicked`, `addDeviceClicked`, `editDeviceClicked`, `removeDeviceClicked`, `deviceSelected`, `presetChosen`, `newPresetClicked`, `removePresetClicked` | GUI test (bus step) |
 | `BusPresetDialog` | one broadcast preset; OK only when the value is one the register takes | `result` | GUI test (bus step) |
@@ -5626,7 +5634,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `FormulaCompleter` | the formula box's completion: the word at the cursor, ranked candidates | `rank`,&nbsp;`wordStart`,&nbsp;`shown`,&nbsp;`addStreams` | GUI test |
 | `MonitorTab` | frame&nbsp;log&nbsp;and&nbsp;single&nbsp;requests | `addFrames`, `showAnswer`, `showSent` (a WRITE without ack), `parseHexBytes` (what a WRITE takes), `setSlave`, `setDevices` (a bus: the devices by name), `setListening`; signals `logFramesToggled`, `readRequested`, `writeRequested` | GUI test (READ, the checks of what is typed, WRITE + ack, WRITE without ack, Enter, Clear) |
 | `DumpTab` | the&nbsp;Dump&nbsp;tab&nbsp;(37) | `setShown` (signal `dumpWanted`: the engine's `setDump`), `applyDumps`, `setStreamNotes`, `showManualRead`, `tick`, `setFollow`, `setConnected`, `setDevices` / `setSlave`, `showRegister`, `fillMenu`, `bannerText`; signals `registerPicked`, `selectionCleared`, `writeRequested` | GUI test (the Dump steps) |
-| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`; `clearSelection`; signals `registerPicked`, `selectionCleared`, `menuRequested` | GUI test (the Dump steps) |
+| `DumpView` | the&nbsp;cards&nbsp;painted | `setBlocks`, `setRegisters`, `setColours`, `setColourMode`, `setHold`, `setConnected`, `setFields`, `setGlowOn` (the Registers tab's Glow), `select`, `scrollToRegister`, `copyText`, `notLiveReason`, `chipAlpha`, `chipFill`, `glowText`, `litText`, `payloadFill` and `unreadEdge` (static), `fieldName` (static), `fieldMeaning`, `fieldTip`, `fieldBytes`, `payloadText`, `labelFont`; for the tests `cardRect`, `stripeRect`, `stripRect`, `fieldRect`, `payloadRect`, `headRect`, `arrowRect`, `byteRect`, `unreadRect`, `unreadText`, `decodeRect`, `decodeLeft`, `registerAt`, `toolTipAt`, `tipPlace`, `requestText`, `replyText`, `chipColour`, `glow`, `byteColour`, `paintCount`, `shiftGlowClock`; `clearSelection`; signals `registerPicked`, `selectionCleared`, `menuRequested` | GUI test (the Dump steps) |
 | `EventLog`&nbsp;/&nbsp;`Notice` | log tab and daily file; one-line pop-up in the tab bar's row | `add`, `setShown`; signals `unseenChanged`, `popUp`; `Notice::post`, `place` (right of the tabs, left of them in right-to-left; again when the tab bar moves or resizes, `eventFilter`, and on a direction or language change, `changeEvent`); signals `showLogClicked`, `noRoom` | GUI test (pop-up covers nothing, Show in Log, right-to-left) |
 | `FrameClock` | ticks&nbsp;per&nbsp;display&nbsp;refresh | `start`,&nbsp;`stop`;&nbsp;signal&nbsp;`tick` | runs in every test |
 | `HelpDialog` | the&nbsp;help&nbsp;pages | `showTopic` | GUI test (every page with its text, the command line page's options); screenshot extra `help` |
@@ -7268,10 +7276,20 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   (nothing), Cancel opens nothing; the recent list holds the last 8; **Open** beside Record CSV; a note added while
   recording is written beside the recording at once and shown when it is opened. With `EVRE_TEST_SHOT` set it saves
   `<prefix>_recording.png`.
+- **The glow after the owner's review** (`registersGlow`; the glow's clock moved on by `shiftGlowClock`, so the 2 s
+  rest and the 1.5 s fade are checked without waiting): the Glow box in the tab's bar, on by default, a pointing hand
+  and the rule in its tooltip; a value that changes at every poll never glows; a change after 2 s of rest glows (the
+  tint, a 3 px accent bar at the left, the text in the readable accent), eased out, still there just before 1.5 s and
+  gone at 1.5 s; a rise draws a triangle pointing up, a fall one pointing down, about the digits' height; the number's
+  right end the same with and without the triangle, the triangle right of it and centred on the digits; an enum's
+  value glows without a triangle; the glowing text on the tint 4.5:1 on a plain and an alternate row in both themes;
+  right to left the bar on the cell's right edge; the first value read after connecting does not glow; the Dump's
+  bytes keep the rest rule each (a change 1.5 s after the last does not glow, one after 2 s does); the box off, nothing
+  glows in the table or the Dump, saved as `registers/glow`.
 - **Fixes of 1.4.1, part A** (`registersFixes`, `mapEditorFixes`, `dumpTipFollows`, `recordingFixes`, `startupFixes`,
-  and checks in `eventLog`, `noticeRightToLeft`, `bulkWrite` and `fastStreams`): a changed value's cell glows and the
-  glow is gone 0.7 s later; a selected row's stale value stays grey; F2 on a row's name edits its value; not connected,
-  no editor opens; a bit in no field says its number; the named values list follows the device with its focus, a
+  and checks in `eventLog`, `noticeRightToLeft`, `bulkWrite` and `fastStreams`): a changed value's cell glows (after a
+  rest) and the glow is gone 1.5 s later; a selected row's stale value stays grey; F2 on a row's name edits its value;
+  not connected, no editor opens; a bit in no field says its number; the named values list follows the device with its focus, a
   name picked is logged as its number; *1 register*, *1 device* and their plurals; the saved path never breaks after
   *C:*; the tooltips of Record CSV, Clear cursors, Mean, RMS and Latency; Decoded as wide as its text, a width
   dragged wider kept; New and Open ask first with changes not saved; Ctrl+Y and Ctrl+Shift+Z redo; a key typed into a
@@ -7765,7 +7783,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1049 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1061 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -8978,10 +8996,13 @@ check box (on by default, kept in `dump/fields`) folds them: off, each frame is 
 00 FC A5 7D`, START, CRC and END muted, a reply's payload the pill) and hovering a byte shows its field's name and tooltip. One choice for the
 whole tab, so the cards stay alike.
 
-A byte whose value changed glows a moment: its text is written in the accent's hue, fading back to its plain
-colour over the Registers tab's `GLOW_MS` (700 ms), so the dump and the table pulse together. Not a ring round the
-cell: on a live device most bytes of a float change at every poll, and rings would read as bordered bytes. Such a byte
-glows all the time, so its colour keeps 4.5:1 on every chip's tint (`DumpView::glowText`; the accent itself is 2.0
+A byte whose value changed after holding still glows a moment: its text is written in the accent's hue, fading back
+to its plain colour over the Registers tab's `GLOW_MS` (1.5 s), so the dump and the table pulse together. The table's
+rest rule holds per byte: a byte glows only when its previous change was `GLOW_REST_MS` (2 s) or more ago, a read's
+first answer since the link came up never glows, and the Registers tab's **Glow** box (`registers/glow`, 4.3) turns
+it off here too. Not a ring round the
+cell: on a live device most bytes of a float change at every poll, and rings would read as bordered bytes. A byte
+that changes now and then may glow often, so its colour keeps 4.5:1 on every chip's tint (`DumpView::glowText`; the accent itself is 2.0
 to 4.0:1 there): in the light theme the accent made deeper (`#1E4FBC`, navy beside black text), in the dark theme a
 light cyan (`#78ECFF`). The dark theme's accent made lighter until it kept 4.5:1 was almost white (`#CADCFF` beside
 the text's `#E6E9EF`) and no glow could be seen; the cyan is as bright and differs from the text by its hue.

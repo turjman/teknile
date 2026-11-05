@@ -22,6 +22,7 @@ what the Studio does.
   follows the device after a pick; a bit in no field says so; a bulk write's refusal is named in the status bar.
   *1 register*, *1 device* and their plurals; the saved path no longer breaks after *C:*; tooltips for Record CSV,
   Clear cursors, Mean, RMS and Latency.
+- **Glow.** Changed values glow only after a rest, with an arrow for the direction; Registers → Glow turns it off.
 - **Map editor.** New and Open ask first when the map has changes not saved; Ctrl+Y and Ctrl+Shift+Z redo on Windows;
   a key typed into a group cell starts the group anew; the value names' Hex box and the Bit fields page follow at once;
   saving after changing one fast stream writes the others as they were; the Markdown export's table headers are in the

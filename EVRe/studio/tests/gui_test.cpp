@@ -145,6 +145,7 @@
 #include "ui/sidebar.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
+#include "ui/value_delegate.h"
 #include "ui/value_pace.h"
 
 namespace {
@@ -575,6 +576,7 @@ public:
 		decodedFields();
 		quickWrite();
 		registersFixes();
+		registersGlow();
 		groups();
 		chart();
 		chartManyLines();
@@ -8839,7 +8841,7 @@ private:
 				"14:03:12\", the reason in its tooltip, and one banner over the cards \"Held at 14:03:12 · …\"; Follow: live "
 				"again, the banner gone");
 
-		/* A changed byte glows, then fades over the Registers tab's GLOW_MS: its text in glowText, no ring round the cell
+		/* A changed byte glows (after a rest), then fades over the Registers tab's GLOW_MS: its text in glowText, no ring round the cell
 		 * (where a ring's left side was, 2.5 px inside the cell, the pixel is the same lit and faded: the chip's fill). A
 		 * hovered register is the one mark on the grid: while it is, nothing glows. */
 		const ThemeColors &tc = Theme::colors();
@@ -8848,6 +8850,7 @@ private:
 		const uint16_t fanAddr = 0xD084;
 		const int fanWas = other_.readU8(fanAddr);
 		const uint8_t fanNew = uint8_t(fanWas == 40 ? 41 : 40);
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS); /* the byte held still 2 s: its change glows */
 		other_.writeU8(fanAddr, fanNew);
 		const bool lit = QTest::qWaitFor([&] {
 			const int card = dumpCard(view, 0xD080);
@@ -8870,6 +8873,7 @@ private:
 				&& view->byteColour(card, 4) == tc.text;
 		const bool noRing = card >= 0 && pixelOff(glowing, ringSide, pixelAt(plainShot, ringSide)) < 8
 				&& pixelOff(glowing, ringSide, tc.accent) > 60;
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
 		other_.writeU8(fanAddr, uint8_t(fanNew + 1));
 		const bool litAgain = QTest::qWaitFor([&] {
 			const int c = dumpCard(view, 0xD080);
@@ -12131,6 +12135,309 @@ private:
 		QApplication::processEvents();
 	}
 
+	/* a register's value held still in the table for half a second (at most 5 s): a write of an earlier step that was
+	 * still on its way has come, and a change from here is the check's own */
+	void heldStill(const QString &name) {
+		const int row = regRow(name);
+		if (row < 0) return;
+		for (int tries = 0; tries < 10; tries++) {
+			const qint64 changed = model_->rows()[row].changedMs;
+			QTest::qWait(500);
+			if (model_->rows()[row].changedMs == changed) return;
+		}
+	}
+
+	/* 1.4.1, the glow after the owner's review: only a change after a rest of GLOW_REST_MS glows, for GLOW_MS eased out;
+	 * a tint, a bar on the cell's leading edge, the text in a readable accent, and for a number a triangle the way it
+	 * moved, in a slot kept on every row; the first value after connecting never glows; the Glow box (registers/glow)
+	 * turns it off, the Dump's bytes too. The glow's clock is moved on by the models' hooks (shiftGlowClock): a rest of
+	 * 2 s and a fade of 1.5 s are checked without waiting for them. */
+	void registersGlow() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *glowBox = window_.findChild<QCheckBox *>(QStringLiteral("registersGlow"));
+		DumpTab *dump = dumpTab();
+		if (!tabs || !glowBox || !dump) {
+			check(false, "Registers, the glow: the tabs, the Glow box and the Dump");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		poll_->setChecked(true);
+		table_->clearSelection(); /* a selected row keeps its text colour: the glowing text is checked on a plain one */
+		QApplication::processEvents();
+		check(glowBox->isVisible() && glowBox->isChecked() && glowBox->toolTip().contains(QLatin1String("2 s"))
+						&& glowBox->cursor().shape() == Qt::PointingHandCursor
+						&& QSettings().value(QStringLiteral("registers/glow"), true).toBool() && model_->glowOn(),
+				"Registers, the Glow box: in the tab's bar beside Plot shown, on by default, a pointing hand and a tooltip "
+				"saying the rule (2 s of rest)");
+
+		const QModelIndex u8 = valueCell(table_, regs_.u8.name);
+		const QModelIndex volts = valueCell(table_, regs_.volts.name);
+		const QModelIndex named = valueCell(table_, regs_.enumU8.name);
+		const auto glowOf = [](const QModelIndex &cell) { return cell.data(RegisterModel::GlowRole).toDouble(); };
+		const auto arrowOf = [](const QModelIndex &cell) { return cell.data(RegisterModel::GlowDirectionRole).toInt(); };
+		/* a change after a rest: the clock moved on 2 s, then the other client writes the value */
+		const auto restedWrite = [&](const QModelIndex &cell, uint16_t addr, int value) {
+			heldStill(cell.siblingAtColumn(RegisterModel::ColName).data().toString()); /* nothing on its way, then the rest */
+			model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+			other_.writeU8(addr, uint8_t(value));
+			return QTest::qWaitFor([&] { return cell.data(RegisterModel::RawRole).toByteArray() == QByteArray(1, char(value)); },
+					3000);
+		};
+		const auto cellFont = [&](const QModelIndex &cell) {
+			return qvariant_cast<QFont>(cell.data(Qt::FontRole)).resolve(table_->font());
+		};
+		const auto shot = [&](const QModelIndex &cell) {
+			table_->scrollTo(cell);
+			return table_->viewport()->grab(table_->visualRect(cell)).toImage();
+		};
+		const auto local = [&](const QModelIndex &cell) { return QRect(QPoint(0, 0), table_->visualRect(cell).size()); };
+		/* the accent's pixels in an area (logical px) of a cell's picture: the triangle's, top half and bottom half */
+		const auto accentIn = [](const QImage &picture, const QRectF &area, int *top, int *bottom) {
+			const double dpr = picture.devicePixelRatio();
+			const QRect r = QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect().intersected(picture.rect());
+			*top = *bottom = 0;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++)
+					if (colourDistance(QColor(picture.pixel(x, y)), Theme::colors().accent) < 120)
+						(y < r.center().y() ? *top : *bottom) += 1;
+		};
+		/* the text's ink in an area: its right end and its rows' middle, in logical px (-1: none) */
+		const auto ink = [](const QImage &picture, const QRect &area, double *right, double *middle) {
+			const double dpr = picture.devicePixelRatio();
+			const QRect r = QRectF(QPointF(area.topLeft()) * dpr, QSizeF(area.size()) * dpr).toRect()
+					.adjusted(qRound(4 * dpr), 0, 0, 0).intersected(picture.rect());
+			QHash<QRgb, int> counts;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++) counts[picture.pixel(x, y)]++;
+			QRgb ground = 0;
+			int most = 0;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				if (it.value() > most) {
+					most = it.value();
+					ground = it.key();
+				}
+			int maxX = -1, minY = -1, maxY = -1;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++)
+					if (colourDistance(QColor(picture.pixel(x, y)), QColor(ground)) > 90) {
+						maxX = std::max(maxX, x);
+						if (minY < 0) minY = y;
+						maxY = y;
+					}
+			*right = maxX < 0 ? -1 : (maxX + 1) / dpr;
+			*middle = minY < 0 ? -1 : (minY + maxY + 1) / 2.0 / dpr;
+		};
+
+		/* a value that changes at every poll (the fake device's sine) never glows */
+		const QString voltsWas = volts.data().toString();
+		int voltsChanges = 0;
+		double voltsGlow = 0;
+		QString voltsLast = voltsWas;
+		QElapsedTimer watch;
+		watch.start();
+		while (watch.elapsed() < 2500) {
+			QTest::qWait(20);
+			if (volts.data().toString() != voltsLast) voltsChanges++;
+			voltsLast = volts.data().toString();
+			voltsGlow = std::max(voltsGlow, glowOf(volts));
+		}
+		if (voltsChanges < 5 || voltsGlow > 0)
+			std::printf("     (%s: %d changes in 2.5 s, the strongest glow %.2f)\n", qPrintable(regs_.volts.name), voltsChanges,
+					voltsGlow);
+		check(voltsChanges >= 5 && voltsGlow == 0.0, "Registers, the glow: a value that changes at every poll (a sine, "
+				"several changes a second) never glows: it never held still 2 s");
+
+		/* a change after 2 s of rest glows, up: the tint, the bar at the left, the text in glowText, a triangle up in its
+		 * slot; the strength eases out, still there just before 1.5 s, gone at 1.5 s */
+		other_.writeU8(regs_.u8.addr, 10);
+		const bool base = cellShows(u8, QStringLiteral("10"));
+		const bool rose = restedWrite(u8, regs_.u8.addr, 30);
+		const double lit = glowOf(u8);
+		const int up = arrowOf(u8);
+		const QImage upShot = shot(u8);
+		const QFont font = cellFont(u8);
+		const QRect cell = local(u8);
+		const QRectF arrow = ValueDelegate::arrowRect(cell, font);
+		const QRect bar = ValueDelegate::barRect(cell, Qt::LeftToRight);
+		int upTop = 0, upBottom = 0;
+		accentIn(upShot, arrow, &upTop, &upBottom);
+		const QColor barPixel = pixelAt(upShot, QPointF(bar.left() + 1.5, cell.center().y()));
+		const QColor tintPixel = pixelAt(upShot, QPointF(bar.right() + 3.5, cell.top() + 3.5));
+		const bool glowText = nearestIn(upShot, ValueDelegate::valueRect(cell, font), ValueDelegate::glowText(Theme::colors())) < 60;
+		model_->shiftGlowClock(RegisterModel::GLOW_MS - 400);
+		const double late = glowOf(u8);
+		model_->shiftGlowClock(400);
+		const double gone = glowOf(u8);
+		const QImage plainShot = shot(u8);
+		const QColor plainBar = pixelAt(plainShot, QPointF(bar.left() + 1.5, cell.center().y()));
+		int plainTop = 0, plainBottom = 0;
+		accentIn(plainShot, arrow, &plainTop, &plainBottom);
+		const double eased = RegisterModel::glowStrength(RegisterModel::GLOW_MS / 2);
+		std::printf("     (rose: glow %.2f, %.3f before 1.5 s, %.2f at 1.5 s; arrow %d, its pixels %d over %d; bar %s, tint %s, "
+				"plain %s; the triangle %.1f px)\n", lit, late, gone, up, upTop, upBottom, qPrintable(barPixel.name()),
+				qPrintable(tintPixel.name()), qPrintable(plainBar.name()), arrow.width());
+		check(base && rose && lit > 0.8 && late > 0 && late < 0.08 && gone == 0.0 && std::abs(eased - 0.25) < 1e-9
+						&& colourDistance(barPixel, Theme::colors().accent) < 80 && colourDistance(plainBar, barPixel) > 100
+						&& colourDistance(tintPixel, plainBar) >= 15 && glowText,
+				"Registers, the glow: a change after 2 s of rest glows (the cell tinted, a 3 px accent bar at its left, the "
+				"text in the readable accent), eased out ((1 - k)^2: a quarter at half way), still there just before 1.5 s "
+				"and gone at 1.5 s");
+		check(up == 1 && upBottom > upTop && upTop > 0 && plainTop + plainBottom == 0 && arrow.width() >= 9
+						&& arrow.width() <= 16,
+				"Registers, the glow: a rise draws a triangle pointing up (wider at its foot) in the slot after the number, "
+				"about the digits' height; gone with the glow");
+
+		/* the slot is kept: the number's right end is where it is with the triangle shown and without it, the triangle
+		 * clear of it, centred on the digits */
+		double upRight = -1, upMiddle = -1, plainRight = -1, plainMiddle = -1;
+		ink(upShot, ValueDelegate::valueRect(cell, font), &upRight, &upMiddle);
+		ink(plainShot, ValueDelegate::valueRect(cell, font), &plainRight, &plainMiddle);
+		std::printf("     (the number's right end %.1f with the triangle, %.1f without; the triangle %.1f..%.1f, its middle "
+				"%.1f, the digits' %.1f)\n", upRight, plainRight, arrow.left(), arrow.right(), arrow.center().y(), plainMiddle);
+		check(upRight > 0 && std::abs(upRight - plainRight) <= 1.0 && arrow.left() >= plainRight
+						&& std::abs(arrow.center().y() - plainMiddle) <= 2.0
+						&& ValueDelegate::valueRect(cell, font).right() < arrow.left(),
+				"Registers, the glow: the triangle's slot is kept on every row (the number's right end the same with and "
+				"without it, the triangle right of it and centred on the digits)");
+
+		/* a fall: the triangle points down */
+		const bool fell = restedWrite(u8, regs_.u8.addr, 20);
+		const int down = arrowOf(u8);
+		int downTop = 0, downBottom = 0;
+		accentIn(shot(u8), arrow, &downTop, &downBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		check(fell && down == -1 && downTop > downBottom && downBottom > 0,
+				"Registers, the glow: a fall draws the triangle pointing down (wider at its top)");
+
+		/* an enum's value glows without a triangle: a name has no up or down */
+		int nameValue = -1;
+		for (auto it = regs_.enumU8.enumValues.cbegin(); it != regs_.enumU8.enumValues.cend() && nameValue < 0; ++it)
+			if (it.key() != other_.readU8(regs_.enumU8.addr)) nameValue = int(it.key());
+		const int namedWas = other_.readU8(regs_.enumU8.addr);
+		const bool namedChanged = nameValue >= 0 && restedWrite(named, regs_.enumU8.addr, nameValue);
+		const double namedGlow = glowOf(named);
+		int namedTop = 0, namedBottom = 0;
+		accentIn(shot(named), ValueDelegate::arrowRect(local(named), cellFont(named)), &namedTop, &namedBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		if (namedWas >= 0) other_.writeU8(regs_.enumU8.addr, uint8_t(namedWas));
+		check(namedChanged && namedGlow > 0.5 && arrowOf(named) == 0 && namedTop + namedBottom == 0
+						&& !RegisterModel::showsDirection(regs_.enumU8) && RegisterModel::showsDirection(regs_.u8),
+				"Registers, the glow: an enum's value glows without a triangle (a name goes neither up nor down)");
+
+		/* readable: the glowing text on the tint, plain row and alternate row, 4.5:1 in both themes */
+		const bool wasDark = Theme::isDark();
+		bool readable = true;
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			QApplication::processEvents();
+			const ThemeColors &c = Theme::colors();
+			for (const QColor &ground : { table_->palette().color(QPalette::Base), table_->palette().color(QPalette::AlternateBase) }) {
+				const double a = ValueDelegate::GLOW_TINT;
+				const QColor tinted = QColor::fromRgbF(float(c.accent.redF() * a + ground.redF() * (1 - a)),
+						float(c.accent.greenF() * a + ground.greenF() * (1 - a)), float(c.accent.blueF() * a + ground.blueF() * (1 - a)));
+				const double ratio = contrast(ValueDelegate::glowText(c), tinted);
+				if (ratio < 4.5) {
+					readable = false;
+					std::printf("     (the glowing text on %s, %s: %.2f)\n", qPrintable(tinted.name()), dark ? "dark" : "light", ratio);
+				}
+			}
+		}
+		Theme::apply(*qApp, wasDark);
+		QApplication::processEvents();
+		check(readable, "Registers, the glow: the glowing value's text on the glow's tint (a plain and an alternate row) at "
+				"least 4.5:1 in both themes");
+
+		/* right to left (Arabic): the bar on the cell's right edge, the triangle still after the number at the right */
+		table_->setLayoutDirection(Qt::RightToLeft);
+		QApplication::processEvents();
+		const bool rtlChanged = restedWrite(u8, regs_.u8.addr, 40);
+		const QImage rtlShot = shot(u8);
+		const QRect rtlCell = local(u8);
+		const QRect rtlBar = ValueDelegate::barRect(rtlCell, Qt::RightToLeft);
+		const QColor rightEdge = pixelAt(rtlShot, QPointF(rtlBar.left() + 1.5, rtlCell.center().y()));
+		const QColor leftEdge = pixelAt(rtlShot, QPointF(1.5, rtlCell.center().y()));
+		int rtlTop = 0, rtlBottom = 0;
+		accentIn(rtlShot, ValueDelegate::arrowRect(rtlCell, font), &rtlTop, &rtlBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		table_->setLayoutDirection(Qt::LeftToRight);
+		QApplication::processEvents();
+		if (!rtlChanged || colourDistance(rightEdge, Theme::colors().accent) >= 80 || colourDistance(leftEdge, rightEdge) <= 100)
+			std::printf("     (right to left: the right edge %s, the left %s)\n", qPrintable(rightEdge.name()),
+					qPrintable(leftEdge.name()));
+		check(rtlChanged && rtlBar.right() == rtlCell.right() && colourDistance(rightEdge, Theme::colors().accent) < 80
+						&& colourDistance(leftEdge, rightEdge) > 100 && rtlBottom > rtlTop,
+				"Registers, the glow right to left (Arabic): the bar on the cell's right edge, its leading one; the triangle "
+				"still after the number");
+
+		/* the first value read after connecting never glows, though it differs from the last one before */
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QApplication::processEvents();
+		other_.writeU8(regs_.u8.addr, 50);
+		model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		const bool reconnected = cellShows(u8, QStringLiteral("50"), 5000);
+		check(disconnectButton && connectButton && reconnected && glowOf(u8) == 0.0,
+				"Registers, the glow: the first value read after connecting does not glow (it came; nothing was seen to "
+				"change)");
+
+		/* the Dump's bytes keep the rest rule, each byte its own: a change 1.5 s after the last does not glow, one after
+		 * 2 s does */
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		DumpView *view = dump->view();
+		const uint16_t fanAddr = 0xD084;
+		const int fanWas = other_.readU8(fanAddr);
+		const auto fanShows = [&](int value) {
+			return QTest::qWaitFor([&] {
+				const int c = dumpCard(view, 0xD080);
+				return c >= 0 && view->blocks()[c].data.size() > 4 && uint8_t(view->blocks()[c].data[4]) == value;
+			}, 3000);
+		};
+		const auto fanGlow = [&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 ? view->glow(c, 4) : -1.0;
+		};
+		QEvent away(QEvent::Leave);
+		QApplication::sendEvent(view->viewport(), &away);
+		/* the tab's first blocks since it was shown again: its bytes hold still from them */
+		const bool dumpFresh = fanShows(fanWas);
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 60);
+		const bool dumpLit = fanShows(60) && fanGlow() > 0.5;
+		view->shiftGlowClock(RegisterModel::GLOW_MS);
+		const bool dumpFaded = fanGlow() == 0.0;
+		other_.writeU8(fanAddr, 61);
+		const bool dumpTooSoon = fanShows(61) && fanGlow() == 0.0;
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 62);
+		const bool dumpRested = fanShows(62) && fanGlow() > 0.5;
+		view->shiftGlowClock(RegisterModel::GLOW_MS);
+		check(dumpFresh && dumpLit && dumpFaded && dumpTooSoon && dumpRested, "Dump, the glow: a byte that changes after 2 s of rest "
+				"glows, fades in 1.5 s; its next change 1.5 s later does not glow (no rest), one after 2 s does");
+
+		/* the Glow box off: nothing glows, neither the table nor the Dump; saved; on again */
+		glowBox->setChecked(false);
+		QApplication::processEvents();
+		const bool savedOff = !QSettings().value(QStringLiteral("registers/glow"), true).toBool() && !model_->glowOn();
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 63);
+		const bool dumpOff = fanShows(63) && fanGlow() == 0.0 && !view->glowing();
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const bool tableChanged = restedWrite(u8, regs_.u8.addr, 70);
+		const QImage offShot = shot(u8);
+		int offTop = 0, offBottom = 0;
+		accentIn(offShot, arrow, &offTop, &offBottom);
+		const bool tableOff = tableChanged && glowOf(u8) == 0.0 && offTop + offBottom == 0
+				&& colourDistance(pixelAt(offShot, QPointF(bar.left() + 1.5, cell.center().y())), Theme::colors().accent) > 100;
+		glowBox->setChecked(true);
+		QApplication::processEvents();
+		const bool savedOn = QSettings().value(QStringLiteral("registers/glow"), false).toBool() && model_->glowOn();
+		if (fanWas >= 0) other_.writeU8(fanAddr, uint8_t(fanWas));
+		check(savedOff && dumpOff && tableOff && savedOn, "Registers, the Glow box off: no value glows (no tint, bar or "
+				"triangle) and no byte of the Dump; saved as registers/glow; on again");
+	}
+
 	/* 1.4.1 fixes on the Registers tab: the glow drawn, Decoded wide enough and widened by hand, a selected row keeps
 	 * its grey, F2 from any cell of a row, a bit in no field, the names list following with the focus, a name picked
 	 * logged as its number, no editor without a link; the cards' plurals and the saved path; tooltips that were missing */
@@ -12154,23 +12461,28 @@ private:
 			return image.pixelColor(int(4 * image.devicePixelRatio()), image.height() / 2);
 		};
 
-		/* the glow: a changed value's cell in the accent colour for a moment */
+		/* the glow: a changed value's cell tinted toward the accent for a moment, after a rest (registersGlow checks
+		 * the rest): the glow's clock moved on 2 s as if the value had held still, then 1.5 s to the glow's end */
 		table_->clearSelection();
 		table_->selectionModel()->setCurrentIndex(valueCell(table_, regs_.danger.name), QItemSelectionModel::NoUpdate);
 		table_->scrollTo(u8);
-		QTest::qWait(RegisterModel::GLOW_MS + 100);
+		/* the value held still first (a write of an earlier step may still be on its way): a change after the clock's
+		 * move would start the rest again */
+		heldStill(regs_.u8.name);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
 		const QColor plain = background(u8);
 		const int next = (other_.readU8(regs_.u8.addr) + 7) % 100;
+		model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
 		other_.writeU8(regs_.u8.addr, uint8_t(next));
 		const bool changed = cellShows(u8, QString::number(next));
 		const QColor glowing = background(u8);
-		QTest::qWait(RegisterModel::GLOW_MS + 100);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
 		const QColor faded = background(u8);
 		if (!changed || distance(glowing, plain) < 20 || distance(faded, plain) > 6)
 			std::printf("     (the glow: %s plain, %s just changed, %s after %d ms)\n", qPrintable(plain.name()),
-					qPrintable(glowing.name()), qPrintable(faded.name()), int(RegisterModel::GLOW_MS) + 100);
+					qPrintable(glowing.name()), qPrintable(faded.name()), int(RegisterModel::GLOW_MS));
 		check(changed && distance(glowing, plain) >= 20 && distance(faded, plain) <= 6,
-				"Registers: a changed value's cell glows (its background toward the accent), and the glow is gone 0.7 s later");
+				"Registers: a changed value's cell glows (its background toward the accent), and the glow is gone 1.5 s later");
 
 		/* a selected row keeps its stale grey: the value's text in the muted colour, none in the plain text colour */
 		table_->selectionModel()->select(u8, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);

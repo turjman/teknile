@@ -339,7 +339,9 @@ none); right-click the table or its header → <b>Decoded column</b> to show it.
 description). A click below the rows, or <b>Esc</b>, selects none: the line, the panel under it and the Dump then
 show nothing selected. Right-click → <b>Fit columns</b> shrinks them back after a long value.</p>
 <ul>
-<li>A value that just changed <b>glows</b> for a moment.</li>
+<li>A value that changes after holding still for 2 s <b>glows</b> for 1.5 s, a number with ▲ or ▼ beside it for the
+way it moved; one that keeps changing stays plain. The <b>Glow</b> box in the bar above turns it off (the Dump's bytes
+too).</li>
 <li>A value <b>grey</b> is not refreshed: older than two poll intervals, or one interval plus the timeout
 when that is longer, plus the time between two updates of <b>Show values</b> (polling off, link lost).</li>
 <li><i>error</i> / <i>not available</i> in red: the read failed / the device does not have that address.</li>

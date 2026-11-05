@@ -34,6 +34,8 @@
 
 namespace {
 
+const QString GLOW_KEY = QStringLiteral("registers/glow"); /* the Glow box: a changed value glows (and the Dump's bytes) */
+
 /* the Decoded column: a selected row keeps its grey (a stale value), as the Value cell does */
 class DecodedCells : public QStyledItemDelegate {
 public:
@@ -177,6 +179,18 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 		emit writesAllowedChanged(on);
 	});
 	drawnDark_ = Theme::isDark();
+	/* the glow of a changed value, here and in the Dump: a view option beside the others of the bar, saved */
+	glow_ = new QCheckBox(tr("Glow"));
+	glow_->setObjectName(QStringLiteral("registersGlow"));
+	glow_->setCursor(Qt::PointingHandCursor);
+	glow_->setToolTip(tr("A value that changes after holding still for 2 s glows for 1.5 s, with ▲ or ▼ for the way a "
+			"number moved; one that keeps changing stays plain. The Dump's bytes too. Off: nothing glows."));
+	glow_->setChecked(QSettings().value(GLOW_KEY, true).toBool());
+	model_->setGlowOn(glow_->isChecked());
+	connect(glow_, &QCheckBox::toggled, this, [this](bool on) {
+		model_->setGlowOn(on);
+		QSettings().setValue(GLOW_KEY, on);
+	});
 	auto *addButton = new QPushButton(tr("+ Register"));
 	connect(addButton, &QPushButton::clicked, this, &RegistersTab::addRegister);
 
@@ -185,6 +199,7 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 	bar->addWidget(device_);
 	bar->addWidget(groupButton_);
 	bar->addWidget(plotShownButton_);
+	bar->addWidget(glow_);
 	bar->addSpacing(8);
 	bar->addWidget(allowWrites_);
 	bar->addWidget(addButton);
@@ -281,7 +296,9 @@ void RegistersTab::connectModel() {
 		updateDetail();
 		updatePanel(false);
 	});
-	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last) {
+	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last,
+			const QList<int> &roles) {
+		if (roles == QList<int> { RegisterModel::GlowRole }) return; /* a glow fading: no value changed */
 		if (detailRow_ >= first.row() && detailRow_ <= last.row()) updateDetail();
 	});
 	connect(model_, &QAbstractItemModel::modelReset, this, [this] {

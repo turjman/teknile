@@ -377,7 +377,8 @@ void QuickWritePanel::updateBroadcast() {
 					: tr("Type a value first: it goes to every device on the link in one broadcast frame (slave 0)."));
 }
 
-void QuickWritePanel::onValuesChanged(const QModelIndex &first, const QModelIndex &last) {
+void QuickWritePanel::onValuesChanged(const QModelIndex &first, const QModelIndex &last, const QList<int> &roles) {
+	if (roles == QList<int> { RegisterModel::GlowRole }) return; /* a glow fading: no value changed */
 	const auto within = [&](int row) { return row >= first.row() && row <= last.row(); };
 	if (within(row_) || std::any_of(rows_.begin(), rows_.end(), within)) refresh();
 }

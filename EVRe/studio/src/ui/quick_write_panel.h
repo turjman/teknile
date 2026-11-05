@@ -77,7 +77,7 @@ private:
 	void refreshBulk(); /* their values in the list, the box on the value they share, whether a write can go */
 	void fillNamedValues(const RegDef &def); /* its special values (in shown units), then its value names */
 	void updateBroadcast(); /* "To all devices": offered by the rule, connected, Allow writes on, a value typed */
-	void onValuesChanged(const QModelIndex &first, const QModelIndex &last);
+	void onValuesChanged(const QModelIndex &first, const QModelIndex &last, const QList<int> &roles);
 
 	/* the three ways to write */
 	void writeTyped();

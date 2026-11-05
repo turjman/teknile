@@ -50,7 +50,7 @@ QString wallTime(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString
 /* a read's place in the glow's memory: the same read again (its kind, device and address) is compared with the last */
 quint32 readId(const DumpBlock &b) { return (quint32(b.kind) << 24) | (quint32(b.slave) << 16) | b.addr; }
 
-constexpr qint64 NEVER_CHANGED = -1000000; /* a byte that has not changed since it was first shown */
+constexpr qint64 NEVER_LIT = -1000000;      /* a byte that has not glowed */
 constexpr int GLOW_TICK_MS = 50;           /* the glow fades in steps this long, only while a byte glows */
 
 QColor blend(const QColor &over, const QColor &under, double alpha) {
@@ -140,39 +140,45 @@ void DumpView::refreshTip() {
 	viewportEvent(&help);
 }
 
-/* The bytes of a read that differ from its last answer start glowing; a read shown for the first time does not glow
- * (nothing changed, it only came), and reads gone are forgotten. */
+/* The bytes of a read that differ from its last answer start glowing when they held still GLOW_REST_MS before (a byte
+ * that changes at every poll would flicker); a read shown for the first time, or its first answer since the link came
+ * up, does not glow (nothing changed, it only came) and holds still from there; reads gone are forgotten. */
 void DumpView::noteChanges(const QVector<DumpBlock> &was) {
 	QHash<quint32, const DumpBlock *> before;
 	for (const DumpBlock &b : was) before.insert(readId(b), &b);
-	QHash<quint32, QVector<qint64>> kept;
-	const qint64 now = glowClock_.elapsed();
+	QHash<quint32, QVector<ByteGlow>> kept;
+	const qint64 now = glowNow();
 	bool changed = false;
 	for (const DumpBlock &b : blocks_) {
 		if (b.kind == DumpBlock::FastStream) continue; /* a block changes whole at every take: a glow would flicker */
 		const quint32 id = readId(b);
-		QVector<qint64> times = changedMs_.value(id);
-		if (times.size() != b.size) times = QVector<qint64>(b.size, NEVER_CHANGED);
+		QVector<ByteGlow> times = glows_.value(id);
 		const DumpBlock *old = before.value(id);
-		if (old && old->size == b.size && old->data.size() >= b.size && b.data.size() >= b.size) {
+		const bool compared = old && old->size == b.size && old->data.size() >= b.size && b.data.size() >= b.size
+				&& old->time >= connectedAt_ && times.size() == b.size;
+		if (!compared) {
+			times = QVector<ByteGlow>(b.size, ByteGlow { now, NEVER_LIT });
+		} else {
 			for (int i = 0; i < b.size; i++) {
 				if (old->data[i] == b.data[i]) continue;
-				times[i] = now;
+				const bool rested = now - times[i].changed >= RegisterModel::GLOW_REST_MS;
+				times[i].changed = now;
+				if (!rested || !glowOn_) continue;
+				times[i].lit = now;
 				changed = true;
 			}
 		}
 		kept.insert(id, times);
 	}
-	changedMs_ = kept;
+	glows_ = kept;
 	if (changed && !glowTimer_->isActive()) glowTimer_->start();
 }
 
 double DumpView::glow(int card, int offset) const {
-	if (card < 0 || card >= blocks_.size()) return 0;
-	const QVector<qint64> times = changedMs_.value(readId(blocks_[card]));
+	if (!glowOn_ || card < 0 || card >= blocks_.size()) return 0;
+	const QVector<ByteGlow> times = glows_.value(readId(blocks_[card]));
 	if (offset < 0 || offset >= times.size()) return 0;
-	const qint64 since = glowClock_.elapsed() - times[offset];
-	return since >= RegisterModel::GLOW_MS ? 0.0 : 1.0 - double(since) / double(RegisterModel::GLOW_MS);
+	return RegisterModel::glowStrength(glowNow() - times[offset].lit);
 }
 
 /* A changed byte's text is drawn in the glow's colour, fading back to its plain colour: a ring round the cell would
@@ -201,11 +207,26 @@ QColor DumpView::glowText(const ThemeColors &c, bool dark) {
 }
 
 bool DumpView::glowing() const {
-	const qint64 now = glowClock_.elapsed();
-	for (const QVector<qint64> &times : changedMs_)
-		for (qint64 t : times)
-			if (now - t < RegisterModel::GLOW_MS) return true;
+	if (!glowOn_) return false;
+	const qint64 now = glowNow();
+	for (const QVector<ByteGlow> &times : glows_)
+		for (const ByteGlow &t : times)
+			if (now - t.lit < RegisterModel::GLOW_MS) return true;
 	return false;
+}
+
+void DumpView::setGlowOn(bool on) {
+	if (on == glowOn_) return;
+	glowOn_ = on;
+	if (on) return;
+	for (QVector<ByteGlow> &times : glows_)
+		for (ByteGlow &t : times) t.lit = NEVER_LIT; /* a glow under way ends now, and does not come back with On */
+	viewport()->update();
+}
+
+void DumpView::shiftGlowClock(qint64 ms) {
+	glowShift_ += ms;
+	viewport()->update();
 }
 
 void DumpView::setRegisters(const QVector<RegDef> &defs) {
@@ -235,6 +256,7 @@ void DumpView::setHold(bool on) {
 void DumpView::setConnected(bool on) {
 	if (on == connected_) return;
 	connected_ = on;
+	if (on && now_) connectedAt_ = now_();
 	relayout();
 }
 
