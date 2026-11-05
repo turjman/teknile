@@ -7281,6 +7281,15 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
   `.evrs` line's path in native separators; the Lines list of 14 lines stays open; a math line naming a missing
   column says so; a CSV of titles only reads *no samples*; an integer in the crosshair's box reads `2`; `--map` keeps
   `map/file`; a bad map's message comes over the window.
+- **Fixes of 1.4.1, part B** (`chartYRangeTyped`, `chartInfoLine`, `chartPanRefused`, `mathLinesKept`,
+  `measureSinceFollows`, `chartTotalsSlowPolls`, `chartTriggerLevelFits`, `commandLineHelp`, and checks in
+  `chartBinsAndGpu`, `formulaCompletion`, `analysisWindows` and `fastStreams`): the Y boxes show the range made of
+  the typing; the info line keeps its count at the narrowest window; a drag with nothing to pan to says why; the
+  Drawing list names each card once; Tab takes a suggested name; one math line changed keeps the others' samples;
+  the totals' time over a held view follows the clock; totals since Clear bridge two slow poll intervals; *1 bin*,
+  *1 sample* and *takes 1 value*; the trigger's level box holds six digits; the fast card waits for its first block
+  and says ppm once; `--help` and `--version` as text. Part C: a fast channel's tooltip in the Dump breaks at its
+  ` · ` first (in `dumpFastCard`).
 - **A recent recording not found** (`recentMissing`): of two recent recordings one is deleted; the sidebar's **Open**
   lists it greyed, *gone.csv (not found)*, its tooltip saying so, a pointing hand and a highlight under the mouse (the
   theme's rule), the other as before, and **Clear the list** last after a line; the chart's **Recent recordings**
