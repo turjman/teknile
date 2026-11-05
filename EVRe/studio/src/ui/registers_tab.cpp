@@ -150,7 +150,7 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 
 	groupButton_ = new QPushButton;
 	groupButton_->setObjectName(QStringLiteral("groups"));
-	groupButton_->setFixedWidth(216); /* 216, not 240: room for the Glow box within the 1280 px minimum */
+	groupButton_->setFixedWidth(240);
 	groupButton_->setToolTip(tr("The groups shown: tick one or several"));
 	groupMenu_ = new QMenu(groupButton_);
 	setButtonMenu(groupButton_, groupMenu_);
