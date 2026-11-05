@@ -11789,6 +11789,12 @@ private:
 				"check boxes: a tick when ticked and a dash when partly (their images exist)");
 
 		/* the window fits a 1366 x 768 screen (1280 x 720 at 150 %): it was 1236 x 902 at least */
+		/* measured fresh: a widget on a tab not shown (the Chart's buttons, after the steps before) keeps its old size
+		 * in its layout item's cache until that tab is shown again, so the window read 1237 px where 1211 is true
+		 * (Linux: 1295); updateGeometry clears each widget's cached size, then the layouts work it out again */
+		for (QWidget *widget : window_.findChildren<QWidget *>()) widget->updateGeometry();
+		for (QLayout *layout : window_.findChildren<QLayout *>()) layout->invalidate();
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
 		const QSize least = window_.minimumSizeHint();
 		std::printf("window minimum %d x %d\n", least.width(), least.height());
 		if (least.width() > 1280) {
