@@ -6,7 +6,11 @@
 #include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFileInfo>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QGuiApplication>
@@ -18,17 +22,25 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPersistentModelIndex>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QResizeEvent>
+#include <QScreen>
+#include <QScrollBar>
 #include <QSignalBlocker>
 #include <QStyle>
 #include <QStyledItemDelegate>
 #include <QTextCursor>
+#include <QTextDocument>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <memory>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -203,6 +215,34 @@ private:
 	bool escape_;
 };
 
+/* keepCurrentInView's watcher, on the viewport: it gets shorter with the current row in view, the row stays in view */
+class CurrentRowKeeper : public QObject {
+public:
+	explicit CurrentRowKeeper(QAbstractItemView *view) : QObject(view), view_(view) {
+		setObjectName(QStringLiteral("currentRowKeeper"));
+	}
+
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (event->type() != QEvent::Resize || watched != view_->viewport()) return false;
+		const auto *resize = static_cast<QResizeEvent *>(event);
+		const QModelIndex current = view_->currentIndex();
+		if (!current.isValid() || resize->size().height() >= resize->oldSize().height()) return false;
+		const QRect cell = view_->visualRect(current);
+		if (cell.isEmpty() || cell.bottom() < 0 || cell.top() >= resize->oldSize().height()) return false; /* away: left */
+		/* once the resize is done (the scroll bar's range follows it), up or down only */
+		QTimer::singleShot(0, view_, [view = view_, row = QPersistentModelIndex(current)] {
+			if (!row.isValid() || row != view->currentIndex()) return;
+			const int across = view->horizontalScrollBar()->value();
+			view->scrollTo(row, QAbstractItemView::EnsureVisible);
+			view->horizontalScrollBar()->setValue(across);
+		});
+		return false;
+	}
+
+private:
+	QAbstractItemView *view_;
+};
+
 } // namespace
 
 void clearSelectionOnEmpty(QAbstractItemView *view, bool escape) {
@@ -212,6 +252,8 @@ void clearSelectionOnEmpty(QAbstractItemView *view, bool escape) {
 }
 
 void clearSelectionOnEscape(QPlainTextEdit *view) { view->installEventFilter(new SelectionClearer(view, true)); }
+
+void keepCurrentInView(QAbstractItemView *view) { view->viewport()->installEventFilter(new CurrentRowKeeper(view)); }
 
 void repolish(QWidget *widget) {
 	widget->style()->unpolish(widget);
@@ -238,6 +280,66 @@ QFont monospaceFont() {
 	mono.setStyleHint(QFont::Monospace);
 	mono.setPointSize(9);
 	return mono;
+}
+
+namespace {
+
+/* the program's whole path (its first line: "Usage: C:/.../EVReStudio.exe [options]") cut to its name */
+QString withProgramName(QString text) {
+	const QStringList arguments = QCoreApplication::arguments();
+	if (!arguments.isEmpty() && !arguments.first().isEmpty())
+		text.replace(arguments.first(), QFileInfo(arguments.first()).completeBaseName());
+	return text;
+}
+
+} // namespace
+
+QDialog *commandLineWindow(const QString &text) {
+	auto *dialog = new QDialog;
+	dialog->setWindowTitle(QStringLiteral("EVRe Studio"));
+	auto *view = new QPlainTextEdit(withProgramName(text));
+	view->setObjectName(QStringLiteral("commandLineText"));
+	view->setReadOnly(true);
+	view->setLineWrapMode(QPlainTextEdit::NoWrap);
+	view->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+	view->setFrameShape(QFrame::NoFrame);
+	const QFontMetrics metrics(view->font());
+	int widest = 0;
+	const QStringList lines = view->toPlainText().split(QLatin1Char('\n'));
+	for (const QString &line : lines) widest = std::max(widest, metrics.horizontalAdvance(line));
+	const QRect screen = QGuiApplication::primaryScreen() ? QGuiApplication::primaryScreen()->availableGeometry()
+			: QRect(0, 0, 1280, 800);
+	const int margin = 2 * int(view->document()->documentMargin()) + view->verticalScrollBar()->sizeHint().width() + 8;
+	view->setMinimumSize(std::min(widest + margin, screen.width() * 9 / 10),
+			std::min(int(lines.size() + 1) * metrics.lineSpacing() + margin, screen.height() * 7 / 10));
+	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok);
+	QObject::connect(buttons, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
+	auto *layout = new QVBoxLayout(dialog);
+	layout->addWidget(view);
+	layout->addWidget(buttons);
+	return dialog;
+}
+
+void showCommandLineText(const QString &text, bool error) {
+	const QByteArray bytes = withProgramName(text).toLocal8Bit();
+	FILE *out = error ? stderr : stdout;
+#ifdef Q_OS_WIN
+	/* output sent to a file or a pipe goes there; else the console of the program that started this one, if any */
+	const HANDLE handle = GetStdHandle(error ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE);
+	const bool sent = handle && handle != INVALID_HANDLE_VALUE && GetFileType(handle) != FILE_TYPE_UNKNOWN;
+	if (!sent) {
+		if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
+			std::unique_ptr<QDialog> window(commandLineWindow(text));
+			window->exec();
+			return;
+		}
+		out = std::freopen("CONOUT$", "w", out);
+		if (!out) return;
+		std::fputs("\n", out); /* the prompt came back before this was written: start on a line of its own */
+	}
+#endif
+	std::fwrite(bytes.constData(), 1, size_t(bytes.size()), out);
+	std::fflush(out);
 }
 
 QIcon mediaIcon(MediaIcon kind, const QColor &color, int size) {

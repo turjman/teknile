@@ -103,6 +103,7 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	bitLayout->setContentsMargins(0, 0, 0, 0);
 	/* several selected: each one and its value, a few rows high (a scroll bar for more) */
 	targets_ = new QTableWidget(0, 2);
+	keepCurrentInView(targets_);
 	targets_->setObjectName(QStringLiteral("qwTargets"));
 	targets_->horizontalHeader()->hide();
 	targets_->verticalHeader()->hide();
@@ -309,8 +310,9 @@ void QuickWritePanel::refresh() {
 			: !connected_ ? tr("not connected") : QString());
 	updateBroadcast();
 	if (!row.valid) return;
-	/* the list shows the device's value, except while the user is choosing in it */
-	if (!namedValues_->hasFocus() && !namedValues_->view()->isVisible()) {
+	/* the list shows the device's value, except while the user is choosing in it (its list open); its focus, kept
+	 * after a pick, is no choosing: a pick writes at once */
+	if (!namedValues_->view()->isVisible()) {
 		const QSignalBlocker blocker(namedValues_);
 		namedValues_->setCurrentIndex(namedValues_->findData(listKey(row.def, row.raw)));
 	}
@@ -376,7 +378,8 @@ void QuickWritePanel::updateBroadcast() {
 					: tr("Type a value first: it goes to every device on the link in one broadcast frame (slave 0)."));
 }
 
-void QuickWritePanel::onValuesChanged(const QModelIndex &first, const QModelIndex &last) {
+void QuickWritePanel::onValuesChanged(const QModelIndex &first, const QModelIndex &last, const QList<int> &roles) {
+	if (roles == QList<int> { RegisterModel::GlowRole }) return; /* a glow fading: no value changed */
 	const auto within = [&](int row) { return row >= first.row() && row <= last.row(); };
 	if (within(row_) || std::any_of(rows_.begin(), rows_.end(), within)) refresh();
 }
@@ -394,8 +397,14 @@ void QuickWritePanel::writeNamedValue(int listIndex) {
 	/* "s3.5": a special value, in shown units; a number: an enum's raw value */
 	const QVariant data = namedValues_->itemData(listIndex);
 	if (data.typeId() == QMetaType::QString) requestWrite(data.toString().mid(1));
+	else if (data.toLongLong() >= 0 && rawIsShown()) requestWrite(QString::number(data.toLongLong())); /* the Log: "= 2" */
 	else if (data.toLongLong() >= 0) requestWrite(QStringLiteral("0x%1").arg(quint64(data.toLongLong()), 0, 16));
 	else requestWrite(QString::number(data.toLongLong())); /* a negative raw value: as a number */
+}
+
+bool QuickWritePanel::rawIsShown() const {
+	const QVector<int> rows = rows_.isEmpty() ? QVector<int>{ row_ } : rows_;
+	return std::none_of(rows.begin(), rows.end(), [this](int row) { return model_->rows()[row].def.isFloat(); });
 }
 
 /* `width` bits from `lsb` up become value: the rest is what the device holds now (nothing read yet: no write) */

@@ -206,6 +206,8 @@ public:
 	double window() const { return window_; }
 	void setMemory(double seconds);     /* how much is kept */
 	double memory() const { return memory_; }
+	/* a drag on the plot when the Memory is no longer than the Window: nothing to pan to, this tooltip says so */
+	static QString panRefusal();
 	/* follow now, or hold the view where it is; Hold also ends a short window's lock (it stays off until Live) */
 	void setLive(bool on);
 	/* following now: a short window's lock holds the view on its crossings, yet for the user it is live (Hold, not
@@ -540,8 +542,12 @@ public:
 	bool draggingCursor() const { return drag_ == Drag::CurA || drag_ == Drag::CurB; }
 	/* The totals (Stats::total): each line's value x dt by trapezoids from every sample as it is appended, a gap over
 	 * TOTAL_GAP not bridged; reset by clearData (the chart's Clear) and a new set of lines (clearSeries) only: a line
-	 * taken off and put back keeps its total. totalsSince: the time base of the first sample since then, NaN none. */
+	 * taken off and put back keeps its total. totalsSince: the time base of the first sample since then, NaN none.
+	 * setTotalGap: the gap not bridged, never under TOTAL_GAP (the window's: two poll intervals, as polls slower than
+	 * one a second summed nothing, every interval a gap) */
 	static constexpr double TOTAL_GAP = 1.0;
+	void setTotalGap(double seconds) { totalGap_ = std::max(TOTAL_GAP, seconds); }
+	double totalGap() const { return totalGap_; }
 	double total(int key) const;
 	double totalsSince() const { return totalsSince_; }
 	qint64 epochMs() const { return epochMs_; } /* the wall-clock time of the time base's zero, ms since the epoch */
@@ -623,6 +629,9 @@ public:
 	qsizetype strokeSegmentsHidden() const { return segmentsHidden_; }
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
+	/* a value in the crosshair's box: a whole number as it is ("2": a count, a state, an integer column of a recording),
+	 * any other as the legend writes it (chartNumber: "2.50") */
+	static QString readoutNumber(double v);
 	/* The frame budget, a credit of the window thread's time: each frame() earns FRAME_SHARE of the time since the
 	 * last, a paint spends what it took (one much slower than the frames before counts BUDGET_SAMPLE_MS or twice
 	 * their average at most: it holds back a frame or two), and a frame is painted while the credit is not short; the
@@ -1236,6 +1245,7 @@ private:
 	};
 	QHash<int, KeptTotal> keptTotals_;
 	double totalsSince_ = NAN;
+	double totalGap_ = TOTAL_GAP; /* setTotalGap */
 
 	/* the cursors and the mouse */
 	bool cursorMode_ = false;

@@ -40,6 +40,7 @@ FieldEditor::FieldEditor(QWidget *parent) : QWidget(parent) {
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setSelectionMode(QAbstractItemView::SingleSelection);
 	clearSelectionOnEmpty(table_); /* a click below the rows or Escape: no field picked (pick(-1), as below) */
+	keepCurrentInView(table_);
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (!loading_) readTable();
 	});
@@ -61,6 +62,7 @@ FieldEditor::FieldEditor(QWidget *parent) : QWidget(parent) {
 		if (picked_ < 0 || picked_ >= fields_.size()) return;
 		fields_.removeAt(picked_);
 		picked_ = std::min(picked_, int(fields_.size()) - 1);
+		showFields();
 		emit edited(fields_);
 	});
 	auto *buttons = new QHBoxLayout;
@@ -182,7 +184,17 @@ void FieldEditor::addField(int lsb, int width) {
 	std::stable_sort(fields_.begin(), fields_.end(), [](const BitField &a, const BitField &b) { return a.lsb < b.lsb; });
 	for (int i = 0; i < fields_.size(); i++)
 		if (fields_[i].name == name) picked_ = i;
+	showFields();
 	emit edited(fields_);
+}
+
+/* The page shows fields_ at once: the register editor gives the register back after the edit only while no control
+ * of this page has the focus (it keeps a cell being typed into), and + Field, − Field or the strip have it then */
+void FieldEditor::showFields(bool table) {
+	def_.fields = fields_;
+	bits_->setRegister(def_);
+	if (table) fillTable();
+	pick(picked_);
 }
 
 void FieldEditor::readTable() {
@@ -200,5 +212,6 @@ void FieldEditor::readTable() {
 			}
 		}
 	}
+	showFields(false); /* the strip and the values' title (a rename); the table is being edited: it shows them */
 	emit edited(fields_);
 }

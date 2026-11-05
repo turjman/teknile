@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTabBar>
@@ -33,6 +34,7 @@ constexpr qint64 SAME_NOTICE_MS = 30000; /* the same message pops up at most thi
 constexpr int WARNING_SHOWN_MS = 5000;
 constexpr int ERROR_SHOWN_MS = 8000;
 constexpr int NOTICE_MIN_WIDTH = 260;    /* less room beside the tabs: the status bar instead */
+constexpr int NOTICE_MIN_TEXT = 60;      /* and the least of the message beside the tag, the count and the link */
 
 /* the level in the file and the tab, all as wide */
 const char *levelTag(LogLevel level) {
@@ -90,6 +92,8 @@ EventLog::EventLog(QWidget *parent) : QWidget(parent), file_(std::make_unique<Da
 	showInfo_ = new QCheckBox(tr("Show info"));
 	showInfo_->setChecked(true);
 	showInfo_->setToolTip(tr("Off: only warnings and errors are shown here (the file keeps everything)"));
+	/* the lines already in the tab follow too: they are all kept, the info ones drawn or left out */
+	connect(showInfo_, &QCheckBox::toggled, this, [this] { redraw(); });
 	popUps_ = new QCheckBox(tr("Pop-ups"));
 	popUps_->setChecked(QSettings().value(QStringLiteral("ui/popups"), true).toBool());
 	popUps_->setToolTip(tr("Warnings and errors also pop up in the corner of the window for a few seconds"));
@@ -115,6 +119,9 @@ EventLog::EventLog(QWidget *parent) : QWidget(parent), file_(std::make_unique<Da
 	clearSelectionOnEscape(view_);
 	/* one line per event, its columns under each other: a long path scrolls, it does not wrap mid-path */
 	view_->setLineWrapMode(QPlainTextEdit::NoWrap);
+	/* left to right in Arabic too: each line starts with its date and level, and a right-to-left view opened scrolled
+	 * to the lines' far end, their start out of sight */
+	view_->setLayoutDirection(Qt::LeftToRight);
 	layout->addWidget(view_, 1);
 	connect(clear, &QPushButton::clicked, this, [this] {
 		view_->clear();
@@ -128,6 +135,8 @@ EventLog::~EventLog() = default; /* here, where DailyLogFile is complete */
 void EventLog::setShown(bool shown) {
 	shown_ = shown;
 	if (!shown) return;
+	/* the tab opens at its lines' start (the date), not where its layout left it sideways (a long line's end) */
+	QTimer::singleShot(0, view_, [this] { view_->horizontalScrollBar()->setValue(view_->horizontalScrollBar()->minimum()); });
 	unseen_ = 0;
 	emit unseenChanged(0);
 }
@@ -149,8 +158,7 @@ void EventLog::add(LogLevel level, const QString &text, bool withPopUp) {
 					+ text;
 	writeToFile(now, lines);
 
-	if (level == LogLevel::Info && !showInfo_->isChecked()) return;
-	showInTab(level, lines);
+	showInTab(level, lines); /* kept even while Show info is off: on again, they are there */
 	if (level == LogLevel::Info) return;
 	if (!shown_) emit unseenChanged(++unseen_);
 	if (withPopUp && popUps_->isChecked()) emit popUp(level, text);
@@ -167,16 +175,22 @@ void EventLog::writeToFile(const QDateTime &now, const QStringList &lines) {
 
 /* the new line in the colour of its level; the repeat count before it muted */
 void EventLog::showInTab(LogLevel level, const QStringList &lines) {
+	/* sideways where it was (at the lines' start, the date, unless scrolled): a long line appended scrolled the view
+	 * to its end, once the view laid it out (after this event) */
+	const int sideways = view_->horizontalScrollBar()->value();
 	for (int i = 0; i < lines.size(); i++) {
 		const Line line{ level, i < lines.size() - 1, lines[i] };
 		lines_.append(line);
 		appendLine(line);
 	}
+	QTimer::singleShot(0, view_, [this, sideways] { view_->horizontalScrollBar()->setValue(sideways); });
 	if (lines_.size() > MAX_LINES) lines_.remove(0, lines_.size() - MAX_LINES); /* as the view drops them */
 }
 
-/* in the colours of the theme now: a line logged in the dark one stays readable in the light one */
+/* in the colours of the theme now: a line logged in the dark one stays readable in the light one; an info line only
+ * with Show info on */
 void EventLog::appendLine(const Line &line) {
+	if (line.level == LogLevel::Info && !showInfo_->isChecked()) return;
 	const ThemeColors &c = Theme::colors();
 	const QColor color = line.repeat ? c.muted
 			: line.level == LogLevel::Error ? c.bad : line.level == LogLevel::Warning ? c.warn : c.text;
@@ -188,6 +202,7 @@ void EventLog::redraw() {
 	view_->setUpdatesEnabled(false);
 	view_->clear();
 	for (const Line &line : std::as_const(lines_)) appendLine(line);
+	view_->horizontalScrollBar()->setValue(0); /* at the lines' start */
 	view_->setUpdatesEnabled(true);
 }
 
@@ -271,11 +286,6 @@ void Notice::place() {
 	const QString more = more_ > 0 ? tr("  +%1 more").arg(more_) : QString();
 	const QString link = tr("Show in Log");
 	setToolTip(text_);
-	if (right - left < NOTICE_MIN_WIDTH) {
-		hide();
-		emit noRoom(QStringLiteral("%1: %2%3").arg(tag, text_, more), hideTimer_->remainingTime());
-		return;
-	}
 
 	/* the message gets the room the tag, the count and the link leave */
 	QFont bold = font();
@@ -284,7 +294,14 @@ void Notice::place() {
 	const int padding = 2 * 12 + 4 + 2;
 	const int fixedWidth = boldMetrics.horizontalAdvance(tag + QStringLiteral("   "))
 			+ plainMetrics.horizontalAdvance(more + QStringLiteral("    ") + link) + padding;
-	const QString shown = plainMetrics.elidedText(text_, Qt::ElideRight, std::max(60, right - left - fixedWidth));
+	/* too little room for the tag, the count, the link and a piece of the message (Arabic's longer tabs and words
+	 * leave less): the status bar says it, rather than a notice cut at its end, its count and link with it */
+	if (right - left < std::max(NOTICE_MIN_WIDTH, fixedWidth + NOTICE_MIN_TEXT)) {
+		hide();
+		emit noRoom(QStringLiteral("%1: %2%3").arg(tag, text_, more), hideTimer_->remainingTime());
+		return;
+	}
+	const QString shown = plainMetrics.elidedText(text_, Qt::ElideRight, right - left - fixedWidth);
 	setText(QStringLiteral("<b style='color:%1'>%2</b>&nbsp; %3<span style='color:%4'>%5</span> &nbsp;"
 						   "<a href='log' style='color:%6'>%7</a>")
 					.arg(edge.name(), tag, shown.toHtmlEscaped(), c.muted.name(), more.toHtmlEscaped(),

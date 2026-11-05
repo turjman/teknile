@@ -50,7 +50,7 @@ QString wallTime(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString
 /* a read's place in the glow's memory: the same read again (its kind, device and address) is compared with the last */
 quint32 readId(const DumpBlock &b) { return (quint32(b.kind) << 24) | (quint32(b.slave) << 16) | b.addr; }
 
-constexpr qint64 NEVER_CHANGED = -1000000; /* a byte that has not changed since it was first shown */
+constexpr qint64 NEVER_LIT = -1000000;      /* a byte that has not glowed */
 constexpr int GLOW_TICK_MS = 50;           /* the glow fades in steps this long, only while a byte glows */
 
 QColor blend(const QColor &over, const QColor &under, double alpha) {
@@ -130,41 +130,55 @@ void DumpView::setBlocks(const QVector<DumpBlock> &blocks) {
 	noteChanges(was);
 	relayout();
 	scrollToPending();
+	refreshTip();
 }
 
-/* The bytes of a read that differ from its last answer start glowing; a read shown for the first time does not glow
- * (nothing changed, it only came), and reads gone are forgotten. */
+void DumpView::refreshTip() {
+	if (tipText_.isEmpty() || !QToolTip::isVisible() || QToolTip::text() != tipText_) return;
+	if (toolTipAt(tipPos_) == tipText_) return;
+	QHelpEvent help(QEvent::ToolTip, tipPos_, viewport()->mapToGlobal(tipPos_));
+	viewportEvent(&help);
+}
+
+/* The bytes of a read that differ from its last answer start glowing when they held still GLOW_REST_MS before (a byte
+ * that changes at every poll would flicker); a read shown for the first time, or its first answer since the link came
+ * up, does not glow (nothing changed, it only came) and holds still from there; reads gone are forgotten. */
 void DumpView::noteChanges(const QVector<DumpBlock> &was) {
 	QHash<quint32, const DumpBlock *> before;
 	for (const DumpBlock &b : was) before.insert(readId(b), &b);
-	QHash<quint32, QVector<qint64>> kept;
-	const qint64 now = glowClock_.elapsed();
+	QHash<quint32, QVector<ByteGlow>> kept;
+	const qint64 now = glowNow();
 	bool changed = false;
 	for (const DumpBlock &b : blocks_) {
 		if (b.kind == DumpBlock::FastStream) continue; /* a block changes whole at every take: a glow would flicker */
 		const quint32 id = readId(b);
-		QVector<qint64> times = changedMs_.value(id);
-		if (times.size() != b.size) times = QVector<qint64>(b.size, NEVER_CHANGED);
+		QVector<ByteGlow> times = glows_.value(id);
 		const DumpBlock *old = before.value(id);
-		if (old && old->size == b.size && old->data.size() >= b.size && b.data.size() >= b.size) {
+		const bool compared = old && old->size == b.size && old->data.size() >= b.size && b.data.size() >= b.size
+				&& old->time >= connectedAt_ && times.size() == b.size;
+		if (!compared) {
+			times = QVector<ByteGlow>(b.size, ByteGlow { now, NEVER_LIT });
+		} else {
 			for (int i = 0; i < b.size; i++) {
 				if (old->data[i] == b.data[i]) continue;
-				times[i] = now;
+				const bool rested = now - times[i].changed >= RegisterModel::GLOW_REST_MS;
+				times[i].changed = now;
+				if (!rested || !glowOn_) continue;
+				times[i].lit = now;
 				changed = true;
 			}
 		}
 		kept.insert(id, times);
 	}
-	changedMs_ = kept;
+	glows_ = kept;
 	if (changed && !glowTimer_->isActive()) glowTimer_->start();
 }
 
 double DumpView::glow(int card, int offset) const {
-	if (card < 0 || card >= blocks_.size()) return 0;
-	const QVector<qint64> times = changedMs_.value(readId(blocks_[card]));
+	if (!glowOn_ || card < 0 || card >= blocks_.size()) return 0;
+	const QVector<ByteGlow> times = glows_.value(readId(blocks_[card]));
 	if (offset < 0 || offset >= times.size()) return 0;
-	const qint64 since = glowClock_.elapsed() - times[offset];
-	return since >= RegisterModel::GLOW_MS ? 0.0 : 1.0 - double(since) / double(RegisterModel::GLOW_MS);
+	return RegisterModel::glowStrength(glowNow() - times[offset].lit);
 }
 
 /* A changed byte's text is drawn in the glow's colour, fading back to its plain colour: a ring round the cell would
@@ -193,11 +207,26 @@ QColor DumpView::glowText(const ThemeColors &c, bool dark) {
 }
 
 bool DumpView::glowing() const {
-	const qint64 now = glowClock_.elapsed();
-	for (const QVector<qint64> &times : changedMs_)
-		for (qint64 t : times)
-			if (now - t < RegisterModel::GLOW_MS) return true;
+	if (!glowOn_) return false;
+	const qint64 now = glowNow();
+	for (const QVector<ByteGlow> &times : glows_)
+		for (const ByteGlow &t : times)
+			if (now - t.lit < RegisterModel::GLOW_MS) return true;
 	return false;
+}
+
+void DumpView::setGlowOn(bool on) {
+	if (on == glowOn_) return;
+	glowOn_ = on;
+	if (on) return;
+	for (QVector<ByteGlow> &times : glows_)
+		for (ByteGlow &t : times) t.lit = NEVER_LIT; /* a glow under way ends now, and does not come back with On */
+	viewport()->update();
+}
+
+void DumpView::shiftGlowClock(qint64 ms) {
+	glowShift_ += ms;
+	viewport()->update();
 }
 
 void DumpView::setRegisters(const QVector<RegDef> &defs) {
@@ -227,6 +256,7 @@ void DumpView::setHold(bool on) {
 void DumpView::setConnected(bool on) {
 	if (on == connected_) return;
 	connected_ = on;
+	if (on && now_) connectedAt_ = now_();
 	relayout();
 }
 
@@ -2378,26 +2408,41 @@ void DumpView::keyPressEvent(QKeyEvent *e) {
 
 /* ------------------------------------------------------------------ tooltips */
 
-/* A text's lines broken at their words so none is wider than width (a tooltip shows its text's lines as they come). */
+/* A text's lines broken so none is wider than width (a tooltip shows its text's lines as they come): at their " · "
+ * first, so a part stays whole ("bytes 0-1 of the record", not "bytes 0-1 of the" over "record"), and at the words
+ * of a part only when it alone is wider. */
 QString DumpView::wrapTip(const QString &text, int width) const {
 	const QFontMetrics fm(QToolTip::font());
+	const QString dot = QStringLiteral(" · ");
 	QStringList out;
 	for (const QString &line : text.split(QLatin1Char('\n'))) {
 		if (fm.horizontalAdvance(line) <= width) {
 			out << line;
 			continue;
 		}
-		QString current;
-		for (const QString &word : line.split(QLatin1Char(' '))) {
-			const QString longer = current.isEmpty() ? word : current + QLatin1Char(' ') + word;
-			if (!current.isEmpty() && fm.horizontalAdvance(longer) > width) {
-				out << current;
-				current = word;
-			} else {
-				current = longer;
-			}
+		QStringList parts;
+		for (const QString &part : line.split(dot)) {
+			const QString longer = parts.isEmpty() ? part : parts.last() + dot + part;
+			if (!parts.isEmpty() && fm.horizontalAdvance(longer) <= width) parts.last() = longer;
+			else parts << part;
 		}
-		out << current;
+		for (const QString &part : std::as_const(parts)) {
+			if (fm.horizontalAdvance(part) <= width) {
+				out << part;
+				continue;
+			}
+			QString current;
+			for (const QString &word : part.split(QLatin1Char(' '))) {
+				const QString longer = current.isEmpty() ? word : current + QLatin1Char(' ') + word;
+				if (!current.isEmpty() && fm.horizontalAdvance(longer) > width) {
+					out << current;
+					current = word;
+				} else {
+					current = longer;
+				}
+			}
+			out << current;
+		}
 	}
 	return out.join(QLatin1Char('\n'));
 }
@@ -2478,6 +2523,8 @@ bool DumpView::viewportEvent(QEvent *e) {
 	const QPoint pos = help->pos();
 	const QString tip = toolTipAt(pos);
 	const QRect place = tipPlace(pos);
+	tipPos_ = pos;
+	tipText_ = tip;
 	if (tip.isEmpty()) {
 		QToolTip::hideText();
 		e->ignore();

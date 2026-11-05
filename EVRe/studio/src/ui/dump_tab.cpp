@@ -32,6 +32,9 @@ const QString FIELDS_KEY = QStringLiteral("dump/fields");
 DumpTab::DumpTab(RegisterModel *model, QWidget *parent) : QWidget(parent), model_(model) {
 	view_ = new DumpView;
 	view_->setObjectName(QStringLiteral("dumpView"));
+	/* the Registers tab's Glow: the bytes glow with the values or not at all */
+	view_->setGlowOn(model_->glowOn());
+	connect(model_, &RegisterModel::glowOnChanged, view_, &DumpView::setGlowOn);
 
 	deviceLabel_ = mutedLabel(tr("Device"));
 	device_ = new QComboBox;
@@ -369,6 +372,7 @@ void DumpTab::fillMenu(QMenu *menu, RegKey key, int card) {
 			: !reg->def.rw ? tr("%1 is read only").arg(reg->def.name)
 			: model_->listening() ? listeningText()
 			: !model_->writesEnabled() ? tr("Tick Allow writes on the Registers tab first")
+			: !model_->linkUp() ? tr("Not connected: connect to the device first")
 			: tr("The Registers tab's editor on %1").arg(reg->def.name));
 	menu->addSeparator();
 

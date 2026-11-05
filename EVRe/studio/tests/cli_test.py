@@ -294,6 +294,15 @@ def main():
             issues = lines_json(out)
             check(rc == 1 and any(i['error'] and 'is also' in i['text'] for i in issues),
                   'validate a map with a name used twice: exit 1, the error in JSON')
+            # a map validate refuses is not exported either: exit 1, its errors said, no file
+            limits = os.path.join(tmp, 'limits.json')
+            with open(limits, 'w', encoding='utf-8') as f:
+                json.dump({'format': 'evre-map/1', 'registers': [
+                    {'addr': '0x10', 'name': 'A', 'type': 'u16', 'access': 'rw', 'min': 10, 'max': 5}]}, f)
+            target = os.path.join(tmp, 'limits.h')
+            rc, _, err = run('export', limits, '--to', 'h', '-o', target)
+            check(rc == 1 and 'not exported' in err and not os.path.exists(target),
+                  'export a map with a min above its max: refused (exit 1), its error said, nothing written')
             for kind, marker in (('md', '# Example device'), ('h', '#define'), ('py', 'REGISTERS = {'), ('csv', 'addr,name')):
                 target = os.path.join(tmp, 'out.' + kind)
                 rc, _, _ = run('export', MAP, '--to', kind, '--prefix', 'ex', '-o', target)

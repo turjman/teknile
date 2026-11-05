@@ -77,11 +77,12 @@ private:
 	void refreshBulk(); /* their values in the list, the box on the value they share, whether a write can go */
 	void fillNamedValues(const RegDef &def); /* its special values (in shown units), then its value names */
 	void updateBroadcast(); /* "To all devices": offered by the rule, connected, Allow writes on, a value typed */
-	void onValuesChanged(const QModelIndex &first, const QModelIndex &last);
+	void onValuesChanged(const QModelIndex &first, const QModelIndex &last, const QList<int> &roles);
 
 	/* the three ways to write */
 	void writeTyped();
 	void writeNamedValue(int listIndex);
+	bool rawIsShown() const; /* no scale or offset on the register (on every one of several): a plain number is raw */
 	void writeField(int lsb, int width, quint64 value); /* from the bit view */
 	void requestWrite(const QString &text);
 

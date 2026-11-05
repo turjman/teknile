@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.4.1 (2026-11-05)
+
+Fixes found while the website's tutorials were written: the Studio now does what its guide says, and the guide says
+what the Studio does.
+
+### Changed: the Python export's DEVICE_ID
+
+- **A map exported as a Python module** (Map editor, Export, or `evre export --to py`): `DEVICE_ID` is now the map's
+  device ID, and the protocol's register of that name is `REG_DEVICE_ID = 0xa000` (a register named as one of the
+  module's own names gets `REG_` before it, with a comment). Before, the register's address 0xA000 overwrote the device
+  ID. **A script that used `DEVICE_ID` from an old export as the register's address must use `REG_DEVICE_ID`.**
+- `evre export` refuses a map that `evre validate` refuses (a min above its max, a name used twice): it lists the
+  errors, writes no file and ends with exit code 1. Warnings do not stop it.
+
+### EVRe Studio
+
+- **Registers tab.** A changed value glows again; a selected row keeps its colours, a stale value's grey too; the
+  Decoded column is as wide as its text and a width dragged wider stays; F2 on any cell of a row edits its value; not
+  connected, no editor opens; a value name picked from the list is written and logged as its number (`= 2`); the list
+  follows the device after a pick; a bit in no field says so; a bulk write's refusal is named in the status bar.
+  *1 register*, *1 device* and their plurals; the saved path no longer breaks after *C:*; tooltips for Record CSV,
+  Clear cursors, Mean, RMS and Latency.
+- **Glow.** Changed values glow only after a rest, with an arrow for the direction; Registers → Glow turns it off.
+- **The selected row stays in view.** Selecting a read-write register near the bottom of a long map no longer hides
+  it under the quick-write panel; every list and table keeps its current row in view when it gets shorter.
+- **Map editor.** New and Open ask first when the map has changes not saved; Ctrl+Y and Ctrl+Shift+Z redo on Windows;
+  a key typed into a group cell starts the group anew; the value names' Hex box and the Bit fields page follow at once;
+  saving after changing one fast stream writes the others as they were; the Markdown export's table headers are in the
+  export's language; a map that extends itself names its base once.
+- **Chart.** The Y boxes show what was made of the typing (a min above the max swapped, 12 and 12 as 12 and 13, a
+  refused Log min); the info line keeps its count at the narrowest window; a drag with nothing to pan to says why; the
+  Drawing list names each graphics card once; a change to one math line keeps the others' samples; the measurements'
+  time over a held view follows the clock; the totals since Clear bridge two poll intervals when the polls are slower
+  than one a second; the trigger's level box holds six digits; the crosshair box shows whole numbers without decimals;
+  *1 bin*, *1 sample*, *takes 1 value*. The math dialog's Tab takes a suggested name, as Enter does, and its help lists
+  `bits(x, lsb, width)`.
+- **Fast streams.** After Start the card says *waiting for the first block* until one comes; the rate's tooltip says
+  ppm once; the `.evrs` line in the Log gives its path in the system's separators.
+- **Dump, Log, recording window.** A byte's tooltip follows the byte under it; a fast channel's tooltip breaks at its
+  parts, never mid-phrase; Show info off hides the info lines already in the Log, on brings them back; the Lines list
+  stays open with 13 lines or more; a math line naming a column the recording lacks says so; a CSV of titles only reads
+  *no samples*.
+- **Start.** `--map` no longer empties the map chosen last in the settings; a map that does not load says so over the
+  window, once it is shown. `EVReStudio --help` and `--version` go to the console they were started from, or to a
+  window in a fixed-pitch font when there is none; a bad option ends with exit code 1.
+- **Arabic.** Every new text translated; *offline* (a device that does not answer) has its own word, apart from *not
+  connected*; one name for Copy decoded; *10 kS/s مضبوط*; the Log opens at its lines' start, left to right; the pop-up's
+  count is whole; the write line in the Log, raw bytes, a lane's manual range and the recent recordings keep their
+  numbers and paths in order.
+- **Downloads.** The map format's JSON Schema ships beside the README in the zip, the installer and the Linux tools'
+  archive, and its `$id` is where it can be fetched.
+- **The guide** (STUDIO.md and the Help) corrected where the tutorials found it wrong: Slave applies at once, an offline
+  device's values, *(no group)*, a held view's frame rate, the legend's number format, the Monitor's notes for auto send
+  and fast blocks, the Dump's menu, `evre-sim`'s STATUS, `evre record`'s ppm and more.
+
 ## 1.4.0 (2026-11-02)
 
 ### EVRe Studio

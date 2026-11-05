@@ -28,6 +28,7 @@ NameTable::NameTable(Keys keys, const QString &objectName, QWidget *parent) : QW
 	table_->setColumnWidth(0, 90);
 	table_->verticalHeader()->setDefaultSectionSize(24);
 	clearSelectionOnEmpty(table_);
+	keepCurrentInView(table_);
 	connect(table_, &QTableWidget::itemChanged, this, [this] {
 		if (loading_) return;
 		markRows();
@@ -103,8 +104,9 @@ bool NameTable::parseKey(const QString &typed, double &value) const {
 }
 
 void NameTable::setEntries(const QVector<Entry> &entries, bool hex) {
-	/* what the list shows already (maybe with a row being filled in): left as it is */
-	if (entries == this->entries() && hex == this->hex() && table_->rowCount() >= entries.size()) {
+	/* what the list shows already, in that form (maybe with a row being filled in): left as it is. The rows' form is
+	 * lastHex_: the Hex box ticked has already changed hex() when its toggle asks for the rows in hex */
+	if (entries == this->entries() && hex == lastHex_ && hex == this->hex() && table_->rowCount() >= entries.size()) {
 		last_ = entries;
 		lastHex_ = hex;
 		return;

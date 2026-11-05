@@ -87,6 +87,7 @@ BulkWriteDialog::BulkWriteDialog(const QVector<Target> &targets, const QStringLi
 	layout->addLayout(valueRow);
 
 	list_ = new QTableWidget(int(targets_.size()), ColumnCount);
+	keepCurrentInView(list_);
 	list_->setObjectName(QStringLiteral("bulkList"));
 	list_->setHorizontalHeaderLabels({ tr("Register"), tr("Address"), tr("Device"), tr("Now"), tr("New"), tr("Note") });
 	list_->verticalHeader()->hide();

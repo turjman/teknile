@@ -139,11 +139,13 @@
 #include "ui/map_editor_tab.h"
 #include "ui/limit_spin_box.h"
 #include "ui/map_table_model.h"
+#include "ui/name_table.h"
 #include "ui/monitor_tab.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
+#include "ui/value_delegate.h"
 #include "ui/value_pace.h"
 
 namespace {
@@ -573,6 +575,9 @@ public:
 		staleValues();
 		decodedFields();
 		quickWrite();
+		registersFixes();
+		registersGlow();
+		currentRowKept();
 		groups();
 		chart();
 		chartManyLines();
@@ -592,6 +597,13 @@ public:
 		chartTotals();
 		chartLogScale();
 		chartInfoLine();
+		chartYRangeTyped();
+		chartPanRefused();
+		mathLinesKept();
+		measureSinceFollows();
+		chartTotalsSlowPolls();
+		chartTriggerLevelFits();
+		commandLineHelp();
 		chartOneCap();
 		chartFastBarsOnThreads();
 		chartFastBarsMerged();
@@ -645,8 +657,11 @@ public:
 		frameBudget();
 		plotShownWithoutQuestion();
 		recordingWindows();
+		recordingFixes();
+		startupFixes();
 		recentMissing();
 		mapEditor();
+		mapEditorFixes();
 		clearMapEditorSelection();
 		mapStreamsPage();
 		clearDialogSelection();
@@ -659,6 +674,7 @@ public:
 		dumpCards();
 		dumpColours();
 		dumpLive();
+		dumpTipFollows();
 		dumpMouse();
 		clearRegistersSelection();
 		clearDumpSelection();
@@ -1335,9 +1351,11 @@ private:
 					qPrintable(popUpTexts.join(QStringLiteral(" / "))));
 		check(added && summed && writePopUps == 1 && popUpTexts.value(0).contains(refusedMarker)
 						&& other_.readU8(addrs[0]) == 1 && other_.readU8(addrs[1]) == 1
-						&& window_.statusBar()->currentMessage() == QLatin1String("2 of 3 registers written"),
+						&& window_.statusBar()->currentMessage().startsWith(
+								QLatin1String("2 of 3 registers written; refused: BULK_NOWHERE (")),
 				"bulk write: a register the device refuses among them: the others written all the same, one Warning names "
-				"the refused one, one pop-up for the three, \"2 of 3 registers written\"");
+				"the refused one, one pop-up for the three, \"2 of 3 registers written; refused: BULK_NOWHERE (...)\" in the "
+				"status bar (the count names the refusal: it is not hidden behind it)");
 		if (doc) doc->undoStack()->undo();
 		u8Cell_ = valueCell(table_, regs_.u8.name); /* the table's rows again: an index of before is gone */
 
@@ -1893,6 +1911,48 @@ private:
 		language::apply(*qApp, QStringLiteral("ar"));
 		QTest::qWait(200);
 		ok = clear("right to left") && ok;
+		/* a second message: its count ("+1 more") shown whole, nothing of the notice cut */
+		notice->post(LogLevel::Warning, QStringLiteral("a second notice in right-to-left, with a count beside it"));
+		QApplication::processEvents();
+		/* at every width: shown whole, or (too little room beside the tabs) said in the status bar instead */
+		bool countWhole = notice->isVisible() && notice->sizeHint().width() <= notice->width();
+		int shownAt = 0, inStatusBar = 0;
+		for (int width = 900; width <= 1600; width += 25) {
+			window_.resize(width, was.height());
+			QTest::qWait(20);
+			if (notice->isVisible()) {
+				shownAt++;
+				if (notice->sizeHint().width() > notice->width()) {
+					countWhole = false;
+					std::printf("     (the notice in Arabic at %d: %d px wide, its text needs %d: \"%s\")\n", window_.width(),
+							notice->width(), notice->sizeHint().width(), qPrintable(notice->text()));
+				}
+			} else if (!window_.statusBar()->currentMessage().isEmpty()) {
+				inStatusBar++;
+			}
+		}
+		window_.resize(was);
+		QTest::qWait(50);
+		std::printf("     (the notice in Arabic across the widths: shown whole at %d, in the status bar at %d)\n", shownAt,
+				inStatusBar);
+		check(countWhole && shownAt > 0, "the notice in right-to-left (Arabic): at every window width as wide as its text, "
+				"its count (+1 more) and link never cut; with too little room beside the tabs the status bar says it");
+		/* the Log in Arabic: its lines start with the date, left to right; the tab opens at their start */
+		if (auto *view = window_.findChild<QPlainTextEdit *>(QStringLiteral("eventLog"))) {
+			if (auto *eventLog = window_.findChild<EventLog *>())
+				eventLog->add(LogLevel::Warning, QStringLiteral("a long line for the Log in Arabic ") + QString(300, QLatin1Char('x')),
+						false);
+			tabs->setCurrentIndex(MainWindow::TabLog);
+			QTest::qWait(100);
+			QScrollBar *across = view->horizontalScrollBar();
+			const bool atStart = view->layoutDirection() == Qt::LeftToRight && across->maximum() > 0
+					&& across->value() == across->minimum();
+			if (!atStart)
+				std::printf("     (the Log in Arabic: direction %d, scrolled %d of %d..%d)\n", int(view->layoutDirection()),
+						across->value(), across->minimum(), across->maximum());
+			check(atStart, "the Log tab in Arabic: left to right, opened at its lines' start (the date), not scrolled to their end");
+			tabs->setCurrentIndex(0);
+		}
 		for (const QSize &size : { QSize(1200, 720), QSize(1600, 950), was }) {
 			window_.resize(size);
 			QTest::qWait(100);
@@ -1918,6 +1978,35 @@ private:
 		const QString text = logText();
 		check(text.contains(QLatin1String("not written")) && text.contains(QLatin1String("written: ")),
 				"the Log tab: the writes, and the one not written");
+		/* Show info off: the info lines already there go too, not only the new ones; on again they are back */
+		auto *log = window_.findChild<EventLog *>();
+		QCheckBox *showInfo = nullptr;
+		if (log)
+			for (QCheckBox *box : log->findChildren<QCheckBox *>())
+				if (box->text() == QLatin1String("Show info")) showInfo = box;
+		if (!log || !showInfo) {
+			check(false, "the Log tab: Show info");
+			return;
+		}
+		log->add(LogLevel::Info, QStringLiteral("an info line for Show info"), false);
+		log->add(LogLevel::Warning, QStringLiteral("a warning line for Show info"), false);
+		const bool infoThere = logText().contains(QLatin1String("an info line for Show info"));
+		showInfo->setChecked(false);
+		const QString off = logText();
+		log->add(LogLevel::Info, QStringLiteral("a second info line for Show info"), false);
+		const bool newHidden = !logText().contains(QLatin1String("a second info line"));
+		showInfo->setChecked(true);
+		const QString on = logText();
+		if (!infoThere || off.contains(QLatin1String("INFO ")) || !newHidden || !on.contains(QLatin1String("a second info line")))
+			std::printf("     (Show info: there %d, off with an info line %d, a new one hidden %d, on: the new one back %d)\n",
+					int(infoThere), int(off.contains(QLatin1String("INFO "))), int(newHidden),
+					int(on.contains(QLatin1String("a second info line"))));
+		check(infoThere && !off.contains(QLatin1String("an info line for Show info")) && !off.contains(QLatin1String("INFO "))
+						&& off.contains(QLatin1String("a warning line for Show info")) && newHidden
+						&& on.contains(QLatin1String("an info line for Show info"))
+						&& on.contains(QLatin1String("a second info line for Show info")) && on.contains(QLatin1String("INFO ")),
+				"the Log tab, Show info off: the info lines already in the tab are hidden too (the warnings stay), a new one "
+				"is not shown; on again, all of them are back, the one logged meanwhile too");
 	}
 
 	/* 8. stale: polling paused, values go grey */
@@ -3689,6 +3778,7 @@ private:
 
 		/* Start: the enable written 1, the blocks counted, the rate as fitted, nothing lost */
 		button->click();
+		const QString justStarted = sidebar->fastRateText(0); /* at once: not "off" under the Stop button */
 		const bool on = enableBecomes(1);
 		const QRegularExpression rate(QStringLiteral("^(9\\.9|10\\.0|10\\.1) k samples/s \\([+-][0-9]+ ppm\\)$"));
 		const bool counted = QTest::qWaitFor([&] { return rate.match(sidebar->fastRateText(0)).hasMatch(); }, 6000);
@@ -3698,6 +3788,16 @@ private:
 						&& logText().contains(QLatin1String("fast stream ADC on: 10000 samples a second")),
 				"fast streams: Start writes 1 to ADC_STREAM; the button becomes a red Stop; the card shows 10.0 k "
 				"samples/s with its correction in ppm and lost 0; the Log says so");
+		{ /* the line says what Start began until the first block; the rate's tooltip says ppm once, then what it is */
+			const QString tip = sidebar->fastRateTip(0);
+			const bool once = QRegularExpression(QStringLiteral("corrected by [+-][0-9]+ ppm \\(parts in a million\\)"))
+					.match(tip).hasMatch();
+			if (justStarted != QLatin1String("waiting for the first block") || !once)
+				std::printf("     (just after Start: \"%s\"; the tooltip \"%s\")\n", qPrintable(justStarted), qPrintable(tip));
+			check(justStarted == QLatin1String("waiting for the first block") && once,
+					"fast streams: just after Start the line says \"waiting for the first block\" (not \"off\" under the Stop "
+					"button); the rate's tooltip: \"corrected by +8 ppm (parts in a million)\", ppm said once");
+		}
 		/* the Dump tab: the running stream's newest block as a card of its own */
 		dumpFastLive(fastMap);
 
@@ -3878,6 +3978,9 @@ private:
 			if (stop) stop->click();
 			(void) QTest::qWaitFor([&] { return !buttonWithText(QStringLiteral("■  Stop recording")); }, 3000);
 			const bool written = QFileInfo::exists(evrs) && logText().contains(QLatin1String("fast stream ADC recorded: "));
+			check(logText().contains(QStringLiteral("fast stream ADC recorded: %1 (").arg(QDir::toNativeSeparators(evrs))),
+					"fast streams recorded: the Log's .evrs line gives its path in the system's separators, as the CSV's "
+					"line under it does (backslashes on Windows)");
 			RecordingWindow *opened = nullptr, *alone = nullptr, *cut = nullptr;
 			/* a fast math line of the recording's window's own (recording/math), computed from the records recorded */
 			const QVariant mathBefore = QSettings().value(QStringLiteral("recording/math"));
@@ -4292,7 +4395,7 @@ private:
 				fast1M.fast[0].rate = 2000000; /* within the second: kept, no flicker */
 				card.showStats(fast1M, true);
 				const QString soonText = about ? about->fullText() : QString();
-				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" ضبط");
+				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" مضبوط");
 				const bool ok = offText == lead + isolated(QStringLiteral("10 kS/s")) + setWord && offWhole
 						&& offTip.contains(code == QLatin1String("en") ? QStringLiteral("the device may stream at another")
 								: QStringLiteral("قد يبث الجهاز بمعدّل آخر"))
@@ -7956,6 +8059,16 @@ private:
 		check(sqrtFirst && box->text() == volts + QStringLiteral(" * sqrt()")
 						&& box->cursorPosition() == int(box->text().size()) - 1,
 				"formula completion: a function goes in as sqrt(), the cursor inside; the rest of the formula kept");
+		/* Tab takes the one picked too (the box took the key first and moved the focus on, nothing taken) */
+		box->setText(QString());
+		box->setFocus();
+		QTest::keyClicks(box, volts.left(3));
+		const QString best = completer->shown().value(0);
+		QTest::keyClick(completer->completer()->popup(), Qt::Key_Tab);
+		if (best.isEmpty() || box->text() != best)
+			std::printf("     (Tab: \"%s\" offered first, the box \"%s\")\n", qPrintable(best), qPrintable(box->text()));
+		check(!best.isEmpty() && box->text() == best && completer->shown().isEmpty() && dialog.isVisible(),
+				"formula completion: Tab puts the one picked in, as Enter does (the list closed, the dialog open)");
 		/* Esc closes the list; a word that is a whole name already offers nothing */
 		box->setText(QString());
 		QTest::keyClicks(box, QStringLiteral("ab"));
@@ -8729,7 +8842,7 @@ private:
 				"14:03:12\", the reason in its tooltip, and one banner over the cards \"Held at 14:03:12 · …\"; Follow: live "
 				"again, the banner gone");
 
-		/* A changed byte glows, then fades over the Registers tab's GLOW_MS: its text in glowText, no ring round the cell
+		/* A changed byte glows (after a rest), then fades over the Registers tab's GLOW_MS: its text in glowText, no ring round the cell
 		 * (where a ring's left side was, 2.5 px inside the cell, the pixel is the same lit and faded: the chip's fill). A
 		 * hovered register is the one mark on the grid: while it is, nothing glows. */
 		const ThemeColors &tc = Theme::colors();
@@ -8738,6 +8851,7 @@ private:
 		const uint16_t fanAddr = 0xD084;
 		const int fanWas = other_.readU8(fanAddr);
 		const uint8_t fanNew = uint8_t(fanWas == 40 ? 41 : 40);
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS); /* the byte held still 2 s: its change glows */
 		other_.writeU8(fanAddr, fanNew);
 		const bool lit = QTest::qWaitFor([&] {
 			const int card = dumpCard(view, 0xD080);
@@ -8760,6 +8874,7 @@ private:
 				&& view->byteColour(card, 4) == tc.text;
 		const bool noRing = card >= 0 && pixelOff(glowing, ringSide, pixelAt(plainShot, ringSide)) < 8
 				&& pixelOff(glowing, ringSide, tc.accent) > 60;
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
 		other_.writeU8(fanAddr, uint8_t(fanNew + 1));
 		const bool litAgain = QTest::qWaitFor([&] {
 			const int c = dumpCard(view, 0xD080);
@@ -8841,6 +8956,46 @@ private:
 
 	/* The mouse: hover lights a register and says its byte; a click selects it in the Registers tab too, a double-click
 	 * goes there; the Registers tab's Show in dump and its current row */
+	/* a byte's tooltip says what the byte holds now: new bytes under it while it is up, it changes with them */
+	void dumpTipFollows() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		DumpTab *tab = dumpTab();
+		DumpView *view = tab ? tab->view() : nullptr;
+		if (!tabs || !view) {
+			check(false, "Dump: a byte's tooltip follows (no tab)");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		if (auto *follow = tab->findChild<QPushButton *>(QStringLiteral("dumpFollow"))) follow->click();
+		QApplication::processEvents();
+		int card = -1;
+		const uint16_t addr = regs_.volts.addr;
+		(void) QTest::qWaitFor([&] {
+			const QVector<DumpBlock> &blocks = view->blocks();
+			for (int i = 0; i < blocks.size() && card < 0; i++)
+				if (blocks[i].kind == DumpBlock::Read && blocks[i].addr <= addr && addr < blocks[i].addr + blocks[i].size)
+					card = i;
+			return card >= 0;
+		}, 3000);
+		bool follows = false;
+		QString first, now;
+		if (card >= 0) {
+			const QPoint at = view->byteRect(card, addr - view->blocks()[card].addr).center();
+			QToolTip::hideText();
+			QHelpEvent help(QEvent::ToolTip, at, view->viewport()->mapToGlobal(at));
+			QApplication::sendEvent(view->viewport(), &help);
+			first = QToolTip::text();
+			follows = QTest::qWaitFor([&] {
+				now = QToolTip::text();
+				return QToolTip::isVisible() && now != first && now == view->toolTipAt(at);
+			}, 4000);
+			QToolTip::hideText();
+		}
+		if (!follows) std::printf("     (the tooltip: \"%s\", then \"%s\")\n", qPrintable(first), qPrintable(now));
+		check(card >= 0 && !first.isEmpty() && follows, "Dump: a byte's tooltip follows the byte under it (the value now, "
+				"not the one it held when the tooltip opened)");
+	}
+
 	void dumpMouse() {
 		auto *tabs = window_.findChild<QTabWidget *>();
 		DumpTab *tab = dumpTab();
@@ -11009,6 +11164,18 @@ private:
 				"record / raw E9 2E · 12009 × 0.001 = 12.009 V under the row, I_LOAD's left of V_BUS's column; the number's "
 				"record 1191260 of ADC · 2 of the 253 in this block; empty room lights nothing");
 
+		/* I_LOAD's tooltip, wrapped to the room left of V_BUS's column, breaks at its " · " first: no part cut mid-phrase
+		 * ("bytes 0-1 of the" over "record") */
+		const QStringList loadLines = view->toolTipAt(onLoad).split(QLatin1Char('\n'));
+		const auto wholeLine = [&loadLines](const QString &part) {
+			return std::any_of(loadLines.begin(), loadLines.end(), [&part](const QString &l) { return l.contains(part); });
+		};
+		const bool phrases = loadLines.size() >= 2 && wholeLine(QStringLiteral("record 1191260"))
+				&& wholeLine(QStringLiteral("bytes 0-1 of the record")) && wholeLine(QStringLiteral("raw 6A 09"));
+		if (!phrases) std::printf("     (I_LOAD's tooltip: \"%s\")\n", qPrintable(loadLines.join(QLatin1Char('|'))));
+		check(phrases, "Dump, a fast card: a channel's tooltip wrapped to the room before the next column breaks at its "
+				"\" · \" first, so \"bytes 0-1 of the record\" stays on one line");
+
 		/* the Copy forms, exact; the register items disabled with their reason, records as CSV only on a fast card */
 		const int y = fastCard(view);
 		const QString hex = view->copyText(DumpView::CopyBlockHex, y);
@@ -11623,8 +11790,30 @@ private:
 				"check boxes: a tick when ticked and a dash when partly (their images exist)");
 
 		/* the window fits a 1366 x 768 screen (1280 x 720 at 150 %): it was 1236 x 902 at least */
+		/* measured fresh: a widget on a tab not shown (the Chart's buttons, after the steps before) keeps its old size
+		 * in its layout item's cache until that tab is shown again, so the window read 1237 px where 1211 is true
+		 * (Linux: 1295); updateGeometry clears each widget's cached size, then the layouts work it out again */
+		for (QWidget *widget : window_.findChildren<QWidget *>()) widget->updateGeometry();
+		for (QLayout *layout : window_.findChildren<QLayout *>()) layout->invalidate();
+		QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
 		const QSize least = window_.minimumSizeHint();
 		std::printf("window minimum %d x %d\n", least.width(), least.height());
+		if (least.width() > 1280) {
+			/* say what is too wide: the window's central parts, each tab's page, and the wide rows of each page */
+			if (QWidget *central = window_.centralWidget())
+				for (QWidget *part : central->findChildren<QWidget *>(Qt::FindDirectChildrenOnly))
+					std::printf("  part %s %s: %d\n", part->metaObject()->className(), qPrintable(part->objectName()),
+							part->minimumSizeHint().width());
+			if (auto *tabs = window_.findChild<QTabWidget *>())
+				for (int i = 0; i < tabs->count(); ++i) {
+					QWidget *page = tabs->widget(i);
+					std::printf("  tab %s: %d\n", qPrintable(tabs->tabText(i)), page->minimumSizeHint().width());
+					if (QLayout *layout = page->layout())
+						for (int j = 0; j < layout->count(); ++j)
+							if (layout->itemAt(j)->minimumSize().width() > 600)
+								std::printf("    row %d: %d\n", j, layout->itemAt(j)->minimumSize().width());
+				}
+		}
 		check(least.width() <= 1280 && least.height() <= 660, "the window's minimum size fits 1280 x 720");
 
 		/* the spin boxes as tall as the text boxes beside them (a text box of its own, not a combo box's) */
@@ -11969,6 +12158,639 @@ private:
 		QApplication::processEvents();
 	}
 
+	/* a register's value held still in the table for half a second (at most 5 s): a write of an earlier step that was
+	 * still on its way has come, and a change from here is the check's own */
+	void heldStill(const QString &name) {
+		const int row = regRow(name);
+		if (row < 0) return;
+		for (int tries = 0; tries < 10; tries++) {
+			const qint64 changed = model_->rows()[row].changedMs;
+			QTest::qWait(500);
+			if (model_->rows()[row].changedMs == changed) return;
+		}
+	}
+
+	/* 1.4.1, the glow after the owner's review: only a change after a rest of GLOW_REST_MS glows, for GLOW_MS eased out;
+	 * a tint, a bar on the cell's leading edge, the text in a readable accent, and for a number a triangle the way it
+	 * moved, in a slot kept on every row; the first value after connecting never glows; the Glow box (registers/glow)
+	 * turns it off, the Dump's bytes too. The glow's clock is moved on by the models' hooks (shiftGlowClock): a rest of
+	 * 2 s and a fade of 1.5 s are checked without waiting for them. */
+	/* a list or table keeps its current row in view when it gets shorter (the quick-write panel opening under the
+	 * Registers table for a read-write register hid the row just selected) */
+	void currentRowKept() {
+		int views = 0, kept = 0;
+		for (QAbstractItemView *view : window_.findChildren<QAbstractItemView *>()) {
+			if (view->window() != &window_) continue; /* a combo box's or a completer's pop-up list */
+			if (qobject_cast<QHeaderView *>(view)) continue; /* a table's own header: no rows to keep */
+			++views;
+			if (view->findChild<QObject *>(QStringLiteral("currentRowKeeper"), Qt::FindDirectChildrenOnly)) ++kept;
+			else std::printf("     without: %s %s in %s %s\n", view->metaObject()->className(), qPrintable(view->objectName()),
+					view->parentWidget() ? view->parentWidget()->metaObject()->className() : "-",
+					view->parentWidget() ? qPrintable(view->parentWidget()->objectName()) : "");
+		}
+		std::printf("     (%d of %d lists and tables)\n", kept, views);
+		check(views >= 5 && kept == views,
+				"lists and tables: every one in the window keeps its current row in view when it gets shorter");
+
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *table = window_.findChild<QTableView *>(QStringLiteral("registers"));
+		auto *detail = window_.findChild<QLabel *>(QStringLiteral("detail"));
+		if (!tabs || !table || !detail || !table->model() || table->model()->rowCount() < 8) {
+			check(false, "Registers: the table, its detail line and at least 8 rows, for the row kept in view");
+			return;
+		}
+		tabs->setCurrentIndex(0);
+		QTest::qWait(50);
+		QAbstractItemModel *rows = table->model();
+		const QModelIndex first = rows->index(0, RegisterModel::ColName);
+		const QModelIndex last = rows->index(rows->rowCount() - 1, RegisterModel::ColName);
+		const int detailMin = detail->minimumHeight();
+		const int rowHeight = table->verticalHeader()->defaultSectionSize();
+		const auto inView = [&](const QModelIndex &index) {
+			const QRect cell = table->visualRect(index);
+			return !cell.isEmpty() && cell.top() >= 0 && cell.bottom() <= table->viewport()->height();
+		};
+		/* the table about six rows high, its last row selected and shown at the bottom */
+		detail->setMinimumHeight(detail->height() + qMax(0, table->viewport()->height() - 6 * rowHeight));
+		QTest::qWait(80);
+		table->setCurrentIndex(last);
+		table->scrollTo(last, QAbstractItemView::PositionAtBottom);
+		QTest::qWait(50);
+		const bool shownBefore = inView(last);
+		const int before = table->viewport()->height();
+		/* something opens under the table, as the quick-write panel does: two rows less room */
+		detail->setMinimumHeight(detail->minimumHeight() + 2 * rowHeight);
+		QTest::qWait(80);
+		const int after = table->viewport()->height();
+		std::printf("     (the rows' room %d px -> %d px)\n", before, after);
+		check(shownBefore && after < before && inView(last),
+				"Registers: the row selected at the bottom stays in view when the table gets shorter (a panel opening under it)");
+		/* the current row scrolled away by hand: the view stays where it is */
+		table->scrollToTop();
+		QTest::qWait(30);
+		const bool awayBefore = !inView(last);
+		const int top = table->verticalScrollBar()->value();
+		detail->setMinimumHeight(detail->minimumHeight() + rowHeight);
+		QTest::qWait(80);
+		check(awayBefore && table->verticalScrollBar()->value() == top && inView(first),
+				"Registers: a current row scrolled out of view by hand stays out when the table gets shorter (no jump)");
+		detail->setMinimumHeight(detailMin);
+		if (table->selectionModel()) table->selectionModel()->clear();
+		QTest::qWait(50);
+	}
+
+	void registersGlow() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *glowBox = window_.findChild<QCheckBox *>(QStringLiteral("registersGlow"));
+		DumpTab *dump = dumpTab();
+		if (!tabs || !glowBox || !dump) {
+			check(false, "Registers, the glow: the tabs, the Glow box and the Dump");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		poll_->setChecked(true);
+		table_->clearSelection(); /* a selected row keeps its text colour: the glowing text is checked on a plain one */
+		QApplication::processEvents();
+		check(glowBox->isVisible() && glowBox->isChecked() && glowBox->toolTip().contains(QLatin1String("2 s"))
+						&& glowBox->cursor().shape() == Qt::PointingHandCursor
+						&& QSettings().value(QStringLiteral("registers/glow"), true).toBool() && model_->glowOn(),
+				"Registers, the Glow box: in the tab's bar beside Plot shown, on by default, a pointing hand and a tooltip "
+				"saying the rule (2 s of rest)");
+
+		const QModelIndex u8 = valueCell(table_, regs_.u8.name);
+		const QModelIndex volts = valueCell(table_, regs_.volts.name);
+		const QModelIndex named = valueCell(table_, regs_.enumU8.name);
+		const auto glowOf = [](const QModelIndex &cell) { return cell.data(RegisterModel::GlowRole).toDouble(); };
+		const auto arrowOf = [](const QModelIndex &cell) { return cell.data(RegisterModel::GlowDirectionRole).toInt(); };
+		/* a change after a rest: the clock moved on 2 s, then the other client writes the value */
+		const auto restedWrite = [&](const QModelIndex &cell, uint16_t addr, int value) {
+			heldStill(cell.siblingAtColumn(RegisterModel::ColName).data().toString()); /* nothing on its way, then the rest */
+			model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+			other_.writeU8(addr, uint8_t(value));
+			return QTest::qWaitFor([&] { return cell.data(RegisterModel::RawRole).toByteArray() == QByteArray(1, char(value)); },
+					3000);
+		};
+		const auto cellFont = [&](const QModelIndex &cell) {
+			return qvariant_cast<QFont>(cell.data(Qt::FontRole)).resolve(table_->font());
+		};
+		const auto shot = [&](const QModelIndex &cell) {
+			table_->scrollTo(cell);
+			return table_->viewport()->grab(table_->visualRect(cell)).toImage();
+		};
+		const auto local = [&](const QModelIndex &cell) { return QRect(QPoint(0, 0), table_->visualRect(cell).size()); };
+		/* the accent's pixels in an area (logical px) of a cell's picture: the triangle's, top half and bottom half */
+		const auto accentIn = [](const QImage &picture, const QRectF &area, int *top, int *bottom) {
+			const double dpr = picture.devicePixelRatio();
+			const QRect r = QRectF(area.topLeft() * dpr, area.size() * dpr).toAlignedRect().intersected(picture.rect());
+			*top = *bottom = 0;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++)
+					if (colourDistance(QColor(picture.pixel(x, y)), Theme::colors().accent) < 120)
+						(y < r.center().y() ? *top : *bottom) += 1;
+		};
+		/* the text's ink in an area: its right end and its rows' middle, in logical px (-1: none) */
+		const auto ink = [](const QImage &picture, const QRect &area, double *right, double *middle) {
+			const double dpr = picture.devicePixelRatio();
+			const QRect r = QRectF(QPointF(area.topLeft()) * dpr, QSizeF(area.size()) * dpr).toRect()
+					.adjusted(qRound(4 * dpr), 0, 0, 0).intersected(picture.rect());
+			QHash<QRgb, int> counts;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++) counts[picture.pixel(x, y)]++;
+			QRgb ground = 0;
+			int most = 0;
+			for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+				if (it.value() > most) {
+					most = it.value();
+					ground = it.key();
+				}
+			int maxX = -1, minY = -1, maxY = -1;
+			for (int y = r.top(); y <= r.bottom(); y++)
+				for (int x = r.left(); x <= r.right(); x++)
+					if (colourDistance(QColor(picture.pixel(x, y)), QColor(ground)) > 90) {
+						maxX = std::max(maxX, x);
+						if (minY < 0) minY = y;
+						maxY = y;
+					}
+			*right = maxX < 0 ? -1 : (maxX + 1) / dpr;
+			*middle = minY < 0 ? -1 : (minY + maxY + 1) / 2.0 / dpr;
+		};
+
+		/* a value that changes at every poll (the fake device's sine) never glows */
+		const QString voltsWas = volts.data().toString();
+		int voltsChanges = 0;
+		double voltsGlow = 0;
+		QString voltsLast = voltsWas;
+		QElapsedTimer watch;
+		watch.start();
+		while (watch.elapsed() < 2500) {
+			QTest::qWait(20);
+			if (volts.data().toString() != voltsLast) voltsChanges++;
+			voltsLast = volts.data().toString();
+			voltsGlow = std::max(voltsGlow, glowOf(volts));
+		}
+		if (voltsChanges < 5 || voltsGlow > 0)
+			std::printf("     (%s: %d changes in 2.5 s, the strongest glow %.2f)\n", qPrintable(regs_.volts.name), voltsChanges,
+					voltsGlow);
+		check(voltsChanges >= 5 && voltsGlow == 0.0, "Registers, the glow: a value that changes at every poll (a sine, "
+				"several changes a second) never glows: it never held still 2 s");
+
+		/* a change after 2 s of rest glows, up: the tint, the bar at the left, the text in glowText, a triangle up in its
+		 * slot; the strength eases out, still there just before 1.5 s, gone at 1.5 s */
+		other_.writeU8(regs_.u8.addr, 10);
+		const bool base = cellShows(u8, QStringLiteral("10"));
+		const bool rose = restedWrite(u8, regs_.u8.addr, 30);
+		const double lit = glowOf(u8);
+		const int up = arrowOf(u8);
+		const QImage upShot = shot(u8);
+		const QFont font = cellFont(u8);
+		const QRect cell = local(u8);
+		const QRectF arrow = ValueDelegate::arrowRect(cell, font);
+		const QRect bar = ValueDelegate::barRect(cell, Qt::LeftToRight);
+		int upTop = 0, upBottom = 0;
+		accentIn(upShot, arrow, &upTop, &upBottom);
+		const QColor barPixel = pixelAt(upShot, QPointF(bar.left() + 1.5, cell.center().y()));
+		const QColor tintPixel = pixelAt(upShot, QPointF(bar.right() + 3.5, cell.top() + 3.5));
+		const bool glowText = nearestIn(upShot, ValueDelegate::valueRect(cell, font), ValueDelegate::glowText(Theme::colors())) < 60;
+		model_->shiftGlowClock(RegisterModel::GLOW_MS - 400);
+		const double late = glowOf(u8);
+		model_->shiftGlowClock(400);
+		const double gone = glowOf(u8);
+		const QImage plainShot = shot(u8);
+		const QColor plainBar = pixelAt(plainShot, QPointF(bar.left() + 1.5, cell.center().y()));
+		int plainTop = 0, plainBottom = 0;
+		accentIn(plainShot, arrow, &plainTop, &plainBottom);
+		const double eased = RegisterModel::glowStrength(RegisterModel::GLOW_MS / 2);
+		std::printf("     (rose: glow %.2f, %.3f before 1.5 s, %.2f at 1.5 s; arrow %d, its pixels %d over %d; bar %s, tint %s, "
+				"plain %s; the triangle %.1f px)\n", lit, late, gone, up, upTop, upBottom, qPrintable(barPixel.name()),
+				qPrintable(tintPixel.name()), qPrintable(plainBar.name()), arrow.width());
+		check(base && rose && lit > 0.8 && late > 0 && late < 0.08 && gone == 0.0 && std::abs(eased - 0.25) < 1e-9
+						&& colourDistance(barPixel, Theme::colors().accent) < 80 && colourDistance(plainBar, barPixel) > 100
+						&& colourDistance(tintPixel, plainBar) >= 15 && glowText,
+				"Registers, the glow: a change after 2 s of rest glows (the cell tinted, a 3 px accent bar at its left, the "
+				"text in the readable accent), eased out ((1 - k)^2: a quarter at half way), still there just before 1.5 s "
+				"and gone at 1.5 s");
+		check(up == 1 && upBottom > upTop && upTop > 0 && plainTop + plainBottom == 0 && arrow.width() >= 9
+						&& arrow.width() <= 16,
+				"Registers, the glow: a rise draws a triangle pointing up (wider at its foot) in the slot after the number, "
+				"about the digits' height; gone with the glow");
+
+		/* the slot is kept: the number's right end is where it is with the triangle shown and without it, the triangle
+		 * clear of it, centred on the digits */
+		double upRight = -1, upMiddle = -1, plainRight = -1, plainMiddle = -1;
+		ink(upShot, ValueDelegate::valueRect(cell, font), &upRight, &upMiddle);
+		ink(plainShot, ValueDelegate::valueRect(cell, font), &plainRight, &plainMiddle);
+		std::printf("     (the number's right end %.1f with the triangle, %.1f without; the triangle %.1f..%.1f, its middle "
+				"%.1f, the digits' %.1f)\n", upRight, plainRight, arrow.left(), arrow.right(), arrow.center().y(), plainMiddle);
+		check(upRight > 0 && std::abs(upRight - plainRight) <= 1.0 && arrow.left() >= plainRight
+						&& std::abs(arrow.center().y() - plainMiddle) <= 2.0
+						&& ValueDelegate::valueRect(cell, font).right() < arrow.left(),
+				"Registers, the glow: the triangle's slot is kept on every row (the number's right end the same with and "
+				"without it, the triangle right of it and centred on the digits)");
+
+		/* a fall: the triangle points down */
+		const bool fell = restedWrite(u8, regs_.u8.addr, 20);
+		const int down = arrowOf(u8);
+		int downTop = 0, downBottom = 0;
+		accentIn(shot(u8), arrow, &downTop, &downBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		check(fell && down == -1 && downTop > downBottom && downBottom > 0,
+				"Registers, the glow: a fall draws the triangle pointing down (wider at its top)");
+
+		/* an enum's value glows without a triangle: a name has no up or down */
+		int nameValue = -1;
+		for (auto it = regs_.enumU8.enumValues.cbegin(); it != regs_.enumU8.enumValues.cend() && nameValue < 0; ++it)
+			if (it.key() != other_.readU8(regs_.enumU8.addr)) nameValue = int(it.key());
+		const int namedWas = other_.readU8(regs_.enumU8.addr);
+		const bool namedChanged = nameValue >= 0 && restedWrite(named, regs_.enumU8.addr, nameValue);
+		const double namedGlow = glowOf(named);
+		int namedTop = 0, namedBottom = 0;
+		accentIn(shot(named), ValueDelegate::arrowRect(local(named), cellFont(named)), &namedTop, &namedBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		if (namedWas >= 0) other_.writeU8(regs_.enumU8.addr, uint8_t(namedWas));
+		check(namedChanged && namedGlow > 0.5 && arrowOf(named) == 0 && namedTop + namedBottom == 0
+						&& !RegisterModel::showsDirection(regs_.enumU8) && RegisterModel::showsDirection(regs_.u8),
+				"Registers, the glow: an enum's value glows without a triangle (a name goes neither up nor down)");
+
+		/* readable: the glowing text on the tint, plain row and alternate row, 4.5:1 in both themes */
+		const bool wasDark = Theme::isDark();
+		bool readable = true;
+		for (const bool dark : { true, false }) {
+			Theme::apply(*qApp, dark);
+			QApplication::processEvents();
+			const ThemeColors &c = Theme::colors();
+			for (const QColor &ground : { table_->palette().color(QPalette::Base), table_->palette().color(QPalette::AlternateBase) }) {
+				const double a = ValueDelegate::GLOW_TINT;
+				const QColor tinted = QColor::fromRgbF(float(c.accent.redF() * a + ground.redF() * (1 - a)),
+						float(c.accent.greenF() * a + ground.greenF() * (1 - a)), float(c.accent.blueF() * a + ground.blueF() * (1 - a)));
+				const double ratio = contrast(ValueDelegate::glowText(c), tinted);
+				if (ratio < 4.5) {
+					readable = false;
+					std::printf("     (the glowing text on %s, %s: %.2f)\n", qPrintable(tinted.name()), dark ? "dark" : "light", ratio);
+				}
+			}
+		}
+		Theme::apply(*qApp, wasDark);
+		QApplication::processEvents();
+		check(readable, "Registers, the glow: the glowing value's text on the glow's tint (a plain and an alternate row) at "
+				"least 4.5:1 in both themes");
+
+		/* right to left (Arabic): the bar on the cell's right edge, the triangle still after the number at the right */
+		table_->setLayoutDirection(Qt::RightToLeft);
+		QApplication::processEvents();
+		const bool rtlChanged = restedWrite(u8, regs_.u8.addr, 40);
+		const QImage rtlShot = shot(u8);
+		const QRect rtlCell = local(u8);
+		const QRect rtlBar = ValueDelegate::barRect(rtlCell, Qt::RightToLeft);
+		const QColor rightEdge = pixelAt(rtlShot, QPointF(rtlBar.left() + 1.5, rtlCell.center().y()));
+		const QColor leftEdge = pixelAt(rtlShot, QPointF(1.5, rtlCell.center().y()));
+		int rtlTop = 0, rtlBottom = 0;
+		accentIn(rtlShot, ValueDelegate::arrowRect(rtlCell, font), &rtlTop, &rtlBottom);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		table_->setLayoutDirection(Qt::LeftToRight);
+		QApplication::processEvents();
+		if (!rtlChanged || colourDistance(rightEdge, Theme::colors().accent) >= 80 || colourDistance(leftEdge, rightEdge) <= 100)
+			std::printf("     (right to left: the right edge %s, the left %s)\n", qPrintable(rightEdge.name()),
+					qPrintable(leftEdge.name()));
+		check(rtlChanged && rtlBar.right() == rtlCell.right() && colourDistance(rightEdge, Theme::colors().accent) < 80
+						&& colourDistance(leftEdge, rightEdge) > 100 && rtlBottom > rtlTop,
+				"Registers, the glow right to left (Arabic): the bar on the cell's right edge, its leading one; the triangle "
+				"still after the number");
+
+		/* the first value read after connecting never glows, though it differs from the last one before */
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QApplication::processEvents();
+		other_.writeU8(regs_.u8.addr, 50);
+		model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		const bool reconnected = cellShows(u8, QStringLiteral("50"), 5000);
+		check(disconnectButton && connectButton && reconnected && glowOf(u8) == 0.0,
+				"Registers, the glow: the first value read after connecting does not glow (it came; nothing was seen to "
+				"change)");
+
+		/* the Dump's bytes keep the rest rule, each byte its own: a change 1.5 s after the last does not glow, one after
+		 * 2 s does */
+		tabs->setCurrentIndex(MainWindow::TabDump);
+		DumpView *view = dump->view();
+		const uint16_t fanAddr = 0xD084;
+		const int fanWas = other_.readU8(fanAddr);
+		const auto fanShows = [&](int value) {
+			return QTest::qWaitFor([&] {
+				const int c = dumpCard(view, 0xD080);
+				return c >= 0 && view->blocks()[c].data.size() > 4 && uint8_t(view->blocks()[c].data[4]) == value;
+			}, 3000);
+		};
+		const auto fanGlow = [&] {
+			const int c = dumpCard(view, 0xD080);
+			return c >= 0 ? view->glow(c, 4) : -1.0;
+		};
+		QEvent away(QEvent::Leave);
+		QApplication::sendEvent(view->viewport(), &away);
+		/* the tab's first blocks since it was shown again: its bytes hold still from them */
+		const bool dumpFresh = fanShows(fanWas);
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 60);
+		const bool dumpLit = fanShows(60) && fanGlow() > 0.5;
+		view->shiftGlowClock(RegisterModel::GLOW_MS);
+		const bool dumpFaded = fanGlow() == 0.0;
+		other_.writeU8(fanAddr, 61);
+		const bool dumpTooSoon = fanShows(61) && fanGlow() == 0.0;
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 62);
+		const bool dumpRested = fanShows(62) && fanGlow() > 0.5;
+		view->shiftGlowClock(RegisterModel::GLOW_MS);
+		check(dumpFresh && dumpLit && dumpFaded && dumpTooSoon && dumpRested, "Dump, the glow: a byte that changes after 2 s of rest "
+				"glows, fades in 1.5 s; its next change 1.5 s later does not glow (no rest), one after 2 s does");
+
+		/* the Glow box off: nothing glows, neither the table nor the Dump; saved; on again */
+		glowBox->setChecked(false);
+		QApplication::processEvents();
+		const bool savedOff = !QSettings().value(QStringLiteral("registers/glow"), true).toBool() && !model_->glowOn();
+		view->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(fanAddr, 63);
+		const bool dumpOff = fanShows(63) && fanGlow() == 0.0 && !view->glowing();
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const bool tableChanged = restedWrite(u8, regs_.u8.addr, 70);
+		const QImage offShot = shot(u8);
+		int offTop = 0, offBottom = 0;
+		accentIn(offShot, arrow, &offTop, &offBottom);
+		const bool tableOff = tableChanged && glowOf(u8) == 0.0 && offTop + offBottom == 0
+				&& colourDistance(pixelAt(offShot, QPointF(bar.left() + 1.5, cell.center().y())), Theme::colors().accent) > 100;
+		glowBox->setChecked(true);
+		QApplication::processEvents();
+		const bool savedOn = QSettings().value(QStringLiteral("registers/glow"), false).toBool() && model_->glowOn();
+		if (fanWas >= 0) other_.writeU8(fanAddr, uint8_t(fanWas));
+		check(savedOff && dumpOff && tableOff && savedOn, "Registers, the Glow box off: no value glows (no tint, bar or "
+				"triangle) and no byte of the Dump; saved as registers/glow; on again");
+	}
+
+	/* 1.4.1 fixes on the Registers tab: the glow drawn, Decoded wide enough and widened by hand, a selected row keeps
+	 * its grey, F2 from any cell of a row, a bit in no field, the names list following with the focus, a name picked
+	 * logged as its number, no editor without a link; the cards' plurals and the saved path; tooltips that were missing */
+	void registersFixes() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *registersTab = window_.findChild<RegistersTab *>();
+		if (!tabs || !registersTab) {
+			check(false, "Registers fixes: the tabs");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		allowWrites_->setChecked(true);
+		QApplication::processEvents();
+		const QModelIndex u8 = valueCell(table_, regs_.u8.name);
+		const auto distance = [](const QColor &a, const QColor &b) {
+			return std::abs(a.red() - b.red()) + std::abs(a.green() - b.green()) + std::abs(a.blue() - b.blue());
+		};
+		/* the cell's background, left of its right-aligned value */
+		const auto background = [&](const QModelIndex &cell) {
+			const QImage image = table_->viewport()->grab(table_->visualRect(cell)).toImage();
+			return image.pixelColor(int(4 * image.devicePixelRatio()), image.height() / 2);
+		};
+
+		/* the glow: a changed value's cell tinted toward the accent for a moment, after a rest (registersGlow checks
+		 * the rest): the glow's clock moved on 2 s as if the value had held still, then 1.5 s to the glow's end */
+		table_->clearSelection();
+		table_->selectionModel()->setCurrentIndex(valueCell(table_, regs_.danger.name), QItemSelectionModel::NoUpdate);
+		table_->scrollTo(u8);
+		/* the value held still first (a write of an earlier step may still be on its way): a change after the clock's
+		 * move would start the rest again */
+		heldStill(regs_.u8.name);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		const QColor plain = background(u8);
+		const int next = (other_.readU8(regs_.u8.addr) + 7) % 100;
+		model_->shiftGlowClock(RegisterModel::GLOW_REST_MS);
+		other_.writeU8(regs_.u8.addr, uint8_t(next));
+		const bool changed = cellShows(u8, QString::number(next));
+		const QColor glowing = background(u8);
+		model_->shiftGlowClock(RegisterModel::GLOW_MS);
+		const QColor faded = background(u8);
+		if (!changed || distance(glowing, plain) < 20 || distance(faded, plain) > 6)
+			std::printf("     (the glow: %s plain, %s just changed, %s after %d ms)\n", qPrintable(plain.name()),
+					qPrintable(glowing.name()), qPrintable(faded.name()), int(RegisterModel::GLOW_MS));
+		check(changed && distance(glowing, plain) >= 20 && distance(faded, plain) <= 6,
+				"Registers: a changed value's cell glows (its background toward the accent), and the glow is gone 1.5 s later");
+
+		/* a selected row keeps its stale grey: the value's text in the muted colour, none in the plain text colour */
+		table_->selectionModel()->select(u8, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+		poll_->setChecked(false);
+		const bool stale = QTest::qWaitFor([&] {
+			return u8.data(Qt::ForegroundRole).value<QColor>() == Theme::colors().muted;
+		}, 3000);
+		QTest::qWait(100);
+		int nearMuted = 0, nearText = 0;
+		{
+			const QImage image = table_->viewport()->grab(table_->visualRect(u8)).toImage();
+			for (int y = 0; y < image.height(); y++)
+				for (int x = 0; x < image.width(); x++) {
+					const QColor c = image.pixelColor(x, y);
+					if (distance(c, Theme::colors().muted) < 30) nearMuted++;
+					if (distance(c, Theme::colors().text) < 30) nearText++;
+				}
+		}
+		poll_->setChecked(true);
+		(void) QTest::qWaitFor([&] { return u8.data(Qt::ForegroundRole).value<QColor>() != Theme::colors().muted; }, 3000);
+		if (!stale || nearMuted < 3 || nearText > 0)
+			std::printf("     (a selected stale value: stale %d, %d pixels near the muted colour, %d near the text's)\n",
+					int(stale), nearMuted, nearText);
+		check(stale && nearMuted >= 3 && nearText == 0,
+				"Registers: a selected row's stale value stays grey (the selection's text colour does not cover it)");
+
+		/* F2 on the row's name: its value edited, the selection kept */
+		table_->selectionModel()->setCurrentIndex(u8.siblingAtColumn(RegisterModel::ColName),
+				QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+		QTest::keyClick(table_, Qt::Key_F2);
+		QLineEdit *editor = nullptr;
+		(void) QTest::qWaitFor([&] {
+			for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+				if (line->isVisible()) editor = line;
+			return editor != nullptr;
+		}, 2000);
+		const QModelIndex edited = table_->currentIndex();
+		if (editor) QTest::keyClick(editor, Qt::Key_Escape);
+		check(editor && edited.row() == u8.row() && edited.column() == RegisterModel::ColValue,
+				"Registers: F2 on any cell of a row (its name here) edits the row's value");
+
+		/* no editor without a link, as the quick-write panel's controls */
+		QPushButton *disconnectButton = buttonWithText(QStringLiteral("Disconnect"));
+		if (disconnectButton) disconnectButton->click();
+		QApplication::processEvents();
+		const bool notEditable = !(valueCell(table_, regs_.u8.name).flags() & Qt::ItemIsEditable);
+		table_->selectionModel()->setCurrentIndex(valueCell(table_, regs_.u8.name), QItemSelectionModel::ClearAndSelect
+				| QItemSelectionModel::Rows);
+		QTest::keyClick(table_, Qt::Key_F2);
+		QTest::qWait(200);
+		bool editorOpened = false;
+		for (QLineEdit *line : table_->viewport()->findChildren<QLineEdit *>())
+			if (line->isVisible()) editorOpened = true;
+		QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+		if (connectButton) connectButton->click();
+		const bool back = QTest::qWaitFor([&] { return bool(valueCell(table_, regs_.u8.name).flags() & Qt::ItemIsEditable); }, 5000)
+				&& cellShows(valueCell(table_, regs_.u8.name), QString::number(next), 5000);
+		check(disconnectButton && notEditable && !editorOpened && connectButton && back,
+				"Registers: not connected, a value cannot be edited (no editor, F2 or a double-click), as the quick-write "
+				"panel cannot write; connected again it can");
+
+		/* the quick-write panel: a bit in no field, the names list with the focus, a name picked logged as its number */
+		auto *frame = window_.findChild<QFrame *>(QStringLiteral("quickWrite"));
+		auto *enumList = frame ? frame->findChild<QComboBox *>(QStringLiteral("qwEnum")) : nullptr;
+		table_->setCurrentIndex(valueCell(table_, QStringLiteral("CONFIG")));
+		QApplication::processEvents();
+		BitView *bitView = frame ? frame->findChild<BitView *>(QStringLiteral("bitView")) : nullptr;
+		int freeBit = -1;
+		for (const RegDef &def : map_.regs) {
+			if (def.name != QLatin1String("CONFIG")) continue;
+			for (int bit = 8 * def.size - 1; bit >= 0 && freeBit < 0; bit--)
+				if (std::none_of(def.fields.begin(), def.fields.end(),
+							[bit](const BitField &f) { return bit >= f.lsb && bit < f.lsb + f.width; }))
+					freeBit = bit;
+		}
+		QString freeTip;
+		if (bitView && freeBit >= 0) {
+			const QPoint at = bitView->bitCell(freeBit).center();
+			QToolTip::hideText();
+			QHelpEvent help(QEvent::ToolTip, at, bitView->mapToGlobal(at));
+			QApplication::sendEvent(bitView, &help);
+			freeTip = QToolTip::text();
+			QToolTip::hideText();
+		}
+		check(freeBit >= 0 && freeTip.contains(QStringLiteral("bit %1: click to flip").arg(freeBit))
+						&& freeTip.contains(QLatin1String("in no field")),
+				"the bit view: a bit in no field says its number and that a click flips it, as a field's bit does (not "
+				"\"in no field\" alone)");
+
+		const RegDef &named = regs_.enumU8;
+		qint64 pick = -1;
+		for (auto it = named.enumValues.begin(); it != named.enumValues.end() && pick < 0; ++it)
+			if (it.key() != 0) pick = it.key();
+		bool picked = false, logged = false, follows = false;
+		if (enumList && pick > 0 && named.enumValues.contains(0)) {
+			other_.writeU8(named.addr, 0);
+			table_->setCurrentIndex(valueCell(table_, named.name));
+			(void) QTest::qWaitFor([&] { return enumList->isVisible() && enumList->currentIndex() == enumList->findData(0); }, 3000);
+			window_.activateWindow();
+			(void) QTest::qWaitForWindowActive(&window_, 1000);
+			const int entry = enumList->findData(pick);
+			enumList->setFocus();
+			enumList->setCurrentIndex(entry);
+			emit enumList->activated(entry);
+			picked = QTest::qWaitFor([&] { return other_.readU8(named.addr) == pick; }, 3000);
+			logged = QTest::qWaitFor([&] {
+				return logText().contains(QStringLiteral("written: %1 = %2 (").arg(named.name).arg(pick));
+			}, 2000);
+			/* the device changes it meanwhile: the list follows, its focus kept after the pick */
+			other_.writeU8(named.addr, 0);
+			follows = QTest::qWaitFor([&] { return enumList->currentIndex() == enumList->findData(0); }, 3000);
+		}
+		check(picked && logged, "the named values list: a name picked is written and logged as its number (\"= 2\"), as "
+				"typed, not as hex (\"= 0x2\")");
+		check(follows, "the named values list follows the device's value while it has the focus (after a pick), only not "
+				"while its list is open");
+		table_->setCurrentIndex(u8);
+
+		/* the map card and the Devices card: "1 register", "1 device", their plurals; the saved path never cut after
+		 * "C:"; the tooltips of Record CSV, Clear cursors, Mean, RMS and Latency */
+		{
+			Sidebar fresh;
+			DeviceMap one;
+			one.device = QStringLiteral("One");
+			one.path = QStringLiteral("C:/maps/one.json");
+			const auto mapLine = [&] {
+				for (QLabel *label : fresh.findChildren<QLabel *>())
+					if (label->text().contains(QLatin1String("one.json"))) return label->text();
+				return QString();
+			};
+			fresh.showMap(one, 1, false);
+			const QString single = mapLine();
+			fresh.showMap(one, 2, true);
+			const QString several = mapLine();
+			if (!single.contains(QStringLiteral("1 register · one.json")) || !several.contains(QLatin1String("2 registers")))
+				std::printf("     (the map card: \"%s\", \"%s\")\n", qPrintable(single), qPrintable(several));
+			check(single.contains(QStringLiteral("1 register · one.json")) && !single.contains(QLatin1String("registers"))
+							&& several.contains(QStringLiteral("2 registers · one.json · modified")),
+					"the map card: \"1 register · one.json\", \"2 registers · one.json · modified\" (no \"1 registers\")");
+			fresh.showRecordSaved(QStringLiteral("C:/Users/someone/recordings/a folder for the bench/run_0042.csv"), 1234);
+			QLabel *saved = nullptr;
+			for (QLabel *label : fresh.findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("Saved 1234 rows"))) saved = label;
+			bool noLineAtColon = saved != nullptr;
+			if (saved) {
+				const QString text = saved->text();
+				QTextLayout layout(text, saved->font());
+				const int width = QFontMetrics(saved->font()).horizontalAdvance(QStringLiteral("Saved 1234 rows to C:")) + 4;
+				layout.beginLayout();
+				for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+					line.setLineWidth(width);
+					if (text.mid(line.textStart(), line.textLength()).trimmed().endsWith(QLatin1Char(':'))) noLineAtColon = false;
+				}
+				layout.endLayout();
+			}
+			check(noLineAtColon, "the recording card: the saved path wraps where it must, never with \"C:\" alone at a "
+					"line's end");
+		}
+		{
+			BusPanel panel;
+			BusFile bus;
+			bus.path = QStringLiteral("C:/buses/bench.json");
+			bus.devices << BusDevice{ QStringLiteral("D1"), 1, QStringLiteral("a.json"), true, QString(), {} };
+			const auto line = [&] {
+				auto *label = panel.findChild<ElidedLabel *>(QStringLiteral("muted"));
+				return label ? label->fullText() : QString();
+			};
+			panel.showBus(&bus, 0, {}, false, false);
+			const QString single = line();
+			bus.devices << BusDevice{ QStringLiteral("D2"), 2, QStringLiteral("a.json"), true, QString(), {} };
+			panel.showBus(&bus, 0, {}, false, true);
+			const QString several = line();
+			if (single != QStringLiteral("1 device · bench.json"))
+				std::printf("     (the Devices card: \"%s\", \"%s\")\n", qPrintable(single), qPrintable(several));
+			check(single == QStringLiteral("1 device · bench.json") && several == QStringLiteral("2 devices · bench.json · modified"),
+					"the Devices card: \"1 device · bench.json\", \"2 devices · bench.json · modified\" (no \"device(s)\")");
+		}
+		{
+			QPushButton *record = buttonWithText(QStringLiteral("●  Record CSV"));
+			QPushButton *clearCursors = buttonWithText(QStringLiteral("Clear cursors"));
+			auto *measures = window_.findChild<QTableWidget *>(QStringLiteral("measures"));
+			QString meanTip, rmsTip;
+			for (int c = 0; measures && c < measures->columnCount(); c++) {
+				const QTableWidgetItem *item = measures->horizontalHeaderItem(c);
+				if (item && item->text() == QLatin1String("Mean")) meanTip = item->toolTip();
+				if (item && item->text() == QLatin1String("RMS")) rmsTip = item->toolTip();
+			}
+			QString latencyTip;
+			for (QLabel *label : window_.statusBar()->findChildren<QLabel *>())
+				if (label->text().startsWith(QLatin1String("Latency"))) latencyTip = label->toolTip();
+			check(record && !record->toolTip().isEmpty() && clearCursors && !clearCursors->toolTip().isEmpty()
+							&& !meanTip.isEmpty() && !rmsTip.isEmpty() && !latencyTip.isEmpty(),
+					"tooltips: Record CSV, Clear cursors, the measurements' Mean and RMS, the status bar's Latency");
+		}
+		/* Decoded: as wide as its longest text (nothing cut), and a width dragged wider stays */
+		{
+			QHeaderView *header = table_->horizontalHeader();
+			const bool wasHidden = table_->isColumnHidden(RegisterModel::ColDecoded);
+			table_->setColumnHidden(RegisterModel::ColDecoded, false);
+			QApplication::processEvents();
+			const bool fits = QTest::qWaitFor([&] {
+				return static_cast<QAbstractItemView *>(table_)->sizeHintForColumn(RegisterModel::ColDecoded)
+						<= header->sectionSize(RegisterModel::ColDecoded);
+			}, 2000);
+			const int need = static_cast<QAbstractItemView *>(table_)->sizeHintForColumn(RegisterModel::ColDecoded);
+			const int wider = header->sectionSize(RegisterModel::ColDecoded) + 80;
+			header->resizeSection(RegisterModel::ColDecoded, wider);
+			QTest::qWait(1200); /* the columns are fitted twice a second */
+			const int kept = header->sectionSize(RegisterModel::ColDecoded);
+			if (!fits || kept != wider)
+				std::printf("     (Decoded: its text needs %d px, the column %d; dragged to %d, now %d)\n", need,
+						header->sectionSize(RegisterModel::ColDecoded), wider, kept);
+			check(fits && kept == wider, "Registers, Decoded: the column as wide as its longest text needs (nothing cut), "
+					"and a width dragged wider stays (it only grows by itself; Fit columns makes it narrow)");
+			table_->setColumnHidden(RegisterModel::ColDecoded, wasHidden);
+		}
+		other_.writeU8(regs_.u8.addr, 0);
+		u8Cell_ = valueCell(table_, regs_.u8.name);
+		(void) cellShows(u8Cell_, QStringLiteral("0"), 3000);
+	}
+
 	/* 11. groups: several at once; "Plot shown" charts what the table shows */
 	void groups() {
 		auto *button = window_.findChild<QPushButton *>(QStringLiteral("groups"));
@@ -12003,6 +12825,136 @@ private:
 	}
 
 	/* 13. the Map editor: every change through the document, with undo; the live values stay */
+	/* 1.4.1 fixes in the Map editor: New and Open ask first while the map has changes; Ctrl+Y and Ctrl+Shift+Z redo; a
+	 * key typed into a group cell replaces the group; the Hex box shows the names' values at once; the Bit fields page
+	 * follows + Field, − Field and a rename at once */
+	void mapEditorFixes() {
+		auto *doc = window_.findChild<MapDocument *>();
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *mapTable = window_.findChild<QTableView *>(QStringLiteral("mapTable"));
+		auto *sidebar = window_.findChild<Sidebar *>();
+		if (!doc || !tabs || !mapTable || !sidebar) {
+			check(false, "Map editor fixes: the tab and its table");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabMap);
+		QApplication::processEvents();
+		QAbstractItemModel *table = mapTable->model();
+		const quint32 u8Uid = model_->rows()[regRow(regs_.u8.name)].def.uid;
+		const QString unitBefore = doc->reg(u8Uid)->unit;
+		const int registers = int(doc->map().regs.size());
+
+		/* New and Open: the changes saved, dropped, or the new map not made */
+		table->setData(table->index(doc->indexOf(u8Uid), MapTableModel::ColUnit), QStringLiteral("rpm2"));
+		const QString newAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->newMapClicked(); });
+		const bool keptAfterNew = doc->isModified() && int(doc->map().regs.size()) == registers
+				&& doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		const QString openAsked = answerDialog(QStringLiteral("Cancel"), [&] { emit sidebar->openMapClicked(); });
+		const bool keptAfterOpen = doc->isModified() && doc->reg(u8Uid) && doc->reg(u8Uid)->unit == QLatin1String("rpm2");
+		check(newAsked == QLatin1String("Unsaved map") && keptAfterNew && openAsked == QLatin1String("Unsaved map")
+						&& keptAfterOpen,
+				"Map editor: New and Open with changes not saved ask first (Save, Discard, Cancel); Cancel keeps the map "
+				"and its changes");
+
+		/* redo by the keys: Ctrl+Y and Ctrl+Shift+Z */
+		QUndoStack *undo = doc->undoStack();
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 1000);
+		mapTable->setFocus();
+		undo->undo();
+		const int undone = undo->index();
+		QTest::keyClick(mapTable, Qt::Key_Y, Qt::ControlModifier);
+		const bool redoY = undo->index() == undone + 1;
+		undo->undo();
+		QTest::keyClick(mapTable, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+		const bool redoShiftZ = undo->index() == undone + 1;
+		undo->undo();
+		if (!redoY || !redoShiftZ)
+			std::printf("     (redo keys: Ctrl+Y %d, Ctrl+Shift+Z %d; the window active %d)\n", int(redoY), int(redoShiftZ),
+					int(QApplication::activeWindow() == &window_));
+		check(redoY && redoShiftZ && doc->reg(u8Uid)->unit == unitBefore,
+				"Map editor: Ctrl+Y and Ctrl+Shift+Z both redo (Ctrl+Z undoes)");
+
+		/* a key typed into a group cell: the group typed anew, not added to the old one */
+		const QModelIndex group = table->index(doc->indexOf(u8Uid), MapTableModel::ColGroup);
+		mapTable->setCurrentIndex(group);
+		QTest::keyClick(mapTable, Qt::Key_Q);
+		QComboBox *box = nullptr;
+		(void) QTest::qWaitFor([&] {
+			for (QComboBox *c : mapTable->viewport()->findChildren<QComboBox *>())
+				if (c->isVisible()) box = c;
+			return box != nullptr;
+		}, 2000);
+		const QString typed = box ? box->currentText() : QString();
+		if (box) emit mapTable->itemDelegateForIndex(group)->closeEditor(box, QAbstractItemDelegate::RevertModelCache);
+		QApplication::processEvents();
+		if (typed != QLatin1String("q") && typed != QLatin1String("Q"))
+			std::printf("     (a key typed into the group cell: \"%s\")\n", qPrintable(typed));
+		check(box && (typed == QLatin1String("q") || typed == QLatin1String("Q")) && doc->reg(u8Uid)->group == regs_.u8.group,
+				"Map editor: a key typed into a group cell starts the group anew (\"Protocol\" + \"S\" is \"S\", not "
+				"\"ProtocolS\")");
+
+		/* value names: the Hex box shows the values in hex at once, and back */
+		{
+			NameTable names(NameTable::Keys::Integers, QStringLiteral("hexNames"));
+			names.setEntries({ { 2, QStringLiteral("two") }, { 10, QStringLiteral("ten") } }, false);
+			auto *hex = names.findChild<QCheckBox *>();
+			auto *list = names.findChild<QTableWidget *>();
+			const auto key = [&](int row) { return list && list->item(row, 0) ? list->item(row, 0)->text() : QString(); };
+			if (hex) hex->setChecked(true);
+			const bool inHex = key(0) == QLatin1String("0x2") && key(1) == QLatin1String("0xA");
+			if (hex) hex->setChecked(false);
+			const bool inDecimal = key(0) == QLatin1String("2") && key(1) == QLatin1String("10");
+			check(hex && list && inHex && inDecimal, "value names: the Hex box shows the values as 0x.. at once, and "
+					"back in decimal (the list was left as it was)");
+		}
+
+		/* the Bit fields page: + Field, a rename and − Field shown at once on the strip and in the table, while the
+		 * register editor does not give the register back (a control of the page has the focus) */
+		{
+			FieldEditor fields;
+			RegDef def;
+			def.uid = 0xF1E1D;
+			def.name = QStringLiteral("FLAGS");
+			def.type = RegType::U16;
+			def.size = 2;
+			BitField ready;
+			ready.name = QStringLiteral("READY");
+			ready.lsb = 0;
+			ready.width = 1;
+			def.fields = { ready };
+			fields.resize(700, 420);
+			fields.show();
+			(void) QTest::qWaitForWindowExposed(&fields);
+			fields.setRegister(def);
+			int editedTimes = 0;
+			QObject::connect(&fields, &FieldEditor::edited, &fields, [&] { editedTimes++; });
+			auto *strip = fields.findChild<BitView *>(QStringLiteral("fieldStrip"));
+			auto *list = fields.findChild<QTableWidget *>(QStringLiteral("fieldTable"));
+			QPushButton *add = buttonWithText(fields, QStringLiteral("+ Field"));
+			QPushButton *remove = buttonWithText(fields, QStringLiteral("− Field"));
+			bool added = false, renamed = false, removed = false;
+			if (strip && list && add && remove) {
+				add->click();
+				QApplication::processEvents();
+				added = list->rowCount() == 2 && strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+				if (QTableWidgetItem *name = list->item(0, 0)) name->setText(QStringLiteral("OK"));
+				QApplication::processEvents();
+				renamed = strip->fieldCell(QStringLiteral("OK")).isValid() && !strip->fieldCell(QStringLiteral("READY")).isValid();
+				list->setCurrentCell(1, 0);
+				remove->click();
+				QApplication::processEvents();
+				removed = list->rowCount() == 1 && !strip->fieldCell(QStringLiteral("FIELD_2")).isValid();
+			}
+			check(added && renamed && removed && editedTimes == 3, "the Bit fields page: + Field, a rename and − Field shown "
+					"at once on the strip and in the table (not only once the register is picked again)");
+		}
+		/* the page's window gone: the main window active again, on the Registers tab as the Map editor step leaves it */
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 2000);
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
 	void mapEditor() {
 		auto *doc = window_.findChild<MapDocument *>();
 		auto *tabs = window_.findChild<QTabWidget *>();
@@ -14146,6 +15098,13 @@ private:
 		if (!autoSaid) std::printf("     (Display on Auto: \"%s\")\n", qPrintable(autoState));
 		check(listed && cpu && autoSaid, "chart, Display menu, Drawing: Auto, every adapter by name, CPU; CPU picked is "
 				"ticked, saved, in the button's tooltip, the info line ends \"CPU\"; on Auto the tooltip names who draws");
+		/* a card is listed once: a laptop's Intel graphics came twice from DXGI, under two LUIDs */
+		QStringList drawingTexts;
+		for (const QAction *choice : std::as_const(choices)) drawingTexts << choice->text();
+		const QStringList listedTexts = drawingTexts;
+		if (drawingTexts.removeDuplicates() > 0)
+			std::printf("     (Drawing: %s)\n", qPrintable(listedTexts.join(QStringLiteral(" | "))));
+		check(!listedTexts.isEmpty() && listedTexts == drawingTexts, "chart, Display menu, Drawing: no card listed twice");
 	}
 
 	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):
@@ -14760,6 +15719,273 @@ private:
 		feed(200.0, 2);
 		check(clear && cleared && chart.view->totalsSince() == 200.0 && std::fabs(chart.view->total(chart.key()) - 0.002) < 1e-12,
 				"chart, totals: Clear starts them again, from the next sample");
+	}
+
+	/* The Y boxes typed (7.5): a min above the max is swapped and stays, 12 and 12 read 12 and 13, a refused Log min is
+	 * put back at once; the box typed in shows what was made of it (it kept its text, and leaving it applied that again) */
+	void chartYRangeTyped() {
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		QSettings().remove(QStringLiteral("chart/yAuto"));
+		LoneChart chart(QStringLiteral("TYPED"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 40.0, 5 + std::sin(i * 0.05));
+		chart.tab.frame(samples);
+		chart.view->setWindow(10);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.activateWindow();
+		(void) QTest::qWaitForWindowActive(&chart.tab, 2000);
+		auto *mode = chart.tab.findChild<QComboBox *>(QStringLiteral("yMode"));
+		auto *yMin = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMin"));
+		auto *yMax = chart.tab.findChild<QLineEdit *>(QStringLiteral("yMax"));
+		if (!mode || !yMin || !yMax) {
+			check(false, "chart, the Y boxes typed: the Y range list and its boxes found");
+			return;
+		}
+		const auto type = [&](QLineEdit *box, const QString &text) { /* as a person: focus, the text, Enter */
+			box->setFocus();
+			box->selectAll();
+			QTest::keyClicks(box, text);
+			QTest::keyClick(box, Qt::Key_Return);
+		};
+		const auto leave = [&] { /* the focus to the chart: a box left emits editingFinished again */
+			chart.view->setFocus();
+			QApplication::processEvents();
+		};
+		const auto shows = [&](double lo, double hi) {
+			return yMin->text() == ChartTab::yFieldShown(yMin, lo, true) && yMax->text() == ChartTab::yFieldShown(yMax, hi, true);
+		};
+		yMin->setText(QStringLiteral("0"));
+		type(yMax, QStringLiteral("10"));
+		leave();
+		const bool start = !chart.view->yAuto() && chart.view->yLo() == 0 && chart.view->yHi() == 10;
+		const bool focused = (type(yMin, QStringLiteral("20")), yMin->hasFocus());
+		const bool swapped = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		leave();
+		const bool stays = chart.view->yLo() == 10 && chart.view->yHi() == 20 && shows(10, 20);
+		yMin->setText(QStringLiteral("12"));
+		type(yMax, QStringLiteral("12"));
+		const bool equal = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		leave();
+		const bool equalStays = chart.view->yLo() == 12 && chart.view->yHi() == 13 && shows(12, 13);
+		emit mode->activated(ChartTab::YLog);
+		yMax->setText(QStringLiteral("100"));
+		type(yMin, QStringLiteral("-1"));
+		const bool refused = chart.view->yLog() && yMin->text() != QStringLiteral("-1")
+				&& yMin->text() == ChartTab::yFieldShown(yMin, chart.view->yLo(), !chart.view->yAuto());
+		leave();
+		if (!(start && swapped && stays && equal && equalStays && refused))
+			std::printf("     (focus %d; start %d, swapped %d, stays %d, 12 and 12 %d, stays %d, Log -1 %d: %g .. %g, \"%s\" \"%s\")\n",
+					int(focused), int(start), int(swapped), int(stays), int(equal), int(equalStays), int(refused),
+					chart.view->yLo(), chart.view->yHi(), qPrintable(yMin->text()), qPrintable(yMax->text()));
+		check(start && swapped && stays && equal && equalStays && refused,
+				"chart, the Y boxes typed: a min above the max swapped (20 over 10: 10 .. 20) and kept when the box is left; "
+				"12 and 12 shown as 12 and 13 at once; a Log min of -1 refused and the box back at once");
+		emit mode->activated(ChartTab::YAuto);
+		QSettings().remove(QStringLiteral("chart/yLog"));
+		chart.tab.hide();
+	}
+
+	/* A drag with the Memory no longer than the Window (7.3): nothing is kept outside the view, so it moved nothing and
+	 * said nothing; now a tooltip says why (a click alone nothing), the view stays live; with a longer Memory it holds */
+	void chartPanRefused() {
+		LoneChart chart(QStringLiteral("PAN"), QStringLiteral("V"));
+		MathLines::Samples samples;
+		for (int i = 0; i <= 400; i++) samples[regKey(chart.def)] << QPointF(60.0 + i / 10.0, 5 + std::sin(i * 0.05));
+		chart.view->setMemory(60);
+		chart.view->setWindow(10);
+		chart.tab.frame(samples);
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		(void) chart.view->grab();
+		const QPoint middle = chart.view->lastPlot().center().toPoint();
+		const auto drag = [&] {
+			QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+			QMouseEvent moved(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)),
+					chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(chart.view, &moved);
+			QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		};
+		QToolTip::hideText();
+		drag();
+		const bool held = !chart.view->live() && !QToolTip::isVisible();
+		chart.view->setLive(true);
+		chart.view->setMemory(10);
+		QTest::mouseClick(chart.view, Qt::LeftButton, Qt::NoModifier, middle); /* a click alone: no tooltip */
+		const bool quietClick = !QToolTip::isVisible();
+		QTest::mousePress(chart.view, Qt::LeftButton, Qt::NoModifier, middle);
+		QMouseEvent move(QEvent::MouseMove, QPointF(middle + QPoint(120, 0)), chart.view->mapToGlobal(QPointF(middle + QPoint(120, 0))),
+				Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+		QApplication::sendEvent(chart.view, &move);
+		const bool said = quietClick && QTest::qWaitFor([] { return QToolTip::isVisible(); }, 2000)
+				&& QToolTip::text() == ChartView::panRefusal();
+		const QString tip = QToolTip::text();
+		QTest::mouseRelease(chart.view, Qt::LeftButton, Qt::NoModifier, middle + QPoint(120, 0));
+		const bool stillLive = chart.view->live();
+		if (!(said && stillLive && held))
+			std::printf("     (memory 60 s: held %d; memory = window: tooltip \"%s\", live %d)\n", int(held), qPrintable(tip),
+					int(stillLive));
+		check(said && stillLive && held, "chart, a drag with the Memory no longer than the Window: it says why in a tooltip "
+				"(nothing to drag to; a click alone says nothing), the view stays live; with a longer Memory the drag holds "
+				"the view");
+		QToolTip::hideText();
+		chart.tab.hide();
+	}
+
+	/* Math lines (9.1): a change to one line (a new one, Shown off, removed) leaves the others' samples on the chart;
+	 * every polled math line was removed and drawn again, empty. One whose formula changed starts anew */
+	void mathLinesKept() {
+		const QString group = QStringLiteral("mathKeptTest");
+		QSettings().remove(group);
+		RegDef volts;
+		volts.addr = 0xD004;
+		volts.name = QStringLiteral("SUPPLY_V");
+		volts.unit = QStringLiteral("V");
+		volts.type = RegType::F32;
+		volts.size = 4;
+		ChartTab tab([] { return 100.0; }, nullptr, group);
+		tab.resize(1200, 700);
+		tab.setRegisters({ volts });
+		MathLine twice, plusOne, third;
+		twice.name = QStringLiteral("TWICE");
+		twice.unit = QStringLiteral("V");
+		twice.formula = QStringLiteral("SUPPLY_V * 2");
+		plusOne.name = QStringLiteral("PLUS");
+		plusOne.unit = QStringLiteral("V");
+		plusOne.formula = QStringLiteral("SUPPLY_V + 1");
+		third = plusOne;
+		third.name = QStringLiteral("THIRD");
+		const bool added = tab.addMathLine(twice) && tab.addMathLine(plusOne);
+		MathLines::Samples samples;
+		for (int i = 0; i < 200; i++) samples[regKey(volts)] << QPointF(90.0 + i / 20.0, 12 + std::sin(i * 0.1));
+		tab.frame(samples);
+		ChartView *view = tab.findChild<ChartView *>();
+		const auto count = [&](int line) { return view ? int(view->pointsKept(MathLines::chartKey(line))) : -1; };
+		const int before0 = count(0), before1 = count(1);
+		const bool newKept = tab.addMathLine(third) && count(0) == before0 && count(1) == before1 && count(2) == 0;
+		const bool offKept = tab.setMathLineShown(0, false) && count(1) == before1 && tab.setMathLineShown(0, true)
+				&& count(1) == before1 && count(0) == 0;
+		tab.removeMathLine(2);
+		const bool removedKept = count(1) == before1;
+		if (!(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept))
+			std::printf("     (added %d, samples %d and %d; a new line: %d %d %d; Shown off and on: %d (%d %d); removed: %d)\n",
+					int(added), before0, before1, count(0), count(1), count(2), int(offKept), count(0), count(1),
+					int(removedKept));
+		check(added && before0 > 0 && before1 > 0 && newKept && offKept && removedKept,
+				"math lines: a line added, one shown off and on, one removed: the other lines keep their samples on the "
+				"chart (the line shown again starts anew)");
+		QSettings().remove(group);
+	}
+
+	/* The line over the measure table on a held view (8.4): "totals since 14:03:12 (1 h 12 min)" follows the clock at the
+	 * timer's pace, as the Since Clear column does; the full measurements are not run again for it */
+	void measureSinceFollows() {
+		LoneChart chart(QStringLiteral("SINCE"), QStringLiteral("A"));
+		MathLines::Samples samples;
+		for (int i = 0; i < 100; i++) samples[regKey(chart.def)] << QPointF(90.0 + i / 10.0, 2.0);
+		chart.tab.frame(samples);
+		auto *measure = chart.tab.findChild<QPushButton *>(QStringLiteral("measure"));
+		auto *info = chart.tab.findChild<QLabel *>(QStringLiteral("measureInfo"));
+		if (!measure || !info) {
+			check(false, "chart, the measure line: its button and line found");
+			return;
+		}
+		chart.view->setLive(false);
+		chart.tab.setShown(true);
+		measure->setChecked(true);
+		measured(chart.view);
+		const QString first = info->text();
+		const int full = chart.tab.measureFullUpdates();
+		chart.now += 125; /* 2 min 5 s later, nothing new in the view */
+		const bool follows = QTest::qWaitFor([&] {
+			return info->text().endsWith(QStringLiteral("(%1)").arg(durationText(chart.now - 90.0)));
+		}, 2000);
+		if (!follows || first == info->text() || chart.tab.measureFullUpdates() != full)
+			std::printf("     (\"%s\" -> \"%s\", %d full updates)\n", qPrintable(first), qPrintable(info->text()),
+					chart.tab.measureFullUpdates() - full);
+		check(follows && first != info->text() && chart.tab.measureFullUpdates() == full,
+				"chart, a held view: the measure line's \"totals since ... (duration)\" follows the clock (2 min 5 s), "
+				"without measuring all again");
+		measure->setChecked(false);
+		chart.tab.setShown(false);
+	}
+
+	/* Totals since Clear with polls slower than one a second (8.4): every interval was a gap over 1 s, the total stayed 0
+	 * and nothing said why; the gap bridged is two poll intervals now, as a value is stale after two. The window sets it */
+	void chartTotalsSlowPolls() {
+		LoneChart chart(QStringLiteral("SLOW"), QStringLiteral("A"));
+		const auto feed = [&](double from, double step, int count) {
+			MathLines::Samples samples;
+			for (int i = 0; i < count; i++) samples[regKey(chart.def)] << QPointF(from + i * step, 2.0);
+			chart.tab.frame(samples);
+		};
+		chart.tab.setPollInterval(2000);
+		feed(100.0, 2.0, 10); /* 2 A every 2 s: 18 s */
+		const double slow = chart.view->total(chart.key());
+		feed(128.0, 2.0, 2); /* after 10 s without a sample (more than two intervals): not bridged */
+		const double gapped = chart.view->total(chart.key());
+		chart.tab.setPollInterval(100); /* fast polls: the 1 s of before */
+		const bool least = chart.view->totalGap() == ChartView::TOTAL_GAP;
+		auto *sidebar = window_.findChild<Sidebar *>();
+		auto *liveTab = window_.findChild<ChartTab *>();
+		ChartView *liveView = liveTab ? liveTab->findChild<ChartView *>() : nullptr;
+		const bool wired = sidebar && liveView
+				&& liveView->totalGap() == std::max(ChartView::TOTAL_GAP, 2 * sidebar->pollIntervalMs() / 1000);
+		if (std::fabs(slow - 36) > 1e-9 || std::fabs(gapped - 40) > 1e-9 || !least || !wired)
+			std::printf("     (2 A every 2 s: %g A·s over 18 s, %g after a 10 s gap; the gap at 100 ms polls %g s; the window's %g s)\n",
+					slow, gapped, chart.view->totalGap(), liveView ? liveView->totalGap() : -1.0);
+		check(std::fabs(slow - 36) < 1e-9 && std::fabs(gapped - 40) < 1e-9 && least && wired,
+				"chart, totals since Clear with polls every 2 s: summed (36 A·s over 18 s), a gap over two intervals not "
+				"bridged; 1 s at fast polls; the window gives the chart its poll interval");
+	}
+
+	/* The trigger row's level box holds a level of six digits whole, sign and exponent too (7.13): 90 px cut them */
+	void chartTriggerLevelFits() {
+		LoneChart chart(QStringLiteral("LEVEL"), QStringLiteral("V"));
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		auto *box = chart.tab.findChild<QLineEdit *>(QStringLiteral("triggerLevel"));
+		if (!box) {
+			check(false, "chart, the trigger's level box found");
+			return;
+		}
+		const int frame = box->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, box);
+		const int room = box->width() - 2 * frame - 4 - box->textMargins().left() - box->textMargins().right();
+		QStringList cut;
+		for (const double level : { -0.000123457, -1234.56, -123456.0, -1.23457e+06, 9.87654e-12 }) {
+			const QString text = ChartView::levelText(level);
+			if (box->fontMetrics().horizontalAdvance(text) > room) cut << text;
+		}
+		if (!cut.isEmpty()) std::printf("     (cut in %d px: %s)\n", room, qPrintable(cut.join(QStringLiteral(", "))));
+		check(cut.isEmpty(), "chart, the trigger's level box: a level of six digits fits whole (-0.000123457, -123456, "
+				"-1.23457e+06, 9.87654e-12)");
+		chart.tab.hide();
+	}
+
+	/* EVReStudio --help without a console (Windows, 14.1): its own window, the text in a fixed-pitch font and not
+	 * wrapped, as wide as its longest line, the program's name for its whole path; Qt's message box broke the columns */
+	void commandLineHelp() {
+		const QString program = QCoreApplication::arguments().value(0);
+		const QString text = QStringLiteral("Usage: %1 [options]\nEVRe register tool\n\nOptions:\n"
+				"  -h, --help                Displays help on commandline options.\n"
+				"  --interval <ms>           Poll interval, ms (0.25 = 4000/s, 0 = as fast as possible).\n").arg(program);
+		std::unique_ptr<QDialog> window(commandLineWindow(text));
+		auto *view = window->findChild<QPlainTextEdit *>(QStringLiteral("commandLineText"));
+		const QString name = QFileInfo(program).completeBaseName();
+		const bool named = view && view->toPlainText().startsWith(QStringLiteral("Usage: %1 [options]\n").arg(name))
+				&& !view->toPlainText().contains(program);
+		int widest = 0;
+		if (view)
+			for (const QString &line : view->toPlainText().split(QLatin1Char('\n')))
+				widest = std::max(widest, QFontMetrics(view->font()).horizontalAdvance(line));
+		const bool laidOut = view && QFontInfo(view->font()).fixedPitch() && view->lineWrapMode() == QPlainTextEdit::NoWrap
+				&& view->isReadOnly() && view->minimumWidth() >= widest;
+		if (!named || !laidOut)
+			std::printf("     (\"%s\"; fixed pitch %d, wrap %d, %d px for %d)\n", view ? qPrintable(view->toPlainText().section(
+					QLatin1Char('\n'), 0, 0)) : "", view ? int(QFontInfo(view->font()).fixedPitch()) : -1,
+					view ? int(view->lineWrapMode()) : -1, view ? view->minimumWidth() : -1, widest);
+		check(named && laidOut, "--help without a console: a window of its own, the text in a fixed-pitch font, not wrapped, "
+				"as wide as its longest line; \"Usage: <program> [options]\" with the program's name, not its path");
 	}
 
 	/* Log Y: decades on the axis with SI prefixes and equal heights, values <= 0 on the bottom edge, Auto over the
@@ -16062,10 +17288,11 @@ private:
 		const bool steps = full != noPaint && noPaint != noPlotted && noPlotted != noDelay && at(full, 0) == full
 				&& at(full, 1) == noPaint && at(noPaint, 0) == noPaint && at(noPaint, 1) == noPlotted
 				&& at(noPlotted, 1) == noDelay && noDelay.startsWith(QStringLiteral("1/64 · "));
-		bool whole = true;
+		bool whole = true; /* the count is never dropped: it is what is left when nothing more fits */
+		const QString count = chart.tab.infoText(0);
 		for (int width = 0; width < metrics.horizontalAdvance(full) + 4; width += 3) {
 			const QString text = chart.tab.infoText(width);
-			whole = whole && (text.isEmpty() || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
+			whole = whole && (text == count || metrics.horizontalAdvance(text) <= width) && !text.contains(QChar(0x2026));
 		}
 		if (!steps) std::printf("     (\"%s\" -> \"%s\" -> \"%s\" -> \"%s\")\n", qPrintable(full),
 				qPrintable(at(full, 1)), qPrintable(at(noPaint, 1)), qPrintable(at(noPlotted, 1)));
@@ -16076,6 +17303,21 @@ private:
 		check(steps && whole && label->toolTip().startsWith(chart.tab.infoText()),
 				"chart, the info line: narrow, whole parts go (the paint time, \"plotted\", the delay), no letter cut; "
 				"all of it in the tooltip");
+
+		/* the narrowest: the buttons left the line no room and it was empty; now it keeps room for the count */
+		chart.tab.show();
+		(void) QTest::qWaitForWindowExposed(&chart.tab);
+		chart.tab.resize(chart.tab.minimumSizeHint().width(), chart.tab.height());
+		chart.tab.refreshStatus();
+		QApplication::processEvents();
+		chart.tab.refreshStatus();
+		const bool kept = count == QStringLiteral("1/64") && label->text() == count
+				&& label->contentsRect().width() >= metrics.horizontalAdvance(count);
+		if (!kept)
+			std::printf("     (at the narrowest, %d px: \"%s\" in %d px, the count \"%s\" %d px)\n", chart.tab.width(),
+					qPrintable(label->text()), label->contentsRect().width(), qPrintable(count), metrics.horizontalAdvance(count));
+		check(kept, "chart, the info line: at the narrowest the count stays (1/64), with room for it, never an empty line");
+		chart.tab.hide();
 	}
 
 	/* The translations as kept (translations/<name>.ts): every message finished and not empty, Arabic's plural forms all
@@ -16267,9 +17509,9 @@ private:
 		const int arabic = widest(QStringLiteral("ar"), arabicNotes);
 		/* Arabic's texts, plurals, numbers and Help, while it is applied */
 		const bool translated = QCoreApplication::translate("Sidebar", "Language") == QStringLiteral("اللغة")
-				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 11).arg(QStringLiteral("x"))
+				&& QCoreApplication::translate("BusPanel", "%n devices · %1", nullptr, 11).arg(QStringLiteral("x"))
 						== QStringLiteral("11 جهازًا · x")
-				&& QCoreApplication::translate("BusPanel", "%n device(s) · %1", nullptr, 4).arg(QStringLiteral("x"))
+				&& QCoreApplication::translate("BusPanel", "%n devices · %1", nullptr, 4).arg(QStringLiteral("x"))
 						== QStringLiteral("4 أجهزة · x");
 		const bool westernDigits = QLocale().toString(1234.5) == QLatin1String("1234.5");
 		QString helpTitle, helpText;
@@ -18439,6 +19681,22 @@ private:
 										QStringLiteral("12346") }),
 				"analysis, spectrum: a rate just off 10000 Hz is written whole (9999.7 as 10000, 9999.4 as 9999, 12345.6 as "
 				"12346), never 1e+04");
+		/* one of a kind in English: a histogram of one value has "1 bin", sqrt "takes 1 value" ("1 bins", "1 values") */
+		{
+			const AnalysisWindow single(AnalysisWindow::Kind::Histogram, QStringLiteral("WAVE"), QStringLiteral("V"), Qt::blue,
+					QStringLiteral("the view"), { 1.0, 2.0, 3.0 }, { 5.0, 5.0, 5.0 }, nullptr, true);
+			MathLine wrong;
+			wrong.formula = QStringLiteral("sqrt(1, 2)");
+			const bool refused = !wrong.compile({});
+			const QString text = single.summary();
+			if (!text.startsWith(QStringLiteral("3 samples · 1 bin of ")) || !wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+					|| wrong.error.contains(QStringLiteral("1 values")))
+				std::printf("     (\"%s\"; \"%s\")\n", qPrintable(text), qPrintable(wrong.error));
+			check(refused && text.startsWith(QStringLiteral("3 samples · 1 bin of "))
+							&& wrong.error.contains(QStringLiteral("sqrt takes 1 value"))
+							&& !wrong.error.contains(QStringLiteral("1 values")),
+					"plurals: a histogram of one value says \"1 bin\", a formula's sqrt(1, 2) \"sqrt takes 1 value\"");
+		}
 	}
 
 	/* The trigger: the view holds on a crossing with it at 20 % of the window and a marker; Normal holds on each and is
@@ -23624,6 +24882,124 @@ private:
 	 * one marked not plottable in the map): no question, the first 64 it may plot on the chart, the rest left off and
 	 * said; a 65th Plot ticked: refused. Then the limit by the rate: 64,000 samples a second for all the lines, a lower
 	 * limit taking the newest off. */
+	/* the recording window, 1.4.1: the Lines list stays open with 13 lines or more (its search); a math line naming a
+	 * column the recording lacks says so; a file of titles only has no span; an integer reads as one in the
+	 * crosshair's box */
+	void recordingFixes() {
+		QTemporaryDir folder;
+		const auto openFile = [&](const QString &path) {
+			RecordingWindow::closeAll();
+			window_.openRecording(path);
+			RecordingWindow *opened = nullptr;
+			(void) QTest::qWaitFor([&] {
+				return !RecordingWindow::windows().isEmpty() && (opened = RecordingWindow::windows().first()) != nullptr;
+			}, 5000);
+			if (opened) (void) QTest::qWaitForWindowExposed(opened);
+			return opened;
+		};
+		const QString many = folder.filePath(QStringLiteral("many.csv"));
+		{
+			QFile file(many);
+			if (file.open(QIODevice::WriteOnly)) {
+				QStringList titles{ QStringLiteral("time_s"), QStringLiteral("datetime") };
+				for (int c = 1; c <= 14; c++) titles << QStringLiteral("C%1 [V]").arg(c);
+				file.write(titles.join(QLatin1Char(',')).toUtf8() + '\n');
+				for (int i = 0; i < 20; i++) {
+					QStringList row{ QString::number(i * 0.1, 'f', 3), QStringLiteral("2026-11-04T10:00:0%1.%2").arg(i / 10)
+						.arg((i % 10) * 100, 3, 10, QLatin1Char('0')) };
+					for (int c = 1; c <= 14; c++) row << QString::number(c + i);
+					file.write(row.join(QLatin1Char(',')).toUtf8() + '\n');
+				}
+			}
+		}
+		QSettings().setValue(QStringLiteral("recording/math"), QStringList{ QStringLiteral("Q\tV\tNOPE * 2\t1") });
+		RecordingWindow *opened = openFile(many);
+		bool stays = false, missingSaid = false;
+		QString tip;
+		if (auto *lines = opened ? opened->findChild<QPushButton *>(QStringLiteral("recordingLines")) : nullptr) {
+			QMenu *menu = lines->menu();
+			menu->popup(lines->mapToGlobal(QPoint(0, lines->height())));
+			QTest::qWait(300);
+			stays = menu->isVisible();
+			for (QCheckBox *box : menu->findChildren<QCheckBox *>(QStringLiteral("recordingLine")))
+				if (box->property("lineName").toString() == QLatin1String("Q")) tip = box->toolTip();
+			missingSaid = tip == QLatin1String("Not drawn: this recording has no NOPE");
+			menu->hide();
+		}
+		if (!stays || !missingSaid) std::printf("     (the Lines list open %d; Q's tooltip \"%s\")\n", int(stays), qPrintable(tip));
+		check(opened && stays, "recording window: the Lines list of 14 lines (with its search) opens and stays open");
+		check(missingSaid, "recording window: a math line naming a column the recording lacks says so (\"this recording "
+				"has no NOPE\"), not that the map lacks it");
+		QSettings().remove(QStringLiteral("recording/math"));
+
+		const QString empty = folder.filePath(QStringLiteral("titles.csv"));
+		{
+			QFile file(empty);
+			if (file.open(QIODevice::WriteOnly)) file.write("time_s,datetime,A [V]\n");
+		}
+		opened = openFile(empty);
+		const QString title = opened ? opened->windowTitle() : QString();
+		check(title.contains(QLatin1String("no samples")) && !title.contains(QLatin1String("1970")),
+				qPrintable(QStringLiteral("recording window: a CSV of titles only is titled \"no samples\", no span from "
+						"1970 (\"%1\")").arg(title)));
+		RecordingWindow::closeAll();
+
+		check(ChartView::readoutNumber(2) == QLatin1String("2") && ChartView::readoutNumber(-15) == QLatin1String("-15")
+						&& ChartView::readoutNumber(2.5) == QLatin1String("2.50")
+						&& ChartView::readoutNumber(0.125) == QLatin1String("0.125"),
+				"the crosshair's box: an integer reads \"2\" (a count, an integer column), not \"2.00\"; any other value "
+				"as before (2.50)");
+	}
+
+	/* the start, 1.4.1: a bad --map's message over the window, not before it; --map leaves the map chosen last as it
+	 * was in the settings */
+	void startupFixes() {
+		QTemporaryDir folder;
+		const QString chosen = folder.filePath(QStringLiteral("chosen.json"));
+		(void) QFile::copy(map_.path, chosen);
+		const QVariant before = QSettings().value(QStringLiteral("map/file"));
+		QSettings().setValue(QStringLiteral("map/file"), chosen);
+		{
+			MainWindow other(map_.path); /* --map: this session's map */
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.close();
+		}
+		const QString kept = QSettings().value(QStringLiteral("map/file")).toString();
+		check(kept == chosen, qPrintable(QStringLiteral("--map: closing the Studio keeps the map chosen last in the "
+				"settings (map/file \"%1\")").arg(kept)));
+
+		const QString bad = folder.filePath(QStringLiteral("bad.json"));
+		{
+			QFile file(bad);
+			if (file.open(QIODevice::WriteOnly)) file.write("{ \"format\": \"evre-map/1\", ");
+		}
+		bool boxCame = false, overWindow = false;
+		QString boxTitle;
+		{
+			const AwaitingDialog awaiting;
+			QTimer poll;
+			poll.setInterval(50);
+			QObject::connect(&poll, &QTimer::timeout, &poll, [&] {
+				auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget());
+				if (!box || boxCame) return;
+				boxCame = true;
+				boxTitle = box->windowTitle();
+				overWindow = box->parentWidget() && box->parentWidget()->window()->isVisible();
+				box->accept();
+			});
+			poll.start();
+			std::unique_ptr<MainWindow> other = std::make_unique<MainWindow>(bad);
+			other->show();
+			(void) QTest::qWaitFor([&] { return boxCame; }, DIALOG_WAIT_MS);
+			other.reset();
+		}
+		QSettings().setValue(QStringLiteral("map/file"), before);
+		check(boxCame && boxTitle == QLatin1String("Map not loaded") && overWindow,
+				"--map with a map that does not load: \"Map not loaded\" comes over the window, once it is shown (not "
+				"before it, alone on the screen)");
+	}
+
 	void plotShownWithoutQuestion() {
 		RegisterModel many;
 		MapDocument doc;

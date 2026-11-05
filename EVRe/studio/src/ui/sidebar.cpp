@@ -524,6 +524,8 @@ QWidget *Sidebar::buildPollingCard() {
 	paceRow->addWidget(valuePace_);
 	recordButton_ = new QPushButton(tr("●  Record CSV"));
 	recordButton_->setCursor(Qt::PointingHandCursor);
+	recordButton_->setToolTip(tr("Record the registers ticked in the Log column to a CSV file, one row a poll (a fast "
+			"stream's blocks beside it). While recording: stop and close the file."));
 	connect(recordButton_, &QPushButton::clicked, this, &Sidebar::recordClicked);
 	/* a recording opened in a window of its own: a file, or one of the last ones */
 	openRecording_ = new QPushButton(tr("Open")); /* beside Record CSV in the card's width; its menu says the rest */
@@ -1238,8 +1240,10 @@ void Sidebar::showLinkState(const QString &state, const QString &text, const QSt
 
 void Sidebar::showMap(const DeviceMap &map, int registers, bool modified) {
 	const QString file = map.path.isEmpty() ? tr("not saved") : QFileInfo(map.path).fileName();
-	const QString line = modified ? tr("%1 registers · %2 · modified").arg(registers).arg(file)
-			: tr("%1 registers · %2").arg(registers).arg(file);
+	/* "1 register", "%n registers": English's two forms, as elsewhere; %n so a translation has its plural forms */
+	const QString line = registers == 1 ? (modified ? tr("1 register · %1 · modified") : tr("1 register · %1")).arg(file)
+			: (modified ? tr("%n registers · %1 · modified", nullptr, registers) : tr("%n registers · %1", nullptr, registers))
+					  .arg(file);
 	mapInfo_->setText(QStringLiteral("<b>%1</b><br>").arg(map.device.toHtmlEscaped())
 			+ coloredSpan(line.toHtmlEscaped(), Theme::colors().muted));
 }
@@ -1458,6 +1462,11 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 			if (i >= fastRows_.size()) return;
 			fastRows_[i].on = !fastRows_[i].on;
 			showFastButton(i);
+			/* started: said at once, not "off" under a Stop button until the engine's next figures */
+			if (fastRows_[i].on) {
+				fastRows_[i].rate->setText(tr("waiting for the first block"));
+				fastRows_[i].rate->setToolTip(QString());
+			}
 			emit fastStreamToggled(i, fastRows_[i].on);
 		});
 		row.rate = mutedLabel(QString());
@@ -1669,7 +1678,10 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 	for (int i = 0; i < fastRows_.size(); i++) {
 		FastRow &row = fastRows_[i];
 		const IoEngine::Stats::Fast *f = i < stats.fast.size() ? &stats.fast[i] : nullptr;
-		if (!f || !f->on) {
+		if ((!f || !f->on) && row.on) { /* Start pressed, the engine not on it yet: no "off" under a Stop button */
+			row.rate->setText(tr("waiting for the first block"));
+			row.rate->setToolTip(QString());
+		} else if (!f || !f->on) {
 			row.rate->setText(tr("off · %1").arg(samples(f && f->setRate > 0 ? f->setRate : row.def.rate)));
 			row.rate->setToolTip(f && f->setRate > 0 ? tr("The rate the device's %1 said when last read")
 					.arg(row.def.rateReg) : tr("The rate the map gives the stream"));
@@ -1684,7 +1696,7 @@ void Sidebar::showFastStats(const IoEngine::Stats &stats, bool connected) {
 					: tr("%1 (%2)", "a stream's rate and its correction: 10.0 k samples/s (+32 ppm)")
 							  .arg(samples(f->rate), ppm));
 			row.rate->setToolTip(tr("The samples a second as the Studio's clock measures the device's: the rate the "
-					"device was set to, corrected by %1 parts in a million.\n%2 samples in %3 blocks since Start; "
+					"device was set to, corrected by %1 (parts in a million).\n%2 samples in %3 blocks since Start; "
 					"%4 bad blocks; %5 samples not shown (the window did not take them in time).").arg(ppm).arg(f->records)
 					.arg(f->blocks).arg(f->badBlocks + f->newerBlocks).arg(f->notShown)
 					+ (listening_ ? QLatin1Char('\n') + tr("%1 samples lost: numbered by the device, not heard.").arg(f->lost)
@@ -1709,7 +1721,10 @@ void Sidebar::setRecording(bool recording) {
 }
 
 void Sidebar::showRecordSaved(const QString &file, quint64 rows) {
-	recordInfo_->setText(tr("Saved %1 rows to %2").arg(rows).arg(QDir::toNativeSeparators(file)));
+	/* the path wraps where it must, never right after a drive's colon ("C:" alone on a line): a word joiner there */
+	QString path = QDir::toNativeSeparators(file);
+	path.replace(QStringLiteral(":\\"), QStringLiteral(":\u2060\\"));
+	recordInfo_->setText(tr("Saved %1 rows to %2").arg(rows).arg(path));
 }
 
 bool Sidebar::apiNetwork() const { return apiNetwork_->isChecked(); }

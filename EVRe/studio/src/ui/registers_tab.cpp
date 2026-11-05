@@ -8,12 +8,14 @@
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QStyledItemDelegate>
 #include <QTableView>
 #include <QTimer>
@@ -29,6 +31,24 @@
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 #include "ui/value_delegate.h"
+
+namespace {
+
+const QString GLOW_KEY = QStringLiteral("registers/glow"); /* the Glow box: a changed value glows (and the Dump's bytes) */
+
+/* the Decoded column: a selected row keeps its grey (a stale value), as the Value cell does */
+class DecodedCells : public QStyledItemDelegate {
+public:
+	using QStyledItemDelegate::QStyledItemDelegate;
+
+protected:
+	void initStyleOption(QStyleOptionViewItem *option, const QModelIndex &index) const override {
+		QStyledItemDelegate::initStyleOption(option, index);
+		ValueDelegate::keepColourWhenSelected(option, index);
+	}
+};
+
+} // namespace
 
 RegistersTab::RegistersTab(RegisterModel *model, MapDocument *doc, QWidget *parent)
 	: QWidget(parent), model_(model), doc_(doc) {
@@ -55,6 +75,7 @@ void RegistersTab::changeEvent(QEvent *event) {
 
 void RegistersTab::setConnected(bool connected) {
 	connected_ = connected;
+	model_->setLinkUp(connected); /* no editor in the table without a link, as the panel's controls */
 	quickWrite_->setConnected(connected);
 }
 
@@ -158,6 +179,18 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 		emit writesAllowedChanged(on);
 	});
 	drawnDark_ = Theme::isDark();
+	/* the glow of a changed value, here and in the Dump: a view option beside the others of the bar, saved */
+	glow_ = new QCheckBox(tr("Glow"));
+	glow_->setObjectName(QStringLiteral("registersGlow"));
+	glow_->setCursor(Qt::PointingHandCursor);
+	glow_->setToolTip(tr("A value that changes after holding still for 2 s glows for 1.5 s, with ▲ or ▼ for the way a "
+			"number moved; one that keeps changing stays plain. The Dump's bytes too. Off: nothing glows."));
+	glow_->setChecked(QSettings().value(GLOW_KEY, true).toBool());
+	model_->setGlowOn(glow_->isChecked());
+	connect(glow_, &QCheckBox::toggled, this, [this](bool on) {
+		model_->setGlowOn(on);
+		QSettings().setValue(GLOW_KEY, on);
+	});
 	auto *addButton = new QPushButton(tr("+ Register"));
 	connect(addButton, &QPushButton::clicked, this, &RegistersTab::addRegister);
 
@@ -166,6 +199,7 @@ QHBoxLayout *RegistersTab::buildToolbar() {
 	bar->addWidget(device_);
 	bar->addWidget(groupButton_);
 	bar->addWidget(plotShownButton_);
+	bar->addWidget(glow_);
 	bar->addSpacing(8);
 	bar->addWidget(allowWrites_);
 	bar->addWidget(addButton);
@@ -178,6 +212,10 @@ QTableView *RegistersTab::buildTable() {
 	table_->setModel(filter_);
 	table_->setItemDelegateForColumn(RegisterModel::ColValue, new ValueDelegate(table_));
 	table_->setItemDelegateForColumn(RegisterModel::ColUnit, ltrCells(table_)); /* "°C" in Arabic too, not "C°" */
+	table_->setItemDelegateForColumn(RegisterModel::ColDecoded, new DecodedCells(table_));
+	/* F2 on any cell of a row edits its value (Qt's edit key opens the current cell only, and only Value is editable);
+	 * the selection stays, so several rows selected get one value (6.6) */
+	table_->installEventFilter(this);
 	table_->setAlternatingRowColors(true);
 	table_->setSelectionBehavior(QAbstractItemView::SelectRows);
 	table_->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed);
@@ -213,6 +251,7 @@ QTableView *RegistersTab::buildTable() {
 	connect(table_, &QTableView::customContextMenuRequested, this, &RegistersTab::showTableMenu);
 	/* a click below the rows or Escape: no register selected, the detail line, the panel and the Dump follow */
 	clearSelectionOnEmpty(table_);
+	keepCurrentInView(table_); /* the quick-write panel opening under the table keeps the row just selected in view */
 	return table_;
 }
 
@@ -258,7 +297,9 @@ void RegistersTab::connectModel() {
 		updateDetail();
 		updatePanel(false);
 	});
-	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last) {
+	connect(model_, &QAbstractItemModel::dataChanged, this, [this](const QModelIndex &first, const QModelIndex &last,
+			const QList<int> &roles) {
+		if (roles == QList<int> { RegisterModel::GlowRole }) return; /* a glow fading: no value changed */
 		if (detailRow_ >= first.row() && detailRow_ <= last.row()) updateDetail();
 	});
 	connect(model_, &QAbstractItemModel::modelReset, this, [this] {
@@ -465,7 +506,7 @@ void RegistersTab::addDecodedColumnAction(QMenu &menu) {
 void RegistersTab::showDecodedColumn(bool shown) {
 	table_->setColumnHidden(RegisterModel::ColDecoded, !shown);
 	QSettings().setValue(QStringLiteral("ui/decodedColumn"), shown);
-	if (shown) fitDecoded();
+	if (shown) fitDecoded(false);
 }
 
 /* --------------------------------------------------------- the groups shown */
@@ -634,21 +675,41 @@ void RegistersTab::fitColumns(bool shrink) {
 		if (shrink ? width != header->sectionSize(column) : width > header->sectionSize(column))
 			header->resizeSection(column, width);
 	}
-	/* the longest decoded text */
+	/* the longest decoded text, every row's (sizeHintForColumn sees the rows in view only), with the room a cell
+	 * takes around its text: the style sheet's padding (6 px each side) and the style's text margin */
 	const QFontMetrics metrics(table_->font());
-	int need = header->sectionSizeHint(RegisterModel::ColDecoded);
+	const int margin = 2 * 6 + 2 * (table_->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, table_) + 1) + 4;
+	int need = std::max(header->sectionSizeHint(RegisterModel::ColDecoded),
+			static_cast<QAbstractItemView *>(table_)->sizeHintForColumn(RegisterModel::ColDecoded));
 	for (int i = 0; i < model_->rowCount(); i++) {
 		const QString decoded = model_->data(model_->index(i, RegisterModel::ColDecoded), Qt::DisplayRole).toString();
-		need = std::max(need, metrics.horizontalAdvance(decoded) + 16);
+		need = std::max(need, metrics.horizontalAdvance(decoded) + margin);
 	}
 	decodedWidth_ = shrink ? need : std::max(decodedWidth_, need);
-	fitDecoded();
+	fitDecoded(shrink);
 }
 
-void RegistersTab::fitDecoded() {
+/* Decoded as wide as its longest text; only Fit columns makes it narrower, so a width dragged wider stays */
+void RegistersTab::fitDecoded(bool shrink) {
 	QHeaderView *header = table_->horizontalHeader();
-	if (decodedWidth_ != header->sectionSize(RegisterModel::ColDecoded))
-		header->resizeSection(RegisterModel::ColDecoded, std::max(decodedWidth_, 60));
+	const int width = std::max(decodedWidth_, 60);
+	if (shrink ? width != header->sectionSize(RegisterModel::ColDecoded)
+			   : width > header->sectionSize(RegisterModel::ColDecoded))
+		header->resizeSection(RegisterModel::ColDecoded, width);
+}
+
+bool RegistersTab::eventFilter(QObject *watched, QEvent *event) {
+	if (watched == table_ && event->type() == QEvent::KeyPress
+			&& static_cast<QKeyEvent *>(event)->key() == Qt::Key_F2) { /* an editor open has the keys: not the table */
+		const QModelIndex current = table_->currentIndex();
+		const QModelIndex value = current.siblingAtColumn(RegisterModel::ColValue);
+		if (current.isValid() && current.column() != RegisterModel::ColValue && (value.flags() & Qt::ItemIsEditable)) {
+			table_->selectionModel()->setCurrentIndex(value, QItemSelectionModel::NoUpdate);
+			table_->edit(value);
+			return true;
+		}
+	}
+	return QWidget::eventFilter(watched, event);
 }
 
 /* ---------------------------------------------------------- the detail line */

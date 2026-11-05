@@ -19,6 +19,7 @@
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTranslator>
 #include <QtTest>
 
 #include "model/bus_file.h"
@@ -423,6 +424,8 @@ private slots:
 		QString err;
 		QVERIFY(!map.load(path(QStringLiteral("loop.json")), err));
 		QVERIFY2(err.contains(QLatin1String("8 maps deep")), qPrintable(err));
+		/* said once, not "base map ...: " eight times over */
+		QVERIFY2(err.count(QLatin1String("base map")) == 1, qPrintable(err));
 	}
 
 	/* a new map: written the Studio's way, and read back the same */
@@ -630,6 +633,15 @@ private slots:
 			QVERIFY2(cc.exitCode() == 0, cc.readAllStandardError().constData());
 		}
 
+		/* no prefix: the register DEVICE_ID (0xA000) is REG_DEVICE_ID; it does not overwrite the module's DEVICE_ID, the
+		 * map's device ID */
+		{
+			const QByteArray plain = exportPython(map, ExportOptions());
+			QVERIFY(plain.contains("DEVICE_ID = 0x1001\n"));
+			QVERIFY2(plain.contains("REG_DEVICE_ID = 0xa000  # the register DEVICE_ID (DEVICE_ID above is the map's own)\n"),
+					plain.constData());
+			QVERIFY(!plain.contains("\nDEVICE_ID = 0xa000"));
+		}
 		const QByteArray module = exportPython(map, options);
 		QVERIFY(module.contains("EX_FAN_SPEED = 0xd084"));
 		const QString python = QStandardPaths::findExecutable(QStringLiteral("python3")).isEmpty()
@@ -840,6 +852,67 @@ private slots:
 		writeFile(path(QStringLiteral("badtype.json")), "{ \"registers\": [], \"streams\": [ { \"name\": \"S\", "
 				"\"addr\": \"0xD100\", \"size\": 64, \"rate\": 1, \"channels\": [ { \"name\": \"C\", \"type\": \"i12\" } ] } ] }");
 		QVERIFY(!broken.load(path(QStringLiteral("badtype.json")), err) && err.contains(QLatin1String("i12")));
+	}
+
+	/* the Markdown's table headers go through the translation, as its other words do (an Arabic export had English
+	 * headers): a translator that marks every text it is asked for */
+	void markdownHeadersTranslated() {
+		class Marker : public QTranslator {
+		public:
+			bool isEmpty() const override { return false; }
+			QString translate(const char *, const char *source, const char *, int) const override {
+				return QStringLiteral("T:") + QString::fromUtf8(source);
+			}
+		};
+		DeviceMap map;
+		QString err;
+		QVERIFY2(map.load(QCoreApplication::applicationDirPath() + QStringLiteral("/maps/example_device.json"), err),
+				qPrintable(err));
+		Marker marker;
+		QCoreApplication::installTranslator(&marker);
+		const QString md = QString::fromUtf8(exportMarkdown(map, ExportOptions()));
+		QCoreApplication::removeTranslator(&marker);
+		for (const char *header : { "| Address | Name | Type | Unit | Access | Group | Description |", "| Value | Name |",
+				 "| Bits | Name | Access | Description | Values |" }) {
+			QVERIFY2(md.contains(QStringLiteral("T:") + QLatin1String(header)), header);
+			QVERIFY2(!md.contains(QStringLiteral("\n") + QLatin1String(header)), header);
+		}
+	}
+
+	/* one stream of two changed: the other one's text is copied as it was, the changed one keeps its unchanged keys
+	 * and channels as written (0.0005 stays 0.0005, not 5e-04) */
+	void streamsSavedAsWritten() {
+		const QByteArray text = R"JSON({ "format": "evre-map/1", "device": "Two",
+  "registers": [
+    { "addr": "0xD000", "name": "A_ON", "type": "u8", "access": "rw" },
+    { "addr": "0xD001", "name": "B_ON", "type": "u8", "access": "rw" }
+  ],
+  "streams": [
+    { "name": "A", "addr": "0xDC00", "size": 1024, "rate": 10000, "enable": "A_ON",
+      "channels": [ { "name": "I", "type": "i16", "unit": "A", "scale": 0.0005 } ] },
+    { "name": "B", "addr": "0xDE00", "size": 512, "rate": 1000, "enable": "B_ON",
+      "channels": [ { "name": "V", "type": "i16", "unit": "V", "scale": 0.0005 } ] }
+  ]
+}
+)JSON";
+		DeviceMap map = loadText(QStringLiteral("two_streams.json"), text);
+		QCOMPARE(map.streams.size(), 2);
+		map.streams[1].rate = 2000;
+		const QByteArray after = map.toJson(path(QStringLiteral("two_streams.json")));
+		QStringList removed, added;
+		lineDiff(text, after, removed, added);
+		QVERIFY2(after.contains(R"(    { "name": "A", "addr": "0xDC00", "size": 1024, "rate": 10000, "enable": "A_ON",
+      "channels": [ { "name": "I", "type": "i16", "unit": "A", "scale": 0.0005 } ] },)"), after.constData());
+		QVERIFY2(after.contains(R"({ "name": "V", "type": "i16", "unit": "V", "scale": 0.0005 })"), after.constData());
+		QVERIFY2(!after.contains("5e-04") && after.contains("2000"), after.constData());
+		QVERIFY2(!removed.join(QString()).contains(QLatin1String("\"A\"")), qPrintable(removed.join(QLatin1Char('\n'))));
+		/* and it reads back */
+		writeFile(path(QStringLiteral("two_streams_saved.json")), after);
+		DeviceMap back;
+		QString err;
+		QVERIFY2(back.load(path(QStringLiteral("two_streams_saved.json")), err), qPrintable(err));
+		QCOMPARE(back.streams[1].rate, 2000.0);
+		QCOMPARE(back.streams[0].channels[0].scale, 0.0005);
 	}
 
 	/* every refusal of the checker for a stream */

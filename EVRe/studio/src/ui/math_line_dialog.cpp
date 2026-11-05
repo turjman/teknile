@@ -29,7 +29,8 @@ MathLineDialog::MathLineDialog(const MathLine &start, bool editing, const QVecto
 	state_->setWordWrap(true);
 	auto *help = mutedLabel(tr("Type a name and a list offers the registers and functions (Enter or Tab takes one).\n"
 			"Register names, numbers, + − * / ^, ( ), pi, and abs sqrt exp log log10 sin cos tan "
-			"asin acos atan atan2(y,x) min(a,b) max(a,b) pow(a,b) floor ceil round sign clamp(x,lo,hi).\n"
+			"asin acos atan atan2(y,x) min(a,b) max(a,b) pow(a,b) floor ceil round sign clamp(x,lo,hi) "
+			"bits(x,lsb,width) (a bit field).\n"
 			"A fast stream's channels (ADC.I_LOAD), all of one stream: computed for every record of it, a register held "
 			"at its last polled value.\n"
 			"Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5) + 32 · sqrt(X^2 + Y^2)"));

@@ -318,13 +318,15 @@ RecordingWindow::RecordingWindow(const QString &file, recording::Data data, cons
 		t0_ = std::min(t0_, stream.firstTime);
 		t1_ = std::max(t1_, stream.lastTime);
 	}
-	if (t0_ > t1_) t0_ = t1_ = 0;
+	const bool noSamples = t0_ > t1_; /* titles only: no time to show (its clock would be 1970's) */
+	if (noSamples) t0_ = t1_ = 0;
 	/* a stream's recording alone: its clock from its head (the writer's clock at its start) */
 	if (data_.columns.isEmpty() && data_.rows == 0 && !fast_.isEmpty()) data_.epochMs = fast_.first().epochMs();
 
 	/* the title: the file and its span */
-	const QString span = tr("%1 – %2 (%3)").arg(clockText(data_.epochMs, t0_, QStringLiteral("yyyy-MM-dd HH:mm:ss")),
-			clockText(data_.epochMs, t1_, QStringLiteral("HH:mm:ss")), durationText(t1_ - t0_));
+	const QString span = noSamples ? tr("no samples")
+			: tr("%1 – %2 (%3)").arg(clockText(data_.epochMs, t0_, QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+					clockText(data_.epochMs, t1_, QStringLiteral("HH:mm:ss")), durationText(t1_ - t0_));
 	setWindowTitle(tr("%1 · %2 — EVRe Studio").arg(QFileInfo(file_).fileName(), span));
 	info_ = mutedLabel(QString());
 	info_->setObjectName(QStringLiteral("recordingInfo"));
@@ -502,8 +504,10 @@ void RecordingWindow::rebuildLinesMenu() {
 	search->setPlaceholderText(tr("Search lines"));
 	search->setToolTip(tr("Only the lines whose name holds this"));
 	search->setClearButtonEnabled(true);
-	search->setVisible(linesInFile() >= LINES_SEARCH_FROM);
 	layout->addWidget(search);
+	/* hidden or shown once in the panel: shown with no parent yet it was a window of its own for a moment, and the
+	 * menu closed as another window came up */
+	search->setVisible(linesInFile() >= LINES_SEARCH_FROM);
 
 	auto *list = new QWidget;
 	auto *rows = new QVBoxLayout(list);
@@ -557,7 +561,7 @@ void RecordingWindow::rebuildLinesMenu() {
 	if (!math.isEmpty()) addGroup(tr("Math"));
 	for (int i = 0; i < math.size(); i++)
 		addBox(math[i].name, math[i].unit, FormulaLine, i, math[i].fast() ? ChartTab::fastMathKey(i) : MathLines::chartKey(i),
-				math[i].active(), math[i].error.isEmpty() ? QString() : tr("Not drawn: %1").arg(math[i].error));
+				math[i].active(), notDrawnText(math[i]));
 	rows->addStretch();
 	auto *scroll = new QScrollArea;
 	scroll->setObjectName(QStringLiteral("recordingLinesScroll"));
@@ -622,6 +626,26 @@ void RecordingWindow::rebuildLinesMenu() {
 	QTimer::singleShot(0, search, [search] {
 		if (search->isVisible()) search->setFocus();
 	});
+}
+
+/* why a math line is not drawn here, empty when it is: a name the recording has no column or channel of is said so
+ * (the formula's own error says "in the map", and here the recording's columns are what it reads) */
+QString RecordingWindow::notDrawnText(const MathLine &line) const {
+	if (line.error.isEmpty()) return {};
+	Expr names;
+	QString err;
+	if (names.parse(line.formula, [](const QString &) { return 0; }, err)) {
+		QStringList missing;
+		for (const QString &name : names.names()) {
+			bool found = std::any_of(defs_.begin(), defs_.end(), [&name](const RegDef &def) { return def.name == name; });
+			for (const fast::Recording &stream : fast_)
+				for (const StreamChannel &channel : stream.stream.channels)
+					found = found || stream.stream.name + QLatin1Char('.') + channel.name == name;
+			if (!found) missing << name;
+		}
+		if (!missing.isEmpty()) return tr("Not drawn: this recording has no %1").arg(missing.join(QStringLiteral(", ")));
+	}
+	return tr("Not drawn: %1").arg(line.error);
 }
 
 /* a line ticked on or off in the list: on the chart (a column's samples fed from the file), its dot in its colour now,

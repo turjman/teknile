@@ -519,6 +519,7 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 			"With the grid in divisions (windows under 1 s) the cursors keep their place on the grid while the wave "
 			"moves under them;\nShift while dragging snaps them to a tenth of a division."));
 	clearCursorsButton_ = new QPushButton(tr("Clear cursors"));
+	clearCursorsButton_->setToolTip(tr("Remove cursors A and B: the measurements cover the view again"));
 	measureButton_ = new QPushButton(tr("Measure"));
 	measureButton_->setObjectName(QStringLiteral("measure"));
 	measureButton_->setCheckable(true);
@@ -678,6 +679,10 @@ QWidget *ChartTab::buildMeasurements() {
 	measures_->setItemDelegate(ltrCells(measures_)); /* names, numbers and units: "-3.000 V" in Arabic too */
 	measures_->setHorizontalHeaderLabels({ tr("Line"), tr("at A"), tr("at B"), tr("B − A"), tr("Min"), tr("Max"),
 			tr("Mean"), tr("RMS"), tr("Std dev"), tr("Peak-peak"), tr("Area ∫ dt"), tr("Area / 3600"), tr("Since Clear") });
+	measures_->horizontalHeaderItem(ColMean)->setToolTip(tr("The mean over the range, time-weighted: each value counts "
+			"for as long as it held"));
+	measures_->horizontalHeaderItem(ColRms)->setToolTip(tr("The root mean square over the range, time-weighted as the "
+			"mean: √(mean of value²)"));
 	measures_->horizontalHeaderItem(ColStd)->setToolTip(tr("The standard deviation over the range, time-weighted as the "
 			"mean: √(mean of (value − mean)²). The ripple on a line, whatever its level."));
 	measures_->horizontalHeaderItem(ColP2p)->setToolTip(tr("Peak to peak: Max − Min over the range"));
@@ -711,6 +716,7 @@ QWidget *ChartTab::buildMeasurements() {
 	measures_->setEditTriggers(QAbstractItemView::NoEditTriggers);
 	measures_->setSelectionMode(QAbstractItemView::ContiguousSelection);
 	clearSelectionOnEmpty(measures_); /* Qt clears the cells on a click below the rows, but keeps the current one */
+	keepCurrentInView(measures_);
 	measures_->setShowGrid(false);
 	measures_->setAlternatingRowColors(true);
 	measures_->setWordWrap(false);
@@ -1368,6 +1374,8 @@ void ChartTab::frame(const MathLines::Samples &samples) {
 
 void ChartTab::setValuesPerSecond(int perSecond) { chart_->setValuesPerSecond(perSecond); }
 
+void ChartTab::setPollInterval(double ms) { chart_->view()->setTotalGap(2 * ms / 1000); }
+
 /* shown: the measurements at once, with the lines plotted meanwhile (the timer only runs them while shown) */
 void ChartTab::setShown(bool shown) {
 	shown_ = shown;
@@ -1403,7 +1411,7 @@ QString ChartTab::infoText(int width) const {
 	};
 	if (width < 0) return joined();
 	const QFontMetrics metrics = chartInfo_->fontMetrics();
-	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast, Count }) {
+	for (const Part drop : { PaintTime, Plotted, Delay, Fps, Drawer, Math, Fast }) { /* the count stays (refreshStatus) */
 		if (metrics.horizontalAdvance(joined()) <= width) break;
 		parts[drop].clear();
 	}
@@ -1448,7 +1456,13 @@ QWidget *ChartTab::buildTriggerRow() {
 	auto *validator = new QDoubleValidator(triggerLevel_);
 	validator->setLocale(QLocale::c());
 	triggerLevel_->setValidator(validator);
-	triggerLevel_->setFixedWidth(90);
+	/* as wide as a level of six digits with its sign and exponent ("-0.000123457", "-1.23457e+06"): 90 px cut them */
+	triggerLevel_->ensurePolished();
+	int levelRoom = 0;
+	for (const double widest : { -0.000888888, -8.88888e+88 })
+		levelRoom = std::max(levelRoom, triggerLevel_->fontMetrics().horizontalAdvance(ChartView::levelText(widest)));
+	const int levelFrame = triggerLevel_->style()->pixelMetric(QStyle::PM_DefaultFrameWidth, nullptr, triggerLevel_);
+	triggerLevel_->setFixedWidth(std::max(90, levelRoom + 2 * levelFrame + 4 + 6)); /* 2 px of QLineEdit's own a side */
 	triggerLevel_->setAlignment(Qt::AlignRight);
 	triggerLevel_->setToolTip(tr("The level, in the line's unit: a dashed line on the chart that can be dragged"));
 	triggerMode_ = new QComboBox;
@@ -1768,6 +1782,10 @@ void ChartTab::showHoldButton() {
 void ChartTab::refreshStatus() {
 	/* narrow: whole parts go (infoText), the count stays longest; all of it in the tooltip */
 	const QString info = shown_ ? infoText(chartInfo_->contentsRect().width()) : QString();
+	/* room for the count at least: at the narrowest window the buttons took the whole row and the line was empty */
+	const int least = shown_ ? chartInfo_->fontMetrics().horizontalAdvance(infoText(0)) + chartInfo_->width()
+			- chartInfo_->contentsRect().width() : 0;
+	if (chartInfo_->minimumWidth() != least) chartInfo_->setMinimumWidth(least);
 	chartInfo_->setText(info);
 	const QString tip = (shown_ ? infoText() + QStringLiteral("\n\n") : QString()) + infoTip();
 	if (chartInfo_->toolTip() != tip) chartInfo_->setToolTip(tip);
@@ -2038,7 +2056,7 @@ void ChartTab::applyMemoryText() {
 	QSettings().setValue(settingKey("memory"), chart_->memory());
 }
 
-void ChartTab::showYRange(bool save) {
+void ChartTab::showYRange(bool save, bool typed) {
 	/* Lanes: the current lane's range (saved with the lanes' ranges, chart/laneY); without, the plot's */
 	const ChartView *view = chart_->view();
 	const int lane = lanes_->isChecked() ? view->currentLane() : -1;
@@ -2046,8 +2064,10 @@ void ChartTab::showYRange(bool save) {
 	const bool log = lane >= 0 ? view->laneYLog(lane) : chart_->yLog();
 	const int mode = log ? YLog : manual ? YManual : YAuto;
 	if (yMode_->currentIndex() != mode) yMode_->setCurrentIndex(mode);
-	if (!yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
-	if (!yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
+	/* a box being typed in keeps its text, unless the typing was just taken: then it shows what was made of it (a min
+	 * above the max swapped, 12 and 12 as 12 and 13, a refused Log min), or leaving it applied the old text again */
+	if (typed || !yMin_->hasFocus()) yMin_->setText(yFieldShown(yMin_, lane >= 0 ? view->laneYLo(lane) : chart_->yLo(), manual));
+	if (typed || !yMax_->hasFocus()) yMax_->setText(yFieldShown(yMax_, lane >= 0 ? view->laneYHi(lane) : chart_->yHi(), manual));
 	/* Auto: the fields in grey, they only show what the chart does */
 	const QString look = manual ? QString() : QStringLiteral("color:%1").arg(Theme::colors().muted.name());
 	if (yMin_->styleSheet() != look) {
@@ -2069,7 +2089,7 @@ void ChartTab::applyYFields() {
 	double low = QLocale::c().toDouble(yMin_->text().trimmed(), &lowOk);
 	double high = QLocale::c().toDouble(yMax_->text().trimmed(), &highOk);
 	if (!lowOk || !highOk) {
-		showYRange();
+		showYRange(true, true);
 		return;
 	}
 	ChartView *view = chart_->view();
@@ -2082,7 +2102,7 @@ void ChartTab::applyYFields() {
 		if (low > high) std::swap(low, high);
 		if (high - low < 1e-12) high = view->laneYLog(lane) ? low * 10 : low + 1;
 		view->setLaneYManual(lane, low, high); /* refused on the Log scale at 0 or below: the fields back */
-		showYRange(false);
+		showYRange(false, true);
 		return;
 	}
 	const bool manual = !chart_->yAuto();
@@ -2092,7 +2112,7 @@ void ChartTab::applyYFields() {
 	if (low > high) std::swap(low, high);
 	if (high - low < 1e-12) high = chart_->yLog() ? low * 10 : low + 1;
 	chart_->setYManual(low, high); /* refused on the Log scale at 0 or below: the fields back to the range shown */
-	showYRange();
+	showYRange(true, true);
 }
 
 /* --------------------------------------------------------- the measurements */
@@ -2168,6 +2188,13 @@ void ChartTab::measureTick() {
 	if (keys != measuredKeys_ || measures_->rowCount() != lines.size() || measureKeyNow(keys) != lastMeasureKey_) {
 		updateMeasures();
 		return;
+	}
+	/* the line over the table too: its "totals since 14:03:12 (1 h 12 min)" goes on with the clock (it stood still on a
+	 * held view, the full measurements not run again) */
+	const QString info = measuredRangeText();
+	if (measureInfo_->text() != info) {
+		measureInfo_->setText(info);
+		measureInfoChanges_++;
 	}
 	const QString none = QStringLiteral("—");
 	for (int row = 0; row < lines.size(); row++) {
@@ -2672,8 +2699,26 @@ void ChartTab::drawMathLines() {
 		kept[i] = lines[i].active() && lines[i].fast() && store && store->def().name == fastMathDef(i).name
 				&& fastMathDrawn(i);
 	}
+	/* a polled math line drawn from the same formula and registers, under the same name and unit, stays as it is too:
+	 * changing one line wiped the others' samples */
+	const auto drawnFrom = [](const MathLine &line) {
+		QString from = line.formula;
+		for (RegKey input : line.inputs) from += QLatin1Char(' ') + QString::number(input);
+		return from;
+	};
+	QVector<bool> keptPolled(MathLines::MAX_DRAWN, false);
+	const QVector<ChartView::Info> shown = view->lines();
+	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
+		if (!lines[i].active() || lines[i].fast() || mathDrawnFrom_.value(i) != drawnFrom(lines[i])) continue;
+		for (const ChartView::Info &info : shown)
+			if (info.key == MathLines::chartKey(i) && info.name == QStringLiteral("ƒ %1").arg(lines[i].name)
+					&& info.unit == lines[i].unit)
+				keptPolled[i] = true;
+	}
 	for (int i = 0; i < MathLines::MAX_DRAWN; i++) {
+		if (keptPolled[i]) continue;
 		chart_->removeSeries(MathLines::chartKey(i));
+		mathDrawnFrom_.remove(i);
 		if (kept[i]) continue;
 		chart_->removeSeries(fastMathKey(i));
 		view->removeFastStream(MathLines::fastStream(i));
@@ -2683,7 +2728,7 @@ void ChartTab::drawMathLines() {
 	for (int i = 0; i < lines.size() && i < MathLines::MAX_DRAWN; i++) {
 		/* one cap for every line: a line the chart has no room for is not drawn (a formula that compiles again with
 		 * another map), the registers already on it stay */
-		if (kept[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
+		if (kept[i] || keptPolled[i] || !lines[i].active() || lineCount() >= RegisterModel::MAX_PLOTTED) continue;
 		/* colours from the palette's end: the registers take them from its start */
 		const QColor color = palette[palette.size() - 1 - i % palette.size()];
 		const QString name = QStringLiteral("ƒ %1").arg(lines[i].name);
@@ -2692,6 +2737,7 @@ void ChartTab::drawMathLines() {
 			chart_->addSeries(fastMathKey(i), name, lines[i].unit, color);
 		} else {
 			chart_->addSeries(MathLines::chartKey(i), name, lines[i].unit, color);
+			mathDrawnFrom_[i] = drawnFrom(lines[i]);
 		}
 	}
 	applyFastFed(); /* a fast math line over a stopped stream: stopped with it */

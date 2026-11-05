@@ -12,7 +12,7 @@
 #   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
 #   evre_listen_test Listen without a window or a USB device: the two capture decoders on replayed captures
 cmake_minimum_required(VERSION 3.21)
-project(EVReStudio VERSION 1.4.0 LANGUAGES CXX)
+project(EVReStudio VERSION 1.4.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

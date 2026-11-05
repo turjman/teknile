@@ -624,6 +624,10 @@ void MainWindow::restoreSettings() {
 	QSettings settings;
 	const QString mapFile = mapToOpenAtStart(settings);
 	const QString busFile = settings.value(QStringLiteral("map/bus")).toString();
+	/* the ones chosen last stay chosen while the command line's are open (they are not remembered): saved again at the
+	 * close as they were, not emptied */
+	rememberedMap_ = settings.value(QStringLiteral("map/file")).toString();
+	rememberedBus_ = busFile;
 	/* the command line's bus or map, for this session (the one chosen last stays chosen); else the bus chosen last,
 	 * the map chosen last, a new map: the first that opens */
 	bool opened = !busAtStart_.isEmpty() && loadBus(busAtStart_, false);
@@ -1072,7 +1076,10 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 	QString err;
 	if (!loaded.load(file, err)) {
 		logEvent(LogLevel::Error, tr("map not loaded: %1: %2").arg(QDir::toNativeSeparators(file), err));
-		QMessageBox::warning(this, tr("Map not loaded"), tr("%1\n\n%2").arg(QDir::toNativeSeparators(file), err));
+		const QString text = tr("%1\n\n%2").arg(QDir::toNativeSeparators(file), err);
+		/* at the start (--map, the map chosen last) the window is not shown yet: the message once it is, over it */
+		if (isVisible()) QMessageBox::warning(this, tr("Map not loaded"), text);
+		else QTimer::singleShot(0, this, [this, text] { QMessageBox::warning(this, tr("Map not loaded"), text); });
 		return;
 	}
 	logEvent(LogLevel::Info, tr("map loaded: %1 (%2 registers)")
@@ -1093,6 +1100,7 @@ void MainWindow::loadMap(const QString &file, bool remember) {
 }
 
 void MainWindow::openMap() {
+	if (!keepMapEdits()) return; /* the map edited gives way: saved, dropped, or the open cancelled */
 	const QString path = doc_->map().path;
 	const QString start = path.isEmpty() ? mapsFolder() : QFileInfo(path).absolutePath();
 	const QString file = QFileDialog::getOpenFileName(this, tr("Open register map"), start, tr("EVRe map (*.json)"));
@@ -1139,6 +1147,7 @@ void MainWindow::saveMap(bool saveAs) {
 }
 
 void MainWindow::newMap() {
+	if (!keepMapEdits()) return; /* the map edited gives way: saved, dropped, or New cancelled */
 	DeviceMap map;
 	rememberedMap_.clear(); /* not saved yet: the next start opens the first map in maps/ */
 	rememberedBus_.clear();
@@ -1279,6 +1288,7 @@ void MainWindow::updateStaleAfter() {
 	const qint64 staleAfterMs = copyGapMs + std::max<qint64>(qint64(2 * interval), qint64(interval) + sidebar_->timeoutMs());
 	model_->setStaleAfterMs(staleAfterMs);
 	dumpTab_->view()->setStaleAfterMs(staleAfterMs); /* the Dump's replies are stale when the table's values are */
+	chartTab_->setPollInterval(interval); /* the totals since Clear bridge two intervals: slow polls are no gaps */
 }
 
 void MainWindow::applyValuePace() {
@@ -1693,12 +1703,15 @@ void MainWindow::onBulkWriteRequested(const QVector<int> &rows, const QString &t
 								3000);
 						return;
 					}
-					/* one pop-up for them all */
+					/* one pop-up for them all; the status bar's count names the refusal too, and comes first: when the
+					 * pop-up has no room beside the tabs, its message takes the status bar, not hidden by the count */
+					const QString refused = results->refused.join(QStringLiteral(", "));
+					statusBar()->showMessage(tr("%1 of %2 registers written; refused: %3").arg(done).arg(results->total)
+							.arg(refused), 8000);
 					QString line = tr("bulk write of %1: %2 of %3 written; refused: %4").arg(typed).arg(done)
-							.arg(results->total).arg(results->refused.join(QStringLiteral(", ")));
+							.arg(results->total).arg(refused);
 					if (done > 0) line += tr("; written: %1").arg(results->written.join(QStringLiteral(", ")));
 					logEvent(LogLevel::Warning, line + notTakenText);
-					statusBar()->showMessage(tr("%1 of %2 registers written").arg(done).arg(results->total), 8000);
 				});
 	}
 }
@@ -1882,6 +1895,8 @@ void MainWindow::refreshStatus() {
 	logCounterIncrease(link.badFrames, loggedBadFrames_, tr("%1 bad frame(s) received (%2 in all)"));
 	statusLatency_->setText(stats.listening ? Sidebar::heardRateText(stats.heard.requestsHz)
 			: tr("Latency %1 ms").arg(link.avgLatencyMs, 0, 'f', 1));
+	statusLatency_->setToolTip(stats.listening ? tr("The other program's requests heard a second") : tr("How long one answer takes, on average: well under 1 ms on "
+			"USB or this PC, 1–5 ms over Wi-Fi"));
 	statusTraffic_->setText(tr("TX %1 · RX %2").arg(link.tx).arg(link.rx));
 	/* TX stands still while listening, and rightly: it counts what the Studio sends, the other program's frames are heard */
 	statusTraffic_->setToolTip(stats.listening ? tr("TX: frames the Studio has sent since it started, none while listening. "

@@ -6,6 +6,7 @@
 #include "io/engine.h"
 
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QTime>
 #include <QTimer>
@@ -2017,7 +2018,7 @@ void IoEngine::stopRecord() {
 		run.writer->close();
 		run.writer.reset();
 		emit fastRecorded(tr("fast stream %1 recorded: %2 (%3 blocks, %4 MB)").arg(run.def.name,
-				fast::recordingFileFor(csvFile_->fileName(), run.def.name)).arg(run.recordedBlocks)
+				QDir::toNativeSeparators(fast::recordingFileFor(csvFile_->fileName(), run.def.name))).arg(run.recordedBlocks)
 				.arg(double(bytes) / (1024 * 1024), 0, 'f', 1));
 	}
 	if (!csvFile_->isOpen()) return;

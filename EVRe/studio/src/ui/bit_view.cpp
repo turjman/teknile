@@ -299,7 +299,7 @@ QString BitView::toolTipText() const {
 	const BitField *f = fieldAt(hoverBit_);
 	if (editMode_ && (!f || !hoverField_))
 		return tr("bit %1: drag across bits to make a field of them").arg(hoverBit_);
-	if (!f) return tr("in no field");
+	if (!f) return tr("bit %1: click to flip<br>in no field").arg(hoverBit_);
 	QString text = hoverField_ ? QString() : tr("bit %1: click to flip<br>").arg(hoverBit_);
 	text += QStringLiteral("<b>%1</b> &nbsp;").arg(f->name.toHtmlEscaped());
 	text += f->width == 1 ? tr("bit %1").arg(f->lsb) : tr("bits %1:%2").arg(f->lsb + f->width - 1).arg(f->lsb);

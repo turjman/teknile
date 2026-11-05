@@ -34,6 +34,7 @@ BusPanel::BusPanel(QWidget *parent) : QWidget(parent) {
 
 	/* a bus: its devices, and what can be done with them */
 	list_ = new QListWidget;
+	keepCurrentInView(list_);
 	list_->setObjectName(QStringLiteral("busDevices"));
 	list_->setSelectionMode(QAbstractItemView::SingleSelection);
 	list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -102,8 +103,9 @@ void BusPanel::showBus(const BusFile *bus, int selected, const QSet<uint8_t> &of
 	}
 	const QString file = bus->path.isEmpty() ? tr("not saved") : QFileInfo(bus->path).fileName();
 	const int count = int(bus->devices.size());
-	info_->setFullText(modified ? tr("%n device(s) · %1 · modified", nullptr, count).arg(file)
-			: tr("%n device(s) · %1", nullptr, count).arg(file));
+	/* "1 device", "%n devices": English's two forms, as elsewhere; %n so a translation has its plural forms */
+	info_->setFullText((count == 1 ? (modified ? tr("1 device · %1 · modified") : tr("1 device · %1"))
+			: modified ? tr("%n devices · %1 · modified", nullptr, count) : tr("%n devices · %1", nullptr, count)).arg(file));
 	removeButton_->setEnabled(bus->devices.size() > 1);
 
 	showing_ = true;

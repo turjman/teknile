@@ -168,21 +168,21 @@ void markdownRegister(QString &md, const RegDef &def) {
 	if (!def.notes.isEmpty()) md += def.notes.trimmed() + QStringLiteral("\n\n");
 
 	if (!def.enumValues.isEmpty()) {
-		md += QObject::tr("Values:") + QStringLiteral("\n\n| Value | Name |\n|---|---|\n");
+		md += QObject::tr("Values:") + QStringLiteral("\n\n") + QObject::tr("| Value | Name |") + QStringLiteral("\n|---|---|\n");
 		for (auto it = def.enumValues.begin(); it != def.enumValues.end(); ++it)
 			md += QStringLiteral("| %1 | %2 |\n").arg(keyText(it.key(), def.enumHex), cell(it.value()));
 		md += QLatin1Char('\n');
 	}
 	if (!def.special.isEmpty()) {
 		md += QObject::tr("Special values (in shown units; a write may always set them):")
-				+ QStringLiteral("\n\n| Value | Meaning |\n|---|---|\n");
+				+ QStringLiteral("\n\n") + QObject::tr("| Value | Meaning |") + QStringLiteral("\n|---|---|\n");
 		for (const SpecialValue &special : def.special)
 			md += QStringLiteral("| %1 | %2 |\n").arg(number(special.value), cell(special.name));
 		md += QLatin1Char('\n');
 	}
 	if (!def.fields.isEmpty()) {
 		md += QObject::tr("Bit fields:") + QStringLiteral("\n\n```\n") + bitDiagram(def) + QStringLiteral("```\n\n");
-		md += QStringLiteral("| Bits | Name | Access | Description | Values |\n|---|---|---|---|---|\n");
+		md += QObject::tr("| Bits | Name | Access | Description | Values |") + QStringLiteral("\n|---|---|---|---|---|\n");
 		QVector<BitField> fields = def.fields;
 		std::sort(fields.begin(), fields.end(), [](const BitField &a, const BitField &b) { return a.lsb > b.lsb; });
 		for (const BitField &field : fields) {
@@ -224,8 +224,10 @@ QByteArray exportMarkdown(const DeviceMap &map, const ExportOptions &options) {
 	md += QLatin1Char('\n');
 	if (!p.notes.isEmpty()) md += p.notes.trimmed() + QStringLiteral("\n\n");
 
-	md += QObject::tr("## Register summary") + QStringLiteral("\n\n| Address | Name | Type | Unit | Access | Group | Description |\n"
-			"|---|---|---|---|---|---|---|\n");
+	/* the tables' headers are the language's too, as the stream's channels' are */
+	md += QObject::tr("## Register summary") + QStringLiteral("\n\n")
+			+ QObject::tr("| Address | Name | Type | Unit | Access | Group | Description |")
+			+ QStringLiteral("\n|---|---|---|---|---|---|---|\n");
 	for (const RegDef &def : map.regs)
 		md += QStringLiteral("| `%1` | %2 | %3 | %4 | %5 | %6 | %7 |\n").arg(addrText(def.addr), cell(def.name),
 				typeName(def.type), cell(def.unit), accessText(def) + (def.danger ? QStringLiteral(" ⚠") : QString()),
@@ -409,13 +411,23 @@ QByteArray exportPython(const DeviceMap &map, const ExportOptions &options) {
 			"Addresses and sizes in bytes, little endian; min, max and default in shown units.\n\"\"\"\n\n")
 			.arg(QString(map.device).replace(QStringLiteral("\"\"\""), QStringLiteral("'''")), map.format,
 					options.source.isEmpty() ? QString() : QStringLiteral(", from %1").arg(options.source));
+	/* the module's own names first: a register of the same name (every map has DEVICE_ID at 0xA000) is REG_<name>,
+	 * with a comment, rather than overwrite the map's device ID with its address */
+	const QStringList own{ QStringLiteral("DEVICE"), QStringLiteral("DEVICE_ID"), QStringLiteral("SLAVE"),
+		QStringLiteral("LOGIN"), QStringLiteral("REGISTERS"), QStringLiteral("STREAMS") };
+	for (const QString &name : own) names.take(name);
 	s += QStringLiteral("DEVICE = %1\n").arg(py(map.device));
 	s += QStringLiteral("DEVICE_ID = %1\n").arg(map.deviceId ? QStringLiteral("0x%1").arg(map.deviceId, 4, 16, QLatin1Char('0')) : QStringLiteral("None"));
 	s += QStringLiteral("SLAVE = %1\n").arg(map.slave);
 	s += QStringLiteral("LOGIN = %1\n\n").arg(map.loginAddr ? QStringLiteral("(0x%1, %2)").arg(map.loginAddr, 4, 16, QLatin1Char('0')).arg(map.loginSize)
 			: QStringLiteral("None"));
-	for (const RegDef &def : map.regs)
-		s += QStringLiteral("%1 = 0x%2\n").arg(names.take(prefix + identifier(def.name))).arg(def.addr, 4, 16, QLatin1Char('0'));
+	for (const RegDef &def : map.regs) {
+		const QString name = prefix + identifier(def.name);
+		const QString taken = names.take(own.contains(name) ? QStringLiteral("REG_") + name : name);
+		s += QStringLiteral("%1 = 0x%2").arg(taken).arg(def.addr, 4, 16, QLatin1Char('0'));
+		if (own.contains(name)) s += QStringLiteral("  # the register %1 (%2 above is the map's own)").arg(def.name, name);
+		s += QLatin1Char('\n');
+	}
 	s += QStringLiteral("\n# every register: its definition as the map gives it\nREGISTERS = {\n");
 	for (const RegDef &def : map.regs) {
 		QStringList items{ QStringLiteral("\"addr\": 0x%1").arg(def.addr, 4, 16, QLatin1Char('0')),

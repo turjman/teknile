@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/teknile/EVRe/docs/evre-map-1.schema.json",
+  "$id": "https://raw.githubusercontent.com/turjman/teknile/main/EVRe/studio/docs/evre-map-1.schema.json",
   "title": "EVRe register map (evre-map/1)",
   "description": "A device's registers for EVRe Studio and the tools around EVRe. Keys not listed here are allowed: tools keep them. In an overlay (a map with \"extends\"), null for a key removes the base's key.",
   "type": "object",
