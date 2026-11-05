@@ -8578,7 +8578,7 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>%1 set</source>
         <comment>a stream&apos;s rate as set, not measured: 10 kS/s set</comment>
-        <translation>⁦%1⁩ مضبوط</translation>
+        <translation>%1 مضبوط</translation>
     </message>
     <message>
         <source>The rate measured now; the line under the button has it to the ppm</source>

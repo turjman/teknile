@@ -4392,7 +4392,7 @@ private:
 				fast1M.fast[0].rate = 2000000; /* within the second: kept, no flicker */
 				card.showStats(fast1M, true);
 				const QString soonText = about ? about->fullText() : QString();
-				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" ضبط");
+				const QString setWord = code == QLatin1String("en") ? QStringLiteral(" set") : QStringLiteral(" مضبوط");
 				const bool ok = offText == lead + isolated(QStringLiteral("10 kS/s")) + setWord && offWhole
 						&& offTip.contains(code == QLatin1String("en") ? QStringLiteral("the device may stream at another")
 								: QStringLiteral("قد يبث الجهاز بمعدّل آخر"))
