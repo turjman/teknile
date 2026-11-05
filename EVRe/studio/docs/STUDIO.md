@@ -3475,7 +3475,7 @@ The map opened at start is the one saved in `map/file` if that file still exists
 
 ### 14.4 Help, the theme and the language
 
-The foot of the sidebar holds two buttons, the language and the version line (*v1.4.0 · teknile*):
+The foot of the sidebar holds two buttons, the language and the version line (*v1.4.1 · teknile*):
 
 - **Help** (tooltip *Help (F1)*) opens the built-in help, a short form of Part I, in a window of its own that does not block the main window. **F1** anywhere does the same. Its pages: Getting started, Connecting, Polling & speed, Fast streams, Registers & writes, Chart & recording, Device maps, Map editor, API (MATLAB, LabVIEW, Python), Dump, Monitor, Log & pop-ups, Command line, Keys & mouse.
 - The **theme button** switches between the dark and the light theme at once: the window, the table's glow colour and the chart follow without a restart. Its text names the other theme: *☀  Light theme* while the dark one is shown, *☾  Dark theme* while the light one is. The Studio starts dark; the theme in use is saved on close (`ui/dark`). In both themes a menu entry that cannot be used now is drawn in the muted grey and is not highlighted under the mouse; where it matters its tooltip says why.
@@ -4436,7 +4436,9 @@ How the Studio uses them:
 | 12 | length&nbsp;mismatch | the register shows *error*, and is tried again |
 | other | `error <n>` | the register shows *error*, and is tried again |
 
-An error answer to a merged block always splits the block first (13.4). Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
+These names are the protocol's words, as the function names are (READ_RESP, ERROR_RESP): they stay in English in
+every language, in the Log, the Monitor, the Dump and the tooltips (*write refused: … : permission denied*), so a
+refusal reads the same as in the protocol's documents and the device's own. An error answer to a merged block always splits the block first (13.4). Only a single-register read refused with code 3, 4 or 5 marks the register *not available*. The status bar's *Errors* counts every error answer.
 
 ### 18.4 CRC
 
@@ -6749,7 +6751,7 @@ its own.
 | `evre_fake_fast` | executable | `tests/fake_device_fast.cpp` + `evre_protocol` | depends on `evre_maps`: without a map argument it opens the example map beside it |
 
 The project defines no options of its own. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
-(where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.4.0)`. It reaches the code as
+(where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.4.1)`. It reaches the code as
 `EVRE_STUDIO_VERSION`, is shown in the sidebar's footer, and is printed by `--version`. AUTOMOC is on.
 
 The Studio's icon is the teknile mark (`packaging/icons/evre-studio.svg`, made from the logo's mark on its dark rounded
@@ -9019,7 +9021,7 @@ no edge), so register and gap still read apart. The choice is kept in `dump/colo
 | Mouse&nbsp;on&nbsp;a&nbsp;chip | A pointing hand; the register lit in its own colour: its chips filled clearly stronger (46 % dark, its bytes white; 50 % light) and outlined in it, its decode line filled with its tint, its dot larger and its name bold. Nothing else changes: the other chips, in this card and the others, keep their tint (greying them out made the whole tab dim). The tooltip, two lines: `SUPPLY_V · byte 3 of 4 · 0xD006` and `0x40 (64) · raw FA 7E 40 41 · 12.031 V` (a gap byte `not mapped · 0xD012` and `0x83 (131)`; a cell no read covers `0xD000` and `not read: no register here`); on a card not live, the reason follows. It sits under the chip's row and ends 8 px before the decode list, so it never covers a decode line, and goes when the mouse leaves the chip. The byte's column offset over the grid and its row's address at its left are lit too, a crosshair that finds the byte from both edges: their text bold on the lit chip's fill (a gap byte's or a cell no read covers on the grey's), in that card only. |
 | Mouse&nbsp;on&nbsp;a&nbsp;decode&nbsp;line | The same register lit, with the hand; the tooltip is the whole line, under it. |
 | Mouse&nbsp;on&nbsp;a&nbsp;field | Its name, meaning and the protocol's words for it (the table in 37.1), under its column. |
-| Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7). |
+| Mouse&nbsp;on&nbsp;a&nbsp;channel | On a fast card, a channel's chip, value or head: the channel lit in every row shown (its chips stronger and outlined, its values bold, its head's name bold and its dot larger), the hand; the tooltip `I_LOAD · record 1191260 · bytes 0-1 of the record` and `raw 6A 09 · 2410 × 0.0005 = 1.2050 A` under the row, ending before the next channel's column (37.7): where it must wrap, it breaks at its ` · ` first, so a part such as *bytes 0-1 of the record* stays on one line. |
 | **Show&nbsp;all&nbsp;▾** | On a fast card: every record of the block, the button then **Show fewer ▴** (37.7). A hand and a highlight under the mouse, a tooltip. |
 | Click | Selects the register here (its chips lit as on the mouse and framed in the accent, its decode line filled with its tint and bold) and makes it the Registers tab's current row, without leaving the Dump. The Registers tab's own current row is selected here too. Selected (the accent) and hovered (the register's colour) can show at once. |
 | Click&nbsp;on&nbsp;empty&nbsp;room | Anywhere but a register's chip or decode line (a fast card's channels and records and its Show all excepted): no register selected, here and in the Registers tab, which then has no current row (its detail line and quick-write panel show nothing selected, 4.11). After **Show in dump** this is how the register stops being lit. |

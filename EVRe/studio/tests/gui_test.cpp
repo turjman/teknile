@@ -11159,6 +11159,18 @@ private:
 				"record / raw E9 2E · 12009 × 0.001 = 12.009 V under the row, I_LOAD's left of V_BUS's column; the number's "
 				"record 1191260 of ADC · 2 of the 253 in this block; empty room lights nothing");
 
+		/* I_LOAD's tooltip, wrapped to the room left of V_BUS's column, breaks at its " · " first: no part cut mid-phrase
+		 * ("bytes 0-1 of the" over "record") */
+		const QStringList loadLines = view->toolTipAt(onLoad).split(QLatin1Char('\n'));
+		const auto wholeLine = [&loadLines](const QString &part) {
+			return std::any_of(loadLines.begin(), loadLines.end(), [&part](const QString &l) { return l.contains(part); });
+		};
+		const bool phrases = loadLines.size() >= 2 && wholeLine(QStringLiteral("record 1191260"))
+				&& wholeLine(QStringLiteral("bytes 0-1 of the record")) && wholeLine(QStringLiteral("raw 6A 09"));
+		if (!phrases) std::printf("     (I_LOAD's tooltip: \"%s\")\n", qPrintable(loadLines.join(QLatin1Char('|'))));
+		check(phrases, "Dump, a fast card: a channel's tooltip wrapped to the room before the next column breaks at its "
+				"\" · \" first, so \"bytes 0-1 of the record\" stays on one line");
+
 		/* the Copy forms, exact; the register items disabled with their reason, records as CSV only on a fast card */
 		const int y = fastCard(view);
 		const QString hex = view->copyText(DumpView::CopyBlockHex, y);

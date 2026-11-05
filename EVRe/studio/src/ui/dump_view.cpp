@@ -2386,26 +2386,41 @@ void DumpView::keyPressEvent(QKeyEvent *e) {
 
 /* ------------------------------------------------------------------ tooltips */
 
-/* A text's lines broken at their words so none is wider than width (a tooltip shows its text's lines as they come). */
+/* A text's lines broken so none is wider than width (a tooltip shows its text's lines as they come): at their " · "
+ * first, so a part stays whole ("bytes 0-1 of the record", not "bytes 0-1 of the" over "record"), and at the words
+ * of a part only when it alone is wider. */
 QString DumpView::wrapTip(const QString &text, int width) const {
 	const QFontMetrics fm(QToolTip::font());
+	const QString dot = QStringLiteral(" · ");
 	QStringList out;
 	for (const QString &line : text.split(QLatin1Char('\n'))) {
 		if (fm.horizontalAdvance(line) <= width) {
 			out << line;
 			continue;
 		}
-		QString current;
-		for (const QString &word : line.split(QLatin1Char(' '))) {
-			const QString longer = current.isEmpty() ? word : current + QLatin1Char(' ') + word;
-			if (!current.isEmpty() && fm.horizontalAdvance(longer) > width) {
-				out << current;
-				current = word;
-			} else {
-				current = longer;
-			}
+		QStringList parts;
+		for (const QString &part : line.split(dot)) {
+			const QString longer = parts.isEmpty() ? part : parts.last() + dot + part;
+			if (!parts.isEmpty() && fm.horizontalAdvance(longer) <= width) parts.last() = longer;
+			else parts << part;
 		}
-		out << current;
+		for (const QString &part : std::as_const(parts)) {
+			if (fm.horizontalAdvance(part) <= width) {
+				out << part;
+				continue;
+			}
+			QString current;
+			for (const QString &word : part.split(QLatin1Char(' '))) {
+				const QString longer = current.isEmpty() ? word : current + QLatin1Char(' ') + word;
+				if (!current.isEmpty() && fm.horizontalAdvance(longer) > width) {
+					out << current;
+					current = word;
+				} else {
+					current = longer;
+				}
+			}
+			out << current;
+		}
 	}
 	return out.join(QLatin1Char('\n'));
 }
