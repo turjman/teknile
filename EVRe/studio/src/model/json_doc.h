@@ -20,6 +20,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QJsonParseError>
 #include <QJsonValue>
 #include <QString>
 #include <vector>
@@ -71,6 +72,10 @@ void forgetSource(Value &value);
 
 /* the text -> a tree; false with err ("line 3, column 7: ...") if it is not one JSON value */
 bool parse(const QByteArray &text, Value &root, QString &err);
+
+/* Qt's reader refused the text: where and why in parse()'s words ("line 3, column 7: ',' or '}' is expected"), as a
+ * map's errors read. Qt's errorString() is Qt's text, not ours (its Arabic had a slip in grammar) and gives no place. */
+QString qtParseError(const QByteArray &text, const QJsonParseError &error);
 
 /* to and from Qt's JSON (which sorts the members of an object by name) */
 QJsonValue toQt(const Value &value);

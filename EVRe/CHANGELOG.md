@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0 (2026-11-07)
+
+Room to focus: the sidebar and the quick-write panel fold away.
+
+### EVRe Studio
+
+- **The sidebar folds.** The chevron at the end of the *EVRe Studio* title row, or Ctrl+B, folds the sidebar to a thin
+  bar: the connection dot (its tooltip gives the state and the poll rate), one icon per card, Help and Language. An
+  icon opens the sidebar at its card. The sidebar slides (not when Windows' animation effects are off), the fold is
+  remembered, and folding never disconnects or stops the polls, a recording or the API server. Mirrored in Arabic.
+- **The quick-write panel folds.** A chevron on its title folds the Registers tab's quick-write panel to that one line,
+  remembered; the table gets the height back and keeps the selected row in view.
+- **JSON errors in our own words.** A bus file or a recording's notes file that is not valid JSON names the place and
+  the reason as the map's errors do (*line 3, column 19: unexpected character ']'*), in English and Arabic; the API
+  server says *not a JSON object* for a request that is valid JSON but not an object.
+- **Arabic.** Latin pieces stay whole in the chart's memory list, the lane list beside Y range, the recent
+  recordings, the bulk write's notes and the Dump's fast and bus lines.
+
+### Releases
+
+- `evre.exe`, `evre-sim.exe` and the Windows installer carry a version block (product, version, description), as
+  `EVReStudio.exe` already did: code signing needs it.
+
 ## 1.4.1 (2026-11-05)
 
 Fixes found while the website's tutorials were written: the Studio now does what its guide says, and the guide says

@@ -29,6 +29,9 @@
  *  - API server: Serve API, Network, Allow API writes (and the ⚠ registers).
  *  - Help and the theme, then the version.
  *
+ * The title row ends with the fold button (FoldButton, at the window's edge in Arabic): the window folds the sidebar
+ * to a thin bar (SidebarDock, sidebar_dock.h), whose icons open it again at a card (showCard).
+ *
  * The sidebar holds the choices and shows the states; the window does the
  * work. It reads the choices when it needs them (connecting, telling the
  * engine), is told of every change it must follow (the signals), and says
@@ -48,6 +51,7 @@
 
 class BusPanel;
 class ElidedLabel;
+class FoldButton;
 class LimitSpinBox;
 class QCheckBox;
 class QComboBox;
@@ -226,7 +230,24 @@ public:
 
 	void themeChanged();
 
+	/* the cards, top to bottom as the thin bar's icons are (Language: the foot's language box) */
+	enum class Card { Connection, Devices, Map, Fast, Polling, Api, Language };
+	QWidget *cardWidget(Card card) const;
+	/* the card scrolled to the top of the sidebar (as far as it goes) and its edge lit a moment (LIT_MS); Language:
+	 * the box given the focus. A card not shown (Fast streams without streams) changes nothing */
+	void showCard(Card card);
+	static constexpr int LIT_MS = 1200;
+	FoldButton *foldButton() const { return foldButton_; } /* at the end of the title row */
+	/* the pill as shown last: its state ("idle", "busy", "ok", "listen", "error") and its whole text; the polling
+	 * card's rate line (the thin bar's dot says them) */
+	QString linkStateName() const { return pillState_; }
+	QString linkStateText() const { return pillText_; }
+	QString pollRateText() const;
+
 signals:
+	void foldClicked();            /* the fold button */
+	void linkShown();              /* the pill or the poll rate shown anew */
+	void cardsChanged();           /* a card shown or hidden (Fast streams, for a map with streams or without) */
 	void connectClicked();
 	void linkChoiceChanged();      /* TCP, Serial / USB or Listen chosen */
 	void refreshPortsClicked();
@@ -391,6 +412,9 @@ private:
 	QString apiServeHelp_;        /* Serve API's tooltip when not listening */
 	QString apiWritesHelp_, apiDangerHelp_; /* the same for Allow API writes and its ⚠ */
 
+	FoldButton *foldButton_;
+	QWidget *cards_[7] = {};      /* by Card */
+	QString pillState_, pillText_;
 	QPushButton *themeButton_;
 	QComboBox *language_;         /* System, English, العربية: applied at the next start (language.h) */
 	QPushButton *restart_;        /* shown while the language chosen is not the one running */

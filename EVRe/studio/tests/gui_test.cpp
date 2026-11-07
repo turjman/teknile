@@ -117,6 +117,7 @@
 #include "model/map_document.h"
 #include "ui/map_settings_dialog.h"
 #include "model/recording_file.h"
+#include "model/json_doc.h"
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bulk_write_dialog.h"
@@ -130,6 +131,7 @@
 #include "ui/language.h"
 #include "ui/elided_label.h"
 #include "ui/field_editor.h"
+#include "ui/fold_button.h"
 #include "ui/formula_completer.h"
 #include "ui/help_dialog.h"
 #include "ui/math_line_dialog.h"
@@ -140,9 +142,11 @@
 #include "ui/limit_spin_box.h"
 #include "ui/map_table_model.h"
 #include "ui/name_table.h"
+#include "ui/quick_write_panel.h"
 #include "ui/monitor_tab.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
+#include "ui/sidebar_dock.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 #include "ui/value_delegate.h"
@@ -578,6 +582,8 @@ public:
 		registersFixes();
 		registersGlow();
 		currentRowKept();
+		sidebarFold();
+		quickWriteFold();
 		groups();
 		chart();
 		chartManyLines();
@@ -688,6 +694,8 @@ public:
 		dumpOtherMaps();
 		dumpManualRead(); /* its card at the top for the pictures */
 		dumpArabic();
+		arabicLatinPieces();
+		jsonErrorsOurs();
 		dumpFastCard();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
@@ -10770,6 +10778,231 @@ private:
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
 	}
 
+	/* Arabic, a piece of data in Latin letters kept whole (U+2066 ... U+2069, an isolate) where the window reads right
+	 * to left: the RAM list's sizes ("MB 512"), the lane list's units ("C°"), a bulk write's Note (its limit with the
+	 * unit, "% 100"), the recent recordings' names and folders (a date in a file name moved); English unchanged. With
+	 * EVRE_TEST_SHOT: <prefix>_c5_<what>_<en|ar>.png */
+	void arabicLatinPieces() {
+		const QChar lri(0x2066), pdi(0x2069);
+		const auto isolated = [&](const QString &text) { return lri + text + pdi; };
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		const auto shot = [&](QWidget *widget, const QString &what, const QString &code) {
+			if (!prefix.isEmpty() && widget) widget->grab().save(prefix + QStringLiteral("_c5_%1_%2.png").arg(what, code));
+		};
+		const QVariant recentWas = QSettings().value(QStringLiteral("recording/recent"));
+		const QVariant ramWas = QSettings().value(QStringLiteral("chart/ramMB"));
+		QTemporaryDir folder;
+		QDir(folder.path()).mkpath(QStringLiteral("2026-11"));
+		const QString keptName = QStringLiteral("rec_2026-11-07_14-03-12.csv"),
+					  goneName = QStringLiteral("rec_2026-11-06_09-00-00.csv");
+		const QString kept = folder.filePath(QStringLiteral("2026-11/") + keptName),
+					  gone = folder.filePath(QStringLiteral("2026-11/") + goneName);
+		for (const QString &path : { gone, kept }) {
+			QFile file(path);
+			if (file.open(QIODevice::WriteOnly)) file.write("time_s,datetime,V [V]\n0,2026-11-07T14:03:12.000,1\n");
+			file.close();
+			RecordingWindow::remember(path);
+		}
+		QFile::remove(gone);
+		const QString where = QDir::toNativeSeparators(QFileInfo(kept).absolutePath());
+		/* FAN_SPEED (0 .. 100 %) given 200: the Note says its maximum */
+		QVector<BulkWriteDialog::Target> targets;
+		for (const RegisterModel::Row &row : model_->rows())
+			if (row.def.name == QLatin1String("FAN_SPEED") || row.def.name == QLatin1String("LED_MODE"))
+				targets << BulkWriteDialog::Target{ row.def, row.raw, QString() };
+		struct Seen {
+			QStringList ram, lanes;
+			int typedRam = 0;
+			QString note, recent, missing, tagTip;
+		} seen[2];
+		for (int lang = 0; lang < 2; lang++) {
+			const QString code = lang == 0 ? QStringLiteral("en") : QStringLiteral("ar");
+			language::apply(*qApp, code);
+			Theme::apply(*qApp, false);
+			Seen &s = seen[lang];
+			{
+				for (const char *key : { "chart/lanes", "chart/lanesFolded", "chart/laneY", "chart/laneHeights" })
+					QSettings().remove(QLatin1String(key));
+				LoneChart chart(QStringLiteral("TEMP"), QStringLiteral("°C"));
+				RegDef volts = chart.def;
+				volts.addr = 0xD004;
+				volts.name = QStringLiteral("VOLTS");
+				volts.unit = QStringLiteral("V");
+				chart.tab.plotRegister(volts, true);
+				MathLines::Samples samples;
+				for (int i = 0; i < 2000; i++) {
+					samples[regKey(chart.def)] << QPointF(90.0 + i * 0.005, 25 + std::sin(i * 0.01));
+					samples[regKey(volts)] << QPointF(90.0 + i * 0.005, 12 + std::cos(i * 0.01));
+				}
+				chart.tab.frame(samples);
+				chart.view->setWindow(10);
+				chart.tab.show();
+				(void) QTest::qWaitForWindowExposed(&chart.tab);
+				auto *lanes = chart.tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+				auto *ram = chart.tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+				auto *laneList = chart.tab.findChild<QComboBox *>(QStringLiteral("yLane"));
+				if (lanes) lanes->setChecked(true);
+				chart.view->setLaneFolded(1, true);
+				chart.view->setCursors(92.0, 96.0);
+				QTest::qWait(700); /* the info line's refresh fills the lane list */
+				for (int k = 0; ram && k < ram->count(); k++) s.ram << ram->itemText(k);
+				for (int k = 0; laneList && k < laneList->count(); k++) s.lanes << laneList->itemText(k);
+				shot(&chart.tab, QStringLiteral("chart"), code);
+				/* for a look: cursor A's tag's tooltip */
+				const QPointF tagA(chart.view->spanBarRect().left() - 11, chart.view->spanBarRect().center().y());
+				s.tagTip = chart.view->toolTipAt(tagA);
+				if (!prefix.isEmpty()) {
+					QToolTip::showText(chart.view->mapToGlobal(tagA.toPoint()), s.tagTip, chart.view);
+					QTest::qWait(300);
+					withTooltip(&chart.tab, chart.tab.rect()).save(prefix + QStringLiteral("_c5_tag_tip_%1.png").arg(code));
+					QToolTip::hideText();
+				}
+				for (QComboBox *box : { ram, laneList }) {
+					if (!box || prefix.isEmpty()) continue;
+					box->showPopup();
+					QTest::qWait(300);
+					shot(box->view()->window(), box == ram ? QStringLiteral("ram_list") : QStringLiteral("lane_list"), code);
+					box->hidePopup();
+				}
+				/* a size typed between the isolates (the list's own text edited) is read */
+				if (ram && ram->lineEdit()) {
+					ram->lineEdit()->setText(lang == 0 ? QStringLiteral("3 GB") : isolated(QStringLiteral("3 GB")));
+					emit ram->lineEdit()->editingFinished();
+					s.typedRam = chart.view->ramBudget();
+				}
+			}
+			{
+				BulkWriteDialog dialog(targets, {}, QStringLiteral("200"), &window_);
+				dialog.show();
+				(void) QTest::qWaitForWindowExposed(&dialog);
+				if (auto *list = dialog.findChild<QTableWidget *>())
+					for (int row = 0; row < list->rowCount(); row++)
+						if (list->item(row, 0) && list->item(row, 0)->text() == QLatin1String("FAN_SPEED") && list->item(row, 5))
+							s.note = list->item(row, 5)->text();
+				QTest::qWait(150);
+				shot(&dialog, QStringLiteral("bulk_note"), code);
+				dialog.reject();
+			}
+			{
+				QMenu menu(&window_);
+				RecordingWindow::fillRecentMenu(&menu, [](const QString &) {}, {});
+				for (QAction *action : menu.actions())
+					if (action->text().contains(keptName)) s.recent = action->text();
+				if (auto *missing = menu.findChild<QPushButton *>(QStringLiteral("recentMissing"))) s.missing = missing->text();
+				if (!prefix.isEmpty()) {
+					menu.popup(window_.mapToGlobal(QPoint(200, 200)));
+					QTest::qWait(300);
+					shot(&menu, QStringLiteral("recent"), code);
+					menu.hide();
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+		if (recentWas.isValid()) QSettings().setValue(QStringLiteral("recording/recent"), recentWas);
+		else QSettings().remove(QStringLiteral("recording/recent"));
+		if (ramWas.isValid()) QSettings().setValue(QStringLiteral("chart/ramMB"), ramWas);
+		else QSettings().remove(QStringLiteral("chart/ramMB"));
+		for (const char *key : { "chart/lanes", "chart/lanesFolded", "chart/laneY", "chart/laneHeights" })
+			QSettings().remove(QLatin1String(key));
+		QTest::qWait(200);
+		for (int lang = 0; lang < 2; lang++)
+			std::printf("     (%s: RAM \"%s\"; lanes \"%s\"; typed %d MB; Note \"%s\"; recent \"%s\"; missing \"%s\"; "
+						"tag A \"%s\")\n",
+					lang == 0 ? "English" : "Arabic", qPrintable(seen[lang].ram.join(QStringLiteral("|"))),
+					qPrintable(seen[lang].lanes.join(QStringLiteral("|"))), seen[lang].typedRam, qPrintable(seen[lang].note),
+					qPrintable(seen[lang].recent), qPrintable(seen[lang].missing), qPrintable(seen[lang].tagTip));
+		const Seen &en = seen[0], &ar = seen[1];
+		/* the Dump's line over a fast block's strip and a bus device's: drawn in the direction their text gives
+		 * (DumpView's painter), so the Arabic must lead (U+200F) and the names sit between isolates; else the line
+		 * was laid out left to right and read "ADC غير مطلوب: كتلة من READ_RESP" */
+		const auto dumpLines = [] {
+			return QStringList{ QCoreApplication::translate("DumpView", "READ_RESP, unasked: a block of %1").arg(QStringLiteral("ADC")),
+				QCoreApplication::translate("DumpView", "%1, slave %2").arg(QStringLiteral("D1")).arg(2) };
+		};
+		const QStringList englishDump = dumpLines();
+		language::apply(*qApp, QStringLiteral("ar"));
+		const QStringList arabicDump = dumpLines();
+		const QString folded = QCoreApplication::translate("ChartTab", "%1 (folded)");
+		const QString maximum = QCoreApplication::translate("QObject", "above the maximum %1");
+		const QString notFound = QCoreApplication::translate("RecordingWindow", "%1 (not found)   %2");
+		language::apply(*qApp, QStringLiteral("en"));
+		check(!en.ram.isEmpty() && en.ram.value(0) == QLatin1String("512 MB") && en.ram.value(1) == QLatin1String("1 GB")
+						&& en.typedRam == 3072 && ar.ram.size() == en.ram.size()
+						&& ar.ram.value(0) == isolated(QStringLiteral("512 MB")) && ar.ram.value(1) == isolated(QStringLiteral("1 GB"))
+						&& ar.typedRam == 3072,
+				"Arabic, the RAM list: each size one left-to-right piece (512 MB between U+2066 and U+2069, not MB 512); a "
+				"size typed with them is read (3 GB); English unchanged");
+		check(en.lanes == QStringList{ QStringLiteral("°C"), QStringLiteral("V (folded)") } && ar.lanes.size() == 2
+						&& ar.lanes.value(0) == isolated(QStringLiteral("°C"))
+						&& ar.lanes.value(1) == QString(folded).replace(QStringLiteral("%1"), isolated(QStringLiteral("V"))),
+				"Arabic, the lane list beside Y range: a unit one left-to-right piece (°C, not C°), a folded lane's too; "
+				"English unchanged");
+		check(en.note == QLatin1String("above the maximum 100 %") && maximum.contains(lri + QStringLiteral("%1") + pdi)
+						&& ar.note == QString(maximum).replace(QStringLiteral("%1"), QStringLiteral("100 %")),
+				"Arabic, a bulk write's Note: the limit with its unit one left-to-right piece (100 %, not % 100), from the "
+				"translation; English unchanged");
+		check(en.recent == keptName + QStringLiteral("   ") + where
+						&& en.missing == QStringLiteral("%1 (not found)   %2").arg(goneName, where)
+						&& ar.recent == isolated(keptName) + QStringLiteral("   ") + isolated(where)
+						&& ar.missing == QString(notFound).arg(isolated(goneName), isolated(where)),
+				"Arabic, the recent recordings: a file's name and its folder each one left-to-right piece (the date in "
+				"rec_2026-11-07_14-03-12.csv stays in place), a file not found too; English unchanged");
+		std::printf("     (the Dump's lines: \"%s\", \"%s\"; Arabic \"%s\", \"%s\")\n", qPrintable(englishDump.value(0)),
+				qPrintable(englishDump.value(1)), qPrintable(arabicDump.value(0)), qPrintable(arabicDump.value(1)));
+		check(englishDump == QStringList{ QStringLiteral("READ_RESP, unasked: a block of ADC"), QStringLiteral("D1, slave 2") }
+						&& !englishDump[0].isRightToLeft() && arabicDump.size() == 2 && arabicDump[0].isRightToLeft()
+						&& arabicDump[0].contains(isolated(QStringLiteral("ADC"))) && arabicDump[1].isRightToLeft()
+						&& arabicDump[1].contains(isolated(QStringLiteral("D1"))),
+				"Arabic, the Dump's line over a fast block's strip (READ_RESP غير مطلوب: كتلة من ADC) and a bus device's "
+				"(D1، التابع 2) read right to left from READ_RESP and D1, the names one piece; English unchanged");
+	}
+
+	/* A bus file or a recording's notes that is not JSON: where and why in the map's words ("line 3, column 19:
+	 * unexpected character ']'"), from our translation, not Qt's errorString(); a text ours reads but Qt refused: Qt's
+	 * place in the same words */
+	void jsonErrorsOurs() {
+		QTemporaryDir folder;
+		const QByteArray bad = "{\n  \"format\": \"evre-bus/1\",\n  \"devices\": [ 1, ]\n}\n";
+		const QString busPath = folder.filePath(QStringLiteral("bad_bus.json")),
+					  recording = folder.filePath(QStringLiteral("rec.csv"));
+		for (const QString &path : { busPath, recording + QStringLiteral(".notes.json") }) {
+			QFile file(path);
+			if (file.open(QIODevice::WriteOnly)) file.write(bad);
+		}
+		QString said[2][2];
+		for (int lang = 0; lang < 2; lang++) {
+			language::apply(*qApp, lang == 0 ? QStringLiteral("en") : QStringLiteral("ar"));
+			BusFile bus;
+			(void) bus.load(busPath, said[lang][0]);
+			QVector<ChartNote> notes;
+			(void) recording::loadNotes(recording, notes, said[lang][1]);
+		}
+		const auto words = [](const char *text) { return QCoreApplication::translate("QObject", text); };
+		const QString arabic = words("line %1, column %2: %3").arg(3).arg(19)
+				.arg(words("unexpected character '%1'").arg(QLatin1Char(']')));
+		const bool translated = words("not valid JSON") != QLatin1String("not valid JSON");
+		language::apply(*qApp, QStringLiteral("en"));
+		QJsonParseError qtError;
+		(void) QJsonDocument::fromJson(bad, &qtError);
+		const QString english = QStringLiteral("line 3, column 19: unexpected character ']'");
+		/* Qt's place when ours reads the text: offset 4 is line 2's first character */
+		QJsonParseError refused;
+		refused.error = QJsonParseError::IllegalValue;
+		refused.offset = 4;
+		const QString fallback = jsondoc::qtParseError("[1,\n2]", refused);
+		std::printf("     (English \"%s\", \"%s\"; Arabic \"%s\", \"%s\"; Qt's own \"%s\"; Qt's place \"%s\")\n",
+				qPrintable(said[0][0]), qPrintable(said[0][1]), qPrintable(said[1][0]), qPrintable(said[1][1]),
+				qPrintable(qtError.errorString()), qPrintable(fallback));
+		check(said[0][0] == english && said[0][1] == english && said[1][0] == arabic && said[1][1] == arabic
+						&& arabic != english && translated && fallback == QLatin1String("line 2, column 1: not valid JSON"),
+				"not JSON, a bus file and a recording's notes: where and why in the map's words (line 3, column 19: "
+				"unexpected character ']'), in Arabic from our translation, not Qt's errorString(); a text Qt alone "
+				"refuses: its place (line 2, column 1: not valid JSON)");
+	}
+
 	/* A fast stream's block as a Dump card (fed to a tab of its own, so every number is known): the block of the fast
 	 * example map's stream ADC (I_LOAD and V_BUS, two i16 a record), 253 records from record 1191259, LOST */
 	static DumpBlock fastDumpBlock(quint64 first, int count, uint8_t flags, quint64 lost, double time, quint64 version) {
@@ -12237,6 +12470,421 @@ private:
 		detail->setMinimumHeight(detailMin);
 		if (table->selectionModel()) table->selectionModel()->clear();
 		QTest::qWait(50);
+	}
+
+	/* The sidebar's fold button in its title row (14.5): 32 px, centred on the title, after it and clear of its text,
+	 * inside the row; in Arabic the same at the window's edge, the title beside it. notes: what was measured */
+	static bool foldPlaced(Sidebar &side, QString &notes) {
+		FoldButton *fold = side.foldButton();
+		auto *title = side.findChild<QLabel *>(QStringLiteral("appTitle"));
+		QWidget *content = side.widget();
+		if (!fold || !title || !content) return false;
+		const QRect button(fold->mapTo(content, QPoint(0, 0)), fold->size());
+		const QRect label(title->mapTo(content, QPoint(0, 0)), title->size());
+		const int textWidth = title->fontMetrics().horizontalAdvance(title->text());
+		const bool rtl = side.isRightToLeft();
+		const int margin = 16; /* the sidebar's own */
+		notes = QStringLiteral("button %1,%2 %3x%4, title %5..%6 (its text %7 px), row %8 px wide")
+				.arg(button.x()).arg(button.y()).arg(button.width()).arg(button.height()).arg(label.left())
+				.arg(label.right()).arg(textWidth).arg(content->width());
+		/* the title whole, left of the button: at the row's start in English, beside the button in Arabic */
+		const bool titleKept = textWidth <= label.width() && label.right() < button.left()
+				&& (rtl ? button.left() - label.right() <= 12 : label.left() == margin);
+		return fold->width() == 32 && fold->height() == 32 && std::abs(button.center().y() - label.center().y()) <= 1
+				&& titleKept && button.left() >= margin && button.right() <= content->width() - margin
+				&& button.right() >= content->width() - margin - 2
+				&& fold->pointsLeft() != rtl; /* toward the window's edge */
+	}
+
+	/* the dock's slide followed to its end: whether a width between the two was seen, and whether a fold button (the
+	 * sidebar's or the bar's) showed while it slid */
+	static void followSlide(SidebarDock *dock, bool &between, bool &buttonShown) {
+		const int open = dock->sidebar()->width();
+		between = false;
+		buttonShown = false;
+		QElapsedTimer clock;
+		clock.start();
+		while (dock->sliding() && clock.elapsed() < 3000) {
+			if (dock->width() > SidebarDock::RAIL_W && dock->width() < open) between = true;
+			if (dock->sidebar()->foldButton()->isVisible() || dock->rail()->openButton()->isVisible()) buttonShown = true;
+			QTest::qWait(4);
+		}
+		QTest::qWait(SidebarDock::FADE_MS + 60); /* the arriving button faded in */
+	}
+
+	/* The sidebar's fold (14.5): the button in the title's row in English and Arabic; a click and Ctrl+B fold and
+	 * open, sliding with the button hidden until it has arrived; the thin bar and its items; an icon opens the sidebar
+	 * at its card; no slide with less motion; saved and restored; the polls go on while folded; the window's minimum
+	 * width the same. With EVRE_TEST_SHOT the window open and folded, both themes, English and Arabic */
+	void sidebarFold() {
+		auto *dock = window_.findChild<SidebarDock *>();
+		Sidebar *side = dock ? dock->sidebar() : nullptr;
+		if (!dock || !side || !side->foldButton() || dock->folded()) {
+			check(false, "sidebar fold: the dock, the sidebar open and its fold button");
+			return;
+		}
+		auto *tabs = window_.findChild<QTabWidget *>();
+		if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+		forceReducedMotion(0); /* the slide's checks whatever the system says */
+		FoldButton *fold = side->foldButton();
+		SidebarRail *rail = dock->rail();
+		FoldButton *open = rail->openButton();
+		const int openWidth = side->width();
+		const QSize windowWas = window_.size(); /* the later steps' size again at the end */
+		window_.resize(1400, 860);
+		QApplication::processEvents();
+		const int minimumBefore = window_.minimumSizeHint().width();
+		const int dockMinimum = dock->minimumSizeHint().width();
+
+		QString notes;
+		const bool placed = foldPlaced(*side, notes);
+		std::printf("     (English: %s)\n", qPrintable(notes));
+		check(placed && fold->isVisible() && fold->opacity() == 1.0 && fold->cursor().shape() == Qt::PointingHandCursor
+						&& fold->toolTip() == QLatin1String("Fold the sidebar (Ctrl+B)") && !rail->isVisible(),
+				"sidebar fold: a 32 px button at the end of the title's row, centred on the title and clear of its text, "
+				"its chevron toward the window's edge, a pointing hand, the tooltip Fold the sidebar (Ctrl+B)");
+		const auto lights = [](QWidget *w) {
+			const QImage idle = w->grab().toImage();
+			w->setAttribute(Qt::WA_UnderMouse, true);
+			const QImage lit = w->grab().toImage();
+			w->setAttribute(Qt::WA_UnderMouse, false);
+			return !idle.isNull() && idle != lit;
+		};
+		check(lights(fold), "sidebar fold: the button lit under the mouse");
+
+		/* folded by a click: it slides, the bar's open button hidden until the bar has arrived */
+		bool between = false, shown = false;
+		QTest::mouseClick(fold, Qt::LeftButton);
+		const bool slid = dock->sliding() && !fold->isVisible();
+		followSlide(dock, between, shown);
+		std::printf("     (folded: %d px wide, the sidebar %s)\n", dock->width(), side->isVisible() ? "shown" : "hidden");
+		check(slid && between && !shown && dock->folded() && dock->width() == SidebarDock::RAIL_W && !side->isVisible()
+						&& rail->isVisible() && open->isVisible() && open->opacity() == 1.0,
+				"sidebar fold: a click folds it, sliding to the 40 px bar; no fold button shows while it slides, the bar's "
+				"open button fades in once it is there");
+		check(QSettings().value(QStringLiteral("ui/sidebarFolded")).toBool(), "sidebar fold: folded saved at once (ui/sidebarFolded)");
+
+		/* the bar: the open button, the dot, an icon per card in the sidebar's order, Help and Language at its foot */
+		QVector<QWidget *> items = { open, rail->dot() };
+		for (const Sidebar::Card card : { Sidebar::Card::Connection, Sidebar::Card::Devices, Sidebar::Card::Map,
+					 Sidebar::Card::Fast, Sidebar::Card::Polling, Sidebar::Card::Api })
+			if (!rail->cardButton(card)->isHidden()) items << rail->cardButton(card);
+		items << rail->helpButton() << rail->cardButton(Sidebar::Card::Language);
+		bool inside = rail->width() == SidebarDock::RAIL_W, tipped = true, hands = true;
+		int below = -1;
+		for (QWidget *item : std::as_const(items)) {
+			const QRect r = item->geometry();
+			inside = inside && item->isVisible() && r.left() >= 0 && r.right() < rail->width() && r.bottom() < rail->height()
+					&& r.top() > below;
+			below = r.bottom();
+			tipped = tipped && !item->toolTip().isEmpty();
+			if (item != rail->dot()) hands = hands && item->cursor().shape() == Qt::PointingHandCursor;
+		}
+		QWidget *fastCard = side->cardWidget(Sidebar::Card::Fast);
+		const bool fastFollows = rail->cardButton(Sidebar::Card::Fast)->isHidden() == (!fastCard || fastCard->isHidden());
+		check(inside && tipped && hands && fastFollows && items.size() >= 9 && lights(rail->cardButton(Sidebar::Card::Api)),
+				"sidebar fold, the bar: the open button, the dot, an icon for each card shown (Fast streams only with its "
+				"card), Help and Language, one under the other inside the bar, each with its tooltip, a pointing hand and "
+				"lit under the mouse");
+		const QString dotTip = rail->dot()->toolTip();
+		check(rail->dot()->property("state").toString() == side->linkStateName() && side->linkStateName() == QLatin1String("ok")
+						&& dotTip.contains(side->linkStateText()) && dotTip.contains(QLatin1String("polls/s")),
+				"sidebar fold, the bar: the link's dot in the pill's colour (connected: ok), its tooltip the pill's text and "
+				"the poll rate");
+		/* the polls, the link and the switches go on while it is folded */
+		{
+			const int was = other_.readU8(regs_.u8.addr);
+			other_.writeU8(regs_.u8.addr, 9);
+			const bool followed = cellShows(u8Cell_, QStringLiteral("9"), 5000);
+			other_.writeU8(regs_.u8.addr, quint8(was));
+			const bool back = cellShows(u8Cell_, QString::number(was), 5000);
+			check(followed && back && side->pollingOn() && side->linkStateName() == QLatin1String("ok"),
+					"sidebar fold: folded, the link stays up and the table follows the polls (another client's write shown)");
+		}
+		/* Help opens the Help, the sidebar left folded */
+		{
+			rail->helpButton()->click();
+			QTest::qWait(150);
+			HelpDialog *help = nullptr;
+			for (QWidget *top : QApplication::topLevelWidgets())
+				if (auto *dialog = qobject_cast<HelpDialog *>(top); dialog && dialog->isVisible()) help = dialog;
+			check(help && dock->folded(), "sidebar fold, the bar: Help opens the Help (as F1), the sidebar stays folded");
+			if (help) help->close();
+		}
+
+		/* a card's icon: the sidebar opens at that card, lit a moment; the fold button only once it is there */
+		QTest::mouseClick(rail->cardButton(Sidebar::Card::Api), Qt::LeftButton);
+		followSlide(dock, between, shown);
+		QWidget *apiCard = side->cardWidget(Sidebar::Card::Api);
+		const QPoint apiTop = apiCard->mapTo(side->viewport(), QPoint(0, 0));
+		std::printf("     (the API card's top at %d of the sidebar's %d px)\n", apiTop.y(), side->viewport()->height());
+		check(!dock->folded() && side->isVisible() && !rail->isVisible() && dock->width() == openWidth && between && !shown
+						&& fold->isVisible() && fold->opacity() == 1.0 && apiTop.y() >= 0
+						&& apiTop.y() < side->viewport()->height() - 40 && apiCard->property("lit").toBool(),
+				"sidebar fold: the bar's API icon opens the sidebar at the API server card, its edge lit; the fold button "
+				"hidden while it slides, shown once it is there");
+		QTest::qWait(Sidebar::LIT_MS + 100);
+		check(!apiCard->property("lit").toBool(), "sidebar fold: the card's light goes after a moment");
+
+		/* Ctrl+B folds and opens */
+		window_.activateWindow();
+		(void) QTest::qWaitForWindowActive(&window_, 2000);
+		QTest::keyClick(&window_, Qt::Key_B, Qt::ControlModifier);
+		followSlide(dock, between, shown);
+		const bool keyFolded = dock->folded() && dock->width() == SidebarDock::RAIL_W;
+		QTest::keyClick(&window_, Qt::Key_B, Qt::ControlModifier);
+		followSlide(dock, between, shown);
+		check(keyFolded && !dock->folded() && dock->width() == openWidth && fold->isVisible(),
+				"sidebar fold: Ctrl+B folds it and opens it again");
+		/* the open button from the keyboard: Space, the focus then on the sidebar's fold button */
+		QTest::mouseClick(fold, Qt::LeftButton);
+		followSlide(dock, between, shown);
+		open->setFocus(Qt::TabFocusReason);
+		QTest::keyClick(open, Qt::Key_Space);
+		followSlide(dock, between, shown);
+		check(!dock->folded() && fold->hasFocus(), "sidebar fold: the bar's open button takes Space; the focus is then on "
+				"the fold button");
+
+		/* less motion: no slide, the end at once */
+		forceReducedMotion(1);
+		fold->click();
+		const bool atOnce = dock->folded() && !dock->sliding() && dock->width() == SidebarDock::RAIL_W
+				&& open->isVisible() && open->opacity() == 1.0 && !side->isVisible();
+		open->click();
+		const bool backAtOnce = !dock->folded() && !dock->sliding() && dock->width() == openWidth && fold->isVisible()
+				&& fold->opacity() == 1.0;
+		forceReducedMotion(0);
+		check(atOnce && backAtOnce, "sidebar fold: with less motion asked (the system's Animation effects off) it folds and "
+				"opens at once, no slide");
+
+		/* restored as saved, without a slide */
+		{
+			QSettings().setValue(QStringLiteral("ui/sidebarFolded"), true);
+			auto *fresh = new Sidebar;
+			SidebarDock restored(fresh);
+			const bool asSaved = restored.folded() && restored.width() == SidebarDock::RAIL_W && fresh->isHidden()
+					&& !restored.sliding();
+			QSettings().setValue(QStringLiteral("ui/sidebarFolded"), false);
+			auto *again = new Sidebar;
+			SidebarDock openAgain(again);
+			check(asSaved && !openAgain.folded() && openAgain.width() == openWidth,
+					"sidebar fold: the dock starts as saved, folded or open, without a slide");
+		}
+
+		/* the window's minimum width: the open sidebar's, as before; folded less */
+		QApplication::processEvents();
+		const int minimumAfter = window_.minimumSizeHint().width();
+		fold->click();
+		followSlide(dock, between, shown);
+		const int minimumFolded = window_.minimumSizeHint().width();
+		std::printf("     (the window's minimum width %d px, %d after, %d folded)\n", minimumBefore, minimumAfter, minimumFolded);
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) sidebarShots(window_, QStringLiteral("en"));
+		open->click();
+		followSlide(dock, between, shown);
+		check(dockMinimum == openWidth && minimumAfter == minimumBefore && minimumBefore <= 1280 && minimumFolded < minimumBefore,
+				"sidebar fold: the window's minimum width the same with the sidebar open (at most 1280 px), less folded");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) sidebarShots(window_, QStringLiteral("en"));
+
+		/* Arabic: the sidebar at the right, the button at the window's edge with the title beside it, the chevrons
+		 * mirrored, the bar at the right edge */
+		language::apply(*qApp, QStringLiteral("ar"));
+		{
+			MainWindow other(map_.path);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1280, 800);
+			QApplication::processEvents();
+			auto *arDock = other.findChild<SidebarDock *>();
+			Sidebar *arSide = arDock ? arDock->sidebar() : nullptr;
+			QString arNotes;
+			const bool arPlaced = arSide && foldPlaced(*arSide, arNotes);
+			std::printf("     (Arabic: %s)\n", qPrintable(arNotes));
+			const int arMinimum = other.minimumSizeHint().width();
+			bool atEdge = false, barAtEdge = false, mirrored = false;
+			if (arDock) {
+				atEdge = arDock->mapTo(&other, QPoint(arDock->width(), 0)).x() >= other.width() - 1;
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) sidebarShots(other, QStringLiteral("ar"));
+				arDock->sidebar()->foldButton()->click();
+				followSlide(arDock, between, shown);
+				barAtEdge = arDock->folded() && arDock->mapTo(&other, QPoint(arDock->width(), 0)).x() >= other.width() - 1
+						&& arDock->rail()->isVisible();
+				mirrored = arDock->rail()->openButton()->pointsLeft() && arDock->rail()->isRightToLeft();
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) sidebarShots(other, QStringLiteral("ar"));
+				arDock->rail()->openButton()->click();
+				followSlide(arDock, between, shown);
+			}
+			std::printf("     (Arabic: the window's minimum width %d px)\n", arMinimum);
+			check(arPlaced && atEdge && barAtEdge && mirrored && arMinimum <= 1280,
+					"sidebar fold, Arabic: the sidebar at the right, the button at the window's edge with the title beside "
+					"it, clear of its text; folded, the bar at the right edge, its chevron mirrored; the window at most 1280 "
+					"px at its narrowest");
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		QSettings().setValue(QStringLiteral("ui/sidebarFolded"), false);
+		forceReducedMotion(-1);
+		if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters);
+		window_.resize(windowWas);
+		QApplication::processEvents();
+	}
+
+	/* EVRE_TEST_SHOT: the window as it is (sidebar open or folded), both themes:
+	 * <prefix>_sidebar_<open|folded>_<en|ar>_<light|dark>.png */
+	void sidebarShots(MainWindow &window, const QString &code) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		auto *dock = window.findChild<SidebarDock *>();
+		if (!dock) return;
+		const bool wasDark = Theme::isDark();
+		dock->sidebar()->verticalScrollBar()->setValue(0); /* the title's row in the picture */
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			dock->sidebar()->themeChanged();
+			QTest::qWait(120);
+			window.grab().save(prefix + QStringLiteral("_sidebar_%1_%2_%3.png")
+					.arg(dock->folded() ? QStringLiteral("folded") : QStringLiteral("open"), code,
+							dark ? QStringLiteral("dark") : QStringLiteral("light")));
+		}
+		Theme::apply(*qApp, wasDark);
+		dock->sidebar()->themeChanged();
+		QApplication::processEvents();
+	}
+
+	/* The quick-write panel's fold (5.1): the mark before the title, sized to it, a pointing hand, its tooltip, lit
+	 * under the mouse; a click folds the panel to its title's line (the table taller, the row selected kept in view,
+	 * saved), another opens it (the table shorter, the row still in view); a new panel starts as saved. With
+	 * EVRE_TEST_SHOT the Registers tab with it open and folded, both themes, English and Arabic */
+	void quickWriteFold() {
+		auto *tabs = window_.findChild<QTabWidget *>();
+		auto *panel = window_.findChild<QuickWritePanel *>();
+		auto *registers = window_.findChild<RegistersTab *>();
+		FoldButton *mark = panel ? panel->foldButton() : nullptr;
+		auto *title = panel ? panel->findChild<QLabel *>(QStringLiteral("qwTitle")) : nullptr;
+		auto *value = panel ? panel->findChild<QLineEdit *>(QStringLiteral("qwValue")) : nullptr;
+		if (!tabs || !panel || !mark || !title || !value || !registers || panel->folded()) {
+			check(false, "quick write fold: the panel open, its fold mark, title and value box");
+			return;
+		}
+		tabs->setCurrentIndex(MainWindow::TabRegisters);
+		const QSize windowWas = window_.size(); /* the later steps' size again at the end */
+		window_.resize(1400, 860);
+		table_->setCurrentIndex(u8Cell_);
+		(void) QTest::qWaitFor([&] { return panel->isVisible() && value->isVisible(); }, 2000);
+		QTest::qWait(80);
+		const QRect markRect(mark->mapTo(panel, QPoint(0, 0)), mark->size());
+		const QRect titleRect(title->mapTo(panel, QPoint(0, 0)), title->size());
+		const int lineHeight = title->fontMetrics().height();
+		std::printf("     (the mark %dx%d at %d,%d; the title %d px high at %d)\n", mark->width(), mark->height(),
+				markRect.x(), markRect.y(), titleRect.height(), titleRect.y());
+		const QImage idle = mark->grab().toImage();
+		mark->setAttribute(Qt::WA_UnderMouse, true);
+		const QImage lit = mark->grab().toImage();
+		mark->setAttribute(Qt::WA_UnderMouse, false);
+		check(mark->isVisible() && mark->height() >= lineHeight && mark->height() <= lineHeight + 10
+						&& std::abs(markRect.center().y() - titleRect.center().y()) <= 1 && markRect.right() < titleRect.left()
+						&& mark->points() == FoldButton::Points::Down && mark->cursor().shape() == Qt::PointingHandCursor
+						&& mark->toolTip() == QLatin1String("Fold the quick-write panel") && idle != lit,
+				"quick write fold: the mark before the title, as tall as its line and centred on it, pointing down, a "
+				"pointing hand, the tooltip Fold the quick-write panel, lit under the mouse");
+
+		/* the row selected at the table's bottom: folded, the table taller; opened, shorter, the row still in view */
+		const auto inView = [&] {
+			const QRect cell = table_->visualRect(u8Cell_);
+			return !cell.isEmpty() && cell.top() >= 0 && cell.bottom() <= table_->viewport()->height();
+		};
+		table_->scrollTo(u8Cell_, QAbstractItemView::PositionAtBottom);
+		QTest::qWait(50);
+		const int openRoom = table_->viewport()->height();
+		const int openHeight = panel->height();
+		QTest::mouseClick(mark, Qt::LeftButton);
+		QTest::qWait(120);
+		const int foldedRoom = table_->viewport()->height();
+		const int foldedHeight = panel->height();
+		std::printf("     (the panel %d px -> %d px folded, the table's rows %d px -> %d px)\n", openHeight, foldedHeight,
+				openRoom, foldedRoom);
+		check(panel->folded() && panel->isVisible() && title->isVisible() && !value->isVisible()
+						&& foldedHeight <= mark->height() + 8 && foldedRoom > openRoom && inView()
+						&& mark->points() == FoldButton::Points::End && !mark->pointsLeft()
+						&& mark->toolTip() == QLatin1String("Open the quick-write panel"),
+				"quick write fold: a click folds it to the title's line (its chevron to the title's end, the tooltip Open "
+				"the quick-write panel), the table gets the height back, the row selected in view");
+		check(QSettings().value(QStringLiteral("ui/quickWriteFolded")).toBool(), "quick write fold: folded saved at once "
+				"(ui/quickWriteFolded)");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) quickWriteShots(*registers, panel, QStringLiteral("en"));
+		/* another register selected while folded: its title, still folded */
+		table_->setCurrentIndex(valueCell(table_, regs_.enumU8.name));
+		QTest::qWait(80);
+		const bool staysFolded = panel->folded() && !value->isVisible() && title->isVisible();
+		table_->setCurrentIndex(u8Cell_);
+		table_->scrollTo(u8Cell_, QAbstractItemView::PositionAtBottom);
+		QTest::qWait(80);
+		const bool bottomBefore = inView();
+		QTest::mouseClick(mark, Qt::LeftButton);
+		(void) QTest::qWaitFor([&] { return table_->viewport()->height() < foldedRoom; }, 1000);
+		QTest::qWait(80);
+		check(staysFolded && bottomBefore && !panel->folded() && value->isVisible() && table_->viewport()->height() < foldedRoom
+						&& inView() && !QSettings().value(QStringLiteral("ui/quickWriteFolded")).toBool(),
+				"quick write fold: another register selected keeps it folded; a click opens it, the table shorter and the "
+				"row selected still in view (kept in view), open saved");
+		if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) quickWriteShots(*registers, panel, QStringLiteral("en"));
+		{
+			RegisterModel model;
+			QSettings().setValue(QStringLiteral("ui/quickWriteFolded"), true);
+			QuickWritePanel folded(&model);
+			QSettings().setValue(QStringLiteral("ui/quickWriteFolded"), false);
+			QuickWritePanel opened(&model);
+			check(folded.folded() && !opened.folded(), "quick write fold: a new panel starts as saved, folded or open");
+		}
+		/* Arabic: the mark at the title's start (the right), its folded chevron mirrored */
+		language::apply(*qApp, QStringLiteral("ar"));
+		{
+			MainWindow other(map_.path);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			other.resize(1400, 860);
+			auto *arPanel = other.findChild<QuickWritePanel *>();
+			auto *arTable = other.findChild<QTableView *>(QStringLiteral("registers"));
+			auto *arRegisters = other.findChild<RegistersTab *>();
+			bool shown = false;
+			if (arPanel && arTable && arTable->model() && arRegisters) {
+				arTable->setCurrentIndex(valueCell(arTable, regs_.u8.name));
+				shown = QTest::qWaitFor([&] { return arPanel->isVisible(); }, 2000);
+			}
+			bool arPlaced = false;
+			if (shown) {
+				FoldButton *arMark = arPanel->foldButton();
+				auto *arTitle = arPanel->findChild<QLabel *>(QStringLiteral("qwTitle"));
+				const QRect m(arMark->mapTo(arPanel, QPoint(0, 0)), arMark->size());
+				const QRect t(arTitle->mapTo(arPanel, QPoint(0, 0)), arTitle->size());
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) quickWriteShots(*arRegisters, arPanel, QStringLiteral("ar"));
+				arMark->click();
+				QTest::qWait(80);
+				arPlaced = m.left() > t.right() && arPanel->folded() && arMark->pointsLeft();
+				if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT")) quickWriteShots(*arRegisters, arPanel, QStringLiteral("ar"));
+				arMark->click();
+			}
+			check(shown && arPlaced, "quick write fold, Arabic: the mark right of the title (at its start); folded, its "
+					"chevron mirrored, toward the title's end");
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		QSettings().setValue(QStringLiteral("ui/quickWriteFolded"), false);
+		if (table_->selectionModel()) table_->selectionModel()->clear();
+		window_.resize(windowWas);
+		QTest::qWait(50);
+	}
+
+	/* EVRE_TEST_SHOT: the Registers tab with the panel open or folded, both themes:
+	 * <prefix>_quickwrite_<open|folded>_<en|ar>_<light|dark>.png */
+	void quickWriteShots(RegistersTab &tab, QuickWritePanel *panel, const QString &code) {
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		for (const bool dark : { false, true }) {
+			Theme::apply(*qApp, dark);
+			QTest::qWait(120);
+			tab.grab().save(prefix + QStringLiteral("_quickwrite_%1_%2_%3.png")
+					.arg(panel->folded() ? QStringLiteral("folded") : QStringLiteral("open"), code,
+							dark ? QStringLiteral("dark") : QStringLiteral("light")));
+		}
+		Theme::apply(*qApp, wasDark);
+		QApplication::processEvents();
 	}
 
 	void registersGlow() {

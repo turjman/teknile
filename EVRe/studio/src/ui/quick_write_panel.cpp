@@ -24,6 +24,7 @@
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bulk_write_dialog.h"
+#include "ui/fold_button.h"
 #include "ui/ui_helpers.h"
 
 namespace {
@@ -120,9 +121,15 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 			"after a list of what each one gets"));
 	targets_->hide();
 
-	auto *row = new QHBoxLayout;
+	/* the fold mark: the sidebar's chevron, as tall as the title's line */
+	fold_ = new FoldButton(std::max(20, fontMetrics().height() + 6));
+	fold_->setObjectName(QStringLiteral("qwFold"));
+	connect(fold_, &FoldButton::clicked, this, [this] { setFolded(!folded_); });
+
+	controls_ = new QWidget;
+	auto *row = new QHBoxLayout(controls_);
+	row->setContentsMargins(0, 0, 0, 0);
 	row->setSpacing(6);
-	row->addWidget(name_);
 	row->addWidget(value_, 1);
 	row->addWidget(namedValues_);
 	row->addWidget(write_);
@@ -132,12 +139,23 @@ QuickWritePanel::QuickWritePanel(const RegisterModel *model, QWidget *parent) : 
 	row->addWidget(bits_);
 	row->addStretch();
 	row->addWidget(hint_);
+	auto *titleRow = new QHBoxLayout;
+	titleRow->setSpacing(6);
+	titleRow->addWidget(fold_, 0, Qt::AlignVCenter);
+	titleRow->addWidget(name_);
+	titleRow->addWidget(controls_, 1);
+	body_ = new QWidget;
+	auto *bodyLayout = new QVBoxLayout(body_);
+	bodyLayout->setContentsMargins(0, 0, 0, 0);
+	bodyLayout->setSpacing(6);
+	bodyLayout->addWidget(targets_, 0, Qt::AlignLeading);
+	bodyLayout->addWidget(bitArea_);
 	auto *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(10, 0, 10, 6);
 	layout->setSpacing(6);
-	layout->addLayout(row);
-	layout->addWidget(targets_, 0, Qt::AlignLeading);
-	layout->addWidget(bitArea_);
+	layout->addLayout(titleRow);
+	layout->addWidget(body_);
+	setFolded(QSettings().value(QStringLiteral("ui/quickWriteFolded"), false).toBool());
 
 	connect(write_, &QPushButton::clicked, this, &QuickWritePanel::writeTyped);
 	connect(value_, &QLineEdit::returnPressed, this, &QuickWritePanel::writeTyped);
@@ -181,6 +199,18 @@ void QuickWritePanel::showRegisters(const QVector<int> &rows, const QString &pro
 	rows_ = rows;
 	problem_ = problem;
 	rebuild();
+}
+
+void QuickWritePanel::setFolded(bool folded) {
+	const bool changed = folded != folded_;
+	folded_ = folded;
+	controls_->setVisible(!folded);
+	body_->setVisible(!folded);
+	/* folded: it points at the title's end, as a folded lane's ▸; open: down, at what it holds */
+	fold_->setPoints(folded ? FoldButton::Points::End : FoldButton::Points::Down);
+	fold_->setToolTip(folded ? tr("Open the quick-write panel") : tr("Fold the quick-write panel"));
+	fold_->setAccessibleName(fold_->toolTip());
+	if (changed) QSettings().setValue(QStringLiteral("ui/quickWriteFolded"), folded);
 }
 
 void QuickWritePanel::setConnected(bool connected) {

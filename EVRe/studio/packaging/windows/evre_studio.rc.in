@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-// EVReStudio.exe's icon (Explorer, the taskbar, the Start menu: the teknile mark, packaging/icons) and its version,
-// made by CMake (configure_file) with the icon's full path and the project's version
+// A Windows program's icon (Explorer, the taskbar, the Start menu: the teknile mark, packaging/icons) and its version,
+// made by CMake (configure_file, once for EVReStudio.exe, evre.exe and evre-sim.exe) with the icon's full path, the
+// project's version and the program's name and description: a signed file must name its product and version
 #include <winver.h>
 
 IDI_ICON1 ICON "@EVRE_ICON_FILE@"
@@ -16,11 +17,11 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName", "teknile"
-            VALUE "FileDescription", "EVRe Studio"
+            VALUE "FileDescription", "@EVRE_RC_DESCRIPTION@"
             VALUE "FileVersion", "@PROJECT_VERSION@"
-            VALUE "InternalName", "EVReStudio"
+            VALUE "InternalName", "@EVRE_RC_NAME@"
             VALUE "LegalCopyright", "Apache License 2.0"
-            VALUE "OriginalFilename", "EVReStudio.exe"
+            VALUE "OriginalFilename", "@EVRE_RC_NAME@.exe"
             VALUE "ProductName", "EVRe Studio"
             VALUE "ProductVersion", "@PROJECT_VERSION@"
         END

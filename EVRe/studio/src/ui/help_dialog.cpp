@@ -59,6 +59,8 @@ pop up beside the tabs for a few seconds.</li>
 <li>Slower polls than asked? <b>Polling &amp; speed</b> explains reads, latency and <b>In flight</b>.</li>
 <li>At the bottom of the sidebar: <b>Help</b> (F1), the switch to the <b>light</b> or <b>dark</b> theme, and the
 <b>Language</b> (System, English, العربية), applied at the next start.</li>
+<li>The sidebar folds to a thin bar: the arrow button at the end of its title, or <b>Ctrl+B</b>. The bar keeps the
+link's dot and an icon for each card; an icon opens the sidebar at its card. Folding stops nothing.</li>
 <li><b>Keyboard</b>: Tab and Shift+Tab move between the controls, and a ring shows where you are (a click shows
 none). Every key and mouse action: <b>Keys &amp; mouse</b>.</li>
 </ul>
@@ -371,6 +373,8 @@ bit only), each flag by its name (click to flip it), and each wider field with i
 values, or <i>Value…</i>);</li>
 <li><b>Bits</b>: the same bit view for an integer register without fields, the highest bit first.</li>
 </ul>
+<p>The arrow before <b>Write NAME</b> folds the panel to that line, and the table gets its height; a click opens it
+again. It stays as you left it.</p>
 <p>On a bus, <b>To all devices</b> sends the value typed to every device in one broadcast frame, where the
 broadcast rule allows it (see <b>Connecting</b>), after a confirmation, and reads each one back; the Log says which
 devices took it. It is offered once a value is typed.</p>
@@ -826,6 +830,8 @@ the ⚠ switch.</li>
 <h2>Keys &amp; mouse</h2>
 <table cellpadding="4">
 <tr><td><b>Anywhere</b></td><td><b>F1</b> this help · <b>Tab</b> / <b>Shift+Tab</b> the next / previous control</td></tr>
+<tr><td><b>Sidebar</b></td><td><b>Ctrl+B</b> folds it to a thin bar and opens it again (its arrow button too; an icon of
+the bar opens it at that card)</td></tr>
 <tr><td><b>A selection</b></td><td>A <b>click</b> on empty room in a table, a list, the Dump's cards or the bit strip, or
 <b>Esc</b> with it in focus: nothing selected (what shows the selection follows: the Registers tab and the Dump clear
 together). In a dialog <b>Esc</b> closes the dialog; the click still clears its lists. Devices on the link is a

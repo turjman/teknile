@@ -22,6 +22,13 @@ AppVersion={#AppVersion}
 AppVerName=EVRe Studio {#AppVersion}
 AppPublisher=teknile
 AppPublisherURL=https://github.com/turjman/teknile
+; the setup's own version block (Explorer's Details; code signing asks for the product and its version)
+VersionInfoVersion={#AppVersion}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductName=EVRe Studio
+VersionInfoDescription=EVRe Studio Setup
+VersionInfoCompany=teknile
+VersionInfoCopyright=Apache License 2.0
 DefaultDirName={autopf}\EVRe Studio
 DefaultGroupName=EVRe Studio
 DisableProgramGroupPage=yes

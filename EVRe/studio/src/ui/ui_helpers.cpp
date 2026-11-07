@@ -177,6 +177,21 @@ void noWindowAnimation(QWidget *dialog) {
 }
 
 namespace {
+int g_forcedMotion = -1; /* forceReducedMotion's answer; -1: the system's */
+}
+
+bool reducedMotion() {
+	if (g_forcedMotion >= 0) return g_forcedMotion == 1;
+#ifdef Q_OS_WIN
+	BOOL animations = TRUE;
+	if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &animations, 0)) return !animations;
+#endif
+	return false;
+}
+
+void forceReducedMotion(int reduced) { g_forcedMotion = reduced < 0 ? -1 : reduced ? 1 : 0; }
+
+namespace {
 
 /* clearSelectionOnEmpty's and clearSelectionOnEscape's watcher: on the view (its keys) and on its viewport (the mouse) */
 class SelectionClearer : public QObject {

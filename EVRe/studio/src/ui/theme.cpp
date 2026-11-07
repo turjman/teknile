@@ -173,6 +173,7 @@ QListWidget#busDevices::item:selected { background: %ACCENTA%; color: %TEXT%; }
 #appTitle { font-size: 15pt; font-weight: 700; }
 #appSub { color: %MUTED%; font-size: 9pt; }
 #card { background: %S2%; border: 1px solid %BORDER%; border-radius: 10px; }
+#card[lit="true"] { border-color: %ACCENT%; }
 #cardTitle { color: %MUTED%; font-size: 8pt; font-weight: 700; letter-spacing: 1px; }
 #muted, #chartInfo, #measureInfo, #triggerUnit, #fastStreamAbout { color: %MUTED%; }
 QLabel#fastStreamName { font-weight: 700; }
