@@ -2750,84 +2750,6 @@ ack&lt;/b&gt; / &lt;b&gt;WRITE (بلا ack)&lt;/b&gt; لـ&lt;b&gt;بايتات�
         <translation>EVRe Studio — المساعدة</translation>
     </message>
     <message>
-        <source>
-&lt;h2&gt;Getting started&lt;/h2&gt;
-&lt;p&gt;EVRe Studio talks to any device that speaks &lt;b&gt;EVRe&lt;/b&gt;, over &lt;b&gt;TCP&lt;/b&gt; or a &lt;b&gt;serial / USB&lt;/b&gt; port: one
-device, or several on one link. It shows every register of the device&apos;s &lt;b&gt;map&lt;/b&gt; live, charts them, records them
-to CSV, writes them, and lets other programs reach the device through it (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;Listen&lt;/b&gt; hears what another
-program says to a USB device, and the Studio sends nothing.&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;b&gt;Connection&lt;/b&gt; (left): choose TCP or Serial / USB (&lt;b&gt;Listen&lt;/b&gt;: see &lt;b&gt;Connecting&lt;/b&gt;), fill in the address or
-pick the port, &lt;b&gt;Connect&lt;/b&gt;.
-The pill turns green and the device ID appears under it (&lt;i&gt;not read yet&lt;/i&gt; until it is).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Registers&lt;/b&gt; tab: the values update at the poll rate (&lt;i&gt;Polling &amp;amp; recording&lt;/i&gt;).&lt;/li&gt;
-&lt;li&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on registers and open the &lt;b&gt;Chart&lt;/b&gt; tab.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;● Record CSV&lt;/b&gt; writes every register ticked &lt;b&gt;Log&lt;/b&gt;, once per poll.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;The last map you opened loads by itself (the first time: the first one in &lt;code&gt;maps/&lt;/code&gt;; a map given on the
-command line is for that run only). For another device, &lt;b&gt;Device map → Open…&lt;/b&gt;, or build one: &lt;b&gt;New&lt;/b&gt;, then
-&lt;b&gt;+ Register&lt;/b&gt;.&lt;/p&gt;
-&lt;h3&gt;What else is there&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;Registers&lt;/b&gt;: search, groups (tick several), &lt;b&gt;Plot shown&lt;/b&gt; (Plot on every register shown, as many as the
-chart holds at the poll rate: &lt;i&gt;Chart &amp;amp; recording&lt;/i&gt;); select a register to see it in full and to &lt;b&gt;write&lt;/b&gt;
-it quickly under the table (a value, its enum list, its bits drawn as in a datasheet).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Chart&lt;/b&gt;: like an oscilloscope: memory depth apart from the view, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt;, &lt;b&gt;Measure&lt;/b&gt;
-(min, max, mean, RMS, the area under a line: W → Wh), &lt;b&gt;Cursors&lt;/b&gt; A and B, &lt;b&gt;ƒ Math&lt;/b&gt; lines (SUPPLY_V *
-SUPPLY_I), and &lt;b&gt;Display&lt;/b&gt;: how the lines are drawn, by a graphics card when the computer has one.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Dump&lt;/b&gt;: the device&apos;s bytes as the reads bring them, each register a coloured chip, decoded beside.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame sent and received, raw reads and writes.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Map editor&lt;/b&gt;: make a map from nothing or change one, check it, and export it (a specification, a C header,
-a Python module).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (connects, writes and their results, errors), also saved to a file; warnings and errors
-pop up beside the tabs for a few seconds.&lt;/li&gt;
-&lt;li&gt;Several devices on one link (RS-485, a gateway): &lt;b&gt;Connecting&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;Slower polls than asked? &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt; explains reads, latency and &lt;b&gt;In flight&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;At the bottom of the sidebar: &lt;b&gt;Help&lt;/b&gt; (F1), the switch to the &lt;b&gt;light&lt;/b&gt; or &lt;b&gt;dark&lt;/b&gt; theme, and the
-&lt;b&gt;Language&lt;/b&gt; (System, English, العربية), applied at the next start.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;Keyboard&lt;/b&gt;: Tab and Shift+Tab move between the controls, and a ring shows where you are (a click shows
-none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-</source>
-        <translation>
-&lt;h2&gt;البدء&lt;/h2&gt;
-&lt;p&gt;يتحدث EVRe Studio مع أي جهاز يتكلم &lt;b&gt;EVRe&lt;/b&gt;، عبر &lt;b&gt;TCP&lt;/b&gt; أو منفذ &lt;b&gt;تسلسلي / USB&lt;/b&gt;: جهاز واحد، أو عدة
-أجهزة على وصلة واحدة. يعرض كل مسجّل في &lt;b&gt;خريطة&lt;/b&gt; الجهاز حيًّا، ويرسمها، ويسجّلها في CSV، ويكتبها، ويتيح
-لبرامج أخرى الوصول إلى الجهاز من خلاله (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;الاستماع&lt;/b&gt; يسمع ما يقوله برنامج آخر لجهاز ⁦USB⁩، ولا يرسل الاستوديو شيئًا.&lt;/p&gt;
-&lt;ol&gt;
-&lt;li&gt;&lt;b&gt;الاتصال&lt;/b&gt; (على الجانب): اختر TCP أو تسلسلي / USB (&lt;b&gt;استماع&lt;/b&gt;: انظر &lt;b&gt;الاتصال&lt;/b&gt;)، واملأ العنوان أو اختر المنفذ، ثم &lt;b&gt;اتصال&lt;/b&gt;.
-تخضرّ الشارة ويظهر معرّف الجهاز تحتها (&lt;i&gt;لم يُقرأ بعد&lt;/i&gt; حتى يُقرأ).&lt;/li&gt;
-&lt;li&gt;لسان &lt;b&gt;المسجّلات&lt;/b&gt;: تتحدث القيم بمعدّل الاستطلاع (&lt;i&gt;الاستطلاع والتسجيل&lt;/i&gt;).&lt;/li&gt;
-&lt;li&gt;فعّل &lt;b&gt;رسم&lt;/b&gt; على مسجّلات وافتح لسان &lt;b&gt;المخطط&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;● تسجيل CSV&lt;/b&gt; يكتب كل مسجّل مفعّل عليه &lt;b&gt;تسجيل&lt;/b&gt;، مرة لكل استطلاع.&lt;/li&gt;
-&lt;/ol&gt;
-&lt;p&gt;آخر خريطة فتحتها تُحمَّل وحدها (في المرة الأولى: أول خريطة في &lt;code&gt;maps/&lt;/code&gt;؛ والخريطة المعطاة في سطر
-الأوامر لذلك التشغيل فقط). لجهاز آخر: &lt;b&gt;خريطة الجهاز ← فتح…&lt;/b&gt;، أو ابنِ واحدة: &lt;b&gt;جديد&lt;/b&gt;، ثم
-&lt;b&gt;+ مسجّل&lt;/b&gt;.&lt;/p&gt;
-&lt;h3&gt;ماذا هناك أيضًا&lt;/h3&gt;
-&lt;ul&gt;
-&lt;li&gt;&lt;b&gt;المسجّلات&lt;/b&gt;: البحث، والمجموعات (فعّل عدة)، و&lt;b&gt;رسم المعروض&lt;/b&gt; («رسم» على كل مسجّل معروض، بقدر ما يحمل
-المخطط بمعدّل الاستطلاع: &lt;i&gt;المخطط والتسجيل&lt;/i&gt;)؛ حدّد مسجّلًا لتراه كاملًا ولـ&lt;b&gt;تكتبه&lt;/b&gt;
-سريعًا تحت الجدول (قيمة، قائمة أسمائها، بتاتها مرسومة كما في ورقة البيانات).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المخطط&lt;/b&gt;: مثل راسم الإشارة: عمق الذاكرة منفصل عن العرض، &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt;، &lt;b&gt;القياسات&lt;/b&gt;
-(الأدنى، الأعلى، المتوسط، RMS، المساحة تحت الخط: W → Wh)، &lt;b&gt;المؤشران&lt;/b&gt; A وB، خطوط &lt;b&gt;ƒ الرياضيات&lt;/b&gt; (SUPPLY_V *
-SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ببطاقة رسوميات حين يكون في الحاسوب واحدة.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;: بايتات الجهاز كما تأتي بها القراءات، كل مسجّل شارة ملوّنة، مفكوكةً بجانبها.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;: اصنع خريطة من لا شيء أو غيّر واحدة، وافحصها، وصدّرها (مواصفة، ترويسة C،
-وحدة Python).&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الاتصالات، الكتابات ونتائجها، الأخطاء)، ويُحفظ أيضًا في ملف؛ وتظهر التحذيرات والأخطاء
-بجانب الألسنة بضع ثوانٍ.&lt;/li&gt;
-&lt;li&gt;عدة أجهزة على وصلة واحدة (RS-485، بوابة): &lt;b&gt;الاتصال&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;استطلاعات أبطأ مما طلبت؟ &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt; يشرح القراءات وزمن الاستجابة و&lt;b&gt;قيد الإرسال&lt;/b&gt;.&lt;/li&gt;
-&lt;li&gt;في أسفل الشريط الجانبي: &lt;b&gt;مساعدة&lt;/b&gt; (F1)، والتبديل إلى السمة &lt;b&gt;الفاتحة&lt;/b&gt; أو &lt;b&gt;الداكنة&lt;/b&gt;، و&lt;b&gt;اللغة&lt;/b&gt;
-(النظام، English، العربية)، وتسري عند التشغيل التالي.&lt;/li&gt;
-&lt;li&gt;&lt;b&gt;لوحة المفاتيح&lt;/b&gt;: Tab وShift+Tab تنتقلان بين عناصر التحكم، وتُظهر حلقةٌ أين أنت (النقر لا يُظهر
-شيئًا). كل مفتاح وحركة فأرة: &lt;b&gt;المفاتيح والفأرة&lt;/b&gt;.&lt;/li&gt;
-&lt;/ul&gt;
-</translation>
-    </message>
-    <message>
         <source>Fast streams</source>
         <translation>التدفقات السريعة</translation>
     </message>
@@ -3549,92 +3471,6 @@ kept).&lt;/li&gt;
     </message>
     <message>
         <source>
-&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;A selection&lt;/b&gt;&lt;/td&gt;&lt;td&gt;A &lt;b&gt;click&lt;/b&gt; on empty room in a table, a list, the Dump&apos;s cards or the bit strip, or
-&lt;b&gt;Esc&lt;/b&gt; with it in focus: nothing selected (what shows the selection follows: the Registers tab and the Dump clear
-together). In a dialog &lt;b&gt;Esc&lt;/b&gt; closes the dialog; the click still clears its lists. Devices on the link is a
-choice, one device always shown&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
-cancels · &lt;b&gt;Ctrl-click&lt;/b&gt; / &lt;b&gt;Shift-click&lt;/b&gt; select several, &lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; writes one value to all ·
-right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
-&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · &lt;b&gt;click&lt;/b&gt; empty room or &lt;b&gt;Esc&lt;/b&gt;: none selected, in both tabs ·
-right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
-&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
-&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
-division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
-all fit&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
-handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
-&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
-&lt;b&gt;Delete&lt;/b&gt; to remove · &lt;b&gt;Esc&lt;/b&gt;: none chosen&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
-Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
-arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
-it: 50 %&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
-Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
-Manual or Log tag: Auto ·
-&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
-values: Auto ·
-&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
-(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
-&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</source>
-        <translation>
-&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
-&lt;table cellpadding=&quot;4&quot;&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;التحديد&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على موضع فارغ في جدول أو قائمة أو بطاقات عرض الذاكرة أو شريط البتات، أو
-&lt;b&gt;Esc&lt;/b&gt; والتركيز عليه: لا شيء محدّد (وما يعرض التحديد يتبعه: لسان المسجّلات وعرض الذاكرة يُمسحان
-معًا). وفي نافذة حوار يغلق &lt;b&gt;Esc&lt;/b&gt; النافذة؛ والنقر يمسح قوائمها مع ذلك. «الأجهزة على الوصلة» اختيار، يُعرض
-فيه جهاز واحد دائمًا&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
-يلغي · &lt;b&gt;Ctrl مع النقر&lt;/b&gt; / &lt;b&gt;Shift مع النقر&lt;/b&gt; يحدّدان عدة صفوف، و&lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; يكتب قيمة واحدة فيها كلها ·
-النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · &lt;b&gt;النقر&lt;/b&gt; على موضع فارغ أو &lt;b&gt;Esc&lt;/b&gt;: لا شيء محدّد، في اللسانين ·
-النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
-&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
-&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
-كلها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
-مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
-&lt;b&gt;Delete&lt;/b&gt; للإزالة · &lt;b&gt;Esc&lt;/b&gt;: لا ملاحظة مختارة&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
-&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
-⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
-&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
-&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
-(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
-&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
-&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
-و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
-&lt;/table&gt;
-</translation>
-    </message>
-    <message>
-        <source>
 &lt;h2&gt;Connecting&lt;/h2&gt;
 &lt;h3&gt;TCP&lt;/h3&gt;
 &lt;p&gt;Host and port of any EVRe-over-TCP server: a device with a network port, a TCP gateway to a device,
@@ -4219,6 +4055,88 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
     <message>
         <source>
+&lt;h2&gt;Getting started&lt;/h2&gt;
+&lt;p&gt;EVRe Studio talks to any device that speaks &lt;b&gt;EVRe&lt;/b&gt;, over &lt;b&gt;TCP&lt;/b&gt; or a &lt;b&gt;serial / USB&lt;/b&gt; port: one
+device, or several on one link. It shows every register of the device&apos;s &lt;b&gt;map&lt;/b&gt; live, charts them, records them
+to CSV, writes them, and lets other programs reach the device through it (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;Listen&lt;/b&gt; hears what another
+program says to a USB device, and the Studio sends nothing.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;b&gt;Connection&lt;/b&gt; (left): choose TCP or Serial / USB (&lt;b&gt;Listen&lt;/b&gt;: see &lt;b&gt;Connecting&lt;/b&gt;), fill in the address or
+pick the port, &lt;b&gt;Connect&lt;/b&gt;.
+The pill turns green and the device ID appears under it (&lt;i&gt;not read yet&lt;/i&gt; until it is).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Registers&lt;/b&gt; tab: the values update at the poll rate (&lt;i&gt;Polling &amp;amp; recording&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;Tick &lt;b&gt;Plot&lt;/b&gt; on registers and open the &lt;b&gt;Chart&lt;/b&gt; tab.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;● Record CSV&lt;/b&gt; writes every register ticked &lt;b&gt;Log&lt;/b&gt;, once per poll.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;The last map you opened loads by itself (the first time: the first one in &lt;code&gt;maps/&lt;/code&gt;; a map given on the
+command line is for that run only). For another device, &lt;b&gt;Device map → Open…&lt;/b&gt;, or build one: &lt;b&gt;New&lt;/b&gt;, then
+&lt;b&gt;+ Register&lt;/b&gt;.&lt;/p&gt;
+&lt;h3&gt;What else is there&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Registers&lt;/b&gt;: search, groups (tick several), &lt;b&gt;Plot shown&lt;/b&gt; (Plot on every register shown, as many as the
+chart holds at the poll rate: &lt;i&gt;Chart &amp;amp; recording&lt;/i&gt;); select a register to see it in full and to &lt;b&gt;write&lt;/b&gt;
+it quickly under the table (a value, its enum list, its bits drawn as in a datasheet).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Chart&lt;/b&gt;: like an oscilloscope: memory depth apart from the view, &lt;b&gt;Hold&lt;/b&gt; / &lt;b&gt;Live&lt;/b&gt;, &lt;b&gt;Measure&lt;/b&gt;
+(min, max, mean, RMS, the area under a line: W → Wh), &lt;b&gt;Cursors&lt;/b&gt; A and B, &lt;b&gt;ƒ Math&lt;/b&gt; lines (SUPPLY_V *
+SUPPLY_I), and &lt;b&gt;Display&lt;/b&gt;: how the lines are drawn, by a graphics card when the computer has one.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Dump&lt;/b&gt;: the device&apos;s bytes as the reads bring them, each register a coloured chip, decoded beside.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame sent and received, raw reads and writes.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Map editor&lt;/b&gt;: make a map from nothing or change one, check it, and export it (a specification, a C header,
+a Python module).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (connects, writes and their results, errors), also saved to a file; warnings and errors
+pop up beside the tabs for a few seconds.&lt;/li&gt;
+&lt;li&gt;Several devices on one link (RS-485, a gateway): &lt;b&gt;Connecting&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;Slower polls than asked? &lt;b&gt;Polling &amp;amp; speed&lt;/b&gt; explains reads, latency and &lt;b&gt;In flight&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;At the bottom of the sidebar: &lt;b&gt;Help&lt;/b&gt; (F1), the switch to the &lt;b&gt;light&lt;/b&gt; or &lt;b&gt;dark&lt;/b&gt; theme, and the
+&lt;b&gt;Language&lt;/b&gt; (System, English, العربية), applied at the next start.&lt;/li&gt;
+&lt;li&gt;The sidebar folds to a thin bar: the arrow button at the end of its title, or &lt;b&gt;Ctrl+B&lt;/b&gt;. The bar keeps the
+link&apos;s dot and an icon for each card; an icon opens the sidebar at its card. Folding stops nothing.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Keyboard&lt;/b&gt;: Tab and Shift+Tab move between the controls, and a ring shows where you are (a click shows
+none). Every key and mouse action: &lt;b&gt;Keys &amp;amp; mouse&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+</source>
+        <translation>
+&lt;h2&gt;البدء&lt;/h2&gt;
+&lt;p&gt;يتحدث EVRe Studio مع أي جهاز يتكلم &lt;b&gt;EVRe&lt;/b&gt;، عبر &lt;b&gt;TCP&lt;/b&gt; أو منفذ &lt;b&gt;تسلسلي / USB&lt;/b&gt;: جهاز واحد، أو عدة
+أجهزة على وصلة واحدة. يعرض كل مسجّل في &lt;b&gt;خريطة&lt;/b&gt; الجهاز حيًّا، ويرسمها، ويسجّلها في CSV، ويكتبها، ويتيح
+لبرامج أخرى الوصول إلى الجهاز من خلاله (&lt;i&gt;API&lt;/i&gt;). &lt;b&gt;الاستماع&lt;/b&gt; يسمع ما يقوله برنامج آخر لجهاز ⁦USB⁩، ولا يرسل الاستوديو شيئًا.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;&lt;b&gt;الاتصال&lt;/b&gt; (على الجانب): اختر TCP أو تسلسلي / USB (&lt;b&gt;استماع&lt;/b&gt;: انظر &lt;b&gt;الاتصال&lt;/b&gt;)، واملأ العنوان أو اختر المنفذ، ثم &lt;b&gt;اتصال&lt;/b&gt;.
+تخضرّ الشارة ويظهر معرّف الجهاز تحتها (&lt;i&gt;لم يُقرأ بعد&lt;/i&gt; حتى يُقرأ).&lt;/li&gt;
+&lt;li&gt;لسان &lt;b&gt;المسجّلات&lt;/b&gt;: تتحدث القيم بمعدّل الاستطلاع (&lt;i&gt;الاستطلاع والتسجيل&lt;/i&gt;).&lt;/li&gt;
+&lt;li&gt;فعّل &lt;b&gt;رسم&lt;/b&gt; على مسجّلات وافتح لسان &lt;b&gt;المخطط&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;● تسجيل CSV&lt;/b&gt; يكتب كل مسجّل مفعّل عليه &lt;b&gt;تسجيل&lt;/b&gt;، مرة لكل استطلاع.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;آخر خريطة فتحتها تُحمَّل وحدها (في المرة الأولى: أول خريطة في &lt;code&gt;maps/&lt;/code&gt;؛ والخريطة المعطاة في سطر
+الأوامر لذلك التشغيل فقط). لجهاز آخر: &lt;b&gt;خريطة الجهاز ← فتح…&lt;/b&gt;، أو ابنِ واحدة: &lt;b&gt;جديد&lt;/b&gt;، ثم
+&lt;b&gt;+ مسجّل&lt;/b&gt;.&lt;/p&gt;
+&lt;h3&gt;ماذا هناك أيضًا&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;المسجّلات&lt;/b&gt;: البحث، والمجموعات (فعّل عدة)، و&lt;b&gt;رسم المعروض&lt;/b&gt; («رسم» على كل مسجّل معروض، بقدر ما يحمل
+المخطط بمعدّل الاستطلاع: &lt;i&gt;المخطط والتسجيل&lt;/i&gt;)؛ حدّد مسجّلًا لتراه كاملًا ولـ&lt;b&gt;تكتبه&lt;/b&gt;
+سريعًا تحت الجدول (قيمة، قائمة أسمائها، بتاتها مرسومة كما في ورقة البيانات).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المخطط&lt;/b&gt;: مثل راسم الإشارة: عمق الذاكرة منفصل عن العرض، &lt;b&gt;تثبيت&lt;/b&gt; / &lt;b&gt;مباشر&lt;/b&gt;، &lt;b&gt;القياسات&lt;/b&gt;
+(الأدنى، الأعلى، المتوسط، RMS، المساحة تحت الخط: W → Wh)، &lt;b&gt;المؤشران&lt;/b&gt; A وB، خطوط &lt;b&gt;ƒ الرياضيات&lt;/b&gt; (SUPPLY_V *
+SUPPLY_I)، و&lt;b&gt;العرض&lt;/b&gt;: كيف تُرسم الخطوط، ببطاقة رسوميات حين يكون في الحاسوب واحدة.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;: بايتات الجهاز كما تأتي بها القراءات، كل مسجّل شارة ملوّنة، مفكوكةً بجانبها.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار مُرسل ومستقبَل، وقراءات وكتابات خام.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;: اصنع خريطة من لا شيء أو غيّر واحدة، وافحصها، وصدّرها (مواصفة، ترويسة C،
+وحدة Python).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الاتصالات، الكتابات ونتائجها، الأخطاء)، ويُحفظ أيضًا في ملف؛ وتظهر التحذيرات والأخطاء
+بجانب الألسنة بضع ثوانٍ.&lt;/li&gt;
+&lt;li&gt;عدة أجهزة على وصلة واحدة (RS-485، بوابة): &lt;b&gt;الاتصال&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;استطلاعات أبطأ مما طلبت؟ &lt;b&gt;الاستطلاع والسرعة&lt;/b&gt; يشرح القراءات وزمن الاستجابة و&lt;b&gt;قيد الإرسال&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;في أسفل الشريط الجانبي: &lt;b&gt;مساعدة&lt;/b&gt; (F1)، والتبديل إلى السمة &lt;b&gt;الفاتحة&lt;/b&gt; أو &lt;b&gt;الداكنة&lt;/b&gt;، و&lt;b&gt;اللغة&lt;/b&gt;
+(النظام، English، العربية)، وتسري عند التشغيل التالي.&lt;/li&gt;
+&lt;li&gt;يُطوى الشريط الجانبي إلى شريط رفيع: بزر السهم في آخر سطر عنوانه، أو &lt;b&gt;Ctrl+B&lt;/b&gt;. يبقى في الشريط الرفيع
+نقطة الوصلة وأيقونة لكل بطاقة؛ والأيقونة تفتح الشريط الجانبي عند بطاقتها. الطيّ لا يوقف شيئًا.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;لوحة المفاتيح&lt;/b&gt;: Tab وShift+Tab تنتقلان بين عناصر التحكم، وتُظهر حلقةٌ أين أنت (النقر لا يُظهر
+شيئًا). كل مفتاح وحركة فأرة: &lt;b&gt;المفاتيح والفأرة&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+</translation>
+    </message>
+    <message>
+        <source>
 &lt;h2&gt;Registers &amp;amp; writes&lt;/h2&gt;
 &lt;p&gt;One row per register: address, name, &lt;b&gt;value&lt;/b&gt; (bold), unit, &lt;b&gt;decoded&lt;/b&gt; bit fields or enum name,
 type and access. Search box and group filter at the top. Hover a row for its description, raw bytes,
@@ -4262,6 +4180,8 @@ bit only), each flag by its name (click to flip it), and each wider field with i
 values, or &lt;i&gt;Value…&lt;/i&gt;);&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;Bits&lt;/b&gt;: the same bit view for an integer register without fields, the highest bit first.&lt;/li&gt;
 &lt;/ul&gt;
+&lt;p&gt;The arrow before &lt;b&gt;Write NAME&lt;/b&gt; folds the panel to that line, and the table gets its height; a click opens it
+again. It stays as you left it.&lt;/p&gt;
 &lt;p&gt;On a bus, &lt;b&gt;To all devices&lt;/b&gt; sends the value typed to every device in one broadcast frame, where the
 broadcast rule allows it (see &lt;b&gt;Connecting&lt;/b&gt;), after a confirmation, and reads each one back; the Log says which
 devices took it. It is offered once a value is typed.&lt;/p&gt;
@@ -4330,6 +4250,8 @@ columns&lt;/b&gt;, &lt;b&gt;Decoded column&lt;/b&gt;, &lt;b&gt;Log all&lt;/b&gt;
 المسمّاة، أو &lt;i&gt;القيمة…&lt;/i&gt;)؛&lt;/li&gt;
 &lt;li&gt;&lt;b&gt;البتات&lt;/b&gt;: عرض البتات نفسه لمسجّل صحيح بلا حقول، البت الأعلى أولًا.&lt;/li&gt;
 &lt;/ul&gt;
+&lt;p&gt;السهم قبل &lt;b&gt;كتابة NAME&lt;/b&gt; يطوي اللوحة إلى ذلك السطر فيأخذ الجدول ارتفاعها؛ والنقر عليه يفتحها
+من جديد. وتبقى كما تركتها.&lt;/p&gt;
 &lt;p&gt;على الناقل، يرسل &lt;b&gt;إلى كل الأجهزة&lt;/b&gt; القيمة المكتوبة إلى كل جهاز في إطار بث واحد، حيث
 تسمح قاعدة البث بذلك (انظر &lt;b&gt;الاتصال&lt;/b&gt;)، بعد تأكيد، ويقرأ كل واحد للتحقق؛ ويقول السجل أي
 الأجهزة قبلتها. يُعرض حين تُكتب قيمة.&lt;/p&gt;
@@ -4355,6 +4277,96 @@ Tab؛ والإزالة تسأل أولًا)، وتذكر &lt;b&gt;رسم حقل&
 تحت الفأرة. وفي أي مكان من
 الجدول: &lt;b&gt;رسم كل المعروض&lt;/b&gt;، &lt;b&gt;أزل المعروض من المخطط&lt;/b&gt;، &lt;b&gt;أزل الكل من المخطط&lt;/b&gt;، &lt;b&gt;ملاءمة
 الأعمدة&lt;/b&gt;، &lt;b&gt;عمود فك الترميز&lt;/b&gt;، &lt;b&gt;تسجيل الكل&lt;/b&gt; / &lt;b&gt;إلغاء تسجيل الكل&lt;/b&gt;، &lt;b&gt;إضافة مسجّل…&lt;/b&gt;.&lt;/p&gt;
+</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Keys &amp;amp; mouse&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Anywhere&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; this help · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; the next / previous control&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Sidebar&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+B&lt;/b&gt; folds it to a thin bar and opens it again (its arrow button too; an icon of
+the bar opens it at that card)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;A selection&lt;/b&gt;&lt;/td&gt;&lt;td&gt;A &lt;b&gt;click&lt;/b&gt; on empty room in a table, a list, the Dump&apos;s cards or the bit strip, or
+&lt;b&gt;Esc&lt;/b&gt; with it in focus: nothing selected (what shows the selection follows: the Registers tab and the Dump clear
+together). In a dialog &lt;b&gt;Esc&lt;/b&gt; closes the dialog; the click still clears its lists. Devices on the link is a
+choice, one device always shown&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Registers&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Double-click&lt;/b&gt; or &lt;b&gt;F2&lt;/b&gt; edits an rw value, &lt;b&gt;Enter&lt;/b&gt; writes it, &lt;b&gt;Esc&lt;/b&gt;
+cancels · &lt;b&gt;Ctrl-click&lt;/b&gt; / &lt;b&gt;Shift-click&lt;/b&gt; select several, &lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; writes one value to all ·
+right-click: the menu of the row and the table&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Dump&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a chip or a decode line: the register selected (in the Registers tab too) ·
+&lt;b&gt;double-click&lt;/b&gt;: the Registers tab on it · &lt;b&gt;click&lt;/b&gt; empty room or &lt;b&gt;Esc&lt;/b&gt;: none selected, in both tabs ·
+right-click: Show in Registers, Plot, Write…, Copy (on &lt;b&gt;Copy ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; zooms the time (below 1 s: the next 1, 2 or 5 per division) · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms Y around the mouse (Manual) ·
+&lt;b&gt;double-click&lt;/b&gt; Y back to Auto · &lt;b&gt;drag&lt;/b&gt; looks back through the memory, and holds · with &lt;b&gt;Cursors&lt;/b&gt; on, a
+&lt;b&gt;click&lt;/b&gt; places A, then B, a &lt;b&gt;drag&lt;/b&gt; moves the nearer (below 1 s with &lt;b&gt;Shift&lt;/b&gt;: to a tenth of a
+division); the mouse on a cursor&apos;s tag: its time (from T while the trigger holds the view)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Wheel&lt;/b&gt; over it, its &lt;b&gt;bar&lt;/b&gt; or its &lt;b&gt;arrows&lt;/b&gt; scroll it when the lines do not
+all fit&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Memory strip&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; / &lt;b&gt;drag&lt;/b&gt;: the view goes there, and holds (drag its box or
+handle: from where it was) · &lt;b&gt;wheel&lt;/b&gt;: a window earlier or later&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Chart, right-click&lt;/b&gt;&lt;/td&gt;&lt;td&gt;pictures, Export to CSV, Add note here, Open recording (all but the note on
+&lt;b&gt;File ▾&lt;/b&gt; too)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Note&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;drag&lt;/b&gt; its tag to move it · &lt;b&gt;double-click&lt;/b&gt; to edit · &lt;b&gt;click&lt;/b&gt;, then
+&lt;b&gt;Delete&lt;/b&gt; to remove · &lt;b&gt;Esc&lt;/b&gt;: none chosen&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Measurements&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Right-click&lt;/b&gt; the header: show or hide columns&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Legend&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; or &lt;b&gt;right-click&lt;/b&gt; a line&apos;s chip (its ▾): its Histogram or
+Spectrum, Trigger on this line&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Trigger&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Drag&lt;/b&gt; its level&apos;s T▸ marker (left of the chart), tab (right of it) or dashed line · &lt;b&gt;click&lt;/b&gt; the tab&apos;s
+arrow: rising, falling, either · &lt;b&gt;drag&lt;/b&gt; the T ▼ flag above the chart: where the crossing sits · &lt;b&gt;double-click&lt;/b&gt;
+it: 50 %&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Lanes&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Click&lt;/b&gt; a lane&apos;s ⋯ or &lt;b&gt;right-click&lt;/b&gt; its values: its Y range (Auto, Manual…,
+Log, All lanes: Auto), Fold lane · &lt;b&gt;click&lt;/b&gt; its values: the current lane (the Y range row) · &lt;b&gt;click&lt;/b&gt; its
+Manual or Log tag: Auto ·
+&lt;b&gt;wheel&lt;/b&gt; over the values scrolls the lanes · &lt;b&gt;Ctrl + wheel&lt;/b&gt; zooms the lane · &lt;b&gt;double-click&lt;/b&gt; it or its
+values: Auto ·
+&lt;b&gt;click&lt;/b&gt; its ▾ or unit name: fold it, the strip: open it · &lt;b&gt;drag&lt;/b&gt; the line between two lanes: their heights
+(&lt;b&gt;double-click&lt;/b&gt; it: equal)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Map editor&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; undo / redo · &lt;b&gt;Ctrl+D&lt;/b&gt; duplicate · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; copy / paste registers (as JSON, also between maps) · &lt;b&gt;Del&lt;/b&gt; delete&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;Math line&lt;/b&gt;&lt;/td&gt;&lt;td&gt;The list of names: &lt;b&gt;Up&lt;/b&gt; / &lt;b&gt;Down&lt;/b&gt; pick, &lt;b&gt;Enter&lt;/b&gt; or &lt;b&gt;Tab&lt;/b&gt; takes one,
+&lt;b&gt;Esc&lt;/b&gt; closes it&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
+</source>
+        <translation>
+&lt;h2&gt;المفاتيح والفأرة&lt;/h2&gt;
+&lt;table cellpadding=&quot;4&quot;&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;في أي مكان&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;F1&lt;/b&gt; هذه المساعدة · &lt;b&gt;Tab&lt;/b&gt; / &lt;b&gt;Shift+Tab&lt;/b&gt; عنصر التحكم التالي / السابق&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الشريط الجانبي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+B&lt;/b&gt; يطويه إلى شريط رفيع ويفتحه من جديد (وزر السهم فيه أيضًا؛ وأيقونة
+في الشريط الرفيع تفتحه عند بطاقتها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;التحديد&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على موضع فارغ في جدول أو قائمة أو بطاقات عرض الذاكرة أو شريط البتات، أو
+&lt;b&gt;Esc&lt;/b&gt; والتركيز عليه: لا شيء محدّد (وما يعرض التحديد يتبعه: لسان المسجّلات وعرض الذاكرة يُمسحان
+معًا). وفي نافذة حوار يغلق &lt;b&gt;Esc&lt;/b&gt; النافذة؛ والنقر يمسح قوائمها مع ذلك. «الأجهزة على الوصلة» اختيار، يُعرض
+فيه جهاز واحد دائمًا&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسجّلات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر مزدوج&lt;/b&gt; أو &lt;b&gt;F2&lt;/b&gt; يحرّر قيمة rw، و&lt;b&gt;Enter&lt;/b&gt; يكتبها، و&lt;b&gt;Esc&lt;/b&gt;
+يلغي · &lt;b&gt;Ctrl مع النقر&lt;/b&gt; / &lt;b&gt;Shift مع النقر&lt;/b&gt; يحدّدان عدة صفوف، و&lt;b&gt;F2&lt;/b&gt; + &lt;b&gt;Enter&lt;/b&gt; يكتب قيمة واحدة فيها كلها ·
+النقر بالزر الأيمن: قائمة الصف والجدول&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;عرض الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على شارة أو سطر فك ترميز: يُحدَّد المسجّل (في لسان المسجّلات أيضًا) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt;: لسان المسجّلات عليه · &lt;b&gt;النقر&lt;/b&gt; على موضع فارغ أو &lt;b&gt;Esc&lt;/b&gt;: لا شيء محدّد، في اللسانين ·
+النقر بالزر الأيمن: إظهار في المسجّلات، رسم، كتابة…، نسخ (وفي &lt;b&gt;نسخ ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; تكبّر الزمن (تحت ⁦1 s⁩: النافذة التالية بـ 1 أو 2 أو 5 لكل تقسيمة) · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر Y حول الفأرة (يدوي) ·
+&lt;b&gt;نقر مزدوج&lt;/b&gt; يعيد Y إلى تلقائي · &lt;b&gt;السحب&lt;/b&gt; ينظر إلى الخلف عبر الذاكرة، ويثبّت · مع تفعيل &lt;b&gt;المؤشرين&lt;/b&gt;،
+&lt;b&gt;النقر&lt;/b&gt; يضع A ثم B، و&lt;b&gt;السحب&lt;/b&gt; يحرّك الأقرب (تحت ⁦1 s⁩ مع &lt;b&gt;Shift&lt;/b&gt;: إلى عُشر تقسيمة)؛ والفأرة على وسم مؤشر: وقته (من T حين يثبّت القدح العرض)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;العجلة&lt;/b&gt; فوقه، أو &lt;b&gt;شريطه&lt;/b&gt; أو &lt;b&gt;سهماه&lt;/b&gt; تمرّره حين لا تتسع الخطوط
+كلها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;شريط الذاكرة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;نقر&lt;/b&gt; / &lt;b&gt;سحب&lt;/b&gt;: يذهب العرض إلى هناك، ويثبت (سحب مربعه أو
+مقبضه: من حيث كان) · &lt;b&gt;العجلة&lt;/b&gt;: نافذة إلى الأقدم أو الأحدث&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المخطط، النقر بالزر الأيمن&lt;/b&gt;&lt;/td&gt;&lt;td&gt;الصور، تصدير إلى CSV، إضافة ملاحظة هنا، فتح تسجيل (كلها عدا الملاحظة على &lt;b&gt;ملف ▾&lt;/b&gt; أيضًا)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الملاحظة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; وسمها لتحرّكها · &lt;b&gt;نقر مزدوج&lt;/b&gt; للتحرير · &lt;b&gt;نقر&lt;/b&gt;، ثم
+&lt;b&gt;Delete&lt;/b&gt; للإزالة · &lt;b&gt;Esc&lt;/b&gt;: لا ملاحظة مختارة&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القياسات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على الترويسة: إظهار الأعمدة أو إخفاؤها&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المفتاح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على شارة خط (زرّها ▾): مدرّجه التكراري أو طيفه، والقدح على هذا الخط&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;القدح&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;اسحب&lt;/b&gt; علامة مستواه ⁦T▸⁩ (يسار المخطط) أو لسانه (يمينه) أو خطه المتقطع · &lt;b&gt;انقر&lt;/b&gt; سهم اللسان: صاعد، هابط، أيّهما ·
+&lt;b&gt;اسحب&lt;/b&gt; العلَم ⁦T ▼⁩ فوق المخطط: موضع العبور · &lt;b&gt;انقر نقرًا مزدوجًا&lt;/b&gt; عليه:
+⁦50 %⁩&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;المسارات&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;النقر&lt;/b&gt; على ⋯ مسار أو &lt;b&gt;النقر بالزر الأيمن&lt;/b&gt; على قيمه: مدى Y له (تلقائي، يدوي…، لوغاريتمي، كل المسارات: تلقائي)، وطيّ المسار · &lt;b&gt;النقر&lt;/b&gt; على قيمه: المسار الحالي (صف مدى Y) · &lt;b&gt;النقر&lt;/b&gt; على وسمه يدوي أو لوغاريتمي: تلقائي ·
+&lt;b&gt;العجلة&lt;/b&gt; فوق القيم تمرّر المسارات · &lt;b&gt;Ctrl + العجلة&lt;/b&gt; تكبّر المسار · &lt;b&gt;نقر مزدوج&lt;/b&gt; عليه أو على قيمه: تلقائي ·
+&lt;b&gt;النقر&lt;/b&gt; على ▾ أو اسم وحدته: طيّه، وعلى الشريحة: فتحه · &lt;b&gt;سحب&lt;/b&gt; الخط بين مسارين: ارتفاعاهما
+(&lt;b&gt;النقر المزدوج&lt;/b&gt; عليه: تتساوى كلها)&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;محرر الخريطة&lt;/b&gt;&lt;/td&gt;&lt;td&gt;&lt;b&gt;Ctrl+Z&lt;/b&gt; / &lt;b&gt;Ctrl+Y&lt;/b&gt; تراجع / إعادة · &lt;b&gt;Ctrl+D&lt;/b&gt; تكرار · &lt;b&gt;Ctrl+C&lt;/b&gt; /
+&lt;b&gt;Ctrl+V&lt;/b&gt; نسخ / لصق المسجّلات (بصيغة JSON، وبين الخرائط أيضًا) · &lt;b&gt;Del&lt;/b&gt; حذف&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;&lt;td&gt;&lt;b&gt;الخط الرياضي&lt;/b&gt;&lt;/td&gt;&lt;td&gt;قائمة الأسماء: &lt;b&gt;الأعلى&lt;/b&gt; / &lt;b&gt;الأسفل&lt;/b&gt; للاختيار، و&lt;b&gt;Enter&lt;/b&gt; أو &lt;b&gt;Tab&lt;/b&gt; يأخذ واحدًا،
+و&lt;b&gt;Esc&lt;/b&gt; يغلقها&lt;/td&gt;&lt;/tr&gt;
+&lt;/table&gt;
 </translation>
     </message>
 </context>
@@ -7215,6 +7227,14 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>(several values)</source>
         <translation>(قيم متعددة)</translation>
     </message>
+    <message>
+        <source>Open the quick-write panel</source>
+        <translation>فتح لوحة الكتابة السريعة</translation>
+    </message>
+    <message>
+        <source>Fold the quick-write panel</source>
+        <translation>طيّ لوحة الكتابة السريعة</translation>
+    </message>
 </context>
 <context>
     <name>RecordingWindow</name>
@@ -8955,6 +8975,49 @@ Not remembered: it changes the device, so it is off at every start.</source>
 %2 samples in %3 blocks since Start; %4 bad blocks; %5 samples not shown (the window did not take them in time).</source>
         <translation>العينات في الثانية كما تقيس ساعة البرنامج ساعة الجهاز: المعدّل الذي ضُبط عليه الجهاز، مصحَّحًا بـ ⁦%1⁩ (أجزاء في المليون).
 العينات: %2 في %3 كتلة منذ البدء؛ الكتل التالفة: %4؛ عينات لم تُعرض: %5 (لم تأخذها النافذة في وقتها).</translation>
+    </message>
+    <message>
+        <source>Fold the sidebar (Ctrl+B)</source>
+        <translation>طيّ الشريط الجانبي (Ctrl+B)</translation>
+    </message>
+</context>
+<context>
+    <name>SidebarRail</name>
+    <message>
+        <source>Open the sidebar (Ctrl+B)</source>
+        <translation>فتح الشريط الجانبي (Ctrl+B)</translation>
+    </message>
+    <message>
+        <source>Connection</source>
+        <translation>الاتصال</translation>
+    </message>
+    <message>
+        <source>Devices on the link</source>
+        <translation>الأجهزة على الوصلة</translation>
+    </message>
+    <message>
+        <source>Device map</source>
+        <translation>خريطة الجهاز</translation>
+    </message>
+    <message>
+        <source>Fast streams</source>
+        <translation>التدفقات السريعة</translation>
+    </message>
+    <message>
+        <source>Polling &amp; recording</source>
+        <translation>الاستطلاع والتسجيل</translation>
+    </message>
+    <message>
+        <source>API server</source>
+        <translation>خادم API</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>اللغة</translation>
+    </message>
+    <message>
+        <source>Help (F1)</source>
+        <translation>مساعدة (F1)</translation>
     </message>
 </context>
 <context>

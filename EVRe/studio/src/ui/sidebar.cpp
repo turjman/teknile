@@ -26,6 +26,7 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QTimer>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QStyleOptionComboBox>
@@ -38,6 +39,7 @@
 
 #include "ui/bus_panel.h"
 #include "ui/elided_label.h"
+#include "ui/fold_button.h"
 #include "ui/language.h"
 #include "ui/limit_spin_box.h"
 #include "ui/recording_window.h"
@@ -137,16 +139,44 @@ Sidebar::Sidebar(QWidget *parent) : QScrollArea(parent) {
 	title->setObjectName(QStringLiteral("appTitle"));
 	auto *subtitle = new QLabel(tr("registers · live charts · CSV"));
 	subtitle->setObjectName(QStringLiteral("appSub"));
-	layout->addWidget(title);
+	/* the fold button ends the title's row, centred on it; in Arabic at the window's edge, the title beside it (the
+	 * owner's preview). Hidden while the sidebar slides, its room kept: the title does not move */
+	foldButton_ = new FoldButton(32);
+	foldButton_->setObjectName(QStringLiteral("sidebarFold"));
+	foldButton_->setPoints(FoldButton::Points::Start); /* toward the window's edge, where the sidebar goes */
+	foldButton_->setToolTip(tr("Fold the sidebar (Ctrl+B)"));
+	foldButton_->setAccessibleName(foldButton_->toolTip());
+	QSizePolicy kept = foldButton_->sizePolicy();
+	kept.setRetainSizeWhenHidden(true);
+	foldButton_->setSizePolicy(kept);
+	connect(foldButton_, &FoldButton::clicked, this, &Sidebar::foldClicked);
+	auto *titleRow = new QHBoxLayout;
+	titleRow->setSpacing(8);
+	/* the title as wide as its text: a Latin name in a label stretched would sit at the row's far end in Arabic */
+	if (isRightToLeft()) {
+		titleRow->addWidget(foldButton_, 0, Qt::AlignVCenter);
+		titleRow->addWidget(title);
+		titleRow->addStretch(1);
+	} else {
+		titleRow->addWidget(title);
+		titleRow->addStretch(1);
+		titleRow->addWidget(foldButton_, 0, Qt::AlignVCenter);
+	}
+	/* the row is the button's height: the top margin gives back half of what it adds, the cards stay where they were */
+	const int taller = std::max(0, foldButton_->sizeHint().height() - title->sizeHint().height());
+	layout->setContentsMargins(16, std::max(6, 18 - taller / 2), 16, 14);
+	layout->addLayout(titleRow);
 	layout->addWidget(subtitle);
-	layout->addWidget(buildConnectionCard());
-	layout->addWidget(buildBusCard());
-	layout->addWidget(buildMapCard());
-	layout->addWidget(buildFastCard()); /* the map's streams, right under the map; before the fold of a laptop screen */
-	layout->addWidget(buildPollingCard());
-	layout->addWidget(buildApiCard());
+	layout->addWidget(cards_[int(Card::Connection)] = buildConnectionCard());
+	layout->addWidget(cards_[int(Card::Devices)] = buildBusCard());
+	layout->addWidget(cards_[int(Card::Map)] = buildMapCard());
+	/* the map's streams, right under the map; before the fold of a laptop screen */
+	layout->addWidget(cards_[int(Card::Fast)] = buildFastCard());
+	layout->addWidget(cards_[int(Card::Polling)] = buildPollingCard());
+	layout->addWidget(cards_[int(Card::Api)] = buildApiCard());
 	layout->addStretch();
 	addFooter(layout);
+	cards_[int(Card::Language)] = language_;
 
 	setWidget(content);
 	setWidgetResizable(true);
@@ -1234,6 +1264,34 @@ void Sidebar::showLinkState(const QString &state, const QString &text, const QSt
 	const QString dot = QStringLiteral("●  ");
 	linkState_->setFullText(dot + text, toolTip, shorter.isEmpty() ? QString() : dot + shorter);
 	repolish(linkState_);
+	pillState_ = state;
+	pillText_ = text;
+	emit linkShown();
+}
+
+/* ------------------------------------------------------ the cards, for the thin bar */
+
+QWidget *Sidebar::cardWidget(Card card) const { return cards_[int(card)]; }
+
+QString Sidebar::pollRateText() const { return pollInfo_->text(); }
+
+void Sidebar::showCard(Card card) {
+	QWidget *target = cards_[int(card)];
+	if (!target || target->isHidden()) return;
+	if (widget()->layout()) widget()->layout()->activate(); /* folded from the start: never laid out yet */
+	const int top = target->mapTo(widget(), QPoint(0, 0)).y();
+	verticalScrollBar()->setValue(card == Card::Language ? verticalScrollBar()->maximum() : top - 8);
+	if (card == Card::Language) {
+		language_->setFocus(Qt::OtherFocusReason);
+		return;
+	}
+	/* its edge in the accent a moment: the eye finds the card the icon named */
+	target->setProperty("lit", true);
+	repolish(target);
+	QTimer::singleShot(LIT_MS, target, [target] {
+		target->setProperty("lit", false);
+		repolish(target);
+	});
 }
 
 /* ------------------------------------------------------------- the map card */
@@ -1510,6 +1568,7 @@ void Sidebar::setFastStreams(const QVector<StreamDef> &streams) {
 	}
 	fastCard_->setVisible(!fastRows_.isEmpty());
 	setFastOffered(fastOffered_, fastWhy_, fastShortWhy_);
+	emit cardsChanged();
 }
 
 QString Sidebar::streamRateText(double hz, int digits) {
@@ -1769,7 +1828,10 @@ void Sidebar::showPollRate(const IoEngine::Stats &stats, bool connected) {
 	/* the rate alone here: the card keeps its height. Why it is slower than asked goes to the status bar; with auto
 	 * send on, the polls read only the rest, at whatever pace the frames leave them: no hint */
 	slowHint_ = connected && poll_->isChecked() && !stats.autoSend ? slowPollReason(stats) : QString();
-	pollInfo_->setText(info);
+	if (pollInfo_->text() != info) {
+		pollInfo_->setText(info);
+		emit linkShown();
+	}
 	/* Listen: what comes without anyone polling, under the Auto send row that cannot be ticked */
 	const QString heard = listening_ && connected && stats.autoSend ? tr("heard %1/s").arg(rate(stats.autoSendHz)) : QString();
 	if (heard != heardNote_) {

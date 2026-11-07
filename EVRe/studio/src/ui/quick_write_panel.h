@@ -24,7 +24,11 @@
  * when they differ), a list under it shows each one's value as the polls bring
  * it, the names list only when they all have the same names; Default, To all
  * devices and the bits are hidden. Write asks for a bulk write
- * (bulkWriteRequested), as the menu's entry and F2 do. */
+ * (bulkWriteRequested), as the menu's entry and F2 do.
+ *
+ * The fold mark before the title (FoldButton, the sidebar's chevron at the title's height) folds the panel to its
+ * title's line, the table getting the height back (its selected row kept in view, keepCurrentInView); a click on it
+ * opens the panel again. Folded or not is saved at once ("ui/quickWriteFolded"). */
 #pragma once
 
 #include <QFrame>
@@ -34,6 +38,7 @@
 struct RegDef;
 
 class BitView;
+class FoldButton;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -60,6 +65,10 @@ public:
 	 * broadcast button */
 	using BroadcastRule = std::function<QString(const RegDef &)>;
 	void setBroadcastRule(BroadcastRule rule);
+	/* folded to the title's line (saved), or open */
+	bool folded() const { return folded_; }
+	void setFolded(bool folded);
+	FoldButton *foldButton() const { return fold_; } /* tests */
 
 signals:
 	/* as RegisterModel::writeRequested; base: the raw value the text was chosen against. Handled at
@@ -104,4 +113,8 @@ private:
 	QWidget *bitArea_;          /* where the bit view goes */
 	QTableWidget *targets_;     /* several selected: each one and its value now */
 	BitView *bitView_ = nullptr;
+	FoldButton *fold_;
+	QWidget *controls_;         /* the title's row after the title: hidden when folded */
+	QWidget *body_;             /* under the row: the list of several, the bit view */
+	bool folded_ = false;
 };

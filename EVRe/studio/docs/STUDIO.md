@@ -134,6 +134,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [14.2 Environment variables](#142-environment-variables)
     - [14.3 Settings](#143-settings)
     - [14.4 Help, the theme and the language](#144-help-the-theme-and-the-language)
+    - [14.5 Folding the sidebar](#145-folding-the-sidebar)
   - [15. Troubleshooting and FAQ](#15-troubleshooting-and-faq)
     - [15.1 The pill turns red: *Connection refused*](#151-the-pill-turns-red-connection-refused)
     - [15.2 It connects, then drops after a moment](#152-it-connects-then-drops-after-a-moment)
@@ -1305,6 +1306,7 @@ The panel has one row of controls:
 | **To&nbsp;all&nbsp;devices** | On a bus only (3.9): the value typed, to every device on the link in one broadcast frame, after a confirmation; then each device is read back and the Log says whether every one took it. Enabled only where the broadcast rule allows it (3.10); the tooltip says why not. |
 | **Bits** | Shown for an integer register that has no bit fields and no scale or offset. Ticked, it draws the bit view (5.4) for that register too. Saved (`ui/quickBits`). |
 | Hint,&nbsp;at&nbsp;the&nbsp;right | *tick Allow writes to write*, or *not connected*. |
+| Fold&nbsp;mark | Before the title: the sidebar's fold button (14.5) at the title's height, pointing down. A click folds the panel to the title's line (tooltip *Fold the quick-write panel*); the mark then points to the title's end, and a click opens it again (*Open the quick-write panel*). Saved (`ui/quickWriteFolded`). |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../../docs/assets/pictures/quick-write-dark.png">
@@ -1314,6 +1316,10 @@ The panel has one row of controls:
 *Above: SETPOINT, its limits in the box's hint and a Default button; below: LED_MODE's list of names open, Bits ticked.*
 
 The controls are enabled only while **Allow writes** is on **and** the link is up. The hint says which of the two is missing.
+
+**Folded**, the panel is one line, its fold mark and *Write NAME*: the value box, the buttons, the bit view and the
+list of several are hidden, and the register table gets the height back. It stays folded when another register is
+selected. Opened again, the table gets shorter and keeps its selected row in view (4.11's rule for every list).
 
 **Several registers selected** (two or more rw rows of one type, with Ctrl-click or Shift-click; read-only rows in the
 selection are left out): the panel writes one value to all of them, through the dialog of 6.6, as the right-click
@@ -1862,6 +1868,7 @@ On the grid the tooltip and the line give the place first, as above. In Arabic e
 | Measurement&nbsp;table's&nbsp;header | Right-click | Show or hide columns (8). |
 | Measurement&nbsp;table | Click&nbsp;below&nbsp;the&nbsp;rows&nbsp;/&nbsp;Esc | No cell selected (4.11). |
 | Anywhere | F1 | Help. |
+| Anywhere | Ctrl&nbsp;+&nbsp;B | Fold or open the sidebar (14.5). |
 | Register&nbsp;table | Enter&nbsp;/&nbsp;Esc&nbsp;/&nbsp;F2 | Write the edited value / cancel the edit / start an edit. |
 
 <picture>
@@ -3426,6 +3433,8 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `ui/decodedColumn` | `false` | on&nbsp;change | Decoded column shown. |
 | `registers/glow` | `true` | on&nbsp;change | The Registers tab's Glow: a value that changes after 2 s of rest glows, with an arrow for a number's direction; the Dump's bytes too (4.3). |
 | `ui/quickBits` | `false` | on&nbsp;change | Quick write: Bits ticked. |
+| `ui/quickWriteFolded` | `false` | on&nbsp;change | Quick write: the panel folded to its title's line (5.1). |
+| `ui/sidebarFolded` | `false` | on&nbsp;change | The sidebar folded to its thin bar (14.5). |
 | `ui/mapEditorSplit` | empty | on&nbsp;change | The place of the handle between the Map editor's table and its form (`QSplitter::saveState`); empty: 1100 to 420. |
 | `ui/popups` | `true` | on&nbsp;change | Log: Pop-ups. |
 | `dump/colour` | `all` | on&nbsp;change | The Dump tab's Colour: `all` (every register's chips in colour) or `plotted` (only the plotted ones) (37.3). |
@@ -3545,6 +3554,41 @@ files programs read (CSV, JSON, the C header, the Python module) do not change.
 </picture>
 
 *The Chart tab in Arabic: the controls mirrored, while the chart, its legend and the measured values read left to right.*
+
+### 14.5 Folding the sidebar
+
+The sidebar folds to a thin bar, 40 px wide, and the tabs take the width. Three ways fold and open it:
+
+| Where | Action | Effect |
+|---|---|---|
+| Fold&nbsp;button | Click | The arrow button at the end of the title's row (*EVRe Studio*), tooltip *Fold the sidebar (Ctrl+B)*: folds it. |
+| Open&nbsp;button | Click | The same arrow at the top of the thin bar, pointing the other way, tooltip *Open the sidebar (Ctrl+B)*: opens it. |
+| Anywhere | Ctrl+B | Folds or opens it. |
+| A&nbsp;card's&nbsp;icon | Click | Opens the sidebar at that card: scrolled to it, its edge lit in the accent for a moment. |
+
+The thin bar holds, from the top: the open button; the link's dot, in the pill's colour (grey not connected, amber
+connecting, green connected, blue listening, red an error), its tooltip the pill's text and the poll rate; one icon
+for each card, in the sidebar's order (Connection, Devices on the link, Device map, Fast streams only while the map
+has streams, Polling & recording, API server), each with the card's name as its tooltip; and at its foot **Help**
+(the Help, as F1, the sidebar left folded) and **Language** (the sidebar opened at the language box). Every button
+is lit under the mouse, shows the pointing hand and takes the keyboard's focus (Tab, then Space).
+
+The buttons are drawn, not text: a chevron on a 32 px square with rounded corners (8 px), framed as a button, its
+edge in the accent under the mouse, filled with the accent while pressed and ringed with the focus from the
+keyboard. The quick-write panel's fold mark (5.1) is the same control at its title's height.
+
+The sidebar slides (220 ms): it moves out over the window's edge while the bar comes out from under it. The button
+of the side arriving (the sidebar's fold button, the bar's open button) is hidden while it slides and fades in once
+it is there. The Studio has no animation setting of its own: the slide follows the system's choice of less motion,
+Windows' *Animation effects* (Settings, Accessibility, Visual effects; the switch browsers read as
+*prefers-reduced-motion*). With it off the sidebar is folded or open at once. Linux has no such switch: it slides.
+
+In Arabic the sidebar is on the right: the fold button sits at the window's edge with the title beside it, the bar is
+at the right edge and both chevrons are mirrored.
+
+Folding only hides the sidebar: the link, the polls, a recording, the fast streams and the API go on, and nothing it
+holds changes. Folded or open is saved at once (`ui/sidebarFolded`) and the next start opens that way, without the
+slide. A recording's window has no sidebar.
 
 ## 15. Troubleshooting and FAQ
 
@@ -5098,6 +5142,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/api/api_server.h`,&nbsp;`.cpp` | `ApiServer`: EVRe pass-through on 1219, JSON lines on 1220, streams, write permissions, `broadcastWriteRefusal` (a pass-through broadcast under the rule) |
 | `src/ui/main_window.h`,&nbsp;`.cpp` | `MainWindow`: builds the window, wires the parts to the engine, sync per frame, writes, CSV, API, log |
 | `src/ui/sidebar.h`,&nbsp;`.cpp` | `Sidebar`: the connection (with Listen's segment and line, 3.11), devices, map, polling and recording, fast streams, and API cards; link settings |
+| `src/ui/sidebar_dock.h`,&nbsp;`.cpp` | `SidebarDock`: the sidebar or its thin bar (`SidebarRail`), the slide between them, `ui/sidebarFolded` (14.5) |
+| `src/ui/fold_button.h`,&nbsp;`.cpp` | `FoldButton`: the drawn chevron button of the sidebar's fold, the thin bar's open and the quick-write panel's title |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
 | `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon; `setLines`: always that many lines tall, the text wrapped between words and cut at the end of the last, Auto send's note) |
@@ -5132,7 +5178,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
@@ -5616,11 +5662,14 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested by |
 |---|---|---|---|
 | `MainWindow` | puts the parts together; the only object that talks to the engine | `applyStartup`, `sync`, `connectLink` (the baud rate checked, the link's kind to the engine), `onClosed(why, detail)`, `markDeviceInfoLost` (the IDs read become *last seen*), `deviceInfoAtOpen` (tests), `onWriteRequested`, `loadMap`, `pushMap`, `pushPlotted`, `engineRead`, `engineWrite`, `logEvent`, `refreshStatus`; fast streams: `showFastStreams`, `updateFastOffer`, `onFastStreamSet`, `stopFastStreams`, `engineFastWatch` (tests: the engine's trigger watch on a stream) | GUI test |
-| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions, `setListening`; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams) |
+| `Sidebar` | holds the choices and shows the states; the window does the work | getters (`host`, `port`, `token`, `inFlight`, ...), `show...` functions, `setListening`; the serial link (3.2): `serialKindOf` (static: USB CDC or a UART by the USB IDs), `serialBaudLimited`, `addPort` (one port's label, cut to the box by `elidePortLabels`, whole in the tooltip and the list opened), `baud` with `BAUD_MIN` / `BAUD_MAX` and `focusBaud`, `showLinkError(why, detail)` (the reason whole, on two lines when it does not fit), `wholePieces` (static: the device line's pieces kept whole with no-break spaces); signals `connectClicked`, `slaveChanged`, `pollingChanged`, `timingChanged`, `inFlightChanged`, `apiServeChanged`, `apiWritesChanged`, ..., `suggestedInFlight` (the poll hint's In flight, never past `IoEngine::MAX_POLLS_UNDER_WAY` x blocks); Auto send (13.8): `autoSendOn`, `autoSendHz`, `setAutoSendHz`, `setAutoSendOn` (without the signal), `setAutoSendOffered(offered, why, shortWhy)` (shortWhy: the greyed rate list's reason), `setAutoSendLimits(protocol)` (the list from the map's `auto_send`, true when it changed), `setAutoSendTaken(hz, uartBaud, why)` (the rate written: the measured note's yardstick, the UART's note), `shiftAutoSendClock` (tests), signal `autoSendChanged`; the pill's serial name `serialLinkText(port, baud, baudLimited)` (static: *COM13 · USB CDC* or *COM13 @ 115200*) and `showConnected(link, note)`; Fast streams (13.9): `setFastStreams` (a row a stream, the card hidden without one), `setFastOn` (without the signal), `setFastOffered(offered, why, shortWhy)`, `fastOn`, `fastCard`, `fastButton`, `fastRateText`, `fastLostText` (for the tests), signal `fastStreamToggled(stream, on)`; a channel's Plot tick (7.14): `setFastPlot` (without the signal), `fastPlot`, `clearFastPlots`, `setFastPlotsEnabled(enabled, why)`, `showFastValues`, `fastPlotBox`, `fastLogBox` / `fastNotLogged` (a stream's Log, 13.9), `streamRateText` (static: *1 MS/s*, a stream's header) / `fastValueText` / `fastRateTip` (for the tests), signal `fastPlotToggled(stream, channel, on)`; the fold (14.5): `foldButton`, `cardWidget`, `showCard(card)` (scrolled to it, lit `LIT_MS`), `linkStateName` / `linkStateText` / `pollRateText` (the thin bar's dot), signals `foldClicked`, `linkShown`, `cardsChanged` | GUI test (Connect, Disconnect, Poll, Auto send, Fast streams, the fold) |
 | `RegistersTab` | the table and its tools (the Glow box: `registers/glow`); edits the map on the model | `setConnected`, `setListening`, `setShown`, `refreshStatus`, `bulkTargets` (the rows selected that one value can go to, 6.6); signals `writeRequested`, `bulkWriteRequested`, `readRequested` (a row: read from its own device), `writesAllowedChanged`, `unplotAllRequested`, `mapEdited`, `statusMessage`; `clearSelection` (the Dump's empty room clears both tabs) | GUI test |
 | `BulkWriteDialog` | one value to several registers (6.6); only asks, the window writes | `evaluate` (static: a register's bytes for the text, or why not, and a limit's note), `shownText` (static: `blink (2)`), `text`, `entries`, `writable` | GUI test (bulk write step) |
 | `ValueDelegate` | draws the value, the glow (tint, bar, text, the direction's triangle in its kept slot) and the ⓘ mark; the editor keeps `base` | `createEditor`, `setEditorData` (once), `setModelData` (`WriteRole`), `keepColourWhenSelected` (static: a selected row's cell in its own colour, the Decoded column's too), `valueRect`, `arrowRect`, `barRect`, `glowText` (static, the tests too) | GUI test (typed text kept, tooltips, the glow, a selected stale value grey) |
-| `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; or one value for several selected; only asks | `showRegister`, `showRegisters` (several: their rows, or the types that differ), `setConnected`, `setBroadcastRule`; signals `writeRequested`, `broadcastRequested`, `bulkWriteRequested` | GUI test (value, bits, danger flag, link state, bulk write) |
+| `QuickWritePanel` | writes the selected RW register: typed, a named value, a field; or one value for several selected; only asks | `showRegister`, `showRegisters` (several: their rows, or the types that differ), `setConnected`, `setBroadcastRule`, `setFolded` / `folded` (`ui/quickWriteFolded`); signals `writeRequested`, `broadcastRequested`, `bulkWriteRequested` | GUI test (value, bits, danger flag, link state, bulk write, the fold) |
+| `SidebarDock` | the sidebar or its thin bar, and the slide between them (`SLIDE_MS`, the arriving button faded in over `FADE_MS`, none with `reducedMotion`) | `setFolded`, `toggle` (Ctrl+B), `openAt(card)`, `folded`, `sliding`, `rail`; signals `helpClicked`, `foldedChanged` | GUI test (the sidebar's fold) |
+| `SidebarRail` | the thin bar: the open button, the link's dot, an icon per card, Help and Language | `showLink(state, text, rate)`, `setCardShown`, `openButton`, `cardButton`, `helpButton`, `dot`; signals `openClicked`, `cardClicked`, `helpClicked` | GUI test (the sidebar's fold) |
+| `FoldButton` | a chevron drawn on a rounded square; rest, lit, pressed and focus looks | `setPoints` (start, end, down, up; mirrored right to left), `setOpacity`, `pointsLeft` | GUI test (both folds) |
 | `BusPanel` | the Devices on the link card; shows, the window does the work | `showBus`, `pickerDevices` (the devices with their state, for the pickers), `namesText`, `setBroadcastBlocked` (the kept broadcasts off, with the reason); signals `newBusClicked`, `openBusClicked`, `saveBusClicked`, `closeBusClicked`, `addDeviceClicked`, `editDeviceClicked`, `removeDeviceClicked`, `deviceSelected`, `presetChosen`, `newPresetClicked`, `removePresetClicked` | GUI test (bus step) |
 | `BusPresetDialog` | one broadcast preset; OK only when the value is one the register takes | `result` | GUI test (bus step) |
 | `BusDeviceDialog` | one device of a bus; OK only when `checkBus` finds nothing | `result` | map test (`checkBus`) |
@@ -7291,6 +7340,23 @@ Phase-two steps, before the Map editor's: the recording format and a recording w
 - **The row kept in view** (`currentRowKept`): every list and table of the window has the watcher; the
   Registers table made shorter under a row selected at its bottom keeps that row in view; a current row
   scrolled away by hand stays away (the view does not jump).
+- **The sidebar's fold** (`sidebarFold`, 14.5; the slide's checks with less motion forced off, `forceReducedMotion`):
+  the fold button 32 px at the end of the title's row, centred on the title and clear of its text, its chevron toward
+  the window's edge, a pointing hand, its tooltip, lit under the mouse; a click folds it, sliding to the 40 px bar with
+  no fold button shown while it slides and the bar's open button faded in after, saved at once; the bar's items one
+  under the other inside it, each with a tooltip, a pointing hand and lit under the mouse, Fast streams only with its
+  card; the dot in the pill's colour, its tooltip the pill's text and the poll rate; folded, the link stays up and the
+  table follows another client's write; the bar's Help opens the Help, the sidebar left folded; the API icon opens the
+  sidebar at the API card, lit, the light gone after a moment; Ctrl+B folds and opens; the open button takes Space,
+  the focus then on the fold button; less motion asked: folded and opened at once; a dock starts as saved; the
+  window's minimum width the same with it open (at most 1280 px), less folded; in Arabic the sidebar at the right,
+  the button at the window's edge with the title beside it, the bar at the right edge, its chevron mirrored, the window
+  at most 1280 px. With `EVRE_TEST_SHOT`: `<prefix>_sidebar_<open|folded>_<en|ar>_<light|dark>.png`.
+- **The quick-write panel's fold** (`quickWriteFold`, 5.1): the mark before the title, as tall as its line and centred
+  on it, pointing down, a pointing hand, its tooltip, lit under the mouse; a click folds the panel to the title's line,
+  the table taller with the row selected in view, saved; another register selected keeps it folded; a click opens it,
+  the table shorter and the row still in view; a new panel starts as saved; in Arabic the mark right of the title, its
+  folded chevron mirrored. With `EVRE_TEST_SHOT`: `<prefix>_quickwrite_<open|folded>_<en|ar>_<light|dark>.png`.
 - **Fixes of 1.4.1, part A** (`registersFixes`, `mapEditorFixes`, `dumpTipFollows`, `recordingFixes`, `startupFixes`,
   and checks in `eventLog`, `noticeRightToLeft`, `bulkWrite` and `fastStreams`): a changed value's cell glows (after a
   rest) and the glow is gone 1.5 s later; a selected row's stale value stays grey; F2 on a row's name edits its value;
@@ -7788,7 +7854,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1064 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1086 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

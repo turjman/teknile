@@ -81,6 +81,13 @@ bool confirmed(QWidget *parent, const QString &title, const QString &html, const
  * the dialog (the property "noAnimation", for the tests); nothing else on Linux. Called where the dialog is made. */
 void noWindowAnimation(QWidget *dialog);
 
+/* the system asks for less motion: Windows' Animation effects off (Settings, Accessibility, Visual effects; the switch
+ * browsers read as prefers-reduced-motion); Linux has no such switch, the answer is no. What moves by itself (the
+ * sidebar's slide) is then shown at its end at once. forceReducedMotion: the tests' answer in place of the system's
+ * (1 yes, 0 no, -1 the system's again) */
+bool reducedMotion();
+void forceReducedMotion(int reduced);
+
 /* The rule for every view with a selection (STUDIO.md 4.11): a click on empty room in it (no row or item under the
  * mouse) clears what it has selected and its current row, and so does Escape while it has the keyboard's focus; what
  * follows the view's selection or current row then shows nothing selected. In a dialog escape is false: Escape

@@ -101,6 +101,8 @@ qt_add_library(evre_studio_core STATIC
     src/ui/map_editor_tab.h     src/ui/map_editor_tab.cpp
     src/ui/registers_tab.h      src/ui/registers_tab.cpp
     src/ui/sidebar.h            src/ui/sidebar.cpp
+    src/ui/sidebar_dock.h       src/ui/sidebar_dock.cpp
+    src/ui/fold_button.h        src/ui/fold_button.cpp
     src/ui/help_dialog.h        src/ui/help_dialog.cpp
     src/ui/frame_clock.h        src/ui/frame_clock.cpp
     src/ui/language.h           src/ui/language.cpp

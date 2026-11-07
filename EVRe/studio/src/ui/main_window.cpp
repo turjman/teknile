@@ -44,6 +44,7 @@
 #include "ui/recording_window.h"
 #include "ui/registers_tab.h"
 #include "ui/sidebar.h"
+#include "ui/sidebar_dock.h"
 #include "ui/theme.h"
 #include "ui/ui_helpers.h"
 
@@ -328,7 +329,7 @@ void MainWindow::startEngine() {
 	});
 }
 
-/* the sidebar at the left, the tabs beside it, the status bar under them */
+/* the sidebar at the left (or its thin bar), the tabs beside it, the status bar under them */
 void MainWindow::buildWindow() {
 	auto *central = new QWidget;
 	auto *columns = new QHBoxLayout(central);
@@ -336,7 +337,12 @@ void MainWindow::buildWindow() {
 	columns->setSpacing(0);
 	sidebar_ = new Sidebar;
 	connectSidebar();
-	columns->addWidget(sidebar_);
+	/* the sidebar in its dock: folded to a thin bar by its button, the bar's icons or Ctrl+B (sidebar_dock.h) */
+	auto *dock = new SidebarDock(sidebar_);
+	connect(dock, &SidebarDock::helpClicked, this, &MainWindow::showHelp);
+	auto *foldKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_B), this);
+	connect(foldKey, &QShortcut::activated, dock, &SidebarDock::toggle);
+	columns->addWidget(dock);
 
 	tabs_ = new QTabWidget;
 	tabs_->addTab(buildRegistersTab(), tr("Registers"));
