@@ -132,16 +132,19 @@ int maxRamMB() {
 	return int(std::clamp<qint64>(physical > 0 ? physical * 3 / 4 : 16384, ChartView::MIN_RAM_MB, 1 << 20));
 }
 
-/* 2048 -> "2 GB", 1536 -> "1536 MB" */
+/* 2048 -> "2 GB", 1536 -> "1536 MB": one piece (ltrPiece), so the RAM list does not read "MB 1536" in Arabic */
 QString ramText(int megabytes) {
-	return megabytes % 1024 == 0 ? QStringLiteral("%1 GB").arg(megabytes / 1024) : QStringLiteral("%1 MB").arg(megabytes);
+	return ltrPiece(megabytes % 1024 == 0 ? QStringLiteral("%1 GB").arg(megabytes / 1024)
+										  : QStringLiteral("%1 MB").arg(megabytes));
 }
 
-/* "3000", "3000 MB", "3 GB", "1.5 GB" -> MB; 0: not a size */
+/* "3000", "3000 MB", "3 GB", "1.5 GB" -> MB; 0: not a size (ltrPiece's isolates passed over) */
 int parseRam(const QString &text) {
 	static const QRegularExpression size(QStringLiteral("^\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(mb|gb|m|g)?\\s*$"),
 			QRegularExpression::CaseInsensitiveOption);
-	const QRegularExpressionMatch m = size.match(text);
+	QString plain = text;
+	plain.remove(QChar(0x2066)).remove(QChar(0x2069));
+	const QRegularExpressionMatch m = size.match(plain);
 	if (!m.hasMatch()) return 0;
 	const double value = m.captured(1).toDouble();
 	const bool gigabytes = m.captured(2).startsWith(QLatin1Char('g'), Qt::CaseInsensitive);
@@ -2341,7 +2344,8 @@ void ChartTab::showYControls() {
 	/* set only when they change: the info line's refresh calls this twice a second with Lanes on */
 	QStringList units;
 	for (int k = 0; lane >= 0 && k < view->laneCount(); k++) {
-		const QString unit = view->laneLabel(k).isEmpty() ? tr("no unit") : view->laneLabel(k);
+		/* a unit one piece (ltrPiece): in Arabic "°C" read "C°" */
+		const QString unit = view->laneLabel(k).isEmpty() ? tr("no unit") : ltrPiece(view->laneLabel(k));
 		units << (view->laneFolded(k) ? tr("%1 (folded)").arg(unit) : unit);
 	}
 	QStringList listed;

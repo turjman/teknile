@@ -192,6 +192,10 @@
         <source>fast stream %1 is on, but no record has come yet</source>
         <translation>التدفق السريع %1 مشغّل، لكن لم يصل أي سجلّ بعد</translation>
     </message>
+    <message>
+        <source>not a JSON object</source>
+        <translation>ليس كائن JSON</translation>
+    </message>
 </context>
 <context>
     <name>BitView</name>
@@ -2067,7 +2071,7 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
     <message>
         <source>%1, slave %2</source>
-        <translation>%1، التابع %2</translation>
+        <translation>‏⁦%1⁩، التابع %2</translation>
     </message>
     <message>
         <source>← AUTO_SEND</source>
@@ -2504,7 +2508,7 @@ A note: right-click the chart where it goes, Add note here.</source>
     </message>
     <message>
         <source>READ_RESP, unasked: a block of %1</source>
-        <translation>READ_RESP غير مطلوب: كتلة من %1</translation>
+        <translation>‏READ_RESP غير مطلوب: كتلة من ⁦%1⁩</translation>
     </message>
     <message>
         <source>%1 · record %2 · bytes %3-%4 of the record</source>
@@ -6358,11 +6362,11 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     </message>
     <message>
         <source>below the minimum %1</source>
-        <translation>تحت الحد الأدنى %1</translation>
+        <translation>تحت الحد الأدنى ⁦%1⁩</translation>
     </message>
     <message>
         <source>above the maximum %1</source>
-        <translation>فوق الحد الأعلى %1</translation>
+        <translation>فوق الحد الأعلى ⁦%1⁩</translation>
     </message>
     <message>
         <source>unexpected &quot;%1&quot;</source>
@@ -7121,6 +7125,10 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
             <numerusform>‏%1 تأخذ %n قيمةً</numerusform>
             <numerusform>‏%1 تأخذ %n قيمة</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>not valid JSON</source>
+        <translation>ليس JSON صالحًا</translation>
     </message>
 </context>
 <context>

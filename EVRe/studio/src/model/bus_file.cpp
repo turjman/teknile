@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The bus file, its checks, and the broadcast rule: see bus_file.h. */
 #include "model/bus_file.h"
+#include "model/json_doc.h"
 
 #include <QDir>
 #include <QFile>
@@ -54,9 +55,10 @@ bool BusFile::load(const QString &file, QString &err) {
 		return false;
 	}
 	QJsonParseError parseError;
-	const QJsonDocument doc = QJsonDocument::fromJson(in.readAll(), &parseError);
+	const QByteArray text = in.readAll();
+	const QJsonDocument doc = QJsonDocument::fromJson(text, &parseError);
 	if (doc.isNull() || !doc.isObject()) {
-		err = parseError.error != QJsonParseError::NoError ? parseError.errorString()
+		err = parseError.error != QJsonParseError::NoError ? jsondoc::qtParseError(text, parseError)
 				: QObject::tr("not a JSON object");
 		return false;
 	}

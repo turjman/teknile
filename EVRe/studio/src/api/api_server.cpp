@@ -17,6 +17,7 @@
 #include "io/fast_stream.h"
 #include "io/reg_table.h"
 #include "model/bus_file.h"
+#include "model/json_doc.h"
 
 namespace {
 
@@ -547,7 +548,8 @@ void ApiServer::onJsonLine(const ClientPtr &client, const QByteArray &line) {
 	QJsonParseError parseError;
 	const QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
 	if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-		fail(*client, tr("not a JSON object: %1").arg(parseError.errorString()), {});
+		fail(*client, parseError.error != QJsonParseError::NoError
+				? tr("not a JSON object: %1").arg(jsondoc::qtParseError(line, parseError)) : tr("not a JSON object"), {});
 		return;
 	}
 	const QJsonObject request = doc.object();

@@ -117,6 +117,7 @@
 #include "model/map_document.h"
 #include "ui/map_settings_dialog.h"
 #include "model/recording_file.h"
+#include "model/json_doc.h"
 #include "model/register_model.h"
 #include "ui/bit_view.h"
 #include "ui/bulk_write_dialog.h"
@@ -688,6 +689,8 @@ public:
 		dumpOtherMaps();
 		dumpManualRead(); /* its card at the top for the pictures */
 		dumpArabic();
+		arabicLatinPieces();
+		jsonErrorsOurs();
 		dumpFastCard();
 		formulaCompletion();
 		autoSend();   /* it ends with Auto send off, connected to the fake device as before */
@@ -10768,6 +10771,231 @@ private:
 				"the Dump shown and "
 				"Fields on at most 1280 px wide in English and in Arabic");
 		tabs->setCurrentIndex(MainWindow::TabRegisters);
+	}
+
+	/* Arabic, a piece of data in Latin letters kept whole (U+2066 ... U+2069, an isolate) where the window reads right
+	 * to left: the RAM list's sizes ("MB 512"), the lane list's units ("C°"), a bulk write's Note (its limit with the
+	 * unit, "% 100"), the recent recordings' names and folders (a date in a file name moved); English unchanged. With
+	 * EVRE_TEST_SHOT: <prefix>_c5_<what>_<en|ar>.png */
+	void arabicLatinPieces() {
+		const QChar lri(0x2066), pdi(0x2069);
+		const auto isolated = [&](const QString &text) { return lri + text + pdi; };
+		const QString prefix = qEnvironmentVariable("EVRE_TEST_SHOT");
+		const bool wasDark = Theme::isDark();
+		const auto shot = [&](QWidget *widget, const QString &what, const QString &code) {
+			if (!prefix.isEmpty() && widget) widget->grab().save(prefix + QStringLiteral("_c5_%1_%2.png").arg(what, code));
+		};
+		const QVariant recentWas = QSettings().value(QStringLiteral("recording/recent"));
+		const QVariant ramWas = QSettings().value(QStringLiteral("chart/ramMB"));
+		QTemporaryDir folder;
+		QDir(folder.path()).mkpath(QStringLiteral("2026-11"));
+		const QString keptName = QStringLiteral("rec_2026-11-07_14-03-12.csv"),
+					  goneName = QStringLiteral("rec_2026-11-06_09-00-00.csv");
+		const QString kept = folder.filePath(QStringLiteral("2026-11/") + keptName),
+					  gone = folder.filePath(QStringLiteral("2026-11/") + goneName);
+		for (const QString &path : { gone, kept }) {
+			QFile file(path);
+			if (file.open(QIODevice::WriteOnly)) file.write("time_s,datetime,V [V]\n0,2026-11-07T14:03:12.000,1\n");
+			file.close();
+			RecordingWindow::remember(path);
+		}
+		QFile::remove(gone);
+		const QString where = QDir::toNativeSeparators(QFileInfo(kept).absolutePath());
+		/* FAN_SPEED (0 .. 100 %) given 200: the Note says its maximum */
+		QVector<BulkWriteDialog::Target> targets;
+		for (const RegisterModel::Row &row : model_->rows())
+			if (row.def.name == QLatin1String("FAN_SPEED") || row.def.name == QLatin1String("LED_MODE"))
+				targets << BulkWriteDialog::Target{ row.def, row.raw, QString() };
+		struct Seen {
+			QStringList ram, lanes;
+			int typedRam = 0;
+			QString note, recent, missing, tagTip;
+		} seen[2];
+		for (int lang = 0; lang < 2; lang++) {
+			const QString code = lang == 0 ? QStringLiteral("en") : QStringLiteral("ar");
+			language::apply(*qApp, code);
+			Theme::apply(*qApp, false);
+			Seen &s = seen[lang];
+			{
+				for (const char *key : { "chart/lanes", "chart/lanesFolded", "chart/laneY", "chart/laneHeights" })
+					QSettings().remove(QLatin1String(key));
+				LoneChart chart(QStringLiteral("TEMP"), QStringLiteral("°C"));
+				RegDef volts = chart.def;
+				volts.addr = 0xD004;
+				volts.name = QStringLiteral("VOLTS");
+				volts.unit = QStringLiteral("V");
+				chart.tab.plotRegister(volts, true);
+				MathLines::Samples samples;
+				for (int i = 0; i < 2000; i++) {
+					samples[regKey(chart.def)] << QPointF(90.0 + i * 0.005, 25 + std::sin(i * 0.01));
+					samples[regKey(volts)] << QPointF(90.0 + i * 0.005, 12 + std::cos(i * 0.01));
+				}
+				chart.tab.frame(samples);
+				chart.view->setWindow(10);
+				chart.tab.show();
+				(void) QTest::qWaitForWindowExposed(&chart.tab);
+				auto *lanes = chart.tab.findChild<QAction *>(QStringLiteral("chartLanes"));
+				auto *ram = chart.tab.findChild<QComboBox *>(QStringLiteral("chartRam"));
+				auto *laneList = chart.tab.findChild<QComboBox *>(QStringLiteral("yLane"));
+				if (lanes) lanes->setChecked(true);
+				chart.view->setLaneFolded(1, true);
+				chart.view->setCursors(92.0, 96.0);
+				QTest::qWait(700); /* the info line's refresh fills the lane list */
+				for (int k = 0; ram && k < ram->count(); k++) s.ram << ram->itemText(k);
+				for (int k = 0; laneList && k < laneList->count(); k++) s.lanes << laneList->itemText(k);
+				shot(&chart.tab, QStringLiteral("chart"), code);
+				/* for a look: cursor A's tag's tooltip */
+				const QPointF tagA(chart.view->spanBarRect().left() - 11, chart.view->spanBarRect().center().y());
+				s.tagTip = chart.view->toolTipAt(tagA);
+				if (!prefix.isEmpty()) {
+					QToolTip::showText(chart.view->mapToGlobal(tagA.toPoint()), s.tagTip, chart.view);
+					QTest::qWait(300);
+					withTooltip(&chart.tab, chart.tab.rect()).save(prefix + QStringLiteral("_c5_tag_tip_%1.png").arg(code));
+					QToolTip::hideText();
+				}
+				for (QComboBox *box : { ram, laneList }) {
+					if (!box || prefix.isEmpty()) continue;
+					box->showPopup();
+					QTest::qWait(300);
+					shot(box->view()->window(), box == ram ? QStringLiteral("ram_list") : QStringLiteral("lane_list"), code);
+					box->hidePopup();
+				}
+				/* a size typed between the isolates (the list's own text edited) is read */
+				if (ram && ram->lineEdit()) {
+					ram->lineEdit()->setText(lang == 0 ? QStringLiteral("3 GB") : isolated(QStringLiteral("3 GB")));
+					emit ram->lineEdit()->editingFinished();
+					s.typedRam = chart.view->ramBudget();
+				}
+			}
+			{
+				BulkWriteDialog dialog(targets, {}, QStringLiteral("200"), &window_);
+				dialog.show();
+				(void) QTest::qWaitForWindowExposed(&dialog);
+				if (auto *list = dialog.findChild<QTableWidget *>())
+					for (int row = 0; row < list->rowCount(); row++)
+						if (list->item(row, 0) && list->item(row, 0)->text() == QLatin1String("FAN_SPEED") && list->item(row, 5))
+							s.note = list->item(row, 5)->text();
+				QTest::qWait(150);
+				shot(&dialog, QStringLiteral("bulk_note"), code);
+				dialog.reject();
+			}
+			{
+				QMenu menu(&window_);
+				RecordingWindow::fillRecentMenu(&menu, [](const QString &) {}, {});
+				for (QAction *action : menu.actions())
+					if (action->text().contains(keptName)) s.recent = action->text();
+				if (auto *missing = menu.findChild<QPushButton *>(QStringLiteral("recentMissing"))) s.missing = missing->text();
+				if (!prefix.isEmpty()) {
+					menu.popup(window_.mapToGlobal(QPoint(200, 200)));
+					QTest::qWait(300);
+					shot(&menu, QStringLiteral("recent"), code);
+					menu.hide();
+				}
+			}
+		}
+		language::apply(*qApp, QStringLiteral("en"));
+		Theme::apply(*qApp, wasDark);
+		if (auto *sidebar = window_.findChild<Sidebar *>()) sidebar->themeChanged();
+		if (recentWas.isValid()) QSettings().setValue(QStringLiteral("recording/recent"), recentWas);
+		else QSettings().remove(QStringLiteral("recording/recent"));
+		if (ramWas.isValid()) QSettings().setValue(QStringLiteral("chart/ramMB"), ramWas);
+		else QSettings().remove(QStringLiteral("chart/ramMB"));
+		for (const char *key : { "chart/lanes", "chart/lanesFolded", "chart/laneY", "chart/laneHeights" })
+			QSettings().remove(QLatin1String(key));
+		QTest::qWait(200);
+		for (int lang = 0; lang < 2; lang++)
+			std::printf("     (%s: RAM \"%s\"; lanes \"%s\"; typed %d MB; Note \"%s\"; recent \"%s\"; missing \"%s\"; "
+						"tag A \"%s\")\n",
+					lang == 0 ? "English" : "Arabic", qPrintable(seen[lang].ram.join(QStringLiteral("|"))),
+					qPrintable(seen[lang].lanes.join(QStringLiteral("|"))), seen[lang].typedRam, qPrintable(seen[lang].note),
+					qPrintable(seen[lang].recent), qPrintable(seen[lang].missing), qPrintable(seen[lang].tagTip));
+		const Seen &en = seen[0], &ar = seen[1];
+		/* the Dump's line over a fast block's strip and a bus device's: drawn in the direction their text gives
+		 * (DumpView's painter), so the Arabic must lead (U+200F) and the names sit between isolates; else the line
+		 * was laid out left to right and read "ADC غير مطلوب: كتلة من READ_RESP" */
+		const auto dumpLines = [] {
+			return QStringList{ QCoreApplication::translate("DumpView", "READ_RESP, unasked: a block of %1").arg(QStringLiteral("ADC")),
+				QCoreApplication::translate("DumpView", "%1, slave %2").arg(QStringLiteral("D1")).arg(2) };
+		};
+		const QStringList englishDump = dumpLines();
+		language::apply(*qApp, QStringLiteral("ar"));
+		const QStringList arabicDump = dumpLines();
+		const QString folded = QCoreApplication::translate("ChartTab", "%1 (folded)");
+		const QString maximum = QCoreApplication::translate("QObject", "above the maximum %1");
+		const QString notFound = QCoreApplication::translate("RecordingWindow", "%1 (not found)   %2");
+		language::apply(*qApp, QStringLiteral("en"));
+		check(!en.ram.isEmpty() && en.ram.value(0) == QLatin1String("512 MB") && en.ram.value(1) == QLatin1String("1 GB")
+						&& en.typedRam == 3072 && ar.ram.size() == en.ram.size()
+						&& ar.ram.value(0) == isolated(QStringLiteral("512 MB")) && ar.ram.value(1) == isolated(QStringLiteral("1 GB"))
+						&& ar.typedRam == 3072,
+				"Arabic, the RAM list: each size one left-to-right piece (512 MB between U+2066 and U+2069, not MB 512); a "
+				"size typed with them is read (3 GB); English unchanged");
+		check(en.lanes == QStringList{ QStringLiteral("°C"), QStringLiteral("V (folded)") } && ar.lanes.size() == 2
+						&& ar.lanes.value(0) == isolated(QStringLiteral("°C"))
+						&& ar.lanes.value(1) == QString(folded).replace(QStringLiteral("%1"), isolated(QStringLiteral("V"))),
+				"Arabic, the lane list beside Y range: a unit one left-to-right piece (°C, not C°), a folded lane's too; "
+				"English unchanged");
+		check(en.note == QLatin1String("above the maximum 100 %") && maximum.contains(lri + QStringLiteral("%1") + pdi)
+						&& ar.note == QString(maximum).replace(QStringLiteral("%1"), QStringLiteral("100 %")),
+				"Arabic, a bulk write's Note: the limit with its unit one left-to-right piece (100 %, not % 100), from the "
+				"translation; English unchanged");
+		check(en.recent == keptName + QStringLiteral("   ") + where
+						&& en.missing == QStringLiteral("%1 (not found)   %2").arg(goneName, where)
+						&& ar.recent == isolated(keptName) + QStringLiteral("   ") + isolated(where)
+						&& ar.missing == QString(notFound).arg(isolated(goneName), isolated(where)),
+				"Arabic, the recent recordings: a file's name and its folder each one left-to-right piece (the date in "
+				"rec_2026-11-07_14-03-12.csv stays in place), a file not found too; English unchanged");
+		std::printf("     (the Dump's lines: \"%s\", \"%s\"; Arabic \"%s\", \"%s\")\n", qPrintable(englishDump.value(0)),
+				qPrintable(englishDump.value(1)), qPrintable(arabicDump.value(0)), qPrintable(arabicDump.value(1)));
+		check(englishDump == QStringList{ QStringLiteral("READ_RESP, unasked: a block of ADC"), QStringLiteral("D1, slave 2") }
+						&& !englishDump[0].isRightToLeft() && arabicDump.size() == 2 && arabicDump[0].isRightToLeft()
+						&& arabicDump[0].contains(isolated(QStringLiteral("ADC"))) && arabicDump[1].isRightToLeft()
+						&& arabicDump[1].contains(isolated(QStringLiteral("D1"))),
+				"Arabic, the Dump's line over a fast block's strip (READ_RESP غير مطلوب: كتلة من ADC) and a bus device's "
+				"(D1، التابع 2) read right to left from READ_RESP and D1, the names one piece; English unchanged");
+	}
+
+	/* A bus file or a recording's notes that is not JSON: where and why in the map's words ("line 3, column 19:
+	 * unexpected character ']'"), from our translation, not Qt's errorString(); a text ours reads but Qt refused: Qt's
+	 * place in the same words */
+	void jsonErrorsOurs() {
+		QTemporaryDir folder;
+		const QByteArray bad = "{\n  \"format\": \"evre-bus/1\",\n  \"devices\": [ 1, ]\n}\n";
+		const QString busPath = folder.filePath(QStringLiteral("bad_bus.json")),
+					  recording = folder.filePath(QStringLiteral("rec.csv"));
+		for (const QString &path : { busPath, recording + QStringLiteral(".notes.json") }) {
+			QFile file(path);
+			if (file.open(QIODevice::WriteOnly)) file.write(bad);
+		}
+		QString said[2][2];
+		for (int lang = 0; lang < 2; lang++) {
+			language::apply(*qApp, lang == 0 ? QStringLiteral("en") : QStringLiteral("ar"));
+			BusFile bus;
+			(void) bus.load(busPath, said[lang][0]);
+			QVector<ChartNote> notes;
+			(void) recording::loadNotes(recording, notes, said[lang][1]);
+		}
+		const auto words = [](const char *text) { return QCoreApplication::translate("QObject", text); };
+		const QString arabic = words("line %1, column %2: %3").arg(3).arg(19)
+				.arg(words("unexpected character '%1'").arg(QLatin1Char(']')));
+		const bool translated = words("not valid JSON") != QLatin1String("not valid JSON");
+		language::apply(*qApp, QStringLiteral("en"));
+		QJsonParseError qtError;
+		(void) QJsonDocument::fromJson(bad, &qtError);
+		const QString english = QStringLiteral("line 3, column 19: unexpected character ']'");
+		/* Qt's place when ours reads the text: offset 4 is line 2's first character */
+		QJsonParseError refused;
+		refused.error = QJsonParseError::IllegalValue;
+		refused.offset = 4;
+		const QString fallback = jsondoc::qtParseError("[1,\n2]", refused);
+		std::printf("     (English \"%s\", \"%s\"; Arabic \"%s\", \"%s\"; Qt's own \"%s\"; Qt's place \"%s\")\n",
+				qPrintable(said[0][0]), qPrintable(said[0][1]), qPrintable(said[1][0]), qPrintable(said[1][1]),
+				qPrintable(qtError.errorString()), qPrintable(fallback));
+		check(said[0][0] == english && said[0][1] == english && said[1][0] == arabic && said[1][1] == arabic
+						&& arabic != english && translated && fallback == QLatin1String("line 2, column 1: not valid JSON"),
+				"not JSON, a bus file and a recording's notes: where and why in the map's words (line 3, column 19: "
+				"unexpected character ']'), in Arabic from our translation, not Qt's errorString(); a text Qt alone "
+				"refuses: its place (line 2, column 1: not valid JSON)");
 	}
 
 	/* A fast stream's block as a Dump card (fed to a tab of its own, so every number is known): the block of the fast
