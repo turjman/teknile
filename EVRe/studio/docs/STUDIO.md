@@ -6816,8 +6816,10 @@ The project defines no options of its own. The usual CMake variables apply: `CMA
 
 The Studio's icon is the teknile mark (`packaging/icons/evre-studio.svg`, made from the logo's mark on its dark rounded
 square; the PNGs of 16 to 256 px and `evre-studio.ico` are drawn from it). The PNGs are in the core's resources at
-`:/icons` (`studioIcon()`, every window's); on Windows `packaging/windows/evre_studio.rc.in` becomes the executable's
-icon and version (`configure_file`, `enable_language(RC)`).
+`:/icons` (`studioIcon()`, every window's); on Windows `packaging/windows/evre_studio.rc.in` becomes the icon and
+version block of `EVReStudio.exe`, `evre.exe` and `evre-sim.exe` (`evre_version_info()` in CMake: `configure_file` once
+per program with its name and description, `enable_language(RC)`), and the installer sets its own (`VersionInfo*`
+in `evre_studio.iss`): code signing asks every signed file for its product and version.
 
 ### 25.5 Installers and releases
 

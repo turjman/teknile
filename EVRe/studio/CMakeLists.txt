@@ -120,7 +120,7 @@ qt_add_translations(evre_studio_core
     LUPDATE_OPTIONS -no-obsolete -locations none
     RESOURCE_PREFIX /i18n)
 # The Studio's icon, the teknile mark (packaging/icons, made from its SVG): every window's, from the core's resources
-# at :/icons; the executable's on Windows (packaging/windows/evre_studio.rc)
+# at :/icons; the programs' on Windows (packaging/windows/evre_studio.rc.in)
 qt_add_resources(evre_studio_core studio_icons PREFIX /icons BASE packaging/icons FILES
     packaging/icons/evre-studio-16.png packaging/icons/evre-studio-24.png packaging/icons/evre-studio-32.png
     packaging/icons/evre-studio-48.png packaging/icons/evre-studio-64.png packaging/icons/evre-studio-128.png
@@ -133,14 +133,24 @@ if(WIN32)
     target_link_libraries(evre_studio_core PRIVATE winmm dwmapi d3d11 dxgi d3dcompiler dcomp)
 endif()
 
-qt_add_executable(EVReStudio WIN32 src/main.cpp)
-target_link_libraries(EVReStudio PRIVATE evre_studio_core)
+# On Windows each shipped program carries the icon and a version block (packaging/windows/evre_studio.rc.in): the
+# product, its version and the program's own description, which code signing asks of every signed file
 if(WIN32)
     enable_language(RC)
     set(EVRE_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/evre-studio.ico")
-    configure_file(packaging/windows/evre_studio.rc.in ${CMAKE_CURRENT_BINARY_DIR}/evre_studio.rc @ONLY)
-    target_sources(EVReStudio PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/evre_studio.rc)
 endif()
+function(evre_version_info target description)
+    if(WIN32)
+        set(EVRE_RC_NAME "${target}")
+        set(EVRE_RC_DESCRIPTION "${description}")
+        configure_file(packaging/windows/evre_studio.rc.in ${CMAKE_CURRENT_BINARY_DIR}/${target}.rc @ONLY)
+        target_sources(${target} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/${target}.rc)
+    endif()
+endfunction()
+
+qt_add_executable(EVReStudio WIN32 src/main.cpp)
+target_link_libraries(EVReStudio PRIVATE evre_studio_core)
+evre_version_info(EVReStudio "EVRe Studio")
 
 # The maps travel with the programs: maps/ is copied beside them at every
 # build, so an edited map is there even when no program had to be linked
@@ -161,11 +171,13 @@ add_dependencies(evre_gui_test evre_maps evre_captures)
 # watch, write), on the protocol core without a window.
 qt_add_executable(evre cli/evre.cpp)
 target_link_libraries(evre PRIVATE evre_protocol)
+evre_version_info(evre "EVRe command-line tools")
 
 # evre-sim: an EVRe device made from a map, over TCP (defaults, write-only,
 # action, write-1-to-clear, login, persist: as the map says).
 qt_add_executable(evre-sim cli/evre_sim.cpp)
 target_link_libraries(evre-sim PRIVATE evre_protocol)
+evre_version_info(evre-sim "EVRe device simulator")
 
 # The map files without a window or a device: every map in maps/ (and the
 # files named on its command line) must save back byte for byte.
