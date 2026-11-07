@@ -319,6 +319,24 @@ bool parse(const QByteArray &text, Value &root, QString &err) {
 	return Parser(text).parseDocument(root, err);
 }
 
+QString qtParseError(const QByteArray &text, const QJsonParseError &error) {
+	Value root;
+	QString err;
+	if (!parse(text, root, err)) return err;
+	/* ours reads it (a limit of Qt's, not a mistake in the text): Qt's place, in the same words */
+	const int at = std::clamp(int(error.offset), 0, int(text.size()));
+	int line = 1, column = 1;
+	for (int k = 0; k < at; k++) {
+		if (text.at(k) == '\n') {
+			line++;
+			column = 1;
+		} else {
+			column++;
+		}
+	}
+	return QObject::tr("line %1, column %2: %3").arg(line).arg(column).arg(QObject::tr("not valid JSON"));
+}
+
 /* -------------------------------------------------------------------- Qt JSON */
 
 QJsonValue toQt(const Value &value) {

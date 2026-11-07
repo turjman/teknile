@@ -1072,7 +1072,8 @@ bool streamFromJson(const QByteArray &json, StreamDef &stream, QString &err) {
 	QJsonParseError parseError;
 	const QJsonDocument doc = QJsonDocument::fromJson(json, &parseError);
 	if (!doc.isObject()) {
-		err = parseError.errorString();
+		err = parseError.error != QJsonParseError::NoError ? jsondoc::qtParseError(json, parseError)
+				: QObject::tr("not a JSON object");
 		return false;
 	}
 	QVector<StreamDef> streams;

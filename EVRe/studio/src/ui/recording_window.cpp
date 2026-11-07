@@ -219,20 +219,21 @@ void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const
 	if (recent.isEmpty()) menu->addAction(tr("No recordings opened yet"))->setEnabled(false);
 	for (const QString &path : recent) {
 		const QFileInfo info(path);
-		const QString where = QDir::toNativeSeparators(info.absolutePath());
+		/* the name and the folder each one piece (ltrPiece): in Arabic "rec_2026-11-07.csv" read with its date moved */
+		const QString name = ltrPiece(info.fileName()), where = ltrPiece(QDir::toNativeSeparators(info.absolutePath()));
 		if (info.exists()) {
-			QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(info.fileName(), where)));
-			action->setToolTip(QDir::toNativeSeparators(path));
+			QAction *action = menu->addAction(noMnemonic(QStringLiteral("%1   %2").arg(name, where)));
+			action->setToolTip(ltrPiece(QDir::toNativeSeparators(path)));
 			QObject::connect(action, &QAction::triggered, menu, [openFile, path] { openFile(path); });
 			continue;
 		}
 		/* a button in the menu's item shape, in the muted colour, lit under the mouse (theme.cpp) */
-		auto *missing = new QPushButton(noMnemonic(tr("%1 (not found)   %2").arg(info.fileName(), where)));
+		auto *missing = new QPushButton(noMnemonic(tr("%1 (not found)   %2").arg(name, where)));
 		missing->setObjectName(QStringLiteral("recentMissing"));
 		missing->setProperty("path", path);
 		missing->setCursor(Qt::PointingHandCursor);
 		missing->setToolTip(tr("%1 is not there any more (deleted or moved): a click takes it off this list")
-				.arg(QDir::toNativeSeparators(path)));
+				.arg(ltrPiece(QDir::toNativeSeparators(path))));
 		auto *action = new QWidgetAction(menu);
 		action->setDefaultWidget(missing);
 		menu->addAction(action);
@@ -240,7 +241,7 @@ void RecordingWindow::fillRecentMenu(QMenu *menu, const std::function<void(const
 			forget(path);
 			menu->close();
 			if (said) said(tr("%1 taken off the recent recordings: the file is not there any more")
-					.arg(QDir::toNativeSeparators(path)));
+					.arg(ltrPiece(QDir::toNativeSeparators(path))));
 		});
 	}
 	if (!recent.isEmpty()) {

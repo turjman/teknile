@@ -3680,7 +3680,8 @@ The register changed on the device between the start of your edit and Enter. The
 
 A message box and the Log give the reason:
 
-- `JSON error at <offset>: <message>`: the file is not valid JSON (a trailing comma, a comment, a missing quote)
+- `line L, column C: <what>`: the file is not valid JSON (a trailing comma, a comment, a missing quote); a bus file and a
+  recording's notes say the same (16.10)
 - `register "NAME": bad address`
 - `register NAME: unknown type "x"`
 - `login: bad address` / `login: bad size`
@@ -3909,7 +3910,7 @@ they have (26.7).
 | Message | Cause |
 |---|---|
 | The operating system's message, e.g. *No such file or directory* | The file cannot be read. |
-| `line L, column C: <what>` | Not valid JSON: *',' or '}' is expected*, *the string is not closed*, … JSON allows no comments and no trailing commas: a comma before `]` reads *line 12, column 3: unexpected character ']'*, the place of the `]`. |
+| `line L, column C: <what>` | Not valid JSON: *',' or '}' is expected*, *the string is not closed*, … JSON allows no comments and no trailing commas: a comma before `]` reads *line 12, column 3: unexpected character ']'*, the place of the `]`. A bus file (3.9) and a recording's notes (12.5) say the same, not Qt's own text. |
 | `not a map: the file is not a JSON object` | A top-level array, number or string. |
 | `"registers" is not a list`, `"registers": an item is not an object` | |
 | `device_id: not a 16-bit number` | |
@@ -4121,7 +4122,7 @@ The refusal texts:
 | `bytes` | a string of hex digits without spaces (`"48454c4c4f"`) |
 | No&nbsp;valid&nbsp;value,&nbsp;or&nbsp;not&nbsp;finite | `null` |
 
-**A request that is not a JSON object** gets `{"ok":false,"error":"not a JSON object: <parser message>"}`, without an `id`.
+**A request that is not a JSON object** gets `{"ok":false,"error":"not a JSON object: line 1, column C: <what>"}` (the place and the reason in the words a map's errors use, 16.10), or `"not a JSON object"` for valid JSON of another kind, without an `id`.
 
 **Command order.** The commands `info`, `list` and `stop` work without a device. Every other command, including an unknown one, first needs the Studio to be connected. Otherwise it gets `EVRe Studio is not connected to a device`.
 
@@ -5128,7 +5129,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/model/device_map.h`,&nbsp;`.cpp` | `RegType`, `BitField`, `RegDef`, `DeviceMap`, `MapIssue`; decode, format and encode of values, limits, special values; addresses; block-merge rule; pollable rule; chart keys `regKey(slave, addr)`, `regKeySlave`, `regKeyAddr`; `requestSlave` |
 | `src/model/map_file.cpp` | `DeviceMap::load`, `save`, `toJson`: reading with `extends`, and writing back only what changed; `registersToJson` / `registersFromJson` (the clipboard) |
 | `src/model/map_check.cpp` | `checkMap`: the Map editor's checks |
-| `src/model/json_doc.h`,&nbsp;`.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence` |
+| `src/model/json_doc.h`,&nbsp;`.cpp` | `jsondoc`: JSON as an ordered tree that remembers where each value was in its text; rendering (pretty, compact) and `patchSequence`; `qtParseError`: Qt's JSON reader's refusal in `parse`'s words (a bus file, a recording's notes, the API) |
 | `src/model/map_export.h`,&nbsp;`.cpp` | Markdown, C header, Python, CSV and device table export, CSV import, `identifier` |
 | `src/model/map_document.h`,&nbsp;`.cpp` | `MapDocument`: the map being edited, its undo history, uids, the checks' cache |
 | `src/model/bus_file.h`,&nbsp;`.cpp` | `BusFile`, `BusDevice`: several devices on one link (`evre-bus/1`); `checkBus`, `nextBusDevice`, `busRegisterName`, `broadcastNames` (a register by the map's or the bus name), `broadcastRefusal` (the broadcast rule); `nextBusDevice` gives slave 0 when all 255 are taken |
@@ -7811,6 +7812,16 @@ The Dump tab's steps (chapter 37), after the Monitor's, against the fake device 
   names English and their meanings Arabic (*الحمولة* under the pill *22 بايتًا ↓*, *سليم*, *لا شيء*), the arrows
   turned with the reading (*← طلب*, *→ رد*) and the reply's at the right of its Arabic word; the window with the Dump shown and
   Fields on at most 1280 px wide in English and Arabic.
+- **Latin pieces in Arabic** (`arabicLatinPieces`): with the window right to left, a piece of data in Latin letters
+  stays one left-to-right piece (between U+2066 and U+2069): the RAM list's sizes (*512 MB*, not *MB 512*; a size
+  typed with them still read), the lane list's units (*°C*, a folded lane's too), a bulk write's Note (*فوق الحد
+  الأعلى 100 %*, from the translation), the recent recordings' file names and folders (the date in
+  *rec_2026-11-07_14-03-12.csv* in place), a file not found too; the Dump's line over a fast block's strip and a bus
+  device's read right to left from *READ_RESP* and the device's name (the translation leads with U+200F); English
+  unchanged in each. With `EVRE_TEST_SHOT`: `<prefix>_c5_<chart|ram_list|lane_list|tag_tip|bulk_note|recent>_<en|ar>.png`.
+- **Not JSON** (`jsonErrorsOurs`): a bus file and a recording's notes that are not JSON say where and why in the words
+  of a map's errors (*line 3, column 19: unexpected character ']'*, 16.10), in Arabic from the translation, not Qt's
+  own text; a text only Qt refuses says Qt's place (*line 2, column 1: not valid JSON*).
 
 The auto send, bus and fast streams steps check the Dump too: the 0xD000 card is AUTO_SEND's (*← AUTO_SEND 100 /s*,
 no request strip, the device's READ_RESP strip, the polled read gone); on a bus the Device list starts on D2 with
@@ -7854,7 +7865,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1086 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1092 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

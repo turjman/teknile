@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Recordings as files: see recording_file.h. */
 #include "model/recording_file.h"
+#include "model/json_doc.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
@@ -240,9 +241,10 @@ bool loadNotes(const QString &recordingPath, QVector<ChartNote> &notes, QString 
 		return false;
 	}
 	QJsonParseError parse;
-	const QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parse);
+	const QByteArray text = file.readAll();
+	const QJsonDocument doc = QJsonDocument::fromJson(text, &parse);
 	if (!doc.isObject() || doc.object().value(QStringLiteral("format")).toString() != QLatin1String("evre-notes/1")) {
-		error = parse.error != QJsonParseError::NoError ? parse.errorString()
+		error = parse.error != QJsonParseError::NoError ? jsondoc::qtParseError(text, parse)
 				: QCoreApplication::translate("recording", "not a notes file (\"format\": \"evre-notes/1\")");
 		return false;
 	}
