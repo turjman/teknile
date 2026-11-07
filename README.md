@@ -28,7 +28,8 @@
   <a href="#the-protocol-in-one-screen">The protocol</a> ·
   <a href="#your-device-in-20-lines">Your device</a> ·
   <a href="#from-python-matlab-labview-or-a-terminal">Python and CLI</a> ·
-  <a href="#documentation">Docs</a>
+  <a href="#documentation">Docs</a> ·
+  <a href="SECURITY.md#code-signing-policy">Code signing policy</a>
 </p>
 
 <p align="center">
@@ -106,6 +107,10 @@ Every version ships ready to run on the [Releases](https://github.com/turjman/te
 | `evre-tools-<version>-linux-x86_64.tar.gz` | The command-line tools `evre` and `evre-sim` for Linux |
 
 The Windows installer and the zip hold the command-line tools, the example files (`example_device.json`, `example_fast.json`, `example_bus.json`) and the map format's JSON Schema (`evre-map-1.schema.json`) beside the Studio.
+
+Windows builds will be signed with a free certificate from [SignPath Foundation](https://signpath.org) (application
+under review); until then Windows SmartScreen may say it does not know the installer. See the
+[code signing policy](SECURITY.md#code-signing-policy).
 
 ## What is inside
 
