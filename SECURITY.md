@@ -23,11 +23,9 @@ Fixes go into the latest version on `main`.
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
-[SignPath Foundation](https://signpath.org).
-
-The project has applied to SignPath Foundation; until it is approved, the Windows files are not signed yet and this
-policy describes how they will be.
+The Windows files are **not code-signed yet**, so Windows SmartScreen may say it does not know the installer:
+choose **More info**, then **Run anyway**. This policy describes how they will be signed once a certificate is in
+place.
 
 ### What is signed
 
@@ -41,12 +39,11 @@ policy describes how they will be.
 | Linux&nbsp;AppImage&nbsp;and&nbsp;tools | no |
 
 Only files built by this project from this repository are signed. Every signed file is built by GitHub Actions
-(`.github/workflows/release.yml`) on GitHub-hosted runners from a release tag `vX.Y.Z`, and SignPath checks that it
-comes from that build of this repository. A release is signed only after an approver has approved its signing
-request by hand.
+(`.github/workflows/release.yml`) on GitHub-hosted runners from a release tag `vX.Y.Z`. A release is signed only
+after an approver has approved its signing request by hand.
 
-The signer shown by Windows is **SignPath Foundation**. To check a file: right-click it, Properties, Digital
-Signatures; or in PowerShell `Get-AuthenticodeSignature .\EVReStudio-<version>-setup.exe`.
+To check a signed file: right-click it, Properties, Digital Signatures; or in PowerShell
+`Get-AuthenticodeSignature .\EVReStudio-<version>-setup.exe`.
 
 ### Team and roles
 
@@ -55,7 +52,7 @@ Signatures; or in PowerShell `Get-AuthenticodeSignature .\EVReStudio-<version>-s
 | Committers&nbsp;and&nbsp;reviewers | [Ahmed Ragab](https://github.com/turjman) (maintainer): may change the source; reviews every pull request from anyone else before it is merged |
 | Approvers | [Ahmed Ragab](https://github.com/turjman): approves each signing request |
 
-All team members use multi-factor authentication for GitHub and SignPath. Build scripts and CI files
+All team members use multi-factor authentication for GitHub and for the signing service. Build scripts and CI files
 (`.github/workflows/`, `EVRe/studio/packaging/`, `CMakeLists.txt`) are reviewed like any other code.
 
 ### Privacy
@@ -79,4 +76,4 @@ to remove every trace.
 
 If a signed file looks wrong (not from this repository, or doing what this policy says it does not), do not run it.
 Report it privately as described in [Reporting a problem](#reporting-a-problem), with the file's SHA-256 hash and
-where you got it. Misuse of the certificate can also be reported to SignPath at support@signpath.io.
+where you got it.
