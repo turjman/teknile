@@ -151,6 +151,15 @@ int parseRam(const QString &text) {
 	return int(std::llround(gigabytes ? value * 1024 : value));
 }
 
+/* A length box's text as the Studio sets it, its current item the preset of that text (or none). An editable box left
+ * with a text that names an item other than its current one emits activated by itself (Qt's own, at the focus out):
+ * a window changed past the box (a span shown) was put back to the box's old length when a menu took the focus */
+void showLength(QComboBox *box, const QString &text) {
+	const QSignalBlocker quiet(box);
+	box->setCurrentIndex(box->findText(text));
+	box->setEditText(text);
+}
+
 /* a box for Window or Memory: the presets, or any length typed */
 QComboBox *lengthBox(const QList<double> &presets) {
 	auto *box = new QComboBox;
@@ -379,9 +388,11 @@ ChartView *ChartTab::view() const { return chart_->view(); }
 QHBoxLayout *ChartTab::buildAxesRow() {
 	/* the view (Window) and what is kept (Memory) */
 	window_ = lengthBox({ 1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0 });
+	window_->setObjectName(QStringLiteral("chartWindowBox"));
 	window_->setToolTip(tr("View: the time shown. Pick one or type any length: 45, 2.5 s, 500 ms, 3 min, 1 h.\n"
 			"Mouse wheel on the chart: zoom it (around the mouse when held)."));
 	memory_ = lengthBox({ 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0, 7200.0 });
+	memory_->setObjectName(QStringLiteral("chartMemoryBox"));
 	memory_->setToolTip(tr("Memory depth: how much is kept, as on an oscilloscope. The view shows part of it;\n"
 			"drag the chart or the memory strip under it to look back, Live to follow now again."));
 
@@ -743,10 +754,17 @@ void ChartTab::connectControls() {
 	ChartView *view = chart_->view();
 
 	/* the axes: typed or picked here, or changed on the chart with the mouse */
+	/* a box left without typing in it (only clicked in, or the focus taken by a menu) applies nothing: its text, set
+	 * when the view last changed through it, put back a window changed since (zoomed in a recording's window, shown
+	 * over a span), and the Memory's clipped it to the memory */
 	connect(window_, &QComboBox::activated, this, [this] { applyWindowText(); });
-	connect(window_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyWindowText);
+	connect(window_->lineEdit(), &QLineEdit::editingFinished, this, [this] {
+		if (window_->lineEdit()->isModified()) applyWindowText();
+	});
 	connect(memory_, &QComboBox::activated, this, [this] { applyMemoryText(); });
-	connect(memory_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyMemoryText);
+	connect(memory_->lineEdit(), &QLineEdit::editingFinished, this, [this] {
+		if (memory_->lineEdit()->isModified()) applyMemoryText();
+	});
 	connect(ram_, &QComboBox::activated, this, [this] { applyRamText(); });
 	connect(older_, &QComboBox::activated, this, [this] {
 		const bool summaries = older_->currentData().toBool();
@@ -777,11 +795,11 @@ void ChartTab::connectControls() {
 	});
 	connect(ram_->lineEdit(), &QLineEdit::editingFinished, this, &ChartTab::applyRamText);
 	connect(chart_, &ChartWidget::windowChangedByUser, this, [this](double seconds) {
-		window_->setEditText(secondsText(seconds));
+		showLength(window_, secondsText(seconds));
 		QSettings().setValue(settingKey("window"), seconds);
 	});
 	connect(view, &ChartView::memoryChanged, this, [this](double seconds) {
-		memory_->setEditText(secondsText(seconds));
+		showLength(memory_, secondsText(seconds));
 		QSettings().setValue(settingKey("memory"), seconds);
 	});
 	connect(yMode_, &QComboBox::activated, this, [this](int mode) {
@@ -983,18 +1001,18 @@ void ChartTab::connectControls() {
 void ChartTab::restoreSettings() {
 	QSettings settings;
 	chart_->setMemory(settings.value(settingKey("memory"), 60.0).toDouble());
-	memory_->setEditText(secondsText(chart_->memory()));
+	showLength(memory_, secondsText(chart_->memory()));
 	applyDrawing(settings.value(settingKey("drawing"), int(ChartView::Drawing::Auto)).toInt());
 	const int ram = settings.value(settingKey("ramMB"), ChartView::DEFAULT_RAM_MB).toInt();
 	chart_->view()->setRamBudget(std::clamp(ram, int(ChartView::MIN_RAM_MB), maxRamMB()));
-	ram_->setEditText(ramText(chart_->view()->ramBudget()));
+	showLength(ram_, ramText(chart_->view()->ramBudget()));
 	{
 		const bool summaries = settings.value(settingKey("fastOlder")).toString() != QLatin1String("kept");
 		older_->setCurrentIndex(summaries ? 0 : 1);
 		chart_->view()->setFastSummaries(summaries && !recording_);
 	}
 	chart_->setWindow(settings.value(settingKey("window"), 30.0).toDouble());
-	window_->setEditText(secondsText(chart_->window()));
+	showLength(window_, secondsText(chart_->window()));
 	smooth_->setChecked(settings.value(settingKey("smooth"), true).toBool());
 	chart_->setSmooth(smooth_->isChecked());
 	chart_->view()->setLaneScales(settings.value(settingKey("laneY")).toStringList());
@@ -1979,12 +1997,12 @@ void ChartTab::applyWindowText() {
 	const int preset = window_->findText(window_->currentText());
 	double seconds = preset >= 0 ? window_->itemData(preset).toDouble() : parseSeconds(window_->currentText());
 	if (!(seconds > 0)) {
-		window_->setEditText(secondsText(chart_->window())); /* not a length: back to what is shown */
+		showLength(window_, secondsText(chart_->window())); /* not a length: back to what is shown */
 		return;
 	}
 	seconds = std::clamp(seconds, MIN_TYPED_WINDOW, ChartView::MAX_SPAN);
 	chart_->setWindow(seconds);
-	window_->setEditText(secondsText(seconds));
+	showLength(window_, secondsText(seconds));
 	QSettings().setValue(settingKey("window"), seconds);
 }
 
@@ -2059,19 +2077,19 @@ void ChartTab::applyRamText() {
 		QSettings().setValue(settingKey("ramMB"), chart_->view()->ramBudget());
 		watchFreeMemory(); /* the limit against the new RAM at once */
 	}
-	ram_->setEditText(ramText(chart_->view()->ramBudget()));
+	showLength(ram_, ramText(chart_->view()->ramBudget()));
 }
 
 void ChartTab::applyMemoryText() {
 	const int preset = memory_->findText(memory_->currentText());
 	const double seconds = preset >= 0 ? memory_->itemData(preset).toDouble() : parseSeconds(memory_->currentText());
 	if (!(seconds > 0)) {
-		memory_->setEditText(secondsText(chart_->memory()));
+		showLength(memory_, secondsText(chart_->memory()));
 		return;
 	}
 	chart_->setMemory(seconds);
-	memory_->setEditText(secondsText(chart_->memory()));
-	window_->setEditText(secondsText(chart_->window())); /* the view fits in the memory */
+	showLength(memory_, secondsText(chart_->memory()));
+	showLength(window_, secondsText(chart_->window())); /* the view fits in the memory */
 	QSettings().setValue(settingKey("memory"), chart_->memory());
 }
 
@@ -2346,8 +2364,8 @@ void ChartTab::showMeasureColumns() {
 
 void ChartTab::showSpan(double t0, double t1) {
 	chart_->view()->showSpan(t0, t1);
-	window_->setEditText(secondsText(chart_->window()));
-	memory_->setEditText(secondsText(chart_->memory()));
+	showLength(window_, secondsText(chart_->window()));
+	showLength(memory_, secondsText(chart_->memory()));
 }
 
 void ChartTab::showYControls() {
