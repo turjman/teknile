@@ -602,6 +602,14 @@ QHBoxLayout *ChartTab::buildActionsRow() {
 	hoverValues_->setCheckable(true);
 	hoverValues_->setToolTip(tr("The box of every line's value beside the mouse over the chart.\n"
 			"Off: the crosshair's line and its dots only (the box covers the cursors' tags)."));
+	/* a bin per device pixel: on a high-DPI screen a noisy line's every swing, at the scale's times the cost */
+	fineDetail_ = displayMenu->addAction(tr("Fine detail"));
+	fineDetail_->setObjectName(QStringLiteral("chartFineDetail"));
+	fineDetail_->setCheckable(true);
+	fineDetail_->setToolTip(tr("On a scaled screen (125 % and up), a line is drawn to the screen's own pixels: a fast or "
+			"noisy line shows every swing, on the screen and in Copy picture and Save picture alike.\n"
+			"It costs more drawing time: turn it off when a busy chart (many lines, fast streams) runs slow. At 100 % it "
+			"changes nothing."));
 	/* the time grid: clock times (moving with the data), a scope's fixed divisions, or each where it reads best */
 	displayMenu->addSeparator();
 	auto *gridTitle = new QWidgetAction(displayMenu);
@@ -905,6 +913,11 @@ void ChartTab::connectControls() {
 		chart_->view()->setTriggerInstant(on);
 		QSettings().setValue(settingKey("triggerInstantLine"), on);
 	});
+	connect(fineDetail_, &QAction::toggled, this, [this](bool on) {
+		chart_->view()->setFineDetail(on);
+		QSettings().setValue(settingKey("fineDetail"), on);
+		showDisplayState();
+	});
 	connect(hoverValues_, &QAction::toggled, this, [this](bool on) {
 		chart_->view()->setHoverValues(on);
 		QSettings().setValue(settingKey("hoverValues"), on);
@@ -1005,6 +1018,8 @@ void ChartTab::restoreSettings() {
 	lanes_->setChecked(settings.value(settingKey("lanes"), false).toBool());
 	hoverValues_->setChecked(settings.value(settingKey("hoverValues"), true).toBool());
 	chart_->view()->setHoverValues(hoverValues_->isChecked());
+	fineDetail_->setChecked(settings.value(settingKey("fineDetail"), true).toBool());
+	chart_->view()->setFineDetail(fineDetail_->isChecked());
 	triggerInstant_->setChecked(settings.value(settingKey("triggerInstantLine"), true).toBool());
 	chart_->view()->setTriggerInstant(triggerInstant_->isChecked());
 	shortLock_->setChecked(settings.value(settingKey("autoShortWindows"), true).toBool());
@@ -2014,9 +2029,10 @@ void ChartTab::applyDrawing(int choice) {
 
 QString ChartTab::displayState() const {
 	const QString onOff[] = { tr("off"), tr("on") };
-	return tr("Normalise %1 · Lanes %2 · Smooth %3 · Trigger %4 · Hover values %5 · drawn by the %6")
+	return tr("Normalise %1 · Lanes %2 · Smooth %3 · Trigger %4 · Hover values %5 · Fine detail %6 · drawn by the %7")
 			.arg(onOff[normalize_->isChecked()], onOff[lanes_->isChecked()], onOff[smooth_->isChecked()],
-					onOff[trigger_->isChecked()], onOff[hoverValues_->isChecked()], chart_->view()->drawingName());
+					onOff[trigger_->isChecked()], onOff[hoverValues_->isChecked()], onOff[fineDetail_->isChecked()],
+					chart_->view()->drawingName());
 }
 
 void ChartTab::showDisplayState() {

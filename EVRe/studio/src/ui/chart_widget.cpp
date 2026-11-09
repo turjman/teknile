@@ -1785,6 +1785,12 @@ int ChartView::noteAtPoint(const QPointF &pos) const {
 	return -1;
 }
 
+void ChartView::setFineDetail(bool on) {
+	if (on == fineDetail_) return;
+	fineDetail_ = on;
+	refresh(); /* the columns are part of the binning's key: binned again at the next frame */
+}
+
 void ChartView::setHoverValues(bool on) {
 	hoverValues_ = on;
 	readoutTick_ = ~quint64(0); /* made again (or let go) at the next frame */
@@ -2931,7 +2937,12 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.t1 = lastViewEnd_ = viewEnd();
 	axes.t0 = axes.t1 - window_;
 	axes.span = window_;
-	axes.columns = std::max(1.0, axes.rect.width());
+	/* Fine detail: a column per device pixel (at 225 % a column per logical pixel drew a 1 min view of a noisy line as
+	 * steps 2.25 px wide, its detail lost in them), on the screen and in a picture of the chart (grab) alike. Off: a
+	 * column per logical pixel, the cost of a busy view (2.25 times the columns made the lines two to three times as
+	 * slow to build at 225 %) */
+	const double dpr = p.device()->devicePixelRatioF();
+	axes.columns = std::max(1.0, fineDetail_ ? std::round(axes.rect.width() * dpr) : axes.rect.width());
 	placeCursors(axes); /* on the grid: the times under them in this view */
 	QElapsedTimer stage; /* the timing aid's stages (perf_) */
 	stage.start();
@@ -4245,12 +4256,12 @@ ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 			if (x > axes.rect.left() + 0.5 && x < axes.rect.right() - 0.5) ticks.lineX << x;
 		}
 	} else {
-		int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
+		int target = std::max(2, int(axes.rect.width() / TIME_LABEL_SPACING));
 		ticks.timeStep = niceTimeStep(window_, target);
 		/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
 		const QFontMetricsF labels(smallFont());
 		while (ticks.timeStep < 1e-3 && target > 2
-				&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
+				&& ticks.timeStep / window_ * axes.rect.width() < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
 			ticks.timeStep = niceTimeStep(window_, --target);
 		for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) {
 			ticks.times << t;

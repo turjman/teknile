@@ -321,6 +321,9 @@ void prepareSettings(const TestRegisters &regs) {
 					QStringLiteral("OLD\tV\t%1 * 2").arg(regs.volts.name) });
 	settings.setValue(QStringLiteral("chart/memory"), 60.0);
 	settings.setValue(QStringLiteral("chart/window"), 30.0);
+	/* Fine detail off (its default is on): the speed checks measure a busy chart at the cost they were set for; the
+	 * Display menu's check turns it on and off */
+	settings.setValue(QStringLiteral("chart/fineDetail"), false);
 }
 
 /* a token as the login register receives it: cut or zero-padded to its size (STUDIO.md section 3.6) */
@@ -6748,7 +6751,7 @@ private:
 		 * after T fill the view's right part, only the columns they reach binned at each frame; at 100 ms Normal holds a
 		 * view once it is full (a window under a second: steady), the next one binned while it fills behind it */
 		const int fastKey0 = ChartView::fastKey(0, 0);
-		const double columnsWide = view->lastPlot().width();
+		const double columnsWide = view->lastColumns();
 		struct Held { int frames = 0; double seconds = 0, columns = 0, paint = 0, paintMax = 0, bin = 0; bool held = false; };
 		auto heldFill = [&](double window, ChartView::TriggerMode mode) {
 			Held out;
@@ -7189,7 +7192,7 @@ private:
 				w->chartTab()->showSpan(end - window, end);
 				v->repaint();
 				const double t0 = v->lastViewStart(), t1 = v->lastViewEnd();
-				const double column = (t1 - t0) / std::max(1.0, v->lastPlot().width());
+				const double column = (t1 - t0) / std::max(1.0, v->lastColumns());
 				const qsizetype at = std::min(store.size() - 1, store.upperBound(t1));
 				const double drawn = v->drawnTo(key), off = std::fabs(drawn - store.timeAt(at)) / column;
 				tried++;
@@ -15042,7 +15045,7 @@ private:
 				view->showSpan(at - 5.0, at + 5.0);
 				host.grab(); /* the first frame of this view: binned whole */
 				const qint64 before = view->fastColumnsBinned();
-				const double column = 10.0 / view->lastPlot().width();
+				const double column = 10.0 / view->lastColumns();
 				view->showSpan(at - 5.0 + 2.5 * column, at + 5.0 + 2.5 * column);
 				host.grab();
 				const qint64 binned = view->fastColumnsBinned() - before;
@@ -15412,6 +15415,33 @@ private:
 		const double kept = blocksAlike(a, b, 3);
 		std::printf("     (kept bins vs binned at once: %.2f%% of the blocks alike)\n", kept * 100);
 		check(kept >= 0.995, "chart, the view's bins kept from frame to frame: fed in ten steps, the picture of one fed at once");
+
+		/* Fine detail: a bin per device pixel (at 225 % a bin per logical pixel drew a noisy 1 min line as steps 2.25 px
+		 * wide: a screen against its copied picture); off, a bin per logical pixel (a busy view's cost) */
+		{
+			const double dpr = stepsHost.devicePixelRatioF();
+			const auto columnsOk = [&](double expected) {
+				const double columns = steps->lastColumns();
+				const QVector<ChartView::BinInfo> bins = steps->lastBins(0);
+				const double columnSeconds = 60.0 / std::max(1.0, columns);
+				double widest = 0;
+				for (const ChartView::BinInfo &bin : bins) widest = std::max(widest, bin.t1 - bin.t0);
+				std::printf("     (%.0f columns in %.0f px at %.2fx, %lld bins, the widest %.2f of a column)\n", columns,
+						steps->lastPlot().width(), dpr, (long long) bins.size(), widest / columnSeconds);
+				return columns == expected && std::fabs(bins.size() - columns) <= 4 && widest <= columnSeconds;
+			};
+			const bool coarse = !steps->fineDetail() && columnsOk(std::max(1.0, steps->lastPlot().width()));
+			steps->setFineDetail(true);
+			const QImage fine = stepsHost.grab().toImage(); /* a picture of the chart: binned as the screen is */
+			const bool fineOk = steps->fineDetail() && !fine.isNull()
+					&& columnsOk(std::max(1.0, std::round(steps->lastPlot().width() * dpr)));
+			steps->setFineDetail(false);
+			stepsHost.grab();
+			const bool back = columnsOk(std::max(1.0, steps->lastPlot().width()));
+			check(coarse && fineOk && back, "chart, Fine detail: a 1 min view of a line at 500 Hz has a bin per device pixel "
+					"across the plot (its width times the screen's scale), a picture of the chart too; off, a bin per "
+					"logical pixel; none wider than a column");
+		}
 
 		/* the crosshair's box with 64 lines: in columns that fit the plot's height */
 		const int perColumn = ChartView::readoutRowsPerColumn(700);
@@ -15791,6 +15821,34 @@ private:
 			hoverValues->trigger(); /* as it was */
 		}
 		check(hoverSaved, "chart, Display menu: Hover values switches the box of values, is saved and said in the tooltip");
+		/* Fine detail: a bin per device pixel while on (the test prepares it off, its default on: a fresh ChartTab with
+		 * no setting has it on) */
+		auto *fine = window_.findChild<QAction *>(QStringLiteral("chartFineDetail"));
+		bool fineSaved = false;
+		if (fine && items.contains(fine) && !fine->toolTip().isEmpty()) {
+			ChartView *view = window_.findChild<ChartView *>();
+			const bool was = fine->isChecked();
+			fine->trigger();
+			(void) view->grab(); /* a frame, whether the Chart tab is shown or not (the card paints only a shown one) */
+			const double width = view->lastPlot().width(), dpr = view->devicePixelRatioF();
+			const double expected = std::max(1.0, !was ? std::round(width * dpr) : width);
+			fineSaved = QSettings().value(QStringLiteral("chart/fineDetail")).toBool() == !was && view->fineDetail() == !was
+					&& view->lastColumns() == expected
+					&& display->toolTip().contains(was ? QStringLiteral("Fine detail off") : QStringLiteral("Fine detail on"));
+			if (!fineSaved)
+				std::printf("     (Fine detail: was %d, saved %d, view %d, %.0f columns for %.0f px at %.2fx, tooltip \"%s\")\n",
+						int(was), int(QSettings().value(QStringLiteral("chart/fineDetail")).toBool()), int(view->fineDetail()),
+						view->lastColumns(), width, dpr, qPrintable(display->toolTip()));
+			fine->trigger(); /* as it was */
+			QSettings settings;
+			settings.remove(QStringLiteral("chart/fineDetail"));
+			ChartTab fresh([] { return 100.0; });
+			auto *freshFine = fresh.findChild<QAction *>(QStringLiteral("chartFineDetail"));
+			fineSaved = fineSaved && freshFine && freshFine->isChecked() && fresh.findChild<ChartView *>()->fineDetail();
+			settings.setValue(QStringLiteral("chart/fineDetail"), fine->isChecked()); /* the run's as it was */
+		}
+		check(fineSaved, "chart, Display menu: Fine detail bins a line per device pixel (its width times the screen's "
+				"scale) while on and per logical pixel while off, is saved, said in the tooltip, and on by default");
 		const bool sameText = display->text() == QLatin1String("Display");
 		if (!(inMenu && normalised && back && smoothSaved && sameText))
 			std::printf("     (Display: in menu %d, normalised %d, back %d, smooth saved %d, text \"%s\")\n", inMenu,
@@ -20795,7 +20853,7 @@ private:
 		const qint64 fastColumns = fastView->fastColumnsBinned() - fastBefore;
 		const double fastMoved = fastView->triggeredAt() - fastFrom;
 		const int fastHolds = fastView->triggerHolds() - holds;
-		const double columns = fastView->lastPlot().width();
+		const double columns = fastView->lastColumns();
 		/* about the samples fed (a bin each: 20 a frame polled, 100 a frame fast) and the two ends of each frame; and at
 		 * least the columns the view moved by (a sample's each: 50 us polled, 10 us fast), so nothing binned fails too */
 		const bool polledNew = polledHolds >= 50 && polledColumns <= 2 * 20 * polledFrames + 4 * polledFrames
@@ -20842,7 +20900,7 @@ private:
 		}
 		const qint64 fillFast = fastView->fastColumnsBinned() - fillFastBefore;
 		const qint64 fillPolled = fastView->polledColumnsBinned() - fillPolledBefore;
-		const double fillColumns = fastView->lastPlot().width();
+		const double fillColumns = fastView->lastColumns();
 		/* the columns the data reached meanwhile, each binned about once; at most a few more a frame (the first column
 		 * and the open one at the data's end), never the filled part again (a column a frame times the frames) */
 		const double reached = (std::min(now, heldFrom + 0.8 * 2.5) - dataFrom) / 2.5 * fillColumns;
@@ -20884,7 +20942,7 @@ private:
 		}
 		const qint64 shortColumns = fastView->fastColumnsBinned() - shortBefore;
 		const int shortShown = fastView->triggerHolds() - shortHolds;
-		const double shortWide = fastView->lastPlot().width();
+		const double shortWide = fastView->lastColumns();
 		/* a frame brings 1/60 s of a 0.1 s view: a sixth of its columns, and the first and the open one */
 		const bool spread = shortShown >= 20 && showFrames >= 15 && atShowMost <= shortWide / 6 * 1.2 + 4
 				&& shortColumns <= 1.2 * shortShown * shortWide + 4 * shortFrames;
@@ -27113,11 +27171,11 @@ int main(int argc, char **argv) {
 		QStringList keys = own.allKeys();
 		keys.sort();
 		check(QSettings().applicationName() == QLatin1String("EVReStudioTest")
-						&& keys == QStringList{ QStringLiteral("chart/math"), QStringLiteral("chart/memory"),
-								QStringLiteral("chart/window") },
+						&& keys == QStringList{ QStringLiteral("chart/fineDetail"), QStringLiteral("chart/math"),
+								QStringLiteral("chart/memory"), QStringLiteral("chart/window") },
 				"the test's own settings (EVReStudioTest) cleared at its start: a recording/measure = true an earlier run "
-				"left is gone, only the three the test prepares are there when the first step runs");
-		if (keys.size() != 3) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
+				"left is gone, only the four the test prepares are there when the first step runs");
+		if (keys.size() != 4) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
 	}
 
 	OtherClient other;

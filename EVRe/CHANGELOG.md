@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.1 (not released yet)
+
+### EVRe Studio
+
+- **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
+  not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
+  smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every
+  swing as one line. It costs more drawing time: turn it off when a busy chart runs slow. Nothing changes at 100 %.
+
 ## 1.5.0 (2026-11-07)
 
 Room to focus: the sidebar and the quick-write panel fold away.
