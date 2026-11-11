@@ -80,6 +80,7 @@
 #include <QTabWidget>
 #include <QTableView>
 #include <QTableWidget>
+#include <QTcpServer>
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextBrowser>
@@ -716,6 +717,7 @@ public:
 		listenArabic();
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
+		loginStopsReconnect();
 		tokenWithoutLoginRegister(); /* the last check: the window keeps a map without the login */
 		docsPictures(); /* EVRE_DOCS_SHOT only: the docs' pictures, no check */
 		return true;
@@ -25966,6 +25968,87 @@ private:
 			monitor.logFrames->setChecked(false);
 			monitor.clear->click();
 		}
+	}
+
+	/* A device that refuses every request (ERROR_RESP permission denied) and closes the link right after, as a board
+	 * whose token was changed did: with the old token the Studio logged "token refused" and reconnected twice a second
+	 * (4000 times in 35 minutes, the pill saying only that it was connecting); with no token, every register was
+	 * "not available on this device" and the link lost every 2 s. Now: one try, the pill says why, no reconnect until
+	 * Connect is pressed. Then the fake device of the other steps again. */
+	void loginStopsReconnect() {
+		QTcpServer server;
+		int connections = 0;
+		QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+			while (QTcpSocket *socket = server.nextPendingConnection()) {
+				connections++;
+				auto parser = std::make_shared<evre::Parser>();
+				QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser] {
+					parser->feed(socket->readAll());
+					evre::Frame frame;
+					bool any = false;
+					while (parser->next(frame)) {
+						socket->write(evre::build(frame.slave, evre::ERROR_RESP, frame.addr, frame.cnt, QByteArray(1, char(3))));
+						any = true;
+					}
+					if (any) QTimer::singleShot(20, socket, [socket] { socket->disconnectFromHost(); });
+				});
+				QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+			}
+		});
+		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		QLineEdit *tokenBox = nullptr;
+		for (QLineEdit *line : window_.findChildren<QLineEdit *>())
+			if (line->placeholderText() == QLatin1String("Token (not stored)")) tokenBox = line;
+		QCheckBox *reconnectBox = nullptr;
+		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
+			if (b->text() == QLatin1String("Reconnect by itself")) reconnectBox = b;
+		const bool found = server.listen(QHostAddress::LocalHost) && pill && tokenBox && reconnectBox && map_.loginAddr != 0;
+		check(found, "a device closing the link on a refused login: the local stand-in listening, the pill, the token box "
+				"and Reconnect by itself found, the map with a login register");
+		if (!found) return;
+		const bool reconnectWas = reconnectBox->isChecked();
+		reconnectBox->setChecked(true);
+		/* one try with this token: how many links it opened in 3 s, what the pill and the Log said */
+		const auto tryWith = [&](const QString &token, int &tries, QString &said) {
+			if (QPushButton *disconnect = buttonWithText(QStringLiteral("Disconnect"))) disconnect->click();
+			if (QPushButton *stop = buttonWithText(QStringLiteral("Stop reconnecting"))) stop->click();
+			QTest::qWait(200);
+			MainWindow::Startup startup;
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(server.serverPort());
+			window_.applyStartup(startup);
+			tokenBox->setText(token);
+			const int before = connections;
+			QPushButton *connectButton = buttonWithText(QStringLiteral("Connect"));
+			if (connectButton) connectButton->click();
+			QTest::qWait(3000); /* at least five tries twice a second before */
+			tries = connections - before;
+			said = pill->fullText();
+			return connectButton && buttonWithText(QStringLiteral("Connect")) != nullptr;
+		};
+		int wrongTries = 0, noneTries = 0;
+		QString wrongSaid, noneSaid;
+		const bool wrongStopped = tryWith(QString::fromUtf8(wrongToken), wrongTries, wrongSaid);
+		const bool wrongLogged = logText().contains(QLatin1String("not reconnecting: token refused (permission denied)"));
+		const bool noneStopped = tryWith(QString(), noneTries, noneSaid);
+		const bool noneLogged = logText().contains(QLatin1String("the device wants a login: its map has a login register"));
+		std::printf("     (a wrong token: %d link(s) in 3 s, the pill \"%s\"; none: %d link(s), the pill \"%s\")\n", wrongTries,
+				qPrintable(wrongSaid), noneTries, qPrintable(noneSaid));
+		check(wrongStopped && wrongTries == 1 && wrongSaid.contains(QLatin1String("token refused (permission denied): type "
+					"the right token, then Connect")) && wrongLogged,
+				"a device closing the link on a refused token: one try, not reconnected by itself, the pill says the token "
+				"was refused and to type the right one, Connect offered");
+		check(noneStopped && noneTries == 1 && noneSaid.contains(QLatin1String("the device wants a token: type it in the Token box")) && noneLogged,
+				"a device refusing every read without a login (no token given, the map has a login register): one try, "
+				"the Log and the pill say it wants a token, not reconnected by itself");
+
+		/* the fake device of the other steps again, with its token */
+		reconnectBox->setChecked(reconnectWas);
+		MainWindow::Startup startup;
+		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+		startup.connect = true;
+		window_.applyStartup(startup);
+		check(cellShows(valueCell(table_, regs_.u8.name), QString::number(other_.readU8(regs_.u8.addr)), 5000),
+				"a refused login: done, the window polls the fake device of the other steps again with its token");
 	}
 
 	/* the token set, but a map without "login": nothing is sent, the Log warns. The window

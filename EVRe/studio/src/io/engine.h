@@ -325,6 +325,9 @@ signals:
 	void deviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
 	void loginRefused(int device, const QString &err); /* the device refused the token written to its login register */
 	void loginSkipped();                   /* a token was given, but no map declares a login register */
+	/* a device whose map declares a login register, given no token, refused to say its DEVICE_ID (permission denied):
+	 * it wants a login */
+	void loginNeeded(int device);
 	void deviceOnline(int device, bool online); /* a device of a bus stopped answering, or answers again */
 	void writeDone(quint64 id, bool ok, const QString &msg);
 	void readDone(quint64 id, bool ok, const QByteArray &data, const QString &msg, double latencyMs);

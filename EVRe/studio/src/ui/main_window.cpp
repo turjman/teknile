@@ -23,6 +23,7 @@
 #include <QThread>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <utility>
 
 #include "evre/frame.h"
 #include "evre/registers.h"
@@ -291,6 +292,12 @@ void MainWindow::startEngine() {
 		info.error = err;
 		showDeviceInfo();
 		logEvent(LogLevel::Error, deviceLabel(slave) + tr("token refused: %1").arg(err));
+		loginStop_ = deviceLabel(slave) + tr("token refused (%1): type the right token, then Connect").arg(err);
+	});
+	connect(engine_, &IoEngine::loginNeeded, this, [this](int slave) {
+		logEvent(LogLevel::Error, deviceLabel(slave)
+				+ tr("the device wants a login: its map has a login register, and no token was given (Token box)"));
+		loginStop_ = deviceLabel(slave) + tr("the device wants a token: type it in the Token box, then Connect");
 	});
 	connect(engine_, &IoEngine::loginSkipped, this, [this] {
 		logEvent(LogLevel::Warning, tr("the map declares no login register: the token was not sent"));
@@ -673,6 +680,7 @@ void MainWindow::toggleConnect() {
 
 void MainWindow::connectLink() {
 	disconnectLink();
+	loginStop_.clear(); /* a new try: its own login */
 	listenAsks_ = false;
 	pushLinkOptions();
 	pushPolling();
@@ -849,6 +857,7 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 	}
 	connected_ = false; /* the engine has let go of the link already */
 	offlineDevices_.clear();
+	const QString loginStop = std::exchange(loginStop_, QString());
 	showBus();
 	autoSendCap_ = -1; /* a lost link keeps Auto send ticked: the engine switches it on again after a reconnect */
 	sidebar_->setAutoSendTaken(0);
@@ -862,7 +871,12 @@ void MainWindow::onClosed(const QString &why, const QString &detail) {
 	/* below administrator a try by itself would raise a prompt nobody is there for: a person must press Listen */
 	if (listenAsks_ && wasUp && !why.isEmpty() && sidebar_->autoReconnect())
 		sidebar_->showLinkError(tr("%1 · press Listen to hear it again").arg(why), detail);
-	if (wantConnected_ && sidebar_->autoReconnect() && !listenAsks_) {
+	if (!loginStop.isEmpty() && !why.isEmpty()) { /* lost, not closed here: the same token, or none, would be refused again */
+		wantConnected_ = false;
+		sidebar_->showLinkError(loginStop, why);
+		showListening(QString());
+		logEvent(LogLevel::Info, tr("not reconnecting: %1").arg(loginStop));
+	} else if (wantConnected_ && sidebar_->autoReconnect() && !listenAsks_) {
 		reconnectTimer_.start(wasUp ? 500 : 2000);
 		sidebar_->showReconnecting();
 	} else {
