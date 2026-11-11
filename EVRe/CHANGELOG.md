@@ -8,6 +8,9 @@
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every
   swing as one line. It costs more drawing time: turn it off when a busy chart runs slow. Nothing changes at 100 %.
+- **No dashes in a copied picture.** A line with bars in about half its pixel columns (a slow sine at two or three
+  samples a column) was drawn by the CPU as wide bars joined by hairlines: dashes in *Copy picture* and *Save
+  picture*, where the screen showed one line. The thin joins are kept for lines of bars in nearly every column.
 - **The Window and Memory boxes no longer put an old length back.** A box only clicked in, or left when a menu took
   the focus, applied its text again: a window changed since (a span shown, a recording zoomed) jumped back to the
   box's length, clipped to the memory. Now a box applies a length only when one is typed or picked.

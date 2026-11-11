@@ -5796,8 +5796,10 @@ The bins start one sample before the view and end one sample after it, so the li
     a column, not four;
   - a column whose swing is taller than the line is wide becomes a **bar**, a plain fill the line's width from the
     min to the max (`fillBands`, antialiased: a half-pixel edge comes out the same on a stripe), and the polyline goes through its first and last value only. A
-    line that is mostly bars is joined by a single stroke (the bars give it its width): a fast, noisy line costs a
-    fill per column instead of five antialiased strokes over its whole swing;
+    line that is bars in nine columns of ten or more is joined by a single stroke (the bars give it its width): a
+    fast, noisy line costs a fill per column instead of five antialiased strokes over its whole swing. A line of bars
+    in fewer columns keeps the full stroke: with the single stroke from half of them on, a slow sine at two or three
+    samples a column came out as dashes, wide bars and hairlines (`hairlineLines` counts the lines joined thin);
   - a level run is one segment: while the line stays at the same height, its end moves on instead of a point being
     added. A register that does not change costs two points.
 
@@ -7876,7 +7878,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1095 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1096 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

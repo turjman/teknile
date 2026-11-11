@@ -15444,6 +15444,32 @@ private:
 			steps->setFineDetail(false);
 			stepsHost.grab();
 			const bool back = columnsOk(std::max(1.0, steps->lastPlot().width()));
+			/* the hairline joins only for a line of bars in nearly every column: a slow sine at two or three samples a
+			 * column (bars in about half its columns) was drawn as dashes in a copied picture, wide bars and hairlines */
+			{
+				QWidget sineHost;
+				sineHost.resize(1100, 480);
+				auto *sine = new ChartView(&sineHost);
+				sine->setGeometry(9, 5, 1080, 470);
+				sine->setClock([] { return 3600.0; }, 0);
+				sine->setSmooth(false);
+				sine->setMemory(3600);
+				sine->setWindow(28);
+				sine->setDrawThreads(1);
+				sine->addSeries(0, QStringLiteral("slow"), QStringLiteral("V"), QColor(80, 140, 255));
+				sine->addSeries(1, QStringLiteral("noisy"), QStringLiteral("V"), QColor(255, 140, 40));
+				for (int i = 0; i < 28 * 100; i++) sine->append(0, 3572.0 + i / 100.0, std::sin(2 * M_PI * (i / 100.0) / 2.5));
+				const QImage slowOnly = sineHost.grab().toImage();
+				const int slowHairlines = sine->hairlineLines();
+				for (int i = 0; i < 28 * 2000; i++) sine->append(1, 3572.0 + i / 2000.0, (i * 7919 % 101) / 50.0 - 1.0);
+				(void) sineHost.grab();
+				const int withNoisy = sine->hairlineLines();
+				std::printf("     (hairline joins: a 2.5 s sine at 100 Hz over 28 s %d; with a noisy line at 2 kHz beside it %d)\n",
+						slowHairlines, withNoisy);
+				check(!slowOnly.isNull() && slowHairlines == 0 && withNoisy == 1,
+						"chart, the CPU's thin joins: a slow sine with bars in some of its columns is drawn whole at the line's "
+						"width (no dashes in a copied picture); a noisy line of bars in every column keeps the one thin stroke");
+			}
 			check(coarse && fineOk && back, "chart, Fine detail: a 1 min view of a line at 500 Hz has a bin per device pixel "
 					"across the plot (its width times the screen's scale), a picture of the chart too; off, a bin per "
 					"logical pixel; none wider than a column");

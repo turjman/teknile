@@ -631,6 +631,7 @@ public:
 	 * difference inside the bars), and the segments the last CPU paint left out */
 	void setHiddenStroke(bool on) { hiddenStroke_ = on; }
 	qsizetype strokeSegmentsHidden() const { return segmentsHidden_; }
+	int hairlineLines() const { return hairlines_; } /* tests: the lines the last CPU paint joined with one thin stroke */
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
 	/* a value in the crosshair's box: a whole number as it is ("2": a count, a state, an integer column of a recording),
@@ -1132,6 +1133,7 @@ private:
 	mutable qint64 barRowsDrawn_ = 0;
 	bool hiddenStroke_ = true;             /* the stroke the bars hide left out (setHiddenStroke) */
 	mutable qsizetype segmentsHidden_ = 0;
+	mutable int hairlines_ = 0; /* hairlineLines */
 	Drawing drawing_ = Drawing::Cpu;
 	std::unique_ptr<GpuLines> gpu_;        /* drawing the plot; null: the CPU does */
 	/* a card being opened on a thread of its own (setDrawing); a later choice lets it go when it is ready. Destroyed

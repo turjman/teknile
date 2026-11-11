@@ -4900,8 +4900,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
 		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr, &breaks[i]);
 	});
-	/* a line that is mostly bars (fast and noisy): its polyline only joins them, one stroke is enough; five over the
-	 * whole height of each column cost the most of a frame */
+	/* a line that is bars in nearly every column (fast and noisy): its polyline only joins them, one stroke is enough;
+	 * five over the whole height of each column cost the most of a frame. Not a line of bars in half its columns: a
+	 * slow sine at two or three samples a column drew its bars wide and the rest of it as a hairline, dashes in a
+	 * copied picture where the card drew one line */
 	QVector<char> thin(lines.size());
 	qsizetype points = 0;
 	/* the rows the bars fill, a fill's cost (their points alone kept a full-height fast line on one thread): a fast
@@ -4909,8 +4911,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	qint64 barRows = 0;
 	const QTransform toDevice = p.deviceTransform();
 	segmentsHidden_ = 0;
+	hairlines_ = 0;
 	for (qsizetype i = 0; i < lines.size(); i++) {
-		thin[i] = 2 * bands[i].size() > lines[i].bins.size();
+		thin[i] = 10 * bands[i].size() >= 9 * lines[i].bins.size();
+		hairlines_ += thin[i];
 		const bool opaque = lines[i].series->color.alpha() == 255 && p.opacity() >= 1;
 		if (lines[i].series->fast && thin[i] && opaque && hiddenStroke_) /* the stroke its bars hide, left out */
 			segmentsHidden_ += leaveOutHidden(toDevice, crispBars(toDevice, bands[i].constData(), bands[i].size(), false),
