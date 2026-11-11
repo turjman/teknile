@@ -222,6 +222,39 @@ void countThreadWarnings(QtMsgType type, const QMessageLogContext &context, cons
 	if (previousHandler) previousHandler(type, context, message);
 }
 
+/* ---- a device that refuses every request (ERROR_RESP permission denied) and closes the link 20 ms after, as a board
+ * whose token was changed did. On a thread of its own: on the window's thread its answers waited for the window's work
+ * and came after the Studio's 500 ms timeout in a full run */
+
+class RefusingDevice : public QObject {
+public:
+	std::atomic<int> connections{ 0 };
+	std::atomic<quint16> port{ 0 };
+
+	/* on its thread */
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [this, server] {
+			while (QTcpSocket *socket = server->nextPendingConnection()) {
+				connections++;
+				auto parser = std::make_shared<evre::Parser>();
+				QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser] {
+					parser->feed(socket->readAll());
+					evre::Frame frame;
+					bool any = false;
+					while (parser->next(frame)) {
+						socket->write(evre::build(frame.slave, evre::ERROR_RESP, frame.addr, frame.cnt, QByteArray(1, char(3))));
+						any = true;
+					}
+					if (any) QTimer::singleShot(20, socket, [socket] { socket->disconnectFromHost(); });
+				});
+				QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+};
+
 /* ---- the other client: plain blocking EVRe over its own socket */
 
 class OtherClient {
@@ -25976,25 +26009,17 @@ private:
 	 * "not available on this device" and the link lost every 2 s. Now: one try, the pill says why, no reconnect until
 	 * Connect is pressed. Then the fake device of the other steps again. */
 	void loginStopsReconnect() {
-		QTcpServer server;
-		int connections = 0;
-		QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
-			while (QTcpSocket *socket = server.nextPendingConnection()) {
-				connections++;
-				auto parser = std::make_shared<evre::Parser>();
-				QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser] {
-					parser->feed(socket->readAll());
-					evre::Frame frame;
-					bool any = false;
-					while (parser->next(frame)) {
-						socket->write(evre::build(frame.slave, evre::ERROR_RESP, frame.addr, frame.cnt, QByteArray(1, char(3))));
-						any = true;
-					}
-					if (any) QTimer::singleShot(20, socket, [socket] { socket->disconnectFromHost(); });
-				});
-				QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-			}
-		});
+		QThread deviceThread;
+		auto *device = new RefusingDevice;
+		device->moveToThread(&deviceThread);
+		deviceThread.start();
+		QMetaObject::invokeMethod(device, [device] { device->start(); }, Qt::BlockingQueuedConnection);
+		const auto stopDevice = [&] {
+			QMetaObject::invokeMethod(device, [device] { delete device; }, Qt::BlockingQueuedConnection);
+			deviceThread.quit();
+			deviceThread.wait();
+		};
+		const std::atomic<int> &connections = device->connections;
 		auto *pill = window_.findChild<ElidedLabel *>(QStringLiteral("pill"));
 		QLineEdit *tokenBox = nullptr;
 		for (QLineEdit *line : window_.findChildren<QLineEdit *>())
@@ -26002,10 +26027,13 @@ private:
 		QCheckBox *reconnectBox = nullptr;
 		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
 			if (b->text() == QLatin1String("Reconnect by itself")) reconnectBox = b;
-		const bool found = server.listen(QHostAddress::LocalHost) && pill && tokenBox && reconnectBox && map_.loginAddr != 0;
+		const bool found = device->port != 0 && pill && tokenBox && reconnectBox && map_.loginAddr != 0;
 		check(found, "a device closing the link on a refused login: the local stand-in listening, the pill, the token box "
 				"and Reconnect by itself found, the map with a login register");
-		if (!found) return;
+		if (!found) {
+			stopDevice();
+			return;
+		}
 		const bool reconnectWas = reconnectBox->isChecked();
 		reconnectBox->setChecked(true);
 		/* one try with this token: how many links it opened in 3 s, what the pill and the Log said */
@@ -26014,7 +26042,7 @@ private:
 			if (QPushButton *stop = buttonWithText(QStringLiteral("Stop reconnecting"))) stop->click();
 			QTest::qWait(200);
 			MainWindow::Startup startup;
-			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(server.serverPort());
+			startup.tcp = QStringLiteral("127.0.0.1:%1").arg(device->port.load());
 			window_.applyStartup(startup);
 			tokenBox->setText(token);
 			const int before = connections;
@@ -26042,6 +26070,7 @@ private:
 				"the Log and the pill say it wants a token, not reconnected by itself");
 
 		/* the fake device of the other steps again, with its token */
+		stopDevice();
 		reconnectBox->setChecked(reconnectWas);
 		MainWindow::Startup startup;
 		startup.tcp = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
