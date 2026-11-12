@@ -47,6 +47,7 @@
 #include "ui/sidebar.h"
 #include "ui/sidebar_dock.h"
 #include "ui/theme.h"
+#include "ui/touch_scroll.h"
 #include "ui/ui_helpers.h"
 
 namespace {
@@ -113,6 +114,7 @@ MainWindow::MainWindow(const QString &mapAtStart, const QString &busAtStart, QWi
 	: QMainWindow(parent), mapAtStart_(mapAtStart), busAtStart_(busAtStart) {
 	setWindowTitle(QStringLiteral("EVRe Studio"));
 	QApplication::setWindowIcon(studioIcon()); /* every window's, the recordings', the Help's and the dialogs' too */
+	if (auto *app = qobject_cast<QApplication *>(QCoreApplication::instance())) TouchScroll::install(*app); /* every window's too */
 	setAcceptDrops(true); /* a .csv dropped on the window: opened as a recording */
 	resize(1400, 860);
 	model_ = new RegisterModel(this);

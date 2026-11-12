@@ -59,6 +59,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QScroller>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -630,6 +631,7 @@ public:
 		chartFastMath();
 		readoutSteady();
 		displayMenu();
+		touchScroll();
 		helpPages();
 		languages();
 		measuresManyLines();
@@ -15854,6 +15856,47 @@ private:
 
 	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):
 	 * Normalise takes the Y controls away, Smooth is saved; both in the button's tooltip; the button keeps its text */
+	/* Touch scrolling: a finger dragged over a scrolling area scrolls it (on a touch screen, a Windows one as the
+	 * phone's, only the scroll bars moved them); the filter on the application grabs it on every one, those made after
+	 * the window too. A mouse drag over the same list scrolls nothing (it selects, as before). */
+	void touchScroll() {
+		const bool tableGrabbed = QScroller::grabbedGesture(table_->viewport()) != Qt::GestureType(0);
+		QListWidget list;
+		for (int i = 0; i < 300; i++) list.addItem(QStringLiteral("row %1").arg(i));
+		list.resize(300, 300);
+		list.show();
+		(void) QTest::qWaitForWindowExposed(&list);
+		const bool listGrabbed = QScroller::grabbedGesture(list.viewport()) != Qt::GestureType(0);
+		QScrollBar *bar = list.verticalScrollBar();
+		/* the mouse: pressed, moved up, let go */
+		QWidget *view = list.viewport();
+		QTest::mousePress(view, Qt::LeftButton, {}, QPoint(150, 250));
+		for (int y = 250; y >= 50; y -= 20) {
+			QMouseEvent move(QEvent::MouseMove, QPointF(150, y), view->mapToGlobal(QPointF(150, y)), Qt::NoButton,
+					Qt::LeftButton, Qt::NoModifier);
+			QApplication::sendEvent(view, &move);
+		}
+		QTest::mouseRelease(view, Qt::LeftButton, {}, QPoint(150, 50));
+		QTest::qWait(300);
+		const int byMouse = bar->value();
+		/* a finger, as the touch gesture feeds it to the list's scroller (Qt's own scroller tests feed it so: touch
+		 * events made in a test do not reliably reach the gesture recognizer); a real finger is the device run's */
+		QScroller *scroller = QScroller::scroller(view);
+		qint64 ms = 1000;
+		scroller->handleInput(QScroller::InputPress, QPointF(150, 250), ms);
+		for (int y = 240; y >= 40; y -= 10) {
+			QTest::qWait(8);
+			scroller->handleInput(QScroller::InputMove, QPointF(150, y), ms += 16);
+		}
+		scroller->handleInput(QScroller::InputRelease, QPointF(150, 40), ms += 16);
+		const bool scrolled = QTest::qWaitFor([&] { return bar->value() > byMouse + 50; }, 2000);
+		std::printf("     (touch scroll: the table grabbed %d, a list made later %d; the mouse moved it to %d, a finger to %d)\n",
+				int(tableGrabbed), int(listGrabbed), byMouse, bar->value());
+		check(tableGrabbed && listGrabbed && byMouse == 0 && scrolled,
+				"touch: a finger dragged over a scrolling area scrolls it (the register table, a list made after the window); "
+				"a mouse drag over it scrolls nothing");
+	}
+
 	void displayMenu() {
 		auto *display = window_.findChild<QPushButton *>(QStringLiteral("chartDisplay"));
 		auto *normalise = window_.findChild<QAction *>(QStringLiteral("chartNormalise"));

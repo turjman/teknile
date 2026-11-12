@@ -342,6 +342,7 @@ The Studio runs on Windows and Linux. It is written in C++17 with Qt 6.
 | Dump | The device's bytes as the reads bring them: a card per block read with its request and reply, the payload as a hex grid with each register a coloured chip and its value beside its row; live, or held (chapter 37). |
 | Log | Every event in a tab and in a daily file. Pop-ups for warnings and errors; the same message pops up at most every 30 s (11.3). |
 | CSV | One row per poll of the registers you choose (per frame with auto send). |
+| Touch | On a touch screen a finger dragged over any list, table or panel (the sidebar, the Registers table, the Monitor, the Help, a dialog's list) scrolls it, with momentum; the mouse is unchanged, a mouse drag still selects. The chart's plot keeps the mouse's ways. |
 | Recordings | A recording (or an export of the chart) opened in a window of its own with its chart, measurements and notes, while the live chart goes on; the chart's view or A → B exported to CSV; pictures of the chart; notes on the chart, kept beside a recording (7.10, 7.11, 12.6). |
 | API | Port 1220: JSON lines by register name. Port 1219: EVRe pass-through for existing EVRe clients. |
 | Speed | All device I/O runs on its own thread with a high-resolution poll clock. Registers are merged into block reads and polls can overlap. Auto send: one device sends its read-only block by itself, up to 4000 frames/s (13.8). |
@@ -5158,6 +5159,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/fold_button.h`,&nbsp;`.cpp` | `FoldButton`: the drawn chevron button of the sidebar's fold, the thin bar's open and the quick-write panel's title |
 | `src/ui/main_window_bus.cpp` | `MainWindow`'s bus part (the same class): the bus file, its devices, the pickers, broadcasts |
 | `src/ui/limit_spin_box.h`,&nbsp;`.cpp` | `LimitSpinBox`: a number box held to the map's limits |
+| `src/ui/touch_scroll.h`,&nbsp;`.cpp` | `TouchScroll`: a filter on the application (`install`, once, from the main window) that grabs a `QScroller` touch gesture on the viewport of every `QAbstractScrollArea` as it is first polished, windows and dialogs made later included, with no bounce past the ends; a finger drag scrolls, a mouse drag does not |
 | `src/ui/elided_label.h`,&nbsp;`.cpp` | `ElidedLabel`: one line, cut with an ellipsis, the whole text in its tooltip (`setFullText`, `fullText`, `isCut`); the Map editor's banner, the Devices card's info line, the status bar's hint, the link state pill (`setElideMode`: cut in the middle; `setFullText`'s `shorter`: a shorter text shown whole first, the address alone; `setWraps`: an error's reason on more lines, never cut, its first line ending at the colon; `setLines`: always that many lines tall, the text wrapped between words and cut at the end of the last, Auto send's note) |
 | `src/ui/bulk_write_dialog.h`,&nbsp;`.cpp` | `BulkWriteDialog`: one value to several registers (6.6): what each one holds and gets, refused or past a limit, ⚠; the value box |
 | `src/ui/bus_panel.h`,&nbsp;`.cpp` | `BusPanel`: the Devices on the link card: one device, or the devices of a bus and their state |
@@ -7887,7 +7889,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1099 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1100 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

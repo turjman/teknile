@@ -78,6 +78,7 @@ qt_add_library(evre_studio_core STATIC
     src/ui/ui_helpers.h         src/ui/ui_helpers.cpp
     src/ui/limit_spin_box.h     src/ui/limit_spin_box.cpp
     src/ui/elided_label.h       src/ui/elided_label.cpp
+    src/ui/touch_scroll.h       src/ui/touch_scroll.cpp
     src/ui/value_pace.h         src/ui/value_pace.cpp
     src/ui/value_delegate.h     src/ui/value_delegate.cpp
     src/ui/event_log.h          src/ui/event_log.cpp
