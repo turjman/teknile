@@ -609,7 +609,16 @@ Some devices, or the TCP gateway in front of them, answer only after the client 
 - **What is written.** The token is encoded as UTF-8, then cut or zero-padded to exactly `size` bytes. It is written with an acknowledged write (`WRITE_ACK`). For example, the token `abc` with size 16 becomes `61 62 63 00 00 00 00 00 00 00 00 00 00 00 00 00`.
 - **A token but no login register.** The Log shows the warning *the map declares no login register: the token was not sent*.
 - **A refused login.** When the write fails (an error answer, or a timeout), the Log shows the error *token refused: <reason>*, and it pops up. For example: *token refused: permission denied*. The line under the pill shows it too, until the answer to the device ID read replaces that line.
+- **The link closed after a refused login.** A device (or a gateway) may close the link when it refuses the token.
+  The Studio then does not reconnect by itself, even with *Reconnect by itself* ticked: the same token would only be
+  refused again (a board whose token was changed was tried twice a second, 4000 times in 35 minutes). The pill says
+  *token refused: type the right token, then Connect*, the Log *not reconnecting: ...* beside its *token refused:
+  permission denied*, and the link stays closed until Connect is pressed.
 - **No token.** Nothing is written, whatever the map says.
+- **No token, and the device wants one.** When the map declares a login register, no token is given, and the device
+  refuses the device ID read with *permission denied*, the Log says *the device wants a login: its map has a login
+  register, and no token was given (Token box)*. If the device then closes the link, the pill says *the device wants
+  a token: type it in the Token box, then Connect*, and the Studio does not reconnect by itself either.
 
 Only a TCP link sends the token. A serial link never does.
 
@@ -7867,7 +7876,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1092 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1095 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
