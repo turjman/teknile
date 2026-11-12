@@ -79,6 +79,10 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		/* down on a selected row of a list or table: the drag selects the rows it passes, as the mouse's does */
 		selectFrom_ = QPersistentModelIndex();
 		if (auto *view = qobject_cast<QAbstractItemView *>(viewport->parentWidget())) {
+			/* by pixels once a finger is on it: by whole rows (Qt's default) a drag moved the table a row at a time and
+			 * it shook under the finger (the phone's tall rows the most); a mouse-only list keeps its rows */
+			view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+			view->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
 			const QModelIndex at = view->indexAt(viewport->mapFromGlobal(pressGlobal_).toPoint());
 			if (at.isValid() && view->selectionModel() && view->selectionModel()->isSelected(at)) selectFrom_ = at;
 		}
@@ -88,6 +92,10 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		const QVariant off = QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff);
 		properties.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, off);
 		properties.setScrollMetric(QScrollerProperties::VerticalOvershootPolicy, off);
+		/* every frame of the display, not every other (the default moved a phone's table in 9 px steps every 33 ms) */
+		properties.setScrollMetric(QScrollerProperties::FrameRate, QVariant::fromValue(QScrollerProperties::Fps60));
+		/* a drag from 2 mm, not 5: it began with a jump of what the finger had gone meanwhile (31 px on the phone) */
+		properties.setScrollMetric(QScrollerProperties::DragStartDistance, 0.002);
 		scroller->setScrollerProperties(properties);
 		scroller->handleInput(QScroller::InputPress, viewport->mapFromGlobal(pressGlobal_), mouse->timestamp());
 		return true;
