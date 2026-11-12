@@ -52,6 +52,9 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 	 * the touch updates (to the window) are all there is of the drag; they go on to Qt as they came */
 	if ((type == QEvent::TouchUpdate || type == QEvent::TouchEnd) && viewport_ && !sending_) {
 		const auto *touch = static_cast<QTouchEvent *>(event);
+		/* one source a finger: on Android the drag comes as touch updates and as mouse moves both, a little apart in
+		 * place and time, and the list fed both shook; the touch updates once they come, the mouse moves no more */
+		touchSeen_ = true;
 		if (!touch->points().isEmpty()) moveTo(touch->points().first().globalPosition(), touch->timestamp());
 		return false;
 	}
@@ -71,6 +74,8 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		pressGlobal_ = mouse->globalPosition();
 		doubleTap_ = type == QEvent::MouseButtonDblClick;
 		moved_ = false;
+		touchSeen_ = false;
+		lastMove_ = 0;
 		/* down on a selected row of a list or table: the drag selects the rows it passes, as the mouse's does */
 		selectFrom_ = QPersistentModelIndex();
 		if (auto *view = qobject_cast<QAbstractItemView *>(viewport->parentWidget())) {
@@ -89,7 +94,7 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 	}
 	if (watched != target_ || !viewport_) return false; /* not a finger we hold */
 	if (type == QEvent::MouseMove) {
-		moveTo(mouse->globalPosition(), mouse->timestamp());
+		if (!touchSeen_) moveTo(mouse->globalPosition(), mouse->timestamp());
 		return true;
 	}
 	QScroller::scroller(viewport_)->handleInput(QScroller::InputRelease, viewport_->mapFromGlobal(mouse->globalPosition()),
@@ -102,6 +107,10 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void TouchScroll::moveTo(const QPointF &global, quint64 timestamp) {
+	/* the same update twice (the window's and a widget's) or one older than the last: the scroller's speed is made of
+	 * the steps between them, a step back in time made it shake */
+	if (timestamp != 0 && timestamp <= lastMove_) return;
+	lastMove_ = timestamp;
 	if ((global - pressGlobal_).manhattanLength() > TAP_SLOP) moved_ = true;
 	auto *view = qobject_cast<QAbstractItemView *>(viewport_->parentWidget());
 	if (selectFrom_.isValid() && view && view->selectionModel()) {

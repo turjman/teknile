@@ -47,5 +47,7 @@ private:
 	bool doubleTap_ = false;
 	QPersistentModelIndex selectFrom_; /* down on a selected row: the drag selects from it, it does not scroll */
 	bool moved_ = false;
+	bool touchSeen_ = false;     /* this finger's way comes as touch updates: its mouse moves are left out */
+	quint64 lastMove_ = 0;       /* the time of the last step fed to the scroller */
 	bool sending_ = false;       /* the tap's own events pass the filter */
 };
