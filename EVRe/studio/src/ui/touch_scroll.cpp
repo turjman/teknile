@@ -96,6 +96,9 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		properties.setScrollMetric(QScrollerProperties::FrameRate, QVariant::fromValue(QScrollerProperties::Fps60));
 		/* a drag from 2 mm, not 5: it began with a jump of what the finger had gone meanwhile (31 px on the phone) */
 		properties.setScrollMetric(QScrollerProperties::DragStartDistance, 0.002);
+		/* one axis a drag: a finger is never quite straight, and a table dragged up the phone slid sideways as well
+		 * (the owner's "moves away"); a drag mostly up or down moves only up or down, one mostly across only across */
+		properties.setScrollMetric(QScrollerProperties::AxisLockThreshold, 0.5);
 		scroller->setScrollerProperties(properties);
 		scroller->handleInput(QScroller::InputPress, viewport->mapFromGlobal(pressGlobal_), mouse->timestamp());
 		return true;
