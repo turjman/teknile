@@ -18,6 +18,9 @@
 #include "model/bus_file.h"
 #include "model/fast_recording.h"
 #include "evre/frame.h"
+#ifdef Q_OS_ANDROID
+#include "evre/link_android.h"
+#endif
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -547,7 +550,14 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 	serialBaud_ = baud;
 	serialBaudLimited_ = baudLimited;
 	applyInFlight();
+#ifdef Q_OS_ANDROID
+	/* no serial ports for an app on Android: the port is a USB device, opened through Java's USB host API */
+	auto *link = new evre::AndroidUsbLink(port, baud, evre::UsbBridge::system());
+	connect(link, &evre::AndroidUsbLink::waiting, this, &IoEngine::linkWaiting);
+	attach(link, QString());
+#else
 	attach(new evre::SerialLink(port, baud), QString());
+#endif
 }
 
 /* A link that hears: a capture of this port, or nothing that can (open() then says so). No baud rate: the bytes are the

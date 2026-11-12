@@ -123,6 +123,7 @@ public:
 	void showDisconnected();
 	void showConnecting();
 	void showAsking();                      /* Listen below administrator: Windows's prompt is open */
+	void showWaitingForPermission(const QString &port); /* a USB device on Android: its permission dialog is open */
 	/* note: a line the pill's tooltip adds under its text (the baud rate a USB CDC port ignores) */
 	void showConnected(const QString &link, const QString &note = QString());
 	/* the pill on its own tint, not the connected green: nothing is sent. link: listenLinkText; the port alone when it

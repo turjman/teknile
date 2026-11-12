@@ -58,6 +58,11 @@ QString coloredSpan(const QString &html, const QColor &color);
 /* the maps beside the program: where Open and Save start, and where a first start looks */
 QString mapsFolder();
 
+/* The proof of the Android app (A.0) only, until narrow mode (A.2) replaces it: the Chart tab alone, the sidebar folded to
+ * its thin bar and no status bar, its rows of controls scrolled sideways, so a phone in landscape (915 x 412) can show it.
+ * EVRE_CHART_ONLY=1, or on Android the start intent's extra chartOnly (main.cpp) */
+bool chartOnly();
+
 /* ------------------------------------------------------------------ widgets */
 
 /* a card of the sidebar: its title in capitals over the content */

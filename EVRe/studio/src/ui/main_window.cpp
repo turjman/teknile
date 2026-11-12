@@ -283,6 +283,9 @@ void MainWindow::startEngine() {
 	ioThread_->start(QThread::HighPriority);
 	connect(engine_, &IoEngine::opened, this, &MainWindow::onOpened);
 	connect(engine_, &IoEngine::closed, this, &MainWindow::onClosed);
+	connect(engine_, &IoEngine::linkWaiting, this, [this] {
+		if (wantConnected_ && !linkPort_.isEmpty()) sidebar_->showWaitingForPermission(linkPort_);
+	});
 	connect(engine_, &IoEngine::deviceInfo, this, &MainWindow::onDeviceInfo);
 	connect(engine_, &IoEngine::deviceOnline, this, &MainWindow::onDeviceOnline);
 	connect(engine_, &IoEngine::loginRefused, this, [this](int slave, const QString &err) {
@@ -359,6 +362,25 @@ void MainWindow::buildWindow() {
 	columns->addWidget(mainArea, 1);
 	setCentralWidget(central);
 	buildStatusBar();
+	if (chartOnly()) applyChartOnly(dock, mainLayout);
+}
+
+/* Throwaway: the proof's switch (ui_helpers.h), not a layout. What the phone cannot fit is hidden, not rearranged; the
+ * sidebar is folded to its thin bar, whose icons open it to connect (it has the only Connect) */
+void MainWindow::applyChartOnly(SidebarDock *dock, QLayout *mainLayout) {
+	dock->setFolded(true);
+	statusBar()->hide();
+	mainLayout->setContentsMargins(6, 4, 6, 4);
+	for (int tab = 0; tab < tabs_->count(); tab++) {
+		tabs_->setTabVisible(tab, tab == TabChart);
+		/* a hidden tab's page still sizes the tabs' stack: the Registers' and the Map editor's least widths would not fit */
+		if (tab != TabChart) tabs_->widget(tab)->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+	}
+	tabs_->setCurrentIndex(TabChart);
+	/* a map opened, a Log notice clicked: the other tabs are not there to go to */
+	connect(tabs_, &QTabWidget::currentChanged, this, [this](int tab) {
+		if (tab != TabChart) tabs_->setCurrentIndex(TabChart);
+	});
 }
 
 void MainWindow::connectSidebar() {

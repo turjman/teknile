@@ -11,6 +11,8 @@
 #   evre_fake_fast   a fake EVRe device fast enough to measure the Studio
 #   evre_fast_test   Fast EVRe without a window: the block's rules, the clock's fit, the source
 #   evre_listen_test Listen without a window or a USB device: the two capture decoders on replayed captures
+#
+# On Android only EVReStudio is built, as an APK (the target apk; android/ holds its manifest and the Java USB layer).
 cmake_minimum_required(VERSION 3.21)
 project(EVReStudio VERSION 1.5.0 LANGUAGES CXX)
 
@@ -30,6 +32,8 @@ endif()
 qt_add_library(evre_protocol STATIC
     src/evre/frame.h            src/evre/frame.cpp
     src/evre/link.h             src/evre/link.cpp
+    src/evre/usb_bridge.h
+    src/evre/link_android.h     src/evre/link_android.cpp
     src/evre/master.h           src/evre/master.cpp
     src/evre/registers.h
     src/model/device_map.h      src/model/device_map.cpp
@@ -46,6 +50,10 @@ qt_add_library(evre_protocol STATIC
 )
 target_include_directories(evre_protocol PUBLIC src)
 target_link_libraries(evre_protocol PUBLIC Qt6::Core Qt6::Network Qt6::SerialPort)
+# Android's USB host API is Java's: the bridge between it and AndroidUsbLink (android/src/.../EvreUsb.java)
+if(ANDROID)
+    target_sources(evre_protocol PRIVATE src/evre/usb_bridge_jni.cpp)
+endif()
 # Listen's live capture on Linux: /dev/usbmonN and its ioctls exist nowhere else
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_sources(evre_protocol PRIVATE src/io/usbmon_capture.h src/io/usbmon_capture.cpp)
@@ -151,6 +159,24 @@ endfunction()
 qt_add_executable(EVReStudio WIN32 src/main.cpp)
 target_link_libraries(EVReStudio PRIVATE evre_studio_core)
 evre_version_info(EVReStudio "EVRe Studio")
+# On Android the program is an APK (the target EVReStudio_make_apk, or apk): the manifest and the Java USB layer from
+# android/, arm64-v8a, Android 9 (API 28) and newer, the version code from the version (1.5.0 -> 10500)
+if(ANDROID)
+    math(EXPR EVRE_ANDROID_VERSION_CODE
+        "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
+    set_target_properties(EVReStudio PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+        QT_ANDROID_MIN_SDK_VERSION 28
+        QT_ANDROID_TARGET_SDK_VERSION 34
+        QT_ANDROID_VERSION_CODE ${EVRE_ANDROID_VERSION_CODE}
+        QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}")
+    # the maps go into the APK's assets (assets:/maps, ui_helpers.cpp mapsFolder), copied into the package's build
+    # folder before androiddeployqt makes the APK
+    add_custom_target(evre_android_maps ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/maps
+            ${CMAKE_CURRENT_BINARY_DIR}/android-build/assets/maps)
+    add_dependencies(EVReStudio evre_android_maps)
+endif()
 
 # The maps travel with the programs: maps/ is copied beside them at every
 # build, so an edited map is there even when no program had to be linked
@@ -158,6 +184,9 @@ evre_version_info(EVReStudio "EVRe Studio")
 add_custom_target(evre_maps ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/maps $<TARGET_FILE_DIR:EVReStudio>/maps)
 add_dependencies(EVReStudio evre_maps)
+
+# The other programs are for a desktop: on Android each qt_add_executable would be an APK of its own
+if(NOT ANDROID)
 
 # The real window driven by QtTest against tests/fake_device.py (it writes: the
 # fake device only). It opens the maps copied beside it.
@@ -208,3 +237,5 @@ target_link_libraries(evre_probe PRIVATE evre_protocol)
 qt_add_executable(evre_fake_fast tests/fake_device_fast.cpp)
 target_link_libraries(evre_fake_fast PRIVATE evre_protocol)
 add_dependencies(evre_fake_fast evre_maps)
+
+endif() # NOT ANDROID

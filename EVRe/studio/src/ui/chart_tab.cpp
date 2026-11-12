@@ -29,6 +29,8 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
@@ -61,6 +63,8 @@
 namespace {
 
 constexpr int PERF_LOG_MS = 500; /* the timing aid: a line this often (EVRE_PERF_LOG) */
+/* the plot's least height in the Android proof's Chart only (ui_helpers.h): a phone in landscape is 412 px high */
+constexpr int CHART_ONLY_MIN_H = 180;
 
 /* the shortest Window that can be typed; shorter views are only reached with the wheel */
 constexpr double MIN_TYPED_WINDOW = 1e-5; /* 10 us: a fast line's single records */
@@ -278,6 +282,43 @@ protected:
 	QSplitterHandle *createHandle() override { return new MeasureSplitHandle(orientation(), this); }
 };
 
+/* The Android proof's Chart only (ui_helpers.h), a throwaway: the rows of controls over the chart in a strip that
+ * scrolls sideways, as tall as they are, so the plot takes a phone's width (the rows need about 1400 px). The strip
+ * follows the rows' height when the trigger's row comes and goes */
+class SidewaysRows : public QScrollArea {
+public:
+	SidewaysRows() {
+		setFrameShape(QFrame::NoFrame);
+		setWidgetResizable(true);
+		setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+		setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+	}
+	QSize sizeHint() const override {
+		const QSize rows = widget() ? widget()->sizeHint() : QSize();
+		return { rows.width(), rows.height() + horizontalScrollBar()->sizeHint().height() };
+	}
+	QSize minimumSizeHint() const override { return { 0, sizeHint().height() }; }
+
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (watched == widget() && event->type() == QEvent::LayoutRequest) updateGeometry();
+		return QScrollArea::eventFilter(watched, event);
+	}
+};
+
+/* the layout the rows go into, in the strip, under the tab's own */
+QVBoxLayout *sidewaysRows(QVBoxLayout *layout) {
+	auto *strip = new SidewaysRows;
+	auto *inside = new QWidget;
+	auto *rows = new QVBoxLayout(inside);
+	rows->setContentsMargins(0, 0, 0, 0);
+	rows->setSpacing(layout->spacing());
+	strip->setWidget(inside);
+	inside->installEventFilter(strip);
+	layout->addWidget(strip);
+	return rows;
+}
+
 } // namespace
 
 ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString &settingsGroup)
@@ -286,12 +327,14 @@ ChartTab::ChartTab(std::function<double()> clock, QWidget *parent, const QString
 	layout->setContentsMargins(0, 12, 0, 0);
 	layout->setSpacing(8);
 	/* two rows over the chart: the axes, then what to do */
-	layout->addLayout(buildAxesRow());
-	layout->addLayout(noteRow_);
-	layout->addLayout(buildActionsRow());
-	layout->addWidget(buildTriggerRow());
+	QVBoxLayout *rows = chartOnly() ? sidewaysRows(layout) : layout;
+	rows->addLayout(buildAxesRow());
+	rows->addLayout(noteRow_);
+	rows->addLayout(buildActionsRow());
+	rows->addWidget(buildTriggerRow());
 
 	chart_ = new ChartWidget;
+	if (chartOnly()) chart_->setMinimumHeight(CHART_ONLY_MIN_H);
 	/* the chart reads the clock at every frame; its zero, in wall-clock time, for the labels */
 	const qint64 epoch = QDateTime::currentMSecsSinceEpoch() - qint64(std::llround(clock() * 1000.0));
 	chart_->setClock(std::move(clock), epoch);
