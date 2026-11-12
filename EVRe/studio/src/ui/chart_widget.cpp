@@ -4913,7 +4913,7 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	segmentsHidden_ = 0;
 	hairlines_ = 0;
 	for (qsizetype i = 0; i < lines.size(); i++) {
-		thin[i] = 10 * bands[i].size() >= 9 * lines[i].bins.size();
+		thin[i] = !lines[i].bins.isEmpty() && 10 * bands[i].size() >= 9 * lines[i].bins.size();
 		hairlines_ += thin[i];
 		const bool opaque = lines[i].series->color.alpha() == 255 && p.opacity() >= 1;
 		if (lines[i].series->fast && thin[i] && opaque && hiddenStroke_) /* the stroke its bars hide, left out */
