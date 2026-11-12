@@ -14,6 +14,11 @@
 - **The Window and Memory boxes no longer put an old length back.** A box only clicked in, or left when a menu took
   the focus, applied its text again: a window changed since (a span shown, a recording zoomed) jumped back to the
   box's length, clipped to the memory. Now a box applies a length only when one is typed or picked.
+- **A refused token stops the reconnecting.** A device that refused the token and closed the link was tried again
+  twice a second for as long as *Reconnect by itself* was ticked, the pill showing only that it was connecting.
+  Now the link stays closed and the pill says *token refused: type the right token, then Connect* (the reason in
+  the Log). With no token, a device that refuses the device ID read while its map declares a login register is said
+  to want a token (the Log, and the pill when it closes the link), and is not tried again by itself either.
 
 ## 1.5.0 (2026-11-07)
 

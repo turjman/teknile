@@ -5285,6 +5285,22 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <source>How long one answer takes, on average: well under 1 ms on USB or this PC, 1–5 ms over Wi-Fi</source>
         <translation>كم يستغرق الرد الواحد في المتوسط: أقل بكثير من ⁦1 ms⁩ عبر USB أو على هذا الحاسوب، و⁦1–5 ms⁩ عبر Wi-Fi</translation>
     </message>
+    <message>
+        <source>the device wants a login: its map has a login register, and no token was given (Token box)</source>
+        <translation>الجهاز يطلب تسجيل الدخول: خريطته تعلن مسجّل دخول، ولم يُعطَ رمز دخول (خانة رمز الدخول)</translation>
+    </message>
+    <message>
+        <source>the device wants a token: type it in the Token box, then Connect</source>
+        <translation>الجهاز يطلب رمز دخول: اكتبه في خانة رمز الدخول ثم «اتصال»</translation>
+    </message>
+    <message>
+        <source>not reconnecting: %1</source>
+        <translation>لا إعادة اتصال: %1</translation>
+    </message>
+    <message>
+        <source>token refused: type the right token, then Connect</source>
+        <translation>رُفض رمز الدخول: اكتب الرمز الصحيح ثم «اتصال»</translation>
+    </message>
 </context>
 <context>
     <name>MapEditorTab</name>

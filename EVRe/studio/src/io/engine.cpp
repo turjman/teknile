@@ -42,6 +42,8 @@ using Clock = std::chrono::steady_clock;
 /* polled: a register the device has not refused, and no long byte array */
 bool pollable(const RegValue &v) { return !v.unavailable && isPollable(v.def); }
 
+constexpr uint8_t ERROR_PERMISSION_DENIED = 3; /* the EVRe error code of a refused request (a login wanted) */
+
 /* EVRe refusals a retry will not change: permission denied (3), offset out
  * of range (4), count out of range (5) */
 bool refusedForGood(uint8_t error) { return error == 3 || error == 4 || error == 5; }
@@ -715,10 +717,13 @@ void IoEngine::readDeviceInfo() {
 	if (listening_) return;
 	for (const EngineDevice &device : devices_) {
 		const uint8_t slave = device.slave;
-		master_->readFrom(target(slave), evre::DEVICE_ID, 4, [this, slave](const evre::Result &r) {
+		/* a login register and no token for it: a refusal of DEVICE_ID then says the device wants one */
+		const bool noToken = device.loginAddr != 0 && device.loginSize > 0 && device.token.isEmpty() && loginToken_.isEmpty();
+		master_->readFrom(target(slave), evre::DEVICE_ID, 4, [this, slave, noToken](const evre::Result &r) {
 			heardFrom(slave, r);
 			if (!r.ok || r.data.size() < 4) {
 				emit deviceInfo(slave, false, 0, 0, r.message);
+				if (!r.ok && r.error == ERROR_PERMISSION_DENIED && noToken) emit loginNeeded(slave);
 				return;
 			}
 			const uint16_t status = evre::littleEndian16(r.data, 2);
