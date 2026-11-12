@@ -347,6 +347,10 @@ private:
 	bool connected_ = false;
 	bool wantConnected_ = false;  /* Connect clicked and not Disconnect: a lost link is tried again */
 	bool retrying_ = false;       /* a reconnect by itself: not logged each time */
+	/* the token refused, or none given to a device that wants one: a reconnect by itself would only be refused again
+	 * (a device closing the link at once was tried twice a second, 4000 times in 35 minutes), so the link stays
+	 * closed with this as the pill's reason until Connect is pressed */
+	QString loginStop_;
 	bool connectPressed_ = false;   /* a person pressed Connect, now: only that may raise a UAC prompt */
 	bool listenAsks_ = false;       /* this Listen had to ask: nothing may start it again but a press */
 	/* Listen is on, from Connect until it is stopped or given up: the port, and what the pill calls it. Empty: not */

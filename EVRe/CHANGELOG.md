@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.1 (not released yet)
+
+### EVRe Studio
+
+- **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
+  not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
+  smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every
+  swing as one line. It costs more drawing time: turn it off when a busy chart runs slow. Nothing changes at 100 %.
+- **No dashes in a copied picture.** A line with bars in about half its pixel columns (a slow sine at two or three
+  samples a column) was drawn by the CPU as wide bars joined by hairlines: dashes in *Copy picture* and *Save
+  picture*, where the screen showed one line. The thin joins are kept for lines of bars in nearly every column.
+- **The Window and Memory boxes no longer put an old length back.** A box only clicked in, or left when a menu took
+  the focus, applied its text again: a window changed since (a span shown, a recording zoomed) jumped back to the
+  box's length, clipped to the memory. Now a box applies a length only when one is typed or picked.
+- **A refused token stops the reconnecting.** A device that refused the token and closed the link was tried again
+  twice a second for as long as *Reconnect by itself* was ticked, the pill showing only that it was connecting.
+  Now the link stays closed and the pill says *token refused: type the right token, then Connect* (the reason in
+  the Log). With no token, a device that refuses the device ID read while its map declares a login register is said
+  to want a token (the Log, and the pill when it closes the link), and is not tried again by itself either.
+
 ## 1.5.0 (2026-11-07)
 
 Room to focus: the sidebar and the quick-write panel fold away.

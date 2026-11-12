@@ -609,7 +609,16 @@ Some devices, or the TCP gateway in front of them, answer only after the client 
 - **What is written.** The token is encoded as UTF-8, then cut or zero-padded to exactly `size` bytes. It is written with an acknowledged write (`WRITE_ACK`). For example, the token `abc` with size 16 becomes `61 62 63 00 00 00 00 00 00 00 00 00 00 00 00 00`.
 - **A token but no login register.** The Log shows the warning *the map declares no login register: the token was not sent*.
 - **A refused login.** When the write fails (an error answer, or a timeout), the Log shows the error *token refused: <reason>*, and it pops up. For example: *token refused: permission denied*. The line under the pill shows it too, until the answer to the device ID read replaces that line.
+- **The link closed after a refused login.** A device (or a gateway) may close the link when it refuses the token.
+  The Studio then does not reconnect by itself, even with *Reconnect by itself* ticked: the same token would only be
+  refused again (a board whose token was changed was tried twice a second, 4000 times in 35 minutes). The pill says
+  *token refused: type the right token, then Connect*, the Log *not reconnecting: ...* beside its *token refused:
+  permission denied*, and the link stays closed until Connect is pressed.
 - **No token.** Nothing is written, whatever the map says.
+- **No token, and the device wants one.** When the map declares a login register, no token is given, and the device
+  refuses the device ID read with *permission denied*, the Log says *the device wants a login: its map has a login
+  register, and no token was given (Token box)*. If the device then closes the link, the pill says *the device wants
+  a token: type it in the Token box, then Connect*, and the Studio does not reconnect by itself either.
 
 Only a TCP link sends the token. A serial link never does.
 
@@ -1613,7 +1622,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | **Cursors** | Cursor mode: clicks place cursors A and B (7.7). Turning it on turns Measure on, and turning Measure off turns Cursors off. Turning it off takes A and B off the chart. |
 | **Clear&nbsp;cursors** | Removes A and B. |
 | **ƒ&nbsp;Math** | The math lines menu (chapter 9). The button shows the count of active lines: *ƒ Math (2)*. |
-| **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Lanes off · Smooth on · Trigger off · Hover values on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
+| **Display** | A menu of how the lines are drawn. The button keeps its text; its tooltip says what is on now: *Normalise off · Lanes off · Smooth on · Trigger off · Hover values on · Fine detail on · drawn by the GPU: NVIDIA Quadro T1000*. In the menu: |
 | &#8209;&nbsp;**Normalise** | Each line scaled to its own range (7.6). |
 | &#8209;&nbsp;**Smooth** | A small display delay so that the lines scroll without steps (7.6). On by default. Not in a recording's window, where nothing comes late (12.6). |
 | &#8209;&nbsp;**Lanes** | A plot per unit, stacked, each with its own Y range (7.12). Saved. |
@@ -1623,6 +1632,7 @@ Window, Memory, Smooth and the Y mode (Log too) with its range are saved at each
 | &#8209;&nbsp;**Trigger&nbsp;line** | While the chart holds on a trigger's crossing, a faint dashed line from the T flag down the plot, across every lane. On by default. Saved (7.13). |
 | &#8209;&nbsp;**Lock&nbsp;short&nbsp;windows** | Below a 100 ms window a live chart with the trigger off locks on its busiest line. On by default. Saved (7.13). |
 | &#8209;&nbsp;**Hover&nbsp;values** | The box of every line's value beside the mouse over the chart. On by default. Off: only the crosshair's line and its dots (the box can cover the cursors' tags). Saved. |
+| &#8209;&nbsp;**Fine&nbsp;detail** | On a scaled screen (125 % and up), a line is binned and drawn to the screen's own pixels, not its logical ones: a fast or noisy line shows every swing, on the screen and in Copy picture and Save picture alike (23.2). It costs more drawing time (at 225 % about two to three times the lines' work), so turn it off when a busy chart (many lines, fast streams) runs slow. At 100 % it changes nothing. On by default. Saved. |
 | &#8209;&nbsp;**Time&nbsp;grid** | **Auto (divisions below 1 s)**, the default; **Clock times**; **Divisions**: 10 fixed divisions labelled by their offset from the right edge or from T, with a *1 ms/div* readout above the plot (7.9). Saved. |
 | &#8209;&nbsp;**Drawing** | Who draws the lines: **Auto (a dedicated GPU if there is one, else the CPU)**, the default; each graphics adapter found by name (*Dedicated GPU: NVIDIA Quadro T1000*, *Internal GPU: Intel(R) UHD Graphics 630*); or **CPU**. A card draws many fast lines at the display's rate (23.7). The processor's graphics is offered but draws slower than the CPU on a large screen. Saved; the Log says which draws, and when a card fails the CPU takes over and the Log says why. A card picked (or at start) takes a moment to open, up to about a second while it wakes: the CPU draws meanwhile and the window answers; the tooltip then says *CPU, opening the GPU: …*. The info line ends with *GPU* or *CPU*. On a system without Direct3D 11 (Linux): Auto and CPU. |
 | **File&nbsp;▾** | Copy picture, Save picture…, Export to CSV…, Open recording… and Recent recordings: the chart's right-click menu (7.10) but *Add note here*, so none is reached by a right-click alone. A note needs its place on the chart: it stays on the right-click, and the button's tooltip says so. A recording's window has its own beside Lines (12.6). |
@@ -3447,6 +3457,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `chart/ramMB` | `2048` | on&nbsp;change | RAM: the most memory the chart's samples take, all the lines together, MB (7.4); kept within 256 and three quarters of the computer's memory. |
 | `chart/smooth` | `true` | on&nbsp;change | Smooth. |
 | `chart/hoverValues` | `true` | on&nbsp;change | Hover values: the crosshair's box. |
+| `chart/fineDetail` | `true` | on&nbsp;change | Fine detail: a bin per device pixel (23.2). |
 | `chart/autoShortWindows` | `true` | on&nbsp;change | Lock short windows: below a 100 ms window a live chart with the trigger off locks on its busiest line (7.13). |
 | `chart/timeGrid` | `0` | on&nbsp;change | Time grid: 0 Auto (divisions below a 1 s window), 1 Clock times, 2 Divisions (`ChartView::TimeGrid`, 7.9). |
 | `chart/yAuto` | `true` | on&nbsp;change | Y range Auto. |
@@ -5783,7 +5794,14 @@ samples, each larger one from the 8 chunks below it, so a sample costs about one
 ### 23.2 Binning on absolute time
 
 For each frame, each line is reduced to one bin per pixel column (`binSeries`). A sample's column is
-`floor(t / columnSeconds)`, where `columnSeconds = window / plot width in logical pixels`. Columns are counted from
+`floor(t / columnSeconds)`, where `columnSeconds = window / columns`. With **Fine detail** on (the default,
+`setFineDetail`), `columns` is the plot's width in device pixels (the width in logical pixels times the screen's
+scale), on the screen and in a picture of the chart (Copy picture, Save picture) alike: a column per logical pixel
+drew a noisy line as steps 2.25 device pixels wide at 225 % scaling, its detail lost in them, and a copied picture
+showed it as bars with 1-pixel joins. Off, `columns` is the width in logical pixels: the binning, the card's
+segments and the CPU's strokes cost per column, and 2.25 times the columns made the lines two to three times as
+slow to build (the GUI test prepares it off, so its speed checks measure what they were set for). The time labels
+follow the width in logical pixels. Columns are counted from
 time zero, not from the left edge of the view. A sample therefore stays in the same column while the view scrolls,
 and a column's min and max do not change from frame to frame. Binning relative to the edge would make the line
 shimmer.
@@ -5800,8 +5818,10 @@ The bins start one sample before the view and end one sample after it, so the li
     a column, not four;
   - a column whose swing is taller than the line is wide becomes a **bar**, a plain fill the line's width from the
     min to the max (`fillBands`, antialiased: a half-pixel edge comes out the same on a stripe), and the polyline goes through its first and last value only. A
-    line that is mostly bars is joined by a single stroke (the bars give it its width): a fast, noisy line costs a
-    fill per column instead of five antialiased strokes over its whole swing;
+    line that is bars in nine columns of ten or more is joined by a single stroke (the bars give it its width): a
+    fast, noisy line costs a fill per column instead of five antialiased strokes over its whole swing. A line of bars
+    in fewer columns keeps the full stroke: with the single stroke from half of them on, a slow sine at two or three
+    samples a column came out as dashes, wide bars and hairlines (`hairlineLines` counts the lines joined thin);
   - a level run is one segment: while the line stays at the same height, its end moves on instead of a point being
     added. A register that does not change costs two points.
 
@@ -7894,7 +7914,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1102 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1109 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

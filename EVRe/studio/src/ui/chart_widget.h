@@ -232,6 +232,10 @@ public:
 	/* the crosshair's box of values (the line and its dots stay without it) */
 	void setHoverValues(bool on);
 	bool hoverValues() const { return hoverValues_; }
+	/* Fine detail: a bin per device pixel, not per logical one (on a high-DPI screen the line's every swing; its
+	 * binning and strokes cost about the scale's times more) */
+	void setFineDetail(bool on);
+	bool fineDetail() const { return fineDetail_; }
 	void setYAuto();
 	/* false: not a range (hi <= lo, or lo <= 0 on the Log scale), nothing changed */
 	bool setYManual(double lo, double hi);
@@ -627,6 +631,7 @@ public:
 	 * difference inside the bars), and the segments the last CPU paint left out */
 	void setHiddenStroke(bool on) { hiddenStroke_ = on; }
 	qsizetype strokeSegmentsHidden() const { return segmentsHidden_; }
+	int hairlineLines() const { return hairlines_; } /* tests: the lines the last CPU paint joined with one thin stroke */
 	/* the crosshair's box: values a column holds in a plot this tall (more lines: more columns, never past the plot) */
 	static int readoutRowsPerColumn(double plotHeight);
 	/* a value in the crosshair's box: a whole number as it is ("2": a count, a state, an integer column of a recording),
@@ -691,6 +696,7 @@ public:
 	QStringList valueLabels() const { return valueLabels_; }
 	double yOfValue(double value) const { return lastAxes_.y(value); }
 	QRectF lastPlot() const { return lastAxes_.rect; }
+	double lastColumns() const { return lastAxes_.columns; } /* tests: the bins across it (a device pixel each) */
 	/* tests: the time of a line's last point in the last frame painted (its last bin's: a record's own time, or its
 	 * column's middle) and the view it was drawn in; NaN: not drawn */
 	double drawnTo(int key) const;
@@ -1127,6 +1133,7 @@ private:
 	mutable qint64 barRowsDrawn_ = 0;
 	bool hiddenStroke_ = true;             /* the stroke the bars hide left out (setHiddenStroke) */
 	mutable qsizetype segmentsHidden_ = 0;
+	mutable int hairlines_ = 0; /* hairlineLines */
 	Drawing drawing_ = Drawing::Cpu;
 	std::unique_ptr<GpuLines> gpu_;        /* drawing the plot; null: the CPU does */
 	/* a card being opened on a thread of its own (setDrawing); a later choice lets it go when it is ready. Destroyed
@@ -1152,6 +1159,7 @@ private:
 	double viewEnd_ = 0;      /* held: where the view ends */
 	double lastViewEnd_ = 0;  /* where the view ended in the last frame drawn */
 	bool live_ = true, normalized_ = false, smooth_ = true, hoverValues_ = true, recording_ = false;
+	bool fineDetail_ = false; /* a bin per device pixel (setFineDetail) */
 	double delay_ = 0, peakGap_ = 0; /* Smooth: the display delay, and the gap it covers */
 
 	/* the Y range of the plot (lanes: of each lane, by its key); initialized: Auto has a range to move from */

@@ -478,7 +478,9 @@ one time axis, the cursors, notes and crosshair across them all;
 <b>Smooth</b> (on by default): the picture is delayed
 by a few ms (measured from how late samples arrive, shown in the info line), so the line always reaches the right
 edge and scrolls without steps; <b>Hover values</b> (on by default): the box of values beside the mouse, off to see
-only the crosshair and its dots; <b>Drawing</b>: who draws the plot: <b>Auto</b> (a dedicated graphics card when there
+only the crosshair and its dots; <b>Fine detail</b> (on by default): on a scaled screen a line is drawn to the
+screen's own pixels, so a fast or noisy line shows every swing, on the screen and in a copied picture alike; off when
+a busy chart runs slow; <b>Drawing</b>: who draws the plot: <b>Auto</b> (a dedicated graphics card when there
 is one, else the CPU), a card by name, or the <b>CPU</b>. A card draws the whole plot (the lines, the grid, the
 cursors, the crosshair) and shows it itself: many fast lines at the display's rate, 64 lines of 1000 Hz at 60 frames
 a second on a 4K screen. A card takes a moment to start (up to a second while it wakes): the CPU draws meanwhile. If
