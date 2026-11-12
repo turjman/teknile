@@ -13,7 +13,9 @@
 #include <climits>
 #include <memory>
 
-#ifdef Q_OS_LINUX
+/* Qt defines Q_OS_LINUX on Android too, where an app has no usbmon (and CMake builds usbmon_capture.cpp only for
+ * Linux): Android takes the "no live capture" branches */
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 #include "io/usbmon_capture.h"
 #elif defined(Q_OS_WIN)
 #include "io/usbpcap_capture.h"
@@ -431,7 +433,7 @@ UsbPortState UsbTarget::stateOf(const QString &port, bool descriptors) {
  * or why not (not a USB port, the capture not installed or not readable) */
 UsbPortState UsbTarget::liveStateOf(const QString &port, bool descriptors) {
 	if (descriptors) descriptorLookups++;
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 	/* a name with a path may be a link of /dev/serial/by-id */
 	const QString name = port.contains(QLatin1Char('/')) ? QFileInfo(port).canonicalFilePath() : port;
 	return usbmonPortState(QStringLiteral("/sys"), QStringLiteral("/dev"), name);
@@ -452,7 +454,7 @@ bool UsbTarget::stillThere(const UsbTarget &running) {
 }
 
 UsbCapture *UsbCapture::live() {
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 	return new UsbmonCapture;
 #elif defined(Q_OS_WIN)
 	return new UsbPcapCapture(usbPcapProgram());

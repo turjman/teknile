@@ -37,6 +37,9 @@
 #include <algorithm>
 #include <cmath>
 
+#ifdef Q_OS_ANDROID
+#include "evre/usb_bridge.h"
+#endif
 #include "ui/bus_panel.h"
 #include "ui/elided_label.h"
 #include "ui/fold_button.h"
@@ -864,6 +867,14 @@ void Sidebar::refreshPorts(const DeviceMap &map) {
 	{
 		const QSignalBlocker blocker(serialPort_); /* the port chosen is known once the list is whole */
 		serialPort_->clear();
+#ifdef Q_OS_ANDROID
+		/* Android lists no serial ports to an app: the USB devices plugged in, from the Java layer */
+		for (const evre::UsbBridge::Device &device : evre::UsbBridge::system()->devices()) {
+			const bool mapped = map.usbVid && device.vid == map.usbVid && device.pid == map.usbPid;
+			addPort(device.name, device.product, true, device.vid, device.pid, mapped ? map.device : QString());
+			if (mapped && keep.isEmpty()) serialPort_->setCurrentIndex(serialPort_->count() - 1);
+		}
+#else
 		for (const QSerialPortInfo &port : QSerialPortInfo::availablePorts()) {
 			const bool mapped = map.usbVid && port.hasVendorIdentifier() && port.vendorIdentifier() == map.usbVid
 					&& port.productIdentifier() == map.usbPid;
@@ -871,6 +882,7 @@ void Sidebar::refreshPorts(const DeviceMap &map) {
 					port.productIdentifier(), mapped ? map.device : QString());
 			if (mapped && keep.isEmpty()) serialPort_->setCurrentIndex(serialPort_->count() - 1);
 		}
+#endif
 		if (serialPort_->count() == 0) serialPort_->addItem(tr("no ports found"), QString());
 		const int index = serialPort_->findData(keep);
 		if (index >= 0) serialPort_->setCurrentIndex(index);
@@ -1140,6 +1152,15 @@ QString Sidebar::connectText() const { return isListen() ? tr("Listen") : tr("Co
 
 void Sidebar::showConnecting() {
 	showLinkState(QStringLiteral("busy"), tr("Connecting…"));
+	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
+	connectOffered_ = false;
+}
+
+/* Android's permission dialog for a USB device is up (AndroidUsbLink): no clock runs on it either */
+void Sidebar::showWaitingForPermission(const QString &port) {
+	const QString text = tr("Waiting for permission…");
+	showLinkState(QStringLiteral("busy"), text, QString(),
+			text + QLatin1Char('\n') + tr("Android asks whether EVRe Studio may use %1: answer its dialog.").arg(port));
 	setConnectButton(tr("Cancel"), QStringLiteral("primary"));
 	connectOffered_ = false;
 }

@@ -27,6 +27,9 @@
 #include <QTimer>
 #include <cstdlib>
 #include <optional>
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#endif
 
 #include "model/fast_store.h"
 #include "ui/help_dialog.h"
@@ -249,6 +252,22 @@ void takeScreenshotsAndQuit(QWidget &window, const ScreenshotRequest &request) {
 	QApplication::quit();
 }
 
+#ifdef Q_OS_ANDROID
+/* An app on Android has no command line and no environment of its own: the proof's aids come as the start intent's
+ * extras (am start ... --ez chartOnly true --es perfLog <file>) and become the variables the desktop reads */
+void environmentFromIntent() {
+	const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+	const QJniObject intent = activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
+	if (!intent.isValid()) return;
+	const QJniObject chartOnly = QJniObject::fromString(QStringLiteral("chartOnly"));
+	if (intent.callMethod<jboolean>("getBooleanExtra", "(Ljava/lang/String;Z)Z", chartOnly.object<jstring>(), jboolean(false)))
+		qputenv("EVRE_CHART_ONLY", "1");
+	const QJniObject perfLog = intent.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;",
+			QJniObject::fromString(QStringLiteral("perfLog")).object<jstring>());
+	if (perfLog.isValid() && !perfLog.toString().isEmpty()) qputenv("EVRE_PERF_LOG", perfLog.toString().toUtf8());
+}
+#endif
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -260,6 +279,9 @@ int main(int argc, char **argv) {
 	 * (the system takes them back with the process), so a quit right after closing a big chart does not linger */
 	QObject::connect(&app, &QCoreApplication::aboutToQuit, [] { fast::hurryLettingGo(); });
 
+#ifdef Q_OS_ANDROID
+	environmentFromIntent();
+#endif
 	const MainWindow::Startup startup = parseCommandLine(app);
 	const ScreenshotRequest screenshot = screenshotRequestFromEnvironment();
 	if (screenshot.testRun) /* settings of its own, before anything reads them */

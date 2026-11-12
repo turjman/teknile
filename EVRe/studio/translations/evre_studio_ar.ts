@@ -111,6 +111,21 @@
     </message>
 </context>
 <context>
+    <name>AndroidUsbLink</name>
+    <message>
+        <source>USB is not available here</source>
+        <translation>USB غير متاح هنا</translation>
+    </message>
+    <message>
+        <source>permission refused for %1</source>
+        <translation>رُفض الإذن لـ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 could not be opened</source>
+        <translation>تعذّر فتح ⁦%1⁩</translation>
+    </message>
+</context>
+<context>
     <name>ApiServer</name>
     <message>
         <source>EVRe port %1: %2</source>
@@ -9018,6 +9033,14 @@ Not remembered: it changes the device, so it is off at every start.</source>
         <source>Fold the sidebar (Ctrl+B)</source>
         <translation>طيّ الشريط الجانبي (Ctrl+B)</translation>
     </message>
+    <message>
+        <source>Waiting for permission…</source>
+        <translation>بانتظار الإذن…</translation>
+    </message>
+    <message>
+        <source>Android asks whether EVRe Studio may use %1: answer its dialog.</source>
+        <translation>يسأل أندرويد هل يُسمح لـ EVRe Studio باستخدام ⁦%1⁩: أجب عن نافذة الحوار.</translation>
+    </message>
 </context>
 <context>
     <name>SidebarRail</name>
@@ -9128,6 +9151,21 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>%1 is gone: unplugged or reset?</source>
         <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
+    </message>
+</context>
+<context>
+    <name>evre::AndroidUsbLink</name>
+    <message>
+        <source>USB is not available here</source>
+        <translation>USB غير متاح هنا</translation>
+    </message>
+    <message>
+        <source>permission refused for %1</source>
+        <translation>رُفض الإذن لـ ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 could not be opened</source>
+        <translation>تعذّر فتح ⁦%1⁩</translation>
     </message>
 </context>
 <context>

@@ -107,10 +107,12 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <thread>
 #include <tuple>
 
 #include "evre/frame.h"
 #include "evre/link.h"
+#include "evre/link_android.h"
 #include "io/engine.h"
 #include "io/reg_table.h"
 #include "model/bus_file.h"
@@ -751,6 +753,8 @@ public:
 		listenCard();
 		listenWindow(); /* it ends with the window on the example map again, connected to the fake device as before */
 		listenArabic();
+		androidChartOnly();
+		androidUsbLink();
 		other_.writeI16(regs_.danger.addr, 0);
 		wrongTokenRefused();
 		loginStopsReconnect();
@@ -5861,6 +5865,182 @@ private:
 
 	/* Arabic: the segment and the marks of the Listen line in their glossary words, nothing cut, the window's minimum
 	 * width. A sidebar of its own, made after the language is set; with EVRE_TEST_SHOT the pictures of both languages */
+	/* The Android app's proof (A.0): EVRE_CHART_ONLY=1 (on a phone, the intent extra chartOnly) shows the Chart tab alone,
+	 * the sidebar folded to its thin bar and no status bar, in a phone's 915 x 412 (logical px) in landscape; the sidebar
+	 * opened from the bar (to connect) still fits */
+	void androidChartOnly() {
+		check(!chartOnly() && window_.findChild<SidebarDock *>()->isVisible(),
+				"Chart only (the Android proof's switch): off without EVRE_CHART_ONLY, the window as it was");
+		const QVariant folded = QSettings().value(QStringLiteral("ui/sidebarFolded")); /* Chart only folds it: kept as it was */
+		qputenv("EVRE_CHART_ONLY", "1");
+		{
+			MainWindow other(map_.path);
+			qunsetenv("EVRE_CHART_ONLY");
+			other.resize(915, 412);
+			other.show();
+			(void) QTest::qWaitForWindowExposed(&other);
+			QApplication::processEvents();
+			auto *dock = other.findChild<SidebarDock *>();
+			auto *tabs = other.findChild<QTabWidget *>();
+			int shownTabs = 0;
+			for (int tab = 0; tabs && tab < tabs->count(); tab++) shownTabs += tabs->isTabVisible(tab) ? 1 : 0;
+			const bool alone = dock && dock->folded() && dock->width() == SidebarDock::RAIL_W && !other.statusBar()->isVisible() && tabs && shownTabs == 1
+					&& tabs->isTabVisible(MainWindow::TabChart) && tabs->currentIndex() == MainWindow::TabChart;
+			if (tabs) tabs->setCurrentIndex(MainWindow::TabRegisters); /* as a map opened or a Log notice would */
+			const bool stays = tabs && tabs->currentIndex() == MainWindow::TabChart;
+			const QSize least = other.minimumSizeHint();
+			const auto *chart = other.findChild<ChartView *>();
+			std::printf("     (Chart only: the window's least size %d x %d, at %d x %d; the plot %d x %d)\n", least.width(),
+					least.height(), other.width(), other.height(), chart ? chart->width() : 0, chart ? chart->height() : 0);
+			check(alone && stays, "Chart only: the sidebar folded to its thin bar, the status bar hidden, the Chart tab the only "
+					"tab and kept current (another tab asked for stays the chart)");
+			/* the rows of controls over the chart scroll sideways, the plot keeps the window's width */
+			bool sideways = false;
+			if (auto *tab = other.findChild<ChartTab *>())
+				for (QScrollArea *strip : tab->findChildren<QScrollArea *>())
+					sideways = sideways || (strip->isVisible() && strip->horizontalScrollBar()->maximum() > 0);
+			check(least.width() <= 915 && least.height() <= 412 && other.width() == 915 && other.height() == 412 && chart
+							&& chart->isVisible() && chart->width() >= 915 * 9 / 10 && chart->height() >= 180 && sideways,
+					"Chart only: the window fits a phone in landscape (915 x 412 logical px): the rows of controls scroll "
+					"sideways, the plot nearly the window's width and at least 180 px high");
+			if (qEnvironmentVariableIsSet("EVRE_TEST_SHOT"))
+				other.grab().save(qEnvironmentVariable("EVRE_TEST_SHOT") + QStringLiteral("_chart_only.png"));
+			/* the sidebar opened from its bar, to connect: the window still fits, Connect in it */
+			if (dock) dock->openAt(Sidebar::Card::Connection);
+			(void) QTest::qWaitFor([&] { return dock && !dock->folded() && !dock->sliding(); }, 3000);
+			QApplication::processEvents();
+			const QSize opened = other.minimumSizeHint();
+			bool connect = false;
+			if (auto *side = other.findChild<Sidebar *>())
+				for (QPushButton *button : side->findChildren<QPushButton *>())
+					connect = connect || (button->isVisible() && button->text() == QLatin1String("Connect"));
+			std::printf("     (Chart only, the sidebar opened: the window's least size %d x %d)\n", opened.width(), opened.height());
+			check(dock && !dock->folded() && opened.width() <= 915 && other.width() == 915 && connect && chart
+							&& chart->width() >= 915 / 3,
+					"Chart only: the sidebar opened from its bar (to connect) fits beside the chart in 915 px, Connect shown");
+		}
+		if (folded.isValid()) QSettings().setValue(QStringLiteral("ui/sidebarFolded"), folded);
+		else QSettings().remove(QStringLiteral("ui/sidebarFolded"));
+	}
+
+	/* A stand-in for Android's Java USB layer (usb_bridge.h): it keeps what the link asks, and the test speaks for
+	 * Android and the device through the sink, from another thread as Java's reader does */
+	class FakeUsbBridge : public evre::UsbBridge {
+	public:
+		QVector<Device> list;
+		QString openedName;
+		qint32 openedBaud = 0;
+		int opens = 0, closes = 0;
+		QByteArray written;
+		Sink *sink = nullptr;
+		QVector<Device> devices() override { return list; }
+		void open(const QString &name, qint32 baud, Sink *to) override {
+			openedName = name;
+			openedBaud = baud;
+			opens++;
+			sink = to;
+		}
+		void send(const QByteArray &bytes) override { written += bytes; }
+		void close() override {
+			closes++;
+			sink = nullptr;
+		}
+		/* a word from a thread of its own, as Java's reader thread and Android's main thread say them */
+		void fromJava(const std::function<void(Sink *)> &word) {
+			Sink *to = sink;
+			if (!to) return;
+			std::thread java([&word, to] { word(to); });
+			java.join();
+		}
+	};
+
+	/* The Android app's USB link (link_android.h) driven by the fake bridge: open, the permission refused, bytes both ways,
+	 * the device unplugged; and the sidebar's "waiting for permission" */
+	void androidUsbLink() {
+		const QString name = QStringLiteral("/dev/bus/usb/001/002");
+		FakeUsbBridge bridge;
+		{
+			evre::AndroidUsbLink link(name, 115200, &bridge);
+			QSignalSpy opened(&link, &evre::Link::opened);
+			QSignalSpy closed(&link, &evre::Link::closed);
+			QSignalSpy received(&link, &evre::Link::received);
+			link.send(QByteArray("early"));
+			link.open();
+			const bool asked = bridge.opens == 1 && bridge.openedName == name && bridge.openedBaud == 115200
+					&& bridge.sink && !link.isOpen();
+			bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+			const bool open = QTest::qWaitFor([&] { return opened.count() == 1; }, 2000) && link.isOpen()
+					&& closed.isEmpty() && link.describe() == name + QStringLiteral(" @ 115200");
+			check(asked && open, "Android USB link: open() asks the bridge for the device and its baud rate, and is open "
+					"once the bridge says so (from Java's thread, queued to the link's)");
+			/* a request out, its answer in two pieces from Java's reader thread */
+			const QByteArray request = evre::build(1, evre::READ, evre::DEVICE_ID, 2);
+			const QByteArray answer = evre::build(1, evre::READ_RESP, evre::DEVICE_ID, 2, QByteArray("\x01\x10", 2));
+			link.send(request);
+			bridge.fromJava([&answer](evre::UsbBridge::Sink *sink) {
+				sink->usbBytes(answer.left(3));
+				sink->usbBytes(answer.mid(3));
+			});
+			QByteArray heard;
+			(void) QTest::qWaitFor([&] {
+				heard.clear();
+				for (const QList<QVariant> &piece : received) heard += piece.at(0).toByteArray();
+				return heard == answer;
+			}, 2000);
+			check(bridge.written == request && heard == answer && received.count() == 2,
+					"Android USB link: bytes both ways: a request written to the bridge as it is (nothing sent before the "
+					"open), an answer from Java's reader in two pieces received in order");
+			/* unplugged */
+			bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbGone(); });
+			(void) QTest::qWaitFor([&] { return closed.count() == 1; }, 2000);
+			const QString gone = closed.isEmpty() ? QString() : closed.first().at(0).toString();
+			link.send(QByteArray("late"));
+			check(gone == name + QStringLiteral(" is gone: unplugged or reset?") && !link.isOpen() && bridge.closes == 1
+							&& bridge.written == request,
+					"Android USB link: the device unplugged closes the link with the serial link's words (\"... is gone: "
+					"unplugged or reset?\"), the bridge closed, nothing more sent");
+		}
+		{
+			bridge.closes = 0;
+			evre::AndroidUsbLink link(name, 115200, &bridge);
+			QSignalSpy waiting(&link, &evre::AndroidUsbLink::waiting);
+			QSignalSpy closed(&link, &evre::Link::closed);
+			link.open();
+			bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbAsking(); });
+			const bool asking = QTest::qWaitFor([&] { return waiting.count() == 1; }, 2000);
+			bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbRefused(); });
+			(void) QTest::qWaitFor([&] { return closed.count() == 1; }, 2000);
+			const QString why = closed.isEmpty() ? QString() : closed.first().at(0).toString();
+			check(asking && why == QStringLiteral("permission refused for ") + name && !link.isOpen() && bridge.closes == 1,
+					"Android USB link: Android's dialog up says waiting(); refused, the link closes with \"permission refused "
+					"for <device>\"");
+		}
+		{
+			/* a word queued for a link deleted before it came: never heard, nothing touched */
+			auto *link = new evre::AndroidUsbLink(name, 115200, &bridge);
+			bool heard = false;
+			QObject::connect(link, &evre::Link::received, [&heard] { heard = true; });
+			link->open();
+			bridge.sink->usbOpened();
+			bridge.sink->usbBytes(QByteArray("x"));
+			bridge.closes = 0;
+			delete link;
+			QApplication::processEvents();
+			check(!heard && bridge.closes == 1 && !bridge.sink,
+					"Android USB link: deleted while opening, it closes the bridge, and the words queued for it are dropped");
+		}
+		Sidebar card;
+		card.restoreLinkSettings();
+		card.showWaitingForPermission(name);
+		auto *pill = card.findChild<ElidedLabel *>(QStringLiteral("pill"));
+		bool cancel = false;
+		for (QPushButton *button : card.findChildren<QPushButton *>()) cancel = cancel || button->text() == QLatin1String("Cancel");
+		check(pill && pill->fullText().endsWith(QStringLiteral("Waiting for permission…")) && pill->toolTip().contains(name)
+						&& pill->property("state").toString() == QLatin1String("busy") && cancel,
+				"Android USB link: the sidebar's pill says \"Waiting for permission…\" (the device in its tooltip) with "
+				"Cancel while Android's dialog is up");
+	}
+
 	void listenArabic() {
 		const QSize size = window_.findChild<Sidebar *>() ? window_.findChild<Sidebar *>()->size() : QSize(312, 900);
 		language::apply(*qApp, QStringLiteral("ar"));

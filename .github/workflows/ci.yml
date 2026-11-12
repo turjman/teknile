@@ -1,4 +1,4 @@
-# Build EVRe Studio and its tools, and run the tests, on Linux and Windows.
+# Build EVRe Studio and its tools, and run the tests, on Linux and Windows; the Android APK is built only.
 # Every test that writes does it to a fake device or a simulator the job starts itself.
 name: ci
 
@@ -96,3 +96,61 @@ jobs:
           python studio/tests/sim_test.py build
           python studio/tests/device_table_test.py build
           EVRE_BUILD=build python -m unittest discover -s studio/python/tests
+
+  # The Android app (EVRe/studio/android, STUDIO.md 25.4): the APK is built, nothing runs (no emulator); its checks run
+  # in the Linux job's GUI test with a fake USB bridge
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      # Qt for Android needs the desktop Qt of the same version for its tools (QT_HOST_PATH)
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          aqtversion: "==3.3.*"
+          cache: true
+      - name: Keep the host Qt's path
+        run: echo "QT_HOST_DIR=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: all_os # Qt 6.7 and newer keep the Android kits under all_os
+          target: android
+          arch: android_arm64_v8a
+          modules: qtserialport
+          aqtversion: "==3.3.*"
+          cache: true
+      - name: NDK r26b, Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125" > /dev/null
+      - name: Build the APK
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          cmake -S studio -B build-android -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" -DQT_HOST_PATH="$QT_HOST_DIR" \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" -DQT_ANDROID_ABIS=arm64-v8a
+          cmake --build build-android --target apk
+      # Android installs nothing unsigned: the proof's APK is signed with a key made for this run (a phone that has an
+      # earlier run's APK uninstalls it first); the release's own key comes with the releases (plan A.5)
+      - name: Sign the APK with a throwaway key
+        run: |
+          BT="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)"
+          keytool -genkeypair -keystore throwaway.keystore -storepass android -alias proof -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=EVRe Studio proof"
+          "$BT/zipalign" -p -f 4 build-android/android-build/build/outputs/apk/release/*-unsigned.apk aligned.apk
+          "$BT/apksigner" sign --ks throwaway.keystore --ks-pass pass:android --key-pass pass:android --out EVReStudio-arm64.apk aligned.apk
+          "$BT/apksigner" verify EVReStudio-arm64.apk
+          ls -l EVReStudio-arm64.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EVReStudio-android-arm64
+          path: EVRe/EVReStudio-arm64.apk
+          if-no-files-found: error
