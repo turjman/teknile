@@ -333,6 +333,9 @@ QCheckBox[keyFocus="true"]::indicator { border-color: %FOCUS%; }
 QTabBar[keyFocus="true"]::tab:selected { background: %ACCENTA%; border-top-left-radius: 6px;
   border-top-right-radius: 6px; }
 QTableView[keyFocus="true"], QListWidget[keyFocus="true"], QTextBrowser[keyFocus="true"] { border-color: %FOCUS%; }
+/* a finger pushing at an end of a list (TouchScroll): its frame lit */
+QTableView[touchEnd="true"], QListView[touchEnd="true"], QListWidget[touchEnd="true"], QTreeView[touchEnd="true"],
+QTextBrowser[touchEnd="true"], QPlainTextEdit[touchEnd="true"], QScrollArea[touchEnd="true"] { border-color: %ACCENT%; }
 QListWidget#busDevices[keyFocus="true"] { border-color: %FOCUS%; }
 )");
 }

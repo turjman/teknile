@@ -60,7 +60,6 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPointingDevice>
-#include <QScroller>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -16169,6 +16168,21 @@ private:
 				"mouse as before (a drag selects, it does not scroll)");
 		check(sideRange > 0 && sideScrolled && boxKept,
 				"touch: a finger that comes down on a checkbox in the sidebar scrolls the sidebar, the box not ticked");
+		/* at an end the list's frame lights while the finger pushes on (the owner could not tell the end was reached; a
+		 * scroll bar is not always in sight on a phone), and goes out a moment after */
+		list.clearSelection();
+		bar->setValue(0);
+		QTest::qWait(100);
+		send(view, QEvent::MouseButtonPress, QPoint(150, 60), true, Qt::LeftButton);
+		for (int k = 1; k <= 10; k++) {
+			QTest::qWait(5);
+			send(view, QEvent::MouseMove, QPoint(150, 60 + 12 * k), true, Qt::LeftButton);
+		}
+		const bool lit = list.property("touchEnd").toBool() && bar->value() == 0;
+		send(view, QEvent::MouseButtonRelease, QPoint(150, 180), true, Qt::NoButton);
+		const bool out = QTest::qWaitFor([&] { return !list.property("touchEnd").toBool(); }, 1500);
+		check(lit && out, "touch: a finger pushing at the top of a list lights the list's frame (the accent), which goes out a "
+				"moment after the finger stops; the list stays at its top");
 	}
 
 	void displayMenu() {

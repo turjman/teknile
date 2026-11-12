@@ -21,7 +21,9 @@
   to want a token (the Log, and the pill when it closes the link), and is not tried again by itself either.
 - **Touch scrolling.** On a touch screen (a Windows one, and the phone) a finger dragged over any list, table or
   panel scrolls it, with momentum, wherever it comes down, and presses or selects nothing; a tap is a click. A drag
-  that starts on a selected row selects the rows it passes. Before, only the scroll bars moved them, and a finger's
+  that starts on a selected row selects the rows it passes; a fast flick glides on, and at an end of a list its frame
+  lights. On the phone the lists no longer tear or keep old strips while they scroll (Qt's own touch scroller did,
+  QTBUG-135011). Before, only the scroll bars moved them, and a finger's
   drag over a list selected its rows. The mouse is unchanged.
 
 ## 1.5.0 (2026-11-07)

@@ -9,16 +9,21 @@
 #include <QItemSelectionModel>
 #include <QMouseEvent>
 #include <QScrollBar>
-#include <QScroller>
-#include <QScrollerProperties>
+#include <QStyle>
 #include <QTouchEvent>
 #include <algorithm>
+#include <cmath>
 
 void TouchScroll::install(QApplication &app) {
 	static bool installed = false;
 	if (installed) return;
 	installed = true;
 	app.installEventFilter(new TouchScroll(&app));
+}
+
+TouchScroll::TouchScroll(QObject *parent) : QObject(parent) {
+	flingTimer_.setInterval(16);
+	connect(&flingTimer_, &QTimer::timeout, this, &TouchScroll::flingStep);
 }
 
 QWidget *TouchScroll::scrollViewport(QWidget *widget) {
@@ -46,6 +51,71 @@ void TouchScroll::sendTap(const QMouseEvent *release) {
 	sending_ = false;
 }
 
+QScrollBar *TouchScroll::axisBar() const {
+	auto *area = viewport_ ? qobject_cast<QAbstractScrollArea *>(viewport_->parentWidget()) : nullptr;
+	if (!area || axis_ == 0) return nullptr;
+	return axis_ == 2 ? area->verticalScrollBar() : area->horizontalScrollBar();
+}
+
+bool TouchScroll::scrollTo(QScrollBar *bar, double place) {
+	const double clamped = std::clamp(place, double(bar->minimum()), double(bar->maximum()));
+	place_ = clamped;
+	bar->setValue(int(std::lround(clamped)));
+	return clamped == place;
+}
+
+void TouchScroll::flashEnd(QScrollBar *bar) {
+	auto *area = bar ? qobject_cast<QAbstractScrollArea *>(bar->parentWidget() ? bar->parentWidget()->parentWidget() : nullptr)
+					 : nullptr;
+	if (!area) return;
+	/* lit while the finger keeps pushing against the end: a frame already lit waits END_FLASH_MS again */
+	if (auto *timer = area->findChild<QTimer *>(QStringLiteral("touchEndTimer"), Qt::FindDirectChildrenOnly)) {
+		timer->start();
+		return;
+	}
+	/* the frame, not a strip over the rows: on Android (Qt 6.8) a small widget shown over the rows was painted and never
+	 * reached the screen; the frame restyled repaints the whole list, which does */
+	const auto light = [](QAbstractScrollArea *list, bool on) {
+		list->setProperty("touchEnd", on);
+		list->style()->unpolish(list);
+		list->style()->polish(list);
+		list->update();
+	};
+	light(area, true);
+	auto *timer = new QTimer(area);
+	timer->setObjectName(QStringLiteral("touchEndTimer"));
+	timer->setSingleShot(true);
+	timer->setInterval(END_FLASH_MS);
+	QPointer<QAbstractScrollArea> guard(area);
+	QObject::connect(timer, &QTimer::timeout, area, [guard, timer, light] {
+		if (guard) light(guard, false);
+		timer->deleteLater();
+	});
+	timer->start();
+}
+
+void TouchScroll::stopFling() {
+	flingTimer_.stop();
+	flingBar_ = nullptr;
+	flingSpeed_ = 0;
+}
+
+void TouchScroll::flingStep() {
+	QScrollBar *bar = flingBar_;
+	if (!bar) {
+		stopFling();
+		return;
+	}
+	const double ms = std::max<qint64>(1, flingClock_.restart());
+	if (!scrollTo(bar, place_ + flingSpeed_ * ms)) { /* an end: the glide stops there */
+		flashEnd(bar);
+		stopFling();
+		return;
+	}
+	flingSpeed_ *= std::exp(-ms / FLING_TAU);
+	if (std::abs(flingSpeed_) < FLING_STOP) stopFling();
+}
+
 bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 	const QEvent::Type type = event->type();
 	/* the finger's way while it is held: on Windows Qt makes a mouse press and a release of a touch but no mouse moves,
@@ -69,13 +139,18 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		if (mouse->button() != Qt::LeftButton) return false;
 		QWidget *viewport = scrollViewport(widget);
 		if (!viewport) return false;
+		/* a finger on a gliding list stops it, and is no tap (as a phone's list) */
+		stoppedGlide_ = flingTimer_.isActive() && flingBar_ && flingBar_->parentWidget() == viewport->parentWidget();
+		stopFling();
 		target_ = widget;
 		viewport_ = viewport;
-		pressGlobal_ = mouse->globalPosition();
+		pressGlobal_ = lastGlobal_ = mouse->globalPosition();
 		doubleTap_ = type == QEvent::MouseButtonDblClick;
 		moved_ = false;
+		axis_ = 0;
 		touchSeen_ = false;
 		lastMove_ = 0;
+		samples_.clear();
 		/* down on a selected row of a list or table: the drag selects the rows it passes, as the mouse's does */
 		selectFrom_ = QPersistentModelIndex();
 		if (auto *view = qobject_cast<QAbstractItemView *>(viewport->parentWidget())) {
@@ -86,21 +161,6 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 			const QModelIndex at = view->indexAt(viewport->mapFromGlobal(pressGlobal_).toPoint());
 			if (at.isValid() && view->selectionModel() && view->selectionModel()->isSelected(at)) selectFrom_ = at;
 		}
-		QScroller *scroller = QScroller::scroller(viewport);
-		QScrollerProperties properties = scroller->scrollerProperties();
-		/* no bounce past the ends: the views draw nothing there, and a table that springs back reads as a fault */
-		const QVariant off = QVariant::fromValue(QScrollerProperties::OvershootAlwaysOff);
-		properties.setScrollMetric(QScrollerProperties::HorizontalOvershootPolicy, off);
-		properties.setScrollMetric(QScrollerProperties::VerticalOvershootPolicy, off);
-		/* every frame of the display, not every other (the default moved a phone's table in 9 px steps every 33 ms) */
-		properties.setScrollMetric(QScrollerProperties::FrameRate, QVariant::fromValue(QScrollerProperties::Fps60));
-		/* a drag from 2 mm, not 5: it began with a jump of what the finger had gone meanwhile (31 px on the phone) */
-		properties.setScrollMetric(QScrollerProperties::DragStartDistance, 0.002);
-		/* one axis a drag: a finger is never quite straight, and a table dragged up the phone slid sideways as well
-		 * (the owner's "moves away"); a drag mostly up or down moves only up or down, one mostly across only across */
-		properties.setScrollMetric(QScrollerProperties::AxisLockThreshold, 0.5);
-		scroller->setScrollerProperties(properties);
-		scroller->handleInput(QScroller::InputPress, viewport->mapFromGlobal(pressGlobal_), mouse->timestamp());
 		return true;
 	}
 	if (watched != target_ || !viewport_) return false; /* not a finger we hold */
@@ -108,9 +168,28 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 		if (!touchSeen_) moveTo(mouse->globalPosition(), mouse->timestamp());
 		return true;
 	}
-	QScroller::scroller(viewport_)->handleInput(QScroller::InputRelease, viewport_->mapFromGlobal(mouse->globalPosition()),
-			mouse->timestamp());
-	if (!moved_) sendTap(mouse);
+	/* the release: a tap sent on, or a fast drag glides on */
+	if (!moved_ && !stoppedGlide_) {
+		sendTap(mouse);
+	} else if (QScrollBar *bar = axisBar(); bar && !selectFrom_.isValid() && samples_.size() >= 2) {
+		/* the speed of the last 100 ms of the drag (an older step would slow a fast flick) */
+		const Sample last = samples_.last();
+		Sample first = samples_.first();
+		for (const Sample &s : std::as_const(samples_))
+			if (last.ms - s.ms <= 100) {
+				first = s;
+				break;
+			}
+		if (last.ms > first.ms) {
+			const double speed = -(last.along - first.along) / double(last.ms - first.ms); /* the list moves against the finger */
+			if (std::abs(speed) >= FLING_START) {
+				flingBar_ = bar;
+				flingSpeed_ = speed;
+				flingClock_.start();
+				flingTimer_.start();
+			}
+		}
+	}
 	target_ = nullptr;
 	viewport_ = nullptr;
 	selectFrom_ = QPersistentModelIndex();
@@ -118,8 +197,7 @@ bool TouchScroll::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void TouchScroll::moveTo(const QPointF &global, quint64 timestamp) {
-	/* the same update twice (the window's and a widget's) or one older than the last: the scroller's speed is made of
-	 * the steps between them, a step back in time made it shake */
+	/* the same update twice (the window's and a widget's) or one older than the last: a step back in time made it shake */
 	if (timestamp != 0 && timestamp <= lastMove_) return;
 	lastMove_ = timestamp;
 	if ((global - pressGlobal_).manhattanLength() > TAP_SLOP) moved_ = true;
@@ -137,5 +215,21 @@ void TouchScroll::moveTo(const QPointF &global, quint64 timestamp) {
 		view->selectionModel()->setCurrentIndex(at, QItemSelectionModel::NoUpdate);
 		return;
 	}
-	QScroller::scroller(viewport_)->handleInput(QScroller::InputMove, viewport_->mapFromGlobal(global), timestamp);
+	if (axis_ == 0) {
+		/* the axis once the finger has gone past a tap: the one it went most along; the list follows from here */
+		if (!moved_) return;
+		const QPointF d = global - pressGlobal_;
+		axis_ = std::abs(d.x()) > std::abs(d.y()) ? 1 : 2;
+		lastGlobal_ = global;
+		if (QScrollBar *bar = axisBar()) place_ = bar->value();
+	}
+	QScrollBar *bar = axisBar();
+	if (!bar) return;
+	const double along = axis_ == 2 ? global.y() : global.x();
+	const double step = along - (axis_ == 2 ? lastGlobal_.y() : lastGlobal_.x());
+	lastGlobal_ = global;
+	samples_.append({ timestamp, along });
+	if (samples_.size() > 16) samples_.removeFirst();
+	/* the list moves with the finger: its content up as the finger goes up, so the scroll bar's value goes down */
+	if (step != 0 && !scrollTo(bar, place_ - step)) flashEnd(bar);
 }
