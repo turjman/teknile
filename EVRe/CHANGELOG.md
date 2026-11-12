@@ -20,7 +20,9 @@
   the Log). With no token, a device that refuses the device ID read while its map declares a login register is said
   to want a token (the Log, and the pill when it closes the link), and is not tried again by itself either.
 - **Touch scrolling.** On a touch screen (a Windows one, and the phone) a finger dragged over any list, table or
-  panel scrolls it, with momentum; before, only the scroll bars moved them. The mouse is unchanged.
+  panel scrolls it, with momentum, wherever it comes down, and presses or selects nothing; a tap is a click. A drag
+  that starts on a selected row selects the rows it passes. Before, only the scroll bars moved them, and a finger's
+  drag over a list selected its rows. The mouse is unchanged.
 
 ## 1.5.0 (2026-11-07)
 
