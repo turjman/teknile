@@ -1785,6 +1785,12 @@ int ChartView::noteAtPoint(const QPointF &pos) const {
 	return -1;
 }
 
+void ChartView::setFineDetail(bool on) {
+	if (on == fineDetail_) return;
+	fineDetail_ = on;
+	refresh(); /* the columns are part of the binning's key: binned again at the next frame */
+}
+
 void ChartView::setHoverValues(bool on) {
 	hoverValues_ = on;
 	readoutTick_ = ~quint64(0); /* made again (or let go) at the next frame */
@@ -2931,7 +2937,12 @@ void ChartView::paintFrame(QPainter &p, bool onScreen) {
 	axes.t1 = lastViewEnd_ = viewEnd();
 	axes.t0 = axes.t1 - window_;
 	axes.span = window_;
-	axes.columns = std::max(1.0, axes.rect.width());
+	/* Fine detail: a column per device pixel (at 225 % a column per logical pixel drew a 1 min view of a noisy line as
+	 * steps 2.25 px wide, its detail lost in them), on the screen and in a picture of the chart (grab) alike. Off: a
+	 * column per logical pixel, the cost of a busy view (2.25 times the columns made the lines two to three times as
+	 * slow to build at 225 %) */
+	const double dpr = p.device()->devicePixelRatioF();
+	axes.columns = std::max(1.0, fineDetail_ ? std::round(axes.rect.width() * dpr) : axes.rect.width());
 	placeCursors(axes); /* on the grid: the times under them in this view */
 	QElapsedTimer stage; /* the timing aid's stages (perf_) */
 	stage.start();
@@ -4245,12 +4256,12 @@ ChartView::GridTicks ChartView::gridTicks(const Axes &axes) const {
 			if (x > axes.rect.left() + 0.5 && x < axes.rect.right() - 0.5) ticks.lineX << x;
 		}
 	} else {
-		int target = std::max(2, int(axes.columns / TIME_LABEL_SPACING));
+		int target = std::max(2, int(axes.rect.width() / TIME_LABEL_SPACING));
 		ticks.timeStep = niceTimeStep(window_, target);
 		/* below a millisecond a label is wider ("14:03:12.34567"): fewer of them, a clear gap between two */
 		const QFontMetricsF labels(smallFont());
 		while (ticks.timeStep < 1e-3 && target > 2
-				&& ticks.timeStep / window_ * axes.columns < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
+				&& ticks.timeStep / window_ * axes.rect.width() < labels.horizontalAdvance(timeLabel(epochMs_, axes.t1, ticks.timeStep)) + 24)
 			ticks.timeStep = niceTimeStep(window_, --target);
 		for (double t = std::ceil(axes.t0 / ticks.timeStep) * ticks.timeStep; t <= axes.t1; t += ticks.timeStep) {
 			ticks.times << t;
@@ -4889,8 +4900,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 		const auto y = [&](double v) { return normalized_ ? axes.y((v - lo) / (hi - lo)) : axes.y(v); };
 		polys[i] = toPolyline(line.bins, axes.columnSeconds(), x, y, &bands[i], bandWidth, 1 / dpr, &breaks[i]);
 	});
-	/* a line that is mostly bars (fast and noisy): its polyline only joins them, one stroke is enough; five over the
-	 * whole height of each column cost the most of a frame */
+	/* a line that is bars in nearly every column (fast and noisy): its polyline only joins them, one stroke is enough;
+	 * five over the whole height of each column cost the most of a frame. Not a line of bars in half its columns: a
+	 * slow sine at two or three samples a column drew its bars wide and the rest of it as a hairline, dashes in a
+	 * copied picture where the card drew one line */
 	QVector<char> thin(lines.size());
 	qsizetype points = 0;
 	/* the rows the bars fill, a fill's cost (their points alone kept a full-height fast line on one thread): a fast
@@ -4898,8 +4911,10 @@ void ChartView::drawLines(QPainter &p, const QVector<Lane> &plots, const QVector
 	qint64 barRows = 0;
 	const QTransform toDevice = p.deviceTransform();
 	segmentsHidden_ = 0;
+	hairlines_ = 0;
 	for (qsizetype i = 0; i < lines.size(); i++) {
-		thin[i] = 2 * bands[i].size() > lines[i].bins.size();
+		thin[i] = !lines[i].bins.isEmpty() && 10 * bands[i].size() >= 9 * lines[i].bins.size();
+		hairlines_ += thin[i];
 		const bool opaque = lines[i].series->color.alpha() == 255 && p.opacity() >= 1;
 		if (lines[i].series->fast && thin[i] && opaque && hiddenStroke_) /* the stroke its bars hide, left out */
 			segmentsHidden_ += leaveOutHidden(toDevice, crispBars(toDevice, bands[i].constData(), bands[i].size(), false),

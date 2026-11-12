@@ -355,6 +355,9 @@ void prepareSettings(const TestRegisters &regs) {
 					QStringLiteral("OLD\tV\t%1 * 2").arg(regs.volts.name) });
 	settings.setValue(QStringLiteral("chart/memory"), 60.0);
 	settings.setValue(QStringLiteral("chart/window"), 30.0);
+	/* Fine detail off (its default is on): the speed checks measure a busy chart at the cost they were set for; the
+	 * Display menu's check turns it on and off */
+	settings.setValue(QStringLiteral("chart/fineDetail"), false);
 }
 
 /* a token as the login register receives it: cut or zero-padded to its size (STUDIO.md section 3.6) */
@@ -2921,6 +2924,12 @@ private:
 			card.addPort(QStringLiteral("COM90"), QStringLiteral("USB Serial Device"), true, 0x0483, 0x5740, QString());
 			card.useSerial(QStringLiteral("COM90:115200"));
 			QTest::qWait(100);
+			/* the note wrapped in a narrow sidebar asks for its height as it is laid out (ElidedLabel::fit), so the grid
+			 * places it again a pass later: measured after that pass (on Windows at 225 % 100 ms was not always enough:
+			 * the note 0 px under Baud and 3 over Link, then where it belongs) */
+			(void) QTest::qWaitFor([&] {
+				return cardNote->y() > cardBaud->geometry().bottom() && cardKind->y() - cardNote->geometry().bottom() == uartGap;
+			}, 1000);
 			QStyleOptionComboBox option;
 			option.initFrom(cardKind);
 			const QRect field = cardKind->style()->subControlRect(QStyle::CC_ComboBox, &option,
@@ -6783,7 +6792,7 @@ private:
 		 * after T fill the view's right part, only the columns they reach binned at each frame; at 100 ms Normal holds a
 		 * view once it is full (a window under a second: steady), the next one binned while it fills behind it */
 		const int fastKey0 = ChartView::fastKey(0, 0);
-		const double columnsWide = view->lastPlot().width();
+		const double columnsWide = view->lastColumns();
 		struct Held { int frames = 0; double seconds = 0, columns = 0, paint = 0, paintMax = 0, bin = 0; bool held = false; };
 		auto heldFill = [&](double window, ChartView::TriggerMode mode) {
 			Held out;
@@ -7224,7 +7233,7 @@ private:
 				w->chartTab()->showSpan(end - window, end);
 				v->repaint();
 				const double t0 = v->lastViewStart(), t1 = v->lastViewEnd();
-				const double column = (t1 - t0) / std::max(1.0, v->lastPlot().width());
+				const double column = (t1 - t0) / std::max(1.0, v->lastColumns());
 				const qsizetype at = std::min(store.size() - 1, store.upperBound(t1));
 				const double drawn = v->drawnTo(key), off = std::fabs(drawn - store.timeAt(at)) / column;
 				tried++;
@@ -15077,7 +15086,7 @@ private:
 				view->showSpan(at - 5.0, at + 5.0);
 				host.grab(); /* the first frame of this view: binned whole */
 				const qint64 before = view->fastColumnsBinned();
-				const double column = 10.0 / view->lastPlot().width();
+				const double column = 10.0 / view->lastColumns();
 				view->showSpan(at - 5.0 + 2.5 * column, at + 5.0 + 2.5 * column);
 				host.grab();
 				const qint64 binned = view->fastColumnsBinned() - before;
@@ -15447,6 +15456,59 @@ private:
 		const double kept = blocksAlike(a, b, 3);
 		std::printf("     (kept bins vs binned at once: %.2f%% of the blocks alike)\n", kept * 100);
 		check(kept >= 0.995, "chart, the view's bins kept from frame to frame: fed in ten steps, the picture of one fed at once");
+
+		/* Fine detail: a bin per device pixel (at 225 % a bin per logical pixel drew a noisy 1 min line as steps 2.25 px
+		 * wide: a screen against its copied picture); off, a bin per logical pixel (a busy view's cost) */
+		{
+			const double dpr = stepsHost.devicePixelRatioF();
+			const auto columnsOk = [&](double expected) {
+				const double columns = steps->lastColumns();
+				const QVector<ChartView::BinInfo> bins = steps->lastBins(0);
+				const double columnSeconds = 60.0 / std::max(1.0, columns);
+				double widest = 0;
+				for (const ChartView::BinInfo &bin : bins) widest = std::max(widest, bin.t1 - bin.t0);
+				std::printf("     (%.0f columns in %.0f px at %.2fx, %lld bins, the widest %.2f of a column)\n", columns,
+						steps->lastPlot().width(), dpr, (long long) bins.size(), widest / columnSeconds);
+				return columns == expected && std::fabs(bins.size() - columns) <= 4 && widest <= columnSeconds;
+			};
+			const bool coarse = !steps->fineDetail() && columnsOk(std::max(1.0, steps->lastPlot().width()));
+			steps->setFineDetail(true);
+			const QImage fine = stepsHost.grab().toImage(); /* a picture of the chart: binned as the screen is */
+			const bool fineOk = steps->fineDetail() && !fine.isNull()
+					&& columnsOk(std::max(1.0, std::round(steps->lastPlot().width() * dpr)));
+			steps->setFineDetail(false);
+			stepsHost.grab();
+			const bool back = columnsOk(std::max(1.0, steps->lastPlot().width()));
+			/* the hairline joins only for a line of bars in nearly every column: a slow sine at two or three samples a
+			 * column (bars in about half its columns) was drawn as dashes in a copied picture, wide bars and hairlines */
+			{
+				QWidget sineHost;
+				sineHost.resize(1100, 480);
+				auto *sine = new ChartView(&sineHost);
+				sine->setGeometry(9, 5, 1080, 470);
+				sine->setClock([] { return 3600.0; }, 0);
+				sine->setSmooth(false);
+				sine->setMemory(3600);
+				sine->setWindow(28);
+				sine->setDrawThreads(1);
+				sine->addSeries(0, QStringLiteral("slow"), QStringLiteral("V"), QColor(80, 140, 255));
+				sine->addSeries(1, QStringLiteral("noisy"), QStringLiteral("V"), QColor(255, 140, 40));
+				for (int i = 0; i < 28 * 100; i++) sine->append(0, 3572.0 + i / 100.0, std::sin(2 * M_PI * (i / 100.0) / 2.5));
+				const QImage slowOnly = sineHost.grab().toImage();
+				const int slowHairlines = sine->hairlineLines();
+				for (int i = 0; i < 28 * 2000; i++) sine->append(1, 3572.0 + i / 2000.0, (i * 7919 % 101) / 50.0 - 1.0);
+				(void) sineHost.grab();
+				const int withNoisy = sine->hairlineLines();
+				std::printf("     (hairline joins: a 2.5 s sine at 100 Hz over 28 s %d; with a noisy line at 2 kHz beside it %d)\n",
+						slowHairlines, withNoisy);
+				check(!slowOnly.isNull() && slowHairlines == 0 && withNoisy == 1,
+						"chart, the CPU's thin joins: a slow sine with bars in some of its columns is drawn whole at the line's "
+						"width (no dashes in a copied picture); a noisy line of bars in every column keeps the one thin stroke");
+			}
+			check(coarse && fineOk && back, "chart, Fine detail: a 1 min view of a line at 500 Hz has a bin per device pixel "
+					"across the plot (its width times the screen's scale), a picture of the chart too; off, a bin per "
+					"logical pixel; none wider than a column");
+		}
 
 		/* the crosshair's box with 64 lines: in columns that fit the plot's height */
 		const int perColumn = ChartView::readoutRowsPerColumn(700);
@@ -15826,6 +15888,34 @@ private:
 			hoverValues->trigger(); /* as it was */
 		}
 		check(hoverSaved, "chart, Display menu: Hover values switches the box of values, is saved and said in the tooltip");
+		/* Fine detail: a bin per device pixel while on (the test prepares it off, its default on: a fresh ChartTab with
+		 * no setting has it on) */
+		auto *fine = window_.findChild<QAction *>(QStringLiteral("chartFineDetail"));
+		bool fineSaved = false;
+		if (fine && items.contains(fine) && !fine->toolTip().isEmpty()) {
+			ChartView *view = window_.findChild<ChartView *>();
+			const bool was = fine->isChecked();
+			fine->trigger();
+			(void) view->grab(); /* a frame, whether the Chart tab is shown or not (the card paints only a shown one) */
+			const double width = view->lastPlot().width(), dpr = view->devicePixelRatioF();
+			const double expected = std::max(1.0, !was ? std::round(width * dpr) : width);
+			fineSaved = QSettings().value(QStringLiteral("chart/fineDetail")).toBool() == !was && view->fineDetail() == !was
+					&& view->lastColumns() == expected
+					&& display->toolTip().contains(was ? QStringLiteral("Fine detail off") : QStringLiteral("Fine detail on"));
+			if (!fineSaved)
+				std::printf("     (Fine detail: was %d, saved %d, view %d, %.0f columns for %.0f px at %.2fx, tooltip \"%s\")\n",
+						int(was), int(QSettings().value(QStringLiteral("chart/fineDetail")).toBool()), int(view->fineDetail()),
+						view->lastColumns(), width, dpr, qPrintable(display->toolTip()));
+			fine->trigger(); /* as it was */
+			QSettings settings;
+			settings.remove(QStringLiteral("chart/fineDetail"));
+			ChartTab fresh([] { return 100.0; });
+			auto *freshFine = fresh.findChild<QAction *>(QStringLiteral("chartFineDetail"));
+			fineSaved = fineSaved && freshFine && freshFine->isChecked() && fresh.findChild<ChartView *>()->fineDetail();
+			settings.setValue(QStringLiteral("chart/fineDetail"), fine->isChecked()); /* the run's as it was */
+		}
+		check(fineSaved, "chart, Display menu: Fine detail bins a line per device pixel (its width times the screen's "
+				"scale) while on and per logical pixel while off, is saved, said in the tooltip, and on by default");
 		const bool sameText = display->text() == QLatin1String("Display");
 		if (!(inMenu && normalised && back && smoothSaved && sameText))
 			std::printf("     (Display: in menu %d, normalised %d, back %d, smooth saved %d, text \"%s\")\n", inMenu,
@@ -16124,6 +16214,37 @@ private:
 				&& durationText(999.96e-6) == QLatin1String("1 ms") && durationText(-0.5) == QLatin1String("500 ms");
 		check(texts, "chart, A-B bar: the time written as 123 µs, 3.525 ms, 12.35 s, 1 min 23.4 s, 2 h 05 min (999.96 µs "
 				"is 1 ms; the sign dropped)");
+
+		/* the Window and Memory boxes left without typing apply nothing: on Windows a menu taking the focus from the
+		 * Window box put its text back over a window changed since (30 s, clipped to the memory), and the memory strip's
+		 * words had no room left beside the view's box */
+		{
+			QSettings().remove(QStringLiteral("windowBoxTest"));
+			ChartTab boxes([] { return 100.0; }, nullptr, QStringLiteral("windowBoxTest"));
+			boxes.resize(1200, 700);
+			boxes.show();
+			(void) QTest::qWaitForWindowExposed(&boxes);
+			auto *windowBox = boxes.findChild<QComboBox *>(QStringLiteral("chartWindowBox"));
+			auto *memoryBox = boxes.findChild<QComboBox *>(QStringLiteral("chartMemoryBox"));
+			ChartView *boxView = boxes.view();
+			bool kept = false, typed = false;
+			if (windowBox && memoryBox && boxView) {
+				boxView->setMemory(600);
+				boxView->setWindow(0.25); /* changed past the box (a span shown, a recording's zoom) */
+				emit windowBox->lineEdit()->editingFinished(); /* left, nothing typed */
+				emit memoryBox->lineEdit()->editingFinished();
+				const double leftWindow = boxView->window(), leftMemory = boxView->memory();
+				kept = leftWindow == 0.25 && leftMemory == 600;
+				windowBox->lineEdit()->selectAll();
+				QTest::keyClicks(windowBox->lineEdit(), QStringLiteral("2 s"));
+				emit windowBox->lineEdit()->editingFinished(); /* typed: applied */
+				typed = boxView->window() == 2.0;
+				std::printf("     (the boxes left untyped: window %g, memory %g; typed \"2 s\": window %g)\n", leftWindow,
+						leftMemory, boxView->window());
+			}
+			check(kept && typed, "chart, the Window and Memory boxes: left without typing (a click away, a menu taking the "
+					"focus) they change nothing; a length typed is applied");
+		}
 
 		ChartTab tab([] { return 100.0; });
 		tab.resize(1200, 700);
@@ -20830,7 +20951,7 @@ private:
 		const qint64 fastColumns = fastView->fastColumnsBinned() - fastBefore;
 		const double fastMoved = fastView->triggeredAt() - fastFrom;
 		const int fastHolds = fastView->triggerHolds() - holds;
-		const double columns = fastView->lastPlot().width();
+		const double columns = fastView->lastColumns();
 		/* about the samples fed (a bin each: 20 a frame polled, 100 a frame fast) and the two ends of each frame; and at
 		 * least the columns the view moved by (a sample's each: 50 us polled, 10 us fast), so nothing binned fails too */
 		const bool polledNew = polledHolds >= 50 && polledColumns <= 2 * 20 * polledFrames + 4 * polledFrames
@@ -20877,7 +20998,7 @@ private:
 		}
 		const qint64 fillFast = fastView->fastColumnsBinned() - fillFastBefore;
 		const qint64 fillPolled = fastView->polledColumnsBinned() - fillPolledBefore;
-		const double fillColumns = fastView->lastPlot().width();
+		const double fillColumns = fastView->lastColumns();
 		/* the columns the data reached meanwhile, each binned about once; at most a few more a frame (the first column
 		 * and the open one at the data's end), never the filled part again (a column a frame times the frames) */
 		const double reached = (std::min(now, heldFrom + 0.8 * 2.5) - dataFrom) / 2.5 * fillColumns;
@@ -20919,7 +21040,7 @@ private:
 		}
 		const qint64 shortColumns = fastView->fastColumnsBinned() - shortBefore;
 		const int shortShown = fastView->triggerHolds() - shortHolds;
-		const double shortWide = fastView->lastPlot().width();
+		const double shortWide = fastView->lastColumns();
 		/* a frame brings 1/60 s of a 0.1 s view: a sixth of its columns, and the first and the open one */
 		const bool spread = shortShown >= 20 && showFrames >= 15 && atShowMost <= shortWide / 6 * 1.2 + 4
 				&& shortColumns <= 1.2 * shortShown * shortWide + 4 * shortFrames;
@@ -24947,22 +25068,32 @@ private:
 			return;
 		}
 		ChartView *view = opened->chartTab()->view();
+		/* the status's 500 ms turn stopped while the boxes are looked at: only the first frame can fill them (a time
+		 * bound instead failed on a slower PC, the opening alone taking 600 ms there) */
+		QList<QTimer *> statusTimers;
+		for (QTimer *timer : opened->findChildren<QTimer *>(Qt::FindDirectChildrenOnly))
+			if (timer->isActive() && timer->interval() == 500) {
+				timer->stop();
+				statusTimers << timer;
+			}
 		const int volts = int(regKey(opened->definitions().value(0)));
 		const qint64 keptAtOnce = view->pointsKept(volts);
 		const QString valueAtOnce = view->legendValue(volts);
 		(void) QTest::qWaitForWindowExposed(opened);
-		QTest::qWait(150); /* its first frame, under the status's 500 ms */
+		(void) QTest::qWaitFor([&] { return view->paints() > 0; }, 3000);
+		QTest::qWait(50);
 		auto *low = opened->findChild<QLineEdit *>(QStringLiteral("yMin"));
 		auto *high = opened->findChild<QLineEdit *>(QStringLiteral("yMax"));
 		const qint64 openedMs = since.elapsed();
-		const bool boxes = low && high && low->text() == ChartTab::yFieldText(view->yLo(), false)
+		const bool boxes = !statusTimers.isEmpty() && low && high && low->text() == ChartTab::yFieldText(view->yLo(), false)
 				&& high->text() == ChartTab::yFieldText(view->yHi(), false) && view->yLo() < 12 && view->yHi() > 17.9;
+		for (QTimer *timer : std::as_const(statusTimers)) timer->start();
 		std::printf("  opened with Measure on: %lld samples and \"%s\" at once; Y %g..%g, the boxes \"%s\" \"%s\" after %lld ms\n",
 				(long long) keptAtOnce, qPrintable(valueAtOnce), view->yLo(), view->yHi(), low ? qPrintable(low->text()) : "",
 				high ? qPrintable(high->text()) : "", (long long) openedMs);
 		check(keptAtOnce == 600 && !valueAtOnce.isEmpty(), "recording's window, Measure on: the file's samples on the chart "
 				"at once and the legend's values shown (none held back by the opening's measurement)");
-		check(boxes && openedMs < 500, "recording's window: the Y boxes show the range of its first frame at once (Auto), "
+		check(boxes, "recording's window: the Y boxes show the range of its first frame at once (Auto), "
 				"not 0 and 1 until the status's next turn");
 
 		/* a change just after a feed's frames (no frames come after them): painted all the same */
@@ -25038,11 +25169,19 @@ private:
 				return image;
 			};
 			const double front = screen.size() == cpu.size() ? blocksAlike(withoutPlot(screen), withoutPlot(cpu), 24) : 0;
+			/* a screen that cannot be read (a desktop of its own, as the test runs beside the owner's work: Windows
+			 * shows no window of it on the screen, the rest of the window only 58 % alike there): the card's own last
+			 * frame instead, against the CPU's picture as "chart on a GPU" compares it */
+			const bool screenRead = front >= 0.9;
+			const QImage card = view->gpuPicture().convertToFormat(QImage::Format_RGB32);
+			const double cardAlike = card.size() == at.size() ? blocksAlike(card, cpu.copy(at), 24) : 0;
 			std::printf("  made bigger on %s: a frame let go (%d), the layer %dx%d for the plot's %dx%d; on the screen "
-					"%.2f%% like the CPU's picture (the rest of the window %.2f%%: in front)\n", qPrintable(view->drawingName()),
-					view->gpuDropped() - dropped, view->gpuPresentedSize().width(), view->gpuPresentedSize().height(),
-					at.width(), at.height(), alike * 100, front * 100);
-			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again && alike >= 0.97,
+					"%.2f%% like the CPU's picture (the rest of the window %.2f%%: %s); the card's own frame %.2f%%\n",
+					qPrintable(view->drawingName()), view->gpuDropped() - dropped, view->gpuPresentedSize().width(),
+					view->gpuPresentedSize().height(), at.width(), at.height(), alike * 100, front * 100,
+					screenRead ? "in front" : "the screen not readable here", cardAlike * 100);
+			check(view->plotOnCard() && view->gpuDropped() == dropped + 1 && again
+							&& (screenRead ? alike >= 0.97 : cardAlike >= 0.93),
 					"recording's window made bigger on a GPU: a frame the system let go is followed by another, the card's "
 					"layer at the new size (no blank bar over the new part), its plot the CPU's picture");
 			view->setDrawing(ChartView::Drawing::Cpu);
@@ -27224,11 +27363,11 @@ int main(int argc, char **argv) {
 		QStringList keys = own.allKeys();
 		keys.sort();
 		check(QSettings().applicationName() == QLatin1String("EVReStudioTest")
-						&& keys == QStringList{ QStringLiteral("chart/math"), QStringLiteral("chart/memory"),
-								QStringLiteral("chart/window") },
+						&& keys == QStringList{ QStringLiteral("chart/fineDetail"), QStringLiteral("chart/math"),
+								QStringLiteral("chart/memory"), QStringLiteral("chart/window") },
 				"the test's own settings (EVReStudioTest) cleared at its start: a recording/measure = true an earlier run "
-				"left is gone, only the three the test prepares are there when the first step runs");
-		if (keys.size() != 3) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
+				"left is gone, only the four the test prepares are there when the first step runs");
+		if (keys.size() != 4) std::printf("  the settings at the start: %s\n", qPrintable(keys.join(QLatin1Char(' '))));
 	}
 
 	OtherClient other;
