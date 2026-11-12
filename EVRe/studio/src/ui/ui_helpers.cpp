@@ -124,7 +124,16 @@ QString coloredSpan(const QString &html, const QColor &color) {
 	return QStringLiteral("<span style='color:%1'>%2</span>").arg(color.name(), html);
 }
 
-QString mapsFolder() { return QCoreApplication::applicationDirPath() + QStringLiteral("/maps"); }
+/* on Android the maps travel in the APK's assets (CMakeLists.txt), which QDir and QFile read as they are */
+bool chartOnly() { return qEnvironmentVariableIntValue("EVRE_CHART_ONLY") == 1; }
+
+QString mapsFolder() {
+#ifdef Q_OS_ANDROID
+	return QStringLiteral("assets:/maps");
+#else
+	return QCoreApplication::applicationDirPath() + QStringLiteral("/maps");
+#endif
+}
 
 QWidget *card(const QString &title, QLayout *content) {
 	auto *frame = new QFrame;

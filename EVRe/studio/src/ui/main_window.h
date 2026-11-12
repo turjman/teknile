@@ -49,11 +49,13 @@ class IoEngine;
 class MonitorTab;
 class Notice;
 class QLabel;
+class QLayout;
 class QTabWidget;
 class QThread;
 class RegisterModel;
 class RegistersTab;
 class Sidebar;
+class SidebarDock;
 struct RegValue;
 namespace fast { struct TriggerWatch; }
 enum class LogLevel;
@@ -124,6 +126,7 @@ private:
 	/* building the window: the constructor, in this order */
 	void startEngine();           /* its thread, and its results into the window */
 	void buildWindow();           /* the sidebar, the tabs, the status bar */
+	void applyChartOnly(SidebarDock *dock, QLayout *mainLayout); /* chartOnly() (ui_helpers.h): the proof's switch */
 	void connectSidebar();        /* its choices and buttons, to the engine and the map */
 	QWidget *buildRegistersTab(); /* its writes, reads and map edits go through the window */
 	QWidget *buildChartTab();     /* wired to the engine and the table */

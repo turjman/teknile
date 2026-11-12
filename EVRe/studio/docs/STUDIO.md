@@ -5124,10 +5124,13 @@ so the queue waits for it. The client hears of the result only if it asked for a
 
 | File | Role |
 |---|---|
-| `CMakeLists.txt` | the build: the protocol library, the core library, the program, `evre`, `evre-sim`, the GUI test, the map, fast and Listen tests, the probe, the fast fake device, the maps and the USB captures copied beside them |
-| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`) |
+| `CMakeLists.txt` | the build: the protocol library, the core library, the program, `evre`, `evre-sim`, the GUI test, the map, fast and Listen tests, the probe, the fast fake device, the maps and the USB captures copied beside them; on Android only the program, as an APK (25.4) |
+| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`); on Android the start intent's extras `chartOnly` and `perfLog` as `EVRE_CHART_ONLY` and `EVRE_PERF_LOG` (`am start -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez chartOnly true`) |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
+| `src/evre/usb_bridge.h` | `UsbBridge`: what the Android link needs of Android's USB host API (the devices, open, send, close) and its `Sink`; `UsbBridge::system()` on Android |
+| `src/evre/link_android.h`,&nbsp;`.cpp` | `AndroidUsbLink`: a USB CDC device on Android through a `UsbBridge`, its words queued to the link's thread. Built on every system, so the GUI test drives it with a fake bridge |
+| `src/evre/usb_bridge_jni.cpp` | the `UsbBridge` over JNI to `android/src/com/teknile/evre/EvreUsb.java` (the Java layer: permission, the CDC interfaces, the line coding, DTR, the reader thread). Built on Android only |
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names), `AUTO_SEND_DIVIDERS` (the 16 prescalers + 1 of 13.8) and `autoSendRatesFor(maxHz, tickHz)` (the rates a map's `auto_send` limits leave; the checker, the Map settings and the sidebar use it) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
@@ -5192,7 +5195,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
-| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder`, `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
+| `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder` (`assets:/maps` on Android), `chartOnly` (the Android proof's switch, `EVRE_CHART_ONLY`: `MainWindow` shows the Chart tab alone, `ChartTab` scrolls its rows of controls sideways), `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
@@ -5240,6 +5243,16 @@ the signals `opened()`, `closed(why, detail)` and `received(bytes)`. `why` is em
   port's `errorString()`.
 
 The socket or port is the link's child, so it lives in the link's thread.
+
+**`link_android.h` / `link_android.cpp` (the Android app's proof, A.0).** An app on Android may not open `/dev/tty*`
+and Qt Serial Port has no USB host backend, so on Android `IoEngine::connectSerial` makes an `AndroidUsbLink` in place
+of the `SerialLink`, and the sidebar's port list is the USB devices the Java layer lists. The link asks its `UsbBridge`
+to open the device; the bridge answers through the link's `Sink` from Java's threads (`usbAsking`, `usbOpened`,
+`usbRefused`, `usbFailed`, `usbBytes`, `usbGone`), and each answer is queued to the link's thread, where it becomes
+`waiting()` (the pill's *Waiting for permission…*), `opened()`, `received(bytes)` or `closed(why, detail)`: *permission
+refused for <device>*, *<device> could not be opened* (the Java layer's reason as the detail), or the serial link's
+*<device> is gone: unplugged or reset?*. A link deleted before an answer arrives never hears it. One device at a
+time; CDC only (a communication interface, class 2, and a data interface, class 10, with a bulk endpoint each way).
 
 **`master.h` / `master.cpp`.** `Master` implements the queue and the matching of 18.6 and the timeouts and
 keep-alive of 18.7:
@@ -6822,7 +6835,7 @@ its own.
 | `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` | links `evre_protocol`; the program and the GUI test link it; a new source file is one more line here (or in `evre_protocol`) |
 | `evre_maps` | custom&nbsp;target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
 | `evre_captures` | custom&nbsp;target | `tests/captures/` | copies the USB captures beside the programs at every build (`captures/`) |
-| `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps` |
+| `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps`; on Android an APK (target `apk`): package `com.teknile.evrestudio`, Android 9 (API 28) and newer, target API 34, arm64-v8a, the version code from the version (1.5.0: 10500), `android/` as the package's source (the manifest and the Java USB layer), `maps/` in the APK's assets (`assets:/maps`). The other programs are not built on Android |
 | `evre_gui_test` | executable | `tests/gui_test.cpp` + core + Qt Test | depends on `evre_maps` and `evre_captures`: it opens the maps and replays the captures beside it |
 | `evre_probe` | executable | `tests/evre_probe.cpp` + `evre_protocol` | Qt Core, Network, SerialPort only |
 | `evre` | executable | `cli/evre.cpp`&nbsp;+&nbsp;`evre_protocol` | the command-line tool (chapter 34) |
@@ -7235,6 +7248,20 @@ Four more steps cover several devices on one link (3.9, 3.10), auto send (13.8) 
   every Listen line translated and whole, each segment's text in its button; every Monitor line left to right; the
   device line *not heard yet* at once when Listen is chosen; the window's minimum width at most 1280 px with Listen
   chosen.
+- **Chart only, the Android proof's switch** (`androidChartOnly`). Without `EVRE_CHART_ONLY` the window is as it was.
+  A window made with `EVRE_CHART_ONLY=1` (on Android the start intent's extra `chartOnly`, main.cpp) at 915 x 412, a
+  phone in landscape: the sidebar folded to its thin bar, the status bar hidden, the Chart tab the only tab and kept
+  current when another is asked for, the window's least size within 915 x 412, the rows of controls over the chart in
+  a strip that scrolls sideways and the plot nearly the window's width and at least 180 px high. A throwaway of the
+  proof (A.0), which the narrow mode replaces. The sidebar opened from its bar (it has the only Connect) still fits
+  beside the chart.
+- **The Android USB link** (`androidUsbLink`). `AndroidUsbLink` driven by a fake `UsbBridge` whose words come from a
+  thread of their own, as Java's do: open asks the bridge for the device and its baud rate, and opens when the bridge
+  says so; a request written as it is (nothing before the open) and an answer in two pieces received in order; the
+  device unplugged closes the link with *... is gone: unplugged or reset?* and nothing more is sent; Android's dialog
+  up gives `waiting()`, refused closes with *permission refused for <device>*; a link deleted while opening closes the
+  bridge and the words queued for it are dropped; the sidebar's pill *Waiting for permission…* with the device in its
+  tooltip and Cancel.
 - **Fast speed** (`fastSpeed`, after the fast streams step). `evre_fake_fast` with `--fast-rate 1000000` on port
   1240: both channels plotted over a 10 s window, the Chart tab shown, the stream on for 20 s. About 20 million
   records taken, none lost, no bad block, none left unshown (the rate's tooltip), the rate 0.95 to 1.04 M samples/s;
@@ -7889,7 +7916,7 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1100 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1110 checks. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:

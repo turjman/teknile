@@ -322,6 +322,7 @@ signals:
 	/* `device` below: the device's slave as the table has it (RegDef::slave): 0 for the one device of a map */
 	void opened(const QString &link);
 	void closed(const QString &why, const QString &detail); /* detail: the system's text, when why is a plain one */
+	void linkWaiting(); /* the link waits for a person: Android's permission dialog for a USB device is up */
 	void deviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
 	void loginRefused(int device, const QString &err); /* the device refused the token written to its login register */
 	void loginSkipped();                   /* a token was given, but no map declares a login register */
