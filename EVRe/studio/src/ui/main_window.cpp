@@ -292,7 +292,8 @@ void MainWindow::startEngine() {
 		info.error = err;
 		showDeviceInfo();
 		logEvent(LogLevel::Error, deviceLabel(slave) + tr("token refused: %1").arg(err));
-		loginStop_ = deviceLabel(slave) + tr("token refused (%1): type the right token, then Connect").arg(err);
+		/* the reason (permission denied) is the Log's line: in the pill the protocol's English words broke an Arabic line */
+		loginStop_ = deviceLabel(slave) + tr("token refused: type the right token, then Connect");
 	});
 	connect(engine_, &IoEngine::loginNeeded, this, [this](int slave) {
 		logEvent(LogLevel::Error, deviceLabel(slave)

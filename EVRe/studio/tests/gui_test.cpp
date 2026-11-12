@@ -26056,13 +26056,12 @@ private:
 		int wrongTries = 0, noneTries = 0;
 		QString wrongSaid, noneSaid;
 		const bool wrongStopped = tryWith(QString::fromUtf8(wrongToken), wrongTries, wrongSaid);
-		const bool wrongLogged = logText().contains(QLatin1String("not reconnecting: token refused (permission denied)"));
+		const bool wrongLogged = logText().contains(QLatin1String("not reconnecting: token refused: type the right token, then Connect"));
 		const bool noneStopped = tryWith(QString(), noneTries, noneSaid);
 		const bool noneLogged = logText().contains(QLatin1String("the device wants a login: its map has a login register"));
 		std::printf("     (a wrong token: %d link(s) in 3 s, the pill \"%s\"; none: %d link(s), the pill \"%s\")\n", wrongTries,
 				qPrintable(wrongSaid), noneTries, qPrintable(noneSaid));
-		check(wrongStopped && wrongTries == 1 && wrongSaid.contains(QLatin1String("token refused (permission denied): type "
-					"the right token, then Connect")) && wrongLogged,
+		check(wrongStopped && wrongTries == 1 && wrongSaid.contains(QLatin1String("token refused: type the right token, then Connect")) && wrongLogged,
 				"a device closing the link on a refused token: one try, not reconnected by itself, the pill says the token "
 				"was refused and to type the right one, Connect offered");
 		check(noneStopped && noneTries == 1 && noneSaid.contains(QLatin1String("the device wants a token: type it in the Token box")) && noneLogged,

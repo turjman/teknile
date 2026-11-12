@@ -612,8 +612,8 @@ Some devices, or the TCP gateway in front of them, answer only after the client 
 - **The link closed after a refused login.** A device (or a gateway) may close the link when it refuses the token.
   The Studio then does not reconnect by itself, even with *Reconnect by itself* ticked: the same token would only be
   refused again (a board whose token was changed was tried twice a second, 4000 times in 35 minutes). The pill says
-  *token refused (permission denied): type the right token, then Connect*, the Log *not reconnecting: ...*, and the
-  link stays closed until Connect is pressed.
+  *token refused: type the right token, then Connect*, the Log *not reconnecting: ...* beside its *token refused:
+  permission denied*, and the link stays closed until Connect is pressed.
 - **No token.** Nothing is written, whatever the map says.
 - **No token, and the device wants one.** When the map declares a login register, no token is given, and the device
   refuses the device ID read with *permission denied*, the Log says *the device wants a login: its map has a login

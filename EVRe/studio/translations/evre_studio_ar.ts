@@ -5272,10 +5272,6 @@ values: Auto ·
         <translation>كم يستغرق الرد الواحد في المتوسط: أقل بكثير من ⁦1 ms⁩ عبر USB أو على هذا الحاسوب، و⁦1–5 ms⁩ عبر Wi-Fi</translation>
     </message>
     <message>
-        <source>token refused (%1): type the right token, then Connect</source>
-        <translation>رُفض رمز الدخول (%1): اكتب الرمز الصحيح ثم «اتصال»</translation>
-    </message>
-    <message>
         <source>the device wants a login: its map has a login register, and no token was given (Token box)</source>
         <translation>الجهاز يطلب تسجيل الدخول: خريطته تعلن مسجّل دخول، ولم يُعطَ رمز دخول (خانة رمز الدخول)</translation>
     </message>
@@ -5286,6 +5282,10 @@ values: Auto ·
     <message>
         <source>not reconnecting: %1</source>
         <translation>لا إعادة اتصال: %1</translation>
+    </message>
+    <message>
+        <source>token refused: type the right token, then Connect</source>
+        <translation>رُفض رمز الدخول: اكتب الرمز الصحيح ثم «اتصال»</translation>
     </message>
 </context>
 <context>

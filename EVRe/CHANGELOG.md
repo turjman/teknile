@@ -6,8 +6,8 @@
 
 - **A refused token stops the reconnecting.** A device that refused the token and closed the link was tried again
   twice a second for as long as *Reconnect by itself* was ticked, the pill showing only that it was connecting.
-  Now the link stays closed and the pill says *token refused (permission denied): type the right token, then
-  Connect*. With no token, a device that refuses the device ID read while its map declares a login register is said
+  Now the link stays closed and the pill says *token refused: type the right token, then Connect* (the reason in
+  the Log). With no token, a device that refuses the device ID read while its map declares a login register is said
   to want a token (the Log, and the pill when it closes the link), and is not tried again by itself either.
 
 ## 1.5.0 (2026-11-07)
