@@ -5,7 +5,9 @@
  *   P9Registers  the example map's registers as a list (name, address, value, unit), every value changed 20 times
  *                a second by a timer: no device, no engine, only what a live list costs the screen
  *   P9Meter      the window's frames, from QQuickWindow::frameSwapped: once a second one line, "fps 60.0, longest
- *                17.1 ms, over 20 ms: 0", to logcat under the tag EVRE_P9 (on a desktop: the program's output)
+ *                17.1 ms, over 20 ms: 0", to logcat under the tag EVRE_P9 (on a desktop: the program's output). The
+ *                speed line of the Registers screen (perf, phone_app.h) is the same meter under the tag EVRE_PERF,
+ *                writing only while that screen shows
  *
  * The screen (P9Screen.qml) keeps a small bar running, so the window draws every frame and the time between two
  * frames is a frame's time, also while nothing is flicked. */
@@ -16,6 +18,7 @@
 #include <QMutex>
 #include <QStringList>
 #include <QTimer>
+#include <functional>
 #include <QtQml/qqmlregistration.h>
 
 #include "model/device_map.h"
@@ -56,7 +59,8 @@ class P9Meter : public QObject {
 public:
 	static constexpr double SLOW_MS = 20.0; /* a frame longer than this is counted: P-9 wants none */
 
-	explicit P9Meter(QQuickWindow *window);
+	/* tag: logcat's; shown: whether to write this second's line (none given: always) */
+	explicit P9Meter(QQuickWindow *window, const char *tag = "EVRE_P9", std::function<bool()> shown = {});
 
 signals:
 	void logged(const QString &line);
@@ -73,4 +77,6 @@ private:
 	int slow_ = 0;
 	QElapsedTimer second_;
 	QTimer timer_;
+	const char *tag_;
+	std::function<bool()> shown_;
 };

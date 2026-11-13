@@ -11,7 +11,15 @@
  *                 try, as the desktop does, except after a refused token, a device that wants one, or a refused USB
  *                 permission: those would only be refused again, so the link stays closed until Connect
  *   polling       on or off and its interval; the measured rate twice a second while connected
- *   writes        Allow writes (off at every start, as on the desktop)
+ *   writes        Allow writes (off at every start, as on the desktop); write(row, text) is MainWindow::onWriteRequested's
+ *                 path: encodeValue, the map's limits and a danger register asked first (writeQuestion), the write, and
+ *                 the engine reads it back, so the card shows what the device holds; writeAnswered says how it went
+ *   registers     RegisterList, the Registers screen's rows over the RegisterModel; the values copied from the engine's
+ *                 table by sync(), once a frame of the window (afterAnimating), at the desktop's pace (ui/valueRate);
+ *                 Plot (setPlot) with the desktop's limit of lines and its message (notice)
+ *   the ID        DEVICE_ID read when the link opens (the engine's); a read that gets no answer is tried again
+ *                 ID_RETRIES times, ID_RETRY_MS apart (a board still booting when the link comes back), "reading the
+ *                 device ID…" meanwhile; a refusal (permission denied) is not tried again: it is the token's
  *   recording     a CSV of every logged register into the app's own folder (recordingsFolder, A-8): a real path, so a
  *                 recording's notes can go beside it
  *
@@ -19,6 +27,8 @@
  * MainWindow does. Every text through tr() in this class's context. */
 #pragma once
 
+#include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QStringList>
 #include <QTimer>
@@ -28,8 +38,11 @@
 #include "model/device_map.h"
 #include "phone/log_model.h"
 #include "phone/port_list.h"
+#include "phone/register_list.h"
+#include "ui/value_pace.h"
 
 class IoEngine;
+class QQuickWindow;
 class QThread;
 class RegisterModel;
 namespace evre {
@@ -72,6 +85,8 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(QString recordText READ recordText NOTIFY recordingChanged)
 	Q_PROPERTY(PortList *ports READ ports CONSTANT)
 	Q_PROPERTY(LogModel *log READ log CONSTANT)
+	Q_PROPERTY(RegisterList *registerList READ registerList CONSTANT)
+	Q_PROPERTY(bool connected READ connected NOTIFY linkChanged)
 
 public:
 	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
@@ -83,6 +98,9 @@ public:
 	static constexpr int RECONNECT_LOST_MS = 500;    /* a link that was up: again soon */
 	static constexpr int RECONNECT_FAILED_MS = 2000; /* a try that failed: not faster than this */
 	static constexpr int STATS_MS = 500;
+	static constexpr int SYNC_IDLE_MS = 50;  /* no frame drawn for this long: sync() by the timer (nothing moves) */
+	static constexpr int ID_RETRIES = 3;     /* a DEVICE_ID read without an answer: tried again this often */
+	static constexpr int ID_RETRY_MS = 1000;
 
 	explicit PhoneSession(QObject *parent = nullptr);
 	~PhoneSession() override;
@@ -124,6 +142,8 @@ public:
 	QString recordText() const { return recordText_; }
 	PortList *ports() const { return ports_; }
 	LogModel *log() const { return log_; }
+	RegisterList *registerList() const { return list_; }
+	bool connected() const { return connected_; }
 	RegisterModel *registers() const { return model_; }
 	const DeviceMap &map() const { return map_; }
 
@@ -136,6 +156,23 @@ public:
 	Q_INVOKABLE void refreshPorts();
 	Q_INVOKABLE void startRecord();
 	Q_INVOKABLE void stopRecord();
+
+	/* the write sheet; row: RegisterModel's (RegisterList's `source`) */
+	Q_INVOKABLE QString editText(int row) const;     /* the value now, as the field starts with it */
+	Q_INVOKABLE QVariantList choices(int row) const; /* an enum's values: { text: "blink (2)", value: "2" }; empty: none */
+	Q_INVOKABLE QString limitsText(int row) const;   /* "from 0 to 100 %", or empty */
+	/* what to ask before writing `text`: past the map's limits, a danger register; empty: write it at once (a text
+	 * that is no value is said by write's answer) */
+	Q_INVOKABLE QString writeQuestion(int row, const QString &text) const;
+	Q_INVOKABLE void write(int row, const QString &text);
+	/* Plot: false when refused (a bytes register; the lines' limit, said by notice) */
+	Q_INVOKABLE bool setPlot(int row, bool on);
+
+	/* the window whose frames run sync(): set by phone::loadMain */
+	void attachWindow(QQuickWindow *window);
+	/* the values from the engine's table into the RegisterModel, at their pace: once a frame, and by a timer when no
+	 * frame is drawn */
+	void sync();
 
 	/* tests: the USB bridge connectUsb and the port list use instead of Android's (null: Android's, or none) */
 	static void setUsbBridgeForTests(evre::UsbBridge *bridge);
@@ -152,6 +189,10 @@ signals:
 	void recordingChanged();
 	/* each line of the Log as it is added (LogModel::Level) */
 	void message(int level, const QString &text);
+	/* a write's answer: ok, or why not (refused by the device, not a value, writes off) */
+	void writeAnswered(int row, bool ok, const QString &text);
+	/* a short word for the screen (the plot's limit, Copy) */
+	void notice(const QString &text);
 
 private:
 	void startEngine();
@@ -168,6 +209,14 @@ private:
 	void onRecordStopped(const QString &file, quint64 rows);
 	void refreshStats();
 	void markDeviceLost();
+	void retryDeviceId();
+	void linkDown();
+	void onReadDone(quint64 id, bool ok, const QByteArray &data, const QString &err);
+	void onWriteDone(quint64 id, bool ok, const QString &err);
+	void updatePlotLimit();
+	void updateStaleAfter();
+	double sampleRateHz() const;
+	uint8_t slaveOf(const RegDef &def) const;
 	QString mapWarning(quint16 id) const;
 	void setState(State state, const QString &text, const QString &detail = QString());
 	void setDevice(int id, const QString &text, const QString &warning = QString());
@@ -179,6 +228,7 @@ private:
 	RegisterModel *model_ = nullptr;
 	PortList *ports_ = nullptr;
 	LogModel *log_ = nullptr;
+	RegisterList *list_ = nullptr;
 	DeviceMap map_;
 	QString mapFile_, mapError_;
 	QStringList mapNames_, mapFiles_;
@@ -208,6 +258,24 @@ private:
 	int deviceId_ = -1;          /* -1: not read on this link */
 	int revision_ = 0;
 	QString deviceText_, deviceWarning_;
+	int idTries_ = 0;            /* DEVICE_ID tried again on this link */
+	quint64 idRead_ = 0;         /* the request of that try, 0: none under way */
+	QTimer idTimer_;
+
+	/* sync(): the values copied at their pace; each row's engine version copied last */
+	QQuickWindow *window_ = nullptr;
+	ValuePacer valuePacer_;
+	QElapsedTimer valueClock_, sinceSync_;
+	QVector<quint64> copiedVersions_;
+	QTimer syncTimer_;
+
+	/* writes under way: the request, its row and what it wrote */
+	struct PendingWrite {
+		int row = -1;
+		QString name, what;
+	};
+	QHash<quint64, PendingWrite> writes_;
+	quint64 nextRequest_ = 1;
 
 	bool recording_ = false;
 	QString recordFile_, recordText_;

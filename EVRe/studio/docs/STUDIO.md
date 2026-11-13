@@ -5205,17 +5205,21 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
-| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `loadMain` (the window, as the program and its test load it) |
+| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
 | `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
 | `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
 | `src/phone/phone_session.h`,&nbsp;`.cpp` | `PhoneSession`: the phone's part of `MainWindow` (Q-6): the engine on its thread, the map, the link (USB, TCP) and its states, Reconnect by itself, polling, Allow writes, recording into the app's folder (25.6) |
 | `src/phone/port_list.h`,&nbsp;`.cpp` | `PortList`: the USB devices plugged in (`UsbBridge::devices()`), the map's own named by it |
 | `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, Copy and Clear |
-| `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat) |
+| `src/phone/register_list.h`,&nbsp;`.cpp` | `RegisterList`: the Registers screen's rows over `RegisterModel`, a row per register in sections by group, the desktop's search, its changes forwarded row by row |
+| `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's speed line, `EVRE_PERF`) |
 | `src/phone/qml/Main.qml` | the phone's window: header, drawer, tab bar, screens, mirroring, Material's colours |
 | `src/phone/qml/ConnectDrawer.qml` | the Connect drawer: USB or TCP, the map, Connect, the link's state and the device's ID, Reconnect by itself, polling, Allow writes, Record, the theme switch, the language |
 | `src/phone/qml/LinkPill.qml` | the link's state in the header, a dot in its colour; a tap opens the drawer |
 | `src/phone/qml/LogScreen.qml` | the Log screen: the lines coloured by level, Copy, Clear |
+| `src/phone/qml/RegistersScreen.qml` | the Registers screen: the cards in sections by group, the search, the line when not connected, the "⋯" menu (Plot, Write…, Copy), the notices |
+| `src/phone/qml/RegisterCard.qml` | one register's card: name, value and unit, decoded text, address, Write and "⋯" buttons, the glow, stale and error states |
+| `src/phone/qml/WriteSheet.qml` | the write sheet: the value or an enum's list, Apply, the limits asked first, the answer |
 | `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
 | `src/phone/qml/P9Screen.qml` | the proof P-9's list |
 | `android/AndroidManifest.xml` | the APK's manifest: package `com.teknile.evrestudio`, USB host |
@@ -5810,11 +5814,12 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 |---|---|---|---|
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`; signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
-| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()` | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`; signal `message(level, text)`; `setUsbBridgeForTests` | phone test (connect to USB gone) |
+| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks) |
 | `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `clear`, `copy`, `text` | phone test (Log screen) |
+| `RegisterList` | list model over `RegisterModel`: a row per register, each group's together in the order of its first register; the search (`RegisterFilter`); `dataChanged` forwarded row by row with the roles that changed, the glow's own repaints only when a glow begins; stale looked at every 250 ms | roles `name`, `group`, `addr`, `value`, `unit`, `decoded`, `glow`, `direction`, `writable`, `plotted`, `error`, `stale`, `plottable`, `danger`, `source`; `search`, `count`, `total`, `glowMs`; `entry`, `copy` | phone test (Registers) |
 | `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
-| `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`) | signal `logged(line)` | phone test (P-9) |
+| `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`); with another tag and a "shown" test, the Registers screen's speed line (`EVRE_PERF`) | signal `logged(line)` | phone test (P-9, perf) |
 
 ## 23. The chart renderer
 
@@ -6954,7 +6959,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   |---|---|
   | **USB**&nbsp;/&nbsp;**TCP** | the link's kind. USB: the devices plugged in (a board through a USB OTG adapter), a device with the map's USB IDs named by the map, the list kept up to date every 2 s while the drawer is open; the baud rate (a USB CDC board ignores it). TCP: the host, the port and the token (never saved) |
   | **Map** | the maps that come with the app (`example_device.json` first) or **Open…** (Android's picker); the number of registers under it. The last one opens at the next start |
-  | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down, and the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device) |
+  | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down, and the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device). A device ID read that gets no answer (a board still booting when the link comes back) is tried again three times, a second apart, *reading the device ID…* meanwhile; a refusal (permission denied) is the token's and is not tried again |
   | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
   | **Polling** | on or off, and its interval in ms (0: as fast as the device answers); the polls a second measured under it while connected |
   | **Allow&nbsp;writes** | off at every start, as on the desktop |
@@ -6967,7 +6972,43 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   went down with a reason (the drawer says it). A tap on the pill opens the drawer.
 - **The Log** (its tab) lists what happened, newest last, each line's time and its text: amber a warning, red an
   error. **Copy** puts it all on the clipboard, **Clear** empties it; the newest 2000 lines are kept.
-- **What is still to come.** The Registers, Chart and Monitor screens say what will come (parts B.2 to B.4).
+- **The menu button** is three bars drawn by the window, not a character: a phone's font may have no "☰" (a Samsung
+  phone showed an empty box). No screen uses a symbol character a font may lack; the "⋯" and the arrows are drawn too.
+- **The Registers screen** (part B.2) shows every register of the map as a card, in sections by group (each group's
+  registers together, in the order of the group's first register in the map):
+
+  ```
+  +--------------------------------------------+
+  |  Search: name, unit, address       Clear   |
+  | registers: 16                              |
+  +--------------------------------------------+
+  | Settings                                   |
+  | +----------------------------------------+ |
+  | | FAN_SPEED                  Write  ...  | |   the name; Write, the "..." menu
+  | | 42 %                                   | |   the value large with its unit
+  | | 0xD084                    on the chart | |   the address; "not refreshed", "on the chart"
+  | +----------------------------------------+ |
+  +--------------------------------------------+
+  ```
+
+  | Part | What it does |
+  |---|---|
+  | **Search** | the desktop's search: the name, description, group, unit or address (*0xd08*); *registers: 1 of 16* under it; **Clear** |
+  | **A&nbsp;card** | the name; the value large with its unit, left to right in Arabic too; the decoded text under it (an enum's name, the bit fields); the address muted. A value not refreshed for a while (polling off, the link down) greys and says *not refreshed*; a register the device refused, or a read that failed, shows its value in red and why |
+  | **The&nbsp;glow** | a value that changes after holding still 2 s glows as on the desktop: the card tinted toward the accent and a bar at its start edge, with an arrow up or down for a plain number, fading over 1.5 s |
+  | **Write** | on a writable register's card (a tap on the card does the same): the write sheet |
+  | **"⋯"** | its menu: **Plot** (*Take off the chart* once plotted: *on the chart* on the card), **Write…**, **Copy** (*FAN_SPEED = 42 %* on the clipboard). A long press on a card opens it too. Plot past the lines the chart takes says why (*At most 64 registers on the chart at 1000 samples a second: take one off first*) |
+  | **Not&nbsp;connected** | a line over the list says the values show once the link is up, with **Connect…** (the drawer) |
+
+  **The write sheet** rises from the screen's foot: the register and its address, its value now, the map's limits
+  (*from 0 to 100 %*); then the value (an enum: the list of its values), **Apply** and **Close**. A value past the
+  map's limits, or a danger register's write, is asked first (*FAN_SPEED = 150 is above the maximum 100 % the map
+  gives it. ... Write it anyway?*): **Write anyway** or **Cancel**. Then the answer: *FAN_SPEED written* in green
+  (the card then shows what the device holds: the engine reads it back), or the refusal's text in red (*write
+  refused: NOWHERE = 1 (01 at 0xD0F0): offset out of range*). With no link, or Allow writes off, the sheet says so
+  and offers the drawer. The values are copied from the engine once a frame of the window, at the desktop's pace
+  (*Show values*, `ui/valueRate`, 10 a second by default).
+- **What is still to come.** The Chart and Monitor screens say what will come (parts B.3 and B.4).
 
 **Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
 trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
@@ -6992,6 +7033,16 @@ window draws every frame and the line times frames, not pauses.
 ```sh
 adb shell am start -S -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez p9 true
 adb logcat -s EVRE_P9
+```
+
+**The speed line.** Started with `EVRE_PERF=1`, or on the phone with the intent's extra `perf`, the app writes the
+same line a second to logcat under the tag `EVRE_PERF` while the Registers screen shows (none on another screen, or
+with the drawer or the write sheet open), and a thin bar runs at the screen's top so every frame is drawn. Flick the
+whole map while polling at full rate: the target is 60 fps, no frame over 20 ms.
+
+```sh
+adb shell am start -S -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez perf true
+adb logcat -s EVRE_PERF
 ```
 
 ## 26. Tests
@@ -8042,7 +8093,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 23 (26.11), 1137. The
+the phone test's 40 (26.11), 1154. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -8481,7 +8532,9 @@ against the fake device on port 1210 (26.4), against two stand-ins of the test's
 to the fake device that drops the link, and a device that refuses every request and closes the link, as `gui_test`'s
 `RefusingDevice`), and over USB through a fake `UsbBridge` (`PhoneSession::setUsbBridgeForTests`) that speaks for
 Android and the board from a thread of its own, as Java's reader does. A port where nothing listens (1209) gives the
-refused connection. It runs
+refused connection. The Registers screen's checks run against the fake device too; a copy of the example map with one
+more register, `NOWHERE` at 0xD0F0 where the device has nothing, gives a refused read and a refused write; a third
+stand-in (a proxy that leaves the first DEVICE_ID request of a link unanswered) gives the board still booting. It runs
 under its own application name (`EVReStudioPhoneTest`), whose settings it clears at the start and at the end. On
 Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `libgl1-mesa-dri`), not with
 `QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes to come. On Windows Direct3D 11 draws it.
@@ -8509,9 +8562,30 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | USB&nbsp;permission | Connect opens through the bridge; Android's dialog up: *Waiting for permission…*, the device named, Cancel |
 | USB&nbsp;refused | *permission refused for <device>*, and no new try by itself |
 | USB&nbsp;gone | connected, unplugged: *<device> is gone: unplugged or reset?*, the Log, opened again by itself |
+| DEVICE_ID&nbsp;again | the first DEVICE_ID request unanswered: *reading the device ID…*, then read again by itself within 4 s, one link, no failure in the Log |
+| Registers | a card per register of the map, each group's together in sections, the first header and address; not connected, a line says so |
+| values | connected: SUPPLY_V's card shows the table's value with its unit, and moves |
+| write | FAN_SPEED's Write opens the sheet (the value now, the limits); Apply: *FAN_SPEED written* in green, the value read back on the card and in the sheet, the Log |
+| write&nbsp;past&nbsp;the&nbsp;limits | 150 asks first (`limitProblem`'s words), nothing written; Cancel says *Not written*; Write anyway writes it |
+| refused&nbsp;write | `NOWHERE`: *not available* in red and why; a write answers *write refused: ...* in red, the Log the same |
+| write&nbsp;sheet&nbsp;blocked | no link, or Allow writes off: the sheet says so, no field and no Apply; its button opens the drawer |
+| glow | a write after a rest: the bar and the tint in the picture, gone after 1.5 s |
+| stale | Polling off: the value greys and the card says *not refreshed*; polling again, fresh |
+| search | *fan* keeps one card, *0xd08* four, *zzz* none with its note; Clear shows all |
+| Plot | the "⋯" menu, Plot marks the register plotted (*on the chart*); with a limit of one line the next is refused with the desktop's words |
+| Copy | *SUPPLY_I = ... A* on the clipboard, and a notice |
+| symbols | the menu button's bars and the "⋯" dots drawn; no Text holds a symbol a phone's font may lack |
+| Registers&nbsp;texts | at 412 px, connected, in English and Arabic, the cards and the sheet asking first: every Text inside its parent and not cut |
+| Registers&nbsp;in&nbsp;Arabic | every text translated but the map's names and values; the card mirrored, the value and its unit at the right, left to right |
+| Registers&nbsp;themes | the cards on the theme's surface, the list on its background, dark and light |
+| perf | with `perf` a line a second (`EVRE_PERF`) while the Registers screen shows, a bar running; none on the Log screen |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (23 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (40 checks); the exit code is 0 when all pass, 1 on a failure.
+
+`EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
+`portrait`, `drawer`, `connected`, `log`, `registers`, `sheet` (a write answered), `question` (asked first) and
+`landscape`.
 
 ## 27. Design decisions and pitfalls
 
