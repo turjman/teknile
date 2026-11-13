@@ -8737,7 +8737,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 It ends with "N passed, 0 failed" (72 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
-`portrait`, `drawer`, `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
+`portrait`, `drawer`, `help` (its topics), `helppage` (a page), `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,
 `registers`, `search`, `sheet` (a write answered), `question` (asked first), `keyboard` (the sheet over a keyboard),
 `enum`; at 915 x 412 `land_registers`, `land_sheet`, `land_drawer`, `land_log` and `landscape`; and the chart's test
 feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`; and the Chart screen at both sizes,

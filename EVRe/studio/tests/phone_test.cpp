@@ -24,11 +24,11 @@
  * Windows).
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
- * the names portrait, drawer, connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at
- * 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and chartdemo_portrait (not
- * checks; all but the first two and the chart's with the fake device, chartdemo with the chart's test feed; drawerkb
- * and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
- * running the checks.
+ * the names portrait, drawer, help, helppage, connected, drawerkb, log, registers, search, sheet, question, keyboard,
+ * enum and, at 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and
+ * chartdemo_portrait (not checks; all but the first four and the chart's with the fake device, chartdemo with the
+ * chart's test feed; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them
+ * without running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu>_
  * <portrait|landscape>.png. EVRE_PHONE_ONLY=<text> (other than shots): only the checks whose function's name holds it,
@@ -2453,6 +2453,7 @@ void checkBackOrder() {
 }
 
 
+
 void checkMutedContrast() {
 	QStringList bad, lows;
 	int seen = 0;
@@ -2965,6 +2966,13 @@ void savePictures(const QString &prefix) {
 				save(phone, name + QStringLiteral("portrait.png"));
 				phone.openDrawer();
 				save(phone, name + QStringLiteral("drawer.png"));
+				phone.closeDrawer();
+				/* the Help: its topics, then a page */
+				openHelp(phone);
+				save(phone, name + QStringLiteral("help.png"));
+				if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 1));
+				phone.settle(200);
+				save(phone, name + QStringLiteral("helppage.png"));
 			}
 			{
 				/* connected to the fake device: the drawer, then the Log */
