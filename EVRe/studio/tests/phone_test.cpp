@@ -2598,7 +2598,13 @@ void checkChartFast() {
 	fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
 			{ QString::number(FAKE_FAST_PORT), fastMap });
 	const bool started = fake.waitForStarted(3000);
-	QTest::qWait(500);
+	/* listening: a busy run took longer than half a second to open the port */
+	(void) QTest::qWaitFor([&] {
+		QTcpSocket probe;
+		probe.connectToHost(QStringLiteral("127.0.0.1"), FAKE_FAST_PORT);
+		return probe.waitForConnected(200);
+	}, 5000);
+	QTest::qWait(300);
 	{
 		Phone phone(LANDSCAPE);
 		PhoneSession *session = phone.session();
@@ -2628,7 +2634,7 @@ void checkChartFast() {
 		(void) QTest::qWaitFor([&] {
 			const fast::Store *store = session ? session->fastStore(0) : nullptr;
 			return store && store->hasTime() && store->size() > 20000;
-		}, 6000);
+		}, 10000);
 		/* nothing more comes while the bins are compared */
 		if (session) session->disconnectLink();
 		(void) waitForState(session, PhoneSession::Off, 3000);
@@ -2655,7 +2661,8 @@ void checkChartFast() {
 						"stream on (%2 records from evre_fake_fast), its line binned as the desktop's binFast bins it (%3 "
 						"bins against %4) and drawn in its colour inside the plot (%5 pixels, %6 elsewhere in the chart's area)")
 						.arg(names.join(QStringLiteral(", "))).arg(records).arg(phoneBins.size()).arg(fresh.bins.size())
-						.arg(seen.pixels).arg(seen.outside));
+						.arg(seen.pixels).arg(seen.outside)
+						+ (records > 20000 || !session ? QString() : QStringLiteral(" [the Log: %1]").arg(session->log()->text().right(400))));
 		if (session) {
 			session->setFastPlot(0, 0, false);
 			session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
@@ -2841,13 +2848,14 @@ void checkCursorButtons() {
 			&& handleB->width() >= 47.5 && handleB->isVisible()
 			&& handleA->mapToScene(QPointF(0, 0)).y() < handleB->mapToScene(QPointF(0, 0)).y();
 	const bool panel = phone.item("readoutPanel") && phone.item("readoutPanel")->isVisible();
+	const double a = chart ? chart->cursorA() : 0, b = chart ? chart->cursorB() : 0;
 	phone.tap(phone.item("cursorsButton"));
 	const bool off = chart && !chart->cursorsOn() && !phone.item("readoutPanel")->isVisible();
 	check(placed && drawn && handles && panel && off,
 			QStringLiteral("phone, cursors: the Cursors button puts A at a third of the view and B at two thirds (%1 s, %2 s "
 					"in %3 .. %4 s) and holds it; A drawn there (x %5, want %6), the handles 48 dp, A's over B's; the "
 					"readouts shown; a second tap takes them off")
-					.arg(chart ? chart->cursorA() : 0, 0, 'f', 3).arg(chart ? chart->cursorB() : 0, 0, 'f', 3)
+					.arg(a, 0, 'f', 3).arg(b, 0, 'f', 3)
 					.arg(t0, 0, 'f', 2).arg(t0 + span, 0, 'f', 2).arg(drawnA, 0, 'f', 1).arg(plotLeft + plotWidth / 3, 0, 'f', 1));
 }
 
@@ -2867,7 +2875,9 @@ void checkCursorDrag() {
 	const bool viewSame = chart && chart->viewEnd() == endBefore && !chart->live();
 	check(chart && std::fabs(moved - want) <= 2 * perPixel && bSame && viewSame,
 			QStringLiteral("phone, cursors: a drag of A's handle by 120 px moves A by %1 s (want %2 s: the view's seconds a "
-					"pixel), B and the view stay").arg(moved, 0, 'f', 4).arg(want, 0, 'f', 4));
+					"pixel), B and the view stay (A %3 -> %4, B %5 -> %6, end %7 -> %8)").arg(moved, 0, 'f', 4).arg(want, 0, 'f', 4)
+					.arg(aBefore).arg(chart ? chart->cursorA() : 0).arg(bBefore).arg(chart ? chart->cursorB() : 0)
+					.arg(endBefore).arg(chart ? chart->viewEnd() : 0));
 }
 
 /* the readouts: each line's values at A and B, B - A, min, max and mean over A..B equal the desktop's statsOf over the
@@ -2927,16 +2937,17 @@ void checkMonitorFrames() {
 	QTest::qWait(1200);
 	const bool holds = frames && frames->added() == held && frames->paused() && !session->monitoring()
 			&& phone.text("monitorPause") == QLatin1String("Resume");
-	phone.tap(phone.item("monitorPause"));
-	const bool again = frames && QTest::qWaitFor([&] { return frames->added() > held + 5; }, 4000);
+	/* Clear while paused: nothing comes in after it */
 	phone.tap(phone.item("monitorClear"));
 	const int afterClear = frames ? frames->count() : -1;
+	phone.tap(phone.item("monitorPause"));
+	const bool again = frames && QTest::qWaitFor([&] { return frames->added() > held + 5 && frames->count() > 5; }, 4000);
 	phone.tap(phone.item("tabLog"));
 	QTest::qWait(300);
 	const bool stopped = session && !session->monitoring();
-	check(arrived && parsed && monitoring && holds && again && afterClear <= 2 && stopped,
+	check(arrived && parsed && monitoring && holds && again && afterClear == 0 && stopped,
 			QStringLiteral("phone, Monitor: the fake device's frames arrive while the screen shows (\"%1\"), Pause holds "
-					"them (none added in 1.2 s, the engine writes none), Resume goes on, Clear empties (%2 left), another "
+					"them (none added in 1.2 s, the engine writes none), Clear empties (%2 left), Resume goes on, another "
 					"screen stops them").arg(first.left(60)).arg(afterClear));
 	if (session) session->disconnectLink();
 }
@@ -2980,7 +2991,8 @@ void checkToolsTexts() {
 			const QColor colour = bytes ? bytes->property("color").value<QColor>() : QColor();
 			const ThemeColors theme = Theme::colorsFor(dark);
 			const QImage image = phone.grab();
-			const QColor background = Phone::pixel(image, QPointF(phone.window->width() - 4, phone.window->height() / 2.0));
+			/* in the list's left margin (the frames start 16 dp in; the scroll indicator is at the right edge) */
+			const QColor background = Phone::pixel(image, QPointF(6, phone.window->height() / 2.0));
 			if (!ltr || colour != theme.text || !near(background, theme.bg, 3))
 				colours << QStringLiteral("%1 %2: left to right %3, bytes %4, background %5").arg(code, dark ? "dark" : "light")
 						.arg(ltr).arg(colour.name(), background.name());

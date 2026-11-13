@@ -32,6 +32,9 @@ Item {
     // a number for the Y range's button and fields: four significant digits, Western digits in every language
     function shortNumber(v) { return String(Number(v.toPrecision(4))) }
 
+    // a cursor's handle is being dragged: the view stays where it is
+    property bool cursorDragging: false
+
     function showNotice(text) {
         noticeText.text = text
         notice.opacity = 1
@@ -410,9 +413,11 @@ Item {
                 maximumPointCount: 1
                 yAxis.enabled: false
                 property real lastX: 0
+                // a cursor's handle keeps its finger: the view is not taken from it, nor moved under it
+                grabPermissions: PointerHandler.CanTakeOverFromItems | PointerHandler.ApprovesTakeOverByAnything
                 onActiveChanged: lastX = 0
                 onActiveTranslationChanged: {
-                    if (!active) return
+                    if (!active || screen.cursorDragging) return
                     chart.panPixels(activeTranslation.x - lastX)
                     lastX = activeTranslation.x
                 }
@@ -424,9 +429,11 @@ Item {
 
             // the cursors: a line over the plot and a round handle to drag it (A's at the top, B's at the foot)
             Repeater {
+                id: cursorRepeater
                 model: 2
                 Item {
                     id: cursor
+                    readonly property Item handle: cursorHandle
                     required property int index
                     readonly property real cx: index === 0 ? chart.cursorAX : chart.cursorBX
                     objectName: index === 0 ? "cursorA" : "cursorB"
@@ -442,6 +449,7 @@ Item {
                         color: PhoneTheme.accent
                     }
                     Item {
+                        id: cursorHandle
                         objectName: cursor.index === 0 ? "cursorHandleA" : "cursorHandleB"
                         width: 48
                         height: 48
@@ -463,14 +471,25 @@ Item {
                                 font.bold: true
                             }
                         }
-                        // a drag moves the cursor along the time, inside the plot (not the view: the chart's own drag)
+                        // a drag moves the cursor along the time, inside the plot (not the view: the chart's own drag);
+                        // the finger's place in the chart, less where it took the handle: the cursor does not jump
                         DragHandler {
+                            id: cursorDrag
                             objectName: cursor.index === 0 ? "cursorDragA" : "cursorDragB"
                             target: null
                             yAxis.enabled: false
-                            property real fromX: 0
-                            onActiveChanged: if (active) fromX = cursor.cx
-                            onActiveTranslationChanged: if (active) chart.moveCursor(cursor.index, fromX + activeTranslation.x)
+                            grabPermissions: PointerHandler.CanTakeOverFromAnything
+                            property real offset: 0
+                            function fingerX() {
+                                return chart.mapFromItem(null, centroid.scenePosition.x, centroid.scenePosition.y).x
+                            }
+                            onActiveChanged: {
+                                screen.cursorDragging = active
+                                // from where the finger came down: the drag's threshold is not lost
+                                if (active) offset = chart.mapFromItem(null, centroid.scenePressPosition.x,
+                                                                       centroid.scenePressPosition.y).x - cursor.cx
+                            }
+                            onCentroidChanged: if (active) chart.moveCursor(cursor.index, fingerX() - offset)
                         }
                     }
                 }
