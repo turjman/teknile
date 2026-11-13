@@ -24,11 +24,11 @@
  * Windows).
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
- * the names portrait, drawer, connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at
- * 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and chartdemo_portrait (not
- * checks; all but the first two and the chart's with the fake device, chartdemo with the chart's test feed; drawerkb
- * and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
- * running the checks.
+ * the names portrait, drawer, help, helppage, connected, drawerkb, log, registers, search, sheet, question, keyboard,
+ * enum and, at 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and
+ * chartdemo_portrait (not checks; all but the first four and the chart's with the fake device, chartdemo with the
+ * chart's test feed; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them
+ * without running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  * The cursors and the Monitor (B.4): placed by the Cursors button, A dragged by its handle, the readouts against
  * statsOf; the fake device's frames, Pause, Clear, the empty state; texts in both languages and themes. Their pictures:
@@ -45,6 +45,8 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QKeyEvent>
+#include <QMutex>
 #include <QPainter>
 #include <QPointer>
 #include <QProcess>
@@ -83,9 +85,11 @@
 #include "phone/p9_proof.h"
 #include "phone/phone_app.h"
 #include "phone/phone_session.h"
+#include "phone/phone_system.h"
 #include "phone/register_list.h"
 #include "ui/chart_data.h"
 #include "ui/language.h"
+#include "ui/help_topics.h"
 #include "ui/theme.h"
 
 Q_IMPORT_QML_PLUGIN(EVRePhonePlugin)
@@ -1024,15 +1028,26 @@ public:
 	std::atomic<int> opens{ 0 }, closes{ 0 };
 	std::atomic<Sink *> sink{ nullptr };
 	QVector<Device> devices() override { return list; }
-	void open(const QString &, qint32, Sink *to) override {
+	void open(const QString &name, qint32, Sink *to) override {
+		{
+			QMutexLocker lock(&mutex);
+			opened = name;
+		}
 		sink = to;
 		opens++;
+	}
+	/* the device the last open() asked for (on the engine's thread) */
+	QString lastOpened() {
+		QMutexLocker lock(&mutex);
+		return opened;
 	}
 	void send(const QByteArray &) override {}
 	void close() override {
 		closes++;
 		sink = nullptr;
 	}
+	QMutex mutex;
+	QString opened;
 	void fromJava(const std::function<void(Sink *)> &word) {
 		Sink *to = sink;
 		if (!to) return;
@@ -2285,6 +2300,281 @@ void checkOwnSettings() {
 			"recordings beside it (%2): two runs at once share nothing").arg(file, PhoneSession::recordingsFolder()));
 }
 
+/* ---- B.5: the service, the screen kept on, the orientation, the Help, the back gesture */
+
+/* the system's stand-in: what the session asked of Android's (phone_system.h), noted */
+struct FakeSystem : SystemBridge {
+	int holds = 0, releases = 0;
+	bool serviceUp = false, screenOn = false;
+	QString text;
+	QStringList orientations;
+	void holdService(const QString &, const QString &line) override {
+		++holds;
+		serviceUp = true;
+		text = line;
+	}
+	void releaseService() override {
+		++releases;
+		serviceUp = false;
+	}
+	void keepScreenOn(bool on) override { screenOn = on; }
+	void requestOrientation(Orientation orientation) override {
+		orientations << (orientation == Portrait ? QStringLiteral("portrait")
+						: orientation == Landscape ? QStringLiteral("landscape") : QStringLiteral("any"));
+	}
+};
+
+/* the service follows the link (A.4, A-6): up with the link's state while one is wanted, the recording's time in it,
+ * gone after Disconnect; the screen kept on while connected (A-5), not with the setting off */
+void checkService() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	{
+		Phone phone(PORTRAIT);
+		const bool quietAtStart = !system.serviceUp && !system.screenOn && system.holds == 0;
+		PhoneSession *session = connectFake(phone);
+		const bool up = session && system.serviceUp && system.text.startsWith(QLatin1String("Connected: 127.0.0.1:"))
+				&& system.screenOn && session->serviceText() == system.text;
+		const QString connectedText = system.text;
+		if (session) session->startRecord();
+		const bool recording = QTest::qWaitFor([&] { return system.text.contains(QStringLiteral(" · recording 00:00:0")); }, 3000);
+		const QString first = system.text;
+		const bool ticks = QTest::qWaitFor([&] { return system.text != first; }, 2500);
+		const QString recordingText = system.text;
+		if (session) session->stopRecord();
+		(void) QTest::qWaitFor([&] { return session && !session->recording(); }, 3000);
+		const bool backToLink = QTest::qWaitFor([&] { return system.text == connectedText; }, 2000);
+		/* the setting off: the screen let go while still connected, and saved */
+		if (session) session->setKeepScreenOn(false);
+		const bool screenLetGo = !system.screenOn && system.serviceUp
+				&& !QSettings().value(QStringLiteral("android/keepScreenOn"), true).toBool();
+		if (session) session->setKeepScreenOn(true);
+		const bool screenAgain = system.screenOn;
+		if (session) session->disconnectLink();
+		const bool gone = QTest::qWaitFor([&] { return !system.serviceUp && system.releases >= 1; }, 3000) && !system.screenOn
+				&& session && session->serviceText().isEmpty();
+		check(quietAtStart && up && recording && ticks && backToLink && screenLetGo && screenAgain && gone,
+				QStringLiteral("phone, service: up while a link is wanted with the link's state (\"%1\"), the recording's time in it "
+						"once a second (\"%2\"), back to the link's state when it stops; gone after Disconnect; the screen kept on "
+						"while connected, let go with the setting off (android/keepScreenOn saved); %3")
+						.arg(connectedText, recordingText)
+						.arg(QStringLiteral("start %1, up %2, recording %3, ticks %4, back %5, let go %6, again %7, gone %8")
+								.arg(quietAtStart).arg(up).arg(recording).arg(ticks).arg(backToLink).arg(screenLetGo)
+								.arg(screenAgain).arg(gone)));
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+}
+
+/* each tab's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright */
+void checkOrientation() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	QStringList seen;
+	bool ok = true;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		const char *tabs[] = { "tabChart", "tabRegisters", "tabMonitor", "tabLog" };
+		const char *wanted[] = { "landscape", "portrait", "landscape", "portrait" };
+		for (int i = 0; i < 4; ++i) {
+			phone.tap(phone.item(tabs[i]));
+			const QString asked = system.orientations.isEmpty() ? QString() : system.orientations.constLast();
+			seen << QStringLiteral("%1 %2").arg(QLatin1String(tabs[i]).mid(3), asked);
+			ok = ok && asked == QLatin1String(wanted[i]) && session && session->orientation() == QLatin1String(wanted[i]);
+		}
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+	check(ok, QStringLiteral("phone, orientation: each tab asks Android for its own: the Chart and the Monitor landscape, the "
+			"Registers and the Log portrait (%1)").arg(seen.join(QStringLiteral(", "))));
+}
+
+bool helpOpen(const Phone &phone) {
+	const QObject *help = phone.object("helpScreen");
+	return help && help->property("opened").toBool();
+}
+
+/* the drawer's Help button: the Help screen over the window, its list */
+void openHelp(const Phone &phone) {
+	phone.openDrawer();
+	phone.tap(phone.item("helpButton"));
+	(void) QTest::qWaitFor([&] { return helpOpen(phone) && phone.drawerClosed(); }, 3000);
+	phone.settle();
+}
+
+/* every Help topic in both languages: the list holds them all, each opens its page (the desktop's, translated), the
+ * back button goes to the list; every text of the list inside its row */
+void checkHelpTopics() {
+	QStringList bad;
+	int seen = 0;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(PORTRAIT);
+		openHelp(phone);
+		QQuickItem *list = phone.item("helpList");
+		const int rows = list ? list->property("count").toInt() : -1;
+		if (!helpOpen(phone) || rows != help::topicCount()) bad << QStringLiteral("%1: %2 of %3 topics").arg(code).arg(rows).arg(help::topicCount());
+		for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" list: ") + text;
+		static const QRegularExpression arabic(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
+		for (int i = 0; i < help::topicCount(); ++i) {
+			if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, i));
+			phone.settle(150);
+			QQuickItem *page = phone.item("helpText");
+			const QString title = phone.text("helpTitle"), text = page ? page->property("text").toString() : QString();
+			const double height = page ? page->property("contentHeight").toDouble() : 0;
+			const bool translated = code == QLatin1String("en") || (title.contains(arabic) && text.contains(arabic));
+			if (!page || !page->isVisible() || title != help::title(i) || text.isEmpty() || height < 40 || !translated)
+				bad << QStringLiteral("%1 topic %2 \"%3\": %4 px%5").arg(code).arg(i).arg(title).arg(height)
+								.arg(translated ? "" : ", not translated");
+		}
+		phone.tap(phone.item("helpBack"));
+		if (!phone.item("helpList") || !phone.item("helpList")->isVisible()) bad << code + QStringLiteral(": Back did not go to the list");
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Help: the drawer's Help shows every topic of the desktop's Help (%1), each page "
+			"in English and in Arabic, its title the topic's; Back goes to the list; the list's texts inside their rows %2")
+			.arg(help::topicCount()).arg(bad.join(QStringLiteral(" | "))));
+}
+
+/* Android's back (Qt::Key_Back), as the gesture sends it: accepted when it closed something */
+bool pressBack(const Phone &phone) {
+	QKeyEvent press(QEvent::KeyPress, Qt::Key_Back, Qt::NoModifier);
+	QCoreApplication::sendEvent(phone.window, &press);
+	QKeyEvent release(QEvent::KeyRelease, Qt::Key_Back, Qt::NoModifier);
+	QCoreApplication::sendEvent(phone.window, &release);
+	phone.settle();
+	return press.isAccepted();
+}
+
+/* back closes in order: a Help page to its list, the Help, the drawer, the write sheet; with nothing open it is left to
+ * Android, which leaves the app */
+void checkBackOrder() {
+	Phone phone(PORTRAIT);
+	QStringList steps;
+	openHelp(phone);
+	if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 2));
+	phone.settle(150);
+	pressBack(phone);
+	const bool toList = helpOpen(phone) && phone.item("helpList")->isVisible();
+	pressBack(phone);
+	const bool helpClosed = !helpOpen(phone);
+	phone.openDrawer();
+	pressBack(phone);
+	(void) QTest::qWaitFor([&] { return phone.drawerClosed(); }, 2000);
+	const bool drawerClosed = phone.drawerClosed();
+	openSheet(phone, QStringLiteral("FAN_SPEED"));
+	const bool sheetWasOpen = sheetOpen(phone);
+	pressBack(phone);
+	(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 2000);
+	const bool sheetClosed = !phone.object("writeSheet")->property("visible").toBool();
+	search(phone, QString());
+	const bool leftToAndroid = !pressBack(phone);
+	check(toList && helpClosed && drawerClosed && sheetWasOpen && sheetClosed && leftToAndroid,
+			QStringLiteral("phone, back: a Help page to the list (%1), the Help closed (%2), the drawer closed (%3), the write sheet "
+					"closed (%4); with nothing open the back is left to Android, which leaves the app (%5)")
+					.arg(toList).arg(helpClosed).arg(drawerClosed).arg(sheetClosed).arg(leftToAndroid));
+}
+
+/* ---- fixes from the review of the phone's line */
+
+/* a board reset or plugged in again comes back under another name: Reconnect by itself finds it by its USB IDs */
+void checkUsbBack() {
+	FakeUsbBridge bridge;
+	const QString renamed = QStringLiteral("/dev/bus/usb/001/003");
+	bridge.list = { { USB_DEVICE, 0x0483, 0x5740, QString() } };
+	PhoneSession::setUsbBridgeForTests(&bridge);
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		if (session) {
+			session->setAutoReconnect(true);
+			session->connectUsb(USB_DEVICE, 115200);
+		}
+		(void) QTest::qWaitFor([&] { return bridge.opens == 1 && bridge.sink; }, 3000);
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+		const bool up = waitForState(session, PhoneSession::Connected, 3000);
+		/* reset: gone, and back under the next number */
+		bridge.list = { { renamed, 0x0483, 0x5740, QString() } };
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbGone(); });
+		const bool again = QTest::qWaitFor([&] { return bridge.opens >= 2 && bridge.sink; }, 4000);
+		const QString opened = bridge.lastOpened();
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+		const bool back = waitForState(session, PhoneSession::Connected, 3000);
+		const bool saved = QSettings().value(QStringLiteral("phone/usbDevice")).toString() == renamed;
+		check(up && again && opened == renamed && back && saved && session->usbDevice() == renamed
+						&& session->log()->contains(QStringLiteral("%1 is back as %2").arg(USB_DEVICE, renamed)),
+				QStringLiteral("phone, USB back under another name: the board reset comes back as %1; the retry opens it by its USB "
+						"IDs (\"%2\"), connected again, the new name saved and said in the Log").arg(renamed, opened));
+		if (session) session->disconnectLink();
+	}
+	PhoneSession::setUsbBridgeForTests(nullptr);
+}
+
+/* A TCP device that takes the link and never answers: every request waits for its time */
+class SilentDevice : public QObject {
+public:
+	std::atomic<quint16> port{ 0 };
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [server] {
+			while (QTcpSocket *client = server->nextPendingConnection()) {
+				QObject::connect(client, &QTcpSocket::readyRead, client, [client] { client->readAll(); });
+				QObject::connect(client, &QTcpSocket::disconnected, client, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+};
+
+/* no DEVICE_ID answer, then Disconnect: the drawer's line no longer says it is reading, and the read the disconnect
+ * cancelled is not an error in the Log */
+void checkDeviceLineAfterDisconnect() {
+	OnThread<SilentDevice> device;
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(false);
+		session->connectTcp(QStringLiteral("127.0.0.1"), device.stand->port, QString());
+	}
+	const bool up = waitForState(session, PhoneSession::Connected);
+	const bool reading = QTest::qWaitFor([&] { return session->deviceText() == QStringLiteral("reading the device ID…"); }, 3000);
+	if (session) session->disconnectLink();
+	QTest::qWait(1500);
+	const QString shown = phone.text("deviceText");
+	const bool noError = session && !session->log()->contains(QStringLiteral("DEVICE_ID not read"));
+	check(up && reading && shown == QLatin1String("Device ID not read yet") && noError,
+			QStringLiteral("phone, device line after Disconnect: a device that never answers DEVICE_ID (\"reading the device "
+					"ID…\"), then Disconnect: the drawer says \"%1\", the cancelled read is no error in the Log").arg(shown));
+}
+
+/* the write sheet takes a number as a phone's keypad types it: a decimal comma, Arabic digits; hex as typed */
+void checkTypedNumbers() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = connectFake(phone);
+	if (session) session->setWritesEnabled(true);
+	QStringList seen;
+	bool ok = bool(session);
+	struct Case { const char *reg; QString typed; QString wanted; };
+	const Case cases[] = { { "SETPOINT", QStringLiteral("1,5"), QStringLiteral("1.5") },
+		{ "FAN_SPEED", QStringLiteral("١٢"), QStringLiteral("12") },
+		{ "FAN_SPEED", QStringLiteral("۴۵"), QStringLiteral("45") },
+		{ "FAN_SPEED", QStringLiteral("0x1A"), QStringLiteral("26") } };
+	for (const Case &c : cases) {
+		const QString reg = QLatin1String(c.reg);
+		openSheet(phone, reg);
+		phone.type("sheetField", c.typed);
+		phone.tap(phone.item("sheetApply"));
+		const bool read = QTest::qWaitFor([&] { return modelValue(session, reg) == c.wanted; }, 3000);
+		seen << QStringLiteral("%1 \"%2\" -> %3 (%4)").arg(reg, c.typed, modelValue(session, reg), phone.text("sheetAnswer"));
+		ok = ok && read;
+		closeSheet(phone);
+	}
+	check(ok, QStringLiteral("phone, typed numbers: a decimal comma and Arabic digits written as numbers, hex as typed: %1")
+			.arg(seen.join(QStringLiteral("; "))));
+	if (session) session->disconnectLink();
+}
+
+
+
 void checkMutedContrast() {
 	QStringList bad, lows;
 	int seen = 0;
@@ -3170,6 +3460,13 @@ void savePictures(const QString &prefix) {
 				save(phone, name + QStringLiteral("portrait.png"));
 				phone.openDrawer();
 				save(phone, name + QStringLiteral("drawer.png"));
+				phone.closeDrawer();
+				/* the Help: its topics, then a page */
+				openHelp(phone);
+				save(phone, name + QStringLiteral("help.png"));
+				if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 1));
+				phone.settle(200);
+				save(phone, name + QStringLiteral("helppage.png"));
 			}
 			{
 				/* connected to the fake device: the drawer, then the Log */
@@ -3348,6 +3645,13 @@ int main(int argc, char **argv) {
 	RUN(checkMutedContrast);
 	RUN(checkSegmentContrast);
 	RUN(checkOwnSettings);
+	RUN(checkService);
+	RUN(checkOrientation);
+	RUN(checkHelpTopics);
+	RUN(checkBackOrder);
+	RUN(checkUsbBack);
+	RUN(checkDeviceLineAfterDisconnect);
+	RUN(checkTypedNumbers);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

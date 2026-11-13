@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // The phone's small icons, drawn from rectangles on a grid of 24 (scaled to `size`): no icon font and no symbol
 // character, which a phone's font may not have ("☰" showed as a box on a Samsung phone). The tab bar's four
-// (registers, chart, monitor, log), the search field's magnifier and its clear cross, and the write sheet's warning.
+// (registers, chart, monitor, log), the search field's magnifier and its clear cross, the write sheet's warning, and
+// the Help's chevrons (back, next).
 // The strokes are 2 units wide with round ends; a stroke at an angle is a turned rectangle, smoothed.
 import QtQuick
 
@@ -123,6 +124,14 @@ Item {
         visible: icon.kind === "clear"
         Stroke { x1: 6.5; y1: 6.5; x2: 17.5; y2: 17.5 }
         Stroke { x1: 17.5; y1: 6.5; x2: 6.5; y2: 17.5 }
+    }
+    // back and next: a chevron pointing left or right
+    Item {
+        anchors.fill: parent
+        visible: icon.kind === "back" || icon.kind === "next"
+        rotation: icon.kind === "next" ? 180 : 0
+        Stroke { x1: 15; y1: 5.5; x2: 8.5; y2: 12 }
+        Stroke { x1: 8.5; y1: 12; x2: 15; y2: 18.5 }
     }
     // warning: a filled circle with an exclamation mark
     Item {

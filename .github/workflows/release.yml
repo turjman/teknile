@@ -1,5 +1,5 @@
 # Installers and releases of EVRe Studio: the Windows installer and a portable zip, the Linux AppImage and the
-# command-line tools.
+# command-line tools, and the phone's APK (Android, arm64).
 # - a tag vX.Y.Z: checks that it is the CMake project(VERSION) and that EVRe/CHANGELOG.md has that version's section,
 #   builds everything and publishes a GitHub release with that section as its text
 # - a pull request that touches this file or EVRe/studio/packaging/, or a manual run: builds the same files as the
@@ -14,6 +14,7 @@ on:
     paths:
       - .github/workflows/release.yml
       - EVRe/studio/packaging/**
+      - EVRe/studio/android/**
   workflow_dispatch:
 
 permissions:
@@ -190,9 +191,87 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  # The phone's program (EVReStudioPhone, STUDIO.md 25.6) as EVReStudio-<version>-arm64.apk, as ci.yml's android job
+  # builds it. Signed with the release key when the repository has it (secrets ANDROID_KEYSTORE_B64, the keystore in
+  # base64, and ANDROID_KEYSTORE_PASSWORD; its key's alias ANDROID_KEY_ALIAS, "evre" when unset): updates must carry
+  # the same key, so the owner keeps the keystore outside the repository. Without it, a key made for this run, and the
+  # release's text says so (a phone with an APK of another key uninstalls it first).
+  android:
+    needs: version
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      # Qt for Android needs the desktop Qt of the same version for its tools (QT_HOST_PATH)
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          aqtversion: "==3.3.*"
+          cache: true
+      - name: Keep the host Qt's path
+        run: echo "QT_HOST_DIR=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: all_os
+          target: android
+          arch: android_arm64_v8a
+          modules: qtserialport
+          aqtversion: "==3.3.*"
+          cache: true
+      - name: NDK r26b, Ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "ndk;26.1.10909125" > /dev/null
+      - name: Build the APK
+        run: |
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          cmake -S EVRe/studio -B build-android -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" -DQT_HOST_PATH="$QT_HOST_DIR" \
+            -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" -DQT_ANDROID_ABIS=arm64-v8a
+          cmake --build build-android --target apk
+      - name: Align and sign it (the release key, or one made for this run)
+        shell: bash
+        run: |
+          BT="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -1)"
+          "$BT/zipalign" -p -f 4 build-android/android-build/build/outputs/apk/release/*-unsigned.apk aligned.apk
+          mkdir -p dist
+          apk="dist/EVReStudio-$VERSION-arm64.apk"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.keystore
+            "$BT/apksigner" sign --ks release.keystore --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "${KEY_ALIAS:-evre}" \
+              --out "$apk" aligned.apk
+            rm -f release.keystore
+            echo "release key" > dist/android-signing.txt
+          else
+            keytool -genkeypair -keystore run.keystore -storepass android -alias run -keypass android -keyalg RSA \
+              -keysize 2048 -validity 10000 -dname "CN=EVRe Studio (this run)"
+            "$BT/apksigner" sign --ks run.keystore --ks-pass pass:android --key-pass pass:android --out "$apk" aligned.apk
+            echo "a key made for this run" > dist/android-signing.txt
+          fi
+          "$BT/apksigner" verify "$apk"
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [version, windows, linux]
+    needs: [version, windows, linux, android]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -204,11 +283,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: "{windows,linux}"
+          pattern: "{windows,linux,android}"
           merge-multiple: true
       - name: The release, its text from the changelog
         run: |
           awk -v head="## $VERSION" 'index($0, head) == 1 { on = 1; next } on && /^## / { exit } on' EVRe/CHANGELOG.md > notes.md
+          signing=$(cat dist/android-signing.txt)
+          rm -f dist/android-signing.txt
           {
             echo
             echo "### Files"
@@ -217,6 +298,14 @@ jobs:
             echo "- \`EVReStudio-$VERSION-windows.zip\`: the same, portable: unzip and run \`EVReStudio.exe\`"
             echo "- \`EVReStudio-$VERSION-x86_64.AppImage\`: Linux; make it executable and run it"
             echo "- \`evre-tools-$VERSION-linux-x86_64.tar.gz\`: \`evre\` and \`evre-sim\` for Linux, with the Qt libraries they need"
+            echo "- \`EVReStudio-$VERSION-arm64.apk\`: the phone's app, Android 9 or newer (arm64): open it on the phone and"
+            echo "  allow the browser or file manager to install unknown apps; a board goes on the phone's USB port through an"
+            echo "  OTG adapter"
+            if [ "$signing" != "release key" ]; then
+              echo
+              echo "The APK is signed with a key made for this run, not the release key: a phone that has another"
+              echo "version of the app uninstalls it first."
+            fi
             echo
             echo "The Windows installer is not code-signed: Windows SmartScreen may say it does not know it. Choose"
             echo "**More info**, then **Run anyway**."
