@@ -3,6 +3,7 @@
 #include "phone/phone_app.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -12,6 +13,7 @@
 #endif
 
 #include "phone/p9_proof.h"
+#include "phone/phone_session.h"
 
 namespace phone {
 
@@ -25,22 +27,32 @@ QString mapsFolder() {
 
 void setStyle() { QQuickStyle::setStyle(QStringLiteral("Material")); }
 
-bool p9Asked() {
-	if (qEnvironmentVariableIntValue("EVRE_P9") == 1) return true;
+namespace {
+
+/* a test aid asked for: its variable =1, or on Android the start intent's extra of that name */
+bool asked(const char *variable, const char *extra) {
+	if (qEnvironmentVariableIntValue(variable) == 1) return true;
 #ifdef Q_OS_ANDROID
 	/* an app on Android has no environment of its own: the start intent's extra, as main.cpp reads the desktop's */
 	const QJniObject activity = QNativeInterface::QAndroidApplication::context();
 	const QJniObject intent = activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
 	if (!intent.isValid()) return false;
-	const QJniObject name = QJniObject::fromString(QStringLiteral("p9"));
+	const QJniObject name = QJniObject::fromString(QString::fromLatin1(extra));
 	return intent.callMethod<jboolean>("getBooleanExtra", "(Ljava/lang/String;Z)Z", name.object<jstring>(), jboolean(false));
 #else
+	Q_UNUSED(extra)
 	return false;
 #endif
 }
 
-QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size) {
-	QVariantMap properties{ { QStringLiteral("p9"), p9 } };
+} // namespace
+
+bool p9Asked() { return asked("EVRE_P9", "p9"); }
+
+bool perfAsked() { return asked("EVRE_PERF", "perf"); }
+
+QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool perf) {
+	QVariantMap properties{ { QStringLiteral("p9"), p9 }, { QStringLiteral("perf"), perf } };
 	if (size.isValid()) {
 		properties.insert(QStringLiteral("width"), size.width());
 		properties.insert(QStringLiteral("height"), size.height());
@@ -49,6 +61,12 @@ QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size) {
 	engine.loadFromModule("EVRe.Phone", "Main");
 	auto *window = engine.rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(engine.rootObjects().constLast());
 	if (window && p9) new P9Meter(window);
+	if (window && perf && !p9) {
+		const QPointer<QQuickWindow> shown(window);
+		new P9Meter(window, "EVRE_PERF", [shown] { return shown && shown->property("registersShown").toBool(); });
+	}
+	if (window)
+		if (auto *session = engine.singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession")) session->attachWindow(window);
 	return window;
 }
 

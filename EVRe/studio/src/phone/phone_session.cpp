@@ -6,16 +6,20 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QThread>
 #include <QUrl>
+#include <QVariantMap>
+#include <cmath>
 #include <memory>
 #include <utility>
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
 #endif
 
+#include "evre/frame.h"
 #include "evre/link_android.h"
 #include "evre/registers.h"
 #include "io/engine.h"
@@ -55,6 +59,28 @@ PhoneSession::PhoneSession(QObject *parent)
 	intervalMs_ = settings.value(KEY_INTERVAL, 100).toInt();
 	linkText_ = tr("Not connected");
 	deviceText_ = tr("Device ID not read yet");
+	list_ = new RegisterList(model_, this);
+	valuePacer_.setPerSecond(ValuePace::saved());
+	valueClock_.start();
+	sinceSync_.start();
+	syncTimer_.setInterval(SYNC_IDLE_MS);
+	connect(&syncTimer_, &QTimer::timeout, this, [this] {
+		if (sinceSync_.elapsed() >= SYNC_IDLE_MS) sync();
+	});
+	idTimer_.setSingleShot(true);
+	idTimer_.setInterval(ID_RETRY_MS);
+	connect(&idTimer_, &QTimer::timeout, this, &PhoneSession::retryDeviceId);
+	/* MainWindow's words for a refused Plot, and for lines a lower limit took off */
+	connect(model_, &RegisterModel::plotLimitReached, this, [this] {
+		const long rate = std::lround(sampleRateHz()); /* 0: not polling, no rate to name */
+		emit notice(rate > 0 ? tr("At most %1 registers on the chart at %2 samples a second: take one off first")
+							.arg(model_->plotLimit()).arg(rate)
+						: tr("At most %1 registers on the chart: take one off first").arg(model_->plotLimit()));
+	});
+	connect(model_, &RegisterModel::plotsTakenOff, this, [this](const QStringList &names) {
+		addLog(LogModel::Warning, tr("%1 samples a second: at most %2 registers on the chart; taken off: %3")
+				.arg(std::lround(sampleRateHz())).arg(model_->plotLimit()).arg(names.join(QStringLiteral(", "))));
+	});
 
 	startEngine();
 	reconnectTimer_.setSingleShot(true);
@@ -110,6 +136,9 @@ void PhoneSession::startEngine() {
 		addLog(LogModel::Warning, tr("the map declares no login register: the token was not sent"));
 	});
 	connect(engine_, &IoEngine::recordStarted, this, &PhoneSession::onRecordStarted);
+	connect(engine_, &IoEngine::readDone, this,
+			[this](quint64 id, bool ok, const QByteArray &data, const QString &err, double) { onReadDone(id, ok, data, err); });
+	connect(engine_, &IoEngine::writeDone, this, &PhoneSession::onWriteDone);
 	connect(engine_, &IoEngine::recordStopped, this, &PhoneSession::onRecordStopped);
 }
 
@@ -170,6 +199,7 @@ void PhoneSession::pushMap() {
 	device.map = std::make_shared<const DeviceMap>(map_);
 	const QVector<EngineDevice> devices{ device };
 	const QString name = map_.device;
+	copiedVersions_.fill(quint64(-1), defs.size()); /* every row copied again from the new table */
 	engine_->post([engine = engine_, defs, generation, name, devices] { engine->setMap(defs, generation, name, devices); });
 }
 
@@ -183,6 +213,24 @@ void PhoneSession::pushPolling() {
 	const bool on = polling_;
 	const double interval = intervalMs_;
 	engine_->post([engine = engine_, on, interval] { engine->setPolling(on, interval); });
+	updatePlotLimit();
+	updateStaleAfter();
+}
+
+/* MainWindow::sampleRateHz without auto send: the polls a second asked for, or measured at "as fast as possible" */
+double PhoneSession::sampleRateHz() const {
+	if (!polling_) return 0;
+	return intervalMs_ > 0 ? 1000.0 / intervalMs_ : pollHz_;
+}
+
+/* MainWindow::updatePlotLimit: the registers on the chart, as many as the rate allows */
+void PhoneSession::updatePlotLimit() { model_->setPlotLimit(RegisterModel::plotLimitFor(sampleRateHz())); }
+
+/* MainWindow::updateStaleAfter: two poll intervals, never less than a slow answer, plus the time between two copies */
+void PhoneSession::updateStaleAfter() {
+	const int perSecond = valuePacer_.perSecond();
+	const qint64 copyGapMs = perSecond > 0 ? 1000 / perSecond : 0;
+	model_->setStaleAfterMs(copyGapMs + std::max<qint64>(qint64(2 * intervalMs_), qint64(intervalMs_) + TIMEOUT_MS));
 }
 
 /* ------------------------------------------------------------------ settings */
@@ -335,6 +383,7 @@ void PhoneSession::disconnectLink() {
 	reconnectTimer_.stop();
 	engine_->post([engine = engine_] { engine->disconnectLink(); });
 	connected_ = false;
+	linkDown();
 	markDeviceLost();
 	if (wasUp) addLog(LogModel::Info, tr("disconnected"));
 	setState(Off, tr("Not connected"));
@@ -344,6 +393,9 @@ void PhoneSession::disconnectLink() {
 void PhoneSession::onOpened(const QString &link) {
 	if (!wantConnected_) return; /* stopped meanwhile */
 	connected_ = true;
+	idTries_ = 0;
+	model_->setLinkUp(true);
+	syncTimer_.start();
 	addLog(LogModel::Info, tr("connected: %1").arg(link));
 	setDevice(-1, tr("Device ID not read yet"));
 	setState(Connected, tr("Connected: %1").arg(link));
@@ -356,6 +408,7 @@ void PhoneSession::onOpened(const QString &link) {
 void PhoneSession::onClosed(const QString &why, const QString &detail) {
 	const bool wasUp = connected_;
 	connected_ = false;
+	linkDown();
 	if (!why.isEmpty()) {
 		const QString both = detail.isEmpty() ? why : QStringLiteral("%1 (%2)").arg(why, detail);
 		addLog(wasUp ? LogModel::Error : LogModel::Warning,
@@ -387,6 +440,13 @@ void PhoneSession::onClosed(const QString &why, const QString &detail) {
 
 /* MainWindow::onDeviceInfo for one device: the drawer's line, and the Log */
 void PhoneSession::onDeviceInfo(int, bool ok, quint16 id, quint16 status, const QString &err) {
+	idRead_ = 0;
+	/* no answer (a board still booting when the link came back): asked again, a refusal is the token's (loginNeeded) */
+	if (!ok && connected_ && idTries_ < ID_RETRIES && !err.contains(evre::errorName(3))) {
+		setDevice(-1, tr("reading the device ID…"));
+		idTimer_.start();
+		return;
+	}
 	if (!ok) {
 		setDevice(-1, tr("DEVICE_ID not read: %1").arg(err));
 		addLog(LogModel::Error, tr("DEVICE_ID not read: %1").arg(err));
@@ -402,6 +462,30 @@ void PhoneSession::onDeviceInfo(int, bool ok, quint16 id, quint16 status, const 
 /* the map's own device ID against the device's, so another map chosen shows at once */
 QString PhoneSession::mapWarning(quint16 id) const {
 	return map_.deviceId && id != map_.deviceId ? tr("the map is for %1").arg(addrText(map_.deviceId)) : QString();
+}
+
+/* a DEVICE_ID read again, as the engine reads it when the link opens; not once a token stopped the link */
+void PhoneSession::retryDeviceId() {
+	if (!connected_ || !loginStop_.isEmpty()) return;
+	++idTries_;
+	idRead_ = nextRequest_++;
+	const quint64 id = idRead_;
+	const uint8_t slave = requestSlave(0, uint8_t(map_.slave));
+	engine_->post([engine = engine_, id, slave] { engine->read(id, slave, evre::DEVICE_ID, 4, false); });
+}
+
+void PhoneSession::onReadDone(quint64 id, bool ok, const QByteArray &data, const QString &err) {
+	if (id == 0 || id != idRead_) return;
+	if (ok && data.size() >= 4) onDeviceInfo(0, true, evre::littleEndian16(data, 0), evre::littleEndian16(data, 2), QString());
+	else onDeviceInfo(0, false, 0, 0, ok ? tr("a short answer") : err);
+}
+
+/* the link went down: no value is new from here (RegisterModel greys them as time passes), no ID read is to come */
+void PhoneSession::linkDown() {
+	idTimer_.stop();
+	idRead_ = 0;
+	syncTimer_.stop();
+	model_->setLinkUp(false);
 }
 
 /* the link down: the ID read is kept, said to be old (MainWindow::markDeviceInfoLost) */
@@ -455,6 +539,7 @@ void PhoneSession::refreshStats() {
 	const double hz = polling_ ? engine_->stats().pollHz : 0.0;
 	if (hz == pollHz_) return;
 	pollHz_ = hz;
+	if (intervalMs_ == 0) updatePlotLimit(); /* as fast as possible: the measured rate sets the limit */
 	emit statsChanged();
 }
 
@@ -515,4 +600,126 @@ void PhoneSession::onRecordStopped(const QString &file, quint64 rows) {
 	recordText_ = tr("Saved %1 · rows: %2").arg(QFileInfo(file).fileName()).arg(rows);
 	addLog(LogModel::Info, tr("CSV recording stopped: %1 rows in %2").arg(rows).arg(QDir::toNativeSeparators(file)));
 	emit recordingChanged();
+}
+
+/* ------------------------------------------------------------ the registers */
+
+void PhoneSession::attachWindow(QQuickWindow *window) {
+	if (window_) disconnect(window_, nullptr, this, nullptr);
+	window_ = window;
+	/* on the window's thread, before each frame's scene is synced: the values the frame will show */
+	if (window_) connect(window_, &QQuickWindow::afterAnimating, this, &PhoneSession::sync);
+}
+
+/* MainWindow::sync for the values: only the rows that moved since the last copy, and only at their pace (a number that
+ * changes at every frame cannot be read). The chart's samples and the Monitor's frames come with their screens. */
+void PhoneSession::sync() {
+	sinceSync_.restart();
+	if (!connected_ || !valuePacer_.due(valueClock_.elapsed())) return;
+	QVector<RegValue> values;
+	quint64 generation = 0;
+	qint64 nowMs = 0;
+	engine_->table().snapshot(values, generation, nowMs);
+	if (generation != mapGeneration_ || values.size() != model_->rows().size()) return;
+	if (copiedVersions_.size() != values.size()) copiedVersions_.fill(quint64(-1), values.size());
+	for (int row = 0; row < values.size(); row++) {
+		const RegValue &value = values[row];
+		if (copiedVersions_[row] == value.version) continue;
+		copiedVersions_[row] = value.version;
+		model_->applyValue(row, value.raw, value.valid, value.error, value.unavailable,
+				value.valid ? nowMs - value.updatedMs : 0);
+	}
+}
+
+uint8_t PhoneSession::slaveOf(const RegDef &def) const { return requestSlave(def.slave, uint8_t(map_.slave)); }
+
+QString PhoneSession::editText(int row) const {
+	if (row < 0 || row >= model_->rows().size()) return QString();
+	return model_->data(model_->index(row, RegisterModel::ColValue), Qt::EditRole).toString();
+}
+
+QVariantList PhoneSession::choices(int row) const {
+	QVariantList list;
+	if (row < 0 || row >= model_->rows().size()) return list;
+	const RegDef &def = model_->rows()[row].def;
+	for (auto it = def.enumValues.constBegin(); it != def.enumValues.constEnd(); ++it)
+		list << QVariantMap{ { QStringLiteral("text"), QStringLiteral("%1 (%2)").arg(it.value()).arg(it.key()) },
+			{ QStringLiteral("value"), QString::number(it.key()) } };
+	return list;
+}
+
+QString PhoneSession::limitsText(int row) const {
+	if (row < 0 || row >= model_->rows().size()) return QString();
+	const RegDef &def = model_->rows()[row].def;
+	const QString unit = def.unit.isEmpty() ? QString() : QStringLiteral(" ") + def.unit;
+	auto number = [&](double limit) { return formatNumber(def, limit) + unit; };
+	if (def.hasMin() && def.hasMax()) return tr("from %1 to %2").arg(formatNumber(def, def.min), number(def.max));
+	if (def.hasMin()) return tr("at least %1").arg(number(def.min));
+	if (def.hasMax()) return tr("at most %1").arg(number(def.max));
+	return QString();
+}
+
+/* MainWindow::onWriteRequested's questions, in words for the sheet: past the map's min or max (a special value is
+ * always allowed), then a danger register */
+QString PhoneSession::writeQuestion(int row, const QString &text) const {
+	if (row < 0 || row >= model_->rows().size()) return QString();
+	const RegDef &def = model_->rows()[row].def;
+	QByteArray bytes;
+	QString err;
+	if (!encodeValue(def, text, bytes, err)) return QString(); /* write() says why */
+	QStringList asked;
+	const QString outside = def.isNumeric() ? limitProblem(def, decodeNumber(def, bytes)) : QString();
+	if (!outside.isEmpty())
+		asked << tr("%1 = %2 is %3 the map gives it. The map may be stricter than the device, or the device may not take "
+					"it.").arg(def.name, text.trimmed(), outside);
+	if (def.danger) asked << tr("%1 moves, powers or changes something on the device.").arg(def.name);
+	if (asked.isEmpty()) return QString();
+	return asked.join(QLatin1Char(' ')) + QLatin1Char(' ') + tr("Write it anyway?");
+}
+
+/* MainWindow::onWriteRequested: the text into the register's bytes, written; the engine reads it back */
+void PhoneSession::write(int row, const QString &text) {
+	if (row < 0 || row >= model_->rows().size()) return;
+	const RegDef def = model_->rows()[row].def;
+	if (!model_->writesEnabled()) {
+		emit writeAnswered(row, false, tr("Writes are off: turn on Allow writes in the Connect drawer"));
+		return;
+	}
+	if (!connected_) {
+		emit writeAnswered(row, false, tr("Not connected: connect first"));
+		return;
+	}
+	QByteArray bytes;
+	QString err;
+	if (!encodeValue(def, text, bytes, err)) {
+		const QString line = tr("%1: %2 not written: %3").arg(def.name, text, err);
+		addLog(LogModel::Error, line);
+		emit writeAnswered(row, false, line);
+		return;
+	}
+	const quint64 id = nextRequest_++;
+	writes_.insert(id, { row, def.name, tr("%1 = %2 (%3 at %4)").arg(def.name, text.trimmed(), evre::hex(bytes), addrText(def.addr)) });
+	const uint8_t slave = slaveOf(def);
+	const uint16_t addr = def.addr;
+	engine_->post([engine = engine_, id, slave, addr, bytes] { engine->write(id, slave, addr, bytes, true); });
+}
+
+void PhoneSession::onWriteDone(quint64 id, bool ok, const QString &err) {
+	const auto it = writes_.constFind(id);
+	if (it == writes_.constEnd()) return;
+	const PendingWrite done = *it;
+	writes_.erase(it);
+	if (ok) {
+		addLog(LogModel::Info, tr("written: %1").arg(done.what));
+		emit writeAnswered(done.row, true, tr("%1 written").arg(done.name));
+	} else {
+		const QString line = tr("write refused: %1: %2").arg(done.what, err);
+		addLog(LogModel::Error, line);
+		emit writeAnswered(done.row, false, line);
+	}
+}
+
+bool PhoneSession::setPlot(int row, bool on) {
+	if (row < 0 || row >= model_->rows().size()) return false;
+	return model_->setPlot(row, on);
 }

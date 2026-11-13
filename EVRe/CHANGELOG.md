@@ -16,6 +16,17 @@
   (`Android/data/com.teknile.evrestudio/files/recordings`). A refused token or a refused USB permission stops the
   tries. The header's pill shows the link's state in its colour and opens the drawer; the Log screen lists what
   happened, Copy and Clear.
+- **The Registers screen on the phone.** Every register of the map as a card in sections by group: the name, the
+  value large with its unit, the decoded text, the address; a search field; the desktop's glow on a change, a greyed
+  *not refreshed* value and a refused register in red. **Write** (or a tap on the card) opens a sheet from the
+  screen's foot: the value or an enum's list, Apply, the map's limits asked first, the answer (written and read back,
+  or the refusal's text); with no link or Allow writes off it says so. The "⋯" button: Plot, Write…, Copy. Started
+  with `--ez perf true`, the app writes its frame rate to logcat (`EVRE_PERF`) while the screen shows.
+- **The phone's menu button showed an empty box** on a Samsung phone: its font has no "☰". The three bars are drawn
+  now, and no screen uses a symbol character.
+- **The phone reads the device's ID again** when the first read after a connect gets no answer (a board still
+  booting when the link comes back, or a simulator restarted): three more tries a second apart, *reading the device
+  ID…* meanwhile. Before, the drawer kept *DEVICE_ID not read* until a manual reconnect.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every
