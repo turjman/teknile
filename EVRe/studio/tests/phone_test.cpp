@@ -647,10 +647,11 @@ void checkTcpLink() {
 		QTest::qWait(ms);
 		return session ? session->pollHz() : -1;
 	};
+	/* the engine measures over a second or more: 4 s leaves a whole window after each change */
 	if (session) session->setIntervalMs(50);
-	const double fast = rateAfter(2500);
+	const double fast = rateAfter(4000);
 	if (session) session->setIntervalMs(200);
-	const double slow = rateAfter(2500);
+	const double slow = rateAfter(4000);
 	phone.tap(phone.item("pollSwitch"));
 	const double off = rateAfter(1200);
 	const bool offSaved = !QSettings().value(QStringLiteral("phone/polling"), true).toBool();
@@ -738,16 +739,29 @@ void checkReconnect() {
 		session->connectTcp(QStringLiteral("127.0.0.1"), proxy.stand->port, QString());
 	}
 	const bool up = waitForState(session, PhoneSession::Connected);
+	/* every state the session goes through, with the pill's and the drawer's words then: a busy machine may pass
+	 * through Reconnecting between two looks */
+	bool lost = false;
+	QString pill, why;
+	QObject *pillText = phone.object("linkPillText"), *detail = phone.object("linkDetail");
+	QMetaObject::Connection watch;
+	if (session && pillText)
+		watch = QObject::connect(session, &PhoneSession::linkChanged, pillText, [&] {
+			if (session->state() != PhoneSession::Reconnecting || lost) return;
+			lost = true;
+			pill = pillText->property("text").toString();
+			why = detail ? detail->property("text").toString() : QString();
+		});
 	proxy.run([](DroppingProxy *stand) { stand->drop(); });
-	const bool lost = waitForState(session, PhoneSession::Reconnecting, 3000);
-	const QString pill = phone.text("linkPillText"), why = phone.text("linkDetail");
-	const bool back = waitForState(session, PhoneSession::Connected, 5000);
+	(void) QTest::qWaitFor([&] { return lost; }, 3000);
+	const bool back = QTest::qWaitFor([&] { return lost && session->state() == PhoneSession::Connected; }, 5000);
 	const int links = proxy.stand->connections;
 	check(up && lost && pill == QStringLiteral("Reconnecting…") && why.startsWith(QLatin1String("closed by 127.0.0.1:")) && back
 					&& links == 2 && session->log()->contains(QStringLiteral("connection lost: closed by")),
 			QStringLiteral("phone, reconnect: the link dropped, the pill says \"%1\" and the drawer why (\"%2\"), the Log "
 					"\"connection lost: ...\"; connected again by itself (%3 links; up %4, lost %5, back %6)").arg(pill, why).arg(links)
 					.arg(up).arg(lost).arg(back));
+	QObject::disconnect(watch);
 	if (session) session->disconnectLink();
 }
 
