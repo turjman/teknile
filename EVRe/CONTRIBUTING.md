@@ -46,7 +46,7 @@ The GUI and API tests write registers, a danger register included: run them only
 
 ## Documentation
 
-A change to what the Studio does updates `studio/docs/STUDIO.md` and the help pages (`studio/src/ui/help_dialog.cpp`);
+A change to what the Studio does updates `studio/docs/STUDIO.md` and the help pages (`studio/src/ui/help_topics.cpp`);
 a change to a map key updates MAP_FORMAT.md and the schema too. `CHANGELOG.md` gets a line.
 
 ## Making a release
@@ -59,7 +59,12 @@ Only the owner tags. A tag builds and publishes everything (`.github/workflows/r
 3. Merge both into `main`, then tag that commit and push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`.
 
 The workflow stops with a message when the tag is not the CMake version or the changelog has no such section. A pull
-request that touches the workflow or `studio/packaging/` builds the same files as artifacts, to try them first.
+request that touches the workflow, `studio/packaging/` or `studio/android/` builds the same files as artifacts, to try
+them first. The phone's APK is signed with the release key when the repository's secrets hold it
+(`ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`; STUDIO.md 25.5), else with a key made for
+the run, and the release's text says so: make the key once (`keytool -genkeypair -keystore evre-release.keystore
+-alias evre -keyalg RSA -keysize 2048 -validity 10000`), keep it outside the repository with a backup, and put it into
+the secrets.
 
 ## License
 

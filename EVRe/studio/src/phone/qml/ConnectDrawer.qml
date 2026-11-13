@@ -15,6 +15,8 @@ import EVRe.Phone
 Drawer {
     id: drawer
     property bool rtl: false
+    // the Help screen asked for (the Display section's Help button): Main.qml opens it once the drawer is gone
+    signal helpAsked()
     property real keyboardLift: 0
 
     edge: rtl ? Qt.RightEdge : Qt.LeftEdge
@@ -592,6 +594,33 @@ Drawer {
                 visible: PhoneLanguage.pending
                 text: qsTr("The language changes when the app is opened again.")
                 color: PhoneTheme.warn
+            }
+            SwitchRow {
+                text: qsTr("Keep the screen on while connected")
+                switchName: "keepScreenSwitch"
+                checked: PhoneSession.keepScreenOn
+                onToggled: on => PhoneSession.keepScreenOn = on
+            }
+            Button {
+                objectName: "helpButton"
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                text: qsTr("Help")
+                flat: true
+                Material.foreground: PhoneTheme.accent
+                // an outlined button, as Record
+                background: Rectangle {
+                    implicitHeight: 40
+                    y: (parent.height - height) / 2
+                    height: 40
+                    radius: 20
+                    color: parent.down ? PhoneTheme.surface2 : "transparent"
+                    border.color: PhoneTheme.control
+                }
+                onClicked: {
+                    drawer.close()
+                    drawer.helpAsked()
+                }
             }
         }
     }

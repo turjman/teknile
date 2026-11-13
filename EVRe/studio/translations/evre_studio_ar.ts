@@ -2154,6 +2154,14 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
         <source>Display</source>
         <translation>العرض</translation>
     </message>
+    <message>
+        <source>Keep the screen on while connected</source>
+        <translation>إبقاء الشاشة مضاءة أثناء الاتصال</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>مساعدة</translation>
+    </message>
 </context>
 <context>
     <name>DumpTab</name>
@@ -4634,6 +4642,17 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
 </context>
 <context>
+    <name>HelpScreen</name>
+    <message>
+        <source>Back</source>
+        <translation>رجوع</translation>
+    </message>
+    <message>
+        <source>Help</source>
+        <translation>مساعدة</translation>
+    </message>
+</context>
+<context>
     <name>IoEngine</name>
     <message>
         <source>the device does not offer it (no CAP_AUTO_SEND in its STATUS)</source>
@@ -6915,6 +6934,14 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>At most %1 lines on the chart, registers and fast lines together: take one off first</source>
         <translation>على الأكثر %1 خطًا على المخطط، المسجّلات والخطوط السريعة معًا: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source> · recording %1</source>
+        <translation> · التسجيل ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 is back as %2</source>
+        <translation>عاد ⁦%1⁩ باسم ⁦%2⁩</translation>
     </message>
 </context>
 <context>

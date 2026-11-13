@@ -39,10 +39,15 @@ const QString KEY_RECONNECT = QStringLiteral("phone/reconnect");
 const QString KEY_POLLING = QStringLiteral("phone/polling");
 const QString KEY_INTERVAL = QStringLiteral("phone/interval");
 const QString KEY_MAP = QStringLiteral("phone/map");
+const QString KEY_SCREEN_ON = QStringLiteral("android/keepScreenOn"); /* the plan's A-5 */
 
 const QString FIRST_MAP = QStringLiteral("example_device.json");
 
 evre::UsbBridge *testBridge = nullptr;
+SystemBridge *testSystem = nullptr;
+bool systemFromTest = false;
+
+SystemBridge *systemBridge() { return systemFromTest ? testSystem : SystemBridge::system(); }
 
 } // namespace
 
@@ -57,6 +62,11 @@ PhoneSession::PhoneSession(QObject *parent)
 	autoReconnect_ = settings.value(KEY_RECONNECT, true).toBool();
 	polling_ = settings.value(KEY_POLLING, true).toBool();
 	intervalMs_ = settings.value(KEY_INTERVAL, 100).toInt();
+	keepScreenOn_ = settings.value(KEY_SCREEN_ON, true).toBool();
+	serviceTimer_.setInterval(1000);
+	connect(&serviceTimer_, &QTimer::timeout, this, &PhoneSession::updateSystem);
+	connect(this, &PhoneSession::linkChanged, this, &PhoneSession::updateSystem);
+	connect(this, &PhoneSession::recordingChanged, this, &PhoneSession::updateSystem);
 	linkText_ = tr("Not connected");
 	deviceText_ = tr("Device ID not read yet");
 	list_ = new RegisterList(model_, this);
@@ -101,6 +111,10 @@ PhoneSession::PhoneSession(QObject *parent)
 /* the engine closes the link and a recording on its thread, then the thread ends (MainWindow::~MainWindow) */
 PhoneSession::~PhoneSession() {
 	reconnectTimer_.stop();
+	if (SystemBridge *bridge = systemBridge()) {
+		if (!serviceText_.isEmpty()) bridge->releaseService();
+		if (screenKeptOn_) bridge->keepScreenOn(false);
+	}
 	if (chart_) chart_->setClock({}); /* its clock is the engine's, which goes now */
 	if (thread_ && thread_->isRunning()) {
 		QMetaObject::invokeMethod(engine_, [engine = engine_] { engine->shutdown(); }, Qt::BlockingQueuedConnection);
@@ -335,6 +349,64 @@ evre::UsbBridge *PhoneSession::usbBridge() {
 
 void PhoneSession::setUsbBridgeForTests(evre::UsbBridge *bridge) { testBridge = bridge; }
 
+void PhoneSession::setSystemBridgeForTests(SystemBridge *bridge) {
+	testSystem = bridge;
+	systemFromTest = bridge != nullptr;
+}
+
+void PhoneSession::setKeepScreenOn(bool on) {
+	if (on == keepScreenOn_) return;
+	keepScreenOn_ = on;
+	QSettings().setValue(KEY_SCREEN_ON, on);
+	updateSystem();
+	emit settingsChanged();
+}
+
+void PhoneSession::setOrientation(const QString &orientation) {
+	if (orientation == orientation_) return;
+	orientation_ = orientation;
+	if (SystemBridge *bridge = systemBridge())
+		bridge->requestOrientation(orientation == QLatin1String("portrait") ? SystemBridge::Portrait
+				: orientation == QLatin1String("landscape") ? SystemBridge::Landscape : SystemBridge::Any);
+	emit systemChanged();
+}
+
+/* the service up while a link is wanted (its text the link's state and the recording's time), the screen kept on
+ * while connected; each told to the system only when it changes */
+void PhoneSession::updateSystem() {
+	QString text;
+	if (wantConnected_ || state_ == Connected) {
+		text = linkText_;
+		if (recording_) {
+			const qint64 s = recordClock_.isValid() ? recordClock_.elapsed() / 1000 : 0;
+			text += tr(" · recording %1").arg(QStringLiteral("%1:%2:%3").arg(s / 3600, 2, 10, QLatin1Char('0'))
+					.arg(s / 60 % 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0')));
+		}
+	}
+	const bool screen = keepScreenOn_ && state_ == Connected;
+	SystemBridge *bridge = systemBridge();
+	bool changed = false;
+	if (text != serviceText_) {
+		serviceText_ = text;
+		if (bridge) {
+			if (text.isEmpty()) bridge->releaseService();
+			else bridge->holdService(QStringLiteral("EVRe Studio"), text);
+		}
+		changed = true;
+	}
+	if (screen != screenKeptOn_) {
+		screenKeptOn_ = screen;
+		if (bridge) bridge->keepScreenOn(screen);
+		changed = true;
+	}
+	if (recording_ && !text.isEmpty()) {
+		if (!serviceTimer_.isActive()) serviceTimer_.start();
+	} else {
+		serviceTimer_.stop();
+	}
+	if (changed) emit systemChanged();
+}
+
 void PhoneSession::refreshPorts() { ports_->refresh(usbBridge(), map_); }
 
 void PhoneSession::connectUsb(const QString &device, int baud) {
@@ -345,6 +417,14 @@ void PhoneSession::connectUsb(const QString &device, int baud) {
 	tcp_ = false;
 	usbDevice_ = device;
 	baud_ = baud > 0 ? baud : 115200;
+	/* its USB IDs: a retry finds the board by them when it comes back under another name (reset, plugged again) */
+	usbVid_ = usbPid_ = 0;
+	if (evre::UsbBridge *bridge = usbBridge())
+		for (const evre::UsbBridge::Device &each : bridge->devices())
+			if (each.name == device) {
+				usbVid_ = each.vid;
+				usbPid_ = each.pid;
+			}
 	QSettings settings;
 	settings.setValue(KEY_TCP, false);
 	settings.setValue(KEY_USB, usbDevice_);
@@ -400,9 +480,29 @@ void PhoneSession::connectLink() {
 
 void PhoneSession::retryConnect() {
 	if (!wantConnected_ || connected_) return;
+	if (!tcp_) findUsbAgain();
 	retrying_ = true;
 	connectLink();
 	retrying_ = false;
+}
+
+/* a USB board reset or plugged in again comes back under another name (/dev/bus/usb/001/002 becomes .../003): the
+ * device with the IDs it had at Connect, when its old name is gone; Android asks its permission again */
+void PhoneSession::findUsbAgain() {
+	evre::UsbBridge *bridge = usbBridge();
+	if (!bridge || (usbVid_ == 0 && usbPid_ == 0)) return;
+	const QVector<evre::UsbBridge::Device> devices = bridge->devices();
+	for (const evre::UsbBridge::Device &each : devices)
+		if (each.name == usbDevice_) return; /* still there */
+	for (const evre::UsbBridge::Device &each : devices) {
+		if (each.vid != usbVid_ || each.pid != usbPid_) continue;
+		addLog(LogModel::Info, tr("%1 is back as %2").arg(usbDevice_, each.name));
+		usbDevice_ = each.name;
+		QSettings().setValue(KEY_USB, usbDevice_);
+		refreshPorts();
+		emit settingsChanged();
+		return;
+	}
 }
 
 void PhoneSession::disconnectLink() {
@@ -469,6 +569,8 @@ void PhoneSession::onClosed(const QString &why, const QString &detail) {
 /* MainWindow::onDeviceInfo for one device: the drawer's line, and the Log */
 void PhoneSession::onDeviceInfo(int, bool ok, quint16 id, quint16 status, const QString &err) {
 	idRead_ = 0;
+	/* the link is gone: the read was cancelled with it (Master::clear), which is no error of the device's */
+	if (!ok && !connected_) return;
 	/* no answer (a board still booting when the link came back): asked again, a refusal is the token's (loginNeeded) */
 	if (!ok && connected_ && idTries_ < ID_RETRIES && !err.contains(evre::errorName(3))) {
 		setDevice(-1, tr("reading the device ID…"));
@@ -518,7 +620,11 @@ void PhoneSession::linkDown() {
 
 /* the link down: the ID read is kept, said to be old (MainWindow::markDeviceInfoLost) */
 void PhoneSession::markDeviceLost() {
-	if (deviceId_ < 0) return;
+	if (deviceId_ < 0) {
+		/* none was read: "reading the device ID…" would stay after the link */
+		setDevice(-1, tr("Device ID not read yet"));
+		return;
+	}
 	setDevice(-1, tr("last seen: Device ID %1 · protocol rev %2").arg(addrText(quint16(deviceId_))).arg(revision_));
 }
 
@@ -625,6 +731,7 @@ void PhoneSession::onRecordStarted(bool ok, const QString &err) {
 		return;
 	}
 	recording_ = true;
+	recordClock_.start();
 	addLog(LogModel::Info, tr("CSV recording started: %1").arg(QDir::toNativeSeparators(recordFile_)));
 	recordText_ = tr("Recording to %1").arg(QFileInfo(recordFile_).fileName());
 	emit recordingChanged();
@@ -699,9 +806,27 @@ QString PhoneSession::limitsText(int row) const {
 
 /* MainWindow::onWriteRequested's questions, in words for the sheet: past the map's min or max (a special value is
  * always allowed), then a danger register */
-QString PhoneSession::writeQuestion(int row, const QString &text) const {
+/* a number as a phone's keypad may type it, as the engine reads it: Arabic-Indic and Eastern Arabic digits as 0-9, a
+ * decimal comma (a comma locale's keypad) as a point; hex and binary (0x, 0b) and a text register's bytes as typed */
+QString PhoneSession::typedNumber(const RegDef &def, const QString &text) {
+	if (!def.isNumeric()) return text;
+	QString out = text;
+	for (QChar &c : out) {
+		const ushort u = c.unicode();
+		if (u >= 0x0660 && u <= 0x0669) c = QChar(u'0' + (u - 0x0660));
+		else if (u >= 0x06F0 && u <= 0x06F9) c = QChar(u'0' + (u - 0x06F0));
+	}
+	const QString plain = out.trimmed().toLower();
+	if (!plain.startsWith(QLatin1String("0x")) && !plain.startsWith(QLatin1String("0b")) && out.count(QLatin1Char(',')) == 1
+			&& !out.contains(QLatin1Char('.')))
+		out.replace(QLatin1Char(','), QLatin1Char('.'));
+	return out;
+}
+
+QString PhoneSession::writeQuestion(int row, const QString &typed) const {
 	if (row < 0 || row >= model_->rows().size()) return QString();
 	const RegDef &def = model_->rows()[row].def;
+	const QString text = typedNumber(def, typed);
 	QByteArray bytes;
 	QString err;
 	if (!encodeValue(def, text, bytes, err)) return QString(); /* write() says why */
@@ -716,9 +841,10 @@ QString PhoneSession::writeQuestion(int row, const QString &text) const {
 }
 
 /* MainWindow::onWriteRequested: the text into the register's bytes, written; the engine reads it back */
-void PhoneSession::write(int row, const QString &text) {
+void PhoneSession::write(int row, const QString &typed) {
 	if (row < 0 || row >= model_->rows().size()) return;
 	const RegDef def = model_->rows()[row].def;
+	const QString text = typedNumber(def, typed);
 	if (!model_->writesEnabled()) {
 		emit writeAnswered(row, false, tr("Writes are off: turn on Allow writes in the Connect drawer"));
 		return;

@@ -257,6 +257,34 @@ ApplicationWindow {
 
     Component.onCompleted: if (chartDemo) tabBar.currentIndex = 1
 
+    // Android's back (phone_app.cpp hands it here first): what is open closes, the topmost first; false: nothing was,
+    // and Android has the back (the app goes to the background)
+    function back() {
+        if (helpScreen.opened) {
+            helpScreen.back()
+            return true
+        }
+        if (writeSheet.opened) {
+            writeSheet.close()
+            return true
+        }
+        if (drawer.opened) {
+            drawer.close()
+            return true
+        }
+        return false
+    }
+
+    // each screen's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright; the proof
+    // either way. Android turns the activity (PhoneSession, SystemBridge)
+    readonly property string wantedOrientation: p9 ? "" : tabBar.currentIndex === 1 || tabBar.currentIndex === 2
+                                                         ? "landscape" : "portrait"
+    Binding {
+        target: PhoneSession
+        property: "orientation"
+        value: root.wantedOrientation
+    }
+
     ConnectDrawer {
         id: drawer
         objectName: "connectDrawer"
@@ -267,6 +295,13 @@ ApplicationWindow {
         keyboardLift: root.keyboardLift
         Overlay.modal: root.scrim
         Overlay.modeless: root.scrim
+        onHelpAsked: helpScreen.open()
+    }
+
+    HelpScreen {
+        id: helpScreen
+        objectName: "helpScreen"
+        rtl: root.rtl
     }
 
     WriteSheet {

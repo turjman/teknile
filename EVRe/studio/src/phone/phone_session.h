@@ -31,6 +31,10 @@
  *                 device ID…" meanwhile; a refusal (permission denied) is not tried again: it is the token's
  *   recording     a CSV of every logged register into the app's own folder (recordingsFolder, A-8): a real path, so a
  *                 recording's notes can go beside it
+ *   the system    while a link is wanted, Android's foreground service with its notification (the link's state, and
+ *                 the recording's time once a second), so both go on with the screen off; the screen kept on while
+ *                 connected (keepScreenOn, android/keepScreenOn, on by default); the orientation a screen asks for
+ *                 (Main.qml, A-16). Through SystemBridge (phone_system.h): Android's, or a test's
  *
  * QML only calls it on the window's thread; the engine is reached by post() and answers by queued signals, as
  * MainWindow does. Every text through tr() in this class's context. */
@@ -51,6 +55,7 @@
 #include "phone/log_model.h"
 #include "phone/port_list.h"
 #include "phone/register_list.h"
+#include "phone/phone_system.h"
 #include "ui/value_pace.h"
 
 class IoEngine;
@@ -101,6 +106,10 @@ class PhoneSession : public QObject {
 	Q_PROPERTY(bool connected READ connected NOTIFY linkChanged)
 	Q_PROPERTY(ChartItem *chart READ chart WRITE setChart NOTIFY chartChanged)
 	Q_PROPERTY(QVariantList fastChannels READ fastChannels NOTIFY fastChanged)
+	Q_PROPERTY(bool keepScreenOn READ keepScreenOn WRITE setKeepScreenOn NOTIFY settingsChanged)
+	Q_PROPERTY(QString serviceText READ serviceText NOTIFY systemChanged)
+	Q_PROPERTY(bool screenKeptOn READ screenKeptOn NOTIFY systemChanged)
+	Q_PROPERTY(QString orientation READ orientation WRITE setOrientation NOTIFY systemChanged)
 
 public:
 	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
@@ -203,6 +212,18 @@ public:
 
 	/* tests: the USB bridge connectUsb and the port list use instead of Android's (null: Android's, or none) */
 	static void setUsbBridgeForTests(evre::UsbBridge *bridge);
+	/* tests: the system's stand-in (the service, the screen, the orientation) instead of Android's (null: Android's) */
+	static void setSystemBridgeForTests(SystemBridge *bridge);
+
+	/* the screen kept on while connected (A-5): saved, on by default */
+	bool keepScreenOn() const { return keepScreenOn_; }
+	void setKeepScreenOn(bool on);
+	/* the service's notification text while a link is wanted; empty: the service is not up */
+	QString serviceText() const { return serviceText_; }
+	bool screenKeptOn() const { return screenKeptOn_; }
+	/* "portrait", "landscape" or "" (either), as Main.qml asks for its screen (A-16) */
+	QString orientation() const { return orientation_; }
+	void setOrientation(const QString &orientation);
 	/* where recordings go: the app's own folder (A-8), "recordings" in Android's external files folder for the app
 	 * (Android/data/<package>/files, reached by a file manager and by a PC over USB), else in the app's data folder */
 	static QString recordingsFolder();
@@ -215,6 +236,7 @@ signals:
 	void deviceChanged();
 	void mapChanged();
 	void settingsChanged();
+	void systemChanged();
 	void statsChanged();
 	void recordingChanged();
 	/* each line of the Log as it is added (LogModel::Level) */
@@ -239,6 +261,9 @@ private:
 	void onDeviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
 	void onRecordStarted(bool ok, const QString &err);
 	void onRecordStopped(const QString &file, quint64 rows);
+	void findUsbAgain();
+	static QString typedNumber(const RegDef &def, const QString &text);
+	void updateSystem();
 	void refreshStats();
 	void markDeviceLost();
 	void retryDeviceId();
@@ -278,6 +303,13 @@ private:
 	QString loginStop_;          /* a refused token or a device that wants one: why the next close stops the tries */
 	QTimer reconnectTimer_;
 	QTimer statsTimer_;
+	quint16 usbVid_ = 0, usbPid_ = 0; /* the USB device's IDs at Connect: found again by them */
+	QTimer serviceTimer_;        /* the notification's recording time, once a second */
+	QElapsedTimer recordClock_;
+	bool keepScreenOn_ = true;
+	bool screenKeptOn_ = false;
+	QString serviceText_;
+	QString orientation_;
 
 	/* the last try's link: a try by itself makes the same one */
 	bool tcp_ = true;
