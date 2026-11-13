@@ -24,6 +24,7 @@
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QRegularExpression>
+#include <QScreen>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTest>
@@ -231,10 +232,18 @@ void checkLoads() {
 	QStringList problems;
 	for (QSize size : { PORTRAIT, LANDSCAPE }) {
 		Phone phone(size);
-		const bool whole = phone && phone.window->size() == size && phone.item("header") && phone.item("tabBar")
+		/* the size asked for; a screen smaller than it (a CI runner's 1024 x 768) keeps the window inside itself */
+		const QSize room = phone && phone.window->screen() ? phone.window->screen()->availableGeometry().size() : size;
+		const QSize got = phone ? phone.window->size() : QSize();
+		const bool tooBig = size.width() > room.width() || size.height() > room.height();
+		const bool sized = got == size
+				|| (tooBig && !got.isEmpty() && got.width() <= size.width() && got.height() <= size.height());
+		const bool whole = phone && sized && phone.item("header") && phone.item("tabBar")
 				&& phone.item("screens") && phone.item("screens")->childItems().size() == 4
 				&& phone.object("connectDrawer") && phone.warnings.isEmpty();
-		if (!whole) problems << sizeText(size) + QStringLiteral(": ") + phone.warnings.join(QStringLiteral("; "));
+		if (!whole)
+			problems << QStringLiteral("%1: got %2 on a screen of %3 %4").arg(sizeText(size), sizeText(got), sizeText(room),
+					phone.warnings.join(QStringLiteral("; ")));
 		ok = ok && whole;
 	}
 	check(ok, QStringLiteral("phone, Main.qml: loads at 412 x 915 and at 915 x 412, without a QML warning: the header, "
