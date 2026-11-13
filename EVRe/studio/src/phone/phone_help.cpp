@@ -3,6 +3,7 @@
 #include "phone/phone_help.h"
 
 #include <QGuiApplication>
+#include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -31,5 +32,9 @@ QString PhoneHelp::page(int index, bool dark) const {
 		cursor.setPosition(block.position());
 		cursor.setBlockFormat(format);
 	}
-	return document.toHtml();
+	/* the document's own font in the body's style would set the page's size: the Text's font sets it, as in English */
+	QString out = document.toHtml();
+	static const QRegularExpression bodyFont(QStringLiteral("(<body[^>]*?) font-family:[^;]*; font-size:[^;]*;"));
+	out.replace(bodyFont, QStringLiteral("\\1"));
+	return out;
 }
