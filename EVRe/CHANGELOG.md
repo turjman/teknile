@@ -39,6 +39,10 @@
   landscape, the Registers and the Log to portrait. Android's back closes the Help's page, the Help, the write sheet,
   then the drawer; with nothing open the app goes to the background. A release now also ships
   `EVReStudio-<version>-arm64.apk`.
+- **The phone's Help fits the phone.** It starts with a topic of its own, *Using the phone app* (connecting, the
+  Registers and the write sheet, the Chart with its gestures and cursors, the Monitor and the Log, recording with the
+  screen off, the back gesture), in English and Arabic; then the desktop's topics that apply, without the Map editor,
+  the API, the Dump, the command line and Keys & mouse, which the phone has none of. The desktop's Help is unchanged.
 - **The phone's Reconnect by itself never found a USB board again** after the board reset or was plugged in again:
   Android gives it another name, and every try looked for the old one. It is found by its USB IDs now.
 - **The phone's device line stayed at *reading the device ID…*** after a Disconnect, and the cancelled read was logged

@@ -3,6 +3,7 @@
 #include "ui/help_topics.h"
 
 #include <QCoreApplication>
+#include <QList>
 #include <iterator>
 
 #include "io/engine.h"
@@ -15,8 +16,14 @@ struct Topic {
 	/* UTF-8; %CODE% opens a code block (a styled <pre>), which the page closes with </pre>; translated when shown, as
 	 * the title (translations keep the tags, %CODE% and the other %NAME% markers) */
 	const char *html;
+	/* listed by the phone's Help too: not the topic of something the phone has none of (part B, Q-9 of the phone's
+	 * plan: the Map editor, the Dump, the API, the command line, the keys and the mouse) */
+	bool onPhone = true;
 };
 
+constexpr bool DESKTOP_ONLY = false;
+
+/* The desktop's topics, in its dialog's order; the phone lists those on it after its own (PHONE_TOPICS). */
 const Topic TOPICS[] = {
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Getting started"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Getting started</h2>
@@ -656,7 +663,7 @@ sheet back.</li>
 </ul>
 <p>On the Registers tab, <b>+ Register</b> and <i>Edit definition…</i> come here. The live values stay while a
 register is edited, as long as it is read the same way.</p>
-)HTML") },
+)HTML"), DESKTOP_ONLY },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "API (MATLAB, LabVIEW, Python)"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>API: other programs through the Studio</h2>
 <p>Tick <b>Serve API</b>. The Studio then shares the device it is connected to: every request goes through
@@ -715,7 +722,7 @@ print(json.loads(f.readline())["values"]["SUPPLY_V"])</pre>
 <i>TCP Read</i> in <b>CRLF</b> mode → <i>Unflatten From JSON</i> into a cluster
 (e.g. <code>ok</code> boolean, <code>values</code> cluster with a <code>SUPPLY_V</code> double).</p>
 <p>Full examples: <code>examples/</code> next to the program's source.</p>
-)HTML") },
+)HTML"), DESKTOP_ONLY },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Dump"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Dump</h2>
 <p>The <b>Dump</b> tab shows the device's bytes as the reads bring them: one <b>card</b> per block the polling reads,
@@ -763,7 +770,7 @@ it in every row. Copy gives the block as hex or a C array, or the records as CSV
 <li>The tab keeps nothing while another tab is shown: its cards come again with the next replies (the last write is
 kept).</li>
 </ul>
-)HTML") },
+)HTML"), DESKTOP_ONLY },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Monitor"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Monitor</h2>
 <p><b>Log frames</b> shows every frame sent and received (off by default: at fast polling it is a lot of text).
@@ -821,7 +828,7 @@ reads them through the API. A name the map has no stream of is left, and the Log
 <li><code>--api-writes</code> is the same as ticking <i>Allow API writes</i>; <code>--api-writes-danger</code> also
 the ⚠ switch.</li>
 </ul>
-)HTML") },
+)HTML"), DESKTOP_ONLY },
 	{ QT_TRANSLATE_NOOP("HelpDialog", "Keys & mouse"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
 <h2>Keys &amp; mouse</h2>
 <table cellpadding="4">
@@ -868,8 +875,89 @@ values: Auto ·
 <tr><td><b>Math line</b></td><td>The list of names: <b>Up</b> / <b>Down</b> pick, <b>Enter</b> or <b>Tab</b> takes one,
 <b>Esc</b> closes it</td></tr>
 </table>
+)HTML"), DESKTOP_ONLY },
+};
+
+/* The phone's own topics, listed first by its Help; not the desktop's. */
+const Topic PHONE_TOPICS[] = {
+	{ QT_TRANSLATE_NOOP("HelpDialog", "Using the phone app"), QT_TRANSLATE_NOOP("HelpDialog", R"HTML(
+<h2>Using the phone app</h2>
+<p>EVRe Studio on a phone: the desktop's engine and maps, four screens in the tab bar at the bottom: <b>Registers</b>,
+<b>Chart</b>, <b>Monitor</b> and <b>Log</b>. The Chart and the Monitor turn the screen across, the Registers and the Log
+upright. The other topics of this Help are the desktop's: where they speak of the sidebar, here it is the drawer; a click
+is a tap.</p>
+<h3>Connecting</h3>
+<p>The menu button at the top, or the link's pill beside it, opens the <b>Connect</b> drawer.</p>
+<ul>
+<li><b>USB</b>: plug the board in (through a USB OTG adapter) and choose it under <i>USB device</i>. Android asks
+whether EVRe Studio may use it: the pill reads <i>Waiting for permission…</i> until you answer its dialog. A USB CDC
+board ignores the baud rate.</li>
+<li><b>TCP</b>: the <b>host</b> and <b>port</b> of the device or its gateway, and the <b>token</b> when the device asks
+for one (it is not stored).</li>
+<li><b>Connect</b>: the pill turns green and the device's ID shows. <b>Reconnect by itself</b> brings a lost link back,
+also to a board that was reset or plugged in again.</li>
+<li><b>Device</b>: the map (<b>Open…</b> chooses another <code>.json</code>) and <b>Allow writes</b>. <b>Polling</b>: on
+or off, and its interval (0 ms: as fast as the device answers).</li>
+<li>At the drawer's foot: the dark theme, the language (applied when the app is opened again) and <b>Help</b>.</li>
+</ul>
+<h3>Registers</h3>
+<ul>
+<li>A card per register, in its group: the name and address, the value large with its unit, decoded under it. A
+changed value glows; one not read for a while says <i>not refreshed</i>; an error shows in red.</li>
+<li><b>Search</b> at the top: a name, a unit or an address.</li>
+<li><b>Write</b> on a writable card, or a tap on the card, opens the write sheet.
+The <b>...</b> button, or a long press: <b>Plot</b>
+(<b>Take off the chart</b> once plotted), <b>Write…</b> and <b>Copy</b>.</li>
+<li>The write sheet: the value now and the map's limits, a field for the new value (an enum: its list), <b>Apply</b>. A
+value past the limits, or a register that moves something, is asked first: <b>Write anyway</b> or <b>Cancel</b>. The
+answer shows under it, and the card then shows what the device holds. Writing needs <b>Allow writes</b> on.</li>
+</ul>
+<h3>Chart</h3>
+<ul>
+<li>The lines: registers plotted from their <b>...</b> button, and with <b>Fast lines</b> (a map with streams) a stream's
+channels.</li>
+<li><b>Live</b> follows the newest samples, <b>Hold</b> keeps the view still; the window <b>10 s</b>, <b>1 min</b> or
+<b>5 min</b>.</li>
+<li>A <b>pinch</b> zooms the time, a <b>drag</b> looks back (and holds), a <b>double tap</b> goes live again.</li>
+<li><b>Y auto</b> fits the values in view; turned off, a small sheet asks for the <b>Min</b> and <b>Max</b>.</li>
+<li>The legend: a chip per line with its latest value; a tap hides or shows the line, its <b>...</b> button
+offers <b>Take off the chart</b>. <b>Clear</b> empties the chart.</li>
+<li><b>Cursors</b> puts A and B on the view and holds it; drag each by its round handle (A's at the top, B's at the
+foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
+B − A, and the min, max and mean between them. <b>Cursors</b> again takes them off.</li>
+</ul>
+<h3>Monitor and Log</h3>
+<ul>
+<li><b>Monitor</b>: every frame on the link while the screen shows, its time and direction (TX, RX) over its bytes.
+<b>Pause</b> keeps what is there, <b>Clear</b> empties it.</li>
+<li><b>Log</b>: what happened (the map, the link, the writes and their answers, the recordings), warnings in amber
+and errors in red. <b>Copy</b> puts it all on the clipboard, <b>Clear</b> empties it.</li>
+</ul>
+<h3>Recording and the background</h3>
+<ul>
+<li><b>Record</b> in the drawer writes a CSV of the logged registers in the app's folder; the Log says where.
+<b>Stop recording</b> ends it.</li>
+<li>While a link is up or wanted, Android shows a notification with the link's state and the recording's time: the
+link and a recording go on with the screen off or another app in front. A tap on it opens the app; <b>Disconnect</b>
+takes it away.</li>
+<li><b>Keep the screen on while connected</b> (at the drawer's foot, on at first): the screen does not go dark while
+the link is up.</li>
+</ul>
+<h3>Back</h3>
+<p>Android's back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
+the drawer. With nothing open it leaves the app, whose link goes on in the background.</p>
+<p>Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.</p>
 )HTML") },
 };
+
+/* The phone's list: its own topics, then the desktop's on it */
+QList<const Topic *> phoneTopics() {
+	QList<const Topic *> list;
+	for (const Topic &topic : PHONE_TOPICS) list << &topic;
+	for (const Topic &topic : TOPICS)
+		if (topic.onPhone) list << &topic;
+	return list;
+}
 
 /* The opening tag of a code block: %CODE% in a page becomes this. */
 QString codeBlockTag(const ThemeColors &c) {
@@ -885,6 +973,16 @@ QString pageStyle(const ThemeColors &c) {
 			.arg(c.text.name(), c.accent.name());
 }
 
+/* A topic's page, translated, styled and its markers filled */
+QString pageOf(const Topic &topic, const ThemeColors &colors) {
+	QString html = QCoreApplication::translate("HelpDialog", topic.html);
+	html.replace(QLatin1String("%CODE%"), codeBlockTag(colors));
+	/* the engine's own numbers, so the page says what it does */
+	html.replace(QLatin1String("%OFFLINE_MISSES%"), QString::number(IoEngine::OFFLINE_AFTER_TIMEOUTS));
+	html.replace(QLatin1String("%OFFLINE_RETRY_S%"), QString::number(IoEngine::OFFLINE_RETRY_MS / 1000.0));
+	return pageStyle(colors) + html;
+}
+
 } // namespace
 
 namespace help {
@@ -898,12 +996,21 @@ QString title(int index) {
 
 QString page(int index, const ThemeColors &colors) {
 	if (index < 0 || index >= topicCount()) return QString();
-	QString html = QCoreApplication::translate("HelpDialog", TOPICS[index].html);
-	html.replace(QLatin1String("%CODE%"), codeBlockTag(colors));
-	/* the engine's own numbers, so the page says what it does */
-	html.replace(QLatin1String("%OFFLINE_MISSES%"), QString::number(IoEngine::OFFLINE_AFTER_TIMEOUTS));
-	html.replace(QLatin1String("%OFFLINE_RETRY_S%"), QString::number(IoEngine::OFFLINE_RETRY_MS / 1000.0));
-	return pageStyle(colors) + html;
+	return pageOf(TOPICS[index], colors);
+}
+
+int phoneTopicCount() { return int(phoneTopics().size()); }
+
+QString phoneTitle(int index) {
+	const QList<const Topic *> list = phoneTopics();
+	if (index < 0 || index >= list.size()) return QString();
+	return QCoreApplication::translate("HelpDialog", list[index]->title);
+}
+
+QString phonePage(int index, const ThemeColors &colors) {
+	const QList<const Topic *> list = phoneTopics();
+	if (index < 0 || index >= list.size()) return QString();
+	return pageOf(*list[index], colors);
 }
 
 } // namespace help

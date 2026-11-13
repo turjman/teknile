@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-// The Help screen (part B.5), over the whole window: the desktop's Help topics (PhoneHelp, help_topics.cpp) as a list,
-// a tap opens a topic's page. The back button at the header's start, and Android's back gesture, go from a page to the
-// list and from the list out of the Help. In Arabic the list and the header are mirrored and the pages run right to
-// left (their code blocks left to right). Opened from the drawer's Display section.
+// The Help screen (part B.5), over the whole window: the Help's topics that apply on a phone (PhoneHelp,
+// help_topics.cpp: "Using the phone app" first, then the desktop's) as a list, a tap opens a topic's page. The back
+// button at the header's start, and Android's back gesture, go from a page to the list and from the list out of the
+// Help. In Arabic the list and the header are mirrored and the pages run right to left (their code blocks left to
+// right). Opened from the drawer's Display section.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -163,7 +164,7 @@ Popup {
             }
         }
 
-        // a topic's page: the desktop's, as rich text
+        // a topic's page, as rich text
         Flickable {
             id: pageFlick
             objectName: "helpPage"
