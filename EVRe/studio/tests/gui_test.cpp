@@ -59,6 +59,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QListWidget>
+#include <QPointingDevice>
 #include <QMenu>
 #include <QMessageBox>
 #include <QPainter>
@@ -632,6 +633,7 @@ public:
 		chartFastMath();
 		readoutSteady();
 		displayMenu();
+		touchScroll();
 		helpPages();
 		languages();
 		measuresManyLines();
@@ -16034,6 +16036,190 @@ private:
 
 	/* Normalise and Smooth, in the Display menu with Drawing (in the row they widened it past a 1280-wide window):
 	 * Normalise takes the Y controls away, Smooth is saved; both in the button's tooltip; the button keeps its text */
+	/* Touch scrolling: a finger dragged over a scrolling area scrolls it and selects nothing, wherever it starts (a row,
+	 * a checkbox in the sidebar); a tap is a click; the mouse is unchanged (a drag selects). On a touch screen, a Windows
+	 * one as the phone's, only the scroll bars moved them, and a finger's drag over a list selected its rows. The
+	 * finger's events are the mouse events Qt makes from a touch (their device a touch screen), as TouchScroll sees them. */
+	void touchScroll() {
+		static QPointingDevice *screen = QTest::createTouchDevice();
+		qint64 ms = 100000;
+		/* `at` in w's coordinates when the drag began: a finger stays where it is on the screen while what is under it
+		 * scrolls, so the screen point is fixed at the start (w->mapToGlobal now would follow the content) */
+		QPointF origin;
+		const auto send = [&](QWidget *w, QEvent::Type type, QPoint at, bool finger, Qt::MouseButtons held) {
+			if (type == QEvent::MouseButtonPress) origin = w->mapToGlobal(QPointF(0, 0));
+			const QPointF global = origin + QPointF(at);
+			const Qt::MouseButton button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+			QMouseEvent e(type, w->mapFromGlobal(global), global, global, button, held, Qt::NoModifier,
+					finger ? screen : QPointingDevice::primaryPointingDevice());
+			e.setTimestamp(quint64(ms += 16));
+			QApplication::sendEvent(w, &e);
+		};
+		const auto drag = [&](QWidget *w, QPoint from, QPoint to, bool finger) {
+			send(w, QEvent::MouseButtonPress, from, finger, Qt::LeftButton);
+			for (int k = 1; k <= 20; k++) {
+				QTest::qWait(5);
+				send(w, QEvent::MouseMove, from + (to - from) * k / 20, finger, Qt::LeftButton);
+			}
+			send(w, QEvent::MouseButtonRelease, to, finger, Qt::NoButton);
+		};
+		QListWidget list;
+		for (int i = 0; i < 300; i++) list.addItem(QStringLiteral("row %1").arg(i));
+		list.resize(300, 300);
+		list.show();
+		(void) QTest::qWaitForWindowExposed(&list);
+		QWidget *view = list.viewport();
+		QScrollBar *bar = list.verticalScrollBar();
+		/* a finger up the list: it scrolls, nothing selected */
+		drag(view, QPoint(150, 250), QPoint(150, 40), true);
+		const bool fingerScrolled = QTest::qWaitFor([&] { return bar->value() > 5; }, 2000);
+		QTest::qWait(600); /* the fling runs out */
+		const bool fingerSelected = !list.selectedItems().isEmpty();
+		/* a tap: the row under it selected */
+		const int top = bar->value();
+		QListWidgetItem *tapped = list.itemAt(QPoint(20, 30));
+		send(view, QEvent::MouseButtonPress, QPoint(20, 30), true, Qt::LeftButton);
+		send(view, QEvent::MouseButtonRelease, QPoint(20, 30), true, Qt::NoButton);
+		const bool tapSelects = tapped && list.selectedItems() == QList<QListWidgetItem *>{ tapped } && bar->value() == top;
+		/* the mouse: a drag selects, the list does not scroll by it */
+		list.clearSelection();
+		bar->setValue(0);
+		drag(view, QPoint(150, 250), QPoint(150, 40), false);
+		QTest::qWait(300);
+		const bool mouseAsBefore = bar->value() == 0 && !list.selectedItems().isEmpty();
+		/* from the selected row the drag selects the rows it passes, the list not scrolled (the owner's rule); from
+		 * another row it scrolls and the selection stays */
+		list.setSelectionMode(QAbstractItemView::ExtendedSelection);
+		list.clearSelection();
+		bar->setValue(0);
+		list.setCurrentRow(2, QItemSelectionModel::ClearAndSelect);
+		const QPoint onSelected = list.visualItemRect(list.item(2)).center();
+		drag(view, onSelected, onSelected + QPoint(0, list.visualItemRect(list.item(2)).height() * 5), true);
+		QTest::qWait(300);
+		const int selectedByDrag = int(list.selectedItems().size());
+		const bool dragSelects = selectedByDrag == 6 && bar->value() == 0;
+		drag(view, QPoint(150, 250), QPoint(150, 60), true);
+		const bool otherScrolls = QTest::qWaitFor([&] { return bar->value() > 5; }, 2000)
+				&& int(list.selectedItems().size()) == selectedByDrag;
+		const int otherAt = bar->value(), otherSelected = int(list.selectedItems().size());
+		QTest::qWait(600);
+		/* as Windows gives a finger: a mouse press and a release made of it, and between them only touch updates (to the
+		 * window), no mouse moves */
+		bar->setValue(0);
+		list.clearSelection();
+		QTest::qWait(100);
+		{
+			const QPointF from = view->mapToGlobal(QPointF(150, 250));
+			send(view, QEvent::MouseButtonPress, QPoint(150, 250), true, Qt::LeftButton);
+			for (int k = 1; k <= 20; k++) {
+				QTest::qWait(5);
+				const QPointF global = from - QPointF(0, 10.0 * k);
+				/* to the window, as Windows gives them (the log of the owner's screen): a widget that takes no touch is
+				 * given none */
+				QEventPoint point(0, QEventPoint::Updated, list.window()->mapFromGlobal(global), global);
+				QTouchEvent touch(QEvent::TouchUpdate, screen, Qt::NoModifier, { point });
+				touch.setTimestamp(quint64(ms += 16));
+				QApplication::sendEvent(list.window()->windowHandle(), &touch);
+			}
+			send(view, QEvent::MouseButtonRelease, QPoint(150, 50), true, Qt::NoButton);
+		}
+		const bool touchUpdatesScroll = QTest::qWaitFor([&] { return bar->value() > 5; }, 2000) && list.selectedItems().isEmpty();
+		const int touchAt = bar->value(), touchSelected = int(list.selectedItems().size());
+		QTest::qWait(600);
+		std::printf("     (touch: from the selected row %d rows selected, from another the list at %d with %d selected; by "
+				"touch updates alone the list at %d with %d selected)\n", selectedByDrag, otherAt, otherSelected, touchAt,
+				touchSelected);
+		check(dragSelects && otherScrolls && touchUpdatesScroll,
+				"touch: a finger's drag from a selected row selects the rows it passes (the list does not scroll), from "
+				"another row it scrolls and the selection stays; a drag that comes as touch updates alone (as on Windows) "
+				"scrolls too");
+		/* the sidebar: a finger that comes down on a checkbox scrolls it, the box not ticked */
+		auto *side = window_.findChild<Sidebar *>();
+		QCheckBox *box = nullptr;
+		for (QCheckBox *b : window_.findChildren<QCheckBox *>())
+			if (b->text() == QLatin1String("Reconnect by itself")) box = b;
+		bool sideScrolled = false, boxKept = false;
+		int sideFrom = -1, sideTo = -1, sideRange = 0;
+		if (side && box) {
+			const QSize was = window_.size();
+			window_.resize(was.width(), 520); /* room short of the sidebar's cards: it scrolls */
+			QTest::qWait(200);
+			side->verticalScrollBar()->setValue(0);
+			side->ensureWidgetVisible(box, 0, 160); /* the box in view, room above it for the finger to go up */
+			QTest::qWait(100);
+			sideRange = side->verticalScrollBar()->maximum();
+			sideFrom = side->verticalScrollBar()->value();
+			const bool ticked = box->isChecked();
+			const QPoint on = box->rect().center();
+			const QPoint up = on - QPoint(0, 100); /* the finger 100 px up the screen */
+			drag(box, on, up, true);
+			sideScrolled = QTest::qWaitFor([&] { return side->verticalScrollBar()->value() > sideFrom + 5; }, 2000);
+			QTest::qWait(600);
+			sideTo = side->verticalScrollBar()->value();
+			boxKept = box->isChecked() == ticked;
+			window_.resize(was);
+			QTest::qWait(200);
+		}
+		std::printf("     (touch: a finger scrolled the list to %d, selected %d, a tap selected %d; the mouse: scrolled %d, "
+				"selected %d; the sidebar (range %d) from %d to %d, the box kept %d)\n", top, int(fingerSelected),
+				int(tapSelects), bar->value(), int(!list.selectedItems().isEmpty()), sideRange, sideFrom, sideTo, int(boxKept));
+		check(fingerScrolled && !fingerSelected && tapSelects && mouseAsBefore,
+				"touch: a finger dragged over a list scrolls it and selects nothing, a tap selects the row under it; the "
+				"mouse as before (a drag selects, it does not scroll)");
+		check(sideRange > 0 && sideScrolled && boxKept,
+				"touch: a finger that comes down on a checkbox in the sidebar scrolls the sidebar, the box not ticked");
+		/* at an end the list's frame lights while the finger pushes on (the owner could not tell the end was reached; a
+		 * scroll bar is not always in sight on a phone), and goes out a moment after */
+		list.clearSelection();
+		bar->setValue(0);
+		QTest::qWait(100);
+		send(view, QEvent::MouseButtonPress, QPoint(150, 60), true, Qt::LeftButton);
+		for (int k = 1; k <= 10; k++) {
+			QTest::qWait(5);
+			send(view, QEvent::MouseMove, QPoint(150, 60 + 12 * k), true, Qt::LeftButton);
+		}
+		const bool lit = list.property("touchEnd").toBool() && bar->value() == 0;
+		send(view, QEvent::MouseButtonRelease, QPoint(150, 180), true, Qt::NoButton);
+		const bool out = QTest::qWaitFor([&] { return !list.property("touchEnd").toBool(); }, 1500);
+		/* drawn, not only set (a colour alone did not change Fusion's frame of a list styled nowhere else, and the
+		 * sidebar's own rule outranked it): the accent on the list's frame and on the sidebar's right edge, nothing moved */
+		const auto light = [](QWidget *w, bool on) {
+			w->setProperty("touchEnd", on);
+			w->style()->unpolish(w);
+			w->style()->polish(w);
+			w->update();
+			QApplication::processEvents();
+		};
+		const auto edge = [](QWidget *w, bool right) {
+			const QImage image = w->grab().toImage();
+			return image.pixelColor(right ? image.width() - 1 : 0, image.height() / 2);
+		};
+		const QColor accent = Theme::colors().accent;
+		const auto isAccent = [&](const QColor &c) {
+			return std::abs(c.red() - accent.red()) + std::abs(c.green() - accent.green()) + std::abs(c.blue() - accent.blue()) < 24;
+		};
+		const QRect viewWas = view->geometry();
+		light(&list, true);
+		const QColor listLit = edge(&list, false);
+		const bool listKept = view->geometry() == viewWas;
+		light(&list, false);
+		const QColor listOut = edge(&list, false);
+		QColor sideLit, sideOut;
+		if (side) {
+			light(side, true);
+			sideLit = edge(side, true);
+			light(side, false);
+			sideOut = edge(side, true);
+		}
+		std::printf("     (touch: the lit frame %s (out %s), the sidebar's edge %s (out %s), the accent %s, the list's "
+				"contents kept %d)\n", qPrintable(listLit.name()), qPrintable(listOut.name()), qPrintable(sideLit.name()),
+				qPrintable(sideOut.name()), qPrintable(accent.name()), int(listKept));
+		check(lit && out && isAccent(listLit) && !isAccent(listOut) && listKept && side && isAccent(sideLit) && !isAccent(sideOut),
+				"touch: a finger pushing at the top of a list lights the list's frame (the accent, drawn: a plain list's and "
+				"the sidebar's edge too, nothing moved), which goes out a moment after the finger stops; the list stays at its "
+				"top");
+	}
+
 	void displayMenu() {
 		auto *display = window_.findChild<QPushButton *>(QStringLiteral("chartDisplay"));
 		auto *normalise = window_.findChild<QAction *>(QStringLiteral("chartNormalise"));
