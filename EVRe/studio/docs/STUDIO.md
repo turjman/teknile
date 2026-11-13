@@ -375,6 +375,7 @@ This chapter installs or builds the Studio, starts the fake device from `tests/`
 | `EVReStudio-<version>-windows.zip` | Windows, portable: unzip anywhere and run `EVReStudio.exe`. |
 | `EVReStudio-<version>-x86_64.AppImage` | Linux: make it executable (`chmod +x`) and run it. |
 | `evre-tools-<version>-linux-x86_64.tar.gz` | Linux: `evre` and `evre-sim` with the Qt libraries they need (`bin/`, `lib/`). |
+| `EVReStudio-<version>-arm64.apk` | Android 9 or newer, arm64: open it on the phone and allow the browser or file manager to install unknown apps; a board goes on the phone's USB port through an OTG adapter (25.6). |
 
 The Windows installer and zip hold the Studio, `evre`, `evre-sim`, the Qt runtime, the example maps and bus file (`maps/`),
 README, LICENSE, NOTICE and the map format's JSON Schema (`evre-map-1.schema.json`, 32.5; the Linux tools' archive has it
@@ -3446,6 +3447,7 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `phone/reconnect` | `true` | on&nbsp;change | The phone's Reconnect by itself. |
 | `phone/polling`,&nbsp;`phone/interval` | `true`,&nbsp;`100` | on&nbsp;change | The phone's polling and its interval, ms (0: as fast as the device answers). |
 | `phone/map` | empty | on&nbsp;change | The map the phone opens at start: a path, or Android's `content://` one; empty or gone: the app's first map. |
+| `android/keepScreenOn` | `true` | on&nbsp;change | The phone keeps its screen on while connected (25.6). |
 | `ui/dark` | `true` | on&nbsp;close | Dark theme. |
 | `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
 | `ui/geometry` | none | on&nbsp;close | The window's size and place. |
@@ -5138,6 +5140,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
 | `src/evre/usb_bridge.h` | `UsbBridge`: what the Android link needs of Android's USB host API (the devices, open, send, close) and its `Sink`; `UsbBridge::system()` on Android |
 | `src/evre/link_android.h`,&nbsp;`.cpp` | `AndroidUsbLink`: a USB CDC device on Android through a `UsbBridge`, its words queued to the link's thread. Built on every system, so the GUI test drives it with a fake bridge |
+| `android/src/com/teknile/evre/EvreService.java` | the phone's foreground service (type `connectedDevice`) and its notification while a link is wanted; the screen kept on; a screen's orientation |
 | `src/evre/usb_bridge_jni.cpp` | the `UsbBridge` over JNI to `android/src/com/teknile/evre/EvreUsb.java` (the Java layer: permission, the CDC interfaces, the line coding, DTR, the reader thread). Built on Android only |
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names), `AUTO_SEND_DIVIDERS` (the 16 prescalers + 1 of 13.8) and `autoSendRatesFor(maxHz, tickHz)` (the rates a map's `auto_send` limits leave; the checker, the Map settings and the sidebar use it) |
@@ -5202,7 +5205,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale; `apply` takes any application (`QCoreApplication`), the desktop's and the phone's |
 | `translations/evre_studio_ar.ts` | Arabic: every text and Help page, the phone's QML texts too (`qt_add_translations` on `evre_engine`, built into each program at `:/i18n`) |
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
-| `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
+| `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages (`help_topics.cpp`) in a dialog, the topics beside the page |
+| `src/ui/help_topics.h`,&nbsp;`.cpp` | `help::`: the help pages, kept as HTML in the source (context `HelpDialog`), their titles and pages translated, styled and with their markers filled; in `evre_engine`, shown by the desktop's dialog and the phone's Help screen (split 5) |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
@@ -5213,6 +5217,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/port_list.h`,&nbsp;`.cpp` | `PortList`: the USB devices plugged in (`UsbBridge::devices()`), the map's own named by it |
 | `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, Copy and Clear |
 | `src/phone/register_list.h`,&nbsp;`.cpp` | `RegisterList`: the Registers screen's rows over `RegisterModel`, a row per register in sections by group, the desktop's search, its changes forwarded row by row |
+| `src/phone/phone_system.h`,&nbsp;`.cpp` | `SystemBridge`: what Android does for the app: the foreground service with its notification, the screen kept on, a screen's orientation; Android's over JNI to `android/src/com/teknile/evre/EvreService.java`, none elsewhere, a test's stand-in in the test |
+| `src/phone/phone_help.h`,&nbsp;`.cpp` | `PhoneHelp`: the Help screen's topics and pages (`help_topics.cpp`), right to left in Arabic |
 | `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's and the chart demo's speed line, `EVRE_PERF`) |
 | `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels; `ChartLines`: the legend (25.6) |
 | `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
@@ -5226,6 +5232,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/qml/WriteSheet.qml` | the write sheet: the value or an enum's list to choose from, Apply, the limits asked first in a warning box, the answer; kept above the keyboard |
 | `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
 | `src/phone/qml/P9Screen.qml` | the proof P-9's list |
+| `src/phone/qml/HelpScreen.qml` | the Help over the whole window: the topics, a topic's page, back by steps |
 | `src/phone/qml/ChartScreen.qml` | the Chart screen: the chart, its labels, Live / Hold, the window; the pinch, the drag and the double tap |
 | `android/AndroidManifest.xml` | the APK's manifest: package `com.teknile.evrestudio`, USB host |
 | `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder` (`assets:/maps` on Android), `chartOnly` (the Android proof's switch, `EVRE_CHART_ONLY`: `MainWindow` shows the Chart tab alone, `ChartTab` scrolls its rows of controls sideways), `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
@@ -5818,9 +5825,10 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 
 | Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested&nbsp;by |
 |---|---|---|---|
+| `PhoneHelp` | singleton: the Help screen's topics and pages, the desktop's (`help_topics.cpp`), right to left in Arabic | `titles`; `page(index, dark)` | phone test (Help) |
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `badFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`, and the phone's soft tones `accentSoft`, `goodSoft`, `warnSoft`, `badSoft` (the state's colour over the surface at 14 % dark, 8 % light: behind chips, the pill, the chosen tab, the warning); signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
-| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines) |
+| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()`; DEVICE_ID read again after no answer; the values copied once a frame (`sync`), writes as `MainWindow::onWriteRequested`, Plot with the lines' limit; the chart's feed: a line per plotted register in the theme's next series colour, each poll's samples (`takeSamples`) once a frame on the engine's clock, a disconnect keeping the lines; fast lines: a channel plotted switches its stream on, the blocks (`takeFastBlocks`) into a `fast::Store` per stream, kept for the chart's memory; the system (`SystemBridge`): the foreground service while a link is wanted, the screen kept on while connected, a screen's orientation | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `connected`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`, `registerList`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`, `editText`, `choices`, `limitsText`, `writeQuestion`, `write`, `setPlot`, `chart`, `fastChannels`, `setFastPlot`, `unplotLine`, `fastLineId`; `keepScreenOn`, `serviceText`, `screenKeptOn`, `orientation`; `attachWindow`, `sync`; signals `message(level, text)`, `writeAnswered(row, ok, text)`, `notice(text)`; `setUsbBridgeForTests`, `setSystemBridgeForTests` | phone test (connect to USB gone, DEVICE_ID again, the Registers checks, the chart's lines, fast lines, service, orientation) |
 | `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `clear`, `copy`, `text` | phone test (Log screen) |
 | `RegisterList` | list model over `RegisterModel`: a row per register, each group's together in the order of its first register; the search (`RegisterFilter`); `dataChanged` forwarded row by row with the roles that changed, the glow's own repaints only when a glow begins; stale looked at every 250 ms | roles `name`, `group`, `addr`, `value`, `unit`, `decoded`, `glow`, `direction`, `writable`, `plotted`, `error`, `stale`, `plottable`, `danger`, `source`; `search`, `count`, `total`, `glowMs`; `entry`, `copy` | phone test (Registers) |
@@ -6733,7 +6741,7 @@ record and a time for each. `fast::Store` (`src/model/fast_store.*`) keeps them 
 
 ## 24. Extending the Studio
 
-Each change touches code, tests, the help pages (`src/ui/help_dialog.cpp`) and this document. The lists below say
+Each change touches code, tests, the help pages (`src/ui/help_topics.cpp`) and this document. The lists below say
 where.
 
 ### 24.1 An API command
@@ -6930,13 +6938,14 @@ in `evre_studio.iss`): code signing asks every signed file for its product and v
 ### 25.5 Installers and releases
 
 `.github/workflows/release.yml` makes the files a release offers. It runs on a tag `vX.Y.Z`, on a pull request that
-touches it or `packaging/`, and by hand (`workflow_dispatch`); never on other pushes.
+touches it, `packaging/` or `android/`, and by hand (`workflow_dispatch`); never on other pushes.
 
 | Job | What it does |
 |---|---|
 | `version` | The version from `project(VERSION)`. On a tag: stops with a message unless the tag is that version and `EVRe/CHANGELOG.md` has a section `## X.Y.Z`. |
 | `windows` | Qt 6.8.3 MinGW (as `ci.yml`): `EVReStudio`, `evre`, `evre-sim` built; `windeployqt` with the compiler runtime and the translations, `qtbase_ar.qm` too; the installer (`packaging/windows/evre_studio.iss`, Inno Setup 6: per user, no administrator, Start menu, optional desktop icon, uninstaller) and the portable zip of the same folder. |
 | `linux` | On Ubuntu 22.04 (an older glibc: it runs on more systems): the AppImage with `linuxdeploy` and its Qt plugin (`packaging/linux/evre-studio.desktop`, the icons), started under xvfb with `EVRE_SHOT` to check it pictures its window; `evre` and `evre-sim` with their Qt libraries in a tarball, `evre validate` run from it. |
+| `android` | The phone's program as `EVReStudio-<version>-arm64.apk` (Qt 6.8.3 for Android, NDK r26b, as `ci.yml`'s `android` job), aligned and signed: with the release key when the repository has it (the secrets `ANDROID_KEYSTORE_B64`, the keystore in base64, `ANDROID_KEYSTORE_PASSWORD`, and `ANDROID_KEY_ALIAS`, `evre` when unset), else with a key made for the run, which the release's text then says. Updates must carry the same key: the owner keeps the keystore outside the repository and backs it up. |
 | `release` | On a tag only: a GitHub release with the files and the changelog's section as its text, and a note that the installer is not code-signed. |
 
 On a pull request the files are the run's artifacts, nothing is published. Making a release: `EVRe/CONTRIBUTING.md`.
@@ -7082,6 +7091,25 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   ```
 - **What is still to come.** The Monitor screen says what will come (part B.4); the chart gets its cursors with
   B.4.
+
+**Background, Help, orientation, back** (part B.5):
+
+- **With the screen off** the link and a recording go on: while a link is wanted the app runs Android's foreground
+  service of type `connectedDevice` (`EvreService.java`, A.4 and A-6) with a notification that says the link's state
+  and, while recording, its time (*Connected: 127.0.0.1:1210 · recording 00:12:34*, once a second). It goes with
+  Disconnect. Android 13 and newer ask once, at the first link, whether the app may show notifications; without it the
+  service still runs. The manifest declares the service, `FOREGROUND_SERVICE_CONNECTED_DEVICE` and, as that type's
+  prerequisite for a TCP link on Android 14, `CHANGE_NETWORK_STATE`.
+- **The screen stays on** while connected (A-5): the drawer's *Keep the screen on while connected*
+  (`android/keepScreenOn`, on by default).
+- **Each tab its orientation** (A-16): the Chart and the Monitor landscape, the Registers and the Log portrait, either
+  way up; Android turns the app when the tab changes. The proof P-9 turns with the phone.
+- **Help**, at the drawer's foot: the desktop's Help, every topic, in the app's language (`ui/help_topics.cpp`,
+  shared with the desktop's dialog: split 5); a tap on a topic opens its page, the header's back chevron goes back to
+  the list. In Arabic every paragraph runs right to left, the code blocks left to right, as on the desktop.
+- **Android's back** (the gesture or the button) closes what is open, the topmost first: a Help page goes back to the
+  list, then the Help closes, then the write sheet, then the drawer; with nothing open Android has it and the app goes
+  to the background. `Main.qml`'s `back()` gets it before anything else (`phone_app.cpp`).
 
 **Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
 trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
@@ -8176,7 +8204,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 68 (26.11), 1182. The
+the phone test's 72 (26.11), 1186. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8700,9 +8728,13 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | contrast | every muted text in the picture at least 4.5:1 against what is drawn under it (the commonest colour of its box), dark and light; with a popup open, its own texts |
 | USB&nbsp;/&nbsp;TCP&nbsp;text | the drawer's chosen half: its text white on the accent's fill in the picture, at least 4.5:1, dark and light; the other half's in the text colour |
 | isolation | the run's settings in an ini file of a folder of its own (a temporary one), its recordings beside it |
+| service | through a stand-in for Android (`setSystemBridgeForTests`): the service up while a link is wanted with the link's state, the recording's time in it once a second, back to the link's state when it stops, gone after Disconnect; the screen kept on while connected, let go with the setting off (saved) |
+| orientation | each tab asks for its own: the Chart and the Monitor landscape, the Registers and the Log portrait |
+| Help | the drawer's Help: every topic of the desktop's Help, each page in English and in Arabic with the topic's title; back goes to the list; the list's texts inside their rows |
+| back | Android's back closes a Help page to its list, the Help, the drawer, the write sheet; with nothing open it is not taken (Android leaves the app) |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (68 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (72 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,

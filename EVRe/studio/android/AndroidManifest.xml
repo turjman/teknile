@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!-- EVRe Studio on Android (EVReStudioPhone, the phone's interface in Qt Quick): Qt's template (Qt 6.8,
-     src/android/templates) with the package's name and USB host. The activity turns with the phone; each screen's
-     own orientation comes later from the program (A-16). The window is made smaller over the soft keyboard
+     src/android/templates) with the package's name and USB host. The activity turns with the phone, as each screen
+     asks (A-16: EvreService.orientation). The window is made smaller over the soft keyboard
      (adjustResize): left unset, Qt 6.8 picks adjustPan for a field one line high, and the pan left the write sheet's
      field under the keyboard on a Samsung phone (Main.qml's keyboardLift covers what is left). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -13,6 +13,13 @@
     <!-- %%INSERT_FEATURES -->
     <!-- a board on the phone's USB port (OTG): no device filter, the permission is asked at Connect -->
     <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+    <!-- the link and a recording go on with the screen off (EvreService.java): a foreground service of type
+         connectedDevice, its permission, CHANGE_NETWORK_STATE as its prerequisite for a TCP link (Android 14), and
+         its notification shown (Android 13) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <supports-screens
         android:anyDensity="true"
         android:largeScreens="true"
@@ -44,6 +51,11 @@
                 android:name="android.app.arguments"
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
+
+        <service
+            android:name="com.teknile.evre.EvreService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

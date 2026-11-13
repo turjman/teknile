@@ -94,6 +94,7 @@ qt_add_library(evre_engine STATIC
     src/ui/chart_data.h         src/ui/chart_data.cpp
     src/ui/theme.h              src/ui/theme_colors.cpp
     src/ui/language.h           src/ui/language.cpp
+    src/ui/help_topics.h        src/ui/help_topics.cpp
 )
 target_include_directories(evre_engine PUBLIC src)
 target_compile_definitions(evre_engine PUBLIC EVRE_STUDIO_VERSION="${PROJECT_VERSION}")
@@ -254,7 +255,7 @@ endif() # NOT ANDROID
 # Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
-    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
+    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon HelpScreen PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
             ChartScreen)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
@@ -272,6 +273,7 @@ if(EVRE_PHONE)
             src/phone/qml/LinkPill.qml
             src/phone/qml/LogScreen.qml
             src/phone/qml/PhoneIcon.qml
+            src/phone/qml/HelpScreen.qml
             src/phone/qml/PlaceholderScreen.qml
             src/phone/qml/P9Screen.qml
             src/phone/qml/RegistersScreen.qml
@@ -287,6 +289,8 @@ if(EVRE_PHONE)
             src/phone/log_model.h       src/phone/log_model.cpp
             src/phone/register_list.h   src/phone/register_list.cpp
             src/phone/p9_proof.h        src/phone/p9_proof.cpp
+            src/phone/phone_system.h    src/phone/phone_system.cpp
+            src/phone/phone_help.h      src/phone/phone_help.cpp
             src/phone/chart_item.h      src/phone/chart_item.cpp
             src/phone/chart_demo.h      src/phone/chart_demo.cpp)
     # src/phone too: the generated type registrations include the classes' headers by their bare names

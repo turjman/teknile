@@ -42,6 +42,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QKeyEvent>
 #include <QPainter>
 #include <QPointer>
 #include <QProcess>
@@ -77,9 +78,11 @@
 #include "phone/p9_proof.h"
 #include "phone/phone_app.h"
 #include "phone/phone_session.h"
+#include "phone/phone_system.h"
 #include "phone/register_list.h"
 #include "ui/chart_data.h"
 #include "ui/language.h"
+#include "ui/help_topics.h"
 #include "ui/theme.h"
 
 Q_IMPORT_QML_PLUGIN(EVRePhonePlugin)
@@ -2275,6 +2278,181 @@ void checkOwnSettings() {
 			"recordings beside it (%2): two runs at once share nothing").arg(file, PhoneSession::recordingsFolder()));
 }
 
+/* ---- B.5: the service, the screen kept on, the orientation, the Help, the back gesture */
+
+/* the system's stand-in: what the session asked of Android's (phone_system.h), noted */
+struct FakeSystem : SystemBridge {
+	int holds = 0, releases = 0;
+	bool serviceUp = false, screenOn = false;
+	QString text;
+	QStringList orientations;
+	void holdService(const QString &, const QString &line) override {
+		++holds;
+		serviceUp = true;
+		text = line;
+	}
+	void releaseService() override {
+		++releases;
+		serviceUp = false;
+	}
+	void keepScreenOn(bool on) override { screenOn = on; }
+	void requestOrientation(Orientation orientation) override {
+		orientations << (orientation == Portrait ? QStringLiteral("portrait")
+						: orientation == Landscape ? QStringLiteral("landscape") : QStringLiteral("any"));
+	}
+};
+
+/* the service follows the link (A.4, A-6): up with the link's state while one is wanted, the recording's time in it,
+ * gone after Disconnect; the screen kept on while connected (A-5), not with the setting off */
+void checkService() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	{
+		Phone phone(PORTRAIT);
+		const bool quietAtStart = !system.serviceUp && !system.screenOn && system.holds == 0;
+		PhoneSession *session = connectFake(phone);
+		const bool up = session && system.serviceUp && system.text.startsWith(QLatin1String("Connected: 127.0.0.1:"))
+				&& system.screenOn && session->serviceText() == system.text;
+		const QString connectedText = system.text;
+		if (session) session->startRecord();
+		const bool recording = QTest::qWaitFor([&] { return system.text.contains(QStringLiteral(" · recording 00:00:0")); }, 3000);
+		const QString first = system.text;
+		const bool ticks = QTest::qWaitFor([&] { return system.text != first; }, 2500);
+		const QString recordingText = system.text;
+		if (session) session->stopRecord();
+		(void) QTest::qWaitFor([&] { return session && !session->recording(); }, 3000);
+		const bool backToLink = QTest::qWaitFor([&] { return system.text == connectedText; }, 2000);
+		/* the setting off: the screen let go while still connected, and saved */
+		if (session) session->setKeepScreenOn(false);
+		const bool screenLetGo = !system.screenOn && system.serviceUp
+				&& !QSettings().value(QStringLiteral("android/keepScreenOn"), true).toBool();
+		if (session) session->setKeepScreenOn(true);
+		const bool screenAgain = system.screenOn;
+		if (session) session->disconnectLink();
+		const bool gone = QTest::qWaitFor([&] { return !system.serviceUp && system.releases >= 1; }, 3000) && !system.screenOn
+				&& session && session->serviceText().isEmpty();
+		check(quietAtStart && up && recording && ticks && backToLink && screenLetGo && screenAgain && gone,
+				QStringLiteral("phone, service: up while a link is wanted with the link's state (\"%1\"), the recording's time in it "
+						"once a second (\"%2\"), back to the link's state when it stops; gone after Disconnect; the screen kept on "
+						"while connected, let go with the setting off (android/keepScreenOn saved); %3")
+						.arg(connectedText, recordingText)
+						.arg(QStringLiteral("start %1, up %2, recording %3, ticks %4, back %5, let go %6, again %7, gone %8")
+								.arg(quietAtStart).arg(up).arg(recording).arg(ticks).arg(backToLink).arg(screenLetGo)
+								.arg(screenAgain).arg(gone)));
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+}
+
+/* each tab's orientation (A-16): the Chart and the Monitor across, the Registers and the Log upright */
+void checkOrientation() {
+	FakeSystem system;
+	PhoneSession::setSystemBridgeForTests(&system);
+	QStringList seen;
+	bool ok = true;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		const char *tabs[] = { "tabChart", "tabRegisters", "tabMonitor", "tabLog" };
+		const char *wanted[] = { "landscape", "portrait", "landscape", "portrait" };
+		for (int i = 0; i < 4; ++i) {
+			phone.tap(phone.item(tabs[i]));
+			const QString asked = system.orientations.isEmpty() ? QString() : system.orientations.constLast();
+			seen << QStringLiteral("%1 %2").arg(QLatin1String(tabs[i]).mid(3), asked);
+			ok = ok && asked == QLatin1String(wanted[i]) && session && session->orientation() == QLatin1String(wanted[i]);
+		}
+	}
+	PhoneSession::setSystemBridgeForTests(nullptr);
+	check(ok, QStringLiteral("phone, orientation: each tab asks Android for its own: the Chart and the Monitor landscape, the "
+			"Registers and the Log portrait (%1)").arg(seen.join(QStringLiteral(", "))));
+}
+
+bool helpOpen(const Phone &phone) {
+	const QObject *help = phone.object("helpScreen");
+	return help && help->property("opened").toBool();
+}
+
+/* the drawer's Help button: the Help screen over the window, its list */
+void openHelp(const Phone &phone) {
+	phone.openDrawer();
+	phone.tap(phone.item("helpButton"));
+	(void) QTest::qWaitFor([&] { return helpOpen(phone) && phone.drawerClosed(); }, 3000);
+	phone.settle();
+}
+
+/* every Help topic in both languages: the list holds them all, each opens its page (the desktop's, translated), the
+ * back button goes to the list; every text of the list inside its row */
+void checkHelpTopics() {
+	QStringList bad;
+	int seen = 0;
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		Phone phone(PORTRAIT);
+		openHelp(phone);
+		QQuickItem *list = phone.item("helpList");
+		const int rows = list ? list->property("count").toInt() : -1;
+		if (!helpOpen(phone) || rows != help::topicCount()) bad << QStringLiteral("%1: %2 of %3 topics").arg(code).arg(rows).arg(help::topicCount());
+		for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" list: ") + text;
+		static const QRegularExpression arabic(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
+		for (int i = 0; i < help::topicCount(); ++i) {
+			if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, i));
+			phone.settle(150);
+			QQuickItem *page = phone.item("helpText");
+			const QString title = phone.text("helpTitle"), text = page ? page->property("text").toString() : QString();
+			const double height = page ? page->property("contentHeight").toDouble() : 0;
+			const bool translated = code == QLatin1String("en") || (title.contains(arabic) && text.contains(arabic));
+			if (!page || !page->isVisible() || title != help::title(i) || text.isEmpty() || height < 40 || !translated)
+				bad << QStringLiteral("%1 topic %2 \"%3\": %4 px%5").arg(code).arg(i).arg(title).arg(height)
+								.arg(translated ? "" : ", not translated");
+		}
+		phone.tap(phone.item("helpBack"));
+		if (!phone.item("helpList") || !phone.item("helpList")->isVisible()) bad << code + QStringLiteral(": Back did not go to the list");
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+	check(bad.isEmpty(), QStringLiteral("phone, Help: the drawer's Help shows every topic of the desktop's Help (%1), each page "
+			"in English and in Arabic, its title the topic's; Back goes to the list; the list's texts inside their rows %2")
+			.arg(help::topicCount()).arg(bad.join(QStringLiteral(" | "))));
+}
+
+/* Android's back (Qt::Key_Back), as the gesture sends it: accepted when it closed something */
+bool pressBack(const Phone &phone) {
+	QKeyEvent press(QEvent::KeyPress, Qt::Key_Back, Qt::NoModifier);
+	QCoreApplication::sendEvent(phone.window, &press);
+	QKeyEvent release(QEvent::KeyRelease, Qt::Key_Back, Qt::NoModifier);
+	QCoreApplication::sendEvent(phone.window, &release);
+	phone.settle();
+	return press.isAccepted();
+}
+
+/* back closes in order: a Help page to its list, the Help, the drawer, the write sheet; with nothing open it is left to
+ * Android, which leaves the app */
+void checkBackOrder() {
+	Phone phone(PORTRAIT);
+	QStringList steps;
+	openHelp(phone);
+	if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 2));
+	phone.settle(150);
+	pressBack(phone);
+	const bool toList = helpOpen(phone) && phone.item("helpList")->isVisible();
+	pressBack(phone);
+	const bool helpClosed = !helpOpen(phone);
+	phone.openDrawer();
+	pressBack(phone);
+	(void) QTest::qWaitFor([&] { return phone.drawerClosed(); }, 2000);
+	const bool drawerClosed = phone.drawerClosed();
+	openSheet(phone, QStringLiteral("FAN_SPEED"));
+	const bool sheetWasOpen = sheetOpen(phone);
+	pressBack(phone);
+	(void) QTest::qWaitFor([&] { return !phone.object("writeSheet")->property("visible").toBool(); }, 2000);
+	const bool sheetClosed = !phone.object("writeSheet")->property("visible").toBool();
+	search(phone, QString());
+	const bool leftToAndroid = !pressBack(phone);
+	check(toList && helpClosed && drawerClosed && sheetWasOpen && sheetClosed && leftToAndroid,
+			QStringLiteral("phone, back: a Help page to the list (%1), the Help closed (%2), the drawer closed (%3), the write sheet "
+					"closed (%4); with nothing open the back is left to Android, which leaves the app (%5)")
+					.arg(toList).arg(helpClosed).arg(drawerClosed).arg(sheetClosed).arg(leftToAndroid));
+}
+
+
 void checkMutedContrast() {
 	QStringList bad, lows;
 	int seen = 0;
@@ -2955,6 +3133,10 @@ int main(int argc, char **argv) {
 	RUN(checkMutedContrast);
 	RUN(checkSegmentContrast);
 	RUN(checkOwnSettings);
+	RUN(checkService);
+	RUN(checkOrientation);
+	RUN(checkHelpTopics);
+	RUN(checkBackOrder);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

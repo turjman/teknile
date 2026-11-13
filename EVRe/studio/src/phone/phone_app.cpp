@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QKeyEvent>
 #include <QSettings>
 #include <QPointer>
 #include <QQmlApplicationEngine>
@@ -41,6 +42,25 @@ void useOwnFolderAsked() {
 }
 
 namespace {
+
+/* Android's back (the gesture, the button: Qt::Key_Back) to Main.qml's back() before anything else sees it: it closes
+ * what is open in order (a Help page, the Help, the write sheet, the drawer) and says whether it did. A popup takes a
+ * back only while it has the keys, which the drawer and the sheet do not; what back() leaves goes on as usual, and
+ * with nothing open Android has it: the app goes to the background. */
+class BackKey : public QObject {
+public:
+	using QObject::QObject;
+
+protected:
+	bool eventFilter(QObject *watched, QEvent *event) override {
+		if (event->type() != QEvent::KeyPress || static_cast<QKeyEvent *>(event)->key() != Qt::Key_Back) return false;
+		QVariant answer; /* a QML function's return */
+		QMetaObject::invokeMethod(watched, "back", Q_RETURN_ARG(QVariant, answer));
+		const bool closed = answer.toBool();
+		if (closed) event->accept();
+		return closed;
+	}
+};
 
 /* a test aid asked for: its variable =1, or on Android the start intent's extra of that name */
 bool asked(const char *variable, const char *extra) {
@@ -87,6 +107,7 @@ QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool 
 	}
 	if (window)
 		if (auto *session = engine.singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession")) session->attachWindow(window);
+	if (window) window->installEventFilter(new BackKey(window));
 	return window;
 }
 

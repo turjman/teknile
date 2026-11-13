@@ -39,10 +39,15 @@ const QString KEY_RECONNECT = QStringLiteral("phone/reconnect");
 const QString KEY_POLLING = QStringLiteral("phone/polling");
 const QString KEY_INTERVAL = QStringLiteral("phone/interval");
 const QString KEY_MAP = QStringLiteral("phone/map");
+const QString KEY_SCREEN_ON = QStringLiteral("android/keepScreenOn"); /* the plan's A-5 */
 
 const QString FIRST_MAP = QStringLiteral("example_device.json");
 
 evre::UsbBridge *testBridge = nullptr;
+SystemBridge *testSystem = nullptr;
+bool systemFromTest = false;
+
+SystemBridge *systemBridge() { return systemFromTest ? testSystem : SystemBridge::system(); }
 
 } // namespace
 
@@ -57,6 +62,11 @@ PhoneSession::PhoneSession(QObject *parent)
 	autoReconnect_ = settings.value(KEY_RECONNECT, true).toBool();
 	polling_ = settings.value(KEY_POLLING, true).toBool();
 	intervalMs_ = settings.value(KEY_INTERVAL, 100).toInt();
+	keepScreenOn_ = settings.value(KEY_SCREEN_ON, true).toBool();
+	serviceTimer_.setInterval(1000);
+	connect(&serviceTimer_, &QTimer::timeout, this, &PhoneSession::updateSystem);
+	connect(this, &PhoneSession::linkChanged, this, &PhoneSession::updateSystem);
+	connect(this, &PhoneSession::recordingChanged, this, &PhoneSession::updateSystem);
 	linkText_ = tr("Not connected");
 	deviceText_ = tr("Device ID not read yet");
 	list_ = new RegisterList(model_, this);
@@ -101,6 +111,10 @@ PhoneSession::PhoneSession(QObject *parent)
 /* the engine closes the link and a recording on its thread, then the thread ends (MainWindow::~MainWindow) */
 PhoneSession::~PhoneSession() {
 	reconnectTimer_.stop();
+	if (SystemBridge *bridge = systemBridge()) {
+		if (!serviceText_.isEmpty()) bridge->releaseService();
+		if (screenKeptOn_) bridge->keepScreenOn(false);
+	}
 	if (chart_) chart_->setClock({}); /* its clock is the engine's, which goes now */
 	if (thread_ && thread_->isRunning()) {
 		QMetaObject::invokeMethod(engine_, [engine = engine_] { engine->shutdown(); }, Qt::BlockingQueuedConnection);
@@ -334,6 +348,64 @@ evre::UsbBridge *PhoneSession::usbBridge() {
 }
 
 void PhoneSession::setUsbBridgeForTests(evre::UsbBridge *bridge) { testBridge = bridge; }
+
+void PhoneSession::setSystemBridgeForTests(SystemBridge *bridge) {
+	testSystem = bridge;
+	systemFromTest = bridge != nullptr;
+}
+
+void PhoneSession::setKeepScreenOn(bool on) {
+	if (on == keepScreenOn_) return;
+	keepScreenOn_ = on;
+	QSettings().setValue(KEY_SCREEN_ON, on);
+	updateSystem();
+	emit settingsChanged();
+}
+
+void PhoneSession::setOrientation(const QString &orientation) {
+	if (orientation == orientation_) return;
+	orientation_ = orientation;
+	if (SystemBridge *bridge = systemBridge())
+		bridge->requestOrientation(orientation == QLatin1String("portrait") ? SystemBridge::Portrait
+				: orientation == QLatin1String("landscape") ? SystemBridge::Landscape : SystemBridge::Any);
+	emit systemChanged();
+}
+
+/* the service up while a link is wanted (its text the link's state and the recording's time), the screen kept on
+ * while connected; each told to the system only when it changes */
+void PhoneSession::updateSystem() {
+	QString text;
+	if (wantConnected_ || state_ == Connected) {
+		text = linkText_;
+		if (recording_) {
+			const qint64 s = recordClock_.isValid() ? recordClock_.elapsed() / 1000 : 0;
+			text += tr(" · recording %1").arg(QStringLiteral("%1:%2:%3").arg(s / 3600, 2, 10, QLatin1Char('0'))
+					.arg(s / 60 % 60, 2, 10, QLatin1Char('0')).arg(s % 60, 2, 10, QLatin1Char('0')));
+		}
+	}
+	const bool screen = keepScreenOn_ && state_ == Connected;
+	SystemBridge *bridge = systemBridge();
+	bool changed = false;
+	if (text != serviceText_) {
+		serviceText_ = text;
+		if (bridge) {
+			if (text.isEmpty()) bridge->releaseService();
+			else bridge->holdService(QStringLiteral("EVRe Studio"), text);
+		}
+		changed = true;
+	}
+	if (screen != screenKeptOn_) {
+		screenKeptOn_ = screen;
+		if (bridge) bridge->keepScreenOn(screen);
+		changed = true;
+	}
+	if (recording_ && !text.isEmpty()) {
+		if (!serviceTimer_.isActive()) serviceTimer_.start();
+	} else {
+		serviceTimer_.stop();
+	}
+	if (changed) emit systemChanged();
+}
 
 void PhoneSession::refreshPorts() { ports_->refresh(usbBridge(), map_); }
 
@@ -625,6 +697,7 @@ void PhoneSession::onRecordStarted(bool ok, const QString &err) {
 		return;
 	}
 	recording_ = true;
+	recordClock_.start();
 	addLog(LogModel::Info, tr("CSV recording started: %1").arg(QDir::toNativeSeparators(recordFile_)));
 	recordText_ = tr("Recording to %1").arg(QFileInfo(recordFile_).fileName());
 	emit recordingChanged();

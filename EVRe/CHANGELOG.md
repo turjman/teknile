@@ -32,6 +32,13 @@
 - **The keyboard covered the write sheet's field on the phone** while typing (a Samsung phone): Android now makes the
   window smaller over the keyboard, and the sheet and the Connect drawer keep the field typed in (the sheet's Apply
   too) above it where Android does not.
+- **The phone with the screen off, its Help, each screen's orientation and the back gesture.** While a link is
+  wanted, Android's foreground service keeps the app going with the screen off, its notification saying the link's
+  state and the recording's time; the screen stays on while connected (a switch in the drawer). The drawer's Help
+  shows the desktop's Help, every topic, in English and Arabic. The Chart and the Monitor turn the phone to
+  landscape, the Registers and the Log to portrait. Android's back closes the Help's page, the Help, the write sheet,
+  then the drawer; with nothing open the app goes to the background. A release now also ships
+  `EVReStudio-<version>-arm64.apk`.
 - **The phone's drawer wrote the chosen USB / TCP in black** on the accent's blue in the light theme; it is white in
   both themes now.
 - **Two runs of the phone test at once no longer touch each other**: each keeps its settings and recordings in a folder
