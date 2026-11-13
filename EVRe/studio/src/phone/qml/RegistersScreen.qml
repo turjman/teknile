@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// The Registers screen: every register of the map as a card (RegisterCard), in sections by group, the values live
-// while the link is up (PhoneSession.registerList, RegisterModel's values copied once a frame). A search field at the
-// top (the desktop's search: name, description, group, unit or address) with Clear; while no link is up a line says
-// so with a button to the Connect drawer. The "⋯" button's menu: Plot (or Take off the chart) and Copy; what they did,
-// or why not (the chart's limit of lines), shows a moment at the bottom.
+// The Registers screen: every register of the map as a card (RegisterCard), in sections by group (the group's header
+// stays at the top while its cards scroll under it), the values live while the link is up (PhoneSession.registerList,
+// RegisterModel's values copied once a frame). A search field at the top (the desktop's search: name, description,
+// group, unit or address), its magnifier and its clear cross drawn; how many registers show, quietly at the list's
+// foot. While no link is up a card at the top says how to connect, with a button to the Connect drawer; with no map,
+// the screen says so with the same button. The "⋯" button's menu: Plot (or Take off the chart) and Copy; what they
+// did, or why not (the chart's limit of lines), shows a moment at the bottom.
 // With perf (phone_app.h) a bar runs at the top, so the window draws every frame and the speed line times frames.
 import QtQuick
 import QtQuick.Controls
@@ -15,6 +17,8 @@ Item {
     id: screen
     property bool perf: false
     readonly property var registers: PhoneSession.registerList
+    // in landscape the cards keep a phone's width, in the middle: a card 900 wide reads as a stretched line
+    readonly property real columnWidth: 640
 
     signal connectAsked()
     signal writeAsked(int source)
@@ -51,99 +55,163 @@ Item {
             }
         }
 
-        RowLayout {
+        // the search field: a rounded bar, the magnifier at its start, the clear cross at its end while it holds text
+        Rectangle {
+            id: searchBox
+            objectName: "searchBox"
             Layout.fillWidth: true
+            Layout.maximumWidth: screen.columnWidth - 24
+            Layout.alignment: Qt.AlignHCenter
             Layout.leftMargin: 12
-            Layout.rightMargin: 4
-            Layout.topMargin: 4
-            spacing: 4
+            Layout.rightMargin: 12
+            Layout.topMargin: 8
+            Layout.bottomMargin: 4
+            implicitHeight: 48
+            radius: 24
+            color: PhoneTheme.surface2
+            border.color: searchField.activeFocus ? PhoneTheme.accent : PhoneTheme.border
+            border.width: searchField.activeFocus ? 2 : 1
 
-            TextField {
+            PhoneIcon {
+                objectName: "searchIcon"
+                anchors.left: parent.left
+                anchors.leftMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                kind: "search"
+                size: 22
+                color: PhoneTheme.muted
+            }
+            TextInput {
                 id: searchField
                 objectName: "registerSearch"
-                Layout.fillWidth: true
-                // only while empty: Material's label would float over the field's edge, half out of it
-                placeholderText: text.length === 0 ? qsTr("Search: name, unit, address") : ""
+                anchors.left: parent.left
+                anchors.right: clearButton.visible ? clearButton.left : parent.right
+                anchors.leftMargin: 48
+                anchors.rightMargin: clearButton.visible ? 0 : 16
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignLeft
+                color: PhoneTheme.text
+                selectionColor: PhoneTheme.accentFill
+                selectedTextColor: "white"
+                font.pixelSize: 16
+                clip: true
                 inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
                 onTextChanged: screen.registers.search = text
+                Accessible.role: Accessible.EditableText
+                Accessible.name: placeholder.text
             }
-            Button {
+            Label {
+                id: placeholder
+                objectName: "searchPlaceholder"
+                anchors.left: searchField.left
+                anchors.right: searchField.right
+                anchors.verticalCenter: parent.verticalCenter
+                horizontalAlignment: Text.AlignLeft
+                visible: searchField.text.length === 0
+                text: qsTr("Search: name, unit, address")
+                color: PhoneTheme.muted
+                font.pixelSize: 16
+                elide: Text.ElideRight
+            }
+            // a cross drawn, not a character: a phone's font may not have one
+            ToolButton {
+                id: clearButton
                 objectName: "searchClear"
-                text: qsTr("Clear")
-                flat: true
-                enabled: searchField.text.length > 0
-                onClicked: searchField.text = ""
-            }
-        }
-        Label {
-            objectName: "registerCount"
-            Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.bottomMargin: 4
-            text: screen.registers.count === screen.registers.total
-                  ? qsTr("registers: %1").arg(screen.registers.total)
-                  : qsTr("registers: %1 of %2").arg(screen.registers.count).arg(screen.registers.total)
-            color: PhoneTheme.muted
-            font.pixelSize: 13
-            elide: Text.ElideRight
-        }
-
-        // no link: the values are the last read, or none; the way to the drawer
-        Rectangle {
-            objectName: "registersOffline"
-            Layout.fillWidth: true
-            visible: !PhoneSession.connected
-            implicitHeight: offlineRow.implicitHeight + 8
-            color: PhoneTheme.surface2
-            RowLayout {
-                id: offlineRow
-                anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.leftMargin: 16
-                anchors.rightMargin: 4
-                spacing: 4
-                Label {
-                    objectName: "offlineText"
-                    Layout.fillWidth: true
-                    text: qsTr("Not connected: the values show once the link is up.")
-                    color: PhoneTheme.text
-                    font.pixelSize: 14
-                    wrapMode: Text.Wrap
-                }
-                Button {
-                    objectName: "registersConnect"
-                    text: qsTr("Connect…")
-                    flat: true
-                    onClicked: screen.connectAsked()
+                width: 48
+                height: 48
+                visible: searchField.text.length > 0
+                Accessible.name: qsTr("Clear")
+                onClicked: searchField.text = ""
+                contentItem: Item {
+                    PhoneIcon {
+                        objectName: "clearIcon"
+                        anchors.centerIn: parent
+                        kind: "clear"
+                        size: 20
+                        color: PhoneTheme.muted
+                    }
                 }
             }
-        }
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 1
-            color: PhoneTheme.border
         }
 
         ListView {
             id: list
             objectName: "registerList"
             Layout.fillWidth: true
+            Layout.maximumWidth: screen.columnWidth
+            Layout.alignment: Qt.AlignHCenter
             Layout.fillHeight: true
             clip: true
             model: screen.registers
             reuseItems: true
             boundsBehavior: Flickable.DragOverBounds
             ScrollIndicator.vertical: ScrollIndicator {}
-            bottomMargin: 8
+
+            // no link: how to connect, and the way to the drawer
+            header: Item {
+                width: ListView.view.width
+                height: offline.visible ? offline.height + 12 : 0
+                Rectangle {
+                    id: offline
+                    objectName: "registersOffline"
+                    x: 12
+                    y: 8
+                    width: parent.width - 24
+                    height: offlineColumn.implicitHeight + 32
+                    visible: !PhoneSession.connected && screen.registers.total > 0
+                    radius: 12
+                    color: PhoneTheme.surface
+                    border.color: PhoneTheme.border
+                    ColumnLayout {
+                        id: offlineColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 16
+                        spacing: 4
+                        Label {
+                            objectName: "offlineTitle"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            text: qsTr("Not connected")
+                            color: PhoneTheme.text
+                            font.pixelSize: 16
+                            font.weight: Font.Medium
+                            elide: Text.ElideRight
+                        }
+                        Label {
+                            objectName: "offlineText"
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
+                            text: qsTr("Connect over USB or TCP in the Connect drawer: the values show once the link is up.")
+                            color: PhoneTheme.muted
+                            font.pixelSize: 14
+                            wrapMode: Text.Wrap
+                        }
+                        Button {
+                            objectName: "registersConnect"
+                            Layout.alignment: Qt.AlignRight
+                            Layout.topMargin: 4
+                            text: qsTr("Connect…")
+                            highlighted: true
+                            Material.accent: PhoneTheme.accentFill
+                            onClicked: screen.connectAsked()
+                        }
+                    }
+                }
+            }
 
             section.property: "group"
             section.criteria: ViewSection.FullString
-            section.delegate: Item {
+            // the group's name stays at the top while its cards pass under it: on the window's background
+            section.labelPositioning: ViewSection.InlineLabels | ViewSection.CurrentLabelAtStart
+            section.delegate: Rectangle {
                 required property string section
                 width: ListView.view.width
-                height: section.length > 0 ? 36 : 4
+                height: section.length > 0 ? 40 : 4
+                color: PhoneTheme.bg
                 Label {
                     objectName: "regGroup"
                     horizontalAlignment: Text.AlignLeft
@@ -152,11 +220,12 @@ Item {
                     anchors.bottom: parent.bottom
                     anchors.leftMargin: 16
                     anchors.rightMargin: 16
-                    anchors.bottomMargin: 4
+                    anchors.bottomMargin: 6
                     text: parent.section
                     color: PhoneTheme.accent
-                    font.pixelSize: 14
-                    font.weight: Font.Medium
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    font.letterSpacing: 0.4
                     elide: Text.ElideRight
                 }
             }
@@ -166,23 +235,55 @@ Item {
                 onWriteAsked: source => screen.writeAsked(source)
                 onMoreAsked: (source, from) => moreMenu.openFor(source, from)
             }
+
+            // how many registers show, quietly at the list's foot
+            footer: Item {
+                width: ListView.view.width
+                height: screen.registers.count > 0 ? 56 : 0
+                Label {
+                    objectName: "registerCount"
+                    anchors.centerIn: parent
+                    width: Math.min(implicitWidth, parent.width - 32)
+                    visible: screen.registers.count > 0
+                    text: screen.registers.count === screen.registers.total
+                          ? qsTr("registers: %1").arg(screen.registers.total)
+                          : qsTr("registers: %1 of %2").arg(screen.registers.count).arg(screen.registers.total)
+                    color: PhoneTheme.muted
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+            }
         }
     }
 
-    Label {
-        objectName: "registersEmpty"
+    // nothing to show: no map, or a search that matches nothing
+    ColumnLayout {
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 360)
         visible: screen.registers.count === 0
-        horizontalAlignment: Text.AlignHCenter
-        wrapMode: Text.WordWrap
-        text: screen.registers.total === 0 ? qsTr("No registers: choose a map in the Connect drawer.")
-                                           : qsTr("No register matches \"%1\".").arg(screen.registers.search)
-        color: PhoneTheme.muted
-        font.pixelSize: 16
+        spacing: 16
+        Label {
+            objectName: "registersEmpty"
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            text: screen.registers.total === 0 ? qsTr("No registers: choose a map in the Connect drawer.")
+                                               : qsTr("No register matches \"%1\".").arg(screen.registers.search)
+            color: PhoneTheme.muted
+            font.pixelSize: 16
+        }
+        Button {
+            objectName: "registersEmptyConnect"
+            Layout.alignment: Qt.AlignHCenter
+            visible: screen.registers.total === 0
+            text: qsTr("Open the Connect drawer")
+            highlighted: true
+            Material.accent: PhoneTheme.accentFill
+            onClicked: screen.connectAsked()
+        }
     }
 
-    // what Plot or Copy did, a moment over the list's foot
+    // what Plot or Copy did, a moment over the list's foot (a snackbar: the text colour's panel, the surface's text)
     Rectangle {
         id: notice
         objectName: "registerNotice"
@@ -190,10 +291,9 @@ Item {
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 16
         width: Math.min(parent.width - 32, noticeText.implicitWidth + 32)
-        height: noticeText.implicitHeight + 20
+        height: noticeText.implicitHeight + 28
         radius: 8
-        color: PhoneTheme.surface2
-        border.color: PhoneTheme.border
+        color: PhoneTheme.text
         opacity: 0
         visible: opacity > 0
         Behavior on opacity { NumberAnimation { duration: 200 } }
@@ -201,13 +301,13 @@ Item {
             id: noticeText
             objectName: "registerNoticeText"
             anchors.fill: parent
-            anchors.margins: 10
+            anchors.margins: 14
             anchors.leftMargin: 16
             anchors.rightMargin: 16
-            color: PhoneTheme.text
+            color: PhoneTheme.surface
             font.pixelSize: 14
             wrapMode: Text.Wrap
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
         }
         Timer {
