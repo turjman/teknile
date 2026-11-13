@@ -15,12 +15,12 @@ PhoneHelp::PhoneHelp(QObject *parent) : QObject(parent) {}
 
 QStringList PhoneHelp::titles() const {
 	QStringList list;
-	for (int i = 0; i < help::topicCount(); ++i) list << help::title(i);
+	for (int i = 0; i < help::phoneTopicCount(); ++i) list << help::phoneTitle(i);
 	return list;
 }
 
 QString PhoneHelp::page(int index, bool dark) const {
-	const QString html = help::page(index, Theme::colorsFor(dark));
+	const QString html = help::phonePage(index, Theme::colorsFor(dark));
 	if (html.isEmpty() || QGuiApplication::layoutDirection() != Qt::RightToLeft) return html;
 	/* right to left: each block so, the code blocks left to right (HelpDialog::showTopic), carried by the HTML */
 	QTextDocument document;

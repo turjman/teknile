@@ -24,9 +24,10 @@
  * Windows).
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
- * the names portrait, drawer, help, helppage, connected, drawerkb, log, registers, search, sheet, question, keyboard,
- * enum and, at 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and
- * chartdemo_portrait (not checks; all but the first four and the chart's with the fake device, chartdemo with the
+ * the names portrait, drawer, help, helppage (the phone's own topic; helppage2 a screen down, helppage_end its end),
+ * connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at 915 x 412, land_registers,
+ * land_sheet, land_drawer, land_log, landscape, then chartdemo and chartdemo_portrait (not checks; all but the Help's
+ * and the two before them, and the chart's with the fake device, chartdemo with the
  * chart's test feed; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them
  * without running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
@@ -2391,7 +2392,7 @@ void openHelp(const Phone &phone) {
 	phone.settle();
 }
 
-/* every Help topic in both languages: the list holds them all, each opens its page (the desktop's, translated), the
+/* every topic of the phone's Help in both languages: the list holds them all, each opens its page (the desktop's, translated), the
  * back button goes to the list; every text of the list inside its row */
 void checkHelpTopics() {
 	QStringList bad;
@@ -2402,17 +2403,17 @@ void checkHelpTopics() {
 		openHelp(phone);
 		QQuickItem *list = phone.item("helpList");
 		const int rows = list ? list->property("count").toInt() : -1;
-		if (!helpOpen(phone) || rows != help::topicCount()) bad << QStringLiteral("%1: %2 of %3 topics").arg(code).arg(rows).arg(help::topicCount());
+		if (!helpOpen(phone) || rows != help::phoneTopicCount()) bad << QStringLiteral("%1: %2 of %3 topics").arg(code).arg(rows).arg(help::phoneTopicCount());
 		for (const QString &text : textsOutside(phone.window, seen)) bad << code + QStringLiteral(" list: ") + text;
 		static const QRegularExpression arabic(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
-		for (int i = 0; i < help::topicCount(); ++i) {
+		for (int i = 0; i < help::phoneTopicCount(); ++i) {
 			if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, i));
 			phone.settle(150);
 			QQuickItem *page = phone.item("helpText");
 			const QString title = phone.text("helpTitle"), text = page ? page->property("text").toString() : QString();
 			const double height = page ? page->property("contentHeight").toDouble() : 0;
 			const bool translated = code == QLatin1String("en") || (title.contains(arabic) && text.contains(arabic));
-			if (!page || !page->isVisible() || title != help::title(i) || text.isEmpty() || height < 40 || !translated)
+			if (!page || !page->isVisible() || title != help::phoneTitle(i) || text.isEmpty() || height < 40 || !translated)
 				bad << QStringLiteral("%1 topic %2 \"%3\": %4 px%5").arg(code).arg(i).arg(title).arg(height)
 								.arg(translated ? "" : ", not translated");
 		}
@@ -2420,9 +2421,58 @@ void checkHelpTopics() {
 		if (!phone.item("helpList") || !phone.item("helpList")->isVisible()) bad << code + QStringLiteral(": Back did not go to the list");
 	}
 	language::apply(*qApp, QStringLiteral("en"));
-	check(bad.isEmpty(), QStringLiteral("phone, Help: the drawer's Help shows every topic of the desktop's Help (%1), each page "
+	check(bad.isEmpty(), QStringLiteral("phone, Help: the drawer's Help shows every topic of the phone's list (%1), each page "
 			"in English and in Arabic, its title the topic's; Back goes to the list; the list's texts inside their rows %2")
-			.arg(help::topicCount()).arg(bad.join(QStringLiteral(" | "))));
+			.arg(help::phoneTopicCount()).arg(bad.join(QStringLiteral(" | "))));
+}
+
+
+/* the topics the phone lists: its own first, then the desktop's that apply on a phone, none of the five desktop-only
+ * ones (the Map editor, the API, the Dump, the command line, Keys & mouse); the desktop's dialog keeps its 14 topics,
+ * in its order; the phone's topic in Arabic, its tags and markers as in the English */
+void checkHelpPhoneList() {
+	language::apply(*qApp, QStringLiteral("en"));
+	const QStringList desktopTitles = { QStringLiteral("Getting started"), QStringLiteral("Connecting"),
+			QStringLiteral("Polling & speed"), QStringLiteral("Fast streams"), QStringLiteral("Registers & writes"),
+			QStringLiteral("Chart & recording"), QStringLiteral("Device maps"), QStringLiteral("Map editor"),
+			QStringLiteral("API (MATLAB, LabVIEW, Python)"), QStringLiteral("Dump"), QStringLiteral("Monitor"),
+			QStringLiteral("Log & pop-ups"), QStringLiteral("Command line"), QStringLiteral("Keys & mouse") };
+	const QStringList desktopOnly = { QStringLiteral("Map editor"), QStringLiteral("API (MATLAB, LabVIEW, Python)"),
+			QStringLiteral("Dump"), QStringLiteral("Command line"), QStringLiteral("Keys & mouse") };
+	QStringList desktop, phone;
+	for (int i = 0; i < help::topicCount(); ++i) desktop << help::title(i);
+	for (int i = 0; i < help::phoneTopicCount(); ++i) phone << help::phoneTitle(i);
+	QStringList wanted = { QStringLiteral("Using the phone app") };
+	for (const QString &title : desktopTitles)
+		if (!desktopOnly.contains(title)) wanted << title;
+	const bool desktopSame = desktop == desktopTitles;
+	const bool phoneList = phone == wanted;
+	/* the desktop's pages are not the phone's: its own topic is in no page of the desktop */
+	bool notOnDesktop = true;
+	for (int i = 0; i < help::topicCount(); ++i)
+		notOnDesktop = notOnDesktop && !help::page(i, Theme::colorsFor(true)).contains(QLatin1String("Using the phone app"));
+	/* the phone's page in English and in Arabic: the same tags and markers (filled the same), Arabic in both */
+	const auto tags = [](const QString &html) {
+		static const QRegularExpression token(QStringLiteral("%[1-9][0-9]*|%[A-Z_]+%|<[^<>]+>"));
+		QStringList found;
+		for (auto it = token.globalMatch(html); it.hasNext();) found << it.next().captured();
+		found.sort();
+		return found;
+	};
+	const QString english = help::phonePage(0, Theme::colorsFor(true));
+	language::apply(*qApp, QStringLiteral("ar"));
+	const QString arabic = help::phonePage(0, Theme::colorsFor(true)), arabicTitle = help::phoneTitle(0);
+	language::apply(*qApp, QStringLiteral("en"));
+	static const QRegularExpression letters(QStringLiteral("[\x{0600}-\x{06FF}]"));
+	const bool translated = arabic != english && arabic.contains(letters) && arabicTitle.contains(letters);
+	const bool sameTags = !english.isEmpty() && tags(english) == tags(arabic);
+	check(desktopSame && phoneList && notOnDesktop && translated && sameTags,
+			QStringLiteral("phone, Help's list: \"Using the phone app\" first, then the desktop's topics but the Map editor, "
+					"the API, the Dump, the command line and Keys & mouse (%1 topics: %2); the desktop's dialog keeps its %3 "
+					"(same: %4, the phone's page in none: %5); the phone's page in Arabic (\"%6\": %7) with the English's "
+					"tags and markers (%8)")
+					.arg(phone.size()).arg(phone.join(QStringLiteral(", "))).arg(desktop.size()).arg(desktopSame)
+					.arg(notOnDesktop).arg(arabicTitle).arg(translated).arg(sameTags));
 }
 
 /* Android's back (Qt::Key_Back), as the gesture sends it: accepted when it closed something */
@@ -3078,12 +3128,21 @@ void savePictures(const QString &prefix) {
 				phone.openDrawer();
 				save(phone, name + QStringLiteral("drawer.png"));
 				phone.closeDrawer();
-				/* the Help: its topics, then a page */
+				/* the Help: its topics, then the phone's own page, at its top, a screen further and at its end */
 				openHelp(phone);
 				save(phone, name + QStringLiteral("help.png"));
-				if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 1));
+				if (QObject *help = phone.object("helpScreen")) QMetaObject::invokeMethod(help, "show", Q_ARG(QVariant, 0));
 				phone.settle(200);
 				save(phone, name + QStringLiteral("helppage.png"));
+				if (QQuickItem *page = phone.item("helpPage")) {
+					const double end = std::max(0.0, page->property("contentHeight").toDouble() - page->height());
+					page->setProperty("contentY", std::min(end, page->height() - 40));
+					phone.settle(150);
+					save(phone, name + QStringLiteral("helppage2.png"));
+					page->setProperty("contentY", end);
+					phone.settle(150);
+					save(phone, name + QStringLiteral("helppage_end.png"));
+				}
 			}
 			{
 				/* connected to the fake device: the drawer, then the Log */
@@ -3255,6 +3314,7 @@ int main(int argc, char **argv) {
 	RUN(checkService);
 	RUN(checkOrientation);
 	RUN(checkHelpTopics);
+	RUN(checkHelpPhoneList);
 	RUN(checkBackOrder);
 	RUN(checkUsbBack);
 	RUN(checkDeviceLineAfterDisconnect);

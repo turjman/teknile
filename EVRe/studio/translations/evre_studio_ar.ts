@@ -4640,6 +4640,144 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
 &lt;/ul&gt;
 </translation>
     </message>
+    <message>
+        <source>Using the phone app</source>
+        <translation>استخدام تطبيق الهاتف</translation>
+    </message>
+    <message>
+        <source>
+&lt;h2&gt;Using the phone app&lt;/h2&gt;
+&lt;p&gt;EVRe Studio on a phone: the desktop&apos;s engine and maps, four screens in the tab bar at the bottom: &lt;b&gt;Registers&lt;/b&gt;,
+&lt;b&gt;Chart&lt;/b&gt;, &lt;b&gt;Monitor&lt;/b&gt; and &lt;b&gt;Log&lt;/b&gt;. The Chart and the Monitor turn the screen across, the Registers and the Log
+upright. The other topics of this Help are the desktop&apos;s: where they speak of the sidebar, here it is the drawer; a click
+is a tap.&lt;/p&gt;
+&lt;h3&gt;Connecting&lt;/h3&gt;
+&lt;p&gt;The menu button at the top, or the link&apos;s pill beside it, opens the &lt;b&gt;Connect&lt;/b&gt; drawer.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;USB&lt;/b&gt;: plug the board in (through a USB OTG adapter) and choose it under &lt;i&gt;USB device&lt;/i&gt;. Android asks
+whether EVRe Studio may use it: the pill reads &lt;i&gt;Waiting for permission…&lt;/i&gt; until you answer its dialog. A USB CDC
+board ignores the baud rate.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: the &lt;b&gt;host&lt;/b&gt; and &lt;b&gt;port&lt;/b&gt; of the device or its gateway, and the &lt;b&gt;token&lt;/b&gt; when the device asks
+for one (it is not stored).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Connect&lt;/b&gt;: the pill turns green and the device&apos;s ID shows. &lt;b&gt;Reconnect by itself&lt;/b&gt; brings a lost link back,
+also to a board that was reset or plugged in again.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Device&lt;/b&gt;: the map (&lt;b&gt;Open…&lt;/b&gt; chooses another &lt;code&gt;.json&lt;/code&gt;) and &lt;b&gt;Allow writes&lt;/b&gt;. &lt;b&gt;Polling&lt;/b&gt;: on
+or off, and its interval (0 ms: as fast as the device answers).&lt;/li&gt;
+&lt;li&gt;At the drawer&apos;s foot: the dark theme, the language (applied when the app is opened again) and &lt;b&gt;Help&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Registers&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;A card per register, in its group: the name and address, the value large with its unit, decoded under it. A
+changed value glows; one not read for a while says &lt;i&gt;not refreshed&lt;/i&gt;; an error shows in red.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Search&lt;/b&gt; at the top: a name, a unit or an address.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Write&lt;/b&gt; on a writable card, or a tap on the card, opens the write sheet.
+The &lt;b&gt;...&lt;/b&gt; button, or a long press: &lt;b&gt;Plot&lt;/b&gt;
+(&lt;b&gt;Take off the chart&lt;/b&gt; once plotted), &lt;b&gt;Write…&lt;/b&gt; and &lt;b&gt;Copy&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;The write sheet: the value now and the map&apos;s limits, a field for the new value (an enum: its list), &lt;b&gt;Apply&lt;/b&gt;. A
+value past the limits, or a register that moves something, is asked first: &lt;b&gt;Write anyway&lt;/b&gt; or &lt;b&gt;Cancel&lt;/b&gt;. The
+answer shows under it, and the card then shows what the device holds. Writing needs &lt;b&gt;Allow writes&lt;/b&gt; on.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Chart&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;The lines: registers plotted from their &lt;b&gt;...&lt;/b&gt; button, and with &lt;b&gt;Fast lines&lt;/b&gt; (a map with streams) a stream&apos;s
+channels.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Live&lt;/b&gt; follows the newest samples, &lt;b&gt;Hold&lt;/b&gt; keeps the view still; the window &lt;b&gt;10 s&lt;/b&gt;, &lt;b&gt;1 min&lt;/b&gt; or
+&lt;b&gt;5 min&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;A &lt;b&gt;pinch&lt;/b&gt; zooms the time, a &lt;b&gt;drag&lt;/b&gt; looks back (and holds), a &lt;b&gt;double tap&lt;/b&gt; goes live again.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Y auto&lt;/b&gt; fits the values in view; turned off, a small sheet asks for the &lt;b&gt;Min&lt;/b&gt; and &lt;b&gt;Max&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;The legend: a chip per line with its latest value; a tap hides or shows the line, its &lt;b&gt;...&lt;/b&gt; button
+offers &lt;b&gt;Take off the chart&lt;/b&gt;. &lt;b&gt;Clear&lt;/b&gt; empties the chart.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Cursors&lt;/b&gt; puts A and B on the view and holds it; drag each by its round handle (A&apos;s at the top, B&apos;s at the
+foot). Beside the plot (under it, upright): the times of A and B and B − A, and per line its values at A and B,
+B − A, and the min, max and mean between them. &lt;b&gt;Cursors&lt;/b&gt; again takes them off.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Monitor and Log&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Monitor&lt;/b&gt;: every frame on the link while the screen shows, its time and direction (TX, RX) over its bytes.
+&lt;b&gt;Pause&lt;/b&gt; keeps what is there, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Log&lt;/b&gt;: what happened (the map, the link, the writes and their answers, the recordings), warnings in amber
+and errors in red. &lt;b&gt;Copy&lt;/b&gt; puts it all on the clipboard, &lt;b&gt;Clear&lt;/b&gt; empties it.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Recording and the background&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Record&lt;/b&gt; in the drawer writes a CSV of the logged registers in the app&apos;s folder; the Log says where.
+&lt;b&gt;Stop recording&lt;/b&gt; ends it.&lt;/li&gt;
+&lt;li&gt;While a link is up or wanted, Android shows a notification with the link&apos;s state and the recording&apos;s time: the
+link and a recording go on with the screen off or another app in front. A tap on it opens the app; &lt;b&gt;Disconnect&lt;/b&gt;
+takes it away.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Keep the screen on while connected&lt;/b&gt; (at the drawer&apos;s foot, on at first): the screen does not go dark while
+the link is up.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;Back&lt;/h3&gt;
+&lt;p&gt;Android&apos;s back gesture closes what is open, a step at a time: a Help page to the list, the Help, the write sheet,
+the drawer. With nothing open it leaves the app, whose link goes on in the background.&lt;/p&gt;
+&lt;p&gt;Only on the desktop: the Map editor, the Dump, Listen, the API, math lines, lanes, the trigger and notes.&lt;/p&gt;
+</source>
+        <translation>
+&lt;h2&gt;استخدام تطبيق الهاتف&lt;/h2&gt;
+&lt;p&gt;EVRe Studio على الهاتف: محرّك سطح المكتب وخرائطه، وأربع شاشات في شريط الألسنة أسفل الشاشة: &lt;b&gt;المسجّلات&lt;/b&gt;،
+و&lt;b&gt;المخطط&lt;/b&gt;، و&lt;b&gt;المراقبة&lt;/b&gt;، و&lt;b&gt;السجل&lt;/b&gt;. يدير المخطط والمراقبة الشاشة بالعرض، والمسجّلات والسجل بالطول.
+المواضيع الأخرى في هذه المساعدة مواضيع سطح المكتب: حيث تذكر الشريط الجانبي فهو هنا لوحة الاتصال، والنقرة لمسة.&lt;/p&gt;
+&lt;h3&gt;الاتصال&lt;/h3&gt;
+&lt;p&gt;زر القائمة في الأعلى، أو شارة الوصلة بجانبه، يفتح &lt;b&gt;لوحة الاتصال&lt;/b&gt;.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;USB&lt;/b&gt;: صِل اللوحة (عبر محوّل USB OTG) واخترها تحت &lt;i&gt;جهاز USB&lt;/i&gt;. يسأل أندرويد هل يُسمح لـ EVRe Studio
+باستخدامها: تقول الشارة &lt;i&gt;بانتظار الإذن…&lt;/i&gt; حتى تجيب عن نافذة الحوار. لوحة USB CDC تتجاهل معدّل البود.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;TCP&lt;/b&gt;: &lt;b&gt;المضيف&lt;/b&gt; و&lt;b&gt;المنفذ&lt;/b&gt; للجهاز أو لبوابته، و&lt;b&gt;رمز الدخول&lt;/b&gt; حين يطلبه الجهاز (لا يُحفظ).&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;اتصال&lt;/b&gt;: تخضرّ الشارة ويظهر معرّف الجهاز. &lt;b&gt;إعادة الاتصال تلقائيًا&lt;/b&gt; تعيد الوصلة المفقودة، وتعيدها أيضًا
+إلى لوحة أُعيد تشغيلها أو وُصلت من جديد.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;الجهاز&lt;/b&gt;: الخريطة (&lt;b&gt;فتح…&lt;/b&gt; يختار ملف &lt;code&gt;.json&lt;/code&gt; آخر) و&lt;b&gt;السماح بالكتابة&lt;/b&gt;. &lt;b&gt;الاستطلاع&lt;/b&gt;: تشغيله
+أو إيقافه، وفاصله (القيمة ⁦0 ms⁩: بأسرع ما يجيب الجهاز).&lt;/li&gt;
+&lt;li&gt;في أسفل لوحة الاتصال: السمة الداكنة، واللغة (تُطبَّق حين يُفتح التطبيق مرة أخرى)، و&lt;b&gt;مساعدة&lt;/b&gt;.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المسجّلات&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;بطاقة لكل مسجّل، في مجموعته: الاسم والعنوان، والقيمة كبيرةً بوحدتها، مفكوكةً تحتها. القيمة التي تتغيّر تتوهّج؛
+والتي لم تُقرأ منذ مدة تقول &lt;i&gt;غير محدّث&lt;/i&gt;؛ والخطأ يظهر بالأحمر.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;البحث&lt;/b&gt; في الأعلى: اسم أو وحدة أو عنوان.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;كتابة&lt;/b&gt; على بطاقة قابلة للكتابة، أو لمسة على البطاقة، تفتح ورقة الكتابة. زر &lt;b&gt;...&lt;/b&gt;، أو ضغطة مطوّلة: &lt;b&gt;رسم&lt;/b&gt;
+(&lt;b&gt;إزالة من المخطط&lt;/b&gt; بعد رسمه)، و&lt;b&gt;كتابة…&lt;/b&gt;، و&lt;b&gt;نسخ&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;ورقة الكتابة: القيمة الحالية وحدود الخريطة، وحقل للقيمة الجديدة (لقيمة ذات أسماء: قائمتها)، و&lt;b&gt;تطبيق&lt;/b&gt;. القيمة
+التي تتجاوز الحدود، أو المسجّل الذي يحرّك شيئًا، يُسأل عنها أولًا: &lt;b&gt;اكتب مع ذلك&lt;/b&gt; أو &lt;b&gt;إلغاء&lt;/b&gt;. يظهر الرد تحتها،
+ثم تعرض البطاقة ما يحمله الجهاز. الكتابة تحتاج &lt;b&gt;السماح بالكتابة&lt;/b&gt; مفعّلًا.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المخطط&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;الخطوط: المسجّلات المرسومة من زر &lt;b&gt;...&lt;/b&gt; الخاص بها، ومع &lt;b&gt;الخطوط السريعة&lt;/b&gt; (خريطة فيها تدفقات) قنوات تدفق
+سريع.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مباشر&lt;/b&gt; يتابع أحدث العينات، و&lt;b&gt;تثبيت&lt;/b&gt; يُبقي العرض ساكنًا؛ والنافذة &lt;b&gt;⁦10 s⁩&lt;/b&gt; أو &lt;b&gt;⁦1 min⁩&lt;/b&gt;
+أو &lt;b&gt;⁦5 min⁩&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;القرص&lt;/b&gt; يكبّر الزمن، و&lt;b&gt;السحب&lt;/b&gt; يرجع إلى الأقدم (ويثبّت العرض)، و&lt;b&gt;النقر المزدوج&lt;/b&gt; يعود إلى المباشر.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;مدى Y تلقائي&lt;/b&gt; يلائم القيم المعروضة؛ وحين يُطفأ تسأل ورقة صغيرة عن &lt;b&gt;الأدنى&lt;/b&gt; و&lt;b&gt;الأعلى&lt;/b&gt;.&lt;/li&gt;
+&lt;li&gt;وسيلة الإيضاح: شارة لكل خط بآخر قيمة له؛ لمسة عليها تُخفي الخط أو تُظهره، وزر &lt;b&gt;...&lt;/b&gt; الخاص بها يقدّم
+&lt;b&gt;إزالة من المخطط&lt;/b&gt;. &lt;b&gt;مسح&lt;/b&gt; يُفرغ المخطط.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;المؤشران&lt;/b&gt; يضع A وB على العرض ويثبّته؛ اسحب كلًّا منهما من مقبضه المستدير (مقبض A في الأعلى، ومقبض B في
+الأسفل). بجانب الرسم (وتحته بالطول): زمنا A وB و⁦B − A⁩، ولكل خط قيمتاه عند A وB، و⁦B − A⁩، والأدنى
+والأعلى والمتوسط بينهما. &lt;b&gt;المؤشران&lt;/b&gt; مرة أخرى يزيلهما.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;المراقبة والسجل&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;المراقبة&lt;/b&gt;: كل إطار على الوصلة ما دامت الشاشة ظاهرة، زمنه واتجاهه (TX، RX) فوق بايتاته. &lt;b&gt;إيقاف مؤقت&lt;/b&gt;
+يُبقي ما هناك، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;السجل&lt;/b&gt;: ما حدث (الخريطة، والوصلة، والكتابات وردودها، والتسجيلات)، التحذيرات بالكهرماني والأخطاء بالأحمر.
+&lt;b&gt;نسخ&lt;/b&gt; يضعه كله في الحافظة، و&lt;b&gt;مسح&lt;/b&gt; يُفرغه.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;التسجيل والخلفية&lt;/h3&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;تسجيل&lt;/b&gt; في لوحة الاتصال يكتب ملف CSV للمسجّلات المفعّل عليها تسجيل، في مجلد التطبيق؛ ويقول السجل أين.
+&lt;b&gt;إيقاف التسجيل&lt;/b&gt; ينهيه.&lt;/li&gt;
+&lt;li&gt;ما دامت الوصلة قائمة أو مطلوبة، يعرض أندرويد إشعارًا بحالة الوصلة وزمن التسجيل: تستمر الوصلة والتسجيل والشاشة
+مطفأة أو تطبيق آخر في المقدمة. لمسة عليه تفتح التطبيق؛ و&lt;b&gt;قطع الاتصال&lt;/b&gt; يزيله.&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;إبقاء الشاشة مضاءة أثناء الاتصال&lt;/b&gt; (في أسفل لوحة الاتصال، مفعّل في البداية): لا تُظلم الشاشة ما دامت الوصلة
+قائمة.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3&gt;الرجوع&lt;/h3&gt;
+&lt;p&gt;إيماءة الرجوع في أندرويد تغلق ما هو مفتوح، خطوةً خطوة: صفحة المساعدة إلى القائمة، ثم المساعدة، ثم ورقة الكتابة، ثم
+لوحة الاتصال. وإن لم يكن شيء مفتوحًا غادرت التطبيق، وتستمر وصلته في الخلفية.&lt;/p&gt;
+&lt;p&gt;على سطح المكتب فقط: محرر الخريطة، وعرض الذاكرة، والاستماع، وواجهة API، والخطوط الرياضية، والمسارات، والقدح،
+والملاحظات.&lt;/p&gt;
+</translation>
+    </message>
 </context>
 <context>
     <name>HelpScreen</name>
