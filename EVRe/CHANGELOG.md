@@ -16,6 +16,12 @@
   (`Android/data/com.teknile.evrestudio/files/recordings`). A refused token or a refused USB permission stops the
   tries. The header's pill shows the link's state in its colour and opens the drawer; the Log screen lists what
   happened, Copy and Clear.
+- **The chart on the phone, its core.** The Chart screen draws its lines on the phone's graphics card, binned
+  exactly as the desktop's chart bins them: a grid with the time and value labels, Live and Hold, the window (10 s,
+  1 min, 5 min); a pinch zooms the time, a drag looks back and holds, a double tap goes live again. Time runs left
+  to right in Arabic too. The registers come onto it with the next part; a test feed (`am start ... --ez chartdemo
+  true`) draws 8 lines at 1,000 samples a second and measures the frames. The desktop's chart does not change: its
+  data and binning moved into a file that both charts share.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

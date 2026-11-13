@@ -3,7 +3,8 @@
 // opens the drawer too), the Connect drawer, a tab bar at the bottom (Registers, Chart, Monitor, Log) and the screens
 // above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab bar, the screens and the
 // drawer mirrored).
-// With p9 (phone_app.cpp) the window shows the proof P-9 alone.
+// With p9 (phone_app.cpp) the window shows the proof P-9 alone; with chartDemo the Chart screen, fed by the chart's test
+// feed (chart_demo.h).
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -19,6 +20,7 @@ ApplicationWindow {
     title: qsTr("EVRe Studio")
 
     property bool p9: false
+    property bool chartDemo: false
     // the direction comes from the Arabic translation (language.cpp), as on the desktop
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property var screenNames: [qsTr("Registers"), qsTr("Chart"), qsTr("Monitor"), qsTr("Log")]
@@ -131,9 +133,9 @@ ApplicationWindow {
             objectName: "screenRegisters"
             note: qsTr("Coming soon: every register of the map, its value live.")
         }
-        PlaceholderScreen {
+        ChartScreen {
             objectName: "screenChart"
-            note: qsTr("Coming soon: the plotted registers over time.")
+            demo: root.chartDemo
         }
         PlaceholderScreen {
             objectName: "screenMonitor"
@@ -143,6 +145,8 @@ ApplicationWindow {
             objectName: "screenLog"
         }
     }
+
+    Component.onCompleted: if (chartDemo) tabBar.currentIndex = 1
 
     ConnectDrawer {
         id: drawer

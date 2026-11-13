@@ -55,7 +55,7 @@ void P9Registers::tick() {
 	emit ticked();
 }
 
-P9Meter::P9Meter(QQuickWindow *window) : QObject(window) {
+P9Meter::P9Meter(QQuickWindow *window, const QByteArray &tag) : QObject(window), tag_(tag) {
 	clock_.start();
 	second_.start();
 	/* direct: frameSwapped comes on the render thread (Android's threaded render loop); a queued call would time
@@ -96,9 +96,9 @@ void P9Meter::report() {
 			.arg(SLOW_MS, 0, 'f', 0)
 			.arg(slow);
 #ifdef Q_OS_ANDROID
-	__android_log_write(ANDROID_LOG_INFO, "EVRE_P9", qPrintable(line));
+	__android_log_write(ANDROID_LOG_INFO, tag_.constData(), qPrintable(line));
 #else
-	std::fprintf(stdout, "EVRE_P9 %s\n", qPrintable(line));
+	std::fprintf(stdout, "%s %s\n", tag_.constData(), qPrintable(line));
 	std::fflush(stdout);
 #endif
 	emit logged(line);
