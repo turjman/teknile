@@ -254,7 +254,7 @@ endif() # NOT ANDROID
 # Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
-    foreach(screen Main ConnectDrawer LinkPill LogScreen PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
+    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
             ChartScreen)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
@@ -271,6 +271,7 @@ if(EVRE_PHONE)
             src/phone/qml/ConnectDrawer.qml
             src/phone/qml/LinkPill.qml
             src/phone/qml/LogScreen.qml
+            src/phone/qml/PhoneIcon.qml
             src/phone/qml/PlaceholderScreen.qml
             src/phone/qml/P9Screen.qml
             src/phone/qml/RegistersScreen.qml

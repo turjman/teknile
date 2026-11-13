@@ -195,7 +195,8 @@ Item {
             LayoutMirroring.childrenInherit: true
             model: chart.legend
 
-            delegate: Rectangle {
+            // a chip: 40 dp drawn, its touch 48 dp high (the "..." button 48 x 48)
+            delegate: Item {
                 id: chip
                 required property int lineId
                 required property string name
@@ -203,14 +204,20 @@ Item {
                 required property color colour
                 required property bool shown
                 objectName: "legendChip"
-                y: 4
-                width: chipRow.implicitWidth + 16
-                height: 40
-                radius: 20
-                color: PhoneTheme.surface
-                border.width: 1
-                // a hidden line's chip: its border and text muted, its dot hollow
-                border.color: shown ? colour : PhoneTheme.border
+                width: chipRow.x + chipRow.implicitWidth + 2
+                height: 48
+
+                Rectangle {
+                    objectName: "chipFace"
+                    anchors.fill: parent
+                    anchors.topMargin: 4
+                    anchors.bottomMargin: 4
+                    radius: 20
+                    color: PhoneTheme.surface
+                    border.width: 1
+                    // a hidden line's chip: its border and text muted, its dot hollow
+                    border.color: chip.shown ? chip.colour : PhoneTheme.border
+                }
 
                 // a tap on the chip (its "..." button apart, over it) hides or shows its line: a button, so every tap
                 // counts (two quick taps are two, not a double tap)
@@ -259,8 +266,8 @@ Item {
                         id: chipMore
                         objectName: "chipMore"
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 36
-                        height: 40
+                        width: 48
+                        height: 48
                         Accessible.name: qsTr("More: Hide, Take off the chart")
                         onClicked: chipMenu.openFor(chip.lineId, chip.name, chip.shown, chipMore)
                         contentItem: Item {

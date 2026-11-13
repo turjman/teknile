@@ -3,6 +3,7 @@
 #include "phone/phone_theme.h"
 
 #include <QSettings>
+#include <cmath>
 
 namespace {
 const QString DARK_KEY = QStringLiteral("ui/dark"); /* the desktop's key (main.cpp): dark unless set */
@@ -17,6 +18,13 @@ void PhoneTheme::setDark(bool dark) {
 	colors_ = Theme::colorsFor(dark);
 	QSettings().setValue(DARK_KEY, dark);
 	emit changed();
+}
+
+QColor PhoneTheme::soft(const QColor &tone) const {
+	const double k = dark_ ? SOFT_SHARE : SOFT_SHARE_LIGHT;
+	const QColor &under = colors_.surface;
+	auto mix = [k](int a, int b) { return int(std::lround(b + (a - b) * k)); };
+	return QColor(mix(tone.red(), under.red()), mix(tone.green(), under.green()), mix(tone.blue(), under.blue()));
 }
 
 QVariantList PhoneTheme::series() const {

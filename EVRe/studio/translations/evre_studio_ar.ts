@@ -2134,6 +2134,26 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
         <source>A CSV of the logged registers, in the app&apos;s folder.</source>
         <translation>ملف CSV للمسجّلات المسجَّلة، في مجلد التطبيق.</translation>
     </message>
+    <message>
+        <source>Link</source>
+        <translation>الوصلة</translation>
+    </message>
+    <message>
+        <source>Device</source>
+        <translation>الجهاز</translation>
+    </message>
+    <message>
+        <source>Poll the registers</source>
+        <translation>استطلاع المسجّلات</translation>
+    </message>
+    <message>
+        <source>Recording</source>
+        <translation>التسجيل</translation>
+    </message>
+    <message>
+        <source>Display</source>
+        <translation>العرض</translation>
+    </message>
 </context>
 <context>
     <name>DumpTab</name>
@@ -8429,10 +8449,6 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
         <translation>المسجّلات: %1 من %2</translation>
     </message>
     <message>
-        <source>Not connected: the values show once the link is up.</source>
-        <translation>غير متصل: تظهر القيم حين تقوم الوصلة.</translation>
-    </message>
-    <message>
         <source>Connect…</source>
         <translation>اتصال…</translation>
     </message>
@@ -8471,6 +8487,18 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>Copied: %1</source>
         <translation>نُسخ: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Not connected</source>
+        <translation>غير متصل</translation>
+    </message>
+    <message>
+        <source>Connect over USB or TCP in the Connect drawer: the values show once the link is up.</source>
+        <translation>الاتصال عبر USB أو TCP من لوحة الاتصال: تظهر القيم حين تقوم الوصلة.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
     </message>
 </context>
 <context>
@@ -9841,6 +9869,10 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>Close</source>
         <translation>إغلاق</translation>
+    </message>
+    <message>
+        <source>Check before writing</source>
+        <translation>التحقّق قبل الكتابة</translation>
     </message>
 </context>
 <context>
