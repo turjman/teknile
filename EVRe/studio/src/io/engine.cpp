@@ -18,9 +18,7 @@
 #include "model/bus_file.h"
 #include "model/fast_recording.h"
 #include "evre/frame.h"
-#ifdef Q_OS_ANDROID
 #include "evre/link_android.h"
-#endif
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -560,6 +558,17 @@ void IoEngine::connectSerial(const QString &port, qint32 baud, bool baudLimited)
 #else
 	attach(new evre::SerialLink(port, baud), QString());
 #endif
+}
+
+/* The phone's USB link (AndroidUsbLink) through `bridge`: Android's (UsbBridge::system()) on the phone, a fake one in the
+ * phone's test on any system. A USB CDC device runs at USB's speed, whatever the baud rate says. */
+void IoEngine::connectUsb(const QString &device, qint32 baud, evre::UsbBridge *bridge) {
+	serialBaud_ = baud;
+	serialBaudLimited_ = false;
+	applyInFlight();
+	auto *link = new evre::AndroidUsbLink(device, baud, bridge);
+	connect(link, &evre::AndroidUsbLink::waiting, this, &IoEngine::linkWaiting);
+	attach(link, QString());
 }
 
 /* A link that hears: a capture of this port, or nothing that can (open() then says so). No baud rate: the bytes are the

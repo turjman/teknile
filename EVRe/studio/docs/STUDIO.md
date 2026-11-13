@@ -3441,6 +3441,11 @@ The Studio saves its settings with Qt's `QSettings`, under the organisation `tek
 | `api/jsonPort` | `1220` | never&nbsp;(read&nbsp;only) | The JSON port. Change it by editing the settings. |
 | `map/bus` | empty | on&nbsp;close | The bus file to open at start (3.9), in place of `map/file`: the bus last opened or saved. Empty: none (a map opened, made, or the bus closed). |
 | `map/file` | empty | on&nbsp;close | The map to open at start (an absolute path): the map last loaded or saved. A load or a save only notes it; the key is written when the window closes normally, so a program that ends otherwise keeps the old value. |
+| `phone/tcp`,&nbsp;`phone/host`,&nbsp;`phone/port` | `true`,&nbsp;`127.0.0.1`,&nbsp;`1210` | on&nbsp;connect | The phone's link (25.6): TCP or USB, the host, the port. |
+| `phone/usbDevice`,&nbsp;`phone/baud` | empty,&nbsp;`115200` | on&nbsp;connect | The phone's USB device (Android's name of it) and baud rate. |
+| `phone/reconnect` | `true` | on&nbsp;change | The phone's Reconnect by itself. |
+| `phone/polling`,&nbsp;`phone/interval` | `true`,&nbsp;`100` | on&nbsp;change | The phone's polling and its interval, ms (0: as fast as the device answers). |
+| `phone/map` | empty | on&nbsp;change | The map the phone opens at start: a path, or Android's `content://` one; empty or gone: the app's first map. |
 | `ui/dark` | `true` | on&nbsp;close | Dark theme. |
 | `ui/language` | `system` | on&nbsp;change | The language: `system`, `en` or `ar`; applied at the next start (14.4). |
 | `ui/geometry` | none | on&nbsp;close | The window's size and place. |
@@ -5137,7 +5142,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/evre/master.h`,&nbsp;`.cpp` | `Master`: queue, pipelining, answer matching, timeouts, keep-alive, statistics |
 | `src/evre/registers.h` | namespace `evre`: the reserved bank's addresses (DEVICE_ID, STATUS, CONFIG and its bits), the STATUS capability bits, the read-only block at 0xD000, the AUTO_SEND base rate (8000 Hz) and its prescaler (1 to 255, default 0x4F; 40 Hz the least the protocol names), `AUTO_SEND_DIVIDERS` (the 16 prescalers + 1 of 13.8) and `autoSendRatesFor(maxHz, tickHz)` (the rates a map's `auto_send` limits leave; the checker, the Map settings and the sidebar use it) |
 | `src/io/reg_table.h` | `RegValue`, `RegTable`: the I/O thread's table (19.4) |
-| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence, login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, Listen (heard requests and answers, the heard round, the guards), the Dump tab's store (its replies, each fast stream's newest block) |
+| `src/io/engine.h`,&nbsp;`.cpp` | `IoEngine`: connect sequence (`connectUsb`: the phone's USB link through a given bridge), login, device ID, ticker, blocks and polls, samples, CSV, monitor lines, reads and writes asked for, API control, auto send, fast streams, Listen (heard requests and answers, the heard round, the guards), the Dump tab's store (its replies, each fast stream's newest block) |
 | `src/io/fast_stream.h`,&nbsp;`.cpp` | `fast::`: a fast stream's block read and checked (`fastBlock`), its running state (`FastStream`: the 64-bit numbers, starts, losses, counts), the clock's fit (`FastClock`), and for the fake devices a stream as a device sends it (`FastSource`) and a connection's streams with a host watchdog (`FastSender`); the chart's trigger on a channel, looked for in each block (`TriggerWatch`, `Crossing`, `TriggerScan`) |
 | `src/io/usb_capture.h`,&nbsp;`.cpp` | Listen, the USB side (22.3): `UsbTarget`, `UsbEvent`, the decoders `UsbPcapDecoder` and `UsbmonDecoder`, the `UsbCapture` interface and `FileCapture` |
 | `src/io/usbmon_capture.h`,&nbsp;`.cpp` | `UsbmonCapture`: Listen's live capture on Linux, `/dev/usbmonN` and its ioctls (22.3). Built on Linux only |
@@ -5203,10 +5208,14 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `loadMain` (the window, as the program and its test load it) |
 | `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
 | `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
+| `src/phone/phone_session.h`,&nbsp;`.cpp` | `PhoneSession`: the phone's part of `MainWindow` (Q-6): the engine on its thread, the map, the link (USB, TCP) and its states, Reconnect by itself, polling, Allow writes, recording into the app's folder (25.6) |
+| `src/phone/port_list.h`,&nbsp;`.cpp` | `PortList`: the USB devices plugged in (`UsbBridge::devices()`), the map's own named by it |
+| `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, Copy and Clear |
 | `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat) |
 | `src/phone/qml/Main.qml` | the phone's window: header, drawer, tab bar, screens, mirroring, Material's colours |
-| `src/phone/qml/ConnectDrawer.qml` | the Connect drawer: the link to come, the theme switch, the language |
-| `src/phone/qml/LinkPill.qml` | the link's state in the header |
+| `src/phone/qml/ConnectDrawer.qml` | the Connect drawer: USB or TCP, the map, Connect, the link's state and the device's ID, Reconnect by itself, polling, Allow writes, Record, the theme switch, the language |
+| `src/phone/qml/LinkPill.qml` | the link's state in the header, a dot in its colour; a tap opens the drawer |
+| `src/phone/qml/LogScreen.qml` | the Log screen: the lines coloured by level, Copy, Clear |
 | `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
 | `src/phone/qml/P9Screen.qml` | the proof P-9's list |
 | `android/AndroidManifest.xml` | the APK's manifest: package `com.teknile.evrestudio`, USB host |
@@ -5269,6 +5278,8 @@ to open the device; the bridge answers through the link's `Sink` from Java's thr
 refused for <device>*, *<device> could not be opened* (the Java layer's reason as the detail), or the serial link's
 *<device> is gone: unplugged or reset?*. A link deleted before an answer arrives never hears it. One device at a
 time; CDC only (a communication interface, class 2, and a data interface, class 10, with a bulk endpoint each way).
+The phone's program opens it with `IoEngine::connectUsb(device, baud, bridge)`: Android's bridge on the phone, the
+phone test's fake one on any system (26.11).
 
 **`master.h` / `master.cpp`.** `Master` implements the queue and the matching of 18.6 and the timeouts and
 keep-alive of 18.7:
@@ -5297,7 +5308,8 @@ pass-through checks compare frames byte for byte (chapter 26).
 **`IoEngine`** (see chapters 19 – 21 for the flows).
 
 - Called through `post()`: `setMap`, `connectTcp`, `connectSerial(port, baud, baudLimited)` (baudLimited: Auto send
-  kept under the baud rate, false on USB CDC), `connectListen(port, pressed, known)`, `disconnectLink`, `setLinkOptions`,
+  kept under the baud rate, false on USB CDC), `connectUsb(device, baud, bridge)` (the phone's `AndroidUsbLink`),
+  `connectListen(port, pressed, known)`, `disconnectLink`, `setLinkOptions`,
   `setPolling`, `setAutoSend(on, prescaler)`, `setPlotted`, `startRecord` (with the streams not logged), `stopRecord`, `write`, `read`,
   `setMonitor`, `setDump` (the Dump tab shown: each block's latest reply kept, 37.6), `apiStart`, `apiStop`, `apiSetWrites`.
 - Called with `QMetaObject::invokeMethod(..., Qt::BlockingQueuedConnection)`: `shutdown`, from `~MainWindow`
@@ -5798,6 +5810,9 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 |---|---|---|---|
 | `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`; signal `changed` | phone test (theme) |
 | `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
+| `PhoneSession` | singleton: the phone's part of `MainWindow` (Q-6), the desktop untouched: owns the `IoEngine` on its thread, the map and its `RegisterModel`; the link's states (`Off`, `Waiting`, `Connecting`, `Connected`, `Reconnecting`, `Closed`) with their words; Reconnect by itself, stopped by a refused token, a device that wants one or a refused USB permission; polling, Allow writes, recording into `recordingsFolder()` | `state`, `pillText`, `linkText`, `linkDetail`, `connectText`, `deviceId`, `deviceText`, `mapName`, `mapNames`, `tcp`, `polling`, `intervalMs`, `pollHz`, `writesEnabled`, `recording`, `recordText`, `ports`, `log`; `connectUsb`, `connectTcp`, `disconnectLink`, `loadMap`, `refreshPorts`, `startRecord`, `stopRecord`; signal `message(level, text)`; `setUsbBridgeForTests` | phone test (connect to USB gone) |
+| `PortList` | list model: the USB devices plugged in, from `UsbBridge::devices()`; a device with the map's USB IDs named by the map; changed only when the devices are | roles `name`, `product`, `vid`, `pid`, `mapped`, `label`; `indexOf` | phone test (USB ports) |
+| `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `clear`, `copy`, `text` | phone test (Log screen) |
 | `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
 | `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`) | signal `logged(line)` | phone test (P-9) |
 
@@ -6916,7 +6931,7 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
 
 ```
 +--------------------------------------------+
-|  menu   Registers         o Not connected  |   header: menu, the screen's name, the link's pill
+|  menu   Registers         o Not connected  |   header: menu, the screen's name, the link's pill (opens the drawer)
 +--------------------------------------------+
 |                                            |
 |         the screen (a StackLayout)         |   Registers, Chart, Monitor, Log
@@ -6933,8 +6948,26 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
 - **Right to left.** In Arabic the header, the tab bar, the screens and the drawer are mirrored
   (`LayoutMirroring`, the direction from the translation as on the desktop). The texts are the desktop's file's:
   `qsTr()` in QML, the `.qml` files read by the same `update_translations`.
-- **What is there.** This is the skeleton (part B.0): the screens say what will come; Connect, the registers, the
-  chart, the Monitor and the Log follow in later parts.
+- **Connect** (the drawer, part B.1), top to bottom:
+
+  | Part | What it does |
+  |---|---|
+  | **USB**&nbsp;/&nbsp;**TCP** | the link's kind. USB: the devices plugged in (a board through a USB OTG adapter), a device with the map's USB IDs named by the map, the list kept up to date every 2 s while the drawer is open; the baud rate (a USB CDC board ignores it). TCP: the host, the port and the token (never saved) |
+  | **Map** | the maps that come with the app (`example_device.json` first) or **Open…** (Android's picker); the number of registers under it. The last one opens at the next start |
+  | **Connect** | Connect, then *Cancel* while it connects, *Stop reconnecting* while a try waits, *Disconnect* once connected. Under it what the link is or why it is down, and the device's ID (*Device ID 0x1001 · protocol rev 1*; *last seen: ...* once the link is down; a warning when the map is for another device) |
+  | **Reconnect&nbsp;by&nbsp;itself** | after a lost link a try 0.5 s later, after a failed try every 2 s, as on the desktop. A refused token, a device that wants a token, and a USB permission refused stop the tries: the same try would be refused again (the permission asked again every 2 s) |
+  | **Polling** | on or off, and its interval in ms (0: as fast as the device answers); the polls a second measured under it while connected |
+  | **Allow&nbsp;writes** | off at every start, as on the desktop |
+  | **Record** | a CSV of the registers ticked Log, one row a poll, into the app's own folder (A-8): `recordings` in Android's folder for the app (`Android/data/com.teknile.evrestudio/files`, reached by a file manager and by a PC over USB), on a desktop in the app's data folder. The file's name is the time (`evre_20261113_140312.csv`); *Stop recording* closes it and says how many rows it holds |
+
+  Waiting for Android's permission dialog, the drawer says *Waiting for permission…* and names the device. The settings
+  are the phone's own keys (`phone/...`, 14.3), so the phone program run on a desktop leaves the desktop's link alone.
+- **The header's pill** says the link's state in a word and a dot in its colour: grey *Not connected*, amber
+  *Connecting…*, *Waiting for permission…* and *Reconnecting…*, green *Connected*, red *Not connected* when the link
+  went down with a reason (the drawer says it). A tap on the pill opens the drawer.
+- **The Log** (its tab) lists what happened, newest last, each line's time and its text: amber a warning, red an
+  error. **Copy** puts it all on the clipboard, **Clear** empties it; the newest 2000 lines are kept.
+- **What is still to come.** The Registers, Chart and Monitor screens say what will come (parts B.2 to B.4).
 
 **Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
 trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
@@ -8009,7 +8042,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 10 (26.11), 1124. The
+the phone test's 23 (26.11), 1137. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -8437,12 +8470,18 @@ The engine's side is in the GUI test's Listen steps (26.2).
 
 ```sh
 cmake -S . -B build -G Ninja -DEVRE_PHONE=ON && cmake --build build
+python3 tests/fake_device.py --port 1210 --map maps/example_device.json &
 QSG_RHI_BACKEND=opengl xvfb-run -a ./build/evre_phone_test     # Linux; on Windows ./build/evre_phone_test
 ```
 
 `evre_phone_test` loads `Main.qml` as the program does (`phone::loadMain`), in a window of 412 x 915 (a phone's
 portrait) and of 915 x 412, taps it with `QTest::touchEvent`, and reads colours from `QQuickWindow::grabWindow()`, an
-area scaled by the picture's `devicePixelRatio()` (the owner's Windows runs at 225 %). It needs no device. It runs
+area scaled by the picture's `devicePixelRatio()` (the owner's Windows runs at 225 %). The link's checks run over TCP
+against the fake device on port 1210 (26.4), against two stand-ins of the test's own on threads of their own (a proxy
+to the fake device that drops the link, and a device that refuses every request and closes the link, as `gui_test`'s
+`RefusingDevice`), and over USB through a fake `UsbBridge` (`PhoneSession::setUsbBridgeForTests`) that speaks for
+Android and the board from a thread of its own, as Java's reader does. A port where nothing listens (1209) gives the
+refused connection. It runs
 under its own application name (`EVReStudioPhoneTest`), whose settings it clears at the start and at the end. On
 Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `libgl1-mesa-dri`), not with
 `QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes to come. On Windows Direct3D 11 draws it.
@@ -8457,9 +8496,22 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | Arabic | the header and the tab bar mirrored (the menu button at the right, Registers the right-most tab), the drawer from the right, every text shown translated |
 | texts | every `Text` inside its parent and not cut, at both sizes, in English and Arabic, on each screen and in the drawer |
 | P-9 | with `p9` the proof's list alone, its rows the example map's registers, values changing 20 times a second, a line a second for logcat |
+| Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
+| connect | TCP chosen in the drawer, the host and port typed, Connect: connected, the drawer's text, the pill *Connected* with a green dot, the Log, the host saved |
+| DEVICE_ID | the drawer shows *Device ID 0x1001 · protocol rev ...*, no warning; the Log the same |
+| polling&nbsp;and&nbsp;writes | 50 ms polls 12 to 24 times a second, 200 ms 3.5 to 6.5 (the measured rate wanders around 20 and 5), off none; both saved; Allow writes turns the registers' writes on and off |
+| recording | Record writes a CSV into `recordingsFolder()`, Stop closes it whole: every row as many columns as the head, the last ended by its newline, the drawer's count the file's |
+| disconnect | Disconnect: the drawer and the pill *Not connected*, the Log *disconnected*, the ID kept as *last seen: ...* |
+| refused&nbsp;connection | nothing listens: the drawer says why, the pill red, the Log *not connected: ...*, no try by itself |
+| reconnect | the proxy drops the link: the pill *Reconnecting…*, the drawer *closed by ...*; connected again by itself |
+| wrong&nbsp;token | the refusing device: one try in 3 s, the drawer *token refused: type the right token, then Connect* |
+| USB&nbsp;ports | the bridge's devices listed, the map's own named by its USB IDs; one unplugged leaves the list while the drawer is open |
+| USB&nbsp;permission | Connect opens through the bridge; Android's dialog up: *Waiting for permission…*, the device named, Cancel |
+| USB&nbsp;refused | *permission refused for <device>*, and no new try by itself |
+| USB&nbsp;gone | connected, unplugged: *<device> is gone: unplugged or reset?*, the Log, opened again by itself |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (10 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (23 checks); the exit code is 0 when all pass, 1 on a failure.
 
 ## 27. Design decisions and pitfalls
 
