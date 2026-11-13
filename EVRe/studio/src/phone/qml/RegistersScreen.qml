@@ -148,11 +148,16 @@ Item {
             reuseItems: true
             boundsBehavior: Flickable.DragOverBounds
             ScrollIndicator.vertical: ScrollIndicator {}
+            // at the top until a finger moves it: the card over the list comes and goes with the link, and the list
+            // keeps showing it whole (ListView leaves its view where it was when the header's height changes)
+            property bool keepTop: true
+            onMovementEnded: keepTop = atYBeginning
 
             // no link: how to connect, and the way to the drawer
             header: Item {
                 width: ListView.view.width
                 height: offline.visible ? offline.height + 12 : 0
+                onHeightChanged: if (list.keepTop) Qt.callLater(list.positionViewAtBeginning)
                 Rectangle {
                     id: offline
                     objectName: "registersOffline"

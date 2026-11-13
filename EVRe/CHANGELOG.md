@@ -29,6 +29,17 @@
   ID…* meanwhile. Before, the drawer kept *DEVICE_ID not read* until a manual reconnect.
 - **The phone's screen darkens behind the drawer** and the write sheet in the dark theme too: Material's grey wash
   made it lighter instead.
+- **The keyboard covered the write sheet's field on the phone** while typing (a Samsung phone): Android now makes the
+  window smaller over the keyboard, and the sheet and the Connect drawer keep the field typed in (the sheet's Apply
+  too) above it where Android does not.
+- **The phone's screens polished by eye**, in both themes and languages: drawn icons on the tabs, the chosen tab on a
+  pill; a search field with a magnifier and a clear cross, the count at the list's foot; group headers that stay at
+  the top; cards with the address beside the name, the value as the hero, a ripple on a press, chips for *not
+  refreshed* and *on the chart*, a red edge for an error; a card that says how to connect, with a button to the
+  drawer; the drawer in sections (Link, Device, Polling, Recording, Display) with Connect as the primary button and
+  the link's state by a coloured dot; the write sheet with a drag handle, an enum's values as a list, the warning in
+  its colours and the answer on its tone; the Log's time over each line, a bar for warnings and errors, an empty
+  state. Every button 48 dp; the cards keep a phone's width in landscape.
 - **The chart on the phone, its core.** The Chart screen draws its lines on the phone's graphics card, binned
   exactly as the desktop's chart bins them: a grid with the time and value labels, Live and Hold, the window (10 s,
   1 min, 5 min); a pinch zooms the time, a drag looks back and holds, a double tap goes live again. Time runs left

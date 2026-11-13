@@ -2148,17 +2148,18 @@ double contrast(const QColor &a, const QColor &b) {
 
 /* the muted texts in view: each one's colour against what is drawn under it (the commonest colour of its box in the
  * picture), and its letters there (pixels far from that); the lowest contrast found, and any under 4.5:1 */
-void mutedContrast(const Phone &phone, const QString &where, double &lowest, QStringList &bad, int &seen) {
+void mutedContrast(const Phone &phone, const QString &where, double &lowest, QStringList &bad, int &seen,
+		QQuickItem *layer = nullptr) {
 	const QImage image = phone.grab();
 	const QColor muted = themeColor(&ThemeColors::muted);
 	const QRectF view(0, 0, phone.window->width(), phone.window->height());
-	forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+	/* with a popup open, only its own texts: the rest lies under its scrim or under it */
+	forEachItem(layer ? layer : topItem(phone.window), [&](QQuickItem *item) {
 		if (!item->inherits("QQuickText") || !item->isVisible() || item->opacity() < 0.99) return;
 		if (item->property("text").toString().isEmpty() || !near(item->property("color").value<QColor>(), muted, 2)) return;
 		const QRectF box = item->mapRectToScene(QRectF(0, 0, std::min(item->width(), item->property("contentWidth").toDouble()),
 				std::min(item->height(), item->property("contentHeight").toDouble())));
 		if (!view.contains(box) || box.width() < 4) return;
-		/* inside a popup that is still sliding, or hidden under one: only what is plainly in the picture */
 		QHash<QRgb, int> counts;
 		for (double y = box.top() + 0.5; y < box.bottom(); y += 1)
 			for (double x = box.left() + 0.5; x < box.right(); x += 1) counts[Phone::pixel(image, QPointF(x, y)).rgb()]++;
@@ -2196,10 +2197,12 @@ void checkMutedContrast() {
 			phone.settle(600);
 			mutedContrast(phone, QStringLiteral("registers"), lowest, bad, seen);
 			openSheet(phone, QStringLiteral("FAN_SPEED"));
-			mutedContrast(phone, QStringLiteral("sheet"), lowest, bad, seen);
+			QQuickItem *sheetFlick = phone.item("sheetFlick");
+			mutedContrast(phone, QStringLiteral("sheet"), lowest, bad, seen, sheetFlick ? sheetFlick->parentItem() : nullptr);
 			closeSheet(phone);
 			phone.openDrawer();
-			mutedContrast(phone, QStringLiteral("drawer"), lowest, bad, seen);
+			QQuickItem *drawerFlick = phone.item("drawerFlick");
+			mutedContrast(phone, QStringLiteral("drawer"), lowest, bad, seen, drawerFlick ? drawerFlick->parentItem() : nullptr);
 			phone.closeDrawer();
 			phone.tap(phone.item("tabLog"));
 			mutedContrast(phone, QStringLiteral("log"), lowest, bad, seen);
