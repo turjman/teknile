@@ -67,7 +67,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <tuple>
@@ -3057,6 +3059,92 @@ void saveToolsPictures(const QString &prefix) {
 	language::apply(*qApp, QStringLiteral("en"));
 }
 
+/* ---- fixes from the review */
+
+/* a fast line's float channel with +inf, -inf and NaN among its values (fast::Store passes them on): the frame is made
+ * (the ticks' loop ended), the Y range stays finite, the value axis has its labels */
+void checkChartInfinite() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showFedChart(phone);
+	StreamDef def;
+	def.name = QStringLiteral("F");
+	def.addr = 0xDC00;
+	def.size = 1024;
+	def.rate = 100;
+	def.channels = { StreamChannel{ QStringLiteral("X"), RegType::F32, QStringLiteral("V") } };
+	auto store = std::make_shared<fast::Store>(def);
+	const int count = 1000;
+	QByteArray records(count * 4, '\0');
+	for (int i = 0; i < count; ++i) {
+		float v = float(std::sin(i / 50.0));
+		if (i % 97 == 10) v = std::numeric_limits<float>::infinity();
+		if (i % 97 == 40) v = -std::numeric_limits<float>::infinity();
+		if (i % 97 == 70) v = std::numeric_limits<float>::quiet_NaN();
+		std::memcpy(records.data() + i * 4, &v, 4);
+	}
+	store->append(0, count, records.constData(), true, 0);
+	store->mark(count, 10.0, 0.01); /* records 0 .. 999 at 0.0 .. 9.99 s */
+	qint64 polishes = 0;
+	if (chart) {
+		chart->setClock([] { return 10.0; });
+		chart->setWindowSeconds(10);
+		chart->addThemedLine(7, 0, QStringLiteral("F.X"), QStringLiteral("V"), store, 0);
+		polishes = chart->polishes();
+	}
+	chartFrame(phone, chart, 3);
+	const bool framed = chart && chart->polishes() > polishes;
+	const bool finite = chart && std::isfinite(chart->yLow()) && std::isfinite(chart->yHigh()) && chart->yHigh() > chart->yLow();
+	const int ticks = chart ? int(chart->valueTicks()->ticks().size()) : 0;
+	check(framed && finite && ticks >= 2 && ticks <= 64,
+			QStringLiteral("phone, chart: a fast line with +inf, -inf and NaN among its values: the frame is made, Y stays "
+					"finite (%1 .. %2), %3 value labels (the window's thread hung in the ticks' loop before)")
+					.arg(chart ? chart->yLow() : 0).arg(chart ? chart->yHigh() : 0).arg(ticks));
+}
+
+/* the registers' limit leaves room for the fast lines, as the desktop's (MainWindow::updatePlotLimit) */
+void checkFastPlotLimit() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	showChart(phone);
+	const bool loaded = session && session->loadMap(phone::mapsFolder() + QStringLiteral("/example_fast.json"));
+	const int before = session ? session->registers()->plotLimit() : -1;
+	if (session) {
+		session->setFastPlot(0, 0, true);
+		session->setFastPlot(0, 1, true);
+	}
+	const int withTwo = session ? session->registers()->plotLimit() : -1;
+	if (session) session->setFastPlot(0, 1, false);
+	const int withOne = session ? session->registers()->plotLimit() : -1;
+	if (session) {
+		session->setFastPlot(0, 0, false);
+		session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	}
+	const int max = RegisterModel::MAX_PLOTTED;
+	check(loaded && before == max && withTwo == max - 2 && withOne == max - 1,
+			QStringLiteral("phone, fast lines: the registers' limit leaves room for them, as on the desktop (%1 with none, "
+					"%2 with two fast lines, %3 with one; at most %4 lines together)").arg(before).arg(withTwo).arg(withOne)
+					.arg(max));
+}
+
+/* the view's buttons are no toggles: a tap on Live while live, or on 1 min at 60 s, keeps it chosen */
+void checkChartButtonsStay() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QQuickItem *live = phone.item("liveButton"), *minute = phone.item("window60");
+	const bool before = live && live->property("checked").toBool() && minute && minute->property("checked").toBool();
+	phone.tap(live);
+	phone.tap(minute);
+	const bool after = live && live->property("checked").toBool() && minute && minute->property("checked").toBool()
+			&& chart && chart->live() && chart->windowSeconds() == 60;
+	phone.tap(phone.item("holdButton"));
+	const bool holdShown = phone.item("holdButton")->property("checked").toBool() && !live->property("checked").toBool();
+	phone.tap(phone.item("holdButton"));
+	const bool holdStays = phone.item("holdButton")->property("checked").toBool() && chart && !chart->live();
+	check(before && after && holdShown && holdStays,
+			QStringLiteral("phone, chart: a tap on the chosen Live, 1 min or Hold keeps it chosen (they were toggles: the "
+					"chosen one went unmarked)"));
+}
+
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
  * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
  * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
@@ -3224,6 +3312,9 @@ int main(int argc, char **argv) {
 	RUN(checkMonitorFrames);
 	RUN(checkMonitorEmpty);
 	RUN(checkToolsTexts);
+	RUN(checkChartInfinite);
+	RUN(checkFastPlotLimit);
+	RUN(checkChartButtonsStay);
 	RUN(checkLogScreen);
 	RUN(checkTcpLink);
 	RUN(checkRefusedLink);

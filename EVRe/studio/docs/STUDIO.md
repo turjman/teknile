@@ -8197,7 +8197,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 74 (26.11), 1188. The
+the phone test's 77 (26.11), 1191. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8686,6 +8686,9 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | readouts | each line's values at A and B, B - A, min, max and mean equal `statsOf` over A..B, written as the legend writes a value; the times and B - A |
 | Monitor&nbsp;frames | the fake device's frames arrive while the screen shows (time, TX or RX, hex bytes); Pause holds them (none in 1.2 s, the engine writes none), Resume goes on, Clear empties, another screen stops them |
 | Monitor&nbsp;empty | not connected: it says so, and Connect… opens the drawer |
+| infinite&nbsp;values | a fast line's float channel with +inf, -inf and NaN among its values: the frame is made (the ticks' loop ends), Y stays finite, the value labels there |
+| fast&nbsp;lines&nbsp;limit | the registers' limit leaves room for the fast lines on the chart, as on the desktop: 64, 62 with two, 63 with one |
+| view&nbsp;buttons | a tap on the chosen Live, 1 min or Hold keeps it chosen (no toggles) |
 | cursors&nbsp;and&nbsp;Monitor&nbsp;texts | at 412 px in English and Arabic, dark and light: every Text inside its parent and not cut, every text translated, the frames left to right in the text colour on the background |
 | Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
 | connect | TCP chosen in the drawer, the host and port typed, Connect: connected, the drawer's text, the pill *Connected* with a green dot, the Log, the host saved |
@@ -8729,7 +8732,7 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | isolation | the run's settings in an ini file of a folder of its own (a temporary one), its recordings beside it |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (74 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (77 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,

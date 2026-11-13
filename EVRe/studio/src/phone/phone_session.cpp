@@ -204,6 +204,7 @@ bool PhoneSession::loadMap(const QString &file) {
 	QSettings().setValue(KEY_MAP, path);
 	model_->setDefinitions({}); /* another map: nothing of the one before stays */
 	if (chart_) chart_->removeAll(); /* its fast lines too */
+	updatePlotLimit();
 	model_->setDefinitions(map_.regs);
 	resetStreams();
 	addLog(LogModel::Info, tr("map loaded: %1 (%2 registers)").arg(QDir::toNativeSeparators(path)).arg(map_.regs.size()));
@@ -253,8 +254,15 @@ double PhoneSession::sampleRateHz() const {
 	return intervalMs_ > 0 ? 1000.0 / intervalMs_ : pollHz_;
 }
 
-/* MainWindow::updatePlotLimit: the registers on the chart, as many as the rate allows */
-void PhoneSession::updatePlotLimit() { model_->setPlotLimit(RegisterModel::plotLimitFor(sampleRateHz())); }
+/* MainWindow::updatePlotLimit: the registers on the chart, as many as the rate allows, and the fast lines are lines
+ * too: the registers get what is left of MAX_PLOTTED */
+void PhoneSession::updatePlotLimit() {
+	int fastLines = 0;
+	if (chart_)
+		for (const ChartLines::Entry &line : chart_->legend()->entries()) fastLines += line.id >= FAST_LINE;
+	model_->setPlotLimit(std::min(RegisterModel::plotLimitFor(sampleRateHz()),
+			std::max(0, RegisterModel::MAX_PLOTTED - fastLines)));
+}
 
 /* MainWindow::updateStaleAfter: two poll intervals, never less than a slow answer, plus the time between two copies */
 void PhoneSession::updateStaleAfter() {
@@ -866,6 +874,7 @@ bool PhoneSession::setFastPlot(int stream, int channel, bool on) {
 		chart_->removeLine(id);
 		if (linesOf() == 0) engine_->post([engine = engine_, stream] { engine->setFastStream(stream, false); });
 	}
+	updatePlotLimit();
 	emit fastChanged();
 	return true;
 }

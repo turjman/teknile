@@ -84,13 +84,14 @@ Item {
             Row {
                 id: viewGroup
                 spacing: 2
+                // the buttons show what is chosen (checked, highlighted) and are no toggles: a tap on the one chosen
+                // keeps it chosen
                 // Live / Hold: the view follows now, or stays where it is
                 Button {
                     objectName: "liveButton"
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Live")
                     flat: true
-                    checkable: true
                     checked: chart.live
                     highlighted: chart.live
                     onClicked: chart.live = true
@@ -100,7 +101,6 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Hold")
                     flat: true
-                    checkable: true
                     checked: !chart.live
                     highlighted: !chart.live
                     onClicked: chart.live = false
@@ -126,7 +126,6 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: screen.windowNames[index]
                         flat: true
-                        checkable: true
                         checked: Math.abs(chart.windowSeconds - screen.windows[index]) < 1e-6
                         highlighted: checked
                         onClicked: chart.windowSeconds = screen.windows[index]
@@ -186,7 +185,6 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Cursors")
                     flat: true
-                    checkable: true
                     checked: chart.cursorsOn
                     highlighted: chart.cursorsOn
                     onClicked: chart.cursorsOn ? chart.clearCursors() : chart.placeCursors()

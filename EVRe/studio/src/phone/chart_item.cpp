@@ -630,8 +630,11 @@ void ChartItem::frameTick() {
  * desktop's; held, it stays */
 void ChartItem::updateYRange() {
 	double lo = std::numeric_limits<double>::max(), hi = -lo;
+	/* a fast line's float channel may hold an infinity (fast::Store passes it on): such a range is left out, or the
+	 * ticks' loop never ended */
 	for (const auto &line : lines_)
-		if (line->shown && !line->binned.bins.isEmpty() && line->binned.lo <= line->binned.hi) {
+		if (line->shown && !line->binned.bins.isEmpty() && std::isfinite(line->binned.lo) && std::isfinite(line->binned.hi)
+				&& line->binned.lo <= line->binned.hi) {
 			lo = std::min(lo, line->binned.lo);
 			hi = std::max(hi, line->binned.hi);
 		}
@@ -639,7 +642,9 @@ void ChartItem::updateYRange() {
 		double margin = (hi - lo) * 0.05;
 		if (margin <= 0) margin = std::max(std::fabs(hi) * 0.1, 0.5); /* a flat line: in the middle */
 		const double wantLo = lo - margin, wantHi = hi + margin;
-		if (!yHeld_) {
+		if (!std::isfinite(wantLo) || !std::isfinite(wantHi)) {
+			/* a span past the doubles' range: kept as it was */
+		} else if (!yHeld_) {
 			yLo_ = wantLo;
 			yHi_ = wantHi;
 			yHeld_ = true;
@@ -647,6 +652,11 @@ void ChartItem::updateYRange() {
 			yLo_ = wantLo < yLo_ ? wantLo : yLo_ + (wantLo - yLo_) * 0.05;
 			yHi_ = wantHi > yHi_ ? wantHi : yHi_ + (wantHi - yHi_) * 0.05;
 		}
+	}
+	if (!std::isfinite(yLo_) || !std::isfinite(yHi_)) { /* never kept: every later frame would be NaN */
+		yLo_ = 0;
+		yHi_ = 1;
+		yHeld_ = false;
 	}
 	if (!(yHi_ > yLo_)) yHi_ = yLo_ + 1;
 	const bool moved = axes_.lo != yLo_ || axes_.hi != yHi_;
@@ -664,9 +674,14 @@ void ChartItem::makeTicks(QVector<float> &grid) {
 	const auto snapY = [dpr, at](double y) { return std::floor((y + at.y()) * dpr + 1e-6) / dpr - at.y(); };
 	grid.clear();
 	QVector<ChartTicks::Tick> times, values;
+	/* at most MAX_LOOP steps each way: a step under a value's precision (v + step == v) cannot spin either */
+	constexpr int MAX_LOOP = 64;
 	const int xCount = std::max(2, int(plot_.width() / 90));
 	const double tStep = niceStep(axes_.span / xCount);
-	for (double t = std::ceil(axes_.t0 / tStep) * tStep; t <= axes_.t1 + tStep * 1e-9; t += tStep) {
+	const bool timesOk = std::isfinite(axes_.t0) && std::isfinite(axes_.t1) && std::isfinite(tStep) && tStep > 0;
+	int steps = 0;
+	for (double t = std::ceil(axes_.t0 / tStep) * tStep; timesOk && t <= axes_.t1 + tStep * 1e-9 && steps < MAX_LOOP;
+			t += tStep, ++steps) {
 		const double x = snapX(axes_.x(t));
 		if (x < plot_.left() || x >= plot_.right()) continue;
 		rect(grid, x, plot_.top(), x + hair, plot_.bottom());
@@ -674,7 +689,10 @@ void ChartItem::makeTicks(QVector<float> &grid) {
 	}
 	const int yCount = std::clamp(int(plot_.height() / 40), 2, MAX_TICKS_Y);
 	const double vStep = niceStep((axes_.hi - axes_.lo) / yCount);
-	for (double v = std::ceil(axes_.lo / vStep) * vStep; v <= axes_.hi + vStep * 1e-9; v += vStep) {
+	const bool valuesOk = std::isfinite(axes_.lo) && std::isfinite(axes_.hi) && std::isfinite(vStep) && vStep > 0;
+	steps = 0;
+	for (double v = std::ceil(axes_.lo / vStep) * vStep; valuesOk && v <= axes_.hi + vStep * 1e-9 && steps < MAX_LOOP;
+			v += vStep, ++steps) {
 		const double y = snapY(axes_.y(v));
 		if (y < plot_.top() || y >= plot_.bottom()) continue;
 		rect(grid, plot_.left(), y, plot_.right(), y + hair);
