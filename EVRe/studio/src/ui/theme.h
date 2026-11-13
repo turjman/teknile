@@ -49,8 +49,6 @@ struct ThemeColors {
 };
 
 namespace Theme {
-/* the colours of a look, without applying it (theme_colors.cpp: the phone's interface reads them too) */
-ThemeColors colorsFor(bool dark);
 void apply(QApplication &app, bool dark); /* style, palette, font, style sheet, no popup animations; again to switch */
 const ThemeColors &colors();              /* of the theme applied last */
 bool isDark();

@@ -4,11 +4,6 @@
 
 ### EVRe Studio
 
-- **The phone gets an interface of its own** (Android, the skeleton): a window in Qt Quick, drawn by the phone's
-  graphics card, with a header (the menu, the screen's name, the link's state), the Connect drawer (the dark theme and
-  the language at its bottom), a tab bar for Registers, Chart, Monitor and Log, and right to left in Arabic. The
-  screens say what will come; the desktop's widget window is no longer built for Android, and the desktop does not
-  change. A proof screen (`am start ... --ez p9 true`) measures a live list's frames.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

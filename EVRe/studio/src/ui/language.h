@@ -15,7 +15,7 @@
 #include <QString>
 #include <QStringList>
 
-class QCoreApplication;
+class QApplication;
 
 namespace language {
 
@@ -25,9 +25,8 @@ QString saved();
 void save(const QString &code);
 /* the language a choice gives here: "system" -> "ar" on an Arabic system, else "en" */
 QString resolve(const QString &choice);
-/* the translators and the direction for a language ("en" or "ar"); false: its file is missing (English then).
- * Any application: the desktop's QApplication and the phone's QGuiApplication (the direction needs a Gui one) */
-bool apply(QCoreApplication &app, const QString &code);
+/* the translators and the direction for a language ("en" or "ar"); false: its file is missing (English then) */
+bool apply(QApplication &app, const QString &code);
 QString current(); /* the language applied ("en" until apply) */
 
 } // namespace language

@@ -1926,33 +1926,6 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     </message>
 </context>
 <context>
-    <name>ConnectDrawer</name>
-    <message>
-        <source>Connect</source>
-        <translation>اتصال</translation>
-    </message>
-    <message>
-        <source>Coming soon: a USB port or a TCP address, the map, and Connect.</source>
-        <translation>قريبًا: منفذ USB أو عنوان TCP، والخريطة، والاتصال.</translation>
-    </message>
-    <message>
-        <source>Dark theme</source>
-        <translation>سمة داكنة</translation>
-    </message>
-    <message>
-        <source>Language</source>
-        <translation>اللغة</translation>
-    </message>
-    <message>
-        <source>System</source>
-        <translation>النظام</translation>
-    </message>
-    <message>
-        <source>The language changes when the app is opened again.</source>
-        <translation>تتغيّر اللغة عند فتح التطبيق مرة أخرى.</translation>
-    </message>
-</context>
-<context>
     <name>DumpTab</name>
     <message>
         <source>Device</source>
@@ -4590,53 +4563,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
 </context>
 <context>
-    <name>Main</name>
-    <message>
-        <source>EVRe Studio</source>
-        <translation>EVRe Studio</translation>
-    </message>
-    <message>
-        <source>Registers</source>
-        <translation>المسجّلات</translation>
-    </message>
-    <message>
-        <source>Chart</source>
-        <translation>المخطط</translation>
-    </message>
-    <message>
-        <source>Monitor</source>
-        <translation>المراقبة</translation>
-    </message>
-    <message>
-        <source>Log</source>
-        <translation>السجل</translation>
-    </message>
-    <message>
-        <source>Connect and settings</source>
-        <translation>الاتصال والإعدادات</translation>
-    </message>
-    <message>
-        <source>Not connected</source>
-        <translation>غير متصل</translation>
-    </message>
-    <message>
-        <source>Coming soon: every register of the map, its value live.</source>
-        <translation>قريبًا: كل مسجّل في الخريطة، بقيمته الحيّة.</translation>
-    </message>
-    <message>
-        <source>Coming soon: the plotted registers over time.</source>
-        <translation>قريبًا: المسجّلات المرسومة عبر الزمن.</translation>
-    </message>
-    <message>
-        <source>Coming soon: the frames on the link.</source>
-        <translation>قريبًا: الإطارات على الوصلة.</translation>
-    </message>
-    <message>
-        <source>Coming soon: what happened on the link, newest last.</source>
-        <translation>قريبًا: ما جرى على الوصلة، والأحدث في الآخر.</translation>
-    </message>
-</context>
-<context>
     <name>MainWindow</name>
     <message>
         <source>--plot: not plottable (the map): %1</source>
@@ -6415,13 +6341,6 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>Show in Log</source>
         <translation>عرض في السجل</translation>
-    </message>
-</context>
-<context>
-    <name>P9Screen</name>
-    <message>
-        <source>Proof P-9: the values change 20 times a second. Flick the list.</source>
-        <translation>الإثبات P-9: تتغيّر القيم 20 مرة في الثانية. اسحب القائمة بسرعة.</translation>
     </message>
 </context>
 <context>
