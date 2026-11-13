@@ -5,7 +5,8 @@
  * This file names the program (the desktop's settings: "ui/dark", "ui/language"), applies the saved language, sets
  * the Material style and loads Main.qml (phone_app.cpp). EVRE_P9=1, or on Android `am start ... --ez p9 true`, shows
  * the proof P-9 instead (p9_proof.h); EVRE_PERF=1, or `am start ... --ez perf true`, writes the Registers screen's
- * speed line to logcat (EVRE_PERF). */
+ * speed line to logcat (EVRE_PERF); EVRE_CHARTDEMO=1, or `am start ... --ez chartdemo true`, the chart's test feed
+ * (chart_demo.h). */
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml/qqmlextensionplugin.h>
@@ -24,6 +25,6 @@ int main(int argc, char **argv) {
 	language::apply(app, language::resolve(language::saved()));
 	phone::setStyle();
 	QQmlApplicationEngine engine;
-	if (!phone::loadMain(engine, phone::p9Asked(), QSize(), phone::perfAsked())) return 1;
+	if (!phone::loadMain(engine, phone::p9Asked(), QSize(), phone::perfAsked(), phone::chartDemoAsked())) return 1;
 	return app.exec();
 }

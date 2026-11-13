@@ -51,8 +51,11 @@ bool p9Asked() { return asked("EVRE_P9", "p9"); }
 
 bool perfAsked() { return asked("EVRE_PERF", "perf"); }
 
-QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool perf) {
-	QVariantMap properties{ { QStringLiteral("p9"), p9 }, { QStringLiteral("perf"), perf } };
+bool chartDemoAsked() { return asked("EVRE_CHARTDEMO", "chartdemo"); }
+
+QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool perf, bool chartDemo) {
+	QVariantMap properties{ { QStringLiteral("p9"), p9 }, { QStringLiteral("perf"), perf },
+		{ QStringLiteral("chartDemo"), chartDemo } };
 	if (size.isValid()) {
 		properties.insert(QStringLiteral("width"), size.width());
 		properties.insert(QStringLiteral("height"), size.height());
@@ -64,6 +67,10 @@ QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool 
 	if (window && perf && !p9) {
 		const QPointer<QQuickWindow> shown(window);
 		new P9Meter(window, "EVRE_PERF", [shown] { return shown && shown->property("registersShown").toBool(); });
+	}
+	if (window && chartDemo && !p9) {
+		const QPointer<QQuickWindow> shown(window);
+		new P9Meter(window, "EVRE_PERF", [shown] { return shown && shown->property("chartShown").toBool(); });
 	}
 	if (window)
 		if (auto *session = engine.singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession")) session->attachWindow(window);

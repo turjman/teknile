@@ -4,7 +4,8 @@
 // above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab bar, the screens and the
 // drawer mirrored).
 // With p9 (phone_app.cpp) the window shows the proof P-9 alone; with perf the Registers screen keeps a bar running
-// and registersShown tells the speed line (EVRE_PERF) when to write.
+// and registersShown tells the speed line (EVRE_PERF) when to write; with chartDemo the Chart screen, fed by the chart's
+// test feed (chart_demo.h), chartShown telling the same line when to write.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -23,6 +24,8 @@ ApplicationWindow {
     property bool perf: false
     // the Registers screen in view: the speed line's seconds (phone_app.cpp)
     readonly property bool registersShown: !p9 && tabBar.currentIndex === 0 && !drawer.opened && !writeSheet.opened
+    property bool chartDemo: false
+    readonly property bool chartShown: !p9 && tabBar.currentIndex === 1 && !drawer.opened
     // the direction comes from the Arabic translation (language.cpp), as on the desktop
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property var screenNames: [qsTr("Registers"), qsTr("Chart"), qsTr("Monitor"), qsTr("Log")]
@@ -33,6 +36,14 @@ ApplicationWindow {
     Material.background: PhoneTheme.bg
     Material.foreground: PhoneTheme.text
     color: PhoneTheme.bg
+
+    // Behind a modal (the drawer, the write sheet) the screen darkens in both themes: Material's own dimming is a grey
+    // wash, which lightened the dark theme's screen instead. A Drawer of Material's sets its own, so they set this too
+    readonly property Component scrim: Rectangle {
+        color: Qt.rgba(0, 0, 0, 0.5)
+    }
+    Overlay.modal: scrim
+    Overlay.modeless: scrim
 
     header: ToolBar {
         id: header
@@ -154,9 +165,9 @@ ApplicationWindow {
             onConnectAsked: drawer.open()
             onWriteAsked: source => writeSheet.openFor(source)
         }
-        PlaceholderScreen {
+        ChartScreen {
             objectName: "screenChart"
-            note: qsTr("Coming soon: the plotted registers over time.")
+            demo: root.chartDemo
         }
         PlaceholderScreen {
             objectName: "screenMonitor"
@@ -167,6 +178,8 @@ ApplicationWindow {
         }
     }
 
+    Component.onCompleted: if (chartDemo) tabBar.currentIndex = 1
+
     ConnectDrawer {
         id: drawer
         objectName: "connectDrawer"
@@ -174,6 +187,8 @@ ApplicationWindow {
         interactive: !root.p9
         width: Math.min(root.width * 0.85, 360)
         height: root.height
+        Overlay.modal: root.scrim
+        Overlay.modeless: root.scrim
     }
 
     WriteSheet {
@@ -183,6 +198,8 @@ ApplicationWindow {
         width: root.width
         interactive: opened
         onConnectAsked: drawer.open()
+        Overlay.modal: root.scrim
+        Overlay.modeless: root.scrim
     }
 
     Loader {
