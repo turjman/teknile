@@ -128,6 +128,34 @@ Drawer {
             onToggled: switchRow.toggled(checked)
         }
     }
+    // a half of the USB / TCP choice: the chosen one lit (not checkable: Material's checked look is a lighter fill, too
+    // light under white), its text white on the accent's fill (5.2:1) in both themes, drawn by a label of its own
+    // (Material's highlighted text came out black on blue); while a link is wanted only the chosen half stays lit
+    component SegmentButton: Button {
+        id: segment
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        topInset: 3
+        bottomInset: 3
+        leftInset: 3
+        rightInset: 3
+        // the label the half's whole height: Material's paddings left it shorter than its letters
+        topPadding: 0
+        bottomPadding: 0
+        Material.accent: PhoneTheme.accentFill
+        flat: !highlighted
+        enabled: highlighted || !drawer.linkBusy
+        contentItem: Label {
+            objectName: "segmentText"
+            text: segment.text
+            color: segment.highlighted ? "white" : segment.enabled ? PhoneTheme.text : PhoneTheme.muted
+            font.pixelSize: 15
+            font.weight: Font.Medium
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+    }
     // a field's way into the view above the keyboard
     component Field: TextField {
         id: field
@@ -195,38 +223,16 @@ Drawer {
                     anchors.fill: parent
                     anchors.margins: 1
                     spacing: 0
-                    Button {
+                    SegmentButton {
                         objectName: "linkUsb"
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        topInset: 3
-                        bottomInset: 3
-                        leftInset: 3
-                        rightInset: 3
-                        // white on the accent's fill (5.2:1); on the lighter accent it read 3:1
-                        Material.accent: PhoneTheme.accentFill
-                        Material.foreground: PhoneTheme.text
                         text: qsTr("USB")
-                        // lit, not checkable: Material's checked look is a lighter fill, too light under white
                         highlighted: !PhoneSession.tcp
-                        flat: !highlighted
-                        enabled: highlighted || !drawer.linkBusy
                         onClicked: PhoneSession.tcp = false
                     }
-                    Button {
+                    SegmentButton {
                         objectName: "linkTcp"
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        topInset: 3
-                        bottomInset: 3
-                        leftInset: 3
-                        rightInset: 3
-                        Material.accent: PhoneTheme.accentFill
-                        Material.foreground: PhoneTheme.text
                         text: qsTr("TCP")
                         highlighted: PhoneSession.tcp
-                        flat: !highlighted
-                        enabled: highlighted || !drawer.linkBusy
                         onClicked: PhoneSession.tcp = true
                     }
                 }

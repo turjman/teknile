@@ -21,6 +21,13 @@ bool p9Asked();
 bool perfAsked();
 /* the chart's test feed asked for (chart_demo.h): EVRE_CHARTDEMO=1, or the extra chartdemo (--ez chartdemo true) */
 bool chartDemoAsked();
+/* the settings and the recordings in `folder` instead of the user's (the registry, the app's data folder): an ini file
+ * there (QSettings' default format and path for every QSettings() of the program), the recordings under it. The test
+ * calls it with a folder of its own run (two runs at once share nothing); the program with EVRE_SETTINGS_DIR, for a
+ * run started by a test aid. Before any QSettings is made. */
+void useOwnFolder(const QString &folder);
+/* EVRE_SETTINGS_DIR set: useOwnFolder(it) */
+void useOwnFolderAsked();
 /* Main.qml of the module EVRe.Phone into `engine`; `size` empty: Main.qml's own (412 x 915, a phone's portrait).
  * p9: the proof's screen alone, and its meter on the window (p9_proof.h). perf: a line a second to logcat under the
  * tag EVRE_PERF while the Registers screen shows (fps, the longest frame, frames over 20 ms), and a bar running at
