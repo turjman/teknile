@@ -70,6 +70,11 @@
   the values in view; off, a small sheet takes Min and Max. **Clear** empties the lines. With a map that has fast
   streams, **Fast lines** lists their channels: one chosen switches its stream on and draws it as the desktop draws
   a fast line. With no line, the chart says how to plot one, with a button to the Registers screen.
+- **Cursors and the Monitor on the phone.** **Cursors** on the Chart screen puts A and B on the view and holds it;
+  each is dragged by its round handle. Beside the plot (under it in portrait) the readouts give A's and B's times and
+  B - A, and per line its values at A and B, B - A, and min, max and mean over A..B, as the desktop measures them.
+  The Monitor screen shows the frames on the link, each its time and direction over its bytes in a monospaced font
+  (left to right in Arabic too); **Pause** holds them, **Clear** empties the list.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

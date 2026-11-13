@@ -713,6 +713,22 @@ Double-click to edit</source>
         <source>Apply</source>
         <translation>تطبيق</translation>
     </message>
+    <message>
+        <source>Cursors</source>
+        <translation>المؤشران</translation>
+    </message>
+    <message>
+        <source>min</source>
+        <translation>الأدنى</translation>
+    </message>
+    <message>
+        <source>max</source>
+        <translation>الأعلى</translation>
+    </message>
+    <message>
+        <source>mean</source>
+        <translation>المتوسط</translation>
+    </message>
 </context>
 <context>
     <name>ChartTab</name>
@@ -2922,6 +2938,13 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     </message>
 </context>
 <context>
+    <name>FrameLog</name>
+    <message>
+        <source>… %1 frames not shown (too many to show)</source>
+        <translation>… %1 إطار لم يُعرض (أكثر من أن يُعرض)</translation>
+    </message>
+</context>
+<context>
     <name>HelpDialog</name>
     <message>
         <source>Getting started</source>
@@ -4856,10 +4879,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <source>Connect and settings</source>
         <translation>الاتصال والإعدادات</translation>
     </message>
-    <message>
-        <source>Coming soon: the frames on the link.</source>
-        <translation>قريبًا: الإطارات على الوصلة.</translation>
-    </message>
 </context>
 <context>
     <name>MainWindow</name>
@@ -6453,6 +6472,45 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
 أسماء المسجّلات، الأعداد، + − * / ^، ( )، pi، وabs sqrt exp log log10 sin cos tan asin acos atan atan2(y,x) min(a,b) max(a,b) pow(a,b) floor ceil round sign clamp(x,lo,hi) bits(x,lsb,width) (حقل بتات).
 قنوات تدفق سريع (ADC.I_LOAD)، كلها من تدفق واحد: تُحسب لكل سجلّ منه، والمسجّل فيها يُثبَّت عند آخر قيمة استُطلعت.
 أمثلة: SUPPLY_V * SUPPLY_I (القدرة، W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5) + 32 · sqrt(X^2 + Y^2)</translation>
+    </message>
+</context>
+<context>
+    <name>MonitorScreen</name>
+    <message>
+        <source>paused · frames: %1</source>
+        <translation>متوقف مؤقتًا · الإطارات: %1</translation>
+    </message>
+    <message>
+        <source>frames: %1</source>
+        <translation>الإطارات: %1</translation>
+    </message>
+    <message>
+        <source>Resume</source>
+        <translation>استئناف</translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation>إيقاف مؤقت</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Not connected: the frames on the link show here once it is up.</source>
+        <translation>غير متصل: تظهر هنا إطارات الوصلة حين تعمل.</translation>
+    </message>
+    <message>
+        <source>Paused: Resume to see the frames again.</source>
+        <translation>متوقف مؤقتًا: الاستئناف يُظهر الإطارات من جديد.</translation>
+    </message>
+    <message>
+        <source>Waiting for frames…</source>
+        <translation>في انتظار الإطارات…</translation>
+    </message>
+    <message>
+        <source>Connect…</source>
+        <translation>اتصال…</translation>
     </message>
 </context>
 <context>
