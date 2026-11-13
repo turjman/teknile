@@ -212,6 +212,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [22.4 Module `model`](#224-module-model)
     - [22.5 Module `api`](#225-module-api)
     - [22.6 Module `ui`](#226-module-ui)
+    - [22.7 Module `phone`](#227-module-phone)
   - [23. The chart renderer](#23-the-chart-renderer)
     - [23.1 Data structures](#231-data-structures)
     - [23.2 Binning on absolute time](#232-binning-on-absolute-time)
@@ -238,6 +239,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [25.3 Linux](#253-linux)
     - [25.4 CMake targets and options](#254-cmake-targets-and-options)
     - [25.5 Installers and releases](#255-installers-and-releases)
+    - [25.6 The phone's interface (Android)](#256-the-phones-interface-android)
   - [26. Tests](#26-tests)
     - [26.1 Overview](#261-overview)
     - [26.2 The GUI test](#262-the-gui-test)
@@ -249,6 +251,7 @@ The built-in help (F1) is a short form of Part I. Every example uses the registe
     - [26.8 `EVRE_PERF_LOG`](#268-evre_perf_log)
     - [26.9 Fast EVRe without a window](#269-fast-evre-without-a-window)
     - [26.10 Listen without a window](#2610-listen-without-a-window)
+    - [26.11 The phone test](#2611-the-phone-test)
   - [27. Design decisions and pitfalls](#27-design-decisions-and-pitfalls)
   - [28. Glossary](#28-glossary)
   - [29. Open items](#29-open-items)
@@ -5124,8 +5127,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 
 | File | Role |
 |---|---|
-| `CMakeLists.txt` | the build: the protocol library, the core library, the program, `evre`, `evre-sim`, the GUI test, the map, fast and Listen tests, the probe, the fast fake device, the maps and the USB captures copied beside them; on Android only the program, as an APK (25.4) |
-| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`); on Android the start intent's extras `chartOnly` and `perfLog` as `EVRE_CHART_ONLY` and `EVRE_PERF_LOG` (`am start -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez chartOnly true`) |
+| `CMakeLists.txt` | the build: the protocol library, the engine library, the core library, the program, `evre`, `evre-sim`, the GUI test, the map, fast and Listen tests, the probe, the fast fake device, the maps and the USB captures copied beside them; with `EVRE_PHONE` the phone's program and its test; on Android only the phone's program, as an APK (25.4, 25.6) |
+| `src/main.cpp` | command line → `MainWindow::Startup`, organisation and application names, theme, the `EVRE_SHOT` test aid, the fast stores' frees hurried at the quit (`fast::hurryLettingGo`); on Android the start intent's extras `chartOnly` and `perfLog` as `EVRE_CHART_ONLY` and `EVRE_PERF_LOG` (A.0's proof; `EVReStudio` is no longer built for Android, the phone has its own program, 25.6) |
 | `src/evre/frame.h`,&nbsp;`.cpp` | function codes, CRC-16/X-25, `build()`, `Parser`, byte order helpers, names for codes and errors |
 | `src/evre/link.h`,&nbsp;`.cpp` | `Link` interface, `TcpLink`, `SerialLink` (its errors in plain words, `plainReason`) |
 | `src/evre/usb_bridge.h` | `UsbBridge`: what the Android link needs of Android's USB host API (the devices, open, send, close) and its `Sink`; `UsbBridge::system()` on Android |
@@ -5190,13 +5193,26 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/dump_view.h`,&nbsp;`.cpp` | `DumpView`: the cards painted (the request's and the reply's strips of named fields, the hex grid of one-line rows with chips, the decode list; a fast stream's block with its header strip, its records and Show all), the glow, the hover, the amber stripe, the tooltips' places, the mouse, the keys and the copy texts; `DumpBlock` |
 | `src/ui/event_log.h`,&nbsp;`.cpp` | `EventLog` (Log tab and daily file), `Notice` (the pop-up) |
 | `src/ui/frame_clock.h`,&nbsp;`.cpp` | `FrameClock`: one tick per display refresh |
-| `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale |
-| `translations/evre_studio_ar.ts` | Arabic: every text and Help page (`qt_add_translations`, built into the program at `:/i18n`) |
+| `src/ui/language.h`,&nbsp;`.cpp` | `language::`: the choice (`ui/language`), the translators (the Studio's and Qt's), the direction and the numbers' locale; `apply` takes any application (`QCoreApplication`), the desktop's and the phone's |
+| `translations/evre_studio_ar.ts` | Arabic: every text and Help page, the phone's QML texts too (`qt_add_translations` on `evre_engine`, built into each program at `:/i18n`) |
 | `src/ui/value_pace.h`,&nbsp;`.cpp` | `ValuePace` (the *Show values* choices and setting), `ValuePacer`: how often the numbers on screen change |
 | `src/ui/help_dialog.h`,&nbsp;`.cpp` | `HelpDialog`: the help pages, kept as HTML in the source |
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
+| `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
+| `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
+| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `loadMain` (the window, as the program and its test load it) |
+| `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
+| `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
+| `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat) |
+| `src/phone/qml/Main.qml` | the phone's window: header, drawer, tab bar, screens, mirroring, Material's colours |
+| `src/phone/qml/ConnectDrawer.qml` | the Connect drawer: the link to come, the theme switch, the language |
+| `src/phone/qml/LinkPill.qml` | the link's state in the header |
+| `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
+| `src/phone/qml/P9Screen.qml` | the proof P-9's list |
+| `android/AndroidManifest.xml` | the APK's manifest: package `com.teknile.evrestudio`, USB host |
 | `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder` (`assets:/maps` on Android), `chartOnly` (the Android proof's switch, `EVRE_CHART_ONLY`: `MainWindow` shows the Chart tab alone, `ChartTab` scrolls its rows of controls sideways), `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
+| `tests/phone_test.cpp` | `evre_phone_test`: the phone's window driven by QtTest (26.11) |
 | `tests/map_test.cpp` | `evre_map_test`: the map files (save byte for byte, edits, overlays, keys, checks, streams, exports) without a window |
 | `tests/fast_test.cpp` | `evre_fast_test`: Fast EVRe without a window: the block's rules, a fuzz, the clock's fit, the fake devices' source, the frames `lib/fast` builds |
 | `tests/fast_lib_test.py` | the device's helper `lib/fast` compiled with the library (C++11 to 20, -O0 to -Os) and run; no heap, its stack; its frames through `evre_fast_test`; PROTOCOL.md's example block |
@@ -5771,6 +5787,19 @@ uses the same chevron as `QPushButton::menu-indicator`, at the right and centred
 Such a button is made with `setButtonMenu(button, menu)` (`ui_helpers`), never with `setMenu` alone: it also sets
 the `menuButton` property, which gives the button room for the chevron (`padding-right: 30px`). A GUI check fails
 for any button with a menu that was not made so.
+
+### 22.7 Module `phone`
+
+The phone's interface (25.6), in Qt Quick: the screens are QML (`src/phone/qml`), the classes below are C++ registered
+by `qt_add_qml_module` (`QML_ELEMENT`, `QML_SINGLETON`) as the module `EVRe.Phone`. The shared classes (the engine,
+the models, the theme's colours, the language) get no QML macros: QML reaches them through these.
+
+| Class | Responsibility | Main&nbsp;functions&nbsp;and&nbsp;signals | Tested&nbsp;by |
+|---|---|---|---|
+| `PhoneTheme` | singleton: the colours of `Theme::colorsFor(dark)` and `dark`, saved in `ui/dark`; Material follows it in `Main.qml` | `dark`, `bg`, `surface`, `surface2`, `border`, `text`, `muted`, `accent`, `accentFill`, `control`, `good`, `warn`, `bad`, `grid`, `series`; signal `changed` | phone test (theme) |
+| `PhoneLanguage` | singleton: the drawer's language choice, saved in `ui/language`, applied at the next start | `codes`, `choice`, `pending`; signal `changed` | phone test (language) |
+| `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
+| `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`) | signal `logged(line)` | phone test (P-9) |
 
 ## 23. The chart renderer
 
@@ -6770,7 +6799,7 @@ guard on `listening_` and a check in `listenNothingSent`: the engine's `SendPath
 |---|---|
 | CMake | 3.21 or later |
 | C++&nbsp;compiler | C++17. Tested with GCC (MinGW on Windows, GCC on Linux). Clang and MSVC are not tested; MSVC in particular defines `M_PI` and `M_E`, which `src/model/expr.cpp` uses, only with `_USE_MATH_DEFINES`, so it may need that define. MSVC keeps its own warning defaults. |
-| Qt&nbsp;6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations |
+| Qt&nbsp;6 | 6.5 or later, components Widgets, Network, SerialPort, Test, and LinguistTools (Qt Tools: `lupdate`, `lrelease`) for the translations; with `EVRE_PHONE` also Quick and QuickControls2 (Qt Declarative) |
 | Generator | Ninja (recommended) or any CMake generator |
 | Windows&nbsp;only | the system libraries `winmm` (1 ms timer resolution), `dwmapi` (`DwmFlush`), `d3d11`, `dxgi`, `d3dcompiler` and `dcomp` (the chart on a graphics card), `setupapi` and `cfgmgr32` (Listen: a COM port's USB device), linked by the build |
 
@@ -6832,10 +6861,14 @@ its own.
 | Target | Kind | Built&nbsp;from | Notes |
 |---|---|---|---|
 | `evre_protocol` | static&nbsp;library | `src/evre/*` (with `registers.h`); in `src/model/`: `device_map`, `map_file`, `map_check`, `json_doc`, `map_export`, `bus_file`, `fast_recording`, `fast_store`; in `src/io/`: `fast_stream`, `usb_capture`, `listen_link`, `usbpcap_capture`; `usbmon_capture` on Linux, `usbpcap_lookup` on Windows | Qt Core, Network, SerialPort only (on Windows also `setupapi`, `cfgmgr32`); the core, `evre`, `evre-sim`, the probe, the fast fake device and the tests without a window link it |
-| `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` | links `evre_protocol`; the program and the GUI test link it; a new source file is one more line here (or in `evre_protocol`) |
+| `evre_engine` | static&nbsp;library | in `src/model/`: `expr`, `math_lines`, `recording_file`, `analysis`, `register_model`, `map_document`; `src/io/engine`, `reg_table.h`; `src/api/api_server`; in `src/ui/`: `value_pace`, `theme_colors`, `language` | Qt Gui, no Widgets; links `evre_protocol`; the translations' `.qm` at `:/i18n`; both interfaces are built on it |
+| `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` and `src/phone/` | links `evre_engine` and Qt Widgets; the program and the GUI test link it; a new source file is one more line here (or in `evre_engine` or `evre_protocol`). Not built on Android |
 | `evre_maps` | custom&nbsp;target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
 | `evre_captures` | custom&nbsp;target | `tests/captures/` | copies the USB captures beside the programs at every build (`captures/`) |
-| `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps`; on Android an APK (target `apk`): package `com.teknile.evrestudio`, Android 9 (API 28) and newer, target API 34, arm64-v8a, the version code from the version (1.5.0: 10500), `android/` as the package's source (the manifest and the Java USB layer), `maps/` in the APK's assets (`assets:/maps`). The other programs are not built on Android |
+| `EVReStudio` | executable | `src/main.cpp`&nbsp;+&nbsp;core | depends on `evre_maps`. Not built on Android, nor are the other desktop programs below |
+| `evre_phone_qml` | static&nbsp;library | `src/phone/` but `main_phone.cpp`, `src/phone/qml/` | with `EVRE_PHONE`: the QML module `EVRe.Phone` (its plugin `evre_phone_qmlplugin`), links `evre_engine`, Qt Quick and QuickControls2 |
+| `EVReStudioPhone` | executable | `src/phone/main_phone.cpp`&nbsp;+&nbsp;`evre_phone_qml` | with `EVRE_PHONE` (always on Android): the phone's interface (25.6). On Android an APK (target `apk`): package `com.teknile.evrestudio`, Android 9 (API 28) and newer, target API 34, arm64-v8a, the version code from the version (1.5.0: 10500), `android/` as the package's source (the manifest and the Java USB layer), `maps/` in the APK's assets (`assets:/maps`) |
+| `evre_phone_test` | executable | `tests/phone_test.cpp`&nbsp;+&nbsp;`evre_phone_qml`&nbsp;+&nbsp;Qt&nbsp;Test | with `EVRE_PHONE`, not on Android; depends on `evre_maps` (26.11) |
 | `evre_gui_test` | executable | `tests/gui_test.cpp` + core + Qt Test | depends on `evre_maps` and `evre_captures`: it opens the maps and replays the captures beside it |
 | `evre_probe` | executable | `tests/evre_probe.cpp` + `evre_protocol` | Qt Core, Network, SerialPort only |
 | `evre` | executable | `cli/evre.cpp`&nbsp;+&nbsp;`evre_protocol` | the command-line tool (chapter 34) |
@@ -6845,7 +6878,8 @@ its own.
 | `evre_listen_test` | executable | `tests/listen_test.cpp` + `evre_protocol` + Qt Test | depends on `evre_maps` and `evre_captures` (26.10) |
 | `evre_fake_fast` | executable | `tests/fake_device_fast.cpp` + `evre_protocol` | depends on `evre_maps`: without a map argument it opens the example map beside it |
 
-The project defines no options of its own. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
+The project's one option is `EVRE_PHONE` (off; always on for Android): the phone's program and its test (25.6).
+With it off, nothing more is asked of Qt and the desktop builds as before. The usual CMake variables apply: `CMAKE_BUILD_TYPE`, `CMAKE_PREFIX_PATH`
 (where Qt is) and the generator. The version comes from `project(EVReStudio VERSION 1.5.0)`. It reaches the code as
 `EVRE_STUDIO_VERSION`, is shown in the sidebar's footer, and is printed by `--version`. AUTOMOC is on.
 
@@ -6870,6 +6904,63 @@ touches it or `packaging/`, and by hand (`workflow_dispatch`); never on other pu
 
 On a pull request the files are the run's artifacts, nothing is published. Making a release: `EVRe/CONTRIBUTING.md`.
 
+### 25.6 The phone's interface (Android)
+
+On a phone the Studio has an interface of its own, `EVReStudioPhone`, in Qt Quick: drawn by the GPU's scene graph, where
+the desktop's widgets are painted by the CPU (a widget window on the phone could not flick a list at 60 frames a
+second). The engine, the models, the theme's colours and the language are the desktop's (`evre_engine`, 25.4); the
+desktop keeps its Qt Widgets and does not change. The screens are QML in `src/phone/qml`, their C++ in `src/phone`
+(22.7).
+
+The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML loads):
+
+```
++--------------------------------------------+
+|  menu   Registers         o Not connected  |   header: menu, the screen's name, the link's pill
++--------------------------------------------+
+|                                            |
+|         the screen (a StackLayout)         |   Registers, Chart, Monitor, Log
+|                                            |
++--------------------------------------------+
+|  Registers  |  Chart  |  Monitor  |  Log   |   the tab bar
++--------------------------------------------+
+```
+
+- **The menu button** opens the Connect drawer from the start edge (the left; the right in Arabic). At its bottom: the
+  **Dark theme** switch (`ui/dark`, the desktop's key, saved at once; Material's theme, accent and background follow
+  `PhoneTheme`) and the **Language** list (System, English, العربية; `ui/language`, applied when the app is opened
+  again, which a note under the list says).
+- **Right to left.** In Arabic the header, the tab bar, the screens and the drawer are mirrored
+  (`LayoutMirroring`, the direction from the translation as on the desktop). The texts are the desktop's file's:
+  `qsTr()` in QML, the `.qml` files read by the same `update_translations`.
+- **What is there.** This is the skeleton (part B.0): the screens say what will come; Connect, the registers, the
+  chart, the Monitor and the Log follow in later parts.
+
+**Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
+trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
+JDK 17):
+
+```sh
+cmake -S . -B build-android -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_TOOLCHAIN_FILE=<Qt>/<ver>/android_arm64_v8a/lib/cmake/Qt6/qt.toolchain.cmake   -DQT_HOST_PATH=<Qt>/<ver>/<host> \
+  -DANDROID_SDK_ROOT=<sdk> -DANDROID_NDK_ROOT=<sdk>/ndk/26.1.10909125 -DANDROID_PLATFORM=android-28
+cmake --build build-android --target apk
+```
+
+The APK is `build-android/android-build/build/outputs/apk/release/android-build-release-unsigned.apk`: Android installs
+it once aligned (`zipalign -p -f 4`) and signed (`apksigner sign`). The manifest no longer holds the activity in
+landscape: it turns with the phone.
+
+**The proof P-9.** Started with `EVRE_P9=1`, or on the phone with the intent's extra `p9`, the window shows only a list
+of the example map's registers whose values change 20 times a second, and writes a line a second, "fps 60.0, longest
+16.9 ms, over 20 ms: 0", to logcat under the tag `EVRE_P9` (on a desktop: to its output). A bar runs at the top so the
+window draws every frame and the line times frames, not pauses.
+
+```sh
+adb shell am start -S -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez p9 true
+adb logcat -s EVRE_P9
+```
+
 ## 26. Tests
 
 ### 26.1 Overview
@@ -6891,6 +6982,7 @@ On a pull request the files are the run's artifacts, nothing is published. Makin
 | `evre_listen_test` | Listen without a window (26.10): the two capture formats, FTDI's status bytes, the filters, a stream cut anywhere, a file replayed, the link | `tests/captures/`, copied beside it, and `maps/` | no |
 | `tests/make_captures.py` | not a test: writes `tests/captures/` (26.10) | Python&nbsp;3,&nbsp;standard&nbsp;library | only that folder |
 | `tests/device_table_test.py` | the device table export (32.6) compiled with the EVRe library and run; the refusals | the build folder (`evre`); `g++` and the library (`--lib`, `EVRE_LIB`, or `../lib` in the EVRe repository) for the compile part, SKIP without | only its own temporary folder |
+| `evre_phone_test` | the phone's window (26.11): sizes, tabs, drawer, theme, language, Arabic, texts, P-9 | a build with `EVRE_PHONE`; a display (xvfb with `QSG_RHI_BACKEND=opengl` on Linux) | only its own settings |
 
 **The rule: the GUI test and the API test write only to a fake device.** They write registers of the device bank
 and set a register marked danger. Never point them at a real device. `evre_probe` is the only test program meant for
@@ -7916,7 +8008,8 @@ looks for messages that contain one of these phrases:
 The window lives in a block of its own and is destroyed before this check, so warnings raised while the window and
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
-Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1113 checks. The
+Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1113 checks; with
+the phone test's 10 (26.11), 1123. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
@@ -8339,6 +8432,34 @@ address 5 on bus 2.
   not (`parserSkips`)
 
 The engine's side is in the GUI test's Listen steps (26.2).
+
+### 26.11 The phone test
+
+```sh
+cmake -S . -B build -G Ninja -DEVRE_PHONE=ON && cmake --build build
+QSG_RHI_BACKEND=opengl xvfb-run -a ./build/evre_phone_test     # Linux; on Windows ./build/evre_phone_test
+```
+
+`evre_phone_test` loads `Main.qml` as the program does (`phone::loadMain`), in a window of 412 x 915 (a phone's
+portrait) and of 915 x 412, taps it with `QTest::touchEvent`, and reads colours from `QQuickWindow::grabWindow()`, an
+area scaled by the picture's `devicePixelRatio()` (the owner's Windows runs at 225 %). It needs no device. It runs
+under its own application name (`EVReStudioPhoneTest`), whose settings it clears at the start and at the end. On
+Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `libgl1-mesa-dri`), not with
+`QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes to come. On Windows Direct3D 11 draws it.
+
+| Check | What it proves |
+|---|---|
+| loads | `Main.qml` at both sizes without a QML warning: the header, the tab bar, four screens, the drawer |
+| tabs | a tap on each tab shows its screen alone and names it in the header |
+| drawer | closed at the start; the menu button opens it from the left; a tap beside it closes it |
+| theme | the drawer's switch turns dark to light and back: the window's background and the header in the picture, `ui/dark` saved |
+| language | the drawer's list saves `ui/language`, the note says it comes at the next start, nothing changes before |
+| Arabic | the header and the tab bar mirrored (the menu button at the right, Registers the right-most tab), the drawer from the right, every text shown translated |
+| texts | every `Text` inside its parent and not cut, at both sizes, in English and Arabic, on each screen and in the drawer |
+| P-9 | with `p9` the proof's list alone, its rows the example map's registers, values changing 20 times a second, a line a second for logcat |
+| threads | no Qt warning about objects used across threads (the render thread's) |
+
+It ends with "N passed, 0 failed" (10 checks); the exit code is 0 when all pass, 1 on a failure.
 
 ## 27. Design decisions and pitfalls
 
