@@ -578,7 +578,14 @@ void PhoneSession::addLog(LogModel::Level level, const QString &text) {
 
 /* ---------------------------------------------------------------- recording */
 
+namespace {
+QString ownDataFolder; /* setDataFolder's */
+}
+
+void PhoneSession::setDataFolder(const QString &folder) { ownDataFolder = folder; }
+
 QString PhoneSession::recordingsFolder() {
+	if (!ownDataFolder.isEmpty()) return ownDataFolder + QStringLiteral("/recordings");
 	QString base;
 #ifdef Q_OS_ANDROID
 	const QJniObject context = QNativeInterface::QAndroidApplication::context();

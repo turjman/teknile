@@ -206,6 +206,9 @@ public:
 	/* where recordings go: the app's own folder (A-8), "recordings" in Android's external files folder for the app
 	 * (Android/data/<package>/files, reached by a file manager and by a PC over USB), else in the app's data folder */
 	static QString recordingsFolder();
+	/* a folder of its own for the recordings in place of the app's (phone::useOwnFolder: a test run's, so two runs at
+	 * once never write into each other's); empty: the app's */
+	static void setDataFolder(const QString &folder);
 
 signals:
 	void linkChanged();
