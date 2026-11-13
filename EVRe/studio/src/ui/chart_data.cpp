@@ -19,6 +19,26 @@ double smallestPositive(double min, double first, double last, double max) {
 
 } // namespace
 
+bool ChartData::latestInView(const Series &s, double t0, double t1, double &value) {
+	if (s.fast) {
+		const qsizetype k = s.fast->upperBound(t1) - 1;
+		if (k < s.fast->recordsFrom() || s.fast->timeAt(k) < t0) return false;
+		value = s.fast->value(s.channel, k);
+		return true;
+	}
+	const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
+	if (k < 0 || s.times[k] < t0) return false;
+	value = s.values[k];
+	return true;
+}
+
+QString ChartData::number(double v) {
+	const double a = std::fabs(v);
+	if (a == 0) return QStringLiteral("0");
+	if (a >= 1e5 || a < 1e-3) return QString::number(v, 'g', 4);
+	return QString::number(v, 'f', a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3);
+}
+
 /* the value at t, straight between the samples around it; NaN outside the samples */
 double ChartData::valueAt(const QVector<double> &times, const QVector<double> &values, double t) {
 	if (!std::isfinite(t) || t < times.front() || t > times.back()) return NAN;

@@ -77,6 +77,7 @@ PhoneSession::PhoneSession(QObject *parent)
 							.arg(model_->plotLimit()).arg(rate)
 						: tr("At most %1 registers on the chart: take one off first").arg(model_->plotLimit()));
 	});
+	connect(model_, &RegisterModel::plotChanged, this, &PhoneSession::onPlotChanged);
 	connect(model_, &RegisterModel::plotsTakenOff, this, [this](const QStringList &names) {
 		addLog(LogModel::Warning, tr("%1 samples a second: at most %2 registers on the chart; taken off: %3")
 				.arg(std::lround(sampleRateHz())).arg(model_->plotLimit()).arg(names.join(QStringLiteral(", "))));
@@ -100,6 +101,7 @@ PhoneSession::PhoneSession(QObject *parent)
 /* the engine closes the link and a recording on its thread, then the thread ends (MainWindow::~MainWindow) */
 PhoneSession::~PhoneSession() {
 	reconnectTimer_.stop();
+	if (chart_) chart_->setClock({}); /* its clock is the engine's, which goes now */
 	if (thread_ && thread_->isRunning()) {
 		QMetaObject::invokeMethod(engine_, [engine = engine_] { engine->shutdown(); }, Qt::BlockingQueuedConnection);
 		thread_->quit();
@@ -140,6 +142,21 @@ void PhoneSession::startEngine() {
 			[this](quint64 id, bool ok, const QByteArray &data, const QString &err, double) { onReadDone(id, ok, data, err); });
 	connect(engine_, &IoEngine::writeDone, this, &PhoneSession::onWriteDone);
 	connect(engine_, &IoEngine::recordStopped, this, &PhoneSession::onRecordStopped);
+	/* Fast EVRe: what a stream did, in the Log (MainWindow::onFastStreamSet's words, shorter) */
+	connect(engine_, &IoEngine::fastStreamSet, this, [this](int stream, bool on, double rate, const QString &err) {
+		if (stream < 0 || stream >= map_.streams.size()) return;
+		const QString name = map_.streams[stream].name;
+		if (!err.isEmpty())
+			addLog(LogModel::Error, (on ? tr("fast stream %1 not switched on: %2") : tr("fast stream %1 not switched off: %2"))
+					.arg(name, err));
+		else if (on)
+			addLog(LogModel::Info, tr("fast stream %1 on: %2 records a second").arg(name).arg(std::lround(rate)));
+		else
+			addLog(LogModel::Info, tr("fast stream %1 off").arg(name));
+	});
+	connect(engine_, &IoEngine::fastStreamNote, this, [this](int, const QString &text, bool) {
+		addLog(LogModel::Warning, text);
+	});
 }
 
 /* ------------------------------------------------------------------- the map */
@@ -171,12 +188,22 @@ bool PhoneSession::loadMap(const QString &file) {
 		emit mapChanged();
 		return false;
 	}
+	/* the streams of the map before whose lines are on the chart: off (the engine keeps a wish for a stream of the same
+	 * name in the next map) */
+	for (int i = 0; chart_ && i < map_.streams.size(); ++i)
+		for (int c = 0; c < map_.streams[i].channels.size(); ++c)
+			if (chart_->hasLine(fastLineId(i, c))) {
+				engine_->post([engine = engine_, i] { engine->setFastStream(i, false); });
+				break;
+			}
 	map_ = loaded;
 	mapFile_ = path;
 	mapError_.clear();
 	QSettings().setValue(KEY_MAP, path);
 	model_->setDefinitions({}); /* another map: nothing of the one before stays */
+	if (chart_) chart_->removeAll(); /* its fast lines too */
 	model_->setDefinitions(map_.regs);
+	resetStreams();
 	addLog(LogModel::Info, tr("map loaded: %1 (%2 registers)").arg(QDir::toNativeSeparators(path)).arg(map_.regs.size()));
 	pushMap();
 	pushLinkOptions();
@@ -201,6 +228,7 @@ void PhoneSession::pushMap() {
 	const QString name = map_.device;
 	copiedVersions_.fill(quint64(-1), defs.size()); /* every row copied again from the new table */
 	engine_->post([engine = engine_, defs, generation, name, devices] { engine->setMap(defs, generation, name, devices); });
+	pushPlotted();
 }
 
 /* the map's slave, the desktop's answer time and In flight (4 on TCP, 1 on a serial line) */
@@ -611,11 +639,14 @@ void PhoneSession::attachWindow(QQuickWindow *window) {
 	if (window_) connect(window_, &QQuickWindow::afterAnimating, this, &PhoneSession::sync);
 }
 
-/* MainWindow::sync for the values: only the rows that moved since the last copy, and only at their pace (a number that
- * changes at every frame cannot be read). The chart's samples and the Monitor's frames come with their screens. */
+/* MainWindow::sync: the values, only the rows that moved since the last copy, and only at their pace (a number that
+ * changes at every frame cannot be read); the chart's samples and fast blocks at every frame. The Monitor's frames
+ * come with its screen. */
 void PhoneSession::sync() {
 	sinceSync_.restart();
-	if (!connected_ || !valuePacer_.due(valueClock_.elapsed())) return;
+	if (!connected_) return;
+	syncChart();
+	if (!valuePacer_.due(valueClock_.elapsed())) return;
 	QVector<RegValue> values;
 	quint64 generation = 0;
 	qint64 nowMs = 0;
@@ -722,4 +753,135 @@ void PhoneSession::onWriteDone(quint64 id, bool ok, const QString &err) {
 bool PhoneSession::setPlot(int row, bool on) {
 	if (row < 0 || row >= model_->rows().size()) return false;
 	return model_->setPlot(row, on);
+}
+
+/* ------------------------------------------------------------------ the chart */
+
+void PhoneSession::setChart(ChartItem *chart) {
+	if (chart == chart_) return;
+	if (chart_) chart_->removeAll();
+	chart_ = chart;
+	if (chart_) {
+		/* the samples' time base, as MainWindow gives ChartTab the engine's clock */
+		chart_->setClock([engine = engine_] { return engine->now(); });
+		for (int row = 0; row < model_->rows().size(); ++row)
+			if (model_->rows()[row].plot) onPlotChanged(row, true);
+	}
+	emit chartChanged();
+}
+
+/* MainWindow::onPlotChanged and ChartTab::plotRegister: the register's line on or off, keyed by regKey */
+void PhoneSession::onPlotChanged(int row, bool on) {
+	if (row >= 0 && row < model_->rows().size() && chart_) {
+		const RegDef &def = model_->rows()[row].def;
+		const int id = int(regKey(def));
+		if (on) chart_->addThemedLine(id, nextColour_++, def.name, def.unit);
+		else chart_->removeLine(id);
+	}
+	pushPlotted();
+}
+
+/* MainWindow::pushPlotted: the engine keeps the samples of these registers for takeSamples */
+void PhoneSession::pushPlotted() {
+	QVector<RegKey> keys;
+	for (const RegisterModel::Row &row : model_->rows())
+		if (row.plot) keys << regKey(row.def);
+	engine_->post([engine = engine_, keys] { engine->setPlotted(keys); });
+}
+
+/* a store per stream of the map, empty (ChartView::setFastStream) */
+void PhoneSession::resetStreams() {
+	stores_.clear();
+	for (const StreamDef &def : std::as_const(map_.streams)) stores_ << std::make_shared<fast::Store>(def);
+	emit fastChanged();
+}
+
+QVariantList PhoneSession::fastChannels() const {
+	QVariantList list;
+	for (int i = 0; i < map_.streams.size(); ++i)
+		for (int c = 0; c < map_.streams[i].channels.size(); ++c) {
+			const StreamChannel &channel = map_.streams[i].channels[c];
+			list << QVariantMap{ { QStringLiteral("stream"), i }, { QStringLiteral("channel"), c },
+				{ QStringLiteral("name"), map_.streams[i].name + QLatin1Char('.') + channel.name },
+				{ QStringLiteral("unit"), channel.unit },
+				{ QStringLiteral("plotted"), chart_ && chart_->hasLine(fastLineId(i, c)) } };
+		}
+	return list;
+}
+
+/* ChartTab::plotFastChannel and the sidebar's stream button in one: the first channel of a stream on the chart switches
+ * the stream on, the last one off switches it off (its records kept, as the desktop keeps a stream's store) */
+bool PhoneSession::setFastPlot(int stream, int channel, bool on) {
+	if (!chart_ || stream < 0 || stream >= map_.streams.size() || stream >= stores_.size() || channel < 0
+			|| channel >= map_.streams[stream].channels.size())
+		return false;
+	const StreamDef &def = map_.streams[stream];
+	const int id = fastLineId(stream, channel);
+	const auto linesOf = [&] {
+		int n = 0;
+		for (int c = 0; c < def.channels.size(); ++c) n += chart_->hasLine(fastLineId(stream, c));
+		return n;
+	};
+	if (on == chart_->hasLine(id)) return true;
+	if (on) {
+		if (chart_->lineCount() >= RegisterModel::MAX_PLOTTED) {
+			emit notice(tr("At most %1 lines on the chart, registers and fast lines together: take one off first")
+					.arg(RegisterModel::MAX_PLOTTED));
+			return false;
+		}
+		const StreamChannel &c = def.channels[channel];
+		chart_->addThemedLine(id, nextColour_++, def.name + QLatin1Char('.') + c.name, c.unit, stores_[stream], channel);
+		if (linesOf() == 1) engine_->post([engine = engine_, stream] { engine->setFastStream(stream, true); });
+	} else {
+		chart_->removeLine(id);
+		if (linesOf() == 0) engine_->post([engine = engine_, stream] { engine->setFastStream(stream, false); });
+	}
+	emit fastChanged();
+	return true;
+}
+
+void PhoneSession::unplotLine(int id) {
+	if (id >= FAST_LINE) {
+		setFastPlot((id - FAST_LINE) / 256, (id - FAST_LINE) % 256, false);
+		return;
+	}
+	for (int row = 0; row < model_->rows().size(); ++row)
+		if (int(regKey(model_->rows()[row].def)) == id) model_->setPlot(row, false);
+}
+
+/* each poll's samples of the plotted registers (MainWindow::sync, ChartTab::frame), and the streams' blocks into their
+ * stores (ChartView::appendFast and markFast), then what is older than the chart's memory goes (trimFast without the
+ * RAM's share: a phone's chart keeps 5 min) */
+void PhoneSession::syncChart() {
+	const QHash<RegKey, QVector<QPointF>> samples = engine_->takeSamples();
+	const QVector<IoEngine::FastBlock> blocks = engine_->takeFastBlocks();
+	if (!chart_) return;
+	QVector<double> times, values;
+	for (auto it = samples.constBegin(); it != samples.constEnd(); ++it) {
+		times.resize(it->size());
+		values.resize(it->size());
+		for (qsizetype i = 0; i < it->size(); ++i) {
+			times[i] = it->at(i).x();
+			values[i] = it->at(i).y();
+		}
+		chart_->appendSamples(int(it.key()), times, values);
+	}
+	QVector<bool> fed(stores_.size(), false);
+	for (const IoEngine::FastBlock &block : blocks) {
+		if (block.stream < 0 || block.stream >= stores_.size() || block.count <= 0) continue;
+		fast::Store &store = *stores_[block.stream];
+		if (block.records.size() < qsizetype(block.count) * store.recordSize()) continue;
+		store.append(block.first, block.count, block.records.constData(), block.newStart, block.lost);
+		if (block.marked) store.mark(block.markRecord, block.markTime, block.markPeriod);
+		fed[block.stream] = true;
+	}
+	for (int i = 0; i < stores_.size(); ++i) {
+		if (!fed[i]) continue;
+		fast::Store &store = *stores_[i];
+		if (store.size() > 0 && store.hasTime()) {
+			const double newest = store.timeAt(store.size() - 1), memory = chart_->memorySeconds();
+			if (newest - store.timeAt(0) > memory * 1.05 + 0.5) store.dropFront(store.lowerBound(newest - memory));
+		}
+		chart_->storeChanged();
+	}
 }

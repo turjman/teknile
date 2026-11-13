@@ -180,6 +180,12 @@ struct ChartData {
 	 * across a gap), as statsOf from a polled line's arrays */
 	static Stats statsOfFast(const fast::Store &store, int channel, double t0, double t1, double a, double b);
 	static double fastValueAt(const fast::Store &store, int channel, double t); /* NaN: outside, or in a gap */
+	/* the line's newest sample (a fast line's record) at or before t1 and not before t0: the legend's value of a held
+	 * view or a recording; false: none in the span */
+	static bool latestInView(const Series &s, double t0, double t1, double &value);
+	/* A value with about four significant digits, for the legend, the crosshair and the state line. Not the register's
+	 * own format (formatValue in the model) nor the measurements': short, whatever the line */
+	static QString number(double v);
 
 	/* the drawing */
 	template <typename MapX, typename MapY>

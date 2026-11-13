@@ -154,12 +154,7 @@ double niceTimeStep(double span, int target) {
 /* A value with about four significant digits, for the legend, the crosshair
  * and the state line. Not the register's own format (formatValue in the model)
  * nor the measurements' (measureText in the Chart tab): short, whatever the line. */
-QString chartNumber(double v) {
-	const double a = std::fabs(v);
-	if (a == 0) return QStringLiteral("0");
-	if (a >= 1e5 || a < 1e-3) return QString::number(v, 'g', 4);
-	return QString::number(v, 'f', a >= 100 ? 0 : a >= 10 ? 1 : a >= 1 ? 2 : 3);
-}
+QString chartNumber(double v) { return ChartData::number(v); } /* shared with the phone's legend (chart_data.h) */
 
 /* chartNumber's widest text: the exponent form with a sign (a three-digit
  * exponent, beyond 1e100, is wider still). The legend gives every value this
@@ -2687,16 +2682,7 @@ bool ChartView::chipValue(const Series &s, double t0, double t1, double &value) 
 }
 
 bool ChartView::latestInView(const Series &s, double t0, double t1, double &value) const {
-	if (s.fast) {
-		const qsizetype k = s.fast->upperBound(t1) - 1;
-		if (k < s.fast->recordsFrom() || s.fast->timeAt(k) < t0) return false;
-		value = s.fast->value(s.channel, k);
-		return true;
-	}
-	const qsizetype k = std::upper_bound(s.times.begin(), s.times.end(), t1) - s.times.begin() - 1;
-	if (k < 0 || s.times[k] < t0) return false;
-	value = s.values[k];
-	return true;
+	return ChartData::latestInView(s, t0, t1, value); /* shared with the phone's legend */
 }
 
 /* ------------------------------------------------------------------ drawing */

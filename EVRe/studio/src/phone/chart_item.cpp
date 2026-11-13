@@ -48,6 +48,46 @@ void ChartTicks::set(const QVector<Tick> &ticks) {
 	}
 }
 
+/* ------------------------------------------------------------------ the legend */
+
+int ChartLines::rowCount(const QModelIndex &parent) const { return parent.isValid() ? 0 : int(entries_.size()); }
+
+QVariant ChartLines::data(const QModelIndex &index, int role) const {
+	if (!index.isValid() || index.row() >= entries_.size()) return {};
+	const Entry &entry = entries_[index.row()];
+	switch (role) {
+	case IdRole: return entry.id;
+	case NameRole: return entry.name;
+	case UnitRole: return entry.unit;
+	case ColourRole: return entry.colour;
+	case ValueRole: return entry.value;
+	case ShownRole: return entry.shown;
+	case FastRole: return entry.fast;
+	default: return {};
+	}
+}
+
+QHash<int, QByteArray> ChartLines::roleNames() const {
+	return { { IdRole, "lineId" }, { NameRole, "name" }, { UnitRole, "unit" }, { ColourRole, "colour" },
+		{ ValueRole, "value" }, { ShownRole, "shown" }, { FastRole, "fast" } };
+}
+
+void ChartLines::set(const QVector<Entry> &entries) {
+	bool sameLines = entries.size() == entries_.size();
+	for (qsizetype i = 0; sameLines && i < entries.size(); ++i) sameLines = entries[i].id == entries_[i].id;
+	if (!sameLines) {
+		beginResetModel();
+		entries_ = entries;
+		endResetModel();
+		return;
+	}
+	for (qsizetype i = 0; i < entries.size(); ++i) {
+		if (entries[i] == entries_[i]) continue;
+		entries_[i] = entries[i];
+		emit dataChanged(index(int(i)), index(int(i)));
+	}
+}
+
 /* ------------------------------------------------------------------ helpers */
 
 namespace {
@@ -150,6 +190,7 @@ ChartItem::ChartItem(QQuickItem *parent) : QQuickItem(parent) {
 	setFlag(ItemHasContents);
 	timeTicks_ = new ChartTicks(this);
 	valueTicks_ = new ChartTicks(this);
+	legend_ = new ChartLines(this);
 }
 
 ChartItem::~ChartItem() = default;
@@ -182,8 +223,32 @@ void ChartItem::setLive(bool live) {
 void ChartItem::setYAuto(bool on) {
 	if (on == yAuto_) return;
 	yAuto_ = on;
+	if (on) yHeld_ = false; /* Auto again: the values in view at once, not by a twentieth a frame from the manual range */
 	emit yAutoChanged();
 	polish();
+}
+
+bool ChartItem::setYRange(double lo, double hi) {
+	if (!std::isfinite(lo) || !std::isfinite(hi) || !(hi > lo)) return false;
+	yLo_ = lo;
+	yHi_ = hi;
+	setYAuto(false);
+	polish();
+	return true;
+}
+
+void ChartItem::setColours(const QVariantList &colours) {
+	if (colours == colours_) return;
+	colours_ = colours;
+	colorsDirty_ = true;
+	emit colorsChanged();
+	updateLegend(false);
+	update();
+}
+
+QColor ChartItem::colourOf(const Line &line) const {
+	if (line.colourIndex < 0 || colours_.isEmpty()) return line.series.color;
+	return colours_[line.colourIndex % colours_.size()].value<QColor>();
 }
 
 void ChartItem::setGridColor(const QColor &color) {
@@ -202,20 +267,47 @@ void ChartItem::setFrameColor(const QColor &color) {
 	update();
 }
 
-void ChartItem::addLine(int id, const QColor &colour) {
-	if (Line *line = find(id)) {
-		line->series.color = colour;
-		colorsDirty_ = true;
-		update();
-		return;
-	}
+void ChartItem::addLine(int id, const QColor &colour, const QString &name, const QString &unit) {
 	auto line = std::make_unique<Line>();
 	line->id = id;
 	line->series.color = colour;
+	line->series.name = name;
+	line->series.unit = unit;
+	addLine(std::move(line));
+}
+
+/* a line in the theme's series colour `colourIndex` (as the desktop gives each new line the palette's next); a fast one
+ * reads its stream's store, channel `channel` */
+void ChartItem::addThemedLine(int id, int colourIndex, const QString &name, const QString &unit,
+		std::shared_ptr<fast::Store> fast, int channel) {
+	auto line = std::make_unique<Line>();
+	line->id = id;
+	line->colourIndex = colourIndex;
+	line->series.name = name;
+	line->series.unit = unit;
+	line->series.fast = std::move(fast);
+	line->series.channel = channel;
+	line->series.color = colourOf(*line);
+	addLine(std::move(line));
+}
+
+/* a line already there takes the new colour and names, its samples kept */
+void ChartItem::addLine(std::unique_ptr<Line> line) {
+	if (Line *had = find(line->id)) {
+		had->series.color = line->series.color;
+		had->series.name = line->series.name;
+		had->series.unit = line->series.unit;
+		had->colourIndex = line->colourIndex;
+		colorsDirty_ = true;
+		updateLegend(false);
+		update();
+		return;
+	}
 	line->series.spread = int(lines_.size() % 8);
 	lines_.push_back(std::move(line));
 	++generation_;
 	linesDirty_ = true;
+	updateLegend(true);
 	emit linesChanged();
 	polish();
 }
@@ -226,22 +318,91 @@ void ChartItem::removeLine(int id) {
 	lines_.erase(it);
 	++generation_;
 	linesDirty_ = true;
+	updateLegend(false);
 	emit linesChanged();
 	polish();
 }
 
+void ChartItem::removeAll() {
+	if (lines_.empty()) return;
+	lines_.clear();
+	++generation_;
+	linesDirty_ = true;
+	yHeld_ = false;
+	updateLegend(false);
+	emit linesChanged();
+	polish();
+}
+
+void ChartItem::setLineShown(int id, bool shown) {
+	Line *line = find(id);
+	if (!line || line->shown == shown) return;
+	line->shown = shown;
+	line->binned = ChartData::BinnedLine();
+	line->vertices.clear();
+	updateLegend(false);
+	polish();
+}
+
+bool ChartItem::lineShown(int id) const {
+	const Line *line = find(id);
+	return line && line->shown;
+}
+
+QColor ChartItem::lineColour(int id) const {
+	const Line *line = find(id);
+	return line ? colourOf(*line) : QColor();
+}
+
+const ChartData::Series *ChartItem::series(int id) const {
+	const Line *line = find(id);
+	return line ? &line->series : nullptr;
+}
+
+/* the legend's rows; values: the latest value in view of each line again (else the texts kept) */
+void ChartItem::updateLegend(bool values) {
+	QVector<ChartLines::Entry> entries;
+	entries.reserve(qsizetype(lines_.size()));
+	for (auto &line : lines_) {
+		if (values) {
+			double v = 0;
+			/* a fast line's records have times once its stream's first mark came */
+			const bool timed = !line->series.fast || line->series.fast->hasTime();
+			const bool any = timed && axes_.t1 > axes_.t0 && ChartData::latestInView(line->series, axes_.t0, axes_.t1, v);
+			line->value = any ? ChartData::number(v) + (line->series.unit.isEmpty() ? QString() : QLatin1Char(' ')
+					+ line->series.unit) : QString();
+		}
+		ChartLines::Entry entry;
+		entry.id = line->id;
+		entry.name = line->series.name;
+		entry.unit = line->series.unit;
+		entry.value = line->value;
+		entry.colour = colourOf(*line);
+		entry.shown = line->shown;
+		entry.fast = line->series.fast != nullptr;
+		entries << entry;
+	}
+	legend_->set(entries);
+}
+
 void ChartItem::clear() {
 	for (auto &line : lines_) {
-		const QColor color = line->series.color;
-		const int spread = line->series.spread;
-		line->series = ChartData::Series();
-		line->series.color = color;
-		line->series.spread = spread;
+		ChartData::Series kept;
+		kept.color = line->series.color;
+		kept.spread = line->series.spread;
+		kept.name = line->series.name;
+		kept.unit = line->series.unit;
+		kept.fast = line->series.fast;
+		kept.channel = line->series.channel;
+		if (kept.fast) kept.fast->clear(); /* its stream's records, the desktop's Clear (ChartView::clearData) */
+		line->series = std::move(kept);
 		line->binned = ChartData::BinnedLine();
 		line->vertices.clear();
+		line->value.clear();
 	}
 	++generation_;
 	yHeld_ = false;
+	updateLegend(false);
 	polish();
 }
 
@@ -347,7 +508,7 @@ void ChartItem::frameTick() {
 void ChartItem::updateYRange() {
 	double lo = std::numeric_limits<double>::max(), hi = -lo;
 	for (const auto &line : lines_)
-		if (!line->binned.bins.isEmpty() && line->binned.lo <= line->binned.hi) {
+		if (line->shown && !line->binned.bins.isEmpty() && line->binned.lo <= line->binned.hi) {
 			lo = std::min(lo, line->binned.lo);
 			hi = std::max(hi, line->binned.hi);
 		}
@@ -365,7 +526,9 @@ void ChartItem::updateYRange() {
 		}
 	}
 	if (!(yHi_ > yLo_)) yHi_ = yLo_ + 1;
+	const bool moved = axes_.lo != yLo_ || axes_.hi != yHi_;
 	axes_.setRange(yLo_, yHi_, false);
+	if (moved) emit yRangeChanged();
 }
 
 /* the grid at 1-2-5 steps in time and value, one device pixel wide on whole device pixels, and its labels */
@@ -411,6 +574,7 @@ void ChartItem::updatePolish() {
 	axes_.columns = std::max(1.0, std::round(plot_.width()));
 	/* each line binned as ChartView::binView bins the view's (the bins kept from the frame before) */
 	for (auto &line : lines_) {
+		if (!line->shown) continue; /* hidden: nothing binned, nothing drawn */
 		ChartData::BinnedLine fresh;
 		ChartData::binViewSeries(line->series, axes_.t0, axes_.t1, axes_.columns, fresh, &line->binned, generation_,
 				polledBinned_, fastBinned_);
@@ -448,6 +612,11 @@ void ChartItem::updatePolish() {
 			for (qsizetype i = start + 1; i < end; ++i) segment(out, poly[i - 1], poly[i], LINE_WIDTH);
 			start = end;
 		}
+	}
+	/* the legend's values: at their pace while live, at once for a view that moved by hand */
+	if (!live_ || !legendClock_.isValid() || legendClock_.elapsed() >= LEGEND_MS) {
+		legendClock_.start();
+		updateLegend(true);
 	}
 	polishSeconds_ += took.nsecsElapsed() / 1e9;
 	emit framed();
@@ -491,7 +660,7 @@ QSGNode *ChartItem::updatePaintNode(QSGNode *old, UpdatePaintNodeData *) {
 		recolor(gridNode, gridColor_);
 		recolor(frameNode, frameColor_);
 		for (int i = 0; i < int(lines_.size()); ++i)
-			recolor(static_cast<QSGGeometryNode *>(clip->childAtIndex(i)), lines_[size_t(i)]->series.color);
+			recolor(static_cast<QSGGeometryNode *>(clip->childAtIndex(i)), colourOf(*lines_[size_t(i)]));
 		colorsDirty_ = linesDirty_ = false;
 	}
 	for (int i = 0; i < int(lines_.size()); ++i)

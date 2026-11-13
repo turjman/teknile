@@ -17,7 +17,11 @@
  * first, a refused write (a map with a register the device does not have), the glow in the picture; a stand-in that
  * leaves the first DEVICE_ID request unanswered checks that the ID is read again by itself. The chart's checks (B.3a)
  * feed its lines from the test (a sine at 1 kHz), compare its bins with the desktop chart's binning (chart_data.h),
- * find the line's colour in the picture, and pinch, drag and double tap it.
+ * find the line's colour in the picture, and pinch, drag and double tap it. The chart wired (B.3b): registers plotted
+ * through the session and polled from the fake device, the legend's chips (the latest value, hide, Take off the
+ * chart), Clear, Y auto and the manual sheet, the empty state; a fast stream's channel against evre_fake_fast with
+ * maps/example_fast.json, started by the check on EVRE_FAKE_FAST_PORT (default 1213: 1221 to 1320 are often taken on
+ * Windows).
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
  * the names portrait, drawer, connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at
@@ -26,6 +30,9 @@
  * and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
  * running the checks.
  * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
+ * The Chart screen's pictures too: <prefix>_<en|ar>_<dark|light>_chart_<empty|two|hidden|manual|ysheet|chipmenu>_
+ * <portrait|landscape>.png. EVRE_PHONE_ONLY=<text> (other than shots): only the checks whose function's name holds it,
+ * and with a prefix only the chart's pictures.
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
@@ -37,6 +44,7 @@
 #include <QImage>
 #include <QPainter>
 #include <QPointer>
+#include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -282,7 +290,8 @@ QStringList latinTexts(QQuickWindow *window) {
 	static const QStringList data{ QStringLiteral("mapText"), QStringLiteral("portText"), QStringLiteral("regName"),
 		QStringLiteral("regGroup"), QStringLiteral("regValue"), QStringLiteral("regUnit"), QStringLiteral("regDecoded"),
 		QStringLiteral("regAddr"), QStringLiteral("regError"), QStringLiteral("sheetName"), QStringLiteral("sheetAddr"),
-		QStringLiteral("sheetNow"), QStringLiteral("sheetUnit") };
+		QStringLiteral("sheetNow"), QStringLiteral("sheetUnit"), QStringLiteral("chipName"), QStringLiteral("chipValue"),
+		QStringLiteral("fastChannel") };
 	QStringList found;
 	forEachItem(topItem(window), [&](QQuickItem *item) {
 		if (!item->inherits("QQuickText") || !item->isVisible() || data.contains(item->objectName())) return;
@@ -544,6 +553,23 @@ ChartItem *showChart(const Phone &phone) {
 	return phone.window ? phone.window->findChild<ChartItem *>(QStringLiteral("chartItem")) : nullptr;
 }
 
+/* the same for lines the test feeds itself, at times from 0 s: the chart's clock is the newest sample's, not the
+ * session's (the engine's, set by ChartScreen.qml) */
+ChartItem *showFedChart(const Phone &phone) {
+	ChartItem *chart = showChart(phone);
+	if (chart) chart->setClock({});
+	return chart;
+}
+
+/* the Chart screen's area under the legend (the plot and its labels), in the picture's pixels */
+QRectF areaInPicture(const Phone &phone, const QImage &image) {
+	const QQuickItem *area = phone.item("chartArea");
+	if (!area) return QRectF();
+	const qreal dpr = image.devicePixelRatio();
+	const QPointF at = area->mapToScene(QPointF(0, 0));
+	return QRectF(at.x() * dpr, at.y() * dpr, area->width() * dpr, area->height() * dpr);
+}
+
 /* waits for the chart's next frame made (updatePolish) and drawn */
 void chartFrame(const Phone &phone, ChartItem *chart, int frames = 2) {
 	if (!chart || !phone.window) return;
@@ -597,7 +623,7 @@ const QColor SINE_COLOUR(255, 0, 255); /* a colour of no theme: what has it in t
 
 void checkChartBins() {
 	Phone phone(LANDSCAPE);
-	ChartItem *chart = showChart(phone);
+	ChartItem *chart = showFedChart(phone);
 	QVector<double> times, values;
 	sine(5, 20, times, values);
 	if (chart) {
@@ -620,7 +646,7 @@ void checkChartBins() {
 
 void checkChartDrawn() {
 	Phone phone(LANDSCAPE);
-	ChartItem *chart = showChart(phone);
+	ChartItem *chart = showFedChart(phone);
 	QVector<double> times, values;
 	sine(5, 20, times, values);
 	if (chart) {
@@ -635,6 +661,8 @@ void checkChartDrawn() {
 	const QRectF plot = chart ? QRectF(chart->mapToScene(chart->plotRect().topLeft()), chart->plotRect().size()) : QRectF();
 	const QRectF device(plot.x() * dpr, plot.y() * dpr, plot.width() * dpr, plot.height() * dpr);
 	const QRectF room = device.adjusted(-1, -1, 1, 1);
+	/* the chart's area (the plot and its labels' room): the legend's chip above it shows the line's colour on purpose */
+	const QRectF area = areaInPicture(phone, image);
 	int inside = 0, outside = 0, columnsHit = 0;
 	QVector<bool> column(image.width(), false);
 	for (int y = 0; y < image.height(); ++y)
@@ -643,14 +671,15 @@ void checkChartDrawn() {
 			if (device.contains(QPointF(x + 0.5, y + 0.5))) {
 				++inside;
 				column[x] = true;
-			} else if (!room.contains(QPointF(x + 0.5, y + 0.5))) {
+			} else if (!room.contains(QPointF(x + 0.5, y + 0.5)) && area.contains(QPointF(x + 0.5, y + 0.5))) {
 				++outside;
 			}
 		}
 	for (bool hit : std::as_const(column)) columnsHit += hit;
 	/* the line runs across the plot: nearly every column of it holds some of the line */
 	check(chart && inside > 0 && outside == 0 && columnsHit >= int(device.width() * 0.95),
-			QStringLiteral("phone, chart: a fed sine is drawn in its colour inside the plot and nowhere outside it (dpr %1: "
+			QStringLiteral("phone, chart: a fed sine is drawn in its colour inside the plot and nowhere else in the chart's "
+					"area (dpr %1: "
 					"%2 pixels inside, in %3 of %4 columns; %5 outside)")
 					.arg(dpr).arg(inside).arg(columnsHit).arg(int(device.width())).arg(outside));
 }
@@ -728,7 +757,7 @@ void checkChartPinch() {
 
 void checkChartDragAndLive() {
 	Phone phone(LANDSCAPE);
-	ChartItem *chart = showChart(phone);
+	ChartItem *chart = showFedChart(phone);
 	QQuickItem *area = phone.item("chartArea");
 	QVector<double> times, values;
 	sine(5, 30, times, values);
@@ -790,19 +819,23 @@ void checkChartTheme() {
 			"(%1)").arg(seen.join(QStringLiteral("; "))));
 }
 
+QQuickItem *chip(const Phone &phone, const QString &name);
+
 /* in Arabic the screen is mirrored but the plot is not: value labels left of it, time labels in rising order left to
  * right, each under its grid line */
 void checkChartArabic() {
 	language::apply(*qApp, QStringLiteral("ar"));
 	{
 		Phone phone(LANDSCAPE);
-		ChartItem *chart = showChart(phone);
+		ChartItem *chart = showFedChart(phone);
 		QVector<double> times, values;
 		sine(5, 20, times, values);
 		if (chart) {
 			chart->setWindowSeconds(10);
-			chart->addLine(1, SINE_COLOUR);
+			chart->addLine(1, SINE_COLOUR, QStringLiteral("SINE"), QStringLiteral("V"));
+			chart->addLine(2, Qt::cyan, QStringLiteral("COSINE"), QStringLiteral("V"));
 			chart->appendSamples(1, times, values);
+			chart->appendSamples(2, times, values);
 		}
 		chartFrame(phone, chart);
 		const QRectF plot = chart ? QRectF(chart->mapToScene(chart->plotRect().topLeft()), chart->plotRect().size()) : QRectF();
@@ -830,13 +863,20 @@ void checkChartArabic() {
 			for (qsizetype i = 1; i < ticks.size(); ++i) rising = rising && ticks[i].at > ticks[i - 1].at;
 		}
 		const double rightEdge = phone.window ? phone.window->width() : 0;
+		/* the legend reads left to right as the plot does: the first line's chip left of the second's, at the left */
+		phone.settle(300);
+		const QQuickItem *firstChip = chip(phone, QStringLiteral("SINE")), *secondChip = chip(phone, QStringLiteral("COSINE"));
+		const double firstX = firstChip ? firstChip->mapToScene(QPointF(0, 0)).x() : -1;
+		const double secondX = secondChip ? secondChip->mapToScene(QPointF(0, 0)).x() : -1;
+		const bool legendLtr = firstChip && secondChip && firstX < secondX && firstX < rightEdge / 4;
 		const bool screenMirrored = phone.item("liveButton")
 				&& phone.item("liveButton")->mapToScene(QPointF(0, 0)).x() > rightEdge / 2;
 		check(chart && valueLabels >= 2 && timeLabels >= 2 && valuesLeft && timesUnder && rising && screenMirrored
-				&& plot.left() < rightEdge / 4,
+				&& plot.left() < rightEdge / 4 && legendLtr,
 				QStringLiteral("phone, Arabic: the controls mirrored (Live at the right), the plot not: its value labels "
 						"left of it (%1), time rising left to right, each label under its grid line (%2), the plot from "
-						"x %3").arg(valueLabels).arg(timeLabels).arg(plot.left()));
+						"x %3, the legend's chips left to right (x %4, %5)").arg(valueLabels).arg(timeLabels).arg(plot.left())
+						.arg(firstX).arg(secondX));
 	}
 	language::apply(*qApp, QStringLiteral("en"));
 }
@@ -2216,6 +2256,460 @@ void checkMutedContrast() {
 			.arg(seen).arg(lows.join(QStringLiteral(", ")), bad.join(QStringLiteral(" | "))));
 }
 
+/* ---- the chart, wired (B.3b): the session's lines, the legend, Y, fast lines, the empty state */
+
+/* the legend's chip of a line, by its name */
+QQuickItem *chip(const Phone &phone, const QString &name) {
+	QQuickItem *legend = phone.item("legendView");
+	QQuickItem *found = nullptr;
+	forEachItem(legend, [&](QQuickItem *item) {
+		if (found || item->objectName() != QLatin1String("legendChip")) return;
+		const QQuickItem *label = within(item, QStringLiteral("chipName"));
+		if (label && label->property("text").toString() == name) found = item;
+	});
+	return found;
+}
+
+int chipCount(const Phone &phone) {
+	int n = 0;
+	forEachItem(phone.item("legendView"), [&](QQuickItem *item) { n += item->objectName() == QLatin1String("legendChip"); });
+	return n;
+}
+
+/* where a colour lies in the plot of a picture: its pixels, and the rows (device pixels) of the highest and lowest */
+struct Seen {
+	int pixels = 0, top = -1, bottom = -1, outside = 0;
+};
+
+QRectF plotInPicture(const ChartItem *chart, const QImage &image) {
+	if (!chart) return QRectF();
+	const qreal dpr = image.devicePixelRatio();
+	const QRectF plot(chart->mapToScene(chart->plotRect().topLeft()), chart->plotRect().size());
+	return QRectF(plot.x() * dpr, plot.y() * dpr, plot.width() * dpr, plot.height() * dpr);
+}
+
+/* outside: counted only inside `area` when one is given (the chart's area: the chips and buttons above it may show the
+ * colour) */
+Seen colourIn(const QImage &image, const QRectF &device, const QColor &colour, int tolerance = 8, const QRectF &area = QRectF()) {
+	Seen seen;
+	const QRectF room = device.adjusted(-1, -1, 1, 1);
+	for (int y = 0; y < image.height(); ++y)
+		for (int x = 0; x < image.width(); ++x) {
+			if (!near(image.pixelColor(x, y), colour, tolerance)) continue;
+			const QPointF p(x + 0.5, y + 0.5);
+			if (device.contains(p)) {
+				++seen.pixels;
+				if (seen.top < 0) seen.top = y;
+				seen.bottom = y;
+			} else if (!room.contains(p) && (area.isNull() || area.contains(p))) {
+				++seen.outside;
+			}
+		}
+	return seen;
+}
+
+/* the fake device's SUPPLY_V and SUPPLY_I plotted (B.2's Plot: the session's setPlot), polled, then the link closed
+ * (its lines and samples stay) and the view held: the session's lines on the chart, binned as the desktop bins */
+void checkChartPlotted() {
+	Phone phone(LANDSCAPE);
+	PhoneSession *session = connectFake(phone);
+	ChartItem *chart = showChart(phone);
+	const int voltRow = modelRow(session, QStringLiteral("SUPPLY_V")), ampRow = modelRow(session, QStringLiteral("SUPPLY_I"));
+	const bool plotted = session && voltRow >= 0 && ampRow >= 0 && session->setPlot(voltRow, true) && session->setPlot(ampRow, true);
+	const int volt = session && voltRow >= 0 ? int(regKey(session->registers()->rows()[voltRow].def)) : -1;
+	const int amp = session && ampRow >= 0 ? int(regKey(session->registers()->rows()[ampRow].def)) : -1;
+	if (chart) chart->setWindowSeconds(10);
+	QTest::qWait(2000);
+	const qsizetype polled = chart && chart->series(volt) ? chart->series(volt)->times.size() : 0;
+	/* the link closed: nothing more comes, the lines and their samples stay (the desktop's way) */
+	if (session) session->disconnectLink();
+	(void) waitForState(session, PhoneSession::Off, 3000);
+	QTest::qWait(300);
+	const qsizetype kept = chart && chart->series(volt) ? chart->series(volt)->times.size() : 0;
+	if (chart) chart->setLive(false);
+	chartFrame(phone, chart, 3);
+	const ChartData::Series *s = chart ? chart->series(volt) : nullptr;
+	const QVector<ChartData::Bin> phoneBins = chart ? chart->bins(volt) : QVector<ChartData::Bin>();
+	const QVector<ChartData::Bin> desktop = s ? desktopBins(s->times, s->values, chart->viewStart(), chart->viewEnd(),
+			chart->columns()) : QVector<ChartData::Bin>();
+	const ThemeColors colors = Theme::colorsFor(true);
+	const QColor first = chart ? chart->lineColour(volt) : QColor(), second = chart ? chart->lineColour(amp) : QColor();
+	const bool coloured = first == colors.series.value(0) && second == colors.series.value(1);
+	check(plotted && chart && chart->lineCount() == 2 && s && s->name == QLatin1String("SUPPLY_V")
+					&& s->unit == QLatin1String("V") && polled >= 8 && !phoneBins.isEmpty() && sameBins(phoneBins, desktop)
+					&& coloured,
+			QStringLiteral("phone, chart: Plot on two registers gives two lines in the theme's first series colours (%1, %2), "
+					"named with their units; the session's samples (%3 in 2 s at 100 ms) binned as the desktop chart bins "
+					"them (%4 bins against %5)").arg(first.name(), second.name()).arg(polled).arg(phoneBins.size())
+					.arg(desktop.size()));
+	check(chart && chart->lineCount() == 2 && kept >= polled && kept > 0 && session && !session->connected(),
+			QStringLiteral("phone, chart: a disconnect keeps the lines and their samples, as the desktop does (%1 samples "
+					"before, %2 after)").arg(polled).arg(kept));
+
+	/* the legend: a chip per line, its name and latest value in view with its unit (the desktop's number) */
+	phone.settle(400);
+	double latest = 0;
+	const bool any = s && ChartData::latestInView(*s, chart->viewStart(), chart->viewEnd(), latest);
+	const QString want = any ? ChartData::number(latest) + QStringLiteral(" V") : QStringLiteral("?");
+	QQuickItem *voltChip = chip(phone, QStringLiteral("SUPPLY_V"));
+	const QQuickItem *value = within(voltChip, QStringLiteral("chipValue"));
+	const QString shown = value ? value->property("text").toString() : QString();
+	check(chipCount(phone) == 2 && voltChip && chip(phone, QStringLiteral("SUPPLY_I")) && shown == want,
+			QStringLiteral("phone, legend: a chip per line, SUPPLY_V's showing its latest value in view with its unit "
+					"(\"%1\", want \"%2\")").arg(shown, want));
+}
+
+/* a fed line's chip tapped: the line hidden (none of its colour in the plot, the chip's dot a ring), tapped again:
+ * drawn again */
+void checkChartHide() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showFedChart(phone);
+	QVector<double> times, values;
+	sine(5, 20, times, values);
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR, QStringLiteral("SINE"), QStringLiteral("V"));
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	phone.settle(300);
+	QImage image = phone.grab();
+	const int before = colourIn(image, plotInPicture(chart, image), SINE_COLOUR).pixels;
+	QQuickItem *sineChip = chip(phone, QStringLiteral("SINE"));
+	const QQuickItem *name = within(sineChip, QStringLiteral("chipName"));
+	if (name) phone.tap(name->mapToScene(QPointF(name->width() / 2, name->height() / 2)));
+	chartFrame(phone, chart, 3);
+	const bool hidden = chart && !chart->lineShown(1);
+	image = phone.grab();
+	const int whileHidden = colourIn(image, plotInPicture(chart, image), SINE_COLOUR).pixels;
+	const QQuickItem *dot = within(chip(phone, QStringLiteral("SINE")), QStringLiteral("chipDot"));
+	const bool ring = dot && dot->property("color").value<QColor>().alpha() == 0;
+	if (name) phone.tap(name->mapToScene(QPointF(name->width() / 2, name->height() / 2)));
+	chartFrame(phone, chart, 3);
+	image = phone.grab();
+	const int after = colourIn(image, plotInPicture(chart, image), SINE_COLOUR).pixels;
+	check(before > 100 && hidden && whileHidden == 0 && ring && chart->lineShown(1) && after > 100,
+			QStringLiteral("phone, legend: a tap on a chip hides its line (%1 pixels of its colour in the plot, then %2; the "
+					"chip's dot a ring: %4) and a second tap draws it again (%3, shown %5, %6 bins)").arg(before).arg(whileHidden)
+					.arg(after).arg(ring).arg(chart && chart->lineShown(1)).arg(chart ? chart->bins(1).size() : -1));
+}
+
+/* the chip's "..." menu: Take off the chart unplots the register, as the card's menu does */
+void checkChartUnplot() {
+	Phone phone(LANDSCAPE);
+	PhoneSession *session = phone.session();
+	ChartItem *chart = showChart(phone);
+	const int voltRow = modelRow(session, QStringLiteral("SUPPLY_V")), ampRow = modelRow(session, QStringLiteral("SUPPLY_I"));
+	if (session && voltRow >= 0 && ampRow >= 0) {
+		session->setPlot(voltRow, true);
+		session->setPlot(ampRow, true);
+	}
+	phone.settle(300);
+	const int linesBefore = chart ? chart->lineCount() : 0;
+	QQuickItem *more = within(chip(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("chipMore"));
+	int dots = 0;
+	forEachItem(more, [&](QQuickItem *item) { dots += item->objectName() == QLatin1String("chipMoreDot"); });
+	/* touch targets: the chip and its "..." at least 48 dp (the drawn chip is 40) */
+	const QQuickItem *toggle = within(chip(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("chipToggle"));
+	const bool targets = more && more->width() >= 47.5 && more->height() >= 47.5 && toggle && toggle->height() >= 47.5;
+	phone.tap(more);
+	QObject *menu = phone.object("chipMenu");
+	const bool open = menu && menu->property("opened").toBool();
+	const QString unplotText = phone.text("chipMenuUnplot");
+	phone.tap(phone.item("chipMenuUnplot"));
+	phone.settle(300);
+	const bool off = session && voltRow >= 0 && !session->registers()->rows()[voltRow].plot;
+	const bool ampStays = session && ampRow >= 0 && session->registers()->rows()[ampRow].plot;
+	check(targets && linesBefore == 2 && dots == 3 && open && unplotText == QLatin1String("Take off the chart") && off && ampStays
+					&& chart->lineCount() == 1 && chipCount(phone) == 1 && !chip(phone, QStringLiteral("SUPPLY_V"))
+					&& phone.text("chartNoticeText") == QLatin1String("SUPPLY_V off the chart"),
+			QStringLiteral("phone, legend: the chip's \"...\" button (three drawn dots: %1; it and the chip 48 dp high) opens a menu whose Take off the "
+					"chart unplots the register (%2 lines -> %3, its card's Plot off, the other kept, \"%4\")")
+					.arg(dots).arg(linesBefore).arg(chart ? chart->lineCount() : -1).arg(phone.text("chartNoticeText")));
+	if (session && ampRow >= 0) session->setPlot(ampRow, false);
+}
+
+/* Clear: every line's samples go, the lines stay */
+void checkChartClear() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showFedChart(phone);
+	QVector<double> times, values;
+	sine(5, 20, times, values);
+	if (chart) {
+		chart->addLine(1, SINE_COLOUR, QStringLiteral("SINE"), QStringLiteral("V"));
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart);
+	const bool hadBins = chart && !chart->bins(1).isEmpty();
+	phone.tap(phone.item("chartClear"));
+	chartFrame(phone, chart);
+	const QImage image = phone.grab();
+	const int pixels = colourIn(image, plotInPicture(chart, image), SINE_COLOUR).pixels;
+	check(hadBins && chart->lineCount() == 1 && chart->series(1) && chart->series(1)->times.isEmpty()
+					&& chart->bins(1).isEmpty() && pixels == 0 && chipCount(phone) == 1,
+			QStringLiteral("phone, chart: Clear empties every line (no samples, no bins, %1 pixels of it) and keeps the "
+					"lines (%2, its chip too)").arg(pixels).arg(chart ? chart->lineCount() : -1));
+}
+
+/* Y: Auto spans the values in view; off, the sheet's Min and Max hold the axis, and the line's rows move to where
+ * those values put them */
+void checkChartYRange() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showFedChart(phone);
+	QVector<double> times, values; /* 0.5 .. 3.5 */
+	sine(5, 20, times, values);
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR, QStringLiteral("SINE"), QStringLiteral("V"));
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	/* the line's highest and lowest rows where the axis puts 3.5 and 0.5, give or take the line's width and a pixel */
+	auto rowsRight = [&](QString &said) {
+		const QImage image = phone.grab();
+		const qreal dpr = image.devicePixelRatio();
+		const Seen seen = colourIn(image, plotInPicture(chart, image), SINE_COLOUR);
+		const double top = chart->mapToScene(QPointF(0, chart->plotRect().bottom() - (3.5 - chart->yLow())
+				/ (chart->yHigh() - chart->yLow()) * chart->plotRect().height())).y() * dpr;
+		const double bottom = chart->mapToScene(QPointF(0, chart->plotRect().bottom() - (0.5 - chart->yLow())
+				/ (chart->yHigh() - chart->yLow()) * chart->plotRect().height())).y() * dpr;
+		const double slack = (ChartItem::LINE_WIDTH / 2 + 1.5) * dpr;
+		said = QStringLiteral("Y %1 .. %2: rows %3 .. %4, want %5 .. %6").arg(chart->yLow(), 0, 'f', 2)
+				.arg(chart->yHigh(), 0, 'f', 2).arg(seen.top).arg(seen.bottom).arg(top, 0, 'f', 1).arg(bottom, 0, 'f', 1);
+		return seen.pixels > 0 && std::fabs(seen.top - top) <= slack && std::fabs(seen.bottom - bottom) <= slack;
+	};
+	QString autoSaid, manualSaid;
+	const bool autoOn = chart && chart->yAuto();
+	/* Auto: the values in view and a twentieth of their span each side */
+	const bool spans = chart && std::fabs(chart->yLow() - (0.5 - 0.15)) < 0.02 && std::fabs(chart->yHigh() - (3.5 + 0.15)) < 0.02;
+	const bool autoRows = chart && rowsRight(autoSaid);
+	/* Auto off: the sheet opens with the range drawn, Min 0 and Max 10 applied */
+	phone.tap(phone.item("yAutoSwitch"));
+	QObject *sheet = phone.object("ySheet");
+	const bool sheetOpen = sheet && sheet->property("opened").toBool();
+	const bool stillAuto = chart && chart->yAuto(); /* nothing applied yet */
+	phone.type("yMinField", QStringLiteral("0"));
+	phone.type("yMaxField", QStringLiteral("10"));
+	phone.tap(phone.item("ySheetApply"));
+	chartFrame(phone, chart, 3);
+	const bool manual = chart && !chart->yAuto() && chart->yLow() == 0 && chart->yHigh() == 10;
+	const bool manualRows = chart && rowsRight(manualSaid);
+	const QString rangeText = phone.text("yRangeButton");
+	/* a max under the min is refused with a reason */
+	phone.tap(phone.item("yRangeButton"));
+	phone.type("yMinField", QStringLiteral("5"));
+	phone.type("yMaxField", QStringLiteral("1"));
+	phone.tap(phone.item("ySheetApply"));
+	const QString refused = phone.text("ySheetError");
+	if (QObject *open = phone.object("ySheet")) QMetaObject::invokeMethod(open, "close");
+	phone.settle();
+	/* Auto again */
+	phone.tap(phone.item("yAutoSwitch"));
+	chartFrame(phone, chart, 3);
+	const bool autoAgain = chart && chart->yAuto() && chart->yHigh() < 4;
+	check(autoOn && spans && autoRows && sheetOpen && stillAuto && manual && manualRows
+					&& rangeText == QLatin1String("Y 0 to 10") && refused == QLatin1String("Max must be above min.") && autoAgain,
+			QStringLiteral("phone, chart Y: Auto spans the values in view (%1), off the sheet's Min 0 and Max 10 hold it (%2; "
+					"\"%3\"), a max under the min is refused (\"%4\"), Auto again spans the values")
+					.arg(autoSaid, manualSaid, rangeText, refused));
+}
+
+/* a fast line's bins as the desktop's check compares them (ChartView::freshBins against lastBins) */
+bool sameFastBins(const QVector<ChartData::Bin> &a, const QVector<ChartData::Bin> &b) {
+	if (a.size() != b.size()) return false;
+	for (qsizetype i = 0; i < a.size(); ++i) {
+		const ChartData::Bin &x = a[i], &y = b[i];
+		if (x.t0 != y.t0 || x.t1 != y.t1 || x.min != y.min || x.max != y.max || x.count != y.count || x.gap != y.gap
+				|| x.bar != y.bar)
+			return false;
+	}
+	return true;
+}
+
+/* tests: evre_fake_fast on a port of its own (EVRE_FAKE_FAST_PORT; Docker holds 1221-1320 on the owner's PC) */
+const quint16 FAKE_FAST_PORT = quint16(qEnvironmentVariableIsSet("EVRE_FAKE_FAST_PORT")
+		? qEnvironmentVariableIntValue("EVRE_FAKE_FAST_PORT") : 1213);
+
+/* a map with a stream (maps/example_fast.json) against evre_fake_fast: Fast lines lists its channels, one plotted
+ * switches the stream on, its records drawn as the desktop's binFast bins them */
+void checkChartFast() {
+	const QString fastMap = phone::mapsFolder() + QStringLiteral("/example_fast.json");
+	QProcess fake;
+	fake.start(QCoreApplication::applicationDirPath() + QStringLiteral("/evre_fake_fast"),
+			{ QString::number(FAKE_FAST_PORT), fastMap });
+	const bool started = fake.waitForStarted(3000);
+	QTest::qWait(500);
+	{
+		Phone phone(LANDSCAPE);
+		PhoneSession *session = phone.session();
+		ChartItem *chart = showChart(phone);
+		const bool loaded = session && session->loadMap(fastMap);
+		if (session) {
+			session->setPolling(true);
+			session->setIntervalMs(100);
+			session->connectTcp(QStringLiteral("127.0.0.1"), FAKE_FAST_PORT, QString());
+		}
+		const bool connected = waitForState(session, PhoneSession::Connected);
+		phone.settle(300);
+		QQuickItem *button = phone.item("fastLinesButton");
+		const bool offered = button && button->isVisible();
+		phone.tap(button);
+		QStringList names;
+		QQuickItem *first = nullptr;
+		forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+			if (item->objectName() != QLatin1String("fastChannel") || !item->isVisible()) return;
+			names << item->property("text").toString();
+			if (!first) first = item;
+		});
+		phone.tap(first);
+		const int id = PhoneSession::fastLineId(0, 0);
+		const bool line = chart && chart->hasLine(id);
+		if (chart) chart->setWindowSeconds(10);
+		(void) QTest::qWaitFor([&] {
+			const fast::Store *store = session ? session->fastStore(0) : nullptr;
+			return store && store->hasTime() && store->size() > 20000;
+		}, 6000);
+		/* nothing more comes while the bins are compared */
+		if (session) session->disconnectLink();
+		(void) waitForState(session, PhoneSession::Off, 3000);
+		QTest::qWait(300);
+		if (chart) chart->setLive(false);
+		chartFrame(phone, chart, 3);
+		const fast::Store *store = session ? session->fastStore(0) : nullptr;
+		const qsizetype records = store ? store->size() : 0;
+		const ChartData::Series *s = chart ? chart->series(id) : nullptr;
+		ChartData::BinnedLine fresh;
+		std::atomic<qint64> counted{ 0 };
+		if (s) ChartData::binFast(*s, chart->viewStart(), chart->viewEnd(), chart->columns(), fresh, nullptr, counted);
+		const QVector<ChartData::Bin> phoneBins = chart ? chart->bins(id) : QVector<ChartData::Bin>();
+		phone.settle(300);
+		const QImage image = phone.grab();
+		const Seen seen = chart ? colourIn(image, plotInPicture(chart, image), chart->lineColour(id), 6,
+				areaInPicture(phone, image)) : Seen();
+		const QString chipName = chip(phone, QStringLiteral("ADC.I_LOAD")) ? QStringLiteral("ADC.I_LOAD") : QString();
+		check(started && loaded && connected && offered && names == QStringList{ QStringLiteral("ADC.I_LOAD (A)"),
+						QStringLiteral("ADC.V_BUS (V)") } && line && records > 20000 && s && s->fast
+						&& !phoneBins.isEmpty() && sameFastBins(phoneBins, fresh.bins) && seen.pixels > 200 && seen.outside == 0
+						&& !chipName.isEmpty(),
+				QStringLiteral("phone, fast lines: a map with a stream offers Fast lines (%1); a channel chosen switches the "
+						"stream on (%2 records from evre_fake_fast), its line binned as the desktop's binFast bins it (%3 "
+						"bins against %4) and drawn in its colour inside the plot (%5 pixels, %6 elsewhere in the chart's area)")
+						.arg(names.join(QStringLiteral(", "))).arg(records).arg(phoneBins.size()).arg(fresh.bins.size())
+						.arg(seen.pixels).arg(seen.outside));
+		if (session) {
+			session->setFastPlot(0, 0, false);
+			session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+		}
+	}
+	fake.kill();
+	fake.waitForFinished(3000);
+}
+
+/* no line: the plot says how to plot one, its button goes to the Registers screen */
+void checkChartEmpty() {
+	Phone phone(PORTRAIT);
+	showChart(phone);
+	QQuickItem *empty = phone.item("chartEmpty");
+	const bool shown = empty && empty->isVisible();
+	const QString text = phone.text("chartEmptyText");
+	const bool chartTab = phone.item("screens") && phone.item("screens")->property("currentIndex").toInt() == 1;
+	phone.tap(phone.item("chartToRegisters"));
+	const int tab = phone.item("screens") ? phone.item("screens")->property("currentIndex").toInt() : -1;
+	check(shown && chartTab && text == QLatin1String("Plot a register from its ... menu on the Registers screen.") && tab == 0,
+			QStringLiteral("phone, chart: with no line the plot says \"%1\", and its Go to Registers button shows the Registers "
+					"screen (tab %2)").arg(text).arg(tab));
+}
+
+/* both themes: a line in the theme's series colour, its chip on the surface with its name in the text colour */
+void checkChartLegendThemes() {
+	QStringList seen;
+	bool ok = true;
+	for (bool dark : { true, false }) {
+		QSettings().setValue(QStringLiteral("ui/dark"), dark);
+		Phone phone(LANDSCAPE);
+		ChartItem *chart = showFedChart(phone);
+		QVector<double> times, values;
+		sine(5, 20, times, values);
+		if (chart) {
+			chart->setWindowSeconds(10);
+			chart->addThemedLine(1, 0, QStringLiteral("SINE"), QStringLiteral("V"));
+			chart->appendSamples(1, times, values);
+		}
+		chartFrame(phone, chart, 3);
+		phone.settle(300);
+		const ThemeColors colors = Theme::colorsFor(dark);
+		const QImage image = phone.grab();
+		const Seen line = colourIn(image, plotInPicture(chart, image), colors.series.value(0), 4);
+		QQuickItem *sineChip = chip(phone, QStringLiteral("SINE"));
+		const QQuickItem *name = within(sineChip, QStringLiteral("chipName"));
+		/* the chip's face between its dot and its name's start: its colour */
+		const QColor face = sineChip ? Phone::pixel(image, sineChip->mapToScene(QPointF(sineChip->width() - 4,
+				sineChip->height() / 2))) : QColor();
+		const QColor nameColour = name ? name->property("color").value<QColor>() : QColor();
+		const bool good = line.pixels > 100 && near(face, colors.surface, 3) && nameColour == colors.text;
+		seen << QStringLiteral("%1: line %2 px of %3, chip %4 (%5), name %6").arg(dark ? "dark" : "light")
+				.arg(line.pixels).arg(colors.series.value(0).name(), face.name(), colors.surface.name(), nameColour.name());
+		ok = ok && good;
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	check(ok, QStringLiteral("phone, chart themes: the line in the theme's first series colour, its chip on the theme's "
+			"surface with its name in the text colour, dark and light (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* the chart's pictures for the eye: two plotted registers, a hidden line, Manual Y, the empty state; both themes and
+ * languages, portrait and landscape: <prefix>_<en|ar>_<dark|light>_chart_<case>_<portrait|landscape>.png */
+void saveChartPictures(const QString &prefix) {
+	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
+		language::apply(*qApp, code);
+		for (bool dark : { true, false }) {
+			QSettings().setValue(QStringLiteral("ui/dark"), dark);
+			for (QSize size : { PORTRAIT, LANDSCAPE }) {
+				const QString name = QStringLiteral("%1_%2_%3_chart_").arg(prefix, code, dark ? "dark" : "light");
+				const QString orient = size == PORTRAIT ? QStringLiteral("_portrait.png") : QStringLiteral("_landscape.png");
+				{
+					Phone phone(size);
+					showChart(phone);
+					phone.grab().save(name + QStringLiteral("empty") + orient);
+				}
+				Phone phone(size);
+				PhoneSession *session = connectFake(phone);
+				ChartItem *chart = showChart(phone);
+				for (const char *reg : { "SUPPLY_V", "TEMPERATURE" }) {
+					const int row = modelRow(session, QLatin1String(reg));
+					if (session && row >= 0) session->setPlot(row, true);
+				}
+				if (chart) chart->setWindowSeconds(10);
+				QTest::qWait(6000);
+				phone.grab().save(name + QStringLiteral("two") + orient);
+				const int row = modelRow(session, QStringLiteral("TEMPERATURE"));
+				if (chart && session && row >= 0) chart->setLineShown(int(regKey(session->registers()->rows()[row].def)), false);
+				phone.settle(500);
+				phone.grab().save(name + QStringLiteral("hidden") + orient);
+				if (chart) chart->setLineShown(int(regKey(session->registers()->rows()[row].def)), true);
+				if (chart) chart->setYRange(0, 30);
+				phone.settle(1500); /* the switch's handle slides slowly on a desktop of its own */
+				phone.grab().save(name + QStringLiteral("manual") + orient);
+				/* a popup's animations run slower on a desktop of its own: waited for, not timed */
+				QObject *sheet = phone.object("ySheet");
+				if (sheet) QMetaObject::invokeMethod(sheet, "openFor");
+				(void) QTest::qWaitFor([&] { return sheet && sheet->property("opened").toBool(); }, 3000);
+				phone.settle(300);
+				phone.grab().save(name + QStringLiteral("ysheet") + orient);
+				if (sheet) QMetaObject::invokeMethod(sheet, "close");
+				(void) QTest::qWaitFor([&] { return sheet && !sheet->property("visible").toBool(); }, 3000);
+				phone.tap(within(chip(phone, QStringLiteral("SUPPLY_V")), QStringLiteral("chipMore")));
+				QObject *menu = phone.object("chipMenu");
+				(void) QTest::qWaitFor([&] { return menu && menu->property("opened").toBool(); }, 3000);
+				phone.settle(300);
+				phone.grab().save(name + QStringLiteral("chipmenu") + orient);
+				if (session) session->disconnectLink();
+			}
+		}
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	language::apply(*qApp, QStringLiteral("en"));
+}
+
 /* EVRE_PHONE_SHOT: both languages and themes. Portrait: the start (not connected) and its drawer, connected (the
  * drawer, the Log, the Registers screen, a search, the write sheet after a write, asking first, an enum's list, the
  * sheet and the drawer over a keyboard stood for, drawn grey); landscape: the Registers screen, the drawer, the sheet,
@@ -2340,58 +2834,74 @@ int main(int argc, char **argv) {
 	/* the pictures alone, without the checks (EVRE_PHONE_SHOT with EVRE_PHONE_ONLY=shots): for the eye, quickly */
 	if (qEnvironmentVariable("EVRE_PHONE_ONLY") == QLatin1String("shots")) {
 		savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 		QSettings().clear();
 		return 0;
 	}
 
-	checkLoads();
-	checkTabs();
-	checkDrawer();
-	checkTheme();
-	checkScrim();
-	checkLanguageChoice();
-	checkArabic();
-	checkTexts();
-	checkP9();
-	checkChartBins();
-	checkChartDrawn();
-	checkChartPinch();
-	checkChartDragAndLive();
-	checkChartTheme();
-	checkChartArabic();
-	checkChartDemo();
-	checkLogScreen();
-	checkTcpLink();
-	checkRefusedLink();
-	checkReconnect();
-	checkTokenStops();
-	checkUsbPorts();
-	checkUsbPermission();
-	checkUsbGone();
-	checkDeviceIdRetry();
-	checkRegisterRows();
-	checkRegisterValues();
-	checkRegisterWrite();
-	checkRegisterLimit();
-	checkRegisterRefused();
-	checkWritesOff();
-	checkRegisterGlow();
-	checkRegisterStale();
-	checkRegisterSearch();
-	checkRegisterPlot();
-	checkDrawnSymbols();
-	checkRegisterTexts();
-	checkRegisterThemes();
-	checkPerfLine();
-	checkKeyboard();
-	checkSearchClear();
-	checkOfflineButton();
-	checkTabIcons();
-	checkTouchTargets();
-	checkEnumChoices();
-	checkArabicStart();
-	checkMutedContrast();
-	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+	/* EVRE_PHONE_ONLY=<text>: only the checks whose function's name holds it (a run of a few, by hand) */
+	const QString only = qEnvironmentVariable("EVRE_PHONE_ONLY");
+#define RUN(f) if (only.isEmpty() || QStringLiteral(#f).contains(only)) f()
+	RUN(checkLoads);
+	RUN(checkTabs);
+	RUN(checkDrawer);
+	RUN(checkTheme);
+	RUN(checkScrim);
+	RUN(checkLanguageChoice);
+	RUN(checkArabic);
+	RUN(checkTexts);
+	RUN(checkP9);
+	RUN(checkChartBins);
+	RUN(checkChartDrawn);
+	RUN(checkChartPinch);
+	RUN(checkChartDragAndLive);
+	RUN(checkChartTheme);
+	RUN(checkChartArabic);
+	RUN(checkChartDemo);
+	RUN(checkChartPlotted);
+	RUN(checkChartHide);
+	RUN(checkChartUnplot);
+	RUN(checkChartClear);
+	RUN(checkChartYRange);
+	RUN(checkChartFast);
+	RUN(checkChartEmpty);
+	RUN(checkChartLegendThemes);
+	RUN(checkLogScreen);
+	RUN(checkTcpLink);
+	RUN(checkRefusedLink);
+	RUN(checkReconnect);
+	RUN(checkTokenStops);
+	RUN(checkUsbPorts);
+	RUN(checkUsbPermission);
+	RUN(checkUsbGone);
+	RUN(checkDeviceIdRetry);
+	RUN(checkRegisterRows);
+	RUN(checkRegisterValues);
+	RUN(checkRegisterWrite);
+	RUN(checkRegisterLimit);
+	RUN(checkRegisterRefused);
+	RUN(checkWritesOff);
+	RUN(checkRegisterGlow);
+	RUN(checkRegisterStale);
+	RUN(checkRegisterSearch);
+	RUN(checkRegisterPlot);
+	RUN(checkDrawnSymbols);
+	RUN(checkRegisterTexts);
+	RUN(checkRegisterThemes);
+	RUN(checkPerfLine);
+	RUN(checkKeyboard);
+	RUN(checkSearchClear);
+	RUN(checkOfflineButton);
+	RUN(checkTabIcons);
+	RUN(checkTouchTargets);
+	RUN(checkEnumChoices);
+	RUN(checkArabicStart);
+	RUN(checkMutedContrast);
+#undef RUN
+	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
+		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+		saveChartPictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
+	}
 	QCoreApplication::processEvents();
 	checkThreadWarnings();
 

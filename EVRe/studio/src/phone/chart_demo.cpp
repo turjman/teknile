@@ -42,7 +42,9 @@ void ChartDemo::setColours(const QVariantList &colours) {
 void ChartDemo::addLines() {
 	for (int k = 0; k < LINES; ++k) {
 		const QColor colour = colours_.isEmpty() ? QColor::fromHsv(k * 45, 200, 230) : colours_[k % colours_.size()].value<QColor>();
-		chart_->addLine(k, colour);
+		static const char *const names[LINES] = { "SINE", "NOISY_SINE", "SQUARE", "TRIANGLE", "SAWTOOTH", "NOISE", "CHIRP",
+			"RIPPLE" };
+		chart_->addLine(k, colour, QString::fromLatin1(names[k]), QStringLiteral("V"));
 	}
 	chart_->setClock([this] { return clock_.isValid() ? clock_.nsecsElapsed() / 1e9 : 0.0; });
 	chart_->setWindowSeconds(60);
