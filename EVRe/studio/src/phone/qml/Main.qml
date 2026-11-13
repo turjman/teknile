@@ -3,8 +3,9 @@
 // opens the drawer too), the Connect drawer, a tab bar at the bottom (Registers, Chart, Monitor, Log) and the screens
 // above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab bar, the screens and the
 // drawer mirrored).
-// With p9 (phone_app.cpp) the window shows the proof P-9 alone; with chartDemo the Chart screen, fed by the chart's test
-// feed (chart_demo.h).
+// With p9 (phone_app.cpp) the window shows the proof P-9 alone; with perf the Registers screen keeps a bar running
+// and registersShown tells the speed line (EVRE_PERF) when to write; with chartDemo the Chart screen, fed by the chart's
+// test feed (chart_demo.h), chartShown telling the same line when to write.
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
@@ -20,7 +21,11 @@ ApplicationWindow {
     title: qsTr("EVRe Studio")
 
     property bool p9: false
+    property bool perf: false
+    // the Registers screen in view: the speed line's seconds (phone_app.cpp)
+    readonly property bool registersShown: !p9 && tabBar.currentIndex === 0 && !drawer.opened && !writeSheet.opened
     property bool chartDemo: false
+    readonly property bool chartShown: !p9 && tabBar.currentIndex === 1 && !drawer.opened
     // the direction comes from the Arabic translation (language.cpp), as on the desktop
     readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property var screenNames: [qsTr("Registers"), qsTr("Chart"), qsTr("Monitor"), qsTr("Log")]
@@ -31,6 +36,14 @@ ApplicationWindow {
     Material.background: PhoneTheme.bg
     Material.foreground: PhoneTheme.text
     color: PhoneTheme.bg
+
+    // Behind a modal (the drawer, the write sheet) the screen darkens in both themes: Material's own dimming is a grey
+    // wash, which lightened the dark theme's screen instead. A Drawer of Material's sets its own, so they set this too
+    readonly property Component scrim: Rectangle {
+        color: Qt.rgba(0, 0, 0, 0.5)
+    }
+    Overlay.modal: scrim
+    Overlay.modeless: scrim
 
     header: ToolBar {
         id: header
@@ -57,13 +70,30 @@ ApplicationWindow {
             anchors.rightMargin: 12
             spacing: 8
 
+            // three bars drawn, not a character: a phone's font may have no "☰" (a Samsung phone's had none)
             ToolButton {
                 id: menuButton
                 objectName: "menuButton"
-                text: "☰"
-                font.pixelSize: 22
+                Layout.preferredWidth: 48
+                Layout.preferredHeight: 48
                 Accessible.name: qsTr("Connect and settings")
                 onClicked: drawer.open()
+                contentItem: Item {
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 4
+                        Repeater {
+                            model: 3
+                            Rectangle {
+                                objectName: "menuBar"
+                                width: 20
+                                height: 2
+                                radius: 1
+                                color: PhoneTheme.text
+                            }
+                        }
+                    }
+                }
             }
             Label {
                 id: screenTitle
@@ -129,9 +159,11 @@ ApplicationWindow {
         LayoutMirroring.enabled: root.rtl
         LayoutMirroring.childrenInherit: true
 
-        PlaceholderScreen {
+        RegistersScreen {
             objectName: "screenRegisters"
-            note: qsTr("Coming soon: every register of the map, its value live.")
+            perf: root.perf
+            onConnectAsked: drawer.open()
+            onWriteAsked: source => writeSheet.openFor(source)
         }
         ChartScreen {
             objectName: "screenChart"
@@ -155,6 +187,19 @@ ApplicationWindow {
         interactive: !root.p9
         width: Math.min(root.width * 0.85, 360)
         height: root.height
+        Overlay.modal: root.scrim
+        Overlay.modeless: root.scrim
+    }
+
+    WriteSheet {
+        id: writeSheet
+        objectName: "writeSheet"
+        rtl: root.rtl
+        width: root.width
+        interactive: opened
+        onConnectAsked: drawer.open()
+        Overlay.modal: root.scrim
+        Overlay.modeless: root.scrim
     }
 
     Loader {

@@ -4734,10 +4734,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <translation>الاتصال والإعدادات</translation>
     </message>
     <message>
-        <source>Coming soon: every register of the map, its value live.</source>
-        <translation>قريبًا: كل مسجّل في الخريطة، بقيمته الحيّة.</translation>
-    </message>
-    <message>
         <source>Coming soon: the frames on the link.</source>
         <translation>قريبًا: الإطارات على الوصلة.</translation>
     </message>
@@ -6724,6 +6720,78 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
         <source>CSV recording stopped: %1 rows in %2</source>
         <translation>توقف تسجيل CSV: الصفوف %1 في %2</translation>
     </message>
+    <message>
+        <source>At most %1 registers on the chart at %2 samples a second: take one off first</source>
+        <translation>على الأكثر %1 مسجّلًا على المخطط عند %2 عينة في الثانية: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source>At most %1 registers on the chart: take one off first</source>
+        <translation>على الأكثر %1 مسجّلًا على المخطط: أزِل واحدًا أولًا</translation>
+    </message>
+    <message>
+        <source>%1 samples a second: at most %2 registers on the chart; taken off: %3</source>
+        <translation>%1 عينة في الثانية: على الأكثر %2 مسجّلًا على المخطط؛ أُزيل: %3</translation>
+    </message>
+    <message>
+        <source>reading the device ID…</source>
+        <translation>قراءة معرّف الجهاز…</translation>
+    </message>
+    <message>
+        <source>a short answer</source>
+        <translation>جواب قصير</translation>
+    </message>
+    <message>
+        <source>from %1 to %2</source>
+        <translation>من ⁦%1⁩ إلى ⁦%2⁩</translation>
+    </message>
+    <message>
+        <source>at least %1</source>
+        <translation>على الأقل ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>at most %1</source>
+        <translation>على الأكثر ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>%1 = %2 is %3 the map gives it. The map may be stricter than the device, or the device may not take it.</source>
+        <translation>⁦%1 = %2⁩ %3 الذي تعطيه الخريطة. قد تكون الخريطة أشد من الجهاز، أو قد لا يقبلها الجهاز.</translation>
+    </message>
+    <message>
+        <source>%1 moves, powers or changes something on the device.</source>
+        <translation>⁦%1⁩ يحرّك شيئًا على الجهاز أو يشغّله أو يغيّره.</translation>
+    </message>
+    <message>
+        <source>Write it anyway?</source>
+        <translation>أتكتبها مع ذلك؟</translation>
+    </message>
+    <message>
+        <source>Writes are off: turn on Allow writes in the Connect drawer</source>
+        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Not connected: connect first</source>
+        <translation>غير متصل: اتصل أولًا</translation>
+    </message>
+    <message>
+        <source>%1: %2 not written: %3</source>
+        <translation>%1: لم يُكتب %2: %3</translation>
+    </message>
+    <message>
+        <source>%1 = %2 (%3 at %4)</source>
+        <translation>⁦%1 = %2⁩ (⁦%3⁩ عند ⁦%4⁩)</translation>
+    </message>
+    <message>
+        <source>written: %1</source>
+        <translation>كُتب: %1</translation>
+    </message>
+    <message>
+        <source>%1 written</source>
+        <translation>كُتب %1</translation>
+    </message>
+    <message>
+        <source>write refused: %1: %2</source>
+        <translation>رُفضت الكتابة: %1: %2</translation>
+    </message>
 </context>
 <context>
     <name>QObject</name>
@@ -7861,6 +7929,25 @@ Keep the last part: about the last %5 of %6?</source>
     </message>
 </context>
 <context>
+    <name>RegisterCard</name>
+    <message>
+        <source>Write</source>
+        <translation>كتابة</translation>
+    </message>
+    <message>
+        <source>More: Plot, Copy</source>
+        <translation>المزيد: رسم، نسخ</translation>
+    </message>
+    <message>
+        <source>not refreshed</source>
+        <translation>غير محدّث</translation>
+    </message>
+    <message>
+        <source>on the chart</source>
+        <translation>على المخطط</translation>
+    </message>
+</context>
+<context>
     <name>RegisterEditor</name>
     <message>
         <source>(several)</source>
@@ -8134,6 +8221,13 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     </message>
 </context>
 <context>
+    <name>RegisterList</name>
+    <message>
+        <source>the device refused this address</source>
+        <translation>رفض الجهاز هذا العنوان</translation>
+    </message>
+</context>
+<context>
     <name>RegisterModel</name>
     <message>
         <source>Not plotted: a bytes register is not a number</source>
@@ -8210,6 +8304,69 @@ They are for integer registers: u8 … u64, i8 … i64.</source>
     <message>
         <source>not read by the other program yet</source>
         <translation>لم يقرأه البرنامج الآخر بعد</translation>
+    </message>
+</context>
+<context>
+    <name>RegistersScreen</name>
+    <message>
+        <source>Search: name, unit, address</source>
+        <translation>بحث: الاسم، الوحدة، العنوان</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>registers: %1</source>
+        <translation>المسجّلات: %1</translation>
+    </message>
+    <message>
+        <source>registers: %1 of %2</source>
+        <translation>المسجّلات: %1 من %2</translation>
+    </message>
+    <message>
+        <source>Not connected: the values show once the link is up.</source>
+        <translation>غير متصل: تظهر القيم حين تقوم الوصلة.</translation>
+    </message>
+    <message>
+        <source>Connect…</source>
+        <translation>اتصال…</translation>
+    </message>
+    <message>
+        <source>No registers: choose a map in the Connect drawer.</source>
+        <translation>لا مسجّلات: اختر خريطة في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>No register matches &quot;%1&quot;.</source>
+        <translation>لا مسجّل يطابق «%1».</translation>
+    </message>
+    <message>
+        <source>Take off the chart</source>
+        <translation>إزالة من المخطط</translation>
+    </message>
+    <message>
+        <source>Plot</source>
+        <translation>رسم</translation>
+    </message>
+    <message>
+        <source>%1 on the chart</source>
+        <translation>⁦%1⁩ على المخطط</translation>
+    </message>
+    <message>
+        <source>%1 off the chart</source>
+        <translation>أُزيل ⁦%1⁩ من المخطط</translation>
+    </message>
+    <message>
+        <source>Write…</source>
+        <translation>كتابة…</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>Copied: %1</source>
+        <translation>نُسخ: ⁦%1⁩</translation>
     </message>
 </context>
 <context>
@@ -9533,6 +9690,53 @@ Not remembered: it changes the device, so it is off at every start.</source>
     <message>
         <source>%1 is gone: unplugged or reset?</source>
         <translation>⁦%1⁩ اختفى: فُصل أو أُعيد تشغيله؟</translation>
+    </message>
+</context>
+<context>
+    <name>WriteSheet</name>
+    <message>
+        <source>Writing…</source>
+        <translation>جارٍ الكتابة…</translation>
+    </message>
+    <message>
+        <source>Now</source>
+        <translation>الآن</translation>
+    </message>
+    <message>
+        <source>The map&apos;s limits: %1</source>
+        <translation>حدود الخريطة: %1</translation>
+    </message>
+    <message>
+        <source>Not connected: connect in the Connect drawer first.</source>
+        <translation>غير متصل: اتصل من لوحة الاتصال أولًا.</translation>
+    </message>
+    <message>
+        <source>Writes are off: turn on Allow writes in the Connect drawer.</source>
+        <translation>الكتابة متوقفة: فعّل «السماح بالكتابة» في لوحة الاتصال.</translation>
+    </message>
+    <message>
+        <source>Open the Connect drawer</source>
+        <translation>فتح لوحة الاتصال</translation>
+    </message>
+    <message>
+        <source>Write anyway</source>
+        <translation>اكتب مع ذلك</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Not written</source>
+        <translation>لم يُكتب</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>تطبيق</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>إغلاق</translation>
     </message>
 </context>
 <context>

@@ -3,6 +3,7 @@
 #include "phone/phone_app.h"
 
 #include <QCoreApplication>
+#include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
@@ -12,6 +13,7 @@
 #endif
 
 #include "phone/p9_proof.h"
+#include "phone/phone_session.h"
 
 namespace phone {
 
@@ -26,7 +28,8 @@ QString mapsFolder() {
 void setStyle() { QQuickStyle::setStyle(QStringLiteral("Material")); }
 
 namespace {
-/* the environment's variable set to 1, or on Android the start intent's boolean extra */
+
+/* a test aid asked for: its variable =1, or on Android the start intent's extra of that name */
 bool asked(const char *variable, const char *extra) {
 	if (qEnvironmentVariableIntValue(variable) == 1) return true;
 #ifdef Q_OS_ANDROID
@@ -37,18 +40,22 @@ bool asked(const char *variable, const char *extra) {
 	const QJniObject name = QJniObject::fromString(QString::fromLatin1(extra));
 	return intent.callMethod<jboolean>("getBooleanExtra", "(Ljava/lang/String;Z)Z", name.object<jstring>(), jboolean(false));
 #else
-	Q_UNUSED(extra);
+	Q_UNUSED(extra)
 	return false;
 #endif
 }
+
 } // namespace
 
 bool p9Asked() { return asked("EVRE_P9", "p9"); }
 
+bool perfAsked() { return asked("EVRE_PERF", "perf"); }
+
 bool chartDemoAsked() { return asked("EVRE_CHARTDEMO", "chartdemo"); }
 
-QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool chartDemo) {
-	QVariantMap properties{ { QStringLiteral("p9"), p9 }, { QStringLiteral("chartDemo"), chartDemo } };
+QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool perf, bool chartDemo) {
+	QVariantMap properties{ { QStringLiteral("p9"), p9 }, { QStringLiteral("perf"), perf },
+		{ QStringLiteral("chartDemo"), chartDemo } };
 	if (size.isValid()) {
 		properties.insert(QStringLiteral("width"), size.width());
 		properties.insert(QStringLiteral("height"), size.height());
@@ -57,7 +64,16 @@ QQuickWindow *loadMain(QQmlApplicationEngine &engine, bool p9, QSize size, bool 
 	engine.loadFromModule("EVRe.Phone", "Main");
 	auto *window = engine.rootObjects().isEmpty() ? nullptr : qobject_cast<QQuickWindow *>(engine.rootObjects().constLast());
 	if (window && p9) new P9Meter(window);
-	if (window && chartDemo && !p9) new P9Meter(window, QByteArrayLiteral("EVRE_PERF"));
+	if (window && perf && !p9) {
+		const QPointer<QQuickWindow> shown(window);
+		new P9Meter(window, "EVRE_PERF", [shown] { return shown && shown->property("registersShown").toBool(); });
+	}
+	if (window && chartDemo && !p9) {
+		const QPointer<QQuickWindow> shown(window);
+		new P9Meter(window, "EVRE_PERF", [shown] { return shown && shown->property("chartShown").toBool(); });
+	}
+	if (window)
+		if (auto *session = engine.singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession")) session->attachWindow(window);
 	return window;
 }
 

@@ -55,7 +55,8 @@ void P9Registers::tick() {
 	emit ticked();
 }
 
-P9Meter::P9Meter(QQuickWindow *window, const QByteArray &tag) : QObject(window), tag_(tag) {
+P9Meter::P9Meter(QQuickWindow *window, const char *tag, std::function<bool()> shown)
+	: QObject(window), tag_(tag), shown_(std::move(shown)) {
 	clock_.start();
 	second_.start();
 	/* direct: frameSwapped comes on the render thread (Android's threaded render loop); a queued call would time
@@ -90,15 +91,16 @@ void P9Meter::report() {
 	}
 	const double seconds = second_.nsecsElapsed() / 1e9;
 	second_.restart();
+	if (shown_ && !shown_()) return; /* another screen: its second is not this line's */
 	const QString line = QStringLiteral("fps %1, longest %2 ms, over %3 ms: %4")
 			.arg(frames / std::max(seconds, 1e-3), 0, 'f', 1)
 			.arg(longest / 1e6, 0, 'f', 1)
 			.arg(SLOW_MS, 0, 'f', 0)
 			.arg(slow);
 #ifdef Q_OS_ANDROID
-	__android_log_write(ANDROID_LOG_INFO, tag_.constData(), qPrintable(line));
+	__android_log_write(ANDROID_LOG_INFO, tag_, qPrintable(line));
 #else
-	std::fprintf(stdout, "%s %s\n", tag_.constData(), qPrintable(line));
+	std::fprintf(stdout, "%s %s\n", tag_, qPrintable(line));
 	std::fflush(stdout);
 #endif
 	emit logged(line);
