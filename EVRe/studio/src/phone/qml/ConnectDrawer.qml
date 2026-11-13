@@ -139,6 +139,9 @@ Drawer {
         bottomInset: 3
         leftInset: 3
         rightInset: 3
+        // the label the half's whole height: Material's paddings left it shorter than its letters
+        topPadding: 0
+        bottomPadding: 0
         Material.accent: PhoneTheme.accentFill
         flat: !highlighted
         enabled: highlighted || !drawer.linkBusy
