@@ -612,6 +612,25 @@ Double-click to edit</source>
     </message>
 </context>
 <context>
+    <name>ChartScreen</name>
+    <message>
+        <source>Live</source>
+        <translation>مباشر</translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation>تثبيت</translation>
+    </message>
+    <message>
+        <source>Pinch: zoom the time · Drag: look back · Double tap: live</source>
+        <translation>القرص: تكبير الزمن · السحب: الرجوع إلى الأقدم · النقر المزدوج: مباشر</translation>
+    </message>
+    <message>
+        <source>No lines yet: plot a register on the Registers screen to see it here.</source>
+        <translation>لا خطوط بعد: رسم مسجّل من شاشة المسجّلات يُظهره هنا.</translation>
+    </message>
+</context>
+<context>
     <name>ChartTab</name>
     <message>
         <source>View: the time shown. Pick one or type any length: 45, 2.5 s, 500 ms, 3 min, 1 h.
@@ -4733,10 +4752,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>Connect and settings</source>
         <translation>الاتصال والإعدادات</translation>
-    </message>
-    <message>
-        <source>Coming soon: the plotted registers over time.</source>
-        <translation>قريبًا: المسجّلات المرسومة عبر الزمن.</translation>
     </message>
     <message>
         <source>Coming soon: the frames on the link.</source>

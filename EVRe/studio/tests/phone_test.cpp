@@ -15,13 +15,17 @@
  *
  * The Registers screen's checks (B.2) run against the fake device too: its values, a write read back, the limits asked
  * first, a refused write (a map with a register the device does not have), the glow in the picture; a stand-in that
- * leaves the first DEVICE_ID request unanswered checks that the ID is read again by itself.
+ * leaves the first DEVICE_ID request unanswered checks that the ID is read again by itself. The chart's checks (B.3a)
+ * feed its lines from the test (a sine at 1 kHz), compare its bins with the desktop chart's binning (chart_data.h),
+ * find the line's colour in the picture, and pinch, drag and double tap it.
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<name>.png,
  * the names portrait, drawer, connected, drawerkb, log, registers, search, sheet, question, keyboard, enum and, at
- * 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape (not checks; all but the first two with the
- * fake device; drawerkb and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
+ * 915 x 412, land_registers, land_sheet, land_drawer, land_log, landscape, then chartdemo and chartdemo_portrait (not
+ * checks; all but the first two and the chart's with the fake device, chartdemo with the chart's test feed; drawerkb
+ * and keyboard with a keyboard stood for, drawn grey). EVRE_PHONE_ONLY=shots saves them without
  * running the checks.
+ * EVRE_FAKE_PORT: the fake device on another port than 1210 (a second run on the same PC).
  *
  * Exit code: 0 all passed, 1 a check failed. */
 #include <QClipboard>
@@ -60,10 +64,13 @@
 #include "evre/usb_bridge.h"
 #include "model/device_map.h"
 #include "model/register_model.h"
+#include "phone/chart_demo.h"
+#include "phone/chart_item.h"
 #include "phone/p9_proof.h"
 #include "phone/phone_app.h"
 #include "phone/phone_session.h"
 #include "phone/register_list.h"
+#include "ui/chart_data.h"
 #include "ui/language.h"
 #include "ui/theme.h"
 
@@ -121,11 +128,11 @@ struct Phone {
 	QPointer<QQuickWindow> window;
 	QStringList warnings;
 
-	explicit Phone(QSize size, bool p9 = false, bool perf = false) : engine(std::make_unique<QQmlApplicationEngine>()) {
+	explicit Phone(QSize size, bool p9 = false, bool perf = false, bool chartDemo = false) : engine(std::make_unique<QQmlApplicationEngine>()) {
 		QObject::connect(engine.get(), &QQmlEngine::warnings, [this](const QList<QQmlError> &list) {
 			for (const QQmlError &error : list) warnings << error.toString();
 		});
-		window = phone::loadMain(*engine, p9, size, perf);
+		window = phone::loadMain(*engine, p9, size, perf, chartDemo);
 		if (!window) return;
 		QSignalSpy frames(window.data(), &QQuickWindow::frameSwapped);
 		window->show();
@@ -266,8 +273,10 @@ QStringList textsOutside(QQuickWindow *window, int &seen) {
 QStringList latinTexts(QQuickWindow *window) {
 	static const QRegularExpression latin(QStringLiteral("[A-Za-z]"));
 	static const QRegularExpression arabic(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
-	/* the language list (each language in its own words), and the links' names */
-	static const QStringList kept{ QStringLiteral("English"), QStringLiteral("USB"), QStringLiteral("TCP") };
+	/* the language list (each language in its own words), the links' names, and the chart's windows (a unit stays as it
+	 * is) */
+	static const QStringList kept{ QStringLiteral("English"), QStringLiteral("USB"), QStringLiteral("TCP"),
+		QStringLiteral("10 s"), QStringLiteral("1 min"), QStringLiteral("5 min") };
 	/* the data shown as it is: the map's device name, a USB device's name and IDs; a register's name, group, value,
 	 * unit, decoded text, address and the device's error */
 	static const QStringList data{ QStringLiteral("mapText"), QStringLiteral("portText"), QStringLiteral("regName"),
@@ -346,6 +355,30 @@ void checkDrawer() {
 			QStringLiteral("phone, drawer: closed at the start, the menu button opens the Connect drawer from the left "
 					"(its title shown), a tap beside it closes it (opened %1, title %2, left %3, closed %4)")
 					.arg(opened).arg(titleShown).arg(fromLeft).arg(closed));
+}
+
+/* behind the open drawer the screen darkens in both themes: Material's grey wash lightened the dark one */
+void checkScrim() {
+	QStringList seen;
+	bool ok = true;
+	for (bool dark : { true, false }) {
+		QSettings().setValue(QStringLiteral("ui/dark"), dark);
+		Phone phone(PORTRAIT);
+		phone.tap(phone.item("tabMonitor")); /* a plain screen: its background at the spot */
+		const QPointF spot(phone.window ? phone.window->width() - 12 : 400, phone.item("header") ? phone.item("header")->height() + 30 : 90);
+		const QColor before = Phone::pixel(phone.grab(), spot);
+		phone.openDrawer();
+		const QColor behind = Phone::pixel(phone.grab(), spot);
+		phone.closeDrawer();
+		const QColor bg = Theme::colorsFor(dark).bg;
+		const bool darker = near(before, bg, 3) && behind.red() <= before.red() && behind.green() <= before.green()
+				&& behind.blue() <= before.blue() && behind.lightness() < before.lightness() - 3;
+		seen << QStringLiteral("%1: %2 -> %3").arg(dark ? "dark" : "light", before.name(), behind.name());
+		ok = ok && darker;
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	check(ok, QStringLiteral("phone, drawer: the screen behind it darker than the background, in the dark theme too (%1)")
+			.arg(seen.join(QStringLiteral("; "))));
 }
 
 void checkTheme() {
@@ -503,9 +536,344 @@ void checkP9() {
 					.arg(rows).arg(map.regs.size()).arg(perSecond, 0, 'f', 1).arg(valueBefore, valueAfter, line));
 }
 
+/* ---- the chart (B.3a): its own nodes on the GPU, the desktop's binning */
+
+/* the Chart screen's chart, the screen shown */
+ChartItem *showChart(const Phone &phone) {
+	phone.tap(phone.item("tabChart"));
+	return phone.window ? phone.window->findChild<ChartItem *>(QStringLiteral("chartItem")) : nullptr;
+}
+
+/* waits for the chart's next frame made (updatePolish) and drawn */
+void chartFrame(const Phone &phone, ChartItem *chart, int frames = 2) {
+	if (!chart || !phone.window) return;
+	QSignalSpy made(chart, &ChartItem::framed);
+	QSignalSpy swapped(phone.window.data(), &QQuickWindow::frameSwapped);
+	chart->polish();
+	(void) QTest::qWaitFor([&] { return made.count() >= frames && swapped.count() >= frames; }, 3000);
+}
+
+/* a sine of `hz` sampled at 1 kHz from 0 to `seconds`, as a polled line would come */
+void sine(double hz, double seconds, QVector<double> &times, QVector<double> &values) {
+	times.clear();
+	values.clear();
+	for (int i = 0; i <= int(seconds * 1000); ++i) {
+		times << i / 1000.0;
+		values << 2.0 + 1.5 * std::sin(2 * M_PI * hz * i / 1000.0);
+	}
+}
+
+/* a line's samples taken as the desktop's chart takes them (ChartView::appendNow), binned for a view as its view is
+ * (ChartView::binView: binViewSeries, the lines' generation, nothing kept yet) */
+QVector<ChartData::Bin> desktopBins(const QVector<double> &times, const QVector<double> &values, double t0, double t1,
+		double columns) {
+	ChartData::Series s;
+	const qsizetype most = 1 << 24;
+	for (qsizetype i = 0; i < times.size(); ++i) {
+		ChartData::roomForOne(s.times, most, s.spread);
+		ChartData::roomForOne(s.values, most, s.spread);
+		s.times.push_back(times[i]);
+		s.values.push_back(values[i]);
+		ChartData::addChunks(s, most);
+	}
+	ChartData::BinnedLine out;
+	std::atomic<qint64> polled{ 0 }, fast{ 0 };
+	ChartData::binViewSeries(s, t0, t1, columns, out, nullptr, 1, polled, fast);
+	return out.bins;
+}
+
+bool sameBins(const QVector<ChartData::Bin> &a, const QVector<ChartData::Bin> &b) {
+	if (a.size() != b.size()) return false;
+	for (qsizetype i = 0; i < a.size(); ++i) {
+		const ChartData::Bin &x = a[i], &y = b[i];
+		if (x.column != y.column || x.count != y.count || x.firstSample != y.firstSample || x.t0 != y.t0 || x.t1 != y.t1
+				|| x.first != y.first || x.last != y.last || x.min != y.min || x.max != y.max || x.gap != y.gap)
+			return false;
+	}
+	return true;
+}
+
+const QColor SINE_COLOUR(255, 0, 255); /* a colour of no theme: what has it in the picture is the line */
+
+void checkChartBins() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QVector<double> times, values;
+	sine(5, 20, times, values);
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR);
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	const QVector<ChartData::Bin> phoneBins = chart ? chart->bins(1) : QVector<ChartData::Bin>();
+	const double t0 = chart ? chart->viewStart() : 0, t1 = chart ? chart->viewEnd() : 0;
+	const double columns = chart ? chart->columns() : 0;
+	const QVector<ChartData::Bin> desktop = desktopBins(times, values, t0, t1, columns);
+	const double plotWidth = chart ? chart->plotRect().width() : 0;
+	check(chart && !phoneBins.isEmpty() && sameBins(phoneBins, desktop) && t1 == 20.0 && t0 == 10.0
+			&& columns == std::round(plotWidth),
+			QStringLiteral("phone, chart: a fed line's bins equal the desktop chart's binning of the same samples, view "
+					"and width (%1 bins against %2; view %3 .. %4 s, %5 columns for a plot %6 wide)")
+					.arg(phoneBins.size()).arg(desktop.size()).arg(t0).arg(t1).arg(columns).arg(plotWidth));
+}
+
+void checkChartDrawn() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QVector<double> times, values;
+	sine(5, 20, times, values);
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR);
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart, 3);
+	const QImage image = phone.grab();
+	const qreal dpr = image.devicePixelRatio();
+	/* the plot in the picture's pixels; outside it by more than a pixel nothing of the line */
+	const QRectF plot = chart ? QRectF(chart->mapToScene(chart->plotRect().topLeft()), chart->plotRect().size()) : QRectF();
+	const QRectF device(plot.x() * dpr, plot.y() * dpr, plot.width() * dpr, plot.height() * dpr);
+	const QRectF room = device.adjusted(-1, -1, 1, 1);
+	int inside = 0, outside = 0, columnsHit = 0;
+	QVector<bool> column(image.width(), false);
+	for (int y = 0; y < image.height(); ++y)
+		for (int x = 0; x < image.width(); ++x) {
+			if (!near(image.pixelColor(x, y), SINE_COLOUR, 8)) continue;
+			if (device.contains(QPointF(x + 0.5, y + 0.5))) {
+				++inside;
+				column[x] = true;
+			} else if (!room.contains(QPointF(x + 0.5, y + 0.5))) {
+				++outside;
+			}
+		}
+	for (bool hit : std::as_const(column)) columnsHit += hit;
+	/* the line runs across the plot: nearly every column of it holds some of the line */
+	check(chart && inside > 0 && outside == 0 && columnsHit >= int(device.width() * 0.95),
+			QStringLiteral("phone, chart: a fed sine is drawn in its colour inside the plot and nowhere outside it (dpr %1: "
+					"%2 pixels inside, in %3 of %4 columns; %5 outside)")
+					.arg(dpr).arg(inside).arg(columnsHit).arg(int(device.width())).arg(outside));
+}
+
+/* two fingers at the plot's middle, `from` apart, spread to `middle` apart (there `atMiddle` is called), then to `to`
+ * apart, in steps, and lifted */
+void pinch(const Phone &phone, QQuickItem *on, double from, double middle, double to, const std::function<void()> &atMiddle) {
+	static QPointingDevice *fingers = QTest::createTouchDevice();
+	const QPointF c = on->mapToScene(QPointF(on->width() / 2, on->height() / 2));
+	auto at = [&c](double spread, int side) { return (c + QPointF(side * spread / 2, 0)).toPoint(); };
+	QTest::touchEvent(phone.window, fingers).press(0, at(from, -1), phone.window.data()).press(1, at(from, 1), phone.window.data());
+	QTest::qWait(20);
+	auto spreadTo = [&](double a, double b, int steps) {
+		for (int i = 1; i <= steps; ++i) {
+			const double spread = a + (b - a) * i / steps;
+			QTest::touchEvent(phone.window, fingers).move(0, at(spread, -1), phone.window.data()).move(1, at(spread, 1), phone.window.data());
+			QTest::qWait(16);
+		}
+	};
+	spreadTo(from, middle, 10);
+	atMiddle();
+	spreadTo(middle, to, 20);
+	QTest::touchEvent(phone.window, fingers).release(0, at(to, -1), phone.window.data()).release(1, at(to, 1), phone.window.data());
+	QTest::qWait(50);
+}
+
+/* one finger on the plot dragged by dx */
+void dragBy(const Phone &phone, QQuickItem *on, double dx) {
+	static QPointingDevice *finger = QTest::createTouchDevice();
+	const QPointF c = on->mapToScene(QPointF(on->width() / 2, on->height() / 2));
+	QTest::touchEvent(phone.window, finger).press(0, c.toPoint(), phone.window.data());
+	QTest::qWait(20);
+	const int steps = 15;
+	for (int i = 1; i <= steps; ++i) {
+		QTest::touchEvent(phone.window, finger).move(0, (c + QPointF(dx * i / steps, 0)).toPoint(), phone.window.data());
+		QTest::qWait(16);
+	}
+	QTest::touchEvent(phone.window, finger).release(0, (c + QPointF(dx, 0)).toPoint(), phone.window.data());
+	QTest::qWait(50);
+}
+
+/* two quick taps on the same spot */
+void doubleTap(const Phone &phone, QQuickItem *on) {
+	static QPointingDevice *finger = QTest::createTouchDevice();
+	const QPoint c = on->mapToScene(QPointF(on->width() / 2, on->height() / 2)).toPoint();
+	for (int i = 0; i < 2; ++i) {
+		QTest::touchEvent(phone.window, finger).press(0, c, phone.window.data());
+		QTest::qWait(30);
+		QTest::touchEvent(phone.window, finger).release(0, c, phone.window.data());
+		QTest::qWait(60);
+	}
+	QTest::qWait(100);
+}
+
+void checkChartPinch() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QQuickItem *area = phone.item("chartArea");
+	const double before = chart ? chart->windowSeconds() : 0;
+	QQuickItem *oneMinute = phone.item("window60");
+	const bool chosenBefore = oneMinute && oneMinute->property("checked").toBool();
+	/* the handler takes the fingers once they have moved past the drag threshold: from 160 px apart (taken by then)
+	 * to 320, twice the spread, the window is halved */
+	double middle = 0;
+	if (area) pinch(phone, area, 100, 160, 320, [&] { middle = chart ? chart->windowSeconds() : 0; });
+	const double after = chart ? chart->windowSeconds() : 0;
+	const bool chosenAfter = oneMinute && oneMinute->property("checked").toBool();
+	const double ratio = after > 0 ? middle / after : 0;
+	check(chart && before == 60 && middle < 60 && ratio > 1.95 && ratio < 2.05 && chart->live() && chosenBefore
+			&& !chosenAfter,
+			QStringLiteral("phone, chart: a pinch to twice the fingers' spread halves the window (%1 s, %2 s at 160 px "
+					"apart, %3 s at 320: %4 times shorter), the view stays live and the 1 min choice is no longer marked")
+					.arg(before).arg(middle, 0, 'f', 2).arg(after, 0, 'f', 2).arg(ratio, 0, 'f', 3));
+}
+
+void checkChartDragAndLive() {
+	Phone phone(LANDSCAPE);
+	ChartItem *chart = showChart(phone);
+	QQuickItem *area = phone.item("chartArea");
+	QVector<double> times, values;
+	sine(5, 30, times, values);
+	if (chart) {
+		chart->setWindowSeconds(10);
+		chart->addLine(1, SINE_COLOUR);
+		chart->appendSamples(1, times, values);
+	}
+	chartFrame(phone, chart);
+	const bool liveBefore = chart && chart->live();
+	const double endBefore = chart ? chart->viewEnd() : 0;
+	const double width = chart ? chart->plotRect().width() : 1;
+	if (area) dragBy(phone, area, 200);
+	chartFrame(phone, chart);
+	const bool held = chart && !chart->live();
+	const double endHeld = chart ? chart->viewEnd() : 0;
+	/* the finger's 200 px less the drag threshold, in the window's seconds a pixel: back by about 2 s */
+	const double back = endBefore - endHeld, most = 200 / width * 10;
+	QQuickItem *hold = phone.item("holdButton");
+	const bool holdShown = hold && hold->property("checked").toBool();
+	if (area) doubleTap(phone, area);
+	chartFrame(phone, chart);
+	const bool liveAgain = chart && chart->live() && chart->viewEnd() == 30.0;
+	check(liveBefore && held && back > most * 0.6 && back <= most * 1.01 && holdShown && liveAgain,
+			QStringLiteral("phone, chart: a drag to the right looks back and holds (the view's end %1 s -> %2 s, at most "
+					"%3 s back; Hold marked), a double tap goes live again (end %4 s)")
+					.arg(endBefore).arg(endHeld, 0, 'f', 2).arg(most, 0, 'f', 2).arg(chart ? chart->viewEnd() : 0));
+}
+
+/* the grid's colour on a value tick between two time ticks, the background between ticks; both themes */
+void checkChartTheme() {
+	QStringList seen;
+	bool ok = true;
+	for (bool dark : { true, false }) {
+		QSettings().setValue(QStringLiteral("ui/dark"), dark);
+		Phone phone(LANDSCAPE);
+		ChartItem *chart = showChart(phone);
+		chartFrame(phone, chart);
+		const ThemeColors colors = Theme::colorsFor(dark);
+		const QImage image = phone.grab();
+		const qreal dpr = image.devicePixelRatio();
+		const QVector<ChartTicks::Tick> xs = chart ? chart->timeTicks()->ticks() : QVector<ChartTicks::Tick>();
+		const QVector<ChartTicks::Tick> ys = chart ? chart->valueTicks()->ticks() : QVector<ChartTicks::Tick>();
+		QColor grid, background;
+		if (chart && xs.size() >= 2 && ys.size() >= 2) {
+			const double midX = (xs[0].at + xs[1].at) / 2, midY = (ys[0].at + ys[1].at) / 2;
+			const QPointF onGrid = chart->mapToScene(QPointF(midX, ys[1].at));
+			const QPointF between = chart->mapToScene(QPointF(midX, midY));
+			grid = image.pixelColor(int(onGrid.x() * dpr), int(std::lround(onGrid.y() * dpr)));
+			background = image.pixelColor(int(between.x() * dpr), int(between.y() * dpr));
+		}
+		const bool good = near(grid, colors.grid, 3) && near(background, colors.bg, 3);
+		seen << QStringLiteral("%1: grid %2 (%3), background %4 (%5)").arg(dark ? "dark" : "light", grid.name(),
+				colors.grid.name(), background.name(), colors.bg.name());
+		ok = ok && good;
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	check(ok, QStringLiteral("phone, chart: the grid and the plot's background in the theme's colours, dark and light "
+			"(%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* in Arabic the screen is mirrored but the plot is not: value labels left of it, time labels in rising order left to
+ * right, each under its grid line */
+void checkChartArabic() {
+	language::apply(*qApp, QStringLiteral("ar"));
+	{
+		Phone phone(LANDSCAPE);
+		ChartItem *chart = showChart(phone);
+		QVector<double> times, values;
+		sine(5, 20, times, values);
+		if (chart) {
+			chart->setWindowSeconds(10);
+			chart->addLine(1, SINE_COLOUR);
+			chart->appendSamples(1, times, values);
+		}
+		chartFrame(phone, chart);
+		const QRectF plot = chart ? QRectF(chart->mapToScene(chart->plotRect().topLeft()), chart->plotRect().size()) : QRectF();
+		int valueLabels = 0, timeLabels = 0;
+		bool valuesLeft = true, timesUnder = true;
+		forEachItem(topItem(phone.window), [&](QQuickItem *item) {
+			if (!item->isVisible()) return;
+			const QRectF r(item->mapToScene(QPointF(0, 0)), QSizeF(item->width(), item->height()));
+			if (item->objectName() == QLatin1String("valueLabel")) {
+				++valueLabels;
+				valuesLeft = valuesLeft && r.right() <= plot.left();
+			} else if (item->objectName() == QLatin1String("timeLabel") && chart) {
+				++timeLabels;
+				/* its tick: the one of its text */
+				const QString text = item->property("text").toString();
+				double at = -1;
+				for (const ChartTicks::Tick &tick : chart->timeTicks()->ticks())
+					if (tick.text == text) at = chart->mapToScene(QPointF(tick.at, 0)).x();
+				timesUnder = timesUnder && std::fabs(r.center().x() - at) <= 1 && r.top() >= plot.bottom();
+			}
+		});
+		bool rising = chart != nullptr;
+		if (chart) {
+			const QVector<ChartTicks::Tick> ticks = chart->timeTicks()->ticks();
+			for (qsizetype i = 1; i < ticks.size(); ++i) rising = rising && ticks[i].at > ticks[i - 1].at;
+		}
+		const double rightEdge = phone.window ? phone.window->width() : 0;
+		const bool screenMirrored = phone.item("liveButton")
+				&& phone.item("liveButton")->mapToScene(QPointF(0, 0)).x() > rightEdge / 2;
+		check(chart && valueLabels >= 2 && timeLabels >= 2 && valuesLeft && timesUnder && rising && screenMirrored
+				&& plot.left() < rightEdge / 4,
+				QStringLiteral("phone, Arabic: the controls mirrored (Live at the right), the plot not: its value labels "
+						"left of it (%1), time rising left to right, each label under its grid line (%2), the plot from "
+						"x %3").arg(valueLabels).arg(timeLabels).arg(plot.left()));
+	}
+	language::apply(*qApp, QStringLiteral("en"));
+}
+
+/* the test feed (chartdemo): 8 lines at 1 kHz live in a 1 min window, a line a second for logcat under EVRE_PERF */
+void checkChartDemo() {
+	Phone phone(LANDSCAPE, false, false, true);
+	ChartItem *chart = phone.window ? phone.window->findChild<ChartItem *>(QStringLiteral("chartItem")) : nullptr;
+	auto *meter = phone.window ? phone.window->findChild<P9Meter *>() : nullptr;
+	const int tab = phone.item("screens") ? phone.item("screens")->property("currentIndex").toInt() : -1;
+	QSignalSpy lines(meter, &P9Meter::logged);
+	const double endBefore = chart ? chart->viewEnd() : 0;
+	const qint64 polishesBefore = chart ? chart->polishes() : 0;
+	QElapsedTimer waited;
+	waited.start();
+	(void) QTest::qWaitFor([&] { return waited.elapsed() >= 1500 && !lines.isEmpty(); }, 5000);
+	chartFrame(phone, chart);
+	const double endAfter = chart ? chart->viewEnd() : 0;
+	int drawn = 0;
+	if (chart)
+		for (int k = 0; k < ChartDemo::LINES; ++k) drawn += !chart->bins(k).isEmpty();
+	const QString line = lines.isEmpty() ? QString() : lines.constLast().constFirst().toString();
+	const double polishMs = chart && chart->polishes() > polishesBefore
+			? chart->polishSeconds() * 1000 / double(chart->polishes()) : 0;
+	static const QRegularExpression shape(QStringLiteral("^fps [0-9.]+, longest [0-9.]+ ms, over 20 ms: [0-9]+$"));
+	check(chart && tab == 1 && meter && meter->tag() == "EVRE_PERF" && chart->lineCount() == 8 && drawn == 8 && chart->windowSeconds() == 60 && chart->live()
+			&& endAfter > endBefore + 0.5 && shape.match(line).hasMatch(),
+			QStringLiteral("phone, chart demo: with chartdemo the Chart screen shows 8 lines (%1 drawn) live in a 1 min "
+					"window (its end %2 s -> %3 s; a frame's lines made in %5 ms on average), and a line a second for "
+					"logcat: \"%4\"").arg(drawn).arg(endBefore, 0, 'f', 2).arg(endAfter, 0, 'f', 2).arg(line)
+					.arg(polishMs, 0, 'f', 2));
+}
+
 /* ---- the link (B.1): over TCP against the fake device and stand-ins, over USB through a fake bridge */
 
-constexpr quint16 FAKE_DEVICE_PORT = 1210;     /* tests/fake_device.py --port 1210 --map maps/example_device.json */
+/* tests/fake_device.py --port 1210 --map maps/example_device.json (EVRE_FAKE_PORT: another port) */
+const quint16 FAKE_DEVICE_PORT = quint16(qEnvironmentVariableIsSet("EVRE_FAKE_PORT") ? qEnvironmentVariableIntValue("EVRE_FAKE_PORT") : 1210);
 constexpr quint16 NOBODY_PORT = 1209;          /* nothing listens there: a refused connection */
 const QString USB_DEVICE = QStringLiteral("/dev/bus/usb/001/002");
 
@@ -1939,6 +2307,12 @@ void savePictures(const QString &prefix) {
 				save(phone, name + QStringLiteral("landscape.png"));
 				if (session) session->disconnectLink();
 			}
+			/* the chart's test feed, 12 s in, at both sizes */
+			for (QSize size : { LANDSCAPE, PORTRAIT }) {
+				Phone phone(size, false, false, true);
+				QTest::qWait(12000);
+				phone.grab().save(name + (size == LANDSCAPE ? QStringLiteral("chartdemo.png") : QStringLiteral("chartdemo_portrait.png")));
+			}
 		}
 	}
 	QSettings().remove(QStringLiteral("ui/dark"));
@@ -1971,10 +2345,18 @@ int main(int argc, char **argv) {
 	checkTabs();
 	checkDrawer();
 	checkTheme();
+	checkScrim();
 	checkLanguageChoice();
 	checkArabic();
 	checkTexts();
 	checkP9();
+	checkChartBins();
+	checkChartDrawn();
+	checkChartPinch();
+	checkChartDragAndLive();
+	checkChartTheme();
+	checkChartArabic();
+	checkChartDemo();
 	checkLogScreen();
 	checkTcpLink();
 	checkRefusedLink();

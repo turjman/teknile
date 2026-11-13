@@ -91,6 +91,7 @@ qt_add_library(evre_engine STATIC
     src/io/engine.h             src/io/engine.cpp
     src/api/api_server.h        src/api/api_server.cpp
     src/ui/value_pace.h         src/ui/value_pace.cpp
+    src/ui/chart_data.h         src/ui/chart_data.cpp
     src/ui/theme.h              src/ui/theme_colors.cpp
     src/ui/language.h           src/ui/language.cpp
 )
@@ -253,7 +254,8 @@ endif() # NOT ANDROID
 # Q_IMPORT_QML_PLUGIN); the program sets the Material style and loads Main.qml (phone_app.cpp)
 if(EVRE_PHONE)
     # the screens at the module's root (qrc:/qt/qml/EVRe/Phone/Main.qml), where they find each other by name
-    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet)
+    foreach(screen Main ConnectDrawer LinkPill LogScreen PhoneIcon PlaceholderScreen P9Screen RegistersScreen RegisterCard WriteSheet
+            ChartScreen)
         set_source_files_properties(src/phone/qml/${screen}.qml PROPERTIES QT_RESOURCE_ALIAS ${screen}.qml)
     endforeach()
     qt_add_library(evre_phone_qml STATIC)
@@ -275,6 +277,7 @@ if(EVRE_PHONE)
             src/phone/qml/RegistersScreen.qml
             src/phone/qml/RegisterCard.qml
             src/phone/qml/WriteSheet.qml
+            src/phone/qml/ChartScreen.qml
         SOURCES
             src/phone/phone_theme.h     src/phone/phone_theme.cpp
             src/phone/phone_language.h  src/phone/phone_language.cpp
@@ -283,7 +286,9 @@ if(EVRE_PHONE)
             src/phone/port_list.h       src/phone/port_list.cpp
             src/phone/log_model.h       src/phone/log_model.cpp
             src/phone/register_list.h   src/phone/register_list.cpp
-            src/phone/p9_proof.h        src/phone/p9_proof.cpp)
+            src/phone/p9_proof.h        src/phone/p9_proof.cpp
+            src/phone/chart_item.h      src/phone/chart_item.cpp
+            src/phone/chart_demo.h      src/phone/chart_demo.cpp)
     # src/phone too: the generated type registrations include the classes' headers by their bare names
     target_include_directories(evre_phone_qml PUBLIC src PRIVATE src/phone)
     target_link_libraries(evre_phone_qml PUBLIC evre_engine Qt6::Quick Qt6::QuickControls2)

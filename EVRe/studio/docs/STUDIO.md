@@ -5189,7 +5189,8 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/chart_tab.h`,&nbsp;`.cpp` | `ChartTab`: chart controls, measurements table, math-line menu, the right-click menu (pictures, export, notes) and the File ▾ button, chart settings; `MeasureSplitter` / `MeasureSplitHandle` (the splitter under the chart, its handle drawn as a grip, lit under the mouse) |
 | `src/ui/analysis_window.h`,&nbsp;`.cpp` | `AnalysisWindow`: a line's histogram or spectrum in a window of its own, its plot, readout, picture and CSV |
 | `src/ui/recording_window.h`,&nbsp;`.cpp` | `RecordingWindow`: a recording opened in a window of its own, its reading on a thread, the recent recordings |
-| `src/ui/chart_widget.h`,&nbsp;`.cpp` | `ChartView` (the chart) and `ChartWidget` (its wrapper) |
+| `src/ui/chart_widget.h`,&nbsp;`.cpp` | `ChartView` (the chart) and `ChartWidget` (its wrapper); the samples, bins and axes it keeps are the chart's data (`chart_data`) |
+| `src/ui/chart_data.h`,&nbsp;`.cpp` | `ChartData`: the chart's data, shared by the desktop's chart and the phone's: `Series`, `Chunk`, `Bin`, `BinnedLine`, `Axes`, `Stats` and the functions on them (`addChunks`, `binSeries`, `binViewSeries`, `binRange`, `binFast`, `rangeAtEdges`, `statsOf`, `statsOfFast`, `toPolyline`); in `evre_engine`, without Qt Widgets (23.1) |
 | `src/ui/gpu_lines.h`,&nbsp;`.cpp` | `GpuLines`: the chart's plot drawn by a graphics card and shown as a layer of the window (Direct3D 11, a swap chain, DirectComposition) |
 | `src/ui/math_line_dialog.h`,&nbsp;`.cpp` | `MathLineDialog`: name, unit and formula, checked while typing |
 | `src/ui/formula_completer.h`,&nbsp;`.cpp` | `FormulaCompleter`: the list of registers and functions while a formula is typed |
@@ -5205,14 +5206,16 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
-| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
+| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `chartDemoAsked` (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
 | `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
 | `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
 | `src/phone/phone_session.h`,&nbsp;`.cpp` | `PhoneSession`: the phone's part of `MainWindow` (Q-6): the engine on its thread, the map, the link (USB, TCP) and its states, Reconnect by itself, polling, Allow writes, recording into the app's folder (25.6) |
 | `src/phone/port_list.h`,&nbsp;`.cpp` | `PortList`: the USB devices plugged in (`UsbBridge::devices()`), the map's own named by it |
 | `src/phone/log_model.h`,&nbsp;`.cpp` | `LogModel`: the phone's Log, the newest 2000 lines, Copy and Clear |
 | `src/phone/register_list.h`,&nbsp;`.cpp` | `RegisterList`: the Registers screen's rows over `RegisterModel`, a row per register in sections by group, the desktop's search, its changes forwarded row by row |
-| `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's speed line, `EVRE_PERF`) |
+| `src/phone/p9_proof.h`,&nbsp;`.cpp` | the proof P-9: `P9Registers` (the example map's registers, values changed 20 times a second), `P9Meter` (the frames, a line a second to logcat; also the Registers screen's and the chart demo's speed line, `EVRE_PERF`) |
+| `src/phone/chart_item.h`,&nbsp;`.cpp` | `ChartItem`: the phone's chart, drawn by the GPU from nodes of its own, binned by `ChartData`; `ChartTicks`: an axis's labels (25.6) |
+| `src/phone/chart_demo.h`,&nbsp;`.cpp` | `ChartDemo`: the chart's test feed (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`): 8 lines at 1,000 Hz |
 | `src/phone/qml/Main.qml` | the phone's window: header, drawer, tab bar, screens, mirroring, Material's colours |
 | `src/phone/qml/ConnectDrawer.qml` | the Connect drawer: USB or TCP, the map, Connect, the link's state and the device's ID, Reconnect by itself, polling, Allow writes, Record, the theme switch, the language |
 | `src/phone/qml/LinkPill.qml` | the link's state in the header, a dot in its colour; a tap opens the drawer |
@@ -5222,6 +5225,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/phone/qml/WriteSheet.qml` | the write sheet: the value or an enum's list, Apply, the limits asked first, the answer |
 | `src/phone/qml/PlaceholderScreen.qml` | a screen still to come: its note |
 | `src/phone/qml/P9Screen.qml` | the proof P-9's list |
+| `src/phone/qml/ChartScreen.qml` | the Chart screen: the chart, its labels, Live / Hold, the window; the pinch, the drag and the double tap |
 | `android/AndroidManifest.xml` | the APK's manifest: package `com.teknile.evrestudio`, USB host |
 | `src/ui/ui_helpers.h`,&nbsp;`.cpp` | time lengths as text and back, `durationText` (the cursors' A-B bar: *3.525 ms*, *1 min 23.4 s*), `ltrPiece` (a number and its unit one left to right piece in Arabic), `ltrCells` (a table's or a column's cells drawn as `ltrPiece`, their data plain), `noMnemonic`, `coloredSpan`, `keepCurrentInView` (a list or table keeps its current row in view when it gets shorter), card, muted label, segment button, `repolish`, `setHighlighted`, `monospaceFont`, `mediaIcon`, `warningIcon` (a tab's warning sign), `refreshIcon`, `confirmed` (a yes/no question), `noWindowAnimation` (a dialog without the compositor's animations, 27), `reducedMotion` (the system asks for less motion: the sidebar folds without its slide, 14.5), `mapsFolder` (`assets:/maps` on Android), `chartOnly` (the Android proof's switch, `EVRE_CHART_ONLY`: `MainWindow` shows the Chart tab alone, `ChartTab` scrolls its rows of controls sideways), `stateDot` and `fillDevicePicker` (one look for every device picker), `studioIcon` (the teknile mark, every window's icon), `clearSelectionOnEmpty` and `clearSelectionOnEscape` (a click on a view's empty room or Esc selects nothing, 4.11), `showCommandLineText` / `commandLineWindow` (`--help` on the console or in a window of its own, 14.1) |
 | `tests/gui_test.cpp` | `evre_gui_test`: the real window driven by QtTest against the fake device |
@@ -5736,6 +5740,7 @@ thread of their caller's, with a cancel flag and a progress callback (every 4096
 | `RegisterDialog` | one&nbsp;definition&nbsp;by&nbsp;hand | `result()` | screenshot extra `regdlg` |
 | `ChartTab` | chart controls, measurements, math lines, chart settings | the constructor's settings group (`chart`, or `recording`), `setRecording` / `showSpan` (a recording's chart), `showChartMenu` / `chartMenu` (the right-click), `showLaneMenu` / `laneMenu` / `editLaneRange` (a lane's Y range, its fold), `showLaneActions` (Fold all / Open all lanes), `showLineMenu` / `lineMenu` / `openAnalysis` (a line's histogram or spectrum), `triggerOnLine` (its chip's Trigger on this line), `triggerState` (the trigger row's state), `watchFreeMemory` / `effectiveRamMB` / `setTestFreeMemory` (the RAM against the free memory, 23.3), signal `fastTriggerChanged` (to the engine), `picture` / `copyPicture` / `savePicture` (by the CPU), `makeFileButton` (File ▾: the right-click's actions but the note; the Chart tab's in its actions row, a recording's window's beside Lines), `exportCsv` / `exporting` / `cancelExport` (on a thread; signal `exported`), fast lines (7.14): `setFastStreams` / `plotFastChannel` / `fastPlotted` / `fastLines` / `appendFast`, fast math lines (9.9): `fastMathKey` / `isFastMathKey`, `setFastFed` (whether a stream is fed, the window's at each frame; its lines and the fast math lines over it said stopped when not, 7.14), `mathLines` / `addMathLine` / `removeMathLine`, `fillFastMath` (a recording's), `fastMathNs` (tests), `addNoteAt` / `editNote` (their text asked; signal `notesChanged`), signal `openRecordingRequested`, `setRegisters`, `plotRegister`, `clearLines`, `frame`, `setShown`, `refreshStatus`, `ramNeedText` (static: the memory note's text, short, and its whole sentence for the tooltip), `arrangeRamNote` (the note on the first row or under it), `setRegisterLimit`, `setPollInterval` (the totals' gap, 8.4), `fastLines` / `mathLinesShown` / `lineCount` / `lineCapText` (one cap of 64 lines for every kind, 4.8; signal `statusMessage`, a math line refused), `infoText` (the info line; with a width, what fits of it, whole parts dropped), `displayState` (the Display menu in words), `measureUpdates` / `measureFullUpdates` / `measureInfoChanges` / `measureFills` (tests: the measurements made, all of the table, the line over it written anew, the table filled from the threads), `measureTick` (the 250 ms timer's, 23.8), `writePerfLine` (`EVRE_PERF_LOG`, 26.8); signals `mathRegistersChanged`, `unplotAllRequested`, `logged` | GUI test |
 | `ChartView`&nbsp;/&nbsp;`ChartWidget` | the&nbsp;chart&nbsp;(chapter&nbsp;23) | fast lines (7.14, 23.11): `FIRST_FAST_KEY` / `fastKey` / `isFastKey`, `setFastStream` / `removeFastStream` / `setFastStore` (a recording's mapped store) / `clearFastStreams` / `appendFast` / `markFast` / `fastStore`, `fastGapAt` (a gap's tooltip), `lastBins` / `timeLabels` (tests: a line's bins and the time labels as last drawn); `setTrigger` / `stopTrigger` / `armTrigger` / `stopRun` / `runTrigger` / `triggerRunning` (Run and Stop) / `forceTrigger` (Force) / `triggerPhase` / `triggerCapturing` / `triggerRate` (the state, 7.13) / `nowEdges` (tests: the now edges as last drawn) / `setTriggerInstant` / `triggerInstant` / `triggerInstantLine` (Display, Trigger line: the dashed line down from T while held on a crossing; tests: the line as last drawn) / `setTriggerLevel` / `setTriggerEdge` / `triggerSettings` / `setTriggerSettings` / `triggerSettingsTexts` / `setTriggerSettingsTexts` / `setTriggerPosition` / `setTriggerHoldoff` / `holdoffSeconds` / `triggerStateText` / `triggerOn` / `triggerArmed` / `triggeredAt` / `triggerLevel` / `triggerEdge` / `triggerMode` / `triggerKey` / `triggerTag` / `triggerLineY` / `triggerLevelTag` / `triggerEdgeButton` / `triggerTagText` / `triggerPositionMark` / `triggerHolds` / `TriggerSettings` / `triggerPosition` / `triggerHoldoff` / `triggerMarkHovered` / `triggerEdgeHovered` / `triggerTagOpen` / `triggerHandleSolid` / `triggerLevelOffScale` / `triggerLevelBeyondLine` / `triggerTagHovered` / `levelText` (a level as set, 6 digits) / `midRange` (Find level, a line's first level) / `triggerPending` (tests: a crossing waiting for its view) / `fastColumnsBinned` (tests) (`TRIGGER_AT`, `TRIGGER_AT_MAX`, `MAX_HOLDOFF`, `STEADY_WINDOW`; 23.10; signals `triggered`, `triggerSettingsChanged`, `triggerPositionChanged`, `triggerRunChanged`), `fastCrossings` / `fastTriggerWatch` (a fast line's trigger, the engine's; signal `fastTriggerChanged`), `setFastStopped` / `lineStopped` / `lineResting` / `stoppedTip` / `triggerStoppedName` (a stream not fed: the corner's words, the greyed values, the lock's rest, 7.14), `polledColumnsBinned` (tests), `lineSamples` (a fast line's: `withoutGap`, the longest part without a gap; false: not all of the range), `chipAt` / `chipButtonRect` / `hoveredChip` (a chip's ▾ and the chip under the mouse; signal `lineMenuRequested`, a click or a right-click on a chip), `setLanes` / `lanes` / `laneCount` / `laneLabel` / `laneRect` / `laneAtY` / `laneLines` / `laneFolded` / `setLaneFolded` / `foldedLanes` / `setFoldedLanes` / `foldedText` / `laneScroll` / `setLaneScroll` / `laneContentHeight` / `laneScrollBarRect` / `laneScrollHandleRect` (`LANE_MIN_H`, `LANE_FOLDED_H`) / `laneFoldButtonRect` / `hoveredLane` / `laneMenuButtonRect` / `hoveredLaneMenu` / `foldedLaneCount` / `setAllLanesFolded` / `toolTipAt` / `laneBarHovered` / `laneSeparators` / `valueLabelRects` / `stateText` / `stateFullText` / `stateRect` / `laneHeights` / `setLaneHeights` / `resetLaneHeights` (the weights; a lane whose share is under `LANE_MIN_H` held there, the others sharing the rest, so they fill the plot) / `separatorAt` / `hoveredSeparator` / `laneYAuto` / `laneYLog` / `laneYLo` / `laneYHi` / `setLaneYAuto` / `setLaneYManual` / `setLaneYLog` / `laneScales` / `setLaneScales` / `laneYOfValue` (7.12; signals `laneMenuRequested`, `laneYChanged`, `laneFoldsChanged`, `laneHeightsChanged`), `notes` / `setNotes` / `addNote` / `setNoteText` / `removeNote` / `selectedNote` / `noteTag` (7.11; signals `notesChanged`, `noteEditRequested`), `menuRequested` (a right-click), `samples(t0, t1)` (the export's), `showSpan` / `setRecording` / `showLastValues` / `viewSpan` (a recording's chart), `timeAt`, `append`, `frame`, `setWindow`, `setMemory`, `panRefusal` (a drag on the plot with the Memory no longer than the Window: its tooltip, 7.3), `setLive`, `stats` (with `std`, `p2p`, `total`), `range`, `setYLog` / `yLog`, `total` / `totalsSince` / `setTotalGap` (since Clear; the gap not bridged, 8.4), `valueLabels` / `yOfValue` (tests: the last frame's Y axis), `pointsPerLine`, `pointsKept`, `bytesNeeded`, `memoryFull`, `setRecordingOn` / `memoryStripText` / `memoryStripTextColor` / `memoryStripTip` (the strip's words for the RAM budget reached, 7.4), `releaseSome` (a frame's slice of what the fast stores' trims let go, `RELEASE_NS`, `RELEASE_SLICE`, 23.11) / `releaseLater` (tests: an array handed as a trim's), `memoryHandleRect` / `memoryHandleHovered` (`MEMORY_HANDLE_W`: the view's box on the strip, or its handle at a short window, 7.4), `bytesHeld` (tests: the arrays' memory), `setRamBudget` / `ramBudget` (MB; `DEFAULT_RAM_MB`, `MIN_RAM_MB`), `setDrawThreads` (tests: 1 = the GUI thread alone) / `stripesDrawn` (tests: the stripes of the last CPU paint) / `setBarMerge` / `barRowsDrawn` (tests: a fast line's bars merged, the rows the last CPU paint filled, 23.11) / `setHiddenStroke` / `strokeSegmentsHidden` (tests: the stroke the bars hide left out, 23.11), `setDrawing` / `drawing` / `drawingName` / `drawsOnGpu` / `openingGpu` (who draws the plot; a card opened on a thread), `setHoverValues` / `hoverValues` (the crosshair's box), `refresh` (an update, not of the plot while the card shows it), `plotOnCard` / `gpuPicture` (tests: the card's layer shown, its last frame), `paints` (tests: the frames painted), `binnings` / `lineBuilds` / `setLineReuse` (tests: a held view's lines reused, 23.6), `measureAsync` / `measuring` / `measureKey` / `fullStatsOnWindowThread` (the measurements on the chart's threads, 23.8), `takePerfStats` (the timing aid, 26.8), `legendMeasures` (tests: the legend's chips measured), `FrameBudget` (the frame budget, tests), `stats(keys, cursorsOnly)` (several lines on threads; A and B alone while a cursor is dragged), `draggingCursor` (a cursor held by the mouse), `readoutRowsPerColumn` (static: the crosshair box's rows a column) / `readoutNumber` (static: a value in that box, a whole number without decimals), `drawnTo` / `drawnRange` / `lastViewStart` / `lastViewEnd` (tests: a line's last point and own range in the last frame, the view it was drawn in), `fps` (the frames painted in the last second: 0 when none), `readoutBuilds` / `readoutSize` (tests: the crosshair's box made, its size), `spanBarText` / `spanBarRect` / `spanBarTextRect` (tests: the A-B bar as last painted, 7.7), the cursors on the grid (7.7): `cursorsOnGrid` / `cursorPlace` / `cursorPlaceText`; signals `drawingFailed`, `drawingChanged`, `windowChangedByUser`, `yChangedByUser`, `liveChanged`, `memoryChanged`, `cursorsChanged`; `chartAxisLabel` (a value axis label, its step's decimals) | GUI test (math line value and area, hold and live, memory grows; many lines: threads draw the same picture, fast lines' bars in stripes by their rows after merging, a fast line's bars merged and its hidden stroke left out with the same picture, a spike in an hour shows, the samples' budget, their arrays' memory within it, the memory needed and its note, the RAM box; bins kept from frame to frame, the GPU's frame the CPU's picture, a picture of the chart drawn by the CPU, the layer away after the window painted and back after two frames, the card opened on a thread, the frame budget's rate, the legend's chips measured once, the mouse painted by the next frame, the crosshair's box at most every 50 ms while the mouse moves, a dragged cursor measured at most every 100 ms, Cursors off clearing A and B, the lines measured on threads, the RAM lowered trimming in one go, the memory full on many lines trimming over a few frames, lines filling together growing at different moments, a dragged cursor's A and B alone until it is let go, the last line off (the layer away once the window has the CPU's whole frame), the mouse over the plot on a card, the crosshair's box made at the values' pace and its size steady, Hover values, the Display menu: Drawing, Normalise, Smooth, Hover values, its marks; the A-B bar: its text `durationText` of B − A, the text beside a tag when the span is narrow, a cursor off the view ending it at the plot's edge; fast lines: a spike at every zoom, records at their own times, the labels below a millisecond, a gap and its tooltip, the RAM shared, lanes, legend and crosshair) |
+| `ChartData` | the&nbsp;chart's&nbsp;data&nbsp;(23.1) | shared with the phone's chart, no widget: `Series`, `Chunk`, `Bin`, `BinnedLine`, `Axes`, `Stats`; `addChunks`, `roomForOne`, `binSeries`, `binViewSeries` (the lines' generation and the counters as arguments), `binFast`, `binRange`, `rangeAtEdges`, `statsOf`, `statsOfFast`, `fastValueAt`, `valueAt`, `trapezoids`, `toPolyline` | GUI test (every chart check), phone test (chart bins) |
 | `GpuLines` | the chart's plot on a graphics card (23.7) | `adapters` (static), `open`, `name`, `present` (a `Frame`: background, `Layer`s of segments, `Sprite` pictures; into the window's layer at its pixels), `setShown` / `shown` (the layer over the window or not), `lastPicture` (read back: under the layer when it is shown; tests) | GUI test (the frame against the CPU's picture, the layer shown and taken away; skipped without an adapter) |
 | `MathLineDialog` | name, unit, formula; OK only when valid | `result()`, `setFastStreams` (their channels offered and read; one stream's: a fast math line, said, 9.9) | GUI test (with its completion) |
 | `AnalysisWindow` | a line's histogram or spectrum (8.6) | the constructor's `even` (a fast line's records: the spectrum not resampled), `kind`, `histogram` / `spectrum`, `summary`, `readoutAt` / `readout`, `setLogScale`, `plot`, `picture` / `copyPicture` / `savePicture`, `exportCsv` | GUI test |
@@ -5819,15 +5824,24 @@ the models, the theme's colours, the language) get no QML macros: QML reaches th
 | `LogModel` | list model: the phone's Log, the newest 2000 lines | roles `level`, `time`, `text`; `count`, `clear`, `copy`, `text` | phone test (Log screen) |
 | `RegisterList` | list model over `RegisterModel`: a row per register, each group's together in the order of its first register; the search (`RegisterFilter`); `dataChanged` forwarded row by row with the roles that changed, the glow's own repaints only when a glow begins; stale looked at every 250 ms | roles `name`, `group`, `addr`, `value`, `unit`, `decoded`, `glow`, `direction`, `writable`, `plotted`, `error`, `stale`, `plottable`, `danger`, `source`; `search`, `count`, `total`, `glowMs`; `entry`, `copy` | phone test (Registers) |
 | `P9Registers` | the proof P-9's list model: the example map's registers, every value a step along a sine 20 times a second | roles `name`, `address`, `value`, `unit`; `ticks` | phone test (P-9) |
-| `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`); with another tag and a "shown" test, the Registers screen's speed line (`EVRE_PERF`) | signal `logged(line)` | phone test (P-9, perf) |
+| `P9Meter` | the proof P-9's frames: `QQuickWindow::frameSwapped` timed on the render thread, a line a second (`EVRE_P9`); with another tag and a "shown" test, the Registers screen's and the chart demo's speed line (`EVRE_PERF`) | `tag`; signal `logged(line)` | phone test (P-9, perf, chart demo) |
+| `ChartItem` | the Chart screen's plot, a `QQuickItem`: lines fed from C++, binned in `updatePolish` by `ChartData` as the desktop's view is, drawn as triangles, one `QSGGeometryNode` per line (clipped to the plot), one for the grid and one for the plot's edge (25.6) | `windowSeconds`, `live`, `yAuto`, `gridColor`, `frameColor`, `plotRect`, `lineCount`, `timeTicks`, `valueTicks`; `addLine`, `removeLine`, `appendSamples`, `clear`, `setClock`, `zoomTime`, `panPixels`; signal `framed` | phone test (chart) |
+| `ChartTicks` | list model: an axis's labels, a changed one told by `dataChanged` | roles `at`, `label` | phone test (chart, Arabic) |
+| `ChartDemo` | the chart's test feed: 8 lines of a synthetic signal at 1,000 Hz, live in a 1 min window | `chart`, `running`, `colours`; `signal` | phone test (chart demo) |
 
 ## 23. The chart renderer
 
 `ChartView` (`src/ui/chart_widget.*`) is a raster widget. It paints every pixel at every display frame, so it sets
 `Qt::WA_OpaquePaintEvent`. `ChartWidget` wraps it for the Chart tab. Chapter 7 describes the chart as a user sees
-it.
+it. Its data, the structures of 23.1 and the functions that bin and measure them, are `ChartData`
+(`src/ui/chart_data.*`, in `evre_engine`, no widget), which the phone's chart bins with too (`ChartItem`, 25.6):
+`ChartView` derives from it privately and keeps the names by `using`.
 
 ### 23.1 Data structures
+
+All but `series_` are `ChartData`'s (`chart_data.h`), moved there from `ChartView` as they were. The functions on them
+that read the view take it as arguments: `binViewSeries` the lines' generation (`seriesGeneration_`, which its kept
+bins must be of) and the counters of the columns binned, `binFast` and `binSeries` the fast lines' counter.
 
 | Structure | Holds |
 |---|---|
@@ -5837,6 +5851,7 @@ it.
 | `Bin` | one pixel column: its column number, sample count, first and last time, first, last, min and max value; `gap`: a fast line's records were lost (or it started again) just before it |
 | `BinnedLine` | one line's bins for a span, and the min and max of what lies inside the span |
 | `Axes` | a time span and a value range mapped onto a rectangle: the plot, or the memory strip |
+| `Stats` | one line's measurements over a span: at A and B, min, max, mean, RMS, std, p2p, the area (23.8) |
 
 A chunk's index in its level is simply `sample index / its size`. This holds only if the memory always drops whole
 chunks of the largest level, 4096 samples (23.3). `addChunks` makes them as the samples come: the smallest from 8
@@ -6881,7 +6896,7 @@ its own.
 | Target | Kind | Built&nbsp;from | Notes |
 |---|---|---|---|
 | `evre_protocol` | static&nbsp;library | `src/evre/*` (with `registers.h`); in `src/model/`: `device_map`, `map_file`, `map_check`, `json_doc`, `map_export`, `bus_file`, `fast_recording`, `fast_store`; in `src/io/`: `fast_stream`, `usb_capture`, `listen_link`, `usbpcap_capture`; `usbmon_capture` on Linux, `usbpcap_lookup` on Windows | Qt Core, Network, SerialPort only (on Windows also `setupapi`, `cfgmgr32`); the core, `evre`, `evre-sim`, the probe, the fast fake device and the tests without a window link it |
-| `evre_engine` | static&nbsp;library | in `src/model/`: `expr`, `math_lines`, `recording_file`, `analysis`, `register_model`, `map_document`; `src/io/engine`, `reg_table.h`; `src/api/api_server`; in `src/ui/`: `value_pace`, `theme_colors`, `language` | Qt Gui, no Widgets; links `evre_protocol`; the translations' `.qm` at `:/i18n`; both interfaces are built on it |
+| `evre_engine` | static&nbsp;library | in `src/model/`: `expr`, `math_lines`, `recording_file`, `analysis`, `register_model`, `map_document`; `src/io/engine`, `reg_table.h`; `src/api/api_server`; in `src/ui/`: `value_pace`, `theme_colors`, `language`, `chart_data` | Qt Gui, no Widgets; links `evre_protocol`; the translations' `.qm` at `:/i18n`; both interfaces are built on it |
 | `evre_studio_core` | static&nbsp;library | every other file under `src/` except `main.cpp` and `src/phone/` | links `evre_engine` and Qt Widgets; the program and the GUI test link it; a new source file is one more line here (or in `evre_engine` or `evre_protocol`). Not built on Android |
 | `evre_maps` | custom&nbsp;target | `maps/` | copies `maps/` beside the programs at every build, so an edited map is there even when nothing was linked again |
 | `evre_captures` | custom&nbsp;target | `tests/captures/` | copies the USB captures beside the programs at every build (`captures/`) |
@@ -6946,7 +6961,9 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
 +--------------------------------------------+
 ```
 
-- **The menu button** opens the Connect drawer from the start edge (the left; the right in Arabic). At its bottom: the
+- **The menu button** opens the Connect drawer from the start edge (the left; the right in Arabic); the screen behind
+  it (and behind the write sheet) darkens, in both themes (a black scrim at half: Material's grey wash lightened the
+  dark one). At its bottom: the
   **Dark theme** switch (`ui/dark`, the desktop's key, saved at once; Material's theme, accent and background follow
   `PhoneTheme`) and the **Language** list (System, English, العربية; `ui/language`, applied when the app is opened
   again, which a note under the list says).
@@ -7008,7 +7025,28 @@ The window (`Main.qml`, Material style, set in `main_phone.cpp` before the QML l
   refused: NOWHERE = 1 (01 at 0xD0F0): offset out of range*). With no link, or Allow writes off, the sheet says so
   and offers the drawer. The values are copied from the engine once a frame of the window, at the desktop's pace
   (*Show values*, `ui/valueRate`, 10 a second by default).
-- **What is still to come.** The Chart and Monitor screens say what will come (parts B.3 and B.4).
+- **The Chart** (part B.3a): the lines drawn by the phone's graphics card (`ChartItem`: for each line one node of
+  triangles, a quad over each pixel column from its min to its max and the line through the first and last values
+  as quads 1.5 dp wide; nothing painted by the processor), binned by the desktop chart's own code (`ChartData`,
+  23.1), so a live view bins only the samples since the frame before. A grid at 1, 2, 5 steps; the value labels
+  left of the plot, the times (m:ss of the chart's clock) under it, `Text` over the plot. **Live** follows now,
+  **Hold** keeps the view; the window **10&nbsp;s**, **1&nbsp;min** or **5&nbsp;min**. A pinch zooms the time, a drag looks
+  back and holds, a double tap goes live again; a line under the buttons says so. Y follows the lines (it grows at
+  once and shrinks gently). The plot is not mirrored in Arabic: time runs left to right. Until the registers are
+  plotted on it (the next part), it says that no line is there yet.
+
+  ```
+  +--------------------------------------------+
+  | Live  Hold | 10 s  1 min  5 min            |   Live / Hold, the window
+  | Pinch: zoom the time . Drag: look back ... |   what a finger does
+  |  2.5 +---------------------------------+   |
+  |      |  the lines (GPU), the grid      |   |   the value labels left of the plot
+  |  1.5 +---------------------------------+   |
+  |      0:10      0:12      0:14      0:16    |   the times under it
+  +--------------------------------------------+
+  ```
+- **What is still to come.** The Monitor screen says what will come (part B.4); the chart gets the plotted
+  registers, their legend and the fast lines with B.3b, the cursors with B.4.
 
 **Building.** On a desktop: `-DEVRE_PHONE=ON`; `EVReStudioPhone` then opens as a 412 x 915 window, for checks and
 trying. For Android (Qt 6.8 for Android arm64-v8a, the desktop Qt of the same version as the host, the SDK, NDK r26b,
@@ -7042,6 +7080,16 @@ whole map while polling at full rate: the target is 60 fps, no frame over 20 ms.
 
 ```sh
 adb shell am start -S -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez perf true
+adb logcat -s EVRE_PERF
+```
+
+**The chart's test feed.** Started with `EVRE_CHARTDEMO=1`, or on the phone with the intent's extra `chartdemo`, the
+window opens on the Chart screen with 8 lines of a synthetic signal at 1,000 samples a second each (a sine, a noisy
+sine, a square, a triangle, a sawtooth, noise, a chirp, a ripple) in a 1 min window, and writes the speed line
+under `EVRE_PERF` while the Chart screen shows. The target is P-6's, on the GPU now: 60 fps, no frame over 20 ms.
+
+```sh
+adb shell am start -S -n com.teknile.evrestudio/org.qtproject.qt.android.bindings.QtActivity --ez chartdemo true
 adb logcat -s EVRE_PERF
 ```
 
@@ -8093,8 +8141,9 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 40 (26.11), 1154. The
-exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing.
+the phone test's 48 (26.11), 1162. The
+exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
+looks for the fake device on another port than 1210 (a second run on the same PC).
 
 `EVRE_TEST_SHOT=<prefix>` makes the test save two pictures of the window at the quick-write step:
 `<prefix>_fields.png` (CONFIG with its fields) and `<prefix>_bits.png` (with Bits ticked), and one of a chart on the
@@ -8534,21 +8583,30 @@ to the fake device that drops the link, and a device that refuses every request 
 Android and the board from a thread of its own, as Java's reader does. A port where nothing listens (1209) gives the
 refused connection. The Registers screen's checks run against the fake device too; a copy of the example map with one
 more register, `NOWHERE` at 0xD0F0 where the device has nothing, gives a refused read and a refused write; a third
-stand-in (a proxy that leaves the first DEVICE_ID request of a link unanswered) gives the board still booting. It runs
+stand-in (a proxy that leaves the first DEVICE_ID request of a link unanswered) gives the board still booting (`EVRE_FAKE_PORT`: the fake device on another port, for a second run on the same
+PC). The chart's checks feed its lines from the test (a sine sampled at 1 kHz) and need no device. It runs
 under its own application name (`EVReStudioPhoneTest`), whose settings it clears at the start and at the end. On
 Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `libgl1-mesa-dri`), not with
-`QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes to come. On Windows Direct3D 11 draws it.
+`QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes. On Windows Direct3D 11 draws it.
 
 | Check | What it proves |
 |---|---|
 | loads | `Main.qml` at both sizes without a QML warning: the header, the tab bar, four screens, the drawer |
 | tabs | a tap on each tab shows its screen alone and names it in the header |
 | drawer | closed at the start; the menu button opens it from the left; a tap beside it closes it |
+| scrim | behind the open drawer the screen is darker than the background, in the dark theme and the light |
 | theme | the drawer's switch turns dark to light and back: the window's background and the header in the picture, `ui/dark` saved |
 | language | the drawer's list saves `ui/language`, the note says it comes at the next start, nothing changes before |
 | Arabic | the header and the tab bar mirrored (the menu button at the right, Registers the right-most tab), the drawer from the right, every text shown translated |
 | texts | every `Text` inside its parent and not cut, at both sizes, in English and Arabic, on each screen and in the drawer |
 | P-9 | with `p9` the proof's list alone, its rows the example map's registers, values changing 20 times a second, a line a second for logcat |
+| chart&nbsp;bins | a fed sine's bins equal the desktop chart's binning (`binViewSeries`, as `ChartView::binView`) of the same samples, view and width |
+| chart&nbsp;drawn | the sine in its colour across the plot's columns, and not one pixel of it outside the plot (the picture's dpr) |
+| pinch | two fingers spread to twice their distance halve the window (60 s to about 30), the view still live |
+| drag&nbsp;and&nbsp;double&nbsp;tap | a drag to the right looks back by its pixels' time and holds (Hold marked); a double tap goes live |
+| chart&nbsp;theme | the grid and the plot's background in the theme's colours, dark and light |
+| chart&nbsp;in&nbsp;Arabic | the controls mirrored, the plot not: the value labels left of it, the times rising left to right, each under its grid line |
+| chart&nbsp;demo | with `chartdemo` the Chart screen, 8 lines live in a 1 min window, a line a second under `EVRE_PERF` |
 | Log&nbsp;screen | the session's lines (the map loaded, one that did not), an error in red, the count; Clear empties it |
 | connect | TCP chosen in the drawer, the host and port typed, Connect: connected, the drawer's text, the pill *Connected* with a green dot, the Log, the host saved |
 | DEVICE_ID | the drawer shows *Device ID 0x1001 · protocol rev ...*, no warning; the Log the same |
@@ -8581,11 +8639,11 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | perf | with `perf` a line a second (`EVRE_PERF`) while the Registers screen shows, a bar running; none on the Log screen |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (40 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (48 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `connected`, `log`, `registers`, `sheet` (a write answered), `question` (asked first) and
-`landscape`.
+`landscape`, and the chart's test feed 12 s in, `chartdemo` (landscape) and `chartdemo_portrait`.
 
 ## 27. Design decisions and pitfalls
 

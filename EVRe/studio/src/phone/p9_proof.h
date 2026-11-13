@@ -7,13 +7,15 @@
  *   P9Meter      the window's frames, from QQuickWindow::frameSwapped: once a second one line, "fps 60.0, longest
  *                17.1 ms, over 20 ms: 0", to logcat under the tag EVRE_P9 (on a desktop: the program's output). The
  *                speed line of the Registers screen (perf, phone_app.h) is the same meter under the tag EVRE_PERF,
- *                writing only while that screen shows
+ *                writing only while that screen shows; so is the chart's test feed's (chartdemo, chart_demo.h) while
+ *                the Chart screen shows
  *
  * The screen (P9Screen.qml) keeps a small bar running, so the window draws every frame and the time between two
  * frames is a frame's time, also while nothing is flicked. */
 #pragma once
 
 #include <QAbstractListModel>
+#include <QByteArray>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QStringList>
@@ -61,6 +63,7 @@ public:
 
 	/* tag: logcat's; shown: whether to write this second's line (none given: always) */
 	explicit P9Meter(QQuickWindow *window, const char *tag = "EVRE_P9", std::function<bool()> shown = {});
+	QByteArray tag() const { return QByteArray(tag_); }
 
 signals:
 	void logged(const QString &line);
