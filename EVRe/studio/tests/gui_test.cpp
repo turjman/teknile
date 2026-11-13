@@ -16181,8 +16181,43 @@ private:
 		const bool lit = list.property("touchEnd").toBool() && bar->value() == 0;
 		send(view, QEvent::MouseButtonRelease, QPoint(150, 180), true, Qt::NoButton);
 		const bool out = QTest::qWaitFor([&] { return !list.property("touchEnd").toBool(); }, 1500);
-		check(lit && out, "touch: a finger pushing at the top of a list lights the list's frame (the accent), which goes out a "
-				"moment after the finger stops; the list stays at its top");
+		/* drawn, not only set (a colour alone did not change Fusion's frame of a list styled nowhere else, and the
+		 * sidebar's own rule outranked it): the accent on the list's frame and on the sidebar's right edge, nothing moved */
+		const auto light = [](QWidget *w, bool on) {
+			w->setProperty("touchEnd", on);
+			w->style()->unpolish(w);
+			w->style()->polish(w);
+			w->update();
+			QApplication::processEvents();
+		};
+		const auto edge = [](QWidget *w, bool right) {
+			const QImage image = w->grab().toImage();
+			return image.pixelColor(right ? image.width() - 1 : 0, image.height() / 2);
+		};
+		const QColor accent = Theme::colors().accent;
+		const auto isAccent = [&](const QColor &c) {
+			return std::abs(c.red() - accent.red()) + std::abs(c.green() - accent.green()) + std::abs(c.blue() - accent.blue()) < 24;
+		};
+		const QRect viewWas = view->geometry();
+		light(&list, true);
+		const QColor listLit = edge(&list, false);
+		const bool listKept = view->geometry() == viewWas;
+		light(&list, false);
+		const QColor listOut = edge(&list, false);
+		QColor sideLit, sideOut;
+		if (side) {
+			light(side, true);
+			sideLit = edge(side, true);
+			light(side, false);
+			sideOut = edge(side, true);
+		}
+		std::printf("     (touch: the lit frame %s (out %s), the sidebar's edge %s (out %s), the accent %s, the list's "
+				"contents kept %d)\n", qPrintable(listLit.name()), qPrintable(listOut.name()), qPrintable(sideLit.name()),
+				qPrintable(sideOut.name()), qPrintable(accent.name()), int(listKept));
+		check(lit && out && isAccent(listLit) && !isAccent(listOut) && listKept && side && isAccent(sideLit) && !isAccent(sideOut),
+				"touch: a finger pushing at the top of a list lights the list's frame (the accent, drawn: a plain list's and "
+				"the sidebar's edge too, nothing moved), which goes out a moment after the finger stops; the list stays at its "
+				"top");
 	}
 
 	void displayMenu() {

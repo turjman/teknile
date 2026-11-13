@@ -333,9 +333,14 @@ QCheckBox[keyFocus="true"]::indicator { border-color: %FOCUS%; }
 QTabBar[keyFocus="true"]::tab:selected { background: %ACCENTA%; border-top-left-radius: 6px;
   border-top-right-radius: 6px; }
 QTableView[keyFocus="true"], QListWidget[keyFocus="true"], QTextBrowser[keyFocus="true"] { border-color: %FOCUS%; }
-/* a finger pushing at an end of a list (TouchScroll): its frame lit */
+/* a finger pushing at an end of a list (TouchScroll): its frame lit. A whole border, not only its colour: a list or a
+ * text box styled nowhere else has Fusion's frame, which a colour alone does not change (1 px like it, so nothing moves);
+ * the lists styled by name need their own rule, as theirs outranks this one; the sidebar has only a right edge */
 QTableView[touchEnd="true"], QListView[touchEnd="true"], QListWidget[touchEnd="true"], QTreeView[touchEnd="true"],
-QTextBrowser[touchEnd="true"], QPlainTextEdit[touchEnd="true"], QScrollArea[touchEnd="true"] { border-color: %ACCENT%; }
+QTextBrowser[touchEnd="true"], QPlainTextEdit[touchEnd="true"] { border: 1px solid %ACCENT%; }
+QListWidget#helpTopics[touchEnd="true"], QListWidget#busDevices[touchEnd="true"] { border-color: %ACCENT%; }
+QScrollArea[touchEnd="true"] { border-color: %ACCENT%; }
+QScrollArea#sideScroll[touchEnd="true"] { border-right-color: %ACCENT%; }
 QListWidget#busDevices[keyFocus="true"] { border-color: %FOCUS%; }
 )");
 }
