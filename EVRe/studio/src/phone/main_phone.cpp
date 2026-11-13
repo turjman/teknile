@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
 	QGuiApplication::setApplicationName(QStringLiteral("EVReStudio"));
 	QGuiApplication::setApplicationVersion(QStringLiteral(EVRE_STUDIO_VERSION));
 
+	phone::useOwnFolderAsked(); /* EVRE_SETTINGS_DIR: a test aid's run, its settings its own */
 	language::apply(app, language::resolve(language::saved()));
 	phone::setStyle();
 	QQmlApplicationEngine engine;

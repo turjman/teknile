@@ -5206,7 +5206,7 @@ so the queue waits for it. The client hears of the result only if it asked for a
 | `src/ui/theme.h`,&nbsp;`.cpp` | `ThemeColors`, `Theme::apply`: Fusion style, palettes, style sheet, the combo boxes' arrow image |
 | `src/ui/theme_colors.cpp` | `Theme::colorsFor(dark)`: the dark and the light look's colours, one table for both interfaces (in `evre_engine`, without Qt Widgets) |
 | `src/phone/main_phone.cpp` | `EVReStudioPhone`: the application's names (the desktop's settings), the saved language, the Material style, `Main.qml` (25.6) |
-| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `chartDemoAsked` (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
+| `src/phone/phone_app.h`,&nbsp;`.cpp` | `phone::`: `mapsFolder`, `setStyle`, `p9Asked` (`EVRE_P9`, the intent's extra `p9`), `perfAsked` (`EVRE_PERF`, the intent's extra `perf`), `chartDemoAsked` (`EVRE_CHARTDEMO`, the intent's extra `chartdemo`), `useOwnFolder` (the settings and recordings in a folder of their own: the test's run, `EVRE_SETTINGS_DIR`), `loadMain` (the window, as the program and its test load it; its frames run `PhoneSession::sync`) |
 | `src/phone/phone_theme.h`,&nbsp;`.cpp` | `PhoneTheme`: the colours of `Theme::colorsFor` and `dark` (`ui/dark`) for QML |
 | `src/phone/phone_language.h`,&nbsp;`.cpp` | `PhoneLanguage`: the drawer's language choice (`ui/language`), `pending` until the next start |
 | `src/phone/phone_session.h`,&nbsp;`.cpp` | `PhoneSession`: the phone's part of `MainWindow` (Q-6): the engine on its thread, the map, the link (USB, TCP) and its states, Reconnect by itself, polling, Allow writes, recording into the app's folder (25.6) |
@@ -8197,7 +8197,7 @@ The window lives in a block of its own and is destroyed before this check, so wa
 its I/O thread shut down count too. One is enough to fail the check (20.7).
 
 Each check prints `PASS` or `FAIL`. The run ends with the counts. With `example_device.json` it runs 1114 checks; with
-the phone test's 72 (26.11), 1186. The
+the phone test's 74 (26.11), 1188. The
 exit code is 0 when all pass, 1 on a failure, and 2 when the map or the fake device is missing. `EVRE_FAKE_PORT=<port>`
 looks for the fake device on another port than 1210 (a second run on the same PC).
 
@@ -8644,7 +8644,12 @@ PC). The chart's own checks feed its lines from the test (a sine sampled at 1 kH
 lines of plotted registers come from the fake device, the fast lines from `evre_fake_fast` with
 `maps/example_fast.json`, started by the check on port 1213 (`EVRE_FAKE_FAST_PORT`: another one; 1221 to 1320 are
 often taken on Windows). `EVRE_PHONE_ONLY=<text>` runs only the checks whose function's name holds it. It runs
-under its own application name (`EVReStudioPhoneTest`), whose settings it clears at the start and at the end. On
+under its own application name (`EVReStudioPhoneTest`), and each run keeps its settings and recordings in a folder
+of its own, a temporary one removed at the end (`phone::useOwnFolder`: an ini file there in place of the registry's
+key, the recordings under it), so two runs at once (two builds, two agents) share nothing: before, one run's theme
+switch turned the other's pictures light. The phone program does the same with `EVRE_SETTINGS_DIR=<folder>` (for a
+run started by a test aid). Two runs at once take their own ports too: `EVRE_FAKE_PORT` and
+`EVRE_FAKE_FAST_PORT`. On
 Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `libgl1-mesa-dri`), not with
 `QT_QUICK_BACKEND=software`: that one would not draw the chart's own nodes. On Windows Direct3D 11 draws it.
 
@@ -8720,9 +8725,11 @@ Linux it draws with Mesa through OpenGL (`QSG_RHI_BACKEND=opengl`, the package `
 | enum | LED_MODE's sheet lists its 3 values to choose from, no field; a tap chooses one, Apply writes it |
 | Arabic&nbsp;start | every text with room to spare at the right (the start edge), the map's Latin names too, on the Registers screen, in the sheet, the drawer and the Log; the values and units left to right |
 | contrast | every muted text in the picture at least 4.5:1 against what is drawn under it (the commonest colour of its box), dark and light; with a popup open, its own texts |
+| USB&nbsp;/&nbsp;TCP&nbsp;text | the drawer's chosen half: its text white on the accent's fill in the picture, at least 4.5:1, dark and light; the other half's in the text colour |
+| isolation | the run's settings in an ini file of a folder of its own (a temporary one), its recordings beside it |
 | threads | no Qt warning about objects used across threads (the render thread's) |
 
-It ends with "N passed, 0 failed" (72 checks); the exit code is 0 when all pass, 1 on a failure.
+It ends with "N passed, 0 failed" (74 checks); the exit code is 0 when all pass, 1 on a failure.
 
 `EVRE_PHONE_SHOT=<prefix>` saves the window's pictures for the eye (not checks), in both languages and themes:
 `portrait`, `drawer`, `connected`, `drawerkb` (the token field over a keyboard stood for, drawn grey), `log`,

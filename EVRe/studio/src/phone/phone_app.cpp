@@ -3,6 +3,8 @@
 #include "phone/phone_app.h"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QSettings>
 #include <QPointer>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
@@ -26,6 +28,17 @@ QString mapsFolder() {
 }
 
 void setStyle() { QQuickStyle::setStyle(QStringLiteral("Material")); }
+
+void useOwnFolder(const QString &folder) {
+	QDir().mkpath(folder);
+	QSettings::setDefaultFormat(QSettings::IniFormat);
+	QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, folder);
+	PhoneSession::setDataFolder(folder);
+}
+
+void useOwnFolderAsked() {
+	if (qEnvironmentVariableIsSet("EVRE_SETTINGS_DIR")) useOwnFolder(qEnvironmentVariable("EVRE_SETTINGS_DIR"));
+}
 
 namespace {
 

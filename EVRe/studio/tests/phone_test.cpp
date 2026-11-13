@@ -2231,6 +2231,58 @@ void mutedContrast(const Phone &phone, const QString &where, double &lowest, QSt
 	});
 }
 
+/* the drawer's USB / TCP choice: the chosen half's text white on the accent's fill, at least 4.5:1, in the picture, dark
+ * and light (B.2b's light theme drew it black on blue); the other half's in the text colour */
+void checkSegmentContrast() {
+	QStringList seen;
+	bool ok = true;
+	for (bool dark : { true, false }) {
+		QSettings().setValue(QStringLiteral("ui/dark"), dark);
+		const ThemeColors colors = Theme::colorsFor(dark);
+		Phone phone(PORTRAIT);
+		if (PhoneSession *session = phone.session()) session->setTcp(true);
+		phone.openDrawer();
+		QQuickItem *chosen = phone.item("linkTcp"), *other = phone.item("linkUsb");
+		const QQuickItem *label = chosen ? chosen->property("contentItem").value<QQuickItem *>() : nullptr;
+		const QQuickItem *otherLabel = other ? other->property("contentItem").value<QQuickItem *>() : nullptr;
+		const QColor text = label ? label->property("color").value<QColor>() : QColor();
+		const QImage image = phone.grab();
+		/* the fill: beside the text, inside the button's insets; the text's own pixels: near its colour */
+		const QColor fill = Phone::pixel(image, at(chosen, 12, chosen ? chosen->height() / 2 : 0));
+		int inked = 0;
+		if (label)
+			for (double y = 0.5; y < label->height(); y += 1)
+				for (double x = 0.5; x < label->width(); x += 1)
+					inked += distance(Phone::pixel(image, at(label, x, y)), text) < 60;
+		const double ratio = contrast(text, fill);
+		const bool otherText = otherLabel && near(otherLabel->property("color").value<QColor>(), colors.text, 2);
+		const bool fine = near(fill, colors.accentFill, 6) && near(text, Qt::white, 2) && ratio >= 4.5 && inked >= 10
+				&& otherText;
+		seen << QStringLiteral("%1: %2 on %3, %4:1, %5 px").arg(dark ? "dark" : "light", text.name(), fill.name())
+						.arg(ratio, 0, 'f', 2).arg(inked);
+		ok = ok && fine;
+	}
+	QSettings().remove(QStringLiteral("ui/dark"));
+	check(ok, QStringLiteral("phone, USB / TCP: the chosen half's text white on the accent's fill in the picture, at least "
+			"4.5:1, dark and light; the other half's in the text colour (%1)").arg(seen.join(QStringLiteral("; "))));
+}
+
+/* this run's settings and recordings are its own (phone::useOwnFolder): an ini file in a folder of the run, not the
+ * registry's key that two runs at once shared */
+void checkOwnSettings() {
+	QSettings settings;
+	const QString file = settings.fileName();
+	const QString folder = QFileInfo(PhoneSession::recordingsFolder()).absolutePath();
+	settings.setValue(QStringLiteral("test/own"), 1);
+	settings.sync();
+	const bool written = QFileInfo::exists(file);
+	settings.remove(QStringLiteral("test/own"));
+	const bool own = settings.format() == QSettings::IniFormat && file.startsWith(folder)
+			&& QDir(QDir::tempPath()).relativeFilePath(folder).startsWith(QLatin1String("..")) == false;
+	check(own && written, QStringLiteral("phone, isolation: this run's settings in an ini file of its own folder (%1), its "
+			"recordings beside it (%2): two runs at once share nothing").arg(file, PhoneSession::recordingsFolder()));
+}
+
 void checkMutedContrast() {
 	QStringList bad, lows;
 	int seen = 0;
@@ -3111,6 +3163,10 @@ int main(int argc, char **argv) {
 	QGuiApplication app(argc, argv);
 	QGuiApplication::setOrganizationName(QStringLiteral("teknile"));
 	QGuiApplication::setApplicationName(QStringLiteral("EVReStudioPhoneTest")); /* not the user's settings */
+	/* the settings and the recordings in a folder of this run's own: two runs at once (two agents, two builds) shared
+	 * the registry's key before, and one's theme switch turned the other's pictures light */
+	QTemporaryDir own;
+	phone::useOwnFolder(own.path());
 	QSettings().clear();
 	language::apply(app, QStringLiteral("en"));
 	phone::setStyle();
@@ -3187,6 +3243,8 @@ int main(int argc, char **argv) {
 	RUN(checkEnumChoices);
 	RUN(checkArabicStart);
 	RUN(checkMutedContrast);
+	RUN(checkSegmentContrast);
+	RUN(checkOwnSettings);
 #undef RUN
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) {
 		if (only.isEmpty()) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));

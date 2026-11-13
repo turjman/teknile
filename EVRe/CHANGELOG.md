@@ -32,6 +32,10 @@
 - **The keyboard covered the write sheet's field on the phone** while typing (a Samsung phone): Android now makes the
   window smaller over the keyboard, and the sheet and the Connect drawer keep the field typed in (the sheet's Apply
   too) above it where Android does not.
+- **The phone's drawer wrote the chosen USB / TCP in black** on the accent's blue in the light theme; it is white in
+  both themes now.
+- **Two runs of the phone test at once no longer touch each other**: each keeps its settings and recordings in a folder
+  of its own (one run's theme switch had turned the other's pictures light).
 - **The phone's screens polished by eye**, in both themes and languages: drawn icons on the tabs, the chosen tab on a
   pill; a search field with a magnifier and a clear cross, the count at the list's foot; group headers that stay at
   the top; cards with the address beside the name, the value as the hero, a ripple on a press, chips for *not
