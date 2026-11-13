@@ -1,0 +1,214 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* The phone's session (PhoneSession, a singleton for QML): what MainWindow does with the engine, the phone's part of it
+ * again (Q-6), so the desktop's window stays as it is. It owns the IoEngine on its thread, the map and its
+ * RegisterModel, the USB ports (PortList) and the Log (LogModel).
+ *
+ *   the map       from the app's maps (maps/ beside the program, the APK's assets:/maps on Android), example_device.json
+ *                 first, or a file the picker gives (a content:// path on Android); the last one opens at the next start
+ *   the link      a USB device (AndroidUsbLink through the UsbBridge: Android's, or the test's fake) or TCP (host,
+ *                 port, a token that is never saved); its states below, each with its words for the drawer and the
+ *                 header's pill; Reconnect by itself tries again 0.5 s after a lost link and every 2 s after a failed
+ *                 try, as the desktop does, except after a refused token, a device that wants one, or a refused USB
+ *                 permission: those would only be refused again, so the link stays closed until Connect
+ *   polling       on or off and its interval; the measured rate twice a second while connected
+ *   writes        Allow writes (off at every start, as on the desktop)
+ *   recording     a CSV of every logged register into the app's own folder (recordingsFolder, A-8): a real path, so a
+ *                 recording's notes can go beside it
+ *
+ * QML only calls it on the window's thread; the engine is reached by post() and answers by queued signals, as
+ * MainWindow does. Every text through tr() in this class's context. */
+#pragma once
+
+#include <QObject>
+#include <QStringList>
+#include <QTimer>
+#include <QVariantList>
+#include <QtQml/qqmlregistration.h>
+
+#include "model/device_map.h"
+#include "phone/log_model.h"
+#include "phone/port_list.h"
+
+class IoEngine;
+class QThread;
+class RegisterModel;
+namespace evre {
+class UsbBridge;
+}
+
+class PhoneSession : public QObject {
+	Q_OBJECT
+	QML_ELEMENT
+	QML_SINGLETON
+	Q_PROPERTY(State state READ state NOTIFY linkChanged)
+	Q_PROPERTY(bool wantConnected READ wantConnected NOTIFY linkChanged)
+	Q_PROPERTY(QString pillText READ pillText NOTIFY linkChanged)
+	Q_PROPERTY(QString linkText READ linkText NOTIFY linkChanged)
+	Q_PROPERTY(QString linkDetail READ linkDetail NOTIFY linkChanged)
+	Q_PROPERTY(QString connectText READ connectText NOTIFY linkChanged)
+	Q_PROPERTY(int deviceId READ deviceId NOTIFY deviceChanged)
+	Q_PROPERTY(QString deviceText READ deviceText NOTIFY deviceChanged)
+	Q_PROPERTY(QString deviceWarning READ deviceWarning NOTIFY deviceChanged)
+	Q_PROPERTY(QString mapName READ mapName NOTIFY mapChanged)
+	Q_PROPERTY(QString mapFile READ mapFile NOTIFY mapChanged)
+	Q_PROPERTY(QString mapText READ mapText NOTIFY mapChanged)
+	Q_PROPERTY(QString mapError READ mapError NOTIFY mapChanged)
+	Q_PROPERTY(QStringList mapNames READ mapNames CONSTANT)
+	Q_PROPERTY(QStringList mapFiles READ mapFiles CONSTANT)
+	Q_PROPERTY(bool tcp READ tcp WRITE setTcp NOTIFY settingsChanged)
+	Q_PROPERTY(QString host READ host NOTIFY settingsChanged)
+	Q_PROPERTY(int port READ port NOTIFY settingsChanged)
+	Q_PROPERTY(QString usbDevice READ usbDevice NOTIFY settingsChanged)
+	Q_PROPERTY(int baud READ baud NOTIFY settingsChanged)
+	Q_PROPERTY(QVariantList baudRates READ baudRates CONSTANT)
+	Q_PROPERTY(bool autoReconnect READ autoReconnect WRITE setAutoReconnect NOTIFY settingsChanged)
+	Q_PROPERTY(bool polling READ polling WRITE setPolling NOTIFY settingsChanged)
+	Q_PROPERTY(int intervalMs READ intervalMs WRITE setIntervalMs NOTIFY settingsChanged)
+	Q_PROPERTY(double pollHz READ pollHz NOTIFY statsChanged)
+	Q_PROPERTY(QString pollText READ pollText NOTIFY statsChanged)
+	Q_PROPERTY(bool writesEnabled READ writesEnabled WRITE setWritesEnabled NOTIFY settingsChanged)
+	Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
+	Q_PROPERTY(QString recordFile READ recordFile NOTIFY recordingChanged)
+	Q_PROPERTY(QString recordText READ recordText NOTIFY recordingChanged)
+	Q_PROPERTY(PortList *ports READ ports CONSTANT)
+	Q_PROPERTY(LogModel *log READ log CONSTANT)
+
+public:
+	/* Off: no link, none wanted. Waiting: Android's permission dialog for the USB device is up. Connecting: a try under
+	 * way. Connected. Reconnecting: lost or refused, the next try comes by itself. Closed: lost or refused, and no try
+	 * comes (linkText says why) */
+	enum State { Off, Waiting, Connecting, Connected, Reconnecting, Closed };
+	Q_ENUM(State)
+	static constexpr int TIMEOUT_MS = 500;           /* an answer's time, the desktop's default */
+	static constexpr int RECONNECT_LOST_MS = 500;    /* a link that was up: again soon */
+	static constexpr int RECONNECT_FAILED_MS = 2000; /* a try that failed: not faster than this */
+	static constexpr int STATS_MS = 500;
+
+	explicit PhoneSession(QObject *parent = nullptr);
+	~PhoneSession() override;
+
+	State state() const { return state_; }
+	bool wantConnected() const { return wantConnected_; }
+	QString pillText() const;
+	QString linkText() const { return linkText_; }
+	QString linkDetail() const { return linkDetail_; }
+	QString connectText() const;
+	int deviceId() const { return deviceId_; }
+	QString deviceText() const { return deviceText_; }
+	QString deviceWarning() const { return deviceWarning_; }
+	QString mapName() const { return map_.device; }
+	QString mapFile() const { return mapFile_; }
+	QString mapText() const;
+	QString mapError() const { return mapError_; }
+	QStringList mapNames() const { return mapNames_; }
+	QStringList mapFiles() const { return mapFiles_; }
+	bool tcp() const { return tcp_; }
+	void setTcp(bool tcp);
+	QString host() const { return host_; }
+	int port() const { return port_; }
+	QString usbDevice() const { return usbDevice_; }
+	int baud() const { return baud_; }
+	QVariantList baudRates() const;
+	bool autoReconnect() const { return autoReconnect_; }
+	void setAutoReconnect(bool on);
+	bool polling() const { return polling_; }
+	void setPolling(bool on);
+	int intervalMs() const { return intervalMs_; }
+	void setIntervalMs(int ms);
+	double pollHz() const { return pollHz_; }
+	QString pollText() const;
+	bool writesEnabled() const;
+	void setWritesEnabled(bool on);
+	bool recording() const { return recording_; }
+	QString recordFile() const { return recordFile_; }
+	QString recordText() const { return recordText_; }
+	PortList *ports() const { return ports_; }
+	LogModel *log() const { return log_; }
+	RegisterModel *registers() const { return model_; }
+	const DeviceMap &map() const { return map_; }
+
+	/* the link: each saves what it was given (but the token), then connects; a try already under way is replaced */
+	Q_INVOKABLE void connectUsb(const QString &device, int baud);
+	Q_INVOKABLE void connectTcp(const QString &host, int port, const QString &token);
+	Q_INVOKABLE void disconnectLink(); /* Disconnect, Cancel and Stop reconnecting: no try comes by itself */
+	/* a map file: a path, a file: URL or a content:// one from the picker; false (and mapError) when it did not load */
+	Q_INVOKABLE bool loadMap(const QString &file);
+	Q_INVOKABLE void refreshPorts();
+	Q_INVOKABLE void startRecord();
+	Q_INVOKABLE void stopRecord();
+
+	/* tests: the USB bridge connectUsb and the port list use instead of Android's (null: Android's, or none) */
+	static void setUsbBridgeForTests(evre::UsbBridge *bridge);
+	/* where recordings go: the app's own folder (A-8), "recordings" in Android's external files folder for the app
+	 * (Android/data/<package>/files, reached by a file manager and by a PC over USB), else in the app's data folder */
+	static QString recordingsFolder();
+
+signals:
+	void linkChanged();
+	void deviceChanged();
+	void mapChanged();
+	void settingsChanged();
+	void statsChanged();
+	void recordingChanged();
+	/* each line of the Log as it is added (LogModel::Level) */
+	void message(int level, const QString &text);
+
+private:
+	void startEngine();
+	void findMaps();
+	void pushMap();
+	void pushPolling();
+	void pushLinkOptions();
+	void connectLink();
+	void retryConnect();
+	void onOpened(const QString &link);
+	void onClosed(const QString &why, const QString &detail);
+	void onDeviceInfo(int device, bool ok, quint16 id, quint16 status, const QString &err);
+	void onRecordStarted(bool ok, const QString &err);
+	void onRecordStopped(const QString &file, quint64 rows);
+	void refreshStats();
+	void markDeviceLost();
+	QString mapWarning(quint16 id) const;
+	void setState(State state, const QString &text, const QString &detail = QString());
+	void setDevice(int id, const QString &text, const QString &warning = QString());
+	void addLog(LogModel::Level level, const QString &text);
+	static evre::UsbBridge *usbBridge();
+
+	QThread *thread_ = nullptr;
+	IoEngine *engine_ = nullptr;
+	RegisterModel *model_ = nullptr;
+	PortList *ports_ = nullptr;
+	LogModel *log_ = nullptr;
+	DeviceMap map_;
+	QString mapFile_, mapError_;
+	QStringList mapNames_, mapFiles_;
+	quint64 mapGeneration_ = 0;
+
+	State state_ = Off;
+	QString linkText_, linkDetail_;
+	bool wantConnected_ = false; /* Connect pressed and not Disconnect: tries go on while Reconnect by itself is on */
+	bool connected_ = false;
+	bool retrying_ = false;      /* a try by itself: not said again in the Log */
+	QString loginStop_;          /* a refused token or a device that wants one: why the next close stops the tries */
+	QTimer reconnectTimer_;
+	QTimer statsTimer_;
+
+	/* the last try's link: a try by itself makes the same one */
+	bool tcp_ = true;
+	QString host_;
+	int port_ = 1210;
+	QString token_;
+	QString usbDevice_;
+	int baud_ = 115200;
+	bool autoReconnect_ = true;
+	bool polling_ = true;
+	int intervalMs_ = 100;
+	double pollHz_ = 0;
+
+	int deviceId_ = -1;          /* -1: not read on this link */
+	int revision_ = 0;
+	QString deviceText_, deviceWarning_;
+
+	bool recording_ = false;
+	QString recordFile_, recordText_;
+};

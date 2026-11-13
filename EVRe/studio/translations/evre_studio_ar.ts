@@ -1932,10 +1932,6 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
         <translation>اتصال</translation>
     </message>
     <message>
-        <source>Coming soon: a USB port or a TCP address, the map, and Connect.</source>
-        <translation>قريبًا: منفذ USB أو عنوان TCP، والخريطة، والاتصال.</translation>
-    </message>
-    <message>
         <source>Dark theme</source>
         <translation>سمة داكنة</translation>
     </message>
@@ -1950,6 +1946,90 @@ It costs more drawing time: turn it off when a busy chart (many lines, fast stre
     <message>
         <source>The language changes when the app is opened again.</source>
         <translation>تتغيّر اللغة عند فتح التطبيق مرة أخرى.</translation>
+    </message>
+    <message>
+        <source>Open map</source>
+        <translation>فتح خريطة</translation>
+    </message>
+    <message>
+        <source>Maps (*.json)</source>
+        <translation>الخرائط (*.json)</translation>
+    </message>
+    <message>
+        <source>USB</source>
+        <translation>USB</translation>
+    </message>
+    <message>
+        <source>TCP</source>
+        <translation>TCP</translation>
+    </message>
+    <message>
+        <source>USB device</source>
+        <translation>جهاز USB</translation>
+    </message>
+    <message>
+        <source>No USB device found: plug the board in (through a USB OTG adapter).</source>
+        <translation>لم يُعثر على جهاز USB: صِل اللوحة (عبر محوّل USB OTG).</translation>
+    </message>
+    <message>
+        <source>Baud rate</source>
+        <translation>معدّل البود</translation>
+    </message>
+    <message>
+        <source>A USB CDC board ignores the baud rate.</source>
+        <translation>لوحة USB CDC تتجاهل معدّل البود.</translation>
+    </message>
+    <message>
+        <source>Host</source>
+        <translation>المضيف</translation>
+    </message>
+    <message>
+        <source>Port</source>
+        <translation>المنفذ</translation>
+    </message>
+    <message>
+        <source>Token (not stored)</source>
+        <translation>رمز الدخول (لا يُحفظ)</translation>
+    </message>
+    <message>
+        <source>Map</source>
+        <translation>الخريطة</translation>
+    </message>
+    <message>
+        <source>Open…</source>
+        <translation>فتح…</translation>
+    </message>
+    <message>
+        <source>Reconnect by itself</source>
+        <translation>إعادة الاتصال تلقائيًا</translation>
+    </message>
+    <message>
+        <source>Polling</source>
+        <translation>الاستطلاع</translation>
+    </message>
+    <message>
+        <source>Interval (ms)</source>
+        <translation>الفاصل (ms)</translation>
+    </message>
+    <message>
+        <source>0 ms: as fast as the device answers</source>
+        <translation>⁦0 ms⁩: بأسرع ما يجيب الجهاز</translation>
+    </message>
+    <message>
+        <source>Allow writes</source>
+        <translation>السماح بالكتابة</translation>
+    </message>
+    <message>
+        <source>Stop recording</source>
+        <translation>إيقاف التسجيل</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>تسجيل</translation>
+    </message>
+    <message>
+        <source>A CSV of the logged registers, in the app&apos;s folder.</source>
+        <translation>ملف CSV للمسجّلات المسجَّلة، في مجلد التطبيق.</translation>
     </message>
 </context>
 <context>
@@ -4590,6 +4670,25 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     </message>
 </context>
 <context>
+    <name>LogScreen</name>
+    <message>
+        <source>lines: %1</source>
+        <translation>الأسطر: %1</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>نسخ</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>مسح</translation>
+    </message>
+    <message>
+        <source>Nothing yet: the map, the link and the recordings are told here.</source>
+        <translation>لا شيء بعد: هنا يُذكر ما يجري للخريطة والوصلة والتسجيلات.</translation>
+    </message>
+</context>
+<context>
     <name>Main</name>
     <message>
         <source>EVRe Studio</source>
@@ -4616,10 +4715,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
         <translation>الاتصال والإعدادات</translation>
     </message>
     <message>
-        <source>Not connected</source>
-        <translation>غير متصل</translation>
-    </message>
-    <message>
         <source>Coming soon: every register of the map, its value live.</source>
         <translation>قريبًا: كل مسجّل في الخريطة، بقيمته الحيّة.</translation>
     </message>
@@ -4630,10 +4725,6 @@ exp log log10 sin cos tan asin acos atan atan2 min max pow floor ceil round sign
     <message>
         <source>Coming soon: the frames on the link.</source>
         <translation>قريبًا: الإطارات على الوصلة.</translation>
-    </message>
-    <message>
-        <source>Coming soon: what happened on the link, newest last.</source>
-        <translation>قريبًا: ما جرى على الوصلة، والأحدث في الآخر.</translation>
     </message>
 </context>
 <context>
@@ -6422,6 +6513,201 @@ Examples: SUPPLY_V * SUPPLY_I (power, W) · abs(SUPPLY_I) · (TEMPERATURE * 9/5)
     <message>
         <source>Proof P-9: the values change 20 times a second. Flick the list.</source>
         <translation>الإثبات P-9: تتغيّر القيم 20 مرة في الثانية. اسحب القائمة بسرعة.</translation>
+    </message>
+</context>
+<context>
+    <name>PhoneSession</name>
+    <message>
+        <source>Not connected</source>
+        <translation>غير متصل</translation>
+    </message>
+    <message>
+        <source>Device ID not read yet</source>
+        <translation>لم يُقرأ معرّف الجهاز بعد</translation>
+    </message>
+    <message>
+        <source>Waiting for permission…</source>
+        <translation>بانتظار الإذن…</translation>
+    </message>
+    <message>
+        <source>Android asks whether EVRe Studio may use %1: answer its dialog.</source>
+        <translation>يسأل أندرويد هل يُسمح لـ EVRe Studio باستخدام ⁦%1⁩: أجب عن نافذة الحوار.</translation>
+    </message>
+    <message>
+        <source>token refused: %1</source>
+        <translation>رُفض رمز الدخول: %1</translation>
+    </message>
+    <message>
+        <source>token refused: type the right token, then Connect</source>
+        <translation>رُفض رمز الدخول: اكتب الرمز الصحيح ثم «اتصال»</translation>
+    </message>
+    <message>
+        <source>the device wants a login: its map has a login register, and no token was given</source>
+        <translation>الجهاز يطلب تسجيل الدخول: خريطته تعلن مسجّل دخول، ولم يُعطَ رمز دخول</translation>
+    </message>
+    <message>
+        <source>the device wants a token: type it in the Token box, then Connect</source>
+        <translation>الجهاز يطلب رمز دخول: اكتبه في خانة رمز الدخول ثم «اتصال»</translation>
+    </message>
+    <message>
+        <source>the map declares no login register: the token was not sent</source>
+        <translation>الخريطة لا تعلن مسجّل دخول: لم يُرسل رمز الدخول</translation>
+    </message>
+    <message>
+        <source>map not loaded: %1: %2</source>
+        <translation>لم تُحمَّل الخريطة: %1: %2</translation>
+    </message>
+    <message>
+        <source>map loaded: %1 (%2 registers)</source>
+        <translation>حُمّلت الخريطة: %1 (المسجّلات: %2)</translation>
+    </message>
+    <message>
+        <source>registers: %1</source>
+        <translation>المسجّلات: %1</translation>
+    </message>
+    <message>
+        <source>polls a second: %1</source>
+        <translation>الاستطلاعات في الثانية: %1</translation>
+    </message>
+    <message>
+        <source>writes allowed</source>
+        <translation>الكتابة مسموحة</translation>
+    </message>
+    <message>
+        <source>writes off</source>
+        <translation>الكتابة متوقفة</translation>
+    </message>
+    <message>
+        <source>No USB device: plug the board in, then choose it</source>
+        <translation>لا جهاز USB: صِل اللوحة ثم اخترها</translation>
+    </message>
+    <message>
+        <source>Type the device&apos;s host and a port from 1 to 65535</source>
+        <translation>اكتب مضيف الجهاز ومنفذًا من 1 إلى 65535</translation>
+    </message>
+    <message>
+        <source>connecting to %1:%2%3</source>
+        <translation>يتصل بـ %1:%2%3</translation>
+    </message>
+    <message>
+        <source> (with a token)</source>
+        <translation> (مع رمز دخول)</translation>
+    </message>
+    <message>
+        <source>Connecting to %1:%2…</source>
+        <translation>يتصل بـ ⁦%1:%2⁩…</translation>
+    </message>
+    <message>
+        <source>opening %1 at %2</source>
+        <translation>يفتح %1 عند %2</translation>
+    </message>
+    <message>
+        <source>Connecting to %1…</source>
+        <translation>يتصل بـ ⁦%1⁩…</translation>
+    </message>
+    <message>
+        <source>disconnected</source>
+        <translation>قُطع الاتصال</translation>
+    </message>
+    <message>
+        <source>connected: %1</source>
+        <translation>متصل: %1</translation>
+    </message>
+    <message>
+        <source>Connected: %1</source>
+        <translation>متصل: ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>connection lost: %1</source>
+        <translation>انقطع الاتصال: %1</translation>
+    </message>
+    <message>
+        <source>not connected: %1</source>
+        <translation>غير متصل: %1</translation>
+    </message>
+    <message>
+        <source>not reconnecting: %1</source>
+        <translation>لا إعادة اتصال: %1</translation>
+    </message>
+    <message>
+        <source>Connect asks again</source>
+        <translation>زر «اتصال» يطلب الإذن من جديد</translation>
+    </message>
+    <message>
+        <source>Reconnecting…</source>
+        <translation>يعيد الاتصال…</translation>
+    </message>
+    <message>
+        <source>DEVICE_ID not read: %1</source>
+        <translation>لم يُقرأ DEVICE_ID: %1</translation>
+    </message>
+    <message>
+        <source>Device ID %1 · protocol rev %2</source>
+        <translation>معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>device ID %1, protocol revision %2</source>
+        <translation>معرّف الجهاز %1، مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>the map is for device %1, this is %2</source>
+        <translation>الخريطة للجهاز %1، وهذا %2</translation>
+    </message>
+    <message>
+        <source>the map is for %1</source>
+        <translation>الخريطة لـ %1</translation>
+    </message>
+    <message>
+        <source>last seen: Device ID %1 · protocol rev %2</source>
+        <translation>آخر ظهور: معرّف الجهاز %1 · مراجعة البروتوكول %2</translation>
+    </message>
+    <message>
+        <source>Connecting…</source>
+        <translation>يتصل…</translation>
+    </message>
+    <message>
+        <source>Connected</source>
+        <translation>متصل</translation>
+    </message>
+    <message>
+        <source>Disconnect</source>
+        <translation>قطع الاتصال</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
+    <message>
+        <source>Stop reconnecting</source>
+        <translation>إيقاف إعادة الاتصال</translation>
+    </message>
+    <message>
+        <source>Connect</source>
+        <translation>اتصال</translation>
+    </message>
+    <message>
+        <source>CSV recording not started: %1</source>
+        <translation>لم يبدأ تسجيل CSV: %1</translation>
+    </message>
+    <message>
+        <source>Not recording: %1</source>
+        <translation>لا تسجيل: %1</translation>
+    </message>
+    <message>
+        <source>CSV recording started: %1</source>
+        <translation>بدأ تسجيل CSV: %1</translation>
+    </message>
+    <message>
+        <source>Recording to %1</source>
+        <translation>يسجّل في ⁦%1⁩</translation>
+    </message>
+    <message>
+        <source>Saved %1 · rows: %2</source>
+        <translation>حُفظ ⁦%1⁩ · الصفوف: %2</translation>
+    </message>
+    <message>
+        <source>CSV recording stopped: %1 rows in %2</source>
+        <translation>توقف تسجيل CSV: الصفوف %1 في %2</translation>
     </message>
 </context>
 <context>

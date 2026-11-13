@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-// The phone's window (STUDIO.md 25.6): a header (the menu button, the screen's name, the link's state as a pill), the
-// Connect drawer, a tab bar at the bottom (Registers, Chart, Monitor, Log) and the screens above it. Material,
-// coloured from PhoneTheme; right to left in Arabic (the header, the tab bar, the screens and the drawer mirrored).
+// The phone's window (STUDIO.md 25.6): a header (the menu button, the screen's name, the link's state as a pill, which
+// opens the drawer too), the Connect drawer, a tab bar at the bottom (Registers, Chart, Monitor, Log) and the screens
+// above it. Material, coloured from PhoneTheme; right to left in Arabic (the header, the tab bar, the screens and the
+// drawer mirrored).
 // With p9 (phone_app.cpp) the window shows the proof P-9 alone.
 import QtQuick
 import QtQuick.Controls
@@ -74,7 +75,16 @@ ApplicationWindow {
             }
             LinkPill {
                 objectName: "linkPill"
-                text: qsTr("Not connected")
+                text: PhoneSession.pillText
+                dotColor: {
+                    switch (PhoneSession.state) {
+                    case PhoneSession.Connected: return PhoneTheme.good
+                    case PhoneSession.Closed: return PhoneTheme.bad
+                    case PhoneSession.Off: return PhoneTheme.muted
+                    default: return PhoneTheme.warn
+                    }
+                }
+                onClicked: drawer.open()
             }
         }
     }
@@ -129,9 +139,8 @@ ApplicationWindow {
             objectName: "screenMonitor"
             note: qsTr("Coming soon: the frames on the link.")
         }
-        PlaceholderScreen {
+        LogScreen {
             objectName: "screenLog"
-            note: qsTr("Coming soon: what happened on the link, newest last.")
         }
     }
 

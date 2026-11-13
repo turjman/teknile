@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-// The link's state in the header, as a pill: a dot and a short text (B.0: always "Not connected"; B.1 gives it the
-// link's states and their colours).
+// The link's state in the header, as a pill: a dot in the state's colour (PhoneSession: grey off, amber on the way,
+// green connected, red closed with a reason) and a short text. A tap opens the Connect drawer, where the whole story is.
 import QtQuick
 import QtQuick.Controls
 import EVRe.Phone
 
 Rectangle {
+    id: pill
     property alias text: label.text
     property color dotColor: PhoneTheme.muted
+    signal clicked()
 
     implicitWidth: row.implicitWidth + 24
     implicitHeight: 30
     radius: height / 2
-    color: PhoneTheme.surface2
+    color: tap.pressed ? PhoneTheme.border : PhoneTheme.surface2
     border.color: PhoneTheme.border
+    Accessible.role: Accessible.Button
+    Accessible.name: label.text
+    Accessible.onPressAction: pill.clicked()
 
     Row {
         id: row
@@ -21,11 +26,12 @@ Rectangle {
         spacing: 6
 
         Rectangle {
+            objectName: "linkPillDot"
             anchors.verticalCenter: parent.verticalCenter
             width: 8
             height: 8
             radius: 4
-            color: dotColor
+            color: pill.dotColor
         }
         Label {
             id: label
@@ -34,5 +40,10 @@ Rectangle {
             color: PhoneTheme.muted
             font.pixelSize: 13
         }
+    }
+
+    TapHandler {
+        id: tap
+        onTapped: pill.clicked()
     }
 }

@@ -4,17 +4,23 @@
  * its pixels read from QQuickWindow::grabWindow() (an area scaled by the picture's devicePixelRatio: the owner's
  * Windows runs at 225 %). STUDIO.md 26.11.
  *
+ *   python3 tests/fake_device.py --port 1210 --map maps/example_device.json &
  *   evre_phone_test
  *
- * It needs no device: the maps beside it (the build copies maps/) give P-9 its rows. Settings: its own application
- * (EVReStudioPhoneTest), cleared at the start. On Linux under xvfb it draws with Mesa through OpenGL
+ * The link's checks run over TCP against the fake device on 1210 (its DEVICE_ID 0x1001), against stand-ins of its own
+ * (a proxy that drops the link, a device that refuses every request) and, for USB, a fake UsbBridge that speaks for
+ * Android and the board. The maps beside it (the build copies maps/) give the session and P-9 their rows. Settings: its
+ * own application (EVReStudioPhoneTest), cleared at the start. On Linux under xvfb it draws with Mesa through OpenGL
  * (QSG_RHI_BACKEND=opengl); the software adaptation would not draw the chart's nodes to come.
  *
  * EVRE_PHONE_SHOT=<prefix> also saves the window's pictures for the eye: <prefix>_<en|ar>_<dark|light>_<portrait|
- * drawer|landscape>.png (not checks).
+ * drawer|connected|log|landscape>.png (not checks; connected and log with the fake device).
  *
  * Exit code: 0 all passed, 1 a check failed. */
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QImage>
 #include <QPointer>
@@ -27,16 +33,26 @@
 #include <QScreen>
 #include <QSettings>
 #include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QTemporaryDir>
 #include <QTest>
+#include <QThread>
+#include <QTimer>
 #include <QtQml/qqmlextensionplugin.h>
 #include <atomic>
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <thread>
 
+#include "evre/frame.h"
+#include "evre/usb_bridge.h"
 #include "model/device_map.h"
+#include "model/register_model.h"
 #include "phone/p9_proof.h"
 #include "phone/phone_app.h"
+#include "phone/phone_session.h"
 #include "ui/language.h"
 #include "ui/theme.h"
 
@@ -132,7 +148,31 @@ struct Phone {
 		settle();
 	}
 	void tap(const QQuickItem *on) const {
+		reveal(on);
 		if (on) tap(on->mapToScene(QPointF(on->width() / 2, on->height() / 2)));
+	}
+	/* an item of the drawer scrolled into its view first: the drawer is taller than the screen */
+	void reveal(const QQuickItem *on) const {
+		QQuickItem *flick = item("drawerFlick");
+		if (!flick || !on || !flick->isAncestorOf(on)) return;
+		const double top = on->mapToItem(flick, QPointF(0, 0)).y();
+		if (top >= 0 && top + on->height() <= flick->height()) return;
+		const double most = std::max(0.0, flick->property("contentHeight").toDouble() - flick->height());
+		const double y = flick->property("contentY").toDouble() + top - (flick->height() - on->height()) / 2;
+		flick->setProperty("contentY", std::clamp(y, 0.0, most));
+		QTest::qWait(50);
+	}
+	/* the window's session (the QML singleton), made when Main.qml loaded */
+	PhoneSession *session() const {
+		return engine ? engine->singletonInstance<PhoneSession *>("EVRe.Phone", "PhoneSession") : nullptr;
+	}
+	QString text(const char *name) const {
+		const QObject *found = object(name);
+		return found ? found->property("text").toString() : QString();
+	}
+	/* a text field given its text, as typing would */
+	void type(const char *name, const QString &text) const {
+		if (QObject *field = object(name)) field->setProperty("text", text);
 	}
 
 	/* the window as drawn, and a colour in it at a point of logical pixels (scaled by the picture's dpr) */
@@ -215,10 +255,13 @@ QStringList textsOutside(QQuickWindow *window, int &seen) {
 QStringList latinTexts(QQuickWindow *window) {
 	static const QRegularExpression latin(QStringLiteral("[A-Za-z]"));
 	static const QRegularExpression arabic(QStringLiteral("[\\x{0600}-\\x{06FF}]"));
-	static const QStringList kept{ QStringLiteral("English") }; /* the language list: each language in its own words */
+	/* the language list (each language in its own words), and the links' names */
+	static const QStringList kept{ QStringLiteral("English"), QStringLiteral("USB"), QStringLiteral("TCP") };
+	/* the data shown as it is: the map's device name, a USB device's name and IDs */
+	static const QStringList data{ QStringLiteral("mapText"), QStringLiteral("portText") };
 	QStringList found;
 	forEachItem(topItem(window), [&](QQuickItem *item) {
-		if (!item->inherits("QQuickText") || !item->isVisible()) return;
+		if (!item->inherits("QQuickText") || !item->isVisible() || data.contains(item->objectName())) return;
 		const QString text = item->property("text").toString();
 		if (text.contains(latin) && !text.contains(arabic) && !kept.contains(text)) found << text;
 	});
@@ -444,7 +487,423 @@ void checkP9() {
 					.arg(rows).arg(map.regs.size()).arg(perSecond, 0, 'f', 1).arg(valueBefore, valueAfter, line));
 }
 
-/* EVRE_PHONE_SHOT: both languages and themes, portrait, the drawer open, landscape */
+/* ---- the link (B.1): over TCP against the fake device and stand-ins, over USB through a fake bridge */
+
+constexpr quint16 FAKE_DEVICE_PORT = 1210;     /* tests/fake_device.py --port 1210 --map maps/example_device.json */
+constexpr quint16 NOBODY_PORT = 1209;          /* nothing listens there: a refused connection */
+const QString USB_DEVICE = QStringLiteral("/dev/bus/usb/001/002");
+
+QColor themeColor(QColor ThemeColors::*which) {
+	return Theme::colorsFor(QSettings().value(QStringLiteral("ui/dark"), true).toBool()).*which;
+}
+
+/* waits until the session is in `state` (or the time is up) */
+bool waitForState(PhoneSession *session, PhoneSession::State state, int ms = 5000) {
+	return session && QTest::qWaitFor([&] { return session->state() == state; }, ms);
+}
+
+/* A stand-in between the phone and the fake device: it passes the bytes both ways, counts the links and drops them all
+ * at drop(), as a device reset or a cable pulled out would. On a thread of its own. */
+class DroppingProxy : public QObject {
+public:
+	std::atomic<int> connections{ 0 };
+	std::atomic<quint16> port{ 0 };
+
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [this, server] {
+			while (QTcpSocket *client = server->nextPendingConnection()) {
+				connections++;
+				clients_ << client;
+				auto *device = new QTcpSocket(client);
+				device->connectToHost(QStringLiteral("127.0.0.1"), FAKE_DEVICE_PORT);
+				QObject::connect(client, &QTcpSocket::readyRead, device, [client, device] { device->write(client->readAll()); });
+				QObject::connect(device, &QTcpSocket::readyRead, client, [client, device] { client->write(device->readAll()); });
+				QObject::connect(client, &QTcpSocket::disconnected, client, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+	void drop() {
+		for (const QPointer<QTcpSocket> &client : std::as_const(clients_))
+			if (client) client->disconnectFromHost();
+		clients_.clear();
+	}
+
+private:
+	QList<QPointer<QTcpSocket>> clients_;
+};
+
+/* A device that refuses every request (ERROR_RESP permission denied) and closes the link right after, as a board whose
+ * token was changed does (gui_test's RefusingDevice). On a thread of its own. */
+class RefusingDevice : public QObject {
+public:
+	std::atomic<int> connections{ 0 };
+	std::atomic<quint16> port{ 0 };
+
+	void start() {
+		auto *server = new QTcpServer(this);
+		QObject::connect(server, &QTcpServer::newConnection, this, [this, server] {
+			while (QTcpSocket *socket = server->nextPendingConnection()) {
+				connections++;
+				auto parser = std::make_shared<evre::Parser>();
+				QObject::connect(socket, &QTcpSocket::readyRead, socket, [socket, parser] {
+					parser->feed(socket->readAll());
+					evre::Frame frame;
+					bool any = false;
+					while (parser->next(frame)) {
+						socket->write(evre::build(frame.slave, evre::ERROR_RESP, frame.addr, frame.cnt, QByteArray(1, char(3))));
+						any = true;
+					}
+					if (any) QTimer::singleShot(20, socket, [socket] { socket->disconnectFromHost(); });
+				});
+				QObject::connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+			}
+		});
+		if (server->listen(QHostAddress::LocalHost)) port = server->serverPort();
+	}
+};
+
+/* a stand-in run on a thread of its own, started and stopped there */
+template <typename Stand> struct OnThread {
+	QThread thread;
+	Stand *stand = new Stand;
+	OnThread() {
+		stand->moveToThread(&thread);
+		thread.start();
+		QMetaObject::invokeMethod(stand, [this] { stand->start(); }, Qt::BlockingQueuedConnection);
+	}
+	~OnThread() {
+		QMetaObject::invokeMethod(stand, [this] { delete stand; }, Qt::BlockingQueuedConnection);
+		thread.quit();
+		thread.wait();
+	}
+	template <typename Do> void run(Do work) { QMetaObject::invokeMethod(stand, [this, work] { work(stand); }, Qt::BlockingQueuedConnection); }
+};
+
+/* A stand-in for Android's Java USB layer (usb_bridge.h), as gui_test's: it keeps what the link asks (open() comes on
+ * the engine's thread), and the test speaks for Android and the board through the sink, from a thread of its own as
+ * Java's reader does */
+class FakeUsbBridge : public evre::UsbBridge {
+public:
+	QVector<Device> list; /* read on the window's thread (the port list) */
+	std::atomic<int> opens{ 0 }, closes{ 0 };
+	std::atomic<Sink *> sink{ nullptr };
+	QVector<Device> devices() override { return list; }
+	void open(const QString &, qint32, Sink *to) override {
+		sink = to;
+		opens++;
+	}
+	void send(const QByteArray &) override {}
+	void close() override {
+		closes++;
+		sink = nullptr;
+	}
+	void fromJava(const std::function<void(Sink *)> &word) {
+		Sink *to = sink;
+		if (!to) return;
+		std::thread java([&word, to] { word(to); });
+		java.join();
+	}
+};
+
+/* Connect over TCP from the drawer, the device's ID, polling and writes, a recording, Disconnect: one link */
+void checkTcpLink() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(true);
+		session->setPolling(true);
+		session->setIntervalMs(100);
+	}
+	phone.openDrawer();
+	phone.tap(phone.item("linkTcp"));
+	phone.type("hostField", QStringLiteral("127.0.0.1"));
+	phone.type("portField", QString::number(FAKE_DEVICE_PORT));
+	phone.tap(phone.item("connectButton"));
+	const bool up = waitForState(session, PhoneSession::Connected);
+	const QString link = phone.text("linkText"), pill = phone.text("linkPillText");
+	const QObject *dot = phone.object("linkPillDot");
+	const bool green = dot && near(dot->property("color").value<QColor>(), themeColor(&ThemeColors::good), 2);
+	const QString wanted = QStringLiteral("127.0.0.1:%1").arg(FAKE_DEVICE_PORT);
+	check(session && up && session->tcp() && link == QStringLiteral("Connected: ") + wanted && pill == QLatin1String("Connected")
+					&& green && phone.text("connectButton") == QLatin1String("Disconnect")
+					&& session->log()->contains(QStringLiteral("connected: ") + wanted)
+					&& QSettings().value(QStringLiteral("phone/host")).toString() == QLatin1String("127.0.0.1"),
+			QStringLiteral("phone, connect: TCP chosen in the drawer, the host and port typed, Connect: connected to the fake "
+					"device, the drawer says \"%1\", the pill \"%2\" with a green dot, the button Disconnect, the Log "
+					"\"connected: ...\", the host saved").arg(link, pill));
+
+	const bool read = session && QTest::qWaitFor([&] { return session->deviceId() == 0x1001; }, 3000);
+	const QString device = phone.text("deviceText");
+	check(read && device.startsWith(QStringLiteral("Device ID 0x1001 · protocol rev ")) && phone.item("deviceText")
+					&& phone.item("deviceText")->isVisible() && phone.text("deviceWarning").isEmpty()
+					&& session->log()->contains(QStringLiteral("device ID 0x1001")),
+			QStringLiteral("phone, DEVICE_ID: the drawer shows \"%1\" (the example map's 0x1001, no warning), the Log the "
+					"same").arg(device));
+
+	/* polling: 50 ms gives about 20 polls a second, 200 ms about 5, off none */
+	auto rateAfter = [&](int ms) {
+		QTest::qWait(ms);
+		return session ? session->pollHz() : -1;
+	};
+	if (session) session->setIntervalMs(50);
+	const double fast = rateAfter(2500);
+	if (session) session->setIntervalMs(200);
+	const double slow = rateAfter(2500);
+	phone.tap(phone.item("pollSwitch"));
+	const double off = rateAfter(1200);
+	const bool offSaved = !QSettings().value(QStringLiteral("phone/polling"), true).toBool();
+	const QString offText = phone.text("pollText");
+	phone.tap(phone.item("pollSwitch"));
+	phone.tap(phone.item("writesSwitch"));
+	const bool writes = session && session->writesEnabled() && session->registers()->writesEnabled()
+			&& session->log()->contains(QStringLiteral("writes allowed"));
+	phone.tap(phone.item("writesSwitch"));
+	const bool writesOff = session && !session->registers()->writesEnabled();
+	check(fast >= 12 && fast <= 22 && slow >= 3.5 && slow <= 5.5 && off == 0 && offSaved
+					&& QSettings().value(QStringLiteral("phone/interval")).toInt() == 200 && !offText.contains(QLatin1String("polls"))
+					&& writes && writesOff,
+			QStringLiteral("phone, polling and writes: an interval of 50 ms polls %1 times a second, 200 ms %2, Polling off "
+					"none (%3; the drawer's line \"%4\"), both saved; Allow writes turns the registers' writes on and off")
+					.arg(fast, 0, 'f', 1).arg(slow, 0, 'f', 1).arg(off).arg(offText));
+
+	/* a recording: Record, a while at 50 ms, Stop; the file in the app's folder, every row whole */
+	if (session) session->setIntervalMs(50);
+	phone.tap(phone.item("recordButton"));
+	const bool recording = session && QTest::qWaitFor([&] { return session->recording(); }, 3000);
+	const QString during = phone.text("recordButton");
+	QTest::qWait(1500);
+	phone.tap(phone.item("recordButton"));
+	const bool stopped = session && QTest::qWaitFor([&] { return !session->recording(); }, 3000);
+	const QString file = session ? session->recordFile() : QString();
+	QFile csv(file);
+	QStringList lines;
+	if (csv.open(QIODevice::ReadOnly | QIODevice::Text)) lines = QString::fromUtf8(csv.readAll()).split(QLatin1Char('\n'));
+	const bool endsWhole = !lines.isEmpty() && lines.constLast().isEmpty(); /* the last row ended by its newline */
+	if (endsWhole) lines.removeLast();
+	const int columns = lines.isEmpty() ? 0 : int(lines.constFirst().count(QLatin1Char(',')));
+	bool rowsWhole = lines.size() > 1;
+	for (const QString &line : lines) rowsWhole = rowsWhole && line.count(QLatin1Char(',')) == columns;
+	const int rows = int(lines.size()) - 1;
+	const QString saved = phone.text("recordText");
+	check(recording && during == QLatin1String("Stop recording") && stopped && endsWhole && rowsWhole && rows >= 10
+					&& columns >= 3 && lines.value(0).startsWith(QLatin1String("time_s,datetime,"))
+					&& QFileInfo(file).absolutePath() == QFileInfo(PhoneSession::recordingsFolder()).absoluteFilePath()
+					&& saved == QStringLiteral("Saved %1 · rows: %2").arg(QFileInfo(file).fileName()).arg(rows)
+					&& session->log()->contains(QStringLiteral("CSV recording stopped: %1 rows").arg(rows)),
+			QStringLiteral("phone, recording: Record writes a CSV into the app's folder (%1), Stop closes it whole: %2 rows "
+					"of %3 columns each, the last ended by its newline; the drawer says \"%4\"")
+					.arg(QDir::toNativeSeparators(file)).arg(rows).arg(columns + 1).arg(saved));
+	QFile::remove(file);
+
+	phone.tap(phone.item("connectButton"));
+	const bool off2 = waitForState(session, PhoneSession::Off, 2000);
+	const QString closedText = phone.text("linkText"), closedPill = phone.text("linkPillText");
+	const QString lastSeen = phone.text("deviceText");
+	check(off2 && closedText == QLatin1String("Not connected") && closedPill == QLatin1String("Not connected")
+					&& phone.text("connectButton") == QLatin1String("Connect") && session->log()->contains(QStringLiteral("disconnected"))
+					&& lastSeen.startsWith(QStringLiteral("last seen: Device ID 0x1001")),
+			QStringLiteral("phone, disconnect: Disconnect closes the link, the drawer and the pill say \"%1\", the Log "
+					"\"disconnected\", the device's ID kept as \"%2\", Connect offered").arg(closedText, lastSeen));
+}
+
+/* a port where nothing listens: the reason in the drawer and the Log, no try by itself with Reconnect by itself off */
+void checkRefusedLink() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(false);
+		session->connectTcp(QStringLiteral("127.0.0.1"), NOBODY_PORT, QString());
+	}
+	const bool closed = waitForState(session, PhoneSession::Closed, 8000);
+	const QString why = phone.text("linkText");
+	const QObject *dot = phone.object("linkPillDot");
+	const bool red = dot && near(dot->property("color").value<QColor>(), themeColor(&ThemeColors::bad), 2);
+	check(closed && why.contains(QLatin1String("refused"), Qt::CaseInsensitive) && red
+					&& phone.text("linkPillText") == QLatin1String("Not connected") && !session->wantConnected()
+					&& session->log()->contains(QStringLiteral("not connected: ") + why),
+			QStringLiteral("phone, a refused connection: nothing listens on port %1, the drawer says why (\"%2\"), the pill "
+					"\"Not connected\" with a red dot, the Log \"not connected: ...\", no try by itself").arg(NOBODY_PORT).arg(why));
+	if (session) session->setAutoReconnect(true);
+}
+
+/* the link dropped under the phone: it says so and comes back by itself */
+void checkReconnect() {
+	OnThread<DroppingProxy> proxy;
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(true);
+		session->connectTcp(QStringLiteral("127.0.0.1"), proxy.stand->port, QString());
+	}
+	const bool up = waitForState(session, PhoneSession::Connected);
+	proxy.run([](DroppingProxy *stand) { stand->drop(); });
+	const bool lost = waitForState(session, PhoneSession::Reconnecting, 3000);
+	const QString pill = phone.text("linkPillText"), why = phone.text("linkDetail");
+	const bool back = waitForState(session, PhoneSession::Connected, 5000);
+	const int links = proxy.stand->connections;
+	check(up && lost && pill == QStringLiteral("Reconnecting…") && why.startsWith(QLatin1String("closed by 127.0.0.1:")) && back
+					&& links == 2 && session->log()->contains(QStringLiteral("connection lost: closed by")),
+			QStringLiteral("phone, reconnect: the link dropped, the pill says \"%1\" and the drawer why (\"%2\"), the Log "
+					"\"connection lost: ...\"; connected again by itself (%3 links; up %4, lost %5, back %6)").arg(pill, why).arg(links)
+					.arg(up).arg(lost).arg(back));
+	if (session) session->disconnectLink();
+}
+
+/* a refused token closes the link: one try, no more by itself, the drawer says what to do */
+void checkTokenStops() {
+	OnThread<RefusingDevice> device;
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) {
+		session->setAutoReconnect(true);
+		session->connectTcp(QStringLiteral("127.0.0.1"), device.stand->port, QStringLiteral("not-the-token"));
+	}
+	QTest::qWait(3000); /* at least five tries twice a second, were they made */
+	const int tries = device.stand->connections;
+	const QString said = phone.text("linkText");
+	check(session && tries == 1 && session->state() == PhoneSession::Closed && !session->wantConnected()
+					&& said == QLatin1String("token refused: type the right token, then Connect")
+					&& session->log()->contains(QStringLiteral("not reconnecting: token refused"))
+					&& phone.text("connectButton") == QLatin1String("Connect"),
+			QStringLiteral("phone, a wrong token: the device refuses it and closes the link; one try in 3 s (%1), not "
+					"reconnected by itself, the drawer says \"%2\", Connect offered").arg(tries).arg(said));
+}
+
+/* a map with the USB IDs of a device plugged in, written to `folder` */
+QString mapWithUsb(const QString &folder) {
+	QFile in(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	if (!in.open(QIODevice::ReadOnly)) return QString();
+	QByteArray text = in.readAll();
+	text.replace("\"slave\": 1,", "\"slave\": 1,\n  \"usb\": { \"vid\": \"0x0483\", \"pid\": \"0x5740\" },");
+	const QString file = folder + QStringLiteral("/example_usb.json");
+	QFile out(file);
+	if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size()) return QString();
+	return file;
+}
+
+/* the drawer's USB list: the bridge's devices, the map's own named by it; one unplugged leaves the list while open */
+void checkUsbPorts() {
+	FakeUsbBridge bridge;
+	bridge.list = { { USB_DEVICE, 0x0483, 0x5740, QStringLiteral("STM32 Virtual ComPort") },
+		{ QStringLiteral("/dev/bus/usb/001/003"), 0x1a86, 0x7523, QStringLiteral("USB Serial") } };
+	PhoneSession::setUsbBridgeForTests(&bridge);
+	QTemporaryDir folder;
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		const QString file = mapWithUsb(folder.path());
+		const bool loaded = session && !file.isEmpty() && session->loadMap(file);
+		phone.openDrawer();
+		phone.tap(phone.item("linkUsb"));
+		QObject *box = phone.object("portBox");
+		const QString first = session ? session->ports()->data(session->ports()->index(0), PortList::LabelRole).toString() : QString();
+		const QString second = session ? session->ports()->data(session->ports()->index(1), PortList::LabelRole).toString() : QString();
+		const bool listed = box && phone.item("portBox")->isVisible() && box->property("count").toInt() == 2
+				&& phone.item("noPorts") && !phone.item("noPorts")->isVisible() && phone.item("usbPanel")->isVisible()
+				&& !phone.item("tcpPanel")->isVisible();
+		bridge.list.removeLast();
+		const bool gone = session && QTest::qWaitFor([&] { return session->ports()->count() == 1; }, 4000);
+		check(loaded && listed && first == USB_DEVICE + QStringLiteral(" · Example device · 0483:5740")
+						&& second == QStringLiteral("/dev/bus/usb/001/003 · USB Serial · 1a86:7523") && gone,
+				QStringLiteral("phone, USB ports: USB chosen in the drawer lists the bridge's devices, the map's own named by "
+						"the map (\"%1\", \"%2\"); one unplugged leaves the list while the drawer is open").arg(first, second));
+		if (session) session->loadMap(phone::mapsFolder() + QStringLiteral("/example_device.json"));
+	}
+	PhoneSession::setUsbBridgeForTests(nullptr);
+}
+
+/* Android's permission dialog: waiting, then refused; no try by itself after a refusal */
+void checkUsbPermission() {
+	FakeUsbBridge bridge;
+	bridge.list = { { USB_DEVICE, 0x0483, 0x5740, QString() } };
+	PhoneSession::setUsbBridgeForTests(&bridge);
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		phone.openDrawer();
+		phone.tap(phone.item("linkUsb"));
+		if (session) session->setAutoReconnect(true);
+		phone.tap(phone.item("connectButton"));
+		const bool asked = QTest::qWaitFor([&] { return bridge.opens == 1 && bridge.sink; }, 3000);
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbAsking(); });
+		const bool waiting = waitForState(session, PhoneSession::Waiting, 3000);
+		const QString pill = phone.text("linkPillText"), hint = phone.text("linkDetail");
+		check(asked && waiting && pill == QStringLiteral("Waiting for permission…") && phone.text("linkText") == pill
+						&& hint.contains(USB_DEVICE) && phone.text("connectButton") == QLatin1String("Cancel"),
+				QStringLiteral("phone, USB permission: Connect opens the device through the bridge; Android's dialog up, the "
+						"pill says \"%1\", the drawer names the device (\"%2\"), Cancel offered (asked %3, button %4)").arg(pill, hint)
+						.arg(asked).arg(phone.text("connectButton")));
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbRefused(); });
+		const bool closed = waitForState(session, PhoneSession::Closed, 3000);
+		const QString why = phone.text("linkText");
+		QTest::qWait(2500); /* a try by itself would have come by now */
+		check(closed && why == QStringLiteral("permission refused for ") + USB_DEVICE && bridge.opens == 1
+						&& !session->wantConnected() && session->log()->contains(QStringLiteral("not reconnecting: permission refused")),
+				QStringLiteral("phone, USB refused: the person says no, the drawer says \"%1\", the Log too, and the "
+						"permission is not asked again by itself (%2 opens)").arg(why).arg(bridge.opens.load()));
+	}
+	PhoneSession::setUsbBridgeForTests(nullptr);
+}
+
+/* the board unplugged while connected: said, and tried again by itself */
+void checkUsbGone() {
+	FakeUsbBridge bridge;
+	bridge.list = { { USB_DEVICE, 0x0483, 0x5740, QString() } };
+	PhoneSession::setUsbBridgeForTests(&bridge);
+	{
+		Phone phone(PORTRAIT);
+		PhoneSession *session = phone.session();
+		if (session) {
+			session->setAutoReconnect(true);
+			session->connectUsb(USB_DEVICE, 115200);
+		}
+		(void) QTest::qWaitFor([&] { return bridge.opens == 1 && bridge.sink; }, 3000);
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbOpened(); });
+		const bool up = waitForState(session, PhoneSession::Connected, 3000);
+		const QString link = phone.text("linkText");
+		bridge.fromJava([](evre::UsbBridge::Sink *sink) { sink->usbGone(); });
+		const bool lost = waitForState(session, PhoneSession::Reconnecting, 3000);
+		const QString why = phone.text("linkDetail");
+		const bool again = QTest::qWaitFor([&] { return bridge.opens == 2; }, 3000);
+		check(up && link == QStringLiteral("Connected: %1 @ 115200").arg(USB_DEVICE) && lost
+						&& why == USB_DEVICE + QStringLiteral(" is gone: unplugged or reset?") && again
+						&& session->log()->contains(QStringLiteral("connection lost: ") + why),
+				QStringLiteral("phone, USB gone: connected (\"%1\"), the board unplugged: the drawer says \"%2\", the Log "
+						"\"connection lost: ...\", and the device is opened again by itself").arg(link, why));
+		if (session) session->disconnectLink();
+	}
+	PhoneSession::setUsbBridgeForTests(nullptr);
+}
+
+/* the Log screen: the session's lines, an error in red, Clear */
+void checkLogScreen() {
+	Phone phone(PORTRAIT);
+	PhoneSession *session = phone.session();
+	if (session) session->loadMap(QStringLiteral("no_such_map.json")); /* an error line */
+	phone.tap(phone.item("tabLog"));
+	QQuickItem *list = phone.item("logList");
+	const int lines = session ? session->log()->count() : 0;
+	(void) QTest::qWaitFor([&] { return list && list->property("count").toInt() == lines; }, 2000);
+	/* the newest line's text item: the list follows the end */
+	QQuickItem *newest = nullptr;
+	forEachItem(list, [&](QQuickItem *item) {
+		if (item->objectName() == QLatin1String("logText") && item->property("text").toString().startsWith(QLatin1String("map not loaded")))
+			newest = item;
+	});
+	const bool red = newest && newest->isVisible() && near(newest->property("color").value<QColor>(), themeColor(&ThemeColors::bad), 2);
+	const QString count = phone.text("logCount");
+	const bool mapLine = session && session->log()->contains(QStringLiteral("map loaded: "));
+	phone.tap(phone.item("logClear"));
+	const bool cleared = session && session->log()->count() == 0 && list && list->property("count").toInt() == 0
+			&& phone.item("logEmpty") && phone.item("logEmpty")->isVisible();
+	check(lines >= 2 && mapLine && red && count == QStringLiteral("lines: %1").arg(lines) && cleared,
+			QStringLiteral("phone, Log screen: the session's lines (%1: the map loaded, a map that did not), an error in "
+					"red, \"%2\"; Clear empties it and says nothing is there yet").arg(lines).arg(count));
+}
+
+/* EVRE_PHONE_SHOT: both languages and themes, portrait, the drawer open, connected (the drawer, the Log), landscape */
 void savePictures(const QString &prefix) {
 	for (const QString &code : { QStringLiteral("en"), QStringLiteral("ar") }) {
 		language::apply(*qApp, code);
@@ -456,6 +915,20 @@ void savePictures(const QString &prefix) {
 				phone.grab().save(name + QStringLiteral("portrait.png"));
 				phone.openDrawer();
 				phone.grab().save(name + QStringLiteral("drawer.png"));
+			}
+			{
+				/* connected to the fake device: the drawer, then the Log */
+				Phone phone(PORTRAIT);
+				if (PhoneSession *session = phone.session()) {
+					session->setTcp(true);
+					session->connectTcp(QStringLiteral("127.0.0.1"), FAKE_DEVICE_PORT, QString());
+					(void) QTest::qWaitFor([&] { return session->deviceId() >= 0; }, 3000);
+				}
+				phone.openDrawer();
+				phone.grab().save(name + QStringLiteral("connected.png"));
+				phone.closeDrawer();
+				phone.tap(phone.item("tabLog"));
+				phone.grab().save(name + QStringLiteral("log.png"));
 			}
 			Phone phone(LANDSCAPE);
 			phone.tap(phone.item("tabChart"));
@@ -490,6 +963,14 @@ int main(int argc, char **argv) {
 	checkArabic();
 	checkTexts();
 	checkP9();
+	checkLogScreen();
+	checkTcpLink();
+	checkRefusedLink();
+	checkReconnect();
+	checkTokenStops();
+	checkUsbPorts();
+	checkUsbPermission();
+	checkUsbGone();
 	if (!qEnvironmentVariableIsEmpty("EVRE_PHONE_SHOT")) savePictures(qEnvironmentVariable("EVRE_PHONE_SHOT"));
 	QCoreApplication::processEvents();
 	checkThreadWarnings();

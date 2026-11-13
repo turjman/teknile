@@ -9,6 +9,13 @@
   the language at its bottom), a tab bar for Registers, Chart, Monitor and Log, and right to left in Arabic. The
   screens say what will come; the desktop's widget window is no longer built for Android, and the desktop does not
   change. A proof screen (`am start ... --ez p9 true`) measures a live list's frames.
+- **Connect and the Log on the phone.** The drawer connects to a board on the phone's USB port (Android asks for the
+  permission, and the drawer says it waits for it) or to a device over TCP (host, port, token), with a map of the
+  app's or one picked from the phone. Under Connect: what the link is or why it went down, and the device's ID.
+  Reconnect by itself, polling and its interval, Allow writes, and Record, a CSV into the app's own folder
+  (`Android/data/com.teknile.evrestudio/files/recordings`). A refused token or a refused USB permission stops the
+  tries. The header's pill shows the link's state in its colour and opens the drawer; the Log screen lists what
+  happened, Copy and Clear.
 - **Fine detail** in the Display menu (on by default, saved): on a scaled screen a line is binned per device pixel,
   not per logical pixel. At 225 % a noisy line over a 1 min view was drawn as steps 2.25 pixels wide and looked
   smoothed out on the screen, and *Copy picture* showed it as separate bars with faint joins; now both show every

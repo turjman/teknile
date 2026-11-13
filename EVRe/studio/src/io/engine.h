@@ -79,6 +79,9 @@
 
 class ApiServer;
 class QFile;
+namespace evre {
+class UsbBridge;
+}
 namespace fast {
 class RecordingWriter;
 }
@@ -272,6 +275,8 @@ public:
 	/* baudLimited: the baud rate is the link's real speed (a UART, a USB-to-UART bridge); false on USB CDC, which runs
 	 * at USB's speed whatever the rate says (Sidebar::serialBaudLimited) */
 	void connectSerial(const QString &port, qint32 baud, bool baudLimited);
+	/* the phone's USB CDC device (link_android.h) through this bridge: the phone's program and its test */
+	void connectUsb(const QString &device, qint32 baud, evre::UsbBridge *bridge);
 	/* Listen: hear what another program says on this port; nothing is sent until another link replaces it */
 	/* pressed: a person asked for this, so a UAC prompt may come; a try by itself must not raise one. known: what the
 	 * window's lookup found on the port, not asked again here (it costs the device a request); a test's port needs none */
